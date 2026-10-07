@@ -1,24 +1,28 @@
 import { homedir } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
-import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../shared/execution-host'
+import { agentSessionRecordFixture } from '../native-chat/agent-session-record-test-fixture'
 import { prewarmClaudeCliFlags } from './claude-cli-flag-prewarm'
 
 const record = (
   sessionId: string,
-  overrides: { provider?: string; host?: string; wslDistro?: string | null; dir?: string } = {}
-) =>
-  ({
+  overrides: {
+    provider?: string
+    host?: ExecutionHostId
+    wslDistro?: string | null
+    dir?: string
+  } = {}
+): AgentSessionRecord =>
+  agentSessionRecordFixture({
     sessionId,
     provider: overrides.provider ?? 'claude',
     location: {
       executionHostId: overrides.host ?? LOCAL_EXECUTION_HOST_ID,
-      wslDistro: overrides.wslDistro ?? null,
-      workspaceId: 'w',
-      workspaceKind: 'folder'
+      wslDistro: overrides.wslDistro ?? null
     },
     ...(overrides.dir ? { launchDirectory: overrides.dir } : {})
-  }) as unknown as AgentSessionRecord
+  })
 
 function prewarmWith(records: AgentSessionRecord[], resolveCommand = () => '/bin/claude') {
   const prewarm = vi.fn()

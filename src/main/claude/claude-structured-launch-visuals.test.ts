@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentSessionRecord } from '../../shared/agent-session-record'
+import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
+import { agentSessionRecordFixture } from '../native-chat/agent-session-record-test-fixture'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import {
   NATIVE_CHAT_VISUALS_DIR_ENV,
@@ -18,18 +19,14 @@ const VISUALS: NativeChatVisualsLaunch = {
   skill: { pluginDir: '/app/native-chat-visuals', skillsRoot: '/app/native-chat-visuals/skills' }
 }
 
-const record = {
+const record = agentSessionRecordFixture({ sessionId: SESSION_ID })
+const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: SESSION_ID,
-  provider: 'claude',
-  location: {
-    executionHostId: LOCAL_EXECUTION_HOST_ID,
-    wslDistro: null,
-    workspaceId: 'workspace-1',
-    workspaceKind: 'folder'
-  },
-  accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/work/.claude' },
-  providerHandleChain: []
-} as unknown as AgentSessionRecord
+  workspaceId: 'workspace-1',
+  hostId: LOCAL_EXECUTION_HOST_ID,
+  agent: 'claude',
+  providerHandle: null
+}
 
 function launch(options: {
   prepareVisuals?: (sessionId: string) => Promise<NativeChatVisualsLaunch | null>
@@ -47,11 +44,7 @@ function launch(options: {
     hasTranscript: async () => false,
     ...(options.supports ? { cliFlags: { supports: options.supports } } : {}),
     ...(options.prepareVisuals ? { prepareVisuals: options.prepareVisuals } : {})
-  })({
-    identity: { sessionId: SESSION_ID } as Parameters<
-      ReturnType<typeof createClaudeStructuredLaunchResolver>
-    >[0]['identity']
-  })
+  })({ identity: IDENTITY })
 }
 
 describe('a Claude chat launch with inline visuals', () => {
@@ -106,5 +99,28 @@ describe('a Claude chat launch with inline visuals', () => {
       expect.objectContaining({ command: '/usr/local/bin/claude' }),
       CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS
     )
+  })
+
+  it('asks for readable thinking again once the plugin check has learned the version', async () => {
+    let versionKnown = false
+    const supports = vi.fn(async (flag: ClaudeCliFlag, _launch: unknown, budgetMs?: number) => {
+      if (flag === CLAUDE_PLUGIN_DIR_FLAG) {
+        versionKnown = true
+        return true
+      }
+      // The first thinking check gave up at its short budget; the re-check reads the cached answer.
+      return versionKnown && budgetMs !== undefined
+    })
+    const resolved = await launch({ prepareVisuals: async () => VISUALS, supports })
+    expect(resolved.options.plugins).toHaveLength(1)
+    expect(resolved.options.extraArgs).toMatchObject({ 'thinking-display': 'summarized' })
+  })
+
+  it('never re-asks for thinking on a host without visuals', async () => {
+    const supports = vi.fn(
+      async (_flag: ClaudeCliFlag, _launch: unknown, _budgetMs?: number) => false
+    )
+    await launch({ supports })
+    expect(supports).toHaveBeenCalledTimes(1)
   })
 })

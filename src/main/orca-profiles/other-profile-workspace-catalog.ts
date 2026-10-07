@@ -1,4 +1,5 @@
 import { lstatSync, readFileSync } from 'node:fs'
+import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { folderWorkspaceKey } from '../../shared/workspace-scope'
 import {
   getOrcaProfileDataFile,
@@ -40,10 +41,20 @@ type ProfileWorkspaceIds = {
   repoIds: Set<string>
 }
 
+export type OtherProfileCatalogOptions = {
+  /** The profile this process runs, whose catalog the caller reads live. Defaults to the index's
+   *  active profile, which a profile switch rewrites before the running one exits. */
+  runningProfileId?: string
+  /** A profile with no state database, sidecar or data file at all has never been written and
+   *  holds nothing; by default it counts as unreadable like a missing file anywhere else. */
+  neverWrittenIsEmpty?: boolean
+}
+
 /** The workspaces and projects every profile other than the running one holds. Any profile whose
  *  state can't be read is counted, never skipped silently: its ids are unknown. */
 export function readOtherProfileWorkspaceCatalog(
-  userDataPath = getProfileUserDataPath()
+  userDataPath = getProfileUserDataPath(),
+  options: OtherProfileCatalogOptions = {}
 ): ProfileWorkspaceIds & { unreadableProfiles: number } {
   const ids = new Set<string>()
   const repoIds = new Set<string>()
@@ -52,11 +63,12 @@ export function readOtherProfileWorkspaceCatalog(
     return { ids, repoIds, unreadableProfiles: 0 }
   }
   let unreadableProfiles = 0
+  const running = options.runningProfileId ?? index.activeProfileId
   for (const profile of index.profiles) {
-    if (profile.id === index.activeProfileId) {
+    if (profile.id === running) {
       continue
     }
-    const collected = readProfileWorktreeIds(profile.id, userDataPath)
+    const collected = readProfileWorktreeIds(profile.id, userDataPath, options)
     if (!collected) {
       unreadableProfiles += 1
       continue
@@ -69,7 +81,8 @@ export function readOtherProfileWorkspaceCatalog(
 
 function readProfileWorktreeIds(
   profileId: string,
-  userDataPath: string
+  userDataPath: string,
+  options: OtherProfileCatalogOptions = {}
 ): ProfileWorkspaceIds | null {
   const databaseFile = getOrcaProfileStateDatabaseFile(profileId, userDataPath)
   // A present database is authoritative. In particular, do not fall back to a
@@ -88,7 +101,19 @@ function readProfileWorktreeIds(
   } catch {
     return null
   }
+  if (options.neverWrittenIsEmpty && definitivelyAbsent(dataFile)) {
+    return { ids: new Set(), repoIds: new Set() }
+  }
   return readProfileWorktreeIdsFromJson(dataFile)
+}
+
+function definitivelyAbsent(path: string): boolean {
+  try {
+    lstatSync(path)
+    return false
+  } catch (error) {
+    return isDefinitiveAbsence(error)
+  }
 }
 
 function profileStateDatabasePresence(path: string): 'absent' | 'present' | 'unreadable' {
@@ -191,10 +216,10 @@ function readProfileWorktreeIdsFromJson(dataFile: string): ProfileWorkspaceIds |
     // thing to the caller: this profile's ids are unknown.
     return null
   }
-  if (!parsed || typeof parsed !== 'object') {
+  if (!isRecord(parsed)) {
     return null
   }
-  const state = parsed as { worktreeMeta?: unknown; folderWorkspaces?: unknown; repos?: unknown }
+  const state = parsed
   const ids = new Set<string>()
   if (state.worktreeMeta && typeof state.worktreeMeta === 'object') {
     for (const id of Object.keys(state.worktreeMeta)) {
@@ -203,7 +228,7 @@ function readProfileWorktreeIdsFromJson(dataFile: string): ProfileWorkspaceIds |
   }
   if (Array.isArray(state.folderWorkspaces)) {
     for (const workspace of state.folderWorkspaces) {
-      const id = (workspace as { id?: unknown } | null)?.id
+      const id = isRecord(workspace) ? workspace.id : undefined
       if (typeof id === 'string' && id) {
         ids.add(folderWorkspaceKey(id))
       }

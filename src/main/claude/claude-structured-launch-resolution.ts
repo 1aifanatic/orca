@@ -36,16 +36,10 @@ import {
   type ClaudeEnvDeps
 } from './claude-structured-child-env'
 import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
-import {
-  CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS,
-  CLAUDE_PLUGIN_DIR_FLAG,
-  CLAUDE_THINKING_DISPLAY_FLAG,
-  type ClaudeCliFlagSupport,
-  type ClaudeCliLaunch
-} from './claude-cli-flag-support'
+import type { ClaudeCliFlagSupport } from './claude-cli-flag-support'
+import { resolveClaudeLaunchFlags } from './claude-structured-launch-flags'
 import {
   withNativeChatVisualsEnv,
-  type NativeChatVisualsLaunch,
   type PrepareNativeChatVisuals
 } from '../native-chat/native-chat-visuals-delivery'
 import {
@@ -159,42 +153,6 @@ export type ClaudeStructuredLaunchResolverDeps = {
 }
 
 export type ClaudeStructuredInvocation = { command: string; env: Record<string, string> }
-
-const THINKING_DISPLAY_ARGS: Readonly<Record<string, string>> = { 'thinking-display': 'summarized' }
-
-/**
- * Asks for readable thinking: under Orca's launch the CLI otherwise streams thinking blocks with no
- * text. Only the display is set, never `--thinking`, so a user who turned thinking off keeps it off.
- */
-async function claudeThinkingDisplayArgs(
-  cliFlags: ClaudeStructuredLaunchResolverDeps['cliFlags'],
-  launch: ClaudeCliLaunch
-): Promise<Readonly<Record<string, string>>> {
-  return (await cliFlags?.supports(CLAUDE_THINKING_DISPLAY_FLAG, launch))
-    ? THINKING_DISPLAY_ARGS
-    : {}
-}
-
-type ClaudeVisualsLaunch = { visuals: NativeChatVisualsLaunch; pluginDir: string | null }
-
-/** The chat's visuals folder, and its skill plugin when this CLI can load one by path. Unlike the
- *  thinking display, a missed answer costs the chat its skill for its whole life, so this waits
- *  for the version probe up to the probe's own kill time: bounded, and instant once known. */
-async function claudeVisualsLaunch(
-  deps: Pick<ClaudeStructuredLaunchResolverDeps, 'cliFlags' | 'prepareVisuals'>,
-  sessionId: string,
-  launch: ClaudeCliLaunch
-): Promise<ClaudeVisualsLaunch | null> {
-  if (!deps.prepareVisuals) {
-    return null
-  }
-  const [visuals, loadsPlugins] = await Promise.all([
-    deps.prepareVisuals(sessionId),
-    deps.cliFlags?.supports(CLAUDE_PLUGIN_DIR_FLAG, launch, CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS) ??
-      false
-  ])
-  return visuals ? { visuals, pluginDir: loadsPlugins ? visuals.skill.pluginDir : null } : null
-}
 
 /**
  * The one place a structured Claude child's binary and environment are
@@ -310,10 +268,9 @@ export function createClaudeStructuredLaunchResolver(
     const sources = await resolveClaudeChildEnvSources(deps)
     // Asked as soon as the spawn's cwd and PATH are known, so it overlaps what is left to resolve.
     const probeLaunch = { command: sources.command, cwd, env: claudeProbeEnv(sources) }
-    const thinkingDisplay = claudeThinkingDisplayArgs(deps.cliFlags, probeLaunch)
-    const visualsLaunch = claudeVisualsLaunch(deps, record.sessionId, probeLaunch)
+    const launchFlags = resolveClaudeLaunchFlags(deps, record.sessionId, probeLaunch)
     const configured = claudeStructuredLaunchArgs(await deps.resolveLaunchArgs())
-    const visuals = await visualsLaunch
+    const { thinkingDisplayArgs, visuals } = await launchFlags
     // The folder joins whatever the user's Arguments add; it never replaces their directories.
     const additionalDirectories = visuals
       ? [...configured.additionalDirectories, visuals.visuals.folder]
@@ -321,7 +278,6 @@ export function createClaudeStructuredLaunchResolver(
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const thinkingDisplayArgs = await thinkingDisplay
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
     const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null

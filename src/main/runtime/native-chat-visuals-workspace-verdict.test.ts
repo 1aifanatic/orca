@@ -26,10 +26,9 @@ function catalogs(
   return {
     active: {
       getRepo: (id: string) =>
-        (options.repos ?? ['repo-1']).includes(id) ? ({ id, path: REPO_PATH } as never) : undefined,
-      getAllWorktreeMeta: () =>
-        Object.fromEntries((options.meta ?? []).map((id) => [id, {} as never])),
-      getFolderWorkspaces: () => (options.folders ?? []).map((id) => ({ id }) as never)
+        (options.repos ?? ['repo-1']).includes(id) ? { path: REPO_PATH } : undefined,
+      getAllWorktreeMeta: () => Object.fromEntries((options.meta ?? []).map((id) => [id, {}])),
+      getFolderWorkspaces: () => (options.folders ?? []).map((id) => ({ id }))
     },
     others: { ids: new Set(), repoIds: new Set(), unreadableProfiles: 0, ...options.others }
   }
@@ -138,7 +137,7 @@ describe('whether a chat workspace is provably removed', () => {
 
   it('never decides for another host, a WSL distro, the floating workspace, or without catalogs', async () => {
     const { verdict, fs } = verdictWith(catalogs({ repos: [] }))
-    await expect(verdict(at(WORKTREE_ID, { executionHostId: 'ssh:box' as never }))).resolves.toBe(
+    await expect(verdict(at(WORKTREE_ID, { executionHostId: 'ssh:box' }))).resolves.toBe(
       'unverifiable'
     )
     await expect(verdict(at(WORKTREE_ID, { wslDistro: 'Ubuntu' }))).resolves.toBe('unverifiable')
@@ -186,12 +185,26 @@ describe("git's own record of a linked worktree", () => {
         ...catalogs(),
         active: {
           ...catalogs().active,
-          getRepo: (id: string) => ({ id, path: repo }) as never
+          getRepo: () => ({ path: repo })
         }
       }))()
     const recorded = repoWithWorktreeRecord(gone)
     await expect(verdicts(recorded)(at(`repo-1::${gone}`))).resolves.toBe('unverifiable')
     const pruned = repoWithWorktreeRecord(null)
     await expect(verdicts(pruned)(at(`repo-1::${gone}`))).resolves.toBe('removed')
+  })
+
+  it('reads a record git wrote relative to its own folder', async () => {
+    const repo = repoWithWorktreeRecord(null)
+    const worktree = join(repo, '..', 'orca-visuals-relative-worktree-b')
+    writeFileSync(
+      join(repo, '.git', 'worktrees', 'feature', 'gitdir'),
+      '../../../../orca-visuals-relative-worktree-b/.git\n'
+    )
+    const verdict = createNativeChatVisualsWorkspaceVerdicts(() => ({
+      ...catalogs(),
+      active: { ...catalogs().active, getRepo: () => ({ path: repo }) }
+    }))()
+    await expect(verdict(at(`repo-1::${worktree}`))).resolves.toBe('unverifiable')
   })
 })

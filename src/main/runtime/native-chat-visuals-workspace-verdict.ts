@@ -5,7 +5,7 @@
 // git or lists a repo's worktrees: that walk can touch protected folders.
 
 import { lstat, readdir, readFile, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
@@ -14,10 +14,37 @@ import { isFloatingWorkspaceId } from '../../shared/floating-workspace-worktree'
 import { splitWorktreeIdForFilesystem } from '../../shared/worktree/id'
 import { folderWorkspaceKey, parseWorkspaceKey } from '../../shared/workspace-scope'
 import type { Store } from '../persistence'
+import { readOtherProfileWorkspaceCatalog } from '../orca-profiles/other-profile-workspace-catalog'
+import { getOrcaProfilesDirectory } from '../orca-profiles/profile-storage-paths'
 import type { NativeChatVisualsWorkspaceVerdict } from '../native-chat/native-chat-visuals-sweep'
 
+/** This profile's live catalog and every other profile's persisted one. The running profile is
+ *  named by its own storage folder, not the profile index, which a switch rewrites first. */
+export function readNativeChatVisualsWorkspaceCatalogs(
+  store: NativeChatVisualsWorkspaceCatalogs['active'] & Pick<Store, 'getProfileStorageDirectory'>
+): NativeChatVisualsWorkspaceCatalogs {
+  const storage = store.getProfileStorageDirectory()
+  const runningProfileId = samePath(dirname(storage), getOrcaProfilesDirectory())
+    ? basename(storage)
+    : undefined
+  return {
+    active: store,
+    others: readOtherProfileWorkspaceCatalog(undefined, {
+      ...(runningProfileId ? { runningProfileId } : {}),
+      // Chat records are never deleted, so this rule is what cleans up; a profile created but never
+      // opened must not switch it off.
+      neverWrittenIsEmpty: true
+    })
+  }
+}
+
 export type NativeChatVisualsWorkspaceCatalogs = {
-  active: Pick<Store, 'getRepo' | 'getAllWorktreeMeta' | 'getFolderWorkspaces'>
+  /** The running profile's live catalog: the Store, narrowed to what a verdict reads. */
+  active: {
+    getRepo: (id: string) => { path: string } | undefined
+    getAllWorktreeMeta: () => Readonly<Record<string, unknown>>
+    getFolderWorkspaces: () => readonly { id: string }[]
+  }
   /** Every other profile's worktree ids, folder workspace keys and project ids. */
   others: { ids: ReadonlySet<string>; repoIds: ReadonlySet<string>; unreadableProfiles: number }
 }
@@ -68,8 +95,13 @@ async function gitRecordsWorktree(repoPath: string, worktreePath: string): Promi
         }
         throw error
       }
-      // The record names the worktree's own `.git` file.
-      if (samePath(dirname(recorded.trim()), worktreePath)) {
+      // The record names the worktree's own `.git` file; git 2.48+ may write it relative to the
+      // record's own folder.
+      const gitFile = recorded.trim()
+      const absolute = isAbsolute(gitFile)
+        ? gitFile
+        : resolve(join(gitDir, 'worktrees', name), gitFile)
+      if (samePath(dirname(absolute), worktreePath)) {
         return true
       }
     }

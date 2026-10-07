@@ -6,9 +6,8 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
-import type { AgentSessionRecord } from '../../shared/agent-session-record'
+import { agentSessionRecordFixture } from '../native-chat/agent-session-record-test-fixture'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
-import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { createNativeChatVisualsDelivery } from '../native-chat/native-chat-visuals-delivery'
 import { nativeChatVisualsFolderFor } from '../native-chat/native-chat-visuals-folder'
 import { NATIVE_CHAT_VISUALS_SKILL_NAME } from '../native-chat/native-chat-visuals-skill-location'
@@ -39,19 +38,12 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
       const scratch = await mkdtemp(join(tmpdir(), 'orca-real-cli-visuals-'))
       const cwd = join(scratch, 'workspace')
       const stateDirectory = join(scratch, 'state')
-      const record = {
+      const record = agentSessionRecordFixture({
         sessionId: SESSION_ID,
-        provider: 'claude',
-        location: {
-          executionHostId: LOCAL_EXECUTION_HOST_ID,
-          wslDistro: null,
-          workspaceId: 'real-cli-visuals-workspace',
-          workspaceKind: 'folder'
-        },
+        location: { workspaceId: 'real-cli-visuals-workspace' },
         accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: claudeConfigDir },
-        providerHandleChain: [],
         launchDirectory: cwd
-      } as unknown as AgentSessionRecord
+      })
       const logger = { warn: vi.fn(), error: vi.fn() }
       const resolveLaunch = createClaudeStructuredLaunchResolver({
         store: { getRecord: () => record, pinLaunchDirectory: vi.fn() },
