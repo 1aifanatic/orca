@@ -30,6 +30,7 @@ export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRunt
       setTabColor: async (worktreeId, tabId, color) => {
         await this.setMobileSessionTabProps(`id:${worktreeId}`, { tabId, color })
       },
+      renameTerminal: (handle, title) => this.renameTerminal(handle, title),
       getSettings: () => this.requireStore().getSettings(),
       getPtyId: (handle) => this.getLivePtyForHandle(handle)?.pty.ptyId,
       recordSetupCompletionToken: (ptyId, token) =>
