@@ -122,7 +122,7 @@ describe('a create that fails before any process spawns', () => {
       )
     )
     const sentence =
-      "Claude couldn't start. Saved Arguments give --model more than one value. Edit them in Settings > Agents > Arguments. Send your message to try again."
+      "Claude couldn't start. Saved Arguments give --model more than one value. Fix it in Claude's Arguments in Settings → Agents. Send your message to try again."
     for (const result of [first, replay]) {
       expect(result).toMatchObject({
         ok: false,

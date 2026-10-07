@@ -3,8 +3,10 @@
 // either passes to app-server, becomes the config Codex itself derives from it, is dropped because
 // it only shapes a terminal, or refuses the start by name because a chat can't honor it.
 import { StructuredAgentArgumentsError } from '../native-chat/structured-agent-arguments-error'
+import type { CodexArgumentSetting } from '../../shared/agent-session-argument-problem'
 import {
   CODEX_APPROVAL_POLICIES,
+  CODEX_APPROVALS_REVIEWERS,
   CODEX_SANDBOX_MODES,
   type CodexStructuredPermissionPolicy
 } from './codex-structured-permission-policy'
@@ -12,7 +14,7 @@ import {
 export type CodexStructuredLaunchArgs = {
   /** Options for after `app-server`. */
   args: string[]
-  /** The sandbox and approval policy the Arguments state explicitly. */
+  /** The sandbox, approval policy and reviewer the Arguments state explicitly. */
   permissions: Partial<CodexStructuredPermissionPolicy>
 }
 
@@ -35,7 +37,7 @@ const pass = (plan: LaunchPlan, option: string, value: string): void => {
 }
 
 const passConfig = (plan: LaunchPlan, option: string, value: string): void => {
-  readConfiguredPermission(plan.configured, option, value)
+  readConfiguredPermission(plan.configured, value)
   pass(plan, option, value)
 }
 
@@ -50,12 +52,12 @@ const deriveModel = (plan: LaunchPlan, _option: string, value: string): void => 
   plan.derived.push(`model=${JSON.stringify(value)}`)
 }
 
-const flagSandbox = (plan: LaunchPlan, option: string, value: string): void => {
-  plan.flags.sandbox = oneOf(CODEX_SANDBOX_MODES, value, option)
+const flagSandbox = (plan: LaunchPlan, _option: string, value: string): void => {
+  plan.flags.sandbox = oneOf(CODEX_SANDBOX_MODES, value, 'sandbox_mode')
 }
 
-const flagApproval = (plan: LaunchPlan, option: string, value: string): void => {
-  plan.flags.approvalPolicy = oneOf(CODEX_APPROVAL_POLICIES, value, option)
+const flagApproval = (plan: LaunchPlan, _option: string, value: string): void => {
+  plan.flags.approvalPolicy = oneOf(CODEX_APPROVAL_POLICIES, value, 'approval_policy')
 }
 
 const VALUE = { takesValue: true }
@@ -111,18 +113,30 @@ const RULES: Record<string, OptionRule> = {
   '--dangerously-bypass-hook-trust': 'refuse'
 }
 
-function oneOf<T extends string>(values: readonly T[], value: string, option: string): T {
-  const match = values.find((candidate) => candidate === value)
+// Codex's own aliases: `on-failure` reads as `on-request` from 0.143; `guardian_subagent` is the
+// reviewer's old name.
+const VALUE_ALIASES = new Map([
+  ['on-failure', 'on-request'],
+  ['guardian_subagent', 'auto_review']
+])
+
+function oneOf<T extends string>(
+  values: readonly T[],
+  value: string,
+  setting: CodexArgumentSetting
+): T {
+  const canonical = VALUE_ALIASES.get(value) ?? value
+  const match = values.find((candidate) => candidate === canonical)
   if (match === undefined) {
-    throw new StructuredAgentArgumentsError('Codex', option, 'invalidValue')
+    throw new StructuredAgentArgumentsError('Codex', setting, 'invalidValue')
   }
   return match
 }
 
-/** The policy a `-c approval_policy=` / `sandbox_mode=` sets, read the way Codex reads it. */
+/** The policy a `-c approval_policy=` / `sandbox_mode=` / `approvals_reviewer=` sets, read the
+ *  way Codex reads it. */
 function readConfiguredPermission(
   configured: Partial<CodexStructuredPermissionPolicy>,
-  option: string,
   override: string
 ): void {
   const separator = override.indexOf('=')
@@ -136,9 +150,11 @@ function readConfiguredPermission(
     .trim()
     .replace(/^["']+|["']+$/g, '')
   if (key === 'approval_policy') {
-    configured.approvalPolicy = oneOf(CODEX_APPROVAL_POLICIES, value, option)
+    configured.approvalPolicy = oneOf(CODEX_APPROVAL_POLICIES, value, key)
   } else if (key === 'sandbox_mode') {
-    configured.sandbox = oneOf(CODEX_SANDBOX_MODES, value, option)
+    configured.sandbox = oneOf(CODEX_SANDBOX_MODES, value, key)
+  } else if (key === 'approvals_reviewer') {
+    configured.approvalsReviewer = oneOf(CODEX_APPROVALS_REVIEWERS, value, key)
   }
 }
 
@@ -169,7 +185,7 @@ export function codexStructuredLaunchArgs(tokens: readonly string[]): CodexStruc
       }
       break
     }
-    if (!token.startsWith('-')) {
+    if (!token.startsWith('-') || token === '-') {
       throw new StructuredAgentArgumentsError('Codex', token, 'positionalPrompt')
     }
     const option = optionName(token)

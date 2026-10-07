@@ -22,7 +22,8 @@ describe('openCodexThread', () => {
     const connection = connectionFor(request)
     const permissionPolicy = {
       approvalPolicy: 'never' as const,
-      sandbox: 'danger-full-access' as const
+      sandbox: 'danger-full-access' as const,
+      approvalsReviewer: 'auto_review' as const
     }
 
     await openCodexThread(
@@ -39,7 +40,12 @@ describe('openCodexThread', () => {
     expect(request).toHaveBeenNthCalledWith(
       1,
       'thread/start',
-      { cwd: '/workspace', approvalPolicy: 'never', sandbox: 'danger-full-access' },
+      {
+        cwd: '/workspace',
+        approvalPolicy: 'never',
+        sandbox: 'danger-full-access',
+        approvalsReviewer: 'auto_review'
+      },
       { timeoutMs: 2_000 }
     )
     expect(request).toHaveBeenNthCalledWith(
@@ -50,6 +56,7 @@ describe('openCodexThread', () => {
         cwd: '/workspace',
         approvalPolicy: 'never',
         sandbox: 'danger-full-access',
+        approvalsReviewer: 'auto_review',
         excludeTurns: true
       },
       { timeoutMs: 2_000 }
@@ -75,9 +82,15 @@ describe('openCodexThread', () => {
     )
 
     const params = request.mock.calls[0]?.[1] ?? {}
-    expect(params).toMatchObject({ approvalPolicy: 'on-request', sandbox: 'workspace-write' })
+    expect(params).toMatchObject({
+      approvalPolicy: 'on-request',
+      sandbox: 'workspace-write',
+      approvalsReviewer: 'user'
+    })
     // Absence is the bug, so assert the keys are carried, not merely that they are not Yolo.
-    expect(Object.keys(params)).toEqual(expect.arrayContaining(['approvalPolicy', 'sandbox']))
+    expect(Object.keys(params)).toEqual(
+      expect.arrayContaining(['approvalPolicy', 'sandbox', 'approvalsReviewer'])
+    )
   })
 
   it('preserves an explicitly reported service tier, including Standard', async () => {

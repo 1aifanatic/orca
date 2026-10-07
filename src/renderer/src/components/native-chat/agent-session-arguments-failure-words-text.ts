@@ -9,7 +9,7 @@ import {
 
 type SavedArgumentsCopyId = Extract<
   AgentSessionFailureCopyId,
-  `arguments${string}` | 'editSavedArguments'
+  `arguments${string}` | 'removeFromSavedArguments' | 'editSavedArguments'
 >
 
 export const SAVED_ARGUMENTS_PIECES: Record<
@@ -20,6 +20,12 @@ export const SAVED_ARGUMENTS_PIECES: Record<
     translate(
       'components.native-chat.failureWords.argumentsUnsupportedOption',
       COPY.argumentsUnsupportedOption,
+      values
+    ),
+  argumentsUnnamedOption: (values) =>
+    translate(
+      'components.native-chat.failureWords.argumentsUnnamedOption',
+      COPY.argumentsUnnamedOption,
       values
     ),
   argumentsMissingValue: (values) =>
@@ -40,6 +46,21 @@ export const SAVED_ARGUMENTS_PIECES: Record<
       COPY.argumentsInvalidValue,
       values
     ),
+  argumentsSandboxValues: () =>
+    translate(
+      'components.native-chat.failureWords.argumentsSandboxValues',
+      COPY.argumentsSandboxValues
+    ),
+  argumentsApprovalValues: () =>
+    translate(
+      'components.native-chat.failureWords.argumentsApprovalValues',
+      COPY.argumentsApprovalValues
+    ),
+  argumentsReviewerValues: () =>
+    translate(
+      'components.native-chat.failureWords.argumentsReviewerValues',
+      COPY.argumentsReviewerValues
+    ),
   argumentsPositionalPrompt: () =>
     translate(
       'components.native-chat.failureWords.argumentsPositionalPrompt',
@@ -50,6 +71,33 @@ export const SAVED_ARGUMENTS_PIECES: Record<
       'components.native-chat.failureWords.argumentsUnclosedQuote',
       COPY.argumentsUnclosedQuote
     ),
-  editSavedArguments: () =>
-    translate('components.native-chat.failureWords.editSavedArguments', COPY.editSavedArguments)
+  argumentsProfileHint: () =>
+    translate(
+      'components.native-chat.failureWords.argumentsProfileHint',
+      COPY.argumentsProfileHint
+    ),
+  argumentsProviderHint: () =>
+    translate(
+      'components.native-chat.failureWords.argumentsProviderHint',
+      COPY.argumentsProviderHint
+    ),
+  argumentsWorkspaceHint: () =>
+    translate(
+      'components.native-chat.failureWords.argumentsWorkspaceHint',
+      COPY.argumentsWorkspaceHint
+    ),
+  argumentsImageHint: () =>
+    translate('components.native-chat.failureWords.argumentsImageHint', COPY.argumentsImageHint),
+  removeFromSavedArguments: (values) =>
+    translate(
+      'components.native-chat.failureWords.removeFromSavedArguments',
+      COPY.removeFromSavedArguments,
+      values
+    ),
+  editSavedArguments: (values) =>
+    translate(
+      'components.native-chat.failureWords.editSavedArguments',
+      COPY.editSavedArguments,
+      values
+    )
 }

@@ -39,7 +39,7 @@ describe('structuredAgentSessionStartFailure', () => {
     } as const
     expect(structuredAgentSessionStartFailure({ error: wrapped }, { agentName: 'Codex' })).toEqual({
       reason:
-        "Codex couldn't start. Saved Arguments contain an unsupported option (--unknown). Edit them in Settings > Agents > Arguments. Send your message to try again.",
+        "Codex couldn't start. Codex chats can't use --unknown from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. Send your message to try again.",
       rejection: { kind: 'startFailed', argumentProblem }
     })
     const refusal = refuseUnclassified('agent_session_operation_invalid', 'generic start failure')
@@ -47,7 +47,7 @@ describe('structuredAgentSessionStartFailure', () => {
       structuredAgentSessionStartFailure({ refusal, argumentProblem }, { agentName: 'Codex' })
     ).toEqual({
       reason:
-        "Codex couldn't restart. Saved Arguments contain an unsupported option (--unknown). Edit them in Settings > Agents > Arguments. Send your message to try again.",
+        "Codex couldn't restart. Codex chats can't use --unknown from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. Send your message to try again.",
       rejection: {
         kind: 'restartFailed',
         argumentProblem,

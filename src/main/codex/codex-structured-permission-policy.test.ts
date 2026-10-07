@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { codexStructuredPermissionPolicyForSettings } from './codex-structured-permission-policy'
 
-const BYPASS = { approvalPolicy: 'never', sandbox: 'danger-full-access' }
+const BYPASS = { approvalPolicy: 'never', sandbox: 'danger-full-access', approvalsReviewer: 'user' }
 // Approvals on, writes confined to the workspace. Verified against codex 0.153.4: both values are
 // accepted on thread/start and thread/resume, and the reply echoes them back as the effective
 // policy even when the home's config.toml asks for `never` / `danger-full-access`.
-const MANUAL = { approvalPolicy: 'on-request', sandbox: 'workspace-write' }
+const MANUAL = {
+  approvalPolicy: 'on-request',
+  sandbox: 'workspace-write',
+  approvalsReviewer: 'user'
+}
 
 describe('codexStructuredPermissionPolicyForSettings', () => {
   it('bypasses when the user has never opened Agent settings', () => {
@@ -68,20 +72,35 @@ describe('codexStructuredPermissionPolicyForSettings', () => {
         { agentDefaultArgs: { codex: '-s read-only' } },
         { sandbox: 'read-only' }
       )
-    ).toEqual({ approvalPolicy: 'on-request', sandbox: 'read-only' })
+    ).toEqual({ ...MANUAL, sandbox: 'read-only' })
     expect(
       codexStructuredPermissionPolicyForSettings(
         { agentDefaultArgs: { codex: '-a untrusted -s danger-full-access' } },
         { approvalPolicy: 'untrusted', sandbox: 'danger-full-access' }
       )
-    ).toEqual({ approvalPolicy: 'untrusted', sandbox: 'danger-full-access' })
+    ).toEqual({ ...MANUAL, approvalPolicy: 'untrusted', sandbox: 'danger-full-access' })
+  })
+
+  // A resume keeps the reviewer the thread last ran with unless the request names one, so
+  // dropping --approve-for-me has to say `user` out loud.
+  it('states the reviewer under Manual: the one the Arguments name, else Codex default', () => {
+    expect(
+      codexStructuredPermissionPolicyForSettings(
+        { agentDefaultArgs: { codex: '--approve-for-me' } },
+        { approvalsReviewer: 'auto_review' }
+      )
+    ).toEqual({ ...MANUAL, approvalsReviewer: 'auto_review' })
+    expect(
+      codexStructuredPermissionPolicyForSettings({ agentDefaultArgs: { codex: '' } })
+        .approvalsReviewer
+    ).toBe('user')
   })
 
   it('keeps Yolo whatever else the Arguments state', () => {
     expect(
       codexStructuredPermissionPolicyForSettings(
         { agentDefaultArgs: { codex: '--dangerously-bypass-approvals-and-sandbox -s read-only' } },
-        { sandbox: 'read-only' }
+        { sandbox: 'read-only', approvalsReviewer: 'auto_review' }
       )
     ).toEqual(BYPASS)
   })

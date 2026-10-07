@@ -336,7 +336,7 @@ describe('a start the chat needed and did not get', () => {
     const id = await accept('first')
     await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
     const sentence =
-      "Codex couldn't restart. Saved Arguments contain an unsupported option (--unsafe). Edit them in Settings > Agents > Arguments. Send your message to try again."
+      "Codex couldn't restart. Codex chats can't use --unsafe from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. Send your message to try again."
     expect(await errorRows()).toEqual([sentence])
     expect(await submission(id)).toMatchObject({
       reason: sentence,

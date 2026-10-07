@@ -18,6 +18,7 @@ import {
   type SubmissionRejectionKind
 } from './agent-session-failure'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
+import { agentSessionArgumentProblemSentences } from './agent-session-argument-problem-words'
 import {
   sayAgentSessionFailureEnglish,
   type AgentSessionFailureCopyId,
@@ -139,18 +140,9 @@ function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
   return (context, fact, _surface, say) => {
     const failed = say(verb, agent(say, context))
     if (fact.argumentProblem) {
-      const problemCopy = {
-        unsupportedOption: 'argumentsUnsupportedOption',
-        missingValue: 'argumentsMissingValue',
-        multipleValues: 'argumentsMultipleValues',
-        invalidValue: 'argumentsInvalidValue',
-        positionalPrompt: 'argumentsPositionalPrompt',
-        unclosedQuote: 'argumentsUnclosedQuote'
-      } as const
       return joinSentences([
         failed,
-        say(problemCopy[fact.argumentProblem.problem], { option: fact.argumentProblem.option }),
-        say('editSavedArguments'),
+        ...agentSessionArgumentProblemSentences(fact.argumentProblem, say),
         ...startRetry(say, context)
       ])
     }

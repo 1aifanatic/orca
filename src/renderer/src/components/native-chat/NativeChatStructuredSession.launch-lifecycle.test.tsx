@@ -179,7 +179,7 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
 
     expect(
       screen.getByText(
-        "Codex couldn't start. Saved Arguments contain an unsupported option (--remote). Edit them in Settings > Agents > Arguments."
+        "Codex couldn't start. Codex chats can't use --remote from saved Arguments. Remove it from Codex's Arguments in Settings → Agents."
       )
     ).toBeTruthy()
     expect(screen.queryByText('Chat could not be started.')).toBeNull()

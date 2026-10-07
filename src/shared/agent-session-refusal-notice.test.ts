@@ -737,18 +737,50 @@ describe('saved Arguments refusals', () => {
       throw new Error('saved refusal was not read')
     }
     expect(agentSessionWriteNoticeEnglish(agentSessionRefusalCauseParts(parsed))).toBe(
-      "Codex couldn't start. Saved Arguments contain an unsupported option (--remote). Edit them in Settings > Agents > Arguments."
+      "Codex couldn't start. Codex chats can't use --remote from saved Arguments. Remove it from Codex's Arguments in Settings → Agents."
     )
   })
 
   it.each([
     [
-      { agent: 'Codex', option: '-s', problem: 'invalidValue' },
-      "Codex couldn't start. Saved Arguments give -s a value that isn't supported. Edit them in Settings > Agents > Arguments."
+      { agent: 'Codex', option: '--profile', problem: 'unsupportedOption' },
+      "Codex couldn't start. Codex chats can't use --profile from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. To keep the profile's settings, put them in config.toml or pass them with -c."
+    ],
+    [
+      { agent: 'Codex', option: '--oss', problem: 'unsupportedOption' },
+      "Codex couldn't start. Codex chats can't use --oss from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. Choose the provider with -c model_provider=… instead."
+    ],
+    [
+      { agent: 'Codex', option: '-C', problem: 'unsupportedOption' },
+      "Codex couldn't start. Codex chats can't use -C from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. A chat already works in its workspace folder."
+    ],
+    [
+      { agent: 'Codex', option: '-i', problem: 'unsupportedOption' },
+      "Codex couldn't start. Codex chats can't use -i from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. Attach the image in the chat instead."
+    ],
+    [
+      { agent: 'Codex', option: '--?', problem: 'unsupportedOption' },
+      "Codex couldn't start. Codex chats can't use one of the options in saved Arguments. Remove it from Codex's Arguments in Settings → Agents."
+    ],
+    [
+      { agent: 'Codex', option: 'prompt', problem: 'positionalPrompt' },
+      "Codex couldn't start. Saved Arguments include a prompt. Remove it from Codex's Arguments in Settings → Agents."
+    ],
+    [
+      { agent: 'Codex', option: 'sandbox_mode', problem: 'invalidValue' },
+      "Codex couldn't start. The sandbox in saved Arguments must be read-only, workspace-write or danger-full-access. Fix it in Codex's Arguments in Settings → Agents."
+    ],
+    [
+      { agent: 'Codex', option: 'approval_policy', problem: 'invalidValue' },
+      "Codex couldn't start. The approval policy in saved Arguments must be untrusted, on-request or never. Fix it in Codex's Arguments in Settings → Agents."
+    ],
+    [
+      { agent: 'Codex', option: 'approvals_reviewer', problem: 'invalidValue' },
+      "Codex couldn't start. The approvals reviewer in saved Arguments must be user or auto_review. Fix it in Codex's Arguments in Settings → Agents."
     ],
     [
       { agent: 'Claude', option: 'quote', problem: 'unclosedQuote' },
-      "Claude couldn't start. Saved Arguments have a quote that isn't closed. Edit them in Settings > Agents > Arguments."
+      "Claude couldn't start. Saved Arguments have a quote that isn't closed. Fix it in Claude's Arguments in Settings → Agents."
     ]
   ] as const)('names the %j problem and where to fix it', (argumentProblem, sentence) => {
     const parsed = parseAgentSessionWriteFailure({
@@ -765,7 +797,9 @@ describe('saved Arguments refusals', () => {
   it.each([
     { agent: 'Codex', option: '--remote', problem: 'futureProblem' },
     { agent: 'Codex', option: '--remote=private', problem: 'unsupportedOption' },
-    { agent: 'Codex', option: '--private', problem: 'unclosedQuote' }
+    { agent: 'Codex', option: '--private', problem: 'unclosedQuote' },
+    { agent: 'Codex', option: '-s', problem: 'invalidValue' },
+    { agent: 'Codex', option: 'private_key', problem: 'invalidValue' }
   ])('ignores an unrecognized or unsafe argument detail', (argumentProblem) => {
     const refused = parseAgentSessionWriteFailure({
       kind: 'refused',

@@ -151,7 +151,11 @@ describe('codex structured launch resolution', () => {
       codexHome: '/home/work/.codex',
       resumeThreadId: null,
       // Every launch now carries a posture; neither one is left for config.toml to decide.
-      permissionPolicy: { approvalPolicy: 'on-request', sandbox: 'workspace-write' }
+      permissionPolicy: {
+        approvalPolicy: 'on-request',
+        sandbox: 'workspace-write',
+        approvalsReviewer: 'user'
+      }
     })
   })
 
@@ -242,7 +246,8 @@ describe('codex structured launch resolution', () => {
     expect(launch.args).toEqual(['app-server'])
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'never',
-      sandbox: 'danger-full-access'
+      sandbox: 'danger-full-access',
+      approvalsReviewer: 'user'
     })
   })
 
@@ -252,7 +257,8 @@ describe('codex structured launch resolution', () => {
     expect(launch.args).toEqual(['app-server'])
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'never',
-      sandbox: 'danger-full-access'
+      sandbox: 'danger-full-access',
+      approvalsReviewer: 'user'
     })
   })
 
@@ -264,7 +270,8 @@ describe('codex structured launch resolution', () => {
     expect(launch.args).toEqual(['app-server'])
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'on-request',
-      sandbox: 'workspace-write'
+      sandbox: 'workspace-write',
+      approvalsReviewer: 'user'
     })
   })
 
@@ -301,7 +308,24 @@ describe('codex structured launch resolution', () => {
     )({ identity: IDENTITY })
 
     expect(launch.args).toEqual(['app-server', '-c', 'approval_policy=untrusted'])
-    expect(launch.permissionPolicy).toEqual({ approvalPolicy: 'untrusted', sandbox: 'read-only' })
+    expect(launch.permissionPolicy).toEqual({
+      approvalPolicy: 'untrusted',
+      sandbox: 'read-only',
+      approvalsReviewer: 'user'
+    })
+  })
+
+  // A resume keeps the thread's saved reviewer unless the request names one.
+  it('opens the thread with the reviewer --approve-for-me asks for under Manual', async () => {
+    const launch = await resolverFor(record({ launchArgs: ['--approve-for-me'] }))({
+      identity: IDENTITY
+    })
+
+    expect(launch.permissionPolicy).toEqual({
+      approvalPolicy: 'on-request',
+      sandbox: 'workspace-write',
+      approvalsReviewer: 'auto_review'
+    })
   })
 
   it('keeps Yolo when the Arguments also state a sandbox', async () => {
@@ -315,7 +339,8 @@ describe('codex structured launch resolution', () => {
 
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'never',
-      sandbox: 'danger-full-access'
+      sandbox: 'danger-full-access',
+      approvalsReviewer: 'user'
     })
   })
 

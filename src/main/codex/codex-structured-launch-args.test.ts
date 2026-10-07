@@ -44,7 +44,7 @@ describe('codexStructuredLaunchArgs', () => {
     ])
   })
 
-  it('passes sandbox details and the reviewer, which Orca does not own', () => {
+  it('passes sandbox details and the reviewer, and reads the reviewer for the thread', () => {
     expect(
       codexStructuredLaunchArgs([
         '-c',
@@ -59,7 +59,17 @@ describe('codexStructuredLaunchArgs', () => {
         '-c',
         'approvals_reviewer="auto_review"'
       ],
-      permissions: {}
+      permissions: { approvalsReviewer: 'auto_review' }
+    })
+  })
+
+  it("reads Codex's own aliases as the values they stand for", () => {
+    expect(
+      codexStructuredLaunchArgs(['-c', 'approvals_reviewer=guardian_subagent', '-a', 'on-failure'])
+        .permissions
+    ).toEqual({ approvalsReviewer: 'auto_review', approvalPolicy: 'on-request' })
+    expect(codexStructuredLaunchArgs(['-c', 'approval_policy="on-failure"']).permissions).toEqual({
+      approvalPolicy: 'on-request'
     })
   })
 
@@ -96,7 +106,11 @@ describe('codexStructuredLaunchArgs', () => {
         '-c',
         'sandbox_mode="workspace-write"'
       ],
-      permissions: { approvalPolicy: 'on-request', sandbox: 'workspace-write' }
+      permissions: {
+        approvalsReviewer: 'auto_review',
+        approvalPolicy: 'on-request',
+        sandbox: 'workspace-write'
+      }
     })
   })
 
@@ -117,6 +131,7 @@ describe('codexStructuredLaunchArgs', () => {
   it.each([
     { tokens: ['a private prompt'], option: 'prompt', problem: 'positionalPrompt' },
     { tokens: ['app-server'], option: 'prompt', problem: 'positionalPrompt' },
+    { tokens: ['-'], option: 'prompt', problem: 'positionalPrompt' },
     { tokens: ['--', 'a private prompt'], option: 'prompt', problem: 'positionalPrompt' },
     { tokens: ['--profile', 'private'], option: '--profile', problem: 'unsupportedOption' },
     { tokens: ['-pprivate'], option: '-p', problem: 'unsupportedOption' },
@@ -150,14 +165,24 @@ describe('codexStructuredLaunchArgs', () => {
     { tokens: ['--search=secret'], option: '--search', problem: 'unsupportedOption' },
     { tokens: ['--enable'], option: '--enable', problem: 'missingValue' },
     { tokens: ['-m', '--secret'], option: '-m', problem: 'missingValue' },
-    { tokens: ['-s', 'private-mode'], option: '-s', problem: 'invalidValue' },
+    // An invalid value names the setting it is for, however the Arguments spelled it.
+    { tokens: ['-s', 'private-mode'], option: 'sandbox_mode', problem: 'invalidValue' },
     {
-      tokens: ['--ask-for-approval=on-failure'],
-      option: '--ask-for-approval',
+      tokens: ['--ask-for-approval=private'],
+      option: 'approval_policy',
       problem: 'invalidValue'
     },
-    { tokens: ['-c', 'approval_policy={ secret = true }'], option: '-c', problem: 'invalidValue' },
-    { tokens: ['--config=sandbox_mode=secret'], option: '--config', problem: 'invalidValue' }
+    {
+      tokens: ['-c', 'approval_policy={ secret = true }'],
+      option: 'approval_policy',
+      problem: 'invalidValue'
+    },
+    { tokens: ['--config=sandbox_mode=secret'], option: 'sandbox_mode', problem: 'invalidValue' },
+    {
+      tokens: ['-c', 'approvals_reviewer=secret'],
+      option: 'approvals_reviewer',
+      problem: 'invalidValue'
+    }
   ] as const)('refuses what a chat cannot honor: %j', ({ tokens, option, problem }) => {
     const thrown = () => codexStructuredLaunchArgs(tokens)
     expect(thrown).toThrow(StructuredAgentArgumentsError)
@@ -167,8 +192,10 @@ describe('codexStructuredLaunchArgs', () => {
       expect(error).toMatchObject({
         argumentProblem: { agent: 'Codex', option, problem }
       })
-      expect(JSON.stringify(error)).not.toContain('secret')
-      expect(JSON.stringify(error)).not.toContain('private')
+      for (const text of [JSON.stringify(error), String(error)]) {
+        expect(text).not.toContain('secret')
+        expect(text).not.toContain('private')
+      }
     }
   })
 })

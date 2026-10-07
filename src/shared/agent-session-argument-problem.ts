@@ -11,10 +11,23 @@ export type AgentSessionArgumentProblem = {
     | 'unclosedQuote'
 }
 
-/** Problems that are about no single option carry this fixed word as their option. */
-export const AGENT_SESSION_ARGUMENT_PROBLEM_WORD: Partial<
-  Record<AgentSessionArgumentProblem['problem'], string>
-> = { positionalPrompt: 'prompt', unclosedQuote: 'quote' }
+/** The Codex settings a saved value can be invalid for, by their config key. */
+export const CODEX_ARGUMENT_SETTINGS = [
+  'sandbox_mode',
+  'approval_policy',
+  'approvals_reviewer'
+] as const
+export type CodexArgumentSetting = (typeof CODEX_ARGUMENT_SETTINGS)[number]
+
+/** Problems that aren't about the option as typed carry one of these fixed words as their option:
+ *  a value names the setting it is for, however the Arguments spelled it. */
+export const AGENT_SESSION_ARGUMENT_PROBLEM_WORDS: Partial<
+  Record<AgentSessionArgumentProblem['problem'], readonly string[]>
+> = {
+  positionalPrompt: ['prompt'],
+  unclosedQuote: ['quote'],
+  invalidValue: CODEX_ARGUMENT_SETTINGS
+}
 
 export function readAgentSessionArgumentProblem(
   value: unknown
@@ -41,9 +54,10 @@ export function readAgentSessionArgumentProblem(
       problem !== 'positionalPrompt' &&
       problem !== 'unclosedQuote') ||
     typeof option !== 'string' ||
-    (AGENT_SESSION_ARGUMENT_PROBLEM_WORD[problem] !== undefined
-      ? option !== AGENT_SESSION_ARGUMENT_PROBLEM_WORD[problem]
-      : !/^(?:--[a-zA-Z][a-zA-Z0-9-]{0,63}|-[a-zA-Z]|--\?)$/.test(option))
+    !(
+      AGENT_SESSION_ARGUMENT_PROBLEM_WORDS[problem]?.includes(option) ??
+      /^(?:--[a-zA-Z][a-zA-Z0-9-]{0,63}|-[a-zA-Z]|--\?)$/.test(option)
+    )
   ) {
     return undefined
   }
