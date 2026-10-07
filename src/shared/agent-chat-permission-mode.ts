@@ -91,11 +91,10 @@ export type AgentSessionPermissionModes = {
 export function parseAgentSessionPermissionModes(
   value: unknown
 ): AgentSessionPermissionModes | null {
-  if (!value || typeof value !== 'object') {
+  if (!value || typeof value !== 'object' || !('current' in value) || !('supported' in value)) {
     return null
   }
-  const current: unknown = Reflect.get(value, 'current')
-  const listed: unknown = Reflect.get(value, 'supported')
+  const { current, supported: listed } = value
   const supported = Array.isArray(listed) ? listed.filter(isAgentChatPermissionMode) : []
   return isAgentChatPermissionMode(current) && supported.includes(current)
     ? { current, supported }

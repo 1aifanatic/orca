@@ -89,7 +89,8 @@ function row(text: string): ReactTestInstance {
 function color(node: ReactTestInstance): string | undefined {
   let found: string | undefined
   for (const style of [node.props.style].flat(3)) {
-    const value: unknown = style && typeof style === 'object' ? Reflect.get(style, 'color') : null
+    const value: unknown =
+      style && typeof style === 'object' && 'color' in style ? style.color : null
     if (typeof value === 'string') {
       found = value
     }
