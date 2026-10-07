@@ -306,7 +306,8 @@ export const MessageRow = memo(function MessageRow({
           allowFileUriLinks={allowFileUriLinks}
           linkifyFilePaths={onLinkClick !== undefined}
           visualMessageId={message.role === 'assistant' ? message.id : undefined}
-          streaming={message.state === 'running' && activeTurnIsWorking === true}
+          // Structured text streams in place with no per-row state, so the live turn decides.
+          streaming={activeTurnIsWorking === true}
         />
       ) : null}
       {tools.length > 0 || subagentGroups.length > 0 || backgroundTasks.length > 0 ? (

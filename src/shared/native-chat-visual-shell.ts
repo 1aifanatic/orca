@@ -204,19 +204,17 @@ export function readNativeChatVisualFrameMessage(
   if (typeof data !== 'object' || data === null) {
     return null
   }
-  const field = (name: string): unknown => Reflect.get(data, name)
-  if (field('channel') !== channel) {
+  if (!('channel' in data) || data.channel !== channel || !('type' in data)) {
     return null
   }
-  const type = field('type')
-  if (type === NATIVE_CHAT_VISUAL_SIZE_TYPE) {
-    const height = field('height')
+  if (data.type === NATIVE_CHAT_VISUAL_SIZE_TYPE) {
+    const height = 'height' in data ? data.height : undefined
     return typeof height === 'number' && Number.isFinite(height) && height > 0
       ? { kind: 'size', height }
       : null
   }
-  if (type === NATIVE_CHAT_VISUAL_OPEN_LINK_TYPE) {
-    const url = field('url')
+  if (data.type === NATIVE_CHAT_VISUAL_OPEN_LINK_TYPE) {
+    const url = 'url' in data ? data.url : undefined
     if (typeof url !== 'string' || url.length > MAX_LINK_LENGTH) {
       return null
     }
