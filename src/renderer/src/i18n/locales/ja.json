@@ -17647,6 +17647,9 @@
         "providerRateLimited": "{{agent}} はレート制限を受けているため、再試行しています。",
         "providerRetrying": "{{agent}} で一時的な問題が発生したため、再試行しています。",
         "providerRetryingQuoted": "{{agent}} は再試行しています: {{detail}}。",
+        "providerRetryNumber": "{{attempt}} 回目の再試行です。",
+        "providerRetryNumberOf": "{{maxRetries}} 回中 {{attempt}} 回目の再試行です。",
+        "providerRetryLastError": "直近のエラー: {{detail}}。",
         "previousExitUnverifiable": "以前の {{agent}} を停止できませんでした。"
       },
       "writeNotice": {
@@ -17775,6 +17778,10 @@
         "viewAttachment": "画像を見る",
         "imagePreview": "フルサイズの画像プレビュー",
         "imagePreviewUnavailable": "プレビューは利用できません",
+        "copyImage": "画像をコピー",
+        "copyImageFailed": "画像をコピーできませんでした",
+        "copyImageTooLarge": "画像が大きすぎるためコピーできません。",
+        "imageCopied": "画像をコピーしました",
         "workspaceAttachmentMismatch": "ファイルはソースワークスペースにのみ添付できます。",
         "attachmentOwnerChanged": "このワークスペースは接続中にホストを変更しました。ファイルを再度ドロップしてください。",
         "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。",
@@ -17888,6 +17895,7 @@
         "toggleDetails": "ターンの詳細を切り替えます"
       },
       "jumpToLatest": "最新にジャンプ",
+      "transcriptLabel": "会話",
       "toggle": {
         "showTerminal": "ターミナルを表示",
         "showChat": "チャットビューを表示"
