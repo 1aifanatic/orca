@@ -457,6 +457,34 @@ describe('structured agent session status projection', () => {
     ).toBe('Done — the card now aligns.')
   })
 
+  it('keeps a visual line out of the plain-text preview every status reader shows', () => {
+    const ask = item('ask', 1, {
+      kind: 'message',
+      role: 'user',
+      blocks: [{ type: 'text', text: 'chart it' }]
+    })
+    const said = item('said', 2, {
+      kind: 'message',
+      role: 'assistant',
+      blocks: [
+        {
+          type: 'text',
+          text: 'p95 is highest in ap-south.\n\n::orca-visual{file="latency.html" title="p95"}'
+        }
+      ]
+    })
+    const onlyVisual = item('only-visual', 3, {
+      kind: 'message',
+      role: 'assistant',
+      blocks: [{ type: 'text', text: '::orca-visual{file="table.html"}' }]
+    })
+
+    // A reply that is nothing but a visual leaves the turn's earlier prose as the preview.
+    expect(
+      projectStructuredAgentSessionStatusSummary([ask, said, onlyVisual]).lastAssistantMessage
+    ).toBe('p95 is highest in ap-south.')
+  })
+
   it('bounds the assistant preview at the shared agent-status preview cap', () => {
     const ask = item('ask', 1, {
       kind: 'message',

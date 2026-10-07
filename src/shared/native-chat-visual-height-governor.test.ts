@@ -49,4 +49,17 @@ describe('createNativeChatVisualHeightGovernor', () => {
     expect(governor.decide(280, 1_600).kind).toBe('apply')
     expect(governor.decide(600, 1_650).kind).toBe('apply')
   })
+
+  it('lets an animated expansion finish, whose steps vary frame to frame', () => {
+    const governor = createNativeChatVisualHeightGovernor()
+    let height = 200
+    let now = 0
+    governor.decide(height, now)
+    const steps = [3, 9, 15, 20, 24, 26, 26, 24, 20, 15, 9, 5, 3, 2]
+    for (const step of steps) {
+      height += step
+      now += 16
+      expect(governor.decide(height, now)).toEqual({ kind: 'apply', height })
+    }
+  })
 })

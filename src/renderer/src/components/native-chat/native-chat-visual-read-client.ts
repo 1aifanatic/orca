@@ -87,9 +87,8 @@ function interpret(
     remember(key, document)
     return { ok: true, document }
   }
-  if (result.error === 'not_found') {
-    cache.delete(key)
-  }
+  // Any refusal means the cached revision no longer stands for the file.
+  cache.delete(key)
   // Why: a newer host may name a refusal this build does not know; it still reads as "can't show".
   return { ok: false, reason: isKnownReadError(result.error) ? result.error : 'unavailable' }
 }

@@ -127,7 +127,7 @@ describe('NativeChatMarkdown visuals', () => {
   })
 
   it('holds the tail of a text row while its turn works, though the row carries no state', () => {
-    const row = (activeTurnIsWorking: boolean) =>
+    const row = (activeTurnIsWorking: boolean, trailingRun = true) =>
       withOwner(
         <MessageRow
           message={{
@@ -139,6 +139,7 @@ describe('NativeChatMarkdown visuals', () => {
           }}
           expandSignal={false}
           activeTurnIsWorking={activeTurnIsWorking}
+          trailingRun={trailingRun}
           onScrollMessageToTop={vi.fn()}
         />
       )
@@ -146,6 +147,9 @@ describe('NativeChatMarkdown visuals', () => {
     expect(container).toHaveTextContent('Here it is:')
     expect(container).not.toHaveTextContent('::orca-visual')
     rerender(row(false))
+    expect(container).toHaveTextContent('::orca-visual{file="usa')
+    // An earlier row of a still-working turn has stopped growing, so it shows what it says.
+    rerender(row(true, false))
     expect(container).toHaveTextContent('::orca-visual{file="usa')
   })
 })
