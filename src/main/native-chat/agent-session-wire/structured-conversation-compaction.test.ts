@@ -3,17 +3,19 @@
 // was open before the command saw, or the journal a client would load.
 
 import { beforeEach, expect, it, vi, type Mock } from 'vitest'
-import {
-  AgentJournalSubmissionSchema,
-  isAdmissibleAgentJournalItemBody
-} from '../../../shared/agent-session-journal-schemas'
+import { isAdmissibleAgentJournalItemBody } from '../../../shared/agent-session-journal-schemas'
+import { AgentJournalSubmissionSchema } from '../../../shared/agent-session-journal-submission-schema'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionStatusEvent,
+  AgentSessionStatusSummary,
+  AgentSessionSubscribeEvent
+} from '../../../shared/agent-session-wire'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
@@ -24,8 +26,12 @@ import {
   attach,
   CALLER,
   envelope,
-  hostTestState
+  hostTestState,
+  replaceHostTestState
 } from './structured-agent-session-host-test-harness'
+import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { StructuredAgentRegistry } from './structured-agent-registry'
+import { CODEX_STRUCTURED_AGENT } from '../../codex/codex-structured-agent-definition'
 import {
   HOST_TEST_NOW,
   HOST_TEST_SESSION as SESSION,
@@ -251,7 +257,9 @@ it('hands over a message held behind the command when the command ends just as t
     if (
       !ended &&
       read?.startsWith('compact:') &&
-      new Error('who reads').stack?.includes('StructuredAgentSessionDeliveryLoop.prepare')
+      /at (?:StructuredAgentSessionDeliveryLoop\.)?prepare \(.*structured-agent-session-delivery-loop/.test(
+        new Error('who reads').stack ?? ''
+      )
     ) {
       ended = true
       finish({ outcome: 'success' })
@@ -331,6 +339,33 @@ it('says only that the compaction failed when the provider refused it without wo
       }
     ])
   )
+})
+
+it('refuses the command for an agent that does not declare compaction, whatever its adapter has', async () => {
+  const declared = CODEX_STRUCTURED_AGENT.capabilities
+  const agents = new StructuredAgentRegistry([
+    {
+      definition: {
+        ...CODEX_STRUCTURED_AGENT,
+        capabilities: { ...declared, compact: false, threadGoal: false, rewind: false }
+      },
+      adapter: state.host.deps.adapter
+    }
+  ])
+  replaceHostTestState({
+    store: state.store,
+    host: new StructuredAgentSessionHost({ ...state.host.deps, agents })
+  })
+  state = hostTestState()
+  await attach()
+  const params = compactParams()
+
+  await expect(state.host.conversationCommand(CALLER, params)).resolves.toMatchObject({
+    ok: true,
+    value: { state: 'completed', failure: { kind: 'commandRefused' } }
+  })
+  expect(compact).not.toHaveBeenCalled()
+  expect(await commandTurn(params.envelope.clientOperationId)).toBeUndefined()
 })
 
 it('refuses the command at handover when the provider opened a turn meanwhile (B3)', async () => {
@@ -444,6 +479,8 @@ it('leaves the command to the provider when it takes the Stop, and ends it as ca
 
 it('ends the command by stopping the child at a second Stop the provider never answered (B4)', async () => {
   await attach()
+  const statuses: AgentSessionStatusEvent[] = []
+  state.host.subscribeStatus({ id: 'list', emit: (event) => statuses.push(event) })
   const params = compactParams()
   const cmid = params.envelope.clientOperationId
   await state.host.conversationCommand(CALLER, params)
@@ -453,12 +490,24 @@ it('ends the command by stopping the child at a second Stop the provider never a
   // The provider takes the interrupt and then never answers it.
   await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
   expect(closeSession).not.toHaveBeenCalled()
+  // The chat reads Stopping, yet only the next Stop ends the command: clients keep Stop enabled.
+  expect(latestSummary(statuses)).toMatchObject({ status: 'working', stopping: true })
   await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
 
   expect(state.cancelTurn).toHaveBeenCalledOnce()
   expect(closeSession).toHaveBeenCalledOnce()
   expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('interrupted')
+  expect(latestSummary(statuses)).not.toHaveProperty('stopping')
 })
+
+/** The session's newest summary in what a session list received. */
+function latestSummary(events: AgentSessionStatusEvent[]): AgentSessionStatusSummary | undefined {
+  return events
+    .flatMap((event) =>
+      event.type === 'status' ? [event.session] : event.type === 'snapshot' ? event.sessions : []
+    )
+    .findLast((summary) => summary.sessionId === SESSION)
+}
 
 it('ends the command by stopping the child when the provider cannot take the Stop (B4)', async () => {
   await attach()

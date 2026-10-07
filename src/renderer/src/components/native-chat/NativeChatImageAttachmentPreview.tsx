@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { translate } from '@/i18n/i18n'
 import { basename } from '@/lib/path'
 import { useLocalImageSrc } from '@/components/editor/useLocalImageSrc'
+import { copyableNativeChatImageSrc, keepPreviewOpenForChatMenu } from './native-chat-image-copy'
 import { isNativeChatPastedImagePath } from './native-chat-image-paste'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import { chatImageAccess } from '@/lib/local-file-access'
@@ -45,7 +46,7 @@ function RemoveAttachmentButton({ onRemove }: { onRemove: () => void }): React.J
         'components.native-chat.composer.removeAttachment',
         'Remove attachment'
       )}
-      className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border border-border bg-chat-canvas text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <X className="size-3" />
     </button>
@@ -141,6 +142,8 @@ function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.El
     'Saving pasted image…'
   )
   const label = isPending ? pendingLabel : filename
+  // The thumbnail may be the downscaled clipboard preview; copy only the file.
+  const copySrc = copyableNativeChatImageSrc(localSrc)
 
   return (
     <>
@@ -154,8 +157,9 @@ function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.El
           }
           aria-busy={isPending}
           title={label}
+          data-native-chat-copy-image-src={copySrc}
           onClick={() => setIsOpen(true)}
-          className="flex size-full items-center justify-center overflow-hidden rounded-md border border-border bg-background transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex size-full items-center justify-center overflow-hidden rounded-md border border-border bg-chat-canvas transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {thumbnailSrc ? (
             <img
@@ -168,14 +172,17 @@ function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.El
           )}
         </button>
         {isPending ? (
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-background/50">
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-chat-canvas/50">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
           </span>
         ) : null}
         <RemoveAttachmentButton onRemove={() => onRemove(attachment.id)} />
       </div>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="flex max-h-[90vh] max-w-[90vw] flex-col gap-3 border-border bg-background p-3 sm:max-w-4xl">
+        <DialogContent
+          onInteractOutside={keepPreviewOpenForChatMenu}
+          className="flex max-h-[90vh] max-w-[90vw] flex-col sm:max-w-4xl"
+        >
           <DialogTitle className="truncate text-sm">{label}</DialogTitle>
           <DialogDescription className="sr-only">
             {translate('components.native-chat.composer.imagePreview', 'Full-size image preview')}
@@ -185,6 +192,7 @@ function NativeChatImageThumbnail({ attachment, onRemove }: Props): React.JSX.El
               <img
                 src={fullSizeSrc}
                 alt={label}
+                data-native-chat-copy-image-src={copySrc}
                 className="max-h-[75vh] max-w-full object-contain"
               />
             ) : (
