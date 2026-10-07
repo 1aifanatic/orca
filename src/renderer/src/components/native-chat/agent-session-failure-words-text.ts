@@ -8,6 +8,7 @@ import {
   type AgentSessionFailureCopyValues,
   type AgentSessionFailureSay
 } from '../../../../shared/agent-session-failure-copy'
+import { SAVED_ARGUMENTS_PIECES } from './agent-session-arguments-failure-words-text'
 
 // The pieces a refusal notice says too keep the notice's keys, so each has one translation.
 const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopyValues) => string> =
@@ -40,31 +41,7 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         COPY.couldNotRestart,
         values
       ),
-    argumentsUnsupportedOption: (values) =>
-      translate(
-        'components.native-chat.failureWords.argumentsUnsupportedOption',
-        COPY.argumentsUnsupportedOption,
-        values
-      ),
-    argumentsMissingValue: (values) =>
-      translate(
-        'components.native-chat.failureWords.argumentsMissingValue',
-        COPY.argumentsMissingValue,
-        values
-      ),
-    argumentsMultipleValues: (values) =>
-      translate(
-        'components.native-chat.failureWords.argumentsMultipleValues',
-        COPY.argumentsMultipleValues,
-        values
-      ),
-    argumentsPositionalPrompt: () =>
-      translate(
-        'components.native-chat.failureWords.argumentsPositionalPrompt',
-        COPY.argumentsPositionalPrompt
-      ),
-    editSavedArguments: () =>
-      translate('components.native-chat.failureWords.editSavedArguments', COPY.editSavedArguments),
+    ...SAVED_ARGUMENTS_PIECES,
     terminalAgentHoldsChat: () =>
       translate(
         'components.native-chat.writeNotice.terminalAgentHoldsChat',

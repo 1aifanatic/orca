@@ -61,8 +61,32 @@ describe('codexStructuredPermissionPolicyForSettings', () => {
     }
   })
 
-  // The passthrough that used to carry these to app-server is gone on purpose; only the
-  // permission posture is derived, and nothing else from the field reaches argv.
+  // A terminal running `codex -s read-only` is read-only; Manual's default would loosen it.
+  it('takes the sandbox and approval the Arguments state under Manual', () => {
+    expect(
+      codexStructuredPermissionPolicyForSettings(
+        { agentDefaultArgs: { codex: '-s read-only' } },
+        { sandbox: 'read-only' }
+      )
+    ).toEqual({ approvalPolicy: 'on-request', sandbox: 'read-only' })
+    expect(
+      codexStructuredPermissionPolicyForSettings(
+        { agentDefaultArgs: { codex: '-a untrusted -s danger-full-access' } },
+        { approvalPolicy: 'untrusted', sandbox: 'danger-full-access' }
+      )
+    ).toEqual({ approvalPolicy: 'untrusted', sandbox: 'danger-full-access' })
+  })
+
+  it('keeps Yolo whatever else the Arguments state', () => {
+    expect(
+      codexStructuredPermissionPolicyForSettings(
+        { agentDefaultArgs: { codex: '--dangerously-bypass-approvals-and-sandbox -s read-only' } },
+        { sandbox: 'read-only' }
+      )
+    ).toEqual(BYPASS)
+  })
+
+  // The posture alone comes out of the field here; the translator reads the stated policy.
   it('carries nothing but the permission posture out of the arguments field', () => {
     expect(
       codexStructuredPermissionPolicyForSettings({

@@ -1,4 +1,5 @@
 import type { AgentSessionArgumentProblem } from '../../shared/agent-session-failure'
+import { AGENT_SESSION_ARGUMENT_PROBLEM_WORD } from '../../shared/agent-session-argument-problem'
 
 /** A saved Arguments refusal with only the option name, never its value. */
 export class StructuredAgentArgumentsError extends Error {
@@ -10,11 +11,10 @@ export class StructuredAgentArgumentsError extends Error {
     problem: AgentSessionArgumentProblem['problem']
   ) {
     const normalizedOption =
-      problem === 'positionalPrompt'
-        ? 'prompt'
-        : (option.match(/^--[a-zA-Z][a-zA-Z0-9-]{0,63}/)?.[0] ??
-          option.match(/^-[a-zA-Z]/)?.[0] ??
-          '--?')
+      AGENT_SESSION_ARGUMENT_PROBLEM_WORD[problem] ??
+      option.match(/^--[a-zA-Z][a-zA-Z0-9-]{0,63}/)?.[0] ??
+      option.match(/^-[a-zA-Z]/)?.[0] ??
+      '--?'
     super(`${agent} structured chat cannot use ${normalizedOption} in saved Arguments`)
     this.name = 'StructuredAgentArgumentsError'
     this.argumentProblem = { agent, option: normalizedOption, problem }

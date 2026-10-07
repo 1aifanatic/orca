@@ -63,7 +63,8 @@ function resolverFor(
     resolveCommand: () => '/usr/local/bin/codex',
     resolveRollout,
     resolveLaunchArgs: resolveLaunchArgs ?? (() => value?.launchArgs ?? []),
-    resolvePermissionPolicy: () => codexStructuredPermissionPolicyForSettings({ agentDefaultArgs })
+    resolvePermissionPolicy: (requested) =>
+      codexStructuredPermissionPolicyForSettings({ agentDefaultArgs }, requested)
   })
 }
 
@@ -96,9 +97,9 @@ describe('codex structured launch resolution', () => {
       await expect(resolve({ identity: IDENTITY })).rejects.toThrow(/Arguments/)
       args = ['--enable', 'unified_exec']
       expect((await resolve({ identity: IDENTITY })).args).toEqual([
+        'app-server',
         '--enable',
-        'unified_exec',
-        'app-server'
+        'unified_exec'
       ])
       args = []
       expect((await resolve({ identity: IDENTITY })).args).toEqual(['app-server'])
@@ -277,27 +278,45 @@ describe('codex structured launch resolution', () => {
     expect(launch.model).toBe('gpt-chosen')
   })
 
-  it('uses saved arguments before app-server on a fresh launch', async () => {
+  it('uses saved arguments after app-server on a fresh launch', async () => {
     const launch = await resolverFor(
       record({
-        launchArgs: [
-          '--profile',
-          'review',
-          '-c',
-          'model_reasoning_effort=high',
-          '--model',
-          'gpt-5.6-sol'
-        ]
+        launchArgs: ['-c', 'model_reasoning_effort=high', '--model', 'gpt-5.6-sol']
       })
     )({ identity: IDENTITY })
 
     expect(launch.args).toEqual([
+      'app-server',
       '-c',
       'model_reasoning_effort=high',
-      '--model',
-      'gpt-5.6-sol',
-      'app-server'
+      '-c',
+      'model="gpt-5.6-sol"'
     ])
+  })
+
+  // A terminal honors these, so a chat that sent Manual's workspace-write would run looser.
+  it('opens the thread under the sandbox and approval the Arguments state under Manual', async () => {
+    const launch = await resolverFor(
+      record({ launchArgs: ['-s', 'read-only', '-c', 'approval_policy=untrusted'] })
+    )({ identity: IDENTITY })
+
+    expect(launch.args).toEqual(['app-server', '-c', 'approval_policy=untrusted'])
+    expect(launch.permissionPolicy).toEqual({ approvalPolicy: 'untrusted', sandbox: 'read-only' })
+  })
+
+  it('keeps Yolo when the Arguments also state a sandbox', async () => {
+    const launch = await resolverFor(
+      record(),
+      undefined,
+      undefined,
+      { codex: '--dangerously-bypass-approvals-and-sandbox' },
+      () => ['--dangerously-bypass-approvals-and-sandbox', '-s', 'read-only']
+    )({ identity: IDENTITY })
+
+    expect(launch.permissionPolicy).toEqual({
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access'
+    })
   })
 
   it('pins resume to the rollout file that proved the durable thread', async () => {
@@ -317,11 +336,11 @@ describe('codex structured launch resolution', () => {
     expect(resolveRollout).toHaveBeenCalledWith('/home/work/.codex', 'thread-current')
     expect(launch.resumePath).toBe('/home/work/.codex/sessions/rollout.jsonl')
     expect(launch.args).toEqual([
+      'app-server',
       '--enable',
       'unified_exec',
       '-c',
-      'model_reasoning_effort=high',
-      'app-server'
+      'model_reasoning_effort=high'
     ])
   })
 

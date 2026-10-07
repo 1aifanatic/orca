@@ -2,8 +2,19 @@
 export type AgentSessionArgumentProblem = {
   agent: 'Codex' | 'Claude'
   option: string
-  problem: 'unsupportedOption' | 'missingValue' | 'multipleValues' | 'positionalPrompt'
+  problem:
+    | 'unsupportedOption'
+    | 'missingValue'
+    | 'multipleValues'
+    | 'invalidValue'
+    | 'positionalPrompt'
+    | 'unclosedQuote'
 }
+
+/** Problems that are about no single option carry this fixed word as their option. */
+export const AGENT_SESSION_ARGUMENT_PROBLEM_WORD: Partial<
+  Record<AgentSessionArgumentProblem['problem'], string>
+> = { positionalPrompt: 'prompt', unclosedQuote: 'quote' }
 
 export function readAgentSessionArgumentProblem(
   value: unknown
@@ -26,10 +37,12 @@ export function readAgentSessionArgumentProblem(
     (problem !== 'unsupportedOption' &&
       problem !== 'missingValue' &&
       problem !== 'multipleValues' &&
-      problem !== 'positionalPrompt') ||
+      problem !== 'invalidValue' &&
+      problem !== 'positionalPrompt' &&
+      problem !== 'unclosedQuote') ||
     typeof option !== 'string' ||
-    (problem === 'positionalPrompt'
-      ? option !== 'prompt'
+    (AGENT_SESSION_ARGUMENT_PROBLEM_WORD[problem] !== undefined
+      ? option !== AGENT_SESSION_ARGUMENT_PROBLEM_WORD[problem]
       : !/^(?:--[a-zA-Z][a-zA-Z0-9-]{0,63}|-[a-zA-Z]|--\?)$/.test(option))
   ) {
     return undefined

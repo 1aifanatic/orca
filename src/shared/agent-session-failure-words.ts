@@ -143,7 +143,9 @@ function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
         unsupportedOption: 'argumentsUnsupportedOption',
         missingValue: 'argumentsMissingValue',
         multipleValues: 'argumentsMultipleValues',
-        positionalPrompt: 'argumentsPositionalPrompt'
+        invalidValue: 'argumentsInvalidValue',
+        positionalPrompt: 'argumentsPositionalPrompt',
+        unclosedQuote: 'argumentsUnclosedQuote'
       } as const
       return joinSentences([
         failed,

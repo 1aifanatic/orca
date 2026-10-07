@@ -113,8 +113,10 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudeAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy
   /** The user's Agent Permissions setting for Claude; absent means prompting. */
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
-  /** The same setting for Codex, as app-server thread policy. */
-  resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The same setting for Codex, as app-server thread policy, given what the Arguments state. */
+  resolveCodexPermissionPolicy?: (
+    requested: Partial<CodexStructuredPermissionPolicy>
+  ) => CodexStructuredPermissionPolicy
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
   getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>

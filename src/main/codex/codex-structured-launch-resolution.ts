@@ -29,9 +29,12 @@ export type CodexStructuredLaunchResolverDeps = {
   /** Fresh shell/configured environment for this spawn; never written to the session record. */
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
   resolveRollout?: typeof resolvePinnedCodexRolloutProof
-  /** The user's Agent Permissions setting as thread policy, re-read per acquisition.
-   *  States both postures outright — a resume inherits the last one for any field left absent. */
-  resolvePermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The user's Agent Permissions setting as thread policy, re-read per acquisition, given the
+   *  policy the Arguments state. States both postures outright — a resume inherits the last one
+   *  for any field left absent. */
+  resolvePermissionPolicy?: (
+    requested: Partial<CodexStructuredPermissionPolicy>
+  ) => CodexStructuredPermissionPolicy
 }
 
 export type CodexStructuredInvocation = {
@@ -84,8 +87,8 @@ export function createCodexStructuredLaunchResolver(
       throw new Error(`codex sessions pin ${pinned}, not ${accountHome.variable}`)
     }
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
-    const args = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
-    const permissionPolicy = deps.resolvePermissionPolicy?.()
+    const { args, permissions } = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
+    const permissionPolicy = deps.resolvePermissionPolicy?.(permissions)
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
     // A Codex record's chain holds only Codex handles; the attach admission refuses anything else.
     const resumeThreadId = head?.handle.nativeId ?? null
@@ -93,7 +96,8 @@ export function createCodexStructuredLaunchResolver(
     const model = record.options?.model
     return {
       command,
-      args: [...args, 'app-server'],
+      // After the subcommand, so an option app-server doesn't take fails loudly, not silently.
+      args: ['app-server', ...args],
       cwd: await resolveAgentSessionLaunchDirectory(deps, record),
       codexHome: accountHome.path,
       ...(environment ? { env: { ...environment } as Record<string, string> } : {}),

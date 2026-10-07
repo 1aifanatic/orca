@@ -6959,7 +6959,7 @@
           "2d133152fa": "No default environment",
           "agentPermissions": "Agent Permissions",
           "agentPermissionsInfo": "Agent permissions info",
-          "agentPermissionsTooltip": "Doesn't apply to agents where you've overridden launch arguments.",
+          "agentPermissionsTooltip": "Switching modes doesn't change Arguments you've edited for an agent.",
           "agentPermissionsDescription": "Choose whether Orca launches agents with fewer permission prompts or with manual checks.",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "Manual",
@@ -17849,6 +17849,8 @@
         "argumentsUnsupportedOption": "Saved Arguments contain an unsupported option ({{option}}).",
         "argumentsMissingValue": "Saved Arguments need a value for {{option}}.",
         "argumentsMultipleValues": "Saved Arguments give {{option}} more than one value.",
+        "argumentsInvalidValue": "Saved Arguments give {{option}} a value that isn't supported.",
+        "argumentsUnclosedQuote": "Saved Arguments have a quote that isn't closed.",
         "argumentsPositionalPrompt": "Saved Arguments include a prompt.",
         "editSavedArguments": "Edit them in Settings > Agents > Arguments."
       },

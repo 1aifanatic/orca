@@ -1,4 +1,5 @@
-import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
+import { CODEX_SHORT_LIVED_PROBE_CONFIG_ARGS } from '../codex-cli/codex-read-only-app-server-args'
+import { codexStructuredLaunchArgs } from './codex-structured-launch-args'
 import { runCodexAppServerSession } from './codex-app-server-session'
 import { fetchCodexModelCatalogListing } from './codex-structured-model-catalog'
 import {
@@ -16,7 +17,7 @@ const CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS = 15_000
 
 export type CodexModelCatalogProbeDeps = Pick<
   CodexStructuredLaunchResolverDeps,
-  'resolveCommand' | 'resolveEnvironment'
+  'resolveCommand' | 'resolveEnvironment' | 'resolveLaunchArgs'
 > & {
   /** Test seam; production runs the shared short-lived app-server session. */
   runSession?: typeof runCodexAppServerSession
@@ -33,21 +34,24 @@ function definedEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> 
 }
 
 /**
- * Lists models without a live session: one short-lived read-only app-server
+ * Lists models without a live session: one short-lived app-server
  * under the given account home, spawned through the SAME invocation resolver
- * a structured session launch uses — a probe that resolved a different binary
- * or env could list models the user's sessions cannot see, under their key.
+ * and saved Arguments a structured session launch uses — a probe that resolved
+ * a different binary, env or config could list models the user's sessions
+ * cannot see, under their key.
  */
 export function createCodexModelCatalogProbe(
   deps: CodexModelCatalogProbeDeps
 ): AgentModelCatalogProbe {
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
+    const { args } = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
     const run = deps.runSession ?? runCodexAppServerSession
     const listing = await run(
       {
         command,
-        args: [...CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS],
+        // Codex applies `-c` in order, so the probe's own config comes last and wins.
+        args: ['app-server', ...args, ...CODEX_SHORT_LIVED_PROBE_CONFIG_ARGS],
         cliPath: command,
         env: { ...definedEnv(environment), CODEX_HOME: accountHomePath },
         timeoutMs: CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS

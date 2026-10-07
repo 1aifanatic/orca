@@ -2759,6 +2759,8 @@
         "answerUnconfirmed": "Your answer was recorded but the agent did not confirm it.",
         "argumentsMissingValue": "Saved Arguments need a value for {{option}}.",
         "argumentsMultipleValues": "Saved Arguments give {{option}} more than one value.",
+        "argumentsInvalidValue": "Saved Arguments give {{option}} a value that isn't supported.",
+        "argumentsUnclosedQuote": "Saved Arguments have a quote that isn't closed.",
         "argumentsPositionalPrompt": "Saved Arguments include a prompt.",
         "argumentsUnsupportedOption": "Saved Arguments contain an unsupported option ({{option}}).",
         "attachmentAtMost": "{{agent}} accepts at most {{limit}} images in one message, so this message was not sent.",

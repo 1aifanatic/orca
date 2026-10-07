@@ -37,6 +37,16 @@ describe('execution host structured launch settings wiring', () => {
     settings.agentDefaultArgs = { claude: '--model second', codex: '' }
     expect(await deps?.resolveLaunchArgs?.('claude')).toEqual(['--model', 'second'])
     expect(await deps?.resolveLaunchArgs?.('codex')).toEqual([])
+    // Manual takes what the Arguments state; Yolo keeps bypassing.
+    expect(deps?.resolveCodexPermissionPolicy?.({ sandbox: 'read-only' })).toEqual({
+      approvalPolicy: 'on-request',
+      sandbox: 'read-only'
+    })
+    settings.agentDefaultArgs = { codex: '--dangerously-bypass-approvals-and-sandbox' }
+    expect(deps?.resolveCodexPermissionPolicy?.({ sandbox: 'read-only' })).toEqual({
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access'
+    })
     const notRunnable = expect.objectContaining({ reason: 'agentCommandNotRunnable' })
     settings.agentCmdOverrides = { claude: 'wrapper --arg' }
     expect(() => deps?.resolveClaudeCommand?.()).toThrow(notRunnable)

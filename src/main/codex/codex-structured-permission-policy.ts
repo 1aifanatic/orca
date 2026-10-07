@@ -1,9 +1,14 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { resolvedTuiAgentArgsBypassPermissions } from '../../shared/tui-agent-launch-defaults'
 
-export type CodexStructuredPermissionPolicy =
-  | { approvalPolicy: 'never'; sandbox: 'danger-full-access' }
-  | { approvalPolicy: 'on-request'; sandbox: 'workspace-write' }
+// The values app-server's v2 thread params accept (`AskForApproval` / `SandboxMode`, kebab-case).
+export const CODEX_APPROVAL_POLICIES = ['untrusted', 'on-request', 'never'] as const
+export const CODEX_SANDBOX_MODES = ['read-only', 'workspace-write', 'danger-full-access'] as const
+
+export type CodexStructuredPermissionPolicy = {
+  approvalPolicy: (typeof CODEX_APPROVAL_POLICIES)[number]
+  sandbox: (typeof CODEX_SANDBOX_MODES)[number]
+}
 
 /** Yolo: no approval prompts, no sandbox. */
 const BYPASS_POLICY = { approvalPolicy: 'never', sandbox: 'danger-full-access' } as const
@@ -29,10 +34,10 @@ const MANUAL_POLICY = { approvalPolicy: 'on-request', sandbox: 'workspace-write'
 /**
  * The Agent Permissions setting as app-server thread policy.
  *
- * Derived per acquisition from the resolved launch arguments, never from the free-text Arguments
- * field: app-server takes a narrower option set than the interactive CLI and the two are versioned
- * apart, so the only thing read out of that field is the posture the toggle stores in it. An
- * untouched profile resolves to the default Orca ships, which is the bypass flag.
+ * The posture is the one the toggle stores in the Arguments field; an untouched profile resolves
+ * to the default Orca ships, which is the bypass flag. Under Manual, a sandbox or approval policy
+ * the Arguments state explicitly (`requested`) replaces that field's default, as it does in a
+ * terminal; Yolo ignores it.
  *
  * Always a policy, never `undefined`: both postures have to be said out loud, because the one
  * that goes unsaid is the one a resume silently inherits from the other.
@@ -41,9 +46,10 @@ export function codexStructuredPermissionPolicyForSettings(
   settings:
     | Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'terminalWindowsShell'>>
     | null
-    | undefined
+    | undefined,
+  requested: Partial<CodexStructuredPermissionPolicy> = {}
 ): CodexStructuredPermissionPolicy {
   return resolvedTuiAgentArgsBypassPermissions('codex', settings, process.platform)
     ? BYPASS_POLICY
-    : MANUAL_POLICY
+    : { ...MANUAL_POLICY, ...requested }
 }

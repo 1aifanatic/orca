@@ -742,8 +742,30 @@ describe('saved Arguments refusals', () => {
   })
 
   it.each([
+    [
+      { agent: 'Codex', option: '-s', problem: 'invalidValue' },
+      "Codex couldn't start. Saved Arguments give -s a value that isn't supported. Edit them in Settings > Agents > Arguments."
+    ],
+    [
+      { agent: 'Claude', option: 'quote', problem: 'unclosedQuote' },
+      "Claude couldn't start. Saved Arguments have a quote that isn't closed. Edit them in Settings > Agents > Arguments."
+    ]
+  ] as const)('names the %j problem and where to fix it', (argumentProblem, sentence) => {
+    const parsed = parseAgentSessionWriteFailure({
+      kind: 'refused',
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'attachFailed', argumentProblem }
+    })
+    if (!parsed) {
+      throw new Error('saved refusal was not read')
+    }
+    expect(agentSessionWriteNoticeEnglish(agentSessionRefusalCauseParts(parsed))).toBe(sentence)
+  })
+
+  it.each([
     { agent: 'Codex', option: '--remote', problem: 'futureProblem' },
-    { agent: 'Codex', option: '--remote=private', problem: 'unsupportedOption' }
+    { agent: 'Codex', option: '--remote=private', problem: 'unsupportedOption' },
+    { agent: 'Codex', option: '--private', problem: 'unclosedQuote' }
   ])('ignores an unrecognized or unsafe argument detail', (argumentProblem) => {
     const refused = parseAgentSessionWriteFailure({
       kind: 'refused',

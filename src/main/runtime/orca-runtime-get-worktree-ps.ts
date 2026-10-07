@@ -214,8 +214,8 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       // the one copy of this fact, even when Arguments contain permission flags.
       resolveClaudePermissionMode: () =>
         claudeStructuredPermissionModeForSettings(this.requireStore().getSettings()),
-      resolveCodexPermissionPolicy: () =>
-        codexStructuredPermissionPolicyForSettings(this.requireStore().getSettings()),
+      resolveCodexPermissionPolicy: (requested) =>
+        codexStructuredPermissionPolicyForSettings(this.requireStore().getSettings(), requested),
       // Same gate and same settings as agentSession.createSupport, re-read on every acquisition.
       getClaudeManagedAccountGateSettings: () => this.requireStore().getSettings(),
       resolveAgentAccountHome: (agent) => this.resolveStructuredAgentAccountHome(agent),

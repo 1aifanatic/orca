@@ -38,6 +38,7 @@ describe('codex model catalog probe', () => {
       const probe = createCodexModelCatalogProbe({
         resolveEnvironment,
         resolveCommand,
+        resolveLaunchArgs: () => [],
         runSession: async (invocation, body) => {
           invocations.push(invocation)
           return body({
@@ -67,6 +68,60 @@ describe('codex model catalog probe', () => {
     }
   )
 
+  // The picker lists what a chat would run: the same saved Arguments, with the probe's own config
+  // after them, since Codex applies `-c` in order.
+  it('lists under the saved Arguments a chat launches with', async () => {
+    const invocations: CodexAppServerInvocation[] = []
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({ PATH: '/bin' }),
+      resolveCommand: () => '/bin/codex',
+      resolveLaunchArgs: () => [
+        '--dangerously-bypass-approvals-and-sandbox',
+        '-c',
+        'model_provider=azure',
+        '-c',
+        'features.plugins=true',
+        '-m',
+        'gpt-azure'
+      ],
+      runSession: async (invocation, body) => {
+        invocations.push(invocation)
+        return body({
+          request: async () => ({ data: [MODEL_ROW], nextCursor: null }),
+          notify: () => {}
+        })
+      }
+    })
+    await probe('/homes/a')
+    expect(invocations[0]!.args).toEqual([
+      'app-server',
+      '-c',
+      'model_provider=azure',
+      '-c',
+      'features.plugins=true',
+      '-c',
+      'model="gpt-azure"',
+      '-c',
+      'approval_policy=never',
+      '-c',
+      'features.plugins=false'
+    ])
+  })
+
+  it('lists nothing when the saved Arguments refuse a chat', async () => {
+    const runSession = vi.fn()
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({ PATH: '/bin' }),
+      resolveCommand: () => '/bin/codex',
+      resolveLaunchArgs: () => ['--profile', 'work'],
+      runSession
+    })
+    await expect(probe('/homes/a')).rejects.toMatchObject({
+      argumentProblem: { agent: 'Codex', option: '--profile', problem: 'unsupportedOption' }
+    })
+    expect(runSession).not.toHaveBeenCalled()
+  })
+
   it('keeps the listing when config/read never answers', async () => {
     const server = String.raw`
       const readline = require('node:readline')
@@ -82,6 +137,7 @@ describe('codex model catalog probe', () => {
     const probe = createCodexModelCatalogProbe({
       resolveEnvironment: async () => ({ PATH: '/bin' }),
       resolveCommand: () => '/bin/codex',
+      resolveLaunchArgs: () => [],
       // Real transport against a fake server; a session deadline shorter than the
       // production one keeps the test fast while still outliving config/read's bound.
       runSession: (invocation, body) =>
@@ -106,6 +162,7 @@ describe('codex model catalog probe', () => {
     const probe = createCodexModelCatalogProbe({
       resolveEnvironment: async () => ({ PATH: '/bin' }),
       resolveCommand: () => '/bin/codex',
+      resolveLaunchArgs: () => [],
       runSession: async (_invocation, body) =>
         body({ request: async () => ({ data: [], nextCursor: null }), notify: () => {} })
     })
@@ -124,6 +181,7 @@ describe('codex model catalog probe', () => {
             { agentCmdOverrides: { codex: command } },
             options
           ),
+        resolveLaunchArgs: () => [],
         runSession
       })
       await expect(probe('/homes/a')).rejects.toMatchObject({ reason: 'agentCommandNotRunnable' })

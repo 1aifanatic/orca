@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
+import {
+  CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS,
+  CODEX_SHORT_LIVED_PROBE_CONFIG_ARGS
+} from '../codex-cli/codex-read-only-app-server-args'
 import type { CodexAppServerInvocation } from './codex-app-server-session'
 
 const NPM_CODEX_SHIM = 'C:\\Users\\alice\\AppData\\Roaming\\npm\\codex.cmd'
@@ -37,6 +40,7 @@ describe('short-lived Codex app-server invocations on Windows', () => {
     const probe = createCodexModelCatalogProbe({
       resolveEnvironment: async () => ({ PATH: 'C:\\bin' }),
       resolveCommand: () => NPM_CODEX_SHIM,
+      resolveLaunchArgs: () => [],
       runSession: async (invocation, body) => {
         invocations.push(invocation)
         return body({
@@ -58,6 +62,6 @@ describe('short-lived Codex app-server invocations on Windows', () => {
     })
     await probe('C:\\homes\\a')
     expect(invocations[0]?.command).toBe(NPM_CODEX_SHIM)
-    expect(invocations[0]?.args).toEqual([...CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS])
+    expect(invocations[0]?.args).toEqual(['app-server', ...CODEX_SHORT_LIVED_PROBE_CONFIG_ARGS])
   })
 })

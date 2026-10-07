@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { structuredAgentConfiguredArgs } from './structured-agent-configured-args'
+import {
+  StructuredAgentArgumentsError,
+  argumentProblemOf
+} from './structured-agent-arguments-error'
+
+function captured(run: () => unknown): unknown {
+  try {
+    run()
+  } catch (error) {
+    return error
+  }
+  return undefined
+}
 
 describe('structured chat configured Arguments', () => {
   it.each(['claude', 'codex'] as const)(
@@ -37,11 +50,19 @@ describe('structured chat configured Arguments', () => {
     ).toEqual(['--plugin-dir', String.raw`C:\My Plugins`])
   })
 
-  it('refuses unclosed quotes without spawning', () => {
-    expect(() =>
-      structuredAgentConfiguredArgs('claude', {
-        agentDefaultArgs: { claude: '--model "unfinished' }
+  it.each([
+    ['claude', 'Claude'],
+    ['codex', 'Codex']
+  ] as const)('refuses unclosed %s quotes as a saved Arguments problem', (agent, agentName) => {
+    const read = () =>
+      structuredAgentConfiguredArgs(agent, {
+        agentDefaultArgs: { [agent]: '--model "unfinished secret' }
       })
-    ).toThrow('Arguments are invalid')
+    expect(read).toThrow(StructuredAgentArgumentsError)
+    expect(argumentProblemOf(captured(read))).toEqual({
+      agent: agentName,
+      option: 'quote',
+      problem: 'unclosedQuote'
+    })
   })
 })
