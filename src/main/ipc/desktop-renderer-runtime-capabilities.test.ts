@@ -23,6 +23,7 @@ import {
   type RuntimeCapability
 } from '../../shared/protocol-version'
 import {
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
@@ -73,6 +74,8 @@ const REMOTE_ONLY_BY_DECISION: readonly RuntimeCapability[] = [
 
 /** Advertised to main and deliberately NOT to a remote host yet. */
 const LOCAL_ONLY_BY_DECISION: readonly RuntimeCapability[] = [
+  // TEMPORARY: paired desktop retains its explicit surface path until Step 5.
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
   // Read by the desktop's own launches first; a remote host is told when its launches move over.
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY

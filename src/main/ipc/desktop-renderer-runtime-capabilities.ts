@@ -12,6 +12,7 @@ import {
   type RuntimeCapability
 } from '../../shared/protocol-version'
 import {
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
@@ -47,6 +48,7 @@ export const DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES: readonly RuntimeCapab
   // Without this `supportsAgentLaunch` refuses the renderer outright, while the same renderer
   // targeting a remote host is admitted — the asymmetry this constant exists to close.
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
   // A replay after a restart mid-delivery answers the running agent with an `unconfirmed` prompt,
   // which the desktop reads, rather than refusing it as unknown.
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,

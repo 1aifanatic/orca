@@ -7,7 +7,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeCapability } from '../../shared/protocol-version'
-import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../shared/agent-launch-runtime-capability'
+import {
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_RUNTIME_CAPABILITY
+} from '../../shared/agent-launch-runtime-capability'
+import { AgentLaunch } from '../../shared/rpc-contract/agent-launch-params'
+import { requireDesktopPromptCompatibility } from '../runtime/rpc/methods/agent-launch-desktop-prompt-compatibility'
+import { rpcContext, runtimeStub } from '../runtime/rpc/methods/agent-launch.test-fixture'
 import {
   resolveRpcCallerIdentity,
   rpcCallerOperationKey,
@@ -134,6 +140,52 @@ describe('desktop renderer reaching agent.launch on its own main process', () =>
     )
     expect(supportsAgentLaunch(streaming)).toBe(true)
   })
+
+  it.each(['runtime:call', 'runtime:subscribe'] as const)(
+    'negotiates desktop input through the actual %s context',
+    (channel) => {
+      const params = AgentLaunch.parse({
+        agent: 'claude',
+        target: { kind: 'existing', worktree: 'folder:test' },
+        prompt: {
+          text: 'editable desktop draft',
+          delivery: 'draft',
+          transport: { kind: 'desktop-new-tab', promptDelivery: 'draft' }
+        }
+      })
+      invoke(
+        channel,
+        channel === 'runtime:call'
+          ? { method: 'agent.launch', params }
+          : { subscriptionId: 'desktop-negotiation', method: 'session.tabs.watch' }
+      )
+      const client = onlyAdvertisedClient(
+        channel === 'runtime:call' ? advertised.unary : advertised.streaming
+      )
+      const runtime = runtimeStub({ settings: {} })
+      expect(client.clientKind).toBe('runtime')
+      expect(client.caller).toEqual({ kind: 'desktop' })
+      expect(() =>
+        requireDesktopPromptCompatibility(params, rpcContext(runtime, client))
+      ).not.toThrow()
+      expect(() =>
+        requireDesktopPromptCompatibility(
+          params,
+          rpcContext(runtime, {
+            ...client,
+            clientCapabilities: client.clientCapabilities?.filter(
+              (capability) => capability !== AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+            )
+          })
+        )
+      ).toThrow('agent_launch_desktop_new_tab_unsupported')
+      expect(runtime.showTerminalWorkspaceLaunchScope).not.toHaveBeenCalled()
+      expect(runtime.publishAgentLaunchTab).not.toHaveBeenCalled()
+      expect(runtime.openAgentSessionRecordStore).not.toHaveBeenCalled()
+      expect(runtime.createTerminal).not.toHaveBeenCalled()
+      expect(runtime.createManagedWorktree).not.toHaveBeenCalled()
+    }
+  )
 
   it('names the desktop as its caller on both paths, so its launches replay under one identity', () => {
     invoke('runtime:call', { method: 'status.get' })
