@@ -7,6 +7,7 @@ import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-
 import { agentSessionProviderHandleKey } from '../../shared/agent-session-provider-handle'
 import { closeTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { openTestAgentSessionRecordStore } from '../runtime/agent-session-record-store-test-harness'
+import { buildPiRpcLaunch } from './rpc-launch'
 import { createPiRpcLaunchResolver, piRpcProviderLink } from './rpc-launch-resolution'
 import { probePiRpcVersion } from './rpc-version'
 import type * as PiRpcVersion from './rpc-version'
@@ -84,7 +85,7 @@ async function setup() {
   const withPrior = (link: AgentSessionProviderHandleLink) => {
     vi.spyOn(store, 'getRecord').mockReturnValue({ ...record, providerHandleChain: [link] })
   }
-  return { store, workspace, resolver, resolveCommand, prior, withPrior }
+  return { store, record, workspace, resolver, resolveCommand, prior, withPrior }
 }
 
 describe('Pi host launch resolution', () => {
@@ -136,6 +137,36 @@ describe('Pi host launch resolution', () => {
       forkedFromKey: agentSessionProviderHandleKey(h.prior(elsewhere).handle)
     })
     expect(() => piRpcProviderLink(forked, elsewhere, 2, 'bad', 200)).toThrow('did not fork')
+  })
+
+  it('resumes the stored session file after Orca restarts and reopens the store', async () => {
+    const h = await setup()
+    const file = join(root, 'conversation.jsonl')
+    await writeFile(file, `${JSON.stringify({ type: 'session', cwd: h.workspace })}\n`)
+    const fence = h.record.lease.runtimeFence
+    await h.store.commitProcessIdentity({
+      sessionId: identity.sessionId,
+      fence,
+      process: { hostId: 'local', pid: 4242, processStartTimeMs: 1, spawnToken: 'spawn-pi' },
+      now: 1_800_000_000_001
+    })
+    await h.store.proveOwner({
+      sessionId: identity.sessionId,
+      fence,
+      link: { ...h.prior(file), mintedAtFence: fence },
+      now: 1_800_000_000_002
+    })
+    // A restart: the store is closed and a fresh one reads the record back from disk.
+    closeTestJournalHostDatabase(root)
+    const reopened = await openTestAgentSessionRecordStore(root)
+    const launch = await createPiRpcLaunchResolver({
+      store: reopened,
+      resolveWorkspacePath: async () => h.workspace,
+      resolveEnvironment: async () => ({ PATH: '/host/bin', HOME: '/host/home' }),
+      resolveCommand: () => '/host/bin/pi'
+    })(identity)
+    expect(launch.sessionFile).toBe(file)
+    expect(buildPiRpcLaunch(launch).args).toEqual(['--mode', 'rpc', '--session', file])
   })
 
   it('distinguishes an unsaved creation from an existing session that could not restore', async () => {
