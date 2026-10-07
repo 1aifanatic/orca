@@ -1,44 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  isHostAuthoritativeLayout,
   planTerminalLiveLayoutInsertions,
   planTerminalLiveLayoutRemovals,
   selectRetiredPaneIds,
   trackRetiredLeafIds
 } from './terminal-live-layout-reconciliation'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
-
-const LOCAL_PTY = 'pty-local-123'
-const REMOTE_PTY = 'remote:env-1@@term_abc'
-
-describe('isHostAuthoritativeLayout', () => {
-  it('is true for any web client regardless of pty ids', () => {
-    expect(isHostAuthoritativeLayout({ isWebClient: true, ptyIdsByLeafId: { a: LOCAL_PTY } })).toBe(
-      true
-    )
-  })
-
-  it('is true for a desktop client when a leaf has a remote-runtime pty (remote server tab)', () => {
-    // Why: the split-render bug — desktop viewing a remote server got the host
-    // layout but skipped reconciliation, so the split never rendered.
-    expect(
-      isHostAuthoritativeLayout({
-        isWebClient: false,
-        ptyIdsByLeafId: { a: LOCAL_PTY, b: REMOTE_PTY }
-      })
-    ).toBe(true)
-  })
-
-  it('is false for a desktop client with only local ptys (local tab splits directly)', () => {
-    expect(
-      isHostAuthoritativeLayout({ isWebClient: false, ptyIdsByLeafId: { a: LOCAL_PTY } })
-    ).toBe(false)
-  })
-
-  it('is false for a desktop client with no pty ids', () => {
-    expect(isHostAuthoritativeLayout({ isWebClient: false, ptyIdsByLeafId: undefined })).toBe(false)
-  })
-})
 
 describe('planTerminalLiveLayoutInsertions', () => {
   it('plans a host-added split leaf from an already-mounted source leaf', () => {
@@ -282,32 +249,23 @@ describe('planTerminalLiveLayoutRemovals', () => {
 })
 
 describe('selectRetiredPaneIds', () => {
-  const view = (ptyIdsByPane: Record<number, string | null | undefined>) => ({
-    paneCount: Object.keys(ptyIdsByPane).length,
+  const view = (startingPaneIds: number[] = []) => ({
     paneIdForLeaf: (leafId: string) => (leafId === 'leaf-b' ? 2 : leafId === 'leaf-c' ? 3 : null),
-    ptyIdForPane: (paneId: number) => ptyIdsByPane[paneId]
+    isPaneStarting: (paneId: number) => startingPaneIds.includes(paneId)
   })
 
-  it('closes the pane whose transport lost its PTY', () => {
-    // Why: the host retired the leaf because its PTY ended, so a pane that no
-    // longer has one is exactly the blank ghost the layout stopped naming.
-    expect(selectRetiredPaneIds(['leaf-b'], view({ 1: 'pty-a', 2: null }))).toEqual([2])
+  it('detaches a retired pane whether or not it still holds its PTY', () => {
+    // Why: detaching never kills, so a live PTY main moved elsewhere needs no wait.
+    expect(selectRetiredPaneIds(['leaf-b', 'leaf-c'], view())).toEqual([2, 3])
   })
 
-  it('keeps a pane still bound to a PTY or not yet attached to a transport', () => {
-    // A stale snapshot may simply not name a live pane yet; a pane with no
-    // transport is still mounting. Neither is evidence of a retired leaf.
-    expect(selectRetiredPaneIds(['leaf-b'], view({ 1: 'pty-a', 2: 'pty-b' }))).toEqual([])
-    expect(selectRetiredPaneIds(['leaf-b'], view({ 1: 'pty-a', 2: undefined }))).toEqual([])
-  })
-
-  it('never removes the last pane on the tab', () => {
-    expect(selectRetiredPaneIds(['leaf-b'], view({ 2: null }))).toEqual([])
-    expect(selectRetiredPaneIds(['leaf-b', 'leaf-c'], view({ 2: null, 3: null }))).toEqual([2])
+  it('keeps a pane that is still starting its PTY', () => {
+    // Main has not bound it yet, so a layout without it says nothing about it.
+    expect(selectRetiredPaneIds(['leaf-b', 'leaf-c'], view([2]))).toEqual([3])
   })
 
   it('skips a leaf that has no mounted pane', () => {
-    expect(selectRetiredPaneIds(['leaf-x'], view({ 1: 'pty-a', 2: null }))).toEqual([])
+    expect(selectRetiredPaneIds(['leaf-x'], view())).toEqual([])
   })
 })
 
@@ -360,12 +318,8 @@ describe('trackRetiredLeafIds', () => {
   })
 })
 
-describe('host retirement that lands before the transport teardown', () => {
-  it('removes the pane on the reconciliation after its PTY clears', () => {
-    // Why: the host drops the leaf and ends its PTY in one step, but the two
-    // reach the client separately. If the layout arrives first the pane still
-    // holds its PTY and must not be closed yet; once the exit lands and rewrites
-    // the layout bindings, the effect runs again and must close it then.
+describe('a retirement that lands while the pane is still starting', () => {
+  it('detaches the pane on a later reconciliation once it has started', () => {
     const layout: TerminalPaneLayoutNode = { type: 'leaf', leafId: 'leaf-a' }
     const mounted = ['leaf-a', 'leaf-b']
     const paneIdForLeaf = (leafId: string) =>
@@ -380,11 +334,7 @@ describe('host retirement that lands before the transport teardown', () => {
     let removals = planTerminalLiveLayoutRemovals(layout, mounted, retired)
     expect(removals).toEqual(['leaf-b'])
     expect(
-      selectRetiredPaneIds(removals, {
-        paneCount: 2,
-        paneIdForLeaf,
-        ptyIdForPane: (paneId) => (paneId === 2 ? 'pty-b' : 'pty-a')
-      })
+      selectRetiredPaneIds(removals, { paneIdForLeaf, isPaneStarting: (paneId) => paneId === 2 })
     ).toEqual([])
 
     retired = trackRetiredLeafIds({
@@ -394,12 +344,8 @@ describe('host retirement that lands before the transport teardown', () => {
       mountedLeafIds: mounted
     })
     removals = planTerminalLiveLayoutRemovals(layout, mounted, retired)
-    expect(
-      selectRetiredPaneIds(removals, {
-        paneCount: 2,
-        paneIdForLeaf,
-        ptyIdForPane: (paneId) => (paneId === 2 ? null : 'pty-a')
-      })
-    ).toEqual([2])
+    expect(selectRetiredPaneIds(removals, { paneIdForLeaf, isPaneStarting: () => false })).toEqual([
+      2
+    ])
   })
 })

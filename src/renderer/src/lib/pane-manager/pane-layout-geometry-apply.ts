@@ -42,6 +42,10 @@ function planGeometryWrites(
   if (!first || !second || extra || !divider || extraDivider) {
     return false
   }
+  // Why: a divider mid-drag is the user's; its drag end persists what wins.
+  if (divider.classList.contains('is-dragging')) {
+    return false
+  }
   // Why: a zoomed pane hides its siblings and owns their flex; collapse restores saved styles over any write.
   if (first.style.display === 'none' || second.style.display === 'none') {
     return false

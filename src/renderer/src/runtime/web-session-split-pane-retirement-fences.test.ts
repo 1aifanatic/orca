@@ -68,7 +68,7 @@ function createReconciliation() {
     throw new Error('execution host unavailable')
   })
 
-  function plan(secondPtyId: string | null): number[] {
+  function plan(secondStarting = false): number[] {
     const root = state.terminalLayoutsByTabId[TAB_ID]?.root
     expect(root).toBeDefined()
     const layoutLeafIds = new Set(root ? collectLeafIds(root) : [])
@@ -80,9 +80,8 @@ function createReconciliation() {
     })
     previousLayoutLeafIds = layoutLeafIds
     return selectRetiredPaneIds(planTerminalLiveLayoutRemovals(root, mounted, retiredLeafIds), {
-      paneCount: mounted.size,
       paneIdForLeaf: (leaf) => (leaf === LEAF_ID ? 1 : 2),
-      ptyIdForPane: (pane) => (pane === 1 ? 'remote:first' : secondPtyId)
+      isPaneStarting: (pane) => pane === 2 && secondStarting
     })
   }
 
@@ -109,46 +108,46 @@ describe('host snapshot fences before split-pane retirement', () => {
     clearWebSessionTerminalOrphanRecoveryForTests()
   })
 
-  it('keeps a null-transport pane when an older layout arrives', async () => {
+  it('keeps the pane when an older layout arrives', async () => {
     const view = createReconciliation()
     await view.receive(snapshot(2))
-    expect(view.plan('remote:second')).toEqual([])
+    expect(view.plan()).toEqual([])
     await view.receive(retiredSnapshotWithVersion(1))
     expect(view.leaves()).toEqual(mountedLeaves)
-    expect(view.plan(null)).toEqual([])
+    expect(view.plan()).toEqual([])
   })
 
   it('retains a missing pane when a newer layout cannot verify the host inventory', async () => {
     const view = createReconciliation()
     await view.receive(snapshot(2))
-    view.plan('remote:second')
+    view.plan()
     await view.receive(snapshot(3, [LEAF_ID]))
     expect(view.call).toHaveBeenCalled()
     expect(view.leaves()).toContain(SECOND_LEAF_ID)
-    expect(view.plan(null)).toEqual([])
+    expect(view.plan()).toEqual([])
   })
 
-  it('defers proven retirement until the transport clears and does not close twice', async () => {
+  it('defers proven retirement while the pane is starting and does not detach twice', async () => {
     const view = createReconciliation()
     await view.receive(snapshot(2))
-    view.plan('remote:second')
+    view.plan()
     await view.receive(retiredSnapshot())
     expect(view.leaves()).toEqual([LEAF_ID])
-    expect(view.plan('remote:second')).toEqual([])
-    expect(view.plan(null)).toEqual([2])
+    expect(view.plan(true)).toEqual([])
+    expect(view.plan()).toEqual([2])
     view.removeSecond()
-    expect(view.plan(null)).toEqual([])
+    expect(view.plan()).toEqual([])
   })
 
   it('clears deferred retirement when the host reintroduces the leaf before detach', async () => {
     const view = createReconciliation()
     await view.receive(snapshot(2))
-    view.plan('remote:second')
+    view.plan()
     await view.receive(retiredSnapshot())
-    expect(view.plan('remote:second')).toEqual([])
+    expect(view.plan(true)).toEqual([])
     await view.receive(snapshot(4))
     expect(view.leaves()).toEqual(mountedLeaves)
-    expect(view.plan(null)).toEqual([])
+    expect(view.plan()).toEqual([])
   })
 })
 

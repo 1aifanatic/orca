@@ -7,10 +7,7 @@ import {
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
 import { resolvePaneKeyForManager } from '@/lib/pane-manager/pane-key-resolution'
 import {
-  isHostAuthoritativeLayout,
-  planTerminalLiveLayoutInsertions,
-  planTerminalLiveLayoutRemovals,
-  selectRetiredPaneIds,
+  reconcileMountedTerminalLayout,
   trackRetiredLeafIds
 } from './terminal-live-layout-reconciliation'
 import { collectLeafIds } from './terminal-pane-layout-tree'
@@ -22,7 +19,6 @@ export function useTerminalPaneReconciliation(controller: TerminalPaneCloseContr
     activityIsolationSnapshotRef,
     closeTerminalLinkActions,
     containerRef,
-    executeClosePane,
     isActive,
     isRendererVisible,
     isolatedPaneKey,
@@ -31,15 +27,12 @@ export function useTerminalPaneReconciliation(controller: TerminalPaneCloseContr
     paneLayoutRevision,
     paneTransportsRef,
     pendingPaneSizeRefreshFrameIdsRef,
-    persistLayoutSnapshot,
-    ptyRecoveryStatesByPaneId,
     restoredLayout,
     tabId
   } = controller
-  // Leaves the last host-authoritative layout named, and the ones it has since
-  // dropped whose panes are still mounted; a removal needs the host to have
-  // named the leaf before it dropped it, and may have to wait for the PTY exit.
-  const hostLayoutLeafIdsRef = useRef<ReadonlySet<string>>(new Set())
+  // Leaves the last layout named, and the ones it has since dropped whose panes
+  // are still mounted; a removal needs the layout to have named the leaf first.
+  const layoutLeafIdsRef = useRef<ReadonlySet<string>>(new Set())
   const retiredLeafIdsRef = useRef<ReadonlySet<string>>(new Set())
 
   useEffect(() => {
@@ -48,81 +41,30 @@ export function useTerminalPaneReconciliation(controller: TerminalPaneCloseContr
 
   useEffect(() => {
     const manager = managerRef.current
-    if (!manager || !restoredLayout.root) {
+    const root = restoredLayout.root
+    if (!manager || !root) {
       return
     }
-    if (
-      !isHostAuthoritativeLayout({
-        isWebClient: !!(globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__,
-        ptyIdsByLeafId: restoredLayout.ptyIdsByLeafId
-      })
-    ) {
-      return
-    }
-    const layoutLeafIds = new Set(collectLeafIds(restoredLayout.root))
-    const mountedLeafIds = manager.getPanes().map((pane) => pane.leafId)
+    const layoutLeafIds = new Set(collectLeafIds(root))
     const retiredLeafIds = trackRetiredLeafIds({
       retiredLeafIds: retiredLeafIdsRef.current,
-      previousLayoutLeafIds: hostLayoutLeafIdsRef.current,
+      previousLayoutLeafIds: layoutLeafIdsRef.current,
       layoutLeafIds,
-      mountedLeafIds
+      mountedLeafIds: manager.getPanes().map((pane) => pane.leafId)
     })
-    hostLayoutLeafIdsRef.current = layoutLeafIds
+    layoutLeafIdsRef.current = layoutLeafIds
     retiredLeafIdsRef.current = retiredLeafIds
-    const insertions = planTerminalLiveLayoutInsertions(restoredLayout.root, mountedLeafIds)
-    const removals = planTerminalLiveLayoutRemovals(
-      restoredLayout.root,
-      mountedLeafIds,
-      retiredLeafIds
+    const panesChanged = reconcileMountedTerminalLayout(
+      manager,
+      { root, ptyIdsByLeafId: restoredLayout.ptyIdsByLeafId },
+      retiredLeafIds,
+      (paneId) => {
+        const transport = paneTransportsRef.current.get(paneId)
+        return !transport || transport.isConnectPending?.() === true
+      }
     )
-    if (insertions.length === 0 && removals.length === 0) {
+    if (!panesChanged) {
       return
-    }
-    let appliedInsertion = false
-    for (const insertion of insertions) {
-      const ptyId = restoredLayout.ptyIdsByLeafId?.[insertion.newLeafId]
-      const sourcePaneId = manager.getNumericIdForLeaf(insertion.sourceLeafId)
-      if (!ptyId || sourcePaneId === null || manager.getNumericIdForLeaf(insertion.newLeafId)) {
-        continue
-      }
-      const splitRatio =
-        insertion.ratio === undefined
-          ? undefined
-          : insertion.placement === 'before'
-            ? 1 - insertion.ratio
-            : insertion.ratio
-      const createdPane = manager.splitPaneAroundLeafIds(
-        insertion.sourceLeafIds,
-        sourcePaneId,
-        insertion.direction,
-        {
-          ...(splitRatio !== undefined && { ratio: splitRatio }),
-          leafId: insertion.newLeafId,
-          ptyId,
-          placement: insertion.placement
-        }
-      )
-      if (createdPane) {
-        appliedInsertion = true
-      }
-    }
-    // Why: the host retired these leaves (its PTY for them ended), so their panes
-    // would otherwise outlive the layout as blank ghosts and take the tab's next
-    // close for themselves. selectRetiredPaneIds closes only a pane whose PTY has
-    // already cleared, so this never kills a still-live remote terminal; a leaf
-    // whose PTY is still ending is kept retired and removed on the re-run the
-    // transport's recovery-state change (ptyRecoveryStatesByPaneId) triggers.
-    // executeClosePane runs the same cleanup a user close does.
-    const retiredPaneIds = selectRetiredPaneIds(removals, {
-      paneCount: manager.getPanes().length,
-      paneIdForLeaf: (leafId) => manager.getNumericIdForLeaf(leafId),
-      ptyIdForPane: (paneId) => paneTransportsRef.current.get(paneId)?.getPtyId()
-    })
-    for (const paneId of retiredPaneIds) {
-      executeClosePane(paneId)
-    }
-    if (appliedInsertion) {
-      persistLayoutSnapshot()
     }
     const activePaneId = restoredLayout.activeLeafId
       ? manager.getNumericIdForLeaf(restoredLayout.activeLeafId)
@@ -132,18 +74,8 @@ export function useTerminalPaneReconciliation(controller: TerminalPaneCloseContr
     if (nextActivePaneId !== null) {
       manager.setActivePane(nextActivePaneId, { focus: isActive })
     }
-    // Why ptyRecoveryStatesByPaneId: a host-retired pane whose PTY has not yet
-    // finished ending is kept until this re-run, when its transport reports a new
-    // recovery state and its PTY has cleared.
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
-  }, [
-    executeClosePane,
-    isActive,
-    paneCount,
-    persistLayoutSnapshot,
-    ptyRecoveryStatesByPaneId,
-    restoredLayout
-  ])
+  }, [isActive, paneCount, restoredLayout])
 
   useLayoutEffect(() => {
     const snapshots = activityIsolationSnapshotRef.current
