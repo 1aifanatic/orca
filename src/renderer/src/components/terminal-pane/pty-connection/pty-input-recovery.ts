@@ -316,7 +316,9 @@ export function installPtyInputRecovery(session: ConnectPanePtySession): void {
     const connectStillSettling =
       session.transportConnectInFlightSince !== null &&
       Date.now() - session.transportConnectInFlightSince < TRANSPORT_CONNECT_SETTLE_GRACE_MS
-    if (connectStillSettling || session.disposed) {
+    // Why: a transport that is retrying its own binding owns recovery; a remount would race it.
+    const transportOwnsRecovery = !providerRejected && session.transport.ownsRecovery?.() === true
+    if (connectStillSettling || transportOwnsRecovery || session.disposed) {
       return
     }
     const storePtyId = useAppStore.getState().ptyIdsByTabId?.[session.deps.tabId]?.[0] ?? null

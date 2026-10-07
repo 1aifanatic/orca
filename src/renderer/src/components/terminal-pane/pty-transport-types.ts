@@ -218,6 +218,8 @@ export type PtyTransport = {
   getRecoveryState?: () => PtyTransportRecoveryState
   /** Starts a fresh connection epoch while preserving the authoritative remote PTY identity. */
   retryRecovery?: () => boolean
+  /** True while the transport has a retry armed or parked; pane-level remounts must defer to it. */
+  ownsRecovery?: () => boolean
   /** Lets a wrapper retain input when recovery re-enters connect internally. */
   setConnectForRecovery?: (connect: PtyTransport['connect']) => void
   /** The user dismissed the error surface; the next occurrence of the same message must surface again. */
