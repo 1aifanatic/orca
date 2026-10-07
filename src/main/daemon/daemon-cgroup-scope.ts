@@ -12,13 +12,16 @@
  * manager and execs the command into it, so the daemon's cgroup becomes a *sibling* of the
  * unit's that no unit-scoped kill reaches; `--collect` drops the unit once it exits.
  *
- * That needs systemd as PID 1 and a reachable `--user` manager (a login session, or
- * `loginctl enable-linger <user>` for a service account). Everywhere else keeps the direct-fork
+ * That needs systemd as PID 1, a reachable `--user` manager, and one that outlives the caller:
+ * `loginctl enable-linger <user>`, unless the caller already runs inside that manager (see
+ * daemon-user-manager-lifetime.ts). Everywhere else keeps the direct-fork
  * launch, so this module fails closed to "not supported" rather than guessing.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { runProcessSync, type ProcessResult } from '../../shared/child-process/run-process'
+import { removeChromiumDisabledSessionBus } from '../pty/chromium-session-bus-env'
+import { userManagerOutlivesCaller } from './daemon-user-manager-lifetime'
 
 const SYSTEMD_RUN_BINARY = 'systemd-run'
 const UNIT_NAME_PREFIX = 'orca-daemon-'
@@ -119,7 +122,8 @@ export function isDurableDaemonScopeSupported(
   platform: NodeJS.Platform = process.platform,
   canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR,
   systemdBootPath: string = SYSTEMD_BOOT_PATH,
-  runVersionProbe: SystemdRunVersionProbe = runSystemdRunVersionProbe
+  runVersionProbe: SystemdRunVersionProbe = runSystemdRunVersionProbe,
+  outlivesCaller: () => boolean = userManagerOutlivesCaller
 ): boolean {
   if (platform !== 'linux') {
     return false
@@ -132,6 +136,10 @@ export function isDurableDaemonScopeSupported(
   if (!resolveUserRuntimeDir(env, canonicalRuntimeDir)) {
     // No reachable user bus/session at the real per-UID path or the process's own env var —
     // systemd-run --user would just fail to connect.
+    return false
+  }
+  if (!outlivesCaller()) {
+    // A bus only proves a login session is open now; without linger the scope dies at logout.
     return false
   }
   try {
@@ -260,7 +268,8 @@ export function migrateLegacyDaemonScope(
       env: command.env,
       timeoutMs,
       stdio: 'ignore'
-    })
+    }),
+  outlivesCaller: () => boolean = userManagerOutlivesCaller
 ): boolean {
   if (
     platform !== 'linux' ||
@@ -269,7 +278,8 @@ export function migrateLegacyDaemonScope(
       platform,
       canonicalRuntimeDir,
       systemdBootPath,
-      runVersionProbe
+      runVersionProbe,
+      outlivesCaller
     )
   ) {
     return false
@@ -302,6 +312,11 @@ export function buildDurableDaemonScopeCommand(
   canonicalRuntimeDir: string | null = CANONICAL_USER_RUNTIME_DIR
 ): DurableDaemonScopeCommand {
   const runtimeDir = resolveUserRuntimeDir(env, canonicalRuntimeDir)
+  const scopeEnv: NodeJS.ProcessEnv = runtimeDir
+    ? { ...env, XDG_RUNTIME_DIR: runtimeDir }
+    : { ...env }
+  // sd-bus prefers this over XDG_RUNTIME_DIR and refuses Chromium's marker (#25580).
+  removeChromiumDisabledSessionBus(scopeEnv)
   return {
     command: SYSTEMD_RUN_BINARY,
     args: [
@@ -318,7 +333,7 @@ export function buildDurableDaemonScopeCommand(
     // Explicit, not inherited: the daemon must land in the same user manager the resolution
     // above just confirmed is reachable, regardless of what this spread `env`'s own
     // `XDG_RUNTIME_DIR` says (see `resolveUserRuntimeDir` for why that value can be wrong).
-    env: runtimeDir ? { ...env, XDG_RUNTIME_DIR: runtimeDir } : { ...env }
+    env: scopeEnv
   }
 }
 
