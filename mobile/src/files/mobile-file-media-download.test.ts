@@ -18,7 +18,8 @@ const ok = (result: unknown): RpcResponse => ({
   result,
   _meta: { runtimeId: 'host' }
 })
-const stat = (size: number, mtime = 1) => ok({ size, mtime, isDirectory: false, futureField: true })
+const stat = (size: number, mtime = 1, ctime?: number) =>
+  ok({ size, mtime, ctime, isDirectory: false, futureField: true })
 const chunk = (bytes: Uint8Array, eof: boolean) =>
   ok({ contentBase64: Buffer.from(bytes).toString('base64'), bytesRead: bytes.length, eof })
 function rig(replies: RpcResponse[]) {
@@ -111,6 +112,24 @@ describe('mobile media download', () => {
     await expect(r.run()).rejects.toThrow('File changed')
     expect(r.sink.finish).not.toHaveBeenCalled()
     expect(r.sink.dispose).toHaveBeenCalledOnce()
+  })
+  it('rejects a multi-chunk rewrite that restores the modification time and size', async () => {
+    const first = new Uint8Array(MOBILE_MEDIA_CHUNK_BYTES).fill(1)
+    const second = new Uint8Array(3).fill(2)
+    const size = first.length + second.length
+    const r = rig([stat(size, 1, 2), chunk(first, false), chunk(second, true), stat(size, 1, 3)])
+    await expect(r.run()).rejects.toThrow('File changed')
+    expect(r.sink.append).toHaveBeenCalledTimes(2)
+    expect(r.sink.finish).not.toHaveBeenCalled()
+    expect(r.sink.dispose).toHaveBeenCalledOnce()
+  })
+  it('accepts an unchanged write timestamp and rejects its disappearance', async () => {
+    const bytes = new Uint8Array([1, 2, 3])
+    const unchanged = rig([stat(3, 1, 2), chunk(bytes, true), stat(3, 1, 2)])
+    expect(await unchanged.run()).toBe('file:///cache/media.mp4')
+    const missing = rig([stat(3, 1, 2), chunk(bytes, true), stat(3)])
+    await expect(missing.run()).rejects.toThrow('File changed')
+    expect(missing.sink.dispose).toHaveBeenCalledOnce()
   })
   it('never writes or requests another chunk after cancellation during a pending read', async () => {
     const r = rig([stat(3)])

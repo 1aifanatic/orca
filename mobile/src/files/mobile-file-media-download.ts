@@ -20,7 +20,8 @@ const statRead = bindDeferredRpcOperation(
       z.looseObject({
         size: z.number().int().nonnegative(),
         isDirectory: z.boolean(),
-        mtime: z.number().finite()
+        mtime: z.number().finite(),
+        ctime: z.number().finite().optional()
       })
     )
   })
@@ -100,7 +101,12 @@ export async function downloadMobileFileMedia(
     }
     const latest = statRead.interpret(await statRead.request(client, params, options))
     checkDownloadActive(signal)
-    if (latest.isDirectory || latest.size !== stat.size || latest.mtime !== stat.mtime) {
+    if (
+      latest.isDirectory ||
+      latest.size !== stat.size ||
+      latest.mtime !== stat.mtime ||
+      (stat.ctime !== undefined && latest.ctime !== stat.ctime)
+    ) {
       throw new Error('File changed during download. Retry the preview')
     }
     return sink.finish()
