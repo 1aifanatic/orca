@@ -2,7 +2,11 @@ import { spawnSync } from 'node:child_process'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 import { describe, expect, it } from 'vitest'
-import { buildDispatchPreamble } from './preamble'
+import {
+  buildDispatchPreamble,
+  CHAT_REDISPATCH_PARAGRAPH as CHAT_REDISPATCH,
+  TERMINAL_REDISPATCH_PARAGRAPH as TERMINAL_REDISPATCH
+} from './preamble'
 
 function baseParams(overrides: Partial<Parameters<typeof buildDispatchPreamble>[0]> = {}) {
   return {
@@ -38,15 +42,6 @@ function markdownBlocks(result: string) {
     codeBlocks: tree.children.filter((node) => node.type === 'code')
   }
 }
-
-const TERMINAL_REDISPATCH = `Do not exit the shell. Your terminal stays available, and if the
-coordinator has more for you it will re-engage this terminal with a fresh
-preamble + TASK block, which arrives as new input. Treat that as supervised
-work under the new Dispatch; ignore stale follow-ups from the settled task.`
-
-const CHAT_REDISPATCH = `If the coordinator has more for you, it will send this chat a fresh
-preamble + TASK block, which arrives as a new message. Treat that as supervised
-work under the new Dispatch; ignore stale follow-ups from the settled task.`
 
 const driftParams = { base: 'origin/main', behind: 3, recentSubjects: ['fix: a', 'feat: b'] }
 

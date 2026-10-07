@@ -24,7 +24,11 @@ import {
 import { OrchestrationDb } from './db'
 import { formatMessagePointer } from './formatter'
 import { OrchestrationStructuredMailboxPointerDelivery } from './structured-mailbox-pointer-delivery'
-import { buildDispatchPreamble } from './preamble'
+import {
+  buildDispatchPreamble,
+  CHAT_REDISPATCH_PARAGRAPH as CHAT_REDISPATCH,
+  TERMINAL_REDISPATCH_PARAGRAPH as TERMINAL_REDISPATCH
+} from './preamble'
 import { ORCA_SESSION_ID_AS_ADDRESS } from '../../../shared/orca-session-id-wording-test-fixture'
 
 const sent = vi.hoisted((): { preambles: string[] } => ({ preambles: [] }))
@@ -44,13 +48,6 @@ const MAIN_KERNEL_LINES = 198 + 1
 
 const db = new OrchestrationDb(':memory:')
 const SELF_LINE = `\nYour Orca session ID is: ${CHAT_ADDRESS}`
-const TERMINAL_REDISPATCH = `Do not exit the shell. Your terminal stays available, and if the
-coordinator has more for you it will re-engage this terminal with a fresh
-preamble + TASK block, which arrives as new input. Treat that as supervised
-work under the new Dispatch; ignore stale follow-ups from the settled task.`
-const CHAT_REDISPATCH = `If the coordinator has more for you, it will send this chat a fresh
-preamble + TASK block, which arrives as a new message. Treat that as supervised
-work under the new Dispatch; ignore stale follow-ups from the settled task.`
 const previousEnvironment = hasAppEnvironment() ? getAppEnvironment() : null
 
 afterEach(() => {

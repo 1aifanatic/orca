@@ -179,12 +179,12 @@ export function dispatchPreambleSendOptions(requestId: string): DispatchPreamble
   }
 }
 
-const TERMINAL_REDISPATCH_PARAGRAPH = `Do not exit the shell. Your terminal stays available, and if the
+export const TERMINAL_REDISPATCH_PARAGRAPH = `Do not exit the shell. Your terminal stays available, and if the
 coordinator has more for you it will re-engage this terminal with a fresh
 preamble + TASK block, which arrives as new input. Treat that as supervised
 work under the new Dispatch; ignore stale follow-ups from the settled task.`
 
-const CHAT_REDISPATCH_PARAGRAPH = `If the coordinator has more for you, it will send this chat a fresh
+export const CHAT_REDISPATCH_PARAGRAPH = `If the coordinator has more for you, it will send this chat a fresh
 preamble + TASK block, which arrives as a new message. Treat that as supervised
 work under the new Dispatch; ignore stale follow-ups from the settled task.`
 
@@ -197,7 +197,7 @@ function buildPostWorkerDoneInstructions({
   workerKind: NonNullable<PreambleParams['workerKind']>
   chat: boolean
 }): string {
-  // Why: re-dispatch reaches idle agents as terminal input; inbox polling
+  // Why: re-dispatch reaches idle agents as new input; inbox polling
   // after completion cannot receive that new TASK block and looks hung.
   // Why chat first: a chat has no shell to exit, whatever workerKind says.
   if (workerKind === 'bare-shell' && !chat) {
