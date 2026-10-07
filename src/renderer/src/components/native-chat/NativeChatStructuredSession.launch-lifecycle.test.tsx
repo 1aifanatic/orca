@@ -27,6 +27,7 @@ vi.mock('./NativeChatQuestionCard', () => moduleFactories.nativeChatQuestionCard
 
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
 import { readOutbox } from './structured-agent-session-outbox-storage'
+import { agentSessionRefusalFailure } from '../../../../shared/agent-session-write-failure'
 
 const NOT_SIGNED_IN = {
   kind: 'refused',
@@ -165,6 +166,27 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     expect(screen.queryByText(/agent_session_/)).toBeNull()
   })
 
+  it('shows the saved Arguments cause and correction beside launch Retry', () => {
+    mocks.launchLifecycle = 'failed'
+    mocks.launchFailure = agentSessionRefusalFailure({
+      code: 'agent_session_operation_invalid',
+      details: {
+        reason: 'attachFailed',
+        argumentProblem: { agent: 'Codex', option: '--remote', problem: 'unsupportedOption' }
+      }
+    })
+    render(sessionView())
+
+    expect(
+      screen.getByText(
+        "Codex couldn't start. Saved Arguments contain an unsupported option (--remote). Edit them in Settings > Agents > Arguments."
+      )
+    ).toBeTruthy()
+    expect(screen.queryByText('Chat could not be started.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(mocks.retryLaunch).toHaveBeenCalledWith('wt-1', 'session-1')
+  })
+
   it('keeps a stale reason off a launch that is no longer failed', () => {
     mocks.launchLifecycle = 'visibility-unknown'
     mocks.launchFailure = NOT_SIGNED_IN
@@ -251,6 +273,20 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     mocks.launchLifecycle = 'published'
     rerender(sessionView())
     await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+  })
+
+  // The parked messages are the transcript here, and the reader may have scrolled up among them.
+  it('brings the latest into view when launch Retry relaunches behind a parked message', async () => {
+    mocks.mode = 'outbox'
+    mocks.launchLifecycle = 'failed'
+    render(sessionView())
+    expect(composerSend()('still there?', [])).toBe(true)
+    await screen.findByRole('button', { name: 'Retry' })
+    mocks.revealLatest.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(mocks.revealLatest).toHaveBeenCalledOnce()
   })
 
   it('leaves a send into an unconfirmed start parked without relaunching', () => {

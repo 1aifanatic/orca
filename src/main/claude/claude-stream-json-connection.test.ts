@@ -40,13 +40,15 @@ type ScriptedCliReport = {
 
 const scratchDirs: string[] = []
 const openConnections: ClaudeStreamJsonConnection[] = []
+const childClosures: Promise<void>[] = []
 
 afterEach(async () => {
   for (const connection of openConnections.splice(0)) {
     await connection.close()
   }
+  await Promise.all(childClosures.splice(0))
   for (const dir of scratchDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
   }
   spawned.splice(0)
   spawnedChildren.splice(0)
@@ -102,6 +104,7 @@ async function open(
       spawned.push(spec)
       const child = spawnProcess(spec)
       spawnedChildren.push(child)
+      childClosures.push(new Promise<void>((resolve) => child.once('close', () => resolve())))
       return child
     },
     queryImpl
@@ -572,11 +575,11 @@ describe('Claude stream-json connection', () => {
     const init = { providerSessionId: SESSION_ID, uuid: null, model: null, message: {} }
 
     // With no ambient auth, every true below can only have come from the CLI's settings.
-    expect(claudeAuthDiagnostic(init, null)).toMatchObject({
+    expect(claudeAuthDiagnostic(null, init, null)).toMatchObject({
       baseUrlConfigured: false,
       authTokenConfigured: false
     })
-    const diagnostic = claudeAuthDiagnostic(init, await connection.getSettings())
+    const diagnostic = claudeAuthDiagnostic(null, init, await connection.getSettings())
     expect(diagnostic).toMatchObject({
       baseUrlConfigured: true,
       authTokenConfigured: true,
