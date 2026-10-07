@@ -2,7 +2,7 @@
 // that frame's effects run, while another bubble is pending. Its photo must still bind to its own
 // drawn row; the journal's record alone retires only a photo whose row the chat hides.
 
-import { createElement, useEffect, useRef } from 'react'
+import { createElement, useEffect } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
@@ -54,7 +54,8 @@ describe('a photo send answered around the frame that carries its record', () =>
   ])(
     'binds its photo to its own row (another bubble pending: $earlierBubble, answered before the effects: $answerBeforeEffects)',
     async ({ earlierBubble, answerBeforeEffects }) => {
-      // Read through an object: a local the harness assigns would be narrowed to null here.
+      // The hook's latest result, through an object: a local the harness assigns would be narrowed to
+      // null at the reads below.
       const current: { drafts?: Drafts } = {}
       let origin: Origin | null = null
       let answered = false
@@ -67,12 +68,11 @@ describe('a photo send answered around the frame that carries its record', () =>
         messages: NativeChatMessage[]
         submissions: AgentJournalSubmission[]
       }): null {
-        const latest = useRef<Drafts | null>(null)
         // Declared before the hook, so it runs ahead of the hook's own effects in the same flush.
         useEffect(() => {
           if (answerBeforeEffects && !answered && props.messages.includes(ROW)) {
             answered = true
-            accept(latest.current)
+            accept(current.drafts ?? null)
           }
         })
         current.drafts = useMobileNativeChatDrafts({
@@ -87,7 +87,6 @@ describe('a photo send answered around the frame that carries its record', () =>
           queuedCards: [],
           submissions: props.submissions
         })
-        latest.current = current.drafts
         return null
       }
       const render = async (messages: NativeChatMessage[], submissions: AgentJournalSubmission[]) =>

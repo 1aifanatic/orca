@@ -57,7 +57,7 @@ const structuredQuestion = {
   allowOther: true,
   optionTokens: ['choice-a', 'choice-b']
 }
-const structuredActivity = { isWorking: false, turnId: null as string | null, submissions: [{}] }
+const structuredActivity = { isWorking: false, turnId: null as string | null }
 const structuredSessionState = {
   messages: [] as unknown[],
   status: 'ready',
@@ -91,6 +91,7 @@ vi.mock('./use-mobile-structured-agent-session', () => ({
     session: structuredSessionState,
     ...structuredActivity,
     queued: { cards: [], send: vi.fn(), delete: vi.fn(), edit: vi.fn() },
+    submissions: [{ clientMessageId: 'op-1' }],
     sendWithOutcome: structuredSendWithOutcome,
     cancel: structuredCancel,
     cancelPrompt: structuredCancelPrompt,
@@ -584,8 +585,7 @@ describe('useMobileNativeChatController launch-draft wiring', () => {
       launchDraft: 'https://github.com/o/r/issues/12',
       launchDraftCreatedAt: 7,
       chatActive: true,
-      transcriptLoading: false,
-      submissions: structuredActivity.submissions
+      transcriptLoading: false
     })
   })
 
@@ -607,7 +607,7 @@ describe('useMobileNativeChatController launch-draft wiring', () => {
     sessionState.transcriptLoading = true
     render(chatTab)
 
-    expect(draftsArgs.at(-1)).toMatchObject({ transcriptLoading: true })
+    expect(draftsArgs.at(-1)).toMatchObject({ transcriptLoading: true, submissions: [{}] })
   })
 
   it('forwards a null draft for a tab that publishes none', () => {
