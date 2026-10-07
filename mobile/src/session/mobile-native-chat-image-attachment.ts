@@ -48,6 +48,7 @@ export type UploadNativeChatImagesDeps = {
     | Iterable<PickedMobileImage>
     | AsyncIterable<PickedMobileImage>
     | Promise<Iterable<PickedMobileImage> | AsyncIterable<PickedMobileImage>>
+  readonly fingerprintImage?: (base64: string) => string | Promise<string>
   // Fired once the user has picked an image and the host upload is about to start —
   // lets the UI show the attach spinner only for the transfer, not the picker.
   readonly onUploadStart?: () => void
@@ -66,6 +67,7 @@ export async function uploadMobileNativeChatImages(
     client,
     getConnectionId,
     pickImages,
+    fingerprintImage = mobileNativeChatImageContentFingerprint,
     onUploadStart,
     onImageUploaded
   }: UploadNativeChatImagesDeps
@@ -82,10 +84,11 @@ export async function uploadMobileNativeChatImages(
     // Prefer the picker's local URI for the thumbnail; fall back to an inline data
     // URI when the source omitted one (RN <Image> renders both).
     const previewUri = image.uri ?? `data:image/png;base64,${image.base64}`
+    const fingerprint = fingerprintImage(image.base64)
     const result = {
       path,
       previewUri,
-      contentFingerprint: mobileNativeChatImageContentFingerprint(image.base64)
+      contentFingerprint: typeof fingerprint === 'string' ? fingerprint : await fingerprint
     }
     uploaded.push(result)
     onImageUploaded?.(result)
