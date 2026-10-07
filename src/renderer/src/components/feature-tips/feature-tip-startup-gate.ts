@@ -75,21 +75,21 @@ export function getFeatureTipsAppOpenDecision(args: {
     return { kind: 'skip' }
   }
 
-  if (
-    !args.persistedUIReady ||
-    !args.settings ||
-    args.onboarding === null ||
-    args.cliInstalled === null
-  ) {
+  if (!args.persistedUIReady || !args.settings || args.onboarding === null) {
     return { kind: 'pending' }
   }
 
+  // Without the CLI status, assume its tip is still open: if even then nothing is pending, the
+  // answer is known without waiting for that probe.
   const nextTip = getPendingFeatureTips({
     seenTipIds: args.featureTipsSeenIds,
-    cliInstalled: args.cliInstalled,
+    cliInstalled: args.cliInstalled ?? false,
     featureInteractions: args.featureInteractions,
     settings: args.settings,
     webClient: args.webClient
   })[0]
-  return nextTip ? { kind: 'open', tipId: nextTip.id } : { kind: 'skip' }
+  if (!nextTip) {
+    return { kind: 'skip' }
+  }
+  return args.cliInstalled === null ? { kind: 'pending' } : { kind: 'open', tipId: nextTip.id }
 }

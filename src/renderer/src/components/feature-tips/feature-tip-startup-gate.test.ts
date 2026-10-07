@@ -228,6 +228,27 @@ describe('feature tip startup gate', () => {
     ).toEqual({ kind: 'pending' })
   })
 
+  it('answers without the CLI status when no tip is left either way', () => {
+    expect(
+      getFeatureTipsAppOpenDecision({
+        cliInstalled: null,
+        featureTipsSeenIds: [
+          'voice-dictation',
+          'orca-cli',
+          'cmd-j-palette',
+          'agent-session-search'
+        ],
+        featureInteractions: {},
+        onboarding: existingUserOnboarding,
+        persistedUIReady: true,
+        promptedThisSession: false,
+        settings: makeSettings(),
+        suppressedByOnboardingThisSession: false,
+        webClient: false
+      })
+    ).toEqual({ kind: 'skip' })
+  })
+
   it('does not open after the user already interacted with the feature', () => {
     expect(
       getFeatureTipsAppOpenDecision({

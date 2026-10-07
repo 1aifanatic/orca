@@ -37,6 +37,7 @@ import { mapWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
 import { ensureLocalRuntimeCapabilities } from '../runtime/local-runtime-capabilities'
 import { listRuntimeSessionHostIdsForStartup } from '../startup/startup-runtime-session-hosts'
+import { answerTipCheckOnOnboardingRead } from '../startup/startup-tip-check-inputs'
 
 /**
  * Runs the renderer's one-shot boot chain: settings, persisted UI, the local repo catalog,
@@ -44,17 +45,20 @@ import { listRuntimeSessionHostIdsForStartup } from '../startup/startup-runtime-
  * writer. A failure anywhere leaves disk state untouched and boots in degraded no-save mode.
  */
 export function useAppStartupHydration(
-  /** Null: startup failed before onboarding was read, so this launch has none. */
-  onOnboardingLoaded: (state: OnboardingState | null) => void
+  onOnboardingLoaded: (state: OnboardingState) => void,
+  /** Once known: onboarding for the feature-tip check, or null when no tip can be decided. */
+  onTipCheckInputs: (onboarding: OnboardingState | null) => void
 ): void {
   const actions = useStartupActions()
   // Why a ref: the boot chain must not restart if a caller passes a new callback identity.
   // Synced in an effect (declared before the chain below, so it lands first on mount) because
   // a render-phase write can leak from a render React discards.
   const onOnboardingLoadedRef = useRef(onOnboardingLoaded)
+  const onTipCheckInputsRef = useRef(onTipCheckInputs)
   useEffect(() => {
     onOnboardingLoadedRef.current = onOnboardingLoaded
-  }, [onOnboardingLoaded])
+    onTipCheckInputsRef.current = onTipCheckInputs
+  }, [onOnboardingLoaded, onTipCheckInputs])
 
   useEffect(() => installCodexDetachedPaneRestartExecutor(), [])
 
@@ -74,7 +78,6 @@ export function useAppStartupHydration(
     let uiHydrated = false
     // Why (issue #1158): track whether success-path reconnect started so the catch doesn't re-run it — re-entering on partially-mutated state would double-set ptyIds and drain pending* twice.
     let reconnectStarted = false
-    let onboardingDelivered = false
     void (async () => {
       const startupStartedAt = performance.now()
       logRendererStartupDiagnostic('startup-chain-start')
@@ -99,7 +102,7 @@ export function useAppStartupHydration(
         const onboardingPromise = timeRendererStartupStep('onboarding-get', () =>
           window.api.onboarding.get()
         )
-        onboardingPromise.catch(() => {})
+        answerTipCheckOnOnboardingRead(onboardingPromise, onTipCheckInputsRef)
         // Why: await ui.get() (not overlap) so persisted view settings hydrate before the local catalog/session steps and first paint reflects them.
         const persistedUI = await timeRendererStartupStep('ui-get', () => window.api.ui.get())
         uiHydrated = timeRendererStartupSyncStep('hydrate-persisted-ui', () =>
@@ -228,7 +231,6 @@ export function useAppStartupHydration(
           ).catch(() => {})
           const onboardingState = await onboardingPromise
           if (!cancelled) {
-            onboardingDelivered = true
             onOnboardingLoadedRef.current(onboardingState)
           }
 
@@ -349,8 +351,9 @@ export function useAppStartupHydration(
           reconnectPersistedTerminals: actions.reconnectPersistedTerminals,
           abortSignal: abortController.signal
         })
-        if (!cancelled && !onboardingDelivered) {
-          onOnboardingLoadedRef.current(null)
+        // Startup failed, possibly before onboarding was read: a tip check still open never answers.
+        if (!cancelled) {
+          onTipCheckInputsRef.current(null)
         }
       }
       void actions.initGitHubCache()

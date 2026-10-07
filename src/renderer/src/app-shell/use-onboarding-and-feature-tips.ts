@@ -23,6 +23,8 @@ export function useOnboardingAndFeatureTips() {
   const [onboardingLoaded, setOnboardingLoaded] = useState(false)
   const [featureTipCliInstalled, setFeatureTipCliInstalled] = useState<boolean | null>(null)
   const [appOpenTipId, setAppOpenTipId] = useState<FeatureTipId | null>(null)
+  // Read early by startup for the tip check, before startup shows onboarding itself.
+  const [tipCheckOnboarding, setTipCheckOnboarding] = useState<OnboardingState | null>(null)
   const promptedThisSessionRef = useRef(false)
   const suppressedByOnboardingThisSessionRef = useRef(false)
 
@@ -38,14 +40,18 @@ export function useOnboardingAndFeatureTips() {
     }))
   )
 
-  const applyStartupOnboardingState = useCallback((state: OnboardingState | null): void => {
+  const applyStartupOnboardingState = useCallback((state: OnboardingState): void => {
+    setOnboarding(state)
+    setOnboardingLoaded(true)
+  }, [])
+
+  const applyStartupTipCheckInputs = useCallback((state: OnboardingState | null): void => {
     if (state === null) {
-      // Startup failed before onboarding was read: no tip this launch, and nothing waits on one.
+      // Settings or onboarding could not be read: no tip this launch, and nothing waits on one.
       useDialogRegistry.getState().settleStartupSource('feature-tip', 'unavailable')
       return
     }
-    setOnboarding(state)
-    setOnboardingLoaded(true)
+    setTipCheckOnboarding(state)
   }, [])
 
   useEffect(() => {
@@ -96,7 +102,7 @@ export function useOnboardingAndFeatureTips() {
       cliInstalled: featureTipCliInstalled,
       featureTipsSeenIds,
       featureInteractions,
-      onboarding,
+      onboarding: onboarding ?? tipCheckOnboarding,
       persistedUIReady,
       promptedThisSession: promptedThisSessionRef.current,
       settings,
@@ -130,11 +136,13 @@ export function useOnboardingAndFeatureTips() {
     featureTipsSeenIds,
     onboarding,
     persistedUIReady,
-    settings
+    settings,
+    tipCheckOnboarding
   ])
 
   return {
     applyStartupOnboardingState,
+    applyStartupTipCheckInputs,
     appOpenTipId,
     onboarding,
     setOnboarding,
