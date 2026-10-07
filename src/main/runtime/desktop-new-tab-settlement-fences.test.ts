@@ -61,6 +61,61 @@ async function settlementRuntime(agent: 'claude' | 'codex' = 'claude') {
 describe('desktop prompt transport settlement preserves lifecycle fences', () => {
   afterEach(() => vi.useRealTimers())
 
+  for (const boundary of ['controller', 'generation', 'permission', 'abort'] as const) {
+    it(`writes zero bytes when ${boundary} changes at the raw writer handoff`, async () => {
+      const { runtime, handle } = await createAgentPromptSubmissionRuntime(
+        () => undefined,
+        boundary === 'permission' ? 'codex' : 'claude'
+      )
+      const writes: string[] = []
+      const replacementWrites: string[] = []
+      const controller = {
+        write: vi.fn(() => true),
+        writeWithSettlement: vi.fn((_id: string, data: string) => {
+          writes.push(data)
+          return WRITE_ACCEPTED
+        }),
+        kill: () => true,
+        getForegroundProcess: async () => null
+      }
+      runtime.setPtyController(controller)
+      const stop = new AbortController()
+      const change = (): void => {
+        if (boundary === 'controller') {
+          runtime.setPtyController({
+            ...controller,
+            writeWithSettlement: (_id, data) => {
+              replacementWrites.push(data)
+              return WRITE_ACCEPTED
+            }
+          })
+        } else if (boundary === 'generation') {
+          runtime.synchronizePtyOutputSequenceFromProvider(
+            'pty-prompt',
+            { value: 0, generation: 'reset' },
+            0
+          )
+        } else if (boundary === 'permission') {
+          runtime.onPtyData('pty-prompt', '\x1b]0;Codex waiting for permission\x07', Date.now())
+        } else {
+          stop.abort()
+        }
+      }
+      const result = await runtime
+        .sendTerminalAgentPrompt(handle, 'private launch prompt', {
+          inputKind: 'launch',
+          desktopNewTab: { submit: false },
+          signal: stop.signal,
+          // The child runs after the outer check, before the raw writer's awaited hook resumes.
+          beforeWrite: () => queueMicrotask(() => queueMicrotask(change))
+        })
+        .catch((error: unknown) => error)
+      expect(result).toBeInstanceOf(Error)
+      expect([...writes, ...replacementWrites]).toEqual([])
+      expect(controller.write).not.toHaveBeenCalled()
+    })
+  }
+
   for (const boundary of [
     'generation',
     'controller',

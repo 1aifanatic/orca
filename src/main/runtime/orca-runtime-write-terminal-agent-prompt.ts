@@ -74,6 +74,8 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
             const settlement = await waitForAgentPromptPromise(
               this.terminalWriter.writeAction(ptyId, {}, data, {
                 inputKind: options.inputKind,
+                signal: options.signal,
+                reserveWrite: assertWritable,
                 requireWriteSettlement: true
               }),
               options.signal
