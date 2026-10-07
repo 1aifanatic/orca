@@ -27,7 +27,7 @@ import {
   closeTranscriptHandle,
   wslGatedOpen,
   wslGatedRead,
-  wslGatedStat
+  transcriptFileStat
 } from './wsl-transcript-fs-access'
 import { wslTranscriptFsRefusal } from './wsl-transcript-fs-gate'
 
@@ -72,7 +72,7 @@ export async function readNativeChatTranscriptTailFile(
 }> {
   signal?.throwIfAborted()
   const end = Math.min(
-    (await wslGatedStat(filePath, 'exact', signal)).size,
+    (await transcriptFileStat(filePath, 'exact', signal)).size,
     endOffset ?? Number.MAX_SAFE_INTEGER
   )
   signal?.throwIfAborted()

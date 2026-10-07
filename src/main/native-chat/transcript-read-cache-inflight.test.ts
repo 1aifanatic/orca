@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('./session-file-resolver', () => ({ resolveSessionFilePath: mocks.resolve }))
-vi.mock('./wsl-transcript-fs-access', () => ({ wslGatedStat: mocks.stat }))
+vi.mock('./wsl-transcript-fs-access', () => ({ transcriptFileStat: mocks.stat }))
 vi.mock('./transcript-reader', () => ({ readNativeChatTranscript: mocks.read }))
 
 import {

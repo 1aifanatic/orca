@@ -4,7 +4,7 @@ import type { AgentType } from '../../shared/native-chat-types'
 import { InFlightPromiseDedupe, stableInFlightKey } from '../../shared/in-flight-promise-dedupe'
 import { resolveSessionFilePath } from './session-file-resolver'
 import { readNativeChatTranscript, type ReadTranscriptResult } from './transcript-reader'
-import { wslGatedStat } from './wsl-transcript-fs-access'
+import { transcriptFileStat } from './wsl-transcript-fs-access'
 import {
   isWslTranscriptFsRefusalMessage,
   WslTranscriptFsError,
@@ -83,7 +83,7 @@ function cacheKey(agent: AgentType, filePath: string): string {
 
 async function fileStat(filePath: string): Promise<{ mtimeMs: number; bytes: number }> {
   try {
-    const stats = await wslGatedStat(filePath, 'exact')
+    const stats = await transcriptFileStat(filePath, 'exact')
     return { mtimeMs: stats.mtimeMs, bytes: stats.size }
   } catch (err) {
     // Why: swallowing a gate refusal into an unknown mtime falls through to a
