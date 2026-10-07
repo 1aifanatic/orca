@@ -56,8 +56,10 @@ export function useMobileNativeChatVisual(
         setRetryInMs(delay)
         return
       }
-      // A visual already on screen stays there when a revalidation fails.
-      setState((current) => (current.kind === 'ready' ? current : { kind: 'unavailable' }))
+      // A host that does not answer leaves a visual on screen; one that refuses it takes it down.
+      setState((current) =>
+        current.kind === 'ready' && read.kind === 'unreachable' ? current : { kind: 'unavailable' }
+      )
     })
     return () => {
       disposed = true

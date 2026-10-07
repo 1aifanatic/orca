@@ -7,7 +7,9 @@ import {
 /** Same fence shapes the block parser opens and closes on, so a directive inside code stays code. */
 const CODE_FENCE_OPEN = /^```([A-Za-z0-9_-]+)?\s*$/
 const CODE_FENCE_CLOSE = /^```\s*$/
-const PLACEHOLDER = /^ORCA_VISUAL_(\d+)$/
+// Private-use delimiters, as the preview normalizer's own code placeholders use.
+const PLACEHOLDER_PREFIX = '\uE000ORCA_VISUAL_'
+const PLACEHOLDER = /^\uE000ORCA_VISUAL_(\d+)\uE000$/
 
 export type MobileMarkdownVisualLines = {
   /** The content with each recognized directive line replaced by a placeholder line. */
@@ -16,7 +18,7 @@ export type MobileMarkdownVisualLines = {
 }
 
 function placeholderFor(index: number): string {
-  return `ORCA_VISUAL_${index}`
+  return `${PLACEHOLDER_PREFIX}${index}\uE000`
 }
 
 /**
@@ -26,6 +28,10 @@ function placeholderFor(index: number): string {
  * cap a directive stays literal text.
  */
 export function protectMobileMarkdownVisualLines(content: string): MobileMarkdownVisualLines {
+  // Text that already spells a placeholder would alias a real one; it renders no visuals at all.
+  if (content.includes(PLACEHOLDER_PREFIX)) {
+    return { text: content, directives: [] }
+  }
   const lines = content.replace(/\r\n?/g, '\n').split('\n')
   const directives: NativeChatVisualDirective[] = []
   let inFence = false

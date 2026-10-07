@@ -42,8 +42,8 @@ const nativeChatVisualRead = bindDeferredRpcOperation(
 )
 
 const READ_TIMEOUT_MS = 15_000
-// Each entry is at most 512 KiB of UTF-8; eight is one reply's worth of visuals.
-const MAX_CACHE_ENTRIES = 8
+// Each entry is at most 512 KiB of UTF-8; the character bound is what caps memory.
+const MAX_CACHE_ENTRIES = 16
 const MAX_CACHE_CHARS = 4 * 1024 * 1024
 
 type CachedVisual = { html: string; revision: string }
@@ -116,6 +116,8 @@ async function readOnce(
   }
   const reply = nativeChatVisualRead.interpret(response)
   if (reply === null || !reply.ok) {
+    // The host no longer serves it (deleted, now too large...): stop painting the old bytes.
+    cache.delete(key)
     return { kind: 'refused' }
   }
   if ('html' in reply) {

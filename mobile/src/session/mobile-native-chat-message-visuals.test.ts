@@ -2,10 +2,9 @@ import { createElement, type ReactNode } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
-import { MOBILE_NATIVE_CHAT_STREAMING_MESSAGE_ID } from './mobile-native-chat-render-data'
 import {
   MobileNativeChatVisualContext,
-  type MobileNativeChatVisualRenderer
+  type MobileNativeChatVisualRender
 } from './mobile-native-chat-visual-context'
 
 vi.mock('react-native', async () => {
@@ -52,10 +51,7 @@ vi.mock('./MobileNativeChatMessageActionsSheet', () => ({
 
 import { MobileNativeChatMessage } from './MobileNativeChatMessage'
 
-const visuals: MobileNativeChatVisualRenderer = {
-  render: () => 'visual',
-  renderStreaming: () => 'reserved'
-}
+const renderVisual: MobileNativeChatVisualRender = () => 'visual'
 
 function message(id: string, role: NativeChatMessage['role'], text: string): NativeChatMessage {
   return { id, role, blocks: [{ type: 'text', text }], timestamp: null, source: 'transcript' }
@@ -71,14 +67,17 @@ describe('MobileNativeChatMessage visuals', () => {
 
   function markdownProps(
     row: NativeChatMessage,
-    renderer_: MobileNativeChatVisualRenderer | null = visuals
+    options: { visuals?: MobileNativeChatVisualRender | null; activeTurnIsWorking?: boolean } = {}
   ): Record<string, unknown> {
     act(() => {
       renderer = create(
         createElement(
           MobileNativeChatVisualContext.Provider,
-          { value: renderer_ },
-          createElement(MobileNativeChatMessage, { message: row })
+          { value: options.visuals === undefined ? renderVisual : options.visuals },
+          createElement(MobileNativeChatMessage, {
+            message: row,
+            activeTurnIsWorking: options.activeTurnIsWorking
+          })
         )
       )
     })
@@ -87,23 +86,33 @@ describe('MobileNativeChatMessage visuals', () => {
 
   it("renders a finished assistant reply's directives through the transcript renderer", () => {
     const props = markdownProps(message('a1', 'assistant', '::orca-visual{file="a.html"}'))
-    expect(props.renderVisual).toBe(visuals.render)
+    expect(props.renderVisual).toBe(renderVisual)
+    expect(props.content).toBe('::orca-visual{file="a.html"}')
   })
 
-  it('holds a streaming reply to reserved space and hides a directive still being typed', () => {
+  it('hides a directive still being typed while its turn works, and mounts finished lines', () => {
     const props = markdownProps(
       message(
-        MOBILE_NATIVE_CHAT_STREAMING_MESSAGE_ID,
+        'a1',
         'assistant',
-        'Chart below.\n::orca-visual{file="usage'
-      )
+        '::orca-visual{file="done.html"}\nChart below.\n::orca-visual{file="usage"}'
+      ),
+      { activeTurnIsWorking: true }
     )
-    expect(props.renderVisual).toBe(visuals.renderStreaming)
-    expect(props.content).toBe('Chart below.\n')
+    expect(props.renderVisual).toBe(renderVisual)
+    expect(props.content).toBe('::orca-visual{file="done.html"}\nChart below.\n')
+  })
+
+  it('shows the whole reply once its turn settles', () => {
+    const text = 'Chart below.\n::orca-visual{file="usage'
+    expect(markdownProps(message('a1', 'assistant', text)).content).toBe(text)
   })
 
   it('leaves directives as text where the chat has no visual source', () => {
-    const props = markdownProps(message('a1', 'assistant', '::orca-visual{file="a.html"}'), null)
+    const props = markdownProps(message('a1', 'assistant', '::orca-visual{file="a.html"}'), {
+      visuals: null,
+      activeTurnIsWorking: true
+    })
     expect(props.renderVisual).toBeUndefined()
     expect(props.content).toBe('::orca-visual{file="a.html"}')
   })

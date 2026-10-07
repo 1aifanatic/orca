@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { buildNativeChatVisualDocument } from '../../../src/shared/native-chat-visual-document'
+import { buildNativeChatVisualDocument } from '../../../src/shared/native-chat-visual-shell'
 // The native component's own prop type, so a change to it fails here rather than drifting.
 import type { MobileNativeChatVisualFrameProps } from './MobileNativeChatVisualFrame'
 import { MOBILE_NATIVE_CHAT_VISUAL_THEME } from './mobile-native-chat-visual-theme'
@@ -22,8 +22,14 @@ export const MobileNativeChatVisualFrame = memo(function MobileNativeChatVisualF
   title,
   mode
 }: MobileNativeChatVisualFrameProps) {
+  // No script runs in this frame, so nothing ever reports on this channel.
   const document = useMemo(
-    () => buildNativeChatVisualDocument(html, MOBILE_NATIVE_CHAT_VISUAL_THEME),
+    () =>
+      buildNativeChatVisualDocument({
+        html,
+        channel: 'sealed',
+        theme: MOBILE_NATIVE_CHAT_VISUAL_THEME
+      }),
     [html]
   )
   return (

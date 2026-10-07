@@ -87,6 +87,22 @@ describe('readMobileNativeChatVisual', () => {
     expect(cachedMobileNativeChatVisual(source, 'chart.html')?.revision).toBe(REVISION_B)
   })
 
+  it('drops the cached bytes when the host refuses a visual it served before', async () => {
+    const source = sourceWith(
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          success({ ok: true, revision: REVISION_A, sizeBytes: 3, html: '<p>' })
+        )
+        .mockResolvedValueOnce(success({ ok: false, error: 'not_found' }))
+    )
+    await readMobileNativeChatVisual(source, 'chart.html')
+    await expect(readMobileNativeChatVisual(source, 'chart.html')).resolves.toEqual({
+      kind: 'refused'
+    })
+    expect(cachedMobileNativeChatVisual(source, 'chart.html')).toBeNull()
+  })
+
   it('reads a host refusal, an older host and a malformed reply as refused', async () => {
     for (const response of [
       success({ ok: false, error: 'not_found' }),
@@ -155,10 +171,10 @@ describe('readMobileNativeChatVisual', () => {
         .fn()
         .mockResolvedValue(success({ ok: true, revision: REVISION_A, sizeBytes: 3, html: '<p>' }))
     )
-    for (let index = 0; index < 9; index += 1) {
+    for (let index = 0; index < 17; index += 1) {
       await readMobileNativeChatVisual(source, `v${index}.html`)
     }
     expect(cachedMobileNativeChatVisual(source, 'v0.html')).toBeNull()
-    expect(cachedMobileNativeChatVisual(source, 'v8.html')).not.toBeNull()
+    expect(cachedMobileNativeChatVisual(source, 'v16.html')).not.toBeNull()
   })
 })

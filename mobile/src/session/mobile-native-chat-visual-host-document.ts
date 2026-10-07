@@ -1,27 +1,35 @@
 import {
   NATIVE_CHAT_VISUAL_CSP,
-  NATIVE_CHAT_VISUAL_MAX_HEIGHT,
-  NATIVE_CHAT_VISUAL_MIN_HEIGHT
-} from '../../../src/shared/native-chat-visual-document'
+  NATIVE_CHAT_VISUAL_OPEN_LINK_TYPE,
+  NATIVE_CHAT_VISUAL_SIZE_TYPE
+} from '../../../src/shared/native-chat-visual-shell'
 import { inlineScriptLiteral } from '../components/inline-script-json'
 
-/** `inline` sizes the frame to its reported height; `fullscreen` fills the screen and the page scrolls. */
+/** `inline` sizes the frame to the height the app applies; `fullscreen` fills the screen and scrolls. */
 export type MobileNativeChatVisualHostMode = 'inline' | 'fullscreen'
 
 export const MOBILE_NATIVE_CHAT_VISUAL_INITIAL_HEIGHT = 160
 
+/** The host page's function the app calls to size the frame to a height it has decided. */
+export const MOBILE_NATIVE_CHAT_VISUAL_APPLY_HEIGHT = '__orcaVisualApplyHeight'
+
+// The host forwards at most one size report per interval (the latest wins) and one link per window.
+const SIZE_FORWARD_INTERVAL_MS = 50
+const LINK_WINDOW_MS = 5_000
+
 /**
- * The trusted document the WebView loads. A native WebView's top document gets no `sandbox`, and
- * on both platforms the native message channel is reachable from every frame in it, so the author
- * HTML never runs here: it runs in an opaque `sandbox="allow-scripts"` srcdoc child, and this
- * document is the only thing that talks to the app.
+ * The trusted document the WebView loads. A native WebView's top document gets no `sandbox`, so
+ * the author HTML never runs here: it runs in an opaque `sandbox="allow-scripts"` srcdoc child, and
+ * this document is the only one the app listens to (the WebView patch drops messages from any frame
+ * but the main one).
  *
- * - Every native message carries `token`, which only this document knows; the app drops anything
- *   else, which is how a child that reaches the native channel directly is refused.
- * - Only messages whose `source` is the child's window are relayed, and only as data for the app
- *   to validate. A link request is relayed only while the page holds user activation.
+ * - It relays only messages whose `source` is the child's window, as data for the app to validate,
+ *   and stamps them with `token`, which the child never sees.
+ * - A link request is relayed only while the child frame holds focus and the page holds user
+ *   activation, and at most once per activation window.
  * - A second `load` of the child means it navigated away from its document: the frame is removed
  *   and the app told, so a replacement document never inherits the frame.
+ * - It never sizes the frame from a report itself; the app decides heights and calls back.
  *
  * The child inherits this document's policy (a srcdoc frame has no URL of its own) and adds the
  * same policy from its own meta, so this document carries the visual policy too.
@@ -34,6 +42,16 @@ export function buildMobileNativeChatVisualHostDocument(input: {
 }): string {
   const frameHeight =
     input.mode === 'fullscreen' ? '100vh' : `${MOBILE_NATIVE_CHAT_VISUAL_INITIAL_HEIGHT}px`
+  const constants = inlineScriptLiteral({
+    token: input.token,
+    fullscreen: input.mode === 'fullscreen',
+    title: input.title,
+    size: NATIVE_CHAT_VISUAL_SIZE_TYPE,
+    link: NATIVE_CHAT_VISUAL_OPEN_LINK_TYPE,
+    applyHeight: MOBILE_NATIVE_CHAT_VISUAL_APPLY_HEIGHT,
+    sizeIntervalMs: SIZE_FORWARD_INTERVAL_MS,
+    linkWindowMs: LINK_WINDOW_MS
+  })
   return `<!doctype html>
 <html>
 <head>
@@ -46,17 +64,16 @@ export function buildMobileNativeChatVisualHostDocument(input: {
 <script>
 (function () {
 'use strict'
-var token = ${inlineScriptLiteral(input.token)}
-var fullscreen = ${inlineScriptLiteral(input.mode === 'fullscreen')}
+var C = ${constants}
 var channel = window.ReactNativeWebView
 function send(message) {
-  message.token = token
+  message.token = C.token
   if (channel) channel.postMessage(JSON.stringify(message))
 }
 var frame = document.createElement('iframe')
 frame.setAttribute('sandbox', 'allow-scripts')
 frame.setAttribute('referrerpolicy', 'no-referrer')
-frame.setAttribute('title', ${inlineScriptLiteral(input.title)})
+frame.setAttribute('title', C.title)
 var loads = 0
 frame.addEventListener('load', function () {
   loads += 1
@@ -65,22 +82,35 @@ frame.addEventListener('load', function () {
     send({ kind: 'escaped' })
   }
 })
+window[C.applyHeight] = function (height) {
+  if (!C.fullscreen && typeof height === 'number' && isFinite(height)) frame.style.height = height + 'px'
+}
+var pendingSize = null
+var sizeTimer = null
+function flushSize() {
+  sizeTimer = null
+  if (pendingSize === null) return
+  send({ kind: 'frame', data: pendingSize })
+  pendingSize = null
+}
+var lastLinkAt = -Infinity
 window.addEventListener('message', function (event) {
   if (!frame.contentWindow || event.source !== frame.contentWindow) return
   var data = event.data
   if (!data || typeof data !== 'object' || typeof data.type !== 'string') return
-  if (data.type === 'orca-visual:height') {
-    if (fullscreen) return
-    var height = Number(data.height)
-    if (!isFinite(height)) return
-    frame.style.height = Math.min(${NATIVE_CHAT_VISUAL_MAX_HEIGHT}, Math.max(${NATIVE_CHAT_VISUAL_MIN_HEIGHT}, Math.round(height))) + 'px'
-    send({ kind: 'frame', data: { type: data.type, height: height } })
+  if (data.type === C.size) {
+    if (C.fullscreen) return
+    pendingSize = { type: data.type, channel: String(data.channel), height: Number(data.height) }
+    if (sizeTimer === null) sizeTimer = setTimeout(flushSize, C.sizeIntervalMs)
     return
   }
-  if (data.type === 'orca-visual:open-link') {
+  if (data.type === C.link) {
     var activation = navigator.userActivation
-    if (!activation || !activation.isActive) return
-    send({ kind: 'frame', data: { type: data.type, url: String(data.url).slice(0, 4096) } })
+    var now = Date.now()
+    if (document.activeElement !== frame || !activation || !activation.isActive) return
+    if (now - lastLinkAt < C.linkWindowMs) return
+    lastLinkAt = now
+    send({ kind: 'frame', data: { type: data.type, channel: String(data.channel), url: String(data.url).slice(0, 4096) } })
   }
 })
 frame.srcdoc = ${inlineScriptLiteral(input.visualDocument)}

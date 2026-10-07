@@ -3,7 +3,8 @@ import { StyleSheet } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes'
 import * as ExpoCrypto from 'expo-crypto'
-import { buildNativeChatVisualDocument } from '../../../src/shared/native-chat-visual-document'
+import { buildNativeChatVisualDocument } from '../../../src/shared/native-chat-visual-shell'
+import { createNativeChatVisualHeightGovernor } from '../../../src/renderer/src/components/native-chat/native-chat-visual-height-governor'
 import { openExternalLink } from '../platform/external-link'
 import {
   MOBILE_NATIVE_CHAT_VISUAL_LINK_INTERVAL_MS,
@@ -11,6 +12,7 @@ import {
 } from './mobile-native-chat-visual-bridge'
 import {
   buildMobileNativeChatVisualHostDocument,
+  MOBILE_NATIVE_CHAT_VISUAL_APPLY_HEIGHT,
   MOBILE_NATIVE_CHAT_VISUAL_INITIAL_HEIGHT,
   type MobileNativeChatVisualHostMode
 } from './mobile-native-chat-visual-host-document'
@@ -24,27 +26,27 @@ export type MobileNativeChatVisualFrameProps = {
   onFailed: () => void
 }
 
-/** Height reports are applied at most this often, so a page resizing every frame cannot thrash layout. */
-const HEIGHT_APPLY_INTERVAL_MS = 100
 /** One automatic reload after the web process dies; a page that kills it again is unavailable. */
 const MAX_PROCESS_RESTARTS = 1
 
-function newBridgeToken(): string {
+function randomHex(): string {
   return Array.from(ExpoCrypto.getRandomBytes(16), (byte) =>
     byte.toString(16).padStart(2, '0')
   ).join('')
 }
 
-// Only the host document and its srcdoc child ever load. A visual's links reach the app through the
-// bridge instead, so every other navigation, top frame or child, is refused rather than opened.
+// Only the host document and its srcdoc child load, plus in-page anchors within them. A visual's
+// links reach the app through the bridge instead, so every other navigation is refused, not opened.
 function allowsLoad(request: ShouldStartLoadRequest): boolean {
-  return request.url === 'about:blank' || request.url === 'about:srcdoc'
+  const url = request.url.split('#', 1)[0]
+  return url === 'about:blank' || url === 'about:srcdoc'
 }
 
 /**
  * One visual in a WebView: a trusted host document with the author HTML in an opaque sandboxed
  * child (see `buildMobileNativeChatVisualHostDocument`). The app accepts exactly two requests from
- * it, each token-checked and validated here: a clamped height and an http(s) link to open.
+ * it, each token- and channel-checked here: a height, which the shared governor turns into the
+ * frame's height, and an http(s) link to open.
  */
 export const MobileNativeChatVisualFrame = memo(function MobileNativeChatVisualFrame({
   html,
@@ -52,52 +54,70 @@ export const MobileNativeChatVisualFrame = memo(function MobileNativeChatVisualF
   mode,
   onFailed
 }: MobileNativeChatVisualFrameProps) {
-  const [token] = useState(newBridgeToken)
+  const webView = useRef<WebView>(null)
+  const [token] = useState(randomHex)
   const [generation, setGeneration] = useState(0)
   const [height, setHeight] = useState(MOBILE_NATIVE_CHAT_VISUAL_INITIAL_HEIGHT)
   const restarts = useRef(0)
-  const lastLinkAt = useRef(0)
-  const pendingHeight = useRef<number | null>(null)
-  const heightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastLinkAt = useRef(-Infinity)
 
-  const document = useMemo(
-    () =>
-      buildMobileNativeChatVisualHostDocument({
-        visualDocument: buildNativeChatVisualDocument(html, MOBILE_NATIVE_CHAT_VISUAL_THEME),
-        token,
-        title,
-        mode
-      }),
-    [html, token, title, mode]
-  )
-  const source = useMemo(() => ({ html: document }), [document])
-
-  useEffect(
-    () => () => {
-      if (heightTimer.current) {
-        clearTimeout(heightTimer.current)
+  const built = useMemo(() => {
+    const channel = randomHex()
+    const visualDocument = buildNativeChatVisualDocument({
+      html,
+      channel,
+      theme: MOBILE_NATIVE_CHAT_VISUAL_THEME
+    })
+    return {
+      channel,
+      source: {
+        html: buildMobileNativeChatVisualHostDocument({ visualDocument, token, title, mode })
       }
-    },
-    []
-  )
+    }
+  }, [html, token, title, mode])
 
-  const applyHeight = useCallback((next: number) => {
-    pendingHeight.current = next
-    if (heightTimer.current) {
+  // A fresh governor per loaded document; reports queue behind a deferral rather than pile up.
+  const sizing = useRef<{
+    governor: ReturnType<typeof createNativeChatVisualHeightGovernor>
+    latest: number | null
+    deferred: ReturnType<typeof setTimeout> | null
+  }>({ governor: createNativeChatVisualHeightGovernor(), latest: null, deferred: null })
+  useEffect(() => {
+    const state = sizing.current
+    state.governor = createNativeChatVisualHeightGovernor()
+    state.latest = null
+    return () => {
+      if (state.deferred) {
+        clearTimeout(state.deferred)
+        state.deferred = null
+      }
+    }
+  }, [built, generation])
+
+  const applyHeight = useCallback(() => {
+    const state = sizing.current
+    state.deferred = null
+    if (state.latest === null) {
       return
     }
-    heightTimer.current = setTimeout(() => {
-      heightTimer.current = null
-      const latest = pendingHeight.current
-      if (latest !== null) {
-        setHeight((current) => (Math.abs(current - latest) < 1 ? current : latest))
-      }
-    }, HEIGHT_APPLY_INTERVAL_MS)
+    const decision = state.governor.decide(state.latest, Date.now())
+    if (decision.kind === 'apply') {
+      setHeight(decision.height)
+      webView.current?.injectJavaScript(
+        `window.${MOBILE_NATIVE_CHAT_VISUAL_APPLY_HEIGHT}(${decision.height}); true;`
+      )
+    } else if (decision.kind === 'defer') {
+      state.deferred = setTimeout(applyHeight, decision.retryInMs)
+    }
   }, [])
 
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
-      const message = readMobileNativeChatVisualBridgeMessage(event.nativeEvent.data, token)
+      const message = readMobileNativeChatVisualBridgeMessage(
+        event.nativeEvent.data,
+        token,
+        built.channel
+      )
       if (!message) {
         return
       }
@@ -105,9 +125,12 @@ export const MobileNativeChatVisualFrame = memo(function MobileNativeChatVisualF
         onFailed()
         return
       }
-      if (message.kind === 'height') {
+      if (message.kind === 'size') {
         if (mode === 'inline') {
-          applyHeight(message.height)
+          sizing.current.latest = message.height
+          if (!sizing.current.deferred) {
+            applyHeight()
+          }
         }
         return
       }
@@ -118,7 +141,7 @@ export const MobileNativeChatVisualFrame = memo(function MobileNativeChatVisualF
       lastLinkAt.current = now
       openExternalLink(message.url)
     },
-    [token, mode, applyHeight, onFailed]
+    [token, built.channel, mode, applyHeight, onFailed]
   )
 
   const restart = useCallback(() => {
@@ -127,13 +150,15 @@ export const MobileNativeChatVisualFrame = memo(function MobileNativeChatVisualF
       return
     }
     restarts.current += 1
+    setHeight(MOBILE_NATIVE_CHAT_VISUAL_INITIAL_HEIGHT)
     setGeneration((value) => value + 1)
   }, [onFailed])
 
   return (
     <WebView
       key={generation}
-      source={source}
+      ref={webView}
+      source={built.source}
       style={mode === 'inline' ? [styles.inline, { height }] : styles.fullscreen}
       accessibilityLabel={title}
       // '*' so every navigation reaches `allowsLoad`: an origin outside this list is opened in the

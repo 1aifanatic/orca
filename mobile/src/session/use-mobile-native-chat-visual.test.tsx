@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatVisualRead } from './mobile-native-chat-visual-read'
 
-const reads = vi.hoisted(() => ({
-  next: [] as MobileNativeChatVisualRead[],
-  calls: 0
-}))
+const reads = vi.hoisted(() => {
+  const next: MobileNativeChatVisualRead[] = []
+  return { next, calls: 0 }
+})
 
 vi.mock('./mobile-native-chat-visual-read', () => ({
   cachedMobileNativeChatVisual: () => null,

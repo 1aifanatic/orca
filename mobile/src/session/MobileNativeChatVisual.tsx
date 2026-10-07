@@ -8,32 +8,27 @@ import type { MobileNativeChatVisualSource } from './mobile-native-chat-visual-r
 import { MOBILE_NATIVE_CHAT_VISUAL_INITIAL_HEIGHT } from './mobile-native-chat-visual-host-document'
 import { MobileNativeChatVisualFrame } from './MobileNativeChatVisualFrame'
 import { useMobileNativeChatVisual } from './use-mobile-native-chat-visual'
-import type { MobileNativeChatVisualRenderer } from './mobile-native-chat-visual-context'
+import type { MobileNativeChatVisualRender } from './mobile-native-chat-visual-context'
 
 const DEFAULT_TITLE = 'Visualization'
 
-/** The quiet reserved space a visual takes while it loads, or while its reply is still streaming. */
-export function MobileNativeChatVisualPlaceholder({ busy = false }: { busy?: boolean }) {
+/** The quiet reserved space a visual takes while it loads. */
+function MobileNativeChatVisualPlaceholder() {
   return (
     <View style={[styles.frame, styles.placeholder]}>
-      {busy ? <ActivityIndicator size="small" color={colors.textMuted} /> : null}
+      <ActivityIndicator size="small" color={colors.textMuted} />
     </View>
   )
 }
 
-const renderStreamingVisual = () => <MobileNativeChatVisualPlaceholder />
-
 /** The transcript's visual renderer for a structured chat's source; null without one. */
 export function useMobileNativeChatVisualRenderer(
   source: MobileNativeChatVisualSource | null
-): MobileNativeChatVisualRenderer | null {
+): MobileNativeChatVisualRender | null {
   return useMemo(
     () =>
       source
-        ? {
-            render: (directive) => <MobileNativeChatVisual directive={directive} source={source} />,
-            renderStreaming: renderStreamingVisual
-          }
+        ? (directive) => <MobileNativeChatVisual directive={directive} source={source} />
         : null,
     [source]
   )
@@ -63,7 +58,7 @@ export const MobileNativeChatVisual = memo(function MobileNativeChatVisual({
   const closeFullscreen = useCallback(() => setFullscreen(false), [])
 
   if (state.kind === 'loading') {
-    return <MobileNativeChatVisualPlaceholder busy />
+    return <MobileNativeChatVisualPlaceholder />
   }
   if (state.kind === 'unavailable' || frameFailed) {
     return (

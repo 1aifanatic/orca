@@ -10,13 +10,6 @@ export type MobileNativeChatVisualRender = (
  * How this transcript renders `::orca-visual` lines, or null where it cannot (no structured chat or
  * no client). Rows read only this, so they never import the WebView frame themselves.
  */
-export type MobileNativeChatVisualRenderer = {
-  /** A finished reply's visual. */
-  render: MobileNativeChatVisualRender
-  /** A streaming reply's finished directive line: reserved space only, nothing mounts. */
-  renderStreaming: MobileNativeChatVisualRender
-}
-
-export const MobileNativeChatVisualContext = createContext<MobileNativeChatVisualRenderer | null>(
+export const MobileNativeChatVisualContext = createContext<MobileNativeChatVisualRender | null>(
   null
 )

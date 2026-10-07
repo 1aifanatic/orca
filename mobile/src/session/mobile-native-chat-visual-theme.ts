@@ -1,4 +1,4 @@
-import type { NativeChatVisualTheme } from '../../../src/shared/native-chat-visual-document'
+import type { NativeChatVisualTheme } from '../../../src/shared/native-chat-visual-shell'
 import { colors, radii } from '../theme/mobile-theme'
 
 /**
@@ -8,7 +8,7 @@ import { colors, radii } from '../theme/mobile-theme'
  */
 export const MOBILE_NATIVE_CHAT_VISUAL_THEME: NativeChatVisualTheme = {
   colorScheme: 'dark',
-  variables: {
+  tokens: {
     '--background': colors.bgBase,
     '--foreground': colors.textPrimary,
     '--card': colors.bgPanel,

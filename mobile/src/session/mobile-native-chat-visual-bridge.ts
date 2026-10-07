@@ -1,7 +1,7 @@
 import {
-  parseNativeChatVisualFrameMessage,
+  readNativeChatVisualFrameMessage,
   type NativeChatVisualFrameMessage
-} from '../../../src/shared/native-chat-visual-document'
+} from '../../../src/shared/native-chat-visual-shell'
 
 export type MobileNativeChatVisualBridgeEvent =
   | NativeChatVisualFrameMessage
@@ -9,19 +9,21 @@ export type MobileNativeChatVisualBridgeEvent =
   | { kind: 'escaped' }
 
 const MAX_BRIDGE_MESSAGE_LENGTH = 8 * 1024
-/** A link request is a deliberate tap; more than one a second is not. */
+/** A link request is a deliberate tap; the app opens at most one per interval. */
 export const MOBILE_NATIVE_CHAT_VISUAL_LINK_INTERVAL_MS = 1_000
 
 /**
  * The app's side of the visual bridge: a message counts only if it carries this frame's token
- * (which only the trusted host document holds) and is one of the two requests a visual may make.
- * Everything else, including a well-formed message without the token, is dropped.
+ * (which only the trusted host document holds) and is one of the two requests a visual may make,
+ * from this visual's channel. Everything else, including a well-formed message without the token,
+ * is dropped.
  */
 export function readMobileNativeChatVisualBridgeMessage(
-  raw: string,
-  token: string
+  raw: unknown,
+  token: string,
+  channel: string
 ): MobileNativeChatVisualBridgeEvent | null {
-  if (raw.length > MAX_BRIDGE_MESSAGE_LENGTH) {
+  if (typeof raw !== 'string' || raw.length > MAX_BRIDGE_MESSAGE_LENGTH) {
     return null
   }
   let message: unknown
@@ -43,7 +45,7 @@ export function readMobileNativeChatVisualBridgeMessage(
     return { kind: 'escaped' }
   }
   if (message.kind === 'frame' && 'data' in message) {
-    return parseNativeChatVisualFrameMessage(message.data)
+    return readNativeChatVisualFrameMessage(message.data, channel)
   }
   return null
 }
