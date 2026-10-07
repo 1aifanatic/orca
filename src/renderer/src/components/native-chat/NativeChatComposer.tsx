@@ -30,7 +30,7 @@ import type {
   NativeChatComposerProps
 } from './native-chat-composer-types'
 import { useNativeChatPtyComposerSend } from './use-native-chat-pty-composer-send'
-import { useNativeChatStructuredComposerSend } from './use-native-chat-structured-composer-send'
+import { useNativeChatHeldQueueComposerSend } from './use-native-chat-held-queue-composer-send'
 import { useImeEnterGestureOwnership } from '@/lib/ime-composition-keyboard-event'
 import { useNativeChatComposerAppMenuSelection } from './use-native-chat-composer-app-menu-selection'
 import { useNativeChatWorkspaceFileDrop } from './use-native-chat-workspace-file-drop'
@@ -66,6 +66,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       optimisticSendOutcome,
       onOptimisticSendCanceled,
       onSlashCommand,
+      onSubmitted,
       answerCommandLocally,
       onSwitchToTerminal,
       readTerminalScreen,
@@ -154,6 +155,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const attachments = useNativeChatComposerAttachments({
       attachmentScopeKey: draftScopeKey,
       allowWithoutTarget: Boolean(structuredTransport),
+      acceptsImages: structuredTransport?.acceptsImages !== false,
       caret,
       disabled,
       isComposing: imeEnterGesture.isComposing,
@@ -225,6 +227,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         agent,
         disabled,
         onSlashCommand,
+        onSubmitted,
         resolveTarget,
         setHistory
       })
@@ -243,7 +246,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const contextUsageSummary = useNativeChatContextUsageSummary(structuredTransport)
     const sessionOptionsSnapshot = structuredTransport?.optionSnapshot ?? ptySessionOptionsSnapshot
 
-    const sendStructured = useNativeChatStructuredComposerSend({
+    const { send: sendStructured, fieldProps: queue } = useNativeChatHeldQueueComposerSend({
       agent,
       draftScopeKey,
       imageAttachments,
@@ -255,23 +258,16 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setCaret
     })
 
-    const sendPty = useNativeChatPtyComposerSend({
+    // What both terminal send paths share: where a command goes and what the composer resets.
+    const ptyCommandRouting = {
       agent,
-      draft,
-      imageAttachments,
       disabled,
       isDispatchingSessionOption,
-      launchDraft: launchSeed?.launchDraft,
-      launchDraftResolved: launchSeed?.launchDraftResolved === true,
-      readTerminalScreen,
       resolveTarget,
-      classifySend,
-      onOptimisticSend,
-      optimisticSendOutcome,
       onSlashCommand,
+      onSubmitted,
       answerCommandLocally,
       sessionOptionsSurface: ptySessionOptionsSurface,
-      terminalTabId,
       trackPendingSend,
       setHistory,
       setDraft,
@@ -279,6 +275,18 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       clearSkillOrigin,
       clearImageAttachments,
       setNotice
+    }
+    const sendPty = useNativeChatPtyComposerSend({
+      ...ptyCommandRouting,
+      draft,
+      imageAttachments,
+      launchDraft: launchSeed?.launchDraft,
+      launchDraftResolved: launchSeed?.launchDraftResolved === true,
+      readTerminalScreen,
+      classifySend,
+      onOptimisticSend,
+      optimisticSendOutcome,
+      terminalTabId
     })
     const { send, goalMode } = useNativeChatComposerSubmit({
       structuredTransport,
@@ -303,21 +311,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
 
     const dispatchPtyPickerCommand = useNativeChatPickerCommandDispatch({
-      agent,
-      disabled,
-      isDispatchingSessionOption,
-      resolveTarget,
-      onSlashCommand,
-      answerCommandLocally,
-      sessionOptionsSurface: ptySessionOptionsSurface,
-      trackPendingSend,
-      setHistory,
-      setDraft,
-      setCaret,
-      setActiveSuggestion,
-      clearSkillOrigin,
-      clearImageAttachments,
-      setNotice
+      ...ptyCommandRouting,
+      setActiveSuggestion
     })
     const dispatchPickerCommand = useCallback(
       (command: Parameters<typeof dispatchPtyPickerCommand>[0]) =>
@@ -417,6 +412,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         onDictationHoldEnd={dictation.stopHoldDictation}
         onSend={send}
         onStop={interrupt}
+        {...queue}
         sessionOptionsSurface={sessionOptionsSurface}
         sessionOptionsSnapshot={sessionOptionsSnapshot}
         contextUsage={contextUsageSummary}

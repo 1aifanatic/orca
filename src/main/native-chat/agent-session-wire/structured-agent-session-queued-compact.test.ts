@@ -335,7 +335,7 @@ describe('a /compact that waits in line', () => {
     await rig.settleAccepted(working, 'a')
     // The chat's agent went away; the next start fails.
     await rig.restartHostProcess()
-    rig.awaitStarted.mockRejectedValue(new Error('the agent could not start'))
+    rig.failNextStart(new Error('the agent could not start'))
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     expect(await rig.resume()).toMatchObject({ ok: true })
     await eventually(async () =>
@@ -364,25 +364,29 @@ describe('a /compact that waits in line', () => {
     const compactId = await queuedCompact()
     await rig.stop()
     await rig.settleAccepted(working, 'a')
-    // No child now, and the next start never finishes: the hand-off stays queued.
+    // No child now, and the next start stays in its spawn: the hand-off stays queued.
     await rig.host.close(SESSION, 'evict')
-    rig.awaitStarted.mockImplementation(() => new Promise<undefined>(() => undefined))
-    const startsBefore = rig.awaitStarted.mock.calls.length
+    const release = rig.holdNextStart()
+    const startsBefore = rig.starts.mock.calls.length
     if (send === 'drain') {
       expect(await rig.resume()).toMatchObject({ ok: true })
     } else {
       expect(await rig.sendNow(compactId)).toMatchObject({ ok: true })
     }
-    await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBeGreaterThan(startsBefore))
+    await eventually(() => expect(rig.starts.mock.calls.length).toBeGreaterThan(startsBefore))
     rig.crashRestartHostProcess()
+    release()
     return compactId
   }
 
   it('cut short by a restart after the queue sent it: waits again under the restart, never spent', async () => {
     const compactId = await consumedThenCrashed('drain')
-    // The queue's own hand-off is not the person's, so it waits as any queued card does.
-    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
-    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    // The queue's own hand-off is not the person's, so it waits as any queued card does after a
+    // restart: held unshown, never sent by itself.
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
+    )
+    expect(await rig.queuePause()).toBeNull()
     expect(rig.compact).not.toHaveBeenCalled()
   })
 
@@ -405,11 +409,12 @@ describe('a /compact that waits in line', () => {
     rig = await createQueuedMessageTestRig({ restartable: true })
     await rig.workingSend()
     await rig.host.close(SESSION, 'evict')
-    rig.awaitStarted.mockImplementation(() => new Promise<undefined>(() => undefined))
-    const startsBefore = rig.awaitStarted.mock.calls.length
+    const release = rig.holdNextStart()
+    const startsBefore = rig.starts.mock.calls.length
     const { id } = compact()
-    await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBeGreaterThan(startsBefore))
+    await eventually(() => expect(rig.starts.mock.calls.length).toBeGreaterThan(startsBefore))
     rig.crashRestartHostProcess()
+    release()
     // A command in flight is not resumed: the person runs it again. No card, kept or otherwise.
     expect(await rig.drafts()).toEqual([])
     expect(await rig.submission(id)).toMatchObject({ dispatchState: 'rejected' })
