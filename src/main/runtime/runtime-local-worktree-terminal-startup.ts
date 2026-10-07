@@ -130,13 +130,7 @@ export async function startRuntimeLocalWorktreeTerminals(args: {
       (didSpawnStartup && Boolean(setup || defaultTabs))
     if (runtimeWillProvision) {
       const provisioned = await ports.provision({
-        ...provisionArgs(
-          args,
-          startupTerminalHandle,
-          startupTerminalTabId,
-          didSpawnStartup,
-          wrappedSetupCommand
-        ),
+        ...provisionArgs(args, startupTerminalHandle, didSpawnStartup, wrappedSetupCommand),
         ...(provisionInBackground ? { surfaceOwner: false as const } : {})
       })
       didSpawnSetup = provisioned.setupSpawned
@@ -159,13 +153,7 @@ export async function startRuntimeLocalWorktreeTerminals(args: {
     )
   } else if (ports.canSpawn && (setup || defaultTabs || didSpawnStartup)) {
     const provisioning = ports.provision({
-      ...provisionArgs(
-        args,
-        startupTerminalHandle,
-        startupTerminalTabId,
-        didSpawnStartup,
-        wrappedSetupCommand
-      ),
+      ...provisionArgs(args, startupTerminalHandle, didSpawnStartup, wrappedSetupCommand),
       surfaceOwner: false
     })
     if (request.awaitTerminalProvisioning) {
@@ -209,7 +197,6 @@ export async function startRuntimeLocalWorktreeTerminals(args: {
 function provisionArgs(
   args: Parameters<typeof startRuntimeLocalWorktreeTerminals>[0],
   primaryTerminalHandle: string | null,
-  primaryTerminalTabId: string | null,
   hasStartupTerminal: boolean,
   wrappedSetupCommand?: string
 ): WorktreeTerminalProvisioningArgs {
@@ -220,7 +207,6 @@ function provisionArgs(
     ...(args.setup ? { setup: args.setup } : {}),
     ...(args.defaultTabs ? { defaultTabs: args.defaultTabs } : {}),
     primaryTerminalHandle,
-    primaryTerminalTabId,
     hasStartupTerminal,
     setupCommandPlatform: setupPlatform(args.setup, 'posix'),
     observeSetupCompletion: args.request.observeSetupCompletion,
