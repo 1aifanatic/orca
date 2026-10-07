@@ -403,7 +403,7 @@ describe('MobileNativeChatMessage', () => {
       const tree = render(userMessage([{ type: 'text', text: 'go' }]), {
         structuredActivityUi: true
       })
-      expect(textIn(tree.root)).toEqual(['go', 'Copy'])
+      expect(textIn(tree.root)).toEqual(['go'])
     })
   })
 
