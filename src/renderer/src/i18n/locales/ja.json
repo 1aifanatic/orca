@@ -17686,6 +17686,8 @@
         "cannotRunHere": "Orca はここでこの Agent をチャットで実行できません。",
         "unreachable": "Orca は Agent に接続できませんでした。",
         "recordFailed": "Orca はこれをチャットの履歴に保存できませんでした。",
+        "attachmentExpired": "この添付ファイルは期限切れです。",
+        "reattachFile": "削除してから、もう一度添付してください。",
         "conversationCleared": "この会話はクリアされました。",
         "openCurrentConversation": "続けるには、現在の会話を開いてください。",
         "clearUnfinished": "前回の /clear は完了しませんでした。",
@@ -17729,6 +17731,9 @@
         "stopDictation": "ディクテーションを停止する",
         "noSkills": "一致するスキルがありません",
         "localAttachmentUnsupported": "ローカル添付ファイルはリモートセッションでは使用できません。",
+        "attachFailed": "{{files}} を添付できませんでした。",
+        "attachFailedBecause": "{{files}} を添付できませんでした。{{reason}}",
+        "uploadingFile": "{{name}} をアップロードしています…",
         "removeAttachment": "添付ファイルを削除する",
         "pastedImageLabel": "貼り付けた画像",
         "draftNotSaved": "この下書きはまだ保存できていません。Orca は保存を再試行し続けます。",
@@ -18004,7 +18009,11 @@
         "historyItemTooLarge": "チャットのこの部分は大きすぎるため表示できません。",
         "stoppedBeforeStart": "Agent の開始前に停止しました",
         "dismiss": "閉じる",
-        "copyError": "エラーをコピー"
+        "copyError": "エラーをコピー",
+        "orcaStopUpdate": "この応答の途中で、{{machine}} の Orca がアップデートのため再起動しました。",
+        "orcaStopQuit": "この応答の途中で、{{machine}} の Orca が終了しました。",
+        "orcaStopCrash": "この応答の途中で、{{machine}} の Orca が予期せず停止しました。",
+        "orcaStopCanContinue": "この会話で続行できます。"
       },
       "providerFrame": {
         "byteLength": "{{value0}}バイト"
@@ -18171,6 +18180,11 @@
         "offline": "{{hostName}} はオフラインです",
         "reconnecting": "{{hostName}} に再接続しています…",
         "reconnect": "再接続"
+      },
+      "interruptedContinue": {
+        "continue": "続行",
+        "failed": "このチャットを続行できませんでした。もう一度試すか、メッセージを送信してください。",
+        "explanation": "続行すると、Agent はまず最後の手順が完了したかどうかを確認します。"
       }
     },
     "tab": {
@@ -18528,6 +18542,13 @@
       "label": "担当者",
       "automatic": "自動",
       "assignToMe": "自分に割り当てる（{{name}}）"
+    },
+    "markdown-callout": {
+      "note": "メモ",
+      "tip": "ヒント",
+      "important": "重要",
+      "warning": "警告",
+      "caution": "注意"
     }
   },
   "dashboardPopout": {

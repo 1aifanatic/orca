@@ -62,7 +62,7 @@ async function requireHostCreateSupport(
       readAgentSessionErrorRefusal(support.error)
     )
   }
-  if (support.kind === 'declined') {
+  if (support.kind === 'declined' || support.kind === 'workspace-unresolved') {
     abandonStructuredAgentSessionLaunchIntent(intent)
     throw new StructuredAgentSessionCreateRefusalError(
       'structured_agent_session_unsupported',

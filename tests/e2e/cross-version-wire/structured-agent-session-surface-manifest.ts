@@ -140,6 +140,14 @@ export const STRUCTURED_CALLS: {
     hostMethod: 'revealSession',
     result: { ok: true, sessionId: SESSION, workspaceId: WORKSPACE, agent: 'codex', readable: true }
   },
+  // A chat's visual, read from the host's own record and state directory. A bare addition: an older
+  // host answers `method_not_found` and the client shows the visual as unavailable. The stub host
+  // holds no record, so the typed refusal is the declared answer.
+  {
+    method: 'agentSession.readVisual',
+    hostMethod: null,
+    result: { ok: false, error: 'session_not_found' }
+  },
   // A no-op on a host that starts an agent only for work; it still builds the host.
   { method: 'agentSession.hold', hostMethod: null, result: { held: true } },
   // The restart-resume surface. Bare additions, not capability-negotiated: an RPC method's
@@ -161,6 +169,12 @@ export const STRUCTURED_CALLS: {
     method: 'agentSession.restartContinue',
     hostMethod: 'restartContinueAll',
     result: { resumed: [], continued: [] }
+  },
+  // Continue on a reply an Orca stop cut off. Clients call it only on a host advertising it.
+  {
+    method: 'agentSession.continueInterrupted',
+    hostMethod: 'continueInterrupted',
+    result: { sessionId: SESSION, outcome: 'superseded' }
   },
   { method: 'agentSession.release', hostMethod: null, result: { released: true } },
   {
@@ -325,6 +339,8 @@ export function paramsFor(method: string): unknown {
       return { ...ATTENTION_READ, observedCursor: { ...ATTENTION_READ.observedCursor } }
     case 'agentSession.modelCatalog':
       return { agent: 'codex', sessionId: SESSION }
+    case 'agentSession.readVisual':
+      return { sessionId: SESSION, file: 'usage-chart.html' }
     case 'agentSession.hold':
     case 'agentSession.release':
       return { sessionId: SESSION, holderId: 'surface-1' }
@@ -335,6 +351,8 @@ export function paramsFor(method: string): unknown {
     case 'agentSession.restartContinue':
       // Whole-surface calls: they name no session, and resume/continue narrow by an optional list.
       return {}
+    case 'agentSession.continueInterrupted':
+      return { sessionId: SESSION, turnItemId: 'legacy:codex:s:turn-1' }
     default:
       return { sessionId: SESSION }
   }

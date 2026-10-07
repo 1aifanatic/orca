@@ -328,6 +328,39 @@ describe('structured agent session message sender', () => {
     expect(mocks.handBack).not.toHaveBeenCalled()
   })
 
+  // A paired server checks every stored file a message names; one it no longer holds can never be
+  // sent again as is, so the message comes back, with or without a view, to remove and reattach it.
+  it('gives back a message refused for an expired attachment, with its file and why', async () => {
+    const STORED = '/srv/agent-session-attachments/0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8c01/shot.png'
+    mocks.call.mockResolvedValue({
+      ok: false,
+      refusal: {
+        code: 'agent_session_operation_invalid',
+        message: 'not stored',
+        details: { reason: 'attachmentExpired' }
+      }
+    })
+    const a = send('look at this', { attachments: [{ path: STORED, previewUri: STORED }] })
+    expect(await a.outcome).toBe('returned')
+    expect(mocks.handBack).toHaveBeenCalledExactlyOnceWith(
+      SESSION,
+      a.clientMessageId,
+      {
+        kind: 'message',
+        role: 'user',
+        blocks: [
+          { type: 'text', text: 'look at this' },
+          { type: 'image-ref', path: STORED }
+        ]
+      },
+      undefined
+    )
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toBe(
+      'This attachment expired. Your message was not sent. Remove it and attach it again.'
+    )
+    expect(sendCalls()).toBe(1)
+  })
+
   it('leaves a note its sender still holds with the sender when it comes back', async () => {
     mocks.call.mockResolvedValue(refusedSend)
     const note = send('notes', { callerKeepsText: true })
