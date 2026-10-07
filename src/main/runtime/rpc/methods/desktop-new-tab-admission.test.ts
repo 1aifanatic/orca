@@ -20,6 +20,28 @@ const PARAMS = {
 
 // This checkpoint deliberately refuses the incomplete guarantee before publication or admission.
 describe('an unadvertised desktop startup contract cannot be admitted', () => {
+  it('also refuses the deliberate unrecorded public route before any side effect', async () => {
+    const runtime = runtimeStub({ settings: {} })
+    const method = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
+    const params = method.params.parse({ ...PARAMS, operationId: undefined })
+    await expect(
+      method.handler(
+        params,
+        rpcContext(runtime, {
+          caller: DESKTOP_RPC_CALLER,
+          clientKind: 'runtime',
+          clientCapabilities: [
+            AGENT_LAUNCH_RUNTIME_CAPABILITY,
+            AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+          ]
+        })
+      )
+    ).rejects.toThrow('agent_launch_desktop_new_tab_unsupported')
+    expect(runtime.showTerminalWorkspaceLaunchScope).not.toHaveBeenCalled()
+    expect(runtime.publishAgentLaunchTab).not.toHaveBeenCalled()
+    expect(runtime.openAgentSessionRecordStore).not.toHaveBeenCalled()
+    expect(runtime.createTerminal).not.toHaveBeenCalled()
+  })
   for (const name of ['agent.launch', 'agent.launchReplay'] as const) {
     it(`${name} refuses even a client advertising the new capability before any side effect`, async () => {
       const runtime = runtimeStub({ settings: {} })

@@ -37,31 +37,57 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     const permissionBaseline = this.getAgentPromptActivity(handle, ptyId)
     this.assertAgentPromptPermissionSafe(permissionBaseline, permissionBaseline)
     if (options.desktopNewTab) {
+      const controller = this.ptyController
+      let writeFailure: { error: unknown } | undefined
+      const assertWritable = (): void => {
+        assertAgentPromptRequestActive(options.signal)
+        this.assertAgentPromptGeneration(ptyId, generation)
+        this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
+        if (
+          this.ptyController !== controller ||
+          this.isPtyStopRequested(ptyId) ||
+          this.ptysById.get(ptyId)?.connected === false ||
+          this.getPtyLivenessVerdict(ptyId)?.status === 'unverifiable'
+        ) {
+          throw new Error('terminal_not_writable')
+        }
+        this.assertAgentPromptPermissionSafe(
+          permissionBaseline,
+          this.getAgentPromptActivity(handle, ptyId)
+        )
+      }
       return writeDesktopNewTabPrompt({
         text: options.promptForSchedule ?? '',
         agent: this.getPtyAgent(ptyId),
         submit: options.desktopNewTab.submit,
         delay: (ms) => waitForAgentPromptDelay(ms, options.signal),
         write: async (data) => {
-          assertAgentPromptRequestActive(options.signal)
-          this.assertAgentPromptGeneration(ptyId, generation)
-          await options.beforeWrite?.(ptyId)
-          assertAgentPromptRequestActive(options.signal)
-          this.assertAgentPromptGeneration(ptyId, generation)
-          this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
-          if (
-            this.isPtyStopRequested(ptyId) ||
-            this.ptysById.get(ptyId)?.connected === false ||
-            this.getPtyLivenessVerdict(ptyId)?.status === 'unverifiable'
-          ) {
-            throw new Error('terminal_not_writable')
+          if (writeFailure) {
+            throw writeFailure.error
           }
-          this.assertAgentPromptPermissionSafe(
-            permissionBaseline,
-            this.getAgentPromptActivity(handle, ptyId)
-          )
-          options.desktopNewTab?.onWriteStarted?.()
-          return this.ptyController?.write(ptyId, data, options.inputKind) === true
+          try {
+            assertAgentPromptRequestActive(options.signal)
+            this.assertAgentPromptGeneration(ptyId, generation)
+            await options.beforeWrite?.(ptyId)
+            assertWritable()
+            options.desktopNewTab?.onWriteStarted?.()
+            const settlement = await waitForAgentPromptPromise(
+              this.terminalWriter.writeAction(ptyId, {}, data, {
+                inputKind: options.inputKind,
+                requireWriteSettlement: true
+              }),
+              options.signal
+            )
+            assertWritable()
+            if (settlement?.outcome !== 'accepted') {
+              throw new Error('terminal_not_writable')
+            }
+            return true
+          } catch (error) {
+            // A failed live sequence cannot resume through the shared paste's cleanup write.
+            writeFailure = { error }
+            throw error
+          }
         }
       })
     }

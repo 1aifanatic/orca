@@ -194,10 +194,10 @@ function refuseInvalidDesktopPrompt(
     }
     return
   }
-  if (launch.target.kind !== 'existing' || launch.reuseTerminal || !launch.operationId) {
+  if (launch.target.kind !== 'existing' || launch.reuseTerminal) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Desktop new-tab delivery requires a recorded fresh launch in an existing workspace'
+      message: 'Desktop new-tab delivery requires a fresh launch in an existing workspace'
     })
   }
   if (

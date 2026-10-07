@@ -30,6 +30,12 @@ function settledPrompt(
   const { outcome } = row
   if (outcome.status === 'succeeded') {
     const prompt = isAgentLaunchResult(outcome.launch) ? outcome.launch.prompt : undefined
+    if (
+      prompt?.outcome === 'unconfirmed' &&
+      isLaunchRunning(agentSessionOperationKey(row.callerKey, row.operationId))
+    ) {
+      return null
+    }
     return prompt?.outcome === 'handed-to-terminal'
       ? { handedOver: true, composerUnobserved: prompt.composerUnobserved === true }
       : { handedOver: false, composerUnobserved: false }

@@ -31,8 +31,12 @@ describe('negotiated desktop startup prompt contract', () => {
     expect(parsed).not.toHaveProperty('command')
     expect(AgentLaunchReplay.parse(BASE).prompt).toEqual(BASE.prompt)
   })
-  it('requires a fresh recorded existing-workspace launch and consistent draft intent', () => {
-    expect(AgentLaunch.safeParse({ ...BASE, operationId: undefined }).success).toBe(false)
+  it('allows deliberate unrecorded fresh launches while replay still requires identity', () => {
+    const unrecorded = { ...BASE, operationId: undefined }
+    expect(AgentLaunch.parse(unrecorded).prompt).toEqual(BASE.prompt)
+    expect(AgentLaunchReplay.safeParse(unrecorded).success).toBe(false)
+  })
+  it('requires a fresh existing-workspace launch and consistent draft intent', () => {
     expect(AgentLaunch.safeParse({ ...BASE, reuseTerminal: { handle: 'running' } }).success).toBe(
       false
     )

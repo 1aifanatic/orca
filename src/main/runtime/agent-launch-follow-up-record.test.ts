@@ -9,7 +9,10 @@ import { takeLaunchFollowUpsInto } from './agent-launch-follow-up-record'
 const DESKTOP = 'trusted-local:desktop'
 const FOLLOW_UP = { kind: 'review-notes-delivered', version: 1, payload: { noteIds: ['n1'] } }
 
-function launch(promptOutcome: 'handed-to-terminal' | 'not-delivered', unobserved = false) {
+function launch(
+  promptOutcome: 'handed-to-terminal' | 'not-delivered' | 'unconfirmed',
+  unobserved = false
+) {
   const result: AgentLaunchResult = {
     outcome: { kind: 'terminal', handle: 'term_1', paneKey: 'tab:leaf' },
     worktreeId: 'wt-1',
@@ -93,7 +96,13 @@ describe('taking a click’s follow-up off its launch’s row', () => {
   it('reports a follow-up whose prompt is still owed, read-only', () => {
     const state = rows(
       row('op-1', {
-        promptDelivery: { state: 'owed', text: 't', agent: 'claude', deadline: 9_000, terminal: null }
+        promptDelivery: {
+          state: 'owed',
+          text: 't',
+          agent: 'claude',
+          deadline: 9_000,
+          terminal: null
+        }
       })
     )
     expect(take(state)).toEqual({
@@ -136,6 +145,40 @@ describe('taking a click’s follow-up off its launch’s row', () => {
       pending: [{ operationId: 'op-1', followUp: FOLLOW_UP }]
     })
   })
+
+  it('retains an unconfirmed live prompt without inventing a retry obligation', () => {
+    const state = rows(
+      row('op-1', {
+        outcome: { status: 'succeeded', sessionId: '', launch: launch('unconfirmed') }
+      })
+    )
+    expect(take(state, { running: [agentSessionOperationKey(DESKTOP, 'op-1')] })).toEqual({
+      taken: [],
+      pending: [{ operationId: 'op-1', followUp: FOLLOW_UP }]
+    })
+    expect(state.operations.get(agentSessionOperationKey(DESKTOP, 'op-1'))).toMatchObject({
+      launchFollowUp: FOLLOW_UP
+    })
+    expect(
+      state.operations.get(agentSessionOperationKey(DESKTOP, 'op-1'))?.promptDelivery
+    ).toBeUndefined()
+    expect(take(state).taken).toMatchObject([{ promptHandedOver: false }])
+    expect(take(state)).toEqual({ taken: [], pending: [] })
+  })
+
+  for (const promptOutcome of ['handed-to-terminal', 'not-delivered'] as const) {
+    it(`takes a ${promptOutcome} receipt before the active launch is deleted`, () => {
+      const state = rows(
+        row('op-1', {
+          outcome: { status: 'succeeded', sessionId: '', launch: launch(promptOutcome) }
+        })
+      )
+      expect(take(state, { running: [agentSessionOperationKey(DESKTOP, 'op-1')] })).toMatchObject({
+        pending: [],
+        taken: [{ promptHandedOver: promptOutcome === 'handed-to-terminal' }]
+      })
+    })
+  }
 
   it('never shows or takes another caller’s follow-ups', () => {
     const state = rows(row('op-1'))
