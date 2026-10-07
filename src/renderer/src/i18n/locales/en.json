@@ -8846,6 +8846,8 @@
           "remoteRuntimeAuto": "Auto",
           "remoteRuntimePinnedNode": "Orca-managed Node",
           "remoteRuntimeHostNode": "Host Node",
+          "allowRemoteCliControl": "Allow this host's orca CLI to control Orca",
+          "allowRemoteCliControlHelp": "When off, orca commands run on this host reach only its own terminals. Turn on to let them reach other hosts, orchestration, files, and integrations on this computer.",
           "editTitle": "Edit SSH host",
           "addTitle": "Add SSH host",
           "editDescription": "Update connection details for this machine. Changes apply on next connect.",

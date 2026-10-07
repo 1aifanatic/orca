@@ -15,16 +15,19 @@ import {
 export const STRUCTURED_AGENT_SESSION_QUEUED_METHODS = [
   defineMethod({
     name: 'agentSession.queuedMessageSend',
+    permission: 'workspace',
     params: QueuedMessageActionParams,
     handler: async (params, ctx) => requireHost(ctx).queuedMessageSend(callerFor(ctx), params)
   }),
   defineMethod({
     name: 'agentSession.queuedMessageDelete',
+    permission: 'workspace',
     params: QueuedMessageActionParams,
     handler: async (params, ctx) => requireHost(ctx).queuedMessageDelete(callerFor(ctx), params)
   }),
   defineMethod({
     name: 'agentSession.queuedMessagesResume',
+    permission: 'workspace',
     params: QueuedMessagesResumeParams,
     handler: async (params, ctx) => requireHost(ctx).queuedMessagesResume(callerFor(ctx), params)
   })

@@ -19,12 +19,14 @@ import { agentSessionPinnedLaunchDirectory } from '../../agent-session-record-la
 export const STRUCTURED_AGENT_SESSION_OPTIONS_READ_METHODS = [
   defineMethod({
     name: 'agentSession.options',
+    permission: 'workspace',
     params: OptionsParams,
     handler: async (params, ctx) =>
       (await requireInstalledStructuredHost(ctx)).readOptions(params.sessionId)
   }),
   defineMethod({
     name: 'agentSession.modelCatalog',
+    permission: 'workspace',
     params: ModelCatalogParams,
     // A structured chat's read names its session and builds the host, since it may come first;
     // terminal-backed chat's session-less read must not open the journal where none runs.
