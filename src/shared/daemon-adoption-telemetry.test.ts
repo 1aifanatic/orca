@@ -50,11 +50,8 @@ describe('classifyDaemonSpawnerPath', () => {
 
   it("classifies Orca's private stable copy from the recorded spawner path", () => {
     const prefix = '/Users/alice/Library/Application Support/Orca/daemon-host/macos/runtime-'
-    const copy = `${prefix}Ab12/app.noindex/Orca.app/Contents/MacOS/Orca`
+    const copy = `${prefix}Ab12/Orca.app/Contents/MacOS/Orca`
     expect(classifyDaemonSpawnerPath(copy, alwaysExists, prefix)).toBe('stable-copy')
-    // Copies made before the `.noindex` folder still classify as the stable copy.
-    const oldLayout = `${prefix}Ztpw1G/Orca.app/Contents/MacOS/Orca`
-    expect(classifyDaemonSpawnerPath(oldLayout, alwaysExists, prefix)).toBe('stable-copy')
     expect(classifyDaemonSpawnerPath(copy, () => false, prefix)).toBe('missing')
     expect(classifyDaemonSpawnerPath(copy, alwaysExists, null)).toBe('other')
     expect(

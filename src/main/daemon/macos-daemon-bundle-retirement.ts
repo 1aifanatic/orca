@@ -8,8 +8,6 @@ import { readMacDaemonJobState, stopMacDaemonJob } from './macos-daemon-job-stat
 const JOB_RECORD_NAME = 'job.json'
 const LSREGISTER =
   '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
-/** Spotlight skips `.noindex` folders, so the copy is never indexed or listed as an app. */
-export const MAC_DAEMON_BUNDLE_FOLDER = 'app.noindex'
 let collectionInFlight: Promise<void> | null = null
 
 type MacDaemonJobRecord = {
@@ -54,17 +52,9 @@ async function readJobRecord(directory: string): Promise<MacDaemonJobRecord | nu
   }
 }
 
-/** Copies made before the `.noindex` folder sit directly in the runtime directory. */
 async function copiedAppBundles(directory: string): Promise<string[]> {
-  const bundles: string[] = []
-  for (const parent of [directory, join(directory, MAC_DAEMON_BUNDLE_FOLDER)]) {
-    for (const name of await readdir(parent).catch(() => [])) {
-      if (name.endsWith('.app')) {
-        bundles.push(join(parent, name))
-      }
-    }
-  }
-  return bundles
+  const names = await readdir(directory).catch(() => [])
+  return names.filter((name) => name.endsWith('.app')).map((name) => join(directory, name))
 }
 
 /** All executables and mapped libraries count, including children that survived their daemon. */

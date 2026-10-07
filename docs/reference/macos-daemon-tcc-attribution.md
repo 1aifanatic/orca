@@ -15,7 +15,7 @@ protected files keeps working after its old executable is deleted.
 So a packaged macOS GUI app starts its daemon from a private copy that the updater never touches:
 
 - `macos-daemon-bundle.ts` copies the whole bundle the running main process executes from (APFS
-  clone, regular copy otherwise) into `userData/daemon-host/macos/runtime-*/app.noindex`, then
+  clone, regular copy otherwise) into `userData/daemon-host/macos/runtime-*`, then
   requires `codesign --verify --deep --strict` to pass and the designated requirement to match the
   source.
   A partial copy carries neither the signature nor the frameworks the daemon needs.
@@ -54,18 +54,16 @@ one background collection (one at a time per process) that retires a copy only w
 
 Any timeout, permission error, warning or truncated output keeps the copy. Explicit shutdown
 unregisters the job, then applies rule 3. Cleanup never reads sockets, tokens or PID records.
-Collection matches the directory, not the bundle inside it, so copies made before the
-`app.noindex` folder (`runtime-*/Orca.app`) retire, and classify as `stable-copy`, the same way.
 
 ## LaunchServices
 
 A copy is a full app bundle, so macOS can register it as another `com.stablyai.orca` that claims
 `orca:` links and Markdown/CSV files. While `/Applications/Orca.app` is registered it wins; without
-it a registered copy becomes the default handler. The `.noindex` folder keeps Spotlight from
-indexing the copy and stops the registration made while it is being copied, but running the copy
-can still register it. Retirement runs `lsregister -u` on each bundle before deleting it.
+it a registered copy becomes the default handler. Retirement runs `lsregister -u` on each bundle
+before deleting it, so deleted copies leave no entry.
 
-A running copy is deliberately left registered: Local Network access is resolved from the signing
+Copies are deliberately left indexable and registered while they may run: Local Network access is
+resolved from the signing
 identifier through LaunchServices to the executable's Mach-O UUID, and after an update that
 changes Electron only the copy carries the running daemon's UUID. Unregistering it could cut
 terminals off the local network.

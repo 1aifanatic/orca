@@ -1,10 +1,10 @@
-import { mkdir, mkdtemp, realpath } from 'node:fs/promises'
+import { mkdtemp, realpath } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
 import { rm } from '../asar-transparent-fs'
 import { ensurePrivateDir } from './daemon-private-file-modes'
 import { inspectMacProcessCodeIdentity } from './daemon-mac-code-identity'
-import { MAC_DAEMON_BUNDLE_FOLDER, writeMacDaemonJobRecord } from './macos-daemon-bundle-retirement'
+import { writeMacDaemonJobRecord } from './macos-daemon-bundle-retirement'
 
 export type MacDaemonBundle = {
   directory: string
@@ -72,11 +72,10 @@ export async function materializeMacDaemonBundle(
   const root = getMacDaemonBundleRoot(userDataPath)
   ensurePrivateDir(root)
   const directory = await mkdtemp(join(root, 'runtime-'))
-  const bundlePath = join(directory, MAC_DAEMON_BUNDLE_FOLDER, basename(sourceBundle))
+  const bundlePath = join(directory, basename(sourceBundle))
   try {
     // Recorded before copying so a crash mid-copy leaves a copy retirement can still claim.
     await writeMacDaemonJobRecord(directory, label, false)
-    await mkdir(dirname(bundlePath))
     const copy = async (clone: boolean): Promise<boolean> => {
       const result = await runProcess({
         program: '/bin/cp',

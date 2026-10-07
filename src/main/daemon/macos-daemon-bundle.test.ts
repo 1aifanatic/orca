@@ -92,8 +92,7 @@ it('copies the running parked bundle rather than the replacement at the recorded
   await rm(source, { recursive: true })
   expect(await readFile(runtime.execPath, 'utf8')).toBe('signed-executable')
   expect(await readFile(runtime.entryPath, 'utf8')).toBe('daemon-code')
-  // Spotlight never indexes the copy, so it is not offered as a second Orca app.
-  expect(runtime.bundlePath).toBe(join(runtime.directory, 'app.noindex', 'Orca.app'))
+  expect(runtime.bundlePath).toBe(join(runtime.directory, 'Orca.app'))
   expect(runProcessMock.mock.calls[1]?.[0].args).toEqual(['-cR', source, runtime.bundlePath])
   expect(JSON.parse(await readFile(join(runtime.directory, 'job.json'), 'utf8'))).toEqual({
     label: LABEL,
