@@ -43,7 +43,7 @@ import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
 import { useNativeChatHostOutage } from './use-native-chat-host-outage'
-import { NativeChatHostOutageNotice } from './NativeChatHostOutageNotice'
+import { useNativeChatHostOutageNotice } from './use-native-chat-host-outage-notice'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 
 type OptionPickerRequest = { id: string; sequence: number }
@@ -100,6 +100,7 @@ export function NativeChatStructuredSession(
   })
   const historyPhase = structuredChatHistoryPhase(provisionalLaunch, controller.status)
   const hostOutage = useNativeChatHostOutage(props.target)
+  const hostNotice = useNativeChatHostOutageNotice(hostOutage)
   const session = useMemo<NativeChatLiveSession>(
     () => ({
       messages: controller.messages,
@@ -203,6 +204,9 @@ export function NativeChatStructuredSession(
     viewState.kind === 'error' || !readFailure ? controller.error : readFailure.text
   const launch = { ...provisionalLaunch, retry: submits.retryLaunch }
   const notices = structuredSessionNotices({ launch, agentLabel, sessionError, composerError })
+  if (hostNotice) {
+    notices.push(hostNotice)
+  }
   return (
     <div
       ref={rootRef}
@@ -272,7 +276,6 @@ export function NativeChatStructuredSession(
             steerHeld={stopControls.stopping}
             focusComposer={focusComposer}
           />
-          <NativeChatHostOutageNotice outage={hostOutage} />
           <NativeChatStructuredSessionStatus
             sessionId={props.sessionId}
             paneKey={paneKey}
