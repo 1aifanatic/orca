@@ -43,6 +43,10 @@ export type AgentModelCatalogService = {
      *  with a held reason past its TTL, from the probe re-checking it. */
     waitForListing?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
+  /** A chat under this record's account proved its start, so a held reason is due for the probe. */
+  providerStarted: (
+    record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>
+  ) => void
 }
 
 function resultFromEntry(
@@ -96,6 +100,9 @@ export function createAgentModelCatalogService(
   deps: AgentModelCatalogServiceDeps
 ): AgentModelCatalogService {
   return {
+    providerStarted(record) {
+      deps.store.expireFailure(agentModelCatalogFingerprintForRecord(record))
+    },
     async read(params) {
       const record = params.sessionId ? deps.getRecord(params.sessionId) : undefined
       const scoped =

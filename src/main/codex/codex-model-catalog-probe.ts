@@ -51,7 +51,7 @@ export function createCodexModelCatalogProbe(
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
     deps.prepareHome?.(accountHomePath)
     const run = deps.runSession ?? runCodexAppServerSession
-    const listing = await run(
+    const { listing, unavailable } = await run(
       {
         command,
         args: [...CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS],
@@ -60,29 +60,32 @@ export function createCodexModelCatalogProbe(
         timeoutMs: CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS
       },
       async (rpc) => {
-        // Both at once, so the account check adds no latency; its signed-out verdict still wins.
+        // Both at once, so the account check adds no latency.
         const listed = fetchCodexModelCatalogListing({ connection: rpc })
         void listed.catch(() => {})
         const response: unknown = await rpc
           .request('account/read', { refreshToken: false }, { timeoutMs: 2_000 })
-          // Unknown account status cannot block sending.
+          // Unknown account status says nothing.
           .catch(() => undefined)
         if (
-          typeof response === 'object' &&
-          response !== null &&
-          !Array.isArray(response) &&
-          'requiresOpenaiAuth' in response &&
-          response.requiresOpenaiAuth === true &&
-          'account' in response &&
-          response.account === null
+          typeof response !== 'object' ||
+          response === null ||
+          Array.isArray(response) ||
+          !('requiresOpenaiAuth' in response) ||
+          response.requiresOpenaiAuth !== true ||
+          !('account' in response) ||
+          response.account !== null
         ) {
-          const account = deps.resolveAccountKind?.(accountHomePath)
-          throw new AgentModelCatalogUnavailableError({
-            reason: 'notSignedIn',
-            ...(account ? { account } : {})
-          })
+          return { listing: await listed, unavailable: undefined }
         }
-        return listed
+        const account = deps.resolveAccountKind?.(accountHomePath)
+        const signedOut = { reason: 'notSignedIn' as const, ...(account ? { account } : {}) }
+        // The verdict can be wrong (a gateway in Arguments), so a list in hand still fills the picker.
+        const inHand = await listed.catch(() => null)
+        if (!inHand?.models.length) {
+          throw new AgentModelCatalogUnavailableError(signedOut)
+        }
+        return { listing: inHand, unavailable: signedOut }
       }
     ).catch((error: unknown) => {
       if (isMissingProviderExecutable(error, command)) {
@@ -96,7 +99,8 @@ export function createCodexModelCatalogProbe(
     return {
       models: listing.models,
       fastModeTierByModel: listing.fastModeTierByModel,
-      origin: 'probe'
+      origin: 'probe',
+      ...(unavailable ? { unavailable } : {})
     }
   }
 }

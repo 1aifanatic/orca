@@ -173,27 +173,30 @@ describe('Codex catalog availability', () => {
   it.each([
     ['/homes/a', 'managed'],
     ['/homes/system', 'system']
-  ] as const)('reports explicit signed-out account for %s', async (home, account) => {
-    await expect(
-      withAccount({ account: null, requiresOpenaiAuth: true })(home)
-    ).rejects.toMatchObject({ unavailable: { reason: 'notSignedIn', account } })
-  })
+  ] as const)(
+    'reports explicit signed-out account for %s beside its list',
+    async (home, account) => {
+      // The verdict can be wrong while a chat works, so the picker keeps the list it got.
+      expect(await withAccount({ account: null, requiresOpenaiAuth: true })(home)).toMatchObject({
+        models: [{ id: 'gpt-live' }],
+        unavailable: { reason: 'notSignedIn', account }
+      })
+    }
+  )
   it('omits unknown account context from a positive signed-out fact', async () => {
     const probe = createCodexModelCatalogProbe({
       resolveEnvironment: async () => ({}),
       resolveCommand: () => 'codex',
       runSession: async (_invocation, body) =>
         body({
-          request: async () => ({ account: null, requiresOpenaiAuth: true }),
+          request: async (method) =>
+            method === 'account/read'
+              ? { account: null, requiresOpenaiAuth: true }
+              : { data: [MODEL_ROW], nextCursor: null },
           notify: () => {}
         })
     })
-    const error = await probe('/custom/home').catch((error: unknown) => error)
-    expect(error).toBeInstanceOf(AgentModelCatalogUnavailableError)
-    if (error instanceof AgentModelCatalogUnavailableError) {
-      expect(error.unavailable).toEqual({ reason: 'notSignedIn' })
-      expect(error.unavailable).not.toHaveProperty('account')
-    }
+    expect((await probe('/custom/home')).unavailable).toEqual({ reason: 'notSignedIn' })
   })
   it('lists models while the account check is still answering', async () => {
     let answerAccount!: (value: unknown) => void

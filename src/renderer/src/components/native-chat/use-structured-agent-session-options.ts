@@ -100,6 +100,7 @@ export function useStructuredAgentSessionOptions(args: {
     namesDefault: launch?.kind === 'new' && optionCatalog?.hostListingNamesConfiguredModel === true,
     ...(launch?.worktree ? { worktree: launch.worktree } : {}),
     fence,
+    turnId,
     activeOptionRecordRef,
     updateOptionState
   })

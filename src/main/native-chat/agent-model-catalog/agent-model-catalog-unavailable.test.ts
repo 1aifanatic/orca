@@ -10,6 +10,7 @@ import {
   type AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
 import { AgentModelCatalogUnavailableError } from './agent-model-catalog-unavailable'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
 
 // Why a chat cannot start, as the probe found it: the reason rides every catalog answer until a
 // later probe answers again, and a chat's own listing never replaces it.
@@ -118,6 +119,58 @@ describe('a reason the probe found', () => {
     expireAgentModelCatalogFailuresForSettings(store, { activeCodexManagedAccountId: 'other' })
     expect(store.hasActiveFailure(FINGERPRINT)).toBe(false)
     expect(store.failure(FINGERPRINT)?.unavailable).toEqual(SIGNED_OUT)
+  })
+})
+
+describe('a probe that lists models but finds the account signed out', () => {
+  it('keeps the list for the picker and the reason beside it', async () => {
+    const { store, probed, service } = rig(async () => ({
+      ...listing('gpt-gateway', 'probe'),
+      unavailable: SIGNED_OUT
+    }))
+    await probed()
+    expect(store.get(FINGERPRINT)?.models.map((model) => model.id)).toEqual(['gpt-gateway'])
+    expect(await service.read({ agent: 'codex' })).toMatchObject({
+      origin: 'probe',
+      models: [{ id: 'gpt-gateway' }],
+      unavailable: SIGNED_OUT
+    })
+  })
+})
+
+describe('a chat that starts under the account', () => {
+  it('makes a held reason due, so the next read re-probes instead of trusting it', async () => {
+    const { store, probe, probed, answerWith, service } = rig()
+    await probed()
+    service.providerStarted({
+      provider: 'codex',
+      accountHome: { variable: 'CODEX_HOME', path: HOME },
+      location: {
+        executionHostId: LOCAL_EXECUTION_HOST_ID,
+        wslDistro: null,
+        workspaceId: 'workspace',
+        workspaceKind: 'folder'
+      }
+    })
+    expect(store.hasActiveFailure(FINGERPRINT)).toBe(false)
+    answerWith(async () => listing('gpt-live', 'probe'))
+    expect(await service.read({ agent: 'codex', waitForListing: true })).not.toHaveProperty(
+      'unavailable'
+    )
+    expect(probe).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('an expired failure that carries no reason', () => {
+  it('is dropped, so failures cannot pile up', () => {
+    const { store, pastTtl } = rig()
+    store.recordFailure(FINGERPRINT, 'listing timed out', 'codex')
+    pastTtl()
+    expect(store.hasActiveFailure(FINGERPRINT)).toBe(false)
+    expect(store.failure(FINGERPRINT)).toBeNull()
+    store.recordFailure(FINGERPRINT, 'listing timed out', 'codex')
+    expireAgentModelCatalogFailuresForSettings(store, { activeCodexManagedAccountId: 'other' })
+    expect(store.failure(FINGERPRINT)).toBeNull()
   })
 })
 

@@ -75,7 +75,7 @@ describe('structuredAgentSessionStartFailure', () => {
     ).toEqual({ kind: 'startFailed' })
   })
 
-  it("says a CLI that was never found isn't installed, with the disabled Send's own sentence", () => {
+  it("words a CLI that was never found as the chat's notice does, with the step to take", () => {
     const missing = new AgentSessionAcquisitionExitProvenError(
       withObservedProviderExit(
         withMissingProviderExecutable(new Error('claude stream-json exited (code 127)'))
@@ -83,7 +83,8 @@ describe('structuredAgentSessionStartFailure', () => {
     )
     expect(structuredAgentSessionStartFailure({ error: missing }, { agentName: 'Claude' })).toEqual(
       {
-        reason: "Claude isn't installed on the computer running this chat.",
+        reason:
+          "Claude wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents.",
         rejection: { kind: 'cliMissing' }
       }
     )
@@ -92,7 +93,9 @@ describe('structuredAgentSessionStartFailure', () => {
         { error: missing },
         { agentName: 'Codex', command: 'compact' }
       ).reason
-    ).toBe("Codex isn't installed on the computer running this chat. Run /compact again.")
+    ).toBe(
+      "Codex wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents. Run /compact again."
+    )
   })
 
   it('keeps a start refusal the adapter typed', () => {

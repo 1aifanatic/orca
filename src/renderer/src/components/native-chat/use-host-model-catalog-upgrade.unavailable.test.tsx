@@ -41,21 +41,25 @@ const mutate = vi.fn(async () => null) as unknown as StructuredAgentSessionMutat
 let sessionId = ''
 let sessionCount = 0
 
+const NO_TURN: { turnId: string | null } = { turnId: null }
+
 function renderOptions() {
-  return renderHook(() =>
-    useStructuredAgentSessionOptions({
-      agent: 'codex',
-      sessionId,
-      target: LOCAL_TARGET,
-      transportEnabled: false,
-      isVisible: true,
-      providerVisible: false,
-      fence: null,
-      turnId: null,
-      unloadedTurnRevisions: undefined,
-      mutate,
-      launch: { kind: 'new', seedOptions: { model: 'gpt-5.5' }, heldOptions: {} }
-    })
+  return renderHook(
+    ({ turnId }: { turnId: string | null }) =>
+      useStructuredAgentSessionOptions({
+        agent: 'codex',
+        sessionId,
+        target: LOCAL_TARGET,
+        transportEnabled: false,
+        isVisible: true,
+        providerVisible: false,
+        fence: null,
+        turnId,
+        unloadedTurnRevisions: undefined,
+        mutate,
+        launch: { kind: 'new', seedOptions: { model: 'gpt-5.5' }, heldOptions: {} }
+      }),
+    { initialProps: NO_TURN }
   )
 }
 
@@ -122,6 +126,22 @@ describe("a chat's sign-in verdict", () => {
     expect(result.current.unavailable).toEqual(SIGNED_OUT)
     await reads.answer(2, HOST_CATALOG)
     expect(result.current.unavailable).toBeNull()
+  })
+
+  it('reads again when a turn starts while a verdict is said: the start made the host re-check', async () => {
+    const reads = catalogReads()
+    const { rerender } = renderOptions()
+    await reads.answer(0, { ...HOST_CATALOG, unavailable: SIGNED_OUT })
+    await act(async () => rerender({ turnId: 'turn-1' }))
+    expect(reads.count()).toBe(2)
+  })
+
+  it('a turn starting with no verdict reads nothing more', async () => {
+    const reads = catalogReads()
+    const { rerender } = renderOptions()
+    await reads.answer(0, HOST_CATALOG)
+    await act(async () => rerender({ turnId: 'turn-1' }))
+    expect(reads.count()).toBe(1)
   })
 
   it('reads again on window focus only while a verdict is said', async () => {

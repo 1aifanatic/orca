@@ -35,6 +35,7 @@ import {
   structuredAgentSessionConversationFence
 } from './structured-agent-session-provider-child'
 import type { DeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
+import { noteStructuredAgentSessionProviderStarted } from './structured-agent-session-provider-started'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   addAgentSessionCreatePhaseAttributes,
@@ -259,6 +260,9 @@ async function runAttachUnderAbort(
       context.runtimeState.adoptEventSink(sessionId, candidate.sink)
       attempt.committed = candidate.sink === attemptSink
       indexProviderChild(conversation, candidate.child)
+      if (candidate.child.phase === 'ready') {
+        noteStructuredAgentSessionProviderStarted(context.deps, sessionId)
+      }
       context.publishStatus?.(sessionId)
     }
     return stampFailedCreateOwnerVerdict(context.deps.store, callerKey, params.envelope, attached)

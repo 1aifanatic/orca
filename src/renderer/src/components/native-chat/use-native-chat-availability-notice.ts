@@ -3,17 +3,34 @@ import {
   agentSessionSignInCopyId,
   type AgentSessionUnavailable
 } from '../../../../shared/agent-session-availability'
+import { readAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { agentSessionRefusalReasonWords } from '../../../../shared/agent-session-refusal-reason-words'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
+import { isStructuredAgentSessionStartFailureRow } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import type { NativeChatComposerNotice } from './native-chat-composer-notice'
-import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
+
+/** Why the chat's latest start failed, unless a turn has run since. */
+function failedStartReason(items: readonly AgentJournalRenderItem[] | undefined): string | null {
+  let reason: string | null = null
+  for (const item of items ?? []) {
+    if (item.body.kind === 'turn') {
+      reason = null
+    } else if (
+      item.body.kind === 'status' &&
+      isStructuredAgentSessionStartFailureRow(item.itemId)
+    ) {
+      reason = readAgentSessionFailureFact(item.body.failure)?.kind ?? null
+    }
+  }
+  return reason
+}
 
 /** The host's verdict on why no chat can start here, as a notice that never holds Send: the
  *  verdict can be wrong while a send would work. Dismissed per verdict, so a changed or returning
- *  one shows again; left out while the chat's latest start failure already says the same reason. */
+ *  one shows again; left out while the chat's failed start already says the same reason. */
 export function useNativeChatAvailabilityNotice(input: {
   unavailable: AgentSessionUnavailable | null | undefined
   agent: AgentType
@@ -27,32 +44,31 @@ export function useNativeChatAvailabilityNotice(input: {
     : unavailable.reason === 'notSignedIn'
       ? `notSignedIn:${unavailable.account ?? ''}`
       : unavailable.reason
-  const [dismissed, setDismissed] = useState<string | null>(null)
-  if (key === null && dismissed !== null) {
-    // A cleared verdict ends its dismissal, so the same one coming back shows again.
-    setDismissed(null)
+  const [dismissal, setDismissal] = useState({ key, dismissed: false })
+  if (dismissal.key !== key) {
+    setDismissal({ key, dismissed: false })
   }
-  const lastRowReason = useMemo(
-    () =>
-      journalItems ? structuredAgentSessionStartFailureFacts(journalItems).at(-1)?.kind : null,
-    [journalItems]
-  )
-  if (!unavailable || key === dismissed) {
+  const rowReason = useMemo(() => failedStartReason(journalItems), [journalItems])
+  // Only Codex's check reports a sign-in; Claude's start refusal is its only one.
+  if (
+    !unavailable ||
+    (dismissal.key === key && dismissal.dismissed) ||
+    (unavailable.reason === 'notSignedIn' && input.agent !== 'codex')
+  ) {
     return null
   }
   const launchWords = input.launchFailure && agentSessionRefusalReasonWords(input.launchFailure)
   const launchReason = launchWords && 'fact' in launchWords ? launchWords.fact : null
-  if (launchReason === unavailable.reason || lastRowReason === unavailable.reason) {
+  if (launchReason === unavailable.reason || rowReason === unavailable.reason) {
     return null
   }
-  const provider = input.agent === 'codex' ? 'codex' : 'claude'
   return {
     key: 'availability',
     kind: 'error',
     text:
       unavailable.reason === 'cliMissing'
         ? sayAgentSessionFailureTranslated('cliMissing', { agent: input.agentLabel })
-        : sayAgentSessionFailureTranslated(agentSessionSignInCopyId(provider, unavailable.account)),
-    onDismiss: () => setDismissed(key)
+        : sayAgentSessionFailureTranslated(agentSessionSignInCopyId('codex', unavailable.account)),
+    onDismiss: () => setDismissal({ key, dismissed: true })
   }
 }

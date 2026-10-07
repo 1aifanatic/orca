@@ -37,8 +37,9 @@ import {
  * read waits for it — one per chat, joined by every later run and remount.
  * Reports that wait, and why the host's latest answer says no chat can start
  * (kept until the next answer replaces it; a failed read is unknown). Only
- * while it says so, the window gaining focus reads again: the host pushes no
- * change, and the fix (signing in, installing) happens elsewhere.
+ * while it says so, the window gaining focus or a turn starting or ending
+ * reads again: the host pushes no change, the fix (signing in, installing)
+ * happens elsewhere, and a started chat makes the host re-check.
  */
 export function useHostModelCatalogUpgrade(args: {
   agent: AgentType
@@ -52,6 +53,8 @@ export function useHostModelCatalogUpgrade(args: {
   /** Where the launch runs: the host names no default its config could replace. */
   worktree?: string
   fence: number | null
+  /** The chat's running turn: one running proves its start, which the host re-checks against. */
+  turnId?: string | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
@@ -81,6 +84,7 @@ export function useHostModelCatalogUpgrade(args: {
   const [rereads, setRereads] = useState(0)
   const recheck = useCallback(() => setRereads((count) => count + 1), [])
   const said = unavailable !== null
+  const turnWhileSaid = said ? (args.turnId ?? null) : null
   useEffect(() => {
     if (!said) {
       return
@@ -157,6 +161,7 @@ export function useHostModelCatalogUpgrade(args: {
     optionCatalog,
     rereads,
     sessionId,
+    turnWhileSaid,
     target,
     updateOptionState,
     waitKey,

@@ -32,7 +32,8 @@ import { NativeChatStructuredSession } from './NativeChatStructuredSession'
 // The host's verdict is a notice that never holds Send: it can be wrong while a send would work.
 
 const CODEX_SIGNED_OUT = "Codex isn't signed in. Run `codex login`."
-const CODEX_MISSING = "Codex isn't installed on the computer running this chat."
+const CODEX_MISSING =
+  "Codex wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents."
 
 afterEach(() => {
   cleanup()
@@ -67,6 +68,21 @@ function startFailureRow(fact: AgentSessionFailureFact): AgentJournalRenderItem 
   }
 }
 
+function turnRow(): AgentJournalRenderItem {
+  return {
+    itemId: agentJournalItemKey({
+      provider: 'codex',
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      ordinal: 0
+    }),
+    revision: 1,
+    sequence: 2,
+    observedAt: 2,
+    body: { kind: 'turn', turnId: 'turn-1', state: 'completed', startedAt: 2, completedAt: 3 }
+  }
+}
+
 it('says a signed-out Codex above the composer and still sends', () => {
   mocks.mode = 'outbox'
   mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
@@ -97,6 +113,11 @@ it('stays dismissed for the same verdict, and shows again when it changes or com
   mocks.unavailable = { reason: 'cliMissing' }
   view.rerender(pane())
   expect(screen.getByText(CODEX_MISSING)).toBeTruthy()
+  // Changed, so the earlier dismissal is spent: the first verdict coming back shows again.
+  mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
+  view.rerender(pane())
+  expect(screen.getByText(CODEX_SIGNED_OUT)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
 
   mocks.unavailable = null
   view.rerender(pane())
@@ -107,10 +128,20 @@ it('stays dismissed for the same verdict, and shows again when it changes or com
   expect(screen.getByText(CODEX_SIGNED_OUT)).toBeTruthy()
 })
 
+it('says nothing before sending about a signed-out Claude: its start refusal says it', () => {
+  mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
+  render(pane('claude'))
+  expect(screen.queryByText(/signed in/)).toBeNull()
+})
+
 it("names a missing Claude CLI in the chat's agent", () => {
   mocks.unavailable = { reason: 'cliMissing' }
   render(pane('claude'))
-  expect(screen.getByText("Claude isn't installed on the computer running this chat.")).toBeTruthy()
+  expect(
+    screen.getByText(
+      "Claude wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents."
+    )
+  ).toBeTruthy()
 })
 
 it('says a reason once when the failed start already says it, keeping its Retry', () => {
@@ -137,4 +168,11 @@ it("leaves the reason to the transcript's start-failure row, but not a different
   mocks.unavailable = { reason: 'cliMissing' }
   view.rerender(pane())
   expect(screen.getByText(CODEX_MISSING)).toBeTruthy()
+})
+
+it('ignores a failed start that a turn has run since', () => {
+  mocks.journalItems = [startFailureRow({ kind: 'notSignedIn' }), turnRow()]
+  mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
+  render(pane())
+  expect(screen.getByText(CODEX_SIGNED_OUT)).toBeTruthy()
 })

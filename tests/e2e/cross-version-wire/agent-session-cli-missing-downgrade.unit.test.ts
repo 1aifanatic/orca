@@ -10,13 +10,13 @@ const BASELINE_REF = 'v1.4.218'
 type OldStatusBlock = (body: Record<string, unknown>) => { text: string; failure?: unknown }
 
 // Loads a real old build, including cold extraction and transforms.
-test("an older client shows this host's sentence for a start whose CLI is not installed", async () => {
+test("an older client shows this host's sentence for a start whose CLI was not found", async () => {
   const words = agentSessionFailureWords(agentSessionFailureFact('cliMissing'), {
     agentName: 'Codex',
     surface: 'row'
   })
   expect(words).toEqual({
-    text: "Codex isn't installed on the computer running this chat.",
+    text: "Codex wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents.",
     failure: { kind: 'cliMissing' }
   })
 

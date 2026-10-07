@@ -4,19 +4,23 @@ import type {
   AgentSessionModelOption
 } from '../../../shared/agent-session-wire'
 import type { AgentModelCatalogPersistence } from './agent-model-catalog-persistence'
-import { AgentModelCatalogUnavailableError } from './agent-model-catalog-unavailable'
+import {
+  AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
+  AgentModelCatalogFailures,
+  type AgentModelCatalogFailure
+} from './agent-model-catalog-failures'
+
+export { AGENT_MODEL_CATALOG_FAILURE_TTL_MS, type AgentModelCatalogFailure }
 
 // The execution host's one model catalog per (agent, launch fingerprint):
 // served immediately at any age, refreshed in the background when old, and
 // written through by every successful listing a live session already performs.
 // Success-only: a failure, timeout or empty list is never stored as a catalog
 // and never persisted — it is held separately under a short TTL so a burst of
-// picker opens does not hammer a dead binary, then dies on its own. A probe failure may also say
-// why no chat can start under the account (not signed in, no CLI); only a later probe answers
-// that again, so a chat's own listing never replaces it.
+// picker opens does not hammer a dead binary, then dies on its own (see
+// `AgentModelCatalogFailures`, which also holds why no chat can start under the account).
 
 export const AGENT_MODEL_CATALOG_FRESH_MS = 10 * 60_000
-export const AGENT_MODEL_CATALOG_FAILURE_TTL_MS = 30_000
 export const AGENT_MODEL_CATALOG_PICKER_WAIT_MS = 30_000
 export const AGENT_MODEL_CATALOG_MAX_ENTRIES = 256
 
@@ -36,20 +40,14 @@ export type AgentModelCatalogSuccess = {
   fastModeSupport?: AgentSessionFastModeSupport
   fastModeTierByModel: ReadonlyMap<string, string>
   origin: 'live-session' | 'probe'
+  /** A probe that listed models but also found no chat can start (a signed-out Codex): both kept. */
+  unavailable?: AgentSessionUnavailable
 }
 
 export type AgentModelCatalogProbe = (accountHomePath: string) => Promise<AgentModelCatalogSuccess>
 
 /** Who lists, by identity: a live session's per-spawn handle, or the session-less probe. */
 export type AgentModelCatalogLister = AgentModelCatalogSessionAccess | AgentModelCatalogProbe
-
-export type AgentModelCatalogFailure = {
-  /** Set by the store's own refreshes; the fingerprint is a hash, so expiry by agent reads it. */
-  agent?: string
-  detail: string
-  failedAt: number
-  unavailable?: AgentSessionUnavailable
-}
 
 type InFlightListings = Map<AgentModelCatalogLister, Promise<AgentModelCatalogEntry | null>>
 
@@ -93,7 +91,7 @@ function listingKey(entry: AgentModelCatalogEntry): string {
 
 export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
-  private readonly failures = new Map<string, AgentModelCatalogFailure>()
+  private readonly failures: AgentModelCatalogFailures
   private readonly refreshes = new Map<string, InFlightListings>()
   private readonly listingWaiters = new Map<string, Set<() => void>>()
   private readonly latestWrittenOrder = new Map<string, number>()
@@ -103,6 +101,7 @@ export class AgentModelCatalogStore {
 
   constructor(options?: { now?: () => number }) {
     this.now = options?.now ?? Date.now
+    this.failures = new AgentModelCatalogFailures(this.now)
   }
 
   /** Hydrates last-good entries from disk. Anything this run already listed wins. */
@@ -141,33 +140,20 @@ export class AgentModelCatalogStore {
       : null
   }
 
-  /** Inside its TTL. An expired failure stays readable until the next listing replaces it, so a
-   *  read can still serve its reason while the probe that re-derives it runs. */
   hasActiveFailure(fingerprint: string): boolean {
-    const failure = this.failures.get(fingerprint)
-    return (
-      failure !== undefined && this.now() - failure.failedAt < AGENT_MODEL_CATALOG_FAILURE_TTL_MS
-    )
+    return this.failures.isActive(fingerprint)
   }
 
   failure(fingerprint: string): AgentModelCatalogFailure | null {
-    return this.failures.get(fingerprint) ?? null
+    return this.failures.get(fingerprint)
   }
 
-  /** The account behind this agent's catalogs changed: every held failure is due for a re-probe. */
   expireFailures(agent: string): void {
-    for (const failure of this.failures.values()) {
-      if (failure.agent === agent) {
-        failure.failedAt = this.now() - AGENT_MODEL_CATALOG_FAILURE_TTL_MS
-      }
-    }
+    this.failures.expireAgent(agent)
   }
 
-  /** Only the probe answers whether the account can start a chat, so only it clears that answer. */
-  private clearFailure(fingerprint: string, origin: AgentModelCatalogEntry['origin']): void {
-    if (origin === 'probe' || !this.failures.get(fingerprint)?.unavailable) {
-      this.failures.delete(fingerprint)
-    }
+  expireFailure(fingerprint: string): void {
+    this.failures.expire(fingerprint)
   }
 
   recordSuccess(
@@ -217,7 +203,7 @@ export class AgentModelCatalogStore {
     if (this.refreshes.has(fingerprint)) {
       this.latestWrittenOrder.set(fingerprint, order)
     }
-    this.clearFailure(fingerprint, success.origin)
+    this.failures.listed(fingerprint, agent, success.origin, success.unavailable)
     this.evictOverCap()
     // Live sessions re-list every turn; an unchanged listing only refreshes the in-memory age.
     if (!previous || listingKey(previous) !== listingKey(entry)) {
@@ -226,13 +212,8 @@ export class AgentModelCatalogStore {
     return entry
   }
 
-  /** A chat's own listing failed. That says nothing about sign-in or the CLI, so a reason the
-   *  probe found stands. */
   recordFailure(fingerprint: string, detail: string, agent?: string): void {
-    if (this.failures.get(fingerprint)?.unavailable) {
-      return
-    }
-    this.failures.set(fingerprint, { ...(agent ? { agent } : {}), detail, failedAt: this.now() })
+    this.failures.chatFailed(fingerprint, detail, agent)
   }
 
   /** Joins an in-flight refresh by the same lister rather than starting a second. Never
@@ -264,7 +245,7 @@ export class AgentModelCatalogStore {
         const superseded =
           (this.latestWrittenOrder.get(fingerprint) ?? 0) > order && this.entries.has(fingerprint)
         if (superseded && success.origin === 'probe') {
-          this.failures.delete(fingerprint)
+          this.failures.listed(fingerprint, agent, success.origin, success.unavailable)
         }
         const entry = superseded
           ? this.entryFromSuccess(fingerprint, agent, success)
@@ -274,20 +255,15 @@ export class AgentModelCatalogStore {
       },
       (error: unknown) => {
         settle()
-        const detail = error instanceof Error ? error.message : String(error)
         // Probes are functions; a live session lists through its access object.
         if (typeof lister === 'function') {
-          // Any probe answer replaces the last, so a probe that keeps timing out holds no reason.
-          this.failures.set(fingerprint, {
-            agent,
-            detail,
-            failedAt: this.now(),
-            ...(error instanceof AgentModelCatalogUnavailableError
-              ? { unavailable: error.unavailable }
-              : {})
-          })
+          this.failures.probeFailed(fingerprint, agent, error)
         } else {
-          this.recordFailure(fingerprint, detail, agent)
+          this.recordFailure(
+            fingerprint,
+            error instanceof Error ? error.message : String(error),
+            agent
+          )
         }
         return null
       }
