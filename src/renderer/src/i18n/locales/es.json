@@ -3329,6 +3329,14 @@
           "TerminalQuickCommandsSubmenu": {
             "3ccc7981bb": "Anfitrión no disponible",
             "54f29b7c0d": "Cargando host…"
+          },
+          "AgentLaunchPaneNotice": {
+            "commandNotFound": "Su comando no se encontró en este equipo.",
+            "copyPrompt": "Copiar prompt",
+            "exitedDuringStart": "Se cerró mientras se iniciaba.",
+            "notStarted": "El agente no pudo iniciarse.",
+            "unconfirmed": "No se pudo confirmar que el agente se iniciara.",
+            "workspaceGone": "Su espacio de trabajo ya no está disponible."
           }
         }
       },
@@ -7197,7 +7205,7 @@
             "shellEnvToggleLabel": "Alternar el uso del entorno de tu shell",
             "resumeCopy": "Cuando Orca se cierra o instala una actualización, los chats que estaban trabajando se reanudan automáticamente al volver a abrir Orca.",
             "structuredTitle": "Utilice el chat nativo estructurado actualizado",
-            "structuredCopy": "Abra nuevos agentes de Codex y Claude como chats estructurados. Si está desactivado, los abre en el chat respaldado por la terminal. Los chats que ya existen permanecen como están.",
+            "structuredCopy": "Abra nuevos agentes como chats estructurados cuando sea posible. Si está desactivado, los abre en el chat respaldado por la terminal. Los chats que ya existen permanecen como están.",
             "structuredScope": "Se ejecuta en esta máquina y en servidores Orca emparejados que ejecutan una versión que lo admita; los servidores más antiguos mantienen el chat de terminal. Los hosts WSL y SSH continúan usando el chat de terminal.",
             "structuredToggleLabel": "Alternar chat nativo estructurado actualizado",
             "resumeTitle": "Reanudar los chats de trabajo automáticamente después de reiniciar",
@@ -17571,6 +17579,8 @@
         "accountSwitchInProgress": "Hay un cambio de cuenta de Claude en curso. Vuelva a intentarlo cuando termine.",
         "managedAccountUnsupported": "Mientras haya una cuenta de Claude agregada en WSL, los chats de Claude necesitan una cuenta de Claude de Windows.",
         "launchFolderMissing": "La carpeta en la que se ejecutaba este chat ya no existe. Restáurela para continuar este chat.",
+        "historyInOtherAccount": "El historial de este chat está en otra cuenta de Claude. Vuelva a esa cuenta para continuarlo.",
+        "agentCommandNotRunnable": "{{agent}}: el Comando en Ajustes → Agentes debe ser la ruta o el nombre de un programa que Orca pueda encontrar, sin argumentos ni variables. Cámbielo o restablézcalo con Reiniciar.",
         "chooseClaudeAccount": "Elija o agregue una en la configuración de Cuentas de Claude.",
         "chooseClaudeAccountThenRunCommand": "Elija o agregue una en la configuración de Cuentas de Claude y vuelva a ejecutar /{{command}}.",
         "chooseClaudeAccountThenSend": "Elija o agregue una en la configuración de Cuentas de Claude y vuelva a enviar su mensaje.",
@@ -17621,7 +17631,8 @@
         "providerRetryNumber": "Reintento {{attempt}}.",
         "providerRetryNumberOf": "Reintento {{attempt}} de {{maxRetries}}.",
         "providerRetryLastError": "Último error: {{detail}}.",
-        "previousExitUnverifiable": "No se pudo detener la ejecución anterior de {{agent}}."
+        "previousExitUnverifiable": "No se pudo detener la ejecución anterior de {{agent}}.",
+        "sessionNotRestored": "{{agent}} no pudo reabrir su sesión anterior, así que este chat continúa en una nueva. {{agent}} no recuerda los mensajes anteriores."
       },
       "writeNotice": {
         "notDoneReadHistory": "No se pudo cargar el historial de este chat.",
@@ -17686,8 +17697,10 @@
         "send": "Enviar",
         "noPty": "No hay terminal activa: vuelva a alternar para volver a conectarse.",
         "locked": "La entrada está retenida por otro dispositivo.",
-        "placeholder": "Enviar un mensaje…",
-        "mentionHint": "Archivo de referencia:",
+        "placeholder": "Pregunta lo que quieras, @ para mencionar archivos, / para comandos",
+        "loadingFiles": "Cargando archivos...",
+        "noFiles": "No hay archivos coincidentes",
+        "filesLoadFailed": "No se pudieron cargar los archivos",
         "attach": "Adjuntar archivo",
         "startDictation": "Iniciar dictado",
         "stopDictation": "Detener dictado",
@@ -17717,6 +17730,8 @@
         "options": "Opciones",
         "sessionOptions": "Opciones de sesión",
         "chooseInAgentPicker": "Elegir en el selector del agente…",
+        "searchModels": "Buscar modelos…",
+        "noModelsMatch": "Ningún modelo coincide con la búsqueda.",
         "toggleOption": "Alternar {{value0}}",
         "pillAccessibleName": "{{value0}} {{value1}}",
         "sentNotConfirmed": "Enviado al agente — sin confirmar",
@@ -17765,7 +17780,9 @@
         "permissionAuto": "Aprobar por mí",
         "permissionAutoDescription": "Solo pregunta por acciones detectadas como potencialmente inseguras",
         "permissionBypass": "Acceso total",
-        "permissionBypassDescription": "Nunca pregunta; acceso sin restricciones a tu computadora"
+        "permissionBypassDescription": "Nunca pregunta; acceso sin restricciones a tu computadora",
+        "pasteFailed": "Error al pegar.",
+        "commandAttachmentsUnsupported": "Quita los archivos adjuntos antes de usar un comando de la sesión de chat."
       },
       "tool": {
         "running": "Ejecutando…",
@@ -17890,7 +17907,6 @@
           "title": "No se pudo cargar la conversación",
           "subtitle": "No se pudo leer la transcripción. Vuelva a la terminal para seguir trabajando."
         },
-        "reconnecting": "Reconectando con este chat…",
         "pairHost": "Empareje un host para ver el historial de chat del agente.",
         "notAgent": {
           "title": "No hay conversación aquí",
@@ -17991,10 +18007,15 @@
         "pausedKept": "Aún no se ha enviado. Pulsa Enviar para enviarlo.",
         "paused": "En pausa",
         "queuePausedStopped": "Cola en pausa porque interrumpiste",
-        "queuePausedRestarted": "Cola en pausa porque Orca se reinició",
         "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar",
+        "sendConfirmTitle": "¿Enviar mensaje?",
+        "sendConfirmBody": "Estás a punto de enviar un mensaje. ¿Quieres borrar los {{count}} mensajes que había en cola?",
+        "sendConfirmBody_one": "Estás a punto de enviar un mensaje. ¿Quieres borrar {{count}} mensaje que había en cola?",
+        "sendConfirmBody_other": "Estás a punto de enviar un mensaje. ¿Quieres borrar los {{count}} mensajes que había en cola?",
+        "sendConfirmClear": "Vaciar cola",
+        "sendConfirmSend": "Enviar mensaje",
         "from": "De {{names}}"
       },
       "thought": "Pensó",
@@ -18080,7 +18101,9 @@
         "plan": "Plan",
         "historyRepaired": "No se pudo cargar parte del historial de este chat.",
         "historyItemTooLarge": "Esta parte del chat era demasiado grande para mostrarla.",
-        "stoppedBeforeStart": "Detenido antes de que el agente empezara"
+        "stoppedBeforeStart": "Detenido antes de que el agente empezara",
+        "dismiss": "Descartar",
+        "copyError": "Copiar error"
       },
       "providerFrame": {
         "byteLength": "{{value0}} bytes"
@@ -18131,7 +18154,12 @@
       "structuredSessionHostDeclined": "Se abrió {{value0}} en una terminal",
       "structuredSessionHostDeclinedDescription": "Este servidor no puede ejecutar un chat de {{value0}} en este espacio de trabajo.",
       "structuredSessionHostUnreachable": "No se pudo contactar con {{value0}}",
-      "structuredSessionHostUnreachableDescription": "Orca no abrió un chat de {{value0}}. Comprueba la conexión con el servidor y vuelve a intentarlo."
+      "structuredSessionHostUnreachableDescription": "Orca no abrió un chat de {{value0}}. Comprueba la conexión con el servidor y vuelve a intentarlo.",
+      "hostOutage": {
+        "offline": "{{hostName}} está sin conexión",
+        "reconnecting": "{{hostName}} se está reconectando…",
+        "reconnect": "Reconectar"
+      }
     },
     "tab": {
       "bar": {

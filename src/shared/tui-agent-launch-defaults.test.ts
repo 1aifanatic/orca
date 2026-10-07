@@ -7,10 +7,12 @@ import {
 } from './tui-agent-launch-defaults'
 import {
   classifyTypedAgentPermissions,
+  optionTokens,
   resolveAgentPermissionPosture
 } from './tui-agent-permission-args'
 import { liftTuiAgentBypassArgs, liftTuiAgentBypassEnv } from './tui-agent-bypass-lift'
 import { PERMISSION_AGENT_IDS, YOLO_TUI_AGENT_ARGS } from './tui-agent-permissions'
+import { isTuiAgent } from './tui-agent-config'
 import type { TuiAgent } from './tui-agent'
 
 const DARWIN = { platform: 'darwin' } as const
@@ -19,6 +21,37 @@ const CLAUDE_BYPASS = '--dangerously-skip-permissions'
 const CODEX_BYPASS = '--dangerously-bypass-approvals-and-sandbox'
 
 describe('resolveTuiAgentLaunchArgs', () => {
+  it.each([
+    ['claude', 'accept-edits', ['--permission-mode', 'acceptEdits']],
+    ['claude', 'auto', ['--permission-mode', 'auto']],
+    [
+      'codex',
+      'auto',
+      ['-a', 'on-request', '-s', 'workspace-write', '-c', 'approvals_reviewer=auto_review']
+    ]
+  ] as const)('emits and recognizes the %s %s permission sequence', (agent, mode, tokens) => {
+    for (const target of [
+      { platform: 'darwin', shell: 'posix' },
+      { platform: 'win32', shell: 'powershell' },
+      { platform: 'win32', shell: 'cmd' }
+    ] as const) {
+      const args = resolveTuiAgentLaunchArgs(
+        agent,
+        { agentPermissionMode: mode },
+        target,
+        '--model extra'
+      )
+      expect(optionTokens(args, target.shell)).toMatchObject({
+        ok: true,
+        tokens: [...tokens, '--model', 'extra']
+      })
+      expect(classifyTypedAgentPermissions(agent, { args }, target.shell).kind).toBe('other')
+      const settings = { agentPermissionMode: 'bypass', agentDefaultArgs: { [agent]: args } }
+      expect(resolveTuiAgentLaunchArgs(agent, settings, target)).toBe(args)
+      expect(resolveAgentPermissionPosture(agent, settings, target).effectiveBypass).toBe(false)
+    }
+  })
+
   it('puts the bypass flag in front of the extra arguments in Yolo', () => {
     expect(
       resolveTuiAgentLaunchArgs('claude', { agentDefaultArgs: { claude: '--model opus' } }, DARWIN)
@@ -384,6 +417,22 @@ describe('liftTuiAgentBypassEnv', () => {
 // so what Settings shows can't disagree with what the agent launches with.
 describe('classifyTypedAgentPermissions', () => {
   it.each([
+    ['grok', '--permission-mode bypassPermissions', true],
+    ['grok', '--model grok-4.7 --permission-mode bypassPermissions', true],
+    ['grok', '--permission-mode default', false],
+    ['grok', '--permission-mode', false],
+    ['grok', '--permission-mode "bypassPermissions now"', false],
+    ['grok', '-- --permission-mode bypassPermissions', false],
+    ['devin', '--permission-mode bypass --respect-workspace-trust false', true],
+    // The trust switch is a companion; bypass alone still sets Devin's permissions.
+    ['devin', '--permission-mode bypass', true]
+  ] as const)('reads the %s permission sequence %j as bypass=%s', (agent, args, bypass) => {
+    for (const shell of ['posix', 'powershell', 'cmd'] as const) {
+      expect(classifyTypedAgentPermissions(agent, { args }, shell).kind === 'bypass').toBe(bypass)
+    }
+  })
+
+  it.each([
     ['claude', '--permission-mode bypassPermissions', 'bypass'],
     ['claude', '--permission-mode=bypassPermissions', 'bypass'],
     ['claude', `${CLAUDE_BYPASS} --permission-mode bypassPermissions`, 'bypass'],
@@ -464,6 +513,32 @@ describe('classifyTypedAgentPermissions', () => {
 })
 
 describe('resolveAgentPermissionPosture', () => {
+  it.each(Object.keys(YOLO_TUI_AGENT_ARGS).filter(isTuiAgent))(
+    "reads the toggle's own Yolo and Manual writes for %s",
+    (agent) => {
+      for (const platform of ['darwin', 'win32'] as const) {
+        for (const agentPermissionMode of ['bypass', 'ask'] as const) {
+          const settings = { agentPermissionMode }
+          const target = { platform }
+          const bypass = agentPermissionMode === 'bypass'
+          expect(resolveAgentPermissionPosture(agent, settings, target).effectiveBypass).toBe(
+            bypass
+          )
+          const args = resolveTuiAgentLaunchArgs(agent, settings, target)
+          expect(
+            classifyTypedAgentPermissions(
+              agent,
+              { args },
+              platform === 'win32' ? 'powershell' : 'posix'
+            ).kind
+          ).toBe(bypass ? 'bypass' : 'none')
+          const lifted = liftTuiAgentBypassArgs(agent, args, target)
+          expect(lifted).toEqual({ bypass, extraArgs: '' })
+        }
+      }
+    }
+  )
+
   it('reports the mode and no argument options for a plain profile', () => {
     expect(resolveAgentPermissionPosture('claude', {}, DARWIN)).toEqual({
       mode: 'bypass',

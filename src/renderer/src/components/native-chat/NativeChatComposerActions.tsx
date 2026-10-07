@@ -1,4 +1,4 @@
-import { ArrowUp, CircleAlert, Mic, Plus, Square } from 'lucide-react'
+import { ArrowUp, CircleAlert, Mic, Play, Plus, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
@@ -13,11 +13,14 @@ import { NativeChatComposerGoalChip } from './NativeChatComposerGoalChip'
 import { NativeChatContextUsageRing } from './NativeChatContextUsageRing'
 import type { NativeChatContextUsageSummary } from './native-chat-context-usage-summary'
 import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
+import type { NativeChatComposerPrimaryAction } from './native-chat-composer-primary-action'
 
 export type NativeChatComposerActionsProps = {
   attachDisabled: boolean
   dictationDisabled: boolean
   sendDisabled: boolean
+  /** What the primary button does (`nativeChatComposerPrimaryAction`). */
+  primaryAction: NativeChatComposerPrimaryAction
   /** Shown on the disabled send button: what the user can do to send. */
   sendBlockedReason?: string | null
   /** Storage refused this draft; it is held in memory only. */
@@ -33,6 +36,8 @@ export type NativeChatComposerActionsProps = {
   onDictationHoldEnd: () => void
   onSend: () => void
   onStop?: () => void
+  /** Releases the held queue when the primary action is Resume. */
+  onResume?: () => void
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
   sessionOptionsPickerRequest?: NativeChatOptionPickerRequest | null
@@ -48,6 +53,7 @@ export function NativeChatComposerActions({
   attachDisabled,
   dictationDisabled,
   sendDisabled,
+  primaryAction,
   sendBlockedReason,
   draftNotSaved,
   isWorking,
@@ -60,6 +66,7 @@ export function NativeChatComposerActions({
   onDictationHoldEnd,
   onSend,
   onStop,
+  onResume,
   sessionOptionsSurface,
   sessionOptionsSnapshot,
   sessionOptionsPickerRequest,
@@ -67,14 +74,18 @@ export function NativeChatComposerActions({
   onExitGoalMode,
   contextUsage
 }: NativeChatComposerActionsProps): React.JSX.Element {
+  const stops = primaryAction === 'stop'
+  const resumes = primaryAction === 'resume'
   const handleCriticalAction = (event: React.MouseEvent<HTMLButtonElement>): void => {
     // A double-click commonly lands after the first send has started and the button has
     // changed to Stop; ignore the second click instead of cancelling the new turn.
     if (event.detail > 1) {
       return
     }
-    if (isWorking) {
+    if (stops) {
       onStop?.()
+    } else if (resumes) {
+      onResume?.()
     } else {
       onSend()
     }
@@ -82,25 +93,33 @@ export function NativeChatComposerActions({
   const dictationLabel = isDictating
     ? translate('components.native-chat.composer.stopDictation', 'Stop dictation')
     : translate('components.native-chat.composer.startDictation', 'Start dictation')
-  const sendReason = isWorking ? null : (sendBlockedReason ?? null)
+  const sendReason = stops || resumes ? null : (sendBlockedReason ?? null)
   const sendButton = (
     <Button
       type="button"
-      data-native-chat-critical-action={isWorking ? 'stop' : undefined}
+      data-native-chat-critical-action={stops ? 'stop' : undefined}
       aria-label={
-        isWorking
+        stops
           ? isStopping
             ? translate('components.native-chat.status.stopping', 'Stopping…')
             : translate('components.native-chat.stop', 'Stop the agent')
-          : (sendReason ?? translate('components.native-chat.composer.send', 'Send'))
+          : resumes
+            ? translate('components.native-chat.queuedMessages.resume', 'Resume')
+            : (sendReason ?? translate('components.native-chat.composer.send', 'Send'))
       }
       disabled={sendDisabled || (isWorking && isStopping)}
       onClick={handleCriticalAction}
-      variant={isWorking ? 'secondary' : 'default'}
+      variant={stops ? 'secondary' : 'default'}
       size="icon"
       className="size-8 rounded-full pointer-coarse:size-10"
     >
-      {isWorking ? <Square className="size-3.5 fill-current" /> : <ArrowUp className="size-4" />}
+      {stops ? (
+        <Square className="size-3.5 fill-current" />
+      ) : resumes ? (
+        <Play className="size-3.5 fill-current" />
+      ) : (
+        <ArrowUp className="size-4" />
+      )}
     </Button>
   )
 

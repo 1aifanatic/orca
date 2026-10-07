@@ -33,6 +33,9 @@ import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { buildWorktreeListingPage } from './worktree-listing-host-scope'
 import { structuredWorkerOwesWork } from './structured-worker-custody'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
+import { resolveAgentPermissionPosture } from '../../shared/tui-agent-permission-args'
+import { resolveLocalAgentLaunchTarget } from '../../shared/windows-terminal-shell'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
 import { agentChatPermissionModeForSettings } from '../native-chat/agent-chat-permission-mode-setting'
 import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude-structured-auth-policy'
@@ -177,7 +180,7 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           getAgentEnvResolvers: () => this.getCommitMessageAgentEnvironmentResolvers(),
           hasOpenDispatch: (record) =>
             structuredWorkerOwesWork(this.getOrchestrationDbIfAvailable?.() ?? null, record),
-          onNamed: (workspaceId, sessionId) =>
+          retitleOpenTab: (workspaceId, sessionId) =>
             this.refreshStructuredConversationTabTitle(workspaceId, sessionId)
         },
         logger
@@ -213,6 +216,19 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       // the one copy of this fact for a chat that has no mode of its own.
       resolveDefaultPermissionMode: (agent) =>
         agentChatPermissionModeForSettings(agent, this.requireStore().getSettings()),
+      resolveAgentFullAccess: (agent) => {
+        const settings = this.requireStore().getSettings()
+        return (
+          isTuiAgent(agent) &&
+          resolveAgentPermissionPosture(
+            agent,
+            settings,
+            resolveLocalAgentLaunchTarget(process.platform, settings.terminalWindowsShell)
+          ).effectiveBypass
+        )
+      },
+      resolveAgentLaunchEnv: (agent) =>
+        isTuiAgent(agent) ? resolveTuiAgentLaunchEnv(agent, this.requireStore().getSettings()) : {},
       // Same gate and same settings as agentSession.createSupport, re-read on every acquisition.
       getClaudeManagedAccountGateSettings: () => this.requireStore().getSettings(),
       resolveAgentAccountHome: (agent) => this.resolveStructuredAgentAccountHome(agent),
@@ -228,6 +244,8 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         )
       },
       ...(this.structuredAgentStatusSinkFn ? { statusSink: this.structuredAgentStatusSinkFn } : {}),
+      // A closed chat settles the Dispatch it was working, as a closed terminal does.
+      onSessionTabHidden: (sessionId) => this.onStructuredSessionTabHidden(sessionId),
       attentionDelivery: createStructuredAttentionMobileDelivery({
         readNotificationSettings: () => this.requireStore().getSettings().notifications,
         readWorkspaceLabels: (scope) =>

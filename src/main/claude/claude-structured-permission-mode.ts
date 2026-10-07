@@ -20,17 +20,15 @@ export function claudeSdkPermissionMode(mode: AgentChatPermissionMode): Permissi
   return CLAUDE_SDK_PERMISSION_MODES[mode]
 }
 
-/**
- * The chat mode as query-start options: only Full access changes the launch.
- *
- * The owned CLI flag preserves the user-installed binary contract. The SDK's typed bypass option
- * emits a newer allow flag that older Claude binaries reject before a structured session starts.
- * Every other mode is applied after start by the restore's `set_permission_mode`.
- */
+/** Starts in the chat's mode without a restore request or a newer bypass-allow flag. */
 export function claudeStructuredPermissionOptions(mode: AgentChatPermissionMode): {
+  permissionMode?: PermissionMode
   extraArgs?: Record<string, string | null>
 } {
-  return mode === 'bypass' ? { extraArgs: { 'dangerously-skip-permissions': null } } : {}
+  if (mode === 'bypass') {
+    return { extraArgs: { 'dangerously-skip-permissions': null } }
+  }
+  return mode === 'ask' ? {} : { permissionMode: claudeSdkPermissionMode(mode) }
 }
 
 /** The chat mode a Claude child runs and the one the chat now wants. */
