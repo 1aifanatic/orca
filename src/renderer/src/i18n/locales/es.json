@@ -17403,11 +17403,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "a5e7f14068": "Reintentar",
-            "1f772bb5d0": "La entrega del mensaje no está confirmada.",
-            "93ef441197": "El mensaje no se envió."
-          },
           "NativeChatLaunchRetry": {
             "retry": "Reintentar",
             "failed": "No se pudo iniciar el chat.",
@@ -17652,6 +17647,8 @@
         "cannotRunHere": "Orca no puede ejecutar este agente en un chat aquí.",
         "unreachable": "Orca no pudo comunicarse con el agente.",
         "recordFailed": "Orca no pudo guardar esto en el historial del chat.",
+        "attachmentExpired": "Este archivo adjunto caducó.",
+        "reattachFile": "Quítelo y vuelva a adjuntarlo.",
         "conversationCleared": "Esta conversación se borró.",
         "openCurrentConversation": "Abra la conversación actual para continuar.",
         "clearUnfinished": "El último /clear no terminó.",
@@ -17695,6 +17692,9 @@
         "stopDictation": "Detener dictado",
         "noSkills": "Sin habilidades coincidentes",
         "localAttachmentUnsupported": "Los archivos adjuntos locales no están disponibles para sesiones remotas.",
+        "attachFailed": "No se pudo adjuntar {{files}}.",
+        "attachFailedBecause": "No se pudo adjuntar {{files}}. {{reason}}",
+        "uploadingFile": "Subiendo {{name}}…",
         "removeAttachment": "Quitar archivo adjunto",
         "pastedImageLabel": "Imagen pegada",
         "copyImage": "Copiar imagen",
@@ -18529,6 +18529,13 @@
       "label": "Asignado",
       "automatic": "Automático",
       "assignToMe": "Asignármelo ({{name}})"
+    },
+    "markdown-callout": {
+      "note": "Nota",
+      "tip": "Consejo",
+      "important": "Importante",
+      "warning": "Advertencia",
+      "caution": "Precaución"
     }
   },
   "dashboardPopout": {
