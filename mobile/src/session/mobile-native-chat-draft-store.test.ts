@@ -69,4 +69,23 @@ describe('mobile native-chat draft store', () => {
     await mount('a')
     expect(state?.composerText).toBe('for a')
   })
+
+  it('lets an old send clear its unchanged scope after another tab was edited', async () => {
+    await mount('a')
+    act(() => state?.setComposerText('for a'))
+    const origin = state?.captureSendOrigin('for a')
+    const oldClear = state?.clearDraftForSend
+    act(() => renderer?.unmount())
+    await mount('b')
+    act(() => state?.setComposerText('for b'))
+    act(() => {
+      if (origin) {
+        oldClear?.(origin, 'for a')
+      }
+    })
+    expect(state?.composerText).toBe('for b')
+    act(() => renderer?.unmount())
+    await mount('a')
+    expect(state?.composerText).toBe('')
+  })
 })

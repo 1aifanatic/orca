@@ -1,12 +1,10 @@
-import { useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
+import { useSyncExternalStore, type SetStateAction } from 'react'
 import type { MobileNativeChatLaunchDraftSeed } from './use-mobile-native-chat-launch-draft-seed'
 
-// Why: composer drafts, keyed by scope (host + worktree + tab), live outside the
-// session screen so leaving it (Back to the workspace list) and returning keeps
-// what was typed. Desktop also keeps its drafts outside the composer.
-type Drafts = Record<string, string>
+// Text and its edit revision outlive the screen, including callbacks from an older mount.
+type Draft = { text: string; editGeneration: number }
 
-let drafts: Drafts = {}
+const drafts = new Map<string, Draft>()
 const listeners = new Set<() => void>()
 
 // Seeded launch-context text per scope; null marks a permanent decline so a
@@ -23,23 +21,54 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
-export const setMobileNativeChatDrafts: Dispatch<SetStateAction<Drafts>> = (update) => {
-  const next = typeof update === 'function' ? update(drafts) : update
-  if (next === drafts) {
+function writeDraft(draftKey: string, update: SetStateAction<string>, userEdit: boolean): void {
+  const current = drafts.get(draftKey)
+  const text = current?.text ?? ''
+  const next = typeof update === 'function' ? update(text) : update
+  if (next === text && !userEdit) {
     return
   }
-  drafts = next
+  drafts.set(draftKey, { text: next, editGeneration: (current?.editGeneration ?? 0) + 1 })
+  if (next === text) {
+    return
+  }
   for (const listener of listeners) {
     listener()
   }
 }
 
+export function setMobileNativeChatDraftText(
+  draftKey: string,
+  update: SetStateAction<string>
+): void {
+  writeDraft(draftKey, update, false)
+}
+
+export function editMobileNativeChatDraft(draftKey: string, update: SetStateAction<string>): void {
+  writeDraft(draftKey, update, true)
+}
+
+export function readMobileNativeChatDraftEditGeneration(draftKey: string): number {
+  return drafts.get(draftKey)?.editGeneration ?? 0
+}
+
+export function clearMobileNativeChatDraftForSend(
+  draftKey: string,
+  editGeneration: number,
+  text: string
+): void {
+  const current = drafts.get(draftKey)
+  if ((current?.editGeneration ?? 0) === editGeneration && (current?.text ?? '') === text) {
+    setMobileNativeChatDraftText(draftKey, '')
+  }
+}
+
 export function useMobileNativeChatDraft(draftKey: string | null): string {
-  const read = (): string => (draftKey ? (drafts[draftKey] ?? '') : '')
+  const read = (): string => (draftKey ? (drafts.get(draftKey)?.text ?? '') : '')
   return useSyncExternalStore(subscribe, read, read)
 }
 
 export function resetMobileNativeChatDraftStoreForTests(): void {
-  drafts = {}
+  drafts.clear()
   mobileNativeChatLaunchDraftSeeds.clear()
 }

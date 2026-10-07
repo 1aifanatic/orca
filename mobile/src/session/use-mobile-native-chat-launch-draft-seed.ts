@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, type SetStateAction } from 'react'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { normalizedUserText } from './mobile-native-chat-draft-reconcile'
 import { mobileNativeChatLaunchDraftSeeds } from './mobile-native-chat-draft-store'
@@ -21,7 +21,7 @@ export function useMobileNativeChatLaunchDraftSeed(args: {
   launchDraftCreatedAt?: number | null
   chatActive: boolean
   transcriptLoading?: boolean
-  setDrafts: Dispatch<SetStateAction<Record<string, string>>>
+  setDraftText: (draftKey: string, update: SetStateAction<string>) => void
 }): {
   /** Text still believed to be parked on the agent's TUI input line, or null
    *  once declined or retired. Send paths size their pre-clear from it, since
@@ -36,7 +36,7 @@ export function useMobileNativeChatLaunchDraftSeed(args: {
     launchDraftCreatedAt,
     chatActive,
     transcriptLoading,
-    setDrafts
+    setDraftText
   } = args
 
   // Why: launch context delivered as a TUI-input prefill is invisible in chat;
@@ -66,16 +66,14 @@ export function useMobileNativeChatLaunchDraftSeed(args: {
       text: launchDraft,
       createdAt: launchDraftCreatedAt ?? null
     })
-    setDrafts((previous) =>
-      (previous[draftKey] ?? '') === '' ? { ...previous, [draftKey]: launchDraft } : previous
-    )
+    setDraftText(draftKey, (current) => (current === '' ? launchDraft : current))
   }, [
     chatActive,
     draftKey,
     launchDraft,
     launchDraftCreatedAt,
     messages,
-    setDrafts,
+    setDraftText,
     transcriptLoading
   ])
 
@@ -98,10 +96,8 @@ export function useMobileNativeChatLaunchDraftSeed(args: {
       return
     }
     mobileNativeChatLaunchDraftSeeds.set(draftKey, null)
-    setDrafts((previous) =>
-      (previous[draftKey] ?? '') === seeded.text ? { ...previous, [draftKey]: '' } : previous
-    )
-  }, [chatActive, draftKey, launchDraft, messages, setDrafts, transcriptLoading])
+    setDraftText(draftKey, (current) => (current === seeded.text ? '' : current))
+  }, [chatActive, draftKey, launchDraft, messages, setDraftText, transcriptLoading])
 
   // A missing or declined entry means there is nothing of ours on the TUI line.
   const readSeededLaunchDraft = useCallback(

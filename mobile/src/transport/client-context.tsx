@@ -381,3 +381,8 @@ export function useRpcClientContext(): RpcClientContextValue {
   }
   return ctx
 }
+
+/** Native trees have no page bridge; the web sibling reads its provider. */
+export function usePageBridgeClientIfPresent(): null {
+  return null
+}
