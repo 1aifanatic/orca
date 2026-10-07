@@ -76,7 +76,8 @@ describe('transcript slots', () => {
         .map((slot) => slot.message.id)
 
     expect(trailing([text('u', 'go', 'user'), toolRun('a'), text('b', 'Done.')])).toEqual(['b'])
-    expect(trailing([text('u', 'go', 'user'), toolRun('a'), toolRun('b')])).toEqual(['b'])
+    // Two runs in a row draw as one, headed by the first.
+    expect(trailing([text('u', 'go', 'user'), toolRun('a'), toolRun('b')])).toEqual(['a'])
     expect(
       trailing([text('u', 'go', 'user'), toolRun('a'), text('r', 'hmm', 'reasoning')])
     ).toEqual(['a'])
@@ -261,6 +262,47 @@ describe('a turn no message opened', () => {
     expect(slots.map((slot) => [slot.message.id, slot.folded])).toEqual([
       ['u1', false],
       ['exit', false]
+    ])
+  })
+
+  // Stored red for clients that predate it, but Orca stopped, not the agent: no failure, never folded.
+  it("keeps the row about Orca's stop on screen beside the reply it cut, which stays the answer", () => {
+    const orcaStop: NativeChatMessage = {
+      ...failure('orca-stop'),
+      blocks: [
+        {
+          type: 'text' as const,
+          text: 'Codex stopped while this response was in progress.',
+          tone: 'error',
+          presentation: 'orca-stop',
+          orcaStop: { cause: 'update' }
+        }
+      ]
+    }
+    const messages = [text('u1', 'go', 'user'), text('a1', 'Looking.'), toolRun('work'), orcaStop]
+    const slots = build(messages, {
+      turnStatuses: { active: settled(3), completedByTurn: { u1: settled(3) } }
+    })
+    expect(slots.map((slot) => [slot.message.id, slot.folded])).toEqual([
+      ['u1', false],
+      ['a1', false],
+      ['orca-stop', false]
+    ])
+    // The same, once a reader re-presented it neutral.
+    const neutral: NativeChatMessage = {
+      ...orcaStop,
+      blocks: orcaStop.blocks.map((block) =>
+        block.type === 'text' ? { ...block, tone: 'notice' } : block
+      )
+    }
+    expect(
+      build([...messages.slice(0, 3), neutral], {
+        turnStatuses: { active: settled(3), completedByTurn: { u1: settled(3) } }
+      }).map((slot) => [slot.message.id, slot.folded])
+    ).toEqual([
+      ['u1', false],
+      ['a1', false],
+      ['orca-stop', false]
     ])
   })
 
@@ -500,15 +542,8 @@ describe('turn-owned grouping', () => {
       turnStatuses: { active: null, completedByTurn: { A: settled } },
       expandedTurnKeys: new Set(['A'])
     })
-    expect(slots.map((slot) => slot.message.id)).toEqual([
-      'A',
-      't1',
-      'B',
-      't2',
-      't3',
-      't4',
-      'answer'
-    ])
+    expect(slots.map((slot) => slot.message.id)).toEqual(['A', 't1', 'B', 't2', 'answer'])
+    expect(slots[3]?.workRun?.map((message) => message.id)).toEqual(['t2', 't3', 't4'])
   })
 
   it("anchors a provider-opened turn's bar above its first row", () => {

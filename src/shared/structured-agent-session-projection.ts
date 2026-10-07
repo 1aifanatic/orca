@@ -77,11 +77,13 @@ function itemBlocks(item: AgentJournalRenderItem): {
     return { role: body.role, blocks: body.blocks }
   }
   if (isStructuredAgentSessionToolAction(body)) {
-    const call = structuredAgentSessionToolCallBlock(body)
+    const call = structuredAgentSessionToolCallBlock(body, item.itemId)
+    // The call and its output are one journal row, so the result names its call.
+    const { callId } = call
     if (body.kind === 'diff') {
       return {
         role: 'assistant',
-        blocks: [call, { type: 'tool-result', output: boundedText(body.patch) }]
+        blocks: [call, { type: 'tool-result', output: boundedText(body.patch), callId }]
       }
     }
     return {
@@ -95,8 +97,7 @@ function itemBlocks(item: AgentJournalRenderItem): {
                 output: boundedText(body.output),
                 // Output a call left when it was cut short is not an error it reported.
                 isError: agentJournalToolCallLifecycle(body) === 'failed',
-                // The call and its output are one journal row, so the result names its call.
-                ...(body.callId !== undefined ? { callId: body.callId } : {})
+                callId
               }
             ]
           : [])
@@ -132,7 +133,7 @@ function itemBlocks(item: AgentJournalRenderItem): {
   if (body.kind !== 'status' || body.turnLifecycle) {
     return null
   }
-  return { role: 'system', blocks: [structuredAgentSessionStatusBlock(body)] }
+  return { role: 'system', blocks: [structuredAgentSessionStatusBlock(body, item.turnScope)] }
 }
 
 function isAgentJournalMessageSendMode(value: string): value is AgentJournalMessageSendMode {

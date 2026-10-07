@@ -3254,6 +3254,7 @@
             "retryUnavailable": "Réessayez mais impossible de vous reconnecter pour l'instant. Réessayez sous peu.",
             "ownerUnknown": "Orca n'a pas pu vérifier le propriétaire de ce terminal.",
             "42b283ecfc": "Orca n'a pas pu reconnecter ce terminal en toute sécurité car l'hôte n'a pas pu vérifier sa session enregistrée. Orca a laissé la session enregistrée inchangée. Cliquez sur Réessayer pour essayer de vous reconnecter maintenant. S'il ne parvient toujours pas à se reconnecter, ouvrez un nouveau terminal.",
+            "heldByPreviousRelay": "Ce terminal s'exécute toujours sur l'hôte sous la version précédente d'Orca, à laquelle cette version ne peut pas se connecter. Il continue jusqu'à sa fin. Ouvrez un nouveau terminal pour continuer à travailler ici.",
             "sourceRestoring": "Reconnexion de ce terminal - sa sortie est en cours de rétablissement. La session est toujours en cours.",
             "remoteTerminalClosed": "Le terminal distant était fermé.",
             "ptyAllocationLimit": "Votre système ne peut plus allouer de périphériques pty. Fermez quelques terminaux inutilisés, dans Orca ou dans un autre programme, puis réessayez.",
@@ -17509,11 +17510,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "1f772bb5d0": "La livraison du message n'est pas confirmée.",
-            "93ef441197": "Le message n'a pas été envoyé.",
-            "a5e7f14068": "Réessayer"
-          },
           "NativeChatLaunchRetry": {
             "failed": "Le chat n'a pas pu démarrer.",
             "unknown": "La connexion au chat n'a pas pu être confirmée.",
@@ -17756,6 +17752,8 @@
         "cannotRunHere": "Orca ne peut pas exécuter cet agent dans un chat ici.",
         "unreachable": "Orca n'a pas pu joindre l'agent.",
         "recordFailed": "Orca n'a pas pu enregistrer ceci dans l'historique du chat.",
+        "attachmentExpired": "Cette pièce jointe a expiré.",
+        "reattachFile": "Retirez-la et joignez-la à nouveau.",
         "conversationCleared": "Cette conversation a été effacée.",
         "openCurrentConversation": "Ouvrez la conversation actuelle pour continuer.",
         "clearUnfinished": "Le dernier /clear ne s'est pas terminé.",
@@ -17814,6 +17812,9 @@
         "skillScopeBuiltIn": "Intégrée",
         "skillScopePlugin": "Plugin",
         "localAttachmentUnsupported": "Les pièces jointes locales ne sont pas disponibles pour les sessions distantes.",
+        "attachFailed": "Impossible de joindre {{files}}.",
+        "attachFailedBecause": "Impossible de joindre {{files}}. {{reason}}",
+        "uploadingFile": "Envoi de {{name}}…",
         "removeAttachment": "Retirer la pièce jointe",
         "pastedImageLabel": "Image collée",
         "draftNotSaved": "Ce brouillon n'a pas encore pu être enregistré. Orca continue d'essayer.",
@@ -18074,7 +18075,11 @@
         "historyItemTooLarge": "Cette partie du chat était trop volumineuse pour être affichée.",
         "stoppedBeforeStart": "Arrêté avant le démarrage de l'agent",
         "dismiss": "Ignorer",
-        "copyError": "Copier l'erreur"
+        "copyError": "Copier l'erreur",
+        "orcaStopUpdate": "Orca sur {{machine}} a redémarré pour une mise à jour pendant que cette réponse était en cours.",
+        "orcaStopQuit": "Orca sur {{machine}} a été fermé pendant que cette réponse était en cours.",
+        "orcaStopCrash": "Orca sur {{machine}} s'est arrêté de manière inattendue pendant que cette réponse était en cours.",
+        "orcaStopCanContinue": "Vous pouvez continuer dans cette conversation."
       },
       "providerFrame": {
         "byteLength": "{{value0}} octets"
@@ -18219,10 +18224,8 @@
         "turnOffQueueing": "Désactiver la file d'attente",
         "withdrawnHold": "Arrêté avant l'envoi",
         "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer.",
-        "pausedKept": "Pas encore envoyé. Appuyez sur Envoyer pour l'envoyer.",
         "paused": "En pause",
         "queuePausedStopped": "File d'attente en pause, car vous avez interrompu",
-        "queuePausedCleared": "File d'attente en pause après l'effacement de la conversation",
         "queuePaused": "File d'attente en pause",
         "resume": "Reprendre",
         "sendConfirmTitle": "Envoyer le message ?",
@@ -18243,6 +18246,11 @@
         "offline": "{{hostName}} est hors ligne",
         "reconnecting": "{{hostName}} se reconnecte…",
         "reconnect": "Reconnecter"
+      },
+      "interruptedContinue": {
+        "continue": "Continuer",
+        "failed": "Impossible de poursuivre cette conversation. Réessayez ou envoyez un message.",
+        "explanation": "Continuez, et l'agent vérifiera d'abord si sa dernière étape s'est terminée."
       }
     },
     "tab": {
@@ -18635,6 +18643,13 @@
       "label": "Assigné",
       "automatic": "Automatique",
       "assignToMe": "M'assigner ({{name}})"
+    },
+    "markdown-callout": {
+      "note": "Remarque",
+      "tip": "Conseil",
+      "important": "Important",
+      "warning": "Avertissement",
+      "caution": "Attention"
     }
   },
   "dashboardPopout": {
