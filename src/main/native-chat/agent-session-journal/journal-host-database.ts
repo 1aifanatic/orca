@@ -8,7 +8,6 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type Database from '../../sqlite/sync-database'
 import {
-  JOURNAL_SYNCHRONOUS,
   openJournalDatabase,
   runJournalTransaction,
   type OpenJournalDatabase
@@ -61,24 +60,6 @@ export class JournalHostDatabase {
     })
   }
 
-  /**
-   * The same transaction, committed without an fsync: for rows no reader follows until a later
-   * synced commit, which under WAL makes every earlier frame durable too. The setting is restored
-   * in the same task, so no other chat's commit runs under it.
-   */
-  unsyncedTransaction<T>(run: (db: Database.Database) => T): T {
-    const db = this.db
-    db.pragma('synchronous = NORMAL')
-    try {
-      return this.transaction(run)
-    } finally {
-      // SQLite refuses the change inside a transaction; freeing a stranded one restores it.
-      if (!db.isTransaction) {
-        db.pragma(`synchronous = ${JOURNAL_SYNCHRONOUS}`)
-      }
-    }
-  }
-
   /** Last, after every store has drained. A close that fails keeps the handle, so the retried
    *  teardown closes this same connection. */
   close(): void {
@@ -99,7 +80,6 @@ export class JournalHostDatabase {
         throw journalOpenRefusalError(error)
       }
     }
-    connection.pragma(`synchronous = ${JOURNAL_SYNCHRONOUS}`)
     this.stranded = false
   }
 }

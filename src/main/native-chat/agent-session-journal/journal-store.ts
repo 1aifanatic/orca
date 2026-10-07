@@ -247,7 +247,7 @@ export class AgentSessionJournal {
   canonicalItemId = (itemId: string): string => resolveJournalItemId(this.state, itemId)
 
   /** Reads the fold with every write issued before this call committed, and none issued after: at
-   *  once unless a running write holds the line. */
+   *  once unless a write is running or writes wait in line. */
   readInOrder<T>(read: () => T): Promise<T> {
     return this.queue.readInOrder(read)
   }

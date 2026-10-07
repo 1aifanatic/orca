@@ -12,12 +12,13 @@ export type JournalWriteResult<T> = T extends PromiseLike<unknown> ? never : T
 export type JournalWriteBody<T> = () => JournalWriteResult<T>
 
 /**
- * A write has landed in the fold when its call returns.
+ * A write has landed in the fold when its call returns, unless it was issued from inside another
+ * write or behind one still waiting in line.
  *
  * A write finds the queue idle unless a write is running or writes wait in line; then it runs
  * before `serialize` returns. Every write body is synchronous (`JournalWriteBody` refuses a
- * promise), so it has committed by then. Otherwise it joins the line behind the running write it
- * was issued from, never nested inside it. Admission is checked at ENQUEUE and is permanent.
+ * promise), so it has committed by then. Otherwise it joins the line behind the writes ahead of
+ * it, never nested inside the running one. Admission is checked at ENQUEUE and is permanent.
  */
 export class JournalWriteQueue {
   /** Settles once every write admitted so far has, whatever its outcome. */

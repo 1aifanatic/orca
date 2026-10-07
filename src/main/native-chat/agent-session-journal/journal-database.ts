@@ -18,8 +18,8 @@ import { ensureQueuedMessagesTable } from './queued-message-schema'
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 /** Bounds the WAL a checkpoint leaves behind; SQLite truncates it back to this after a reset. */
 export const JOURNAL_SIZE_LIMIT_BYTES = 32 * 1024 * 1024
-/** Every commit but a first-use copy's batches, which no reader follows until a synced commit. */
-export const JOURNAL_SYNCHRONOUS = 'FULL'
+/** Every commit is fsynced before its caller continues. */
+const JOURNAL_SYNCHRONOUS = 'FULL'
 
 export type OpenJournalDatabase = {
   db: Database.Database

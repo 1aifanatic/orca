@@ -19,7 +19,6 @@ import { journalDatabasePath } from './journal-host-database'
 import { JournalUnreleasedSchemaError } from './journal-open-failure'
 import {
   deleteJournalEpochRows,
-  deleteUnpublishedJournalRows,
   insertJournalRow,
   iterateJournalEpochRows,
   publishJournalSessionEpoch,
@@ -155,25 +154,6 @@ describe('journal row statements', () => {
       deleteJournalEpochRows(db, 'session-1', 'epoch-1')
       expect(rowsOf(db, 'session-1', 'epoch-1')).toEqual([])
       expect(rowsOf(db, 'session-2', 'epoch-1')).toEqual([1])
-    } finally {
-      db.close()
-    }
-  })
-
-  it('deletes only the rows no pointer names', () => {
-    const db = openJournalDatabase(dbPath).db
-    try {
-      insertJournalRow(db, 'session-1', epochRow(1, 'epoch-copying'))
-      insertJournalRow(db, 'session-2', epochRow(1, 'epoch-live'))
-      insertJournalRow(db, 'session-2', epochRow(1, 'epoch-stale'))
-      publishJournalSessionEpoch(db, { sessionId: 'session-2', workspaceId: 'ws-1' }, 'epoch-live')
-
-      deleteUnpublishedJournalRows(db, 'session-1')
-      deleteUnpublishedJournalRows(db, 'session-2')
-
-      expect(rowsOf(db, 'session-1', 'epoch-copying')).toEqual([])
-      expect(rowsOf(db, 'session-2', 'epoch-live')).toEqual([1])
-      expect(rowsOf(db, 'session-2', 'epoch-stale')).toEqual([])
     } finally {
       db.close()
     }

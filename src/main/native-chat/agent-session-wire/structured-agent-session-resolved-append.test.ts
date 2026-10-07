@@ -93,7 +93,9 @@ describe('resolved revisions', () => {
     }
     // Three revisions of one row stay three operations; none replaces another.
     expect(deferred.state().queuedOperations).toBe(3)
-    deferred.bind(journalTarget())
+    // Bound from inside a running read, so every revision waits in line: one resolved at
+    // handover would read the row before the revisions ahead of it had landed.
+    await journal.readInOrder(() => deferred.bind(journalTarget()))
     await expect(deferred.drained()).resolves.toEqual({ ok: true })
     expect(rowText()).toBe('abc')
   })
