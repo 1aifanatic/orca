@@ -2110,6 +2110,7 @@ export function createRemoteRuntimePtyTransport(
               ...(meta?.cols !== undefined && meta.rows !== undefined
                 ? { snapshotCols: meta.cols, snapshotRows: meta.rows }
                 : {}),
+              ...(meta?.keepsLocalScrollback ? { keepsLocalScrollback: true } : {}),
               carriesNormalBuffer: true
             })
           }

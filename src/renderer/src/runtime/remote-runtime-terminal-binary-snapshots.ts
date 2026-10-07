@@ -15,7 +15,8 @@ import {
   clearResyncTimer,
   clearSnapshot,
   concatBytes,
-  decodeSnapshotInfo
+  decodeSnapshotInfo,
+  pushedSnapshotKeepsLocalScrollback
 } from './remote-runtime-terminal-snapshot-state'
 import type { RemoteRuntimeMultiplexedTerminalState } from './remote-runtime-terminal-multiplexer-types'
 
@@ -71,6 +72,7 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
         (typeof info?.requestId === 'number'
           ? info.requestId === pendingRequest.requestId
           : stream.initialSnapshotReceived)
+      const keepsLocalScrollback = pushedSnapshotKeepsLocalScrollback(info)
       if (snapshotApplied) {
         if (matchesPendingRequest) {
           pendingRequest.resolve({
@@ -101,17 +103,19 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
             // grid, so the restorer must replay it there — the request path has
             // always carried these; the pushes silently dropped them.
             cols: info?.cols,
-            rows: info?.rows
+            rows: info?.rows,
+            keepsLocalScrollback
           })
         } else if (target === 'recovery') {
           // Why: a server-pushed recovery snapshot replaces terminal state
-          // mid-session; clear the screen and scrollback before applying it.
+          // mid-session; clear the screen, and the scrollback only when the
+          // image carries its own, before applying it.
           // An empty snapshot is still applied so stale dropped output does
           // not linger on a terminal the model says is blank.
           // RELEASE_SYNCHRONIZED_OUTPUT: \x1b[2J does not clear mode 2026, so a pane
           // holding an open latch would not paint this recovery snapshot at all.
           stream.callbacks.onSnapshot(
-            `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H${data ?? ''}`,
+            `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J${keepsLocalScrollback ? '' : '\x1b[3J'}\x1b[H${data ?? ''}`,
             {
               pendingEscapeTailAnsi: info?.pendingEscapeTailAnsi,
               seq: info?.seq,
@@ -119,7 +123,8 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
               alternateScreen: info?.alternateScreen,
               terminalOwner: info?.terminalOwner,
               cols: info?.cols,
-              rows: info?.rows
+              rows: info?.rows,
+              keepsLocalScrollback
             }
           )
         }
