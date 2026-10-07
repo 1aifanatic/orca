@@ -2,33 +2,38 @@
  * The workspace a desktop `agent.launch` create opened, by that launch's operation id.
  *
  * The host names the launch on the activation it already sends when the create opens the
- * workspace, before the launch answers (which waits on prompt delivery). A window waiting on a
- * launch hears its workspace here at that moment; the launch's answer carries the same
- * `worktreeId`, so a window that misses this still learns it.
+ * workspace, before the launch answers (which waits on prompt delivery). The launch this window is
+ * running takes that activation over: it decides whether to show the workspace (the user may have
+ * moved on) and lays out its own first tab. With no such launch here (a reloaded window, another
+ * window's launch), the window opens the workspace as for any activation. The launch's answer
+ * carries the same `worktreeId`, so a launch that missed this still learns it.
  */
 
-type Listener = (worktreeId: string) => void
+type ActivationOwner = (worktreeId: string) => void
 
-const listeners = new Map<string, Set<Listener>>()
+const owners = new Map<string, ActivationOwner>()
 
-export function onAgentLaunchWorkspaceActivated(
+export function ownAgentLaunchWorkspaceActivation(
   operationId: string,
-  listener: Listener
+  owner: ActivationOwner
 ): () => void {
-  const forLaunch = listeners.get(operationId) ?? new Set<Listener>()
-  forLaunch.add(listener)
-  listeners.set(operationId, forLaunch)
+  owners.set(operationId, owner)
   return () => {
-    forLaunch.delete(listener)
-    if (forLaunch.size === 0 && listeners.get(operationId) === forLaunch) {
-      listeners.delete(operationId)
+    if (owners.get(operationId) === owner) {
+      owners.delete(operationId)
     }
   }
 }
 
-/** A launch nobody here waits on (another window's, or one this window gave up on) is ignored. */
-export function noteAgentLaunchWorkspaceActivated(operationId: string, worktreeId: string): void {
-  for (const listener of listeners.get(operationId) ?? []) {
-    listener(worktreeId)
+/** True when a launch running in this window took the activation over. */
+export function takeAgentLaunchWorkspaceActivation(
+  operationId: string,
+  worktreeId: string
+): boolean {
+  const owner = owners.get(operationId)
+  if (!owner) {
+    return false
   }
+  owner(worktreeId)
+  return true
 }

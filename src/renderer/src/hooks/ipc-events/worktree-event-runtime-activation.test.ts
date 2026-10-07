@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
-import { onAgentLaunchWorkspaceActivated } from '@/lib/agent-launch-workspace-activation'
+import { ownAgentLaunchWorkspaceActivation } from '@/lib/agent-launch-workspace-activation'
 import { createWorktreeEventRuntime } from './worktree-event-runtime'
 
 const { activateAndRevealWorktree } = vi.hoisted(() => ({
@@ -60,61 +60,42 @@ it.each([false, true])(
   }
 )
 
-it('opens a launch-created workspace with no shell of its own and tells the waiting launch', async () => {
+function launchActivation() {
   vi.spyOn(initialState, 'fetchWorktrees').mockResolvedValue(false)
   useAppStore.setState({
     fetchWorktrees: initialState.fetchWorktrees,
     getKnownWorktreeById: vi.fn(() => undefined)
   })
-  activateAndRevealWorktree.mockReturnValue({ primaryTabId: null })
-  const heard = vi.fn()
-  const stopListening = onAgentLaunchWorkspaceActivated('op-1', heard)
-  const unsubs: (() => void)[] = []
-  const runtime = createWorktreeEventRuntime(unsubs, () => false)
-  try {
-    await runtime.activateNotifiedWorktree(
-      {
-        type: 'activateWorktree',
-        repoId: 'repo-1',
-        worktreeId: 'wt-new',
-        launch: { operationId: 'op-1' }
-      },
-      { allowRuntimeEnvironment: false }
-    )
+  return createWorktreeEventRuntime([], () => false).activateNotifiedWorktree(
+    {
+      type: 'activateWorktree',
+      repoId: 'repo-1',
+      worktreeId: 'wt-new',
+      launch: { operationId: 'op-1' }
+    },
+    { allowRuntimeEnvironment: false }
+  )
+}
 
-    expect(activateAndRevealWorktree).toHaveBeenCalledWith('wt-new', {
-      providesInitialSurface: true,
-      notifyHostRuntime: false
-    })
-    expect(heard).toHaveBeenCalledWith('wt-new')
+it('hands a launch-created workspace to the launch this window is running', async () => {
+  const owner = vi.fn()
+  const release = ownAgentLaunchWorkspaceActivation('op-1', owner)
+  try {
+    await launchActivation()
+
+    expect(owner).toHaveBeenCalledWith('wt-new')
+    // The launch decides whether to show it (the user may have moved on), not the activation.
+    expect(activateAndRevealWorktree).not.toHaveBeenCalled()
   } finally {
-    stopListening()
-    unsubs.forEach((unsubscribe) => unsubscribe())
+    release()
   }
 })
 
-it('tells no launch about a workspace the window could not open', async () => {
-  vi.spyOn(initialState, 'fetchWorktrees').mockResolvedValue(false)
-  useAppStore.setState({
-    fetchWorktrees: initialState.fetchWorktrees,
-    getKnownWorktreeById: vi.fn(() => undefined)
+it('opens a launch-created workspace with no shell of its own when no launch here owns it', async () => {
+  await launchActivation()
+
+  expect(activateAndRevealWorktree).toHaveBeenCalledWith('wt-new', {
+    providesInitialSurface: true,
+    notifyHostRuntime: false
   })
-  activateAndRevealWorktree.mockReturnValue(false)
-  const heard = vi.fn()
-  const stopListening = onAgentLaunchWorkspaceActivated('op-1', heard)
-  const runtime = createWorktreeEventRuntime([], () => false)
-  try {
-    await runtime.activateNotifiedWorktree(
-      {
-        type: 'activateWorktree',
-        repoId: 'repo-1',
-        worktreeId: 'wt-new',
-        launch: { operationId: 'op-1' }
-      },
-      { allowRuntimeEnvironment: false }
-    )
-    expect(heard).not.toHaveBeenCalled()
-  } finally {
-    stopListening()
-  }
 })

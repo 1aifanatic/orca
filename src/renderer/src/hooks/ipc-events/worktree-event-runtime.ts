@@ -1,5 +1,5 @@
 import { activateAndRevealWorktree } from '@/lib/worktree-activation'
-import { noteAgentLaunchWorkspaceActivated } from '@/lib/agent-launch-workspace-activation'
+import { takeAgentLaunchWorkspaceActivation } from '@/lib/agent-launch-workspace-activation'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimeClientEvent } from '../../../../shared/runtime-client-events'
 import type { AppState } from '../../store/types'
@@ -172,7 +172,10 @@ export function createWorktreeEventRuntime(
       useAppStore.getState().getKnownWorktreeById(worktreeId, options.executionHostId)
     )
     // Why: use the canonical activation path so the CLI switch records a back/forward visit, or the nav buttons ignore it.
-    const activated = activateAndRevealWorktree(worktreeId, {
+    if (launch && takeAgentLaunchWorkspaceActivation(launch.operationId, worktreeId)) {
+      return
+    }
+    activateAndRevealWorktree(worktreeId, {
       ...(setup ? { setup } : {}),
       ...(startup ? { startup } : {}),
       ...(defaultTabs ? { defaultTabs } : {}),
@@ -183,9 +186,6 @@ export function createWorktreeEventRuntime(
       notifyHostRuntime: false,
       ...(options.executionHostId ? { executionHostId: options.executionHostId } : {})
     })
-    if (launch && activated !== false) {
-      noteAgentLaunchWorkspaceActivated(launch.operationId, worktreeId)
-    }
   }
 
   return { worktreeChangeRefreshQueue, activateNotifiedWorktree }
