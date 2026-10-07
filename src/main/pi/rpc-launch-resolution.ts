@@ -35,10 +35,15 @@ export type PiRpcLaunchResolverDeps = {
   resolveFullAccess?: () => boolean
 }
 
-/** The RPC line that emits agent_settled after retries and detached compaction; the older 0.x
- *  package keeps the terminal chat. */
+// Stable releases from 0.84.0 emit agent_settled after retries and detached compaction; older
+// Pi (the 0.73.x package included) keeps the terminal chat.
+const PI_RPC_RELEASE_LINES = [
+  { major: 0, floor: '0.84.0' },
+  { major: 1, floor: '1.0.0' }
+] as const
+
 function supportsPiRpcVersion(version: string): boolean {
-  return isStableCliVersionOnLine(version, { major: 1, floor: '1.0.0' })
+  return PI_RPC_RELEASE_LINES.some((line) => isStableCliVersionOnLine(version, line))
 }
 
 /** The binary a Pi launch with `env` spawns; create support resolves through here too. */

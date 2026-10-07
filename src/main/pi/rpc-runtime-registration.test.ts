@@ -50,27 +50,36 @@ const input = (commandSettings: LaunchInput['commandSettings'] = {}): LaunchInpu
 })
 
 describe('Pi launch support before session creation', () => {
-  it.each(['1.0.0', '1.0.4\n', 'pi v1.12.3'])('accepts the stable 1.x line: %s', async (out) => {
-    prints(out)
-    await expect(supportsLaunch(input())).resolves.toBe(true)
-    expect(runProcess).toHaveBeenCalledWith({
-      program: stockPi,
-      cwd: '/host/workspace',
-      env: { PATH: root, HOME: '/host/home' },
-      args: ['--version'],
-      timeoutMs: 5_000,
-      maxOutputBytes: 4_096,
-      killOnOutputLimit: true
-    })
-  })
-
-  it.each(['0.73.1', '0.99.0', '1.0.0-rc.1', '1.1.0-preview.1', '2.0.0', 'unknown', ''])(
-    'keeps the terminal chat for an older, prerelease or unknown version: %s',
+  it.each(['0.84.0', '0.99.0', '1.0.0', '1.0.4\n', 'pi v1.12.3'])(
+    'accepts stable Pi from 0.84.0: %s',
     async (out) => {
       prints(out)
-      await expect(supportsLaunch(input())).resolves.toBe(false)
+      await expect(supportsLaunch(input())).resolves.toBe(true)
+      expect(runProcess).toHaveBeenCalledWith({
+        program: stockPi,
+        cwd: '/host/workspace',
+        env: { PATH: root, HOME: '/host/home' },
+        args: ['--version'],
+        timeoutMs: 5_000,
+        maxOutputBytes: 4_096,
+        killOnOutputLimit: true
+      })
     }
   )
+
+  it.each([
+    '0.73.1',
+    '0.83.9',
+    '0.84.0-rc.1',
+    '1.0.0-rc.1',
+    '1.1.0-preview.1',
+    '2.0.0',
+    'unknown',
+    ''
+  ])('keeps the terminal chat for an older, prerelease or unknown version: %s', async (out) => {
+    prints(out)
+    await expect(supportsLaunch(input())).resolves.toBe(false)
+  })
 
   it.each([
     { code: 1, timedOut: false, outputTruncated: false },
