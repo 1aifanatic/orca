@@ -128,12 +128,6 @@ it('stays dismissed for the same verdict, and shows again when it changes or com
   expect(screen.getByText(CODEX_SIGNED_OUT)).toBeTruthy()
 })
 
-it('says nothing before sending about a signed-out Claude: its start refusal says it', () => {
-  mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
-  render(pane('claude'))
-  expect(screen.queryByText(/signed in/)).toBeNull()
-})
-
 it("names a missing Claude CLI in the chat's agent", () => {
   mocks.unavailable = { reason: 'cliMissing' }
   render(pane('claude'))

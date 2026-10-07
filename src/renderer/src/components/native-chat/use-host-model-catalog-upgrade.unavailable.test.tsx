@@ -134,6 +134,10 @@ describe("a chat's sign-in verdict", () => {
     await reads.answer(0, { ...HOST_CATALOG, unavailable: SIGNED_OUT })
     await act(async () => rerender({ turnId: 'turn-1' }))
     expect(reads.count()).toBe(2)
+    await reads.answer(1, { ...HOST_CATALOG, unavailable: SIGNED_OUT })
+    // The turn ending reads once more.
+    await act(async () => rerender({ turnId: null }))
+    expect(reads.count()).toBe(3)
   })
 
   it('a turn starting with no verdict reads nothing more', async () => {

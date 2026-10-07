@@ -60,8 +60,8 @@ export function settleStructuredAgentSessionProviderStarted(
   })
 }
 
-/** A child that proved its start shows its account can start a chat, so the catalog's held "can't
- *  start" reason is re-derived by the next read's probe instead of trusted. */
+/** A proven start shows the agent's program exists and may mean a sign-in was fixed, so the
+ *  catalog's held reason is re-checked by the next read's probe sooner; the probe decides. */
 export function noteStructuredAgentSessionProviderStarted(
   deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'modelCatalog'>,
   sessionId: string

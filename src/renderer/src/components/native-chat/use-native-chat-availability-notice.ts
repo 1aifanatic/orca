@@ -49,12 +49,7 @@ export function useNativeChatAvailabilityNotice(input: {
     setDismissal({ key, dismissed: false })
   }
   const rowReason = useMemo(() => failedStartReason(journalItems), [journalItems])
-  // Only Codex's check reports a sign-in; Claude's start refusal is its only one.
-  if (
-    !unavailable ||
-    (dismissal.key === key && dismissal.dismissed) ||
-    (unavailable.reason === 'notSignedIn' && input.agent !== 'codex')
-  ) {
+  if (!unavailable || (dismissal.key === key && dismissal.dismissed)) {
     return null
   }
   const launchWords = input.launchFailure && agentSessionRefusalReasonWords(input.launchFailure)
@@ -68,7 +63,12 @@ export function useNativeChatAvailabilityNotice(input: {
     text:
       unavailable.reason === 'cliMissing'
         ? sayAgentSessionFailureTranslated('cliMissing', { agent: input.agentLabel })
-        : sayAgentSessionFailureTranslated(agentSessionSignInCopyId('codex', unavailable.account)),
+        : sayAgentSessionFailureTranslated(
+            agentSessionSignInCopyId(
+              input.agent === 'codex' ? 'codex' : 'claude',
+              unavailable.account
+            )
+          ),
     onDismiss: () => setDismissal({ key, dismissed: true })
   }
 }
