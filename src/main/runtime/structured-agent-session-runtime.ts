@@ -33,6 +33,10 @@ import { StructuredAgentRegistry } from '../native-chat/agent-session-wire/struc
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import {
+  installAgentSessionAttachments,
+  stopAgentSessionAttachments
+} from './structured-agent-session-attachment-wiring'
+import {
   openAgentSessionRecordStoreOnce,
   releaseAgentSessionRecordStore,
   type OpenedAgentSessionRecordStore
@@ -61,7 +65,11 @@ import {
   modelCatalogHostDeps,
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
-import type { ClaudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
+import type { ClaudeCliFlagSupport } from '../claude/claude-cli-flag-support'
+import {
+  scheduleNativeChatVisualsSweep,
+  type NativeChatVisualsSweepDeps
+} from '../native-chat/native-chat-visuals-sweep'
 
 /** Whether this profile holds a structured chat: a record or tab in the journal database. */
 export function hasPersistedStructuredAgentSessionStore(
@@ -91,8 +99,13 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
-  /** Whether a Claude CLI takes the thinking-display flag; absent never passes it. */
-  claudeThinkingDisplay?: ClaudeThinkingDisplaySupport
+  /** Which version-gated flags a Claude CLI takes; absent never passes one. */
+  claudeCliFlags?: ClaudeCliFlagSupport
+  /** Gives each chat a visuals folder and the skill that teaches it, and sweeps folders whose chat
+   *  is gone. Wired by the real hosts only, so a test runtime never loads the bundled skill. */
+  nativeChatVisuals?: {
+    workspaceVerdicts: NonNullable<NativeChatVisualsSweepDeps['workspaceVerdicts']>
+  }
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
@@ -195,6 +208,7 @@ export async function stopStructuredAgentSessionRuntime(options?: {
   const pending = installing
   installing = null
   setStructuredAgentSessionHost(null)
+  stopAgentSessionAttachments()
   const outstanding = [...pendingTeardown]
   pendingTeardown.clear()
   const installed = pending ? await pending.catch(() => null) : null
@@ -322,10 +336,26 @@ async function installOnJournal(
     })
   }
   setStructuredAgentSessionHost(host)
+  installAgentSessionAttachments({
+    stateDirectory: deps.stateDirectory,
+    store,
+    journalDatabase,
+    logger: deps.logger
+  })
+  const stopVisualsSweep = deps.nativeChatVisuals
+    ? scheduleNativeChatVisualsSweep({
+        stateDirectory: deps.stateDirectory,
+        listHeldSessionIds: () => (store.readOnly ? null : store.listHeldSessionIds()),
+        locationOf: (sessionId) => store.getRecord(sessionId)?.location ?? null,
+        workspaceVerdicts: deps.nativeChatVisuals.workspaceVerdicts,
+        logger: deps.logger
+      })
+    : undefined
   return {
     host,
     adapter,
     journalDatabase,
-    waitForRecovery: lifecycle.drain
+    waitForRecovery: lifecycle.drain,
+    ...(stopVisualsSweep ? { stopBackgroundWork: stopVisualsSweep } : {})
   }
 }

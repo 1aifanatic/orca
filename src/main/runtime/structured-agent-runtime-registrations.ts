@@ -17,6 +17,11 @@ import type { StructuredAgentDefinition } from '../native-chat/agent-session-wir
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { readClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { agentSessionAttachmentStoreRoot } from '../native-chat/agent-session-attachments/agent-session-attachment-references'
+import {
+  createNativeChatVisualsDelivery,
+  type PrepareNativeChatVisuals
+} from '../native-chat/native-chat-visuals-delivery'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { replayJournal } from '../native-chat/agent-session-journal/journal-open'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
@@ -88,6 +93,19 @@ export type StructuredAgentRuntimeRegistration = {
   ) => Promise<string>
 }
 
+function nativeChatVisualsFor(deps: StructuredAgentSessionRuntimeDeps): {
+  prepareVisuals?: PrepareNativeChatVisuals
+} {
+  return deps.nativeChatVisuals
+    ? {
+        prepareVisuals: createNativeChatVisualsDelivery({
+          stateDirectory: deps.stateDirectory,
+          logger: deps.logger
+        })
+      }
+    : {}
+}
+
 function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
   const { deps, store, followUps, host } = context
   return new CodexStructuredSessionAdapter({
@@ -99,7 +117,8 @@ function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredA
       ...(deps.resolveCodexPermissionPolicy
         ? { resolvePermissionPolicy: deps.resolveCodexPermissionPolicy }
         : {}),
-      ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
+      ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {}),
+      ...nativeChatVisualsFor(deps)
     }),
     ...(deps.openCodexConnection ? { openConnection: deps.openCodexConnection } : {}),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
@@ -126,7 +145,8 @@ function createClaudeAdapter(
     store,
     resolveWorkspacePath: deps.resolveWorkspacePath,
     ...(deps.resolveClaudeCommand ? { resolveClaudeCommand: deps.resolveClaudeCommand } : {}),
-    ...(deps.claudeThinkingDisplay ? { claudeThinkingDisplay: deps.claudeThinkingDisplay } : {}),
+    ...(deps.claudeCliFlags ? { claudeCliFlags: deps.claudeCliFlags } : {}),
+    ...nativeChatVisualsFor(deps),
     ...(deps.resolveClaudeLaunchEnv ? { resolveClaudeLaunchEnv: deps.resolveClaudeLaunchEnv } : {}),
     resolveClaudeInheritedEnv: context.environment.resolveClaudeInheritedEnv,
     resolveClaudeLaunchArgs: () => deps.resolveLaunchArgs('claude'),
@@ -140,6 +160,7 @@ function createClaudeAdapter(
             readClaudeManagedAccountGateSettings(deps.getClaudeManagedAccountGateSettings!)
         }
       : {}),
+    attachmentDirectory: agentSessionAttachmentStoreRoot(deps.stateDirectory),
     onLifecycleEvent: context.deliverLifecycle,
     logger: deps.logger,
     onChildWorkEvidence: (sessionId, evidence) =>
