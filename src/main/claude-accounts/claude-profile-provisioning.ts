@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import {
-  applyClaudeFolderTrust,
   resolveClaudeGlobalConfigFile,
   updateClaudeGlobalConfig
 } from '../claude/claude-folder-trust-file'
@@ -39,7 +38,7 @@ export const CLAUDE_PROFILE_RESOURCE_DIRS = [
 ] as const
 // Copied, not linked: a rename-replace save (Claude's own, or an editor's) would cut a link.
 export const CLAUDE_PROFILE_RESOURCE_FILES = ['CLAUDE.md', 'keybindings.json'] as const
-export const CLAUDE_PROFILE_MEMORY_IMPORT = '@~/.claude/CLAUDE.md\n'
+const CLAUDE_PROFILE_MEMORY_IMPORT = '@~/.claude/CLAUDE.md\n'
 const PRIVATE_KEYS = new Set([
   'apiKeyHelper',
   'awsAuthRefresh',
@@ -103,7 +102,6 @@ async function mergeState(args: {
   source: string
   target: string
   ledger: ClaudeProfileLedger
-  trustKeys: readonly string[]
   report: ClaudeProfileReport
 }): Promise<ClaudeProfileSurfaceOutcome> {
   if (lstatIfPresent(args.target)?.isSymbolicLink()) {
@@ -111,7 +109,7 @@ async function mergeState(args: {
   }
   const input = readClaudeProfileObject(args.source)
   if (input.kind === 'unavailable') {
-    // Why: onboarding and trust don't depend on the personal state; only its shared keys wait.
+    // Why: onboarding doesn't depend on the personal state; only its shared keys wait.
     const error = new ClaudeProfileSurfaceError('unreadable', 'Personal Claude state is unreadable')
     warnClaudeProfile(args.report, '.claude.json', error)
   }
@@ -134,11 +132,6 @@ async function mergeState(args: {
     if (config.hasCompletedOnboarding !== true) {
       config.hasCompletedOnboarding = true
       changed = true
-    }
-    // Why: a malformed `projects` refuses only trust; onboarding and shared keys still apply.
-    const trust = args.trustKeys.length > 0 ? applyClaudeFolderTrust(config, args.trustKeys) : null
-    if (trust?.kind === 'changed') {
-      return trust
     }
     return changed ? { kind: 'changed', config } : { kind: 'unchanged' }
   })
@@ -163,7 +156,6 @@ export async function provisionClaudeProfile(args: {
   /** The user's own CLAUDE_CONFIG_DIR; `~/.claude` when unset. */
   userConfigDir?: string
   platform?: NodeJS.Platform
-  trustKeys?: readonly string[]
 }): Promise<ClaudeProfileReport> {
   const platform = args.platform ?? process.platform
   const defaultHome = resolveClaudeDefaultHome(args.userHome, args.userConfigDir)
@@ -210,7 +202,6 @@ export async function provisionClaudeProfile(args: {
       source: statePath(args.userConfigDir),
       target: statePath(args.profileHome),
       ledger,
-      trustKeys: args.trustKeys ?? [],
       report
     })
   )

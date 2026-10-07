@@ -12,7 +12,6 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: { getPath: () => '/unused-test-path' } }))
 import {
-  assertOutsideDefaultClaudeHomes,
   describeClaudeProfile,
   prepareClaudeProfileDirectory,
   readClaudeProfileObject,
@@ -121,11 +120,9 @@ describe('Claude profile namespace', () => {
   it.runIf(caseInsensitive)('refuses a case-only alias of the default home', () => {
     const userHome = root()
     mkdirSync(join(userHome, '.claude'))
-    expect(() => assertOutsideDefaultClaudeHomes(join(userHome, '.CLAUDE'), userHome)).toThrow(
-      'separate directories'
-    )
+    const dataRoot = join(userHome, '.CLAUDE', 'orca')
     expect(() =>
-      assertOutsideDefaultClaudeHomes(join(userHome, '.CLAUDE', 'nested'), userHome)
+      prepareClaudeProfileDirectory(dataRoot, describeClaudeProfile(dataRoot, 'a', local), userHome)
     ).toThrow('separate directories')
   })
   it("reads the user's own CLAUDE_CONFIG_DIR but never Orca's injected one", () => {

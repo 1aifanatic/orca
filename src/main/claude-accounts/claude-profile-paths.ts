@@ -141,7 +141,7 @@ export function prepareClaudeProfileDirectory(
   }
 }
 
-export function assertClaudeProfileDescendant(root: string, destination: string): void {
+function assertClaudeProfileDescendant(root: string, destination: string): void {
   const suffix = relative(resolve(root), resolve(destination))
   if (!suffix || suffix === '..' || suffix.startsWith(`..${sep}`) || isAbsolute(suffix)) {
     throw new ClaudeProfileSurfaceError(
@@ -185,7 +185,7 @@ function canonicalPath(file: string): string {
   }
 }
 
-export function assertDistinctClaudeProfile(profile: string, defaultHome: string): void {
+function assertDistinctClaudeProfile(profile: string, defaultHome: string): void {
   const left = canonicalPath(profile)
   const right = canonicalPath(defaultHome)
   for (const [root, destination] of [
@@ -203,7 +203,7 @@ export function assertDistinctClaudeProfile(profile: string, defaultHome: string
 }
 
 /** Claude's default homes: a profile may never be, contain, or sit inside one. */
-export function assertOutsideDefaultClaudeHomes(
+function assertOutsideDefaultClaudeHomes(
   profileHome: string,
   userHome: string,
   userConfigDir?: string
