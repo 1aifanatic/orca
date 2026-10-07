@@ -1,0 +1,13 @@
+--- a/src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts
++++ b/src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts
+@@ -192,7 +192,9 @@
+             expect(host.listSessions()).toHaveLength(1)
+             expect(fixture.proc.destroy).not.toHaveBeenCalled()
+             expect(onExit).not.toHaveBeenCalled()
+-            await vi.waitFor(() => expect(signal).toHaveBeenCalledWith(4242, 'SIGKILL'))
++            await vi.waitFor(() => expect(signal).toHaveBeenCalledWith(4242, 'SIGKILL'), {
++              interval: 1
++            })
+           } finally {
+             fixture.proc._simulateExit(137)
+             killFailure = await settled
