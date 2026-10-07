@@ -140,7 +140,15 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
     forgetHostSession: async (hostId) => {
       const host = parseExecutionHostId(hostId)
       if (host?.kind === 'runtime') {
-        await retireUnownedRuntimeSession(store, host.environmentId)
+        try {
+          await retireUnownedRuntimeSession(store, host.environmentId)
+        } catch (error) {
+          // The server is already unlinked; retain its session without holding the SSH claim.
+          console.warn(
+            '[runtime-environments] Retaining managed-server session after archive failure:',
+            error
+          )
+        }
       }
     }
   })

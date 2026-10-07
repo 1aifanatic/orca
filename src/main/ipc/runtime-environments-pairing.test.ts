@@ -12,6 +12,7 @@ import { MIN_COMPATIBLE_RUNTIME_SERVER_VERSION } from '../../shared/protocol-ver
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
 import * as environmentStore from '../../shared/runtime-environment-store'
 import { RemoteRuntimeClientError } from '../../shared/remote-runtime-client-error'
+import * as runtimeMaintenance from './orcad-runtime-maintenance-handlers'
 
 const {
   handleMock,
@@ -139,6 +140,30 @@ describe('registerRuntimeEnvironmentHandlers', () => {
   afterEach(() => {
     resetRuntimeEnvironmentStatusOwners()
     rmSync(userDataPath, { recursive: true, force: true })
+  })
+
+  it('preserves failed managed-server archives without stranding stop cleanup', async () => {
+    const registration = vi
+      .spyOn(runtimeMaintenance, 'registerOrcadRuntimeMaintenanceHandlers')
+      .mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      store.removeRuntimeWorkspaceSessionPartition.mockRejectedValue(new Error('archive failed'))
+      registerRuntimeEnvironmentHandlers(store as never)
+      const options = registration.mock.calls[0][0]
+      await expect(options.forgetHostSession('runtime:removed')).resolves.toBeUndefined()
+      expect(store.removeRuntimeWorkspaceSessionPartition).toHaveBeenCalledWith(
+        'runtime:removed',
+        expect.any(Function)
+      )
+      expect(warn).toHaveBeenCalledWith(
+        '[runtime-environments] Retaining managed-server session after archive failure:',
+        expect.any(Error)
+      )
+    } finally {
+      registration.mockRestore()
+      warn.mockRestore()
+    }
   })
 
   it('registers desktop runtime environment management handlers', () => {
