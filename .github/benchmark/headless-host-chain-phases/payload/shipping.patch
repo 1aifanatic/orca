@@ -1,0 +1,1194 @@
+diff --git a/src/renderer/src/components/terminal-pane/direct-ssh-hidden-output-restore-unavailable-banner.test.ts b/src/renderer/src/components/terminal-pane/direct-ssh-hidden-output-restore-unavailable-banner.test.ts
+index ef2192801622..bb94b8e98ab6 100644
+--- a/src/renderer/src/components/terminal-pane/direct-ssh-hidden-output-restore-unavailable-banner.test.ts
++++ b/src/renderer/src/components/terminal-pane/direct-ssh-hidden-output-restore-unavailable-banner.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
++import { createDeferred, flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createManager,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-agent-session-resume.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-agent-session-resume.test.ts
+index c0305769c403..b819a594add4 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-agent-session-resume.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-agent-session-resume.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { UUID_RE } from './pty-connection-test-constants'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-cold-restore-agent-resume.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-cold-restore-agent-resume.test.ts
+index 70157e835058..906366742a54 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-cold-restore-agent-resume.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-cold-restore-agent-resume.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import { RESET_GRAPHIC_RENDITION } from '../../../../shared/terminal-mode-reset-profiles'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { UUID_RE } from './pty-connection-test-constants'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-cold-restore-resume-command.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-cold-restore-resume-command.test.ts
+index 21d5a4189c30..5b6c40f6861b 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-cold-restore-resume-command.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-cold-restore-resume-command.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import { UUID_RE } from './pty-connection-test-constants'
+ import { temporarilySetNavigatorUserAgent } from './pty-connection-test-dom'
+ import {
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-command-finished-cleanup.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-command-finished-cleanup.test.ts
+index 35bb4fd7a4ef..4320442ef0f1 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-command-finished-cleanup.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-command-finished-cleanup.test.ts
+@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { POST_REPLAY_REATTACH_RESET } from '../../../../shared/terminal-mode-reset-profiles'
+ import { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal-kitty-keyboard-mode-tracker'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import {
+   createKeyboardEventTarget,
+   keyEvent,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-command-finished-late-done.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-command-finished-late-done.test.ts
+index bddbe195003f..7bd2db6547ff 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-command-finished-late-done.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-command-finished-late-done.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-deferred-reattach-live-output.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-deferred-reattach-live-output.test.ts
+index ab4a3cd14149..03524b59d535 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-deferred-reattach-live-output.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-deferred-reattach-live-output.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import { RESET_GRAPHIC_RENDITION } from '../../../../shared/terminal-mode-reset-profiles'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-deferred-ssh-passphrase.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-deferred-ssh-passphrase.test.ts
+index 0c8d357f55b7..94e59c3d21e7 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-deferred-ssh-passphrase.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-deferred-ssh-passphrase.test.ts
+@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
+ import type { SshConnectionState } from '../../../../shared/ssh-types'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-deliberate-sleep-guard.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-deliberate-sleep-guard.test.ts
+index 71cd170be084..d9b110729120 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-deliberate-sleep-guard.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-deliberate-sleep-guard.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-reattach-retry.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-reattach-retry.test.ts
+index 724bcddd15eb..efb39b841f3f 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-reattach-retry.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-reattach-retry.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   LEAF_2,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-spawn-retry.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-spawn-retry.test.ts
+index 6faa8c3867d9..84b243b79099 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-spawn-retry.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-spawn-retry.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-routing.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-routing.test.ts
+index 5954b164b60b..27dc2a7d3375 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-routing.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-routing.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   VISIBLE_PTY_SETTLE_MS,
+   WRAPPER_RESOLVE_RETRY_MS,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-sampling.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-sampling.test.ts
+index 54fcc4e898a5..419fdd6ef55d 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-sampling.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-sampling.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import type { TuiAgent } from '../../../../shared/tui-agent'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   VISIBLE_PTY_SETTLE_MS,
+   WRAPPER_RESOLVE_RETRY_MS,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-foreground-process-exit.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-foreground-process-exit.test.ts
+index 6611360729a9..b21d6d90d982 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-foreground-process-exit.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-foreground-process-exit.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-foreground-routing-confirmation.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-foreground-routing-confirmation.test.ts
+index c93ef65df38a..c0ccf8cde97e 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-foreground-routing-confirmation.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-foreground-routing-confirmation.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import type { TuiAgent } from '../../../../shared/tui-agent'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   VISIBLE_PTY_SETTLE_MS,
+   WRAPPER_RESOLVE_RETRY_MS,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-foreground-write-path.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-foreground-write-path.test.ts
+index 9975a9b330a0..2ee11d0ae9ec 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-foreground-write-path.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-foreground-write-path.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   temporarilySetNavigatorUserAgent,
+   sendTerminalInputThroughPane
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-fresh-spawn-guards.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-fresh-spawn-guards.test.ts
+index adf9f511a2c3..dc32c806ecab 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-fresh-spawn-guards.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-fresh-spawn-guards.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { sendTerminalInputThroughPane } from './pty-connection-test-dom'
+ import {
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hibernation-wake.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hibernation-wake.test.ts
+index 81e57fc6ab5d..f634173b8546 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hibernation-wake.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hibernation-wake.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import { sendTerminalInputThroughPane } from './pty-connection-test-dom'
+ import {
+   LEAF_2,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hidden-atlas-recovery.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hidden-atlas-recovery.test.ts
+index e0778fdffb77..017bbda6ef93 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hidden-atlas-recovery.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hidden-atlas-recovery.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-reconciliation.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-reconciliation.test.ts
+index edcc0f65849a..18acc147c534 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-reconciliation.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-reconciliation.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { DEFAULT_DA1_RESPONSE } from './terminal-capability-replies'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hidden-codex-queries.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hidden-codex-queries.test.ts
+index b1a2b7b5fa66..a18e76438ee5 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hidden-codex-queries.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hidden-codex-queries.test.ts
+@@ -8,7 +8,7 @@ import {
+ } from '../../../../shared/terminal-mode-reset-profiles'
+ import { replayEpilogue } from './pty-connection-test-replay-epilogue'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hidden-delivery-gate.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hidden-delivery-gate.test.ts
+index ff7c64900bcb..c30dcd977836 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hidden-delivery-gate.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hidden-delivery-gate.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { RESET_AFTER_BYTE_GAP } from '../../../../shared/terminal-mode-reset-profiles'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hidden-query-snapshot-restore.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hidden-query-snapshot-restore.test.ts
+index 36a7610ccfd4..7aeb89291331 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hidden-query-snapshot-restore.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hidden-query-snapshot-restore.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-live-overlap.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-live-overlap.test.ts
+index a85f0e795624..0c8dbb0ce6e2 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-live-overlap.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-live-overlap.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-resize-signals.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-resize-signals.test.ts
+index 26391326702e..00350a8c8f9f 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-resize-signals.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-resize-signals.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   captureCallbackTerminalWrites,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hidden-tui-snapshot-replay.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hidden-tui-snapshot-replay.test.ts
+index eebe3ffbf425..ca72c6539850 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hidden-tui-snapshot-replay.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hidden-tui-snapshot-replay.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hook-completion-side-effects.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hook-completion-side-effects.test.ts
+index 4bd6747c02ac..7b07b0743420 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hook-completion-side-effects.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hook-completion-side-effects.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { RESET_TERMINAL_CURSOR_STYLE } from '../../../../shared/terminal-mode-reset-profiles'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { AGENT_TASK_COMPLETE_NOTIFICATION_MAX_WAIT_MS } from './pty-connection-test-constants'
+ import {
+   temporarilySetNavigatorUserAgent,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-hook-idle-arbitration.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-hook-idle-arbitration.test.ts
+index 9cf90295714f..68846d27a3e9 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-hook-idle-arbitration.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-hook-idle-arbitration.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { RESET_TERMINAL_CURSOR_STYLE } from '../../../../shared/terminal-mode-reset-profiles'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { AGENT_TASK_COMPLETE_NOTIFICATION_MAX_WAIT_MS } from './pty-connection-test-constants'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-interrupt-inference.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-interrupt-inference.test.ts
+index abe8e7d34491..5e5db308fb00 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-interrupt-inference.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-interrupt-inference.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { createKeyboardEventTarget, keyEvent } from './pty-connection-test-dom'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-kitty-keyboard-restore.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-kitty-keyboard-restore.test.ts
+index cfbb806bb991..346c8eb2dbc3 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-kitty-keyboard-restore.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-kitty-keyboard-restore.test.ts
+@@ -6,7 +6,7 @@ import {
+ } from '../../../../shared/terminal-mode-reset-profiles'
+ import { TerminalKittyKeyboardModeTracker } from '../../../../shared/terminal-kitty-keyboard-mode-tracker'
+ import { replayEpilogue } from './pty-connection-test-replay-epilogue'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-main-side-effect-authority.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-main-side-effect-authority.test.ts
+index f96a73320a09..e291d1a9613e 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-main-side-effect-authority.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-main-side-effect-authority.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { AGENT_TASK_COMPLETE_NOTIFICATION_MAX_WAIT_MS } from './pty-connection-test-constants'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-mode-2031-subscriptions.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-mode-2031-subscriptions.test.ts
+index 29b82144c97c..7f201c23f461 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-mode-2031-subscriptions.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-mode-2031-subscriptions.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-notification-settings-gating.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-notification-settings-gating.test.ts
+index 7b5dfd3c1cec..5388cb28603f 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-notification-settings-gating.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-notification-settings-gating.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import { AGENT_TASK_COMPLETE_NOTIFICATION_MAX_WAIT_MS } from './pty-connection-test-constants'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts
+index 9587fceb7a43..a51df8922a43 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts
+@@ -8,7 +8,7 @@ import {
+ import { replayEpilogue } from './pty-connection-test-replay-epilogue'
+ import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
+ import type { SshConnectionState } from '../../../../shared/ssh-types'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import { createRect } from './pty-connection-test-dom'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-pi-synchronized-input.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-pi-synchronized-input.test.ts
+index 9a240b32b458..e72d96ea5658 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-pi-synchronized-input.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-pi-synchronized-input.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   temporarilySetNavigatorUserAgent,
+   sendTerminalInputThroughPane
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-post-dispose-restore-termination.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-post-dispose-restore-termination.test.ts
+index 952e6376bbce..1bd878c30252 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-post-dispose-restore-termination.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-post-dispose-restore-termination.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-pty-exit-teardown.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-pty-exit-teardown.test.ts
+index 91b00e715555..7f8b0d9e7270 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-pty-exit-teardown.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-pty-exit-teardown.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import { sendTerminalInputThroughPane } from './pty-connection-test-dom'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   LEAF_2,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-queued-startup-consume.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-queued-startup-consume.test.ts
+index 9a3c0571affc..1c47a941914d 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-queued-startup-consume.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-queued-startup-consume.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-reattach-binding.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-reattach-binding.test.ts
+index ceca9af23429..19715cae7b88 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-reattach-binding.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-reattach-binding.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { getEagerPtyBufferHandle } from './pty-dispatcher'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   LEAF_2,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-reattach-mode-reset.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-reattach-mode-reset.test.ts
+index c57c1bd9e9d4..336f47139595 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-reattach-mode-reset.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-reattach-mode-reset.test.ts
+@@ -10,7 +10,7 @@ import {
+   RESET_TERMINAL_CURSOR_STYLE
+ } from '../../../../shared/terminal-mode-reset-profiles'
+ import { replayEpilogue } from './pty-connection-test-replay-epilogue'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   withMockedDocumentActiveElement,
+   configureTerminalFocusMode,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-remote-runtime-attach.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-remote-runtime-attach.test.ts
+index cbd4464e65d6..ad875466314e 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-remote-runtime-attach.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-remote-runtime-attach.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { UUID_RE } from './pty-connection-test-constants'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-renderer-risk-repaint.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-renderer-risk-repaint.test.ts
+index 8bc6b3be4b18..3935497be49a 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-renderer-risk-repaint.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-renderer-risk-repaint.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { temporarilySetNavigatorUserAgent } from './pty-connection-test-dom'
+ import {
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-replay-payload-handling.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-replay-payload-handling.test.ts
+index 698b0ee1661b..6e5387de5a43 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-replay-payload-handling.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-replay-payload-handling.test.ts
+@@ -6,7 +6,7 @@ import {
+   RESET_TERMINAL_CURSOR_STYLE
+ } from '../../../../shared/terminal-mode-reset-profiles'
+ import { replayEpilogue } from './pty-connection-test-replay-epilogue'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   NORMAL_BUFFER_PROLOGUE,
+   ANSI_POSITIONED_CURSOR_AGENT_REATTACH_SCREEN
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-restored-baseline-shortfall.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-restored-baseline-shortfall.test.ts
+index ea599b256881..8b3ea9b9f15b 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-restored-baseline-shortfall.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-restored-baseline-shortfall.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-runtime-owner-spawn-routing.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-runtime-owner-spawn-routing.test.ts
+index 6234d07f23f2..bafe3b070d05 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-runtime-owner-spawn-routing.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-runtime-owner-spawn-routing.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   LEAF_2,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-session-liveness.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-session-liveness.test.ts
+index 8ebc3d656409..92a0aced4b43 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-session-liveness.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-session-liveness.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { sendTerminalInputThroughPane } from './pty-connection-test-dom'
+ import {
+   LEAF_2,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-setup-split-spawn.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-setup-split-spawn.test.ts
+index 8e0e238aa208..fa1d144deb16 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-setup-split-spawn.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-setup-split-spawn.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import { createRect, createMeasuredElement } from './pty-connection-test-dom'
+ import {
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-sleeping-resume-banner.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-sleeping-resume-banner.test.ts
+index a767092c58e2..75529b2be904 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-sleeping-resume-banner.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-sleeping-resume-banner.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import { UUID_RE } from './pty-connection-test-constants'
+ import {
+   LEAF_2,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-spawn-left-pane-unbound.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-spawn-left-pane-unbound.test.ts
+index 1f8a1c7d0fcb..a2c3be25d719 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-spawn-left-pane-unbound.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-spawn-left-pane-unbound.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-split-cwd-resolution.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-split-cwd-resolution.test.ts
+index 714a7fd6f50e..26c104b5b7a6 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-split-cwd-resolution.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-split-cwd-resolution.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
+ import { connectPanePty } from './pty-connection'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
++import { createDeferred, flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createManager,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-ssh-reattach-early-input.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-ssh-reattach-early-input.test.ts
+index bc8feb1acae3..a9cc0bad2167 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-ssh-reattach-early-input.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-ssh-reattach-early-input.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
+ import { connectPanePty } from './pty-connection'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
++import { createDeferred, flushAsyncTicks } from './pty-transport-test-harness'
+ import { LEAF_1, createManager, createPane } from './pty-connection-test-pane-fixtures'
+ import { buildPaneConnectionDeps } from './pty-connection-test-deps'
+ import {
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-ssh-startup-draft-delivery.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-ssh-startup-draft-delivery.test.ts
+index 8f8e2eea1192..8d95c9b8e7a9 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-ssh-startup-draft-delivery.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-ssh-startup-draft-delivery.test.ts
+@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import { SETUP_AGENT_SEQUENCE_STARTUP_COMMAND_ENV } from '../../../../shared/setup-agent-sequencing'
+ import { beginAgentStartupDeliveryAttempt } from '@/lib/agent-startup-delayed-delivery'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { VISIBLE_PTY_SETTLE_MS } from './pty-connection-test-constants'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-stalled-hidden-restore.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-stalled-hidden-restore.test.ts
+index 42422174f1a5..9bccc50e1b7a 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-stalled-hidden-restore.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-stalled-hidden-restore.test.ts
+@@ -4,7 +4,7 @@ import {
+   buildKittyKeyboardRestore,
+   RESET_AFTER_BYTE_GAP
+ } from '../../../../shared/terminal-mode-reset-profiles'
+-import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
++import { flushAsyncTicks, createDeferred } from './pty-transport-test-harness'
+ import { NORMAL_BUFFER_PROLOGUE } from './pty-connection-test-constants'
+ import {
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-startup-command-delivery.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-startup-command-delivery.test.ts
+index c7170af8b0f4..1841e0b224b8 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-startup-command-delivery.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-startup-command-delivery.test.ts
+@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { TERMINAL_PASTE_DIRECT_MAX_BYTES } from './terminal-paste-coordinator'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import { toAppSshPtyId } from '../../../../shared/ssh-pty-id'
+-import { flushAsyncTicks, drainPendingTimeouts } from './pty-connection-test-async'
++import { flushAsyncTicks, drainPendingTimeouts } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-task-complete-dispatch.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-task-complete-dispatch.test.ts
+index 95d331e99ddb..266371cd41b7 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-task-complete-dispatch.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-task-complete-dispatch.test.ts
+@@ -2,7 +2,7 @@ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { RESET_TERMINAL_CURSOR_STYLE } from '../../../../shared/terminal-mode-reset-profiles'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { AGENT_TASK_COMPLETE_NOTIFICATION_MAX_WAIT_MS } from './pty-connection-test-constants'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-terminal-input-gating.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-terminal-input-gating.test.ts
+index c26913c75d90..03434cda2c32 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-terminal-input-gating.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-terminal-input-gating.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createKeyboardEventTarget,
+   keyEvent,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-test-async.ts b/src/renderer/src/components/terminal-pane/pty-connection-test-async.ts
+index cc5a33357631..d4f984799945 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-test-async.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-test-async.ts
+@@ -1,41 +1,11 @@
+-import { vi } from 'vitest'
+-import { Terminal } from '@xterm/headless'
+-
+-// Why: fresh-spawn/reattach now settle across multiple microtasks, so tests must drain several ticks before asserting on IPC mocks. See docs/mobile-prefer-renderer-scrollback.md.
+-export async function flushAsyncTicks(count = 6): Promise<void> {
+-  for (let i = 0; i < count; i++) {
+-    await Promise.resolve()
+-  }
+-}
+-
+-export async function drainFakeTimerWork(limit = 20): Promise<void> {
+-  await flushAsyncTicks(20)
+-  if (!vi.isFakeTimers()) {
+-    return
+-  }
+-  for (let iteration = 0; iteration < limit && vi.getTimerCount() > 0; iteration += 1) {
+-    await vi.runOnlyPendingTimersAsync()
+-    await flushAsyncTicks(20)
+-  }
+-  vi.clearAllTimers()
+-  await flushAsyncTicks(20)
+-  vi.clearAllTimers()
+-}
++export {
++  flushAsyncTicks,
++  drainFakeTimerWork,
++  drainPendingTimeouts,
++  createDeferred
++} from './pty-transport-test-harness'
+ 
+-export async function drainPendingTimeouts(
+-  pendingTimeouts: (() => void)[],
+-  limit = 100
+-): Promise<void> {
+-  let iterations = 0
+-  while (pendingTimeouts.length > 0) {
+-    if (iterations >= limit) {
+-      throw new Error('Timed out draining pending timeouts')
+-    }
+-    iterations += 1
+-    pendingTimeouts.shift()?.()
+-    await flushAsyncTicks()
+-  }
+-}
++import { Terminal } from '@xterm/headless'
+ 
+ export function writeHeadlessTerminal(term: Terminal, data: string): Promise<void> {
+   return new Promise((resolve) => term.write(data, resolve))
+@@ -85,17 +55,3 @@ export async function renderHeadlessTerminalState(
+     term.dispose()
+   }
+ }
+-
+-export function createDeferred<T>(): {
+-  promise: Promise<T>
+-  resolve: (value: T) => void
+-  reject: (reason?: unknown) => void
+-} {
+-  let resolveDeferred!: (value: T) => void
+-  let rejectDeferred!: (reason?: unknown) => void
+-  const promise = new Promise<T>((resolve, reject) => {
+-    resolveDeferred = resolve
+-    rejectDeferred = reject
+-  })
+-  return { promise, resolve: resolveDeferred, reject: rejectDeferred }
+-}
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts b/src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts
+index c4b1838bb25b..2aa93c503d1c 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts
+@@ -1,7 +1,7 @@
+ import { vi } from 'vitest'
+ import { resetAgentStartupDelayedDeliveryForTests } from '@/lib/agent-startup-delayed-delivery'
+ import * as agentStatusStartupSnapshot from '@/hooks/ipc-events/agent-status-startup-snapshot'
+-import { drainFakeTimerWork, flushAsyncTicks } from './pty-connection-test-async'
++import { drainFakeTimerWork, flushAsyncTicks } from './pty-transport-test-harness'
+ 
+ const originalRequestAnimationFrame = globalThis.requestAnimationFrame
+ const originalCancelAnimationFrame = globalThis.cancelAnimationFrame
+@@ -42,7 +42,9 @@ export async function installTerminalTestGlobals(): Promise<void> {
+   statusSnapshot.settle()
+   resetStatusSnapshot = undefined
+   // Import after resetModules so the seeded store and connection share one bridge.
++  console.info('[orca-headless-installer-phase]', JSON.stringify({ phase: 'reset-bridge-import:start', workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
+   const actual = await import('@/hooks/ipc-events/agent-status-startup-snapshot')
++  console.info('[orca-headless-installer-phase]', JSON.stringify({ phase: 'reset-bridge-import:complete', workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
+   resetStatusSnapshot = actual.registerAgentStatusStartupSnapshot()
+   resetStatusSnapshot.settle()
+   ;(globalThis as unknown as { window: unknown }).window = {
+@@ -97,6 +99,7 @@ export async function installTerminalTestGlobals(): Promise<void> {
+     addEventListener: vi.fn(),
+     removeEventListener: vi.fn()
+   }
++  console.info('[orca-headless-installer-phase]', JSON.stringify({ phase: 'window-api:assigned', workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
+   vi.mocked(window.api.pty.confirmForegroundProcess).mockImplementation((id) =>
+     window.api.pty.getForegroundProcess(id)
+   )
+@@ -110,6 +113,7 @@ export async function installTerminalTestGlobals(): Promise<void> {
+     return 1
+   })
+   globalThis.cancelAnimationFrame = vi.fn()
++  console.info('[orca-headless-installer-phase]', JSON.stringify({ phase: 'installer:complete', workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
+ }
+ 
+ export async function restoreTerminalTestGlobals(): Promise<void> {
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-typed-agent-identity.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-typed-agent-identity.test.ts
+index 05056d3c73b4..38021734a3ed 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-typed-agent-identity.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-typed-agent-identity.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import { sendTerminalInputThroughPane } from './pty-connection-test-dom'
+ import {
+   LEAF_1,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-unanswered-command-finish.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-unanswered-command-finish.test.ts
+index 15ca1f989fb9..a989576b8085 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-unanswered-command-finish.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-unanswered-command-finish.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-visibility-resume-size.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-visibility-resume-size.test.ts
+index f5fe39b9baed..62e371003eca 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-visibility-resume-size.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-visibility-resume-size.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_2,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-visible-pane-output-pause-latch.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-visible-pane-output-pause-latch.test.ts
+index 230b600458d9..354624c276ce 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-visible-pane-output-pause-latch.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-visible-pane-output-pause-latch.test.ts
+@@ -23,7 +23,7 @@
+  */
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createMockTransport,
+   createPane,
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-windows-cjk-repaint.test.ts b/src/renderer/src/components/terminal-pane/pty-connection-windows-cjk-repaint.test.ts
+index c37df9c0e16c..0fc6bb6ff9c5 100644
+--- a/src/renderer/src/components/terminal-pane/pty-connection-windows-cjk-repaint.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-windows-cjk-repaint.test.ts
+@@ -1,6 +1,6 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { flushAsyncTicks } from './pty-connection-test-async'
++import { flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   temporarilySetNavigatorUserAgent,
+   sendTerminalInputThroughPane
+diff --git a/src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts b/src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts
+index 9b3099d0326e..12287de61b8f 100644
+--- a/src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts
+@@ -18,7 +18,7 @@ import {
+   needsCookedEchoSafeQueryReply
+ } from '../../../../shared/terminal-query-reply'
+ import { installTerminalCapabilityReplyHandlers } from './terminal-capability-replies'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
++import { createDeferred, flushAsyncTicks } from './pty-transport-test-harness'
+ 
+ const WHEEL_UP_REPORT = '\x1b[<64;60;20M'
+ 
+diff --git a/src/renderer/src/components/terminal-pane/pty-preconnect-input-buffer.test.ts b/src/renderer/src/components/terminal-pane/pty-preconnect-input-buffer.test.ts
+index 2595863cb3d4..25f39b725ebc 100644
+--- a/src/renderer/src/components/terminal-pane/pty-preconnect-input-buffer.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-preconnect-input-buffer.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it, vi } from 'vitest'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
++import { createDeferred, flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   createPtyPreconnectInputBuffer,
+   PTY_PRECONNECT_INPUT_MAX_CODE_UNITS,
+diff --git a/src/renderer/src/components/terminal-pane/pty-transport-input-write.test.ts b/src/renderer/src/components/terminal-pane/pty-transport-input-write.test.ts
+index df2c11e08d43..3381a8bef90c 100644
+--- a/src/renderer/src/components/terminal-pane/pty-transport-input-write.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-transport-input-write.test.ts
+@@ -5,17 +5,18 @@ import {
+ } from '../../../../shared/terminal-input'
+ import { CLIPBOARD_TEXT_MEASURE_YIELD_CODE_UNITS } from '../../../../shared/clipboard-text'
+ import { PTY_INPUT_WRITE_QUEUE_MAX_PENDING_REPLIES } from './pty-input-write-queue'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
+-import {
+-  PTY_PRECONNECT_INPUT_MAX_CODE_UNITS,
+-  PTY_PRECONNECT_INPUT_MAX_ENTRIES,
+-  type PtyPreconnectInputEntry
+-} from './pty-preconnect-input-buffer'
+ import {
++  createDeferred,
++  flushAsyncTicks,
+   installIpcPtyWindow,
+   restorePtySpecWindow,
+   type PtyExitPayload
+ } from './pty-transport-test-harness'
++import {
++  PTY_PRECONNECT_INPUT_MAX_CODE_UNITS,
++  PTY_PRECONNECT_INPUT_MAX_ENTRIES,
++  type PtyPreconnectInputEntry
++} from './pty-preconnect-input-buffer'
+ 
+ describe('createIpcPtyTransport', () => {
+   const originalWindow = (globalThis as { window?: typeof window }).window
+diff --git a/src/renderer/src/components/terminal-pane/pty-transport-test-harness.ts b/src/renderer/src/components/terminal-pane/pty-transport-test-harness.ts
+index 727327aa8111..daa6454eac9a 100644
+--- a/src/renderer/src/components/terminal-pane/pty-transport-test-harness.ts
++++ b/src/renderer/src/components/terminal-pane/pty-transport-test-harness.ts
+@@ -65,3 +65,53 @@ export function restorePtySpecWindow(originalWindow: typeof window | undefined):
+     delete (globalThis as { window?: typeof window }).window
+   }
+ }
++
++// Why: fresh-spawn/reattach now settle across multiple microtasks, so tests must drain several ticks before asserting on IPC mocks. See docs/mobile-prefer-renderer-scrollback.md.
++export async function flushAsyncTicks(count = 6): Promise<void> {
++  for (let i = 0; i < count; i++) {
++    await Promise.resolve()
++  }
++}
++
++export async function drainFakeTimerWork(limit = 20): Promise<void> {
++  await flushAsyncTicks(20)
++  if (!vi.isFakeTimers()) {
++    return
++  }
++  for (let iteration = 0; iteration < limit && vi.getTimerCount() > 0; iteration += 1) {
++    await vi.runOnlyPendingTimersAsync()
++    await flushAsyncTicks(20)
++  }
++  vi.clearAllTimers()
++  await flushAsyncTicks(20)
++  vi.clearAllTimers()
++}
++
++export async function drainPendingTimeouts(
++  pendingTimeouts: (() => void)[],
++  limit = 100
++): Promise<void> {
++  let iterations = 0
++  while (pendingTimeouts.length > 0) {
++    if (iterations >= limit) {
++      throw new Error('Timed out draining pending timeouts')
++    }
++    iterations += 1
++    pendingTimeouts.shift()?.()
++    await flushAsyncTicks()
++  }
++}
++
++export function createDeferred<T>(): {
++  promise: Promise<T>
++  resolve: (value: T) => void
++  reject: (reason?: unknown) => void
++} {
++  let resolveDeferred!: (value: T) => void
++  let rejectDeferred!: (reason?: unknown) => void
++  const promise = new Promise<T>((resolve, reject) => {
++    resolveDeferred = resolve
++    rejectDeferred = reject
++  })
++  return { promise, resolve: resolveDeferred, reject: rejectDeferred }
++}
+diff --git a/src/renderer/src/components/terminal-pane/pty-transport-user-input.test.ts b/src/renderer/src/components/terminal-pane/pty-transport-user-input.test.ts
+index 34a71b81b8c7..b687446237a9 100644
+--- a/src/renderer/src/components/terminal-pane/pty-transport-user-input.test.ts
++++ b/src/renderer/src/components/terminal-pane/pty-transport-user-input.test.ts
+@@ -1,7 +1,11 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
++import {
++  createDeferred,
++  flushAsyncTicks,
++  installIpcPtyWindow,
++  restorePtySpecWindow
++} from './pty-transport-test-harness'
+ import type { PtyPreconnectInputEntry } from './pty-preconnect-input-buffer'
+-import { installIpcPtyWindow, restorePtySpecWindow } from './pty-transport-test-harness'
+ 
+ describe('createIpcPtyTransport: input kind', () => {
+   const originalWindow: typeof window | undefined = globalThis.window
+diff --git a/src/renderer/src/components/terminal-pane/remote-park-reveal-unverifiable-retry.test.ts b/src/renderer/src/components/terminal-pane/remote-park-reveal-unverifiable-retry.test.ts
+index 3f7630ec9e8c..2f915fe89103 100644
+--- a/src/renderer/src/components/terminal-pane/remote-park-reveal-unverifiable-retry.test.ts
++++ b/src/renderer/src/components/terminal-pane/remote-park-reveal-unverifiable-retry.test.ts
+@@ -1,7 +1,7 @@
+ import type * as React from 'react'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import { TERMINAL_PAIRED_PARKING_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
++import { createDeferred, flushAsyncTicks } from './pty-transport-test-harness'
+ import {
+   LEAF_1,
+   createMockTransport,
+diff --git a/src/renderer/src/components/terminal-pane/remote-reattach-input-buffer.test.ts b/src/renderer/src/components/terminal-pane/remote-reattach-input-buffer.test.ts
+index 9b6a731b1585..909bf6727500 100644
+--- a/src/renderer/src/components/terminal-pane/remote-reattach-input-buffer.test.ts
++++ b/src/renderer/src/components/terminal-pane/remote-reattach-input-buffer.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it, vi } from 'vitest'
+-import { createDeferred, flushAsyncTicks } from './pty-connection-test-async'
++import { createDeferred, flushAsyncTicks } from './pty-transport-test-harness'
+ import type { PtyConnectResult, PtyTransport } from './pty-transport-types'
+ import { withRemoteReattachInputBuffer } from './remote-reattach-input-buffer'
+ 
+diff --git a/src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-reattach-type-ahead.test.ts b/src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-reattach-type-ahead.test.ts
+index 94fd6f828539..03a43d39e781 100644
+--- a/src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-reattach-type-ahead.test.ts
++++ b/src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-reattach-type-ahead.test.ts
+@@ -3,7 +3,7 @@ import {
+   TerminalStreamOpcode,
+   decodeTerminalStreamText
+ } from '../../../../shared/terminal-stream-protocol'
+-import { createDeferred } from './pty-connection-test-async'
++import { createDeferred } from './pty-transport-test-harness'
+ import {
+   createRemoteRuntimeTransportMocks,
+   type MultiplexSubscriptionCallbacks
+diff --git a/src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts b/src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts
+index d5ed2ff5f49a..2808598d869e 100644
+--- a/src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts
++++ b/src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts
+@@ -33,6 +33,11 @@ const { scheduleRuntimeGraphSync, shouldSeedCacheTimerOnInitialTitle, toastInfo
+   })
+ )
+ 
++
++function observeHostChainPhase(phase: string): void {
++  console.info('[orca-headless-host-chain-phase]', JSON.stringify({ phase, workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
++}
++
+ let mockStoreState: StoreState
+ let transportFactoryQueue: MockTransport[] = []
+ let storeSubscribers: ((state: StoreState) => void)[] = []
+@@ -145,14 +150,18 @@ function viewport(term: Terminal, which: 'normal' | 'alternate'): string[] {
+ }
+ 
+ async function render(events: PaneEvent[]): Promise<Terminal> {
++  observeHostChainPhase('render:start')
+   const term = new Terminal({ cols: COLS, rows: ROWS, scrollback: 100, allowProposedApi: true })
+   for (const event of events) {
+     if (typeof event === 'string') {
++      observeHostChainPhase('render:real-write:start')
+       await writeHeadlessTerminal(term, event)
++      observeHostChainPhase('render:real-write:callback-settled')
+     } else {
+       term.resize(event.cols, event.rows)
+     }
+   }
++  observeHostChainPhase('render:complete')
+   return term
+ }
+ 
+@@ -160,9 +169,12 @@ async function render(events: PaneEvent[]): Promise<Terminal> {
+ async function publishHostRecovery(
+   missed: string
+ ): Promise<{ data: string; meta: PtyReplayDataMeta; published: HostSnapshot }> {
++  observeHostChainPhase('runtime-import:start')
+   const { OrcaRuntimeService } = await vi.importActual<{
+     OrcaRuntimeService: new (store: null) => HostRuntime
+   }>('../../../../main/runtime/orca-runtime')
++  observeHostChainPhase('runtime-import:complete')
++  observeHostChainPhase('snapshot-module-import:start')
+   const { sendSnapshotFrames, serializeBudgetedRequestedSnapshot } = await vi.importActual<{
+     sendSnapshotFrames: (send: HostSendFrame, options: Record<string, unknown>) => unknown
+     serializeBudgetedRequestedSnapshot: (
+@@ -171,10 +183,13 @@ async function publishHostRecovery(
+       scrollbackRows: number
+     ) => Promise<HostSnapshot | null>
+   }>('../../../../main/runtime/rpc/methods/terminal/terminal-snapshot-publication')
++  observeHostChainPhase('snapshot-module-import:complete')
++  observeHostChainPhase('flow-control-import:start')
+   const { installMultiplexFlowControl } = await vi.importActual<{
+     installMultiplexFlowControl: (build: HostConnection) => void
+   }>('../../../../main/runtime/rpc/methods/terminal/terminal-multiplex-flow-control')
+ 
++  observeHostChainPhase('flow-control-import:complete')
+   const host = new OrcaRuntimeService(null)
+   host.setPtyController({
+     write: () => true,
+@@ -254,7 +269,9 @@ async function publishHostRecovery(
+   }
+ 
+   // The initial push only opens the stream; the pane below already parsed these bytes live.
++  observeHostChainPhase('initial-snapshot:start')
+   const initial = await serializeBudgetedRequestedSnapshot(host, PTY_ID, 0)
++  observeHostChainPhase('initial-snapshot:complete')
+   sendSnapshotFrames((opcode, payload) => sendFrame(streamId, opcode, payload), {
+     kind: 'scrollback',
+     cols: initial!.cols,
+@@ -285,9 +302,13 @@ async function publishHostRecovery(
+       throw new Error(message)
+     }
+   }
++  observeHostChainPhase('recovery-snapshot:start')
+   const published = await serializeBudgetedRequestedSnapshot(host, PTY_ID, 0)
++  observeHostChainPhase('recovery-snapshot:complete')
+   installMultiplexFlowControl(connection)
++  observeHostChainPhase('ack-recovery:start')
+   await connection.sendAckRecoverySnapshot?.(stream)
++  observeHostChainPhase('ack-recovery:complete')
+   await expect.poll(() => onReplayData.mock.calls.length).toBe(2)
+   transport.destroy?.()
+   const [data, meta] = onReplayData.mock.calls[1]!
+@@ -296,12 +317,14 @@ async function publishHostRecovery(
+ 
+ describe('host-published recovery snapshot onto a live alt screen', () => {
+   beforeEach(() => {
++    observeHostChainPhase('beforeEach:start')
+     vi.resetModules()
+     vi.clearAllMocks()
+     transportFactoryQueue = []
+     storeSubscribers = []
+     mockStoreState = createInitialStoreState(() => mockStoreState)
+     installTerminalTestGlobals()
++    observeHostChainPhase('beforeEach:returned-without-awaiting-installer')
+   })
+ 
+   afterEach(async () => {
+@@ -313,7 +336,9 @@ describe('host-published recovery snapshot onto a live alt screen', () => {
+     data: string,
+     meta: PtyReplayDataMeta
+   ): Promise<PaneEvent[]> {
++    observeHostChainPhase('pane-module-import:start')
+     const { connectPanePty } = await import('./pty-connection')
++    observeHostChainPhase('pane-module-import:complete')
+     const transport = createMockTransport('agent-pty')
+     const replay: { current: ConnectCallbacks['onReplayData'] | null } = { current: null }
+     transport.connect.mockImplementation(async ({ callbacks }: { callbacks: ConnectCallbacks }) => {
+@@ -360,7 +385,9 @@ describe('host-published recovery snapshot onto a live alt screen', () => {
+   // Why: while the TUI lives, the host publishes no owner, so the alt flag never reaches
+   // the client; the pane must keep the setup history the TUI's alt screen covers.
+   it('keeps the covered history for a live TUI exactly as the host holds it', async () => {
++    observeHostChainPhase('live-TUI-case:start')
+     const { data, meta, published } = await publishHostRecovery(AGENT_FRAME)
++    observeHostChainPhase('live-TUI-case:host-publication-complete')
+     expect(published.alternateScreen).toBe(true)
+     expect(meta.terminalOwner).toBeUndefined()
+     expect(meta.alternateScreen).toBeUndefined()
+@@ -379,7 +406,9 @@ describe('host-published recovery snapshot onto a live alt screen', () => {
+   // Why: once the host's TUI exits, its image no longer enters alt; the pane must leave
+   // alt and show the host's normal screen.
+   it('repaints from the normal buffer once the host TUI has exited', async () => {
++    observeHostChainPhase('exited-TUI-case:start')
+     const { data, meta } = await publishHostRecovery(AGENT_EXIT)
++    observeHostChainPhase('exited-TUI-case:host-publication-complete')
+     expect(meta.terminalOwner).toBe('shell')
+     expect(meta.alternateScreen).toBe(false)
+     const client = await render([LIVE_PANE, ...(await drainOntoLiveAltScreen(data, meta))])
+diff --git a/src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts b/src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts
+index 8528a6b8aef3..320a4c133116 100644
+--- a/src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts
++++ b/src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts
+@@ -3,7 +3,7 @@ import type { ManagedPane, PaneManager } from '@/lib/pane-manager/pane-manager'
+ import type { PtyTransport } from './pty-transport'
+ import type { PaneCwdMap } from './resolve-split-cwd'
+ import { splitTerminalPaneWithInheritedCwd } from './terminal-pane-split-with-inherited-cwd'
+-import { createDeferred } from './pty-connection-test-async'
++import { createDeferred } from './pty-transport-test-harness'
+ 
+ const mocks = vi.hoisted(() => ({
+   recordCreatedTerminalPaneSplit: vi.fn(),

@@ -1,0 +1,44 @@
+{
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "patchTargets": {
+    "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts": {
+      "beforeSha256": "159901c0614a68560d191736186238eba145a3ac3dfeaa12242a0137f019a6da",
+      "afterSha256": "41301c2778c76e40a6acda0c1c45c24f98cd6792e4ae2721a9a89343be688ca1",
+      "candidate": "notes/bun-migration/performance/headless-host-chain-passive-phases-31a5-worker-metadata-source-epoch/remote-snapshot-alt-screen-host-chain.test.ts",
+      "removeOnlyPassiveStatementsRecoversWholeOriginalBytes": true
+    },
+    "src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts": {
+      "beforeSha256": "d03eaa1a883fe3692bc3da95232428ba6a0b3fe9a35330cc53f06fc1ee485856",
+      "afterSha256": "c27c14319cc213634021a95de38a52ed09548574a4f084c687b719262b9eb270",
+      "candidate": "notes/bun-migration/performance/headless-host-chain-passive-phases-31a5-worker-metadata-source-epoch/pty-connection-test-environment.ts",
+      "removeOnlyPassiveStatementsRecoversWholeOriginalBytes": true
+    }
+  },
+  "patchSha256": "ddda868f23fe185e73894a4965799cf15354f73774f71266d88fa823502ed37e",
+  "diagnosticOnly": true,
+  "noSetupAwaitAdded": true,
+  "noTimerOrDeadlineChange": true,
+  "realWriteCallbackObservation": "Existing writeHeadlessTerminal promise resolves only via original term.write callback; marker appears after the unchanged await. No wrapper/boundary added.",
+  "clock": "performance.now observed; vi.isFakeTimers also recorded, no timer replacements.",
+  "knownLimits": "Console IO can perturb scheduling; phase markers alone do not prove cause. Shared installer markers may occur for other cohort consumers; no cross-worker chronological ordering is claimed. No added awaited barrier, hidden primer or status normalization.",
+  "actualRejectedRun": 37696290293,
+  "observedFailedArm": "node104729shipping, real30swhole-case timeout;before22.951s/audit27.413s first-case passes do not override failure",
+  "launchSafety": "CI-only; real runtime imports retained. No local execution.",
+  "testsExecuted": false,
+  "configurationEvaluated": false,
+  "shippingCompatibilityOrPerformanceAdmitted": false,
+  "removeOnlyPassiveStatementsRecoversEveryOriginalCallbackPromiseMockAssertionAndImport": true,
+  "suggestedDiagnosticWorkload": "Retain original89-file/four-worker/shuffle seed104729 stock cohort before/shipping; narrowing to one file would remove prior module/import ordering context and is a separate counterfactual. No audit facade import or hidden warm-up. Counts remain actual raw-derived935 as previous rejected run.",
+  "supersedesOnlyMarkerMetadata": {
+    "originalPatchPath": "notes/bun-migration/performance/headless-host-chain-passive-phases-31a5-source-draft/diagnostic-only.patch",
+    "originalPatchSha256": "af525149888debce07b7b7a417790e2ecddeea4ffea11f0407a28c12ad970ef7",
+    "change": "Read-only process.pid added to each existing passive marker; scheduling and awaited work unchanged."
+  },
+  "workerAssociation": "Raw taskId/public TestCase file/id/logs plus marker process.pid, without inferred cross-worker ordering.",
+  "sameMarkersInBothArms": true,
+  "shippingImportWorkloadUnchangedFromRejectedRun": true,
+  "strictBindingAuditNotEnrolled": true,
+  "composedShippingEnvironmentAfterSha256": "7612f5fe17f4399e1530083d66af87329eac384c227b6e5119d489eb04a82c4e",
+  "originalMarkerEnvironmentAfterSha256": "c27c14319cc213634021a95de38a52ed09548574a4f084c687b719262b9eb270",
+  "composedSourceHashCorrection": "Original marker-only environment after-hash was copied over combined import-plus-marker shipping source. Actual frozen shipping.patch was correct; source plan and collector equivalence assertion were wrong."
+}

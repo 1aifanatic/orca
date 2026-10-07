@@ -1,0 +1,159 @@
+diff --git a/src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts b/src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts
+--- a/src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts
++++ b/src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts
+@@ -33,6 +33,11 @@
+   })
+ )
+ 
++
++function observeHostChainPhase(phase: string): void {
++  console.info('[orca-headless-host-chain-phase]', JSON.stringify({ phase, workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
++}
++
+ let mockStoreState: StoreState
+ let transportFactoryQueue: MockTransport[] = []
+ let storeSubscribers: ((state: StoreState) => void)[] = []
+@@ -145,14 +150,18 @@
+ }
+ 
+ async function render(events: PaneEvent[]): Promise<Terminal> {
++  observeHostChainPhase('render:start')
+   const term = new Terminal({ cols: COLS, rows: ROWS, scrollback: 100, allowProposedApi: true })
+   for (const event of events) {
+     if (typeof event === 'string') {
++      observeHostChainPhase('render:real-write:start')
+       await writeHeadlessTerminal(term, event)
++      observeHostChainPhase('render:real-write:callback-settled')
+     } else {
+       term.resize(event.cols, event.rows)
+     }
+   }
++  observeHostChainPhase('render:complete')
+   return term
+ }
+ 
+@@ -160,9 +169,12 @@
+ async function publishHostRecovery(
+   missed: string
+ ): Promise<{ data: string; meta: PtyReplayDataMeta; published: HostSnapshot }> {
++  observeHostChainPhase('runtime-import:start')
+   const { OrcaRuntimeService } = await vi.importActual<{
+     OrcaRuntimeService: new (store: null) => HostRuntime
+   }>('../../../../main/runtime/orca-runtime')
++  observeHostChainPhase('runtime-import:complete')
++  observeHostChainPhase('snapshot-module-import:start')
+   const { sendSnapshotFrames, serializeBudgetedRequestedSnapshot } = await vi.importActual<{
+     sendSnapshotFrames: (send: HostSendFrame, options: Record<string, unknown>) => unknown
+     serializeBudgetedRequestedSnapshot: (
+@@ -171,10 +183,13 @@
+       scrollbackRows: number
+     ) => Promise<HostSnapshot | null>
+   }>('../../../../main/runtime/rpc/methods/terminal/terminal-snapshot-publication')
++  observeHostChainPhase('snapshot-module-import:complete')
++  observeHostChainPhase('flow-control-import:start')
+   const { installMultiplexFlowControl } = await vi.importActual<{
+     installMultiplexFlowControl: (build: HostConnection) => void
+   }>('../../../../main/runtime/rpc/methods/terminal/terminal-multiplex-flow-control')
+ 
++  observeHostChainPhase('flow-control-import:complete')
+   const host = new OrcaRuntimeService(null)
+   host.setPtyController({
+     write: () => true,
+@@ -254,7 +269,9 @@
+   }
+ 
+   // The initial push only opens the stream; the pane below already parsed these bytes live.
++  observeHostChainPhase('initial-snapshot:start')
+   const initial = await serializeBudgetedRequestedSnapshot(host, PTY_ID, 0)
++  observeHostChainPhase('initial-snapshot:complete')
+   sendSnapshotFrames((opcode, payload) => sendFrame(streamId, opcode, payload), {
+     kind: 'scrollback',
+     cols: initial!.cols,
+@@ -285,9 +302,13 @@
+       throw new Error(message)
+     }
+   }
++  observeHostChainPhase('recovery-snapshot:start')
+   const published = await serializeBudgetedRequestedSnapshot(host, PTY_ID, 0)
++  observeHostChainPhase('recovery-snapshot:complete')
+   installMultiplexFlowControl(connection)
++  observeHostChainPhase('ack-recovery:start')
+   await connection.sendAckRecoverySnapshot?.(stream)
++  observeHostChainPhase('ack-recovery:complete')
+   await expect.poll(() => onReplayData.mock.calls.length).toBe(2)
+   transport.destroy?.()
+   const [data, meta] = onReplayData.mock.calls[1]!
+@@ -296,12 +317,14 @@
+ 
+ describe('host-published recovery snapshot onto a live alt screen', () => {
+   beforeEach(() => {
++    observeHostChainPhase('beforeEach:start')
+     vi.resetModules()
+     vi.clearAllMocks()
+     transportFactoryQueue = []
+     storeSubscribers = []
+     mockStoreState = createInitialStoreState(() => mockStoreState)
+     installTerminalTestGlobals()
++    observeHostChainPhase('beforeEach:returned-without-awaiting-installer')
+   })
+ 
+   afterEach(async () => {
+@@ -313,7 +336,9 @@
+     data: string,
+     meta: PtyReplayDataMeta
+   ): Promise<PaneEvent[]> {
++    observeHostChainPhase('pane-module-import:start')
+     const { connectPanePty } = await import('./pty-connection')
++    observeHostChainPhase('pane-module-import:complete')
+     const transport = createMockTransport('agent-pty')
+     const replay: { current: ConnectCallbacks['onReplayData'] | null } = { current: null }
+     transport.connect.mockImplementation(async ({ callbacks }: { callbacks: ConnectCallbacks }) => {
+@@ -360,7 +385,9 @@
+   // Why: while the TUI lives, the host publishes no owner, so the alt flag never reaches
+   // the client; the pane must keep the setup history the TUI's alt screen covers.
+   it('keeps the covered history for a live TUI exactly as the host holds it', async () => {
++    observeHostChainPhase('live-TUI-case:start')
+     const { data, meta, published } = await publishHostRecovery(AGENT_FRAME)
++    observeHostChainPhase('live-TUI-case:host-publication-complete')
+     expect(published.alternateScreen).toBe(true)
+     expect(meta.terminalOwner).toBeUndefined()
+     expect(meta.alternateScreen).toBeUndefined()
+@@ -379,7 +406,9 @@
+   // Why: once the host's TUI exits, its image no longer enters alt; the pane must leave
+   // alt and show the host's normal screen.
+   it('repaints from the normal buffer once the host TUI has exited', async () => {
++    observeHostChainPhase('exited-TUI-case:start')
+     const { data, meta } = await publishHostRecovery(AGENT_EXIT)
++    observeHostChainPhase('exited-TUI-case:host-publication-complete')
+     expect(meta.terminalOwner).toBe('shell')
+     expect(meta.alternateScreen).toBe(false)
+     const client = await render([LIVE_PANE, ...(await drainOntoLiveAltScreen(data, meta))])
+diff --git a/src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts b/src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts
+--- a/src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts
++++ b/src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts
+@@ -42,7 +42,9 @@
+   statusSnapshot.settle()
+   resetStatusSnapshot = undefined
+   // Import after resetModules so the seeded store and connection share one bridge.
++  console.info('[orca-headless-installer-phase]', JSON.stringify({ phase: 'reset-bridge-import:start', workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
+   const actual = await import('@/hooks/ipc-events/agent-status-startup-snapshot')
++  console.info('[orca-headless-installer-phase]', JSON.stringify({ phase: 'reset-bridge-import:complete', workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
+   resetStatusSnapshot = actual.registerAgentStatusStartupSnapshot()
+   resetStatusSnapshot.settle()
+   ;(globalThis as unknown as { window: unknown }).window = {
+@@ -97,6 +99,7 @@
+     addEventListener: vi.fn(),
+     removeEventListener: vi.fn()
+   }
++  console.info('[orca-headless-installer-phase]', JSON.stringify({ phase: 'window-api:assigned', workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
+   vi.mocked(window.api.pty.confirmForegroundProcess).mockImplementation((id) =>
+     window.api.pty.getForegroundProcess(id)
+   )
+@@ -110,6 +113,7 @@
+     return 1
+   })
+   globalThis.cancelAnimationFrame = vi.fn()
++  console.info('[orca-headless-installer-phase]', JSON.stringify({ phase: 'installer:complete', workerPid: process.pid, at: performance.now(), fakeTimers: vi.isFakeTimers() }))
+ }
+ 
+ export async function restoreTerminalTestGlobals(): Promise<void> {

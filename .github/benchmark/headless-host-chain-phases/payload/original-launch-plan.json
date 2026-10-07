@@ -1,0 +1,1138 @@
+{
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "sourceHashes": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "0efd5afed17d179d8527d3c301e7610e3868d7c5e9c4ad6885a1a5f26a31f345",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "src/renderer/src/components/terminal-pane/direct-ssh-hidden-output-restore-unavailable-banner.test.ts": "64d503f1f1ae5d6a13f32748bf7c459ec403d2f5954a41e59771ca4de997df85",
+    "src/renderer/src/components/terminal-pane/pane-restart-transport-handoff.test.ts": "fcae88348ae763bd863136d767dec30bd541378cbd5fea1485e926806dd5cf45",
+    "src/renderer/src/components/terminal-pane/pending-pane-close-confirmation.test.ts": "25c1f8c1ceb9f0f1e8415903afdeca1190e6ce66a3f61199eb6b58603493b1e4",
+    "src/renderer/src/components/terminal-pane/pending-runtime-pane-close-test-fixture.ts": "2e08dec20d64d2f21962fb6a04ee0783d49cf2db1c0bc3d407e761a7f5515c7a",
+    "src/renderer/src/components/terminal-pane/pending-split-close-test-fixture.ts": "829791af549fcd721ebd3583cd3bad8cdc58ca8af7906a552bb3b24146290213",
+    "src/renderer/src/components/terminal-pane/pending-split-close.test.ts": "e08d2266506c2b72cae04fd5fcfb795bb564f441482887bd77542a80e838a784",
+    "src/renderer/src/components/terminal-pane/pty-connection-agent-session-resume.test.ts": "6d4bc8e8c0933f6ed7d8ebb736c0f8ff18d239662a61e32090692e4051389aa4",
+    "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-agent-resume.test.ts": "7857644bd4e255db28a775e538ceb1af766a959f9340a5aaf467d4f02b21ec5e",
+    "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-repaint.test.ts": "b19bb2ffa6380f50a7a6e680afd87f3643bcdfb2e42eefa3a1abd846357a9057",
+    "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-resume-command.test.ts": "aaa672bfbdf56a75fd27de152d8a4aa687cc8c134cb5735bed26145a29c745ee",
+    "src/renderer/src/components/terminal-pane/pty-connection-command-finished-cleanup.test.ts": "43942a82120a60336a56504cf3b733110b45dcb87edaa84329937de5393107bc",
+    "src/renderer/src/components/terminal-pane/pty-connection-command-finished-late-done.test.ts": "bf1125f14abd13347f29a12e7a250c7753560b3f22ebb3784875cf8a062485d4",
+    "src/renderer/src/components/terminal-pane/pty-connection-daemon-snapshot-replay.test.ts": "7dba8d5be3ea396b32545178712f0a835f069e7b2d774cd2d2ca6d62d7ca43d4",
+    "src/renderer/src/components/terminal-pane/pty-connection-deferred-reattach-live-output.test.ts": "7c5f7e2c70f0d2539a9e401b25ecc8a2b2e3c0c8f03b47e6777764a48cdf34ee",
+    "src/renderer/src/components/terminal-pane/pty-connection-deferred-ssh-passphrase.test.ts": "31aee8ab608eca9e44ccfadd0d2a80adae47c0dbb5328a7642da7b243fcb49d3",
+    "src/renderer/src/components/terminal-pane/pty-connection-deliberate-sleep-guard.test.ts": "65ea561063eea6ef228c14975b22fb654b27ec48b05fec6114f18ffaab305c2d",
+    "src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-reattach-retry.test.ts": "0d7311ffff8af29777d486b9baca1f5c9b717a60317baab38215b889fdc83993",
+    "src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-spawn-retry.test.ts": "17fc193782f72b257e25f45c9c11272387ecfff3535735c31a6e1d6dc9469351",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-routing.test.ts": "7baed5d0f632e11dbf5a4e800ef36e99dd81f6abf1e7ac18610669429e85f9ce",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-sampling.test.ts": "b3023ad584c4b8945bb2a9f9f773ac0f4bbf9926ba0dc4334d9911698e0218f5",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-process-exit.test.ts": "e7d7c3c449cba1602ed71f835aed887b2aeed517b2cb57ef342004e089dd643d",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-routing-confirmation.test.ts": "8a942d39ed50836c9eeea9d6cc8844e5245cee680e85d5c436735b569b44cf8c",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-write-path.test.ts": "5b702c1114f979a77f339e6d953bc9a94d5883b96f732579ac72da234659f41f",
+    "src/renderer/src/components/terminal-pane/pty-connection-fresh-spawn-guards.test.ts": "cb563d41f823096fd17d0b36fb49f314fe51d11779ff26e858127a806ccc8162",
+    "src/renderer/src/components/terminal-pane/pty-connection-hibernation-wake.test.ts": "f9ce3ae1dc7175283221b27a3dedb1a48dfd3d16d6314c57fa621b44093ae8af",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-atlas-recovery.test.ts": "8746f92df92f86f46471d3e685351b6551c5b379bc991c6e2974e90cf2e8fcdb",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-reconciliation.test.ts": "bba8521f74e2cfeb36c4b196654beec0b9667db2bcd3b34e723eaff7a69b6e76",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-snapshot.test.ts": "893fe777de0b0b070475ce050d83429993e6c21996be15954d10386a36e268ca",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-codex-queries.test.ts": "12140a9f2c312f3c71549734978a62e2dafea5069086f64c2648f59fc85db606",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-delivery-gate.test.ts": "161d85aff44caff7249d53fef4298df652d6dc38f90e13ea114c2d8a7211bcc2",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-output-restore.test.ts": "13ce62c61d941a8169666f39919f0ece7ce36ad6a84df894d69204594bb52fb5",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-query-snapshot-restore.test.ts": "d6445e6bd8461f29070a9f542ac396e17800345b5d8ebd565f618190c2f40f99",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-restore-fit-overflow.test.ts": "c60f2f8e17c3baadb8538f045b946caa9ececb77ee48782577d8358bc12dc606",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-live-overlap.test.ts": "02de1a4b2a5a4272e756223993eafcfdc05dce4fbcd20a715984d9ac1641b339",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-resize-signals.test.ts": "ecdc48534e3cb10707847e858066a2a712e7be9fb0de27c345d18db53d82209b",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-tui-snapshot-replay.test.ts": "deda89ea79b0dfa5a17ba31ce38a1a6cb29591ec5588008873aa6e433ed01aea",
+    "src/renderer/src/components/terminal-pane/pty-connection-hook-completion-side-effects.test.ts": "555cd9bc6be471229878afe0cb8b9ebab9a88451e91188289e1b73c94d0c7743",
+    "src/renderer/src/components/terminal-pane/pty-connection-hook-idle-arbitration.test.ts": "5ba62a1d2593c830a84d0688b6f2a02932636f5977e9056bb1c7b282bdc3f2e3",
+    "src/renderer/src/components/terminal-pane/pty-connection-interrupt-inference.test.ts": "e7c49c34283a850daf6b48b4296839de4fb6c7c723288c4cb08b7bd417ad40b8",
+    "src/renderer/src/components/terminal-pane/pty-connection-kitty-keyboard-restore.test.ts": "7cc3e1e0baf209caa5f2e33ab71fe978b05558d2b3c558a90013bae629e87830",
+    "src/renderer/src/components/terminal-pane/pty-connection-main-side-effect-authority.test.ts": "1652e1861b405043900547fddc10a45165ef998654c6b2328f2042142cd55345",
+    "src/renderer/src/components/terminal-pane/pty-connection-mode-2031-subscriptions.test.ts": "10df81329356dadf37100e590c57824285922fd5a3e9f227bb1d1f1142b4865b",
+    "src/renderer/src/components/terminal-pane/pty-connection-notification-settings-gating.test.ts": "2988cf3cde565a3577080a9b341e425aeeb676b0d492b242a94d638498a230d5",
+    "src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts": "f75fdc4d8e7367b74e5718a51358030b390109fd373eb1d0033df32935f4a345",
+    "src/renderer/src/components/terminal-pane/pty-connection-pi-synchronized-input.test.ts": "c8615630b4b45ada068665bf60934c514fecb45a8be51811bb774ad307733884",
+    "src/renderer/src/components/terminal-pane/pty-connection-post-dispose-restore-termination.test.ts": "673c1785b3e8f3aee4e73130363617eb0239e201491f2bdba0c996ebe0971b81",
+    "src/renderer/src/components/terminal-pane/pty-connection-pty-exit-teardown.test.ts": "59841448328746d238cb1e51548d5ac1dc2607641207f41177f8cb1f00519a9a",
+    "src/renderer/src/components/terminal-pane/pty-connection-queued-startup-consume.test.ts": "597a6fa1add4dd5d58d2132376e2d27a8d9a2c32dfaa724d2d604f5d5962b7a8",
+    "src/renderer/src/components/terminal-pane/pty-connection-reattach-binding.test.ts": "6b20904fa5ae465c562637a7e67b591c50324d34e56d603f0e8ad27796ff4763",
+    "src/renderer/src/components/terminal-pane/pty-connection-reattach-mode-reset.test.ts": "2a2c9964989b68a3c98254a0b2d8b7c1562fed214e78e2e1cb602b71113842fe",
+    "src/renderer/src/components/terminal-pane/pty-connection-remote-runtime-attach.test.ts": "038c0b47233a8cf9f08a7af3ec0c7757e9a3e4ccad4a9e4a7a689fe9490ab4ca",
+    "src/renderer/src/components/terminal-pane/pty-connection-remote-snapshot-source-grid.test.ts": "fe9dd60563de14afd9f768c47d3956fbf066994d2dce91986270a05e1e591eee",
+    "src/renderer/src/components/terminal-pane/pty-connection-renderer-risk-repaint.test.ts": "e2f5d575ce7e0e500f55d70e749e908cb14daa352c3bf1b76b8ba9a4720e1097",
+    "src/renderer/src/components/terminal-pane/pty-connection-replay-payload-handling.test.ts": "099678efac03d7a3b9676990378023ecacc6675fc7603dc033487826205c466e",
+    "src/renderer/src/components/terminal-pane/pty-connection-restored-baseline-shortfall.test.ts": "6ed9a42d53de28f4cfa6a76a536314b2f820ecf0425b3f04108cf196d1ff1652",
+    "src/renderer/src/components/terminal-pane/pty-connection-runtime-owner-spawn-routing.test.ts": "558a431a8b4368430f214fb9592b349a8aedd3fcbe1d540d8f8f519b239b008d",
+    "src/renderer/src/components/terminal-pane/pty-connection-session-liveness.test.ts": "c51728c67781be9df24d2bd8a642f1a43e2ec85bf9d357102474ff4f85115066",
+    "src/renderer/src/components/terminal-pane/pty-connection-setup-split-spawn.test.ts": "2e0ffe2b77aa782b587db1ad4b25beb9927cb5a3d455aac72279a433abd22509",
+    "src/renderer/src/components/terminal-pane/pty-connection-sleeping-resume-banner.test.ts": "343f6cdc033df52abe9d556fa8bd01743bd9118af5e6daabb19edd967e53dee2",
+    "src/renderer/src/components/terminal-pane/pty-connection-spawn-left-pane-unbound.test.ts": "1496cf558149ca9b322a97466bdeea60e6653a58a3ef550ff9b4763fe7a1bdd9",
+    "src/renderer/src/components/terminal-pane/pty-connection-split-cwd-resolution.test.ts": "847222b20a1bd2478889609bfd3b052c49d42ceafde2fdaeed93b03cd56707d1",
+    "src/renderer/src/components/terminal-pane/pty-connection-ssh-reattach-early-input.test.ts": "4f30150c31c00dd6005dc70ea81389069d6516e254c100a8cf04cac013a24c3e",
+    "src/renderer/src/components/terminal-pane/pty-connection-ssh-startup-draft-delivery.test.ts": "e89ef739356f6d6217dc52b5a1605c3cc33f9dd04727943a0f33e18b7564ea15",
+    "src/renderer/src/components/terminal-pane/pty-connection-stalled-hidden-restore.test.ts": "aa8a36aab8f37ee2bffee72a58f4407fe9e943629411561c0a5ca08a1ea5db88",
+    "src/renderer/src/components/terminal-pane/pty-connection-startup-command-delivery.test.ts": "da957bb23be7057c389f1474cfc75f251cef5fae5bd1759bbbc475db931c23d9",
+    "src/renderer/src/components/terminal-pane/pty-connection-task-complete-dispatch.test.ts": "29e3cd428d8f296f03bb0187768c3bab59b5688cadec134371702682ec6d901c",
+    "src/renderer/src/components/terminal-pane/pty-connection-terminal-input-gating.test.ts": "f59a7e8c83894d80934f7c577e5052da50e67c9bcf573d52a52c0cf7d1d358ef",
+    "src/renderer/src/components/terminal-pane/pty-connection-test-async.ts": "f32b9648985909b3e6f5252827b50b7d40f70eca528230814f59964a3d2fc4b1",
+    "src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts": "d03eaa1a883fe3692bc3da95232428ba6a0b3fe9a35330cc53f06fc1ee485856",
+    "src/renderer/src/components/terminal-pane/pty-connection-typed-agent-identity.test.ts": "4c2c3d604b1ce73ead1d54029d0a068e31e5e7924a2b8f09235b73d2c4d099a1",
+    "src/renderer/src/components/terminal-pane/pty-connection-unanswered-command-finish.test.ts": "224f8f0c9d0f130aa73b724210d44881305aff71d47bf2daf1d8c5a5e2a2287c",
+    "src/renderer/src/components/terminal-pane/pty-connection-visibility-resume-size.test.ts": "dd563a5cbbb904da9bc380adc195314fc955250cfe22075326166e1434f8b81b",
+    "src/renderer/src/components/terminal-pane/pty-connection-visible-pane-output-pause-latch.test.ts": "75f0f5e85149d829146f49c05f88ea6544ab5f49e04705f05ce839c06e96a1b8",
+    "src/renderer/src/components/terminal-pane/pty-connection-windows-cjk-repaint.test.ts": "f64d88471578bbee24bc9d7e016b02b3e0cbee4dcf8d0e8b98950498f28f2afb",
+    "src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts": "d5cf4704ba41535910b227b3930d22c45d34826bd0be9d3e36a38a516e60a625",
+    "src/renderer/src/components/terminal-pane/pty-preconnect-input-buffer.test.ts": "c22f55b8caa747acd2249c9e5b316878310d1946b501a86f9ea6e6e3a754e57b",
+    "src/renderer/src/components/terminal-pane/pty-transport-connect-spawn.test.ts": "4446f9b371c006e414ee618773c452002dddbf504d8f4acfcf2a8049fe660b2d",
+    "src/renderer/src/components/terminal-pane/pty-transport-detach-attach-handoff.test.ts": "189b10b0e79aa5c3cde861d4363516640f622fc956620482eb59a542a60e7afd",
+    "src/renderer/src/components/terminal-pane/pty-transport-eager-buffer-replay.test.ts": "0ef49392603fa2d6615f96efd51ff2e9f6f45d667f08c55aa824390503e57798",
+    "src/renderer/src/components/terminal-pane/pty-transport-handler-suspension.test.ts": "09cbf8a58698d56c5a20c1032f3831bfe5e94c191044b05dcf14cb7995fca16f",
+    "src/renderer/src/components/terminal-pane/pty-transport-input-write.test.ts": "9643fb45bb14cef4845d34ed94d85cd17b2fe06f1ee8d3a45e9df12699cc2d73",
+    "src/renderer/src/components/terminal-pane/pty-transport-output-side-effects.test.ts": "7b5df9e944d84f157d26967bce17f5509f1f642ffd8404543e4feef1a27689b5",
+    "src/renderer/src/components/terminal-pane/pty-transport-reattach-admission.test.ts": "3885638ae88ae4f6c5aa018b733121be387de059c1438c64e6a1bc2670693d40",
+    "src/renderer/src/components/terminal-pane/pty-transport-recycled-pty-incarnation.test.ts": "eb34bcb337b77882911e7793b093852b21ff6b10a61622d90a5730e5c3277e72",
+    "src/renderer/src/components/terminal-pane/pty-transport-spawn-errors.test.ts": "564b0af799679e4bc504e52b3eaa2f06890acf4db5c3355c7a093f78f0031848",
+    "src/renderer/src/components/terminal-pane/pty-transport-test-harness.ts": "6ebe91e58369f4a298e78838aca25d1b3c1d0311bd4a8e302796b077561148af",
+    "src/renderer/src/components/terminal-pane/pty-transport-user-input.test.ts": "f7b80304adf124063052681498146c9614f79f4bd9fd525bd856c0a6ead3140a",
+    "src/renderer/src/components/terminal-pane/remote-park-reveal-unverifiable-retry.test.ts": "76f209432caab9ec652e2ae4dac6ffdb53c2d5aeecda9fad320c6c39043a55e7",
+    "src/renderer/src/components/terminal-pane/remote-reattach-input-buffer.test.ts": "de557890d213f821f9a60940c6bb1f6256325da10c5e213308b12c37c6b8d6b6",
+    "src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-reattach-type-ahead.test.ts": "04a6aa6938a4d139b65ebc79b1d5744a3ec237fe17dc0bc9eb80c6e5854dec0d",
+    "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts": "159901c0614a68560d191736186238eba145a3ac3dfeaa12242a0137f019a6da",
+    "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-replay.test.ts": "3597037d5da5a7cb27bd9e623f94da584ec83b6813824f0dddb74982f946d3c4",
+    "src/renderer/src/components/terminal-pane/scan22-ssh-new-tab-disposed-spawn-kill.repro.test.ts": "52b96cb42c169855efece3f39c47bb9c4c22d607adb89f85f93aa040e03a920c",
+    "src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts": "c2c6ead8a022ee94d9232566898e32bbb4a47397b47c11e73343e34449ef9ba7",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "notes/bun-migration/performance/qualify-fixture-reuse.py": "89dc7af36d69123bf58bb51e9c93f1ce10a129e684fbc048a5caf1ad1a97199e",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "a6d2132081bde109c4680ffa4156edeef6200469dbe4f9ae8ca3ba79ba4b233f",
+    "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs": "94070788bb47afa544938af517d58687bb2ea92a0743517abbafdf1e841865d5",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "src/shared/child-process/run-process.ts": "f4d9683c0a0d2ea3ceb9c99b5b713b502496a2f3f982e2c63728063d5f1b239d"
+  },
+  "controllerSha256": "89dc7af36d69123bf58bb51e9c93f1ce10a129e684fbc048a5caf1ad1a97199e",
+  "reporterSha256": "a6d2132081bde109c4680ffa4156edeef6200469dbe4f9ae8ca3ba79ba4b233f",
+  "patch": "notes/bun-migration/performance/headless-host-chain-phases-ci-31a5/original.patch",
+  "patchSha256": "ddda868f23fe185e73894a4965799cf15354f73774f71266d88fa823502ed37e",
+  "patchTargets": {
+    "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts": {
+      "beforeSha256": "159901c0614a68560d191736186238eba145a3ac3dfeaa12242a0137f019a6da",
+      "afterSha256": "41301c2778c76e40a6acda0c1c45c24f98cd6792e4ae2721a9a89343be688ca1"
+    },
+    "src/renderer/src/components/terminal-pane/pty-connection-test-environment.ts": {
+      "beforeSha256": "d03eaa1a883fe3692bc3da95232428ba6a0b3fe9a35330cc53f06fc1ee485856",
+      "afterSha256": "c27c14319cc213634021a95de38a52ed09548574a4f084c687b719262b9eb270"
+    }
+  },
+  "files": [
+    "src/renderer/src/components/terminal-pane/direct-ssh-hidden-output-restore-unavailable-banner.test.ts",
+    "src/renderer/src/components/terminal-pane/pane-restart-transport-handoff.test.ts",
+    "src/renderer/src/components/terminal-pane/pending-pane-close-confirmation.test.ts",
+    "src/renderer/src/components/terminal-pane/pending-split-close.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-agent-session-resume.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-agent-resume.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-repaint.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-resume-command.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-command-finished-cleanup.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-command-finished-late-done.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-daemon-snapshot-replay.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-deferred-reattach-live-output.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-deferred-ssh-passphrase.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-deliberate-sleep-guard.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-reattach-retry.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-spawn-retry.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-routing.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-sampling.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-process-exit.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-routing-confirmation.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-foreground-write-path.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-fresh-spawn-guards.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hibernation-wake.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-atlas-recovery.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-reconciliation.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-snapshot.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-codex-queries.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-delivery-gate.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-output-restore.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-query-snapshot-restore.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-restore-fit-overflow.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-live-overlap.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-resize-signals.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hidden-tui-snapshot-replay.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hook-completion-side-effects.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-hook-idle-arbitration.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-interrupt-inference.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-kitty-keyboard-restore.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-main-side-effect-authority.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-mode-2031-subscriptions.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-notification-settings-gating.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-pi-synchronized-input.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-post-dispose-restore-termination.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-pty-exit-teardown.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-queued-startup-consume.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-reattach-binding.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-reattach-mode-reset.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-remote-runtime-attach.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-remote-snapshot-source-grid.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-renderer-risk-repaint.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-replay-payload-handling.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-restored-baseline-shortfall.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-runtime-owner-spawn-routing.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-session-liveness.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-setup-split-spawn.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-sleeping-resume-banner.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-spawn-left-pane-unbound.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-split-cwd-resolution.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-ssh-reattach-early-input.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-ssh-startup-draft-delivery.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-stalled-hidden-restore.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-startup-command-delivery.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-task-complete-dispatch.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-terminal-input-gating.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-typed-agent-identity.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-unanswered-command-finish.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-visibility-resume-size.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-visible-pane-output-pause-latch.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-connection-windows-cjk-repaint.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-preconnect-input-buffer.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-connect-spawn.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-detach-attach-handoff.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-eager-buffer-replay.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-handler-suspension.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-input-write.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-output-side-effects.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-reattach-admission.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-recycled-pty-incarnation.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-spawn-errors.test.ts",
+    "src/renderer/src/components/terminal-pane/pty-transport-user-input.test.ts",
+    "src/renderer/src/components/terminal-pane/remote-park-reveal-unverifiable-retry.test.ts",
+    "src/renderer/src/components/terminal-pane/remote-reattach-input-buffer.test.ts",
+    "src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-reattach-type-ahead.test.ts",
+    "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts",
+    "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-replay.test.ts",
+    "src/renderer/src/components/terminal-pane/scan22-ssh-new-tab-disposed-spawn-kill.repro.test.ts",
+    "src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts"
+  ],
+  "timedFiles": [],
+  "caseCount": null,
+  "caseIdentityMapByFile": null,
+  "runtimeManifestPending": true,
+  "expectedRoutes": {
+    "bun": [
+      {
+        "file": "src/renderer/src/components/terminal-pane/direct-ssh-hidden-output-restore-unavailable-banner.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pane-restart-transport-handoff.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pending-pane-close-confirmation.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pending-split-close.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-agent-session-resume.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-agent-resume.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-repaint.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-resume-command.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-command-finished-cleanup.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-command-finished-late-done.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-daemon-snapshot-replay.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-deferred-reattach-live-output.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-deferred-ssh-passphrase.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-deliberate-sleep-guard.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-reattach-retry.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-spawn-retry.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-routing.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-sampling.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-process-exit.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-routing-confirmation.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-write-path.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-fresh-spawn-guards.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hibernation-wake.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-atlas-recovery.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-reconciliation.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-snapshot.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-codex-queries.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-delivery-gate.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-output-restore.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-query-snapshot-restore.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-restore-fit-overflow.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-live-overlap.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-resize-signals.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-tui-snapshot-replay.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hook-completion-side-effects.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hook-idle-arbitration.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-interrupt-inference.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-kitty-keyboard-restore.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-main-side-effect-authority.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-mode-2031-subscriptions.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-notification-settings-gating.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-pi-synchronized-input.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-post-dispose-restore-termination.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-pty-exit-teardown.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-queued-startup-consume.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-reattach-binding.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-reattach-mode-reset.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-remote-runtime-attach.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-remote-snapshot-source-grid.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-renderer-risk-repaint.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-replay-payload-handling.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-restored-baseline-shortfall.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-runtime-owner-spawn-routing.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-session-liveness.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-setup-split-spawn.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-sleeping-resume-banner.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-spawn-left-pane-unbound.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-split-cwd-resolution.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-ssh-reattach-early-input.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-ssh-startup-draft-delivery.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-stalled-hidden-restore.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-startup-command-delivery.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-task-complete-dispatch.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-terminal-input-gating.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-typed-agent-identity.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-unanswered-command-finish.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-visibility-resume-size.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-visible-pane-output-pause-latch.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-windows-cjk-repaint.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts",
+        "project": "node-runtime",
+        "pool": "node-runtime"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-preconnect-input-buffer.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-connect-spawn.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-detach-attach-handoff.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-eager-buffer-replay.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-handler-suspension.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-input-write.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-output-side-effects.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-reattach-admission.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-recycled-pty-incarnation.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-spawn-errors.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-user-input.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-park-reveal-unverifiable-retry.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-reattach-input-buffer.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-reattach-type-ahead.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-replay.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/scan22-ssh-new-tab-disposed-spawn-kill.repro.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      }
+    ],
+    "node": [
+      {
+        "file": "src/renderer/src/components/terminal-pane/direct-ssh-hidden-output-restore-unavailable-banner.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pane-restart-transport-handoff.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pending-pane-close-confirmation.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pending-split-close.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-agent-session-resume.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-agent-resume.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-repaint.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-cold-restore-resume-command.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-command-finished-cleanup.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-command-finished-late-done.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-daemon-snapshot-replay.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-deferred-reattach-live-output.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-deferred-ssh-passphrase.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-deliberate-sleep-guard.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-reattach-retry.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-direct-ssh-spawn-retry.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-routing.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-agent-sampling.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-process-exit.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-routing-confirmation.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-foreground-write-path.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-fresh-spawn-guards.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hibernation-wake.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-atlas-recovery.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-reconciliation.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-backlog-snapshot.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-codex-queries.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-delivery-gate.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-output-restore.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-query-snapshot-restore.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-restore-fit-overflow.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-live-overlap.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-snapshot-resize-signals.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hidden-tui-snapshot-replay.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hook-completion-side-effects.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-hook-idle-arbitration.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-interrupt-inference.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-kitty-keyboard-restore.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-main-side-effect-authority.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-mode-2031-subscriptions.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-notification-settings-gating.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-pi-synchronized-input.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-post-dispose-restore-termination.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-pty-exit-teardown.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-queued-startup-consume.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-reattach-binding.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-reattach-mode-reset.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-remote-runtime-attach.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-remote-snapshot-source-grid.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-renderer-risk-repaint.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-replay-payload-handling.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-restored-baseline-shortfall.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-runtime-owner-spawn-routing.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-session-liveness.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-setup-split-spawn.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-sleeping-resume-banner.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-spawn-left-pane-unbound.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-split-cwd-resolution.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-ssh-reattach-early-input.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-ssh-startup-draft-delivery.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-stalled-hidden-restore.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-startup-command-delivery.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-task-complete-dispatch.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-terminal-input-gating.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-typed-agent-identity.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-unanswered-command-finish.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-visibility-resume-size.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-visible-pane-output-pause-latch.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-connection-windows-cjk-repaint.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-preconnect-input-buffer.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-connect-spawn.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-detach-attach-handoff.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-eager-buffer-replay.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-handler-suspension.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-input-write.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-output-side-effects.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-reattach-admission.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-recycled-pty-incarnation.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-spawn-errors.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/pty-transport-user-input.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-park-reveal-unverifiable-retry.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-reattach-input-buffer.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-reattach-type-ahead.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-host-chain.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/remote-snapshot-alt-screen-replay.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/scan22-ssh-new-tab-disposed-spawn-kill.repro.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/terminal-pane-split-with-inherited-cwd.test.ts",
+        "project": "node",
+        "pool": "forks"
+      }
+    ]
+  },
+  "shuffleSeeds": [
+    104729
+  ],
+  "expectedCiPins": {
+    "node": "24.21.0",
+    "bun": "1.4.2",
+    "vitest": "5.0.3"
+  },
+  "scope": "Passive diagnostic on rejected shipping import proposal; original89 files935 identities, actual statuses preserved. Both arms include identical markers, no audit primer. No timing/compatibility/adoption admission."
+}
