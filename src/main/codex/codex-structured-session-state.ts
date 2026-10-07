@@ -22,6 +22,7 @@ import type { CodexBackgroundTaskTracker } from './codex-background-task-tracker
 import type { CodexJournalTranslator } from './codex-structured-journal-translation'
 import type { StructuredAgentSessionEndedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
+import type { AgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
 import type {
   AgentModelCatalogSessionAccess,
   AgentModelCatalogStore
@@ -40,6 +41,8 @@ export type CodexStructuredLaunch = {
    *  rollout for it, start a new thread in its place. Never set for a thread a resume proved. */
   supersedeIfUnsaved?: boolean
   permissionPolicy?: CodexStructuredPermissionPolicy
+  /** The chat mode `permissionPolicy` states; the thread runs it until a turn changes it. */
+  permissionMode?: AgentChatPermissionMode
   /** The model the session chose; the thread opens on it so its first turn is not a switch. */
   model?: string
   env?: Record<string, string>
@@ -138,6 +141,10 @@ export type CodexSession = {
   dispatchPending?: boolean
   prompts: CodexAcquisitionWindow['prompts']
   options: Map<string, string>
+  /** The mode the thread runs: what it opened with, then what the last `turn/start` stated. */
+  threadPermissionMode?: AgentChatPermissionMode
+  /** The app-server reported an approvals reviewer, so it can route approvals to auto-review. */
+  approvalsReviewerSupported?: boolean
   reportedOptions: {
     model?: string
     effort?: string

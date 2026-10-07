@@ -41,7 +41,7 @@ function createCodexIntentRuntime(
       worktree: `id:${workspaceId}`,
       agent: 'codex'
     })
-  return { prepareCodexStructuredLaunch, createIntent }
+  return { prepareCodexStructuredLaunch, createIntent, runtime }
 }
 
 describe('structured Codex folder trust', () => {
@@ -148,7 +148,26 @@ describe('structured agent-session create intent', () => {
       variable: 'CODEX_HOME',
       path: '/accounts/selected/home'
     })
-    expect(intent.options).toEqual({ model: 'gpt-5.6-sol', effort: 'medium', fastMode: 'true' })
+    // The chat records the mode it starts in: here the untouched setting's Full access.
+    expect(intent.options).toEqual({
+      model: 'gpt-5.6-sol',
+      effort: 'medium',
+      fastMode: 'true',
+      permissionMode: 'bypass'
+    })
+  })
+
+  // A new chat starts where Agent Permissions points for its agent, and records it.
+  it("seeds a new chat with the setting's mode for that agent", async () => {
+    const { createIntent, runtime } = createCodexIntentRuntime({
+      agentPermissionMode: 'bypass',
+      agentPermissionModeOverrides: { codex: 'ask' }
+    })
+
+    expect((await createIntent()).options).toEqual({ permissionMode: 'ask' })
+    expect(runtime.structuredAgentSessionLaunchSeedOptions('claude')).toEqual({
+      permissionMode: 'bypass'
+    })
   })
 
   it('resolves the record-less catalog account home read-only, never through launch preparation', async () => {
@@ -232,7 +251,12 @@ describe('structured agent-session create intent', () => {
       variable: 'CLAUDE_CONFIG_DIR',
       path: '/configured/claude-home'
     })
-    expect(intent.options).toEqual({ model: 'opus', effort: 'high', fastMode: 'true' })
+    expect(intent.options).toEqual({
+      model: 'opus',
+      effort: 'high',
+      fastMode: 'true',
+      permissionMode: 'bypass'
+    })
     // createSupport reports this same seed, so a paired client's picker shows what create runs.
     expect(runtime.structuredAgentSessionLaunchSeedOptions('claude')).toEqual(intent.options)
   })

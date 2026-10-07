@@ -363,6 +363,10 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   setOption(
     input: StructuredAgentSessionSetOptionInput
   ): Promise<void | Readonly<Record<string, string>>>
+  /** The live child was launched in a way the chat's options have since outgrown (Claude's bypass
+   *  flag). Derived on every read; the host starts the next send on a new child when this one
+   *  owes no work. */
+  childRelaunchRequired?(sessionId: string): boolean
   /** Resolves once a live session can take an option write, or after a bound; never rejects. */
   awaitOptionWritable?(sessionId: string): Promise<void>
   /** Resolves once a session published before it proved its start has proven it, failed, or been

@@ -109,7 +109,7 @@ describe('a Claude start whose CLI answers initialize but not a control request'
     claude.behave(SESSION, { optionWritesHang: true, controlTimeoutMs: DEADLINE_MS })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const host = await claude.install()
-    const saved = { model: 'sonnet', permissionMode: 'plan' }
+    const saved = { model: 'sonnet', permissionMode: 'accept-edits' }
     await expect(
       host.attach(CALLER, claude.attachParams(SESSION, null, { options: saved }))
     ).resolves.toMatchObject({ ok: true })
@@ -151,8 +151,8 @@ describe('a Claude start whose CLI answers initialize but not a control request'
 
     // The CLI answers again; the user sets another option on the running child.
     behavior.optionWritesHang = false
-    await setOption(host, 'permissionMode', 'plan')
-    expect(record(host)?.options).toMatchObject({ model: 'sonnet', permissionMode: 'plan' })
+    await setOption(host, 'permissionMode', 'accept-edits')
+    expect(record(host)?.options).toMatchObject({ model: 'sonnet', permissionMode: 'accept-edits' })
   })
 
   it('replays the unanswered saved model after a turn reports another model, another option changes, and the chat is cleared', async () => {
@@ -183,8 +183,8 @@ describe('a Claude start whose CLI answers initialize but not a control request'
     expect(record(host)?.options).toEqual({ model: 'sonnet', effort: 'high' })
 
     behavior.optionWritesHang = false
-    await setOption(host, 'permissionMode', 'plan')
-    expect(record(host)?.options).toEqual({ model: 'sonnet', permissionMode: 'plan' })
+    await setOption(host, 'permissionMode', 'accept-edits')
+    expect(record(host)?.options).toEqual({ model: 'sonnet', permissionMode: 'accept-edits' })
 
     const cleared = await host.conversationCommand(CALLER, {
       command: 'clear',
@@ -219,10 +219,10 @@ describe('a Claude start whose CLI answers initialize but not a control request'
       expect(host.deps.store.getRecord(replacement)?.options).toEqual({
         model: 'sonnet',
         effort: 'high',
-        permissionMode: 'plan'
+        permissionMode: 'accept-edits'
       })
     )
-    expect(record(host)?.options).toEqual({ model: 'sonnet', permissionMode: 'plan' })
+    expect(record(host)?.options).toEqual({ model: 'sonnet', permissionMode: 'accept-edits' })
   })
 
   it('replaces the unanswered saved model with the one the user then sets', async () => {

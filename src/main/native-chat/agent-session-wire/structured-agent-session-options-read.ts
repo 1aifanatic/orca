@@ -11,6 +11,14 @@ import {
   type AgentSessionOptionsResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import {
+  AGENT_CHAT_PERMISSION_MODE_OPTION_ID,
+  agentChatPermissionModeFromSetting,
+  agentChatPermissionModes,
+  agentChatPermissionModeSupported,
+  storedAgentChatPermissionMode,
+  type AgentSessionPermissionModes
+} from '../../../shared/agent-chat-permission-mode'
 import { decodeStructuredAgentSessionOptionValue } from '../../../shared/structured-agent-session-option-codec'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { journalOpenReadRefusal } from '../agent-session-journal/journal-open-failure'
@@ -21,7 +29,24 @@ import { structuredAgentSessionOptionModels } from './structured-agent-session-o
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 
-type RestingOptions = Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport' | 'current'>
+type RestingOptions = Pick<
+  AgentSessionOptionsResult,
+  'models' | 'fastModeSupport' | 'current' | 'permissionModes'
+>
+
+/** At rest the chat's mode is its record's, else where the setting starts it; the list is the
+ *  agent's own, since only a running child can narrow it. */
+function restingPermissionModes(
+  record: AgentSessionRecord,
+  defaultPermissionMode: StructuredAgentSessionHostDeps['defaultPermissionMode']
+): AgentSessionPermissionModes | null {
+  const supported = agentChatPermissionModes(record.provider)
+  const fallback = defaultPermissionMode?.(record.provider)
+  const current =
+    storedAgentChatPermissionMode(record.provider, record.options) ??
+    (fallback ? agentChatPermissionModeFromSetting(fallback) : null)
+  return supported && current ? { current, supported } : null
+}
 
 /** The at-rest rules of the record's agent, as this runtime registered it; null for any other. */
 function restingOptionRules(
@@ -32,7 +57,10 @@ function restingOptionRules(
 }
 
 async function readStructuredAgentSessionOptionsAtRest(
-  deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'agents' | 'modelCatalog'>,
+  deps: Pick<
+    StructuredAgentSessionHostDeps,
+    'store' | 'agents' | 'modelCatalog' | 'defaultPermissionMode'
+  >,
   sessionId: string
 ): Promise<RestingOptions> {
   const record = deps.store.getRecord(sessionId)
@@ -63,8 +91,10 @@ async function readStructuredAgentSessionOptionsAtRest(
     (rules?.effortDefaultsToModel
       ? models.find((entry) => entry.id === model)?.defaultEffort
       : undefined)
+  const permissionModes = restingPermissionModes(record, deps.defaultPermissionMode)
   return {
     models: listed ? structuredAgentSessionOptionModels(listed, model, (row) => row) : [],
+    ...(permissionModes ? { permissionModes } : {}),
     ...(catalog.origin !== 'unknown' && catalog.fastModeSupport
       ? { fastModeSupport: catalog.fastModeSupport }
       : {}),
@@ -86,7 +116,12 @@ export async function recordStructuredAgentSessionOptionIntent(
   input: { key: string; value: string }
 ): Promise<TurnOutcome<AgentSessionOptionResult>> {
   const record = deps.store.getRecord(ctx.sessionId)
-  if (!record || !restingOptionRules(deps.agents, record)?.acceptsKey(input.key)) {
+  if (
+    !record ||
+    !restingOptionRules(deps.agents, record)?.acceptsKey(input.key) ||
+    (input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID &&
+      !agentChatPermissionModeSupported(record.provider, input.value))
+  ) {
     return {
       ok: false,
       refusal: refuse(

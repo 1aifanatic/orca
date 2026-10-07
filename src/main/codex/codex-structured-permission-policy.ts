@@ -1,17 +1,19 @@
-import type { GlobalSettings } from '../../shared/global-settings-types'
-import type { AgentLaunchProfileSettings } from '../../shared/tui-agent-launch-defaults'
-import { resolveAgentPermissionPosture } from '../../shared/tui-agent-permission-args'
-import { resolveLocalAgentLaunchTarget } from '../../shared/windows-terminal-shell'
+import type { AgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
+import type { CodexApprovalsReviewer } from '../../shared/codex-subagent-reviewer'
 
 export type CodexStructuredPermissionPolicy =
   | { approvalPolicy: 'never'; sandbox: 'danger-full-access' }
-  | { approvalPolicy: 'on-request'; sandbox: 'workspace-write' }
+  | {
+      approvalPolicy: 'on-request'
+      sandbox: 'workspace-write'
+      approvalsReviewer: CodexApprovalsReviewer
+    }
 
-/** Yolo: no approval prompts, no sandbox. */
+/** Full access: no approval prompts, no sandbox. */
 const BYPASS_POLICY = { approvalPolicy: 'never', sandbox: 'danger-full-access' } as const
 
 /**
- * Manual: approvals on, writes confined to the workspace.
+ * Ask for approval: approvals on, writes confined to the workspace, a person reviews.
  *
  * Why state it rather than omit it, which is what Manual used to do: app-server resolves an
  * omitted field through the `config.toml` it was started with, and Orca mirrors the user's
@@ -25,30 +27,26 @@ const BYPASS_POLICY = { approvalPolicy: 'never', sandbox: 'danger-full-access' }
  * Why `workspace-write` and not codex's built-in `read-only`: read-only would override a
  * deliberate `sandbox_mode = "workspace-write"` and make every file write in a Manual session
  * need an approval it did not need before. This still resets Yolo's `danger-full-access`.
+ *
+ * The reviewer is stated for the same reason: `approvals_reviewer = "auto_review"` in the config
+ * would otherwise route a Manual chat's approvals to Codex's own reviewer.
  */
-const MANUAL_POLICY = { approvalPolicy: 'on-request', sandbox: 'workspace-write' } as const
+const ASK_POLICY = {
+  approvalPolicy: 'on-request',
+  sandbox: 'workspace-write',
+  approvalsReviewer: 'user'
+} as const
+
+/** Approve for me: Ask's sandbox and approvals, reviewed by Codex's auto-review agent. */
+const AUTO_POLICY = { ...ASK_POLICY, approvalsReviewer: 'auto_review' } as const
 
 /**
- * The Agent Permissions setting as app-server thread policy.
- *
- * Derived per acquisition from the agent's typed permission mode. App-server takes a narrower
- * option set than the interactive CLI and the two are versioned apart, so the only thing read out
- * of the free-text Arguments is the bypass flag, which a terminal launch also honours.
- *
- * Always a policy, never `undefined`: both postures have to be said out loud, because the one
- * that goes unsaid is the one a resume silently inherits from the other.
+ * A chat's permission mode as app-server thread policy. Always a policy, never `undefined`: every
+ * mode has to be said out loud, because the one that goes unsaid is the one a resume silently
+ * inherits from the other. Codex has no edits-only mode; a stray `accept-edits` asks.
  */
-export function codexStructuredPermissionPolicyForSettings(
-  settings:
-    | (AgentLaunchProfileSettings & Partial<Pick<GlobalSettings, 'terminalWindowsShell'>>)
-    | null
-    | undefined
+export function codexStructuredPermissionPolicy(
+  mode: AgentChatPermissionMode
 ): CodexStructuredPermissionPolicy {
-  return resolveAgentPermissionPosture(
-    'codex',
-    settings,
-    resolveLocalAgentLaunchTarget(process.platform, settings?.terminalWindowsShell)
-  ).effectiveBypass
-    ? BYPASS_POLICY
-    : MANUAL_POLICY
+  return mode === 'bypass' ? BYPASS_POLICY : mode === 'auto' ? AUTO_POLICY : ASK_POLICY
 }

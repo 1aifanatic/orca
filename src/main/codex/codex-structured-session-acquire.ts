@@ -242,6 +242,8 @@ export async function acquireCodexStructuredSession(input: {
       abortedTurnIds: new Set(),
       prompts: acquisition.prompts,
       options,
+      ...(launch.permissionMode ? { threadPermissionMode: launch.permissionMode } : {}),
+      approvalsReviewerSupported: opened.approvalsReviewerSupported === true,
       reportedOptions: reportedCodexThreadOptions(opened),
       ...(catalogAccess ? { catalogAccess } : {}),
       dispatchEchoes,

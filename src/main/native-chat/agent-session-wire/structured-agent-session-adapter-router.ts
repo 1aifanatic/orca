@@ -161,6 +161,9 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
   setOption: StructuredAgentSessionAdapter['setOption'] = (input) =>
     this.owner(input.sessionId).setOption(input)
 
+  childRelaunchRequired = (sessionId: string): boolean =>
+    this.liveOwnerOrNull(sessionId)?.childRelaunchRequired?.(sessionId) === true
+
   awaitOptionWritable = (sessionId: string): Promise<void> =>
     this.liveOwnerOrNull(sessionId)?.awaitOptionWritable?.(sessionId) ?? Promise.resolve()
   awaitStarted = (sessionId: string): Promise<void | SubmissionRejectionFact> =>

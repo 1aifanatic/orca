@@ -456,7 +456,7 @@ describe('Claude structured option restore under the request deadline', () => {
     session.options = new Map([
       ['model', 'sonnet'],
       ['effort', 'high'],
-      ['permissionMode', 'plan']
+      ['permissionMode', 'accept-edits']
     ])
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 

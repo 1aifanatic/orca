@@ -17,7 +17,7 @@ import {
   createClaudeStructuredLaunchResolver,
   type ClaudeStructuredLaunchResolverDeps
 } from './claude-structured-launch-resolution'
-import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
+import { agentChatPermissionModeForSettings } from '../native-chat/agent-chat-permission-mode-setting'
 import { beginClaudeAuthSwitch, endClaudeAuthSwitch } from '../claude-accounts/live-pty-gate'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
@@ -76,7 +76,8 @@ function resolverFor(
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
     resolveAuthPolicy: () => ({ stripAuthEnv }),
-    resolvePermissionMode: () => claudeStructuredPermissionModeForSettings(permissionSettings),
+    resolveDefaultPermissionMode: () =>
+      agentChatPermissionModeForSettings('claude', permissionSettings),
     hasTranscript,
     resolveLaunchArgs: resolveLaunchArgs ?? (() => value?.launchArgs ?? []),
     ...(resolveEnv ? { resolveEnv } : {})
@@ -320,6 +321,33 @@ describe('claude structured launch resolution', () => {
       expect(launch.options.allowDangerouslySkipPermissions).toBeUndefined()
     }
   )
+
+  // The chat's own mode outranks the setting, so a resume keeps what the chat picked.
+  it.each([
+    ['bypass', { agentPermissionMode: 'ask' }, true],
+    ['ask', {}, false],
+    ['accept-edits', {}, false],
+    ['auto', {}, false]
+  ] as const)(
+    'launches a chat that chose %s for that mode whatever the setting',
+    async (mode, settings, bypassFlag) => {
+      const launch = await resolverFor(
+        record({ options: { permissionMode: mode } }),
+        undefined,
+        false,
+        settings
+      )({ identity: IDENTITY })
+
+      expect(launch.permissionMode).toBe(mode)
+      expect('dangerously-skip-permissions' in (launch.options.extraArgs ?? {})).toBe(bypassFlag)
+    }
+  )
+
+  it('records the setting as the launch mode of a chat that never chose one', async () => {
+    const launch = await resolverFor(record(), undefined, false, {})({ identity: IDENTITY })
+
+    expect(launch.permissionMode).toBe('bypass')
+  })
 
   it('passes configured arguments on start without taking over permission or session flags', async () => {
     const launch = await resolverFor(

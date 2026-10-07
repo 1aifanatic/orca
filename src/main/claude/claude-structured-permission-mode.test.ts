@@ -1,64 +1,102 @@
 import { describe, expect, it } from 'vitest'
-import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
+import {
+  claudeChatPermissionMode,
+  claudePermissionModeNeedsRelaunch,
+  claudePermissionModesFor,
+  claudePermissionModeWrite,
+  claudeSdkPermissionMode
+} from './claude-structured-permission-mode'
+import type { AgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
 
-describe('claudeStructuredPermissionModeForSettings', () => {
-  // The untouched case is the common one and the easiest to get wrong: a profile with no stored
-  // mode gets the default Orca ships, which is bypass — what a terminal launch has always applied.
-  it('bypasses when the user has never opened Agent settings', () => {
-    expect(claudeStructuredPermissionModeForSettings({ agentDefaultArgs: {} })).toBe(
-      'bypassPermissions'
+function state(picked?: string, launchPermissionMode?: AgentChatPermissionMode) {
+  return {
+    options: new Map(picked ? [['permissionMode', picked]] : []),
+    ...(launchPermissionMode ? { launchPermissionMode } : {})
+  }
+}
+
+describe('claudeSdkPermissionMode', () => {
+  it('maps each chat mode to the CLI mode of the same meaning', () => {
+    expect(claudeSdkPermissionMode('ask')).toBe('default')
+    expect(claudeSdkPermissionMode('accept-edits')).toBe('acceptEdits')
+    expect(claudeSdkPermissionMode('auto')).toBe('auto')
+    expect(claudeSdkPermissionMode('bypass')).toBe('bypassPermissions')
+  })
+})
+
+describe('claudeChatPermissionMode', () => {
+  it('reads the chat pick before the launch mode', () => {
+    expect(claudeChatPermissionMode(state('auto', 'bypass'))).toBe('auto')
+    expect(claudeChatPermissionMode(state(undefined, 'bypass'))).toBe('bypass')
+    expect(claudeChatPermissionMode(state())).toBe('ask')
+  })
+})
+
+describe('claudePermissionModeNeedsRelaunch', () => {
+  // The CLI refuses set_permission_mode bypassPermissions without the launch flag.
+  it('needs a relaunch only to reach Full access from a child launched without the flag', () => {
+    expect(claudePermissionModeNeedsRelaunch(state('bypass', 'ask'))).toBe(true)
+    expect(claudePermissionModeNeedsRelaunch(state('bypass'))).toBe(true)
+    expect(claudePermissionModeNeedsRelaunch(state('bypass', 'bypass'))).toBe(false)
+    expect(claudePermissionModeNeedsRelaunch(state('ask', 'bypass'))).toBe(false)
+    expect(claudePermissionModeNeedsRelaunch(state('auto', 'ask'))).toBe(false)
+  })
+})
+
+describe('claudePermissionModeWrite', () => {
+  it('applies a mode the running child can take live', () => {
+    expect(claudePermissionModeWrite(state(undefined, 'ask'), 'accept-edits')).toEqual({
+      kind: 'live',
+      mode: 'acceptEdits'
+    })
+    expect(claudePermissionModeWrite(state(undefined, 'bypass'), 'bypass')).toEqual({
+      kind: 'live',
+      mode: 'bypassPermissions'
+    })
+    // Leaving Full access never needs a new child.
+    expect(claudePermissionModeWrite(state('bypass', 'bypass'), 'ask')).toEqual({
+      kind: 'live',
+      mode: 'default'
+    })
+  })
+
+  it('holds Full access for a relaunch when the child lacks the flag', () => {
+    expect(claudePermissionModeWrite(state(undefined, 'ask'), 'bypass')).toEqual({
+      kind: 'relaunch'
+    })
+  })
+
+  it('refuses a value that is no Claude chat mode', () => {
+    expect(claudePermissionModeWrite(state(), 'bypassPermissions')).toBeNull()
+    expect(claudePermissionModeWrite(state(), 'plan')).toBeNull()
+  })
+})
+
+describe('claudePermissionModesFor', () => {
+  it('offers every mode, Approve for me included, unless the model says it has no auto mode', () => {
+    expect(claudePermissionModesFor(state('accept-edits'), undefined)).toEqual({
+      current: 'accept-edits',
+      supported: ['ask', 'accept-edits', 'auto', 'bypass']
+    })
+    expect(claudePermissionModesFor(state(), { supportsAutoMode: true }).supported).toContain(
+      'auto'
     )
-    expect(claudeStructuredPermissionModeForSettings({})).toBe('bypassPermissions')
-    expect(claudeStructuredPermissionModeForSettings(null)).toBe('bypassPermissions')
-    expect(claudeStructuredPermissionModeForSettings({ agentDefaultArgs: { codex: '' } })).toBe(
-      'bypassPermissions'
-    )
+    expect(claudePermissionModesFor(state(), { supportsAutoMode: false }).supported).toEqual([
+      'ask',
+      'accept-edits',
+      'bypass'
+    ])
   })
 
-  it('bypasses in Yolo with or without extra arguments', () => {
-    expect(
-      claudeStructuredPermissionModeForSettings({
-        agentPermissionMode: 'bypass',
-        agentDefaultArgs: { claude: '--model Opus' }
-      })
-    ).toBe('bypassPermissions')
+  it('keeps a stored auto pick listed so the pill still names it', () => {
+    expect(claudePermissionModesFor(state('auto'), { supportsAutoMode: false })).toEqual({
+      current: 'auto',
+      supported: ['ask', 'accept-edits', 'auto', 'bypass']
+    })
   })
 
-  // A terminal launch honours a bypass flag typed into Arguments, so the structured path does too.
-  it('bypasses when the flag is typed into Arguments under Manual', () => {
-    for (const claude of [
-      '--dangerously-skip-permissions',
-      '--dangerously-skip-permissions --model Opus',
-      '--model Opus --dangerously-skip-permissions'
-    ]) {
-      expect(
-        claudeStructuredPermissionModeForSettings({
-          agentPermissionMode: 'ask',
-          agentDefaultArgs: { claude }
-        }),
-        claude
-      ).toBe('bypassPermissions')
-    }
-  })
-
-  it('prompts in Manual, globally or for Claude alone', () => {
-    expect(claudeStructuredPermissionModeForSettings({ agentPermissionMode: 'ask' })).toBe(
-      'default'
-    )
-    expect(
-      claudeStructuredPermissionModeForSettings({
-        agentPermissionModeOverrides: { claude: 'ask' },
-        agentDefaultArgs: { claude: '--model Opus' }
-      })
-    ).toBe('default')
-  })
-
-  it('follows a Claude-only Yolo choice under a Manual default', () => {
-    expect(
-      claudeStructuredPermissionModeForSettings({
-        agentPermissionMode: 'ask',
-        agentPermissionModeOverrides: { claude: 'bypass' }
-      })
-    ).toBe('bypassPermissions')
+  // A relaunch-pending Full access is what the next turn runs, so it is what the pill shows.
+  it('reports a Full access pick awaiting its relaunch as current', () => {
+    expect(claudePermissionModesFor(state('bypass', 'ask'), undefined).current).toBe('bypass')
   })
 })

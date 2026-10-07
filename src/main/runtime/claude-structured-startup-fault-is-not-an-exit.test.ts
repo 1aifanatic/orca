@@ -81,7 +81,7 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
     await expect(
       host.attach(
         CALLER,
-        claude.attachParams(SESSION, null, { options: { permissionMode: 'plan' } })
+        claude.attachParams(SESSION, null, { options: { permissionMode: 'accept-edits' } })
       )
     ).resolves.toMatchObject({ ok: true })
     await released(host)

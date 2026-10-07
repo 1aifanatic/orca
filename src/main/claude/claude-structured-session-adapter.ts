@@ -12,6 +12,7 @@ import { releaseClaudeAcquisition } from './claude-structured-acquisition-releas
 import { acquireClaudeSession } from './claude-structured-session-acquisition'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
 import { setClaudeStructuredSessionOption } from './claude-structured-options'
+import { claudePermissionModeNeedsRelaunch } from './claude-structured-permission-mode'
 import { readClaudeStructuredSessionOptions } from './claude-structured-session-options'
 import {
   awaitClaudeSessionStarted,
@@ -242,6 +243,10 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
       input,
       this.deps.requestTimeoutMs
     )
+  childRelaunchRequired = (sessionId: string): boolean => {
+    const session = this.sessions.get(sessionId)
+    return session ? claudePermissionModeNeedsRelaunch(session) : false
+  }
   awaitOptionWritable = (sessionId: string): Promise<void> =>
     claudeStartupSettledWithin(
       this.sessions.get(sessionId),

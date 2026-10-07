@@ -8,7 +8,7 @@ import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { createCodexStructuredLaunchResolver } from './codex-structured-launch-resolution'
-import { codexStructuredPermissionPolicyForSettings } from './codex-structured-permission-policy'
+import { agentChatPermissionModeForSettings } from '../native-chat/agent-chat-permission-mode-setting'
 import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
 const { isWindowsProcessStartTimeAvailable } = vi.hoisted(() => ({
@@ -64,7 +64,8 @@ function resolverFor(
     resolveCommand: () => '/usr/local/bin/codex',
     resolveRollout,
     resolveLaunchArgs: resolveLaunchArgs ?? (() => value?.launchArgs ?? []),
-    resolvePermissionPolicy: () => codexStructuredPermissionPolicyForSettings(permissionSettings)
+    resolveDefaultPermissionMode: () =>
+      agentChatPermissionModeForSettings('codex', permissionSettings)
   })
 }
 
@@ -151,7 +152,12 @@ describe('codex structured launch resolution', () => {
       codexHome: '/home/work/.codex',
       resumeThreadId: null,
       // Every launch now carries a posture; neither one is left for config.toml to decide.
-      permissionPolicy: { approvalPolicy: 'on-request', sandbox: 'workspace-write' }
+      permissionMode: 'ask',
+      permissionPolicy: {
+        approvalPolicy: 'on-request',
+        sandbox: 'workspace-write',
+        approvalsReviewer: 'user'
+      }
     })
   })
 
@@ -264,8 +270,52 @@ describe('codex structured launch resolution', () => {
     expect(launch.args).toEqual(['app-server'])
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'on-request',
-      sandbox: 'workspace-write'
+      sandbox: 'workspace-write',
+      approvalsReviewer: 'user'
     })
+  })
+
+  // The chat's own mode outranks the setting, so a resume keeps what the chat picked.
+  it.each([
+    [
+      'bypass',
+      { agentPermissionMode: 'ask' },
+      { approvalPolicy: 'never', sandbox: 'danger-full-access' }
+    ],
+    [
+      'auto',
+      {},
+      { approvalPolicy: 'on-request', sandbox: 'workspace-write', approvalsReviewer: 'auto_review' }
+    ],
+    [
+      'ask',
+      {},
+      { approvalPolicy: 'on-request', sandbox: 'workspace-write', approvalsReviewer: 'user' }
+    ]
+  ] as const)(
+    'opens a chat that chose %s in that mode whatever the setting',
+    async (mode, settings, policy) => {
+      const launch = await resolverFor(
+        record({ options: { permissionMode: mode } }),
+        undefined,
+        undefined,
+        settings
+      )({ identity: IDENTITY })
+
+      expect(launch.permissionMode).toBe(mode)
+      expect(launch.permissionPolicy).toEqual(policy)
+    }
+  )
+
+  it('falls back to the setting for a chat whose stored mode Codex cannot run', async () => {
+    const launch = await resolverFor(
+      record({ options: { permissionMode: 'accept-edits' } }),
+      undefined,
+      undefined,
+      { agentPermissionMode: 'bypass' }
+    )({ identity: IDENTITY })
+
+    expect(launch.permissionMode).toBe('bypass')
   })
 
   // A thread opened on the configured default and then given a turn on the saved model reads to

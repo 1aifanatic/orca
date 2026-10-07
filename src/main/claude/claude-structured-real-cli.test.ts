@@ -220,6 +220,41 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
     15_000
   )
 
+  // The refusal Orca's relaunch exists for, asserted against the live binary: a session launched
+  // without `--dangerously-skip-permissions` cannot be switched into bypass. Goes red the day the
+  // CLI takes it, which is when the relaunch can go.
+  it.skipIf(!realClaudeAuthenticated)(
+    'refuses Full access live without the launch flag, so a pick of it waits for a relaunch',
+    async () => {
+      const providerSessionId = randomUUID()
+      const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
+      const adapter = realAdapter(providerSessionId, claudeConfigDir)
+      const sessionId = 'real-cli-handshake'
+
+      try {
+        await adapter.acquire({
+          identity: identity(providerSessionId),
+          fence: 1,
+          spawnToken: 'real-cli-permission'
+        })
+        const connection = adapter['sessions'].get(sessionId)?.connection
+        await expect(
+          connection?.setPermissionMode('bypassPermissions', { timeoutMs: 15_000 })
+        ).rejects.toThrow(/not launched with --dangerously-skip-permissions/)
+
+        // Every other mode is a live switch the CLI accepts.
+        for (const value of ['accept-edits', 'ask']) {
+          await adapter.setOption({ sessionId, key: 'permissionMode', value, fence: 1 })
+        }
+        await adapter.setOption({ sessionId, key: 'permissionMode', value: 'bypass', fence: 1 })
+        expect(adapter.childRelaunchRequired(sessionId)).toBe(true)
+      } finally {
+        await adapter.closeAll()
+      }
+    },
+    30_000
+  )
+
   // Mobile native chat never reads the structured journal — it reads the CLI's own
   // transcript through native-chat/session-file-resolver.ts. So this resolves the way
   // transcript-read-cache.ts:104 does, with NO root override, and checks the answer

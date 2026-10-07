@@ -13,6 +13,8 @@ import type { AgentSessionAttachParams } from '../native-chat/agent-session-wire
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
 import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
+import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../shared/agent-chat-permission-mode'
+import { agentChatPermissionModeForSettings } from '../native-chat/agent-chat-permission-mode-setting'
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
 import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
@@ -104,10 +106,18 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   structuredAgentSessionLaunchSeedOptions(
     agent: StructuredAgentId
   ): Record<string, string> | undefined {
-    return resolveStructuredLaunchSeedOptions(
-      this.requireStore().getSettings().nativeChatSessionOptions,
-      agent
-    )
+    const settings = this.requireStore().getSettings()
+    const seeded = resolveStructuredLaunchSeedOptions(settings.nativeChatSessionOptions, agent)
+    // The chat records the mode it starts in, so a later change to the setting never moves it.
+    return agent === 'claude' || agent === 'codex'
+      ? {
+          ...seeded,
+          [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: agentChatPermissionModeForSettings(
+            agent,
+            settings
+          )
+        }
+      : seeded
   }
 
   protected async resolveStructuredAgentSessionLocation(worktreeSelector: string) {

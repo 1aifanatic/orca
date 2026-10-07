@@ -10,7 +10,6 @@
 // A process whose journal will not open installs none and answers every
 // structured request with the refusal that says why.
 
-import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionResumeTrigger } from '../../shared/agent-session-resume-marker'
@@ -21,7 +20,7 @@ import {
   type InstalledRuntime
 } from './structured-agent-session-runtime-teardown'
 import { AgentSessionRecoveryCapsule } from './agent-session-recovery-capsule'
-import type { CodexStructuredPermissionPolicy } from '../codex/codex-structured-permission-policy'
+import type { AgentPermissionMode } from '../../shared/tui-agent-permissions'
 import type { CodexStructuredSessionAdapterDeps } from '../codex/codex-structured-session-adapter'
 import type { ClaudeStructuredSessionAdapterDeps } from '../claude/claude-structured-session-adapter'
 import {
@@ -111,10 +110,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudeLaunchEnv?: () => Promise<Record<string, string>> | Record<string, string>
   /** Required, and asserted at install time — an absent policy must not degrade to a guess. */
   resolveClaudeAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy
-  /** The user's Agent Permissions setting for Claude; absent means prompting. */
-  resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
-  /** The same setting for Codex, as app-server thread policy. */
-  resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The Agent Permissions setting, where a chat with no mode of its own starts; absent prompts. */
+  resolveDefaultPermissionMode?: (agent: 'claude' | 'codex') => AgentPermissionMode
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
   getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
@@ -285,6 +282,7 @@ async function installOnJournal(
   const adapter = new StructuredAgentSessionAdapterRouter(agents, async () => {
     await Promise.all(registrations.map((registration) => registration.adapter.closeAll()))
   })
+  const { resolveDefaultPermissionMode } = deps
   host = new StructuredAgentSessionHost({
     store,
     adapter,
@@ -299,6 +297,12 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
+    ...(resolveDefaultPermissionMode
+      ? {
+          defaultPermissionMode: (agent: string) =>
+            agent === 'claude' || agent === 'codex' ? resolveDefaultPermissionMode(agent) : null
+        }
+      : {}),
     ...(await modelCatalogHostDeps({ store, agents, deps, envResolvers }))
   })
   if (deps.attentionDelivery) {

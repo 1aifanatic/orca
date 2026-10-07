@@ -151,7 +151,7 @@ function resolvedLaunch(permissionMode: PermissionMode, launchArgs: string[] = [
     resolveWorkspacePath: async () => '/repos/workspace-1',
     resolveCommand: () => FAKE_CLI,
     resolveAuthPolicy: () => ({ stripAuthEnv: true }),
-    resolvePermissionMode: () => permissionMode
+    resolveDefaultPermissionMode: () => (permissionMode === 'bypassPermissions' ? 'bypass' : 'ask')
   })({ identity: { sessionId: record.sessionId } as never })
 }
 

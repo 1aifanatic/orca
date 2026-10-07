@@ -34,8 +34,7 @@ import { buildWorktreeListingPage } from './worktree-listing-host-scope'
 import { structuredWorkerOwesWork } from './structured-worker-custody'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
 import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
-import { claudeStructuredPermissionModeForSettings } from '../claude/claude-structured-permission-mode'
-import { codexStructuredPermissionPolicyForSettings } from '../codex/codex-structured-permission-policy'
+import { agentChatPermissionModeForSettings } from '../native-chat/agent-chat-permission-mode-setting'
 import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude-structured-auth-policy'
 import { resolveStructuredAgentCommand } from '../native-chat/structured-agent-command-resolution'
 import { structuredAgentConfiguredArgs } from '../native-chat/structured-agent-configured-args'
@@ -211,11 +210,9 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       resolveClaudeAuthPolicy: () =>
         claudeStructuredAuthPolicyForSettings(this.requireStore().getSettings()),
       // Re-read per acquisition, like the auth policy above it: the Agent Permissions setting is
-      // the one copy of this fact, even when Arguments contain permission flags.
-      resolveClaudePermissionMode: () =>
-        claudeStructuredPermissionModeForSettings(this.requireStore().getSettings()),
-      resolveCodexPermissionPolicy: () =>
-        codexStructuredPermissionPolicyForSettings(this.requireStore().getSettings()),
+      // the one copy of this fact for a chat that has no mode of its own.
+      resolveDefaultPermissionMode: (agent) =>
+        agentChatPermissionModeForSettings(agent, this.requireStore().getSettings()),
       // Same gate and same settings as agentSession.createSupport, re-read on every acquisition.
       getClaudeManagedAccountGateSettings: () => this.requireStore().getSettings(),
       resolveAgentAccountHome: (agent) => this.resolveStructuredAgentAccountHome(agent),

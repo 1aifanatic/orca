@@ -1,3 +1,4 @@
+import type { AgentPermissionMode } from '../../../shared/tui-agent-permissions'
 import type { StructuredAgentSessionStatusObserverOptions } from './structured-agent-session-status-observation'
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
@@ -155,5 +156,8 @@ export type StructuredAgentSessionHostDeps = {
    *  every reader of that store simply lists no structured session. */
   statusSink?: StructuredAgentSessionStatusSink
   /** Host model catalog surface; absent means every catalog read answers `unknown`. */
+  /** The Agent Permissions setting for `agent`, where a chat with no mode of its own starts;
+   *  null for an agent with no setting. Absent reads as no default. */
+  defaultPermissionMode?: (agent: string) => AgentPermissionMode | null
   modelCatalog?: AgentModelCatalogService
 }
