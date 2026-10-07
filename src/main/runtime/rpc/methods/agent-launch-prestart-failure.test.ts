@@ -11,7 +11,6 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import { AGENT_LAUNCH_AGENT_NOT_STARTED_CODE } from '../../../../shared/agent-launch-agent-not-started'
-import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
@@ -170,19 +169,15 @@ describe('a launch whose terminal fails', () => {
     expect(outcomeOf(OPERATION_ID)?.status).toBe('unknown')
   })
 
-  it('names the kept workspace to a caller that reads it, and stays unknown to one that does not', async () => {
-    const keepsWorkspace = () => {
-      const runtime = runtimeStub({ settings: {} })
-      // No startup terminal came back, so the launch builds its own in the new workspace.
-      runtime.createManagedWorktree.mockResolvedValueOnce({
-        worktree: { id: 'wt-new' },
-        startupTerminal: undefined
-      })
-      failingCreate(runtime, new Error(NO_LAUNCH_COMMAND), false)
-      return runtime
-    }
-
-    const cli = keepsWorkspace()
+  // Every caller and method: agent-launch-workspace-kept.test.ts.
+  it('names the kept workspace when no agent was asked for, and answers a retry from the record', async () => {
+    const cli = runtimeStub({ settings: {} })
+    // No startup terminal came back, so the launch builds its own in the new workspace.
+    cli.createManagedWorktree.mockResolvedValueOnce({
+      worktree: { id: 'wt-new' },
+      startupTerminal: undefined
+    })
+    failingCreate(cli, new Error(NO_LAUNCH_COMMAND), false)
     const response = await replay(cli, CREATE_LAUNCH)
     expect(cli.createTerminal).toHaveBeenCalledTimes(1)
     expect(response).toMatchObject({
@@ -202,16 +197,6 @@ describe('a launch whose terminal fails', () => {
       error: { code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE, data: { worktreeId: 'wt-new' } }
     })
     expect(retry.createManagedWorktree).not.toHaveBeenCalled()
-
-    const olderPhone = await replay(keepsWorkspace(), CREATE_LAUNCH, OTHER_OPERATION_ID, {
-      clientKind: 'mobile',
-      pairedDeviceId: 'device-1',
-      clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
-    })
-    expect(olderPhone).toMatchObject({
-      ok: false,
-      error: { code: 'agent_session_operation_unknown' }
-    })
   })
 
   it('stays unknown for a created workspace whose terminal failed after its spawn left', async () => {
