@@ -21,10 +21,7 @@ let sweeper: AgentSessionAttachmentSweeper | null = null
 export function installAgentSessionAttachments(deps: {
   stateDirectory: string
   store: Pick<AgentSessionRecordStore, 'getRecord' | 'isSessionUnreadable'>
-  journalDatabase: Pick<
-    JournalHostDatabase,
-    'readOnly' | 'isClosed' | 'db' | 'legacyRecordImportOwed'
-  >
+  journalDatabase: Pick<JournalHostDatabase, 'readOnly' | 'isClosed' | 'db'>
   logger: StructuredAgentSessionLogger
 }): void {
   stopAgentSessionAttachments()
@@ -49,16 +46,11 @@ export function installAgentSessionAttachments(deps: {
         deps.journalDatabase.readOnly || deps.journalDatabase.isClosed
           ? null
           : deps.journalDatabase.db,
-      // Records still owed their import are missing from the list, so no claim reads as orphaned.
-      recordedSessionIds: () =>
-        deps.journalDatabase.legacyRecordImportOwed
-          ? null
-          : {
-              // Readable or not: an unreadable chat's claims still protect its uploads.
-              has: (sessionId) =>
-                deps.store.getRecord(sessionId) !== null ||
-                deps.store.isSessionUnreadable(sessionId)
-            }
+      recordedSessionIds: () => ({
+        // Readable or not: an unreadable chat's claims still protect its uploads.
+        has: (sessionId) =>
+          deps.store.getRecord(sessionId) !== null || deps.store.isSessionUnreadable(sessionId)
+      })
     },
     {
       initialDelayMs: FIRST_SWEEP_DELAY_MS,

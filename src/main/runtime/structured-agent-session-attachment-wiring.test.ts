@@ -31,13 +31,9 @@ function install(directory = stateDirectory): void {
     isSessionUnreadable: () => false
   }
   // Written by a newer Orca: the sweep reads no claims, so nothing here touches the connection.
-  const journal: Pick<
-    JournalHostDatabase,
-    'readOnly' | 'isClosed' | 'db' | 'legacyRecordImportOwed'
-  > = {
+  const journal: Pick<JournalHostDatabase, 'readOnly' | 'isClosed' | 'db'> = {
     readOnly: true,
     isClosed: false,
-    legacyRecordImportOwed: false,
     get db(): Database.Database {
       throw new Error('not opened in this test')
     }
