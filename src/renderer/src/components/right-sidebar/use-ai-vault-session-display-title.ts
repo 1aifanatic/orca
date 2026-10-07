@@ -11,7 +11,8 @@ export function useAiVaultSessionDisplayTitle(session: AiVaultSession): string {
   const customLabel = useAppStore((state) => {
     const tab = owner
       ? structuredChatTabBySessionId(
-          state.unifiedTabsByWorktree[owner.workspaceId],
+          state.unifiedTabsByWorktree,
+          owner.workspaceId,
           owner.sessionId
         )
       : undefined

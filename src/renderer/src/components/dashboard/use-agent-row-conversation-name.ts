@@ -46,7 +46,7 @@ export function useAgentRowConversationName(agent: DashboardAgentRow): string | 
   const structuredTab = useAppStore((s) =>
     cannotOwnTabName
       ? undefined
-      : structuredChatTabById(s.unifiedTabsByWorktree?.[agent.tab.worktreeId], agent.tab.id)
+      : structuredChatTabById(s.unifiedTabsByWorktree, agent.tab.worktreeId, agent.tab.id)
   )
   const conversationName = useStructuredChatTabConversationName(structuredTab)
   // Why: parsed per render rather than inside the selector, which runs on every

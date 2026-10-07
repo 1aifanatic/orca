@@ -197,6 +197,17 @@ describe('native chat names in Vault rows', () => {
     expect(screen.getByText('Explain the parser')).toBeTruthy()
   })
 
+  it.each(['constructor', '__proto__'])(
+    'renders a paired row whose workspace id names an object member (%s)',
+    async (workspaceId) => {
+      await renderRow({
+        ...row('local', 'Host row title'),
+        structuredSession: { workspaceId, sessionId: 'native-session' }
+      })
+      expect(screen.getByText('Host row title')).toBeTruthy()
+    }
+  )
+
   it('ignores a published name no record store would hold', async () => {
     await renderRow(row('local', 'Host row title'))
     publish('local', 'x'.repeat(201))
