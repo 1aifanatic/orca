@@ -1,10 +1,14 @@
+import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { SubscriberFieldHooks } from './agent-session-subscriber-frame-fields'
 import { AgentSessionSubscribers } from './structured-agent-session-subscribers'
-import { tryReadQueuePublication } from './structured-agent-session-queued-publication'
+import {
+  structuredQueueSendGate,
+  tryReadQueuePublication
+} from './structured-agent-session-queued-publication'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -60,7 +64,10 @@ export class StructuredAgentSessionClientDelivery {
     this.subscribers = new AgentSessionSubscribers({
       readCommands: (sessionId) => this.readCommands(sessionId),
       readQueuePublication: (sessionId) =>
-        tryReadQueuePublication(sessions.get(sessionId)?.journal),
+        tryReadQueuePublication(
+          sessions.get(sessionId)?.journal,
+          structuredQueueSendGate(this.deps().store, sessionId)
+        ),
       readBackgroundTasks,
       onJournalPublished: (sessionId, journal) => this.publishJournal(sessionId, journal)
     })
@@ -106,12 +113,17 @@ export class StructuredAgentSessionClientDelivery {
     }
   }
 
-  publishRestored = (sessionId: string): void =>
+  publishRestored = (sessionId: string): void => {
     this.statusFeed.publish(sessionId, undefined, { replay: true })
+    this.turnCompletionFeed.observe(sessionId, undefined, { historical: true })
+  }
 
   subscribeStatus = (subscriber: StructuredAgentSessionStatusSubscriber): (() => void) =>
     this.statusFeed.subscribe(subscriber)
   forgetStatus = (sessionId: string): void => this.statusFeed.forget(sessionId)
+
+  readStatusSummary = (sessionId: string): AgentSessionStatusSummary | undefined =>
+    this.statusFeed.readPublished(sessionId)
 
   subscribeTurnCompletions = (
     subscriber: StructuredAgentSessionTurnCompletionSubscriber
