@@ -50,7 +50,9 @@ function sameFile(left: Stats, right: Stats): boolean {
  */
 async function canonicalFolder(folder: string): Promise<string> {
   try {
-    const owned = await Promise.all([lstat(dirname(folder)), lstat(folder)])
+    // Parent first, so the answer for a broken path does not depend on which check settles first.
+    const parentStats = await lstat(dirname(folder))
+    const owned = [parentStats, await lstat(folder)]
     if (owned.some((stats) => stats.isSymbolicLink())) {
       refuse('outside_folder')
     }
