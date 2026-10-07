@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
 import * as ansiNormalization from './terminal-ansi-normalization'
+import { expectLinearRevisitWork, measureRowWork } from './terminal-tail-redraw-work-test-harness'
 
 const ESC = '\x1b'
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
@@ -93,21 +94,32 @@ describe('onPtyData redraw cost', () => {
     }
   })
 
+  it('keeps live row work linear across the revisit matrix', async () => {
+    let index = 0
+    const exits: (void | Promise<void>)[] = []
+    // The PTY and its leaf can each update a tail model per chunk.
+    expectLinearRevisitWork(
+      (text) => {
+        const ptyId = `pty-revisit-${index++}`
+        const { runtime } = runtimeWithLeaf(ptyId)
+        runtime.onPtyData(ptyId, text, 1)
+        exits.push(runtime.onPtyExit(ptyId, 0))
+      },
+      { revisits: 150, models: 2 }
+    )
+    await Promise.all(exits)
+  })
+
   it('does not rebuild a wide row the cursor only revisits', async () => {
     const ptyId = 'pty-revisit'
     const width = 32_000
     const { runtime } = runtimeWithLeaf(ptyId)
-    const join = vi.spyOn(Array.prototype, 'join')
     try {
-      runtime.onPtyData(ptyId, `${ESC}[1A\r${'x'.repeat(width)}\n${`${ESC}[1A\n`.repeat(4_000)}`, 1)
-      // A join per newline rebuilt the whole row 4,000 times and froze main for seconds.
-      const wideJoins = join.mock.contexts.filter(
-        (cells) => Array.isArray(cells) && cells.length >= width
-      )
-      expect(wideJoins).toHaveLength(0)
-      expect(readTail(runtime, ptyId)).toEqual(['x'.repeat(width)])
+      const text = `${ESC}[1A\rpanel${' '.repeat(width)}\n${`${ESC}[1A\n`.repeat(4_000)}`
+      // A trim or join per newline rebuilt the whole row 4,000 times and froze main for seconds.
+      expect(measureRowWork(() => runtime.onPtyData(ptyId, text, 1))).toBeLessThan(2 * width)
+      expect(readTail(runtime, ptyId)).toEqual(['panel'])
     } finally {
-      join.mockRestore()
       await runtime.onPtyExit(ptyId, 0)
     }
   })

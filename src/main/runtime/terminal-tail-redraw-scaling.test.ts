@@ -136,13 +136,14 @@ describe('terminal tail redraw cost', () => {
     expect(tail?.lines).toEqual(['x'.repeat(width)])
   })
 
-  it('keeps a one-cell edit per revisit off the whole-row rebuild', () => {
+  it('rebuilds a wide row once when every revisit repeats the same one-cell edit', () => {
     const width = 64_000
     let tail: ReturnType<typeof appendNormalizedToTailBuffer> | undefined
     const joins = countWideJoins(width, () => {
       tail = appendNormalizedToTailBuffer([], '', wideRowRevisits(width, 2_000, '\ry'), null)
     })
-    expect(joins).toBe(0)
+    // Only the first revisit changes the row; the rest rewrite identical cells.
+    expect(joins).toBe(1)
     expect(tail?.lines).toEqual([`y${'x'.repeat(width - 1)}`])
   })
 
