@@ -35,11 +35,12 @@ export function notifyHostOfMirroredEditorClose(
     return false
   }
   const capturedHost = parseExecutionHostId(getOpenFileExecutionHostId(file))
-  const runtimeEnvironmentId = hasOpenFileExecutionHostEvidence(file)
-    ? capturedHost?.kind === 'runtime'
-      ? capturedHost.environmentId
-      : null
-    : getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+  const runtimeEnvironmentId =
+    file.runtimeEnvironmentId !== undefined || hasOpenFileExecutionHostEvidence(file)
+      ? capturedHost?.kind === 'runtime'
+        ? capturedHost.environmentId
+        : null
+      : getRuntimeEnvironmentIdForWorktree(state, worktreeId)
   if (!runtimeEnvironmentId?.trim()) {
     return false
   }
