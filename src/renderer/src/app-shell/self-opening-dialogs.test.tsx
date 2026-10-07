@@ -498,7 +498,13 @@ let closeOther: () => void = () => {}
 it('the user opening the resume offer shows it at once, and the launch offer never repeats it', async () => {
   crashReports.getLatestPending.mockResolvedValue(crash('c1'))
   rpc.mockResolvedValue({ sessions: [] })
-  await mount(everything)
+  settleTip()
+  await mount(
+    <>
+      <CrashReportDialog />
+      <NativeChatResumeOnRestartModal />
+    </>
+  )
   expect(onScreen()).toEqual(['crash:c1'])
   rpc.mockResolvedValue({ sessions: offered })
   await act(async () => {
@@ -514,7 +520,10 @@ it('the user opening the resume offer shows it at once, and the launch offer nev
   await flush()
   act(() => requestNativeChatResumeOnRestartDialog('launch'))
   await flush()
-  expect(onScreen()).toEqual(['crash:c1'])
+  click('Close crash report')
+  await flush()
+  // The user has already seen and closed it; the launch's own ask does not bring it back.
+  expect(onScreen()).toEqual([])
 })
 
 it('a tip decided while a user modal is up keeps its place ahead of a queued resume offer', async () => {

@@ -260,6 +260,25 @@ it('Help with nothing on screen opens at once and fills in the latest report', a
   expect(notes()).toBe('typed while loading')
 })
 
+it('a latest-report load that lands after Help took over a report on screen never swaps it', async () => {
+  const pending = Promise.withResolvers<CrashReportRecord | null>()
+  crashReports.getLatestPending.mockReturnValue(pending.promise)
+  const latest = Promise.withResolvers<CrashReportRecord | null>()
+  crashReports.getLatestReport.mockReturnValue(latest.promise)
+  await mountBoth({ waitForCrash: false })
+  await openFromHelp()
+  await act(async () => button("Don't Send").click())
+  await flush()
+  await act(async () => pending.resolve(pendingCrash))
+  await flush()
+  expect(document.body.textContent).toContain('Orca 1.0.0')
+  await openFromHelp()
+  await act(async () => latest.resolve(newerCrash))
+  await flush()
+  expect(document.body.textContent).toContain('Orca 1.0.0')
+  expect(document.body.textContent).not.toContain('Orca 9.9.9')
+})
+
 it('Help pressed again while its dialog is open keeps the same dialog and its notes', async () => {
   crashReports.getLatestPending.mockResolvedValue(null)
   crashReports.getLatestReport.mockResolvedValue(newerCrash)
