@@ -644,23 +644,17 @@ it.each(['user modal', 'SSH prompt'] as const)(
 
 it('in StrictMode (dev builds) a tip decided after the resume offer was queued still goes first', async () => {
   act(() => useDialogRegistry.getState().settleStartupSource('crash-report', 'none'))
-  const render = async (node: React.ReactNode): Promise<void> => {
-    await act(async () =>
-      root.render(
-        <StrictMode>
-          <TooltipProvider>{node}</TooltipProvider>
-        </StrictMode>
-      )
-    )
-    await flush()
-  }
-  await render(<NativeChatResumeOnRestartModal />)
+  await mount(
+    <StrictMode>
+      <NativeChatResumeOnRestartModal />
+    </StrictMode>
+  )
   expect(onScreen()).toEqual([])
-  await render(
-    <>
+  await mount(
+    <StrictMode>
       <NativeChatResumeOnRestartModal />
       <DecidedTip />
-    </>
+    </StrictMode>
   )
   expect(onScreen()).toEqual(['tip'])
   click('Close tip')

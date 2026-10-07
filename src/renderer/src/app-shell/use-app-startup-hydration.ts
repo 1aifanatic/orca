@@ -22,6 +22,7 @@ import {
   timeRendererStartupSyncStep
 } from '../startup/startup-diagnostics'
 import { recoverFromDegradedStartup } from '../startup/startup-degraded-recovery'
+import { refreshDeferredStartupCatalog } from '../startup/startup-deferred-catalog-refresh'
 import { restoreSshConnectionsForStartup } from '../startup/startup-ssh-connection-restore'
 import { collectActiveWorkspaceSshTargetIds } from '../startup/active-workspace-ssh-targets'
 import { publishTerminalViewAttributesAtAppStart } from '../components/terminal-pane/terminal-appearance'
@@ -324,42 +325,7 @@ export function useAppStartupHydration(
           logRendererStartupDiagnostic('startup-hydration-done', {
             durationMs: Math.round(performance.now() - startupStartedAt)
           })
-          void (async () => {
-            try {
-              try {
-                // Why: remote rows must not render under a fallback visibility while their owner default is still loading.
-                await timeRendererStartupStep('owner-visibility-defaults', () =>
-                  actions.awaitOwnerWorktreeVisibilityDefaultsHydration()
-                )
-                await timeRendererStartupStep('remote-catalog-refresh', async () => {
-                  await actions.fetchReposForAllHosts()
-                  await actions.fetchProjectGroupsForAllHosts()
-                  await actions.fetchFolderWorkspacesForAllHosts()
-                })
-              } catch (err) {
-                console.warn('Remote startup catalog refresh failed:', err)
-              }
-              if (!cancelled) {
-                try {
-                  await timeRendererStartupStep('remote-worktree-refresh', async () => {
-                    // Why: the full scan is not required for session recovery, so keep it off the startup-critical path.
-                    await actions.fetchAllWorktrees()
-                    // Why: the startup prune only saw session-referenced repos; use the deferred scan's
-                    // authoritative results to drop deleted-worktree visit timestamps that would
-                    // otherwise accumulate unbounded (disconnected SSH stays non-authoritative and is kept).
-                    actions.pruneLastVisitedTimestamps()
-                    await actions.fetchWorktreeLineage()
-                  })
-                } catch (err) {
-                  console.warn('Deferred startup worktree refresh failed:', err)
-                }
-              }
-            } finally {
-              if (!cancelled) {
-                useAppStore.setState({ startupWorktreeRefreshCompleted: true })
-              }
-            }
-          })()
+          void refreshDeferredStartupCatalog(actions, () => cancelled)
         }
       } catch (error) {
         if (!cancelled && useAppStore.getState().settings === null) {
