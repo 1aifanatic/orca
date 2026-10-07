@@ -1,5 +1,7 @@
 import { shouldPreserveEditableFocus } from '@/components/terminal-pane/pane-helpers'
 import { useAppStore } from '@/store'
+import { useDialogRegistry } from '@/store/dialog-registry'
+import { selectDialogOnScreen } from '@/store/dialog-registry-state'
 import { focusRuntimeTerminalSurface } from '@/runtime/sync-runtime-graph'
 import type { ActivateAndRevealResult } from '@/lib/worktree-activation'
 
@@ -52,7 +54,8 @@ export function queueWorkspaceActivationTerminalFocus(
       state.activeView !== 'terminal' ||
       state.activeTabType !== 'terminal' ||
       (tabId !== null && state.activeTabId !== tabId) ||
-      state.activeModal !== 'none'
+      state.activeModal !== 'none' ||
+      selectDialogOnScreen(useDialogRegistry.getState())
     ) {
       cancel()
       return

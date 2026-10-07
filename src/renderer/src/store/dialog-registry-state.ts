@@ -293,6 +293,11 @@ export function syncTourEntry(registry: DialogRegistry, tourId: string | null): 
   return token === null ? next : openDialogEntry(next, { token, kind: TOUR_KIND, origin: 'tour' })
 }
 
+/** Some dialog is up, of any origin: for code that must not act, or take keys, under a dialog. */
+export function selectDialogOnScreen(registry: DialogRegistry): boolean {
+  return registry.dialogEntries.some((entry) => onScreen(entry) && entry.origin !== 'tour')
+}
+
 export function selectDialogPhase(registry: DialogRegistry, token: string): DialogPhase | null {
   return registry.dialogEntries.find((entry) => entry.token === token)?.phase ?? null
 }
