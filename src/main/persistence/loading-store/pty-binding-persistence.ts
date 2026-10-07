@@ -216,12 +216,16 @@ export class PtyBindingPersistenceOperations {
   }
 
   /**
-   * Detach-to-new-tab, committed before the renderer mounts the target tab (STA-9259). It lives on
-   * the binding domain only for its runtime and partition access; the commit module owns the write.
+   * Detach-to-new-tab in the worktree's home partition, committed before the renderer mounts the
+   * target tab (STA-9259). It lives on the binding domain only for its runtime and partition
+   * access; the commit module owns the write.
    */
-  moveTerminalLeafToNewTab(request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> {
+  moveTerminalLeafToNewTab(
+    request: TerminalLeafMoveRequest,
+    hostId: ExecutionHostId
+  ): Promise<TerminalLeafMoveResult> {
     const { runtime } = this[ptyBindingPersistenceOperationsContext]
-    return runtime.runDurableMutation(moveLeaf(request, topologyCommitContext(this)))
+    return runtime.runDurableMutation(moveLeaf(request, hostId, topologyCommitContext(this)))
   }
 
   /** A user's divider, direction or pane-order edit, written to the worktree's home partition. */
@@ -236,11 +240,10 @@ export class PtyBindingPersistenceOperations {
 
 function topologyCommitContext(
   owner: PtyBindingPersistenceOperations
-): Parameters<typeof moveLeaf>[1] {
+): Parameters<typeof moveLeaf>[2] {
   const { runtime, sessions } = owner[ptyBindingPersistenceOperationsContext]
   return {
     state: runtime.state,
-    hostIds: () => sessions.getWorkspaceSessionHostIds(),
     getSession: (hostId) => sessions.getWorkspaceSession(hostId),
     markDirty: (domain) => runtime.dirtyProfileStateDomains?.add(domain)
   }

@@ -71,7 +71,6 @@ function profile(partitions: [ExecutionHostId, WorkspaceSessionState][]) {
     }
   const context: Parameters<typeof setLayout>[2] = {
     state,
-    hostIds: () => partitions.map(([hostId]) => hostId),
     getSession,
     markDirty: (domain) => dirty.add(domain)
   }

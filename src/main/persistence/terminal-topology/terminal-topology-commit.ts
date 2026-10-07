@@ -36,14 +36,15 @@ export function closeLeafOrTab(
   )
 }
 
-/** Moves a leaf, its binding and its pane-keyed records into a new tab in one durable mutation. */
+/** Moves a leaf, its binding and its pane-keyed records into a new tab in `hostId`, the worktree's home. */
 export function moveLeaf(
   request: TerminalLeafMoveRequest,
+  hostId: ExecutionHostId,
   context: TerminalTopologyCommitContext
 ): () => DurableProfileStateMutation<TerminalLeafMoveResult> {
   return traced(
     'move_leaf',
-    () => commitLeafMove(request, context),
+    () => commitLeafMove(request, hostId, context),
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
 }
@@ -113,7 +114,6 @@ type TopologyState = Pick<
 
 type TerminalTopologyCommitContext = {
   state: TopologyState
-  hostIds: () => ExecutionHostId[]
   getSession: (hostId: ExecutionHostId) => WorkspaceSessionState
   markDirty: (
     domain: 'workspaceSession' | 'workspaceSessionsByHostId' | 'ui' | 'sshRemotePtyLeases'
@@ -133,23 +133,21 @@ function writeRestorable<V>(read: () => V, write: (value: V) => void, next: V): 
 
 function commitLeafMove(
   request: TerminalLeafMoveRequest,
+  hostId: ExecutionHostId,
   context: TerminalTopologyCommitContext
 ): DurableProfileStateMutation<TerminalLeafMoveResult> {
   const { state } = context
-  const planned = planTerminalLeafMove(
-    context.hostIds().map((hostId) => ({ hostId, session: context.getSession(hostId) })),
-    request
-  )
-  if (planned.sessions.length === 0) {
+  const planned = planTerminalLeafMove(context.getSession(hostId), request)
+  if (!planned.session) {
     return { value: planned.result, persist: false }
   }
-  const restores = planned.sessions.map(({ hostId, session }) =>
+  const restores = [
     writeRestorable(
       () => context.getSession(hostId),
       (value) => context.markDirty(assignWorkspaceSessionPartition(state, hostId, value)),
-      session
+      planned.session
     )
-  )
+  ]
   const rekeyed = rekeyMovedLeafProfileRecords(state, request)
   if (rekeyed.ui) {
     restores.push(

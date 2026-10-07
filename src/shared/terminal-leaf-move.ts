@@ -17,7 +17,12 @@ export type TerminalLeafMoveResult =
   | { status: 'not_held' }
   | {
       status: 'refused'
-      reason: 'invalid_request' | 'target_tab_exists' | 'pty_mismatch' | 'leaf_in_other_tab'
+      reason:
+        | 'invalid_request'
+        | 'home_unresolved'
+        | 'target_tab_exists'
+        | 'pty_mismatch'
+        | 'leaf_in_other_tab'
     }
 
 /** The moved pane's key before and after; only valid requests reach here. */
