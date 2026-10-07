@@ -6,15 +6,17 @@ import { useTerminalPaneLayoutPersistence } from './use-terminal-pane-layout-per
 const LEFT = '11111111-1111-4111-8111-111111111111'
 const RIGHT = '22222222-2222-4222-8222-222222222222'
 
-vi.mock('../../store', () => ({
-  useAppStore: { getState: () => ({ terminalLayoutsByTabId: {} }) }
-}))
+const store = vi.hoisted(() => {
+  const terminalLayoutsByTabId: Record<string, unknown> = {}
+  return { terminalLayoutsByTabId, commitTerminalLayoutGesture: vi.fn() }
+})
+vi.mock('../../store', () => ({ useAppStore: { getState: () => store } }))
 vi.mock('@/runtime/web-runtime-session', () => ({ clearWebRuntimeTerminalBuffer: () => true }))
 vi.mock('@/lib/pane-manager/terminal-scrollback-clear', () => ({
   clearTerminalScrollbackAndFollowOutput: vi.fn()
 }))
 
-function renderPersistence() {
+function renderPersistence(ptyIdForPane = (paneId: number) => `remote:host:${paneId}`) {
   const container = document.createElement('div')
   const split = document.createElement('div')
   split.className = 'pane-split'
@@ -46,7 +48,7 @@ function renderPersistence() {
     paneTitles: { 1: 'build' },
     paneTitlesRef: { current: { 1: 'build' } },
     paneTransportsRef: {
-      current: new Map(panes.map((pane) => [pane.id, { getPtyId: () => `remote:host:${pane.id}` }]))
+      current: new Map(panes.map((pane) => [pane.id, { getPtyId: () => ptyIdForPane(pane.id) }]))
     },
     remotePaneLayoutPusherRef: { current: { push } },
     removedTitleLeafIdsRef: { current: new Set<string>() },
@@ -67,7 +69,11 @@ function renderPersistence() {
   return { hook, push, setTabLayout, pushedIntents, panes }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  store.terminalLayoutsByTabId = {}
+  store.commitTerminalLayoutGesture.mockClear()
+})
 
 describe('terminal layout gesture persist', () => {
   it('saves the same layout for a gesture and an automatic persist and marks only the push', () => {
@@ -106,5 +112,56 @@ describe('terminal layout gesture persist', () => {
     hook.result.current.removePaneTitle(2)
 
     expect(pushedIntents()).toEqual(['gesture', 'gesture'])
+  })
+
+  it('never commits a remote tab to main; its host takes the push', () => {
+    const { hook } = renderPersistence()
+    hook.result.current.persistLayoutSnapshot('gesture')
+    expect(store.commitTerminalLayoutGesture).not.toHaveBeenCalled()
+  })
+})
+
+describe('local terminal layout gestures', () => {
+  const local = (paneId: number): string => `pty-live-${paneId}`
+
+  it('commits a gesture that moved the tree to main, once', () => {
+    store.terminalLayoutsByTabId = {
+      tab: { root: { type: 'leaf', leafId: LEFT }, activeLeafId: LEFT, expandedLeafId: null }
+    }
+    const { hook, setTabLayout } = renderPersistence(local)
+    store.commitTerminalLayoutGesture.mockClear()
+
+    hook.result.current.persistLayoutSnapshot('gesture')
+
+    const saved = setTabLayout.mock.calls.at(-1)?.[1]
+    expect(store.commitTerminalLayoutGesture).toHaveBeenCalledExactlyOnceWith(
+      'wt',
+      'tab',
+      saved.root
+    )
+  })
+
+  it('commits nothing for an automatic persist or a gesture that left the tree as it was', () => {
+    const { hook, setTabLayout } = renderPersistence(local)
+    store.terminalLayoutsByTabId = { tab: setTabLayout.mock.calls.at(-1)?.[1] }
+
+    hook.result.current.persistLayoutSnapshot()
+    hook.result.current.removePaneTitle(1)
+
+    expect(store.commitTerminalLayoutGesture).not.toHaveBeenCalled()
+  })
+
+  it("saves main's bindings, not the live transports' PTY ids", () => {
+    store.terminalLayoutsByTabId = {
+      tab: {
+        root: null,
+        activeLeafId: null,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [LEFT]: 'pty-main' }
+      }
+    }
+    const { hook, setTabLayout } = renderPersistence(local)
+    hook.result.current.persistLayoutSnapshot()
+    expect(setTabLayout.mock.calls.at(-1)?.[1].ptyIdsByLeafId).toEqual({ [LEFT]: 'pty-main' })
   })
 })

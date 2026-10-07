@@ -13,6 +13,7 @@ import type { AppState } from '../types'
 import { emptyLayoutSnapshot } from '../slices/terminal-helpers'
 import type { TerminalSlice, TerminalStoreSet } from './terminal-state'
 import { mirrorTerminalUnifiedTabs } from './terminal-topology-mirror-unified-tabs'
+import { holdTerminalLayoutGestures } from './terminal-layout-gestures'
 
 const OPTIONAL_ROW_FIELDS = [
   'launchAgent',
@@ -125,8 +126,12 @@ export function mirrorTerminalTopologySlice(
   const keptIds = new Set(tabs.map((tab) => tab.id))
   const removedIds = currentTabs.filter((tab) => !keptIds.has(tab.id)).map((tab) => tab.id)
 
+  const gestures = holdTerminalLayoutGestures(
+    state.terminalLayoutGesturesByWorktree[worktreeId] ?? {},
+    slice
+  )
   const layouts = { ...state.terminalLayoutsByTabId }
-  for (const [tabId, layout] of Object.entries(slice.layouts)) {
+  for (const [tabId, layout] of Object.entries(gestures.layouts)) {
     layouts[tabId] = mirrorLayout(layouts[tabId], layout)
   }
   for (const tab of added) {
@@ -149,6 +154,14 @@ export function mirrorTerminalTopologySlice(
       ? { sleepingAgentSessionsByPaneKey: sleeping }
       : {}),
     ...mirrorTerminalUnifiedTabs(state, worktreeId, added, removedIds),
+    ...(worktreeId in state.terminalLayoutGesturesByWorktree
+      ? {
+          terminalLayoutGesturesByWorktree: {
+            ...state.terminalLayoutGesturesByWorktree,
+            [worktreeId]: gestures.held
+          }
+        }
+      : {}),
     terminalTopologySeqByWorktree: {
       ...state.terminalTopologySeqByWorktree,
       [worktreeId]: slice.publishSeq

@@ -1,7 +1,11 @@
 import type { AgentAttentionUnreadReason } from '@/attention/agent-attention-contract'
 import type { DirectSshLayoutEdit, TerminalState } from './terminal-state'
 import type { Tab } from '../../../../shared/tab-types'
-import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
+import type {
+  TerminalLayoutSnapshot,
+  TerminalPaneLayoutNode,
+  TerminalTab
+} from '../../../../shared/terminal-tab-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { TerminalTopologySlice } from '../../../../shared/terminal-topology-slice'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
@@ -288,6 +292,12 @@ export type TerminalActions = {
   removeDeferredSshSessionId: (tabId: string) => void
   /** Mirrors main's terminal topology for one worktree; a slice older than the last applied is ignored. */
   applyTerminalTopologySlice: (slice: TerminalTopologySlice) => void
+  /** Sends a user's geometry edit to main and keeps it over older pushes until main publishes it. */
+  commitTerminalLayoutGesture: (
+    worktreeId: string,
+    tabId: string,
+    root: TerminalPaneLayoutNode
+  ) => void
   /** Hydrates canonical rows first, then transfers normalized pane authority post-publication. */
   hydrateWorkspaceSession: (
     session: WorkspaceSessionState,

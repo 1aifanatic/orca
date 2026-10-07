@@ -2,6 +2,10 @@ import { ipcMain } from 'electron'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { parseTerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
+import {
+  parseTerminalLayoutSetRequest,
+  type TerminalLayoutSetResult
+} from '../../shared/terminal-layout-set'
 import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
 import { markAgentLaunchesClosedByUser } from '../agent-launch/agent-launch-pane-attachment'
 import type {
@@ -65,6 +69,16 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
       return { publishSeq: runtime.settleTerminalTopology(args.worktreeId) }
     }
   )
+
+  // A gesture's geometry; the reply's publishSeq tells the window when main's push holds it.
+  ipcMain.handle('session:terminal-set-layout', async (_event, args: unknown) => {
+    const request = parseTerminalLayoutSetRequest(args)
+    if (!request) {
+      return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLayoutSetResult
+    }
+    const result = await store.setTerminalTabLayout(request)
+    return { ...result, publishSeq: runtime.settleTerminalTopology(request.worktreeId) }
+  })
 
   // Pull-after-listen: a window subscribes to pushes first, then reads what it missed.
   ipcMain.handle('session:get-terminal-topology-slices', () => runtime.getTerminalTopologySlices())

@@ -22,7 +22,11 @@ import type {
   TerminalLeafMoveRequest,
   TerminalLeafMoveResult
 } from '../../../shared/terminal-leaf-move'
-import { moveLeaf } from '../terminal-topology/terminal-topology-commit'
+import type {
+  TerminalLayoutSetRequest,
+  TerminalLayoutSetResult
+} from '../../../shared/terminal-layout-set'
+import { moveLeaf, setLayout } from '../terminal-topology/terminal-topology-commit'
 import { findTerminalBindingConflict } from '../terminal-topology/terminal-owner-invariants'
 
 type PtyBindingPersistenceOperationsRuntime = Pick<
@@ -212,15 +216,26 @@ export class PtyBindingPersistenceOperations {
    * the binding domain only for its runtime and partition access; the commit module owns the write.
    */
   moveTerminalLeafToNewTab(request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> {
-    const { runtime, sessions } = this[ptyBindingPersistenceOperationsContext]
-    return runtime.runDurableMutation(
-      moveLeaf(request, {
-        state: runtime.state,
-        hostIds: () => sessions.getWorkspaceSessionHostIds(),
-        getSession: (hostId) => sessions.getWorkspaceSession(hostId),
-        markDirty: (domain) => runtime.dirtyProfileStateDomains?.add(domain)
-      })
-    )
+    const { runtime } = this[ptyBindingPersistenceOperationsContext]
+    return runtime.runDurableMutation(moveLeaf(request, topologyCommitContext(this)))
+  }
+
+  /** A user's divider, direction or pane-order edit; here for the same reason as the move. */
+  setTerminalTabLayout(request: TerminalLayoutSetRequest): Promise<TerminalLayoutSetResult> {
+    const { runtime } = this[ptyBindingPersistenceOperationsContext]
+    return runtime.runDurableMutation(setLayout(request, topologyCommitContext(this)))
+  }
+}
+
+function topologyCommitContext(
+  owner: PtyBindingPersistenceOperations
+): Parameters<typeof moveLeaf>[1] {
+  const { runtime, sessions } = owner[ptyBindingPersistenceOperationsContext]
+  return {
+    state: runtime.state,
+    hostIds: () => sessions.getWorkspaceSessionHostIds(),
+    getSession: (hostId) => sessions.getWorkspaceSession(hostId),
+    markDirty: (domain) => runtime.dirtyProfileStateDomains?.add(domain)
   }
 }
 
