@@ -993,7 +993,6 @@
         "workspaceHostUnresolved": "目标工作区跨越多个主机，因此此运行没有可供使用的单个主机。"
       },
       "useComposerState": {
-        "7eb3f44ff7": "所选智能体已禁用。创建之前选择启用的智能体。",
         "b2ead86962": "无法解析 PR 基础引用。",
         "3db83fc58a": "没有可用于附件的远程项目路径。",
         "ba6cb77082": "无法连接到项目。",
@@ -3151,6 +3150,7 @@
             "42b283ecfc": "Orca 无法安全地重新连接此终端，因为主机无法验证其保存的会话。 Orca 保持保存的会话不变。单击“重试”立即尝试重新连接。如果仍然无法重新连接，请打开一个新终端。",
             "e16012e31e": "拥有该会话的终端守护程序已退出，因此该会话及其回滚无法恢复。打开新终端以继续。",
             "sessionUnavailable": "Orca 无法重新连接到主机上此窗格的终端会话。打开新终端以继续。",
+            "heldByPreviousRelay": "该终端仍在主机上以先前版本的 Orca 运行，当前版本无法连接到它。它会一直运行直到退出。请打开新终端以继续在此工作。",
             "sourceRestoring": "重新连接该终端 — 正在重新建立其输出。会话仍在进行。",
             "ptyAllocationLimit": "系统无法再分配 pty 设备。请在 Orca 或其他程序中关闭一些不用的终端，然后重试。",
             "terminalProcessLimit": "系统无法再启动终端进程。请关闭不用的终端或退出不用的进程，然后重试。"
@@ -12828,7 +12828,6 @@
             "38b899cc02": "所有仓库"
           },
           "SourceControlAgentActionDialogForm": {
-            "1bc0bdbb5e": "启动：",
             "7ec6abbf2a": "重置",
             "f4f3c9ca4a": "提示词模板",
             "fe119187bb": "--model sonnet",
@@ -18125,10 +18124,8 @@
         "turnOffQueueing": "关闭排队",
         "withdrawnHold": "在发送前已停止",
         "pausedSendFailed": "无法发送。点按发送以重试。",
-        "pausedKept": "尚未发送。点按发送即可发送。",
         "paused": "已暂停",
         "queuePausedStopped": "因你中断了操作，队列已暂停",
-        "queuePausedCleared": "清除对话后，队列已暂停",
         "queuePaused": "队列已暂停",
         "resume": "继续",
         "sendConfirmTitle": "发送消息？",
@@ -19199,5 +19196,10 @@
       "confirm": "删除所有列出的工作树",
       "preservedBranches": "部分嵌套工作树分支已保留"
     }
+  },
+  "mediaPreview": {
+    "unavailable": "无法播放此媒体文件。文件可能不可用或使用了不支持的编解码器。",
+    "openFailed": "无法在默认应用中打开此文件。",
+    "openDefault": "在默认应用中打开"
   }
 }
