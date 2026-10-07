@@ -321,7 +321,6 @@
     "followSymlinkedDirectories": "Follow symlinked directories",
     "followSymlinkedDirectoriesDescription": "Search linked folders in Quick Open and expand local linked folders in File Explorer.",
     "accounts": {
-      "claudeRemoveFolderWindows": "Orca deletes this account's Claude folder, its sign-in and its chat history from this computer. If it is selected, the next Claude you start uses System default.",
       "claudeRemoveFolder": "Orca deletes this account's Claude folder and its sign-in from this computer. Chat history shared with System default stays. If it is selected, the next Claude you start uses System default."
     }
   },
