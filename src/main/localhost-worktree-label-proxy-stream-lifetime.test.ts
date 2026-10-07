@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LocalhostWorktreeLabelProxy } from './localhost-worktree-label-proxy'
 
 const servers: http.Server[] = []
@@ -8,6 +8,7 @@ const agents: http.Agent[] = []
 const originalAgent = http.globalAgent
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   for (const request of requests.splice(0)) {
     request.destroy()
   }
@@ -36,13 +37,15 @@ async function startProxy(
   if (!address || typeof address === 'string') {
     throw new Error('Missing upstream port')
   }
+  const createServer = vi.spyOn(http, 'createServer')
   const proxy = new LocalhostWorktreeLabelProxy()
   const { url } = await proxy.registerRoute({
     targetUrl: `http://127.0.0.1:${address.port}/events?source=label`,
     projectName: 'Stream test',
     worktreeName: 'main'
   })
-  const server = Reflect.get(proxy, 'server')
+  const server = createServer.mock.results[0]?.value
+  createServer.mockRestore()
   if (!(server instanceof http.Server)) {
     throw new Error('Missing proxy server')
   }
