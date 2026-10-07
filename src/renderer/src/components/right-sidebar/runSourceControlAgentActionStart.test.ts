@@ -72,6 +72,25 @@ describe('runSourceControlAgentActionStart', () => {
     expect(mocks.toastError).not.toHaveBeenCalled()
   })
 
+  it('records the follow-up on the launch, and tells onLaunched when it was left for the next start', async () => {
+    const durableFollowUp = { kind: 'review-comments-resolution', version: 1, payload: {} }
+    mocks.launchAgentInNewTab.mockReturnValue({
+      surface: { kind: 'local-terminal', tabId: 'tab-1' },
+      promptDeliveryResult: Promise.resolve({
+        delivered: true,
+        failureNotified: false,
+        followUpDeferred: true
+      })
+    })
+
+    await runSourceControlAgentActionStart(buildArgs({ durableFollowUp }))
+
+    expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
+      expect.objectContaining({ durableFollowUp })
+    )
+    expect(mocks.onLaunched).toHaveBeenCalledExactlyOnceWith({ followUpDeferred: true })
+  })
+
   it('notifies onLaunchAccepted as soon as the agent tab is created, before prompt delivery', async () => {
     let resolveDelivery: (value: {
       delivered: boolean

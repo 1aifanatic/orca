@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildNotesSendTargetModeId, NotesSendMenu } from './NotesSendMenu'
 import type { DiffCommentDeliverySnapshot } from '@/store/slices/diffComments'
 import { resetNotesInFlightForTests } from '@/lib/notes-send-in-flight'
+import { reviewNotesDeliveredFollowUp } from '@/lib/agent-launch-follow-ups'
 
 type ReactElementLike = {
   type: unknown
@@ -343,6 +344,28 @@ describe('NotesSendMenu', () => {
       promptDelivery: 'submit-after-ready',
       launchSource: 'notes_send'
     })
+  })
+
+  it('records on a new agent’s launch that the notes it sends are removed once delivered', () => {
+    const tree = renderMenu()
+    expect(findByType(tree, 'ReviewNotesSendMenuContent').props.durableFollowUp).toEqual(
+      reviewNotesDeliveredFollowUp('wt-1', [note('note-1')])
+    )
+  })
+
+  it('records each scope’s own notes when the menu offers several', () => {
+    const tree = renderMenu({
+      scopes: [
+        { id: 'all', label: 'All', notes: [note('a'), note('b')], formatPrompt: () => 'all' },
+        { id: 'one', label: 'One', notes: [note('b')], formatPrompt: () => 'one' }
+      ]
+    })
+    expect(
+      findAllByType(tree, 'ReviewNotesSendMenuContent').map((entry) => entry.props.durableFollowUp)
+    ).toEqual([
+      reviewNotesDeliveredFollowUp('wt-1', [note('a'), note('b')]),
+      reviewNotesDeliveredFollowUp('wt-1', [note('b')])
+    ])
   })
 
   it('switches running-agent target mode when a different scope is focused', () => {

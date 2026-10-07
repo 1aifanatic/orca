@@ -871,6 +871,12 @@ describe('ReviewNotesSendMenuContent', () => {
     })
   })
 
+  it('hands the new-agent launcher what to record on its launch', () => {
+    const durableFollowUp = { kind: 'review-notes-delivered', version: 1, payload: {} }
+    const launcher = findByType(render({ durableFollowUp }), 'QuickLaunchAgentMenuItems')
+    expect(launcher.props.durableFollowUp).toBe(durableFollowUp)
+  })
+
   // Every note already on its way leaves an empty prompt: no agent may start with no text.
   it('disables the new-agent launcher when there is nothing left to send', () => {
     expect(findByType(render({ prompt: '' }), 'QuickLaunchAgentMenuItems').props.disabled).toBe(

@@ -31,7 +31,8 @@ vi.mock('./agent-launch-terminal-prompt', () => ({
 }))
 
 const { AGENT_LAUNCH_METHODS } = await import('./agent-launch')
-const { AGENT_LAUNCH_FOLLOW_UP_METHODS } = await import('./agent-launch-follow-ups')
+const { AGENT_LAUNCH_FOLLOW_UP_METHODS, announceSettledLaunchFollowUps } =
+  await import('./agent-launch-follow-ups')
 const AGENT_LAUNCH_REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 const TAKE = methodNamed(AGENT_LAUNCH_FOLLOW_UP_METHODS, 'agent.takeLaunchFollowUps')
 
@@ -112,6 +113,16 @@ describe('a click’s follow-up on its launch’s record', () => {
       pending: []
     })
     await expect(take(runtime, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
+  })
+
+  it('tells the window once the launch settled its prompt, so a reloaded window takes it', async () => {
+    const runtime = host()
+    await launch(runtime)
+    expect(runtime.reportAgentLaunchPromptSettled).toHaveBeenCalledExactlyOnceWith(OPERATION_ID)
+    await take(runtime, DESKTOP, OPERATION_ID)
+    // Taken: a later sweep has nothing to announce.
+    announceSettledLaunchFollowUps(runtime)
+    expect(runtime.reportAgentLaunchPromptSettled).toHaveBeenCalledOnce()
   })
 
   it('is recorded for the desktop only: a phone, which never takes one, records nothing', async () => {

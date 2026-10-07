@@ -93,12 +93,12 @@ describe('taking a click’s follow-up off its launch’s row', () => {
   it('reports a follow-up whose prompt is still owed, read-only', () => {
     const state = rows(
       row('op-1', {
-        promptDelivery: { state: 'owed', text: 't', agent: 'claude', deadline: 9_000 }
+        promptDelivery: { state: 'owed', text: 't', agent: 'claude', deadline: 9_000, terminal: null }
       })
     )
     expect(take(state)).toEqual({
       taken: [],
-      pending: [{ operationId: 'op-1', followUp: FOLLOW_UP }]
+      pending: [{ operationId: 'op-1', followUp: FOLLOW_UP, deadline: 9_000 }]
     })
     expect(state.operations.get(agentSessionOperationKey(DESKTOP, 'op-1'))?.launchFollowUp).toEqual(
       FOLLOW_UP

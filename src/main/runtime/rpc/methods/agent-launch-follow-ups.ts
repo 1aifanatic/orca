@@ -21,18 +21,26 @@ import { agentLaunchOperationCallerKey } from './agent-launch-replay'
  * reloaded mid-launch takes each as its prompt settles, not at its next start. Only the desktop
  * records follow-ups. One the window is not waiting on is ignored there.
  */
-export function announceSettledLaunchFollowUps(runtime: OrcaRuntimeService): void {
-  const store = runtime.openedAgentSessionRecordStore()
-  if (!store) {
-    return
-  }
-  const desktop = rpcCallerOperationKey(DESKTOP_RPC_CALLER)
-  for (const operationId of listSettledLaunchFollowUps(
-    store.listOperationRows(),
-    desktop,
-    Date.now()
-  )) {
-    runtime.reportAgentLaunchPromptSettled(operationId)
+export function announceSettledLaunchFollowUps(
+  runtime: Pick<OrcaRuntimeService, 'openedAgentSessionRecordStore'> &
+    Partial<Pick<OrcaRuntimeService, 'reportAgentLaunchPromptSettled'>>
+): void {
+  try {
+    const store = runtime.openedAgentSessionRecordStore()
+    if (!store) {
+      return
+    }
+    const desktop = rpcCallerOperationKey(DESKTOP_RPC_CALLER)
+    for (const operationId of listSettledLaunchFollowUps(
+      store.listOperationRows(),
+      desktop,
+      Date.now()
+    )) {
+      runtime.reportAgentLaunchPromptSettled?.(operationId)
+    }
+  } catch (error) {
+    // Bookkeeping: a missed word leaves the follow-up for the window's next look.
+    console.warn('[agent-launch] could not announce settled launch follow-ups', error)
   }
 }
 

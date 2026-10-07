@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HostAgentLaunchOutcome } from './agent-launch-through-host'
+import type { AgentLaunchFollowUpTake } from '../../../shared/agent-launch-follow-up'
 
 const host = vi.hoisted(() => ({
   launchAgentThroughHost: vi.fn(),
@@ -25,7 +26,12 @@ const followUps = vi.hoisted(() => {
   return {
     hostRecords: true,
     order,
-    takeLaunchFollowUps: vi.fn(async (_operationId?: string) => ({ taken: [], pending: [] }))
+    takeLaunchFollowUps: vi.fn(
+      async (_operationId?: string): Promise<AgentLaunchFollowUpTake | null> => ({
+        taken: [],
+        pending: []
+      })
+    )
   }
 })
 vi.mock('@/lib/agent-launch-follow-ups', () => ({
@@ -171,7 +177,29 @@ describe('an AI button launched through the host, which delivers its prompt', ()
 describe('a click whose follow-up is recorded on its launch', () => {
   const FOLLOW_UP = { kind: 'review-notes-delivered', version: 1, payload: {} }
 
+  function launchWithFollowUp(onPromptDelivered: () => void) {
+    return launchNewTabPromptThroughHost({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      prompt: 'p',
+      pasteContent: 'p',
+      durableFollowUp: FOLLOW_UP,
+      onPromptDelivered
+    }).promptDeliveryResult
+  }
+
   it('records it, then takes it off the record before it runs, so a reload never runs it again', async () => {
+    followUps.takeLaunchFollowUps.mockResolvedValueOnce({
+      taken: [
+        {
+          operationId: 'op-1',
+          followUp: FOLLOW_UP,
+          promptHandedOver: true,
+          composerUnobserved: false
+        }
+      ],
+      pending: []
+    })
     deferredOutcome()({
       kind: 'started',
       prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
@@ -189,6 +217,24 @@ describe('a click whose follow-up is recorded on its launch', () => {
     )
     expect(followUps.takeLaunchFollowUps).toHaveBeenCalledWith('op-1')
     expect(followUps.order).toEqual(['take', 'follow-up'])
+  })
+
+  it('leaves it to the next start when this click could not take it, and says so', async () => {
+    // Taken by a reloaded window already, or the host could not answer: it runs there, never here.
+    for (const take of [{ taken: [], pending: [] }, null]) {
+      followUps.takeLaunchFollowUps.mockResolvedValueOnce(take)
+      deferredOutcome()({
+        kind: 'started',
+        prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+      })
+      const onPromptDelivered = vi.fn()
+      await expect(launchWithFollowUp(onPromptDelivered)).resolves.toEqual({
+        delivered: true,
+        failureNotified: false,
+        followUpDeferred: true
+      })
+      expect(onPromptDelivered).not.toHaveBeenCalled()
+    }
   })
 
   it('on a host that does not record follow-ups, runs it live and records nothing, as before', async () => {

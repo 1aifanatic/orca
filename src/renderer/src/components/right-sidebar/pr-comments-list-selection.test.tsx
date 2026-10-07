@@ -6,6 +6,7 @@ import { act, StrictMode, Suspense, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { holdPRCommentGroupsForSend } from './pr-comment-groups-in-flight'
 
 vi.mock('@/components/ui/dropdown-menu', () => {
   // Radix keeps the selection callback on the group, so the mocked items need it too.
@@ -289,6 +290,26 @@ describe('PRCommentsList comment resolution selection', () => {
     expect(selectedGroups[0]?.kind === 'thread' ? selectedGroups[0].replies[0]?.body : '').toBe(
       'Human reply.'
     )
+  })
+
+  it('does not offer again a thread a launch still on its way will resolve', async () => {
+    let settle: () => void = () => {}
+    holdPRCommentGroupsForSend(['thread:thread-1'], new Promise<void>((done) => (settle = done)))
+    const comments = [
+      comment({ id: 1, threadId: 'thread-1', path: 'src/a.ts', isResolved: false }),
+      comment({ id: 2, threadId: 'thread-2', path: 'src/b.ts', isResolved: false })
+    ]
+    const onResolveSelectedCommentsWithAI = vi.fn()
+    renderList({ comments, onResolveSelectedCommentsWithAI })
+    clickButton('Send unresolved PR comments')
+    expect(onResolveSelectedCommentsWithAI).toHaveBeenCalledExactlyOnceWith([
+      expect.objectContaining({ threadId: 'thread-2' })
+    ])
+
+    await act(async () => settle())
+    onResolveSelectedCommentsWithAI.mockClear()
+    clickButton('Send unresolved PR comments')
+    expect(onResolveSelectedCommentsWithAI.mock.calls[0]?.[0]).toHaveLength(2)
   })
 
   it('lets a user queue one eligible comment thread for the agent from the visible row action', () => {

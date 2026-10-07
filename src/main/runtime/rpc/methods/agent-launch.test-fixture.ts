@@ -136,6 +136,7 @@ export function runtimeStub(options: AgentLaunchRuntimeStubOptions = {}) {
     }),
     showTerminal: vi.fn(async (handle: string) => ({ handle, worktreeId: 'wt-7' })),
     getTerminalHandleForPaneKey: vi.fn((paneKey: string) => handlesByPaneKey.get(paneKey) ?? null),
+    reportAgentLaunchPromptSettled: vi.fn((_operationId: string) => {}),
     getTerminalPtyIdentity: vi.fn(
       options.ptyIdentity ?? ((_handle: string) => ({ ptyId: 'pty-1', incarnationId: null }))
     ),

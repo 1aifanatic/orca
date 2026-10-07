@@ -194,6 +194,28 @@ describe('QuickLaunchAgentMenuItems launches', () => {
     await expect(onPromptHandedOff.mock.calls[0][0]).resolves.toEqual({ delivered: true })
   })
 
+  it('records the menu’s follow-up on the launch it starts', () => {
+    launchMock.mockReturnValue({
+      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' },
+      promptDeliveryResult: Promise.resolve({ delivered: true, failureNotified: false })
+    })
+    const durableFollowUp = { kind: 'review-notes-delivered', version: 1, payload: {} }
+
+    render(
+      <QuickLaunchAgentMenuItems
+        worktreeId={WORKTREE_ID}
+        groupId="group-1"
+        onFocusTerminal={vi.fn()}
+        prompt="review notes"
+        promptDelivery="submit-after-ready"
+        durableFollowUp={durableFollowUp}
+      />
+    )
+    fireEvent.click(document.querySelector('[title="Launch Codex in a new terminal"]')!)
+
+    expect(launchMock).toHaveBeenCalledWith(expect.objectContaining({ durableFollowUp }))
+  })
+
   it('starts no agent when the menu has nothing left to send', () => {
     launchMock.mockClear()
     render(
