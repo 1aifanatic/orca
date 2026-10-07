@@ -111,7 +111,8 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
               setup,
               startup,
               undefined,
-              args.navigation
+              args.navigation,
+              args.launchActivation
             )
         }
       })
@@ -255,7 +256,8 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
             activationSetup,
             startup,
             activationDefaultTabs,
-            args.navigation
+            args.navigation,
+            args.launchActivation
           )
       }
     })

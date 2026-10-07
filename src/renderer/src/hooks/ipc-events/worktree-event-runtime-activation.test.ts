@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
+import { onAgentLaunchWorkspaceActivated } from '@/lib/agent-launch-workspace-activation'
 import { createWorktreeEventRuntime } from './worktree-event-runtime'
 
 const { activateAndRevealWorktree } = vi.hoisted(() => ({
@@ -58,3 +59,62 @@ it.each([false, true])(
     }
   }
 )
+
+it('opens a launch-created workspace with no shell of its own and tells the waiting launch', async () => {
+  vi.spyOn(initialState, 'fetchWorktrees').mockResolvedValue(false)
+  useAppStore.setState({
+    fetchWorktrees: initialState.fetchWorktrees,
+    getKnownWorktreeById: vi.fn(() => undefined)
+  })
+  activateAndRevealWorktree.mockReturnValue({ primaryTabId: null })
+  const heard = vi.fn()
+  const stopListening = onAgentLaunchWorkspaceActivated('op-1', heard)
+  const unsubs: (() => void)[] = []
+  const runtime = createWorktreeEventRuntime(unsubs, () => false)
+  try {
+    await runtime.activateNotifiedWorktree(
+      {
+        type: 'activateWorktree',
+        repoId: 'repo-1',
+        worktreeId: 'wt-new',
+        launch: { operationId: 'op-1' }
+      },
+      { allowRuntimeEnvironment: false }
+    )
+
+    expect(activateAndRevealWorktree).toHaveBeenCalledWith('wt-new', {
+      providesInitialSurface: true,
+      notifyHostRuntime: false
+    })
+    expect(heard).toHaveBeenCalledWith('wt-new')
+  } finally {
+    stopListening()
+    unsubs.forEach((unsubscribe) => unsubscribe())
+  }
+})
+
+it('tells no launch about a workspace the window could not open', async () => {
+  vi.spyOn(initialState, 'fetchWorktrees').mockResolvedValue(false)
+  useAppStore.setState({
+    fetchWorktrees: initialState.fetchWorktrees,
+    getKnownWorktreeById: vi.fn(() => undefined)
+  })
+  activateAndRevealWorktree.mockReturnValue(false)
+  const heard = vi.fn()
+  const stopListening = onAgentLaunchWorkspaceActivated('op-1', heard)
+  const runtime = createWorktreeEventRuntime([], () => false)
+  try {
+    await runtime.activateNotifiedWorktree(
+      {
+        type: 'activateWorktree',
+        repoId: 'repo-1',
+        worktreeId: 'wt-new',
+        launch: { operationId: 'op-1' }
+      },
+      { allowRuntimeEnvironment: false }
+    )
+    expect(heard).not.toHaveBeenCalled()
+  } finally {
+    stopListening()
+  }
+})
