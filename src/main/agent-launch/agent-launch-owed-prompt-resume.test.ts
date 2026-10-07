@@ -118,26 +118,42 @@ describe('a first prompt the host still owed when it stopped', () => {
     expect(h.current()?.promptDelivery).toMatchObject({ state: 'owed' })
   })
 
-  it('is never pasted into another process the pane holds now: not delivered', async () => {
-    // The daemon lost the agent's PTY, and the window respawned a shell in its pane.
+  it.each([
+    // The daemon lost the agent's PTY and a cold restore respawned a shell under the same id.
+    ['the same id, respawned', { ptyId: 'pty-7', incarnationId: 'inc-2' }],
+    ['another PTY', { ptyId: 'pty-9', incarnationId: 'inc-2' }],
+    ['another PTY whose incarnation is unknown', { ptyId: 'pty-9', incarnationId: null }]
+  ])(
+    'is never pasted into another process the pane holds now (%s): not delivered',
+    async (_, now) => {
+      const h = harness(
+        owingRow({
+          state: 'owed',
+          text: 'fix the checks',
+          agent: 'claude',
+          deadline: 5_000,
+          terminal: PTY
+        }),
+        { terminalForPane: () => ({ handle: 'term-new', terminal: now }) }
+      )
+      await expect(resumeOwedLaunchPrompts(h.deps)).resolves.toBe(false)
+      expect(h.deps.deliver).not.toHaveBeenCalled()
+      expect(h.promptOutcome()).toBe('not-delivered')
+    }
+  )
+
+  it('pastes into the same PTY when only one side knows its incarnation', async () => {
     const h = harness(
       owingRow({
         state: 'owed',
         text: 'fix the checks',
         agent: 'claude',
         deadline: 5_000,
-        terminal: PTY
-      }),
-      {
-        terminalForPane: () => ({
-          handle: 'term-new',
-          terminal: { ptyId: 'pty-9', incarnationId: 'inc-2' }
-        })
-      }
+        terminal: { ptyId: 'pty-7', incarnationId: null }
+      })
     )
-    await expect(resumeOwedLaunchPrompts(h.deps)).resolves.toBe(false)
-    expect(h.deps.deliver).not.toHaveBeenCalled()
-    expect(h.promptOutcome()).toBe('not-delivered')
+    await resumeOwedLaunchPrompts(h.deps)
+    expect(h.writes).toEqual(['fix the checks'])
   })
 
   it('looks again after a failure only while the prompt is owed and inside its deadline', async () => {
