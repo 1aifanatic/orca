@@ -84,12 +84,38 @@ run(runtimePath, [
 ])
 
 function defaultTestArgs() {
-  return [
-    ...nodeServerTestPaths({ artifact, crossRuntime }),
-    // Electron probes run in desktop jobs; headless compatibility containers have no display.
-    '--exclude',
-    '**/*.electron.test.ts',
-    // A directory selector would otherwise pull them into lanes that lack their inputs.
-    ...(crossRuntime ? [] : CROSS_RUNTIME_TEST_PATHS.flatMap((path) => ['--exclude', path]))
-  ]
+  // Why resolve the files: Vitest's per-project excludes override a CLI --exclude, so a directory
+  // selector would still run Electron probes, which need a display these containers lack.
+  const vitest = join(root, 'node_modules/vitest/vitest.mjs')
+  const selectors = nodeServerTestPaths({ artifact, crossRuntime })
+  const result = runProcessSync({
+    program: runtimePath,
+    args: [
+      vitest,
+      'list',
+      '--config',
+      'config/vitest.config.ts',
+      ...selectors,
+      '--filesOnly',
+      '--json'
+    ],
+    cwd: root,
+    env,
+    timeoutMs: 120_000,
+    maxOutputBytes: 16 * 1024 * 1024
+  })
+  if (result.code !== 0 || result.timedOut || result.outputTruncated) {
+    throw new Error(`Listing node-server tests failed: ${describeProcessFailure(result)}`)
+  }
+  // A directory selector would otherwise pull cross-runtime tests into lanes that lack their inputs.
+  const skipped = crossRuntime ? [] : CROSS_RUNTIME_TEST_PATHS
+  const files = [...new Set(JSON.parse(result.stdout).map((entry) => entry.file))].filter(
+    (file) =>
+      !file.endsWith('.electron.test.ts') &&
+      !skipped.some((path) => file.replaceAll('\\', '/').endsWith(path))
+  )
+  if (files.length === 0) {
+    throw new Error('No node-server tests were selected')
+  }
+  return files
 }
