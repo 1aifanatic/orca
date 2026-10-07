@@ -113,6 +113,8 @@ export type TerminalState = {
   /** Partition each restored session key was read from, so a write returns its rows there. */
   contestedPrimaryHostBySessionKey: Record<string, ExecutionHostId>
   defaultTerminalTabsAppliedByWorktreeId: Record<string, true>
+  /** The publishSeq of main's last applied terminal topology slice per worktree. */
+  terminalTopologySeqByWorktree: Record<string, number>
   closedTerminalTabTombstonesByTabId: ClosedTerminalTabTombstonesByTabId
   hydrationSucceeded: boolean
   pendingReconnectWorktreeIds: string[]

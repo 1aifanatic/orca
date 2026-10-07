@@ -9,6 +9,7 @@ import { waitForNativeChatDraftsAtStartup } from './native-chat-draft-startup'
 import { WORKTREE_REFRESH_CONCURRENCY } from '../store/slices/worktrees'
 import { sweepRestoredCodexPanesForStaleAccounts } from '../lib/codex-stale-pane-sweep'
 import { fetchWorkspaceSessionWithRuntimeHostOwners } from '../lib/workspace-session-host-hydration'
+import { followTerminalTopology } from '../lib/terminal-topology-follow'
 import {
   collectFolderWorkspaceKeysFromSession,
   collectWorktreeHydrationRepoIdsFromSession
@@ -22,6 +23,7 @@ import {
 import { recoverFromDegradedStartup } from '../startup/startup-degraded-recovery'
 import { restoreSshConnectionsForStartup } from '../startup/startup-ssh-connection-restore'
 import { collectActiveWorkspaceSshTargetIds } from '../startup/active-workspace-ssh-targets'
+import { listRuntimeSessionHostIdsForStartup } from '../startup/startup-runtime-session-hosts'
 import { publishTerminalViewAttributesAtAppStart } from '../components/terminal-pane/terminal-appearance'
 import { getSystemPrefersDark } from '../lib/terminal-theme'
 import {
@@ -31,24 +33,11 @@ import {
 import {
   getRepoExecutionHostId,
   isRuntimeOwnedSshTargetId,
-  parseExecutionHostId,
-  toRuntimeExecutionHostId,
-  type ExecutionHostId
+  parseExecutionHostId
 } from '../../../shared/execution-host'
 import { mapWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
 import { ensureLocalRuntimeCapabilities } from '../runtime/local-runtime-capabilities'
-
-async function listRuntimeSessionHostIdsForStartup(): Promise<ExecutionHostId[]> {
-  try {
-    return (await window.api.runtimeEnvironments.list()).map((environment) =>
-      toRuntimeExecutionHostId(environment.id)
-    )
-  } catch (err) {
-    console.warn('Failed to list runtime session hosts for startup:', err)
-    return []
-  }
-}
 
 /**
  * Runs the renderer's one-shot boot chain: settings, persisted UI, the local repo catalog,
@@ -214,6 +203,14 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
               useAppStore.getState().reconcileWorktreeTabModels
             )
           })
+          // Why after hydration: hydrating from the earlier session read would roll back a newer slice.
+          await timeRendererStartupStep('follow-terminal-topology', () =>
+            followTerminalTopology(
+              window.api.session,
+              useAppStore.getState().applyTerminalTopologySlice,
+              abortController.signal
+            )
+          )
           await timeRendererStartupStep('prepare-terminal-startup-restoration', () =>
             window.api.app.prepareTerminalStartupRestoration()
           )

@@ -13,8 +13,9 @@ import { makeCreatedAgentWorktree as makeWorktree } from './worktree-activation-
 /**
  * STA-9417, converted from the natural repro: a host-created worktree whose setup script runs in a
  * split of the (unmounted) primary tab, then the first activation of that worktree. When main's
- * split reveal does not reach the window, the activation sweep mints a second tab for the setup
- * PTY, so two saved panes own one terminal and one of them freezes.
+ * split reveal did not reach the window, the activation sweep minted a second tab for the setup
+ * PTY, so two saved panes owned one terminal and one of them froze. Main's topology push now
+ * carries the split whether or not the reveal arrives.
  */
 
 const initialState = useAppStore.getState()
@@ -179,6 +180,34 @@ function leafIdsInOrder(node: TerminalPaneLayoutNode | null): string[] {
     : [...leafIdsInOrder(node.first), ...leafIdsInOrder(node.second)]
 }
 
+/** Main's push after it binds the setup split: the window mirrors it whether or not the reveal lands. */
+function pushSetupSplitSlice(
+  worktreeId: string,
+  primaryPtyId: string,
+  setupPtyId: string,
+  publishSeq: number
+): void {
+  useAppStore.getState().applyTerminalTopologySlice({
+    hostId: 'local',
+    worktreeId,
+    publishSeq,
+    revision: 1,
+    tabs: [{ id: TAB_B, ptyId: primaryPtyId, worktreeId, createdAt: 1 }],
+    layouts: {
+      [TAB_B]: {
+        root: {
+          type: 'split',
+          direction: 'vertical',
+          first: { type: 'leaf', leafId: PRIMARY_LEAF },
+          second: { type: 'leaf', leafId: SETUP_LEAF }
+        },
+        ptyIdsByLeafId: { [PRIMARY_LEAF]: primaryPtyId, [SETUP_LEAF]: setupPtyId }
+      }
+    },
+    sleeping: {}
+  })
+}
+
 function setupSplitReveal(
   requestId: string,
   worktreeId: string,
@@ -238,6 +267,7 @@ describe('STA-9417: setup split of an unmounted tab, then first activation', () 
     if (revealSplit) {
       host.reveal()(setupSplitReveal('reveal-setup-split', worktree.id, setupPtyId))
     }
+    pushSetupSplitSlice(worktree.id, primaryPtyId, setupPtyId, 1)
     await activateFirstTime(worktree.id)
 
     const tabs = useAppStore.getState().tabsByWorktree[worktree.id] ?? []
@@ -252,13 +282,11 @@ describe('STA-9417: setup split of an unmounted tab, then first activation', () 
     await runScenario(true)
   })
 
-  // STA-9417: fails until the mirror refactor (B2-4) pushes main's split before the sweep runs.
-  it.fails('ends with one tab and one owner per terminal when the split reveal never arrives', async () => {
+  it('ends with one tab and one owner per terminal when the split reveal never arrives', async () => {
     await runScenario(false)
   })
 
-  // STA-9417: fails until the mirror refactor (B2-4); the odd runs mint the duplicate.
-  it.fails('stays duplicate-free across 8 create-then-activate cycles, with or without the reveal', async () => {
+  it('stays duplicate-free across 8 create-then-activate cycles, with or without the reveal', async () => {
     let duplicates = 0
     for (let run = 0; run < 8; run++) {
       const worktree = makeWorktree()
@@ -273,6 +301,7 @@ describe('STA-9417: setup split of an unmounted tab, then first activation', () 
       if (run % 2 === 0) {
         host.reveal()(setupSplitReveal(`reveal-${run}`, worktree.id, setupPtyId))
       }
+      pushSetupSplitSlice(worktree.id, primaryPtyId, setupPtyId, run + 1)
       await activateFirstTime(worktree.id)
       duplicates += [...ownersByPty(worktree.id).values()].filter(
         (owners) => owners.length > 1

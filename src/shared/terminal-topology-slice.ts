@@ -33,3 +33,6 @@ export type TerminalTopologySlice = {
   layouts: Record<string, TerminalTopologyLayout>
   sleeping: Record<string, SleepingAgentSessionRecord>
 }
+
+/** On a reply whose write main publishes: the publishSeq of the push holding it. */
+export type TerminalTopologyReply = { publishSeq?: number }

@@ -20,6 +20,7 @@ import type { TerminalViewAttributes } from '../../shared/terminal-view-attribut
 import type { PtyMainDeliveryDiagnostics } from '../../shared/pty-delivery-diagnostics'
 import type { AgentKind, LaunchSource, RequestKind } from '../../shared/telemetry-events'
 import type { PreloadApi } from '../api-types'
+import type { TerminalTopologyReply } from '../../shared/terminal-topology-slice'
 import type { TerminalPanePlacement } from '../../shared/terminal-pane-placement'
 
 export const ptySessionControlApi = {
@@ -55,30 +56,32 @@ export const ptySessionControlApi = {
     placement?: TerminalPanePlacement
     // Why: loose typing on purpose — renderer owns launch metadata, main owns whether the launch happened and validates (telemetry-plan.md §Agent launch semantics).
     telemetry?: { agent_kind: AgentKind; launch_source: LaunchSource; request_kind: RequestKind }
-  }): Promise<{
-    id: string
-    /** Which lifetime of `id` this reply named; absent when the execution host predates the field. */
-    incarnationId?: string
-    launchConfig?: SleepingAgentLaunchConfig
-    snapshot?: string
-    snapshotCols?: number
-    snapshotRows?: number
-    snapshotPrefixAnsi?: string
-    snapshotFrameAnsi?: string
-    snapshotFrameRestoreAnsi?: string
-    snapshotKittyKeyboardFlags?: number
-    snapshotTerminalOwner?: 'shell'
-    snapshotSeq?: number
-    isReattach?: boolean
-    isAlternateScreen?: boolean
-    replay?: string
-    sessionExpired?: boolean
-    coldRestore?: { scrollback: string; cwd: string; cols?: number; rows?: number }
-    startupCwdFallback?: { kind: 'worktree'; cwd: string }
-    agentResumeUnavailable?: true
-    /** Host verdict on the shell-ready marker; absent when the execution host predates the field. */
-    shellReadyArmed?: boolean
-  }> => ipcRenderer.invoke('pty:spawn', opts),
+  }): Promise<
+    {
+      id: string
+      /** Which lifetime of `id` this reply named; absent when the execution host predates the field. */
+      incarnationId?: string
+      launchConfig?: SleepingAgentLaunchConfig
+      snapshot?: string
+      snapshotCols?: number
+      snapshotRows?: number
+      snapshotPrefixAnsi?: string
+      snapshotFrameAnsi?: string
+      snapshotFrameRestoreAnsi?: string
+      snapshotKittyKeyboardFlags?: number
+      snapshotTerminalOwner?: 'shell'
+      snapshotSeq?: number
+      isReattach?: boolean
+      isAlternateScreen?: boolean
+      replay?: string
+      sessionExpired?: boolean
+      coldRestore?: { scrollback: string; cwd: string; cols?: number; rows?: number }
+      startupCwdFallback?: { kind: 'worktree'; cwd: string }
+      agentResumeUnavailable?: true
+      /** Host verdict on the shell-ready marker; absent when the execution host predates the field. */
+      shellReadyArmed?: boolean
+    } & TerminalTopologyReply
+  > => ipcRenderer.invoke('pty:spawn', opts),
   write: (id: string, data: string, inputKind: TerminalInputKind): void => {
     ipcRenderer.send('pty:write', { id, data, inputKind })
   },
@@ -167,7 +170,9 @@ export const ptySessionControlApi = {
   ): Promise<{ id: string; authoritative: boolean | null }[]> =>
     ipcRenderer.invoke('pty:getAuthoritativeBufferSnapshotCapabilities', { ids }),
   hasPty: (id: string): Promise<boolean | null> => ipcRenderer.invoke('pty:hasPty', { id }),
-  moveLeafToNewTab: (request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> =>
+  moveLeafToNewTab: (
+    request: TerminalLeafMoveRequest
+  ): Promise<TerminalLeafMoveResult & TerminalTopologyReply> =>
     ipcRenderer.invoke('pty:moveLeafToNewTab', request),
   getMainBufferSnapshot: (
     id: string,

@@ -22,6 +22,7 @@ import { createTerminalRestartActions } from '../terminals/terminal-restart-stat
 import { createTerminalLayoutActions } from '../terminals/terminal-layout-state'
 import { createTerminalStartupQueueActions } from '../terminals/terminal-startup-queues'
 import { createWorkspaceTerminalHydrationActions } from '../terminals/workspace-terminal-hydration'
+import { createTerminalTopologyMirrorActions } from '../terminals/terminal-topology-mirror'
 import { createWorkspaceTerminalReconnectActions } from '../terminals/workspace-terminal-reconnect'
 
 export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> = (set, get) => ({
@@ -62,6 +63,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   contestedHostWorkspaceSessions: {},
   contestedPrimaryHostBySessionKey: {},
   defaultTerminalTabsAppliedByWorktreeId: {},
+  terminalTopologySeqByWorktree: {},
   closedTerminalTabTombstonesByTabId: {},
   hydrationSucceeded: false,
   pendingReconnectWorktreeIds: [],
@@ -96,5 +98,6 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   ...createTerminalLayoutActions(set, get),
   ...createTerminalStartupQueueActions(set, get),
   ...createWorkspaceTerminalHydrationActions(set, get),
+  ...createTerminalTopologyMirrorActions(set),
   ...createWorkspaceTerminalReconnectActions(set, get)
 })

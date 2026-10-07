@@ -135,6 +135,8 @@ export function createSessionWriteSubscriber({
   // identity is the only thing the pre-allocation scan below can compare them against.
   let prevTabsSource: TabsByWorktree | null = null
   let prevUnifiedTabsSource: UnifiedTabsByWorktree | null = null
+  // Only a mirror apply moves this map, so a new identity marks the update as main's own state.
+  let prevTopologySeq: AppState['terminalTopologySeqByWorktree'] | null = null
   // Why: this set is the only record that a mutation still owes a write — `prev` has already
   // advanced past it, and change detection is identity-based, so a field dropped from here can
   // never be re-detected. In-flight fields remain owned by that write until acknowledgment;
@@ -243,6 +245,8 @@ export function createSessionWriteSubscriber({
     if (!shouldPersistWorkspaceSession(state)) {
       return
     }
+    const mirrored = prev !== null && state.terminalTopologySeqByWorktree !== prevTopologySeq
+    prevTopologySeq = state.terminalTopologySeqByWorktree
     // Why: this fires on every store write and almost none of them touch a session field. Scan
     // identities first so the common case never allocates the 35-field snapshot or the changed
     // list; only a real identity change pays for them.
@@ -281,6 +285,10 @@ export function createSessionWriteSubscriber({
       return
     }
     prev = next
+    // Why: main already holds what a mirror apply wrote; saving it back would echo (D8).
+    if (mirrored) {
+      return
+    }
     for (const field of changedFields) {
       pendingChangedFields.add(field)
     }

@@ -6,6 +6,10 @@ import type {
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { TerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
 import type {
+  TerminalTopologyReply,
+  TerminalTopologySlice
+} from '../../shared/terminal-topology-slice'
+import type {
   RemoteWorkspaceChangedEvent,
   RemoteWorkspaceConnectedClient,
   RemoteWorkspaceObservedPatchResult,
@@ -25,7 +29,10 @@ export type WorkspaceSessionApi = {
       worktreeId: string
       target: TerminalSurfaceCloseTarget
       reason?: 'user' | 'cleanup'
-    }) => Promise<void>
+    }) => Promise<TerminalTopologyReply>
+    /** Every worktree's current terminal topology; pull after subscribing to the pushes. */
+    getTerminalTopologySlices: () => Promise<TerminalTopologySlice[]>
+    onTerminalTopologyChanged: (callback: (slice: TerminalTopologySlice) => void) => () => void
     flush: () => Promise<void>
     readTerminalScrollback: (args: { ref: string }) => string | null
     setSync: (args: WorkspaceSessionState, hostId?: ExecutionHostId) => void
