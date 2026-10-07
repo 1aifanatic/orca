@@ -32,11 +32,9 @@ export function placedSplitRoot(
   leafId: string,
   { parentLeafId, direction, ratio, proposedRoot }: SplitPlacement
 ): TerminalPaneLayoutNode {
-  const holdsExpectedLeaves = isDeepStrictEqual(
-    collectLayoutLeafIdsInOrder(proposedRoot).sort(),
-    [...collectLayoutLeafIdsInOrder(root), leafId].sort()
-  )
-  return proposedRoot && holdsExpectedLeaves
+  const expectedLeaves = [...collectLayoutLeafIdsInOrder(root), leafId].sort()
+  return proposedRoot &&
+    isDeepStrictEqual(collectLayoutLeafIdsInOrder(proposedRoot).sort(), expectedLeaves)
     ? cloneLayoutNode(proposedRoot)
     : splitLayoutLeaf(root, parentLeafId, leafId, direction, ratio)
 }
