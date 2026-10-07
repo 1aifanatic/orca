@@ -190,7 +190,7 @@ it('says a disconnected host is offline at once and offers Reconnect', async () 
   renderPane()
   setHost(hostStatus('blocked', 'disconnected', true))
 
-  expect(screen.getByText('Build box is offline')).toHaveClass('text-status-warning')
+  expect(screen.getByText('Build box is offline')).toHaveClass('text-destructive')
   expect(document.querySelector('.lucide-server-off')).toHaveClass('text-destructive')
   expect(mocks.messageListProps?.session?.hasMore).toBe(false)
 

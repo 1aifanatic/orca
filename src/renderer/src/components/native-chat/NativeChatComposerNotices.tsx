@@ -76,7 +76,7 @@ function NoticeRow({ notice }: { notice: NativeChatComposerNotice }): React.JSX.
             notice.kind === 'host' ? 'truncate' : '[overflow-wrap:anywhere]',
             'text-muted-foreground',
             isError && 'text-foreground',
-            isHostWarning && 'text-status-warning'
+            isHostWarning && 'text-destructive'
           )}
         >
           {notice.text}
