@@ -12,11 +12,7 @@ import { packagedNodeRuntimePath } from './build-orcad-node.mjs'
 import { ensurePinnedNodeExecutable } from './pinned-node-downloads.mjs'
 import { currentTarget } from './server-build-target.mjs'
 import { describeProcessFailure, runProcessSync } from './script-child-process.mjs'
-import {
-  CROSS_RUNTIME_TEST_PATHS,
-  nodeServerTestPaths,
-  REQUIRED_TEST_INPUTS_ENV
-} from './node-server-test-paths.mjs'
+import { nodeServerTestFiles, REQUIRED_TEST_INPUTS_ENV } from './node-server-test-paths.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const target = currentTarget()
@@ -85,11 +81,7 @@ run(runtimePath, [
 
 function defaultTestArgs() {
   return [
-    ...nodeServerTestPaths({ artifact, crossRuntime }),
-    // Electron probes run in desktop jobs; headless compatibility containers have no display.
-    '--exclude',
-    '**/*.electron.test.ts',
-    // A directory selector would otherwise pull them into lanes that lack their inputs.
-    ...(crossRuntime ? [] : CROSS_RUNTIME_TEST_PATHS.flatMap((path) => ['--exclude', path]))
+    // Concrete files preserve this boundary even when project configs override CLI exclusions.
+    ...nodeServerTestFiles({ root, artifact, crossRuntime })
   ]
 }
