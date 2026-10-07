@@ -114,13 +114,20 @@ describe('new-tab placement', () => {
   it('keeps a minted field the row leaves undefined', () => {
     const placed = bind(session(), {
       kind: 'new-tab',
-      row: { title: 'build', startupCwd: undefined, customTitle: undefined }
+      row: { title: 'build', customTitle: undefined }
     })
     expect(placed.tabsByWorktree[WORKTREE]?.[0]).toMatchObject({
       title: 'build',
-      startupCwd: '/fixture/sub',
       customTitle: null
     })
+  })
+
+  it("takes startupCwd only from the row, never from the spawn's cwd", () => {
+    const placed = bind(session(), { kind: 'new-tab', row: { title: 'build' } })
+    expect(placed.tabsByWorktree[WORKTREE]?.[0]).not.toHaveProperty('startupCwd')
+    const withCwd = bind(session(), { kind: 'new-tab', row: { startupCwd: '/fixture/build' } })
+    expect(withCwd.tabsByWorktree[WORKTREE]?.[0]?.startupCwd).toBe('/fixture/build')
+    expect(bind(session()).tabsByWorktree[WORKTREE]?.[0]?.startupCwd).toBe('/fixture/sub')
   })
 
   it('is ignored when the tab already exists, and for a leaf already present', () => {

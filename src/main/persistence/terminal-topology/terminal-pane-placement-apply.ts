@@ -13,14 +13,19 @@ import {
 
 type SplitPlacement = Extract<TerminalPanePlacement, { kind: 'split' }>
 
-/** The minted row with the sender's creation fields over it; a field it omits keeps the minted value. */
+/**
+ * The minted row with the sender's creation fields over it; a field it omits keeps the minted
+ * value, except `startupCwd`, which is the window's to set and never the spawn's cwd.
+ */
 export function placedTerminalTab(
   minted: TerminalTab,
   placement: TerminalPanePlacement | undefined
 ): TerminalTab {
-  return placement?.kind === 'new-tab' && placement.row
-    ? { ...minted, ...omitUndefinedValues(placement.row) }
-    : minted
+  if (placement?.kind !== 'new-tab' || !placement.row) {
+    return minted
+  }
+  const { startupCwd: _spawnCwd, ...mintedWithoutCwd } = minted
+  return { ...mintedWithoutCwd, ...omitUndefinedValues(placement.row) }
 }
 
 /**
