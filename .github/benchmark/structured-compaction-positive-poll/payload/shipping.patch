@@ -1,0 +1,212 @@
+diff --git a/src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts b/src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts
+--- a/src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts
++++ b/src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts
+@@ -161,7 +161,7 @@
+     ok: true,
+     value: { command: 'compact', state: 'completed' }
+   })
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   finish({ outcome: 'success' })
+ 
+   await vi.waitFor(async () =>
+@@ -201,7 +201,7 @@
+   await attach()
+   const params = compactParams()
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   finish({ outcome: 'success' })
+   await expect(state.host.conversationCommand(CALLER, params)).resolves.toMatchObject({
+     ok: true,
+@@ -214,7 +214,7 @@
+   await attach()
+   const params = compactParams()
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   await expect(state.host.send(CALLER, sendParams('first'))).resolves.toMatchObject({ ok: true })
+   await expect(state.host.send(CALLER, sendParams('second'))).resolves.toMatchObject({ ok: true })
+   // Nothing is handed over while the command's turn runs.
+@@ -227,7 +227,7 @@
+   })
+ 
+   // Delivered even though the command failed.
+-  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledTimes(2))
++  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledTimes(2), { interval: 1 })
+   expect(state.dispatch.mock.calls.map(([input]) => input.body.blocks)).toEqual([
+     [{ type: 'text', text: 'first' }],
+     [{ type: 'text', text: 'second' }]
+@@ -246,7 +246,7 @@
+ it('hands over a message held behind the command when the command ends just as the loop stops for it', async () => {
+   await attach()
+   await state.host.conversationCommand(CALLER, compactParams())
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   const { journal: live } = state.host['sessions'].get(SESSION)!
+   const activeTurnId = live.activeTurnId
+   let ended = false
+@@ -269,7 +269,7 @@
+ 
+   await expect(state.host.send(CALLER, sendParams('held'))).resolves.toMatchObject({ ok: true })
+ 
+-  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce(), { interval: 1 })
+   expect(ended).toBe(true)
+ })
+ 
+@@ -289,7 +289,7 @@
+   await state.host.conversationCommand(CALLER, params)
+   await state.host.send(CALLER, sendParams('after the refusal'))
+ 
+-  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce(), { interval: 1 })
+   expect(readAgentJournalTurn((await commandTurn(cmid))?.body)).toMatchObject({
+     state: 'completed',
+     outcome: 'failure'
+@@ -460,7 +460,7 @@
+   const params = compactParams()
+   const cmid = params.envelope.clientOperationId
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   const { turnId } = structuredAgentSessionCommandTurn(cmid)
+ 
+   await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
+@@ -487,7 +487,7 @@
+   const params = compactParams()
+   const cmid = params.envelope.clientOperationId
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   const { turnId } = structuredAgentSessionCommandTurn(cmid)
+ 
+   // The provider takes the interrupt and then never answers it.
+@@ -519,7 +519,7 @@
+   const params = compactParams()
+   const cmid = params.envelope.clientOperationId
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+ 
+   await expect(stop(structuredAgentSessionCommandTurn(cmid).turnId)).resolves.toMatchObject({
+     ok: true,
+@@ -534,7 +534,7 @@
+   ])
+   // The next message starts a child of its own.
+   await state.host.send(CALLER, sendParams('after the stop'))
+-  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce(), { interval: 1 })
+   expect(state.acquire).toHaveBeenCalledTimes(2)
+ })
+ 
+@@ -543,7 +543,7 @@
+   state.cancelTurn.mockResolvedValue({ cancelled: false })
+   const params = compactParams()
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   finish({ outcome: 'success' })
+   const { itemId, turnId } = structuredAgentSessionCommandTurn(params.envelope.clientOperationId)
+   await vi.waitFor(async () =>
+@@ -582,7 +582,7 @@
+   const params = compactParams()
+   const cmid = params.envelope.clientOperationId
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(crash).toHaveBeenCalled())
++  await vi.waitFor(() => expect(crash).toHaveBeenCalled(), { interval: 1 })
+   crash.mockRestore()
+ 
+   // Never an ended turn whose message still reads as in flight.
+@@ -603,13 +603,13 @@
+ it('counts a message held behind the command from its handover, not its send', async () => {
+   await attach()
+   await state.host.conversationCommand(CALLER, compactParams())
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   const sent = await state.host.send(CALLER, sendParams('held'))
+   expect(sent.ok).toBe(true)
+   await new Promise((resolve) => setTimeout(resolve, 20))
+   finish({ outcome: 'success' })
+ 
+-  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce(), { interval: 1 })
+   const [dispatched] = state.dispatch.mock.calls[0]!
+   const submission = (await journal()).submissions.find(
+     (entry) => entry.clientMessageId === dispatched.clientMessageId
+@@ -653,7 +653,7 @@
+   const params = compactParams()
+   const cmid = params.envelope.clientOperationId
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   await expect(state.host.send(CALLER, sendParams('queued behind it'))).resolves.toMatchObject({
+     ok: true
+   })
+@@ -673,7 +673,7 @@
+     expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('interrupted')
+   )
+   // Released from the command, the loop starts a child and delivers what waited behind it.
+-  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce(), { interval: 1 })
+   expect(state.acquire).toHaveBeenCalledTimes(2)
+   const snapshot = await journal()
+   expect(
+@@ -702,7 +702,7 @@
+   const params = compactParams()
+   const cmid = params.envelope.clientOperationId
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   const { journal: live } = state.host['sessions'].get(SESSION)!
+   const appendLifecycleBatch = live.appendLifecycleBatch.bind(live)
+   vi.spyOn(live, 'appendLifecycleBatch').mockImplementation((input) =>
+@@ -729,7 +729,7 @@
+   await expect(state.host.send(CALLER, sendParams('after it'))).resolves.toMatchObject({
+     ok: true
+   })
+-  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce(), { interval: 1 })
+   expect(state.acquire).toHaveBeenCalledTimes(2)
+   expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).not.toBe('running')
+ })
+@@ -760,12 +760,12 @@
+   await expect(state.host.send(CALLER, sendParams('still works'))).resolves.toMatchObject({
+     ok: true
+   })
+-  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(state.dispatch).toHaveBeenCalledOnce(), { interval: 1 })
+   await expect(state.host.conversationCommand(CALLER, compactParams())).resolves.toMatchObject({
+     ok: true,
+     value: { state: 'completed' }
+   })
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   finish({ outcome: 'success' })
+   await vi.waitFor(async () =>
+     expect((await journal()).submissions.every((entry) => entry.dispatchState === 'accepted')).toBe(
+@@ -788,7 +788,7 @@
+   await attach()
+   const params = compactParams()
+   await state.host.conversationCommand(CALLER, params)
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+   finish({ outcome: 'success' })
+   const events = state.acquire.mock.calls.at(-1)?.[0].events
+   const echo = { provider: 'codex' as const, threadId: THREAD, turnId: 'later', ordinal: 0 }
+@@ -806,7 +806,7 @@
+ it('refuses a /compact pressed again under a new id while one runs, and runs one pressed after it ended', async () => {
+   await attach()
+   await state.host.conversationCommand(CALLER, compactParams())
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce())
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce(), { interval: 1 })
+ 
+   expect(await state.host.conversationCommand(CALLER, compactParams())).toMatchObject({
+     ok: false,
+@@ -820,5 +820,5 @@
+       ok: true
+     })
+   )
+-  await vi.waitFor(() => expect(compact).toHaveBeenCalledTimes(2))
++  await vi.waitFor(() => expect(compact).toHaveBeenCalledTimes(2), { interval: 1 })
+ })
