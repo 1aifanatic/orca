@@ -993,7 +993,6 @@
         "workspaceHostUnresolved": "ターゲットワークスペースは複数のホストにまたがっているため、この実行では使用する単一のホストがありません。"
       },
       "useComposerState": {
-        "7eb3f44ff7": "選択した Agent は無効です。作成する前に、有効な Agent を選択してください。",
         "b2ead86962": "PR ベースを解決できませんでした。",
         "3db83fc58a": "このホスト上に、添付に使用できるプロジェクトパスがありません。",
         "ba6cb77082": "プロジェクトへの接続に失敗しました。",
@@ -12828,7 +12827,6 @@
             "38b899cc02": "すべてのリポジトリ"
           },
           "SourceControlAgentActionDialogForm": {
-            "1bc0bdbb5e": "起動：",
             "7ec6abbf2a": "リセット",
             "f4f3c9ca4a": "コマンドテンプレート",
             "fe119187bb": "--model sonnet",
@@ -17726,8 +17724,10 @@
         "send": "送信",
         "noPty": "ライブターミナルがありません - 再接続するには元に切り替えてください。",
         "locked": "入力は別のデバイスによって保持されます。",
-        "placeholder": "メッセージを送信してください…",
-        "mentionHint": "参照ファイル:",
+        "placeholder": "何でも質問、@ でファイルをメンション、/ でコマンド",
+        "loadingFiles": "ファイルを読み込み中…",
+        "noFiles": "一致するファイルがありません",
+        "filesLoadFailed": "ファイルを読み込めませんでした",
         "attach": "ファイルを添付する",
         "startDictation": "ディクテーションを開始する",
         "stopDictation": "ディクテーションを停止する",
@@ -17753,6 +17753,8 @@
         "options": "オプション",
         "sessionOptions": "セッションオプション",
         "chooseInAgentPicker": "Agent の選択画面で選ぶ…",
+        "searchModels": "モデルを検索…",
+        "noModelsMatch": "検索に一致するモデルはありません。",
         "toggleOption": "{{value0}}を切り替える",
         "pillAccessibleName": "{{value0}} {{value1}}",
         "sentNotConfirmed": "Agent に送信済み — 未確認",
@@ -17796,7 +17798,9 @@
         "workspaceAttachmentMismatch": "ファイルはソースワークスペースにのみ添付できます。",
         "attachmentOwnerChanged": "このワークスペースは接続中にホストを変更しました。ファイルを再度ドロップしてください。",
         "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。",
-        "tooManyAttachments": "一度に添付できるファイルは {{value0}} 個以下です。"
+        "tooManyAttachments": "一度に添付できるファイルは {{value0}} 個以下です。",
+        "pasteFailed": "貼り付けに失敗しました。",
+        "commandAttachmentsUnsupported": "チャットセッションのコマンドを使う前に添付ファイルを削除してください。"
       },
       "tool": {
         "running": "実行中…",
@@ -18002,7 +18006,9 @@
         "plan": "プラン",
         "historyRepaired": "このチャットの履歴の一部を読み込めませんでした。",
         "historyItemTooLarge": "チャットのこの部分は大きすぎるため表示できません。",
-        "stoppedBeforeStart": "Agent の開始前に停止しました"
+        "stoppedBeforeStart": "Agent の開始前に停止しました",
+        "dismiss": "閉じる",
+        "copyError": "エラーをコピー"
       },
       "providerFrame": {
         "byteLength": "{{value0}}バイト"
@@ -19186,5 +19192,10 @@
       "confirm": "一覧表示されたすべてのワークツリーを削除",
       "preservedBranches": "一部のネストされたワークツリーブランチは保持されました"
     }
+  },
+  "mediaPreview": {
+    "unavailable": "このメディアファイルを再生できません。ファイルが利用できないか、コーデックが対応していない可能性があります。",
+    "openFailed": "既定のアプリでファイルを開けませんでした。",
+    "openDefault": "既定のアプリで開く"
   }
 }

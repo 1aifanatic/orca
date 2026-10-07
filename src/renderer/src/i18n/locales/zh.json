@@ -993,7 +993,6 @@
         "workspaceHostUnresolved": "目标工作区跨越多个主机，因此此运行没有可供使用的单个主机。"
       },
       "useComposerState": {
-        "7eb3f44ff7": "所选智能体已禁用。创建之前选择启用的智能体。",
         "b2ead86962": "无法解析 PR 基础引用。",
         "3db83fc58a": "没有可用于附件的远程项目路径。",
         "ba6cb77082": "无法连接到项目。",
@@ -12828,7 +12827,6 @@
             "38b899cc02": "所有仓库"
           },
           "SourceControlAgentActionDialogForm": {
-            "1bc0bdbb5e": "启动：",
             "7ec6abbf2a": "重置",
             "f4f3c9ca4a": "提示词模板",
             "fe119187bb": "--model sonnet",
@@ -17691,8 +17689,10 @@
         "send": "发送",
         "noPty": "没有实时终端，请切回终端以重新连接。",
         "locked": "输入正被另一台设备占用。",
-        "placeholder": "发送消息…",
-        "mentionHint": "引用文件：",
+        "placeholder": "随便问，@ 提及文件，/ 使用命令",
+        "loadingFiles": "正在加载文件...",
+        "noFiles": "没有匹配的文件",
+        "filesLoadFailed": "无法加载文件",
         "attach": "附加文件",
         "startDictation": "开始听写",
         "stopDictation": "停止听写",
@@ -17718,6 +17718,8 @@
         "options": "选项",
         "sessionOptions": "会话选项",
         "chooseInAgentPicker": "在智能体选择器中选择…",
+        "searchModels": "搜索模型…",
+        "noModelsMatch": "没有符合搜索条件的模型。",
         "toggleOption": "切换{{value0}}",
         "pillAccessibleName": "{{value0}} {{value1}}",
         "sentNotConfirmed": "已发送给智能体 — 尚未确认",
@@ -17761,7 +17763,9 @@
         "workspaceAttachmentMismatch": "文件只能附加到其源工作区。",
         "attachmentOwnerChanged": "此工作区在附加时更改了主机 - 再次删除文件。",
         "attachmentUnreadable": "无法读取删除的文件。",
-        "tooManyAttachments": "每次最多附加 {{value0}} 个文件。"
+        "tooManyAttachments": "每次最多附加 {{value0}} 个文件。",
+        "pasteFailed": "粘贴失败。",
+        "commandAttachmentsUnsupported": "使用聊天会话命令前，请先移除附件。"
       },
       "tool": {
         "running": "正在运行…",
@@ -17967,7 +17971,9 @@
         "plan": "计划",
         "historyRepaired": "此聊天的部分历史记录无法加载。",
         "historyItemTooLarge": "聊天的这一部分过大，无法显示。",
-        "stoppedBeforeStart": "在智能体开始前已停止"
+        "stoppedBeforeStart": "在智能体开始前已停止",
+        "dismiss": "关闭",
+        "copyError": "复制错误"
       },
       "providerFrame": {
         "byteLength": "{{value0}} 字节"
@@ -19186,5 +19192,10 @@
       "confirm": "删除所有列出的工作树",
       "preservedBranches": "部分嵌套工作树分支已保留"
     }
+  },
+  "mediaPreview": {
+    "unavailable": "无法播放此媒体文件。文件可能不可用或使用了不支持的编解码器。",
+    "openFailed": "无法在默认应用中打开此文件。",
+    "openDefault": "在默认应用中打开"
   }
 }
