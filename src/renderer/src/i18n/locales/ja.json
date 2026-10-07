@@ -4059,11 +4059,9 @@
             "checkAriaOne": "再開後に確認が必要なチャット 1 件。詳細はクリックしてください。",
             "checkAria": "再開後に確認が必要なチャット {{value0}} 件。詳細はクリックしてください。",
             "checkTooltip": "再起動後に Orca が再開できなかった、または再開を確認できなかったチャット。詳細はクリックしてください。",
-            "resumingLabelOne": "1 件のチャットを再開中",
-            "resumingLabel": "{{value0}} 件のチャットを再開中",
-            "resumingAriaOne": "1 件のチャットを再開中。詳細はクリックしてください。",
-            "resumingAria": "{{value0}} 件のチャットを再開中。詳細はクリックしてください。",
-            "resumingTooltip": "中断されたチャットを復元し、続行を依頼しています…"
+            "resumingTooltip": "中断されたチャットを復元し、続行を依頼しています…",
+            "resumingProgressLabel": "チャットを再開中 {{value0}}/{{value1}}",
+            "resumingProgressAria": "チャットを再開中。{{value1}} 件中 {{value0}} 件完了。クリックすると詳細を表示します。"
           },
           "provider": {
             "extra": {
@@ -17378,7 +17376,8 @@
         "activitySubagentOne": "サブ Agent 実行中: {{value0}}",
         "activitySubagentMany": "{{value0}} 個のサブ Agent が実行中",
         "activityMonitorOne": "監視中: {{value0}}",
-        "activityMonitorMany": "{{value0}} 個のバックグラウンドタスクを監視中"
+        "activityMonitorMany": "{{value0}} 個のバックグラウンドタスクを監視中",
+        "done": "完了"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "{{value0}}/{{value1}} チームステータスをフィルタリングしています。残りのチームからの問題は含まれません。",
@@ -17474,6 +17473,31 @@
             "hostOnly": "Cursor のサインイン詳細は、Orca を実行しているコンピュータでのみ読み取れます。"
           }
         }
+      },
+      "NativeChatResumeRunPanel": {
+        "resumedTitle": "{{value1}} 件中 {{value0}} 件のチャットを再開しました",
+        "resumingTitleOne": "1 件のチャットを再開中",
+        "resumingTitle": "{{value0}} 件のチャットを再開中",
+        "description": "各チャットは全コンテキストとともに復元され、中断した箇所を確認するよう依頼されます。このダイアログは閉じても構いません。進行状況はステータスバーで確認できます。"
+      },
+      "NativeChatResumeRunStatusIcon": {
+        "waitingForReply": "返信を待っています",
+        "starting": "起動中",
+        "waitingToStart": "起動待ち",
+        "inFlight": "{{value0}} · {{value1}}",
+        "resumed": "再開しました"
+      },
+      "NativeChatResumeRunSummary": {
+        "done": "{{value1}} 件中 {{value0}} 件完了",
+        "starting": "{{value0}} 件起動中",
+        "waitingForReply": "{{value0}} 件が返信待ち",
+        "waitingToStart": "{{value0}} 件が起動待ち",
+        "all": "すべて",
+        "inProgress": "進行中",
+        "resumed": "再開済み",
+        "attention": "要対応",
+        "running": "経過 {{value0}}",
+        "filter": "表示するチャット"
       }
     },
     "i18n": {

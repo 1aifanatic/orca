@@ -12,12 +12,13 @@ import {
   isAgentSessionRefusalError,
   type AgentSessionAnyRefusalDetails
 } from '../../../shared/agent-session-wire-refusals'
-import { forEachWithConcurrency } from '../../../shared/map-with-concurrency'
+import { availableParallelism } from 'node:os'
+import { PrioritySemaphore } from '../../../shared/priority-semaphore'
 import type { StructuredAgentSessionResumeCandidate } from './structured-agent-session-restart-resume-set'
 
-/** Providers are expensive to start and 20-30 marked chats is an ordinary morning. Resumes go out
- *  a few at a time so a launch cannot spawn every app-server at once. */
-export const STRUCTURED_AGENT_SESSION_RESUME_CONCURRENCY = 3
+/** Agents STARTING at once on this host, across every resume in flight. A start is a CPU-bound CLI
+ *  boot, so one per core; once started, every chat runs at the same time anyway. */
+export const STRUCTURED_AGENT_SESSION_RESUME_CONCURRENCY = Math.max(1, availableParallelism())
 
 export const STRUCTURED_AGENT_SESSION_RESUME_IN_PROGRESS =
   'agent_session_resume_already_in_progress'
@@ -54,14 +55,22 @@ function resumeAdmissionOwner(error: unknown): string | null {
 }
 
 /**
- * One resume per session at a time, whoever is asking.
+ * One resume per session at a time, whoever is asking, and a bounded number starting host-wide.
  *
  * Two surfaces can reach for the same chat at once — the banner's "Resume all" and a user clicking
  * one row — and both would otherwise send the continuation twice, and leave the loser's
  * refusal looking like a real failure. The second caller is told who holds it instead.
+ *
+ * The start limit lives here rather than per request because a client resumes each chat with its
+ * own request, so each chat's answer arrives as soon as it has one.
  */
 export class StructuredAgentSessionResumeAdmission {
   private readonly owners = new Map<string, string>()
+  private readonly starts: PrioritySemaphore
+
+  constructor(startLimit: number = STRUCTURED_AGENT_SESSION_RESUME_CONCURRENCY) {
+    this.starts = new PrioritySemaphore(startLimit)
+  }
 
   liveOwner(sessionId: string): string | null {
     return this.owners.get(sessionId) ?? null
@@ -72,9 +81,15 @@ export class StructuredAgentSessionResumeAdmission {
     if (live !== undefined) {
       throw new StructuredAgentSessionResumeInProgressError(live)
     }
+    // Owned while it waits for a slot, so a second caller is told it is already on its way.
     this.owners.set(sessionId, owner)
     try {
-      return await task()
+      const release = await this.starts.acquire(0)
+      try {
+        return await task()
+      } finally {
+        release()
+      }
     } finally {
       this.owners.delete(sessionId)
     }
@@ -87,7 +102,6 @@ export type StructuredAgentSessionResumeRunnerDeps = {
   consumeMarker: (sessionId: string) => Promise<boolean>
   /** Continues the reserved session; resolves once its agent took the message or refused it. */
   resume: (sessionId: string) => Promise<void>
-  concurrency?: number
 }
 
 export async function resumeStructuredAgentSessionsFromRestart(
@@ -95,15 +109,8 @@ export async function resumeStructuredAgentSessionsFromRestart(
   candidates: readonly StructuredAgentSessionResumeCandidate[],
   owner: string
 ): Promise<StructuredAgentSessionResumeOutcome[]> {
-  const outcomes: StructuredAgentSessionResumeOutcome[] = []
-  await forEachWithConcurrency(
-    candidates,
-    deps.concurrency ?? STRUCTURED_AGENT_SESSION_RESUME_CONCURRENCY,
-    async (candidate) => {
-      outcomes.push(await resumeOne(deps, candidate.sessionId, owner))
-    }
-  )
-  return outcomes
+  // The admission's start limit staggers these, shared with every other resume on this host.
+  return Promise.all(candidates.map((candidate) => resumeOne(deps, candidate.sessionId, owner)))
 }
 
 async function resumeOne(

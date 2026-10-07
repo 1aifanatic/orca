@@ -55,11 +55,11 @@ function hostLostAfterListing(): void {
   })
 }
 
-/** How each caller starts a resume: a click names its chats; an opted-in launch names none and
- *  reports the ones it offered. */
+/** How each caller starts a resume: a click names the chats it ticked; an opted-in launch names
+ *  every chat the host offered. Both resume each chat with its own request. */
 const resumes = {
   click: () => continueNativeChatRestartOffer(['a', 'b']),
-  launch: () => continueNativeChatRestartOffer(undefined, ['a', 'b'])
+  launch: () => continueNativeChatRestartOffer(offered.map((candidate) => candidate.sessionId))
 }
 
 // With the host unreachable there is no list to narrow by: every chat the resume reported failed,
@@ -93,19 +93,21 @@ it('answers an opted-in launch that loses its resume request with one toast and 
 
 // The same toast and copy as a click: the chats it resumed ride along under the one it could not.
 it('answers a mixed opted-in launch with one toast', async () => {
-  const failed = [{ ...offered[1]!, failedAt: 1, outcome: 'refused', reason: 'unknown' }]
-  rpc.mockImplementation(async (_target, method) =>
-    method === 'agentSession.restartResumable'
-      ? { sessions: offered, failed: [] }
-      : {
-          continued: [
-            { sessionId: 'a', outcome: 'continued' },
-            { sessionId: 'b', outcome: 'refused' }
-          ],
-          sessions: [],
-          failed
-        }
-  )
+  const failure = { ...offered[1]!, failedAt: 1, outcome: 'refused', reason: 'unknown' }
+  let acted = false
+  rpc.mockImplementation(async (_target, method, params: { sessionIds: string[] } | undefined) => {
+    const failed = acted ? [failure] : []
+    if (method === 'agentSession.restartResumable') {
+      return { sessions: acted ? [] : offered, failed }
+    }
+    acted = true
+    const [sessionId] = params?.sessionIds ?? []
+    return {
+      continued: [{ sessionId, outcome: sessionId === 'b' ? 'refused' : 'continued' }],
+      sessions: [],
+      failed: [failure]
+    }
+  })
   await refreshNativeChatRestartOffer()
   await resumes.launch()
   expect(vi.mocked(toast).mock.calls).toEqual([

@@ -29,9 +29,12 @@ import {
 import {
   continueNativeChatRestartOffer,
   dismissNativeChatRestartOffer,
+  releaseFinishedNativeChatRestartRun,
   useNativeChatRestartOffer,
-  useNativeChatRestartResuming
+  useNativeChatRestartResuming,
+  useNativeChatRestartRun
 } from './native-chat-resume-on-restart-store'
+import { useResumeRunPanel } from './NativeChatResumeRunPanel'
 
 /**
  * What would be resumed, shown before anything runs.
@@ -44,7 +47,9 @@ import {
  * the same RPC, which re-derives the same predicate and staggers the same way.
  *
  * Resume closes the dialog at once and the status-bar entry carries the run, then any chat it could
- * not carry on. The run lives in the store, as a skill update's does, so the dialog is one view of it.
+ * not carry on. The run lives in the store, as a skill update's does, so the dialog is one view of it:
+ * reopened mid-run, each chat in it shows where it stands in its checkbox's place, and the dialog
+ * stays on that run until it is closed after the run has finished.
  *
  * A chat an earlier resume could not carry on is listed too, as the same row plus what went wrong
  * and what to do; selecting it and resuming is a retry, unless the host says a retry cannot run.
@@ -115,6 +120,16 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const selected = useMemo(() => new Set(chosen), [chosen])
   // Mid-run the ticks show what is running; this opening's own ticks may name chats left out of it.
   const ticked = useMemo(() => (busy ? new Set(resuming) : selected), [busy, resuming, selected])
+  const failureFor = useCallback(
+    (sessionId: string) => failureBySession.get(sessionId),
+    [failureBySession]
+  )
+  const runPanel = useResumeRunPanel({
+    run: useNativeChatRestartRun(),
+    rows,
+    failureFor,
+    open
+  })
 
   const toggleSelected = useCallback((sessionId: string, checked: boolean) => {
     setOverrides((current) => new Map(current).set(sessionId, checked))
@@ -139,6 +154,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   /** Closing is a snooze: the host keeps the offer and the status bar keeps the way back to it. */
   const snooze = useCallback((): void => {
     consumeNativeChatResumeOnRestartDialogRequest()
+    releaseFinishedNativeChatRestartRun()
     void persistPreference()
   }, [persistPreference])
 
@@ -147,6 +163,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     // Bookkeeping never gates the user's own action: the dialog closes here whatever the host
     // answers, rather than being trapped open behind a rejected promise.
     consumeNativeChatResumeOnRestartDialogRequest()
+    releaseFinishedNativeChatRestartRun()
     await dismissNativeChatRestartOffer()
   }, [persistPreference])
 
@@ -166,12 +183,13 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     // Opening is read-only and keeps the record: the user's own send in that chat settles it. The
     // dialog gets out of the way of the chat it just opened.
     consumeNativeChatResumeOnRestartDialogRequest()
+    releaseFinishedNativeChatRestartRun()
     await activateAiVaultStructuredSession({
       structuredSession: { workspaceId: failure.workspaceId, sessionId }
     })
   }
 
-  if (!offerEnabled || !open || rows.length === 0) {
+  if (!offerEnabled || !open || (rows.length === 0 && !runPanel)) {
     return null
   }
 
@@ -192,25 +210,29 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
         <DialogHeader>
           <DialogTitle>
             {/* Plain wrapper owns the icon spacing; DialogTitle owns its own. */}
-            <span className="flex items-center gap-2">
-              <RotateCcw className="size-4 text-muted-foreground" />
-              {translate(
-                'auto.components.NativeChatResumeOnRestartModal.title',
-                'Resume interrupted chats?'
-              )}
-            </span>
+            {runPanel?.title ?? (
+              <span className="flex items-center gap-2">
+                <RotateCcw className="size-4 text-muted-foreground" />
+                {translate(
+                  'auto.components.NativeChatResumeOnRestartModal.title',
+                  'Resume interrupted chats?'
+                )}
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
-            {interruptedByUpdate
-              ? translate(
-                  'auto.components.NativeChatResumeOnRestartModal.updateBody',
-                  'These chats were working when Orca installed an update. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.'
-                )
-              : translate(
-                  'auto.components.NativeChatResumeOnRestartModal.body',
-                  'These chats were working when Orca closed. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.'
-                )}
+            {runPanel?.description ??
+              (interruptedByUpdate
+                ? translate(
+                    'auto.components.NativeChatResumeOnRestartModal.updateBody',
+                    'These chats were working when Orca installed an update. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.'
+                  )
+                : translate(
+                    'auto.components.NativeChatResumeOnRestartModal.body',
+                    'These chats were working when Orca closed. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.'
+                  ))}
           </DialogDescription>
+          {runPanel?.summary}
         </DialogHeader>
 
         <div
@@ -222,13 +244,14 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
           className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md border bg-muted/35 p-1.5"
         >
           <ResumeOnRestartGroups
-            candidates={rows}
+            candidates={runPanel?.rows ?? rows}
             listedAt={listedAt}
             busy={busy}
             selected={ticked}
             onToggle={toggleSelected}
-            failureFor={(sessionId) => failureBySession.get(sessionId)}
+            failureFor={failureFor}
             onFailureAction={(action, sessionId) => void actOnFailure(action, sessionId)}
+            renderStatus={runPanel?.renderStatus}
           />
         </div>
 
@@ -256,36 +279,48 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
           </span>
         </label>
 
-        {/* Two controls: one deletes the offer, one acts on it. Closing snoozes, so it needs none. */}
-        <DialogFooter className="sm:justify-between">
-          {/* Quiet, explicit cleanup of the durable records. */}
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void dismissAll()}>
-            {translate('auto.components.NativeChatResumeOnRestartModal.dismissAll', 'Dismiss all')}
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            disabled={busy || chosen.length === 0}
-            onClick={() => {
-              // Resume hands the run to the status bar.
-              consumeNativeChatResumeOnRestartDialogRequest()
-              void resume(chosen)
-            }}
-          >
-            {busy
-              ? translate('auto.components.NativeChatResumeOnRestartModal.resuming', 'Resuming…')
-              : chosen.length === 1
-                ? translate(
-                    'auto.components.NativeChatResumeOnRestartModal.resumeSelectedOne',
-                    'Resume 1 chat'
-                  )
-                : translate(
-                    'auto.components.NativeChatResumeOnRestartModal.resumeSelected',
-                    'Resume {{value0}} chats',
-                    { value0: chosen.length }
-                  )}
-          </Button>
-        </DialogFooter>
+        {/* Two controls: one deletes the offer, one acts on it. Closing snoozes, so it needs none.
+            A finished run that left nothing to act on has only the way out. */}
+        {rows.length === 0 ? (
+          <DialogFooter>
+            <Button variant="default" size="sm" onClick={snooze}>
+              {translate('auto.components.NativeChatResumeOnRestartModal.done', 'Done')}
+            </Button>
+          </DialogFooter>
+        ) : (
+          <DialogFooter className="sm:justify-between">
+            {/* Quiet, explicit cleanup of the durable records. */}
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void dismissAll()}>
+              {translate(
+                'auto.components.NativeChatResumeOnRestartModal.dismissAll',
+                'Dismiss all'
+              )}
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              disabled={busy || chosen.length === 0}
+              onClick={() => {
+                // Resume hands the run to the status bar.
+                consumeNativeChatResumeOnRestartDialogRequest()
+                void resume(chosen)
+              }}
+            >
+              {busy
+                ? translate('auto.components.NativeChatResumeOnRestartModal.resuming', 'Resuming…')
+                : chosen.length === 1
+                  ? translate(
+                      'auto.components.NativeChatResumeOnRestartModal.resumeSelectedOne',
+                      'Resume 1 chat'
+                    )
+                  : translate(
+                      'auto.components.NativeChatResumeOnRestartModal.resumeSelected',
+                      'Resume {{value0}} chats',
+                      { value0: chosen.length }
+                    )}
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

@@ -38,6 +38,8 @@ type StoreState = ReturnType<typeof useAppStore.getState>
 type FailureProps = {
   failureFor?: (sessionId: string) => ResumeFailure | undefined
   onFailureAction?: (action: ResumeFailureAction, sessionId: string) => void
+  /** While a resume runs: a row's status icon, shown in its checkbox's place. */
+  renderStatus?: (sessionId: string, title: string) => React.ReactNode
 }
 
 function resolveWorkspaceWorktree(store: StoreState, workspaceId: string) {
@@ -120,7 +122,8 @@ function WorkspaceGroup({
   selected,
   onToggle,
   failureFor,
-  onFailureAction
+  onFailureAction,
+  renderStatus
 }: {
   group: ResumeWorkspaceGroup
   listedAt: number
@@ -153,6 +156,7 @@ function WorkspaceGroup({
             onCheckedChange={(checked) => onToggle(candidate.sessionId, checked)}
             failure={failureFor?.(candidate.sessionId)}
             onFailureAction={onFailureAction}
+            renderStatus={renderStatus}
           />
         ))}
       </ul>
@@ -167,7 +171,8 @@ export function ResumeOnRestartGroups({
   selected,
   onToggle,
   failureFor,
-  onFailureAction
+  onFailureAction,
+  renderStatus
 }: {
   candidates: readonly ResumeCandidate[]
   listedAt: number
@@ -194,6 +199,7 @@ export function ResumeOnRestartGroups({
                 onToggle={onToggle}
                 failureFor={failureFor}
                 onFailureAction={onFailureAction}
+                renderStatus={renderStatus}
               />
             ))}
           </div>

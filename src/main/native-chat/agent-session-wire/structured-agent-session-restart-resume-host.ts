@@ -139,8 +139,8 @@ export function createStructuredAgentSessionRestartResume(
     stillResumable: (marker) => deriveAtSend([marker], 'may-be-held').candidates.length === 1
   }
 
-  /** One explicit action: reserve the offers, then continue each through `continueOne`, a few at
-   *  a time. The runner counts a chat as done once `continueOne` returns. */
+  /** One explicit action: reserve the offers, then continue each through `continueOne`, as many at
+   *  once as the admission's host-wide start limit allows. A chat is done once `continueOne` returns. */
   const run = async (
     sessionIds: readonly string[] | undefined,
     owner: string,

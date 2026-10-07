@@ -40,7 +40,8 @@ export function ResumeCandidateRow({
   disabled,
   onCheckedChange,
   failure,
-  onFailureAction
+  onFailureAction,
+  renderStatus
 }: {
   candidate: ResumeCandidate
   /** Named in the checkbox's accessible name: several rows otherwise read identically. */
@@ -52,6 +53,8 @@ export function ResumeCandidateRow({
   /** Present when an earlier resume of this chat did not carry on. */
   failure?: ResumeFailure
   onFailureAction?: (action: ResumeFailureAction, sessionId: string) => void
+  /** While a resume follows this chat: its status icon, which takes the checkbox's place. */
+  renderStatus?: (sessionId: string, title: string) => React.ReactNode
 }): React.JSX.Element {
   const agentLabel = formatAgentTypeLabel(candidate.agent)
   const title =
@@ -59,21 +62,24 @@ export function ResumeCandidateRow({
     translate('auto.components.NativeChatResumeOnRestartModal.untitled', 'Untitled chat')
   const model = candidate.model?.trim() ?? ''
   const activity = resumeActivityLabel(candidate.activity)
-  const row = (
-    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-accent/50">
+  const status = renderStatus?.(candidate.sessionId, title)
+  const content = (
+    <>
       {/* Identifies the agent AND its workspace: the accessible name has to distinguish rows that
             would otherwise all read the same. */}
-      <Checkbox
-        checked={checked}
-        disabled={disabled || (failure !== undefined && !resumeFailureSelectable(failure))}
-        onCheckedChange={(next) => onCheckedChange(next === true)}
-        className="shrink-0"
-        aria-label={translate(
-          'auto.components.NativeChatResumeOnRestartModal.selectAgent',
-          'Resume {{value0}} chat "{{value1}}" in {{value2}}',
-          { value0: agentLabel, value1: title, value2: workspaceName }
-        )}
-      />
+      {status ?? (
+        <Checkbox
+          checked={checked}
+          disabled={disabled || (failure !== undefined && !resumeFailureSelectable(failure))}
+          onCheckedChange={(next) => onCheckedChange(next === true)}
+          className="shrink-0"
+          aria-label={translate(
+            'auto.components.NativeChatResumeOnRestartModal.selectAgent',
+            'Resume {{value0}} chat "{{value1}}" in {{value2}}',
+            { value0: agentLabel, value1: title, value2: workspaceName }
+          )}
+        />
+      )}
       {/* AgentIcon carries no label of its own, so the provider was invisible to assistive tech. */}
       <span role="img" aria-label={agentLabel} className="inline-flex shrink-0">
         <AgentIcon agent={agentTypeToIconAgent(candidate.agent)} size={14} />
@@ -101,6 +107,16 @@ export function ResumeCandidateRow({
       <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
         {formatShortTimeAgo(candidate.recordedAt, listedAt)}
       </span>
+    </>
+  )
+  // With a status in the checkbox's place there is nothing for a click on the row to toggle.
+  const row = status ? (
+    <div className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1 hover:bg-accent/50">
+      {content}
+    </div>
+  ) : (
+    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-accent/50">
+      {content}
     </label>
   )
   if (!failure) {
