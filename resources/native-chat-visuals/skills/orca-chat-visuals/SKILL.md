@@ -1,6 +1,7 @@
 ---
 name: orca-chat-visuals
 description: Show a chart, diagram, timeline, comparison or UI mockup inline in this Orca chat by writing one self-contained HTML file and adding a visual line to your reply. Use when seeing something would explain the answer faster than prose or a small Markdown table, and only when the ORCA_CHAT_VISUALS_DIR environment variable is set.
+user-invocable: false
 ---
 
 # Inline visuals in an Orca chat
@@ -14,8 +15,8 @@ text, a short list or a small table don't need one.
 - This chat's folder is the absolute path in the `ORCA_CHAT_VISUALS_DIR` environment variable. Read
   it from your shell (`printenv ORCA_CHAT_VISUALS_DIR`; in PowerShell `$env:ORCA_CHAT_VISUALS_DIR`).
 - If the variable is unset or empty, or writing there fails, don't make a visual.
-- Stay inside what the user allowed. In plan or read-only mode, or when the write would need an
-  approval you don't have, don't make a visual. Never switch modes or ask for wider access for one.
+- Stay inside what the user allowed. In plan or read-only mode don't make a visual. If a write
+  there is refused, don't retry it; never switch modes or ask for wider access for a visual.
 - Never put visuals in the user's project and never edit `.gitignore` or other files for them.
 
 Without a visual, use a Markdown table, a Mermaid code block or plain prose instead.
@@ -26,7 +27,7 @@ Without a visual, use a Markdown table, a Mermaid code block or plain prose inst
 - Every visual gets a file name not used before in this chat: a few lowercase words and a short
   random suffix, like `latency-by-region-7c1e.html`. Never overwrite or edit an earlier visual;
   write a new file. Allowed: letters, digits, `.`, `_` and `-`; starts with a letter or digit;
-  ends in `.html`; at most 128 characters.
+  ends in `.html`; at most 128 characters; no `..`; not a Windows device name like `con` or `nul`.
 - Put everything in the file: inline `<style>` and `<script>`, data embedded. Keep it under 512 KB.
 - Scripts, styles and fonts may load only from `https://cdn.jsdelivr.net`, `https://unpkg.com`,
   `https://cdnjs.cloudflare.com`, `https://esm.sh`, `https://fonts.googleapis.com` and
@@ -38,8 +39,9 @@ Without a visual, use a Markdown table, a Mermaid code block or plain prose inst
   under 1000px tall.
 - Match the user's theme with Orca's CSS variables: `--background`, `--foreground`, `--muted`,
   `--muted-foreground`, `--border`, `--primary`, `--accent`, and `--chart-1` to `--chart-5` for data
-  series. Leave the page background transparent. The values change when the user switches theme,
-  so use them from CSS or SVG, or read them with `getComputedStyle` each time a canvas draws.
+  series. Leave the page background transparent. When the user switches theme the values change
+  and `<html>` gains or loses the `dark` class, with no reload and no event: use the variables from
+  CSS or SVG, and redraw a canvas chart when that class changes (a `MutationObserver` on `<html>`).
 - Use real text for labels and give the page a heading so it reads without color alone.
 
 ## Showing it

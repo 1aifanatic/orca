@@ -106,7 +106,7 @@ export type StructuredAgentSessionRuntimeDeps = {
   /** Gives each chat a visuals folder and the skill that teaches it, and sweeps folders whose chat
    *  is gone. Wired by the real hosts only, so a test runtime never loads the bundled skill. */
   nativeChatVisuals?: {
-    workspaceVerdict: NonNullable<NativeChatVisualsSweepDeps['workspaceVerdict']>
+    workspaceVerdicts: NonNullable<NativeChatVisualsSweepDeps['workspaceVerdicts']>
   }
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
@@ -337,7 +337,7 @@ async function installOnJournal(
         stateDirectory: deps.stateDirectory,
         listHeldSessionIds: () => (store.readOnly ? null : store.listHeldSessionIds()),
         locationOf: (sessionId) => store.getRecord(sessionId)?.location ?? null,
-        workspaceVerdict: deps.nativeChatVisuals.workspaceVerdict,
+        workspaceVerdicts: deps.nativeChatVisuals.workspaceVerdicts,
         logger: deps.logger
       })
     : undefined

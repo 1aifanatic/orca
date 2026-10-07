@@ -75,19 +75,40 @@ describe('whether a launch passes a Claude CLI flag', () => {
     expect(calls).toHaveBeenCalledTimes(1)
   })
 
-  it('asks again after a while when a probe printed no version, failed or was killed', async () => {
-    for (const probe of [async () => null, () => Promise.reject(new Error('EMFILE'))]) {
-      const { support, calls, skip } = supportWith(probe)
+  it('never remembers a probe that printed no version, failed or was killed: the next launch asks', async () => {
+    for (const failure of [async () => null, () => Promise.reject(new Error('EMFILE'))]) {
+      let answer: () => Promise<string | null> = failure
+      const { support, calls } = supportWith(() => answer())
       await expect(thinking(support, LAUNCH)).resolves.toBe(false)
-      // Within the window a hung or broken probe costs no further spawn or wait.
-      skip(9 * 60_000)
-      await expect(thinking(support, LAUNCH)).resolves.toBe(false)
-      expect(calls).toHaveBeenCalledTimes(1)
-      // A failure from a loaded boot heals.
-      skip(2 * 60_000)
-      await thinking(support, LAUNCH)
+      // A loaded boot is exactly when probes fail; the next launch must not inherit that.
+      answer = async () => '2.1.280'
+      await expect(thinking(support, LAUNCH)).resolves.toBe(true)
       expect(calls).toHaveBeenCalledTimes(2)
     }
+  })
+
+  it('waits as long as the caller allows for a probe slower than the default budget', async () => {
+    const { support, calls } = supportWith(
+      () => new Promise((resolve) => setTimeout(() => resolve('2.1.280'), 60)),
+      20
+    )
+    const [plugins, thinkingDisplay] = await Promise.all([
+      support.supports(CLAUDE_PLUGIN_DIR_FLAG, LAUNCH, 1_000),
+      thinking(support, LAUNCH)
+    ])
+    // One probe answers both; only the caller that allowed for it waited.
+    expect(plugins).toBe(true)
+    expect(thinkingDisplay).toBe(false)
+    expect(calls).toHaveBeenCalledTimes(1)
+    await expect(thinking(support, LAUNCH)).resolves.toBe(true)
+  })
+
+  it('bounds even a long budget: a probe that never answers costs at most that budget', async () => {
+    const held = heldProbe()
+    const { support } = supportWith(held.probe, 20)
+    const started = performance.now()
+    await expect(support.supports(CLAUDE_PLUGIN_DIR_FLAG, LAUNCH, 80)).resolves.toBe(false)
+    expect(performance.now() - started).toBeLessThan(500)
   })
 
   it('waits for a probe that answers within the budget', async () => {
@@ -203,14 +224,13 @@ describe('whether a launch passes a Claude CLI flag', () => {
     await expect(thinking(support, LAUNCH)).resolves.toBe(true)
   })
 
-  it('keeps a refusal after a failed probe expires and a later probe answers', async () => {
+  it('keeps a refusal through a failed probe and a later one that answers', async () => {
     let version: string | null = null
-    const { support, skip } = supportWith(async () => version)
+    const { support } = supportWith(async () => version)
     await thinking(support, LAUNCH)
     support.observeExit(LAUNCH, UNKNOWN_FLAG)
     await new Promise((resolve) => setTimeout(resolve, 0))
     version = '2.1.280'
-    skip(11 * 60_000)
     await expect(support.supports(CLAUDE_PLUGIN_DIR_FLAG, LAUNCH)).resolves.toBe(true)
     await expect(thinking(support, LAUNCH)).resolves.toBe(false)
   })

@@ -6,7 +6,7 @@
 // Anything unproven is kept. A failure is logged and never blocks anything else.
 
 import type { Dirent } from 'node:fs'
-import { readdir, rm } from 'node:fs/promises'
+import { lstat, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
@@ -23,8 +23,9 @@ export type NativeChatVisualsSweepDeps = {
   /** Every chat this host holds a row for, readable or not; null when that can't be trusted. */
   listHeldSessionIds: () => readonly string[] | null
   locationOf: (sessionId: string) => AgentSessionExecutionLocation | null
-  /** Absent: only rule 1 runs. */
-  workspaceVerdict?: (
+  /** Called at most once per run, so one run judges every chat against one catalog snapshot.
+   *  Absent: only rule 1 runs. */
+  workspaceVerdicts?: () => (
     location: AgentSessionExecutionLocation
   ) => Promise<NativeChatVisualsWorkspaceVerdict>
   logger: StructuredAgentSessionLogger
@@ -41,6 +42,10 @@ const YIELD_EVERY = 32
 
 async function listFolders(root: string): Promise<Dirent[]> {
   try {
+    // A root that is not a real directory is not one this host made; nothing under it is touched.
+    if (!(await lstat(root)).isDirectory()) {
+      return []
+    }
     return await readdir(root, { withFileTypes: true })
   } catch (error) {
     if (isDefinitiveAbsence(error)) {
@@ -67,6 +72,9 @@ export async function sweepNativeChatVisualsFolders(
     held.map((sessionId) => [journalPathSegment(sessionId), sessionId])
   )
   const remove = deps.remove ?? ((path: string) => rm(path, { recursive: true, force: true }))
+  let verdict: ReturnType<NonNullable<NativeChatVisualsSweepDeps['workspaceVerdicts']>> | undefined
+  const verdictFor = (location: AgentSessionExecutionLocation) =>
+    (verdict ??= deps.workspaceVerdicts?.())?.(location)
   let visited = 0
   for (const entry of entries) {
     if (isStopped() || result.removed + result.failed >= MAX_REMOVALS_PER_RUN) {
@@ -80,7 +88,8 @@ export async function sweepNativeChatVisualsFolders(
       continue
     }
     const sessionId = sessionByFolder.get(entry.name)
-    const reason = sessionId === undefined ? 'no-record' : await removedWorkspace(deps, sessionId)
+    const reason =
+      sessionId === undefined ? 'no-record' : await removedWorkspace(deps, sessionId, verdictFor)
     if (!reason) {
       continue
     }
@@ -101,15 +110,18 @@ export async function sweepNativeChatVisualsFolders(
 }
 
 async function removedWorkspace(
-  deps: NativeChatVisualsSweepDeps,
-  sessionId: string
+  deps: Pick<NativeChatVisualsSweepDeps, 'locationOf'>,
+  sessionId: string,
+  verdictFor: (
+    location: AgentSessionExecutionLocation
+  ) => Promise<NativeChatVisualsWorkspaceVerdict> | undefined
 ): Promise<'workspace-removed' | null> {
   const location = deps.locationOf(sessionId)
-  if (!location || !deps.workspaceVerdict) {
+  if (!location) {
     return null
   }
   try {
-    return (await deps.workspaceVerdict(location)) === 'removed' ? 'workspace-removed' : null
+    return (await verdictFor(location)) === 'removed' ? 'workspace-removed' : null
   } catch {
     return null
   }

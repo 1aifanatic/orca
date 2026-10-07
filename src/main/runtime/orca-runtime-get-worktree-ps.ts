@@ -40,7 +40,8 @@ import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude
 import { resolveStructuredAgentCommand } from '../native-chat/structured-agent-command-resolution'
 import { structuredAgentConfiguredArgs } from '../native-chat/structured-agent-configured-args'
 import { claudeCliFlagSupport } from '../claude/claude-cli-flag-support'
-import { createNativeChatVisualsWorkspaceVerdict } from './native-chat-visuals-workspace-verdict'
+import { createNativeChatVisualsWorkspaceVerdicts } from './native-chat-visuals-workspace-verdict'
+import { readOtherProfileWorkspaceCatalog } from '../orca-profiles/other-profile-workspace-catalog'
 
 export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVisibleReadProbe {
   async getWorktreePs(
@@ -208,7 +209,10 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       // Wired only here, so a test runtime never runs a real `claude --version`.
       claudeCliFlags: claudeCliFlagSupport,
       nativeChatVisuals: {
-        workspaceVerdict: createNativeChatVisualsWorkspaceVerdict(() => this.store ?? null)
+        // Chats and their visuals are shared by every profile; each profile keeps its own catalog.
+        workspaceVerdicts: createNativeChatVisualsWorkspaceVerdicts(() =>
+          this.store ? { active: this.store, others: readOtherProfileWorkspaceCatalog() } : null
+        )
       },
       resolveShellEnvironmentPolicy: () =>
         nativeChatShellEnvironmentPolicy(this.requireStore().getSettings()),

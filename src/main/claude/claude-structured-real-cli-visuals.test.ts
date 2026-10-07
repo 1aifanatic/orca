@@ -28,6 +28,7 @@ import {
 } from './claude-structured-session-adapter'
 
 const SESSION_ID = 'real-cli-visuals'
+const listed = (value: unknown): unknown[] => (Array.isArray(value) ? value : [])
 const suiteTitle = `Claude real CLI chat visuals${realClaudeCliGate.skipReason ? ` (skipped: ${realClaudeCliGate.skipReason})` : ''}`
 
 describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
@@ -99,7 +100,12 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
           body: {
             kind: 'message',
             role: 'user',
-            blocks: [{ type: 'text', text: 'Reply with the single word ok.' }]
+            blocks: [
+              {
+                type: 'text',
+                text: 'Without using any tool, reply with only the exact names of the skills available to you whose name contains "visuals", comma separated, or NONE.'
+              }
+            ]
           },
           fence: 1
         })
@@ -110,11 +116,15 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
         const init = frames().find(
           (frame) => readClaudeInit(frame) !== null && frame.subtype === 'init'
         )
-        expect(init?.skills).toEqual(
-          expect.arrayContaining([
-            expect.stringMatching(new RegExp(`(^|:)${NATIVE_CHAT_VISUALS_SKILL_NAME}$`))
-          ])
-        )
+        // The model's own skill catalog lists it, though it is kept out of the `/` menu (and
+        // so out of the init frame's skill and command lists).
+        const answer = frames().find((frame) => frame.type === 'result')?.result
+        expect(String(answer)).toContain(NATIVE_CHAT_VISUALS_SKILL_NAME)
+        expect(
+          [...listed(init?.skills), ...listed(init?.slash_commands)].some(
+            (name) => typeof name === 'string' && name.endsWith(NATIVE_CHAT_VISUALS_SKILL_NAME)
+          )
+        ).toBe(false)
         expect(init?.plugins).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ path: launch.options.plugins?.[0]?.path })

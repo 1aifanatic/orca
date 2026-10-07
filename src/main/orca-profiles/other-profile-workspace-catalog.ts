@@ -4,8 +4,8 @@ import {
   getOrcaProfileDataFile,
   getOrcaProfileStateDatabaseFile,
   getProfileUserDataPath
-} from '../orca-profiles/profile-storage-paths'
-import { getOrcaProfileIndexPath, readProfileIndex } from '../orca-profiles/profile-index-store'
+} from './profile-storage-paths'
+import { getOrcaProfileIndexPath, readProfileIndex } from './profile-index-store'
 import { readProfileStateDomains } from '../persistence/profile-state/profile-state-domain-reader'
 import { assertNoRetainedProfileStateExports } from '../persistence/profile-state/profile-state-recovery-required'
 
@@ -21,7 +21,7 @@ import { assertNoRetainedProfileStateExports } from '../persistence/profile-stat
  *
  * Reading their persisted state directly is deliberate: a Store per profile would
  * run migrations and normalization against state another profile owns. Only the
- * two id-bearing collections are read, and any unreadable profile is skipped —
+ * id-bearing collections are read, and any unreadable profile is skipped —
  * a profile whose ids cannot be established must widen the live set's
  * uncertainty, never narrow it, so failure here is handled by the caller
  * refusing to prune rather than by pruning more.
@@ -30,10 +30,26 @@ export function getOtherProfileWorktreeIdsForHistoryGc(userDataPath = getProfile
   ids: Set<string>
   unreadableProfiles: number
 } {
+  const { ids, unreadableProfiles } = readOtherProfileWorkspaceCatalog(userDataPath)
+  return { ids, unreadableProfiles }
+}
+
+type ProfileWorkspaceIds = {
+  /** Worktree ids with metadata, and folder workspace keys. */
+  ids: Set<string>
+  repoIds: Set<string>
+}
+
+/** The workspaces and projects every profile other than the running one holds. Any profile whose
+ *  state can't be read is counted, never skipped silently: its ids are unknown. */
+export function readOtherProfileWorkspaceCatalog(
+  userDataPath = getProfileUserDataPath()
+): ProfileWorkspaceIds & { unreadableProfiles: number } {
   const ids = new Set<string>()
+  const repoIds = new Set<string>()
   const index = readProfileIndex(getOrcaProfileIndexPath(userDataPath))
   if (!index) {
-    return { ids, unreadableProfiles: 0 }
+    return { ids, repoIds, unreadableProfiles: 0 }
   }
   let unreadableProfiles = 0
   for (const profile of index.profiles) {
@@ -45,14 +61,16 @@ export function getOtherProfileWorktreeIdsForHistoryGc(userDataPath = getProfile
       unreadableProfiles += 1
       continue
     }
-    for (const id of collected) {
-      ids.add(id)
-    }
+    collected.ids.forEach((id) => ids.add(id))
+    collected.repoIds.forEach((id) => repoIds.add(id))
   }
-  return { ids, unreadableProfiles }
+  return { ids, repoIds, unreadableProfiles }
 }
 
-function readProfileWorktreeIds(profileId: string, userDataPath: string): Set<string> | null {
+function readProfileWorktreeIds(
+  profileId: string,
+  userDataPath: string
+): ProfileWorkspaceIds | null {
   const databaseFile = getOrcaProfileStateDatabaseFile(profileId, userDataPath)
   // A present database is authoritative. In particular, do not fall back to a
   // stale JSON export after corruption or a future schema, because that could
@@ -104,10 +122,11 @@ function profileStateDatabasePresence(path: string): 'absent' | 'present' | 'unr
 function readProfileWorktreeIdsFromDatabase(
   databaseFile: string,
   profileId: string
-): Set<string> | null {
+): ProfileWorkspaceIds | null {
   const domains = readProfileStateDomains(databaseFile, profileId, [
     'worktreeMeta',
-    'folderWorkspaces'
+    'folderWorkspaces',
+    'repos'
   ])
   if (domains.kind === 'unreadable') {
     return null
@@ -141,10 +160,29 @@ function readProfileWorktreeIdsFromDatabase(
       }
     }
   }
+  const repoIds = repoIdsOf(domains.values.get('repos'))
+  return repoIds ? { ids, repoIds } : null
+}
+
+/** Null when the collection is present but not a list: its ids are unknown. */
+function repoIdsOf(repos: unknown): Set<string> | null {
+  const ids = new Set<string>()
+  if (repos === undefined || repos === null) {
+    return ids
+  }
+  if (!Array.isArray(repos)) {
+    return null
+  }
+  for (const repo of repos) {
+    const id = isRecord(repo) ? repo.id : undefined
+    if (typeof id === 'string' && id) {
+      ids.add(id)
+    }
+  }
   return ids
 }
 
-function readProfileWorktreeIdsFromJson(dataFile: string): Set<string> | null {
+function readProfileWorktreeIdsFromJson(dataFile: string): ProfileWorkspaceIds | null {
   let parsed: unknown
   try {
     parsed = JSON.parse(readFileSync(dataFile, 'utf8'))
@@ -156,7 +194,7 @@ function readProfileWorktreeIdsFromJson(dataFile: string): Set<string> | null {
   if (!parsed || typeof parsed !== 'object') {
     return null
   }
-  const state = parsed as { worktreeMeta?: unknown; folderWorkspaces?: unknown }
+  const state = parsed as { worktreeMeta?: unknown; folderWorkspaces?: unknown; repos?: unknown }
   const ids = new Set<string>()
   if (state.worktreeMeta && typeof state.worktreeMeta === 'object') {
     for (const id of Object.keys(state.worktreeMeta)) {
@@ -171,7 +209,8 @@ function readProfileWorktreeIdsFromJson(dataFile: string): Set<string> | null {
       }
     }
   }
-  return ids
+  const repoIds = repoIdsOf(state.repos)
+  return repoIds ? { ids, repoIds } : null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

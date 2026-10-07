@@ -10,8 +10,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { folderWorkspaceKey } from '../../shared/workspace-scope'
 import { importProfileStateJson } from '../persistence/profile-state/profile-state-documents'
 import { openProfileStateDatabase } from '../persistence/profile-state/profile-state-database'
-import { getOrcaProfileStateDatabaseFile } from '../orca-profiles/profile-storage-paths'
-import { getOtherProfileWorktreeIdsForHistoryGc } from './history-gc-profile-worktree-ids'
+import { getOrcaProfileStateDatabaseFile } from './profile-storage-paths'
+import {
+  getOtherProfileWorktreeIdsForHistoryGc,
+  readOtherProfileWorkspaceCatalog
+} from './other-profile-workspace-catalog'
 
 const roots: string[] = []
 
@@ -263,5 +266,25 @@ describe('getOtherProfileWorktreeIdsForHistoryGc', () => {
       ids: new Set(),
       unreadableProfiles: 0
     })
+  })
+})
+
+describe('readOtherProfileWorkspaceCatalog', () => {
+  it("also names every other profile's projects", () => {
+    const root = userDataWithProfiles('active', [
+      { id: 'active', state: { repos: [{ id: 'repo-active' }] } },
+      { id: 'other', state: { repos: [{ id: 'repo-other' }, { id: '' }, null] } }
+    ])
+    const catalog = readOtherProfileWorkspaceCatalog(root)
+    expect(catalog.repoIds).toEqual(new Set(['repo-other']))
+    expect(catalog.unreadableProfiles).toBe(0)
+  })
+
+  it('counts a profile whose projects are not a list as unreadable', () => {
+    const root = userDataWithProfiles('active', [
+      { id: 'active', state: {} },
+      { id: 'other', state: { repos: { 'repo-other': {} } } }
+    ])
+    expect(readOtherProfileWorkspaceCatalog(root).unreadableProfiles).toBe(1)
   })
 })

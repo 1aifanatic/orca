@@ -5,7 +5,11 @@ import {
   NATIVE_CHAT_VISUALS_DIR_ENV,
   type NativeChatVisualsLaunch
 } from '../native-chat/native-chat-visuals-delivery'
-import { CLAUDE_PLUGIN_DIR_FLAG, type ClaudeCliFlag } from './claude-cli-flag-support'
+import {
+  CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS,
+  CLAUDE_PLUGIN_DIR_FLAG,
+  type ClaudeCliFlag
+} from './claude-cli-flag-support'
 import { createClaudeStructuredLaunchResolver } from './claude-structured-launch-resolution'
 
 const SESSION_ID = 'orca-session-visuals'
@@ -29,7 +33,7 @@ const record = {
 
 function launch(options: {
   prepareVisuals?: (sessionId: string) => Promise<NativeChatVisualsLaunch | null>
-  supports?: (flag: ClaudeCliFlag) => Promise<boolean>
+  supports?: (flag: ClaudeCliFlag, launch: unknown, budgetMs?: number) => Promise<boolean>
   launchArgs?: string[]
   env?: Record<string, string>
 }) {
@@ -90,5 +94,17 @@ describe('a Claude chat launch with inline visuals', () => {
     const resolved = await launch({ supports })
     expect(supports.mock.calls.map(([flag]) => flag)).not.toContain(CLAUDE_PLUGIN_DIR_FLAG)
     expect(resolved.options).not.toHaveProperty('plugins')
+  })
+
+  it('waits for the version up to the probe kill time for the plugin, never the short budget', async () => {
+    const supports = vi.fn(
+      async (_flag: ClaudeCliFlag, _launch: unknown, _budgetMs?: number) => true
+    )
+    await launch({ prepareVisuals: async () => VISUALS, supports })
+    expect(supports).toHaveBeenCalledWith(
+      CLAUDE_PLUGIN_DIR_FLAG,
+      expect.objectContaining({ command: '/usr/local/bin/claude' }),
+      CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS
+    )
   })
 })

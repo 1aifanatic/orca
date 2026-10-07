@@ -52,7 +52,7 @@ function deps(
     stateDirectory: state,
     listHeldSessionIds: () => held,
     locationOf: (sessionId) => (held?.includes(sessionId) ? location(`ws-${sessionId}`) : null),
-    workspaceVerdict: async (where) => verdicts[where.workspaceId] ?? 'present',
+    workspaceVerdicts: () => async (where) => verdicts[where.workspaceId] ?? 'present',
     logger: { warn: vi.fn<StructuredAgentSessionLogger['warn']>(), error: vi.fn() }
   }
 }
@@ -93,7 +93,7 @@ describe('the visuals folder sweep', () => {
     const folder = visualsFor(state, 'chat-a')
     await sweepNativeChatVisualsFolders({
       ...deps(state, ['chat-a']),
-      workspaceVerdict: async () => {
+      workspaceVerdicts: () => async () => {
         throw new Error('catalog unavailable')
       }
     })
@@ -166,5 +166,24 @@ describe('the visuals folder sweep', () => {
     await vi.waitFor(() => expect(listHeldSessionIds).toHaveBeenCalledTimes(2))
     stop()
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('touches nothing under a visuals root that is a symlink', async () => {
+    const state = stateDirectory()
+    const elsewhere = mkdtempSync(join(tmpdir(), 'orca-visuals-elsewhere-'))
+    scratch.push(elsewhere)
+    mkdirSync(join(elsewhere, 'a'.repeat(32)))
+    symlinkSync(elsewhere, nativeChatVisualsRootFor(state))
+    await sweepNativeChatVisualsFolders(deps(state, []))
+    expect(existsSync(join(elsewhere, 'a'.repeat(32)))).toBe(true)
+  })
+
+  it('takes one verdict snapshot per run', async () => {
+    const state = stateDirectory()
+    visualsFor(state, 'chat-a')
+    visualsFor(state, 'chat-b')
+    const workspaceVerdicts = vi.fn(() => async () => 'present' as const)
+    await sweepNativeChatVisualsFolders({ ...deps(state, ['chat-a', 'chat-b']), workspaceVerdicts })
+    expect(workspaceVerdicts).toHaveBeenCalledOnce()
   })
 })

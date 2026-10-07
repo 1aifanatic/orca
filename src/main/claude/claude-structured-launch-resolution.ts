@@ -38,6 +38,7 @@ import {
 } from './claude-structured-child-env'
 import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
 import {
+  CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS,
   CLAUDE_PLUGIN_DIR_FLAG,
   CLAUDE_THINKING_DISPLAY_FLAG,
   type ClaudeCliFlagSupport,
@@ -183,7 +184,9 @@ async function claudeThinkingDisplayArgs(
 
 type ClaudeVisualsLaunch = { visuals: NativeChatVisualsLaunch; pluginDir: string | null }
 
-/** The chat's visuals folder, and its skill plugin when this CLI can load one by path. */
+/** The chat's visuals folder, and its skill plugin when this CLI can load one by path. Unlike the
+ *  thinking display, a missed answer costs the chat its skill for its whole life, so this waits
+ *  for the version probe up to the probe's own kill time: bounded, and instant once known. */
 async function claudeVisualsLaunch(
   deps: Pick<ClaudeStructuredLaunchResolverDeps, 'cliFlags' | 'prepareVisuals'>,
   sessionId: string,
@@ -194,7 +197,8 @@ async function claudeVisualsLaunch(
   }
   const [visuals, loadsPlugins] = await Promise.all([
     deps.prepareVisuals(sessionId),
-    deps.cliFlags?.supports(CLAUDE_PLUGIN_DIR_FLAG, launch) ?? false
+    deps.cliFlags?.supports(CLAUDE_PLUGIN_DIR_FLAG, launch, CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS) ??
+      false
   ])
   return visuals ? { visuals, pluginDir: loadsPlugins ? visuals.skill.pluginDir : null } : null
 }

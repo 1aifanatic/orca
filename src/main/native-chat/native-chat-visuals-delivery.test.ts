@@ -17,6 +17,9 @@ import {
   withNativeChatVisualsEnv
 } from './native-chat-visuals-delivery'
 import { nativeChatVisualsFolderFor } from './native-chat-visuals-folder'
+import { buildClaudeChildProcessEnv } from '../claude/claude-child-process-environment'
+import { codexStructuredChildEnvironment } from '../codex/codex-structured-child-environment'
+import { resolveProviderChildEnv } from '../provider-process/provider-process-launch'
 import {
   NATIVE_CHAT_VISUALS_SKILL_NAME,
   resetNativeChatVisualsSkillLocationForTests,
@@ -87,6 +90,37 @@ describe('preparing a chat for visuals', () => {
       'native-chat visuals folder could not be prepared',
       expect.objectContaining({ scope: 'nativeChatVisuals.folder', sessionId: 'chat-1' })
     )
+  })
+
+  it("never hands a chat another chat's folder that Orca itself inherited", () => {
+    const inherited = { PATH: '/bin', [NATIVE_CHAT_VISUALS_DIR_ENV]: '/parent-chat' }
+    const visuals = { folder: '/mine', skill: SKILL }
+    for (const platform of ['darwin', 'win32'] as const) {
+      const claude = (configured: Record<string, string>) =>
+        buildClaudeChildProcessEnv(configured, { inheritedEnv: inherited, platform })
+      expect(claude({})).not.toHaveProperty(NATIVE_CHAT_VISUALS_DIR_ENV)
+      expect(claude(withNativeChatVisualsEnv({}, visuals))[NATIVE_CHAT_VISUALS_DIR_ENV]).toBe(
+        '/mine'
+      )
+    }
+    const codex = (withVisuals: boolean) =>
+      resolveProviderChildEnv(
+        codexStructuredChildEnvironment(
+          {
+            command: 'codex',
+            args: ['app-server'],
+            cwd: '/w',
+            codexHome: null,
+            resumeThreadId: null,
+            ...(withVisuals ? { visuals } : {})
+          },
+          'spawn-token',
+          'chat-1'
+        ),
+        inherited
+      )
+    expect(codex(false)).not.toHaveProperty(NATIVE_CHAT_VISUALS_DIR_ENV)
+    expect(codex(true)[NATIVE_CHAT_VISUALS_DIR_ENV]).toBe('/mine')
   })
 
   it('names only this chat folder to the agent', () => {
