@@ -54,7 +54,8 @@ describe('a photo send answered around the frame that carries its record', () =>
   ])(
     'binds its photo to its own row (another bubble pending: $earlierBubble, answered before the effects: $answerBeforeEffects)',
     async ({ earlierBubble, answerBeforeEffects }) => {
-      let state: Drafts | null = null
+      // Read through an object: a local the harness assigns would be narrowed to null here.
+      const current: { drafts?: Drafts } = {}
       let origin: Origin | null = null
       let answered = false
       const accept = (drafts: Drafts | null): void => {
@@ -74,7 +75,7 @@ describe('a photo send answered around the frame that carries its record', () =>
             accept(latest.current)
           }
         })
-        state = useMobileNativeChatDrafts({
+        current.drafts = useMobileNativeChatDrafts({
           hostId: 'host',
           worktreeId: 'worktree',
           tabId: 'tab',
@@ -86,7 +87,7 @@ describe('a photo send answered around the frame that carries its record', () =>
           queuedCards: [],
           submissions: props.submissions
         })
-        latest.current = state
+        latest.current = current.drafts
         return null
       }
       const render = async (messages: NativeChatMessage[], submissions: AgentJournalSubmission[]) =>
@@ -102,23 +103,25 @@ describe('a photo send answered around the frame that carries its record', () =>
       await render([], [])
       if (earlierBubble) {
         // An earlier send still waiting for its record keeps the retirement effect running.
-        const first = state?.captureSendOrigin('first')
+        const first = current.drafts?.captureSendOrigin('first')
         await act(async () => {
           if (first) {
-            state?.acceptSend(first, 'first', undefined, 'P')
+            current.drafts?.acceptSend(first, 'first', undefined, 'P')
           }
         })
       }
-      origin = state?.captureSendOrigin('look') ?? null
+      origin = current.drafts?.captureSendOrigin('look') ?? null
       // The record, written before the send is dispatched, reaches the phone first.
       await render([ROW], [RECORD])
       if (!answerBeforeEffects) {
-        await act(async () => accept(state))
+        await act(async () => accept(current.drafts ?? null))
       }
       await render([ROW], [RECORD])
 
-      expect(state?.pending.map((item) => item.text)).toEqual(earlierBubble ? ['first'] : [])
-      expect(state?.imagePreviewsByMessageId[OWN_ROW]).toEqual([PHOTO])
+      expect(current.drafts?.pending.map((item) => item.text)).toEqual(
+        earlierBubble ? ['first'] : []
+      )
+      expect(current.drafts?.imagePreviewsByMessageId[OWN_ROW]).toEqual([PHOTO])
     }
   )
 })
