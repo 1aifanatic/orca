@@ -17,7 +17,6 @@ import {
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
 import { nativeChatComposerDraftLeftAfterSend } from './native-chat-composer-draft-comparison'
-import { carryClearedNativeChatDraftScope } from './structured-agent-session-clear-draft-carry'
 import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
 
 export type UseNativeChatStructuredComposerSendArgs = {
@@ -90,8 +89,6 @@ export function useNativeChatStructuredComposerSend({
         .then(({ accepted, error, revealsTranscript }) => {
           structuredTransport.onError(error)
           if (!accepted) {
-            // A /clear that moved the chat yet failed after: its words go along with the chat.
-            carryClearedNativeChatDraftScope(draftScopeKey)
             return
           }
           emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
@@ -112,16 +109,15 @@ export function useNativeChatStructuredComposerSend({
             readNativeChatComposerDraft(draftScopeKey),
             submitted
           )
-          if (left) {
-            updateNativeChatComposerDraft(draftScopeKey, { images: left.images }, 'immediate')
-            // A live composition owns the field, which keeps only what it composed once cleared.
-            const composing = isComposing()
-            setDraft(composing ? '' : left.text)
-            setCaret(composing ? 0 : left.text.length)
-            clearSkillOrigin()
+          if (!left) {
+            return
           }
-          // A /clear moved the chat to a new conversation: what is left of this draft follows it.
-          carryClearedNativeChatDraftScope(draftScopeKey)
+          updateNativeChatComposerDraft(draftScopeKey, { images: left.images }, 'immediate')
+          // A live composition owns the field, which keeps only what it composed once cleared.
+          const composing = isComposing()
+          setDraft(composing ? '' : left.text)
+          setCaret(composing ? 0 : left.text.length)
+          clearSkillOrigin()
         })
         .catch((error) =>
           structuredTransport.onError(error instanceof Error ? error.message : String(error))

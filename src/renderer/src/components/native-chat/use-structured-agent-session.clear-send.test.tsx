@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 
 // A /clear moves the chat to a new conversation, and its host refuses a send made meanwhile. Text
-// typed during it must stay where the person can see it: never sent into the refusal, never left
-// behind in the conversation the chat moved away from.
+// typed during it stays in the box: it is never sent into that refusal.
 
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -46,11 +45,8 @@ import { resetStructuredAgentSessionSendsForTests } from './structured-agent-ses
 import { structuredAgentSessionSendOut } from './structured-agent-session-pending-sends'
 import {
   clearNativeChatComposerDraftsForTests,
-  readNativeChatComposerDraft,
-  structuredAgentSessionDraftScopeKey,
-  updateNativeChatComposerDraft
+  structuredAgentSessionDraftScopeKey
 } from './native-chat-composer-draft-store'
-import { resetStructuredAgentSessionClearCarryForTests } from './structured-agent-session-clear-draft-carry'
 
 const CONVERSATION_IN_FLIGHT = {
   ok: false,
@@ -98,7 +94,6 @@ beforeEach(() => {
 
 afterEach(() => {
   resetStructuredAgentSessionSendsForTests()
-  resetStructuredAgentSessionClearCarryForTests()
 })
 
 function cleared(replacementSessionId?: string) {
@@ -114,9 +109,6 @@ function cleared(replacementSessionId?: string) {
     }
   }
 }
-
-const draftText = (sessionId: string): string =>
-  readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey(sessionId)).text
 
 it('takes no send while a /clear is out: the text stays in the box and nothing is sent', async () => {
   const clears = hostWithAClearOut()
@@ -143,27 +135,20 @@ it('takes no send while a /clear is out: the text stays in the box and nothing i
   expect(result.current.sendOut).toBe(false)
 })
 
-it("moves what was typed during a /clear into the new conversation's box when the chat moves", async () => {
+it('keeps a conversation a /clear moved away from taking no send until the view leaves it', async () => {
   const clears = hostWithAClearOut()
   const { result, rerender } = view('session-a')
   act(() => {
     void result.current.runConversationCommand('clear')
   })
-  // What the box held when Enter was refused.
-  updateNativeChatComposerDraft(
-    structuredAgentSessionDraftScopeKey('session-a'),
-    { text: 'c4 during clear' },
-    'immediate'
-  )
   await act(async () => {
     clears[0].resolve(cleared('session-b'))
   })
-  // The old conversation takes nothing until the chat shows the new one.
+  // Its host refuses the old conversation now; the chat shows the new one once its tab moves.
   expect(result.current.sendOut).toBe(true)
+  expect(structuredAgentSessionSendOut('session-a')).toBe(true)
 
   rerender({ id: 'session-b' })
-  expect(draftText('session-b')).toBe('c4 during clear')
-  expect(draftText('session-a')).toBe('')
   expect(structuredAgentSessionSendOut('session-a')).toBe(false)
   expect(result.current.sendOut).toBe(false)
 })

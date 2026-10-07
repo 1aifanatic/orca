@@ -8,15 +8,11 @@ import type {
   StructuredAgentSessionWriteOutcome
 } from './use-structured-agent-session-mutate'
 import { holdStructuredAgentSessionSends } from './structured-agent-session-pending-sends'
-import {
-  carryClearedStructuredAgentSessionDraft,
-  noteStructuredAgentSessionClearedInto
-} from './structured-agent-session-clear-draft-carry'
 
 /**
  * Sends a conversation command. A /clear keeps the chat's sends out while it runs, as its host
  * refuses them, so text typed meanwhile stays in the box. Once it moves the chat to a new
- * conversation, the old one takes nothing until this view leaves it, and its draft goes along.
+ * conversation, the old one, which its host also refuses, takes nothing until this view leaves it.
  */
 export function useStructuredAgentSessionCommandWrite(
   sessionId: string,
@@ -31,7 +27,6 @@ export function useStructuredAgentSessionCommandWrite(
     return () => {
       keptHold.current?.()
       keptHold.current = null
-      carryClearedStructuredAgentSessionDraft(sessionId, { leaving: true })
     }
   }, [sessionId])
   return useCallback(
@@ -49,11 +44,7 @@ export function useStructuredAgentSessionCommandWrite(
       let movedOn = false
       try {
         const outcome = await send()
-        const replacement = outcome.kind === 'done' ? outcome.value.replacementSessionId : undefined
-        if (replacement !== undefined) {
-          noteStructuredAgentSessionClearedInto(sessionId, replacement)
-          movedOn = true
-        }
+        movedOn = outcome.kind === 'done' && outcome.value.replacementSessionId !== undefined
         return outcome
       } finally {
         if (movedOn && shown.current === sessionId) {
