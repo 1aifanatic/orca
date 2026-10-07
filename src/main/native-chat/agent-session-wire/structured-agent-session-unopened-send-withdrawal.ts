@@ -63,22 +63,26 @@ export async function withdrawCodexSendsNoTurnOpenedFor(
     const turn = readAgentJournalTurn(item.body)
     return turn ? [{ running: turn.state === 'running', sequence: item.sequence }] : []
   })
-  // Its message's place, recorded at handover: the turn it joined, or the conversation.
-  const startedOwnTurn = (clientMessageId: string): boolean =>
-    items.find((item) => item.itemId === agentJournalSubmissionKey(clientMessageId))?.turnScope
-      ?.kind === 'thread'
-  const opened = (acceptedSequence: number): boolean =>
-    turns.some((turn) => turn.running || turn.sequence > acceptedSequence)
-  const unopened = journal
-    .submissions()
-    .filter(
-      (entry) =>
-        sendStopCanTakeBack(entry) &&
-        entry.acceptedSequence !== undefined &&
-        entry.acceptedSequence < stop.sequence &&
-        startedOwnTurn(entry.clientMessageId) &&
-        !opened(entry.acceptedSequence)
+  // Its message's place, recorded at handover: the turn it joined, or the conversation. A send
+  // that started its own turn has the conversation's; one with no turn recorded since then never ran.
+  const ownTurnHandover = (clientMessageId: string): number | undefined => {
+    const handover = items.find(
+      (item) => item.itemId === agentJournalSubmissionKey(clientMessageId)
     )
+    return handover?.turnScope?.kind === 'thread' ? handover.sequence : undefined
+  }
+  const openedSince = (handoverSequence: number): boolean =>
+    turns.some((turn) => turn.running || turn.sequence > handoverSequence)
+  const unopened = journal.submissions().filter((entry) => {
+    const handover = ownTurnHandover(entry.clientMessageId)
+    return (
+      sendStopCanTakeBack(entry) &&
+      entry.acceptedSequence !== undefined &&
+      entry.acceptedSequence < stop.sequence &&
+      handover !== undefined &&
+      !openedSince(handover)
+    )
+  })
   const withdrawn = agentSessionFailureWords(agentSessionFailureFact('cancelled'), {
     surface: 'rejection'
   })

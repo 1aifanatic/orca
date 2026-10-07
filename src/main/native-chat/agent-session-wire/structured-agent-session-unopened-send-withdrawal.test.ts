@@ -35,7 +35,20 @@ function sendBeforeStop(overrides: Partial<Send> = {}): Send {
   }
 }
 
-function journalWith(send: Send, turnScope: AgentJournalTurnScope = { kind: 'thread' }) {
+/** A turn that ended at sequence 4, before a handover at 5. */
+const turnEndedBeforeHandover = {
+  itemId: 'turn-0',
+  revision: 1,
+  sequence: 4,
+  observedAt: 4,
+  body: { kind: 'turn' as const, turnId: 'turn-0', state: 'completed' as const }
+}
+
+function journalWith(
+  send: Send,
+  turnScope: AgentJournalTurnScope = { kind: 'thread' },
+  earlier: (typeof turnEndedBeforeHandover)[] = []
+) {
   const resolveDispatch = vi.fn(async () => ({ epoch: 'epoch-1', sequence: 11 }))
   const journal: UnopenedSendJournal = {
     agent: 'codex',
@@ -44,6 +57,7 @@ function journalWith(send: Send, turnScope: AgentJournalTurnScope = { kind: 'thr
     },
     snapshot: () => ({
       items: [
+        ...earlier,
         {
           itemId: agentJournalSubmissionKey(send.clientMessageId),
           revision: 0,
@@ -98,6 +112,21 @@ describe("a Codex child's end, or a Stop Codex took, under a person's Stop", () 
     await withdrawCodexSendsNoTurnOpenedFor(journal, 1)
 
     expect(resolveDispatch).not.toHaveBeenCalled()
+  })
+
+  // The send could start a turn only once handed over, so a turn that ended before then is not one.
+  it('withdraws a send when a turn record was written between its acceptance and its handover', async () => {
+    const { journal, resolveDispatch } = journalWith(
+      sendBeforeStop({ acceptedSequence: 3 }),
+      { kind: 'thread' },
+      [turnEndedBeforeHandover]
+    )
+
+    await withdrawCodexSendsNoTurnOpenedFor(journal, 1)
+
+    expect(resolveDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ clientMessageId: 'send-1', state: 'rejected' })
+    )
   })
 
   // A send that joined a running turn may be in it.
