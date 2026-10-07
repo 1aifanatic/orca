@@ -20,10 +20,8 @@ const SUBMIT = { text: 'fix the failing checks\nlog tail follows', delivery: 'su
 
 function withPromptWriter(runtime: AgentLaunchRuntimeStub) {
   const waitForTerminal = vi.fn(async () => ({ satisfied: true, status: 'idle' }))
-  // The idle evidence settles these launches; the composer signal never fires.
-  const waitForFreshWorkerComposer = vi.fn(async () => {
-    throw new Error('timeout')
-  })
+  // The agent's composer is seen ready: these cases are about the line, not readiness.
+  const waitForFreshWorkerComposer = vi.fn(async () => ({ satisfied: true, status: 'running' }))
   const sendTerminalAgentPrompt = vi.fn(async () => ({
     handle: 'term_1',
     accepted: true,
@@ -108,6 +106,41 @@ describe('an argv agent’s launch prompt, by what the runtime reports about its
       runtime
     )
 
+    expect(sendTerminalAgentPrompt).not.toHaveBeenCalled()
+  })
+})
+
+describe('a prompt sent to be pasted (temporary `transport: paste`)', () => {
+  const EXISTING = { agent: 'claude', target: { kind: 'existing', worktree: 'id:wt-7' } }
+  const SHORT = { text: 'fix it now', delivery: 'submit' }
+
+  it('never rides the launch line, even 10 bytes the line could carry: it is pasted', async () => {
+    const { runtime, sendTerminalAgentPrompt } = withPromptWriter(
+      runtimeStub({ settings: {}, lineCarriesPrompt: true })
+    )
+
+    const result = await launch({ ...EXISTING, prompt: { ...SHORT, transport: 'paste' } }, runtime)
+
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    expect(runtime.createTerminal).toHaveBeenCalledWith(
+      'id:wt-7',
+      expect.not.objectContaining({ startupPrompt: expect.anything() })
+    )
+    expect(sendTerminalAgentPrompt).toHaveBeenCalledWith('term_1', SHORT.text, expect.anything())
+  })
+
+  it('without the field, rides the line exactly as on main', async () => {
+    const { runtime, sendTerminalAgentPrompt } = withPromptWriter(
+      runtimeStub({ settings: {}, lineCarriesPrompt: true })
+    )
+
+    const result = await launch({ ...EXISTING, prompt: SHORT }, runtime)
+
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    expect(runtime.createTerminal).toHaveBeenCalledWith(
+      'id:wt-7',
+      expect.objectContaining({ startupPrompt: SHORT.text })
+    )
     expect(sendTerminalAgentPrompt).not.toHaveBeenCalled()
   })
 })

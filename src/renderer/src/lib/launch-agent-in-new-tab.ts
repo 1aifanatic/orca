@@ -265,7 +265,6 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       ...(pendingActivationSpawn ? { pendingActivationSpawn: true } : {}),
       ...(initialViewModeProps.viewMode ? { viewMode: initialViewModeProps.viewMode } : {}),
       pasteContent: pasteDraftAfterLaunch,
-      submit: submitPastedPrompt,
       ...(onPromptDelivered ? { onPromptDelivered } : {}),
       ...(onPromptDeliveryUnconfirmed ? { onPromptDeliveryUnconfirmed } : {})
     })

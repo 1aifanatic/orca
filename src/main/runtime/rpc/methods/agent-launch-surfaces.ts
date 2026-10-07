@@ -24,6 +24,7 @@ import {
 import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import type { RpcContext } from '../core'
+import { rpcCallerOperationKey } from '../rpc-caller-identity'
 import { structuredCallerFor } from './structured-agent-session-gate'
 import { createStructuredAgentSessionForWorktree } from './structured-agent-session-create'
 import { commitStructuredAgentSessionLaunchPrompt } from './agent-launch-structured-prompt'
@@ -178,13 +179,24 @@ export function agentLaunchSurfaceFactory(
         ...(promptRodeLaunchCommand ? { promptRodeLaunchCommand } : {})
       }
     },
-    deliverTerminalPrompt: async ({ handle, agent, freshLaunch, prompt }) =>
+    deliverTerminalPrompt: async ({
+      handle,
+      agent,
+      freshLaunch,
+      prompt,
+      beginPromptWrite,
+      onComposerUnobserved
+    }) =>
       deliverTerminalAgentLaunchPrompt({
         runtime: context.runtime,
         handle,
         agent,
         freshLaunch,
-        text: prompt.text
+        text: prompt.text,
+        ...(beginPromptWrite ? { beginPromptWrite } : {}),
+        ...(onComposerUnobserved ? { onComposerUnobserved } : {}),
+        callerKey:
+          operationCallerKey ?? (context.caller ? rpcCallerOperationKey(context.caller) : undefined)
       })
   }
 }

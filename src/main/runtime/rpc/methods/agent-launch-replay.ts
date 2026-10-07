@@ -31,6 +31,12 @@ import { resolveAgentSessionReplayOutcome } from '../../../native-chat/agent-ses
 import type { RpcContext } from '../core'
 import { rpcCallerOperationKey } from '../rpc-caller-identity'
 import type { AgentLaunchParams } from './agent-launch-schemas'
+import type { TuiAgent } from '../../../../shared/tui-agent'
+import {
+  beginOwedLaunchPromptWrite,
+  recordLaunchOutcome,
+  type OwedLaunchPromptWriteStart
+} from '../../agent-launch-owed-prompt-record'
 
 /**
  * The ledger namespace of whoever the transport says is calling. A transport that could not name its
@@ -60,6 +66,8 @@ export type AgentLaunchAdmission =
       record: (provisional: AgentLaunchResult) => Promise<void>
       settle: (result: AgentLaunchResult) => Promise<void>
       fail: (code: string) => Promise<void>
+      /** W2 of `agent-launch-owed-prompt-record`: immediately before the prompt's first byte. */
+      beginPromptWrite: () => Promise<OwedLaunchPromptWriteStart>
       /** Distinct from the launch id: the inner attach reserves in this same ledger. */
       attachOperationId: string
       callerKey: string
@@ -241,8 +249,8 @@ export async function admitAgentLaunchOperation(
       ? presentRecordedAnswer(context, operationId, answer)
       : refusal(operationId, 'agent_session_operation_unknown', 'is claimed but unsettled')
   }
-  const succeeded = (result: AgentLaunchResult) =>
-    store.recordOperationOutcome({
+  const succeeded = (result: AgentLaunchResult, owedPrompt?: { text: string; agent: TuiAgent }) =>
+    recordLaunchOutcome(store, {
       callerKey,
       operationId,
       outcome: {
@@ -250,22 +258,35 @@ export async function admitAgentLaunchOperation(
         // A terminal surface has a handle, not a session id; `launch` carries whichever it is.
         sessionId: result.outcome.kind === 'structured' ? result.outcome.sessionId : '',
         launch: result
-      }
+      },
+      ...(owedPrompt ? { owedPrompt } : {})
     })
   return {
     decision: 'execute',
     attachOperationId,
     callerKey,
     // The same row shape twice: a build that predates the first write reads either one.
-    record: succeeded,
-    settle: succeeded,
+    record: (provisional) => succeeded(provisional, owedTerminalPrompt(params, provisional)),
+    settle: (result) => succeeded(result),
     fail: (code) =>
-      store.recordOperationOutcome({
-        callerKey,
-        operationId,
-        outcome: { status: 'failed', code }
-      })
+      recordLaunchOutcome(store, { callerKey, operationId, outcome: { status: 'failed', code } }),
+    beginPromptWrite: () =>
+      beginOwedLaunchPromptWrite(store, { callerKey, operationId }, Date.now())
   }
+}
+
+/** The text a terminal's first write still owes: a submit nothing has delivered yet, which the
+ *  provisional answer marks `unconfirmed` (`settledAtCreation`). */
+function owedTerminalPrompt(
+  params: AgentLaunchParams,
+  provisional: AgentLaunchResult
+): { text: string; agent: TuiAgent } | undefined {
+  return provisional.outcome.kind === 'terminal' &&
+    provisional.prompt?.outcome === 'unconfirmed' &&
+    params.prompt?.delivery === 'submit' &&
+    params.prompt.text
+    ? { text: params.prompt.text, agent: params.agent }
+    : undefined
 }
 
 function refusal(

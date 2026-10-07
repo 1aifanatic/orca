@@ -26,6 +26,8 @@ export type AgentLaunchPromptDelivery =
 export type AgentLaunchPrompt = {
   text: string
   delivery: AgentLaunchPromptDelivery
+  /** Temporary: `paste` never rides the launch line (`agent-launch-params`). */
+  transport?: 'paste'
 }
 
 /**
@@ -168,7 +170,12 @@ export type AgentLaunchPromptDisposal =
    * resend — a second paste arrives as a second turn, which is worse than the wasted resend
    * `not-delivered` costs.
    */
-  | { outcome: 'handed-to-terminal' }
+  | {
+      outcome: 'handed-to-terminal'
+      /** Written once the agent's own process held the pane, but its composer was never seen ready:
+       *  a written prompt, not a confirmed one, as the desktop's own paste reported it on main. */
+      composerUnobserved?: true
+    }
   /** Not delivered by this call; the caller still owns the text. */
   | { outcome: 'not-delivered' }
   /**
@@ -285,9 +292,9 @@ function isAgentLaunchPromptReceipt(value: unknown): value is AgentLaunchPromptR
   }
   return value.outcome === 'journaled'
     ? 'messageId' in value && typeof value.messageId === 'string'
-    : value.outcome === 'handed-to-terminal' ||
-        value.outcome === 'not-delivered' ||
-        value.outcome === 'unconfirmed'
+    : value.outcome === 'handed-to-terminal'
+      ? !('composerUnobserved' in value) || value.composerUnobserved === true
+      : value.outcome === 'not-delivered' || value.outcome === 'unconfirmed'
 }
 
 function isAgentLaunchOutcome(value: unknown): value is AgentLaunchOutcome {

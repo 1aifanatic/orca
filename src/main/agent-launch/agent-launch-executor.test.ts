@@ -350,7 +350,8 @@ describe('delivering a launch prompt to a terminal agent', () => {
       handle: 'term_1',
       agent: 'aider',
       freshLaunch: true,
-      prompt: SUBMIT
+      prompt: SUBMIT,
+      onComposerUnobserved: expect.any(Function)
     })
     // Folding it into argv would have appended it as an argument the CLI does not accept.
     expect(h.createTerminalAgent.mock.calls[0]?.[0]).not.toHaveProperty('startupPrompt')
@@ -385,7 +386,8 @@ describe('delivering a launch prompt to a terminal agent', () => {
       handle: 'term_1',
       agent: 'claude',
       freshLaunch: true,
-      prompt: SUBMIT
+      prompt: SUBMIT,
+      onComposerUnobserved: expect.any(Function)
     })
   })
 
@@ -398,7 +400,8 @@ describe('delivering a launch prompt to a terminal agent', () => {
       handle: 'term_agent_first',
       agent: 'claude',
       freshLaunch: true,
-      prompt: SUBMIT
+      prompt: SUBMIT,
+      onComposerUnobserved: expect.any(Function)
     })
   })
 
@@ -417,7 +420,8 @@ describe('delivering a launch prompt to a terminal agent', () => {
       handle: 'term_existing',
       agent: 'claude',
       freshLaunch: false,
-      prompt: SUBMIT
+      prompt: SUBMIT,
+      onComposerUnobserved: expect.any(Function)
     })
   })
 

@@ -1,11 +1,11 @@
 /**
- * A desktop launch started through the host's `agent.launch`, with no prompt.
+ * A desktop launch started through the host's `agent.launch`.
  *
  * This window owns the workspace's tab layout, so it makes the agent's tab at the click, in the
  * split it was asked for, as any new agent tab is made. The host records the launch under this
  * click's operation id and starts the agent into that tab's pane. The pane's spawn waits until the
  * host has taken it (`agent-launch-pane-spawn-hold`), then attaches to the agent or says why it could
- * not start. The prompt stays this window's to paste, as main pastes it, once the agent has started.
+ * not start. The host also delivers the prompt, once the agent is ready, and its answer says how.
  */
 
 import { useAppStore } from '@/store'
@@ -19,7 +19,10 @@ import {
 import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
 import { callRuntimeRpc, RuntimeRpcCallError } from '@/runtime/runtime-rpc-client'
 import { createAgentSessionOperationId } from '@/runtime/agent-session-operation-id'
-import { isAgentLaunchResult } from '../../../shared/agent-launch-intent'
+import {
+  isAgentLaunchResult,
+  type AgentLaunchPromptReceipt
+} from '../../../shared/agent-launch-intent'
 import { AGENT_LAUNCH_TAB_CLOSED_CODE } from '../../../shared/agent-launch-tab-closed'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import { prefersStructuredNativeChatByDefault } from '../../../shared/structured-native-chat-launch-route'
@@ -35,6 +38,8 @@ export type HostAgentLaunchArgs = {
   groupId?: string
   /** Kept by the window: a pane whose agent could not start offers to copy it. */
   prompt: string
+  /** What the host pastes and submits once the agent is ready; it can differ from `prompt`. */
+  hostPrompt?: string
   /** Absent uses the settings default; `null` means no arguments. */
   agentArgs?: string | null
   cwd?: string
@@ -50,8 +55,9 @@ export type HostAgentLaunchArgs = {
 
 /** What became of the launch, as this window must tell it. */
 export type HostAgentLaunchOutcome =
-  /** The agent was started in this tab's pane, which is attached to it. */
-  | { kind: 'started' }
+  /** The agent was started in this tab's pane, which is attached to it; `prompt` is what the host
+   *  says became of the text it was given. */
+  | { kind: 'started'; prompt?: AgentLaunchPromptReceipt }
   /** The pane shows how the launch ended: couldn't start, or couldn't confirm it started. */
   | { kind: 'pane-says' }
   /** The user closed the tab while it started, and with it the launch: nothing more to say. */
@@ -80,7 +86,7 @@ function closeLaunchTab(worktreeId: string, tabId: string): void {
 // Only a terminal in this pane is one the window can paste into; anything else, its pane explains.
 function outcomeFromResult(result: unknown): HostAgentLaunchOutcome {
   return isAgentLaunchResult(result) && result.outcome.kind === 'terminal'
-    ? { kind: 'started' }
+    ? { kind: 'started', ...(result.prompt ? { prompt: result.prompt } : {}) }
     : { kind: 'pane-says' }
 }
 
@@ -97,6 +103,16 @@ function launchParams(args: HostAgentLaunchArgs) {
   return {
     agent: args.agent,
     target: { kind: 'existing', worktree: `id:${args.worktreeId}` },
+    ...(args.hostPrompt
+      ? // Temporary `paste`: kept off the launch line, as these launches delivered on main.
+        {
+          prompt: {
+            text: args.hostPrompt,
+            delivery: 'submit' as const,
+            transport: 'paste' as const
+          }
+        }
+      : {}),
     ...(args.agentArgs !== undefined ? { agentArgs: args.agentArgs } : {}),
     ...(args.cwd ? { cwd: args.cwd } : {}),
     ...stringSessionOptions(args.sessionOptions),

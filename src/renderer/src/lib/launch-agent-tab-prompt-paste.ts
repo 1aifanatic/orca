@@ -19,8 +19,6 @@ export function pasteAgentLaunchPromptOnceReady(args: {
   prompt: string
   onPromptDelivered?: () => void
   onPromptDeliveryUnconfirmed?: () => void
-  /** Whether the paste may be written; readiness is observed while it is pending. */
-  sendGate?: Promise<boolean>
 }): Promise<{ delivered: boolean; failureNotified: boolean }> {
   const { worktreeId, tabId, agent, submit, onPromptDelivered, onPromptDeliveryUnconfirmed } = args
   const timeoutNotice = createPasteReadinessTimeoutNotice({
@@ -36,7 +34,6 @@ export function pasteAgentLaunchPromptOnceReady(args: {
     submit,
     forcePaste: true,
     onTimeout: timeoutNotice.onTimeout,
-    ...(args.sendGate ? { sendGate: args.sendGate } : {}),
     ...(onPromptDeliveryUnconfirmed ? { onUnconfirmedDelivery: onPromptDeliveryUnconfirmed } : {})
   }).then((delivered) => {
     if (delivered) {

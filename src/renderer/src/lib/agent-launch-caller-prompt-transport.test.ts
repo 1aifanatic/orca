@@ -51,14 +51,20 @@ vi.mock('@/lib/agent-ready-wait', () => ({
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: () => []
 }))
-// The host starts an AI button's agent in the tab's pane and answers; the window then pastes.
+// The host starts an AI button's agent in the tab's pane, delivers its prompt, and answers how.
+const hostPrompt = vi.hoisted(() => ({ outcome: 'handed-to-terminal' }))
 const callRuntimeRpc = vi.hoisted(() =>
   vi.fn(async (_target: unknown, _method: string, params: Record<string, unknown>) => ({
     outcome: { kind: 'terminal', handle: 'term_1', paneKey: params.paneKey },
     worktreeId: 'wt-1',
-    receipt: { mode: 'terminal', preferred: 'terminal', reason: 'user_default', detail: 'x' }
+    receipt: { mode: 'terminal', preferred: 'terminal', reason: 'user_default', detail: 'x' },
+    ...(params.prompt ? { prompt: { delivery: 'submit', outcome: hostPrompt.outcome } } : {})
   }))
 )
+/** The prompts the window handed the host. */
+function hostPrompts(): unknown[] {
+  return callRuntimeRpc.mock.calls.flatMap(([, , params]) => (params.prompt ? [params.prompt] : []))
+}
 vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc, RuntimeRpcCallError: Error }))
 
 /** What the window's own launch command carries; a launch started by the host queues none. */
@@ -151,6 +157,7 @@ describe('agent launch caller prompt transport', () => {
     vi.clearAllMocks()
     resetLaunchFunnelStore(store)
     mockPasteDraftWhenAgentReady.mockResolvedValue(true)
+    hostPrompt.outcome = 'handed-to-terminal'
   })
 
   it.each(cases)(
@@ -169,9 +176,15 @@ describe('agent launch caller prompt transport', () => {
       const ridesArgv = id === 'quick-command'
       expect(result?.pasteDraftAfterLaunch).toBe(!ridesArgv)
       expect(commandCarries(PROMPT)).toBe(ridesArgv)
-      // The host is never handed the text: the window pastes it, as main does.
-      for (const [, , params] of callRuntimeRpc.mock.calls) {
-        expect(params).not.toHaveProperty('prompt')
+      // An AI button's text goes to the host, which pastes it as main's window did; a draft stays
+      // the window's own paste.
+      if (profile.args.promptDelivery === 'submit-after-ready') {
+        expect(hostPrompts()).toEqual([
+          { text: expect.stringContaining(PROMPT), delivery: 'submit', transport: 'paste' }
+        ])
+        expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
+      } else {
+        expect(hostPrompts()).toEqual([])
       }
     }
   )
@@ -230,8 +243,11 @@ describe('agent launch caller prompt transport', () => {
 
     expect(result?.pasteDraftAfterLaunch).toBe(row.transport === 'paste')
     expect(commandCarries(PROMPT)).toBe(row.transport === 'argv')
-    if (row.transport === 'paste') {
-      // Through the host, the paste waits for the agent to be started in the tab.
+    if (row.transport === 'paste' && row.promptDelivery === 'submit-after-ready') {
+      // The host pastes and submits it once the agent is ready, as main's window did.
+      expect(hostPrompts()).toEqual([{ text: PROMPT, delivery: 'submit', transport: 'paste' }])
+      expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
+    } else if (row.transport === 'paste') {
       await vi.waitFor(() =>
         expect(mockPasteDraftWhenAgentReady.mock.calls[0]?.[0]).toMatchObject({
           content: PROMPT,
@@ -280,7 +296,7 @@ describe('agent launch caller prompt transport', () => {
   })
 
   it('reports an undelivered submit-after-ready prompt without throwing at the caller', async () => {
-    mockPasteDraftWhenAgentReady.mockResolvedValue(false)
+    hostPrompt.outcome = 'not-delivered'
     const onPromptDelivered = vi.fn()
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 

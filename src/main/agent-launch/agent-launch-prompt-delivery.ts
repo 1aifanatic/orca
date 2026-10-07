@@ -106,13 +106,23 @@ export async function deliverTerminalLaunchPrompt(
   if (!intent.prompt || intent.prompt.delivery !== 'submit') {
     return NOT_DELIVERED
   }
+  let composerUnobserved = false
   const delivered = await surfaces.deliverTerminalPrompt?.({
     handle,
     agent: intent.agent,
     freshLaunch,
-    prompt: intent.prompt
+    prompt: intent.prompt,
+    ...(execution.beginPromptWrite ? { beginPromptWrite: execution.beginPromptWrite } : {}),
+    onComposerUnobserved: () => {
+      composerUnobserved = true
+    }
   })
-  return delivered ? HANDED_TO_TERMINAL : NOT_DELIVERED
+  if (!delivered) {
+    return NOT_DELIVERED
+  }
+  return composerUnobserved
+    ? { outcome: 'handed-to-terminal', composerUnobserved: true }
+    : HANDED_TO_TERMINAL
 }
 
 /** The launch text that has to reach a surface, or undefined when there is none to deliver. */
@@ -126,7 +136,9 @@ function launchSubmitText(intent: AgentLaunchIntent): string | undefined {
  */
 export function argvLaunchPrompt(intent: AgentLaunchIntent): string | undefined {
   const text = launchSubmitText(intent)
-  return text && agentPromptRidesLaunchCommand(intent.agent) ? text : undefined
+  return text && intent.prompt?.transport !== 'paste' && agentPromptRidesLaunchCommand(intent.agent)
+    ? text
+    : undefined
 }
 
 /** The same question before a surface exists, where a structured create must carry no prompt: its

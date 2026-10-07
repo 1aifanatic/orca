@@ -28,6 +28,8 @@ function runtimeStub(overrides: {
   composerSignal?: boolean
   /** What a fresh read finds in the terminal's foreground; default: the agent. */
   foreground?: 'agent' | 'shell' | 'unknown'
+  /** How the composer wait ends when its signal does not fire: its budget, a dialog, a lost pane. */
+  composerEnds?: 'timeout' | 'agent_startup_dialog' | 'terminal_handle_stale'
 }) {
   const queued = [...(overrides.waits ?? [])]
   const waitForTerminal = vi.fn(
@@ -36,7 +38,7 @@ function runtimeStub(overrides: {
   )
   const waitForFreshWorkerComposer = vi.fn(async () => {
     if (!overrides.composerSignal) {
-      throw new Error('timeout')
+      throw new Error(overrides.composerEnds ?? 'timeout')
     }
     return COMPOSER_READY
   })
@@ -76,14 +78,14 @@ describe('writing a launch prompt into a terminal agent', () => {
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
-      agent: 'claude',
+      agent: 'codex',
       freshLaunch: true,
       text: 'do the thing'
     })
 
     expect(delivered).toBe(true)
-    // The composer signal did not fire within its budget, so the idle evidence decided.
-    expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith('term_1', 'claude', 8_000, {
+    // Codex is never written blind: its composer signal did not fire, so the idle evidence decided.
+    expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith('term_1', 'codex', 20_000, {
       requireComposerMarker: false,
       stopOnDialog: true
     })
@@ -104,8 +106,30 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(options.composerReady).toBe(true)
   })
 
+  it('writes once the budget is spent and the agent holds the pane, as the desktop paste did, and says its composer was never seen', async () => {
+    const stub = runtimeStub({})
+    const onComposerUnobserved = vi.fn()
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      freshLaunch: true,
+      text: 'do the thing',
+      onComposerUnobserved
+    })
+
+    expect(delivered).toBe(true)
+    expect(stub.waitForTerminal).not.toHaveBeenCalled()
+    expect(stub.readLaunchedAgentForeground).not.toHaveBeenCalled()
+    expect(stub.sendTerminalAgentPrompt.mock.calls[0]?.[2]?.composerReady).toBe(false)
+    expect(onComposerUnobserved).toHaveBeenCalledOnce()
+  })
+
   it('does not write when the composer never opened', async () => {
-    const stub = runtimeStub({ wait: { satisfied: false, status: 'blocked' } })
+    const stub = runtimeStub({
+      wait: { satisfied: false, status: 'blocked' },
+      composerEnds: 'agent_startup_dialog'
+    })
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
@@ -155,7 +179,7 @@ describe('writing a launch prompt into a terminal agent', () => {
   })
 
   it('does not fail the launch when the readiness wait throws', async () => {
-    const stub = runtimeStub({})
+    const stub = runtimeStub({ composerEnds: 'terminal_handle_stale' })
     stub.waitForTerminal.mockRejectedValueOnce(new Error('terminal_handle_stale'))
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
@@ -186,7 +210,10 @@ describe('writing a launch prompt into a terminal agent', () => {
 
   it('waits out a blocking prompt the user dismisses, then writes', async () => {
     const blocked = { satisfied: false, status: 'running', blockedReason: 'trust-prompt' }
-    const stub = runtimeStub({ waits: [blocked, blocked, { satisfied: true, status: 'running' }] })
+    const stub = runtimeStub({
+      waits: [blocked, blocked, { satisfied: true, status: 'running' }],
+      composerEnds: 'agent_startup_dialog'
+    })
     const clock = fakeClock()
 
     const delivered = await deliverTerminalAgentLaunchPrompt({
@@ -209,7 +236,8 @@ describe('writing a launch prompt into a terminal agent', () => {
 
   it('writes nothing into a blocking prompt still up when the budget ends', async () => {
     const stub = runtimeStub({
-      wait: { satisfied: false, status: 'running', blockedReason: 'trust-prompt' }
+      wait: { satisfied: false, status: 'running', blockedReason: 'trust-prompt' },
+      composerEnds: 'agent_startup_dialog'
     })
 
     const delivered = await deliverTerminalAgentLaunchPrompt({
@@ -317,14 +345,14 @@ describe('writing a launch prompt into a terminal agent', () => {
     }
   )
 
-  it('keeps the text when an agent shows no readiness evidence at all', async () => {
-    // Nothing is pasted blind.
+  it('keeps Codex’s text when it shows no readiness evidence at all', async () => {
+    // Codex is never pasted blind: it can hold provisional input it then discards.
     const stub = runtimeStub({ wait: { satisfied: false, status: 'running' } })
 
     const delivered = await deliverTerminalAgentLaunchPrompt({
       runtime: stub.runtime,
       handle: 'term_1',
-      agent: 'goose',
+      agent: 'codex',
       freshLaunch: true,
       text: 'do the thing'
     })
@@ -335,7 +363,8 @@ describe('writing a launch prompt into a terminal agent', () => {
   it('never lets a re-wait fall back to the terminal wait’s 5-minute default', async () => {
     // A late 1 s re-check sleep can land past the deadline; 0 would read as "use the default".
     const stub = runtimeStub({
-      wait: { satisfied: false, status: 'running', blockedReason: 'trust-prompt' }
+      wait: { satisfied: false, status: 'running', blockedReason: 'trust-prompt' },
+      composerEnds: 'agent_startup_dialog'
     })
     let now = 0
     const lateClock = {
@@ -412,3 +441,159 @@ function fakeClock() {
     }
   }
 }
+
+/** The guard the runtime runs before each write it makes. */
+async function runWriteGuard(options: Record<string, unknown>): Promise<void> {
+  const { beforeWrite } = options
+  if (typeof beforeWrite !== 'function') {
+    throw new Error('the write had no guard')
+  }
+  await beforeWrite('pty-1')
+}
+
+describe('the record write that marks the paste begun (W2)', () => {
+  /** A send that runs the write guard before the paste and before Enter, as the runtime does. */
+  function sendThroughGuard(events: string[]): SendFn {
+    return async (_handle, _text, options) => {
+      await runWriteGuard(options)
+      events.push('paste')
+      await runWriteGuard(options)
+      events.push('enter')
+      return { handle: 'term_1', accepted: true, bytesWritten: 12 }
+    }
+  }
+
+  it('commits after the guard passes and strictly before the first byte, once', async () => {
+    const events: string[] = []
+    const stub = runtimeStub({ composerSignal: true, send: sendThroughGuard(events) })
+    stub.readLaunchedAgentForeground.mockImplementation(async () => {
+      events.push('guard')
+      return 'agent'
+    })
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      freshLaunch: true,
+      text: 'fix the checks',
+      beginPromptWrite: async () => {
+        events.push('W2')
+        return 'began'
+      }
+    })
+    expect(delivered).toBe(true)
+    expect(events).toEqual(['guard', 'W2', 'paste', 'enter'])
+  })
+
+  it('writes nothing when another writer already began the prompt', async () => {
+    const events: string[] = []
+    const stub = runtimeStub({ composerSignal: true, send: sendThroughGuard(events) })
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      freshLaunch: true,
+      text: 'fix the checks',
+      beginPromptWrite: async () => 'taken'
+    })
+    expect(delivered).toBe(false)
+    expect(events).toEqual([])
+  })
+
+  it('still writes when the record cannot be written: bookkeeping never gates the prompt', async () => {
+    const events: string[] = []
+    const stub = runtimeStub({ composerSignal: true, send: sendThroughGuard(events) })
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      freshLaunch: true,
+      text: 'fix the checks',
+      beginPromptWrite: async () => {
+        throw new Error('SQLITE_BUSY')
+      }
+    })
+    expect(delivered).toBe(true)
+    expect(events).toEqual(['paste', 'enter'])
+  })
+})
+
+describe('the prompt text and the logs', () => {
+  it('never passes the prompt text to the console, on any path that logs', async () => {
+    const secret = 'SECRET-PROMPT-TEXT-1234'
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation(() => {})
+    )
+    const failures = [
+      runtimeStub({ wait: { satisfied: false, status: 'timeout' } }),
+      runtimeStub({
+        composerSignal: true,
+        send: async () => {
+          throw new Error('terminal_not_writable')
+        }
+      }),
+      runtimeStub({ composerSignal: true })
+    ]
+    for (const stub of failures) {
+      await deliverTerminalAgentLaunchPrompt({
+        runtime: stub.runtime,
+        handle: 'term_1',
+        agent: 'claude',
+        freshLaunch: true,
+        text: secret,
+        beginPromptWrite: async () => {
+          throw new Error('SQLITE_BUSY')
+        }
+      })
+    }
+    const logged = spies.flatMap((spy) => spy.mock.calls).map((args) => JSON.stringify(args))
+    expect(logged.length).toBeGreaterThan(0)
+    expect(logged.join('\n')).not.toContain(secret)
+    spies.forEach((spy) => spy.mockRestore())
+  })
+})
+
+describe('the write guard on a host that cannot find the agent in front (temporary, by caller)', () => {
+  function windowsHost() {
+    const stub = runtimeStub({ composerSignal: true, foreground: 'unknown' })
+    Object.assign(stub.runtime, { launchedAgentHostProvesAgent: () => false })
+    return stub
+  }
+  /** Runs the guard the runtime runs before its write, then writes. */
+  const sendThroughGuard: SendFn = async (_handle, _text, options) => {
+    await runWriteGuard(options)
+    return { handle: 'term_1', accepted: true, bytesWritten: 12 }
+  }
+
+  it('lets the desktop write unless a shell is proven there, as its paste did on main', async () => {
+    const stub = windowsHost()
+    stub.sendTerminalAgentPrompt.mockImplementation(sendThroughGuard)
+    await expect(
+      deliverTerminalAgentLaunchPrompt({
+        runtime: stub.runtime,
+        handle: 'term_1',
+        agent: 'claude',
+        freshLaunch: true,
+        text: 'fix the checks',
+        callerKey: 'trusted-local:desktop'
+      })
+    ).resolves.toBe(true)
+  })
+
+  it('keeps refusing for the phone and the CLI, as on main', async () => {
+    for (const callerKey of ['device-1', 'trusted-local:runtime', undefined]) {
+      const stub = windowsHost()
+      stub.sendTerminalAgentPrompt.mockImplementation(sendThroughGuard)
+      await expect(
+        deliverTerminalAgentLaunchPrompt({
+          runtime: stub.runtime,
+          handle: 'term_1',
+          agent: 'claude',
+          freshLaunch: true,
+          text: 'fix the checks',
+          ...(callerKey ? { callerKey } : {})
+        })
+      ).resolves.toBe(false)
+    }
+  })
+})

@@ -1,0 +1,161 @@
+/**
+ * The launch record's three writes around a first prompt the host pastes into a terminal agent.
+ *
+ *   W1 owe    the agent's terminal exists, before any wait: the prompt is owed, with its text
+ *   W2 begin  readiness and the write guard passed, immediately before the first byte: owed -> writing
+ *   W3 clear  the launch settled: the text is gone
+ *
+ * W2 is the boundary a restart reads. A row still `owed` wrote nothing, so its prompt can be pasted
+ * once; a row `writing` may have landed, so it is never pasted again and reads as unconfirmed.
+ */
+
+import {
+  agentSessionOperationKey,
+  type AgentLaunchOwedPrompt,
+  type AgentSessionOperationOutcome,
+  type AgentSessionOperationRow
+} from '../../shared/agent-session-operation-ledger'
+import type { TuiAgent } from '../../shared/tui-agent'
+import { isTuiAgent } from '../../shared/tui-agent-config'
+import type { AgentSessionRecordStore } from './agent-session-record-store'
+
+type OperationRows = { operations: Map<string, AgentSessionOperationRow> }
+type OperationRef = { callerKey: string; operationId: string }
+
+/** What W2 found: the write is this caller's, another writer began it, or the row cannot say. */
+export type OwedLaunchPromptWriteStart = 'began' | 'taken' | 'absent'
+
+/** The field as a row holds it, or null for a row that owes nothing or holds a value this build
+ *  cannot read. */
+export function readOwedLaunchPrompt(row: AgentSessionOperationRow): AgentLaunchOwedPrompt | null {
+  const value: unknown = row.promptDelivery
+  if (typeof value !== 'object' || value === null || !('state' in value)) {
+    return null
+  }
+  if (
+    value.state === 'owed' &&
+    'text' in value &&
+    typeof value.text === 'string' &&
+    'agent' in value &&
+    isTuiAgent(value.agent)
+  ) {
+    return { state: 'owed', text: value.text, agent: value.agent }
+  }
+  if (value.state === 'writing' && 'since' in value && typeof value.since === 'number') {
+    return { state: 'writing', since: value.since }
+  }
+  return null
+}
+
+function updateRow(
+  state: OperationRows,
+  ref: OperationRef,
+  update: (row: AgentSessionOperationRow) => AgentSessionOperationRow
+): AgentSessionOperationRow | null {
+  const key = agentSessionOperationKey(ref.callerKey, ref.operationId)
+  const row = state.operations.get(key)
+  if (!row) {
+    return null
+  }
+  const next = update(row)
+  state.operations = new Map(state.operations).set(key, next)
+  return next
+}
+
+/** W1. */
+export function oweLaunchPromptInto(
+  state: OperationRows,
+  ref: OperationRef,
+  owed: { text: string; agent: TuiAgent }
+): void {
+  updateRow(state, ref, (row) => ({ ...row, promptDelivery: { state: 'owed', ...owed } }))
+}
+
+/** W2: a compare-and-set, so of two writers only the first may write. */
+export function beginOwedLaunchPromptWriteInto(
+  state: OperationRows,
+  ref: OperationRef,
+  now: number
+): OwedLaunchPromptWriteStart {
+  const row = state.operations.get(agentSessionOperationKey(ref.callerKey, ref.operationId))
+  const owed = row ? readOwedLaunchPrompt(row) : null
+  if (!owed) {
+    return 'absent'
+  }
+  if (owed.state === 'writing') {
+    return 'taken'
+  }
+  // The text is no longer needed: nothing may write it again.
+  updateRow(state, ref, (current) => ({
+    ...current,
+    promptDelivery: { state: 'writing', since: now }
+  }))
+  return 'began'
+}
+
+/** W3. */
+export function clearOwedLaunchPromptInto(state: OperationRows, ref: OperationRef): void {
+  updateRow(state, ref, (row) => {
+    const { promptDelivery: _cleared, ...rest } = row
+    return rest
+  })
+}
+
+/** Unexpired rows that still owe a prompt or may be writing one. */
+export function listOwedLaunchPromptRows(
+  rows: Iterable<AgentSessionOperationRow>,
+  now: number
+): { row: AgentSessionOperationRow; owed: AgentLaunchOwedPrompt }[] {
+  const owing: { row: AgentSessionOperationRow; owed: AgentLaunchOwedPrompt }[] = []
+  for (const row of rows) {
+    const owed = row.expiresAt > now ? readOwedLaunchPrompt(row) : null
+    if (owed) {
+      owing.push({ row, owed })
+    }
+  }
+  return owing
+}
+
+/** What a launch's answer does to its first prompt: owes it (W1) or clears it (W3). */
+export type LaunchPromptSettlement = { owe: { text: string; agent: TuiAgent } } | 'clear'
+
+export function settleLaunchPromptInto(
+  state: OperationRows,
+  ref: OperationRef,
+  settlement: LaunchPromptSettlement
+): void {
+  if (settlement === 'clear') {
+    clearOwedLaunchPromptInto(state, ref)
+  } else {
+    oweLaunchPromptInto(state, ref, settlement.owe)
+  }
+}
+
+type OperationStore = Pick<AgentSessionRecordStore, 'transactOperations' | 'recordOperationOutcome'>
+
+/**
+ * A launch's answer and what becomes of its owed prompt, in one write: W1 with `owedPrompt`,
+ * W3 without it.
+ */
+export function recordLaunchOutcome(
+  store: OperationStore,
+  args: OperationRef & {
+    outcome: AgentSessionOperationOutcome
+    owedPrompt?: { text: string; agent: TuiAgent }
+  }
+): Promise<void> {
+  const { owedPrompt, ...settlement } = args
+  return store.recordOperationOutcome({
+    ...settlement,
+    launchPrompt: owedPrompt ? { owe: owedPrompt } : 'clear'
+  })
+}
+
+/** W2, committed before the caller writes a byte. */
+export function beginOwedLaunchPromptWrite(
+  store: Pick<AgentSessionRecordStore, 'transactOperations'>,
+  ref: OperationRef,
+  now: number
+): Promise<OwedLaunchPromptWriteStart> {
+  return store.transactOperations((draft) => beginOwedLaunchPromptWriteInto(draft, ref, now))
+}

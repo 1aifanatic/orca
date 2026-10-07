@@ -33,7 +33,6 @@ import {
   trackTerminalSpawnDispatch,
   type TerminalSpawnDispatch
 } from '../../../agent-launch/agent-launch-not-started'
-import type { OrcaRuntimeService } from '../../orca-runtime'
 import { defineMethod, type RpcContext } from '../core'
 import { admitAgentLaunchOperation, agentLaunchOperationCallerKey } from './agent-launch-replay'
 import {
@@ -54,6 +53,8 @@ import {
   selectAgentLaunchTabForCaller
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
+import { activeAgentLaunchesFor } from './agent-launch-active-operations'
+import { settleOwedLaunchPromptBeforeReplay } from './agent-launch-owed-prompt-host'
 import { clientRendersStructuredAgent } from './structured-agent-session-policy'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
 import {
@@ -61,6 +62,7 @@ import {
   withPlacement,
   type AgentLaunchView
 } from './agent-launch-tab-publication'
+import type { OwedLaunchPromptWriteStart } from '../../agent-launch-owed-prompt-record'
 
 /**
  * Advertising `agent.launch.v2` is a client's statement that it understands EITHER outcome — a
@@ -105,6 +107,8 @@ type ReplaySafeLaunch = {
    *  awaited: the ledger's transactions run in order, so the final settle still lands after it, and
    *  the prompt never waits on bookkeeping. */
   recordSurface: (provisional: AgentLaunchResult) => void
+  /** W2: queued behind `recordSurface`'s write, so it finds the prompt that write owed. */
+  beginPromptWrite: () => Promise<OwedLaunchPromptWriteStart>
 }
 
 async function runAgentLaunch(
@@ -127,6 +131,7 @@ async function runAgentLaunch(
     ),
     workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
     ...(callerRendersLaunchedChat(context, intent.agent) ? {} : { callerRendersStructured: false }),
+    ...(replaySafe ? { beginPromptWrite: replaySafe.beginPromptWrite } : {}),
     // The tab is shown as it is published, not after a prompt that can take a minute to land.
     onSurfacePublished: (surface) => {
       view.early?.surfacePublished(surface)
@@ -169,26 +174,6 @@ function runLegacyAgentLaunch(
   return execute()
 }
 
-type ActiveAgentLaunch = {
-  fingerprint: string
-  promise: Promise<AgentLaunchResult>
-}
-
-const activeAgentLaunchesByRuntime = new WeakMap<
-  OrcaRuntimeService,
-  Map<string, ActiveAgentLaunch>
->()
-
-function activeAgentLaunchesFor(runtime: OrcaRuntimeService): Map<string, ActiveAgentLaunch> {
-  const existing = activeAgentLaunchesByRuntime.get(runtime)
-  if (existing) {
-    return existing
-  }
-  const active = new Map<string, ActiveAgentLaunch>()
-  activeAgentLaunchesByRuntime.set(runtime, active)
-  return active
-}
-
 async function executeReplaySafeAgentLaunch(
   params: AgentLaunchParams & { operationId: string },
   context: RpcContext,
@@ -196,6 +181,11 @@ async function executeReplaySafeAgentLaunch(
 ): Promise<AgentLaunchResult> {
   // The tab is the host's first act: admission has a cold cost the user should not watch.
   const early = await publishEarlyTab(params, context)
+  // A replay of a launch whose host stopped mid-prompt answers once that prompt is settled.
+  await settleOwedLaunchPromptBeforeReplay(context.runtime, {
+    callerKey: agentLaunchOperationCallerKey(context),
+    operationId: params.operationId
+  }).catch(() => {})
   let admission: Awaited<ReturnType<typeof admitAgentLaunchOperation>>
   try {
     admission = await admitAgentLaunchOperation(
@@ -250,7 +240,8 @@ async function executeAdmittedAgentLaunch(
       attachOperationId: admission.attachOperationId,
       callerKey: admission.callerKey,
       terminalSpawn,
-      recordSurface: (provisional) => void settleQuietly(admission.record(provisional))
+      recordSurface: (provisional) => void settleQuietly(admission.record(provisional)),
+      beginPromptWrite: admission.beginPromptWrite
     })
   } catch (error) {
     if (view.early?.closedByUser()) {

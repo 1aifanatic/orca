@@ -316,6 +316,7 @@ async function startOrcadRuntime(
   runtime.rehydrateClientHostedBrowserPages()
 
   await runtime.refreshRestoredOrchestrationAuthority()
+  void resumeOwedAgentLaunchPrompts(runtime)
   await runtime.reconcileLegacyWorkerTerminals()
 
   // Recovery binds terminal and dispatch identities; only now can startup observations be fenced.
@@ -404,6 +405,7 @@ export {
   ORCAD_EXIT_CONFIGURATION,
   resolveOrcadExitCode
 } from './orcad-exit-code'
+import { resumeOwedAgentLaunchPrompts } from '../runtime/rpc/methods/agent-launch-owed-prompt-host'
 
 /** Bounded so a wedged transport cannot hold a supervisor's stop past its own deadline. */
 export { ORCAD_SHUTDOWN_DEADLINE_MS } from './orcad-lifecycle'

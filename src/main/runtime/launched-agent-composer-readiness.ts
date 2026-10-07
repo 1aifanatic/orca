@@ -152,8 +152,12 @@ export async function waitForLaunchedAgentComposer(
   runtime: LaunchedAgentReadinessRuntime,
   handle: string,
   agent: TuiAgent,
-  timeoutMs: number
-): Promise<RuntimeTerminalWait> {
+  timeoutMs: number,
+  /** Where the desktop's paste wrote blind once its budget ran out on a screen with no dialog, answer
+   *  `budget-spent` so the caller writes, its guard still finding the agent in front. Never Codex,
+   *  which can hold provisional input it then discards. */
+  { writeWhenBudgetSpent = false }: { writeWhenBudgetSpent?: boolean } = {}
+): Promise<RuntimeTerminalWait | 'budget-spent'> {
   if (getLaunchedAgentReadinessLane(agent) === 'composer-marker') {
     return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
   }
@@ -165,9 +169,17 @@ export async function waitForLaunchedAgentComposer(
       Math.min(timeoutMs, resolveDraftPasteReadyTimeoutMs(agent)),
       { requireComposerMarker: false, stopOnDialog: true }
     )
-  } catch {
+  } catch (error) {
     // Out of budget, a dialog up, or a pane it could not read: the idle wait answers each, and
     // throws for a handle that is gone.
+    if (
+      writeWhenBudgetSpent &&
+      agent !== 'codex' &&
+      error instanceof Error &&
+      error.message === 'timeout'
+    ) {
+      return 'budget-spent'
+    }
   }
   // Checked, where the desktop pasted blind: an agent that shows no readiness keeps its text.
   return runtime.waitForTerminal(handle, {

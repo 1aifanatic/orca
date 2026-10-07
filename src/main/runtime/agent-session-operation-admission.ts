@@ -21,6 +21,10 @@ import {
 import type { AgentSessionMutationEnvelope } from '../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStoreState } from './agent-session-store-state'
+import {
+  settleLaunchPromptInto,
+  type LaunchPromptSettlement
+} from './agent-launch-owed-prompt-record'
 
 export type AgentSessionOperationAdmission = {
   callerKey: string
@@ -218,7 +222,20 @@ export function admitAndClaimAgentSessionOperationInto(
 
 export function settleAgentSessionOperationInto(
   state: { operations: Map<string, AgentSessionOperationRow> },
-  args: { callerKey?: string; operationId: string; outcome: AgentSessionOperationOutcome }
+  args: {
+    callerKey?: string
+    operationId: string
+    outcome: AgentSessionOperationOutcome
+    /** A launch's owed first prompt, written with its answer (`agent-launch-owed-prompt-record`). */
+    launchPrompt?: LaunchPromptSettlement
+  }
 ): void {
   state.operations = settleAgentSessionOperation(state.operations, args)
+  if (args.launchPrompt && args.callerKey) {
+    settleLaunchPromptInto(
+      state,
+      { callerKey: args.callerKey, operationId: args.operationId },
+      args.launchPrompt
+    )
+  }
 }

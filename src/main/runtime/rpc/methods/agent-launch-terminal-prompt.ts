@@ -30,6 +30,8 @@ import {
   type LaunchedAgentReadinessRuntime
 } from '../../launched-agent-composer-readiness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
+import type { OwedLaunchPromptWriteStart } from '../../agent-launch-owed-prompt-record'
+import { DESKTOP_RPC_CALLER, rpcCallerOperationKey } from '../rpc-caller-identity'
 import {
   createLaunchedAgentWriteGuard,
   type LaunchedAgentWriteGuardRuntime
@@ -64,20 +66,64 @@ async function waitThroughBlockingPrompts(
   agent: TuiAgent,
   freshLaunch: boolean,
   clock: ReadinessClock
-): Promise<RuntimeTerminalWait | undefined> {
+): Promise<RuntimeTerminalWait | 'budget-spent' | undefined> {
   const deadline = clock.now() + AGENT_READY_TIMEOUT_MS
   for (;;) {
     // At least 1 ms: the terminal wait reads 0 as "use the 5-minute default", and a late sleep can
     // land past the deadline.
     const timeoutMs = Math.max(1, deadline - clock.now())
     const wait = freshLaunch
-      ? await waitForLaunchedAgentComposer(runtime, handle, agent, timeoutMs)
+      ? await waitForLaunchedAgentComposer(runtime, handle, agent, timeoutMs, {
+          writeWhenBudgetSpent: true
+        })
       : // A reused pane was not freshly launched: its composer marker may be long gone.
         await runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs })
-    if (!wait?.blockedReason || wait.satisfied || deadline - clock.now() <= BLOCKED_RECHECK_MS) {
+    if (
+      wait === 'budget-spent' ||
+      !wait?.blockedReason ||
+      wait.satisfied ||
+      deadline - clock.now() <= BLOCKED_RECHECK_MS
+    ) {
       return wait
     }
     await clock.sleep(BLOCKED_RECHECK_MS)
+  }
+}
+
+/**
+ * Temporary, until one rule serves every caller: on a host that cannot find the agent in front
+ * (Windows), the desktop writes unless a shell is proven there, as its own paste did on main; the
+ * phone and the CLI refuse, as they do on main.
+ */
+export function launchPromptGuardOnUnprovableHost(
+  callerKey: string | undefined
+): 'refuse' | 'write-unless-shell' {
+  return callerKey === rpcCallerOperationKey(DESKTOP_RPC_CALLER) ? 'write-unless-shell' : 'refuse'
+}
+
+/**
+ * The guard before every write, and W2 once, after the guard's first pass. A W2 that cannot be
+ * recorded still lets the write through: bookkeeping never gates the prompt. Only another writer
+ * that already began it stops this one.
+ */
+function beforeFirstByte(
+  guard: (ptyId: string) => Promise<void>,
+  beginPromptWrite: (() => Promise<OwedLaunchPromptWriteStart>) | undefined
+): (ptyId: string) => Promise<void> {
+  let began = !beginPromptWrite
+  return async (ptyId) => {
+    await guard(ptyId)
+    if (began || !beginPromptWrite) {
+      return
+    }
+    began = true
+    const start = await beginPromptWrite().catch((error: unknown) => {
+      console.warn('[agent-launch] could not record that its prompt write began', error)
+      return 'absent' as const
+    })
+    if (start === 'taken') {
+      throw new Error('agent_launch_prompt_write_taken')
+    }
   }
 }
 
@@ -103,13 +149,21 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   freshLaunch: boolean
   text: string
   clock?: ReadinessClock
+  /** W2 of `agent-launch-owed-prompt-record`, once the guard has passed and before the first byte. */
+  beginPromptWrite?: () => Promise<OwedLaunchPromptWriteStart>
+  /** Whose launch this is, which picks the guard's answer on a host that cannot find the agent. */
+  callerKey?: string
+  /** The text was written once the agent held the pane, its composer never seen ready. */
+  onComposerUnobserved?: () => void
 }): Promise<boolean> {
   if (args.text.trim().length === 0) {
     return false
   }
   // Before the paste and again before Enter, for a reused pane too: a ready signal can come from a
   // shell whose agent exited, so only a read that finds the agent in front lets the text through.
-  const guard = createLaunchedAgentWriteGuard(args.runtime, args.agent)
+  const guard = createLaunchedAgentWriteGuard(args.runtime, args.agent, {
+    unprovableHost: launchPromptGuardOnUnprovableHost(args.callerKey)
+  })
   try {
     const wait = await waitThroughBlockingPrompts(
       args.runtime,
@@ -120,7 +174,8 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
     )
     // An unsatisfied wait is a composer that never opened — a dialog left up, a dead process, an
     // agent that showed no readiness. Pasting anyway would answer whatever is on screen with it.
-    if (wait && !wait.satisfied) {
+    const composerSeen = wait !== 'budget-spent'
+    if (wait && wait !== 'budget-spent' && !wait.satisfied) {
       console.warn(
         `[agent-launch] the terminal agent did not become ready (${wait.status}); its launch prompt was not delivered`
       )
@@ -129,8 +184,8 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
     const sent = await args.runtime.sendTerminalAgentPrompt(args.handle, args.text, {
       inputKind: 'launch',
       // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
-      composerReady: args.freshLaunch,
-      beforeWrite: guard.beforeWrite,
+      composerReady: args.freshLaunch && composerSeen,
+      beforeWrite: beforeFirstByte(guard.beforeWrite, args.beginPromptWrite),
       // Paired: together these take the queued path, which settles an unobserved turn start into
       // an `input_accepted` receipt rather than raising it. Without the id the write is verified
       // strictly and a slow first turn throws.
@@ -140,6 +195,9 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       // agent does with the text is the pane's to show, and no receipt arm claims it.
       observationTimeoutMs: 0
     })
+    if (sent.accepted && !composerSeen) {
+      args.onComposerUnobserved?.()
+    }
     return sent.accepted
   } catch (error) {
     if (isAgentPromptStalledError(error)) {

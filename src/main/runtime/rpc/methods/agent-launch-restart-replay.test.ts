@@ -35,8 +35,16 @@ import {
 } from './agent-launch.test-fixture'
 
 const deliverTerminalPrompt = vi.hoisted(() =>
-  vi.fn(async (_args: { handle: string }): Promise<boolean> => true)
+  vi.fn(
+    async (_args: {
+      handle: string
+      freshLaunch?: boolean
+      text?: string
+      beginPromptWrite?: () => Promise<unknown>
+    }): Promise<boolean> => true
+  )
 )
+type PasteArgs = Parameters<typeof deliverTerminalPrompt>[0]
 vi.mock('./agent-launch-terminal-prompt', () => ({
   deliverTerminalAgentLaunchPrompt: deliverTerminalPrompt
 }))
@@ -155,12 +163,29 @@ async function launchUntilPasteStarts(runtime: AgentLaunchRuntimeStub): Promise<
   const pasteStarted = new Promise<void>((resolve) => {
     pasting = resolve
   })
-  deliverTerminalPrompt.mockImplementationOnce(() => {
+  deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
+    // Mid-paste: the write began, so the record says it may have landed.
+    await args.beginPromptWrite?.()
     pasting()
     return new Promise<boolean>(() => {})
   })
   void launch(runtime)
   await pasteStarted
+  await ledgerWritesQueuedBefore(store)
+}
+
+/** Launches with an agent that never shows ready: the host dies before a byte is written. */
+async function launchUntilAgentReadinessWait(runtime: AgentLaunchRuntimeStub): Promise<void> {
+  let waiting: () => void = () => {}
+  const waitStarted = new Promise<void>((resolve) => {
+    waiting = resolve
+  })
+  deliverTerminalPrompt.mockImplementationOnce(() => {
+    waiting()
+    return new Promise<boolean>(() => {})
+  })
+  void launch(runtime)
+  await waitStarted
   await ledgerWritesQueuedBefore(store)
 }
 
@@ -199,7 +224,11 @@ function dispatcherFor(runtime: AgentLaunchRuntimeStub): RpcDispatcher {
 
 beforeEach(async () => {
   deliverTerminalPrompt.mockReset()
-  deliverTerminalPrompt.mockResolvedValue(true)
+  // A paste records that its write began (W2) before its first byte, as the real one does.
+  deliverTerminalPrompt.mockImplementation(async (args: PasteArgs) => {
+    await args.beginPromptWrite?.()
+    return true
+  })
   directory = await mkdtemp(join(tmpdir(), 'orca-agent-launch-restart-'))
   store = await openTestAgentSessionRecordStore(directory)
   setAgentLaunchRecordStore(store)
@@ -227,6 +256,41 @@ describe('a host restart mid-launch', () => {
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 
+  it('pastes the prompt once into the surviving agent when the host died before the paste began', async () => {
+    await launchUntilAgentReadinessWait(hostRuntime())
+
+    await restartHost()
+    const restarted = restartedHostRuntime()
+
+    await expect(launch(restarted, PROMPTED_LAUNCH, UPGRADED_PHONE)).resolves.toEqual({
+      ...UNCONFIRMED_AGENT,
+      prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+    })
+    expect(restarted.createTerminal).not.toHaveBeenCalled()
+    expect(deliverTerminalPrompt).toHaveBeenCalledTimes(2)
+    expect(deliverTerminalPrompt).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        handle: ADOPTED_HANDLE,
+        freshLaunch: false,
+        text: 'fix the failing test'
+      })
+    )
+    // Settled: a later replay answers from the record, with nothing left to write.
+    await launch(restarted, PROMPTED_LAUNCH, UPGRADED_PHONE)
+    expect(deliverTerminalPrompt).toHaveBeenCalledTimes(2)
+  })
+
+  it('says the prompt was not delivered when the agent it was owed to did not survive', async () => {
+    await launchUntilAgentReadinessWait(hostRuntime())
+
+    await restartHost()
+
+    await expect(launch(hostRuntime(), PROMPTED_LAUNCH, UPGRADED_PHONE)).resolves.toMatchObject({
+      prompt: { delivery: 'submit', outcome: 'not-delivered' }
+    })
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+  })
+
   it('answers a caller that cannot read "unconfirmed" as before: unknown, never "not sent"', async () => {
     await launchUntilPasteStarts(hostRuntime())
 
@@ -247,7 +311,8 @@ describe('a host restart mid-launch', () => {
     const pasteReturned = new Promise<void>((resolve) => {
       pasted = resolve
     })
-    deliverTerminalPrompt.mockImplementationOnce(async () => {
+    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
+      await args.beginPromptWrite?.()
       pasted()
       return true
     })
@@ -317,12 +382,12 @@ describe('a host restart mid-launch', () => {
 
   it('lets the final write replace the first, never the other way round', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
-    deliverTerminalPrompt.mockImplementationOnce(
-      () =>
-        new Promise<boolean>((resolve) => {
-          releasePaste = resolve
-        })
-    )
+    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
+      await args.beginPromptWrite?.()
+      return new Promise<boolean>((resolve) => {
+        releasePaste = resolve
+      })
+    })
     const running = launch(hostRuntime())
     await untilRecorded('succeeded')
     releasePaste(true)
@@ -399,12 +464,12 @@ describe('a reply lost three times', () => {
 
   it('starts one agent when three retries arrive while the first is still running', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
-    deliverTerminalPrompt.mockImplementationOnce(
-      () =>
-        new Promise<boolean>((resolve) => {
-          releasePaste = resolve
-        })
-    )
+    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
+      await args.beginPromptWrite?.()
+      return new Promise<boolean>((resolve) => {
+        releasePaste = resolve
+      })
+    })
     const host = hostRuntime()
     const attempts = [launch(host), launch(host), launch(host)]
     await untilRecorded('succeeded')
@@ -442,7 +507,10 @@ describe('the desktop launches replay-safely', () => {
       method: 'agent.launchReplay',
       params: PROMPTED_LAUNCH
     }
-    deliverTerminalPrompt.mockImplementationOnce(() => new Promise<boolean>(() => {}))
+    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
+      await args.beginPromptWrite?.()
+      return new Promise<boolean>(() => {})
+    })
     void dispatcherFor(hostRuntime()).dispatch(request, DESKTOP_IPC)
     const deadline = Date.now() + 2_000
     while (row('trusted-local:desktop')?.outcome.status !== 'succeeded') {
@@ -519,12 +587,12 @@ describe('a caller cannot claim an identity', () => {
 describe('the ledger stays bounded', () => {
   it('keeps one row per launch, retained from admission, across both writes', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
-    deliverTerminalPrompt.mockImplementationOnce(
-      () =>
-        new Promise<boolean>((resolve) => {
-          releasePaste = resolve
-        })
-    )
+    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
+      await args.beginPromptWrite?.()
+      return new Promise<boolean>((resolve) => {
+        releasePaste = resolve
+      })
+    })
     const running = launch(hostRuntime())
     await untilRecorded('succeeded')
     const afterFirstWrite = row()

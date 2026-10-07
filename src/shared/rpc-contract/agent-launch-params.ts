@@ -74,7 +74,13 @@ export const AgentLaunchFields = z.object({
   prompt: z
     .object({
       text: z.string(),
-      delivery: z.enum(['submit', 'draft'])
+      delivery: z.enum(['submit', 'draft']),
+      /**
+       * Temporary: `paste` keeps the text off the launch line and pastes it once the agent is ready,
+       * as the desktop's AI buttons deliver on main. Gone once one host delivery rule serves every
+       * caller. Absent: the host's own rule.
+       */
+      transport: z.enum(['paste']).optional()
     })
     .optional(),
   /** A chat seeds the options it accepts; a terminal launch reads the model, effort and mode. */

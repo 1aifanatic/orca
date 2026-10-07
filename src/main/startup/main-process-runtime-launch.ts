@@ -42,6 +42,7 @@ import { logStartupMilestone } from './startup-diagnostics'
 import { scheduleAgentLaunchRecordWarmup } from './agent-launch-record-warmup'
 import { emitServeBrowserIdentityActionLine } from '../server/serve-stdout-boundary'
 import { getBrowserIdentityModeStatus } from '../browser/browser-identity-mode-store'
+import { resumeOwedAgentLaunchPrompts } from '../runtime/rpc/methods/agent-launch-owed-prompt-host'
 
 type RuntimeService = NonNullable<typeof state.runtime>
 
@@ -148,6 +149,7 @@ async function launchServeMode(
     { onCodexHomePtySpawned: handleCodexHomePtySpawned, onPtyExit: handlePtyExit }
   )
   await runtime.refreshRestoredOrchestrationAuthority()
+  void resumeOwedAgentLaunchPrompts(runtime)
   await runtime.reconcileLegacyWorkerTerminals()
   // Why: headless servers can't mount <webview> panes; use offscreen WebContents, gated on a real display so browser.headless.v1 stays honest.
   if (state.headlessBrowserDisplayAvailable) {

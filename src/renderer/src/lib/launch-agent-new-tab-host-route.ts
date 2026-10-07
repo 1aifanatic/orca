@@ -7,13 +7,17 @@ import {
   type HostAgentLaunchArgs,
   type HostAgentLaunchOutcome
 } from '@/lib/agent-launch-through-host'
-import { pasteAgentLaunchPromptOnceReady } from '@/lib/launch-agent-tab-prompt-paste'
+import { useAppStore } from '@/store'
+import { createPasteReadinessTimeoutNotice } from '@/lib/launch-agent-paste-timeout-notice'
+import { seedCommandCodeSubmittedPromptStatus } from '@/lib/command-code-prompt-status-seed'
+import { isNativeChatSupportedAgent } from '@/lib/native-chat-supported-agent'
+import type { AgentLaunchPromptReceipt } from '../../../shared/agent-launch-intent'
+import type { TuiAgent } from '../../../shared/tui-agent'
 
 /**
  * Whether a new agent tab starts through the host's `agent.launch`: an AI button's launch, whose
- * prompt is pasted once the agent is ready, in a terminal this window makes. Temporary: the window
- * keeps pasting the prompt as main does until the host delivers it. A typed prompt (`auto-submit`,
- * `draft`) keeps main's launch, and so does a launch the host could turn into a chat.
+ * prompt is pasted once the agent is ready, in a terminal this window makes. A typed prompt
+ * (`auto-submit`, `draft`) keeps main's launch, and so does a launch the host could turn into a chat.
  */
 export function newTabPromptLaunchesThroughHost(args: {
   promptDelivery: 'auto-submit' | 'draft' | 'submit-after-ready'
@@ -47,17 +51,60 @@ function showLaunchNotStartedNotice(outcome: HostAgentLaunchOutcome, prompt: str
   )
 }
 
+/** The chat view's copy of a submitted prompt, as main's paste seeds it at the launch. */
+function seedChatCopy(tabId: string, agent: TuiAgent, text: string): boolean {
+  if (text.trim().length === 0 || !isNativeChatSupportedAgent(agent)) {
+    return false
+  }
+  useAppStore.getState().seedNativeChatLaunchPrompt({ tabId, agent, text, createdAt: Date.now() })
+  return true
+}
+
 /**
- * Starts the agent through the host with no prompt and pastes the prompt as main does. Readiness is
- * watched from the moment the tab's terminal exists, as main watches it, so an agent that is ready
- * before the host answers is not missed; the paste is written only once the host has started its
- * agent in this tab, so it never meets a shell this window spawned.
+ * What the host's answer means for the click: the follow-ups run on a prompt it handed to the
+ * agent, and a prompt it could not hand over gets main's own "wasn't sent" notice.
+ */
+function settleHostPrompt(
+  args: HostAgentLaunchArgs & {
+    onPromptDelivered?: () => void
+    onPromptDeliveryUnconfirmed?: () => void
+  },
+  tabId: string,
+  receipt: AgentLaunchPromptReceipt | undefined,
+  seeded: boolean
+): { delivered: boolean; failureNotified: boolean } {
+  if (receipt?.outcome === 'handed-to-terminal') {
+    if (receipt.composerUnobserved) {
+      args.onPromptDeliveryUnconfirmed?.()
+    }
+    if (args.agent === 'command-code') {
+      // Command Code has no prompt-submit hook; seed working when the prompt is submitted.
+      seedCommandCodeSubmittedPromptStatus(args.worktreeId, tabId, args.prompt)
+    }
+    args.onPromptDelivered?.()
+    return { delivered: true, failureNotified: false }
+  }
+  if (seeded) {
+    useAppStore.getState().markNativeChatLaunchPromptFailed(tabId)
+  }
+  const notice = createPasteReadinessTimeoutNotice({
+    worktreeId: args.worktreeId,
+    tabId,
+    agent: args.agent,
+    submitted: true
+  })
+  notice.onTimeout()
+  return { delivered: false, failureNotified: notice.wasNotified() }
+}
+
+/**
+ * Starts the agent through the host, which also pastes and submits the prompt once the agent is
+ * ready, as main's window did, and answers how it went. The follow-ups run on that answer.
  */
 export function launchNewTabPromptThroughHost(
   args: HostAgentLaunchArgs & {
     /** What is pasted, which can differ from the prompt the user wrote. */
     pasteContent: string
-    submit: boolean
     onPromptDelivered?: () => void
     onPromptDeliveryUnconfirmed?: () => void
   }
@@ -65,26 +112,17 @@ export function launchNewTabPromptThroughHost(
   tabId: string
   promptDeliveryResult: Promise<{ delivered: boolean; failureNotified: boolean }>
 } {
-  const { pasteContent, submit, onPromptDelivered, onPromptDeliveryUnconfirmed, ...launch } = args
-  const { tabId, outcome } = launchAgentThroughHost(launch)
-  // Only the host's agent can fill this tab's terminal while the window's own spawn is held.
-  const pasted = pasteAgentLaunchPromptOnceReady({
-    worktreeId: args.worktreeId,
-    tabId,
-    agent: args.agent,
-    content: pasteContent,
-    submit,
-    prompt: args.prompt,
-    sendGate: outcome.then(
-      (launched) => launched.kind === 'started',
-      () => false
-    ),
-    ...(onPromptDelivered ? { onPromptDelivered } : {}),
-    ...(onPromptDeliveryUnconfirmed ? { onPromptDeliveryUnconfirmed } : {})
-  })
+  const {
+    pasteContent,
+    onPromptDelivered: _delivered,
+    onPromptDeliveryUnconfirmed: _u,
+    ...launch
+  } = args
+  const { tabId, outcome } = launchAgentThroughHost({ ...launch, hostPrompt: pasteContent })
+  const seeded = seedChatCopy(tabId, args.agent, pasteContent)
   const promptDeliveryResult = outcome.then((launched) => {
     if (launched.kind === 'started') {
-      return pasted
+      return settleHostPrompt(args, tabId, launched.prompt, seeded)
     }
     // The pane, or this notice for a tab that went, already says why: never a second notice.
     showLaunchNotStartedNotice(launched, args.prompt)
