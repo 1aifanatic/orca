@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import {
   STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
+import type { GlobalSettings } from '../../../shared/global-settings-types'
 import type { RuntimeEnvironmentStatus } from '../../../shared/runtime-host-status'
 import type { TuiAgent } from '../../../shared/tui-agent'
 
@@ -68,8 +69,11 @@ function pairedStatus(runtimeId: string): RuntimeEnvironmentStatus {
   }
 }
 
+type RouteSettings = Partial<typeof SETTINGS> &
+  Partial<Pick<GlobalSettings, 'agentCmdOverrides' | 'agentDefaultEnv'>>
+
 function store(
-  overrides: { settings?: Partial<typeof SETTINGS>; runtimeId?: string } = {}
+  overrides: { settings?: RouteSettings; runtimeId?: string } = {}
 ): AgentLaunchRouteStore {
   const state = {
     settings: { ...SETTINGS, ...overrides.settings },
@@ -140,15 +144,14 @@ describe('OpenCode with its Command and environment set (live QA run 5)', () => 
     agents: [...LISTS_GROK.agents, { agent: 'opencode', capabilities: {} }]
   }
   // The rig's settings: a private binary named twice, which must not decide the surface.
-  const withOverrides = (): AgentLaunchRouteStore => {
-    const settings = {
-      ...SETTINGS,
-      agentCmdOverrides: { opencode: '/rig/oc-prefix/bin/opencode' },
-      agentDefaultEnv: { opencode: { PATH: '/rig/oc-prefix/bin:/usr/bin:/bin' } }
-    }
-    return { ...store(), settings }
-  }
-  let warn: ReturnType<typeof vi.spyOn>
+  const withOverrides = (): AgentLaunchRouteStore =>
+    store({
+      settings: {
+        agentCmdOverrides: { opencode: '/rig/oc-prefix/bin/opencode' },
+        agentDefaultEnv: { opencode: { PATH: '/rig/oc-prefix/bin:/usr/bin:/bin' } }
+      }
+    })
+  let warn: MockInstance<typeof console.warn>
   beforeEach(() => {
     warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
