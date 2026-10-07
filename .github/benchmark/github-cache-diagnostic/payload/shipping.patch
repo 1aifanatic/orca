@@ -1,0 +1,85 @@
+diff --git a/src/main/github/client-merge-queue-auto-merge.test.ts b/src/main/github/client-merge-queue-auto-merge.test.ts
+--- a/src/main/github/client-merge-queue-auto-merge.test.ts
++++ b/src/main/github/client-merge-queue-auto-merge.test.ts
+@@ -1,4 +1,5 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { prStackSummaryCache } from './client/lookup/pr-stack-summary-cache'
+ import type * as GithubApiRepositoryModule from './github-api-repository'
+ import type * as GitHubEnterpriseRepositoryModule from './github-enterprise-repository'
+ 
+@@ -47,12 +48,71 @@
+   acquireMock
+ } = clientMocks
+ 
++const observedCaseName = 'caches unknown merge queue probes after GraphQL failures'
++const readObservedStackCache = () => ({
++  size: prStackSummaryCache.size,
++  entries: [...prStackSummaryCache]
++    .filter(([key]) => key.endsWith('#7'))
++    .map(([key, entry]) => ({
++      key,
++      ok: entry.ok,
++      expiresAt: entry.expiresAt,
++      hasStack: entry.ok ? entry.value !== undefined : false
++    }))
++})
++let observedCaseStart: ReturnType<typeof readObservedStackCache> | undefined
++
+ describe('GitHub GraphQL rate-limit guard', () => {
+-  beforeEach(() => {
++  beforeEach(({ task }) => {
+     resetGraphQLRateLimitGuardMocks(clientMocks)
+-  })
+-
+-  afterEach(() => vi.restoreAllMocks())
++    if (task.name === observedCaseName) {
++      observedCaseStart = readObservedStackCache()
++      console.log(
++        'ORCA_GH_CACHE_DIAGNOSTIC ' +
++          JSON.stringify({
++            stage: 'start',
++            caseName: task.name,
++            cache: observedCaseStart
++          })
++      )
++    }
++  })
++
++  afterEach(async ({ task }) => {
++    vi.restoreAllMocks()
++    if (task.name === observedCaseName) {
++      const calls = await Promise.all(
++        ghExecFileAsyncMock.mock.results.map(async (result, index) => {
++          const args = ghExecFileAsyncMock.mock.calls[index]?.[0] ?? []
++          const commandClass = args.includes('graphql')
++            ? 'graphql'
++            : args.includes('api')
++              ? 'rest-api'
++              : args.includes('view')
++                ? 'pr-view'
++                : 'other'
++          const settled = await Promise.resolve(result.value).then(
++            (value) => ({ status: 'fulfilled', stdout: value?.stdout ?? null }),
++            (error: unknown) => ({
++              status: 'rejected',
++              message: error instanceof Error ? error.message : null
++            })
++          )
++          return { index, commandClass, args, resultType: result.type, settled }
++        })
++      )
++      console.log(
++        'ORCA_GH_CACHE_DIAGNOSTIC ' +
++          JSON.stringify({
++            stage: 'end',
++            caseName: task.name,
++            initialCache: observedCaseStart,
++            finalCache: readObservedStackCache(),
++            calls
++          })
++      )
++    }
++  })
+ 
+   it('uses explicit PR repo for merge and title mutations', async () => {
+     ghExecFileAsyncMock

@@ -1,0 +1,22 @@
+{
+  "sourceHead": "29ad785b1cd000b580ba3b3da87affb835a601ad",
+  "target": "src/main/github/client-merge-queue-auto-merge.test.ts",
+  "beforeSha256": "c1e9b770af5394dff028b65d8328299bb2e0da0934d94b0502b5e220b09ccc82",
+  "afterSha256": "a7ea78c80ce89e2ee9370644efbb4fa628ef17512848f98b0a041852d715f1f6",
+  "unformattedCandidateSha256": "3c4fff932ff740bc7689a554b2beffb0d3ae73f96756923c72b9154bd14135c9",
+  "observerRemovalRecoversOriginalWholeFile": true,
+  "formattedAstAndOriginalCallbacksProofPending": false,
+  "allOriginalAssertionsAndTestBodiesUntouched": true,
+  "noCacheResetOrProductionChange": true,
+  "canonicalOwner": "client/lookup/pr-stack-summary-cache.ts exported prStackSummaryCache, already reached through original public facade",
+  "observerState": "Per-case copied diagnostic snapshot only; no parallel cache owner.",
+  "observationSchedule": "Existing reset first, passive cache snapshot; original afterEach restoration first, then only exact target awaits its already immediate mock response promises and captures actual settled stdout/rejection plus command arguments.",
+  "privacy": "Only existing mocked gh argv and settled test constant payloads; no real process env/arguments/credentials.",
+  "originalRejectedQualificationRun": 37685804504,
+  "causeUnconfirmed": true,
+  "noPerformanceClaim": true,
+  "testsExecuted": false,
+  "formattedAstAndOriginalCallbacksProofSha256": "630085f01af7a8c3ef121419558c62b532c92791d753f7ce6b4ab59ebfe71b28",
+  "all15OriginalCallbacksByteExact": true,
+  "literalRegistrationCountIsNotRuntimeCount": true
+}
