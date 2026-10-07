@@ -111,7 +111,9 @@ function createWorktree(
     createdWithAgent: undefined,
     resolveRemoteTrackingBase: mocks.remoteBase,
     hasRemoteTrackingRef: mocks.hasRemoteRef,
-    refreshRemoteTrackingBase: mocks.refresh,
+    // Why: a vi.fn marks the promise it returns as handled; a fresh promise keeps
+    // an unawaited refresh rejection visible to the unhandled-rejection check.
+    refreshRemoteTrackingBase: async (...refreshArgs) => await mocks.refresh(...refreshArgs),
     fetchRemote: mocks.fetch,
     onWorktreeMetadataPersisted: () => undefined,
     rearm,
@@ -278,8 +280,7 @@ describe('runtime create Git priority', () => {
       )
       expect(mocks.canCheckout).toHaveBeenCalledWith('/repo', 'app', 'main', options)
       expect(mocks.branchConflict).toHaveBeenCalledWith('/repo', 'app', 'main', options, undefined)
-      // No collision, so no PR lookup; its routing is pinned by the collision case below.
-      expect(mocks.githubPr).not.toHaveBeenCalled()
+      expect(mocks.githubPr).toHaveBeenCalledWith('/repo', 'app', options)
       expect(mocks.remoteBase).toHaveBeenCalledWith('/repo', 'main', options)
       expect(mocks.hasBase).toHaveBeenCalledWith('/repo', 'main', options)
       expect(mocks.consume).toHaveBeenCalledWith(expect.objectContaining({ options }))
@@ -350,10 +351,51 @@ describe('runtime create Git priority', () => {
 })
 
 describe('runtime create PR conflict probe', () => {
-  it('skips the PR lookup when the first name has no branch collision', async () => {
+  const remoteTrackingBase = {
+    remote: 'origin',
+    branch: 'main',
+    base: 'origin/main',
+    ref: 'refs/remotes/origin/main'
+  }
+
+  beforeEach(() => {
+    mocks.branchName.mockImplementation(async (_path, _override, name: string) => name)
+  })
+
+  it('runs the first name PR lookup while the base fetch is still in flight', async () => {
+    mocks.remoteBase.mockResolvedValue(remoteTrackingBase)
+    let finishFetch!: () => void
+    mocks.refresh.mockReturnValue(
+      new Promise((resolve) => {
+        finishFetch = () => resolve({ ok: true })
+      })
+    )
+    let fetchPendingAtLookup = false
+    mocks.githubPr.mockImplementation(async () => {
+      fetchPendingAtLookup = mocks.refresh.mock.calls.length === 1
+      finishFetch?.()
+      return null
+    })
+
     await createWorktree()
 
-    expect(mocks.githubPr).not.toHaveBeenCalled()
+    expect(fetchPendingAtLookup).toBe(true)
+    expect(mocks.githubPr).toHaveBeenCalledWith('/repo', 'app', {})
+    expect(mocks.consume).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branch: 'app',
+        options: expect.objectContaining({ remoteTrackingBase })
+      })
+    )
+  })
+
+  it('suffixes past a PR on the first name', async () => {
+    mocks.githubPr.mockResolvedValueOnce({ number: 7, state: 'closed' }).mockResolvedValue(null)
+
+    await createWorktree()
+
+    expect(mocks.githubPr.mock.calls.map(([, branch]) => branch)).toEqual(['app', 'app-2'])
+    expect(mocks.consume).toHaveBeenCalledWith(expect.objectContaining({ branch: 'app-2' }))
   })
 
   it.each([undefined, 'Ubuntu'])(
@@ -361,21 +403,16 @@ describe('runtime create PR conflict probe', () => {
     async (wslDistro) => {
       const routing = wslDistro ? { wslDistro } : {}
       mocks.routing.mockReturnValue(routing)
-      mocks.branchName.mockImplementation(async (_path, _override, name: string) => name)
       mocks.branchConflict.mockResolvedValueOnce('local').mockResolvedValue(null)
 
       await createWorktree()
 
       expect(mocks.githubPr).toHaveBeenCalledOnce()
-      const [repoPath, branch, options] = mocks.githubPr.mock.calls[0] ?? []
-      expect(repoPath).toBe('/repo')
-      expect(branch).toBe('app-2')
-      expect(options).toEqual(routing)
+      expect(mocks.githubPr).toHaveBeenCalledWith('/repo', 'app-2', routing)
     }
   )
 
   it('skips a later name that already has a PR', async () => {
-    mocks.branchName.mockImplementation(async (_path, _override, name: string) => name)
     mocks.branchConflict.mockResolvedValueOnce('local').mockResolvedValue(null)
     mocks.githubPr.mockResolvedValueOnce({ number: 7, state: 'closed' }).mockResolvedValue(null)
 
@@ -383,5 +420,24 @@ describe('runtime create PR conflict probe', () => {
 
     expect(mocks.githubPr.mock.calls.map(([, branch]) => branch)).toEqual(['app-2', 'app-3'])
     expect(mocks.consume).toHaveBeenCalledWith(expect.objectContaining({ branch: 'app-3' }))
+  })
+
+  it('reports the naming failure when the started base fetch also fails', async () => {
+    mocks.remoteBase.mockResolvedValue(remoteTrackingBase)
+    mocks.hasRemoteRef.mockResolvedValue(false)
+    mocks.hasBase.mockResolvedValue(false)
+    mocks.refresh.mockRejectedValue(new Error('offline'))
+    mocks.branchConflict.mockResolvedValue('local')
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      await expect(createWorktree()).rejects.toThrow('Branch "app-')
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(mocks.refresh).toHaveBeenCalledOnce()
+      expect(unhandled).not.toHaveBeenCalled()
+      expect(mocks.consume).not.toHaveBeenCalled()
+    } finally {
+      process.off('unhandledRejection', unhandled)
+    }
   })
 })

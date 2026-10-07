@@ -400,9 +400,14 @@ describe('OrcaRuntimeService', () => {
         ['rev-parse', '--verify', '--quiet', 'refs/heads/runtime-wsl^{commit}'],
         { cwd: TEST_REPO_PATH, wslDistro: 'Ubuntu' }
       )
-      // Why: no branch collision, so no PR lookup; its WSL routing is pinned by
-      // the collision case in runtime-local-worktree-create.test.ts.
-      expect(getPRForBranchMock).not.toHaveBeenCalled()
+      expect(getPRForBranchMock).toHaveBeenCalledWith(
+        TEST_REPO_PATH,
+        'runtime-wsl',
+        null,
+        null,
+        null,
+        { localGitExecOptions: { wslDistro: 'Ubuntu' } }
+      )
       expect(addWorktree).toHaveBeenCalledWith(
         TEST_REPO_PATH,
         createdWorktree.path,

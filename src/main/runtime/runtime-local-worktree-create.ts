@@ -17,7 +17,10 @@ import type { RemoteFetchResult, RemoteTrackingBase } from './runtime-remote-fet
 import type { HostedReviewExecutionOptions } from '../source-control/hosted-review-git-options'
 import { hasLocalWorktreeBaseRef } from '../git/worktree-base-ref-probe'
 import { resolveRuntimeLocalWorktreeCreateCandidate } from './runtime-local-worktree-create-candidate'
-import { createRuntimeLocalGitWorktree } from './runtime-local-git-worktree-create'
+import {
+  createRuntimeLocalGitWorktree,
+  startRuntimeLocalBaseRefRefresh
+} from './runtime-local-git-worktree-create'
 import { materializeRuntimeLocalWorktree } from './runtime-local-worktree-materialization'
 import type { PreparationRearmHolder } from '../worktree-create-preparation'
 import {
@@ -94,6 +97,16 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
       'Could not resolve a default base ref for this repo. Pass an explicit --base and try again.'
     )
   }
+  const baseRefRefresh = await startRuntimeLocalBaseRefRefresh({
+    repo,
+    baseBranch,
+    localWorktreeGitOptions: worktreeGitOptions,
+    resolveRemoteTrackingBase: args.resolveRemoteTrackingBase,
+    hasRemoteTrackingRef: args.hasRemoteTrackingRef,
+    refreshRemoteTrackingBase: args.refreshRemoteTrackingBase,
+    fetchRemote: args.fetchRemote,
+    timing: args.timing
+  })
   const candidate = await args.timing.time('resolve_name', () =>
     resolveRuntimeLocalWorktreeCreateCandidate({
       request,
@@ -120,10 +133,7 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     effectiveSanitizedName: candidate.effectiveSanitizedName,
     checkoutExistingBranch: candidate.checkoutExistingBranch,
     localWorktreeGitOptions: worktreeGitOptions,
-    resolveRemoteTrackingBase: args.resolveRemoteTrackingBase,
-    hasRemoteTrackingRef: args.hasRemoteTrackingRef,
-    refreshRemoteTrackingBase: args.refreshRemoteTrackingBase,
-    fetchRemote: args.fetchRemote,
+    baseRefRefresh,
     rearm: args.rearm,
     timing: args.timing
   })
