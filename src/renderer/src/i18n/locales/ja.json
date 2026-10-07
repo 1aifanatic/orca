@@ -17654,6 +17654,9 @@
         "providerRateLimited": "{{agent}} はレート制限を受けているため、再試行しています。",
         "providerRetrying": "{{agent}} で一時的な問題が発生したため、再試行しています。",
         "providerRetryingQuoted": "{{agent}} は再試行しています: {{detail}}。",
+        "providerRetryNumber": "{{attempt}} 回目の再試行です。",
+        "providerRetryNumberOf": "{{maxRetries}} 回中 {{attempt}} 回目の再試行です。",
+        "providerRetryLastError": "直近のエラー: {{detail}}。",
         "previousExitUnverifiable": "以前の {{agent}} を停止できませんでした。"
       },
       "writeNotice": {
@@ -17782,6 +17785,10 @@
         "viewAttachment": "画像を見る",
         "imagePreview": "フルサイズの画像プレビュー",
         "imagePreviewUnavailable": "プレビューは利用できません",
+        "copyImage": "画像をコピー",
+        "copyImageFailed": "画像をコピーできませんでした",
+        "copyImageTooLarge": "画像が大きすぎるためコピーできません。",
+        "imageCopied": "画像をコピーしました",
         "workspaceAttachmentMismatch": "ファイルはソースワークスペースにのみ添付できます。",
         "attachmentOwnerChanged": "このワークスペースは接続中にホストを変更しました。ファイルを再度ドロップしてください。",
         "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。",
@@ -17895,6 +17902,7 @@
         "toggleDetails": "ターンの詳細を切り替えます"
       },
       "jumpToLatest": "最新にジャンプ",
+      "transcriptLabel": "会話",
       "toggle": {
         "showTerminal": "ターミナルを表示",
         "showChat": "チャットビューを表示"
@@ -18086,6 +18094,10 @@
         "used": "コンテキスト: {{used}} トークン使用済み、最後の応答から推定。",
         "unreported": "このセッションではコンテキストの使用量を表示できません。"
       },
+      "agentMessage": {
+        "messageFrom": "送信元:",
+        "unnamedSender": "Agent"
+      },
       "goal": {
         "placeholder": "目標を説明し、最良の結果を得るために測定可能な結果を​​定義する",
         "clear": "明確な目標",
@@ -18138,7 +18150,8 @@
         "queuePausedRestarted": "Orca が再起動したため、キューを一時停止しました",
         "queuePausedCleared": "会話を消去したため、キューを一時停止しました",
         "queuePaused": "キューは一時停止中です",
-        "resume": "再開"
+        "resume": "再開",
+        "from": "送信元: {{names}}"
       },
       "thought": "考えました",
       "thoughtForDuration": "{{duration}} 考えました",

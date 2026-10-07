@@ -17619,6 +17619,9 @@
         "providerRateLimited": "{{agent}} alcanzó un límite de solicitudes y está reintentando.",
         "providerRetrying": "{{agent}} tuvo un problema temporal y está reintentando.",
         "providerRetryingQuoted": "{{agent}} está reintentando: {{detail}}.",
+        "providerRetryNumber": "Reintento {{attempt}}.",
+        "providerRetryNumberOf": "Reintento {{attempt}} de {{maxRetries}}.",
+        "providerRetryLastError": "Último error: {{detail}}.",
         "previousExitUnverifiable": "No se pudo detener la ejecución anterior de {{agent}}."
       },
       "writeNotice": {
@@ -17693,6 +17696,10 @@
         "localAttachmentUnsupported": "Los archivos adjuntos locales no están disponibles para sesiones remotas.",
         "removeAttachment": "Quitar archivo adjunto",
         "pastedImageLabel": "Imagen pegada",
+        "copyImage": "Copiar imagen",
+        "copyImageFailed": "No se pudo copiar la imagen",
+        "copyImageTooLarge": "La imagen es demasiado grande para copiarla.",
+        "imageCopied": "Imagen copiada",
         "draftNotSaved": "Este borrador aún no se ha podido guardar. Orca lo sigue intentando.",
         "imageNotBroughtBack": "No se pudo recuperar la imagen {{name}} con este borrador. Vuelve a adjuntarla o quítala.",
         "pastedImageNotBroughtBack": "No se pudo recuperar esta imagen pegada con este borrador. Quítala y vuelve a pegarla si aún la necesitas.",
@@ -17860,6 +17867,7 @@
         "toggleDetails": "Alternar detalles del turno"
       },
       "jumpToLatest": "Saltar a lo último",
+      "transcriptLabel": "Conversación",
       "toggle": {
         "showTerminal": "Mostrar terminal",
         "showChat": "Mostrar vista de chat"
@@ -17978,7 +17986,8 @@
         "queuePausedRestarted": "Cola en pausa porque Orca se reinició",
         "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
-        "resume": "Reanudar"
+        "resume": "Reanudar",
+        "from": "De {{names}}"
       },
       "thought": "Pensó",
       "thoughtForDuration": "Pensó durante {{duration}}",
@@ -18090,6 +18099,10 @@
         "summary": "Contexto: {{used}} / {{window}} tokens ({{percent}} %), estimado a partir de la última respuesta.",
         "used": "Contexto: {{used}} tokens usados, estimado a partir de la última respuesta.",
         "unreported": "El uso del contexto no está disponible para esta sesión."
+      },
+      "agentMessage": {
+        "messageFrom": "Mensaje de",
+        "unnamedSender": "un agente"
       },
       "goal": {
         "placeholder": "Describe tu objetivo y define resultados medibles para obtener mejores resultados",
