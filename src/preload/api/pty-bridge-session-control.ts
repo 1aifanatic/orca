@@ -56,32 +56,32 @@ export const ptySessionControlApi = {
     placement?: TerminalPanePlacement
     // Why: loose typing on purpose — renderer owns launch metadata, main owns whether the launch happened and validates (telemetry-plan.md §Agent launch semantics).
     telemetry?: { agent_kind: AgentKind; launch_source: LaunchSource; request_kind: RequestKind }
-  }): Promise<
-    {
-      id: string
-      /** Which lifetime of `id` this reply named; absent when the execution host predates the field. */
-      incarnationId?: string
-      launchConfig?: SleepingAgentLaunchConfig
-      snapshot?: string
-      snapshotCols?: number
-      snapshotRows?: number
-      snapshotPrefixAnsi?: string
-      snapshotFrameAnsi?: string
-      snapshotFrameRestoreAnsi?: string
-      snapshotKittyKeyboardFlags?: number
-      snapshotTerminalOwner?: 'shell'
-      snapshotSeq?: number
-      isReattach?: boolean
-      isAlternateScreen?: boolean
-      replay?: string
-      sessionExpired?: boolean
-      coldRestore?: { scrollback: string; cwd: string; cols?: number; rows?: number }
-      startupCwdFallback?: { kind: 'worktree'; cwd: string }
-      agentResumeUnavailable?: true
-      /** Host verdict on the shell-ready marker; absent when the execution host predates the field. */
-      shellReadyArmed?: boolean
-    } & TerminalTopologyReply
-  > => ipcRenderer.invoke('pty:spawn', opts),
+  }): Promise<{
+    id: string
+    /** Which lifetime of `id` this reply named; absent when the execution host predates the field. */
+    incarnationId?: string
+    launchConfig?: SleepingAgentLaunchConfig
+    snapshot?: string
+    snapshotCols?: number
+    snapshotRows?: number
+    snapshotPrefixAnsi?: string
+    snapshotFrameAnsi?: string
+    snapshotFrameRestoreAnsi?: string
+    snapshotKittyKeyboardFlags?: number
+    snapshotTerminalOwner?: 'shell'
+    snapshotSeq?: number
+    isReattach?: boolean
+    isAlternateScreen?: boolean
+    replay?: string
+    sessionExpired?: boolean
+    coldRestore?: { scrollback: string; cwd: string; cols?: number; rows?: number }
+    startupCwdFallback?: { kind: 'worktree'; cwd: string }
+    agentResumeUnavailable?: true
+    /** Host verdict on the shell-ready marker; absent when the execution host predates the field. */
+    shellReadyArmed?: boolean
+    /** The topology push holding this spawn's binding. */
+    publishSeq?: number
+  }> => ipcRenderer.invoke('pty:spawn', opts),
   write: (id: string, data: string, inputKind: TerminalInputKind): void => {
     ipcRenderer.send('pty:write', { id, data, inputKind })
   },

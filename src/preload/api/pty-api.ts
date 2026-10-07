@@ -60,33 +60,33 @@ export type PtyApi = {
     placement?: TerminalPanePlacement
     // Why: main fires `agent_started` only on spawn success, so launch metadata rides this field (telemetry-plan.md §Agent launch semantics).
     telemetry?: { agent_kind: AgentKind; launch_source: LaunchSource; request_kind: RequestKind }
-  }) => Promise<
-    {
-      id: string
-      /** Which lifetime of `id` this reply named; absent when the execution host predates the field. */
-      incarnationId?: string
-      launchAgent?: TuiAgent
-      launchConfig?: SleepingAgentLaunchConfig
-      snapshot?: string
-      snapshotCols?: number
-      snapshotRows?: number
-      snapshotPrefixAnsi?: string
-      snapshotFrameAnsi?: string
-      snapshotFrameRestoreAnsi?: string
-      snapshotKittyKeyboardFlags?: number
-      snapshotTerminalOwner?: 'shell'
-      snapshotSeq?: number
-      isReattach?: boolean
-      isAlternateScreen?: boolean
-      replay?: string
-      sessionExpired?: boolean
-      coldRestore?: { scrollback: string; cwd: string; cols?: number; rows?: number }
-      startupCwdFallback?: { kind: 'worktree'; cwd: string }
-      agentResumeUnavailable?: true
-      /** Host verdict on the shell-ready marker; absent when the execution host predates the field. */
-      shellReadyArmed?: boolean
-    } & TerminalTopologyReply
-  >
+  }) => Promise<{
+    id: string
+    /** Which lifetime of `id` this reply named; absent when the execution host predates the field. */
+    incarnationId?: string
+    launchAgent?: TuiAgent
+    launchConfig?: SleepingAgentLaunchConfig
+    snapshot?: string
+    snapshotCols?: number
+    snapshotRows?: number
+    snapshotPrefixAnsi?: string
+    snapshotFrameAnsi?: string
+    snapshotFrameRestoreAnsi?: string
+    snapshotKittyKeyboardFlags?: number
+    snapshotTerminalOwner?: 'shell'
+    snapshotSeq?: number
+    isReattach?: boolean
+    isAlternateScreen?: boolean
+    replay?: string
+    sessionExpired?: boolean
+    coldRestore?: { scrollback: string; cwd: string; cols?: number; rows?: number }
+    startupCwdFallback?: { kind: 'worktree'; cwd: string }
+    agentResumeUnavailable?: true
+    /** Host verdict on the shell-ready marker; absent when the execution host predates the field. */
+    shellReadyArmed?: boolean
+    /** The topology push holding this spawn's binding. */
+    publishSeq?: number
+  }>
   write: (id: string, data: string, inputKind: TerminalInputKind) => void
   /** `requireWriteSettlement` waits for the provider's acknowledgment on any provider. */
   writeAccepted: (
