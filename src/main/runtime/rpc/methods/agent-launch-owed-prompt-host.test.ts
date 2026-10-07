@@ -43,20 +43,21 @@ function owedRow(deadline: number): AgentSessionOperationRow {
 
 /** A host whose agent's terminal is not found yet, as before an SSH relay reconnects. */
 function host(row: AgentSessionOperationRow) {
-  const listOperationRows = vi.fn(() => [row])
+  // One look for the agent's terminal per sweep.
+  const lookups = vi.fn((_paneKey: string): string | null => null)
   const store = {
-    listOperationRows,
+    listOperationRows: () => [row],
     transactOperations: vi.fn(),
     recordOperationOutcome: vi.fn(async () => {})
   }
   const runtime = {
     openedAgentSessionRecordStore: () => store,
     openAgentSessionRecordStore: async () => store,
-    getTerminalHandleForPaneKey: () => null,
+    getTerminalHandleForPaneKey: lookups,
     getTerminalPtyIdentity: () => null
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the sweep reaches only these runtime and store members.
-  return { runtime: runtime as unknown as OrcaRuntimeService, listOperationRows, store }
+  return { runtime: runtime as unknown as OrcaRuntimeService, lookups, store }
 }
 
 beforeEach(() => {
@@ -69,11 +70,11 @@ describe('looking again for an owed prompt’s terminal', () => {
   it('sweeps again 10 s later while the terminal is not found and the deadline holds', async () => {
     const h = host(owedRow(60_000))
     await resumeOwedAgentLaunchPrompts(h.runtime)
-    expect(h.listOperationRows).toHaveBeenCalledTimes(1)
+    expect(h.lookups).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(9_999)
-    expect(h.listOperationRows).toHaveBeenCalledTimes(1)
+    expect(h.lookups).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1)
-    expect(h.listOperationRows).toHaveBeenCalledTimes(2)
+    expect(h.lookups).toHaveBeenCalledTimes(2)
   })
 
   it('stops once the deadline has passed: the prompt is settled, not looked for', async () => {
@@ -81,7 +82,10 @@ describe('looking again for an owed prompt’s terminal', () => {
     await resumeOwedAgentLaunchPrompts(h.runtime)
     await vi.advanceTimersByTimeAsync(10_000)
     expect(h.store.recordOperationOutcome).toHaveBeenCalledOnce()
+    // Past its deadline the row is settled without a look, and nothing sweeps again.
+    expect(h.lookups).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(60_000)
-    expect(h.listOperationRows).toHaveBeenCalledTimes(2)
+    expect(h.lookups).toHaveBeenCalledTimes(1)
+    expect(h.store.recordOperationOutcome).toHaveBeenCalledOnce()
   })
 })
