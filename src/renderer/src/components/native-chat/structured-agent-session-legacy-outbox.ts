@@ -45,25 +45,33 @@ function readLegacyBody(value: unknown): AgentJournalMessageItem | null {
   return blocks.length > 0 ? { kind: 'message', role: 'user', blocks } : null
 }
 
+/** When the person sent it; an entry with none keeps its place after the dated ones. */
+function legacyQueuedAt(entry: unknown): number {
+  return isRecord(entry) && typeof entry.queuedAt === 'number' ? entry.queuedAt : Infinity
+}
+
+/** In the order they were sent, as the older build read them. */
 export function readLegacyStructuredAgentSessionOutbox(sessionId: string): LegacyOutboxMessage[] {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(legacyKey(sessionId)) ?? '[]')
     return Array.isArray(value)
-      ? value.flatMap((entry: unknown) => {
-          const body = isRecord(entry) ? readLegacyBody(entry.body) : null
-          // One the host recorded and then rejected is drawn by its own row as not sent.
-          const hostRejected =
-            isRecord(entry) &&
-            entry.state === 'rejected' &&
-            isRecord(entry.lastFailure) &&
-            entry.lastFailure.kind === 'rejected'
-          return body &&
-            !hostRejected &&
-            isRecord(entry) &&
-            typeof entry.clientMessageId === 'string'
-            ? [{ clientMessageId: entry.clientMessageId, body }]
-            : []
-        })
+      ? [...value]
+          .sort((left: unknown, right: unknown) => legacyQueuedAt(left) - legacyQueuedAt(right))
+          .flatMap((entry: unknown) => {
+            const body = isRecord(entry) ? readLegacyBody(entry.body) : null
+            // One the host recorded and then rejected is drawn by its own row as not sent.
+            const hostRejected =
+              isRecord(entry) &&
+              entry.state === 'rejected' &&
+              isRecord(entry.lastFailure) &&
+              entry.lastFailure.kind === 'rejected'
+            return body &&
+              !hostRejected &&
+              isRecord(entry) &&
+              typeof entry.clientMessageId === 'string'
+              ? [{ clientMessageId: entry.clientMessageId, body }]
+              : []
+          })
       : []
   } catch {
     return []

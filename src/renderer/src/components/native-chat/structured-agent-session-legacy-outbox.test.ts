@@ -95,6 +95,25 @@ describe('a chat an older build left messages for', () => {
     expect(localStorage.getItem(KEY)).toBeNull()
   })
 
+  // The older build kept the list in send order only by sorting it when read.
+  it('hands back in the order they were sent, whatever order the copy holds them in', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([
+        { ...saved('third', 'three'), queuedAt: 30 },
+        { ...saved('first', 'one'), queuedAt: 10 },
+        { ...saved('second', 'two'), queuedAt: 20 }
+      ])
+    )
+    mocks.outline.mockResolvedValue(outline([]))
+    await recover({})
+    expect(mocks.handBack.mock.calls.map(([, clientMessageId]) => clientMessageId)).toEqual([
+      'first',
+      'second',
+      'third'
+    ])
+  })
+
   it('never hands back one the host recorded and then rejected: its row shows it', async () => {
     localStorage.setItem(
       KEY,
