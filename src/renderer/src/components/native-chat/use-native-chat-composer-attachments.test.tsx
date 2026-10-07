@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement, useEffect, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import {
+  appendNativeChatAttachmentCache,
   clearNativeChatAttachmentCacheForTests,
   readNativeChatAttachmentCache,
   useNativeChatComposerAttachments
 } from './use-native-chat-composer-attachments'
+import * as draftCache from './native-chat-draft-cache'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
 import { nativeChatPendingAttachmentSnapshot } from './native-chat-pending-attachment-cache'
 import { readNativeChatDraftCache } from './native-chat-draft-cache'
@@ -135,6 +137,14 @@ describe('useNativeChatComposerAttachments', () => {
     runtimeTarget.remote = false
     clearNativeChatAttachmentCacheForTests()
     document.body.replaceChildren()
+  })
+
+  it('reexports the attachment cache functions from the draft store view', () => {
+    expect(readNativeChatAttachmentCache).toBe(draftCache.readNativeChatAttachmentCache)
+    expect(appendNativeChatAttachmentCache).toBe(draftCache.appendNativeChatAttachmentCache)
+    expect(clearNativeChatAttachmentCacheForTests).toBe(
+      draftCache.clearNativeChatAttachmentCacheForTests
+    )
   })
 
   it('holds attached images as chips (deferred to submit) and restores them on remount', async () => {

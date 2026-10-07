@@ -1094,7 +1094,6 @@
         "workspaceHostUnresolved": "L'espace de travail cible s'étend sur plusieurs hôtes, cette exécution n'a donc aucun hôte unique à utiliser."
       },
       "useComposerState": {
-        "7eb3f44ff7": "L'agent sélectionné est désactivé. Choisissez un agent activé avant de créer.",
         "b2ead86962": "Échec de la résolution de la base de la PR.",
         "3db83fc58a": "Aucun chemin de projet n'est disponible sur cet hôte pour les pièces jointes.",
         "ba6cb77082": "Échec de la connexion au projet.",
@@ -12943,7 +12942,6 @@
             "ea4788705e": "Annuler",
             "7ec6abbf2a": "Réinitialiser",
             "f4f3c9ca4a": "Modèle de prompt",
-            "1bc0bdbb5e": "Lancement :",
             "fe119187bb": "--model sonnet",
             "bc8dc39f4b": "Arguments CLI",
             "b99c33cec5": "Paramètres",
@@ -19199,5 +19197,10 @@
       "confirm": "Supprimer tous les worktrees listés",
       "preservedBranches": "Certaines branches de worktrees imbriqués ont été conservées"
     }
+  },
+  "mediaPreview": {
+    "unavailable": "Impossible de lire ce fichier multimédia. Le fichier peut être indisponible ou utiliser un codec non pris en charge.",
+    "openFailed": "Impossible d’ouvrir ce fichier dans l’application par défaut.",
+    "openDefault": "Ouvrir dans l’application par défaut"
   }
 }
