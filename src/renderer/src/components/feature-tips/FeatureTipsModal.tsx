@@ -24,21 +24,7 @@ import { SessionSearchTipDialog } from './SessionSearchTipDialog'
 import { useSessionSearchTipSetup } from './use-session-search-tip-setup'
 import { VoiceDictationTipDialog } from './VoiceDictationTipDialog'
 
-/** The tip the user opens from Help, in the modal slot. */
-export default function FeatureTipsModal(): JSX.Element | null {
-  const activeModal = useAppStore((s) => s.activeModal)
-  const modalData = useAppStore((s) => s.modalData)
-  const closeModal = useAppStore((s) => s.closeModal)
-  return (
-    <FeatureTipDialogs
-      open={activeModal === 'feature-tips'}
-      modalData={modalData}
-      onClose={closeModal}
-    />
-  )
-}
-
-/** A tip's dialog, whoever opened it: the modal slot, or the app itself at launch. */
+/** The tip the app offers at launch, controlled by its host (AppOpenFeatureTip). */
 export function FeatureTipDialogs({
   open: isOpen,
   modalData,

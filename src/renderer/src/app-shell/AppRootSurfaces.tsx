@@ -43,7 +43,6 @@ const StatusBar = lazy(() =>
 )
 const SetupGuideModal = lazy(() => import('../components/setup-guide/SetupGuideModal'))
 const FeatureWallModal = lazy(() => import('../components/feature-wall/FeatureWallModal'))
-const FeatureTipsModal = lazy(() => import('../components/feature-tips/FeatureTipsModal'))
 const AddRepoDialog = lazy(() => import('../components/sidebar/AddRepoDialog'))
 const NonGitFolderDialog = lazy(() => import('../components/sidebar/NonGitFolderDialog'))
 const AddProjectFromFolderDialog = lazy(
@@ -277,11 +276,6 @@ export function AppRootSurfaces(props: {
         {mountedLazyModalIds.has('feature-wall') ? (
           <ModalBoundary boundaryId="modal.feature-wall" resetKey={activeModal === 'feature-wall'}>
             <FeatureWallModal />
-          </ModalBoundary>
-        ) : null}
-        {mountedLazyModalIds.has('feature-tips') ? (
-          <ModalBoundary boundaryId="modal.feature-tips" resetKey={activeModal === 'feature-tips'}>
-            <FeatureTipsModal />
           </ModalBoundary>
         ) : null}
       </Suspense>
