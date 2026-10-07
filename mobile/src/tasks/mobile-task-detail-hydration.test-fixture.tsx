@@ -1,7 +1,7 @@
 import { createElement, useState } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import { vi } from 'vitest'
-import type { RpcClient, SendRequestOptions } from '../transport/rpc-client'
+import { createFakeRpcClient, type SentRequest } from '../mobile-web-shell/bridge-host-test-fakes'
+import type { RpcClient } from '../transport/rpc-client'
 import type { RpcResponse } from '../transport/types'
 import type { ActionableTaskItem, TaskItem } from './mobile-tasks-project-workspace-types'
 import type { DetailPayload, GitLabWorkItem } from './mobile-tasks-provider-detail-types'
@@ -68,54 +68,38 @@ export function success(result: unknown): RpcResponse {
   return { id: 'detail', ok: true, result }
 }
 
-type PendingRequest = {
-  method: string
-  params: unknown
-  options?: SendRequestOptions
-  settled: boolean
-  resolve: (reply: RpcResponse) => void
-  reject: (error: Error) => void
-}
-
 export function detailClient() {
-  const requests: PendingRequest[] = []
-  const client: RpcClient = {
-    sendRequest: vi.fn<RpcClient['sendRequest']>((method, params, options) => {
-      return new Promise<RpcResponse>((resolve, reject) => {
-        requests.push({ method, params, options, settled: false, resolve, reject })
-      })
-    }),
-    subscribe: vi.fn(() => () => {}),
-    updateTerminalSubscriptionViewport: vi.fn(),
-    getState: () => 'connected',
-    getReconnectAttempt: () => 0,
-    getLastConnectedAt: () => 1,
-    onStateChange: vi.fn(() => () => {}),
-    notifyForeground: vi.fn(),
-    close: vi.fn()
-  }
+  const client = createFakeRpcClient({ getLastConnectedAt: () => 1 })
+  const settled = new Set<SentRequest>()
+  const pendingRequests = () => client.requests.filter((request) => !settled.has(request))
   return {
     client,
-    requests,
-    pending: () => requests.filter((request) => !request.settled),
+    get requests() {
+      return client.requests.map((request) => ({
+        method: request.method,
+        params: request.args[1],
+        options: request.args[2]
+      }))
+    },
+    pending: pendingRequests,
     async answer(
-      reply: RpcResponse | ((request: PendingRequest) => RpcResponse) = success(
+      reply: RpcResponse | ((request: SentRequest) => RpcResponse) = success(
         structuredClone(GITLAB_DETAILS)
       ),
-      pending = requests.filter((request) => !request.settled)
+      pending = pendingRequests()
     ) {
       await act(async () => {
         for (const request of pending) {
-          request.settled = true
+          settled.add(request)
           request.resolve(typeof reply === 'function' ? reply(request) : reply)
         }
       })
     },
     async reject(error: Error) {
-      const pending = requests.filter((request) => !request.settled)
+      const pending = pendingRequests()
       await act(async () => {
         for (const request of pending) {
-          request.settled = true
+          settled.add(request)
           request.reject(error)
         }
       })
@@ -151,7 +135,7 @@ export async function mountDetail(
     const [loading, setDetailLoading] = useState(false)
     const [error, setDetailError] = useState('')
     const [detailRefreshSeq, setRefreshSeq] = useState(0)
-    const [client, setClient] = useState(transport.client)
+    const [client, setClient] = useState<RpcClient>(transport.client)
     const [, setUnrelated] = useState(0)
     commands.select = setActionItem
     commands.refresh = () => setRefreshSeq((value) => value + 1)
