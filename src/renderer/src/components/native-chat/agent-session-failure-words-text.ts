@@ -8,6 +8,7 @@ import {
   type AgentSessionFailureCopyValues,
   type AgentSessionFailureSay
 } from '../../../../shared/agent-session-failure-copy'
+import { AVAILABILITY_PIECES } from './agent-session-availability-words-text'
 
 // The pieces a refusal notice says too keep the notice's keys, so each has one translation.
 const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopyValues) => string> =
@@ -76,32 +77,7 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
       translate('components.native-chat.writeNotice.startNewChat', COPY.startNewChat),
     notSignedIn: (values) =>
       translate('components.native-chat.failureWords.notSignedIn', COPY.notSignedIn, values),
-    claudeSystemNotSignedIn: (values) =>
-      translate(
-        'components.native-chat.failureWords.claudeSystemNotSignedIn',
-        COPY.claudeSystemNotSignedIn,
-        values
-      ),
-    claudeManagedNotSignedIn: (values) =>
-      translate(
-        'components.native-chat.failureWords.claudeManagedNotSignedIn',
-        COPY.claudeManagedNotSignedIn,
-        values
-      ),
-    codexSystemNotSignedIn: (values) =>
-      translate(
-        'components.native-chat.failureWords.codexSystemNotSignedIn',
-        COPY.codexSystemNotSignedIn,
-        values
-      ),
-    codexManagedNotSignedIn: (values) =>
-      translate(
-        'components.native-chat.failureWords.codexManagedNotSignedIn',
-        COPY.codexManagedNotSignedIn,
-        values
-      ),
-    cliMissing: (values) =>
-      translate('components.native-chat.failureWords.cliMissing', COPY.cliMissing, values),
+    ...AVAILABILITY_PIECES,
     signInFirst: () =>
       translate('components.native-chat.failureWords.signInFirst', COPY.signInFirst),
     signInThenRunCommand: (values) =>
