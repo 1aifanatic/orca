@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync
 } from 'node:fs'
@@ -107,5 +108,114 @@ describe('the Windows host script under an activation fence', () => {
       writeFileSync(resume, '')
       first.kill('SIGKILL')
     }
+  })
+})
+
+// BUG-23 on Windows: the host names the lock an exited predecessor left, never a live run's, and
+// writes nothing, so the steal's own arbitration is the only thing that takes it (Astra 26087).
+describe('the Windows host script proving a lock an exited client left', () => {
+  function quietHost(owner: string) {
+    const dir = mkdtempSync(join(tmpdir(), 'orcad-win-exited-'))
+    dirs.push(dir)
+    const script = join(dir, 'host.js')
+    writeFileSync(script, ORCAD_WINDOWS_HOST_SCRIPT)
+    const lock = join(dir, '.orcad-activation-transaction', '.install-lock')
+    mkdirSync(lock, { recursive: true })
+    writeFileSync(join(lock, '.orca-fence-owner'), owner)
+    const quietSince = new Date(Date.now() - 10 * 60_000)
+    utimesSync(lock, quietSince, quietSince)
+    const mutation = join(dir, 'orcad-state-mutation.lock')
+    const check = async (guard: '0' | '1', ...tokens: string[]) => {
+      const before = statSync(lock).mtimeMs
+      const result = await runProcess({
+        program: process.execPath,
+        args: [script, 'fence-exited-owner', lock, guard, ...tokens],
+        timeoutMs: 15_000
+      })
+      expect(statSync(lock).mtimeMs).toBe(before)
+      return result.stdout.trim()
+    }
+    return { lock, mutation, check }
+  }
+
+  it('names a quiet lock an exited client holds, and nothing else', async () => {
+    const host = quietHost('t-exited')
+    expect(await host.check('0', 't-other')).toBe('KEPT')
+    expect(await host.check('0', 't-other', 't-exited')).toBe('EXITED_OWNER t-exited')
+  })
+
+  it('keeps a lock that is not yet quiet', async () => {
+    const host = quietHost('t-exited')
+    utimesSync(host.lock, new Date(), new Date())
+    expect(await host.check('0', 't-exited')).toBe('KEPT')
+  })
+
+  it('keeps the fence while its state mutation holder may still run', async () => {
+    const host = quietHost('t-exited')
+    mkdirSync(host.mutation)
+    // A live pid whose creation time is unreadable is unverifiable, never exited.
+    writeFileSync(
+      join(host.mutation, 'owner.json'),
+      JSON.stringify({ pid: process.pid, creationTimeMs: 1234 })
+    )
+    expect(await host.check('1', 't-exited')).toBe('KEPT')
+    // The install lock guards no state mutation.
+    expect(await host.check('0', 't-exited')).toBe('EXITED_OWNER t-exited')
+  })
+
+  // Astra 26087 r2: the steal can only hold an absent mutation lock across the takeover.
+  it('keeps the fence while any mutation lock exists, even one whose holder exited', async () => {
+    const host = quietHost('t-exited')
+    mkdirSync(host.mutation)
+    utimesSync(host.mutation, new Date(0), new Date(0))
+    expect(await host.check('1', 't-exited')).toBe('KEPT')
+    const exited = await runProcess({ program: process.execPath, args: ['-p', 'process.pid'] })
+    writeFileSync(
+      join(host.mutation, 'owner.json'),
+      JSON.stringify({ pid: Number(exited.stdout.trim()), creationTimeMs: 1234 })
+    )
+    expect(await host.check('1', 't-exited')).toBe('KEPT')
+    rmSync(host.mutation, { recursive: true })
+    expect(await host.check('1', 't-exited')).toBe('EXITED_OWNER t-exited')
+  })
+})
+
+// Astra 26087 r2: the exited-owner steal holds the mutation lock across the takeover, so a
+// mutation that takes the lock afterwards must find its fence gone and stop before any work.
+describe('a Windows state mutation admitted after its fence was replaced', () => {
+  it('stops before touching state and frees the mutation lock', async () => {
+    const host = hostWithFence('old-token')
+    const dir = join(host.lock, '..', '..')
+    const root = join(dir, 'root')
+    mkdirSync(join(root, 'profiles'), { recursive: true })
+    writeFileSync(join(root, 'profiles', 'state.json'), 'kept')
+    const preload = join(dir, 'steal-before-mutation-lock.cjs')
+    // The fence check passes, then the fence is replaced right before the mutation lock is taken.
+    writeFileSync(
+      preload,
+      `const fs = require('fs'); const mkdir = fs.mkdirSync;
+fs.mkdirSync = function (p, ...rest) {
+  if (String(p).endsWith('orcad-state-mutation.lock')) fs.writeFileSync(${JSON.stringify(join(host.lock, '.orca-fence-owner'))}, 'new-token')
+  return mkdir.call(this, p, ...rest)
+}`
+    )
+    const result = await runProcess({
+      program: process.execPath,
+      args: [
+        '--require',
+        preload,
+        join(dir, 'host.js'),
+        '--fence',
+        host.lock,
+        'old-token',
+        'snapshot-clear',
+        root
+      ],
+      timeoutMs: 15_000
+    })
+    expect(result.code).toBe(ORCAD_FENCE_LOST_EXIT)
+    expect(result.stdout.trim()).toBe(ORCAD_FENCE_LOST_MARKER)
+    expect(readFileSync(join(root, 'profiles', 'state.json'), 'utf8')).toBe('kept')
+    expect(existsSync(join(dir, 'orcad-state-mutation.lock'))).toBe(false)
   })
 })

@@ -12,7 +12,8 @@ import { ORCAD_INSTALL_MODEL } from './remote-install-model'
 import { acquireInstallLock } from './ssh-relay-install-lock'
 import { ORCAD_FENCE_OWNER_FILENAME } from './orcad-activation-fence-scope'
 import { forgetHeldOrcadFence, rememberHeldOrcadFence } from './orcad-held-fence-tokens'
-import { orphanExitedOwnLock } from './orcad-exited-own-lock'
+import { exitedOwnLockProof } from './orcad-exited-own-lock'
+import { orcadWindowsBaseDir } from './orcad-remote-windows-node'
 import { uploadRelayDirectory, writeRelayFile } from './ssh-relay-install-transfers'
 import {
   abandonInstall,
@@ -58,7 +59,10 @@ export async function installOrcadBundle(
       signal: options.signal,
       owner: { fileName: ORCAD_FENCE_OWNER_FILENAME, token },
       // Nothing keeps writing once its client exited: uploads are SFTP and chmod is immediate.
-      beforeStaleCheck: (lockDir) => orphanExitedOwnLock(options, lockDir, null)
+      exitedOwner: exitedOwnLockProof(options, {
+        baseDir: orcadWindowsBaseDir(options.host, remoteDir),
+        guardsStateMutation: false
+      })
     })
   } catch (error) {
     if (!isUnconfirmedSshCommandTermination(error)) {

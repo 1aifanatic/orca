@@ -32,6 +32,7 @@ import {
 } from './orcad-activation-fence-scope'
 import { orcadRemoteBaseDir, orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
 import { forgetHeldOrcadFence, rememberHeldOrcadFence } from './orcad-held-fence-tokens'
+import { exitedOwnLockProof } from './orcad-exited-own-lock'
 import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import {
   ORCAD_ACTIVATION_TRANSACTION_DIRNAME,
@@ -141,7 +142,10 @@ export async function withOrcadActivationLock<T>(
   }
 }
 
-/** Takes over only a stale or previous-boot fence; a fresh one throws `RemoteInstallLockBusyError`. */
+/**
+ * Takes over only a stale or previous-boot fence, or one this desktop's exited process left;
+ * a fresh one throws `RemoteInstallLockBusyError`.
+ */
 export async function withStaleOrcadActivationRecoveryLock<T>(
   options: OrcadActivationLockOptions,
   run: (control: Pick<OrcadActivationLockControl, 'retain'>) => Promise<T>
@@ -155,7 +159,11 @@ export async function withStaleOrcadActivationRecoveryLock<T>(
     relayGcClaim: false,
     allowStaleTakeover: true,
     waitTimeoutMs: 0,
-    owner: { fileName: ORCAD_FENCE_OWNER_FILENAME, token }
+    owner: { fileName: ORCAD_FENCE_OWNER_FILENAME, token },
+    exitedOwner: exitedOwnLockProof(options, {
+      baseDir: orcadRemoteBaseDir(options.host, options.remoteHome),
+      guardsStateMutation: true
+    })
   }).catch((error: unknown) => {
     if (error instanceof RemoteInstallLockBusyError) {
       forgetHeldOrcadFence(token)
