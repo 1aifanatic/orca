@@ -20,6 +20,7 @@ import { isFailedStartOrHostFault } from '../../../shared/structured-agent-sessi
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../shared/structured-agent-session-start-failure-row-key'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { structuredAgentSessionMessageCommand } from './structured-agent-session-command-turn'
 import {
   structuredAgentSessionStartFailure,
@@ -157,10 +158,10 @@ export function exitStartFailureRow(
 }
 
 export function oldestQueuedSubmission(
-  journal: Pick<AgentSessionJournal, 'submissions'>
-): AgentJournalSubmission | undefined {
-  let oldest: AgentJournalSubmission | undefined
-  for (const submission of journal.submissions()) {
+  session: Pick<StructuredAgentSessionHostSession, 'journal'>
+): ReturnType<StructuredAgentSessionHostSession['journal']['submissions']>[number] | undefined {
+  let oldest: ReturnType<typeof oldestQueuedSubmission>
+  for (const submission of session.journal.submissions()) {
     if (
       isQueuedAgentJournalSubmission(submission) &&
       (oldest === undefined || (submission.acceptedSequence ?? 0) < (oldest.acceptedSequence ?? 0))

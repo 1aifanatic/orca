@@ -27,8 +27,8 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   endFailedStart: (sessionId: string) => Promise<void>
   /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
   conversationFence: (sessionId: string) => number
-  /** Rejects queued messages as a completed close of the chat does; false when that failed. */
-  abandonQueued: (
+  /** Settles queued messages as a completed close of the chat does; false when that failed. */
+  holdClosed: (
     sessionId: string,
     which: (submission: AgentJournalSubmission) => boolean
   ) => Promise<boolean>
@@ -37,5 +37,7 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   logger: StructuredAgentSessionLogger
   record: (sessionId: string) => AgentSessionRecord | null
   readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
+  /** A person's Stop is still ending the session's work: the status feed's own reading. */
+  stopping: (sessionId: string) => boolean
   now: () => number
 }

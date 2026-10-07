@@ -26,6 +26,7 @@ function startedSession(): StructuredAgentSessionChildExitSession & {
     journal: {
       cursor: () => ({ epoch: 'epoch-1', sequence: 0 }),
       itemBody: () => null,
+      itemFence: () => undefined,
       // Nothing ran: the start failed before any response or acknowledged prompt.
       snapshot: () => ({ items: [] }),
       appendLifecycleBatch: vi.fn(async () => ({ epoch: 'epoch-1', sequence: 1 })),
@@ -251,17 +252,6 @@ describe('the one row a failed start leaves', () => {
     const session = startedFor(startingSession([QUEUED]), 'queued-1')
 
     await settleStructuredAgentSessionChildExit(contextFor(session), ended)
-
-    expect(rowsWritten(session)).toEqual([])
-  })
-
-  it('is not written again beside the queued message a delivery pass waits on it for', async () => {
-    const session = startingSession([QUEUED])
-
-    await settleStructuredAgentSessionChildExit(
-      { ...contextFor(session), deliveryAwaits: () => true },
-      ended
-    )
 
     expect(rowsWritten(session)).toEqual([])
   })

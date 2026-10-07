@@ -46,6 +46,8 @@ import { agentSessionFailureWords } from '../../../shared/agent-session-failure-
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { StructuredAgentArgumentsError } from '../structured-agent-arguments-error'
+import { USER_MESSAGE_SOURCE } from '../../../shared/agent-session-message-source'
 import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
 
 const CALLER = { callerKey: 'client-1' }
@@ -317,6 +319,28 @@ describe('a send is answered at acceptance', () => {
 })
 
 describe('a start the chat needed and did not get', () => {
+  it('shows a saved Arguments refusal on the resumed chat row and rejected message', async () => {
+    await host.close(SESSION, 'evict')
+    acquire.mockRejectedValueOnce(
+      new AgentSessionPreSpawnError(
+        new StructuredAgentArgumentsError('Codex', '--unsafe=private', 'unsupportedOption')
+      )
+    )
+    const id = await accept('first')
+    await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
+    const sentence =
+      "Codex couldn't restart. Saved Arguments contain an unsupported option (--unsafe). Edit them in Settings > Agents > Arguments. Send your message to try again."
+    expect(await errorRows()).toEqual([sentence])
+    expect(await submission(id)).toMatchObject({
+      reason: sentence,
+      rejection: {
+        kind: 'restartFailed',
+        argumentProblem: { agent: 'Codex', option: '--unsafe', problem: 'unsupportedOption' }
+      }
+    })
+    expect(JSON.stringify(await host.journalSnapshot(SESSION))).not.toContain('private')
+  })
+
   it('rejects only the message whose start failed; the one behind it starts and is delivered (W3)', async () => {
     await host.close(SESSION, 'evict')
     acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT'))
@@ -573,20 +597,22 @@ describe('what an earlier host process left behind', () => {
 
 describe('a child that exits before its message is handed over', () => {
   it('rejects the message with the exit reason instead of starting another child (W24)', async () => {
-    // Each child the loop starts dies between its start step and its handover step.
-    const awaitStarted = vi.fn(async (sessionId: string) => {
-      await host.handleAdapterEvent({
+    await host.close(SESSION, 'evict')
+    await startHost()
+    // Each child the loop starts dies as its start step returns: its exit, asked for on the lane
+    // then, lands before the handover step.
+    acquire.mockImplementation(async (input) => {
+      const child = await spawnChild(input)
+      void host.handleAdapterEvent({
         type: 'ended',
-        sessionId,
-        fence: store.getRecord(sessionId)!.lease.runtimeFence,
+        sessionId: SESSION,
+        fence: input.fence,
         acquisitionGeneration: `generation-${acquire.mock.calls.length}`,
         reason: 'codex app-server crashed',
         cause: 'unexpected-exit'
       })
+      return child
     })
-    adapterExtras = { awaitStarted }
-    await host.close(SESSION, 'evict')
-    await startHost()
 
     const id = await accept('hello')
 
@@ -600,11 +626,11 @@ describe('a child that exits before its message is handed over', () => {
   })
 })
 
-describe('a start whose failure the delivery loop settles before the exit is published', () => {
-  it('rejects each message in the words of its own start, one row for the run, and the exit adds none', async () => {
-    // The adapter's startup answer and its later exit event word the same start differently.
-    const awaitStarted = vi.fn(async () => agentSessionFailureFact('startFailed'))
-    adapterExtras = { awaitStarted }
+describe('a start that fails after it was handed messages', () => {
+  it('keeps one row in the words its rejected messages carry, each from its own start', async () => {
+    // A starting child takes the first at once; the second waits until that turn opens, which it
+    // never does. Neither is answered.
+    dispatch.mockImplementation(async () => ({ state: 'admitted' as const }))
     acquire.mockImplementation(async (input) => ({
       ...(await spawnChild(input)),
       providerChildPhase: 'starting' as const
@@ -614,7 +640,9 @@ describe('a start whose failure the delivery loop settles before the exit is pub
 
     const first = await accept('first')
     const second = await accept('second')
-    await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
+    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    // The second's pass found nothing to hand over yet, so it waits on no start.
+    await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
     await host.handleAdapterEvent({
       type: 'ended',
       sessionId: SESSION,
@@ -629,37 +657,70 @@ describe('a start whose failure the delivery loop settles before the exit is pub
     })
     await host.flushStreamedEvents(SESSION)
 
-    const words = agentSessionFailureWords(agentSessionFailureFact('startFailed'), {
-      surface: 'rejection',
-      agentName: 'Codex',
-      provider: 'codex'
+    // The held message was never handed to that child: it gets a start of its own, which fails alike.
+    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(2))
+    expect((await submission(second))?.dispatchState).toBe('pending')
+    await host.handleAdapterEvent({
+      type: 'ended',
+      sessionId: SESSION,
+      fence: store.getRecord(SESSION)!.lease.runtimeFence,
+      acquisitionGeneration: `generation-${acquire.mock.calls.length}`,
+      reason: 'codex app-server exited with code 1',
+      failure: agentSessionFailureFact('providerStartFailed', {
+        detail: { text: 'codex: config.toml is invalid', audience: 'person' }
+      }),
+      cause: 'unexpected-exit',
+      startupUnproven: true
     })
-    // Each message made its own attempt, and each start failed the same way.
+    await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
+    const rows = (await host.journalSnapshot(SESSION)).items.filter((item) =>
+      item.itemId.includes('start-failure')
+    )
+    // Both starts failed alike with nothing delivered between: one row, worded from the exit's own
+    // diagnostic, as is every message it speaks for.
+    expect(rows).toHaveLength(1)
+    const row = rows[0].body
+    expect(row).toMatchObject({
+      failure: { kind: 'providerStartFailed', detail: { text: 'codex: config.toml is invalid' } }
+    })
     for (const id of [first, second]) {
       expect(await submission(id)).toMatchObject({
         dispatchState: 'rejected',
-        reason: words.reason,
-        rejection: words.rejection
+        reason: row.kind === 'status' ? row.text : null,
+        rejection: row.kind === 'status' ? row.failure : null
       })
     }
-    // Both starts failed alike with nothing delivered between: one row; the exit adds none.
-    expect(await errorRows()).toEqual([words.reason])
   })
 })
 
 describe('Stop withdraws what is queued', () => {
-  it('withdraws a crash leftover ahead of any delivery step (W17a)', async () => {
+  it('never meets a crash leftover: the open it runs settles it first (W17a)', async () => {
     await writeAsEarlierProcess(async (journal, fence) => {
+      await journal.appendSubmission({
+        ...earlierSubmission('person', 'p', true),
+        origin: 'client',
+        source: USER_MESSAGE_SOURCE,
+        fence
+      })
       await journal.appendSubmission({ ...earlierSubmission('leftover', 'l', true), fence })
     })
 
-    // Stop's own open wakes the delivery loop, whose first step queues behind this Stop.
     expect(await stop()).toMatchObject({ ok: true })
 
+    // A person's message is kept as a held card, which no Stop withdraws; the rest is rejected.
+    const hostRestarted = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
+      surface: 'rejection'
+    })
+    expect(await submission('person')).toMatchObject({
+      dispatchState: 'rejected',
+      ...hostRestarted
+    })
     expect(await submission('leftover')).toMatchObject({
       dispatchState: 'rejected',
-      reason: DISPATCH_REJECTED_CANCELLED
+      ...hostRestarted
     })
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.map((card) => card.messageId)).toEqual(['person'])
     expect(acquire).toHaveBeenCalledTimes(1)
   })
 
@@ -682,22 +743,19 @@ describe('Stop withdraws what is queued', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it('stops a child still proving its start, and the delivery loop ends with it (W17c)', async () => {
-    const ended = deferred<void>()
-    const awaitStarted = vi.fn(() => ended.promise)
-    const closeSession = vi.fn(async () => {
-      ended.resolve()
-      return true
-    })
-    adapterExtras = { awaitStarted, closeSession }
+  it('stops a child still proving its start, rejecting what it was handed, and the next send starts another (W17c)', async () => {
+    const closeSession = vi.fn(async () => true)
+    adapterExtras = { closeSession }
     await host.close(SESSION, 'evict')
     await startHost()
     acquire.mockImplementationOnce(async (input) => ({
       ...(await spawnChild(input)),
       providerChildPhase: 'starting' as const
     }))
+    // Written to the starting child at once; it never answers.
+    dispatch.mockResolvedValueOnce({ state: 'admitted' })
     const id = await accept('hello')
-    await eventually(async () => expect(awaitStarted).toHaveBeenCalled())
+    await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
@@ -706,25 +764,27 @@ describe('Stop withdraws what is queued', () => {
       reason: DISPATCH_REJECTED_CANCELLED
     })
     expect(closeSession).toHaveBeenCalled()
-    // A loop still waiting on that start would swallow this send; it starts a new child instead.
-    awaitStarted.mockImplementation(async () => undefined)
     const next = await accept('after stop')
     await eventually(async () => expect((await submission(next))?.dispatchState).toBe('accepted'))
-    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledTimes(2)
   })
 })
 
 describe('an eviction between acceptance and handover', () => {
   it('rejects the message as not sent, never leaves it in doubt (W24)', async () => {
     const started = deferred<void>()
-    adapterExtras = { awaitStarted: () => started.promise }
     await host.close(SESSION, 'evict')
     await startHost()
+    acquire.mockImplementationOnce(async (input) => {
+      await started.promise
+      return spawnChild(input)
+    })
     const id = await accept('hello')
     await eventually(async () => expect(acquire).toHaveBeenCalledTimes(2))
-    // Between the delivery loop's start step and its handover step.
-    await host.close(SESSION, 'evict')
+    // Asked for during the delivery loop's start step, the close runs ahead of its handover step.
+    const closing = host.close(SESSION, 'evict')
     started.resolve()
+    await closing
 
     expect(await reopened(id)).toMatchObject({
       dispatchState: 'rejected',
@@ -734,20 +794,19 @@ describe('an eviction between acceptance and handover', () => {
   })
 
   it('rejects a queued message behind a handed-over one, which alone stays in doubt (W24)', async () => {
-    const second = deferred<void>()
-    const awaitStarted = vi.fn(async (): Promise<void> => undefined)
-    adapterExtras = { awaitStarted }
     await host.close(SESSION, 'evict')
     await startHost()
     dispatch.mockResolvedValueOnce({ state: 'admitted' })
     const handed = await accept('handed over')
     await eventually(async () => expect((await submission(handed))?.handedOverAt).toBeDefined())
-    awaitStarted.mockImplementation(() => second.promise)
-    const queued = await accept('still queued')
-    await eventually(async () => expect(awaitStarted).toHaveBeenCalledTimes(2))
-
-    await host.close(SESSION, 'evict')
+    // Held, the second send is accepted and the close runs next, ahead of its handover.
+    const second = deferred<void>()
+    void host['tasks'].serialize(SESSION, () => second.promise)
+    const accepting = accept('still queued')
+    const closing = host.close(SESSION, 'evict')
     second.resolve()
+    const queued = await accepting
+    await closing
 
     expect(await reopened(queued)).toMatchObject({
       dispatchState: 'rejected',
@@ -760,9 +819,12 @@ describe('an eviction between acceptance and handover', () => {
   it('does not stop an idle child while a message is still queued for it (W24)', async () => {
     idleMs = 0
     const started = deferred<void>()
-    adapterExtras = { awaitStarted: () => started.promise }
     await host.close(SESSION, 'evict')
     await startHost()
+    acquire.mockImplementationOnce(async (input) => {
+      await started.promise
+      return spawnChild(input)
+    })
     const id = await accept('hello')
     await eventually(async () => expect(acquire).toHaveBeenCalledTimes(2))
     // The idle sweep ticks every few milliseconds meanwhile.
@@ -792,7 +854,6 @@ describe('a close that stops the child and then a wind-down step fails', () => {
     async ({ end, starting, kind, verdict }) => {
       const started = deferred<void>()
       adapterExtras = {
-        awaitStarted: () => started.promise,
         // Once: the host's own teardown acknowledges again.
         acknowledgeSessionRelease: vi.fn().mockImplementationOnce(() => {
           throw new Error('release acknowledgement failed')
@@ -800,15 +861,20 @@ describe('a close that stops the child and then a wind-down step fails', () => {
       }
       await host.close(SESSION, 'evict')
       await startHost()
-      acquire.mockImplementationOnce(async (input) => ({
-        ...(await spawnChild(input)),
-        ...(starting ? { providerChildPhase: 'starting' as const } : {})
-      }))
+      acquire.mockImplementationOnce(async (input) => {
+        await started.promise
+        return {
+          ...(await spawnChild(input)),
+          ...(starting ? { providerChildPhase: 'starting' as const } : {})
+        }
+      })
       const id = await accept('hello')
       await eventually(() => expect(acquire).toHaveBeenCalledTimes(2))
 
-      await expect(END_CHILD[end]()).resolves.toBeUndefined()
+      // Asked for during the start step, the close runs ahead of the handover step.
+      const ending = END_CHILD[end]()
       started.resolve()
+      await expect(ending).resolves.toBeUndefined()
 
       await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
       const rejected = (await submission(id))!

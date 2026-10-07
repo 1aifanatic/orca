@@ -5,21 +5,20 @@
 // for a session exactly while a message is queued there — accepted, not yet handed over — and no
 // child is running a conversation command: a command's turn takes no input, and the commit that
 // ends it wakes the loop again. Every step re-reads the journal and the conversation's child
-// record to decide; its only state is which child a running pass waits on, cleared with the pass.
-// Each step is its own serialized task. That is what lets a Stop that arrives while a start holds
-// the queue withdraw the queued messages before the handover that would have written them. Stop
-// and the conversation's close are the only other writers of a queued message: a child's exit only
-// ends the child, and this loop reads why.
+// record to decide, so there is no loop state to disagree with them. Each step is its own
+// serialized task. That is what lets a Stop that arrives while a start holds the queue withdraw the
+// queued messages before the handover that would have written them. Stop and the conversation's
+// close are the only other writers of a queued message: a child's exit only ends the child, and
+// this loop reads why. A message an earlier host process left queued is never handed over: the
+// open, or this loop's first step, settles it first (`journal-unsent-send-hold.ts`).
 //
 // A start that fails is recorded on the one message it was for, and the messages behind it each
 // get their own start. Every write names a message fixed when its pass chose it, never the queue's
 // head read again after a failure.
 
-import {
-  agentSessionFailureFact,
-  type SubmissionRejectionFact
-} from '../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
+import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionStartFailureCause } from './structured-agent-session-failure-text'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
@@ -35,8 +34,8 @@ import {
   startThatFailedWhileQueued,
   structuredAgentSessionEndedChildFailure
 } from './structured-agent-session-ended-child-failure'
-import { sameProviderChild } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
+import { structuredAgentSessionNextHandover } from './structured-agent-session-opening-send'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
 
@@ -44,10 +43,12 @@ export type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-
 
 type Step = 'continue' | 'stop'
 
+type RefusedStart = Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+
 type Prepared =
   | Step
-  | (Extract<StructuredAgentSessionResumeOutcome, { ok: false }> & { startedFor: string })
-  // `waitingFor`: the message the start was waited on for.
+  | (RefusedStart & { startedFor: string })
+  // `waitingFor`: the message the start was for.
   | { ok: true; awaited: StructuredAgentSessionProviderChildIdentity | null; waitingFor: string }
 
 /** The message one pass is attempting, set before each await that could fail for it, so a throw
@@ -56,20 +57,12 @@ type Attempt = { clientMessageId?: string }
 
 export class StructuredAgentSessionDeliveryLoop {
   private readonly running = new Set<string>()
-  /** The child each session's current pass waits on to prove its start; gone with the pass. */
-  private readonly waitingOn = new Map<string, StructuredAgentSessionProviderChildIdentity>()
   private disposed = false
 
   constructor(private readonly deps: StructuredAgentSessionDeliveryLoopDeps) {}
 
   isRunning(sessionId: string): boolean {
     return this.running.has(sessionId)
-  }
-
-  /** Whether a pass waits on this child's start: its exit then fails that pass's message. */
-  awaits(sessionId: string, child: StructuredAgentSessionProviderChildIdentity): boolean {
-    const awaited = this.waitingOn.get(sessionId)
-    return awaited !== undefined && sameProviderChild(awaited, child)
   }
 
   /** Quit: no step after this one starts a child or hands a message over. */
@@ -112,6 +105,11 @@ export class StructuredAgentSessionDeliveryLoop {
       return prepared
     }
     if (!prepared.ok) {
+      if (prepared.aborted) {
+        // A close, Stop or quit stopped this start on purpose, and settled what it was for; a
+        // message accepted since gets its own start, and quit's next step stops the loop.
+        return 'continue'
+      }
       return this.deps.serialize(sessionId, () =>
         this.rejectStartFailure(
           sessionId,
@@ -120,19 +118,7 @@ export class StructuredAgentSessionDeliveryLoop {
         )
       )
     }
-    if (prepared.awaited) {
-      this.waitingOn.set(sessionId, prepared.awaited)
-    }
-    try {
-      // A child published before it proved its start takes no input yet; waited for outside
-      // the queue so a Stop can reach it meanwhile.
-      const failure = await this.deps.adapter.awaitStarted?.(sessionId)
-      return await this.deps.serialize(sessionId, () =>
-        this.handOver(sessionId, prepared, failure || null, attempt)
-      )
-    } finally {
-      this.waitingOn.delete(sessionId)
-    }
+    return this.deps.serialize(sessionId, () => this.handOver(sessionId, prepared, attempt))
   }
 
   /** The error is Orca's own and goes to the log; the chat says only that Orca failed, on the
@@ -168,17 +154,19 @@ export class StructuredAgentSessionDeliveryLoop {
     if (!session || this.disposed) {
       return this.stop(sessionId)
     }
-    await session.journal.rejectQueuedSubmissions(
-      this.deps.conversationFence(sessionId),
-      agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), { surface: 'rejection' }),
-      // A handle closes only with nothing queued, so one an earlier handle wrote is a leftover.
-      (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
-    )
+    // The open already did, unless its write failed: a row an earlier handle wrote is never handed
+    // over, whether it outlived a quit or a crash. A failure here throws before any message is
+    // attempted, so none is handed over: the pass stops, and the next wake or open tries again.
+    await holdUnsentSends(session.journal, {
+      fence: this.deps.conversationFence(sessionId),
+      hostInstance: structuredAgentSessionHostInstance(),
+      hold: { cause: 'hostRestarted' }
+    })
     if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)
     }
-    const oldest = oldestQueuedSubmission(session.journal)
+    const oldest = oldestQueuedSubmission(session)
     // A running command takes no input while its child carries it; its end is a commit, which
     // wakes the loop again. With no child it is a gone generation's, which the start below settles.
     if (!oldest || (session.child && structuredAgentSessionCommandRunning(session.journal))) {
@@ -219,7 +207,6 @@ export class StructuredAgentSessionDeliveryLoop {
   private async handOver(
     sessionId: string,
     { awaited, waitingFor }: Extract<Prepared, { ok: true }>,
-    startFailure: SubmissionRejectionFact | null,
     attempt: Attempt
   ): Promise<Step> {
     const session = this.deps.sessions.get(sessionId)
@@ -233,10 +220,9 @@ export class StructuredAgentSessionDeliveryLoop {
       child && awaited && child.generation === awaited.generation && child.fence === awaited.fence
         ? child
         : null
-    // The host's `starting` trails the adapter's `started` by one serialized step, so for the child
-    // waited on, the adapter's own answer decides whether its start landed.
-    if (!awaitedChild || (awaitedChild.phase === 'starting' && startFailure !== null)) {
-      // The child waited on is gone, replaced by another, or settled its start without proving it.
+    // A child still starting takes input: the provider queues it behind its own start.
+    if (!awaitedChild) {
+      // The child started for this message is gone or replaced by another.
       const ended = awaitedChild ? undefined : session.lastEndedChild
       const endedFailure = ended ? structuredAgentSessionEndedChildFailure(ended) : undefined
       // A user's Stop or close is not a failure: the next step starts, or waits on, a child for
@@ -250,11 +236,18 @@ export class StructuredAgentSessionDeliveryLoop {
         sessionId,
         endedFailure ??
           // Gone with no end observed: nothing says the provider stopped.
-          { failure: startFailure ?? agentSessionFailureFact('startFailed') },
+          { failure: agentSessionFailureFact('startFailed') },
         waitingFor
       )
     }
-    const next = oldestQueuedSubmission(session.journal)
+    // Never steer into a turn a person's Stop is ending: the message runs after it, as its own
+    // turn, and the turn's end is a commit that wakes the loop again. Read here, at the handover,
+    // because a Stop can take the lane between the step that judged the send and this one.
+    if (this.deps.stopping(sessionId)) {
+      return this.stop(sessionId)
+    }
+    // None while a turn is still opening: joining it would record the message ahead of it.
+    const next = structuredAgentSessionNextHandover(session, awaitedChild.fence)
     if (!next) {
       return this.stop(sessionId)
     }
@@ -280,13 +273,14 @@ export class StructuredAgentSessionDeliveryLoop {
   /** A start the session refused, as the failure the message it was for is rejected with. */
   private refusedStart(
     sessionId: string,
-    { refusal, diagnostic }: Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+    { refusal, diagnostic, argumentProblem }: RefusedStart
   ): StructuredAgentSessionStartFailureCause {
     // A conversation no agent ever ran, such as a cleared chat's, failed to start, not restart.
     const newSession = this.deps.record(sessionId)?.providerHandleChain.length === 0
     return {
       refusal,
       ...(diagnostic ? { diagnostic } : {}),
+      ...(argumentProblem ? { argumentProblem } : {}),
       ...(newSession ? { newSession: true as const } : {})
     }
   }
@@ -339,7 +333,7 @@ export class StructuredAgentSessionDeliveryLoop {
       return true
     }
     const { epoch } = session.journal.cursor()
-    return this.deps.abandonQueued(
+    return this.deps.holdClosed(
       sessionId,
       (submission) =>
         ended.endedAt.epoch === epoch &&

@@ -90,6 +90,9 @@ const KIND_CATEGORY = {
   managedAccountEnvOverride: 'startFailed',
   accountSwitchInProgress: 'startFailed',
   managedAccountUnsupported: 'startFailed',
+  launchFolderMissing: 'startFailed',
+  historyInOtherAccount: 'startFailed',
+  agentCommandNotRunnable: 'startFailed',
   restartFailed: 'startFailed',
   providerRejected: 'content',
   attachmentInvalid: 'content',
@@ -115,6 +118,9 @@ const KIND_VERDICT = {
   managedAccountEnvOverride: 'failure',
   accountSwitchInProgress: 'failure',
   managedAccountUnsupported: 'failure',
+  launchFolderMissing: 'failure',
+  historyInOtherAccount: 'failure',
+  agentCommandNotRunnable: 'failure',
   restartFailed: 'failure',
   providerRejected: 'failure',
   attachmentInvalid: 'failure',
@@ -188,7 +194,7 @@ export function isFailedStartOrHostFault(
   )
 }
 
-/** A Stop withdrew it before it ran: it will not land, and only its sender can send it again. */
+/** A Stop withdrew it before it ran: it will not land, and only a person can send it again. */
 export function dispatchWasWithdrawn(
   submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'> | undefined
 ): boolean {

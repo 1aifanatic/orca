@@ -43,13 +43,14 @@ export type ScriptedClaudeBehavior = {
   optionWritesHang?: boolean
   /** Startup's own settings read goes unanswered. */
   startupSettingsReadHangs?: boolean
-  /** Every option write loses its answer while the CLI keeps running (not a refusal), so a
-   *  start that restores one faults. */
+  /** Every option write loses its answer while the CLI keeps running (not a refusal). */
   optionWritesFail?: boolean
   /** The init frame names another provider session than the one launched. */
   initNamesForeignSession?: boolean
   /** Initialize reports an account with no credentials, as a signed-out CLI does. */
   signedOut?: boolean
+  /** No start frame before the first turn, as with no SessionStart hook configured. */
+  sendsNoStartFrame?: boolean
 }
 
 export type ScriptedClaudeChild = {
@@ -130,7 +131,10 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
               ? { account: { apiProvider: 'firstParty', tokenSource: 'none' } }
               : {})
           }
-          const announce = (): void =>
+          const announce = (): void => {
+            if (behavior.sendsNoStartFrame) {
+              return
+            }
             handlers.onMessage?.({
               type: 'system',
               subtype: 'init',
@@ -138,6 +142,7 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
               model: 'claude-sonnet-5',
               apiKeySource: 'none'
             })
+          }
           if (behavior.initHangs) {
             return new Promise((resolve, reject) => {
               failInit = reject
@@ -237,6 +242,7 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
         claimKeyId: 'key-1',
         resolveWorkspacePath: async () => directory,
         resolveClaudeCommand: () => '/usr/local/bin/claude',
+        resolveLaunchArgs: () => [],
         resolveClaudeAuthPolicy: () => ({ stripAuthEnv: false }),
         openClaudeConnection: openConnection,
         readProcessStartTime

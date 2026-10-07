@@ -2,7 +2,8 @@
 // own start. Three writers settle a failed start, one per state the message is in: the delivery
 // loop the queued message the start was for, the handover the message being handed over, and the
 // exit any message handed to a child that never proved its start. Every write names a message fixed
-// when its pass chose it, so a failure on the way never lands on another message.
+// when its pass chose it, so a failure on the way never lands on another message. The chat gets one
+// row for that start, in the words the message was rejected with.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -55,20 +56,12 @@ const CALLER = { callerKey: 'client-1' }
 const SETUP_FAILURE = agentSessionFailureFact('managedAccountUnsupported')
 const SETUP_ROW = agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-1'))
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
-// A situation that could clear on its own, seen after the child was spawned.
-const TRANSIENT = agentSessionFailureFact('accountSwitchInProgress')
-const TRANSIENT_WORDS = agentSessionFailureWords(TRANSIENT, {
-  surface: 'rejection',
-  agentName: 'Codex'
-})
-// A start that faulted at a dispatch: no exit was observed, so nothing blames the provider.
-const DISPATCH_FAULT = agentSessionFailureFact('startFailed')
-const DISPATCH_WORDS = agentSessionFailureWords(DISPATCH_FAULT, {
-  surface: 'rejection',
-  agentName: 'Codex'
-})
+// The exit's reason is Orca's log text; the row says only that the start stopped.
+const EXIT_TEXT = 'Codex stopped before it finished starting. Send your message to try again.'
 // A child that ran and could not finish its start.
 const PROVIDER_START_FAILED = agentSessionFailureFact('providerStartFailed')
+// A start refused before its child ran: the CLI is not there.
+const MISSING_CLI = () => new AgentSessionPreSpawnError(new Error('spawn codex ENOENT'))
 const HOST_FAULT_WORDS = agentSessionFailureWords(agentSessionFailureFact('hostFault'), {
   surface: 'rejection'
 })
@@ -82,10 +75,10 @@ let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let log: ReturnType<typeof recordingStructuredAgentSessionLogger>
 let generation = 0
-let settleStart: (failure: SubmissionRejectionFact | undefined) => void = () => {}
 // Runs before each spawn; throwing refuses that start before it ran.
 let beforeSpawn = vi.fn<() => Promise<void>>()
-let awaitStarted = vi.fn<() => Promise<SubmissionRejectionFact | undefined>>()
+/** The next start's child exits as its start step returns, before the handover step. */
+let exitOnStart = false
 let dispatch = vi.fn<StructuredAgentSessionAdapter['dispatch']>()
 let closeSession = vi.fn<NonNullable<StructuredAgentSessionAdapter['closeSession']>>()
 let frames: AgentSessionSubscribeEvent[] = []
@@ -111,7 +104,7 @@ function startHost(): void {
     adapter: {
       acquire: vi.fn(async ({ fence, spawnToken }) => {
         await beforeSpawn()
-        return {
+        const child = {
           process: {
             hostId: 'local',
             pid: 4242,
@@ -128,8 +121,21 @@ function startHost(): void {
           acquisitionGeneration: `generation-${++generation}`,
           providerChildPhase: 'starting' as const
         }
+        if (exitOnStart) {
+          exitOnStart = false
+          // Asked for on the lane while the start step runs, so it lands before the handover.
+          void host.handleAdapterEvent({
+            type: 'ended',
+            sessionId: SESSION,
+            fence,
+            acquisitionGeneration: child.acquisitionGeneration,
+            reason: EXIT_REASON,
+            cause: 'unexpected-exit',
+            startupUnproven: true
+          })
+        }
+        return child
       }),
-      awaitStarted,
       releaseAcquisition: vi.fn(async () => true),
       closeSession,
       dispatch,
@@ -163,11 +169,17 @@ async function send(text: string): Promise<string> {
   return sent.ok ? sent.value.clientMessageId : ''
 }
 
-/** Sent while the loop waits on a start it made for the first message. */
-async function sendQueued(text: string): Promise<string> {
+/** Sent, and handed to its starting child, which has not answered. */
+async function sendHanded(text: string): Promise<string> {
   const id = await send(text)
-  await eventually(() => expect(awaitStarted).toHaveBeenCalled())
+  await eventually(() => expect(dispatched()).toContain(id))
   return id
+}
+
+async function rejected(clientMessageId: string): Promise<void> {
+  await eventually(async () =>
+    expect(await submission(clientMessageId)).toMatchObject({ dispatchState: 'rejected' })
+  )
 }
 
 async function submission(clientMessageId: string): Promise<AgentJournalSubmission | undefined> {
@@ -205,13 +217,9 @@ function dispatched(): string[] {
   return dispatch.mock.calls.map(([input]) => input.clientMessageId)
 }
 
-/** Records each failed start's write the journal is asked for, in order; with `fail`, fails that
- *  message's first `times` (one by default), before they land or after. */
-function spyRejections(fail?: {
-  clientMessageId: string
-  when: 'before' | 'after'
-  times?: number
-}): string[] {
+/** Records each failed start's write the journal is asked for, in order; with `fail`, fails the
+ *  first `times` (one by default), before they land or after. */
+function spyRejections(fail?: { when: 'before' | 'after'; times?: number }): string[] {
   const order: string[] = []
   const append = AgentSessionJournal.prototype.appendLifecycleBatch
   let failures = 0
@@ -221,11 +229,7 @@ function spyRejections(fail?: {
       if (rejected !== undefined) {
         order.push(`rejected ${rejected}`)
       }
-      if (
-        failures >= (fail?.times ?? 1) ||
-        rejected === undefined ||
-        rejected !== fail?.clientMessageId
-      ) {
+      if (!fail || failures >= (fail.times ?? 1) || rejected === undefined) {
         return append.call(this, input)
       }
       failures += 1
@@ -245,9 +249,7 @@ beforeEach(async () => {
   frames = []
   log = recordingStructuredAgentSessionLogger()
   beforeSpawn = vi.fn(async () => undefined)
-  awaitStarted = vi.fn(
-    () => new Promise<SubmissionRejectionFact | undefined>((resolve) => (settleStart = resolve))
-  )
+  exitOnStart = false
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
   closeSession = vi.fn(async () => true)
   store = await openTestAgentSessionRecordStore(root)
@@ -267,26 +269,23 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
+// The provider took the message and opened its turn, so the next one may be handed over.
+const accepted: StructuredAgentSessionAdapter['dispatch'] = async () => ({
+  state: 'accepted',
+  providerIdentity: {
+    provider: 'codex',
+    threadId: THREAD,
+    turnId: `turn-${dispatch.mock.calls.length}`,
+    ordinal: dispatch.mock.calls.length
+  }
+})
+
 describe('a queued message whose start fails', () => {
-  it('is rejected at once for any failure after its child was spawned, whatever the failure', async () => {
-    const queued = await sendQueued('hello')
-
-    settleStart(TRANSIENT)
-
-    await eventually(async () =>
-      expect(await submission(queued)).toMatchObject({
-        dispatchState: 'rejected',
-        ...TRANSIENT_WORDS
-      })
-    )
-    expect(await startRows()).toEqual([rowFor(queued)])
-  })
-
   it('fails only itself: each message behind it gets its own start', async () => {
     beforeSpawn.mockImplementationOnce(async () => {
-      throw new AgentSessionPreSpawnError(new Error('spawn codex ENOENT'))
+      throw MISSING_CLI()
     })
-    awaitStarted.mockImplementation(async () => undefined)
+    dispatch.mockImplementation(accepted)
     const first = await send('first')
     const second = await send('second')
     const third = await send('third')
@@ -304,18 +303,17 @@ describe('a queued message whose start fails', () => {
   })
 
   it('ends a failed child still there when the next message comes, and starts afresh', async () => {
-    const failed = await sendQueued('first')
-    settleStart(PROVIDER_START_FAILED)
-    await eventually(async () =>
-      expect(await submission(failed)).toMatchObject({ dispatchState: 'rejected' })
-    )
+    // Its dispatch faults while the child is still starting: a failed start, with no exit seen.
+    dispatch.mockRejectedValueOnce(new Error('codex app-server pipe closed'))
+    const failed = await send('first')
+    await rejected(failed)
+    expect(await startRows()).toEqual([rowFor(failed)])
     // Not ended at once: an exit of its own may already be on its way.
     expect(closeSession).not.toHaveBeenCalled()
-    awaitStarted.mockImplementation(async () => undefined)
 
     const next = await send('second')
 
-    await eventually(() => expect(dispatched()).toEqual([next]))
+    await eventually(() => expect(dispatched()).toEqual([failed, next]))
     expect(closeSession).toHaveBeenCalledOnce()
     expect(generation).toBe(3)
   })
@@ -323,12 +321,12 @@ describe('a queued message whose start fails', () => {
 
 describe('a failure on the way to recording a failed start', () => {
   it('retries the same message when the rejection did not land, and never fails the one behind it', async () => {
-    const first = await sendQueued('first')
+    beforeSpawn.mockImplementationOnce(async () => {
+      throw MISSING_CLI()
+    })
+    spyRejections({ when: 'before' })
+    const first = await send('first')
     const second = await send('second')
-    spyRejections({ clientMessageId: first, when: 'before' })
-    awaitStarted.mockImplementation(async () => undefined)
-
-    settleStart(DISPATCH_FAULT)
 
     // The catch's retry is Orca's fault, worded as one; the message behind it goes on.
     await eventually(async () =>
@@ -342,40 +340,35 @@ describe('a failure on the way to recording a failed start', () => {
   })
 
   it('never fails the message behind one whose rejection landed before the error', async () => {
-    const first = await sendQueued('first')
+    beforeSpawn.mockImplementationOnce(async () => {
+      throw MISSING_CLI()
+    })
+    spyRejections({ when: 'after' })
+    const first = await send('first')
     const second = await send('second')
-    spyRejections({ clientMessageId: first, when: 'after' })
-    awaitStarted.mockImplementation(async () => undefined)
 
-    settleStart(DISPATCH_FAULT)
-
-    await eventually(async () =>
-      expect(await submission(first)).toMatchObject({
-        dispatchState: 'rejected',
-        ...DISPATCH_WORDS
-      })
-    )
     await eventually(() => expect(dispatched()).toEqual([second]))
+    expect(await submission(first)).toMatchObject({
+      dispatchState: 'rejected',
+      rejection: { kind: 'restartFailed' }
+    })
     expect(framedStates(second)).not.toContain('rejected')
     expect(log.entries.map((entry) => entry.fields.scope)).toContain('delivery-loop')
   })
 
   it('records the failure before ending the failed child, so a failed cleanup loses nothing', async () => {
-    const first = await sendQueued('first')
-    const second = await send('second')
     const order = spyRejections()
+    dispatch.mockRejectedValueOnce(new Error('codex app-server pipe closed'))
     closeSession.mockImplementation(async () => {
       order.push('cleanup')
       throw new Error('stop failed')
     })
+    const first = await send('first')
+    await rejected(first)
+    const second = await send('second')
 
-    settleStart(DISPATCH_FAULT)
-
-    await eventually(async () =>
-      expect(await submission(second)).toMatchObject({ dispatchState: 'rejected' })
-    )
+    await rejected(second)
     expect(order.slice(0, 2)).toEqual([`rejected ${first}`, 'cleanup'])
-    expect(await submission(first)).toMatchObject({ dispatchState: 'rejected', ...DISPATCH_WORDS })
     expect(log.entries.map((entry) => entry.fields.scope)).toContain(
       'delivery-loop-end-failed-start'
     )
@@ -386,24 +379,39 @@ describe('a failure on the way to recording a failed start', () => {
         refusal: { details: { reason: 'previousExitUnverifiable' } }
       }
     })
-    expect(dispatch).not.toHaveBeenCalled()
+    expect(dispatched()).toEqual([first])
     // Quit's own stop of the old child succeeds.
     closeSession.mockImplementation(async () => true)
   })
 })
 
 describe('a start that fails while its child exits', () => {
+  it('leaves the row to the loop when the exit lands while the message still waits', async () => {
+    exitOnStart = true
+    const queued = await send('hello')
+
+    await rejected(queued)
+    await host.flushStreamedEvents(SESSION)
+
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(await submission(queued)).toMatchObject({ reason: EXIT_TEXT })
+    // Written once, with the message, not first by the exit and again by the loop.
+    expect(await startRows()).toEqual([rowFor(queued)])
+  })
+
   // Neither the loop nor its catch could record the failure, so the message stayed queued.
   it('records the start on the message it was for when its child ends, rather than starting again', async () => {
-    const queued = await sendQueued('hello')
-    spyRejections({ clientMessageId: queued, when: 'before', times: 2 })
-
-    settleStart(DISPATCH_FAULT)
+    exitOnStart = true
+    spyRejections({ when: 'before', times: 2 })
+    const queued = await send('hello')
     await eventually(() =>
       expect(log.entries.map((entry) => entry.fields.scope)).toContain('delivery-loop-fail')
     )
     expect(await submission(queued)).toMatchObject({ dispatchState: 'pending' })
-    await exitBeforeProof()
+    const startsBefore = generation
+
+    // The next wake reads the ended start off its child, not a fresh start for it.
+    const next = await send('next')
 
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({
@@ -411,77 +419,13 @@ describe('a start that fails while its child exits', () => {
         rejection: PROVIDER_START_FAILED
       })
     )
-    expect(generation).toBe(2)
+    await eventually(() => expect(dispatched()).toEqual([next]))
+    expect(generation).toBe(startsBefore + 1)
     expect(await startRows()).toEqual([rowFor(queued)])
   })
 
-  it('is recorded once when the exit lands before the loop sees the start fail', async () => {
-    const queued = await sendQueued('hello')
-
-    await exitBeforeProof()
-    expect(await submission(queued)).toMatchObject({ dispatchState: 'pending' })
-    settleStart(undefined)
-    await eventually(async () =>
-      expect(await submission(queued)).toMatchObject({
-        dispatchState: 'rejected',
-        rejection: PROVIDER_START_FAILED
-      })
-    )
-    const recorded = await submission(queued)
-    await host.flushStreamedEvents(SESSION)
-
-    expect(await submission(queued)).toEqual(recorded)
-    expect(await startRows()).toEqual([rowFor(queued)])
-  })
-
-  it('is recorded once when the exit lands after the loop recorded it', async () => {
-    const queued = await sendQueued('hello')
-
-    settleStart(DISPATCH_FAULT)
-    await eventually(async () =>
-      expect(await submission(queued)).toMatchObject({
-        dispatchState: 'rejected',
-        ...DISPATCH_WORDS
-      })
-    )
-    const recorded = await submission(queued)
-    await exitBeforeProof()
-    await host.flushStreamedEvents(SESSION)
-
-    // The exit's own reason never rewrites the failure the loop recorded.
-    expect(await submission(queued)).toEqual(recorded)
-    expect(await startRows()).toEqual([rowFor(queued)])
-  })
-
-  // A message queued behind it waits on the same start; the exit still writes the handed one's row.
-  it('gives a handed message its row though a message is queued behind it on the same start', async () => {
-    awaitStarted.mockImplementationOnce(async () => undefined)
-    const handed = await send('handed')
-    await eventually(() => expect(dispatch).toHaveBeenCalledOnce())
-    const queued = await send('queued')
-    // The next pass waits on the same child's start for the queued message.
-    await eventually(() => expect(awaitStarted).toHaveBeenCalledTimes(2))
-
-    await exitBeforeProof()
-    settleStart(undefined)
-
-    await eventually(async () =>
-      expect(await submission(queued)).toMatchObject({ dispatchState: 'rejected' })
-    )
-    for (const id of [handed, queued]) {
-      expect(await submission(id)).toMatchObject({
-        dispatchState: 'rejected',
-        rejection: PROVIDER_START_FAILED
-      })
-    }
-    // The exit's row for the handed message; the queued one failed alike, so it reads under it.
-    expect(await startRows()).toEqual([rowFor(handed)])
-  })
-
-  it('rejects a message its unproven child was handed with the start, never in doubt', async () => {
-    awaitStarted.mockImplementation(async () => undefined)
-    const handed = await send('hello')
-    await eventually(() => expect(dispatch).toHaveBeenCalledOnce())
+  it("writes one row in the exit's words for a message the child was handed, never in doubt", async () => {
+    const handed = await sendHanded('hello')
     expect(await submission(handed)).toMatchObject({
       dispatchState: 'pending',
       handedOverAt: expect.any(Number)
@@ -492,6 +436,7 @@ describe('a start that fails while its child exits', () => {
     await eventually(async () =>
       expect(await submission(handed)).toMatchObject({
         dispatchState: 'rejected',
+        reason: EXIT_TEXT,
         rejection: PROVIDER_START_FAILED
       })
     )
@@ -500,44 +445,46 @@ describe('a start that fails while its child exits', () => {
     // The exit rejected it, so the exit writes the start's one row, keyed by it.
     expect(await startRows()).toEqual([rowFor(handed)])
   })
+
+  // The message behind it was never handed to that child: it gets a start of its own.
+  it('fails a handed message with its start, and the message waiting behind it starts afresh', async () => {
+    const handed = await sendHanded('handed')
+    // Held while the turn ahead opens, which it never does; its pass has found nothing to hand over.
+    const queued = await send('queued')
+    await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
+    dispatch.mockImplementation(accepted)
+
+    await exitBeforeProof()
+
+    await rejected(handed)
+    await eventually(() => expect(dispatched()).toEqual([handed, queued]))
+    expect(framedStates(queued)).not.toContain('rejected')
+    expect(await startRows()).toEqual([rowFor(handed)])
+  })
 })
 
 // One row speaks for a run of starts that fail alike, until a turn is delivered. Each message still
 // makes its own start and is rejected on its own; the run's row says why for all of them.
 describe('a run of starts that fail alike', () => {
-  const accepted: StructuredAgentSessionAdapter['dispatch'] = async () => ({
-    state: 'accepted',
-    providerIdentity: {
-      provider: 'codex',
-      threadId: THREAD,
-      turnId: `turn-${dispatch.mock.calls.length}`,
-      ordinal: dispatch.mock.calls.length
-    }
-  })
-
-  const NOT_SIGNED_IN = agentSessionFailureFact('notSignedIn')
-
-  it('writes one row when every start fails not signed in, each message making its own attempt', async () => {
+  it('writes one row when every start fails alike, each message making its own attempt', async () => {
     const completions: AgentSessionTurnCompletionEvent[] = []
     host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
-    const first = await sendQueued('first')
+    beforeSpawn.mockImplementation(async () => {
+      throw MISSING_CLI()
+    })
+    const startsBefore = beforeSpawn.mock.calls.length
+    const first = await send('first')
     const second = await send('second')
     const third = await send('third')
-    awaitStarted.mockImplementation(async () => NOT_SIGNED_IN)
 
-    settleStart(NOT_SIGNED_IN)
-
-    await eventually(async () =>
-      expect(await submission(third)).toMatchObject({ dispatchState: 'rejected' })
-    )
+    await rejected(third)
     for (const id of [first, second, third]) {
       expect(await submission(id)).toMatchObject({
         dispatchState: 'rejected',
-        rejection: NOT_SIGNED_IN
+        rejection: { kind: 'restartFailed' }
       })
     }
-    // Setup's child was generation-1; each message made its own start.
-    expect(generation).toBe(4)
+    expect(beforeSpawn.mock.calls.length - startsBefore).toBe(3)
     expect(await startRows()).toEqual([rowFor(first)])
     await host.flushStreamedEvents(SESSION)
     expect(completions).toHaveLength(1)
@@ -557,16 +504,15 @@ describe('a run of starts that fail alike', () => {
   })
 
   it('writes one row when a start fails once and the messages behind it are delivered', async () => {
-    dispatch.mockImplementation(accepted)
-    const first = await sendQueued('first')
+    const first = await sendHanded('first')
     const second = await send('second')
     const third = await send('third')
+    await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
+    dispatch.mockImplementation(accepted)
 
     await exitBeforeProof()
-    awaitStarted.mockImplementation(async () => undefined)
-    settleStart(undefined)
 
-    await eventually(() => expect(dispatched()).toEqual([second, third]))
+    await eventually(() => expect(dispatched()).toEqual([first, second, third]))
     expect(await submission(first)).toMatchObject({
       dispatchState: 'rejected',
       rejection: PROVIDER_START_FAILED
@@ -578,29 +524,26 @@ describe('a run of starts that fail alike', () => {
   })
 
   it('writes a row for each failure when the starts fail differently', async () => {
-    const first = await sendQueued('first')
-    const second = await send('second')
-    awaitStarted.mockImplementation(async () => TRANSIENT)
+    beforeSpawn.mockImplementationOnce(async () => {
+      throw MISSING_CLI()
+    })
+    const first = await send('first')
+    await rejected(first)
+    const second = await sendHanded('second')
 
-    settleStart(DISPATCH_FAULT)
+    await exitBeforeProof()
 
-    await eventually(async () =>
-      expect(await submission(second)).toMatchObject({
-        dispatchState: 'rejected',
-        ...TRANSIENT_WORDS
-      })
-    )
+    await rejected(second)
     expect(await startRows()).toEqual([rowFor(first), rowFor(second)])
   })
 
   it('writes a row again for a failure alike once a turn was delivered after the last row', async () => {
+    beforeSpawn.mockImplementationOnce(async () => {
+      throw MISSING_CLI()
+    })
     dispatch.mockImplementation(accepted)
-    const first = await sendQueued('first')
-    awaitStarted.mockImplementationOnce(async () => undefined)
-    settleStart(DISPATCH_FAULT)
-    await eventually(async () =>
-      expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
-    )
+    const first = await send('first')
+    await rejected(first)
     const delivered = await send('delivered')
     await eventually(async () =>
       expect(await submission(delivered)).toMatchObject({ dispatchState: 'accepted' })
@@ -623,13 +566,13 @@ describe('a run of starts that fail alike', () => {
       reason: 'codex app-server exited',
       cause: 'unexpected-exit'
     })
-    awaitStarted.mockImplementation(async () => DISPATCH_FAULT)
+    beforeSpawn.mockImplementationOnce(async () => {
+      throw MISSING_CLI()
+    })
 
     const last = await send('last')
 
-    await eventually(async () =>
-      expect(await submission(last)).toMatchObject({ dispatchState: 'rejected', ...DISPATCH_WORDS })
-    )
+    await rejected(last)
     expect(await startRows()).toEqual([rowFor(first), rowFor(last)])
   })
 
@@ -642,15 +585,10 @@ describe('a run of starts that fail alike', () => {
           audience: 'log'
         }
       })
-    awaitStarted.mockImplementation(async () => undefined)
-    const first = await send('first')
-    await eventually(() => expect(dispatch).toHaveBeenCalledOnce())
+    const first = await sendHanded('first')
     await exitBeforeProof(stderr('2026-10-07T01:02:03.456789Z'))
-    await eventually(async () =>
-      expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
-    )
-    const second = await send('second')
-    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(2))
+    await rejected(first)
+    const second = await sendHanded('second')
 
     await exitBeforeProof(stderr('2026-10-07T01:02:09.012345Z'))
 
@@ -664,31 +602,25 @@ describe('a run of starts that fail alike', () => {
   })
 
   // Words written for a person name what failed: two that differ are two failures.
-  it('writes a row for each of two refusals whose words for a person differ', async () => {
+  it('writes a row for each of two exits whose words for a person differ', async () => {
     const refused = (text: string) =>
       agentSessionFailureFact('providerStartFailed', { detail: { text, audience: 'person' } })
-    const first = await sendQueued('first')
-    const second = await send('second')
-    awaitStarted.mockImplementation(async () => refused('no rollout found for thread id t-2'))
+    const first = await sendHanded('first')
+    await exitBeforeProof(refused('no rollout found for thread id t-1'))
+    await rejected(first)
+    const second = await sendHanded('second')
 
-    settleStart(refused('no rollout found for thread id t-1'))
+    await exitBeforeProof(refused('no rollout found for thread id t-2'))
 
-    await eventually(async () =>
-      expect(await submission(second)).toMatchObject({ dispatchState: 'rejected' })
-    )
+    await rejected(second)
     expect(await startRows()).toEqual([rowFor(first), rowFor(second)])
   })
 
   it("writes no row for an exit that fails alike its run's row, though it rejected the message", async () => {
-    awaitStarted.mockImplementation(async () => undefined)
-    const first = await send('first')
-    await eventually(() => expect(dispatch).toHaveBeenCalledOnce())
+    const first = await sendHanded('first')
     await exitBeforeProof()
-    await eventually(async () =>
-      expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
-    )
-    const second = await send('second')
-    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(2))
+    await rejected(first)
+    const second = await sendHanded('second')
 
     await exitBeforeProof()
 

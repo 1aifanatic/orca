@@ -556,7 +556,6 @@ describe('the notice on each message that did not go through', () => {
         [rejected],
         [],
         NOT_FAILED_HERE,
-        [],
         new Set(),
         [loadedRow]
       )
