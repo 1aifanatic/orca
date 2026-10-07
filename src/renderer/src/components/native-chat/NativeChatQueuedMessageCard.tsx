@@ -27,7 +27,7 @@ import {
   queuedMessageCardSteers,
   type QueuedMessageCard
 } from './structured-agent-session-queued-cards'
-import { queuedCardSenderLine } from './native-chat-agent-message-sender-label'
+import { NativeChatAgentMessageSenders } from './NativeChatAgentMessageSenders'
 
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(card: QueuedMessageCard): string | null {
@@ -108,6 +108,7 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
 
 export function NativeChatQueuedMessageCard({
   card,
+  chatWorktreeId,
   showsSteerShortcut,
   steerHeld = false,
   onSteer,
@@ -116,6 +117,8 @@ export function NativeChatQueuedMessageCard({
   onTurnOffQueueing
 }: {
   card: QueuedMessageCard
+  /** The chat's worktree, whose host its sender is found on; null shows the sender unlinked. */
+  chatWorktreeId: string | null
   /** Only the newest card answers Cmd/Ctrl+Enter; only it may show the chord. */
   showsSteerShortcut: boolean
   /** The chat reads Stopping: the card waits for the stop (`NativeChatQueuedMessageList`). */
@@ -143,9 +146,7 @@ export function NativeChatQueuedMessageCard({
       )}
       <div className="min-w-0 flex-1">
         {card.from ? (
-          <p className="truncate text-xs text-muted-foreground">
-            {queuedCardSenderLine(card.from)}
-          </p>
+          <NativeChatAgentMessageSenders from={card.from} chatWorktreeId={chatWorktreeId} queued />
         ) : null}
         <p className="truncate text-sm" title={card.text}>
           {card.text}

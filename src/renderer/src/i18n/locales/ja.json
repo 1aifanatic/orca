@@ -18168,7 +18168,7 @@
         "sendConfirmBody_other": "メッセージを送信しようとしています。キューに入っている {{count}} 件のメッセージを消去しますか？",
         "sendConfirmClear": "キューを消去",
         "sendConfirmSend": "メッセージを送信",
-        "from": "送信元: {{names}}"
+        "fromSender": "送信元:"
       },
       "thought": "考えました",
       "thoughtForDuration": "{{duration}} 考えました",

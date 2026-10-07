@@ -17997,7 +17997,7 @@
         "sendConfirmBody_other": "Estás a punto de enviar un mensaje. ¿Quieres borrar los {{count}} mensajes que había en cola?",
         "sendConfirmClear": "Vaciar cola",
         "sendConfirmSend": "Enviar mensaje",
-        "from": "De {{names}}"
+        "fromSender": "De"
       },
       "thought": "Pensó",
       "thoughtForDuration": "Pensó durante {{duration}}",

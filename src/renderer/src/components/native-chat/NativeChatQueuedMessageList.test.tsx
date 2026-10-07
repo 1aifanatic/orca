@@ -13,6 +13,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
+// A card's sender line opens and names agents through modules this test does not exercise.
+vi.mock('@/lib/open-agent-message-sender', () => ({ openAgentMessageSender: vi.fn() }))
+vi.mock('@/runtime/structured-conversation-name', () => ({
+  useStructuredChatTabConversationName: () => null
+}))
 vi.mock('../../store', () => {
   const state = { updateSettings: mocks.updateSettings }
   const useAppStore = (selector: (value: typeof state) => unknown): unknown => selector(state)
@@ -36,7 +41,7 @@ function renderList(owner: StructuredAgentSessionQueuedMessagesController) {
   // The app root mounts the provider; tests supply the same context.
   return render(
     <TooltipProvider delayDuration={0}>
-      <NativeChatQueuedMessageList controller={owner} />
+      <NativeChatQueuedMessageList chatWorktreeId={null} controller={owner} />
     </TooltipProvider>
   )
 }
@@ -109,7 +114,7 @@ function renderHeldQueue(
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the list only awaits mutate; its answer is never read.
       mutate: mutate as StructuredAgentSessionMutate
     })
-    return <NativeChatQueuedMessageList controller={owner} />
+    return <NativeChatQueuedMessageList chatWorktreeId={null} controller={owner} />
   }
   const view = render(
     <TooltipProvider delayDuration={0}>
@@ -137,7 +142,10 @@ describe('NativeChatQueuedMessageList', () => {
     const region = container.querySelector('[aria-live="polite"]')
     rerender(
       <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={controller([card({ messageId: 'draft-1' })])} />
+        <NativeChatQueuedMessageList
+          chatWorktreeId={null}
+          controller={controller([card({ messageId: 'draft-1' })])}
+        />
       </TooltipProvider>
     )
     expect(container.querySelector('[aria-live="polite"]')).toBe(region)
@@ -174,7 +182,7 @@ describe('NativeChatQueuedMessageList', () => {
     const owner = controller([card({ messageId: 'draft-1', position: 1 })])
     render(
       <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={owner} steerHeld />
+        <NativeChatQueuedMessageList chatWorktreeId={null} controller={owner} steerHeld />
       </TooltipProvider>
     )
     const steer = screen.getByRole('button', { name: 'Steer' })
@@ -192,7 +200,11 @@ describe('NativeChatQueuedMessageList', () => {
       const owner = controller([card({ messageId: 'draft-1', position: 1 })])
       render(
         <TooltipProvider delayDuration={0}>
-          <NativeChatQueuedMessageList controller={owner} focusComposer={focusComposer} />
+          <NativeChatQueuedMessageList
+            chatWorktreeId={null}
+            controller={owner}
+            focusComposer={focusComposer}
+          />
         </TooltipProvider>
       )
       const action = screen.getByRole('button', { name })
@@ -368,7 +380,11 @@ describe('NativeChatQueuedMessageList', () => {
     }
     render(
       <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={owner} focusComposer={focusComposer} />
+        <NativeChatQueuedMessageList
+          chatWorktreeId={null}
+          controller={owner}
+          focusComposer={focusComposer}
+        />
       </TooltipProvider>
     )
     const resume = screen.getByRole('button', { name: 'Resume' })
@@ -380,7 +396,11 @@ describe('NativeChatQueuedMessageList', () => {
     })
     render(
       <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={idle} focusComposer={focusComposer} />
+        <NativeChatQueuedMessageList
+          chatWorktreeId={null}
+          controller={idle}
+          focusComposer={focusComposer}
+        />
       </TooltipProvider>
     )
     const enabled = screen.getByRole('button', { name: 'Resume' })

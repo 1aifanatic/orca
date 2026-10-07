@@ -18168,7 +18168,7 @@
         "sendConfirmBody_other": "메시지를 보내려고 합니다. 대기열에 있는 메시지 {{count}}개를 지울까요?",
         "sendConfirmClear": "대기열 지우기",
         "sendConfirmSend": "메시지 보내기",
-        "from": "보낸 사람: {{names}}"
+        "fromSender": "보낸 사람:"
       },
       "thought": "생각함",
       "thoughtForDuration": "{{duration}} 동안 생각함",
