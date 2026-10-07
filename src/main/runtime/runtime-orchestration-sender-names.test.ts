@@ -33,6 +33,7 @@ type Session = NonNullable<
 let db: OrchestrationDb
 let session: Session
 let records: Map<string, AgentSessionRecord>
+let generatedTitles: boolean
 
 function names() {
   return new RuntimeOrchestrationSenderNames({
@@ -43,7 +44,8 @@ function names() {
         : undefined,
     getPtyAgents: () => ({ launchAgent: 'codex' }),
     getTerminalPaneKey: (handle) => `tab_${handle}:leaf`,
-    getWorkspaceSession: (worktreeId) => (worktreeId === WORKTREE ? session : undefined)
+    getWorkspaceSession: (worktreeId) => (worktreeId === WORKTREE ? session : undefined),
+    getGeneratedTitlesEnabled: () => generatedTitles
   })
 }
 
@@ -112,6 +114,7 @@ function chatTab(customLabel: string | null, label: string) {
 beforeEach(() => {
   db = new OrchestrationDb(':memory:')
   session = { unifiedTabs: {}, tabsByWorktree: {} }
+  generatedTitles = false
   const base = agentSessionRecordFixture(agentSessionLeaseFixture({ sessionId: CHAT }))
   records = new Map([[CHAT, { ...base, location: { ...base.location, workspaceId: WORKTREE } }]])
   hostRef.current = {
@@ -133,7 +136,7 @@ const terminalParty = (handle: string) => ({
 })
 
 describe("a sender's name, from what Orca shows for it", () => {
-  it("names a local worker by its active dispatch's task, before its tab or agent", () => {
+  it("names a local worker by its active dispatch's task when its tab has no name of its own", () => {
     const run = db.createRun({
       objective: 'o',
       coordinatorHandle: 'term_coord',
@@ -145,8 +148,11 @@ describe("a sender's name, from what Orca shows for it", () => {
       displayName: 'Parser port'
     })
     createRootDispatch(db, task.id, 'term_worker')
-    session.tabsByWorktree = { [WORKTREE]: [{ id: 'tab_term_worker', customTitle: 'Build tab' }] }
+    session.tabsByWorktree = { [WORKTREE]: [{ id: 'tab_term_worker', title: 'Codex ready' }] }
     expect(names().nameOf(terminalParty('term_worker'))).toBe('Parser port')
+    // A name the person gave the worker's tab is the one they know it by.
+    session.tabsByWorktree = { [WORKTREE]: [{ id: 'tab_term_worker', customTitle: 'Build tab' }] }
+    expect(names().nameOf(terminalParty('term_worker'))).toBe('Build tab')
   })
 
   it('names a worker by its task after its own accepted worker_done settled that dispatch', () => {
@@ -183,14 +189,55 @@ describe("a sender's name, from what Orca shows for it", () => {
     expect(names().nameOf(chatParty)).toBe('Auth chat')
   })
 
+  it("names a chat by its saved name before its task or its tab's default label", () => {
+    const record = records.get(CHAT)
+    if (!record) {
+      throw new Error('chat record missing')
+    }
+    records.set(CHAT, { ...record, conversationName: 'Port the lexer' })
+    session.unifiedTabs = { [WORKTREE]: [chatTab(null, 'Claude Chat')] }
+    expect(names().nameOf(chatParty)).toBe('Port the lexer')
+  })
+
   it("names a chat with no tab by its agent's chat label", () => {
     expect(names().nameOf(chatParty)).toBe('Claude Chat')
   })
 
-  it("names a terminal by its tab's stored title, else its agent", () => {
+  it("names a terminal agent as its sidebar row does: the tab's own name, else its agent", () => {
     expect(names().nameOf(terminalParty('term_plain'))).toBe('Codex')
     session.tabsByWorktree = { [WORKTREE]: [{ id: 'tab_term_plain', customTitle: ' Lint ' }] }
     expect(names().nameOf(terminalParty('term_plain'))).toBe('Lint')
+    session.tabsByWorktree = {
+      [WORKTREE]: [{ id: 'tab_term_plain', title: '✳ Fix the sender link' }]
+    }
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Fix the sender link')
+    // A status the agent paints is not a name.
+    session.tabsByWorktree = { [WORKTREE]: [{ id: 'tab_term_plain', title: 'Codex ready' }] }
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Codex')
+  })
+
+  it('uses a generated tab title only while the person has generated titles on', () => {
+    session.tabsByWorktree = {
+      [WORKTREE]: [{ id: 'tab_term_plain', title: 'Codex ready', generatedTitle: 'Lint fixes' }]
+    }
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Codex')
+    generatedTitles = true
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Lint fixes')
+  })
+
+  it("never names a pane in a split tab by the tab title, which is its focused sibling's", () => {
+    session.tabsByWorktree = { [WORKTREE]: [{ id: 'tab_term_plain', title: 'Sibling task' }] }
+    session.terminalLayoutsByTabId = {
+      tab_term_plain: {
+        root: {
+          type: 'split',
+          direction: 'vertical',
+          first: { type: 'leaf', leafId: 'a' },
+          second: { type: 'leaf', leafId: 'b' }
+        }
+      }
+    }
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Codex')
   })
 
   it('names a party nothing records as nothing', () => {

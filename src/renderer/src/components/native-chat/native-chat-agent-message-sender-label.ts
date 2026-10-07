@@ -6,7 +6,6 @@ import { useStructuredChatTabConversationName } from '@/runtime/structured-conve
 import type { AgentMessageSender } from '../../../../shared/agent-session-message-source'
 import { getAgentRowConversationName } from '../../../../shared/agent-row-conversation-name'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
-import { structuredChatDisplayName } from '../../../../shared/structured-chat-row-name'
 import type { Tab } from '../../../../shared/tab-types'
 import { resolveAgentRowPaneLiveTitle } from '../dashboard/agent-row-pane-live-title'
 
@@ -87,8 +86,10 @@ function findChatTab(
 }
 
 /**
- * The sender as Orca names it now, as its tab and sidebar row do; the name the message recorded
- * once it is gone from this window, or runs on another host (`dispatch:<id>`).
+ * The sender's own name as Orca shows it now (its chat's rename or saved name, or its sidebar agent
+ * row's name); otherwise the name the message recorded, which the host chose the same way and
+ * falls back to its task or agent label. A sender on another host (`dispatch:<id>`) is never
+ * looked up here.
  */
 export function useAgentMessageSenderLabel(sender: AgentMessageSender): string {
   const { address, orcaSessionId, terminalHandle } = sender.party
@@ -100,8 +101,6 @@ export function useAgentMessageSenderLabel(sender: AgentMessageSender): string {
   const terminalName = useAppStore((state) =>
     local && !chatTab && terminalHandle ? terminalAgentRowName(state, terminalHandle) : null
   )
-  const liveName = chatTab
-    ? structuredChatDisplayName(chatTab.customLabel, conversationName, chatTab.label)
-    : terminalName
-  return liveName || agentMessageSenderLabel(sender)
+  const ownName = chatTab ? chatTab.customLabel?.trim() || conversationName : terminalName
+  return ownName || sender.name || chatTab?.label.trim() || unnamedSenderLabel()
 }

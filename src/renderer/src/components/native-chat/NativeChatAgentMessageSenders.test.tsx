@@ -145,6 +145,17 @@ describe('the name a sender is shown under', () => {
     expect(screen.getByRole('button', { name: 'Port the parser' })).toBeInTheDocument()
   })
 
+  it('keeps the recorded name for a chat sender whose tab has no name of its own', () => {
+    useAppStore.setState({ unifiedTabsByWorktree: { [WORKTREE]: [chatTab()] } })
+    renderSenders(
+      source(
+        { address: `orca_session_id:${SESSION}`, terminalHandle: null, orcaSessionId: SESSION },
+        'Port the parser task'
+      )
+    )
+    expect(screen.getByRole('button', { name: 'Port the parser task' })).toBeInTheDocument()
+  })
+
   it('keeps the recorded name when its agent row has no name of its own', () => {
     useAppStore.setState({
       tabsByWorktree: { [WORKTREE]: [terminalTab({ title: 'Claude Code' })] },
