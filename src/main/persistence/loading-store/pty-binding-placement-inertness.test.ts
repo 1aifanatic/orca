@@ -5,23 +5,8 @@ import type { TerminalPanePlacement } from '../../../shared/terminal-pane-placem
 import { FOLDER_WORKSPACE_INSTANCE_SEPARATOR } from '../../../shared/worktree/id'
 import { firstLayoutLeafId } from '../restoring-sessions/terminal-layout-normalization'
 import { fixture } from './profile-state-delayed-authority-fixture'
-import type * as AgreementModule from '../terminal-topology/terminal-pane-placement-agreement'
 import type { PersistPtyBindingArgs } from './pty-binding-persistence'
 
-const agreementCheck = vi.hoisted(() => ({ throws: false }))
-vi.mock('../terminal-topology/terminal-pane-placement-agreement', async (importOriginal) => {
-  const actual = await importOriginal<typeof AgreementModule>()
-  return {
-    terminalPanePlacementAgreement: (
-      ...args: Parameters<typeof actual.terminalPanePlacementAgreement>
-    ) => {
-      if (agreementCheck.throws) {
-        throw new Error('malformed session')
-      }
-      return actual.terminalPanePlacementAgreement(...args)
-    }
-  }
-})
 vi.mock('../../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../../telemetry/cohort-classifier', () => ({
   getCohortAtEmit: () => ({ nth_repo_added: 2 })
@@ -39,10 +24,11 @@ const NOW = 1_800_000_000_000
 
 const NEW_TAB: TerminalPanePlacement = { kind: 'new-tab' }
 const ROOT: TerminalPanePlacement = { kind: 'root' }
+// Vertical after a lone root leaf is the shape today's graft guesses, so placement adds nothing.
 const split = (parentLeafId: string): TerminalPanePlacement => ({
   kind: 'split',
   parentLeafId,
-  direction: 'horizontal'
+  direction: 'vertical'
 })
 
 type Scenario = {
@@ -175,7 +161,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  agreementCheck.throws = false
   vi.useRealTimers()
   _resetTracerForTests()
 })
@@ -227,7 +212,7 @@ async function bindAndSave(
   }
 }
 
-describe('placement on the binding write is inert', () => {
+describe('placement that names today’s shape, or falls back, writes today’s state', () => {
   for (const scenario of SCENARIOS) {
     it(`${scenario.name}: memory and saved state match a write without placement`, async () => {
       const baseline = await bindAndSave(scenario, undefined)
@@ -245,13 +230,47 @@ describe('placement on the binding write is inert', () => {
     })
   }
 
-  it('a throwing agreement check leaves the result and state as without placement', async () => {
-    const scenario = SCENARIOS[0]
-    const baseline = await bindAndSave(scenario, undefined)
-    agreementCheck.throws = true
-    const placed = await bindAndSave(scenario, () => NEW_TAB)
-    expect(placementAttributes).toEqual(['check_threw'])
-    expect(placed).toEqual(baseline)
+  it('a placed split and a placed row reach the saved ssh partition', async () => {
+    vi.setSystemTime(NOW)
+    const { store, readState } = await fixture()
+    const parent = firstLayoutLeafId(
+      store.getWorkspaceSession(SSH_HOST).terminalLayoutsByTabId['tab-remote']?.root ?? null
+    )
+    if (!parent) {
+      throw new Error('fixture lost its existing tab')
+    }
+    await store.persistPtyBinding(
+      {
+        worktreeId: REMOTE_WORKTREE,
+        tabId: 'tab-remote',
+        leafId: TEST_LEAF_2,
+        ptyId: 'pty-ssh-split',
+        placement: { kind: 'split', parentLeafId: parent, direction: 'horizontal', ratio: 0.3 }
+      },
+      SSH_HOST
+    )
+    await store.persistPtyBinding(
+      {
+        worktreeId: REMOTE_WORKTREE,
+        tabId: 'tab-ssh-new',
+        leafId: TEST_LEAF_1,
+        ptyId: 'pty-ssh-new',
+        placement: { kind: 'new-tab', row: { title: 'logs', color: '#f97316' } }
+      },
+      SSH_HOST
+    )
+    await store.flushPendingOrThrowAsync()
+    const saved = readState().workspaceSessionsByHostId?.[SSH_HOST]
+    expect(saved?.terminalLayoutsByTabId['tab-remote']?.root).toEqual({
+      type: 'split',
+      direction: 'horizontal',
+      first: { type: 'leaf', leafId: parent },
+      second: { type: 'leaf', leafId: TEST_LEAF_2 },
+      ratio: 0.3
+    })
+    expect(
+      saved?.tabsByWorktree[REMOTE_WORKTREE]?.find(({ id }) => id === 'tab-ssh-new')
+    ).toMatchObject({ title: 'logs', color: '#f97316', pendingActivationSpawn: true })
   })
 
   it('a tombstoned pane is still refused with placement', async () => {

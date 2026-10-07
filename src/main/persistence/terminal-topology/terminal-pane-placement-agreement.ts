@@ -14,11 +14,10 @@ export type TerminalPanePlacementAgreement =
   | 'tab_missing'
   | 'parent_missing'
   | 'root_occupied'
-  | 'check_threw'
 
 /**
- * Whether placement names the tab today's binding write picks, read before that write. Report-only
- * until the mint and graft are deleted; the write never branches on it.
+ * Whether placement names the tab's current shape, read before the binding write. The write
+ * applies placement only on `agrees`; every other verdict keeps the mint and graft.
  */
 export function terminalPanePlacementAgreement(
   placement: TerminalPanePlacement | undefined,
