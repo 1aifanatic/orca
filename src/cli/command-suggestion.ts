@@ -170,7 +170,8 @@ export function unknownCommandData(specs: CommandSpec[], commandPath: string[]):
   if (
     commandPath.length > 1 &&
     isCommandGroupName(specs, group) &&
-    !visiblePathPrefixes(specs).has(commandPath.slice(0, 2).join(' '))
+    !visiblePathPrefixes(specs).has(commandPath.slice(0, 2).join(' ')) &&
+    !suggestions.some((path) => path.startsWith(`${group} `))
   ) {
     nextSteps.push(
       `Orca's ${group} commands run at the top level (orca <command>, not orca ${group} <command>); list them with: orca ${group} --help`

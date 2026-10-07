@@ -41,11 +41,17 @@ describe('browser command discovery', () => {
     ])
   })
 
-  it('keeps recovery advice inside the real browser identity namespace', () => {
-    expect(unknownCommandData(COMMAND_SPECS, ['browser', 'identity', 'gett'])).toEqual({
+  it.each([
+    ['identity', 'gett'],
+    ['identit', 'get']
+  ])('keeps browser %s %s recovery advice in the identity namespace', (namespace, verb) => {
+    expect(unknownCommandData(COMMAND_SPECS, ['browser', namespace, verb])).toEqual({
       suggestions: ['browser identity get', 'browser identity set'],
       nextSteps: ['Did you mean: orca browser identity get, orca browser identity set']
     })
+  })
+
+  it('does not redirect an unknown identity command to top-level browser commands', () => {
     expect(unknownCommandData(COMMAND_SPECS, ['browser', 'identity', 'zzzzzz'])).toEqual({
       suggestions: [],
       nextSteps: []
