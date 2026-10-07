@@ -162,6 +162,36 @@ describe.skipIf(process.platform === 'win32')(
       expect(readFileSync(join(lock, OWNER), 'utf8')).toBe('new-token')
     })
 
+    // Astra 26087 r3: a steal stalled past the ownerless-lock age still holds the mutation lock,
+    // because it records its pid as a mutation holder does. Backdating stands in for the stall.
+    it('keeps a suspended steal’s mutation lock against a mutation however long it stalls', async () => {
+      const { dir, lock, steal, ownerSeen, bin } = await fenceOfExitedHolder()
+      const mutationLock = join(dir, 'orcad-state-mutation.lock')
+      const paused = join(dir, 'paused')
+      // Stalls the steal right before it moves the fence, after every check it makes.
+      writeFileSync(
+        join(bin, 'mv'),
+        `#!/bin/sh\nif [ ! -e ${quote(paused)} ]; then : > ${quote(paused)}; while [ ! -e ${quote(join(dir, 'resume'))} ]; do sleep 0.01; done; fi\nPATH=${quote(process.env.PATH ?? '')} exec mv "$@"\n`,
+        { mode: 0o755 }
+      )
+      const stealing = runProcess({
+        program: '/bin/sh',
+        args: ['-c', steal],
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+      })
+      await waitFor(paused)
+      expect(readFileSync(join(mutationLock, 'pid'), 'utf8').trim()).toMatch(/^\d+$/u)
+      const longAgo = new Date(Date.now() - 10 * 60_000)
+      utimesSync(mutationLock, longAgo, longAgo)
+      const mutation = await runProcess({ program: '/bin/sh', args: [join(dir, 'mutation.sh')] })
+      expect(mutation.stdout).toContain('STATE_MUTATION_BUSY')
+      expect(existsSync(ownerSeen)).toBe(false)
+      writeFileSync(join(dir, 'resume'), '')
+      expect((await stealing).stdout.trim()).toBe('EXITED_OWNER_OK')
+      expect(readFileSync(join(lock, OWNER), 'utf8')).toBe('new-token')
+      expect(existsSync(mutationLock)).toBe(false)
+    })
+
     it.each([
       ['before the steal holds the mutation lock', 2, 'BUSY'],
       ['while the steal holds the mutation lock', 3, 'EXITED_OWNER_OK']

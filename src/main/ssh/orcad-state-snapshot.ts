@@ -84,6 +84,23 @@ export function posixProcessGroupCommand(pid: string, procRoot = '/proc'): strin
   ].join(' ')
 }
 
+/**
+ * The holder's pid in the mutation lock `lock` (a quoted shell word); `onTaken` runs when another
+ * holder's is already there. Noclobber: a run that resumes after a takeover backs off.
+ */
+export function posixStateMutationPidRecord(lock: string, onTaken: string): string {
+  return `set -C; { echo $$ > ${lock}/pid; } 2>/dev/null || { ${onTaken} }; set +C;`
+}
+
+/** The holder's own process group, recorded only when it was started as one. */
+export function posixStateMutationGroupRecord(lock: string): string {
+  return [
+    'if [ "${ORCA_STATE_MUTATION_GROUP:-}" = 1 ]; then',
+    `group=$(${posixProcessGroupCommand('$$')});`,
+    `case "$group" in ""|*[!0-9]*) ;; *) echo "$group" > ${lock}/pgid;; esac; fi;`
+  ].join(' ')
+}
+
 export function serializedStateMutationCommand(
   baseDir: string,
   script: string,
@@ -108,17 +125,12 @@ export function serializedStateMutationCommand(
     `elif kill -0 "$holder" 2>/dev/null || [ -z "$(find "$lock" -maxdepth 0 -mmin +${staleMinutes} 2>/dev/null)" ]; then ${busy}`,
     'fi;',
     `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { ${busy} }; fi;`,
-    // Noclobber: a run that resumes after a takeover finds a pid already there and backs off.
-    `set -C; { echo $$ > "$lock/pid"; } 2>/dev/null || { ${busy} }; set +C;`,
+    posixStateMutationPidRecord('"$lock"', busy),
     // Rechecked once the lock is held: an exited-owner steal holds it across the fence takeover.
-    ...(owned
-      ? [
-          `${posixOrcadFenceOwnedTest(owned)} || { rm -rf "$lock"; echo ${ORCAD_FENCE_LOST_MARKER}; exit ${ORCAD_FENCE_LOST_EXIT}; };`
-        ]
-      : []),
-    'if [ "${ORCA_STATE_MUTATION_GROUP:-}" = 1 ]; then',
-    `group=$(${posixProcessGroupCommand('$$')});`,
-    'case "$group" in ""|*[!0-9]*) ;; *) echo "$group" > "$lock/pgid";; esac; fi;',
+    owned
+      ? `${posixOrcadFenceOwnedTest(owned)} || { rm -rf "$lock"; echo ${ORCAD_FENCE_LOST_MARKER}; exit ${ORCAD_FENCE_LOST_EXIT}; };`
+      : '',
+    posixStateMutationGroupRecord('"$lock"'),
     // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
     // Only a fence this run still owns: a superseded or foreign one ages toward takeover.
     `beat_fence() { touch -c -m "$lock" 2>/dev/null; ${

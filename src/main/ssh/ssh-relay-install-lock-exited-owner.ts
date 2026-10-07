@@ -5,6 +5,7 @@
 import { shellEscape } from './ssh-connection-utils'
 import type { InstallLockOwnerFile } from './ssh-relay-install-lock-commands'
 import { powerShellLiteral } from './ssh-remote-powershell'
+import { posixStateMutationGroupRecord, posixStateMutationPidRecord } from './orcad-state-snapshot'
 
 /**
  * A lock whose owner file still names `token` once it has been quiet past `quietSeconds`: the
@@ -52,7 +53,8 @@ export function windowsCheck(
  * Inside the steal claim: takes the state-mutation lock, which a mutation must hold before it
  * rechecks its fence, then rereads the owner and only then the lock's identity, so a heartbeat
  * or a re-owning after the first sample fails the takeover. Any existing mutation lock, live,
- * unverifiable or dead, refuses: its removal could race a mutation taking it over.
+ * unverifiable or dead, refuses: its removal could race a mutation taking it over. The steal
+ * records itself the way a mutation holder does, so only proof of its exit frees the lock.
  */
 function posixMutationAdmission(
   lockDir: string,
@@ -66,21 +68,26 @@ function posixMutationAdmission(
   return [
     'if [ "$current_exited" = 1 ]; then current_exited=0;',
     `if mkdir ${shellEscape(exitedOwner.mutationLock)} 2>/dev/null; then held_mutation=${shellEscape(exitedOwner.mutationLock)};`,
-    `[ "$(cat ${ownerPath} 2>/dev/null)" = ${shellEscape(exitedOwner.token)} ] &&`,
+    `owns_mutation=1; ${posixStateMutationPidRecord('"$held_mutation"', 'owns_mutation=0;')}`,
+    posixStateMutationGroupRecord('"$held_mutation"'),
+    `[ "$owns_mutation" = 1 ] && [ "$(cat ${ownerPath} 2>/dev/null)" = ${shellEscape(exitedOwner.token)} ] &&`,
     `${identityAssignment(lockDir, 'again_key')} && [ "$again_key" = "$lock_key" ] && current_exited=1;`,
     'fi; fi;'
   ].join(' ')
 }
 
-/** Releases only a mutation lock this steal created: `rmdir` keeps one a mutation now holds. */
+/** Releases only a mutation lock that still names this steal's shell. */
 export function posixRelease(exitedOwner: InstallLockExitedOwner | undefined): string {
-  return exitedOwner?.mutationLock ? ' [ -z "$held_mutation" ] || rmdir "$held_mutation";' : ''
+  return exitedOwner?.mutationLock
+    ? ' [ -n "$held_mutation" ] && [ "$(cat "$held_mutation/pid" 2>/dev/null)" = "$$" ] && rm -rf "$held_mutation";'
+    : ''
 }
 
 /**
  * The Windows admission: the host script's mutation lock is owned by whoever creates its
- * `owner.json` exclusively, so this claims that file; its live pid without a creation time
- * reads as unverifiable, which keeps every mutation out until the steal removes it.
+ * `owner.json` exclusively. This moves a written record into place, so the file never exists
+ * empty; its live pid without a creation time reads as unverifiable, as a host-script holder's
+ * would, and only the pid's absence frees it.
  */
 function windowsMutationAdmission(exitedOwner: InstallLockExitedOwner | undefined): string[] {
   if (!exitedOwner?.mutationLock) {
@@ -92,9 +99,10 @@ function windowsMutationAdmission(exitedOwner: InstallLockExitedOwner | undefine
     '$heldMutation = $null',
     'if ($currentExited) { $currentExited = $false; try {',
     `$null = New-Item -ItemType Directory -Force -Path ${mutation} -ErrorAction Stop`,
-    `$mutationStream = [System.IO.File]::Open((Join-Path ${mutation} 'owner.json'), [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)`,
+    `$mutationOwnerTemp = Join-Path ${mutation} "owner.json.$PID.tmp"`,
+    "[System.IO.File]::WriteAllText($mutationOwnerTemp, '{\"pid\":' + $PID + '}')",
+    `[System.IO.File]::Move($mutationOwnerTemp, (Join-Path ${mutation} 'owner.json'))`,
     `$heldMutation = ${mutation}`,
-    `try { $mutationOwner = [System.Text.Encoding]::UTF8.GetBytes('{"pid":' + $PID + '}'); $mutationStream.Write($mutationOwner, 0, $mutationOwner.Length) } finally { $mutationStream.Dispose() }`,
     `$ownerNow = [System.IO.File]::ReadAllText(${ownerPath})`,
     '$again = Get-Item -LiteralPath $lock -ErrorAction Stop',
     '$againIdentity = "$(([DateTimeOffset]$again.LastWriteTimeUtc).ToUnixTimeSeconds()):$($again.CreationTimeUtc.Ticks)"',
@@ -106,7 +114,7 @@ function windowsMutationAdmission(exitedOwner: InstallLockExitedOwner | undefine
 export function windowsRelease(exitedOwner: InstallLockExitedOwner | undefined): string[] {
   return exitedOwner?.mutationLock
     ? [
-        'if ($null -ne $heldMutation) { Remove-Item -LiteralPath $heldMutation -Recurse -Force -ErrorAction SilentlyContinue }'
+        "if ($null -ne $heldMutation) { try { if (([System.IO.File]::ReadAllText((Join-Path $heldMutation 'owner.json')) | ConvertFrom-Json).pid -eq $PID) { Remove-Item -LiteralPath $heldMutation -Recurse -Force -ErrorAction SilentlyContinue } } catch {} }"
       ]
     : []
 }
