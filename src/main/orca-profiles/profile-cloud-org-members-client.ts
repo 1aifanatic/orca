@@ -6,7 +6,7 @@ import type {
 } from '../../shared/orca-profiles'
 import type { OrcaCloudAuthConfig } from './profile-cloud-auth-config'
 import type { OrcaCloudSession } from './profile-cloud-session-store'
-import { OrcaCloudRequestError } from './profile-cloud-client'
+import { OrcaCloudRequestError, readOrcaCloudErrorCode } from './profile-cloud-client'
 
 const CLOUD_REQUEST_TIMEOUT_MS = 30_000
 const ORG_ROLES: readonly OrcaOrgRole[] = ['owner', 'admin', 'member']
@@ -104,22 +104,6 @@ function orgMembersUrl(config: OrcaCloudAuthConfig, orgId: string, path: string)
   return `${config.apiBaseUrl}/v1/desktop/orgs/${encodeURIComponent(orgId)}${path}`
 }
 
-async function extractErrorCode(response: Response): Promise<string | undefined> {
-  try {
-    const body = (await response.json()) as unknown
-    if (
-      body &&
-      typeof body === 'object' &&
-      typeof (body as { error?: unknown }).error === 'string'
-    ) {
-      return (body as { error: string }).error.trim() || undefined
-    }
-  } catch {
-    // Non-JSON error body; the status code alone drives the caller's mapping.
-  }
-  return undefined
-}
-
 // Why: these are fixed first-party endpoints bearing the profile's access token;
 // following a redirect would leak that token to another origin, and a stalled
 // server must not hang the renderer's awaited IPC call forever.
@@ -143,7 +127,7 @@ async function requestOrgMembers<T>(
 ): Promise<T> {
   const response = await fetch(url, init)
   if (!response.ok) {
-    throw new OrcaCloudRequestError(response.status, await extractErrorCode(response))
+    throw new OrcaCloudRequestError(response.status, await readOrcaCloudErrorCode(response))
   }
   return parse((await response.json()) as unknown)
 }

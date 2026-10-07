@@ -119,7 +119,7 @@ describe('profile cloud session refresh', () => {
   it('notifies subscribers when an auth failure clears the stored session', async () => {
     const invalidated = vi.fn()
     const unsubscribe = onOrcaCloudSessionInvalidated(invalidated)
-    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401))
+    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401, 'invalid_refresh_token'))
 
     await expect(readFreshOrcaCloudSession(config, active, '/data')).resolves.toEqual({
       status: 'reconnect-required'
@@ -133,7 +133,7 @@ describe('profile cloud session refresh', () => {
   it('stays silent when a concurrent rotation already replaced the failed session', async () => {
     const invalidated = vi.fn()
     const unsubscribe = onOrcaCloudSessionInvalidated(invalidated)
-    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401))
+    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401, 'invalid_refresh_token'))
     readMock.mockReturnValueOnce({
       status: 'found',
       session: staleSession,
@@ -253,7 +253,7 @@ describe('refresh-token replay after an ambiguous attempt', () => {
     )
 
     now.mockReturnValue(1_000_000 + 31_000)
-    refreshMock.mockRejectedValueOnce(new OrcaCloudRequestError(401))
+    refreshMock.mockRejectedValueOnce(new OrcaCloudRequestError(401, 'invalid_refresh_token'))
 
     await expect(readFreshOrcaCloudSession(config, active, '/data')).resolves.toEqual({
       status: 'reconnect-required'
@@ -268,7 +268,7 @@ describe('refresh-token replay after an ambiguous attempt', () => {
 
   it('does not mark a 401 that follows no ambiguous attempt', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401))
+    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401, 'invalid_refresh_token'))
 
     await expect(readFreshOrcaCloudSession(config, active, '/data')).resolves.toEqual({
       status: 'reconnect-required'

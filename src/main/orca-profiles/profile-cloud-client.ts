@@ -7,6 +7,7 @@ import type { OrcaCloudAuthConfig } from './profile-cloud-auth-config'
 import type { OrcaCloudSession } from './profile-cloud-session-store'
 import type { OrcaCloudSessionExchangeResponse } from './profile-cloud-session-exchange'
 import { cancelUnreadResponseBody } from '../lib/unread-response-body'
+import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
 
 type ExchangeCodeArgs = {
   code: string
@@ -170,11 +171,42 @@ type PostJsonOptions = {
   timeoutMs?: number
 }
 
-// Only a status line proves the server rejected the request without consuming
-// what was in it. Everything else — an abort, a dropped socket, a 200 we could
-// not parse — leaves a rotating credential possibly already spent.
+// Orca Cloud rejects with a JSON `{error}` (auth) or `{code}` (API) body. A 401/403
+// without one came from a proxy, captive portal, or firewall, not from Orca Cloud.
+export function isUnverifiedCloudAuthRejection(error: unknown): boolean {
+  return (
+    error instanceof OrcaCloudRequestError &&
+    (error.statusCode === 401 || error.statusCode === 403) &&
+    error.errorCode === undefined
+  )
+}
+
+// Only a status line from Orca Cloud proves it rejected the request without
+// consuming what was in it. Everything else — an abort, a dropped socket, a 200
+// we could not parse, a middlebox's 401/403 — leaves a rotating credential
+// possibly already spent.
 export function isAmbiguousCloudRequestFailure(error: unknown): boolean {
-  return !(error instanceof OrcaCloudRequestError)
+  return !(error instanceof OrcaCloudRequestError) || isUnverifiedCloudAuthRejection(error)
+}
+
+const CLOUD_ERROR_BODY_MAX_BYTES = 16 * 1024
+
+export async function readOrcaCloudErrorCode(response: Response): Promise<string | undefined> {
+  try {
+    const body = await readFetchResponseJsonWithinLimit<unknown>(
+      response,
+      CLOUD_ERROR_BODY_MAX_BYTES,
+      { structuralTokens: 64, nestingDepth: 4 }
+    )
+    if (!body || typeof body !== 'object') {
+      return undefined
+    }
+    const code = 'error' in body ? body.error : 'code' in body ? body.code : undefined
+    return typeof code === 'string' ? code.trim() || undefined : undefined
+  } catch {
+    // Non-JSON or oversized: not an Orca Cloud error body.
+    return undefined
+  }
 }
 
 async function postJson<T>(url: string, body: unknown, options?: PostJsonOptions): Promise<T> {
@@ -192,8 +224,12 @@ async function postJson<T>(url: string, body: unknown, options?: PostJsonOptions
     signal: AbortSignal.timeout(options?.timeoutMs ?? CLOUD_REQUEST_TIMEOUT_MS)
   })
   if (!response.ok) {
-    await cancelUnreadResponseBody(response)
-    throw new OrcaCloudRequestError(response.status)
+    // Only an auth rejection's body matters: it decides whether the user is signed out.
+    if (response.status !== 401 && response.status !== 403) {
+      await cancelUnreadResponseBody(response)
+      throw new OrcaCloudRequestError(response.status)
+    }
+    throw new OrcaCloudRequestError(response.status, await readOrcaCloudErrorCode(response))
   }
   return (await response.json()) as T
 }

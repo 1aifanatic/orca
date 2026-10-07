@@ -41,9 +41,13 @@ function shouldRefreshCloudSession(session: OrcaCloudSession, now = Date.now()):
   return session.expiresAt <= now + CLOUD_SESSION_REFRESH_SKEW_MS
 }
 
-export function isOrcaCloudAuthFailure(error: unknown): boolean {
+// Why errorCode: only Orca Cloud's own rejection may sign the user out; a proxy or
+// firewall answering 401/403 is a transport failure (isUnverifiedCloudAuthRejection).
+export function isOrcaCloudAuthFailure(error: unknown): error is OrcaCloudRequestError {
   return (
-    error instanceof OrcaCloudRequestError && (error.statusCode === 401 || error.statusCode === 403)
+    error instanceof OrcaCloudRequestError &&
+    (error.statusCode === 401 || error.statusCode === 403) &&
+    error.errorCode !== undefined
   )
 }
 
@@ -300,7 +304,7 @@ export async function runWithFreshOrcaCloudSession<T>(
       // rejected. A 403 is an authorization (permission) failure — signing
       // the user out for it would destroy a valid session, so let it surface
       // as a failed operation instead.
-      if (retryError instanceof OrcaCloudRequestError && retryError.statusCode === 401) {
+      if (isOrcaCloudAuthFailure(retryError) && retryError.statusCode === 401) {
         clearCloudSessionIfUnchanged(active.profile.id, userDataPath, refreshed.session, active)
         return { status: 'reconnect-required' }
       }
