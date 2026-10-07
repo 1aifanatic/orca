@@ -13,6 +13,7 @@ import { journalDatabasePath } from '../native-chat/agent-session-journal/journa
 export function hasPersistedLaunchObligation(
   stateDirectory: string,
   field: LaunchOperationObligation,
+  now: number = Date.now(),
   fileExists: (path: string) => boolean = existsSync
 ): boolean {
   const databasePath = journalDatabasePath(stateDirectory)
@@ -20,7 +21,7 @@ export function hasPersistedLaunchObligation(
     return false
   }
   try {
-    return journalDatabaseHoldsLaunchObligation(databasePath, field)
+    return journalDatabaseHoldsLaunchObligation(databasePath, field, now)
   } catch {
     // A database that cannot be read cannot say it owes nothing.
     return true

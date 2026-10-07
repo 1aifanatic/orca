@@ -65,6 +65,20 @@ describe('whether a restarted host owes a launch its prompt, read before opening
     expect(hasPersistedLaunchObligation(directory, 'promptDelivery')).toBe(false)
   })
 
+  it('skips an owed prompt whose record has expired, which nothing reads any more', async () => {
+    const row = launchRow({
+      state: 'owed',
+      text: 'fix it',
+      agent: 'claude',
+      deadline: 9_000,
+      terminal: null
+    })
+    row.expiresAt = 50_000
+    await leaveLaunchRecords(row)
+    expect(hasPersistedLaunchObligation(directory, 'promptDelivery', 49_999)).toBe(true)
+    expect(hasPersistedLaunchObligation(directory, 'promptDelivery', 50_000)).toBe(false)
+  })
+
   it('never creates the database of a profile that has none', () => {
     expect(hasPersistedLaunchObligation(directory, 'promptDelivery')).toBe(false)
     expect(existsSync(journalDatabasePath(directory))).toBe(false)
