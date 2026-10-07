@@ -40,9 +40,11 @@ With `send`, the chat gets the "you have mail" notice in its running turn
 (Claude and Codex take it mid-turn; an agent that runs one prompt at a time
 ends its turn and takes it next, as a person's Send now does); it waits while
 an approval or question is open. With `dispatch --inject`, the task goes in
-the same way, or becomes a card while a prompt is open. Another Orca server
-queues it. Terminal agents are unaffected: they get mail at their next idle
-point or from `check --wait`.
+the same way, or becomes a card while a prompt is open. A task reported handed
+to the chat but not taken yet can still be dropped if that turn ends first (for
+example on Stop), so check on a worker that never reports. Another Orca server
+queues a steer. Terminal agents are unaffected: they get mail at their next
+idle point or from `check --wait`.
 
 Do not substitute a remote terminal handle. Omit `--from` for ordinary
 coordinator calls; a dispatched worker instead copies the exact `--from` and

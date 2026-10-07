@@ -152,6 +152,40 @@ describe('mail sent to steer into a chat mid-turn', () => {
     await settleTurn(PEER_CHAT, 1)
     await endTurn()
   })
+
+  it('takes the send-now path when the prompt is answered while its first attempt is reading', async () => {
+    const { chat, mailbox } = await chatDispatch()
+    const endTurn = await runningUserTurn(chat)
+    const approve = await pendingApproval(chat)
+    // The attempt's read sees the prompt open, then waits until after the person answers.
+    let releaseRead = (): void => undefined
+    const readHeld = new Promise<void>((resolve) => {
+      releaseRead = resolve
+    })
+    const readStarted = vi.fn()
+    const journalSnapshot = host.journalSnapshot.bind(host)
+    vi.spyOn(host, 'journalSnapshot').mockImplementationOnce(async (sessionId) => {
+      const stale = await journalSnapshot(sessionId)
+      readStarted()
+      await readHeld
+      return stale
+    })
+
+    await call(
+      'orchestration.send',
+      { to: mailbox, subject: 'wrong branch, stop', delivery: 'steer' },
+      { sessionId: COORDINATOR }
+    )
+    await vi.waitFor(() => expect(readStarted).toHaveBeenCalled(), WAIT)
+    await approve()
+    releaseRead()
+
+    await vi.waitFor(() => expect(chat.methods).toContain('turn/steer'), WAIT)
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
+    expect(turnText(chat.turns[1]!)).toMatch(POINTER)
+    await settleTurn(PEER_CHAT, 1)
+    await endTurn()
+  })
 })
 
 describe('a task dispatched to steer into a chat mid-turn', () => {

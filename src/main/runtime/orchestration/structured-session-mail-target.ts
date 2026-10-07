@@ -120,10 +120,11 @@ export function structuredSessionOwnedMailboxes(sessionId: string, db: Orchestra
 type StructuredMailStatus = 'working' | 'attention' | 'idle' | null
 
 /**
- * A structured session's status changed. Retry what is parked on it only on the edges that can
- * change a parked verdict, never on a streamed frame, since each retry reads the whole journal: an
- * answered prompt, which is the edge a held steer goes in on (only workers subscribe to their
- * journal, so other chats get it here), and idle, which also re-derives the mailboxes it owns.
+ * A structured session's status changed. Retry what is parked on it, and re-derive the mailboxes it
+ * owns, only on the edges that can change a verdict, never on a streamed frame, since each retry
+ * reads the whole journal: idle, and an answered prompt, the edge a held steer goes in on (only
+ * workers subscribe to their journal). Re-deriving also reruns an attempt still in flight on a
+ * read from before the answer.
  */
 export function redriveStructuredSessionMailOnStatus(
   summary: { sessionId: string; status: StructuredMailStatus },
@@ -135,12 +136,11 @@ export function redriveStructuredSessionMailOnStatus(
   }
 ): void {
   const idle = summary.status !== 'working' && summary.status !== 'attention'
-  if (idle || (summary.status === 'working' && previousStatus === 'attention')) {
-    actions.retryParked(summary.sessionId)
+  if (!idle && !(summary.status === 'working' && previousStatus === 'attention')) {
+    return
   }
-  if (idle) {
-    structuredSessionIdleEdgeMailboxes(summary.sessionId, actions.openDb).forEach(actions.deliver)
-  }
+  actions.retryParked(summary.sessionId)
+  structuredSessionIdleEdgeMailboxes(summary.sessionId, actions.openDb).forEach(actions.deliver)
 }
 
 /** The mailboxes a session's idle edge re-derives, opening an existing database if nothing has

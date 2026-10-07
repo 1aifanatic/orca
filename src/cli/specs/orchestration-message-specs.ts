@@ -4,7 +4,7 @@ const ORCHESTRATION_DELIVERY_NOTE =
   '--delivery steer: a busy chat gets the "you have mail" notice in its running turn instead of as a queued card; an agent that runs one prompt at a time ends its turn and takes it next, as a person\'s Send now does. While an approval or question is open the notice waits for the answer. Default queue. Terminal agents get mail at their next idle point or check --wait.'
 
 export const ORCHESTRATION_DISPATCH_DELIVERY_NOTE =
-  '--delivery steer (needs --inject): a busy chat takes the task into its running turn (an agent that runs one prompt at a time ends its turn first) instead of as a queued card, or as a card while an approval or question is open. A task to a terminal is typed in at once either way.'
+  '--delivery (either value) needs --inject. With steer, a busy chat takes the task into its running turn (an agent that runs one prompt at a time ends its turn first) instead of as a queued card, or as a card while an approval or question is open. A task reported handed to the chat but not taken yet can still be dropped if that turn ends without taking it (say the person presses Stop); if no report arrives, check on the worker. A task to a terminal is typed in at once either way.'
 
 /** The verbs that move messages between agents: send, check, reply, inbox. */
 export const ORCHESTRATION_MESSAGE_COMMAND_SPECS: CommandSpec[] = [
