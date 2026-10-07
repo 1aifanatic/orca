@@ -23,12 +23,15 @@ import {
 } from './native-chat-permission-mode-labels'
 
 /** Icon and name; Full access reads in the warning colour wherever it is shown. */
-function ModeName(props: { mode: AgentChatPermissionMode; truncate?: boolean }): React.JSX.Element {
+export function NativeChatPermissionModeName(props: {
+  mode: AgentChatPermissionMode
+  truncate?: boolean
+}): React.JSX.Element {
   const Icon = NATIVE_CHAT_PERMISSION_MODE_ICONS[props.mode]
   const label = nativeChatPermissionModeLabel(props.mode)
   const body = (
     <>
-      <Icon className="size-3.5 shrink-0" aria-hidden />
+      <Icon className="size-3.5 shrink-0 text-inherit" aria-hidden />
       {props.truncate ? <span className="truncate">{label}</span> : <span>{label}</span>}
     </>
   )
@@ -65,7 +68,7 @@ function NativeChatPermissionModePickerInner({
               )}
               className="max-w-40 min-w-0"
             >
-              <ModeName mode={picker.current} truncate />
+              <NativeChatPermissionModeName mode={picker.current} truncate />
               <ChevronDown className="size-3" />
             </Button>
           </DropdownMenuTrigger>
@@ -88,7 +91,7 @@ function NativeChatPermissionModePickerInner({
           {picker.supported.map((mode) => (
             <DropdownMenuRadioItem key={mode} value={mode} disabled={picker.pending}>
               <div className="min-w-0 py-0.5">
-                <ModeName mode={mode} />
+                <NativeChatPermissionModeName mode={mode} />
                 <div className="text-xs font-normal text-muted-foreground">
                   {nativeChatPermissionModeDescription(mode)}
                 </div>

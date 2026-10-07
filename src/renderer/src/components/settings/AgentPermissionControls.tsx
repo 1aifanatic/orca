@@ -1,18 +1,31 @@
 import { translate } from '@/i18n/i18n'
 import { Button } from '../ui/button'
-import { SettingsSegmentedControl, SettingsSubsectionHeader } from './SettingsFormControls'
-import type { AgentPermissionMode } from '../../../../shared/tui-agent-permissions'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { SettingsSubsectionHeader } from './SettingsFormControls'
+import {
+  agentPermissionModes,
+  isAgentPermissionMode,
+  type AgentPermissionMode
+} from '../../../../shared/tui-agent-permissions'
+import { AGENT_CHAT_PERMISSION_MODES } from '../../../../shared/agent-chat-permission-mode'
+import type { TuiAgent } from '../../../../shared/tui-agent'
+import { NativeChatPermissionModeName } from '../native-chat/NativeChatPermissionModePicker'
+import {
+  nativeChatPermissionModeLabel,
+  nativeChatPermissionModeDescription
+} from '../native-chat/native-chat-permission-mode-labels'
 import type { AgentPermissionException } from './agent-permission-exceptions'
 
-function permissionModeLabel(bypass: boolean): string {
-  return bypass
-    ? translate('auto.components.settings.AgentsPane.agentPermissionsYolo', 'Yolo')
-    : translate('auto.components.settings.AgentsPane.agentPermissionsManual', 'Manual')
-}
-
 function exceptionReasonText(exception: AgentPermissionException): string {
-  const mode = permissionModeLabel(exception.effectiveBypass)
+  const mode = nativeChatPermissionModeLabel(exception.mode)
   const { reason } = exception
+  if (reason.kind === 'unsupported-mode') {
+    return translate(
+      'components.settings.AgentsPane.agentPermissionsUnsupportedReason',
+      'runs {{value0}}: this agent does not support the default mode.',
+      { value0: mode }
+    )
+  }
   if (reason.kind === 'arguments') {
     return translate(
       'auto.components.settings.AgentsPane.agentPermissionsArgumentsReason',
@@ -56,7 +69,7 @@ export function AgentPermissionsSetting({
           <>
             {translate(
               'auto.components.settings.AgentsPane.agentPermissionsDescription',
-              'Choose whether Orca launches agents with fewer permission prompts or with manual checks.'
+              'Default permissions for new chats and agent terminals.'
             )}{' '}
             {translate(
               'auto.components.settings.AgentsPane.agentPermissionsAppliesToAll',
@@ -66,7 +79,7 @@ export function AgentPermissionsSetting({
               <span className="mt-1 block">
                 {translate(
                   'auto.components.settings.AgentsPane.agentPermissionsNotFollowing',
-                  "These agents don't follow this switch:"
+                  "These agents don't follow this default:"
                 )}
                 {exceptions.map((exception) => (
                   <span key={exception.agentId} className="block">
@@ -91,18 +104,18 @@ export function AgentPermissionsSetting({
           </>
         }
         action={
-          <SettingsSegmentedControl<AgentPermissionMode>
+          <PermissionModeSelect
             value={mode}
-            onChange={onChange}
+            onChange={(choice) => {
+              if (choice !== 'default') {
+                onChange(choice)
+              }
+            }}
             ariaLabel={translate(
               'auto.components.settings.AgentsPane.agentPermissions',
               'Agent Permissions'
             )}
-            size="sm"
-            options={[
-              { value: 'bypass', label: permissionModeLabel(true) },
-              { value: 'ask', label: permissionModeLabel(false) }
-            ]}
+            modes={AGENT_CHAT_PERMISSION_MODES}
           />
         }
       />
@@ -112,13 +125,64 @@ export function AgentPermissionsSetting({
 
 type AgentPermissionChoice = AgentPermissionMode | 'default'
 
-/** One agent's own permission choice; Default follows the switch. */
+function PermissionModeSelect({
+  value,
+  modes,
+  defaultMode,
+  ariaLabel,
+  onChange
+}: {
+  value: AgentPermissionChoice
+  modes: readonly AgentPermissionMode[]
+  defaultMode?: AgentPermissionMode
+  ariaLabel: string
+  onChange: (choice: AgentPermissionChoice) => void
+}): React.JSX.Element {
+  const defaultLabel = translate(
+    'auto.components.settings.AgentsPane.agentPermissionOverrideDefault',
+    'Default ({{value0}})',
+    { value0: nativeChatPermissionModeLabel(defaultMode ?? 'ask') }
+  )
+  return (
+    <Select
+      value={value}
+      onValueChange={(choice) => {
+        if (choice !== value && (choice === 'default' || isAgentPermissionMode(choice))) {
+          onChange(choice)
+        }
+      }}
+    >
+      <SelectTrigger size="sm" aria-label={ariaLabel}>
+        <SelectValue>
+          {value === 'default' ? defaultLabel : <NativeChatPermissionModeName mode={value} />}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent position="popper" align="end" className="w-72">
+        {defaultMode ? <SelectItem value="default">{defaultLabel}</SelectItem> : null}
+        {modes.map((mode) => (
+          <SelectItem key={mode} value={mode} textValue={nativeChatPermissionModeLabel(mode)}>
+            <div className="space-y-0.5">
+              <NativeChatPermissionModeName mode={mode} />
+              <div className="text-xs text-muted-foreground">
+                {nativeChatPermissionModeDescription(mode)}
+              </div>
+            </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+/** One agent's own permission choice; Default follows the shared setting. */
 export function AgentPermissionOverrideControl({
+  agentId,
   agentLabel,
   override,
   defaultMode,
   onChange
 }: {
+  agentId: TuiAgent
   agentLabel: string
   override: AgentPermissionMode | undefined
   defaultMode: AgentPermissionMode
@@ -129,7 +193,7 @@ export function AgentPermissionOverrideControl({
       <span className="text-xs text-muted-foreground">
         {translate('auto.components.settings.AgentsPane.agentPermissionOverride', 'Permissions')}
       </span>
-      <SettingsSegmentedControl<AgentPermissionChoice>
+      <PermissionModeSelect
         value={override ?? 'default'}
         onChange={onChange}
         ariaLabel={translate(
@@ -137,19 +201,8 @@ export function AgentPermissionOverrideControl({
           '{{value0}} permissions',
           { value0: agentLabel }
         )}
-        size="sm"
-        options={[
-          {
-            value: 'default',
-            label: translate(
-              'auto.components.settings.AgentsPane.agentPermissionOverrideDefault',
-              'Default ({{value0}})',
-              { value0: permissionModeLabel(defaultMode === 'bypass') }
-            )
-          },
-          { value: 'bypass', label: permissionModeLabel(true) },
-          { value: 'ask', label: permissionModeLabel(false) }
-        ]}
+        modes={agentPermissionModes(agentId)}
+        defaultMode={defaultMode}
       />
     </div>
   )

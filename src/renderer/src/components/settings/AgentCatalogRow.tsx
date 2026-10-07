@@ -20,7 +20,7 @@ import type { AgentPermissionRevealTarget } from './agent-permission-exceptions'
 
 /** The control a reveal focuses: the Permissions choice, or the field whose text decides. */
 const REVEAL_FOCUS_SELECTOR: Record<AgentPermissionRevealTarget, string> = {
-  permissions: '[role="radio"][aria-checked="true"]',
+  permissions: '[role="combobox"]',
   arguments: 'input',
   environment: 'input'
 }
@@ -125,6 +125,7 @@ export function AgentCatalogRow({
   const defaultEnvSummary = stringifyAgentDefaultEnvDraft(defaultEnv)
   const permissionControl = permission ? (
     <AgentPermissionOverrideControl
+      agentId={agentId}
       agentLabel={label}
       override={permission.override}
       defaultMode={permission.defaultMode}

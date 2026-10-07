@@ -496,6 +496,9 @@ describe('AgentsPane', () => {
     expect(matchesSettingsSearch('permission', getAgentsPaneSearchEntries())).toBe(true)
     expect(matchesSettingsSearch('yolo', getAgentsPaneSearchEntries())).toBe(true)
     expect(matchesSettingsSearch('manual', getAgentsPaneSearchEntries())).toBe(true)
+    for (const label of ['Ask for approval', 'Accept edits', 'Approve for me', 'Full access']) {
+      expect(matchesSettingsSearch(label, getAgentsPaneSearchEntries())).toBe(true)
+    }
   })
 
   it('shows the stored default on the switch and applies a choice to every agent', () => {
@@ -506,15 +509,15 @@ describe('AgentsPane', () => {
       onChange,
       onRevealException: vi.fn()
     })
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: AgentPermissionsSetting passes these props to its segmented control.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: AgentPermissionsSetting passes these props to its permission select.
     const props = element.props.children.props.action.props as {
       value: string
       onChange: (value: 'bypass' | 'ask') => void
-      options: { value: string }[]
+      modes: string[]
     }
 
     expect(props.value).toBe('ask')
-    expect(props.options.map((option) => option.value)).toEqual(['bypass', 'ask'])
+    expect(props.modes).toEqual(['ask', 'accept-edits', 'auto', 'bypass'])
     props.onChange('bypass')
     expect(onChange).toHaveBeenCalledWith('bypass')
   })
@@ -527,7 +530,7 @@ describe('AgentsPane', () => {
       agentPermissionModeOverrides: { claude: 'ask' }
     })
 
-    expect(lineText(markup)).toContain('Claude runs Manual: it has its own setting.')
+    expect(lineText(markup)).toContain('Claude runs Ask for approval: it has its own setting.')
   })
 
   // The summary line and the agent's own control already say it; no badge repeats it.
@@ -549,12 +552,12 @@ describe('AgentsPane', () => {
     const markup = renderPane({
       ...getDefaultSettings('/tmp'),
       agentPermissionMode: 'bypass',
-      agentPermissionModeOverrides: { claude: 'accept-edits' }
+      agentPermissionModeOverrides: { claude: 'future-mode' }
     })
     const claudeControl = markup.slice(markup.indexOf('aria-label="Claude permissions"'))
 
-    expect(lineText(markup)).toContain('Claude runs Manual: it has its own setting.')
-    expect(claudeControl).toMatch(/role="radio" aria-checked="true"[^>]*>Manual</)
+    expect(lineText(markup)).toContain('Claude runs Ask for approval: it has its own setting.')
+    expect(claudeControl).toContain('Ask for approval')
   })
 
   it('counts a permission option typed into Arguments as the agent posture', () => {
@@ -565,7 +568,9 @@ describe('AgentsPane', () => {
       agentDefaultArgs: { codex: '-a on-request' }
     })
 
-    expect(lineText(markup)).toContain('Codex runs Manual: its Arguments set -a on-request.')
+    expect(lineText(markup)).toContain(
+      'Codex runs Ask for approval: its Arguments set -a on-request.'
+    )
   })
 
   // Its own choice still applies where it runs (an SSH host), and nothing else can clear it.
@@ -577,7 +582,7 @@ describe('AgentsPane', () => {
       agentPermissionModeOverrides: { codex: 'ask' }
     })
 
-    expect(lineText(markup)).toContain('Codex runs Manual: it has its own setting.')
+    expect(lineText(markup)).toContain('Codex runs Ask for approval: it has its own setting.')
     expect(markup).toContain('aria-label="Codex permissions"')
   })
 
@@ -601,7 +606,7 @@ describe('AgentsPane', () => {
       agentPermissionModeOverrides: { claude: 'ask' }
     })
 
-    expect(lineText(markup)).toContain('Claude runs Manual: it has its own setting.')
+    expect(lineText(markup)).toContain('Claude runs Ask for approval: it has its own setting.')
   })
 
   it('lists no exceptions when every agent follows the switch', () => {

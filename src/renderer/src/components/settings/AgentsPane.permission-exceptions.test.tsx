@@ -50,7 +50,7 @@ function renderPane(overrides: Partial<GlobalSettings>): ReturnType<typeof rende
 /** The line under the Agent Permissions switch that names the agents it won't move. */
 function permissionLine(): HTMLElement {
   const line = Array.from(document.querySelectorAll('span')).find(
-    (element) => element.firstChild?.textContent === "These agents don't follow this switch:"
+    (element) => element.firstChild?.textContent === "These agents don't follow this default:"
   )
   if (!line) {
     throw new Error('No permissions line')
@@ -82,9 +82,9 @@ describe('Agent Permissions line', () => {
     })
 
     const text = permissionLine().textContent
-    expect(text).toContain('Claude runs Manual: it has its own setting.')
-    expect(text).toContain('Codex runs Manual: its Arguments set -a on-request.')
-    expect(text).toContain('Goose runs Manual: its environment sets GOOSE_MODE=approve.')
+    expect(text).toContain('Claude runs Ask for approval: it has its own setting.')
+    expect(text).toContain('Codex runs Ask for approval: its Arguments set -a on-request.')
+    expect(text).toContain('Goose runs Ask for approval: its environment sets GOOSE_MODE=approve.')
     expect(document.body.textContent).not.toContain('Set separately')
   })
 
@@ -96,7 +96,7 @@ describe('Agent Permissions line', () => {
     })
 
     expect(permissionLine().textContent).toContain(
-      'Codex runs Manual: its Arguments set -a on-request.'
+      'Codex runs Ask for approval: its Arguments set -a on-request.'
     )
   })
 
@@ -104,7 +104,9 @@ describe('Agent Permissions line', () => {
     detected.ids = ['claude']
     renderPane({ agentPermissionModeOverrides: { codex: 'ask' } })
 
-    expect(permissionLine().textContent).toContain('Codex runs Manual: it has its own setting.')
+    expect(permissionLine().textContent).toContain(
+      'Codex runs Ask for approval: it has its own setting.'
+    )
   })
 
   it('states the rule once, in the description, with no tooltip', () => {
@@ -119,7 +121,7 @@ describe('Agent Permissions line', () => {
   it('no longer repeats the Arguments reason in a warning on the agent card', () => {
     renderPane({ agentDefaultArgs: { codex: '-a on-request' } })
 
-    expect(within(row('codex')).getByRole('radiogroup', { name: 'Codex permissions' })).toBeTruthy()
+    expect(within(row('codex')).getByRole('combobox', { name: 'Codex permissions' })).toBeTruthy()
     expect(document.body.textContent).not.toContain('set permissions themselves')
     expect(row('codex').querySelector('.text-status-warning')).toBeNull()
   })
@@ -129,14 +131,12 @@ describe('Agent Permissions line links', () => {
   it('opens an agent with its own setting and focuses its Permissions choice', async () => {
     renderPane({ agentPermissionModeOverrides: { claude: 'ask' } })
     await collapse('claude')
-    expect(
-      within(row('claude')).queryByRole('radiogroup', { name: 'Claude permissions' })
-    ).toBeNull()
+    expect(within(row('claude')).queryByRole('combobox', { name: 'Claude permissions' })).toBeNull()
 
     await userEvent.click(within(permissionLine()).getByRole('button', { name: 'Claude' }))
 
-    const group = within(row('claude')).getByRole('radiogroup', { name: 'Claude permissions' })
-    expect(document.activeElement).toBe(within(group).getByRole('radio', { name: 'Manual' }))
+    const group = within(row('claude')).getByRole('combobox', { name: 'Claude permissions' })
+    expect(document.activeElement).toBe(group)
   })
 
   it('opens an agent whose Arguments decide and focuses its Arguments field', async () => {
@@ -166,8 +166,8 @@ describe('Agent Permissions line links', () => {
 
     await userEvent.click(within(permissionLine()).getByRole('button', { name: 'Codex' }))
 
-    const group = within(row('codex')).getByRole('radiogroup', { name: 'Codex permissions' })
-    expect(document.activeElement).toBe(within(group).getByRole('radio', { name: 'Manual' }))
+    const group = within(row('codex')).getByRole('combobox', { name: 'Codex permissions' })
+    expect(document.activeElement).toBe(group)
   })
 
   it('works from the keyboard with Enter and Space, and shows a focus ring', async () => {
@@ -175,9 +175,7 @@ describe('Agent Permissions line links', () => {
     const link = within(permissionLine()).getByRole('button', { name: 'Claude' })
     expect(link.className).toContain('focus-visible:ring')
     const manual = (): HTMLElement =>
-      within(
-        within(row('claude')).getByRole('radiogroup', { name: 'Claude permissions' })
-      ).getByRole('radio', { name: 'Manual' })
+      within(row('claude')).getByRole('combobox', { name: 'Claude permissions' })
 
     for (const key of ['{Enter}', ' ']) {
       await collapse('claude')
@@ -195,7 +193,7 @@ describe('Agent Permissions line links', () => {
       agentDefaultArgs: { codex: '-a on-request' }
     })
     expect(permissionLine().textContent).toContain(
-      'Codex runs Manual: its Arguments set -a on-request.'
+      'Codex runs Ask for approval: its Arguments set -a on-request.'
     )
 
     await userEvent.click(within(permissionLine()).getByRole('button', { name: 'Codex' }))
@@ -212,9 +210,7 @@ describe('Agent Permissions line focus ring', () => {
     renderPane({ agentPermissionModeOverrides: { claude: 'ask' } })
     const link = within(permissionLine()).getByRole('button', { name: 'Claude' })
     const target = (): HTMLElement =>
-      within(
-        within(row('claude')).getByRole('radiogroup', { name: 'Claude permissions' })
-      ).getByRole('radio', { name: 'Manual' })
+      within(row('claude')).getByRole('combobox', { name: 'Claude permissions' })
 
     await userEvent.click(link)
     expect(focus.mock.contexts.at(-1)).toBe(target())
@@ -238,7 +234,9 @@ describe('Agent Permissions line before agents are detected', () => {
     detected.failed = failed
     renderPane({ agentPermissionModeOverrides: { claude: 'ask' } })
 
-    expect(permissionLine().textContent).toContain('Claude runs Manual: it has its own setting.')
+    expect(permissionLine().textContent).toContain(
+      'Claude runs Ask for approval: it has its own setting.'
+    )
     expect(within(permissionLine()).queryByRole('button')).toBeNull()
   })
 
@@ -251,7 +249,7 @@ describe('Agent Permissions line before agents are detected', () => {
 
     await userEvent.click(within(permissionLine()).getByRole('button', { name: 'Claude' }))
 
-    const group = within(row('claude')).getByRole('radiogroup', { name: 'Claude permissions' })
-    expect(document.activeElement).toBe(within(group).getByRole('radio', { name: 'Manual' }))
+    const group = within(row('claude')).getByRole('combobox', { name: 'Claude permissions' })
+    expect(document.activeElement).toBe(group)
   })
 })

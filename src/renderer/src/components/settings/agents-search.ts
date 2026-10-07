@@ -28,6 +28,8 @@ import {
 import { translate } from '@/i18n/i18n'
 import { searchKeywords, translateSearchKeyword, uniqueKeywords } from './settings-search-keywords'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
+import { AGENT_CHAT_PERMISSION_MODES } from '../../../../shared/agent-chat-permission-mode'
+import { nativeChatPermissionModeLabel } from '../native-chat/native-chat-permission-mode-labels'
 
 function buildAgentSettingsKeywords(): string[] {
   const keywords = searchKeywords([
@@ -152,9 +154,10 @@ const getAllAgentsPaneSearchEntries = createLocalizedCatalog(() => [
     ),
     description: translate(
       'auto.components.settings.agents.search.agentPermissionsDescription',
-      'Switch agent permission defaults between Yolo and Manual.'
+      'Default permissions for new chats and agent terminals.'
     ),
     keywords: [
+      ...AGENT_CHAT_PERMISSION_MODES.map(nativeChatPermissionModeLabel),
       ...translateSearchKeyword('auto.components.settings.agents.search.permission', 'permission'),
       ...translateSearchKeyword(
         'auto.components.settings.agents.search.permissions',

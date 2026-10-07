@@ -7,6 +7,7 @@ export type AgentPermissionRevealTarget = 'permissions' | 'arguments' | 'environ
 
 export type AgentPermissionExceptionReason =
   | { kind: 'own-setting' }
+  | { kind: 'unsupported-mode' }
   | { kind: 'arguments'; options: string[] }
   | { kind: 'environment'; options: string[] }
 
@@ -14,7 +15,7 @@ export type AgentPermissionExceptionReason =
 export type AgentPermissionException = {
   agentId: TuiAgent
   label: string
-  effectiveBypass: boolean
+  mode: AgentPermissionMode
   reason: AgentPermissionExceptionReason
   /** Where its row edits that reason; null while detection hasn't finished and no rows render. */
   target: AgentPermissionRevealTarget | null
@@ -36,7 +37,7 @@ export function buildAgentPermissionExceptions(args: {
     const posture = args.postures.get(agent.id)
     const detected = args.detectedIds?.has(agent.id) === true
     const ownSetting = args.overrides[agent.id] !== undefined
-    const differs = posture?.effectiveBypass !== (args.defaultMode === 'bypass')
+    const differs = posture?.effectiveMode !== args.defaultMode
     if (!posture || !(ownSetting || (detected && differs))) {
       return []
     }
@@ -45,14 +46,18 @@ export function buildAgentPermissionExceptions(args: {
         ? { kind: 'arguments', options: posture.typedArgumentOptions }
         : posture.typedEnvironmentOptions.length > 0
           ? { kind: 'environment', options: posture.typedEnvironmentOptions }
-          : { kind: 'own-setting' }
+          : { kind: ownSetting ? 'own-setting' : 'unsupported-mode' }
     const target: AgentPermissionRevealTarget | null =
-      args.detectedIds === null ? null : reason.kind === 'own-setting' ? 'permissions' : reason.kind
+      args.detectedIds === null
+        ? null
+        : reason.kind === 'own-setting' || reason.kind === 'unsupported-mode'
+          ? 'permissions'
+          : reason.kind
     return [
       {
         agentId: agent.id,
         label: agent.label,
-        effectiveBypass: posture.effectiveBypass,
+        mode: posture.effectiveMode,
         reason,
         target
       }

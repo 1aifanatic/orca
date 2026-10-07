@@ -28,6 +28,7 @@ import { resolveLocalAgentLaunchTarget } from '../../../../shared/windows-termin
 import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
 import {
   agentHasPermissionMode,
+  resolveAgentPermissionMode,
   resolveDefaultAgentPermissionMode,
   YOLO_TUI_AGENT_ENV,
   type AgentPermissionMode
@@ -167,7 +168,9 @@ export function AgentsPane({
       ? {
           // A stored choice this build doesn't know reads as Manual, like everywhere else.
           override: permissionOverrides[id] === undefined ? undefined : posture.mode,
-          defaultMode: defaultPermissionMode,
+          defaultMode: resolveAgentPermissionMode(id, {
+            agentPermissionMode: defaultPermissionMode
+          }),
           decidedBy:
             posture.typedArgumentOptions.length > 0
               ? 'arguments'
