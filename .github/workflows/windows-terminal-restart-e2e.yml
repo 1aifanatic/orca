@@ -6,7 +6,7 @@ permissions:
 jobs:
   shard:
     name: Shard 2 ${{ matrix.label }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -14,6 +14,10 @@ jobs:
         include:
           - label: candidate
             revision: ${{ github.sha }}
+            runner: ubuntu-24.04-arm
+          - label: windows-audit
+            revision: ${{ github.sha }}
+            runner: windows-2022
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       ORCA_BALANCE_UNIT_SHARDS: '1'
@@ -32,6 +36,7 @@ jobs:
         with:
           bun-version-file: config/bun-version
       - name: Record resources and run exact shard
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           mkdir -p ci-shards
@@ -45,7 +50,7 @@ jobs:
             while true; do
               date -u
               free -m
-              ps -eo pid,ppid,rss,comm --sort=-rss | head -n 12
+              ps -eo pid,ppid,rss,comm --sort=-rss | sed -n '1,12p'
               for item in memory.current memory.max memory.events; do
                 if [ -r "/sys/fs/cgroup/$item" ]; then cat "/sys/fs/cgroup/$item"; fi
               done
@@ -56,6 +61,9 @@ jobs:
           trap 'kill "$resource_monitor" 2>/dev/null || true' EXIT
           export ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
           node config/scripts/run-vitest.mjs run --config config/vitest.config.ts --shard=2/5 --maxWorkers=4 --reporter=default --reporter=./ci-shards/shard-start-reporter.mjs
+      - name: Run Windows audit
+        if: runner.os == 'Windows'
+        run: pnpm test config/scripts/check-runtime-electron-ratchet.test.mjs
       - name: Upload diagnostics
         if: always()
         continue-on-error: true
