@@ -214,8 +214,8 @@ export class StructuredAgentSessionSinkQueue {
       outcome = runNow(() => operation.run(bound))
     } else {
       this.waitingPublications.set(key, operation)
-      // At handover, unless writes still wait behind an owed import; then at its place in line, so
-      // it never announces ahead of the writes issued before it.
+      // At handover, unless a running write holds the line; then at its place in it, so it never
+      // announces ahead of the writes issued before it.
       outcome = runNow(() =>
         bound.journal.readInOrder(() => {
           if (this.waitingPublications.get(key) === operation) {

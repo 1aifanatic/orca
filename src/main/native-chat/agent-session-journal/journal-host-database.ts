@@ -6,20 +6,14 @@
 
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import type Database from '../../sqlite/sync-database'
 import {
   JOURNAL_SYNCHRONOUS,
-  journalDatabaseMigratesRecords,
-  NO_LEGACY_JOURNAL_RECORDS,
   openJournalDatabase,
-  readJournalDatabaseVersion,
   runJournalTransaction,
-  type JournalLegacyRecordImport,
   type OpenJournalDatabase
 } from './journal-database'
 import { journalOpenRefusalError } from './journal-open-failure'
-import { journalDirectoryFor } from './journal-paths'
 import { AgentSessionJournalError } from './journal-write-guards'
 
 const JOURNAL_DATABASE_FILE = 'agent-session-journal.db'
@@ -32,45 +26,17 @@ export class JournalHostDatabase {
   private connection: Database.Database | null
   /** A newer Orca wrote the database: every chat's history reads, and no chat writes. */
   readonly readOnly: boolean
-  /** The chat records file could not be read this launch, so its copy waits for a later one. */
-  readonly legacyRecordImportOwed: boolean
   /** A failed transaction's ROLLBACK failed too, so the transaction may still be open. */
   private stranded = false
 
-  private constructor(
-    readonly stateDirectory: string,
-    opened: OpenJournalDatabase
-  ) {
+  private constructor(opened: OpenJournalDatabase) {
     this.connection = opened.db
     this.readOnly = opened.readOnly
-    this.legacyRecordImportOwed = opened.legacyRecordImportOwed
   }
 
-  /** `readLegacyRecords` runs only when this open migrates to version 4, before any transaction. */
-  static async open(
-    stateDirectory: string,
-    readLegacyRecords: () => Promise<JournalLegacyRecordImport>
-  ): Promise<JournalHostDatabase> {
+  static open(stateDirectory: string): JournalHostDatabase {
     mkdirSync(stateDirectory, { recursive: true })
-    const migrates = journalDatabaseMigratesRecords(
-      readJournalDatabaseVersion(journalDatabasePath(stateDirectory))
-    )
-    return JournalHostDatabase.openWith(
-      stateDirectory,
-      migrates ? await readLegacyRecords() : NO_LEGACY_JOURNAL_RECORDS
-    )
-  }
-
-  /** The same open with the records file already read; tests pass `NO_LEGACY_JOURNAL_RECORDS`. */
-  static openWith(
-    stateDirectory: string,
-    legacyRecords: JournalLegacyRecordImport
-  ): JournalHostDatabase {
-    mkdirSync(stateDirectory, { recursive: true })
-    return new JournalHostDatabase(
-      stateDirectory,
-      openJournalDatabase(journalDatabasePath(stateDirectory), legacyRecords)
-    )
+    return new JournalHostDatabase(openJournalDatabase(journalDatabasePath(stateDirectory)))
   }
 
   get isClosed(): boolean {
@@ -111,13 +77,6 @@ export class JournalHostDatabase {
         db.pragma(`synchronous = ${JOURNAL_SYNCHRONOUS}`)
       }
     }
-  }
-
-  /** Where this chat's history lived before the journal was one database per host. */
-  legacyDirectoryFor(
-    identity: Pick<AgentSessionJournalIdentity, 'workspaceId' | 'sessionId'>
-  ): string {
-    return journalDirectoryFor(this.stateDirectory, identity)
   }
 
   /** Last, after every store has drained. A close that fails keeps the handle, so the retried
