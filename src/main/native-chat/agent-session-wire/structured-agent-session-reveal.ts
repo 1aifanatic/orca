@@ -111,7 +111,6 @@ export function createStructuredAgentSessionHostRestore(
     recoveryBudgetMs: deps.startupRecoveryBudgetMs,
     serialize: rest.serialize,
     hasSession: rest.hasSession,
-    isListed: readRestore.isListed,
     isDisposed: rest.isDisposed
   })
   // Startup's lease bookkeeping: no lease is checked again, or recovered twice.

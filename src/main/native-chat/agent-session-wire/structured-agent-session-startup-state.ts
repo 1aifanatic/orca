@@ -60,8 +60,6 @@ export type StructuredAgentSessionStartupStateDeps = {
   recoveryBudgetMs?: number
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   hasSession: (sessionId: string) => boolean
-  /** Whether the chat still has its tab: one closed during startup is not seeded. */
-  isListed: (sessionId: string) => boolean
   isDisposed: () => boolean
 }
 
@@ -136,8 +134,8 @@ function seedStoredStatuses(
   const byId = new Map(stored.map((row) => [row.sessionId, row.status]))
   const background: string[] = []
   for (const sessionId of listedIds) {
-    // Its tab closed during startup, or its open (a restore, read or send) publishes its own status.
-    if (!deps.isListed(sessionId) || deps.hasSession(sessionId)) {
+    // Its open (a restore, read or send) publishes its own status.
+    if (deps.hasSession(sessionId)) {
       continue
     }
     const record = deps.openDeps.store.getRecord(sessionId)
