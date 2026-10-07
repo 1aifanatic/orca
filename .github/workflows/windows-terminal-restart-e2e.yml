@@ -1,73 +1,62 @@
-name: Windows terminal restart E2E
-
+name: Issue 21489 shard 2 diagnostics
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: Ref to check out
-        required: false
-        type: string
-
 permissions:
   contents: read
-
-concurrency:
-  group: windows-terminal-restart-e2e-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  windows-terminal-restart:
-    name: Windows terminal restart regressions
-    runs-on: windows-2022
-    timeout-minutes: 30
+  shard:
+    name: Shard 2 ${{ matrix.label }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: baseline
+            revision: 3fb72d135de28d61c0bbbda7bb3a40be363a7cae
+          - label: candidate
+            revision: ${{ github.sha }}
     env:
-      NODE_OPTIONS: --max-old-space-size=4096
       ORCA_BACKGROUND_LAUNCH: '1'
-
+      ORCA_BALANCE_UNIT_SHARDS: '1'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ matrix.revision }}
           persist-credentials: false
-
-      # Why: pnpm must exist before setup-node resolves its dependency cache.
-      - name: Setup pnpm
-        uses: pnpm/setup@v2
+      - uses: ./.github/actions/install-node-dependencies
         with:
-          install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+          native-runtime: node
+          node-version: '24'
+          cache-electron-package: 'true'
+      - run: node config/scripts/install-electron-package-binary.mjs
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          node-version-file: package.json
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Electron app for Windows E2E
-        run: pnpm exec electron-vite build --mode e2e
-
-      - name: Run Windows terminal restart regressions
-        env:
-          SKIP_BUILD: '1'
-          ORCA_E2E_FORWARD_APP_LOGS: '1'
-          ORCA_REQUIRE_WINDOWS_TERMINAL_RESTART_E2E: '1'
-        # Why: pnpm forwards a literal `--` to Playwright, which makes the
-        # grep and worker flags positional filters instead of CLI options.
-        run: >-
-          pnpm run test:e2e
-          tests/e2e/restart-restore-terminal-input.spec.ts
-          tests/e2e/terminal-restart-persistence.spec.ts
-          --grep "clean restart with a live daemon session|cold-restored pane accepts typing|daemon snapshot relaunch preserves"
-          --workers=1
-
-      - name: Upload Playwright traces
-        if: failure()
+          bun-version-file: config/bun-version
+      - name: Record resources and run exact shard
+        shell: bash
+        run: |
+          mkdir -p ci-shards
+          (
+            while true; do
+              date -u
+              free -m
+              ps -eo pid,ppid,rss,comm --sort=-rss | head -n 12
+              for item in memory.current memory.max memory.events; do
+                if [ -r "/sys/fs/cgroup/$item" ]; then cat "/sys/fs/cgroup/$item"; fi
+              done
+              sleep 10
+            done
+          ) > >(tee ci-shards/resources.log) 2>&1 &
+          resource_monitor=$!
+          trap 'kill "$resource_monitor" 2>/dev/null || true' EXIT
+          export ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
+          node config/scripts/run-vitest.mjs run --config config/vitest.config.ts --shard=2/5 --maxWorkers=4
+      - name: Upload diagnostics
+        if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: windows-terminal-restart-playwright-traces
-          path: test-results/
+          name: shard2-${{ matrix.label }}
+          path: ci-shards/
           retention-days: 7
-          if-no-files-found: ignore
