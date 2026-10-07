@@ -1,4 +1,4 @@
-name: Windows terminal restart E2E
+name: Windows issue 21489 series verification
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   windows-terminal-restart:
-    name: Windows terminal restart regressions
+    name: Windows editor, PTY ownership, and host retirement
     runs-on: windows-2022
     timeout-minutes: 30
     env:
@@ -49,18 +49,21 @@ jobs:
       - name: Build Electron app for Windows E2E
         run: pnpm exec electron-vite build --mode e2e
 
-      - name: Run Windows terminal restart regressions
+      - name: Build CLI for separate host removal
+        run: pnpm run build:cli
+
+      - name: Run Windows combined ownership regressions
         env:
           SKIP_BUILD: '1'
           ORCA_E2E_FORWARD_APP_LOGS: '1'
-          ORCA_REQUIRE_WINDOWS_TERMINAL_RESTART_E2E: '1'
         # Why: pnpm forwards a literal `--` to Playwright, which makes the
         # grep and worker flags positional filters instead of CLI options.
         run: >-
           pnpm run test:e2e
-          tests/e2e/restart-restore-terminal-input.spec.ts
-          tests/e2e/terminal-restart-persistence.spec.ts
-          --grep "clean restart with a live daemon session|cold-restored pane accepts typing|daemon snapshot relaunch preserves"
+          tests/e2e/golden-file-open-edit-save.spec.ts
+          tests/e2e/live-background-terminal-mount-authority.spec.ts
+          tests/e2e/removed-runtime-session-archive.spec.ts
+          --project electron-headless
           --workers=1
 
       - name: Upload Playwright traces
