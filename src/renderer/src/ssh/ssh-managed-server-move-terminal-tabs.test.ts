@@ -1,19 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SshManagedServerMoveResult } from '../../../shared/ssh-managed-server-move'
+import {
+  bufferPreHandlerPtyExit,
+  discardPreHandlerPtyState,
+  hasPreHandlerPtyExit
+} from '../components/terminal-pane/pty-pre-handler-buffer'
 import { createTestStore, makeLayout, makeTab } from '../store/slices/store-test-helpers'
 
 const store = createTestStore()
 vi.mock('@/store', () => ({ useAppStore: store }))
 
-const { collectSshTargetTerminalBindings, moveKeepingTerminalTabs } =
+const { collectSshTargetTerminalBindings, moveRestartingStoppedTabs } =
   await import('./ssh-managed-server-move-terminal-tabs')
 
 const worktreeId = 'repo-1::/root/repo'
 const shellOne = 'ssh:ssh-1@@pty-1'
 const shellTwo = 'ssh:ssh-1@@pty-2'
 const otherHostShell = 'ssh:ssh-9@@pty-1'
+const remount = vi.fn()
 
 beforeEach(() => {
+  remount.mockClear()
+  for (const ptyId of [shellOne, shellTwo, otherHostShell]) {
+    discardPreHandlerPtyState(ptyId)
+  }
   store.setState({
     tabsByWorktree: {
       [worktreeId]: [
@@ -23,20 +33,15 @@ beforeEach(() => {
       ]
     },
     ptyIdsByTabId: { 'tab-1': [shellOne], 'tab-3': [otherHostShell] },
-    // A tab whose binding was already cleared by the disconnect still names its shell in its layout.
+    // A parked tab whose live binding was cleared still names its shell in its layout.
     terminalLayoutsByTabId: {
       'tab-2': { ...makeLayout(), ptyIdsByLeafId: { 'leaf-2': shellTwo } }
     },
-    suppressedPtyExitIds: {}
+    remountTerminalTabForRecovery: remount
   })
 })
 
-/** Delivers a shell's exit the way every pane and tab exit handler does: suppression first. */
-function deliverExit(ptyId: string): boolean {
-  return store.getState().consumeSuppressedPtyExit(ptyId)
-}
-
-describe('moving a host keeps its terminal tabs', () => {
+describe('moving a host restarts only the terminals the move stopped', () => {
   it("finds every shell this host's tabs are bound to, and no other host's", () => {
     expect(collectSshTargetTerminalBindings(store.getState(), 'ssh-1')).toEqual([
       { tabId: 'tab-1', ptyId: shellOne },
@@ -44,39 +49,33 @@ describe('moving a host keeps its terminal tabs', () => {
     ])
   })
 
-  it("does not let the stopped shells' exits close their tabs once the host moved", async () => {
-    let keptDuringMove: boolean[] = []
-    const result = await moveKeepingTerminalTabs('ssh-1', async () => {
-      keptDuringMove = [deliverExit(shellOne), deliverExit(otherHostShell)]
-      return { outcome: 'moved', environmentId: 'env-1' }
-    })
-    expect(result.outcome).toBe('moved')
-    expect(keptDuringMove).toEqual([true, false])
-    // A late exit for a shell the server now owns must not close the row it took over.
-    expect(deliverExit(shellTwo)).toBe(true)
+  it('leaves the tabs to the server once the host moved', async () => {
+    await moveRestartingStoppedTabs('ssh-1', async () => ({
+      outcome: 'moved',
+      environmentId: 'env-1'
+    }))
+    expect(remount).not.toHaveBeenCalled()
   })
 
   it.each<SshManagedServerMoveResult>([
-    { outcome: 'refused', verdict: 'unverifiable', terminals: 1 },
-    { outcome: 'stayed' }
-  ])('restarts a stopped shell on the relay when the host stays ($outcome)', async (outcome) => {
-    const remount = vi.fn()
-    store.setState({ remountTerminalTabForRecovery: remount })
-    await moveKeepingTerminalTabs('ssh-1', async () => {
-      deliverExit(shellOne)
-      return outcome
-    })
-    expect(remount.mock.calls.map(([tabId]) => tabId)).toEqual(['tab-1'])
-    // A shell whose exit never came may still run, so its real exit is handled normally again.
-    expect(store.getState().suppressedPtyExitIds[shellTwo]).toBeUndefined()
-  })
-
-  it('releases the suppressions when the move fails outright', async () => {
-    await expect(
-      moveKeepingTerminalTabs('ssh-1', async () => {
-        throw new Error('boom')
+    { outcome: 'refused', verdict: 'live', terminals: 1, stoppedPtyIds: [shellTwo] },
+    { outcome: 'stayed', stoppedPtyIds: [shellTwo] }
+  ])(
+    'restarts a parked tab whose shell the move stopped, clearing its buffered exit ($outcome)',
+    async (result) => {
+      await moveRestartingStoppedTabs('ssh-1', async () => {
+        // The parked tab has no pane, so its exit waits in the pre-handler buffer.
+        bufferPreHandlerPtyExit(shellTwo, 0)
+        return result
       })
-    ).rejects.toThrow('boom')
-    expect(store.getState().suppressedPtyExitIds).toEqual({})
+      expect(remount.mock.calls).toEqual([['tab-2']])
+      // Left buffered, the exit would close the tab the moment it was revealed.
+      expect(hasPreHandlerPtyExit(shellTwo)).toBe(false)
+    }
+  )
+
+  it('never reopens a tab whose shell exited before the move stopped anything', async () => {
+    await moveRestartingStoppedTabs('ssh-1', async () => ({ outcome: 'stayed' }))
+    expect(remount).not.toHaveBeenCalled()
   })
 })

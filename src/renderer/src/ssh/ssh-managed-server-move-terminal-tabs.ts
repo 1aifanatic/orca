@@ -1,10 +1,11 @@
 /**
- * Keeps an SSH host's terminal tabs open across "Move to managed server". The move stops the
- * relay shells; without this their exits read as the user's own `exit` and closed the tabs, so
- * the conversion carried over only the tabs whose exit happened to be lost.
+ * Restarts an SSH host's terminal tabs when "Move to managed server" stopped their relay shells but
+ * the host stayed on the relay. Main marks exactly the shells it stops as a restart, so every
+ * viewer keeps those tabs through the exit; this only brings the stopped ones back.
  */
 import type { SshManagedServerMoveResult } from '../../../shared/ssh-managed-server-move'
 import { parseAppSshPtyId } from '../../../shared/ssh-pty-id'
+import { discardPreHandlerPtyState } from '@/components/terminal-pane/pty-pre-handler-buffer'
 import type { AppState } from '@/store/types'
 import { useAppStore } from '@/store'
 
@@ -37,39 +38,32 @@ export function collectSshTargetTerminalBindings(
   return [...bindings.values()]
 }
 
-export async function moveKeepingTerminalTabs(
+export async function moveRestartingStoppedTabs(
   targetId: string,
   move: () => Promise<SshManagedServerMoveResult>
 ): Promise<SshManagedServerMoveResult> {
+  // Why before the move: the stop clears each tab's live binding, but the tab still owns its shell.
   const bindings = collectSshTargetTerminalBindings(useAppStore.getState(), targetId)
-  for (const { ptyId } of bindings) {
-    useAppStore.getState().suppressPtyExit(ptyId)
+  const result = await move()
+  if (result.outcome !== 'moved') {
+    restartStoppedTabs(bindings, new Set(result.stoppedPtyIds))
   }
-  let moved = false
-  try {
-    const result = await move()
-    moved = result.outcome === 'moved'
-    return result
-  } finally {
-    settleMovedTerminalTabs(bindings, moved)
-  }
+  return result
 }
 
-function settleMovedTerminalTabs(bindings: readonly RelayTerminalBinding[], moved: boolean): void {
-  // Why keep the suppressions after a move: the host's server owns these tabs now, and a late
-  // exit for a stopped relay shell must not close the row it hands over.
-  if (moved) {
-    return
-  }
-  const store = useAppStore.getState()
+function restartStoppedTabs(
+  bindings: readonly RelayTerminalBinding[],
+  stoppedPtyIds: ReadonlySet<string>
+): void {
   const restartTabIds = new Set<string>()
   for (const { tabId, ptyId } of bindings) {
-    // Still suppressed means no exit arrived: the shell may be running, so its real exit decides.
-    if (!store.consumeSuppressedPtyExit(ptyId)) {
+    if (stoppedPtyIds.has(ptyId)) {
+      // A buffered exit would end the remounted pane before it spawns its replacement.
+      discardPreHandlerPtyState(ptyId)
       restartTabIds.add(tabId)
     }
   }
-  // The host stayed on the relay, so a tab whose shell stopped restarts there, as the offer said.
+  const store = useAppStore.getState()
   for (const tabId of restartTabIds) {
     store.remountTerminalTabForRecovery(tabId)
   }

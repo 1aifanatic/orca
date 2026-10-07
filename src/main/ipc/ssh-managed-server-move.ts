@@ -23,7 +23,11 @@ import { terminateSshTargetSessions } from './ssh-terminate-sessions'
 
 export type SshManagedServerMoveDeps = {
   getTarget: (targetId: string) => SshTarget | undefined
-  terminate: (targetId: string) => Promise<SshTerminateSessionsResult>
+  /** Stops the relay terminals as main's own restart, reporting each shell it stopped. */
+  terminate: (
+    targetId: string,
+    onStopped: (appPtyId: string) => void
+  ) => Promise<SshTerminateSessionsResult>
   connect: (targetId: string) => Promise<unknown>
   serverStatus: (targetId: string) => SshManagedServerStatus | undefined
   report: (targetId: string, outcome: SshHostServerMoveOutcome) => void
@@ -61,7 +65,10 @@ async function moveHost(
   // Why the reconnect's census decides, not the stop: a stop can fail after its shells died (a
   // relay that hung up on its last exit), and the connect's decision runs the census the
   // conversion trusts, while that connect holds the raw transport's 'connected'.
-  const stopped = await stopRelayTerminals(targetId, deps).catch((error: unknown) => {
+  const stoppedPtyIds = new Set<string>()
+  const stopped = await stopRelayTerminals(targetId, deps, (appPtyId) =>
+    stoppedPtyIds.add(appPtyId)
+  ).catch((error: unknown) => {
     console.warn('[ssh] Stopping relay terminals for the move failed; asking the census:', error)
     return null
   })
@@ -79,39 +86,53 @@ async function moveHost(
   if (status?.kind === 'managed') {
     return { outcome: 'moved', environmentId: status.environmentId }
   }
+  const restart = stoppedPtyIds.size > 0 ? { stoppedPtyIds: [...stoppedPtyIds] } : {}
   // Why: an unreached shell is never evidence that it exited (ssh-execution-boundary.md).
   if (stopped && stopped.unverifiable > 0) {
-    return { outcome: 'refused', verdict: 'unverifiable', terminals: stopped.unverifiable }
+    return {
+      outcome: 'refused',
+      verdict: 'unverifiable',
+      terminals: stopped.unverifiable,
+      ...restart
+    }
   }
   if (status?.kind === 'relay' && status.reason === 'relay_terminals_live') {
-    return { outcome: 'refused', verdict: 'live', terminals: status.terminals ?? 0 }
+    return { outcome: 'refused', verdict: 'live', terminals: status.terminals ?? 0, ...restart }
   }
   if (status?.kind === 'relay' && status.reason === 'relay_terminals_unverifiable') {
-    return { outcome: 'refused', verdict: 'unverifiable', terminals: status.terminals ?? 0 }
+    return {
+      outcome: 'refused',
+      verdict: 'unverifiable',
+      terminals: status.terminals ?? 0,
+      ...restart
+    }
   }
-  return { outcome: 'stayed' }
+  return { outcome: 'stayed', ...restart }
 }
 
 /** Mirrors the renderer's terminate: preserved shells need a fresh relay before they can be stopped. */
 async function stopRelayTerminals(
   targetId: string,
-  deps: SshManagedServerMoveDeps
+  deps: SshManagedServerMoveDeps,
+  onStopped: (appPtyId: string) => void
 ): Promise<SshTerminateSessionsResult> {
   try {
-    return await deps.terminate(targetId)
+    return await deps.terminate(targetId, onStopped)
   } catch (error) {
     if (!(error instanceof Error) || !error.message.includes(SSH_TERMINATE_RECONNECT_REQUIRED)) {
       throw error
     }
     await deps.connect(targetId)
-    return deps.terminate(targetId)
+    return deps.terminate(targetId, onStopped)
   }
 }
 
 function defaultMoveDeps(): SshManagedServerMoveDeps {
   return {
     getTarget: (targetId) => getSshTargetRegistryStore()!.getTarget(targetId),
-    terminate: terminateSshTargetSessions,
+    // Why 'replaced': the move restarts these terminals, so main and every viewer keep their tabs.
+    terminate: (targetId, onStopped) =>
+      terminateSshTargetSessions(targetId, { intentionalStop: 'replaced', onStopped }),
     connect: connectTarget,
     serverStatus: getSshHostServerStatus,
     report: (targetId, outcome) => trackSshHostServerMove(outcome, knownSshHostPlatform(targetId)),
