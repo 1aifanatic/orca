@@ -938,12 +938,15 @@ resource "google_monitoring_alert_policy" "relay_director_cell_inventory_hold" {
 }
 
 # The bar lives in the filter, as for the long-hold metric: an exponential bucket's percentile
-# interpolation would put any value from 32 to 63 above 50.
+# interpolation would put any value from 128 to 255 above 200. Why 200: asia-east2 cells reach
+# 184-196 waiters outside any herd (2026-10-07). Since 2026-10-03 a bar of 50 was crossed in 84
+# episodes, 150 in 29, and 200 in 10, among them every known herd (10-03 17:50, 10-05 06:26 and
+# 18:22, 10-06 01:33 and 18:34, 10-07 20:00).
 resource "google_logging_metric" "relay_cell_pool_herd" {
   project     = var.project_id
   name        = "orca_relay_cell_pool_herd"
-  description = "Cell runtime samples in which more than 50 requests queued at once for a PostgreSQL connection."
-  filter      = "${local.relay_runtime_log_filter} AND jsonPayload.role=\"cell\" AND jsonPayload.databasePoolWaitersMax>50"
+  description = "Cell runtime samples in which more than 200 requests queued at once for a PostgreSQL connection."
+  filter      = "${local.relay_runtime_log_filter} AND jsonPayload.role=\"cell\" AND jsonPayload.databasePoolWaitersMax>200"
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -997,10 +1000,10 @@ resource "google_monitoring_alert_policy" "relay_cell_pool_herd" {
   notification_channels = var.relay_alert_notification_channels
 
   conditions {
-    display_name = "Over 50 requests queued for a PostgreSQL connection on one cell"
+    display_name = "Over 200 requests queued for a PostgreSQL connection on one cell"
 
     condition_threshold {
-      # The metric filter already drops samples at or under 50, so any value present is a breach.
+      # The metric filter already drops samples at or under 200, so any value present is a breach.
       filter          = "resource.type=\"gce_instance\" AND metric.type=\"logging.googleapis.com/user/${google_logging_metric.relay_cell_pool_herd.name}\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0
@@ -1020,7 +1023,7 @@ resource "google_monitoring_alert_policy" "relay_cell_pool_herd" {
   }
 
   documentation {
-    content   = "More than 50 requests on one relay cell queued at once for a PostgreSQL connection. The healthy peak is 2 waiters; the 2026-10-06 18:34 UTC reconnect herd reached 124-527 on the asia-east2 cells, and requests that wait 2 s fail. This uses the interval maximum (`databasePoolWaitersMax`), so a herd shorter than the 30-second sample still shows. Cell images from #26362 on refuse new desktop connections once 32 requests wait (counted in `orca_relay_host_hellos_shed`); on those cells a breach means connections that are already open are filling the pool. First response: check `Orca Relay: cell desktop disconnect burst` for the same minute. If it fired too, a mass disconnect caused this, so follow that policy and leave the database alone. If it did not, check Cloud SQL health and lock contention (`Orca Relay: lock timeout burst`) before touching the cell."
+    content   = "More than 200 requests on one relay cell queued at once for a PostgreSQL connection, and requests that wait 2 s fail. Queues of 50-196 are routine on the asia-east2 cells, whose every query crosses the Pacific: they reached 184-196 outside any herd on 2026-10-07. Reconnect herds go well past 200 on several cells at once (2026-10-06 18:34 UTC: 233-527 on all five asia-east2 cells). Since 2026-10-03 this bar was crossed in 10 episodes. Six were herds across several cells, and four were a single cell at 201-228. This uses the interval maximum (`databasePoolWaitersMax`), so a herd shorter than the 30-second sample still shows. First response: check `Orca Relay: cell desktop disconnect burst` for the same minute. If it fired too, a mass disconnect caused this, so follow that policy and leave the database alone. If it did not, check Cloud SQL health and lock contention (`Orca Relay: lock timeout burst`) before touching the cell."
     mime_type = "text/markdown"
   }
 }
