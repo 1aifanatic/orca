@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAgentPromptSubmissionRuntime } from './agent-prompt-submission-runtime-test-fixture'
-import { waitForDesktopNewTabComposer } from './desktop-new-tab-composer-readiness'
 import { deliverTerminalAgentLaunchPrompt } from './rpc/methods/agent-launch-terminal-prompt'
 
 vi.mock('../git/worktree', () => ({
@@ -18,6 +17,11 @@ vi.mock('../git/worktree', () => ({
 // The existing OpenCode 2.0.21 capture shape in runtime-worktree-startup-readiness.test.ts.
 const BOX = '\x1b[?1049h\x1b[?2004h\x1b[24;24H┃\x1b[25;24H╹\x1b[22;27H\x1b[?25h'
 const AGENT_ROW = '\x1b[24;27HBuild\x1b[24;33H·\x1b[24;35HSome Model'
+const DESKTOP_DRAFT = {
+  text: 'draft',
+  delivery: 'draft',
+  transport: { kind: 'desktop-new-tab', promptDelivery: 'draft' }
+} as const
 
 describe('desktop readiness selects draft through the existing public scanner', () => {
   afterEach(() => vi.useRealTimers())
@@ -78,52 +82,90 @@ describe('desktop readiness selects draft through the existing public scanner', 
       satisfied: true,
       exitCode: null
     })
-    await waitForDesktopNewTabComposer(runtime, handle, 'opencode', false)
+    expect(
+      await deliverTerminalAgentLaunchPrompt({
+        runtime,
+        handle,
+        agent: 'opencode',
+        freshLaunch: true,
+        text: 'draft',
+        prompt: DESKTOP_DRAFT,
+        callerKey: 'trusted-local:desktop'
+      })
+    ).toBe(true)
     expect(ready).toHaveBeenCalledWith(handle, 'opencode', 20_000, {
-      requireComposerMarker: false,
+      requireComposerMarker: true,
       stopOnDialog: true,
       submit: false
     })
   })
-  it('a startup dialog or stale handle never takes the timeout fallback', async () => {
-    const { runtime, handle } = await createAgentPromptSubmissionRuntime(() => undefined)
-    const fallback = vi.spyOn(runtime, 'waitForTerminal')
+  it('a stale readiness handle never takes the timeout fallback or writes', async () => {
+    const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => undefined)
+    const fallback = vi.spyOn(runtime, 'waitForAgentLaunchFallback')
     vi.spyOn(runtime, 'waitForFreshWorkerComposer').mockRejectedValue(
-      new Error('agent_startup_dialog')
+      new Error('terminal_handle_stale')
     )
-    await expect(waitForDesktopNewTabComposer(runtime, handle, 'claude', false)).rejects.toThrow(
-      'agent_startup_dialog'
-    )
+    vi.spyOn(runtime, 'waitForTerminal').mockRejectedValue(new Error('terminal_handle_stale'))
+    expect(
+      await deliverTerminalAgentLaunchPrompt({
+        runtime,
+        handle,
+        agent: 'opencode',
+        freshLaunch: true,
+        text: 'draft',
+        prompt: DESKTOP_DRAFT,
+        callerKey: 'trusted-local:desktop'
+      })
+    ).toBe(false)
     expect(fallback).not.toHaveBeenCalled()
+    expect(writes).toEqual([])
   })
   it('Codex does not fall back on its timeout', async () => {
     const { runtime, handle } = await createAgentPromptSubmissionRuntime(() => undefined)
-    const fallback = vi.spyOn(runtime, 'waitForTerminal')
+    const fallback = vi.spyOn(runtime, 'waitForAgentLaunchFallback')
     vi.spyOn(runtime, 'waitForFreshWorkerComposer').mockRejectedValue(new Error('timeout'))
-    expect(await waitForDesktopNewTabComposer(runtime, handle, 'codex', false)).toMatchObject({
-      satisfied: false
-    })
+    expect(
+      await deliverTerminalAgentLaunchPrompt({
+        runtime,
+        handle,
+        agent: 'codex',
+        freshLaunch: true,
+        text: 'draft',
+        prompt: DESKTOP_DRAFT,
+        callerKey: 'trusted-local:desktop'
+      })
+    ).toBe(false)
     expect(fallback).not.toHaveBeenCalled()
   })
 
-  it('a missed non-Codex composer uses the existing one-second host idle route and can refuse input', async () => {
-    const { runtime, handle } = await createAgentPromptSubmissionRuntime(() => undefined)
+  it('generic idle satisfaction alone cannot replace positive desktop fallback evidence', async () => {
+    const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => undefined)
     vi.spyOn(runtime, 'waitForFreshWorkerComposer').mockRejectedValue(new Error('timeout'))
-    const fallback = vi.spyOn(runtime, 'waitForTerminal').mockResolvedValue({
+    const idle = vi.spyOn(runtime, 'waitForTerminal').mockResolvedValue({
       handle,
       condition: 'tui-idle',
       status: 'running',
-      satisfied: false,
+      satisfied: true,
       exitCode: null
     })
-    expect(await waitForDesktopNewTabComposer(runtime, handle, 'claude', false)).toMatchObject({
-      satisfied: false
+    const fallback = vi.spyOn(runtime, 'waitForAgentLaunchFallback').mockResolvedValue({
+      ready: false,
+      reason: 'timeout'
     })
-    expect(fallback).toHaveBeenCalledWith(handle, {
-      condition: 'tui-idle',
-      timeoutMs: 1_000,
-      launchReadiness: true
-    })
+    expect(
+      await deliverTerminalAgentLaunchPrompt({
+        runtime,
+        handle,
+        agent: 'opencode',
+        freshLaunch: true,
+        text: 'draft',
+        prompt: DESKTOP_DRAFT,
+        callerKey: 'trusted-local:desktop'
+      })
+    ).toBe(false)
+    expect(fallback).toHaveBeenCalledWith(handle, 'opencode')
+    expect(idle).not.toHaveBeenCalled()
+    expect(writes).toEqual([])
   })
 
   it('accepted timeout fallback reports unconfirmed before the first desktop byte', async () => {
@@ -133,12 +175,9 @@ describe('desktop readiness selects draft through the existing public scanner', 
       events.push('write')
     }, 'claude')
     vi.spyOn(runtime, 'waitForFreshWorkerComposer').mockRejectedValue(new Error('timeout'))
-    vi.spyOn(runtime, 'waitForTerminal').mockResolvedValue({
-      handle,
-      condition: 'tui-idle',
-      status: 'running',
-      satisfied: true,
-      exitCode: null
+    vi.spyOn(runtime, 'waitForAgentLaunchFallback').mockResolvedValue({
+      ready: true,
+      reason: 'foreground-match'
     })
     const pending = deliverTerminalAgentLaunchPrompt({
       runtime,

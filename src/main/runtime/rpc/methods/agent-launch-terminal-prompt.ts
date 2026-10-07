@@ -25,7 +25,6 @@ import { randomUUID } from 'node:crypto'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { AgentLaunchPrompt } from '../../../../shared/agent-launch-intent'
 import { isDesktopNewTabPrompt } from '../../../../shared/desktop-new-tab-prompt'
-import { waitForDesktopNewTabComposer } from '../../desktop-new-tab-composer-readiness'
 import type { RuntimeTerminalWait } from '../../../../shared/runtime-terminal-contracts'
 import { isAgentPromptStalledError } from '../../agent-prompt-submission-verification'
 import {
@@ -73,7 +72,8 @@ async function waitThroughBlockingPrompts(
   freshLaunch: boolean,
   clock: ReadinessClock,
   /** Main's desktop paste rule: qualify a timed-out composer with positive fallback evidence. */
-  desktopFallback: boolean
+  desktopFallback: boolean,
+  submit?: boolean
 ): Promise<RuntimeTerminalWait | 'fallback-ready' | undefined> {
   const deadline = clock.now() + AGENT_READY_TIMEOUT_MS
   for (;;) {
@@ -82,7 +82,8 @@ async function waitThroughBlockingPrompts(
     const timeoutMs = Math.max(1, deadline - clock.now())
     const wait = freshLaunch
       ? await waitForLaunchedAgentComposer(runtime, handle, agent, timeoutMs, {
-          desktopFallback
+          desktopFallback,
+          ...(submit === undefined ? {} : { submit })
         })
       : // A reused pane was not freshly launched: its composer marker may be long gone.
         await runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs })
@@ -185,26 +186,20 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
         throw new Error('terminal_handle_stale')
       }
     }
-    const wait = desktop
-      ? await waitForDesktopNewTabComposer(
-          args.runtime,
-          args.handle,
-          args.agent,
-          desktop.delivery === 'submit'
-        )
-      : await waitThroughBlockingPrompts(
-          args.runtime,
-          args.handle,
-          args.agent,
-          args.freshLaunch,
-          args.clock ?? REAL_CLOCK,
-          isDesktopLaunchCaller(args.callerKey)
-        )
+    const wait = await waitThroughBlockingPrompts(
+      args.runtime,
+      args.handle,
+      args.agent,
+      args.freshLaunch,
+      args.clock ?? REAL_CLOCK,
+      isDesktopLaunchCaller(args.callerKey),
+      desktop ? desktop.delivery === 'submit' : undefined
+    )
     // An unsatisfied wait is a composer that never opened — a dialog left up, a dead process, an
     // agent that showed no readiness. Pasting anyway would answer whatever is on screen with it.
     assertOriginal()
-    const composerSeen = wait !== 'fallback-ready' && wait !== 'budget-spent'
-    if (wait && wait !== 'fallback-ready' && wait !== 'budget-spent' && !wait.satisfied) {
+    const composerSeen = wait !== 'fallback-ready'
+    if (wait && wait !== 'fallback-ready' && !wait.satisfied) {
       console.warn(
         `[agent-launch] the terminal agent did not become ready (${wait.status}); its launch prompt was not delivered`
       )
@@ -234,7 +229,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
             }
           : {}),
         // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
-        // Past its budget too: main's blind paste submitted on its normal Enter timing.
+        // The evidence-qualified fallback uses main's normal Enter timing too.
         composerReady: args.freshLaunch,
         beforeWrite: async (ptyId) => {
           assertOriginal(ptyId)

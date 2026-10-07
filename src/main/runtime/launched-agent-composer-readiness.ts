@@ -157,11 +157,13 @@ export async function waitForLaunchedAgentComposer(
   agent: TuiAgent,
   timeoutMs: number,
   /** The desktop qualifies a timed-out composer with positive fallback evidence; never Codex. */
-  { desktopFallback = false }: { desktopFallback?: boolean } = {}
+  { desktopFallback = false, submit }: { desktopFallback?: boolean; submit?: boolean } = {}
 ): Promise<RuntimeTerminalWait | 'fallback-ready'> {
   const markerLane = getLaunchedAgentReadinessLane(agent) === 'composer-marker'
   if (markerLane && !desktopFallback) {
-    return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
+    return submit === undefined
+      ? runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
+      : runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs, { submit })
   }
   const startedAt = Date.now()
   try {
@@ -169,7 +171,11 @@ export async function waitForLaunchedAgentComposer(
       handle,
       agent,
       Math.min(timeoutMs, resolveDraftPasteReadyTimeoutMs(agent)),
-      { requireComposerMarker: markerLane, stopOnDialog: true }
+      {
+        requireComposerMarker: markerLane,
+        stopOnDialog: true,
+        ...(submit === undefined ? {} : { submit })
+      }
     )
   } catch (error) {
     // Out of budget, a dialog up, or a pane it could not read: the idle wait answers each, and
@@ -183,11 +189,10 @@ export async function waitForLaunchedAgentComposer(
   }
   if (markerLane) {
     // A dialog ended the budget wait: the marker is still the only signal, for what is left.
-    return runtime.waitForFreshWorkerComposer(
-      handle,
-      agent,
-      Math.max(1, timeoutMs - (Date.now() - startedAt))
-    )
+    const remainingMs = Math.max(1, timeoutMs - (Date.now() - startedAt))
+    return submit === undefined
+      ? runtime.waitForFreshWorkerComposer(handle, agent, remainingMs)
+      : runtime.waitForFreshWorkerComposer(handle, agent, remainingMs, { submit })
   }
   // Other callers retain the idle wait for the remaining launch budget.
   return runtime.waitForTerminal(handle, {

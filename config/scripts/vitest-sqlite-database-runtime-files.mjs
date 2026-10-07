@@ -128,6 +128,7 @@ export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
   'src/main/runtime/rpc/methods/desktop-new-tab-replay.test.ts',
   'src/main/runtime/rpc/methods/desktop-new-tab-follow-ups.test.ts',
   'src/main/runtime/rpc/methods/desktop-new-tab-unrecorded.test.ts',
+  'src/main/runtime/rpc/methods/desktop-new-tab-public-readiness.test.ts',
   'src/main/runtime/rpc/methods/native-chat-opencode-semantic-pages.test.ts',
   'src/main/runtime/rpc/methods/native-chat-opencode-wire-page-budget.test.ts',
   'src/main/runtime/rpc/methods/orchestration-dispatch-error-codes.test.ts',
