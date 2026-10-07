@@ -112,9 +112,9 @@ function createWorktree(
     resolveRemoteTrackingBase: mocks.remoteBase,
     hasRemoteTrackingRef: mocks.hasRemoteRef,
     // Why: a vi.fn marks the promise it returns as handled; a fresh promise keeps
-    // an unawaited refresh rejection visible to the unhandled-rejection check.
+    // an unawaited fetch rejection visible to the unhandled-rejection checks.
     refreshRemoteTrackingBase: async (...refreshArgs) => await mocks.refresh(...refreshArgs),
-    fetchRemote: mocks.fetch,
+    fetchRemote: async (...fetchArgs) => await mocks.fetch(...fetchArgs),
     onWorktreeMetadataPersisted: () => undefined,
     rearm,
     timing
@@ -434,6 +434,45 @@ describe('runtime create PR conflict probe', () => {
       await expect(createWorktree()).rejects.toThrow('Branch "app-')
       await new Promise((resolve) => setImmediate(resolve))
       expect(mocks.refresh).toHaveBeenCalledOnce()
+      expect(unhandled).not.toHaveBeenCalled()
+      expect(mocks.consume).not.toHaveBeenCalled()
+    } finally {
+      process.off('unhandledRejection', unhandled)
+    }
+  })
+
+  it('runs the first name PR lookup while the origin fetch is still in flight', async () => {
+    mocks.hasBase.mockResolvedValue(false)
+    let finishFetch!: () => void
+    mocks.fetch.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishFetch = resolve
+      })
+    )
+    let fetchPendingAtLookup = false
+    mocks.githubPr.mockImplementation(async () => {
+      fetchPendingAtLookup = mocks.fetch.mock.calls.length === 1
+      finishFetch?.()
+      return null
+    })
+
+    await createWorktree()
+
+    expect(fetchPendingAtLookup).toBe(true)
+    expect(mocks.fetch).toHaveBeenCalledWith('/repo', 'origin', {})
+    expect(mocks.consume).toHaveBeenCalledWith(expect.objectContaining({ branch: 'app' }))
+  })
+
+  it('reports the naming failure when the started origin fetch also fails', async () => {
+    mocks.hasBase.mockResolvedValue(false)
+    mocks.fetch.mockRejectedValue(new Error('offline'))
+    mocks.branchConflict.mockResolvedValue('local')
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      await expect(createWorktree()).rejects.toThrow('Branch "app-')
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(mocks.fetch).toHaveBeenCalledOnce()
       expect(unhandled).not.toHaveBeenCalled()
       expect(mocks.consume).not.toHaveBeenCalled()
     } finally {
