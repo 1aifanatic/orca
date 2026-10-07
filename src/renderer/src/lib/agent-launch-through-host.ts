@@ -59,8 +59,9 @@ export type HostAgentLaunchArgs = {
 /** What became of the launch, as this window must tell it. */
 export type HostAgentLaunchOutcome =
   /** The agent was started in this tab's pane, which is attached to it; `prompt` is what the host
-   *  says became of the text it was given. */
-  | { kind: 'started'; prompt?: AgentLaunchPromptReceipt }
+   *  says became of the text it was given. `unrecorded`: launched past the record's cap, so the
+   *  host keeps no follow-up for it and the click runs its own. */
+  | { kind: 'started'; prompt?: AgentLaunchPromptReceipt; unrecorded?: true }
   /** The pane shows how the launch ended: couldn't start, or couldn't confirm it started. */
   | { kind: 'pane-says' }
   /** The user closed the tab while it started, and with it the launch: nothing more to say. */
@@ -137,12 +138,14 @@ async function launchWithoutRecord(
   pane: { tabId: string; leafId: string }
 ): Promise<HostAgentLaunchOutcome> {
   try {
-    return outcomeFromResult(
+    const { followUp: _unrecorded, ...unrecordedArgs } = args
+    const outcome = outcomeFromResult(
       await callRuntimeRpc<unknown>({ kind: 'local' }, 'agent.launch', {
-        ...launchParams(args),
+        ...launchParams(unrecordedArgs),
         paneKey: makePaneKey(pane.tabId, pane.leafId)
       })
     )
+    return outcome.kind === 'started' ? { ...outcome, unrecorded: true } : outcome
   } catch (error) {
     const code = error instanceof RuntimeRpcCallError ? error.code : undefined
     // A pane the host never revealed would open as a shell; one it did holds the agent's terminal.

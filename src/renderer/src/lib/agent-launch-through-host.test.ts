@@ -81,14 +81,17 @@ function lastPaneKey(): string {
   return String(lastParams().paneKey)
 }
 
-function launch() {
+const FOLLOW_UP = { kind: 'review-notes-delivered', version: 1, payload: {} }
+
+function launch(extra: { followUp?: typeof FOLLOW_UP } = {}) {
   return launchAgentThroughHost({
     agent: 'claude',
     worktreeId: WT,
     groupId: store.getState().activeGroupIdByWorktree[WT],
     prompt: 'fix the failing checks',
     agentArgs: null,
-    launchSource: 'source_control_recovery'
+    launchSource: 'source_control_recovery',
+    ...extra
   })
 }
 
@@ -211,20 +214,22 @@ describe('a desktop launch through the host', () => {
     callRuntimeRpc
       .mockRejectedValueOnce(rpcError('agent_session_operation_capacity'))
       .mockReturnValueOnce(unrecorded.promise)
-    const { tabId, outcome } = launch()
+    const { tabId, outcome } = launch({ followUp: FOLLOW_UP })
     const paneKey = lastPaneKey()
     await vi.waitFor(() => expect(callRuntimeRpc).toHaveBeenCalledTimes(2))
 
     const [, method, params] = callRuntimeRpc.mock.calls[1]!
     expect(method).toBe('agent.launch')
     expect(params).not.toHaveProperty('operationId')
+    // Nothing records it: the click keeps its follow-up and runs it live.
+    expect(params).not.toHaveProperty('followUp')
     // The same pane, held until the answer.
     expect(params.paneKey).toBe(paneKey)
     const leafId = launchTab(tabId)!.agentLaunchPane!.leafId
     expect(agentLaunchPaneSpawnHold(tabId, leafId)).not.toBeNull()
 
     unrecorded.resolve(terminalResult(paneKey))
-    await expect(outcome).resolves.toEqual({ kind: 'started' })
+    await expect(outcome).resolves.toEqual({ kind: 'started', unrecorded: true })
   })
 
   it('takes its tab back when the unrecorded launch fails before the host revealed it', async () => {
