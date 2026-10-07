@@ -17498,6 +17498,9 @@
         }
       },
       "nativeChat": {
+        "inlineVisualsTitle": "Inline visuals",
+        "inlineVisualsCopy": "Let the agent show charts, diagrams and mockups inside its replies. Applies to newly started chats.",
+        "inlineVisualsToggleLabel": "Toggle inline visuals",
         "contextMenu": {
           "copy": "Copy"
         }

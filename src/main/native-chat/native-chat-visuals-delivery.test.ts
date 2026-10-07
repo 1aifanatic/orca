@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -50,6 +50,32 @@ function tempDir(): string {
 const logger = () => ({ warn: vi.fn(), error: vi.fn() })
 
 describe('preparing a chat for visuals', () => {
+  it('reads the preference for each launch and prepares nothing while it is off', async () => {
+    const state = tempDir()
+    let enabled = false
+    const resolveSkill = vi.fn(async () => SKILL)
+    const prepare = createNativeChatVisualsDelivery({
+      stateDirectory: state,
+      logger: logger(),
+      isEnabled: () => enabled,
+      resolveSkill
+    })
+    await expect(prepare('disabled-chat')).resolves.toBeNull()
+    expect(resolveSkill).not.toHaveBeenCalled()
+    expect(existsSync(join(state, 'native-chat-visuals'))).toBe(false)
+    enabled = true
+    const launched = await prepare('enabled-chat')
+    expect(launched).toEqual({
+      folder: nativeChatVisualsFolderFor(state, 'enabled-chat'),
+      skill: SKILL
+    })
+    enabled = false
+    await expect(prepare('next-chat')).resolves.toBeNull()
+    expect(resolveSkill).toHaveBeenCalledOnce()
+    expect(existsSync(nativeChatVisualsFolderFor(state, 'next-chat'))).toBe(false)
+    expect(existsSync(launched!.folder)).toBe(true)
+  })
+
   it("creates the chat's own private folder and hands back the skill", async () => {
     const state = tempDir()
     const prepare = createNativeChatVisualsDelivery({

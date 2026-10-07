@@ -104,6 +104,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   /** Gives each chat a visuals folder and the skill that teaches it, and sweeps folders whose chat
    *  is gone. Wired by the real hosts only, so a test runtime never loads the bundled skill. */
   nativeChatVisuals?: {
+    /** Read this host's preference when a chat starts a provider process. */
+    isEnabled: () => boolean
     workspaceVerdicts: NonNullable<NativeChatVisualsSweepDeps['workspaceVerdicts']>
   }
   /** Provider transports are overridden only to drive the runtime against scripted children. */

@@ -4,6 +4,7 @@ import { translate } from '@/i18n/i18n'
 import { Label } from '../ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { NativeChatQueueFollowUpsSetting } from './NativeChatQueueFollowUpsSetting'
+import { NativeChatInlineVisualsSetting } from './NativeChatInlineVisualsSetting'
 import { NativeChatShellEnvironmentSetting } from './NativeChatShellEnvironmentSetting'
 import { NativeChatSupportedAgents } from './NativeChatSupportedAgents'
 import { SearchableSetting } from './SearchableSetting'
@@ -192,6 +193,10 @@ export function NativeChatExperimentalSetting({
 
           {structuredChatActive ? (
             <NativeChatQueueFollowUpsSetting settings={settings} updateSettings={updateSettings} />
+          ) : null}
+
+          {structuredChatActive ? (
+            <NativeChatInlineVisualsSetting settings={settings} updateSettings={updateSettings} />
           ) : null}
 
           {structuredChatActive ? (
