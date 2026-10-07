@@ -5,6 +5,12 @@ import {
 import { ownRetainedString } from '../../shared/own-retained-string'
 import { clampTerminalPreviewCursor, trimTerminalLineRight } from './terminal-tail-line-controls'
 import { MAX_TAIL_CHARS, MAX_TAIL_LINES, MAX_TAIL_PARTIAL_CHARS } from './terminal-tail-limits'
+import {
+  retainedRow,
+  retainedRowText,
+  rowCellsForEdit,
+  type RetainedTerminalRow
+} from './terminal-tail-redraw-row'
 
 export function appendNormalizedToMultilineTailBufferUnwindowed(
   previousLines: string[],
@@ -21,8 +27,8 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
   newlyCompletedLines: string[]
 } {
   const rows: RetainedTerminalRow[] = [
-    ...previousLines.map((line) => ({ text: line, cells: null, completed: true })),
-    { text: boundedPreviousPartialLine, cells: null, completed: false }
+    ...previousLines.map((line) => retainedRow(line, true)),
+    retainedRow(boundedPreviousPartialLine, false)
   ]
   let cursorRow = previousRedrawCursor
     ? Math.max(0, rows.length - 1 - previousRedrawCursor.rowFromEnd)
@@ -53,7 +59,7 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
 
   const ensureCursorRow = (): void => {
     while (cursorRow >= rows.length) {
-      rows.push({ text: '', cells: null, completed: false })
+      rows.push(retainedRow('', false))
     }
   }
   // Rows before this index are already dropped by the line cap but not yet spliced out.
@@ -79,19 +85,27 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
   const moveCursorToColumn = (nextColumn: number): void => {
     cursorColumn = clampTerminalPreviewCursor(nextColumn)
   }
-  const cursorRowCells = (): string[] => {
+  const cursorRowForEdit = (): RetainedTerminalRow => {
     ensureCursorRow()
     const row = rows[cursorRow]!
     row.completed = false
-    if (row.cells === null) {
-      row.cells = row.text.split('')
-    }
-    return row.cells
+    return row
   }
-  // Why cells: rebuilding the row string per character flattened it every write, so redrawing an
-  // N-column row cost O(N^2) and pinned main on full-width TUI repaints (#11315).
   const writeText = (start: number, end: number): void => {
-    const cells = cursorRowCells()
+    const row = cursorRowForEdit()
+    const cells = rowCellsForEdit(row)
+    if (cells === null) {
+      const text = row.text
+      const padded =
+        cursorColumn > text.length ? `${text}${' '.repeat(cursorColumn - text.length)}` : text
+      const runEnd = cursorColumn + end - start
+      // Why own: the row can outlive this chunk as a tail line, and a long run is a slice of it.
+      row.text = `${padded.slice(0, cursorColumn)}${ownRetainedString(
+        normalizedChunk.slice(start, end)
+      )}${padded.slice(runEnd)}`
+      cursorColumn = runEnd
+      return
+    }
     if (cursorColumn > cells.length) {
       const oldLength = cells.length
       cells.length = cursorColumn
@@ -103,14 +117,28 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
     }
   }
   const eraseLine = (mode: number): void => {
-    const cells = cursorRowCells()
-    if (mode === 0) {
+    const row = cursorRowForEdit()
+    if (mode !== 0 && mode !== 1 && mode !== 2) {
+      return
+    }
+    const cells = rowCellsForEdit(row)
+    if (cells === null) {
+      const text = row.text
+      if (mode === 0) {
+        row.text = text.slice(0, cursorColumn)
+      } else if (mode === 1) {
+        const blankCount = Math.min(cursorColumn + 1, text.length)
+        row.text = `${' '.repeat(blankCount)}${text.slice(blankCount)}`
+      } else {
+        row.text = ''
+      }
+    } else if (mode === 0) {
       if (cursorColumn < cells.length) {
         cells.length = cursorColumn
       }
     } else if (mode === 1) {
       cells.fill(' ', 0, Math.min(cursorColumn + 1, cells.length))
-    } else if (mode === 2) {
+    } else {
       cells.length = 0
     }
   }
@@ -194,21 +222,6 @@ export type RetainedTailRedrawCursor = {
   column: number
 }
 
-type RetainedTerminalRow = {
-  text: string
-  /** Mutable cells once the chunk writes to the row; `text` is stale until joined. */
-  cells: string[] | null
-  completed: boolean
-}
-
-// Why keep cells: a later cursor-up can rewrite this row again in the same chunk.
-function retainedRowText(row: RetainedTerminalRow): string {
-  if (row.cells !== null) {
-    row.text = row.cells.join('')
-  }
-  return row.text
-}
-
 function finalizeRetainedTerminalRows(
   rows: RetainedTerminalRow[],
   cursorRow: number,
@@ -226,7 +239,7 @@ function finalizeRetainedTerminalRows(
 } {
   let truncated = initialTruncated
   let retainedRows = rows.map((row) => ({
-    text: trimTerminalLineRight(row.cells === null ? row.text : row.cells.join('')),
+    text: trimTerminalLineRight(retainedRowText(row)),
     completed: row.completed
   }))
 
@@ -284,8 +297,8 @@ function finalizeRetainedTerminalRows(
 
   return {
     lines,
-    // Why only the partial: redraw rows are built character by character and never sliced from
-    // the chunk, but the partial is re-sliced from its own row on every chunk, so it alone can
+    // Why only the partial: redraw runs are owned as they are written, so rows never slice the
+    // chunk, but the partial is re-sliced from its own row on every chunk, so it alone can
     // accumulate a backing string across frames. Owning the rows too costs 20-36% on TUI floods
     // for no measured retention.
     partialLine: ownRetainedString(partialLine),

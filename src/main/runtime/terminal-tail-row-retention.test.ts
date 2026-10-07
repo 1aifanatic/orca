@@ -93,9 +93,8 @@ describe('retained terminal tail row storage', () => {
 
       expect(redrawn.lines).toEqual(['row one'])
       expect(redrawn.partialLine).toBe('rewritten two')
-      // One call for the partial only: redraw rows are built character by character.
-      expect(own).toHaveBeenCalledTimes(1)
-      expect(own).toHaveBeenLastCalledWith('rewritten two')
+      // Only the written run and the partial are owned; carried rows are never re-copied.
+      expect(own.mock.calls).toEqual([['rewritten two'], ['rewritten two']])
     } finally {
       own.mockRestore()
     }

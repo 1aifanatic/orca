@@ -92,4 +92,23 @@ describe('onPtyData redraw cost', () => {
       await runtime.onPtyExit(ptyId, 0)
     }
   })
+
+  it('does not rebuild a wide row the cursor only revisits', async () => {
+    const ptyId = 'pty-revisit'
+    const width = 32_000
+    const { runtime } = runtimeWithLeaf(ptyId)
+    const join = vi.spyOn(Array.prototype, 'join')
+    try {
+      runtime.onPtyData(ptyId, `${ESC}[1A\r${'x'.repeat(width)}\n${`${ESC}[1A\n`.repeat(4_000)}`, 1)
+      // A join per newline rebuilt the whole row 4,000 times and froze main for seconds.
+      const wideJoins = join.mock.contexts.filter(
+        (cells) => Array.isArray(cells) && cells.length >= width
+      )
+      expect(wideJoins).toHaveLength(0)
+      expect(readTail(runtime, ptyId)).toEqual(['x'.repeat(width)])
+    } finally {
+      join.mockRestore()
+      await runtime.onPtyExit(ptyId, 0)
+    }
+  })
 })

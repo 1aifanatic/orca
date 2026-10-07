@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { appendNormalizedToTailBuffer } from './terminal-tail-buffer'
 import { MAX_TAIL_LINES } from './terminal-tail-limits'
 import * as redrawBuffer from './terminal-tail-redraw-buffer'
+import { buildRestoredTerminalTailSeed } from './terminal-tail-restore-seed'
 
 // #11315: an SSH TUI (Pi ask_user) repainting full-width rows pinned Electron main at 100% CPU
 // because every character written behind the row end rebuilt the whole row string.
@@ -23,6 +24,36 @@ function redrawMillis(width: number): number {
   const chunk = overwriteFrame(width).repeat(36)
   let fastest = Number.POSITIVE_INFINITY
   for (let round = 0; round < 8; round += 1) {
+    const started = performance.now()
+    tail = appendNormalizedToTailBuffer(tail.lines, tail.partialLine, chunk, tail.redrawCursor)
+    fastest = Math.min(fastest, performance.now() - started)
+  }
+  return fastest
+}
+
+// Paint one wide row, then revisit it with cursor-up/newline; `edit` runs before each newline.
+function wideRowRevisits(width: number, revisits: number, edit = ''): string {
+  return `${ESC}[1A\r${'x'.repeat(width)}\n${`${ESC}[1A${edit}\n`.repeat(revisits)}`
+}
+
+// Each join of a row-sized cell array is an O(width) rebuild.
+function countWideJoins(width: number, run: () => void): number {
+  const join = vi.spyOn(Array.prototype, 'join')
+  try {
+    run()
+    return join.mock.contexts.filter((cells) => Array.isArray(cells) && cells.length >= width)
+      .length
+  } finally {
+    join.mockRestore()
+  }
+}
+
+// Many short runs per row: a write, then a backspace, across the whole width.
+function backspaceRewriteMillis(width: number): number {
+  const chunk = `${ESC}[1A\r${'ab\b'.repeat(width)}\n`.repeat(8)
+  let tail = appendNormalizedToTailBuffer([], '', `${'x'.repeat(width)}\n`, null)
+  let fastest = Number.POSITIVE_INFINITY
+  for (let round = 0; round < 6; round += 1) {
     const started = performance.now()
     tail = appendNormalizedToTailBuffer(tail.lines, tail.partialLine, chunk, tail.redrawCursor)
     fastest = Math.min(fastest, performance.now() - started)
@@ -93,5 +124,44 @@ describe('terminal tail redraw cost', () => {
     expect(next.lines).toHaveLength(MAX_TAIL_LINES)
     expect(next.lines.at(-1)).toBe('replayed 19999')
     expect(next.truncated).toBe(true)
+  })
+
+  it('does not rebuild an unchanged wide row on every cursor-up/newline revisit', () => {
+    const width = 32_000
+    let tail: ReturnType<typeof appendNormalizedToTailBuffer> | undefined
+    const joins = countWideJoins(width, () => {
+      tail = appendNormalizedToTailBuffer([], '', wideRowRevisits(width, 4_000), null)
+    })
+    expect(joins).toBe(0)
+    expect(tail?.lines).toEqual(['x'.repeat(width)])
+  })
+
+  it('keeps a one-cell edit per revisit off the whole-row rebuild', () => {
+    const width = 64_000
+    let tail: ReturnType<typeof appendNormalizedToTailBuffer> | undefined
+    const joins = countWideJoins(width, () => {
+      tail = appendNormalizedToTailBuffer([], '', wideRowRevisits(width, 2_000, '\ry'), null)
+    })
+    expect(joins).toBe(0)
+    expect(tail?.lines).toEqual([`y${'x'.repeat(width - 1)}`])
+  })
+
+  it('seeds a restored tail without rebuilding a revisited wide row', () => {
+    const width = 32_000
+    let seedLines: string[] | undefined
+    const joins = countWideJoins(width, () => {
+      seedLines = buildRestoredTerminalTailSeed(wideRowRevisits(width, 4_000))?.lines
+    })
+    expect(joins).toBe(0)
+    expect(seedLines).toEqual(['x'.repeat(width)])
+  })
+
+  it('stays linear in width when one row takes many short edits', () => {
+    backspaceRewriteMillis(1000)
+    backspaceRewriteMillis(8000)
+    const narrow = backspaceRewriteMillis(1000)
+    const wide = backspaceRewriteMillis(8000)
+    // A string copy per edit made this ~64x.
+    expect(wide / narrow).toBeLessThan(24)
   })
 })
