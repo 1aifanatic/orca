@@ -1,0 +1,87 @@
+diff --git a/omggif.js b/omggif.js
+index 4b814fb37953987d670644d53d1663433a95d71e..d32ab12efb1c16c43440aa0a7d480711279c2af1 100644
+--- a/omggif.js
++++ b/omggif.js
+@@ -569,7 +569,7 @@ function GifReader(buf) {
+       if (xleft === 0) {  // Beginning of new scan line
+         op += scanstride;
+         xleft = framewidth;
+-        if (op >= opend) { // Catch the wrap to switch passes when interlacing.
++        while (op >= opend && interlaceskip > 1) { // Skip empty interlace passes.
+           scanstride = framestride * 4 + width * 4 * (interlaceskip-1);
+           // interlaceskip / 2 * 4 is interlaceskip << 1.
+           op = opbeg + (framewidth + framestride) * (interlaceskip << 1);
+@@ -580,6 +580,8 @@ function GifReader(buf) {
+       if (index === trans) {
+         op += 4;
+       } else {
++        if (index >= frame.palette_size)
++          throw new Error("GIF pixel index exceeds color table.");
+         var r = buf[palette_offset + index * 3];
+         var g = buf[palette_offset + index * 3 + 1];
+         var b = buf[palette_offset + index * 3 + 2];
+@@ -635,7 +637,7 @@ function GifReader(buf) {
+       if (xleft === 0) {  // Beginning of new scan line
+         op += scanstride;
+         xleft = framewidth;
+-        if (op >= opend) { // Catch the wrap to switch passes when interlacing.
++        while (op >= opend && interlaceskip > 1) { // Skip empty interlace passes.
+           scanstride = framestride * 4 + width * 4 * (interlaceskip-1);
+           // interlaceskip / 2 * 4 is interlaceskip << 1.
+           op = opbeg + (framewidth + framestride) * (interlaceskip << 1);
+@@ -646,6 +648,8 @@ function GifReader(buf) {
+       if (index === trans) {
+         op += 4;
+       } else {
++        if (index >= frame.palette_size)
++          throw new Error("GIF pixel index exceeds color table.");
+         var r = buf[palette_offset + index * 3];
+         var g = buf[palette_offset + index * 3 + 1];
+         var b = buf[palette_offset + index * 3 + 2];
+@@ -699,8 +703,7 @@ function GifReaderLZWOutputIndexStream(code_stream, p, output, output_length) {
+       }
+     }
+ 
+-    // TODO(deanm): We should never really get here, we should have received
+-    // and EOI.
++    // A complete frame can end at a code-width boundary without a readable EOI.
+     if (cur_shift < cur_code_size)
+       break;
+ 
+@@ -746,6 +749,9 @@ function GifReaderLZWOutputIndexStream(code_stream, p, output, output_length) {
+     // The code table stores the prefix entry in 12 bits and then the suffix
+     // byte in 8 bits, so each entry is 20 bits.
+ 
++    if (code > next_code || (code === next_code && prev_code === null))
++      throw new Error("Invalid GIF dictionary code.");
++
+     var chase_code = code < next_code ? code : prev_code;
+ 
+     // Chase what we will output, either {CODE} or {CODE-1}.
+@@ -758,11 +764,9 @@ function GifReaderLZWOutputIndexStream(code_stream, p, output, output_length) {
+ 
+     var k = chase;
+ 
+-    var op_end = op + chase_length + (chase_code !== code ? 1 : 0);
+-    if (op_end > output_length) {
+-      console.log("Warning, gif stream longer than expected.");
+-      return;
+-    }
++    var op_end = op + 1 + chase_length + (chase_code !== code ? 1 : 0);
++    if (op_end > output_length)
++      throw new Error("GIF pixel stream exceeds frame size.");
+ 
+     // Already have the first byte from the chase, might as well write it fast.
+     output[op++] = k;
+@@ -796,9 +800,8 @@ function GifReaderLZWOutputIndexStream(code_stream, p, output, output_length) {
+     prev_code = code;
+   }
+ 
+-  if (op !== output_length) {
+-    console.log("Warning, gif stream shorter than expected.");
+-  }
++  if (op !== output_length)
++    throw new Error("GIF pixel stream is shorter than frame size.");
+ 
+   return output;
+ }

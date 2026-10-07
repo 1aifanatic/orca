@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { deflateSync } from 'node:zlib'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import fixtures from '../../src/shared/__fixtures__/terminal-raster-red.json'
 import { NodeTerminalRasterBackend } from '../../src/shared/node-terminal-raster-backend'
 import { releaseTerminalRasterDecoder } from '../../src/shared/terminal-raster-wasm-decoder'
@@ -98,6 +98,32 @@ describe('production raster backend in the headless terminal parser', () => {
       h.core.dispose()
       expect(source.data.byteLength).toBe(0)
     } finally {
+      h.core.dispose()
+    }
+  })
+
+  it('rejects a partial GIF without interrupting text or the next valid image', () => {
+    const h = terminal()
+    const error = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      // The 1x1 frame contains two pixels in its LZW stream.
+      const gif = Buffer.from(
+        '47494638396101000100800000ff000000ff002c0000000001000100000202440a003b',
+        'hex'
+      )
+      h.core._core.writeSync(`BEFORE\x1b]1337;File=inline=1:${gif.toString('base64')}\x07AFTER`)
+      expect(h.addon._storage._images.size).toBe(0)
+      expect(h.core.buffer.active.getLine(0).translateToString(true)).toBe('BEFOREAFTER')
+      h.core._core.writeSync(`\x1b]1337;File=inline=1:${fixtures.gif}\x07VALID`)
+      expect(h.addon._storage._images.size).toBe(1)
+      expect(error).toHaveBeenCalledOnce()
+      expect(
+        Array.from({ length: 10 }, (_, row) =>
+          h.core.buffer.active.getLine(row).translateToString(true)
+        ).join('\n')
+      ).toContain('VALID')
+    } finally {
+      error.mockRestore()
       h.core.dispose()
     }
   })

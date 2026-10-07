@@ -181,6 +181,7 @@ patchedDependencies:
   i18next-cli@1.74.2: 7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207
   lint-staged@16.4.0: 7333b3837f80a7fbd045964db6d76ba4fc118e49134bdbabb00585b6b7b60673
   node-pty@1.1.0: 92c95cffab383d86b3b13a460c75a08074468ebf1f3911db8e874e083201f192
+  omggif@1.0.10: 01a0474f58ab7fb53e08e34a87bff98c78c0b6d2bfb0d0f520c40d2c10f14416
 
 importers:
 
@@ -236,7 +237,7 @@ importers:
         version: 1.1.0(patch_hash=92c95cffab383d86b3b13a460c75a08074468ebf1f3911db8e874e083201f192)
       omggif:
         specifier: 1.0.10
-        version: 1.0.10
+        version: 1.0.10(patch_hash=01a0474f58ab7fb53e08e34a87bff98c78c0b6d2bfb0d0f520c40d2c10f14416)
       posthog-node:
         specifier: ^5.52.5
         version: 5.52.5
@@ -13882,7 +13883,7 @@ snapshots:
 
   obug@2.2.1: {}
 
-  omggif@1.0.10: {}
+  omggif@1.0.10(patch_hash=01a0474f58ab7fb53e08e34a87bff98c78c0b6d2bfb0d0f520c40d2c10f14416): {}
 
   on-finished@2.4.1:
     dependencies:

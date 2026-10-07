@@ -68,3 +68,4 @@ patchedDependencies:
   '@jsquash/jpeg@1.6.0': config/patches/@jsquash__jpeg@1.6.0.patch
   '@jsquash/webp@1.5.0': config/patches/@jsquash__webp@1.5.0.patch
   '@jsquash/avif@2.1.1': config/patches/@jsquash__avif@2.1.1.patch
+  omggif@1.0.10: config/patches/omggif@1.0.10.patch
