@@ -48,9 +48,10 @@ function showLaunchNotStartedNotice(outcome: HostAgentLaunchOutcome, prompt: str
 }
 
 /**
- * Starts the agent through the host with no prompt, then pastes the prompt as main does, once the
- * host's agent holds this tab's pane: never before, so the paste never meets a shell this window
- * spawned, and its readiness budget is not spent on the host's spawn.
+ * Starts the agent through the host with no prompt and pastes the prompt as main does. Readiness is
+ * watched from the moment the tab's terminal exists, as main watches it, so an agent that is ready
+ * before the host answers is not missed; the paste is written only once the host has started its
+ * agent in this tab, so it never meets a shell this window spawned.
  */
 export function launchNewTabPromptThroughHost(
   args: HostAgentLaunchArgs & {
@@ -66,18 +67,24 @@ export function launchNewTabPromptThroughHost(
 } {
   const { pasteContent, submit, onPromptDelivered, onPromptDeliveryUnconfirmed, ...launch } = args
   const { tabId, outcome } = launchAgentThroughHost(launch)
+  // Only the host's agent can fill this tab's terminal while the window's own spawn is held.
+  const pasted = pasteAgentLaunchPromptOnceReady({
+    worktreeId: args.worktreeId,
+    tabId,
+    agent: args.agent,
+    content: pasteContent,
+    submit,
+    prompt: args.prompt,
+    sendGate: outcome.then(
+      (launched) => launched.kind === 'started',
+      () => false
+    ),
+    ...(onPromptDelivered ? { onPromptDelivered } : {}),
+    ...(onPromptDeliveryUnconfirmed ? { onPromptDeliveryUnconfirmed } : {})
+  })
   const promptDeliveryResult = outcome.then((launched) => {
     if (launched.kind === 'started') {
-      return pasteAgentLaunchPromptOnceReady({
-        worktreeId: args.worktreeId,
-        tabId,
-        agent: args.agent,
-        content: pasteContent,
-        submit,
-        prompt: args.prompt,
-        ...(onPromptDelivered ? { onPromptDelivered } : {}),
-        ...(onPromptDeliveryUnconfirmed ? { onPromptDeliveryUnconfirmed } : {})
-      })
+      return pasted
     }
     // The pane, or this notice for a tab that went, already says why: never a second notice.
     showLaunchNotStartedNotice(launched, args.prompt)

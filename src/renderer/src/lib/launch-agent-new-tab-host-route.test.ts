@@ -7,7 +7,10 @@ const host = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/agent-launch-through-host', () => host)
 const pasteAgentLaunchPromptOnceReady = vi.hoisted(() =>
-  vi.fn(async () => ({ delivered: true, failureNotified: false }))
+  vi.fn(async (_args: { sendGate?: Promise<boolean> }) => ({
+    delivered: true,
+    failureNotified: false
+  }))
 )
 vi.mock('@/lib/launch-agent-tab-prompt-paste', () => ({ pasteAgentLaunchPromptOnceReady }))
 const toast = vi.hoisted(() => ({ error: vi.fn() }))
@@ -41,20 +44,31 @@ beforeEach(() => {
 })
 
 describe('an AI button launched through the host', () => {
-  // Why: the paste must meet the host's agent, never a shell this window spawned first, and its
-  // readiness budget must not be spent while the host is still spawning.
-  it('starts no readiness wait or paste before the host has its agent in the tab', async () => {
+  function sendGate(): Promise<boolean> {
+    const gate = pasteAgentLaunchPromptOnceReady.mock.calls.at(-1)?.[0].sendGate
+    if (!gate) {
+      throw new Error('the paste was set up without a send gate')
+    }
+    return gate
+  }
+
+  // Why: readiness is watched from the tab's first output, as main watches it, but the paste must
+  // meet the host's agent, never a shell this window spawned first.
+  it('watches for readiness at once but writes only once the host has its agent in the tab', async () => {
     const answer = deferredOutcome()
     const { tabId, promptDeliveryResult } = launch()
-    await Promise.resolve()
-    expect(pasteAgentLaunchPromptOnceReady).not.toHaveBeenCalled()
-
-    answer({ kind: 'started' })
-
-    await expect(promptDeliveryResult).resolves.toEqual({ delivered: true, failureNotified: false })
     expect(pasteAgentLaunchPromptOnceReady).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ tabId, worktreeId: 'wt-1', submit: true })
     )
+    let gateOpen: boolean | undefined
+    void sendGate().then((open) => (gateOpen = open))
+    await Promise.resolve()
+    expect(gateOpen).toBeUndefined()
+
+    answer({ kind: 'started' })
+
+    await expect(sendGate()).resolves.toBe(true)
+    await expect(promptDeliveryResult).resolves.toEqual({ delivered: true, failureNotified: false })
     expect(tabId).toBe(TAB)
   })
 
@@ -65,7 +79,7 @@ describe('an AI button launched through the host', () => {
       delivered: false,
       failureNotified: true
     })
-    expect(pasteAgentLaunchPromptOnceReady).not.toHaveBeenCalled()
+    await expect(sendGate()).resolves.toBe(false)
     expect(toast.error).toHaveBeenCalledOnce()
   })
 
@@ -76,8 +90,8 @@ describe('an AI button launched through the host', () => {
         delivered: false,
         failureNotified: true
       })
+      await expect(sendGate()).resolves.toBe(false)
     }
-    expect(pasteAgentLaunchPromptOnceReady).not.toHaveBeenCalled()
     expect(toast.error).not.toHaveBeenCalled()
   })
 })
