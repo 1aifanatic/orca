@@ -129,6 +129,29 @@ describe('iOS whole-message copy', () => {
     }
   )
 
+  it.each([
+    'Please repair this chart:\n::orca-visual{file="usage.html"}\nKeep this text.',
+    '::orca-visual{file="usage.html"}'
+  ])('copies the entire visible own source %j', async (text) => {
+    render({ ...message, role: 'user', blocks: [{ type: 'text', text }] })
+    expect(nodes('Text').some((node) => node.props.children === text)).toBe(true)
+    expect(copyButton().props.accessibilityRole).toBe('button')
+    await act(async () => copyButton().props.onPress())
+    expect(writeText.mock.calls).toEqual([[text]])
+    expect(nodes('Check')).toHaveLength(1)
+  })
+
+  it('omits assistant visual directives while retaining literal fenced code', async () => {
+    const text =
+      'Chart:\n::orca-visual{file="usage.html"}\nDone.\n```text\n::orca-visual{file="example.html"}\n```'
+    render({ ...message, blocks: [{ type: 'text', text }] })
+    await act(async () => copyButton().props.onPress())
+    expect(writeText.mock.calls).toEqual([
+      ['Chart:\nDone.\n```text\n::orca-visual{file="example.html"}\n```']
+    ])
+    expect(nodes('Check')).toHaveLength(1)
+  })
+
   it('reports clipboard rejection without claiming Copied', async () => {
     writeText.mockRejectedValue(new Error('Clipboard unavailable'))
     render()
