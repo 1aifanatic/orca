@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { NATIVE_CHAT_VISUAL_MAX_BYTES } from '../../../src/shared/native-chat-visual-directive'
 import { bindDeferredRpcOperation, defineRpcOperation } from '../transport/rpc-operation'
 import { rpcResultVariant } from '../transport/rpc-operation-result-reader'
+import { isMethodNotFoundRefusal } from '../transport/rpc-acceptance-policies'
 import type { RpcClient } from '../transport/rpc-client'
 
 /** Where a chat's visuals are read from: the host that owns the structured session. */
@@ -12,9 +13,9 @@ export type MobileNativeChatVisualSource = {
 
 export type MobileNativeChatVisualRead =
   | { kind: 'ready'; html: string; revision: string }
-  /** The host positively refused (missing, too large, outside the folder...). */
+  /** The host positively refused (missing, too large, outside the folder...) or cannot serve visuals. */
   | { kind: 'refused' }
-  /** No verdict: no answer, an error reply, an older host. Worth asking again. */
+  /** No verdict: no answer, an error reply, an unreadable answer. Worth asking again. */
   | { kind: 'unreachable' }
 
 const Revision = z.string().regex(/^[0-9a-f]{16,64}$/)
@@ -30,7 +31,7 @@ const visualReadReplySchema = z.union([
   z.object({ ok: z.literal(false), error: z.string() })
 ])
 
-/** An error reply, an older host's `method_not_found` and an unreadable reply all read as null. */
+/** An error reply and an unreadable reply both read as null. */
 const nativeChatVisualRead = bindDeferredRpcOperation(
   defineRpcOperation({
     name: 'agentSession.read-visual',
@@ -113,6 +114,10 @@ async function readOnce(
     )
   } catch {
     return { kind: 'unreachable' }
+  }
+  if (isMethodNotFoundRefusal(response)) {
+    // An older host: asking again will not help until it updates.
+    return { kind: 'refused' }
   }
   const reply = nativeChatVisualRead.interpret(response)
   if (reply === null) {

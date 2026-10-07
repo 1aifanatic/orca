@@ -103,19 +103,22 @@ describe('readMobileNativeChatVisual', () => {
     expect(cachedMobileNativeChatVisual(source, 'chart.html')).toBeNull()
   })
 
-  it('reads a host verdict as refused', async () => {
-    for (const error of ['not_found', 'some_future_error']) {
+  it('reads a host verdict and an older host as refused', async () => {
+    for (const response of [
+      success({ ok: false, error: 'not_found' }),
+      success({ ok: false, error: 'some_future_error' }),
+      failure('method_not_found')
+    ]) {
       resetMobileNativeChatVisualCacheForTest()
-      const source = sourceWith(vi.fn().mockResolvedValue(success({ ok: false, error })))
+      const source = sourceWith(vi.fn().mockResolvedValue(response))
       await expect(readMobileNativeChatVisual(source, 'chart.html')).resolves.toEqual({
         kind: 'refused'
       })
     }
   })
 
-  it('reads an error reply, an older host and a malformed reply as no verdict, keeping the cache', async () => {
+  it('reads an error reply and a malformed reply as no verdict, keeping the cache', async () => {
     for (const response of [
-      failure('method_not_found'),
       failure('forbidden'),
       failure('runtime_error'),
       success({ ok: true, revision: 'not-hex', html: '' }),

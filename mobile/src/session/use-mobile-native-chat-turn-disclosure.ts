@@ -33,8 +33,8 @@ export type MobileNativeChatTurnRow = {
   /** Set only on a settled turn — the one row that has activity to disclose. */
   turnKey?: string
   activeTurnIsWorking: boolean
-  /** The newest assistant row: the only one a live structured reply may still be growing. */
-  isLatestAssistantRow: boolean
+  /** The newest assistant row of a live turn with no prompt open: its last text may still grow. */
+  mayStillGrow: boolean
   /** The live activity line discloses this open reasoning block, so its row draws nothing. */
   reasoningIsLive: boolean
   /** A reasoning row's disclosure, keyed like the live line's so an opened block stays open. */
@@ -220,7 +220,7 @@ export function useMobileNativeChatTurnDisclosure({
         turnKey: turnKey && turnStatus?.workedSeconds != null ? turnKey : undefined,
         // With no user boundary at all, the session's working state stays authoritative.
         activeTurnIsWorking: inLiveWorkingTurn(index),
-        isLatestAssistantRow: message.id === latestAssistantId,
+        mayStillGrow: !lineYields && message.id === latestAssistantId,
         reasoningIsLive: message.id === liveReasoningId,
         reasoningExpanded:
           message.role === 'reasoning' &&
@@ -239,6 +239,7 @@ export function useMobileNativeChatTurnDisclosure({
       expandedTurnIds,
       inLiveWorkingTurn,
       latestAssistantId,
+      lineYields,
       liveReasoningId,
       expandedReasoning,
       toggleReasoning

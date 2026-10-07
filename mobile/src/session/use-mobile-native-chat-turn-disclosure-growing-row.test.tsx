@@ -14,12 +14,21 @@ function assistantMessage(id: string): NativeChatMessage {
   }
 }
 
-describe('useMobileNativeChatTurnDisclosure latest assistant row', () => {
+describe('useMobileNativeChatTurnDisclosure growing row', () => {
   let renderer: ReactTestRenderer | null = null
 
   afterEach(() => {
     act(() => renderer?.unmount())
     renderer = null
+  })
+
+  it('marks no row while a prompt is open', () => {
+    const messages = [userMessage('u1'), assistantMessage('a1')]
+    act(() => {
+      renderer = create(createElement(Harness, { messages, enabled: true, lineYields: true }))
+    })
+    const { disclosure } = renderer!.root.findByType(Result).props
+    expect(disclosure.resolveRow(1, messages[1]).mayStillGrow).toBe(false)
   })
 
   it('marks only the newest assistant row, even when a user row follows it', () => {
@@ -34,7 +43,7 @@ describe('useMobileNativeChatTurnDisclosure latest assistant row', () => {
     })
     const { disclosure } = renderer!.root.findByType(Result).props
     expect(
-      messages.map((message, index) => disclosure.resolveRow(index, message).isLatestAssistantRow)
+      messages.map((message, index) => disclosure.resolveRow(index, message).mayStillGrow)
     ).toEqual([false, false, true, false])
   })
 })

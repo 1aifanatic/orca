@@ -110,7 +110,7 @@ function Prose({
 
 function MobileNativeChatMessageImpl({
   message,
-  isLatestAssistantRow = false,
+  mayStillGrow = false,
   toolsExpanded = false,
   fontScale = 1,
   onOpenFile,
@@ -126,8 +126,8 @@ function MobileNativeChatMessageImpl({
   onToggleReasoning
 }: {
   message: NativeChatMessage
-  /** The transcript's newest assistant row: the only one a working turn may still be growing. */
-  isLatestAssistantRow?: boolean
+  /** The newest assistant row of a live turn with no prompt open: its last text may still grow. */
+  mayStillGrow?: boolean
   toolsExpanded?: boolean
   /** Multiplies all chat text sizes for pinch-to-zoom (1 = no change). */
   fontScale?: number
@@ -180,9 +180,11 @@ function MobileNativeChatMessageImpl({
   const openActions = useCallback(() => setActionsOpen(true), [])
   const onLongPress = INLINE_TEXT_SELECTION ? undefined : openActions
   const renderVisual = useContext(MobileNativeChatVisualContext) ?? undefined
-  // Structured replies grow in place, so the newest row of a working turn may still be typing.
-  const holdPendingVisual =
-    message.role === 'assistant' && isLatestAssistantRow && activeTurnIsWorking === true
+  // Structured replies grow in place: only the last block of the newest row may still be typing.
+  const growingBlock =
+    message.role === 'assistant' && mayStillGrow && activeTurnIsWorking === true
+      ? message.blocks.at(-1)
+      : undefined
 
   const statusRow = turnStatus ? (
     <MobileNativeChatTurnStatus
@@ -252,7 +254,7 @@ function MobileNativeChatMessageImpl({
               onOpenFile={onOpenFile}
               onLongPress={onLongPress}
               renderVisual={message.role === 'assistant' ? renderVisual : undefined}
-              holdPendingVisual={holdPendingVisual}
+              holdPendingVisual={block === growingBlock}
             />
           ))}
           {showToolRun ? (

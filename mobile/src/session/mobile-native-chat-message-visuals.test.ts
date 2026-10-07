@@ -70,7 +70,7 @@ describe('MobileNativeChatMessage visuals', () => {
     options: {
       visuals?: MobileNativeChatVisualRender | null
       activeTurnIsWorking?: boolean
-      isLatestAssistantRow?: boolean
+      mayStillGrow?: boolean
     } = {}
   ): Record<string, unknown> {
     act(() => {
@@ -81,7 +81,7 @@ describe('MobileNativeChatMessage visuals', () => {
           createElement(MobileNativeChatMessage, {
             message: row,
             activeTurnIsWorking: options.activeTurnIsWorking,
-            isLatestAssistantRow: options.isLatestAssistantRow ?? true
+            mayStillGrow: options.mayStillGrow ?? true
           })
         )
       )
@@ -113,9 +113,24 @@ describe('MobileNativeChatMessage visuals', () => {
     expect(
       markdownProps(message('a0', 'assistant', text), {
         activeTurnIsWorking: true,
-        isLatestAssistantRow: false
+        mayStillGrow: false
       }).content
     ).toBe(text)
+  })
+
+  it('holds back only the last block of the row: text followed by a tool call is finished', () => {
+    const text = 'Options:\n::orca-visual{file="options'
+    const row: NativeChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      blocks: [
+        { type: 'text', text },
+        { type: 'tool-call', name: 'AskUserQuestion', input: {} }
+      ],
+      timestamp: null,
+      source: 'transcript'
+    }
+    expect(markdownProps(row, { activeTurnIsWorking: true }).content).toBe(text)
   })
 
   it('shows the whole reply once its turn settles', () => {
