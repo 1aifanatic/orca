@@ -1,65 +1,104 @@
-name: pnpm verification cache pilot
-
+name: Manual Windows profile writer stall diagnostic
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      source_sha:
+        description: Exact reviewed d1be tested source; temporary definition never merges.
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  group: manual-windows-profile-writer-stall-diagnostic
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  diagnose:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      WRITER_DIAGNOSTIC_SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
-      - uses: actions/checkout@v6
+      - name: Preserve named Git source and definition bytes on Windows
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - name: Checkout exact failed source
+        uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 2
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
+      - name: Checkout reviewed temporary definition
+        uses: actions/checkout@v6
         with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
+          ref: ${{ github.sha }}
+          path: .benchmark-definition
+          persist-credentials: false
 
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
+      - name: Cache electron-builder downloads
+        uses: actions/cache/restore@v5
         with:
-          persist-credentials: false
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          # Release builds seed this exact path set; PR-local copies cannot serve other PRs.
+          key: electron-builder-win-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-win-
+
+      # Why persist-native-cache false: this job later rebuilds the same path for
+      # Electron. A post-job save would store the Electron ABI under the Node key.
       - uses: ./.github/actions/install-node-dependencies
         id: deps
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          native-runtime: node
+          persist-native-cache: 'false'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+
+      # Why here: electron-builder's beforePack requires out/mobile-web, and the bundle
+      # build resolves React Native and Expo from mobile/node_modules.
+      - uses: ./.github/actions/install-mobile-dependencies
+
+      - name: Save compiled Node native modules
+        if: steps.deps.outputs.native-cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.deps.outputs.native-cache-path }}
+          key: ${{ steps.deps.outputs.native-cache-key }}
+
+      # vitest runs here directly rather than through `pnpm test`, so the addon
+      # assertions only hold once install-node-dependencies has rebuilt natives.
+      - name: Test Windows installer process probe
+        # Keep cold CIM startup out of the concurrent Electron/native process workload.
+        run: >-
+          pnpm exec vitest run --config config/vitest.config.ts
+          config/scripts/nsis-process-check.test.mjs
+
+      - name: Apply failure-only owned writer diagnostics
+        run: node .benchmark-definition/.github/benchmark/profile-writer-windows-diagnostic-lf/materialize.mjs before
+      - name: Preserve the same Windows native contract workload
+        shell: pwsh
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          $PSNativeCommandUseErrorActionPreference = $false
+          $env:ORCA_IMPORT_REUSE_DETAILS = 'notes/bun-migration/performance/profile-writer-windows-diagnostic-ci-d1be-lf/report-details.json'
+          $arguments = @('exec', 'vitest', 'run', '--config', 'config/vitest.config.ts', 'config/scripts/rebuild-native-deps.test.mjs', 'config/scripts/rebuild-native-deps-windows-process-tree.test.mjs', 'config/scripts/rebuild-native-deps-node-pty.test.mjs', 'config/scripts/ensure-native-runtime-job-ownership.test.mjs', 'config/scripts/verify-packaged-node-pty-job-ownership.test.mjs', 'config/scripts/windows-pe-machine.test.mjs', 'config/scripts/script-module-dependencies.test.mjs', 'src/main/windows-registry-addon.test.ts', 'config/scripts/windows-process-tree-gyp-path.test.mjs', 'config/scripts/windows-process-tree-gyp-rebuild.test.mjs', 'config/scripts/package-electron-runtime-contract.test.mjs', 'config/scripts/electron-builder-runtime-resources.test.mjs', 'src/main/browser/browser-client-page-renderer-lifecycle.electron.test.ts', 'src/main/browser/browser-route-tcp-egress.electron.test.ts', 'src/main/browser/browser-route-webrtc-egress.electron.test.ts', 'src/main/browser/browser-route-h3-egress.electron.test.ts', 'src/main/browser/browser-route-dns-prefetch.electron.test.ts', 'src/main/persistence/profile-state/profile-state-writer-stall.electron.test.ts', 'src/main/providers/windows-conpty-wide-char-duplication.node-pty.test.ts', 'src/main/providers/pty-repaint-wide-char-buffer.node-pty.test.ts', 'src/shared/child-process/windows-command-line.win32.test.ts', 'src/shared/child-process/windows-cmd-shim-resolution.test.ts', 'src/shared/child-process/windows-cmd-shim-resolution.win32.test.ts', 'src/main/agent-hooks/windows-hook-payload-delivery.test.ts', 'src/main/jcode/hook-gate-script.test.ts', 'src/main/agent-hooks/windows-direct-cmd-hook-command.test.ts', 'src/main/codex/windows-hook-command.test.ts', 'src/main/codex/windows-hook-upgrade.test.ts', 'src/main/codex/hook-service-managed-install.test.ts', 'src/main/windows/windows-pty-job.win32.test.ts', 'src/main/windows/windows-msys-job.win32.test.ts', 'src/main/providers/agent-foreground-process-git-bash.win32.test.ts', 'src/main/windows/windows-host-job.win32.test.ts', 'src/main/windows/windows-process-tree-command-line-patch.test.ts', 'src/main/windows/windows-process-table-native-addon.win32.test.ts', 'src/main/persistence/profile-state/profile-state-access-windows-native.win32.test.ts', 'src/main/windows-live-tree-kill.win32.test.ts', 'src/main/wsl/wsl-runner.test.ts', 'src/main/wsl/wsl-guest-environment.test.ts', 'src/main/wsl/wsl-executable-path.win32.test.ts', 'src/main/wsl/wsl-w1-w3-contract.test.ts', 'src/shared/source-scan/source-tree-scan.test.ts', 'src/main/cli/wsl-cli-powershell-boundary.test.ts', 'src/main/computer/desktop-script-runtime-host.win32.test.ts', 'src/main/cursor/hook-service.test.ts', 'src/main/orca-profiles/profile-index-store.test.ts', 'src/main/startup/windows-install-dir-acl-repair.win32.test.ts', 'src/main/startup/windows-app-data-path.test.ts', 'src/main/runtime/repo-worktree-admin-fingerprint.test.ts', 'src/main/runtime/worktree-scan-admin-fingerprint-gate.test.ts', 'src/shared/secure-file-fsync-flags.test.ts', 'src/shared/secure-path-windows-acl.win32.test.ts', 'src/main/runtime/unreadable-secret-store-preservation.win32.test.ts', 'src/main/ipc/pty-codex-account-attribution.test.ts', 'src/main/ipc/pty-spawn-env-codex-resume-provenance.test.ts', 'src/main/ipc/preflight-provider-command-selection.test.ts', 'src/main/ipc/preflight-runnable-local-cli.test.ts', 'src/relay/windows-port-scan.win32.test.ts', 'src/main/ssh/ssh-relay-upload-stage-windows-identity.test.ts', 'src/main/ssh/remote-node-runtime-store-windows.test.ts', '--reporter=default', '--reporter=json', '--reporter=./notes/bun-migration/performance/profile-writer-windows-diagnostic-ci-d1be-lf/persistence-import-reuse-benchmark-reporter.mjs', '--outputFile=notes/bun-migration/performance/profile-writer-windows-diagnostic-ci-d1be-lf/report.json')
+          & pnpm @arguments 2>&1 | Tee-Object -FilePath notes/bun-migration/performance/profile-writer-windows-diagnostic-ci-d1be-lf/command.log
+          $exitCode = $LASTEXITCODE
+          node .benchmark-definition/.github/benchmark/profile-writer-windows-diagnostic-lf/materialize.mjs after "$exitCode"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          exit $exitCode
+      - name: Record raw diagnostic disposition without promoting a failed case
+        if: always()
+        run: python .benchmark-definition/.github/benchmark/profile-writer-windows-diagnostic-lf/collect-results.py notes/bun-migration/performance/profile-writer-windows-diagnostic-ci-d1be-lf .benchmark-definition/.github/benchmark/profile-writer-windows-diagnostic-lf/payload writer-stall-diagnostic-result.json
+      - name: Retain source, raw failures and owned writer observations
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: profile-writer-windows-diagnostic-lf-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            notes/bun-migration/performance/profile-writer-windows-diagnostic-ci-d1be-lf/
+            writer-stall-diagnostic-result.json

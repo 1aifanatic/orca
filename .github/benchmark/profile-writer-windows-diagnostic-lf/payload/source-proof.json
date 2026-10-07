@@ -1,0 +1,55 @@
+{
+  "sourceHead": "d1be0d8a708c9843edf24ecae10b068f1c92fc30",
+  "parents": [
+    "7b26725ff4b38e1981ad2e1153118fa24faa7ac3",
+    "1ab47cfdc0029730fa15f851a6a785846f9ee77e"
+  ],
+  "run": 37684295554,
+  "failedJob": 113010281837,
+  "rawLog": "notes/bun-migration/performance/radix-current-main-windows-package-direct-raw.log",
+  "rawLogSha256": "3eda3b9d3249a73dc657c8f73c90673d9e6d06b8a456638ca17659e30ded2dc1",
+  "sourceNamedHashes": {
+    "src/main/persistence/profile-state/profile-state-writer-electron-fixture.ts": "34f12e825b089d959ebfd3419b0490f83b0c5f612434735490f7263002800273",
+    "src/main/persistence/profile-state/profile-state-writer-stall.electron.test.ts": "3e099993b6f483c0befe05fc602631fac8020deb2e9a342b6406ec9d91a80e5c",
+    "src/main/persistence/profile-state/profile-state-writer-deadline.ts": "328ccc3dcc28bc39e32f8af44a961fb086f62544147a038f0342dffedb6611a7",
+    "src/main/persistence/profile-state/profile-state-writer-request.ts": "7794b9a0d998b424d57a4ae2e486a1b206c5478bcd88a3b31a1a3bcf96ed77f2",
+    "src/main/persistence/profile-state/profile-state-writer-thread.ts": "112bac556833e9ad625ac7f7528e9da664ef36064f15dae27095835368fcb259",
+    "src/main/persistence/profile-state/profile-state-writer-connection.ts": "df89c204364ffe5bc9642c7bd6327c6aed6a9a39c4e486e492c4b5e9654aee31",
+    "src/main/persistence/profile-state/profile-state-writer-diagnostics.ts": "ddbbad6e483464fcaf7996406981ee46b7d22938f3a911e1b6cff921507e8412",
+    "src/main/crash-reporting/crash-breadcrumb-store.ts": "8848be8a897e0d1a214dbbaf87a0377d493ee83358763c0fc286e693889b2cb9",
+    "src/main/persistence/profile-state/profile-state-writer-worker-entry.ts": "84363abf70709c9aadf8c1971f69902e8881c56e46bbc1d1a4f39732e0edc407",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1"
+  },
+  "all11GuardsEqualIncomingMainAndRadixHead": true,
+  "target": "src/main/persistence/profile-state/profile-state-writer-electron-fixture.ts",
+  "beforeSha256": "34f12e825b089d959ebfd3419b0490f83b0c5f612434735490f7263002800273",
+  "afterSha256": "17af298678686b12d36bd504950c91dabbba08b77d273c3de05fc70f10265220",
+  "patchSha256": "a9a3c71ce913dd638f56d583fd808be2ab025b203acc31472e14f235c8575f54",
+  "sourceOnly": true,
+  "qualificationPending": true,
+  "provenFacts": [
+    "Original real Electron fixture uses2000ms command timeout and four blocking main-process stalls; each stalled write waits until its real worker postMessage returned, then remains blocked to timeout+100.",
+    "Observed raw error is active command timeout with indeterminate outcome in final setImmediate check; initial ready timeout defaults known-failure.",
+    "Original log has no requestId/command/stallcycle/queued counter/deadline timing; normal before/after/close writes lack the stalled-write queued reply precondition.",
+    "Timeout diagnostics already record command/requestId/acknowledgedRevision/elapsed/overdue/graces in the canonical owned crash breadcrumb store."
+  ],
+  "unproven": [
+    "Which command or stall cycle failed.",
+    "Whether a ready worker reply lost to the final Immediate or a normal request missed2seconds under host/native load.",
+    "Bun/Radix/Windows scheduling/production bug attribution."
+  ],
+  "candidateChanges": "Failure-only console capture of existing canonical writer breadcrumbs and owned shared counters plus phase markers. No production/timer/request/thread/SQLite behavior changed.",
+  "preserved": [
+    "2000ms original request deadline and5000ms overdue grace/3grace budget",
+    "All four real Electron main stalls and original Atomics queued reply barriers",
+    "Same one SQLite worker, durable revisions2..5/final6 and failures[] assertions",
+    "Original parent process and Vitest deadlines/background policy/natural held child cleanup",
+    "No mock, signal, retry, sleep, skip, clock virtualization, new status owner or production test seam"
+  ],
+  "primaryContextSources": [
+    "https://nodejs.org/learn/asynchronous-work/event-loop-timers-and-nexttick",
+    "https://raw.githubusercontent.com/nodejs/node/v24.0.0/src/node_messaging.cc"
+  ],
+  "primaryContextLimit": "General Node poll/check and MessagePort enqueue context is not exact embedded Electron43 Windows ordering proof."
+}

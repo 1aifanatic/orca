@@ -1,0 +1,70 @@
+diff --git a/src/main/persistence/profile-state/profile-state-writer-electron-fixture.ts b/src/main/persistence/profile-state/profile-state-writer-electron-fixture.ts
+--- a/src/main/persistence/profile-state/profile-state-writer-electron-fixture.ts
++++ b/src/main/persistence/profile-state/profile-state-writer-electron-fixture.ts
+@@ -2,6 +2,7 @@
+ import { strict as assert } from 'node:assert'
+ import { writeFileSync } from 'node:fs'
+ import { join } from 'node:path'
++import { getCrashBreadcrumbSnapshot } from '../../crash-reporting/crash-breadcrumb-store'
+ import { applyBackgroundActivationPolicy } from '../../window/foreground-activation-policy'
+ import { openProfileStateDatabase } from './profile-state-database'
+ import { readProfileStateRevision } from './profile-state-revision'
+@@ -38,17 +39,35 @@
+   const counters = new SharedArrayBuffer(8)
+   const counts = new Int32Array(counters)
+   const failures: string[] = []
++  let phase = 'initialize'
+   const initialization = { databasePath, profileId, revision: 0, counters }
+   const client = new ProfileStateWriteWorkerClient(initialization, {
+     workerPath: join(root, 'observed-worker.cjs'),
+     timeoutMs,
+-    onFailure: (error) => failures.push(error.message)
++    onFailure: (error) => {
++      failures.push(error.message)
++      console.error(
++        'PROFILE_STATE_WRITER_STALL_DIAGNOSTIC',
++        JSON.stringify({
++          phase,
++          timeoutMs,
++          electron: process.versions.electron,
++          node: process.versions.node,
++          queuedReplies: Atomics.load(counts, 0),
++          workerStarts: Atomics.load(counts, 1),
++          writerBreadcrumbs: getCrashBreadcrumbSnapshot().filter((breadcrumb) =>
++            breadcrumb.name.startsWith('profile_state_writer_')
++          )
++        })
++      )
++    }
+   })
+   const write = (marker: string) =>
+     client.writeSerializedDomains([{ domain: 'ui', payload: JSON.stringify({ marker }) }])
+   const revisions: number[] = []
+   try {
+     await client.ready
++    phase = 'before'
+     assert.equal(await write('before'), 1)
+     for (let cycle = 0; cycle < 4; cycle += 1) {
+       let pending: Promise<number> | undefined
+@@ -57,8 +76,10 @@
+         setImmediate(() => {
+           try {
+             const started = performance.now()
++            phase = `stall-${cycle}-waiting-for-reply`
+             pending = write(`stalled-${cycle}`)
+             waitForQueuedReply(counts, cycle + 2)
++            phase = `stall-${cycle}-reply-queued`
+             Atomics.wait(
+               new Int32Array(new SharedArrayBuffer(4)),
+               0,
+@@ -76,8 +97,10 @@
+       }
+       revisions.push(await pending)
+     }
++    phase = 'after'
+     assert.equal(await write('after'), 6)
+   } finally {
++    phase = 'close'
+     await client.close()
+   }
+   const opened = openProfileStateDatabase(databasePath, profileId)
