@@ -50,7 +50,13 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
   setHostWorkspaceSession: ['persistence/loading-store/session-snapshot-operations.ts'],
   // The runtime's session controller, reachable from every OrcaRuntime mixin.
   setForWorktree: ['runtime/orca-runtime-get-runtime-id.ts'],
-  patchWorkspaceSession: ['ipc/session.ts'],
+  patchWorkspaceSession: [
+    // Test support: the store fake behind main's SSH export tests.
+    'ipc/remote-workspace-export-test-driver.ts',
+    // A window's SSH snapshot import, committed with the pull it came from.
+    'ipc/remote-workspace.ts',
+    'ipc/session.ts'
+  ],
   stageWorkspaceSessionBeforeUnload: ['ipc/renderer-shutdown-checkpoint.ts'],
   setWorkspaceSessionForWorktree: [
     // Headless editor-tab retirement, like the headless mobile-session tab writers below.

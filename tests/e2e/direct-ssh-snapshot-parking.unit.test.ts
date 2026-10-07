@@ -154,7 +154,8 @@ async function applySnapshot(snapshot: RemoteWorkspaceObservedSnapshot): Promise
     isArrivalCurrent: () => true,
     isPreparationTokenCurrent: () => true,
     waitForWorkspaceSessionReady: async () => true,
-    finalizeHydratedTerminals: () => useAppStore.getState().retryDirectSshTargetPanes(authority)
+    finalizeHydratedTerminals: () => useAppStore.getState().retryDirectSshTargetPanes(authority),
+    importPeerTopology: async () => {}
   })
   expect(result).toBe('applied')
 }
