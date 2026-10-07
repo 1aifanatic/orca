@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { PassThrough } from 'node:stream'
 import { providerDiagnosticOf } from '../../shared/agent-session-failure'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ProcessSpec } from '../../shared/child-process/process-spec'
 import type { spawnProcess } from '../../shared/child-process/run-process'
 import {
   isCodexAppServerRequestError,
@@ -11,7 +12,7 @@ import {
   type CodexAppServerConnection,
   type CodexAppServerConnectionHandlers
 } from './codex-app-server-connection'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './codex-app-server-posix-supervisor'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
 import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
 
 // close() waits out the supervisor's own stop before forcing the tree.
@@ -125,6 +126,26 @@ async function flushStreams(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve))
 }
 
+async function closeWithoutObservedExit(
+  connection: CodexAppServerConnection,
+  child: StubChild
+): Promise<boolean> {
+  const forcedKill = new Promise<void>((resolve) => {
+    child.kill.mockImplementation((signal) => {
+      if (signal === 'SIGKILL') {
+        resolve()
+      }
+    })
+  })
+  const closing = connection.close()
+  await flushStreams()
+  await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS)
+  await forcedKill
+  await vi.advanceTimersByTimeAsync(0)
+  await vi.advanceTimersByTimeAsync(1_000)
+  return closing
+}
+
 function rejection(promise: Promise<unknown>): Promise<Error> {
   return promise.then(
     () => {
@@ -171,6 +192,31 @@ function responseLine(targetBytes: number, id: number): string {
 }
 
 describe('openCodexAppServerConnection', () => {
+  it.runIf(process.platform !== 'win32')(
+    'has its supervisor close Codex by its stdin end, the way its own close does',
+    async () => {
+      const { child, spawnImpl } = stubChild()
+      const specs: ProcessSpec[] = []
+      answerInitialize(child)
+
+      const connection = await openCodexAppServerConnection(
+        { command: 'codex', args: ['app-server'] },
+        {},
+        (spec: ProcessSpec) => {
+          specs.push(spec)
+          return spawnImpl(spec)
+        }
+      )
+
+      expect(
+        JSON.parse(
+          Buffer.from(String(specs[0]?.env?.ORCA_PROVIDER_SUPERVISOR_SPEC), 'base64').toString()
+        )
+      ).toMatchObject({ closeRequest: 'stdin-end' })
+      await connection.close()
+    }
+  )
+
   it('advertises the experimental API required for rollout-path resume', async () => {
     const { child, spawnImpl, written } = stubChild()
     answerInitialize(child)
@@ -431,6 +477,7 @@ describe('openCodexAppServerConnection', () => {
 
     expect(error.name).toBe('CodexAppServerHandshakeExitUnprovenError')
     expect(error.connection).toBeDefined()
+    child.emit('exit', 1, null)
     child.emit('close', 1, null)
     await expect(error.connection?.close()).resolves.toBe(true)
   })
@@ -484,21 +531,7 @@ describe('openCodexAppServerConnection', () => {
       spawnImpl
     )
 
-    const forcedKill = new Promise<void>((resolve) => {
-      child.kill.mockImplementation((signal) => {
-        if (signal === 'SIGKILL') {
-          resolve()
-        }
-      })
-    })
-    const closing = connection.close()
-    await flushStreams()
-    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS)
-    await forcedKill
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(1_000)
-
-    await expect(closing).resolves.toBe(false)
+    await expect(closeWithoutObservedExit(connection, child)).resolves.toBe(false)
     expect(vi.getTimerCount()).toBe(0)
   }, 10_000)
 
@@ -525,7 +558,7 @@ describe('openCodexAppServerConnection', () => {
   })
 
   it('allows a later close to observe exit after an unproven attempt', async () => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
     answerInitialize(child)
     const connection = await openCodexAppServerConnection(
@@ -534,9 +567,7 @@ describe('openCodexAppServerConnection', () => {
       spawnImpl
     )
 
-    const first = connection.close()
-    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS + 3_500)
-    await expect(first).resolves.toBe(false)
+    await expect(closeWithoutObservedExit(connection, child)).resolves.toBe(false)
     child.emit('exit', 0, null)
 
     await expect(connection.close()).resolves.toBe(true)

@@ -40,6 +40,8 @@ import { commitStructuredAgentSessionCreate } from './structured-agent-session-c
 import { closeStructuredAgentSessionChild } from '../../structured-agent-session-close'
 import { openTestJournalHostDatabase } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger'
+import { codexProviderHandle } from '../../../../shared/agent-session-provider-handle-encoding'
+import { NO_STRUCTURED_AGENTS } from '../../../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
 
 const WORKTREE = `id:${HOST_TEST_LOCATION.workspaceId}`
 const SOURCE_TAB = `structured-agent-session-${HOST_TEST_SESSION}`
@@ -75,10 +77,9 @@ function providerAdapter(): StructuredAgentSessionAdapter {
           mintedAtFence: input.fence,
           observedAt: HOST_TEST_NOW,
           origin: 'created' as const,
-          handle: {
-            provider: 'codex' as const,
-            threadId: `00000000-0000-4000-8000-${String(acquisitions).padStart(12, '0')}`
-          }
+          handle: codexProviderHandle(
+            `00000000-0000-4000-8000-${String(acquisitions).padStart(12, '0')}`
+          )
         }
       }
     }),
@@ -95,6 +96,7 @@ function providerAdapter(): StructuredAgentSessionAdapter {
 async function openHost(): Promise<void> {
   store = await openTestAgentSessionRecordStore(directory)
   host = new StructuredAgentSessionHost({
+    agents: NO_STRUCTURED_AGENTS,
     logger: createStructuredAgentSessionLogger(),
     store,
     adapter: providerAdapter(),
