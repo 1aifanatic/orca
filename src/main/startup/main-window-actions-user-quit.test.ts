@@ -28,6 +28,7 @@ vi.mock('../window/renderer-launch-failure-probe', () => ({ probeRendererLaunchC
 
 import { quitFromUserCommand } from './main-window-actions'
 import { mainProcessState as state } from './main-process-state'
+import { consumeUserQuitWindowClose } from '../window/user-quit-window-close'
 
 function fakeWindow() {
   return { isDestroyed: () => false, close: vi.fn<() => void>() }
@@ -53,6 +54,8 @@ describe('quitFromUserCommand', () => {
     expect(state.isQuitting).toBe(false)
     expect(main.close).toHaveBeenCalledOnce()
     expect(dashboard.close).toHaveBeenCalledOnce()
+    // The main window's close carries the user-Quit intent that arms the frozen-renderer deadline.
+    expect(consumeUserQuitWindowClose(main)).toBe(true)
   })
 
   it('quits a desktop app as before', () => {

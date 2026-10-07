@@ -12,6 +12,7 @@ import { ensureAutoUpdaterConfigured } from '../window/attach-main-window-servic
 import { focusExistingMainWindow, safelyRevealWindow } from '../window/focus-existing-window'
 import { mainProcessState as state } from './main-process-state'
 import { getDashboardPopoutWindow } from '../window/dashboard-popout-window'
+import { markUserQuitWindowClose } from '../window/user-quit-window-close'
 import { loadMainWindow } from '../window/createMainWindow'
 import {
   describeInstallDirAclPoison,
@@ -74,6 +75,9 @@ export function quitFromUserCommand(): void {
     // Why not getAllWindows(): offscreen browser-automation windows belong to the runtime.
     for (const window of [state.mainWindow, getDashboardPopoutWindow()]) {
       if (window && !window.isDestroyed()) {
+        if (window === state.mainWindow) {
+          markUserQuitWindowClose(window)
+        }
         window.close()
       }
     }

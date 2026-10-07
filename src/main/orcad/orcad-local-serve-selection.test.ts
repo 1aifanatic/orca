@@ -69,6 +69,31 @@ describe('orca serve runtime selection', () => {
     }
   })
 
+  it('stays on Electron by default when the profile has SSH targets orcad cannot serve (#25886)', async () => {
+    const options = input({ profileHasSshTargets: () => true })
+    expect(await selectServeRuntime(options)).toEqual({
+      kind: 'electron',
+      reason: 'this profile has SSH targets, which orcad cannot serve yet'
+    })
+    expect(options.materializeSlot).not.toHaveBeenCalled()
+  })
+
+  it('keeps orcad for SSH profiles when orcad is asked for by name, or the profile is unreadable', async () => {
+    const named = input({ env: { [SERVE_RUNTIME_ENV]: 'orcad' }, profileHasSshTargets: () => true })
+    expect(await selectServeRuntime(named)).toMatchObject({ kind: 'orcad' })
+    const unreadable = input({
+      profileHasSshTargets: () => {
+        throw new Error('locked')
+      }
+    })
+    expect(await selectServeRuntime(unreadable)).toMatchObject({ kind: 'orcad' })
+  })
+
+  it('reads SSH targets from the profile on disk', async () => {
+    writeFileSync(join(root, 'orca-data.json'), JSON.stringify({ sshTargets: [{ id: 'ssh-1' }] }))
+    expect(await selectServeRuntime(input())).toMatchObject({ kind: 'electron' })
+  })
+
   it('runs the local slot on its pinned Node, linked into userData beside it', async () => {
     const options = input()
     const selection = await selectServeRuntime(options)

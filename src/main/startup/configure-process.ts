@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { quitProcess } from './process-quit-request'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -100,7 +101,7 @@ function getProcessPathDelimiter(): string {
 
 function requestDevParentShutdown(): void {
   devParentShutdownRequested = true
-  app.quit()
+  quitProcess()
 
   const forceExitTimer = setTimeout(() => {
     // Why: app.quit() may stall on macOS quit handlers or window-close guards, so force-exit after a grace period to avoid a hung dev app.

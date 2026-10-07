@@ -27,6 +27,7 @@ import { resolveBundledOrcadRuntime } from './orcad-bundled-runtime'
 import { detectNativeHostAbi, nativeSlotName } from './native-host-abi'
 import { materializeOrcadArtifact } from '../ssh/orcad-artifact-materializer'
 import { materializeCachedNodeRuntime } from '../ssh/pinned-runtime-materializer'
+import { serveProfileHasSshTargets } from './serve-profile-ssh-targets'
 
 const NATIVE_PREFLIGHT_TIMEOUT_MS = 30_000
 
@@ -39,6 +40,7 @@ export type ServeRuntimeSelectionInput = {
   materializeSlot?: typeof materializeOrcadArtifact
   materializeRuntime?: typeof materializeCachedNodeRuntime
   nativePreflight?: (runtime: string, entry: string) => Promise<string>
+  profileHasSshTargets?: (userDataPath: string) => boolean
 }
 
 function isServerTarget(value: string): value is ServerTarget {
@@ -58,6 +60,11 @@ export async function selectServeRuntime(
   }
   if (requested && requested !== 'orcad') {
     return electron(`${SERVE_RUNTIME_ENV}=${requested} is neither orcad nor electron`)
+  }
+  // Why: orcad has no SSH connection stack yet, so a default serve on it would list no targets
+  // and fail every connect (#25886, #8489). An explicit ORCA_SERVE_RUNTIME=orcad keeps orcad.
+  if (!requested && profileNeedsSsh(input)) {
+    return electron('this profile has SSH targets, which orcad cannot serve yet')
   }
   const target = (input.hostTarget ?? (() => nativeSlotName(detectNativeHostAbi())))()
   if (!isServerTarget(target)) {
@@ -104,6 +111,15 @@ export async function selectServeRuntime(
     runtime,
     entry,
     version: readFileSync(join(slotDir, ORCAD_VERSION_FILENAME), 'utf8').trim()
+  }
+}
+
+function profileNeedsSsh(input: ServeRuntimeSelectionInput): boolean {
+  try {
+    return (input.profileHasSshTargets ?? serveProfileHasSshTargets)(input.userDataPath)
+  } catch {
+    // An unreadable profile is the serve host's to report; it is no reason to change hosts.
+    return false
   }
 }
 

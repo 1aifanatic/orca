@@ -2,9 +2,8 @@ import { translateMain } from '../i18n/main-i18n'
 
 /**
  * The app menu's Quit entry: "Quit <macAppName>" in the macOS app menu, else File > Exit.
- * Why a handler instead of role 'quit': on macOS the role quits natively, which before-quit
- * cannot tell apart from SIGTERM, so a host that must not exit on a user Quit
- * (`orca serve`, #15537) supplies `onQuit`.
+ * Why a handler instead of role 'quit': a host that must not exit on a user Quit
+ * (`orca serve`, #15537) supplies `onQuit`; the native-quit guard only covers macOS.
  */
 export function createAppMenuQuitItem(
   onQuit: (() => void) | undefined,
