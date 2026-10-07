@@ -2,7 +2,8 @@
  * Finishes the first prompts a host stopped owing mid-launch, on the rule its record makes exact:
  *
  *   owed, the agent's terminal still there  ->  pasted once, as the launch would have pasted it
- *   owed, the terminal gone                 ->  not-delivered: the agent exited before it was ready
+ *   owed, its terminal not found yet        ->  left owed: its provider (an SSH relay) may report later
+ *   owed, past its deadline                 ->  not-delivered: too late to paste into an idle agent
  *   writing                                 ->  unconfirmed: the paste may have landed, so never again
  *
  * The terminal daemon outlives the app, so after a restart the agent the launch started is usually
@@ -48,31 +49,37 @@ export type OwedLaunchPromptResumeDeps = {
   now: () => number
 }
 
-const resumesInFlight = new Map<string, Promise<void>>()
+/** `retry`: still owed, and worth another sweep once a terminal provider reports. */
+export type OwedLaunchPromptResume = 'settled' | 'retry'
 
-/** Every row the record says still owes a prompt, each resumed at most once at a time. */
-export async function resumeOwedLaunchPrompts(deps: OwedLaunchPromptResumeDeps): Promise<void> {
+const resumesInFlight = new Map<string, Promise<OwedLaunchPromptResume>>()
+
+/** Every row the record says still owes a prompt, each resumed at most once at a time; whether
+ *  any is still owed and waiting on its terminal. */
+export async function resumeOwedLaunchPrompts(deps: OwedLaunchPromptResumeDeps): Promise<boolean> {
   const owing = listOwedLaunchPromptRows(deps.store.listOperationRows(), deps.now())
-  await Promise.all(owing.map(({ row }) => resumeOwedLaunchPrompt(deps, row)))
+  const results = await Promise.all(owing.map(({ row }) => resumeOwedLaunchPrompt(deps, row)))
+  return results.includes('retry')
 }
 
 /** One launch's owed prompt; joins a resume already running for it. */
 export function resumeOwedLaunchPrompt(
   deps: OwedLaunchPromptResumeDeps,
   row: AgentSessionOperationRow
-): Promise<void> {
+): Promise<OwedLaunchPromptResume> {
   const key = agentSessionOperationKey(row.callerKey, row.operationId)
   if (deps.isLaunchRunning(key)) {
-    return Promise.resolve()
+    return Promise.resolve('settled')
   }
   const running = resumesInFlight.get(key)
   if (running) {
     return running
   }
   const resume = settleOwedPrompt(deps, row)
-    .catch((error: unknown) => {
-      // Bookkeeping: the row stays as it was, and the next start tries again until it expires.
+    .catch((error: unknown): OwedLaunchPromptResume => {
+      // Bookkeeping: the row stays as it was, and the next sweep tries again until its deadline.
       console.warn('[agent-launch] could not finish an owed launch prompt', error)
+      return 'retry'
     })
     .finally(() => {
       resumesInFlight.delete(key)
@@ -84,26 +91,35 @@ export function resumeOwedLaunchPrompt(
 async function settleOwedPrompt(
   deps: OwedLaunchPromptResumeDeps,
   row: AgentSessionOperationRow
-): Promise<void> {
+): Promise<OwedLaunchPromptResume> {
   const [entry] = listOwedLaunchPromptRows([row], deps.now())
   const succeeded = row.outcome.status === 'succeeded' ? row.outcome : null
   const launch = succeeded?.launch
   if (!entry || !succeeded || !isAgentLaunchResult(launch)) {
-    return
+    return 'settled'
   }
   const ref = { callerKey: row.callerKey, operationId: row.operationId }
-  const settle = (disposal: AgentLaunchPromptDisposal) =>
-    recordLaunchOutcome(deps.store, {
+  const settle = async (disposal: AgentLaunchPromptDisposal): Promise<OwedLaunchPromptResume> => {
+    await recordLaunchOutcome(deps.store, {
       ...ref,
       outcome: { ...succeeded, launch: withPromptDisposal(launch, disposal) }
     })
+    return 'settled'
+  }
   if (entry.owed.state === 'writing') {
     return settle({ outcome: 'unconfirmed' })
   }
-  const paneKey = launch.outcome.kind === 'terminal' ? launch.outcome.paneKey : undefined
-  const handle = paneKey ? deps.terminalHandleForPane(paneKey) : null
-  if (!handle) {
+  if (deps.now() > entry.owed.deadline) {
     return settle({ outcome: 'not-delivered' })
+  }
+  const paneKey = launch.outcome.kind === 'terminal' ? launch.outcome.paneKey : undefined
+  if (!paneKey) {
+    return settle({ outcome: 'not-delivered' })
+  }
+  const handle = deps.terminalHandleForPane(paneKey)
+  if (!handle) {
+    // Not found is not gone: its terminal's provider (an SSH relay) may not have reported yet.
+    return 'retry'
   }
   let taken = false
   const delivered = await deps.deliver({
@@ -119,7 +135,7 @@ async function settleOwedPrompt(
   })
   if (taken) {
     // Another writer began this prompt and settles it.
-    return
+    return 'settled'
   }
   return settle({ outcome: delivered ? 'handed-to-terminal' : 'not-delivered' })
 }

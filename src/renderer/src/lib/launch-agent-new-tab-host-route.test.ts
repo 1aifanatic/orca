@@ -59,13 +59,14 @@ describe('an AI button launched through the host, which delivers its prompt', ()
     expect(host.launchAgentThroughHost).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ hostPrompt: 'fix the failing checks\n\nlogs', worktreeId: 'wt-1' })
     )
-    // The chat view's copy is seeded at the launch, as main's paste seeded it.
-    expect(store.seedNativeChatLaunchPrompt).toHaveBeenCalledOnce()
     expect(onPromptDelivered).not.toHaveBeenCalled()
+    // Seeded once the host started the agent, as main's paste seeded it.
+    expect(store.seedNativeChatLaunchPrompt).not.toHaveBeenCalled()
 
     answer({ kind: 'started', prompt: { delivery: 'submit', outcome: 'handed-to-terminal' } })
 
     await expect(promptDeliveryResult).resolves.toEqual({ delivered: true, failureNotified: false })
+    expect(store.seedNativeChatLaunchPrompt).toHaveBeenCalledOnce()
     expect(onPromptDelivered).toHaveBeenCalledOnce()
     expect(notice.onTimeout).not.toHaveBeenCalled()
     expect(tabId).toBe(TAB)
@@ -107,6 +108,19 @@ describe('an AI button launched through the host, which delivers its prompt', ()
     })
     expect(onPromptDelivered).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledOnce()
+    expect(notice.onTimeout).not.toHaveBeenCalled()
+    // Nothing started, so no chat copy is left behind.
+    expect(store.seedNativeChatLaunchPrompt).not.toHaveBeenCalled()
+  })
+
+  it('never says "paste it" for an answer that may have landed', async () => {
+    for (const prompt of [{ delivery: 'submit', outcome: 'unconfirmed' } as const, undefined]) {
+      deferredOutcome()({ kind: 'started', ...(prompt ? { prompt } : {}) })
+      await expect(launch().promptDeliveryResult).resolves.toEqual({
+        delivered: false,
+        failureNotified: false
+      })
+    }
     expect(notice.onTimeout).not.toHaveBeenCalled()
   })
 

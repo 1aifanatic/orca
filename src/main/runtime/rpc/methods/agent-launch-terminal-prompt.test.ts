@@ -19,6 +19,7 @@ type SendFn = (
 ) => Promise<SendResult>
 
 const COMPOSER_READY = { satisfied: true, status: 'running' }
+const DESKTOP = 'trusted-local:desktop'
 
 function runtimeStub(overrides: {
   wait?: unknown
@@ -106,7 +107,7 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(options.composerReady).toBe(true)
   })
 
-  it('writes once the budget is spent and the agent holds the pane, as the desktop paste did, and says its composer was never seen', async () => {
+  it('writes a desktop launch once the budget is spent and the agent holds the pane, as the desktop paste did, on its Enter timing, and says its composer was never seen', async () => {
     const stub = runtimeStub({})
     const onComposerUnobserved = vi.fn()
     const delivered = await deliverTerminalAgentLaunchPrompt({
@@ -115,14 +116,64 @@ describe('writing a launch prompt into a terminal agent', () => {
       agent: 'claude',
       freshLaunch: true,
       text: 'do the thing',
+      callerKey: DESKTOP,
       onComposerUnobserved
     })
 
     expect(delivered).toBe(true)
     expect(stub.waitForTerminal).not.toHaveBeenCalled()
-    expect(stub.readLaunchedAgentForeground).not.toHaveBeenCalled()
-    expect(stub.sendTerminalAgentPrompt.mock.calls[0]?.[2]?.composerReady).toBe(false)
+    // Main's blind paste submitted on its normal Enter timing.
+    expect(stub.sendTerminalAgentPrompt.mock.calls[0]?.[2]?.composerReady).toBe(true)
     expect(onComposerUnobserved).toHaveBeenCalledOnce()
+  })
+
+  it('keeps main’s rule for a phone or CLI launch: past the budget, the idle evidence decides', async () => {
+    for (const callerKey of ['device-1', 'trusted-local:runtime']) {
+      const stub = runtimeStub({ wait: { satisfied: false, status: 'running' } })
+      const delivered = await deliverTerminalAgentLaunchPrompt({
+        runtime: stub.runtime,
+        handle: 'term_1',
+        agent: 'claude',
+        freshLaunch: true,
+        text: 'do the thing',
+        callerKey
+      })
+      expect(delivered).toBe(false)
+      expect(stub.waitForTerminal).toHaveBeenCalled()
+      expect(stub.sendTerminalAgentPrompt).not.toHaveBeenCalled()
+    }
+  })
+
+  it('gives a desktop marker agent main’s budget, then writes it as main did', async () => {
+    const stub = runtimeStub({})
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'opencode',
+      freshLaunch: true,
+      text: 'do the thing',
+      callerKey: DESKTOP
+    })
+    expect(delivered).toBe(true)
+    expect(stub.waitForFreshWorkerComposer).toHaveBeenCalledWith('term_1', 'opencode', 20_000, {
+      requireComposerMarker: true,
+      stopOnDialog: true
+    })
+  })
+
+  it('gives up on a desktop Codex at its budget, as main did, and never writes it blind', async () => {
+    const stub = runtimeStub({})
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'codex',
+      freshLaunch: true,
+      text: 'do the thing',
+      callerKey: DESKTOP
+    })
+    expect(delivered).toBe(false)
+    expect(stub.waitForTerminal).not.toHaveBeenCalled()
+    expect(stub.sendTerminalAgentPrompt).not.toHaveBeenCalled()
   })
 
   it('does not write when the composer never opened', async () => {
@@ -595,5 +646,53 @@ describe('the write guard on a host that cannot find the agent in front (tempora
         })
       ).resolves.toBe(false)
     }
+  })
+})
+
+describe('finishing an owed prompt after a restart (resumed)', () => {
+  const sendThroughGuard: SendFn = async (_handle, _text, options) => {
+    await runWriteGuard(options)
+    return { handle: 'term_1', accepted: true, bytesWritten: 12 }
+  }
+
+  it.each([
+    ['the record could not mark it begun', async () => 'absent' as const],
+    [
+      'the record write failed',
+      async (): Promise<'began'> => {
+        throw new Error('SQLITE_BUSY')
+      }
+    ]
+  ])('writes nothing when %s: it would paste again at every start', async (_label, begin) => {
+    const stub = runtimeStub({ composerSignal: true })
+    stub.sendTerminalAgentPrompt.mockImplementation(sendThroughGuard)
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      freshLaunch: false,
+      text: 'fix the checks',
+      callerKey: DESKTOP,
+      resumed: true,
+      beginPromptWrite: begin
+    })
+    expect(delivered).toBe(false)
+  })
+
+  it('refuses on a host that cannot find the agent, even for the desktop: main never resumed', async () => {
+    const stub = runtimeStub({ composerSignal: true, foreground: 'unknown' })
+    Object.assign(stub.runtime, { launchedAgentHostProvesAgent: () => false })
+    stub.sendTerminalAgentPrompt.mockImplementation(sendThroughGuard)
+    const delivered = await deliverTerminalAgentLaunchPrompt({
+      runtime: stub.runtime,
+      handle: 'term_1',
+      agent: 'claude',
+      freshLaunch: false,
+      text: 'fix the checks',
+      callerKey: DESKTOP,
+      resumed: true,
+      beginPromptWrite: async () => 'began'
+    })
+    expect(delivered).toBe(false)
   })
 })

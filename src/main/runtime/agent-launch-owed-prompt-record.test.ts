@@ -55,13 +55,14 @@ describe('the launch record around an owed first prompt', () => {
     await recordLaunchOutcome(store, {
       ...REF,
       outcome: SUCCEEDED,
-      owedPrompt: { text: 'fix the checks', agent: 'claude' }
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000 }
     })
     expect(current()?.outcome).toEqual(SUCCEEDED)
     expect(readOwedLaunchPrompt(current()!)).toEqual({
       state: 'owed',
       text: 'fix the checks',
-      agent: 'claude'
+      agent: 'claude',
+      deadline: 9_000
     })
   })
 
@@ -70,7 +71,7 @@ describe('the launch record around an owed first prompt', () => {
     await recordLaunchOutcome(store, {
       ...REF,
       outcome: SUCCEEDED,
-      owedPrompt: { text: 'fix the checks', agent: 'claude' }
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000 }
     })
     await expect(beginOwedLaunchPromptWrite(store, REF, 500)).resolves.toBe('began')
     expect(current()?.promptDelivery).toEqual({ state: 'writing', since: 500 })
@@ -88,7 +89,7 @@ describe('the launch record around an owed first prompt', () => {
     await recordLaunchOutcome(store, {
       ...REF,
       outcome: SUCCEEDED,
-      owedPrompt: { text: 'fix the checks', agent: 'claude' }
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000 }
     })
     await recordLaunchOutcome(store, { ...REF, outcome: { status: 'failed', code: 'boom' } })
     expect(current()?.promptDelivery).toBeUndefined()
@@ -101,7 +102,7 @@ describe('the launch record around an owed first prompt', () => {
     await recordLaunchOutcome(store, {
       ...REF,
       outcome: SUCCEEDED,
-      owedPrompt: { text: 'fix the checks', agent: 'claude' }
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000 }
     })
     expect(listOwedLaunchPromptRows(draft.operations.values(), 20_000)).toEqual([])
     const kept = pruneAgentSessionOperationRows(draft.operations, 20_000)
@@ -111,7 +112,8 @@ describe('the launch record around an owed first prompt', () => {
   it('reads nothing from a value this build cannot read', () => {
     for (const promptDelivery of [
       { state: 'owed', text: 'x' },
-      { state: 'owed', text: 'x', agent: 'not-an-agent' },
+      { state: 'owed', text: 'x', agent: 'not-an-agent', deadline: 1 },
+      { state: 'owed', text: 'x', agent: 'claude' },
       { state: 'writing' },
       'owed',
       null

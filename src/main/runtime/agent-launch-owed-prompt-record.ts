@@ -20,6 +20,13 @@ import { isTuiAgent } from '../../shared/tui-agent-config'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 
 type OperationRows = { operations: Map<string, AgentSessionOperationRow> }
+
+/**
+ * How long a host that restarted may still finish an owed prompt. Covers the launch's own 60 s
+ * readiness wait plus an app restart or update with room to spare; past it the user has moved on,
+ * and a prompt pasted into an idle agent minutes later would be a surprise, not a delivery.
+ */
+export const OWED_LAUNCH_PROMPT_DEADLINE_MS = 5 * 60_000
 type OperationRef = { callerKey: string; operationId: string }
 
 /** What W2 found: the write is this caller's, another writer began it, or the row cannot say. */
@@ -37,9 +44,11 @@ export function readOwedLaunchPrompt(row: AgentSessionOperationRow): AgentLaunch
     'text' in value &&
     typeof value.text === 'string' &&
     'agent' in value &&
-    isTuiAgent(value.agent)
+    isTuiAgent(value.agent) &&
+    'deadline' in value &&
+    typeof value.deadline === 'number'
   ) {
-    return { state: 'owed', text: value.text, agent: value.agent }
+    return { state: 'owed', text: value.text, agent: value.agent, deadline: value.deadline }
   }
   if (value.state === 'writing' && 'since' in value && typeof value.since === 'number') {
     return { state: 'writing', since: value.since }
@@ -66,7 +75,7 @@ function updateRow(
 export function oweLaunchPromptInto(
   state: OperationRows,
   ref: OperationRef,
-  owed: { text: string; agent: TuiAgent }
+  owed: { text: string; agent: TuiAgent; deadline: number }
 ): void {
   updateRow(state, ref, (row) => ({ ...row, promptDelivery: { state: 'owed', ...owed } }))
 }
@@ -117,7 +126,9 @@ export function listOwedLaunchPromptRows(
 }
 
 /** What a launch's answer does to its first prompt: owes it (W1) or clears it (W3). */
-export type LaunchPromptSettlement = { owe: { text: string; agent: TuiAgent } } | 'clear'
+export type LaunchPromptSettlement =
+  | { owe: { text: string; agent: TuiAgent; deadline: number } }
+  | 'clear'
 
 export function settleLaunchPromptInto(
   state: OperationRows,
@@ -141,7 +152,7 @@ export function recordLaunchOutcome(
   store: OperationStore,
   args: OperationRef & {
     outcome: AgentSessionOperationOutcome
-    owedPrompt?: { text: string; agent: TuiAgent }
+    owedPrompt?: { text: string; agent: TuiAgent; deadline: number }
   }
 ): Promise<void> {
   const { owedPrompt, ...settlement } = args

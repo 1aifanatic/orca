@@ -158,7 +158,8 @@ export async function waitForLaunchedAgentComposer(
    *  which can hold provisional input it then discards. */
   { writeWhenBudgetSpent = false }: { writeWhenBudgetSpent?: boolean } = {}
 ): Promise<RuntimeTerminalWait | 'budget-spent'> {
-  if (getLaunchedAgentReadinessLane(agent) === 'composer-marker') {
+  const markerLane = getLaunchedAgentReadinessLane(agent) === 'composer-marker'
+  if (markerLane && !writeWhenBudgetSpent) {
     return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
   }
   const startedAt = Date.now()
@@ -167,19 +168,23 @@ export async function waitForLaunchedAgentComposer(
       handle,
       agent,
       Math.min(timeoutMs, resolveDraftPasteReadyTimeoutMs(agent)),
-      { requireComposerMarker: false, stopOnDialog: true }
+      { requireComposerMarker: markerLane, stopOnDialog: true }
     )
   } catch (error) {
     // Out of budget, a dialog up, or a pane it could not read: the idle wait answers each, and
     // throws for a handle that is gone.
-    if (
-      writeWhenBudgetSpent &&
-      agent !== 'codex' &&
-      error instanceof Error &&
-      error.message === 'timeout'
-    ) {
-      return 'budget-spent'
+    if (writeWhenBudgetSpent && error instanceof Error && error.message === 'timeout') {
+      // Main's paste gave Codex up at its budget, and wrote every other agent blind.
+      return agent === 'codex' ? notReadyInBudget(handle) : 'budget-spent'
     }
+  }
+  if (markerLane) {
+    // A dialog ended the budget wait: the marker is still the only signal, for what is left.
+    return runtime.waitForFreshWorkerComposer(
+      handle,
+      agent,
+      Math.max(1, timeoutMs - (Date.now() - startedAt))
+    )
   }
   // Checked, where the desktop pasted blind: an agent that shows no readiness keeps its text.
   return runtime.waitForTerminal(handle, {
@@ -187,4 +192,8 @@ export async function waitForLaunchedAgentComposer(
     timeoutMs: Math.max(1, timeoutMs - (Date.now() - startedAt)),
     launchReadiness: true
   })
+}
+
+function notReadyInBudget(handle: string): RuntimeTerminalWait {
+  return { handle, condition: 'tui-idle', satisfied: false, status: 'running', exitCode: null }
 }

@@ -293,7 +293,7 @@ function isAgentLaunchPromptReceipt(value: unknown): value is AgentLaunchPromptR
   return value.outcome === 'journaled'
     ? 'messageId' in value && typeof value.messageId === 'string'
     : value.outcome === 'handed-to-terminal'
-      ? !('composerUnobserved' in value) || value.composerUnobserved === true
+      ? !('composerUnobserved' in value) || typeof value.composerUnobserved === 'boolean'
       : value.outcome === 'not-delivered' || value.outcome === 'unconfirmed'
 }
 

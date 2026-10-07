@@ -87,6 +87,10 @@ function settleHostPrompt(
   if (seeded) {
     useAppStore.getState().markNativeChatLaunchPromptFailed(tabId)
   }
+  if (receipt?.outcome !== 'not-delivered') {
+    // An unconfirmed or missing answer may have landed: "paste it" would invite a second send.
+    return { delivered: false, failureNotified: false }
+  }
   const notice = createPasteReadinessTimeoutNotice({
     worktreeId: args.worktreeId,
     tabId,
@@ -119,9 +123,11 @@ export function launchNewTabPromptThroughHost(
     ...launch
   } = args
   const { tabId, outcome } = launchAgentThroughHost({ ...launch, hostPrompt: pasteContent })
-  const seeded = seedChatCopy(tabId, args.agent, pasteContent)
   const promptDeliveryResult = outcome.then((launched) => {
     if (launched.kind === 'started') {
+      // Seeded once the host started the agent, as main's paste seeded it: a launch that never
+      // started leaves no chat copy behind.
+      const seeded = seedChatCopy(tabId, args.agent, pasteContent)
       return settleHostPrompt(args, tabId, launched.prompt, seeded)
     }
     // The pane, or this notice for a tab that went, already says why: never a second notice.

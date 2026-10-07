@@ -175,7 +175,10 @@ async function launchUntilPasteStarts(runtime: AgentLaunchRuntimeStub): Promise<
 }
 
 /** Launches with an agent that never shows ready: the host dies before a byte is written. */
-async function launchUntilAgentReadinessWait(runtime: AgentLaunchRuntimeStub): Promise<void> {
+async function launchUntilAgentReadinessWait(
+  runtime: AgentLaunchRuntimeStub,
+  context: Partial<RpcContext> = DESKTOP_IPC
+): Promise<void> {
   let waiting: () => void = () => {}
   const waitStarted = new Promise<void>((resolve) => {
     waiting = resolve
@@ -184,7 +187,7 @@ async function launchUntilAgentReadinessWait(runtime: AgentLaunchRuntimeStub): P
     waiting()
     return new Promise<boolean>(() => {})
   })
-  void launch(runtime)
+  void launch(runtime, PROMPTED_LAUNCH, context)
   await waitStarted
   await ledgerWritesQueuedBefore(store)
 }
@@ -256,13 +259,13 @@ describe('a host restart mid-launch', () => {
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 
-  it('pastes the prompt once into the surviving agent when the host died before the paste began', async () => {
+  it('pastes the desktop’s prompt once into the surviving agent when the host died before the paste began', async () => {
     await launchUntilAgentReadinessWait(hostRuntime())
 
     await restartHost()
     const restarted = restartedHostRuntime()
 
-    await expect(launch(restarted, PROMPTED_LAUNCH, UPGRADED_PHONE)).resolves.toEqual({
+    await expect(launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toEqual({
       ...UNCONFIRMED_AGENT,
       prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
     })
@@ -272,22 +275,35 @@ describe('a host restart mid-launch', () => {
       expect.objectContaining({
         handle: ADOPTED_HANDLE,
         freshLaunch: false,
-        text: 'fix the failing test'
+        text: 'fix the failing test',
+        resumed: true
       })
     )
     // Settled: a later replay answers from the record, with nothing left to write.
-    await launch(restarted, PROMPTED_LAUNCH, UPGRADED_PHONE)
+    await launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)
     expect(deliverTerminalPrompt).toHaveBeenCalledTimes(2)
   })
 
-  it('says the prompt was not delivered when the agent it was owed to did not survive', async () => {
+  it('keeps the desktop’s prompt owed while the agent’s terminal is not found yet', async () => {
     await launchUntilAgentReadinessWait(hostRuntime())
 
     await restartHost()
 
-    await expect(launch(hostRuntime(), PROMPTED_LAUNCH, UPGRADED_PHONE)).resolves.toMatchObject({
-      prompt: { delivery: 'submit', outcome: 'not-delivered' }
+    // Not found is not gone: an SSH relay reports its terminals later; the deadline settles it.
+    await expect(launch(hostRuntime(), PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toMatchObject({
+      prompt: { delivery: 'submit', outcome: 'unconfirmed' }
     })
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+  })
+
+  it('owes nothing for a phone’s launch: after a restart it answers as main did, with no paste', async () => {
+    await launchUntilAgentReadinessWait(hostRuntime(), UPGRADED_PHONE)
+
+    await restartHost()
+
+    await expect(launch(restartedHostRuntime(), PROMPTED_LAUNCH, UPGRADED_PHONE)).resolves.toEqual(
+      UNCONFIRMED_AGENT
+    )
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 

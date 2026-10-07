@@ -32,7 +32,9 @@ import type { RpcContext } from '../core'
 import { rpcCallerOperationKey } from '../rpc-caller-identity'
 import type { AgentLaunchParams } from './agent-launch-schemas'
 import type { TuiAgent } from '../../../../shared/tui-agent'
+import { isDesktopLaunchCaller } from './agent-launch-desktop-caller'
 import {
+  OWED_LAUNCH_PROMPT_DEADLINE_MS,
   beginOwedLaunchPromptWrite,
   recordLaunchOutcome,
   type OwedLaunchPromptWriteStart
@@ -249,7 +251,10 @@ export async function admitAgentLaunchOperation(
       ? presentRecordedAnswer(context, operationId, answer)
       : refusal(operationId, 'agent_session_operation_unknown', 'is claimed but unsettled')
   }
-  const succeeded = (result: AgentLaunchResult, owedPrompt?: { text: string; agent: TuiAgent }) =>
+  const succeeded = (
+    result: AgentLaunchResult,
+    owedPrompt?: { text: string; agent: TuiAgent; deadline: number }
+  ) =>
     recordLaunchOutcome(store, {
       callerKey,
       operationId,
@@ -266,7 +271,8 @@ export async function admitAgentLaunchOperation(
     attachOperationId,
     callerKey,
     // The same row shape twice: a build that predates the first write reads either one.
-    record: (provisional) => succeeded(provisional, owedTerminalPrompt(params, provisional)),
+    record: (provisional) =>
+      succeeded(provisional, owedTerminalPrompt(params, provisional, callerKey, Date.now())),
     settle: (result) => succeeded(result),
     fail: (code) =>
       recordLaunchOutcome(store, { callerKey, operationId, outcome: { status: 'failed', code } }),
@@ -279,13 +285,21 @@ export async function admitAgentLaunchOperation(
  *  provisional answer marks `unconfirmed` (`settledAtCreation`). */
 function owedTerminalPrompt(
   params: AgentLaunchParams,
-  provisional: AgentLaunchResult
-): { text: string; agent: TuiAgent } | undefined {
-  return provisional.outcome.kind === 'terminal' &&
+  provisional: AgentLaunchResult,
+  callerKey: string,
+  now: number
+): { text: string; agent: TuiAgent; deadline: number } | undefined {
+  // Temporary, desktop only: the phone and the CLI keep main's answer, which owes nothing.
+  return isDesktopLaunchCaller(callerKey) &&
+    provisional.outcome.kind === 'terminal' &&
     provisional.prompt?.outcome === 'unconfirmed' &&
     params.prompt?.delivery === 'submit' &&
     params.prompt.text
-    ? { text: params.prompt.text, agent: params.agent }
+    ? {
+        text: params.prompt.text,
+        agent: params.agent,
+        deadline: now + OWED_LAUNCH_PROMPT_DEADLINE_MS
+      }
     : undefined
 }
 

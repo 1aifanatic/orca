@@ -100,7 +100,7 @@ export type AgentSessionOperationRow = {
  * `writing`: the write may have begun, so nothing may write it again.
  */
 export type AgentLaunchOwedPrompt =
-  | { state: 'owed'; text: string; agent: TuiAgent }
+  | { state: 'owed'; text: string; agent: TuiAgent; deadline: number }
   | { state: 'writing'; since: number }
 
 /** Unexpired rows naming this pane as theirs. */
