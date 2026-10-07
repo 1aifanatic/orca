@@ -73,14 +73,23 @@ describe('claudePermissionModeWrite', () => {
 })
 
 describe('claudePermissionModesFor', () => {
-  it('offers every mode, Approve for me included, unless the model says it has no auto mode', () => {
+  it('offers Approve for me only when the model is listed with auto support', () => {
     expect(claudePermissionModesFor(state('accept-edits'), undefined)).toEqual({
       current: 'accept-edits',
-      supported: ['ask', 'accept-edits', 'auto', 'bypass']
+      supported: ['ask', 'accept-edits', 'bypass']
     })
-    expect(claudePermissionModesFor(state(), { supportsAutoMode: true }).supported).toContain(
-      'auto'
-    )
+    expect(claudePermissionModesFor(state(), { supportsAutoMode: true }).supported).toEqual([
+      'ask',
+      'accept-edits',
+      'auto',
+      'bypass'
+    ])
+    // Claude omits the field for a model without auto mode rather than sending false.
+    expect(claudePermissionModesFor(state(), {}).supported).toEqual([
+      'ask',
+      'accept-edits',
+      'bypass'
+    ])
     expect(claudePermissionModesFor(state(), { supportsAutoMode: false }).supported).toEqual([
       'ask',
       'accept-edits',

@@ -43,7 +43,7 @@ describe('a Claude chat permission-mode write', () => {
     expect(s.setPermissionMode).not.toHaveBeenCalled()
     expect(claudeStructuredSessionOptionsFrom(s.session, null).permissionModes).toEqual({
       current: 'bypass',
-      supported: ['ask', 'accept-edits', 'auto', 'bypass']
+      supported: ['ask', 'accept-edits', 'bypass']
     })
   })
 

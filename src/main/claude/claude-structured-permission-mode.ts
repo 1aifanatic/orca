@@ -55,14 +55,14 @@ export function claudePermissionModeNeedsRelaunch(session: ClaudePermissionModeS
   return claudeChatPermissionMode(session) === 'bypass' && session.launchPermissionMode !== 'bypass'
 }
 
-/** Model support narrows the picker while a saved Auto choice remains visible. */
+/** Approve for me only for a model listed with auto support; a saved Auto choice stays visible. */
 export function claudePermissionModesFor(
   session: ClaudePermissionModeState,
   currentModel: Pick<ListedModel, 'supportsAutoMode'> | undefined
 ): AgentSessionPermissionModes {
   const current = claudeChatPermissionMode(session)
-  // A stored auto pick stays listed, so the pill still names what the chat holds.
-  const autoReview = currentModel?.supportsAutoMode !== false || current === 'auto'
+  // Claude lists supportsAutoMode only when true; a stored auto pick stays listed for the pill.
+  const autoReview = currentModel?.supportsAutoMode === true || current === 'auto'
   const supported = agentChatPermissionModes('claude', { autoReview }) ?? []
   return { current, supported }
 }
