@@ -57,7 +57,7 @@ const structuredQuestion = {
   allowOther: true,
   optionTokens: ['choice-a', 'choice-b']
 }
-const structuredActivity = { isWorking: false, turnId: null as string | null }
+const structuredActivity = { isWorking: false, turnId: null as string | null, submissions: [{}] }
 const structuredSessionState = {
   messages: [] as unknown[],
   status: 'ready',
@@ -584,7 +584,8 @@ describe('useMobileNativeChatController launch-draft wiring', () => {
       launchDraft: 'https://github.com/o/r/issues/12',
       launchDraftCreatedAt: 7,
       chatActive: true,
-      transcriptLoading: false
+      transcriptLoading: false,
+      submissions: structuredActivity.submissions
     })
   })
 
