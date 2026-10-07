@@ -11,7 +11,7 @@ import {
   sendParams,
   SESSION,
   WORKSPACE
-} from './structured-agent-session-surface-params'
+} from './structured-agent-session-surface-manifest'
 import {
   loadAgentSessionWireBuild,
   WORKING_TREE,

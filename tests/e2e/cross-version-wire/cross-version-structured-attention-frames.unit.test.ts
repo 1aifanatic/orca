@@ -25,7 +25,7 @@ import {
   resolveBaselineReleaseRef
 } from './release-checkout'
 import { installableHost, structuredHostStub } from './structured-agent-session-host-fixture'
-import { SESSION, WORKSPACE } from './structured-agent-session-surface-params'
+import { SESSION, WORKSPACE } from './structured-agent-session-surface-manifest'
 import {
   loadAgentSessionWireBuild,
   WORKING_TREE,

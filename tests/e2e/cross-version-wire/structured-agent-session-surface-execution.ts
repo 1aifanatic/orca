@@ -1,7 +1,11 @@
 import { expect, vi } from 'vitest'
 import { RuntimeSubscriptionRegistry } from '../../../src/main/runtime/runtime-subscription-registry'
-import { STRUCTURED_CALLS } from './structured-agent-session-surface-manifest'
-import { attachParams, ATTENTION_READ, paramsFor } from './structured-agent-session-surface-params'
+import {
+  attachParams,
+  ATTENTION_READ,
+  paramsFor,
+  STRUCTURED_CALLS
+} from './structured-agent-session-surface-manifest'
 import type {
   AgentSessionWireBuild,
   RpcClientIdentity,
