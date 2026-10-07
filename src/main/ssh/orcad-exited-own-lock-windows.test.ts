@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname, tmpdir, uptime } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,7 +17,7 @@ vi.mock('./ssh-relay-deploy-helpers', async (importOriginal) => ({
   }
 }))
 
-const { orphanExitedOwnLock } = await import('./orcad-exited-own-lock')
+const { findExitedOwnLockToken } = await import('./orcad-exited-own-lock')
 const { initOrcadHeldFenceTokenFile, ORCAD_HELD_FENCE_TOKENS_FILE_NAME } =
   await import('./orcad-held-fence-tokens')
 const { getRemoteHostPlatform } = await import('./ssh-remote-platform')
@@ -47,43 +47,41 @@ function hold(...entries: { token: string; pid: number }[]): void {
   )
 }
 
-function orphan(guardsStateMutation: boolean): Promise<boolean> {
+function find(guardsStateMutation: boolean): Promise<string | null> {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: execCommand is mocked, so the connection is never used.
   const target = { conn: {} as never, host }
-  return orphanExitedOwnLock(target, lockDir, { baseDir, guardsStateMutation })
+  return findExitedOwnLockToken(target, lockDir, { baseDir, guardsStateMutation })
 }
 
-const orphanOps = (): string[] => remote.commands.filter((c) => c.includes('fence-orphan-exited'))
+const checkOps = (): string[] => remote.commands.filter((c) => c.includes('fence-exited-owner'))
 
 describe('reclaiming this desktop’s exited lock on a Windows host', () => {
-  it('asks the host script about exited holders only, and forgets the token it aged', async () => {
+  it('asks the host script about exited holders only', async () => {
     hold({ token: 't-exited', pid: EXITED_PID }, { token: 't-live', pid: process.pid })
-    remote.reply = 'ORPHANED t-exited\n'
-    await expect(orphan(true)).resolves.toBe(true)
-    const [op] = orphanOps()
+    remote.reply = 'EXITED_OWNER t-exited\n'
+    await expect(find(true)).resolves.toBe('t-exited')
+    const [op] = checkOps()
     expect(op).toContain('t-exited')
     expect(op).not.toContain('t-live')
-    expect(op).toMatch(/fence-orphan-exited"? "?[^ ]*\.install-lock"? "?1"?/u)
-    expect(readFileSync(store, 'utf-8')).not.toContain('t-exited')
+    expect(op).toMatch(/fence-exited-owner"? "?[^ ]*\.install-lock"? "?1"?/u)
   })
 
-  it('keeps the lock and the token when the host kept it', async () => {
+  it('finds nothing when the host kept the lock', async () => {
     hold({ token: 't-exited', pid: EXITED_PID })
     remote.reply = 'KEPT\n'
-    await expect(orphan(false)).resolves.toBe(false)
-    expect(orphanOps()).toHaveLength(1)
-    expect(readFileSync(store, 'utf-8')).toContain('t-exited')
+    await expect(find(false)).resolves.toBeNull()
+    expect(checkOps()).toHaveLength(1)
   })
 
   it('ignores an answer naming a token it did not offer', async () => {
     hold({ token: 't-exited', pid: EXITED_PID })
-    remote.reply = 'ORPHANED t-foreign\n'
-    await expect(orphan(false)).resolves.toBe(false)
+    remote.reply = 'EXITED_OWNER t-foreign\n'
+    await expect(find(false)).resolves.toBeNull()
   })
 
   it('asks the host nothing while no holder is proven exited', async () => {
     hold({ token: 't-live', pid: process.pid })
-    await expect(orphan(true)).resolves.toBe(false)
+    await expect(find(true)).resolves.toBeNull()
     expect(remote.commands).toEqual([])
   })
 })

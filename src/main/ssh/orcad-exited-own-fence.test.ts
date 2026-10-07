@@ -131,22 +131,28 @@ describe.skipIf(process.platform === 'win32')('a fence this desktop’s exited p
     expect(existsSync(fence)).toBe(true)
   })
 
-  it('gives a successor that took the fence during the backdate its freshness back', async () => {
-    const { home, fence, options } = hostWithFence('t-exited', [entry('t-exited', EXITED_PID)])
-    // The successor's takeover lands between the owner check and the backdate.
+  // Astra 26087: a live successor that replaces the fence after the proof is never aged or taken.
+  it('leaves a successor that replaced the fence after the proof alone', async () => {
+    const { home, fence, store, options } = hostWithFence('t-exited', [
+      entry('t-exited', EXITED_PID)
+    ])
+    // The successor's takeover lands right after the quiet check proved the exited holder's fence.
     const bin = join(home, 'bin')
     mkdirSync(bin)
     writeFileSync(
-      join(bin, 'touch'),
-      `#!/bin/sh\nif [ "$2" = -t ]; then printf successor > '${fence}/.orca-fence-owner'; fi\n` +
-        `PATH='${process.env.PATH}' exec touch "$@"\n`,
+      join(bin, 'find'),
+      `#!/bin/sh\nPATH='${process.env.PATH}' find "$@"\n` +
+        `if [ ! -e '${home}/replaced' ]; then touch '${home}/replaced'; rm -rf '${fence}'; ` +
+        `mkdir '${fence}'; printf live-successor > '${fence}/.orca-fence-owner'; fi\n`,
       { mode: 0o755 }
     )
     shell.env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
     const refusal = await orcadActivationFenceRefusal(options, 'update')
+    expect(existsSync(join(home, 'replaced'))).toBe(true)
     expect(refusal.cleared).toBeUndefined()
-    expect(readFileSync(join(fence, '.orca-fence-owner'), 'utf-8')).toBe('successor')
+    expect(readFileSync(join(fence, '.orca-fence-owner'), 'utf-8')).toBe('live-successor')
     expect(Date.now() - statSync(fence).mtimeMs).toBeLessThan(60_000)
+    expect(readFileSync(store, 'utf-8')).toContain('t-exited')
   })
 })
 

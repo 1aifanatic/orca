@@ -111,10 +111,11 @@ describe('the Windows host script under an activation fence', () => {
   })
 })
 
-// BUG-23 on Windows: a relaunch ages the lock its exited predecessor left, never a live run's.
-describe('the Windows host script aging a lock an exited client left', () => {
+// BUG-23 on Windows: the host names the lock an exited predecessor left, never a live run's, and
+// writes nothing, so the steal's own arbitration is the only thing that takes it (Astra 26087).
+describe('the Windows host script proving a lock an exited client left', () => {
   function quietHost(owner: string) {
-    const dir = mkdtempSync(join(tmpdir(), 'orcad-win-orphan-'))
+    const dir = mkdtempSync(join(tmpdir(), 'orcad-win-exited-'))
     dirs.push(dir)
     const script = join(dir, 'host.js')
     writeFileSync(script, ORCAD_WINDOWS_HOST_SCRIPT)
@@ -124,30 +125,29 @@ describe('the Windows host script aging a lock an exited client left', () => {
     const quietSince = new Date(Date.now() - 10 * 60_000)
     utimesSync(lock, quietSince, quietSince)
     const mutation = join(dir, 'orcad-state-mutation.lock')
-    const orphan = async (guard: '0' | '1', ...tokens: string[]) =>
-      (
-        await runProcess({
-          program: process.execPath,
-          args: [script, 'fence-orphan-exited', lock, guard, ...tokens],
-          timeoutMs: 15_000
-        })
-      ).stdout.trim()
-    const age = () => Date.now() - statSync(lock).mtimeMs
-    return { lock, mutation, orphan, age }
+    const check = async (guard: '0' | '1', ...tokens: string[]) => {
+      const before = statSync(lock).mtimeMs
+      const result = await runProcess({
+        program: process.execPath,
+        args: [script, 'fence-exited-owner', lock, guard, ...tokens],
+        timeoutMs: 15_000
+      })
+      expect(statSync(lock).mtimeMs).toBe(before)
+      return result.stdout.trim()
+    }
+    return { lock, mutation, check }
   }
 
-  it('ages a quiet lock an exited client holds, and nothing else', async () => {
+  it('names a quiet lock an exited client holds, and nothing else', async () => {
     const host = quietHost('t-exited')
-    expect(await host.orphan('0', 't-other')).toBe('KEPT')
-    expect(host.age()).toBeLessThan(11 * 60_000)
-    expect(await host.orphan('0', 't-other', 't-exited')).toBe('ORPHANED t-exited')
-    expect(host.age()).toBeGreaterThan(365 * 24 * 60 * 60_000)
+    expect(await host.check('0', 't-other')).toBe('KEPT')
+    expect(await host.check('0', 't-other', 't-exited')).toBe('EXITED_OWNER t-exited')
   })
 
   it('keeps a lock that is not yet quiet', async () => {
     const host = quietHost('t-exited')
     utimesSync(host.lock, new Date(), new Date())
-    expect(await host.orphan('0', 't-exited')).toBe('KEPT')
+    expect(await host.check('0', 't-exited')).toBe('KEPT')
   })
 
   it('keeps the fence while its state mutation holder may still run', async () => {
@@ -158,13 +158,12 @@ describe('the Windows host script aging a lock an exited client left', () => {
       join(host.mutation, 'owner.json'),
       JSON.stringify({ pid: process.pid, creationTimeMs: 1234 })
     )
-    expect(await host.orphan('1', 't-exited')).toBe('KEPT')
-    expect(host.age()).toBeLessThan(11 * 60_000)
+    expect(await host.check('1', 't-exited')).toBe('KEPT')
     // The install lock guards no state mutation.
-    expect(await host.orphan('0', 't-exited')).toBe('ORPHANED t-exited')
+    expect(await host.check('0', 't-exited')).toBe('EXITED_OWNER t-exited')
   })
 
-  it('ages the fence once its state mutation holder provably exited', async () => {
+  it('names the fence once its state mutation holder provably exited', async () => {
     const host = quietHost('t-exited')
     mkdirSync(host.mutation)
     const exited = await runProcess({ program: process.execPath, args: ['-p', 'process.pid'] })
@@ -172,14 +171,14 @@ describe('the Windows host script aging a lock an exited client left', () => {
       join(host.mutation, 'owner.json'),
       JSON.stringify({ pid: Number(exited.stdout.trim()), creationTimeMs: 1234 })
     )
-    expect(await host.orphan('1', 't-exited')).toBe('ORPHANED t-exited')
+    expect(await host.check('1', 't-exited')).toBe('EXITED_OWNER t-exited')
   })
 
   it('keeps the fence while an ownerless mutation lock is fresh', async () => {
     const host = quietHost('t-exited')
     mkdirSync(host.mutation)
-    expect(await host.orphan('1', 't-exited')).toBe('KEPT')
+    expect(await host.check('1', 't-exited')).toBe('KEPT')
     utimesSync(host.mutation, new Date(0), new Date(0))
-    expect(await host.orphan('1', 't-exited')).toBe('ORPHANED t-exited')
+    expect(await host.check('1', 't-exited')).toBe('EXITED_OWNER t-exited')
   })
 })

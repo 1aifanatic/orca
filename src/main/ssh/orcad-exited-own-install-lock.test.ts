@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync
 } from 'node:fs'
@@ -29,7 +30,7 @@ vi.mock('./ssh-relay-deploy-helpers', async (importOriginal) => {
 })
 
 const { acquireInstallLock } = await import('./ssh-relay-install-lock')
-const { orphanExitedOwnLock } = await import('./orcad-exited-own-lock')
+const { exitedOwnLockProof } = await import('./orcad-exited-own-lock')
 const { initOrcadHeldFenceTokenFile, ORCAD_HELD_FENCE_TOKENS_FILE_NAME } =
   await import('./orcad-held-fence-tokens')
 const { getRemoteHostPlatform } = await import('./ssh-remote-platform')
@@ -64,17 +65,18 @@ function versionDirWithLock(owner: string, heldToken: string) {
   )
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: execCommand is mocked to a local shell, so the connection is never used.
   const target = { conn: {} as never, host: getRemoteHostPlatform('linux-x64') }
-  const acquire = (waitTimeoutMs: number) =>
+  const proof = exitedOwnLockProof(target, {
+    baseDir: join(home, '.orca-remote'),
+    guardsStateMutation: false
+  })
+  const store = join(home, 'data', ORCAD_HELD_FENCE_TOKENS_FILE_NAME)
+  const acquire = (waitTimeoutMs: number, exitedOwner = proof) =>
     acquireInstallLock(target.conn, dir, target.host, {
       waitTimeoutMs,
       owner: { fileName: '.orca-fence-owner', token: 't-relaunch' },
-      beforeStaleCheck: (lockDir) =>
-        orphanExitedOwnLock(target, lockDir, {
-          baseDir: join(home, '.orca-remote'),
-          guardsStateMutation: false
-        })
+      exitedOwner
     })
-  return { lock, acquire }
+  return { lock, store, proof, acquire }
 }
 
 // BUG-23: a quit mid-upload left the version dir's install lock, and the relaunch waited 20 minutes.
@@ -82,11 +84,38 @@ describe.skipIf(process.platform === 'win32')(
   'an install lock this desktop’s exited process left',
   () => {
     it('is taken over at once', async () => {
-      const { lock, acquire } = versionDirWithLock('t-exited', 't-exited')
+      const { lock, store, acquire } = versionDirWithLock('t-exited', 't-exited')
       const started = Date.now()
       await acquire(5_000)
       expect(Date.now() - started).toBeLessThan(5_000)
       expect(readFileSync(join(lock, '.orca-fence-owner'), 'utf-8')).toBe('t-relaunch')
+      expect(readFileSync(store, 'utf-8')).not.toContain('t-exited')
+    })
+
+    it('never writes to the lock while proving its holder exited', async () => {
+      const { lock, proof } = versionDirWithLock('t-exited', 't-exited')
+      const before = statSync(lock).mtimeMs
+      await expect(proof.find(lock)).resolves.toBe('t-exited')
+      expect(statSync(lock).mtimeMs).toBe(before)
+    })
+
+    // Astra 26087: a live successor that replaces the lock after the proof must never be aged or taken.
+    it('leaves a successor that replaced the lock after the proof alone', async () => {
+      const { lock, store, proof, acquire } = versionDirWithLock('t-exited', 't-exited')
+      const replacing = {
+        ...proof,
+        find: async (lockDir: string) => {
+          const token = await proof.find(lockDir)
+          rmSync(lock, { recursive: true })
+          mkdirSync(lock)
+          writeFileSync(join(lock, '.orca-fence-owner'), 'live-successor')
+          return token
+        }
+      }
+      await expect(acquire(1_500, replacing)).rejects.toThrow()
+      expect(readFileSync(join(lock, '.orca-fence-owner'), 'utf-8')).toBe('live-successor')
+      expect(Date.now() - statSync(lock).mtimeMs).toBeLessThan(60_000)
+      expect(readFileSync(store, 'utf-8')).toContain('t-exited')
     })
 
     it('is left to the stale window when another desktop holds it', async () => {

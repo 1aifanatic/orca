@@ -13,7 +13,7 @@ import {
 import { readOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import { isRelayInstallLockStale, RELAY_INSTALL_LOCK_NAME } from './ssh-relay-install-lock'
 import { joinRemotePath } from './ssh-remote-platform'
-import { orphanExitedOwnLock } from './orcad-exited-own-lock'
+import { findExitedOwnLockToken } from './orcad-exited-own-lock'
 import { orcadRemoteBaseDir } from './orcad-remote-windows-node'
 
 export const ORCAD_ACTIVATION_FENCE_BUSY_CODE = 'orcad_activation_fence_busy'
@@ -39,8 +39,8 @@ export async function orcadActivationFenceRefusal(
   const journal = (await readOrcadActivationTransaction(options).catch(() => null)) !== null
   const baseDir = orcadRemoteBaseDir(options.host, options.remoteHome)
   const stale =
-    (await orphanExitedOwnLock(options, lockDir, { baseDir, guardsStateMutation: true })) ||
-    (await isRelayInstallLockStale(options.conn, lockDir, options.host))
+    (await findExitedOwnLockToken(options, lockDir, { baseDir, guardsStateMutation: true })) !==
+      null || (await isRelayInstallLockStale(options.conn, lockDir, options.host))
   if (stale && !journal && (await clearAbandonedFence(options))) {
     // A wake or release cut short leaves a bare fence; Recover would only drop it (BUG-21).
     return {
