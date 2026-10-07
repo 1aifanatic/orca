@@ -88,4 +88,40 @@ describe('windowed redraw tail equivalence', () => {
       )
     }
   })
+
+  it('matches the reference when a chunk repeats multi-row repaint frames', () => {
+    const rng = mulberry32(7)
+    for (let round = 0; round < 80; round++) {
+      // Why below the cap: both paths trim a full tail differently mid-chunk, which is out of scope.
+      const tail = randomTail(rng, 1900)
+      const partial = rng() < 0.5 ? `partial ${'z'.repeat(Math.floor(rng() * 30))}` : ''
+      const redrawCursor =
+        rng() < 0.3 ? { rowFromEnd: Math.floor(rng() * 20), column: Math.floor(rng() * 40) } : null
+      // Why repeated frames: their summed cursor-ups exceed the tail while the net reach does not,
+      // so only the net-reach window keeps these chunks windowed.
+      const panelRows = 1 + Math.floor(rng() * 30)
+      const frame = `\x1b[${panelRows}A${Array.from(
+        { length: panelRows + Math.floor(rng() * 3) - 1 },
+        () => `\r${randomRedrawChunk(rng).replace(/\n/g, '')}\n`
+      ).join('')}`
+      const chunk = frame.repeat(1 + Math.floor(rng() * 40))
+
+      const actual = appendNormalizedToTailBuffer(tail, partial, chunk, redrawCursor)
+      const expected = appendNormalizedToMultilineTailBufferUnwindowed(
+        tail,
+        partial.slice(-4000),
+        chunk,
+        partial.length > 4000,
+        redrawCursor
+      )
+      expect(actual.lines, `round ${round} lines`).toEqual(expected.lines)
+      expect(actual.partialLine, `round ${round} partial`).toBe(expected.partialLine)
+      expect(actual.redrawCursor, `round ${round} cursor`).toEqual(expected.redrawCursor)
+      expect(actual.truncated, `round ${round} truncated`).toBe(expected.truncated)
+      expect(actual.newCompleteLines, `round ${round} newLines`).toBe(expected.newCompleteLines)
+      expect(actual.newlyCompletedLines, `round ${round} completedLines`).toEqual(
+        expected.newlyCompletedLines
+      )
+    }
+  })
 })
