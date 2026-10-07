@@ -79,7 +79,6 @@ function TestField({
       hasPty
       canSend
       autocomplete={{ mode: 'none' }}
-      mentionFiles={{ files: [], loading: false, failed: false }}
       activeSuggestion={0}
       notices={[]}
       imageAttachments={imageAttachments}
@@ -99,6 +98,7 @@ function TestField({
       onChoosePickerItem={vi.fn()}
       onRetrySkills={vi.fn()}
       onChooseMentionFile={vi.fn()}
+      mentionFiles={{ files: [], loading: false, failed: false }}
       onRemoveImageAttachment={vi.fn()}
       onAttach={vi.fn()}
       onDictationToggle={vi.fn()}
