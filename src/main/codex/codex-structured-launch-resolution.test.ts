@@ -150,11 +150,7 @@ describe('codex structured launch resolution', () => {
       codexHome: '/home/work/.codex',
       resumeThreadId: null,
       // Every launch now carries a posture; neither one is left for config.toml to decide.
-      permissionPolicy: {
-        approvalPolicy: 'on-request',
-        sandbox: 'workspace-write',
-        approvalsReviewer: 'user'
-      }
+      permissionPolicy: { approvalPolicy: 'on-request', sandbox: 'workspace-write' }
     })
   })
 
@@ -245,8 +241,7 @@ describe('codex structured launch resolution', () => {
     expect(launch.args).toEqual(['app-server'])
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
-      approvalsReviewer: 'user'
+      sandbox: 'danger-full-access'
     })
   })
 
@@ -256,8 +251,7 @@ describe('codex structured launch resolution', () => {
     expect(launch.args).toEqual(['app-server'])
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
-      approvalsReviewer: 'user'
+      sandbox: 'danger-full-access'
     })
   })
 
@@ -269,8 +263,7 @@ describe('codex structured launch resolution', () => {
     expect(launch.args).toEqual(['app-server'])
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'on-request',
-      sandbox: 'workspace-write',
-      approvalsReviewer: 'user'
+      sandbox: 'workspace-write'
     })
   })
 
@@ -300,8 +293,8 @@ describe('codex structured launch resolution', () => {
     ])
   })
 
-  // Agent Permissions alone sets the thread policy; the Arguments' own permission options are dropped.
-  it('opens the thread under the setting, not the permission options in Arguments', async () => {
+  // Permissions come from Agent Permissions, never from Arguments' own permission options.
+  it('keeps permission options in Arguments out of the app-server launch', async () => {
     const launch = await resolverFor(
       record({
         launchArgs: ['-s', 'read-only', '-c', 'approval_policy=untrusted', '--approve-for-me']
@@ -309,27 +302,6 @@ describe('codex structured launch resolution', () => {
     )({ identity: IDENTITY })
 
     expect(launch.args).toEqual(['app-server'])
-    expect(launch.permissionPolicy).toEqual({
-      approvalPolicy: 'on-request',
-      sandbox: 'workspace-write',
-      approvalsReviewer: 'user'
-    })
-  })
-
-  it('keeps Yolo when the Arguments also state a sandbox', async () => {
-    const launch = await resolverFor(
-      record(),
-      undefined,
-      undefined,
-      { codex: '--dangerously-bypass-approvals-and-sandbox' },
-      () => ['--dangerously-bypass-approvals-and-sandbox', '-s', 'read-only']
-    )({ identity: IDENTITY })
-
-    expect(launch.permissionPolicy).toEqual({
-      approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
-      approvalsReviewer: 'user'
-    })
   })
 
   it('pins resume to the rollout file that proved the durable thread', async () => {

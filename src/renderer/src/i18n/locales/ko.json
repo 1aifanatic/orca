@@ -6721,7 +6721,7 @@
           "2d133152fa": "기본 환경 없음",
           "agentPermissions": "Agent 권한",
           "agentPermissionsInfo": "Agent 권한 정보",
-          "agentPermissionsTooltip": "모드를 전환해도 에이전트별로 수정한 인수는 변경되지 않습니다.",
+          "agentPermissionsTooltip": "Custom agent arguments stay unchanged when switching modes.",
           "agentPermissionsDescription": "Orca가 agents를 실행할 때 권한 프롬프트를 줄일지, 수동 확인을 유지할지 선택합니다.",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "수동",

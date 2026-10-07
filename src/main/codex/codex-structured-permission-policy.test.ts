@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { codexStructuredPermissionPolicyForSettings } from './codex-structured-permission-policy'
 
-const BYPASS = { approvalPolicy: 'never', sandbox: 'danger-full-access', approvalsReviewer: 'user' }
+const BYPASS = { approvalPolicy: 'never', sandbox: 'danger-full-access' }
 // Approvals on, writes confined to the workspace. Verified against codex 0.153.4: both values are
 // accepted on thread/start and thread/resume, and the reply echoes them back as the effective
 // policy even when the home's config.toml asks for `never` / `danger-full-access`.
-const MANUAL = {
-  approvalPolicy: 'on-request',
-  sandbox: 'workspace-write',
-  approvalsReviewer: 'user'
-}
+const MANUAL = { approvalPolicy: 'on-request', sandbox: 'workspace-write' }
 
 describe('codexStructuredPermissionPolicyForSettings', () => {
   it('bypasses when the user has never opened Agent settings', () => {
@@ -65,31 +61,8 @@ describe('codexStructuredPermissionPolicyForSettings', () => {
     }
   })
 
-  // A resume keeps the reviewer the thread last ran with unless the request names one.
-  it('states Codex default reviewer for both postures', () => {
-    for (const codex of ['', '--dangerously-bypass-approvals-and-sandbox']) {
-      expect(
-        codexStructuredPermissionPolicyForSettings({ agentDefaultArgs: { codex } })
-          .approvalsReviewer,
-        codex
-      ).toBe('user')
-    }
-  })
-
-  // Arguments' own permission options are dropped; only the toggle's posture is read.
-  it('ignores the permission options the Arguments state', () => {
-    expect(
-      codexStructuredPermissionPolicyForSettings({
-        agentDefaultArgs: { codex: '-s read-only -a untrusted --approve-for-me' }
-      })
-    ).toEqual(MANUAL)
-    expect(
-      codexStructuredPermissionPolicyForSettings({
-        agentDefaultArgs: { codex: '--dangerously-bypass-approvals-and-sandbox -s read-only' }
-      })
-    ).toEqual(BYPASS)
-  })
-
+  // The passthrough that used to carry these to app-server is gone on purpose; only the
+  // permission posture is derived, and nothing else from the field reaches argv.
   it('carries nothing but the permission posture out of the arguments field', () => {
     expect(
       codexStructuredPermissionPolicyForSettings({

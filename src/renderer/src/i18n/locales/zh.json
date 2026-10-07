@@ -6721,7 +6721,7 @@
           "2d133152fa": "无默认环境",
           "agentPermissions": "智能体权限",
           "agentPermissionsInfo": "智能体权限信息",
-          "agentPermissionsTooltip": "切换模式不会更改你为智能体编辑过的参数。",
+          "agentPermissionsTooltip": "切换模式时，自定义智能体参数保持不变。",
           "agentPermissionsDescription": "选择 Orca 是以更少的权限提示启动智能体，还是手动检查。",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "手动",

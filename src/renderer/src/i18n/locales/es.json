@@ -6736,7 +6736,7 @@
           "2d133152fa": "Sin entorno predeterminado",
           "agentPermissions": "Permisos de Agents",
           "agentPermissionsInfo": "Información de permisos de Agents",
-          "agentPermissionsTooltip": "Cambiar de modo no modifica los argumentos que hayas editado para un agente.",
+          "agentPermissionsTooltip": "No se aplica a agents con argumentos de lanzamiento sobrescritos.",
           "agentPermissionsDescription": "Elige si Orca lanza agents con menos prompts de permisos o con checks manuales.",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "Manual",

@@ -100,7 +100,7 @@ export function AgentPermissionsSetting({
               <TooltipContent side="top" sideOffset={6}>
                 {translate(
                   'auto.components.settings.AgentsPane.agentPermissionsTooltip',
-                  "Switching modes doesn't change Arguments you've edited for an agent."
+                  "Doesn't apply to agents where you've overridden launch arguments."
                 )}
               </TooltipContent>
             </Tooltip>

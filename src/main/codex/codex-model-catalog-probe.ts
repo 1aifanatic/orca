@@ -50,8 +50,16 @@ export function createCodexModelCatalogProbe(
     const listing = await run(
       {
         command,
-        // Codex applies `-c` in order, so the probe's own config comes last and wins.
-        args: ['app-server', ...args, ...CODEX_SHORT_LIVED_PROBE_CONFIG_ARGS],
+        // The probe's own config comes after the Arguments' `-c`, which Codex applies in order. Codex
+        // folds `--enable`/`--disable` in after every `-c`, disables last, so only `--disable`
+        // outranks a saved `--enable plugins`.
+        args: [
+          'app-server',
+          ...args,
+          ...CODEX_SHORT_LIVED_PROBE_CONFIG_ARGS,
+          '--disable',
+          'plugins'
+        ],
         cliPath: command,
         env: { ...definedEnv(environment), CODEX_HOME: accountHomePath },
         timeoutMs: CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS

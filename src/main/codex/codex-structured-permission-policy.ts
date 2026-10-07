@@ -1,17 +1,12 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { resolvedTuiAgentArgsBypassPermissions } from '../../shared/tui-agent-launch-defaults'
 
-export type CodexStructuredPermissionPolicy = (
+export type CodexStructuredPermissionPolicy =
   | { approvalPolicy: 'never'; sandbox: 'danger-full-access' }
   | { approvalPolicy: 'on-request'; sandbox: 'workspace-write' }
-) & { approvalsReviewer: 'user' }
 
 /** Yolo: no approval prompts, no sandbox. */
-const BYPASS_POLICY = {
-  approvalPolicy: 'never',
-  sandbox: 'danger-full-access',
-  approvalsReviewer: 'user'
-} as const
+const BYPASS_POLICY = { approvalPolicy: 'never', sandbox: 'danger-full-access' } as const
 
 /**
  * Manual: approvals on, writes confined to the workspace.
@@ -28,15 +23,8 @@ const BYPASS_POLICY = {
  * Why `workspace-write` and not codex's built-in `read-only`: read-only would override a
  * deliberate `sandbox_mode = "workspace-write"` and make every file write in a Manual session
  * need an approval it did not need before. This still resets Yolo's `danger-full-access`.
- *
- * The reviewer is stated too, as Codex's default `user`: a resume otherwise keeps the reviewer
- * the thread last ran with, and a fresh thread takes the one `config.toml` names.
  */
-const MANUAL_POLICY = {
-  approvalPolicy: 'on-request',
-  sandbox: 'workspace-write',
-  approvalsReviewer: 'user'
-} as const
+const MANUAL_POLICY = { approvalPolicy: 'on-request', sandbox: 'workspace-write' } as const
 
 /**
  * The Agent Permissions setting as app-server thread policy.

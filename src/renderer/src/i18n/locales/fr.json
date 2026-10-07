@@ -6845,7 +6845,7 @@
           "2d133152fa": "Aucun environnement par défaut",
           "agentPermissions": "Permissions des agents",
           "agentPermissionsInfo": "Infos permissions des agents",
-          "agentPermissionsTooltip": "Changer de mode ne modifie pas les arguments que vous avez modifiés pour un agent.",
+          "agentPermissionsTooltip": "Ne s'applique pas aux agents dont vous avez remplacé les arguments de lancement.",
           "agentPermissionsDescription": "Choisissez si Orca lance les agents avec moins de demandes de permission ou avec des vérifications manuelles.",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "Manuel",

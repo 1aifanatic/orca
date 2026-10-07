@@ -104,8 +104,32 @@ describe('codex model catalog probe', () => {
       '-c',
       'approval_policy=never',
       '-c',
-      'features.plugins=false'
+      'features.plugins=false',
+      '--disable',
+      'plugins'
     ])
+  })
+
+  // Codex folds --enable/--disable in after every -c, so only a later --disable beats a saved
+  // --enable; a probe that starts plugins can leave marketplace clones behind.
+  it('keeps plugins off when the saved Arguments enable them', async () => {
+    const invocations: CodexAppServerInvocation[] = []
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({ PATH: '/bin' }),
+      resolveCommand: () => '/bin/codex',
+      resolveLaunchArgs: () => ['--enable', 'plugins'],
+      runSession: async (invocation, body) => {
+        invocations.push(invocation)
+        return body({
+          request: async () => ({ data: [MODEL_ROW], nextCursor: null }),
+          notify: () => {}
+        })
+      }
+    })
+    await probe('/homes/a')
+    const args = invocations[0]!.args
+    expect(args.slice(0, 3)).toEqual(['app-server', '--enable', 'plugins'])
+    expect(args.slice(-2)).toEqual(['--disable', 'plugins'])
   })
 
   it('lists nothing when the saved Arguments refuse a chat', async () => {

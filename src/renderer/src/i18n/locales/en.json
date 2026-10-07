@@ -6959,7 +6959,7 @@
           "2d133152fa": "No default environment",
           "agentPermissions": "Agent Permissions",
           "agentPermissionsInfo": "Agent permissions info",
-          "agentPermissionsTooltip": "Switching modes doesn't change Arguments you've edited for an agent.",
+          "agentPermissionsTooltip": "Doesn't apply to agents where you've overridden launch arguments.",
           "agentPermissionsDescription": "Choose whether Orca launches agents with fewer permission prompts or with manual checks.",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "Manual",
