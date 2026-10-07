@@ -1,4 +1,7 @@
 // Whether a structured chat offers Stop, and what Stop does, from what this view knows of the chat.
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 
 export function structuredAgentSessionStopControl(input: {
   /** The host has published this chat to this view. */
@@ -9,13 +12,18 @@ export function structuredAgentSessionStopControl(input: {
     stopsConversation: boolean
     stop: (turnId: string | null, withdrawUnsent: () => void) => Promise<unknown>
   }
-  transportState: { turnId: string | null; isWorking: boolean }
-  /** This client still holds a send the host has not taken. */
-  holdsUnsent: boolean
-  withdrawUnsent: () => void
+  transportState: {
+    turnId: string | null
+    isWorking: boolean
+    submissions: readonly AgentJournalSubmission[]
+  }
+  /** This client's sends the host may not have taken yet. */
+  outbox: { outbox: readonly StructuredAgentSessionOutboxEntry[]; withdrawUnsent: () => void }
 }): { canStop: boolean; stop: () => Promise<unknown> } {
-  const { published, host, holdsUnsent, withdrawUnsent } = input
-  const { turnId, isWorking } = input.transportState
+  const { published, host } = input
+  const { turnId, isWorking, submissions } = input.transportState
+  const { withdrawUnsent } = input.outbox
+  const holdsUnsent = hasUnsentStructuredAgentSessionOutboxEntry(input.outbox.outbox, submissions)
   return {
     // Before the host publishes this chat to this view, nothing sent has reached it: a Stop takes
     // back what this client holds, so a start that never answers cannot hold the message hostage.

@@ -14,7 +14,6 @@ import {
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
 import { useStructuredAgentSessionHostQueuesMessagesState } from '@/runtime/structured-agent-session-host-capability'
-import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 import { structuredAgentSessionStopControl } from './structured-agent-session-stop-control'
 import {
   legacyAgentSessionSelectedOptionId,
@@ -272,8 +271,7 @@ export function useStructuredAgentSession(args: {
       published: transportEnabled,
       host: stopControl,
       transportState,
-      holdsUnsent: hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions),
-      withdrawUnsent: outboxController.withdrawUnsent
+      outbox: outboxController
     }),
     stopPressed: stopControl.pressed,
     queuedMessages: queuedController,
