@@ -251,16 +251,17 @@ export function readWholeAgentSessionFailureFact(
   return fact && structuralValuesEqualIgnoringUndefined(fact, value) ? fact : undefined
 }
 
-/** Whether two facts are one failure, compared by their fields, never their words: a start's row
- *  and the messages it rejected share one, and the host writes one row for a run of them. */
+/** Whether two facts are one failure, compared by their fields, never Orca's words: a start's row
+ *  and the messages it rejected share one, and the host writes one row for a run of them. A log
+ *  diagnostic's text is not compared: a CLI's stderr can carry a timestamp per attempt. */
 export function sameAgentSessionFailureFact(
   a: AgentSessionFailureFact,
   b: AgentSessionFailureFact
 ): boolean {
   return (
     a.kind === b.kind &&
-    a.detail?.text === b.detail?.text &&
     a.detail?.audience === b.detail?.audience &&
+    (a.detail?.audience !== 'person' || a.detail.text === b.detail?.text) &&
     a.refusal?.code === b.refusal?.code &&
     a.refusal?.details?.reason === b.refusal?.details?.reason &&
     a.attachment?.reason === b.attachment?.reason &&

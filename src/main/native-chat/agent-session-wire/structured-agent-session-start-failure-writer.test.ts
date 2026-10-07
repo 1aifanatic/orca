@@ -637,6 +637,54 @@ describe('a run of starts that fail alike', () => {
     expect(await startRows()).toEqual([rowFor(first), rowFor(last)])
   })
 
+  // Codex's stderr is a log: its tracing stamps each line, so two exits alike differ in the time.
+  it('writes one row for two startup exits whose stderr differs only by its timestamp', async () => {
+    const stderr = (at: string) =>
+      agentSessionFailureFact('providerExited', {
+        detail: {
+          text: `${at} ERROR codex_app_server: unknown field \`foo\` in config.toml`,
+          audience: 'log'
+        }
+      })
+    awaitStarted.mockImplementation(async () => undefined)
+    const first = await send('first')
+    await eventually(() => expect(dispatch).toHaveBeenCalledOnce())
+    await exitBeforeProof(stderr('2026-10-07T01:02:03.456789Z'))
+    await eventually(async () =>
+      expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    const second = await send('second')
+    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(2))
+
+    await exitBeforeProof(stderr('2026-10-07T01:02:09.012345Z'))
+
+    await eventually(async () =>
+      expect(await submission(second)).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: { kind: 'providerStartFailed', detail: { audience: 'log' } }
+      })
+    )
+    expect(await startRows()).toEqual([
+      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
+    ])
+  })
+
+  // Words written for a person name what failed: two that differ are two failures.
+  it('writes a row for each of two refusals whose words for a person differ', async () => {
+    const refused = (text: string) =>
+      agentSessionFailureFact('providerStartFailed', { detail: { text, audience: 'person' } })
+    const first = await sendQueued('first')
+    const second = await send('second')
+    awaitStarted.mockImplementation(async () => refused('no rollout found for thread id t-2'))
+
+    settleStart(refused('no rollout found for thread id t-1'))
+
+    await eventually(async () =>
+      expect(await submission(second)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    expect(await startRows()).toEqual([rowFor(first), rowFor(second)])
+  })
+
   it("writes no row for an exit that fails alike its run's row, though it rejected the message", async () => {
     awaitStarted.mockImplementation(async () => undefined)
     const first = await send('first')

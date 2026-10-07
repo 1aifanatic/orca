@@ -185,6 +185,40 @@ describe('a message rejected by a start whose row already says why', () => {
     })
   })
 
+  // A log diagnostic's text is not the failure: a CLI's stderr can carry a timestamp per attempt.
+  it('hushes a message under a row whose log diagnostic differs, not one whose words for a person do', () => {
+    const exited = (text: string, audience: 'log' | 'person'): AgentSessionFailureFact => ({
+      kind: 'providerStartFailed',
+      detail: { text, audience }
+    })
+    expect(
+      noticesFor(
+        [
+          ['first', exited('01:02:03 ERROR config', 'log')],
+          ['logged', exited('01:02:09 ERROR config', 'log')]
+        ],
+        [
+          messageAt('first', 1),
+          row('first', exited('01:02:03 ERROR config', 'log'), 2),
+          messageAt('logged', 3)
+        ]
+      )
+    ).toEqual({ [key('first')]: NOT_SENT, [key('logged')]: NOT_SENT })
+    expect(
+      noticesFor(
+        [
+          ['first', exited('no rollout for t-1', 'person')],
+          ['worded', exited('no rollout for t-2', 'person')]
+        ],
+        [
+          messageAt('first', 1),
+          row('first', exited('no rollout for t-1', 'person'), 2),
+          messageAt('worded', 3)
+        ]
+      )[key('worded')]
+    ).not.toBe(NOT_SENT)
+  })
+
   it('keeps the full notice when the rejection is not loaded, or no start row states it', () => {
     const stated = { itemId: rowKey('first'), fact: startFailed }
     expect(texts([rejected('first', startFailed)], [], [stated])).toEqual({
