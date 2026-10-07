@@ -1,5 +1,6 @@
 import { serializeStructuredAgentSessionFingerprintPayload } from '../../../src/shared/structured-agent-session-mutation'
 import { sha256 } from '../../../src/shared/sha256'
+import { MOBILE_NATIVE_CHAT_IMAGE_FINGERPRINT_DOMAIN } from '../session/mobile-native-chat-image-attachment'
 
 function fingerprintHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -8,7 +9,7 @@ function fingerprintHex(bytes: Uint8Array): string {
 export async function fingerprintNativeChatImage(base64: string): Promise<string> {
   const bytes = new TextEncoder().encode(
     serializeStructuredAgentSessionFingerprintPayload({
-      method: 'mobile.nativeChat.image',
+      method: MOBILE_NATIVE_CHAT_IMAGE_FINGERPRINT_DOMAIN,
       sessionId: '',
       fields: { base64 }
     })

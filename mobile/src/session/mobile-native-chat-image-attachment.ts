@@ -16,9 +16,11 @@ export type PendingNativeChatImage = {
   readonly contentFingerprint?: string
 }
 
+export const MOBILE_NATIVE_CHAT_IMAGE_FINGERPRINT_DOMAIN = 'mobile.nativeChat.image'
+
 export function mobileNativeChatImageContentFingerprint(base64: string): string {
   return structuredAgentSessionDomainFingerprint({
-    domain: 'mobile.nativeChat.image',
+    domain: MOBILE_NATIVE_CHAT_IMAGE_FINGERPRINT_DOMAIN,
     sessionId: '',
     fields: { base64 }
   })

@@ -15,6 +15,16 @@ afterEach(() => {
 })
 
 describe('native chat image fingerprints', () => {
+  it('preserves the existing fixed image fingerprint domain', async () => {
+    const expected = createHash('sha256')
+      .update('{"fields":{"base64":"AQID"},"method":"mobile.nativeChat.image","sessionId":""}')
+      .digest('hex')
+    vi.stubGlobal('crypto', webcrypto)
+
+    expect(mobileNativeChatImageContentFingerprint('AQID')).toBe(expected)
+    expect(await fingerprintNativeChatImage('AQID')).toBe(expected)
+  })
+
   it('keeps the selected canonical envelope, nested ordering, undefined and Unicode', () => {
     const input = {
       method: 'm',
