@@ -14,7 +14,11 @@ describe('grokAgentArgv', () => {
         '/tmp/grok.log',
         '--leader-socket=/tmp/leader.sock',
         '--disable-web-search',
-        '--no-auto-update'
+        '--no-auto-update',
+        '--compaction-mode=auto',
+        '--compaction-detail',
+        'brief',
+        '--log-sampling'
       ])
     ).toEqual([
       '--debug',
@@ -24,6 +28,11 @@ describe('grokAgentArgv', () => {
       '/tmp/leader.sock',
       '--disable-web-search',
       '--no-auto-update',
+      '--compaction-mode',
+      'auto',
+      '--compaction-detail',
+      'brief',
+      '--log-sampling',
       'agent',
       'stdio'
     ])
@@ -112,6 +121,8 @@ describe('grokAgentArgv', () => {
     },
     { configured: ['--tools', 'private'], option: '--tools', problem: 'unsupportedOption' },
     { configured: ['--future=private'], option: '--future', problem: 'unsupportedOption' },
+    { configured: ['--oauth'], option: '--oauth', problem: 'unsupportedOption' },
+    { configured: ['--force-login'], option: '--force-login', problem: 'unsupportedOption' },
     { configured: ['--debug=private'], option: '--debug', problem: 'unsupportedOption' },
     { configured: ['-m', 'a', '--model', 'private'], option: '--model', problem: 'multipleValues' },
     { configured: ['-m'], option: '-m', problem: 'missingValue' },

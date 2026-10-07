@@ -36,13 +36,17 @@ const ROOT_SWITCH = { takesValue: false, apply: root }
 const EFFORT = { takesValue: true, apply: agentOption('--reasoning-effort') }
 
 // From grok's own parser (xai-grok-pager src/app/cli.rs); `grok agent` honors only the root
-// options kept here (xai-grok-pager-bin src/main.rs run_agent_command).
+// options kept here (xai-grok-pager-bin src/main.rs: run_agent_command, and configure_process_env,
+// which sets the debug, leader-socket, compaction and log-sampling environment before dispatch).
 const RULES: Record<string, OptionRule> = {
   '--debug': ROOT_SWITCH,
   '--debug-file': ROOT_VALUE,
   '--leader-socket': ROOT_VALUE,
   '--disable-web-search': ROOT_SWITCH,
   '--no-auto-update': ROOT_SWITCH,
+  '--compaction-mode': ROOT_VALUE,
+  '--compaction-detail': ROOT_VALUE,
+  '--log-sampling': ROOT_SWITCH,
   '-m': { ...VALUE, apply: model },
   '--model': { ...VALUE, apply: model },
   '--effort': EFFORT,

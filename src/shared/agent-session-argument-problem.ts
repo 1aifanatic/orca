@@ -5,6 +5,7 @@ export type AgentSessionArgumentProblem = {
   problem:
     | 'unsupportedOption'
     | 'missingValue'
+    // A single-value option given twice: Claude's, and Grok's -m.
     | 'multipleValues'
     | 'positionalPrompt'
     | 'unclosedQuote'
