@@ -197,7 +197,7 @@ function adoptRecord(
   /** Whether this key's host row may replace the base's, rather than only fill a gap. An adoptable
    *  workspace is host-owned, so its populated rows supersede the base's leftovers — but only where
    *  the id names one workspace and the host actually holds something. */
-  mayReplace: boolean | ((key: string) => boolean) = false
+  mayReplace: boolean | ((key: string, entry: unknown) => boolean) = false
 ): void {
   const hostRecord = asRecord(host[field])
   if (!hostRecord) {
@@ -206,7 +206,8 @@ function adoptRecord(
   const merged = { ...asRecord(next[field]) }
   for (const [key, entry] of Object.entries(hostRecord)) {
     const replaces =
-      (typeof mayReplace === 'function' ? mayReplace(key) : mayReplace) && !hostHasNothingFor(entry)
+      (typeof mayReplace === 'function' ? mayReplace(key, entry) : mayReplace) &&
+      !hostHasNothingFor(entry)
     if (shouldAdopt(key, entry) && (replaces || !Object.hasOwn(merged, key))) {
       merged[key] = entry
     }
@@ -256,6 +257,26 @@ export function partitionRowsTheWriteWontReturn(
   return parked as WorkspaceSessionState | null
 }
 
+/** A replaced open-files row must not take an unsaved draft with it: no other channel holds one. */
+function keepUnsavedDraftsTheHostRowLacks(
+  next: WorkspaceSessionState,
+  base: WorkspaceSessionState
+): void {
+  for (const [key, baseFiles] of Object.entries(base.openFilesByWorktree ?? {})) {
+    const files = next.openFilesByWorktree?.[key]
+    if (!files || files === baseFiles) {
+      continue
+    }
+    const held = new Set(files.map((file) => file.filePath))
+    const drafts = baseFiles.filter(
+      (file) => file.dirtyDraftContent !== undefined && !held.has(file.filePath)
+    )
+    if (drafts.length > 0) {
+      next.openFilesByWorktree = { ...next.openFilesByWorktree, [key]: [...files, ...drafts] }
+    }
+  }
+}
+
 export type StrandedPartitionAdoptionOptions = {
   /** Session keys the read found claimed by more than one partition. */
   contestedSessionKeys?: ReadonlySet<string>
@@ -291,11 +312,9 @@ export function adoptStrandedHostPartitionSession(
   for (const key of options.contestedSessionKeys ?? []) {
     contested.add(normalizeWorkspaceSessionKeyToWorkspaceId(key))
   }
-  const adoptable = adoptableWorkspaceIds(
-    base,
-    host,
-    (workspaceId) => !contested.has(workspaceId) && !!options.ownedSessionKeys?.has(workspaceId)
-  )
+  const hostOwns = (workspaceId: string): boolean =>
+    !contested.has(workspaceId) && !!options.ownedSessionKeys?.has(workspaceId)
+  const adoptable = adoptableWorkspaceIds(base, host, hostOwns)
   for (const key of options.foreignSessionKeys ?? []) {
     adoptable.delete(normalizeWorkspaceSessionKeyToWorkspaceId(key))
   }
@@ -327,8 +346,22 @@ export function adoptStrandedHostPartitionSession(
   // the keyed fields do not depend on the ownership table's declaration order.
   const worktreeIdByTabId = buildWorktreeIdByTabId(host)
   const worktreeIdByFileId = buildWorktreeIdByFileId(host)
-  const adoptsResolved = (worktreeId: string | undefined): boolean =>
-    worktreeId !== undefined && adopts(worktreeId)
+  // A catalog-owned workspace's base rows are residue, so its records replace theirs even under
+  // the same tab, pane or file key (relay reattach copied tab ids into `local`).
+  const adoptByOwner = (
+    field: keyof WorkspaceSessionState,
+    ownerOf: (key: string, entry: unknown) => string | null | undefined
+  ): void => {
+    const owner = (key: string, entry: unknown): string =>
+      normalizeWorkspaceSessionKeyToWorkspaceId(ownerOf(key, entry) ?? '')
+    adoptRecord(
+      next,
+      host,
+      field,
+      (key, entry) => adoptable.has(owner(key, entry)),
+      (key, entry) => hostOwns(owner(key, entry))
+    )
+  }
 
   for (const field of SESSION_FIELDS) {
     const ownership: WorkspaceSessionFieldOwnership = WORKSPACE_SESSION_FIELD_OWNERSHIP[field]
@@ -370,34 +403,27 @@ export function adoptStrandedHostPartitionSession(
         break
       }
       case 'tabKeyed':
-        adoptRecord(next, host, field, (key) => adoptsResolved(worktreeIdByTabId.get(key)))
+        adoptByOwner(field, (key) => worktreeIdByTabId.get(key))
         break
       case 'paneKeyed':
-        adoptRecord(next, host, field, (key) =>
-          adoptsResolved(worktreeIdForPaneKey(worktreeIdByTabId, key))
-        )
+        adoptByOwner(field, (key) => worktreeIdForPaneKey(worktreeIdByTabId, key))
         break
       case 'sleepingAgentKeyed':
       case 'surfaceTombstoneKeyed':
         // Keyed opaquely, but each record names its own workspace — the only routing left once the
         // tab or pane it describes is gone, and the same one `splitWorkspaceSessionByHost` uses.
-        adoptRecord(next, host, field, (_key, entry) => {
-          const workspaceId = recordWorkspaceId(entry)
-          return workspaceId !== null && adopts(workspaceId)
-        })
+        adoptByOwner(field, (_key, entry) => recordWorkspaceId(entry))
         break
       case 'browserWorkspaceKeyed':
-        adoptRecord(next, host, field, (_key, entry) => {
-          const workspaceId = browserPagesWorkspaceId(entry)
-          return workspaceId !== null && adopts(workspaceId)
-        })
+        adoptByOwner(field, (_key, entry) => browserPagesWorkspaceId(entry))
         break
       case 'fileKeyed':
         // Routed by the open file's workspace, through the same index the split routed it by.
-        adoptRecord(next, host, field, (key) => adoptsResolved(worktreeIdByFileId.get(key)))
+        adoptByOwner(field, (key) => worktreeIdByFileId.get(key))
         break
     }
   }
+  keepUnsavedDraftsTheHostRowLacks(next, base)
   // Why contested ids are withheld: the write path would route the whole bare id here, carrying the
   // co-claimant's rows into this host's partition — the loss the gap-fill above exists to prevent.
   const adoptedWorkspaceIds = new Set(

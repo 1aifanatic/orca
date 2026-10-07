@@ -162,21 +162,40 @@ describe('ssh host partition hydration', () => {
     ])
   })
 
-  it("keeps a stray local copy's unsaved draft when the ssh partition has no open files", async () => {
+  it("replaces a stray local copy's records for a tab id the ssh partition shares", async () => {
+    // Relay reattach copied tab ids into `local`, so the stale and live rows can share a key.
+    const partitions = strandedPartitions([tab('tab-shared')], [tab('tab-shared')])
+    const layout = (activeLeafId: string) => ({ root: null, activeLeafId, expandedLeafId: null })
+    partitions.local = session({
+      ...partitions.local,
+      terminalLayoutsByTabId: { 'tab-shared': layout('leaf-stale') }
+    })
+    partitions[SSH_HOST_ID] = session({
+      ...partitions[SSH_HOST_ID],
+      terminalLayoutsByTabId: { 'tab-shared': layout('leaf-live') }
+    })
+
+    const read = await fetchWorkspaceSessionWithRuntimeHostOwners(partitionedApi(partitions), repos)
+
+    expect(read.session.terminalLayoutsByTabId?.['tab-shared']?.activeLeafId).toBe('leaf-live')
+  })
+
+  it("keeps a stray local copy's unsaved draft beside the ssh partition's open files", async () => {
+    const openFile = (relativePath: string, dirtyDraftContent?: string) => ({
+      filePath: `${WORKTREE_PATH}/${relativePath}`,
+      relativePath,
+      worktreeId: WORKTREE_ID,
+      language: 'typescript',
+      ...(dirtyDraftContent === undefined ? {} : { dirtyDraftContent })
+    })
     const partitions = strandedPartitions([tab('tab-runtime')], [tab('tab-local')])
     partitions.local = session({
       ...partitions.local,
-      openFilesByWorktree: {
-        [WORKTREE_ID]: [
-          {
-            filePath: `${WORKTREE_PATH}/src/main.ts`,
-            relativePath: 'src/main.ts',
-            worktreeId: WORKTREE_ID,
-            language: 'typescript',
-            dirtyDraftContent: 'unsaved work'
-          }
-        ]
-      }
+      openFilesByWorktree: { [WORKTREE_ID]: [openFile('src/main.ts', 'unsaved work')] }
+    })
+    partitions[SSH_HOST_ID] = session({
+      ...partitions[SSH_HOST_ID],
+      openFilesByWorktree: { [WORKTREE_ID]: [openFile('src/live.ts')] }
     })
 
     const read = await fetchWorkspaceSessionWithRuntimeHostOwners(partitionedApi(partitions), repos)
@@ -184,9 +203,15 @@ describe('ssh host partition hydration', () => {
     expect(read.session.tabsByWorktree[WORKTREE_ID]?.map((entry) => entry.id)).toEqual([
       'tab-runtime'
     ])
-    expect(read.session.openFilesByWorktree?.[WORKTREE_ID]?.[0]?.dirtyDraftContent).toBe(
-      'unsaved work'
-    )
+    expect(
+      read.session.openFilesByWorktree?.[WORKTREE_ID]?.map((file) => [
+        file.relativePath,
+        file.dirtyDraftContent
+      ])
+    ).toEqual([
+      ['src/live.ts', undefined],
+      ['src/main.ts', 'unsaved work']
+    ])
   })
 
   it('leaves a populated local copy alone when the catalog cannot name its owner', async () => {
@@ -372,9 +397,10 @@ describe('ssh host partition rows the host has nothing for', () => {
     )
   })
 
-  it('still adopts a populated host row over the base leftovers', async () => {
+  it('still adopts a populated host row over the base leftovers, keeping only their drafts', async () => {
     // The other side of the same rule: the guard must be about the host having nothing, not about
-    // the base having something, or adoption stops repairing the split it exists for.
+    // the base having something, or adoption stops repairing the split it exists for. An unsaved
+    // draft the host row lacks is the one leftover kept, since nothing else can recover it.
     const partitions = emptyHostRowsOverBaseDraft(false)
     partitions[SSH_HOST_ID] = session({
       ...partitions[SSH_HOST_ID],
@@ -394,7 +420,7 @@ describe('ssh host partition rows the host has nothing for', () => {
 
     expect(
       read.session.openFilesByWorktree?.[WORKTREE_ID]?.map((file) => file.relativePath)
-    ).toEqual(['src/host.ts'])
+    ).toEqual(['src/host.ts', 'src/main.ts'])
   })
 
   it('adopts the layout of a tab the host slice names only in unifiedTabs', async () => {
