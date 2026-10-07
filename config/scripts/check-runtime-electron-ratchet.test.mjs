@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -9,8 +9,7 @@ import {
   defaultEntryPoints,
   diffAgainstBaseline,
   main,
-  readBaseline,
-  STRUCTURED_CHAT_LANES
+  readBaseline
 } from './check-runtime-electron-ratchet.mjs'
 
 describe('structured chat coverage', () => {
@@ -32,12 +31,14 @@ describe('structured chat coverage', () => {
     return root
   }
 
-  // Every lane that must exist; acp/ and provider-process/ may be absent until they land.
+  // Every lane that must exist.
   const requiredLanes = {
     'src/main/native-chat/reader.ts': 'export {}',
     'src/main/claude/claude-session.ts': 'export {}',
     'src/main/codex/codex-session.ts': 'export {}',
     'src/main/runtime/structured-agent-session-host.ts': 'export {}',
+    'src/main/provider-process/provider-process-teardown.ts': 'export {}',
+    'src/main/acp/acp-structured-session-adapter.ts': 'export {}',
     'src/shared/agent-session-record.ts': 'export {}'
   }
 
@@ -89,25 +90,65 @@ describe('structured chat coverage', () => {
         Object.entries(requiredLanes).filter(([file]) => !file.startsWith(`${lane}/`))
       )
       expect(() => collectStructuredChatEntryPoints(fixture(without))).toThrow(`${lane} is missing`)
-      expect(collectStructuredChatEntryPoints(fixture(requiredLanes))).toHaveLength(5)
+      expect(collectStructuredChatEntryPoints(fixture(requiredLanes))).toHaveLength(7)
     }
   )
 
-  it('finds Electron through a package imported by each unwired future lane', async () => {
+  it.each([true, false])(
+    'finds Electron through an unwired lane package (sideEffects=%s)',
+    async (sideEffects) => {
+      const root = fixture({
+        ...requiredLanes,
+        'src/main/acp/adapter.ts': "import 'acp-desktop-package'",
+        'src/main/provider-process/worker.ts': "import 'provider-desktop-package'",
+        'node_modules/acp-desktop-package/package.json': JSON.stringify({
+          main: 'index.js',
+          sideEffects
+        }),
+        'node_modules/acp-desktop-package/index.js': "require('electron')",
+        'node_modules/provider-desktop-package/package.json': JSON.stringify({
+          main: 'index.js',
+          sideEffects
+        }),
+        'node_modules/provider-desktop-package/index.js': "require('electron')"
+      })
+      const current = await collectElectronImporters(collectStructuredChatEntryPoints(root))
+      expect(current.map((file) => file.split('/node_modules/').pop())).toEqual([
+        'acp-desktop-package/index.js',
+        'provider-desktop-package/index.js'
+      ])
+    }
+  )
+
+  it('bounds shared dependency output without dropping any entry point', async () => {
+    const entries = Array.from({ length: 40 }, (_, index) => `entry-${index}.ts`)
     const root = fixture({
-      ...requiredLanes,
-      'src/main/acp/adapter.ts': "import 'acp-desktop-package'",
-      'src/main/provider-process/worker.ts': "import 'provider-desktop-package'",
-      'node_modules/acp-desktop-package/package.json': '{"main":"index.js"}',
-      'node_modules/acp-desktop-package/index.js': "require('electron')",
-      'node_modules/provider-desktop-package/package.json': '{"main":"index.js"}',
-      'node_modules/provider-desktop-package/index.js': "require('electron')"
+      'shared.ts': `export const payload = ${JSON.stringify('x'.repeat(64 * 1024))}`,
+      ...Object.fromEntries(
+        entries.map((file) => [file, "import 'electron'; export { payload } from './shared'"])
+      )
     })
-    const current = await collectElectronImporters(collectStructuredChatEntryPoints(root))
-    expect(current.map((file) => file.split('/node_modules/').pop())).toEqual([
-      'acp-desktop-package/index.js',
-      'provider-desktop-package/index.js'
-    ])
+    let emittedBytes = 0
+    const current = await collectElectronImporters(
+      entries.map((file) => path.join(root, file)),
+      {
+        plugins: [
+          {
+            name: 'measure-audit-output',
+            setup(builder) {
+              builder.onEnd((result) => {
+                emittedBytes = result.outputFiles.reduce(
+                  (bytes, file) => bytes + file.contents.byteLength,
+                  0
+                )
+              })
+            }
+          }
+        ]
+      }
+    )
+    expect(current.map((file) => path.basename(file)).sort()).toEqual(entries.sort())
+    expect(emittedBytes).toBeLessThan(128 * 1024)
   })
 })
 
@@ -125,16 +166,6 @@ describe('the default entry points', () => {
     ])
     for (const lane of [...lanes, 'src/shared/']) {
       expect(entries.some((file) => file.startsWith(lane))).toBe(true)
-    }
-  })
-
-  // Retires the temporary flag: the PR that adds acp/ or provider-process/ must make it required.
-  it('lets only directories that have not landed yet be absent', () => {
-    for (const lane of STRUCTURED_CHAT_LANES.filter((candidate) => candidate.mayBeAbsent)) {
-      expect(
-        existsSync(path.join(process.cwd(), ...lane.directory)),
-        lane.directory.join('/')
-      ).toBe(false)
     }
   })
 })

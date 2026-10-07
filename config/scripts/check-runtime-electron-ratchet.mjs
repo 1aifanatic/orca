@@ -48,18 +48,14 @@ export const STRUCTURED_CHAT_LANES = [
   { directory: ['src', 'main', 'codex'] },
   { directory: ['src', 'shared'] },
   { directory: ['src', 'main', 'runtime'], basename: /^(?:structured-|agent-session-)/ },
-  // Allowed absent until they land; every other lane throws if missing, so a rename can't empty it.
-  { directory: ['src', 'main', 'acp'], mayBeAbsent: true },
-  { directory: ['src', 'main', 'provider-process'], mayBeAbsent: true }
+  { directory: ['src', 'main', 'provider-process'] },
+  { directory: ['src', 'main', 'acp'] }
 ]
 
 export function collectStructuredChatEntryPoints(root = ROOT) {
   return STRUCTURED_CHAT_LANES.flatMap((lane) => {
     const directory = path.join(root, ...lane.directory)
     if (!existsSync(directory)) {
-      if (lane.mayBeAbsent) {
-        return []
-      }
       throw new Error(
         `[runtime-electron-ratchet] ${lane.directory.join('/')} is missing. If it moved, update STRUCTURED_CHAT_LANES; otherwise the gate would silently check nothing there.`
       )
@@ -117,11 +113,20 @@ const externalNativeAddons = {
 // Why `plugins`: lets a test add an Electron import to a real file in memory, never on disk.
 export async function collectElectronImporters(entryPoints, { plugins = [] } = {}) {
   const result = await build({
-    entryPoints,
+    // Export every entry through one bundle so shared dependencies are emitted once.
+    stdin: {
+      contents: entryPoints
+        .map(
+          (entry, index) =>
+            `export * as entry_${index} from ${JSON.stringify(path.resolve(ROOT, entry))}`
+        )
+        .join('\n'),
+      resolveDir: ROOT,
+      loader: 'ts',
+      sourcefile: 'runtime-electron-ratchet-entry.ts'
+    },
     bundle: true,
     write: false,
-    // Why outdir with write:false: esbuild refuses multiple entry points without one,
-    // even though nothing is emitted — the metafile is all this reads.
     outdir: path.join(ROOT, 'runtime-electron-ratchet-metafile-only'),
     platform: 'node',
     target: 'node20',

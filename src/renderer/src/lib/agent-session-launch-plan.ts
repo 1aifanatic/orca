@@ -1,4 +1,3 @@
-import { isAgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
@@ -98,7 +97,8 @@ function beginStructuredPlanLaunch(
   hooks: StructuredAgentLaunchHooks,
   target?: AgentSessionLaunchTarget
 ): StructuredAgentLaunchHandle | null {
-  if (verdict.route !== 'structured-native-chat' || !isAgentSessionHandleProvider(verdict.agent)) {
+  // The route already admitted the agent: its host registered it as structured.
+  if (verdict.route !== 'structured-native-chat') {
     return null
   }
   const worktreeId = target?.worktreeId ?? verdict.worktreeId
@@ -156,8 +156,6 @@ export function structuredAgentSessionLaunchFeasible(
   const { settings, ...args } = request
   // Why: the narrow settings ride on the built input, not the store, so a caller names the exact
   // settings this answer turns on without having to hold a whole store-shaped object.
-  // The builder still reads launch customization off `store.settings`: safe only because the caller
-  // names the object the store already holds — a different one would split this answer's sources.
   return structuredAgentLaunchSupported({ ...buildAgentLaunchRouteInput(store, args), settings })
 }
 

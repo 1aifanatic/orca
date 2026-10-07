@@ -61,7 +61,8 @@ export function useHostModelCatalogUpgrade(args: {
     isHostModelListingWaitInFlight(waitKey)
   )
   useEffect(() => {
-    if (!enabled || !optionCatalog || (agent !== 'claude' && agent !== 'codex')) {
+    // Any agent the host registered: it answers `unknown` for one whose catalog it does not keep.
+    if (!enabled || !optionCatalog) {
       return
     }
     let stale = false
