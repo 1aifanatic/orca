@@ -29,6 +29,7 @@ import { ensureStructuredAgentSessionAgent } from './structured-agent-session-ag
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { stopStructuredAgentSessionAgentUnderSerialize } from './structured-agent-session-host-lifetime'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
+import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 import {
   HOST_TEST_LOCATION,
   HOST_TEST_NOW as NOW,
@@ -385,12 +386,13 @@ describe('a published child that dies while it proves its start', () => {
   it('leaves one error row keyed by the start, and every message it was handed rejected with it (R2)', async () => {
     await restartHost()
     acquire.mockImplementation(spawnStartingChild)
-    // Written to the starting child at once; it never answers.
+    // The first is written to the starting child at once; it never answers, so its turn never
+    // opens and the second waits behind it.
     dispatch.mockImplementation(async () => ({ state: 'admitted' as const }))
     const first = await accept('first')
     const events = await subscribe()
     const second = await accept('second')
-    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(2))
+    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(1))
     const child = currentChild()
 
     await exit(child, EXIT, true)
@@ -633,7 +635,7 @@ describe('a quit with a message still queued', () => {
     expect(await keptCards()).toEqual([])
   })
 
-  it('waits for the start already in flight and stops the child it produced (R2)', async () => {
+  it('stops a start already in flight before it launches a child (R2)', async () => {
     const starting = deferred<void>()
     const closeSession = vi.fn(async () => true)
     adapterExtras = { closeSession }
@@ -647,13 +649,20 @@ describe('a quit with a message still queued', () => {
     })
     const id = await accept('hello', { person: true })
     await eventually(() => expect(recovering).toHaveBeenCalled())
+    const acquiresBefore = acquire.mock.calls.length
 
     const quit = host.flushAllStreamedEvents()
     starting.resolve()
     await quit
 
-    expect(closeSession).toHaveBeenCalledWith(SESSION)
-    expect(store.getRecord(SESSION)?.lease).toMatchObject({ claimStatus: 'released' })
+    // Quit aborts the start, so nothing is launched behind it and nothing is left to stop.
+    expect(acquire).toHaveBeenCalledTimes(acquiresBefore)
+    expect(closeSession).not.toHaveBeenCalled()
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'released',
+      ownerProcess: null,
+      deathEvidence: { detail: 'reservation failed before spawn' }
+    })
     expect(dispatch).not.toHaveBeenCalled()
     expect(await afterRelaunch(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
     expect(await keptCards()).toEqual([id])
@@ -765,7 +774,7 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     expect(await statusRows()).toEqual([])
   })
 
-  it('keeps a person’s message the user closed as a held card, and starts no child for it', async () => {
+  it('keeps a person’s message the user closed as a waiting card, and starts no child for it', async () => {
     const start = deferred<void>()
     adapterExtras = { closeSession: vi.fn(async () => true) }
     await restartHost()
@@ -789,6 +798,15 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     expect(page.ok && page.page.queuedMessages?.map((card) => card.messageId)).toEqual([first])
     expect(acquire).toHaveBeenCalledTimes(starts)
     expect(dispatch).not.toHaveBeenCalled()
+    // The close stopped the chat running: the card waits for its next turn, by a mark the
+    // re-check wrote once, when it kept the card.
+    const journal = conversation()!.journal
+    expect(structuredQueuePauses(journal).map((pause) => pause.reason)).toEqual(['restarted'])
+    const marks = vi.spyOn(journal, 'appendQueueReopen')
+    await accept('second', { person: true })
+    await settleLoop()
+    // A later send's re-check settles nothing, so it marks nothing past that send.
+    expect(marks).not.toHaveBeenCalled()
   })
 
   it('starts no child when closing what was queued fails, and closes it on the next wake', async () => {
