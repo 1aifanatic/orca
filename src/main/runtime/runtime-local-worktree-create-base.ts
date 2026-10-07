@@ -55,7 +55,14 @@ export async function resolveRuntimeLocalWorktreeCreateBase(args: {
     return { baseBranch, remoteTrackingBase, deferredRefresh: 'tracking_ref' }
   }
   if (hasNamedLocalBaseRef) {
-    return { baseBranch, remoteTrackingBase: null, deferredRefresh: null }
+    // Why: a local ref of the requested name needs no fetch, but it still isn't the tracking ref
+    // the request named, so report it the way the desktop create does.
+    return {
+      baseBranch,
+      remoteTrackingBase: null,
+      deferredRefresh: null,
+      baseFallback: { requestedRef: remoteTrackingBase.base, localRef: baseBranch }
+    }
   }
   const refresh = await args.timing.time('refresh_base_ref', () =>
     args.refreshRemoteTrackingBase(repoPath, remoteTrackingBase, options)

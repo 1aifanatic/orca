@@ -421,7 +421,7 @@ describe('runtime create base without a tracking ref', () => {
     expect(mocks.consume).not.toHaveBeenCalled()
   })
 
-  it('uses a local ref of the requested name without fetching or reporting a fallback', async () => {
+  it('uses a local ref of the requested name without fetching, and reports it', async () => {
     mocks.hasBase.mockResolvedValue(true)
 
     const result = await createWorktree({ baseBranch: 'origin/main' })
@@ -430,6 +430,6 @@ describe('runtime create base without a tracking ref', () => {
     expect(mocks.consume).toHaveBeenCalledWith(
       expect.objectContaining({ baseBranch: 'origin/main' })
     )
-    expect(result).not.toHaveProperty('baseFallback')
+    expect(result.baseFallback).toEqual({ requestedRef: 'origin/main', localRef: 'origin/main' })
   })
 })
