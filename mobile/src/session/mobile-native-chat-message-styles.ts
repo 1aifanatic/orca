@@ -17,11 +17,13 @@ export const styles = StyleSheet.create({
     gap: spacing.sm
   },
   userBubble: {
-    maxWidth: '88%',
+    maxWidth: '80%',
     backgroundColor: colors.bgRaised,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
     borderRadius: radii.card,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
+    paddingHorizontal: spacing.chatBubbleHorizontal,
+    paddingVertical: spacing.chatBubbleVertical
   },
   userText: {
     color: colors.textPrimary,
