@@ -4,7 +4,7 @@
  * A paired client (a phone, or a desktop client of a remote server) that launches into an existing
  * workspace, or into a folder workspace it creates, gets the new tab as its own selection, recorded
  * the way `session.tabs.createTerminal` selects the tab it creates for its caller. In-process
- * callers keep today's behaviour, and their launch that creates its workspace keeps
+ * callers keep today's behaviour, and their launch that creates a worktree keeps
  * `worktree.create`'s navigation. A paired client's worktree create never activates the host
  * window: its setup and default tabs are provisioned in the background. A folder workspace has
  * neither, and its create activates nothing, so it is selected for its caller like an existing one.

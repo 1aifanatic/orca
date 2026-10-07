@@ -80,7 +80,11 @@ describe('agent.launch creating a folder workspace', () => {
     )
     expect(runtime.showTerminalWorkspaceLaunchScope).toHaveBeenCalledWith('id:folder:fw-new')
     expect(runtime.createManagedWorktree).not.toHaveBeenCalled()
-    expect(runtime.createTerminal).toHaveBeenCalledWith('id:folder:fw-new', expect.anything())
+    // A paired caller's terminal is not surfaced on the host window.
+    expect(runtime.createTerminal).toHaveBeenCalledWith(
+      'id:folder:fw-new',
+      expect.objectContaining({ surfaceOwner: false })
+    )
     expect(result).toMatchObject({
       worktreeId: 'folder:fw-new',
       outcome: { kind: 'terminal', handle: 'term_1' }
