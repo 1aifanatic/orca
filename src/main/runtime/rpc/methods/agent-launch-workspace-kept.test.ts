@@ -175,18 +175,15 @@ describe('stored workspace-kept enrichment', () => {
         throw new Error('The rollback oracle requires an extracted historical host source')
       }
       await call(keepsWorkspace(), 'agent.launchReplay', params, OLDER_PHONE)
-      const records = await import(
-        /* @vite-ignore */ join(ROLLBACK_ROOT, 'src/main/runtime/agent-session-record-store.ts')
+      const loadHistoricalHostModule = (path: string) =>
+        import(/* @vite-ignore */ join(ROLLBACK_ROOT, path).split('\\').join('/'))
+      const records = await loadHistoricalHostModule(
+        'src/main/runtime/agent-session-record-store.ts'
       )
-      const replay = await import(
-        /* @vite-ignore */ join(
-          ROLLBACK_ROOT,
-          'src/main/runtime/rpc/methods/agent-launch-replay.ts'
-        )
+      const replay = await loadHistoricalHostModule(
+        'src/main/runtime/rpc/methods/agent-launch-replay.ts'
       )
-      const errors = await import(
-        /* @vite-ignore */ join(ROLLBACK_ROOT, 'src/main/runtime/rpc/errors.ts')
-      )
+      const errors = await loadHistoricalHostModule('src/main/runtime/rpc/errors.ts')
       if (
         typeof records.AgentSessionRecordStore?.open !== 'function' ||
         typeof replay.admitAgentLaunchOperation !== 'function' ||
