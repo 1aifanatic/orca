@@ -53,7 +53,7 @@ export type StructuredClaudeRuntimeAdapterDeps = {
 export function structuredClaudeLifecycleEvent(
   event: ClaudeStructuredSessionEvent
 ): StructuredAgentSessionLifecycleEvent | null {
-  if (event.type === 'started') {
+  if (event.type === 'started' || event.type === 'options-skipped') {
     return event
   }
   // Every exit of a child with an identity, expected or not: the host ends that child's record.
@@ -73,7 +73,8 @@ export function structuredClaudeLifecycleEvent(
       acquisitionGeneration: event.acquisitionGeneration,
       // The instant the translator ended the open turn at; the host reads the exit's turn by it.
       ...(event.observedAt === undefined ? {} : { observedAt: event.observedAt }),
-      ...(event.startupUnproven ? { startupUnproven: event.startupUnproven } : {})
+      ...(event.startupUnproven ? { startupUnproven: event.startupUnproven } : {}),
+      ...(event.startupUnanswered ? { startupUnanswered: event.startupUnanswered } : {})
     }
   }
   return null

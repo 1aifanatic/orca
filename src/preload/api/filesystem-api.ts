@@ -31,6 +31,10 @@ import type {
   AgentSessionAttachmentPathUploadResult,
   AgentSessionAttachmentUploadTarget
 } from '../../shared/agent-session-attachments'
+import type {
+  PrepareDroppedPathsRequest,
+  PreparedDroppedPaths
+} from '../../shared/native-file-drop-preparation'
 
 export type ExportApi = {
   htmlToPdf: (args: {
@@ -43,6 +47,8 @@ export type ExportApi = {
 
 export type FilesystemApi = {
   fs: {
+    getPathForFile?: (file: File) => string
+    prepareDroppedPaths: (args: PrepareDroppedPathsRequest) => Promise<PreparedDroppedPaths>
     readFileChunk: (args: {
       filePath: string
       connectionId?: string
