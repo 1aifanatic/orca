@@ -77,8 +77,12 @@ describe('live reader copies through the existing local-content callback', () =>
   let renderer: ReactTestRenderer | undefined
   const press = async () => {
     const copy = renderer!.root
-      .findAllByType('Pressable')
-      .find((node) => node.findAllByType('Text').some((text) => text.props.children === 'Copy'))
+      .findAll((node) => String(node.type) === 'Pressable')
+      .find((node) =>
+        node
+          .findAll((child) => String(child.type) === 'Text')
+          .some((text) => text.props.children === 'Copy')
+      )
     if (!copy) {
       throw new Error('Copy is hidden on the live editable document')
     }

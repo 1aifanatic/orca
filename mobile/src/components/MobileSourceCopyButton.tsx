@@ -15,16 +15,22 @@ export function MobileSourceCopyButton({
 }): React.JSX.Element {
   const clipboard = useClipboardWriter()
   const [copiedText, setCopiedText] = useState<string | null>(null)
-  const copySequence = useRef(0)
+  const latestAttempt = useRef<{ sourceVersion: number } | null>(null)
+  const sourceVersion = useRef(0)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   if (copiedText !== null && copiedText !== text) {
     setCopiedText(null)
   }
-  // Stream updates and unmount must invalidate pending feedback before it can appear.
+  useLayoutEffect(
+    () => () => {
+      latestAttempt.current = null
+    },
+    []
+  )
+  // Streaming invalidates success feedback, while the pending user action still owns failures.
   useLayoutEffect(() => {
-    copySequence.current++
+    sourceVersion.current++
     return () => {
-      copySequence.current++
       if (resetTimer.current !== null) {
         clearTimeout(resetTimer.current)
         resetTimer.current = null
@@ -36,7 +42,8 @@ export function MobileSourceCopyButton({
     if (text.length === 0) {
       return
     }
-    const sequence = ++copySequence.current
+    const attempt = { sourceVersion: sourceVersion.current }
+    latestAttempt.current = attempt
     if (resetTimer.current !== null) {
       clearTimeout(resetTimer.current)
       resetTimer.current = null
@@ -45,7 +52,7 @@ export function MobileSourceCopyButton({
     try {
       await clipboard.writeText(text)
     } catch (error) {
-      if (copySequence.current !== sequence) {
+      if (latestAttempt.current !== attempt) {
         return
       }
       Alert.alert(
@@ -54,13 +61,13 @@ export function MobileSourceCopyButton({
       )
       return
     }
-    if (copySequence.current !== sequence) {
+    if (latestAttempt.current !== attempt || sourceVersion.current !== attempt.sourceVersion) {
       return
     }
     setCopiedText(text)
     resetTimer.current = setTimeout(() => {
       resetTimer.current = null
-      if (copySequence.current === sequence) {
+      if (latestAttempt.current === attempt) {
         setCopiedText(null)
       }
     }, 1500)

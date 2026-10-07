@@ -40,6 +40,22 @@ const message: NativeChatMessage = {
   blocks: [{ type: 'text', text: 'Started' }]
 }
 
+function pendingWrite() {
+  let settle: (outcome: 'success' | 'failure') => void = () => {
+    throw new Error('Clipboard write is not pending')
+  }
+  const promise = new Promise<void>((resolve, reject) => {
+    settle = (outcome) => {
+      if (outcome === 'success') {
+        resolve()
+      } else {
+        reject(new Error('Unavailable'))
+      }
+    }
+  })
+  return { promise, finish: (outcome: 'success' | 'failure') => settle(outcome) }
+}
+
 describe('iOS whole-message copy', () => {
   let renderer: ReactTestRenderer | undefined
   const nodes = (type: string) => renderer!.root.findAll((node) => String(node.type) === type)
@@ -153,7 +169,7 @@ describe('iOS whole-message copy', () => {
   )
 
   it.each(['success', 'failure'] as const)(
-    'drops late %s feedback after source changes',
+    'suppresses stale success but reports %s after source changes',
     async (outcome) => {
       vi.useFakeTimers()
       let finish = () => {}
@@ -174,7 +190,11 @@ describe('iOS whole-message copy', () => {
       await act(async () => finish())
       expect(writeText.mock.calls).toEqual([['Started']])
       expect(nodes('Check')).toHaveLength(0)
-      expect(alert).not.toHaveBeenCalled()
+      if (outcome === 'failure') {
+        expect(alert).toHaveBeenCalledExactlyOnceWith('Copy failed', 'Unavailable')
+      } else {
+        expect(alert).not.toHaveBeenCalled()
+      }
       expect(vi.getTimerCount()).toBe(0)
     }
   )
@@ -184,11 +204,105 @@ describe('iOS whole-message copy', () => {
     render()
     await act(async () => copyButton().props.onPress())
     expect(nodes('Check')).toHaveLength(1)
-    act(() => vi.advanceTimersByTime(1500))
+    act(() => {
+      vi.advanceTimersByTime(1500)
+    })
     expect(nodes('Check')).toHaveLength(0)
     await act(async () => copyButton().props.onPress())
     expect(writeText).toHaveBeenCalledTimes(2)
   })
+
+  it('keeps pending success stale when the original source returns', async () => {
+    vi.useFakeTimers()
+    const pending = pendingWrite()
+    writeText.mockReturnValueOnce(pending.promise)
+    render()
+    act(() => copyButton().props.onPress())
+    act(() =>
+      renderer!.update(
+        createElement(MobileNativeChatMessage, {
+          message: { ...message, blocks: [{ type: 'text', text: 'Changed source' }] }
+        })
+      )
+    )
+    act(() => renderer!.update(createElement(MobileNativeChatMessage, { message })))
+    await act(async () => pending.finish('success'))
+    expect(nodes('Check')).toHaveLength(0)
+    expect(alert).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['success', 'failure'] as const)(
+    'ignores an older overlapping %s while the newest write is pending',
+    async (outcome) => {
+      vi.useFakeTimers()
+      const older = pendingWrite(),
+        newest = pendingWrite()
+      writeText.mockReturnValueOnce(older.promise).mockReturnValueOnce(newest.promise)
+      render()
+      act(() => copyButton().props.onPress())
+      act(() => copyButton().props.onPress())
+      await act(async () => older.finish(outcome))
+      expect(nodes('Check')).toHaveLength(0)
+      expect(alert).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+      await act(async () => newest.finish('failure'))
+      expect(alert).toHaveBeenCalledExactlyOnceWith('Copy failed', 'Unavailable')
+      expect(nodes('Check')).toHaveLength(0)
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
+
+  it.each([
+    ['success', 'success'],
+    ['success', 'failure'],
+    ['failure', 'success'],
+    ['failure', 'failure']
+  ] as const)(
+    'ignores repeated older %s results after the newest %s',
+    async (olderOutcome, newestOutcome) => {
+      vi.useFakeTimers()
+      const older = pendingWrite(),
+        middle = pendingWrite(),
+        newest = pendingWrite()
+      writeText
+        .mockReturnValueOnce(older.promise)
+        .mockReturnValueOnce(middle.promise)
+        .mockReturnValueOnce(newest.promise)
+      render()
+      for (const text of ['Started', 'Middle source', 'Newest source']) {
+        act(() =>
+          renderer!.update(
+            createElement(MobileNativeChatMessage, {
+              message: { ...message, blocks: [{ type: 'text', text }] }
+            })
+          )
+        )
+        act(() => copyButton().props.onPress())
+      }
+      await act(async () => newest.finish(newestOutcome))
+      await act(async () => middle.finish(olderOutcome))
+      await act(async () => older.finish(olderOutcome))
+      expect(writeText.mock.calls).toEqual([['Started'], ['Middle source'], ['Newest source']])
+      expect(nodes('Check')).toHaveLength(newestOutcome === 'success' ? 1 : 0)
+      if (newestOutcome === 'failure') {
+        expect(alert).toHaveBeenCalledExactlyOnceWith('Copy failed', 'Unavailable')
+        expect(vi.getTimerCount()).toBe(0)
+      } else {
+        expect(alert).not.toHaveBeenCalled()
+        expect(vi.getTimerCount()).toBe(1)
+        act(() => {
+          vi.advanceTimersByTime(1499)
+        })
+        expect(nodes('Check')).toHaveLength(1)
+        act(() => {
+          vi.advanceTimersByTime(1)
+        })
+        expect(nodes('Check')).toHaveLength(0)
+        expect(vi.getTimerCount()).toBe(0)
+      }
+    }
+  )
 
   it('clears an earlier success when the next copy is rejected', async () => {
     vi.useFakeTimers()

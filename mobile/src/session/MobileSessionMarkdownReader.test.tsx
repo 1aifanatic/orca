@@ -47,7 +47,7 @@ describe('live session markdown reader copy', () => {
       )
     })
   }
-  const buttons = () => renderer!.root.findAllByType('Pressable')
+  const buttons = () => renderer!.root.findAll((node) => String(node.type) === 'Pressable')
   beforeEach(() => vi.clearAllMocks())
   afterEach(() => act(() => renderer?.unmount()))
 
