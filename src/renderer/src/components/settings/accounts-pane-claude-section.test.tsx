@@ -2,6 +2,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type {
   ClaudeManagedAccountSummary,
   ClaudeRateLimitAccountsState
@@ -31,7 +32,10 @@ function account(
   }
 }
 
-function render(state: Partial<ClaudeRateLimitAccountsState> = {}): string {
+function render(
+  state: Partial<ClaudeRateLimitAccountsState> = {},
+  settings: Partial<GlobalSettings> = {}
+): string {
   const claudeAccounts: ClaudeRateLimitAccountsState = {
     accounts: [],
     activeAccountId: null,
@@ -90,7 +94,7 @@ function render(state: Partial<ClaudeRateLimitAccountsState> = {}): string {
     runClaudeAccountAction: vi.fn(async () => {}),
     setClaudeSignIn: vi.fn(),
     setRemoveClaudeTarget: vi.fn(),
-    settings: getDefaultSettings('/tmp'),
+    settings: { ...getDefaultSettings('/tmp'), ...settings },
     systemClaudeActive: claudeAccounts.activeAccountId === null,
     visibleClaudeAccounts: claudeAccounts.accounts,
     wslCapabilitiesLoading: false
@@ -125,14 +129,28 @@ describe('Claude accounts section', () => {
     expect(markup.match(/>Remove<\/button>/g)).toHaveLength(2)
   })
 
-  it("names System default's login and says when it is also a saved account", () => {
-    const saved = render({
+  it("names System default's login and warns only when an older Orca may have copied it there", () => {
+    const saved = {
       accounts: [account('a', 'A@example.test')],
       systemDefaultEmail: 'a@example.test'
+    }
+    const copied = render({ ...saved, systemDefaultMayBeCopied: true })
+    expect(copied).toContain('System default: a@example.test')
+    expect(copied).toContain('An earlier Orca version may have copied that login there.')
+    expect(copied).toContain('>Dismiss</button>')
+    // Saving your own login as an account too is normal: no copy evidence, no warning.
+    expect(render(saved)).not.toContain('An earlier Orca version')
+    expect(
+      render(
+        { ...saved, systemDefaultMayBeCopied: true },
+        { claudeCopiedSystemDefaultNoticeDismissed: true }
+      )
+    ).not.toContain('An earlier Orca version')
+    const own = render({
+      ...saved,
+      systemDefaultEmail: 'me@example.test',
+      systemDefaultMayBeCopied: true
     })
-    expect(saved).toContain('System default: a@example.test')
-    expect(saved).toContain('An earlier Orca version may have copied that login there.')
-    const own = render({ systemDefaultEmail: 'me@example.test' })
     expect(own).toContain('System default: me@example.test')
     expect(own).not.toContain('An earlier Orca version')
   })

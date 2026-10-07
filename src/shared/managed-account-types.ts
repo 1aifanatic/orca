@@ -120,6 +120,8 @@ export type ClaudeRateLimitAccountsState = {
   activeAccountIdsByRuntime?: ClaudeManagedAccountRuntimeSelection
   /** The login System default holds, when the host can read it and accounts exist. */
   systemDefaultEmail?: string
+  /** An older Orca's copy-based switching once wrote an account's login into System default. */
+  systemDefaultMayBeCopied?: boolean
   /** The user's own CLAUDE_CONFIG_DIR while an account is selected: it wins in their terminals. */
   userClaudeConfigDir?: string
   /** Local only: terminals from before the update are open, and their `claude` ignores the selection. */

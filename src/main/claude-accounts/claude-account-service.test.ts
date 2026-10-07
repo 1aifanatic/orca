@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -50,7 +50,11 @@ function fixture(accounts: ClaudeManagedAccount[] = [account('a'), account('b')]
     activeClaudeManagedAccountIdsByRuntime: { host: 'a', wsl: {} }
   }
   const runtimeAuth = {
-    router: { accountHome: home, userConfigDir: () => join(root, 'personal') },
+    router: {
+      accountHome: home,
+      userConfigDir: () => join(root, 'personal'),
+      copiedLoginIntoSystemDefault: () => existsSync(join(root, 'claude-runtime-auth'))
+    },
     syncForCurrentSelection: vi.fn(async (_target?: ClaudeAccountSelectionTarget) => {}),
     publishAll: vi.fn(async () => {}),
     prepareAccountFolder: vi.fn(async (id: string) => {
@@ -112,6 +116,9 @@ describe('ClaudeAccountService', () => {
       systemDefaultEmail: 'me@example.test',
       userClaudeConfigDir: join(f.root, 'personal')
     })
+    expect(f.service.listAccounts().systemDefaultMayBeCopied).toBeUndefined()
+    mkdirSync(join(f.root, 'claude-runtime-auth'))
+    expect(f.service.listAccounts().systemDefaultMayBeCopied).toBe(true)
   })
 
   it('saves an account only once its folder holds a login', async () => {

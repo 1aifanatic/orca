@@ -28,14 +28,18 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
     setRemoveClaudeTarget,
     settings,
     systemClaudeActive,
+    updateSettings,
     visibleClaudeAccounts,
     wslCapabilitiesLoading
   } = model
   // Why host only: the host reads its own System default, never a WSL distro's.
   const systemDefaultEmail =
     accountRuntime.runtime === 'host' ? claudeAccounts.systemDefaultEmail : undefined
+  // Why the copy evidence: saving your own login as an account too is normal and needs no warning.
   const systemDefaultIsSaved =
     !!systemDefaultEmail &&
+    claudeAccounts.systemDefaultMayBeCopied === true &&
+    !settings.claudeCopiedSystemDefaultNoticeDismissed &&
     claudeAccounts.accounts.some(
       (account) => account.email.toLowerCase() === systemDefaultEmail.toLowerCase()
     )
@@ -180,13 +184,22 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
             </div>
           </button>
           {systemDefaultIsSaved ? (
-            <p className="text-xs text-muted-foreground">
-              {translate(
-                'accounts.claude.systemDefaultIsSaved',
-                'System default is signed in as {{value0}}, which is also a saved account. An earlier Orca version may have copied that login there. If it is not your own login, select System default and run claude /login.',
-                { value0: systemDefaultEmail }
-              )}
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {translate(
+                  'accounts.claude.systemDefaultIsSaved',
+                  'System default is signed in as {{value0}}, which is also a saved account. An earlier Orca version may have copied that login there. If it is not your own login, select System default and run claude /login.',
+                  { value0: systemDefaultEmail }
+                )}
+              </p>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => updateSettings({ claudeCopiedSystemDefaultNoticeDismissed: true })}
+              >
+                {translate('accounts.claude.systemDefaultIsSavedDismiss', 'Dismiss')}
+              </Button>
+            </div>
           ) : null}
           {visibleClaudeAccounts.length === 0 ? (
             <div className="rounded-md border border-dashed border-border/70 px-3 py-4 text-xs text-muted-foreground">

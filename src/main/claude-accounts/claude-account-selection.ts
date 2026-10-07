@@ -44,7 +44,10 @@ export type ClaudeAccountRuntime = Pick<
   ClaudeRuntimeAuthService,
   'syncForCurrentSelection' | 'publishAll' | 'removeAccountFolder' | 'prepareAccountFolder'
 > & {
-  router: Pick<ClaudeRuntimeAuthService['router'], 'accountHome' | 'userConfigDir'>
+  router: Pick<
+    ClaudeRuntimeAuthService['router'],
+    'accountHome' | 'userConfigDir' | 'copiedLoginIntoSystemDefault'
+  >
 }
 
 export type ClaudeAccountUsage = Pick<
@@ -77,6 +80,9 @@ export class ClaudeAccountSelection {
       activeAccountId: selection.host,
       activeAccountIdsByRuntime: selection,
       ...(systemDefault ? { systemDefaultEmail: systemDefault.email } : {}),
+      ...(systemDefault && this.runtimeAuth.router.copiedLoginIntoSystemDefault()
+        ? { systemDefaultMayBeCopied: true }
+        : {}),
       ...(userConfigDir && selection.host ? { userClaudeConfigDir: userConfigDir } : {})
     }
   }

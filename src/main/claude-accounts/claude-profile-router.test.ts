@@ -118,6 +118,14 @@ describe('ClaudeProfileRouter', () => {
     await expect(refused).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
   })
 
+  it("reads an older Orca's copy-based switching from the System default snapshot it left", () => {
+    const f = fixture()
+    expect(f.router.copiedLoginIntoSystemDefault()).toBe(false)
+    mkdirSync(join(f.dataRoot, 'claude-runtime-auth'), { recursive: true })
+    writeFileSync(join(f.dataRoot, 'claude-runtime-auth', 'system-default-auth.json'), '{}')
+    expect(f.router.copiedLoginIntoSystemDefault()).toBe(true)
+  })
+
   it('publishes the selected folder, System default as empty, and no file without accounts', async () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })

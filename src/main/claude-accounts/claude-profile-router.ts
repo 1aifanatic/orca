@@ -150,6 +150,11 @@ export class ClaudeProfileRouter {
     await removeClaudeAccountFolder(this.args.dataRoot, accountId)
   }
 
+  /** True once an older Orca copied an account's login into System default: it left this snapshot. */
+  copiedLoginIntoSystemDefault(): boolean {
+    return existsSync(join(this.args.dataRoot, 'claude-runtime-auth', 'system-default-auth.json'))
+  }
+
   /** The user's own CLAUDE_CONFIG_DIR, which wins over the selection in their terminals. */
   userConfigDir(): string | undefined {
     return readUserClaudeConfigDir(this.env)
