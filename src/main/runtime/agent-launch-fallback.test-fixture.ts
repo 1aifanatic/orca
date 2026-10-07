@@ -5,19 +5,6 @@ import type { TerminalProcessInspection } from '../../shared/terminal-process-in
 import { createAgentPromptSubmissionRuntime } from './agent-prompt-submission-runtime-test-fixture'
 import { deliverTerminalAgentLaunchPrompt } from './rpc/methods/agent-launch-terminal-prompt'
 
-vi.mock('../git/worktree', () => {
-  const list = async () => [
-    {
-      path: '/tmp/worktree-a',
-      head: 'abc',
-      branch: 'feature/test',
-      isBare: false,
-      isMainWorktree: false
-    }
-  ]
-  return { listWorktrees: list, listWorktreesStrict: list }
-})
-
 type LaunchPromptArguments = Partial<Parameters<typeof deliverTerminalAgentLaunchPrompt>[0]>
 type LaunchFallbackRuntime = {
   runtime: OrcaRuntimeService
