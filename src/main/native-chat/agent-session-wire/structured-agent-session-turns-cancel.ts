@@ -33,8 +33,8 @@ import { structuredAgentSessionFailedStopMark } from './structured-agent-session
 import { sendStopCanTakeBack } from './structured-agent-session-unopened-send-withdrawal'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 
-/** Whether the fold reads working. Every write has landed by its call's return, and the open paid
- *  any owed import, so a Stop reads it without waiting on the write queue. */
+/** Whether the fold reads working. Every write has landed by its call's return, so a Stop reads it
+ *  without waiting on the write queue. */
 export function isMainAgentWorking(
   ctx: Pick<AgentSessionTurnContext, 'journal' | 'fence'>
 ): boolean {
@@ -320,8 +320,8 @@ async function cancelAndNote(
     if (ended) {
       cancelled = true
       // A child end that took back every send it found, with no turn running, ended a run that
-      // never started: its message is back in the composer, and a row would sit under the turn
-      // before as if that turn were stopped.
+      // never started: a client draws that send where it was sent, with its own row saying so. A
+      // row here would say it twice, and an older client draws it under the turn before.
       note =
         stoppedTurnId === null && tookBackEverySend(ctx, sentBeforeStop)
           ? null

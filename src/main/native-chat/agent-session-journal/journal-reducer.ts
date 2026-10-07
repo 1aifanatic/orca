@@ -22,7 +22,7 @@ import {
   agentJournalSubmissionKey,
   parseAgentJournalItemKey
 } from '../../../shared/agent-session-journal-item-key'
-import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
+import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { JournalDerivedTurnScope } from './journal-derived-turn-scope'
 import { removeJournalItem, statedOrDerivedTurnScope, upsertJournalItem } from './journal-item-fold'
 import { journalItemRevisionIsStale } from './journal-item-revision'
@@ -60,9 +60,9 @@ export type JournalReducerState = {
   appliedSettlementIds: Set<string>
   /** Scope for rows stored without one; rebuilt by replay, never persisted. */
   derivedTurnScope: JournalDerivedTurnScope
-  /** The submission row of the latest turn a person asked for (`origin: 'client'`) that the
-   *  provider accepted; 0 when none. Kept as it folds so the queue's pause reads it in O(1). */
-  latestPersonTurnSequence: number
+  /** The submission row of the latest turn the provider accepted, whoever sent it; 0 when none.
+   *  Kept as it folds so the queue's pause reads it in O(1). */
+  latestAcceptedTurnSequence: number
   /** The latest person's Stop event and Resume, what the queue's pause is derived from. */
   queuePauseMarks: JournalQueuePauseMarks
 }
@@ -83,7 +83,7 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
     aliases: new Map(),
     appliedSettlementIds: new Set(),
     derivedTurnScope: new JournalDerivedTurnScope(),
-    latestPersonTurnSequence: 0,
+    latestAcceptedTurnSequence: 0,
     queuePauseMarks: createJournalQueuePauseMarks()
   }
 }
@@ -203,11 +203,7 @@ export function journalEchoClaimant(
   if (!body || !isProviderUserMessageEcho(itemId, body)) {
     return null
   }
-  const fingerprint = structuredAgentSessionPayloadFingerprint({
-    method: 'agentSession.send',
-    sessionId: state.sessionId,
-    fields: { body }
-  })
+  const fingerprint = agentSessionSendBodyFingerprint(state.sessionId, body)
   // Exact payload plus queue order preserves repeated identical sends one-for-one.
   // A submission an echo may not claim is one that says the message never reached
   // the provider, so an item resembling it is somebody else's. That is `rejected`
