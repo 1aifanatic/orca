@@ -76,20 +76,46 @@ function sendRequest(text: string, delivery?: 'queue-if-active') {
   }
 }
 
-/** Accepted while the agent is starting, and never handed over: its start never finishes. */
+/** Lets the spawn `acceptWhileStarting` holds finish; until then the message stays queued. */
+let releaseStart = (): void => {}
+
+/** Accepted while the agent is starting, and never handed over: Orca stops during its spawn. */
 async function acceptWhileStarting(
-  request: Parameters<QueuedMessageTestRig['host']['send']>[1]
+  request: Parameters<QueuedMessageTestRig['host']['send']>[1],
+  // Sent with it, so each is accepted before the spawn takes the chat's lane.
+  ...alsoQueued: Parameters<QueuedMessageTestRig['host']['send']>[1][]
 ): Promise<string> {
   // No child, so this send must start one.
   await rig.host.close(SESSION, 'evict')
-  const startsBefore = rig.awaitStarted.mock.calls.length
-  rig.awaitStarted.mockImplementationOnce(() => new Promise<undefined>(() => undefined))
-  expect(await rig.host.send(QUEUED_RIG_CALLER, request)).toMatchObject({
-    ok: true,
-    value: { submission: { dispatchState: 'pending', handoverRecorded: true } }
-  })
-  await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBeGreaterThan(startsBefore))
+  const startsBefore = rig.starts.mock.calls.length
+  releaseStart = rig.holdNextStart()
+  const sent = await Promise.all(
+    [request, ...alsoQueued].map((each) => rig.host.send(QUEUED_RIG_CALLER, each))
+  )
+  for (const result of sent) {
+    expect(result).toMatchObject({
+      ok: true,
+      value: { submission: { dispatchState: 'pending', handoverRecorded: true } }
+    })
+  }
+  await eventually(() => expect(rig.starts.mock.calls.length).toBeGreaterThan(startsBefore))
   return request.envelope.clientOperationId
+}
+
+/** Closes the chat while its spawn is held: the close takes the lane once the spawn returns. */
+async function closeWhileStarting(cause: 'user-close' | 'evict'): Promise<void> {
+  const closed = rig.host.close(SESSION, cause)
+  releaseStart()
+  releaseStart = () => {}
+  await closed
+}
+
+/** The app quits: delivery stops first, so the held spawn finishing hands nothing over. */
+async function quitRestart(): Promise<void> {
+  const quit = rig.quitRestartHostProcess()
+  releaseStart()
+  releaseStart = () => {}
+  await quit
 }
 
 function journal(): AgentSessionJournal {
@@ -108,7 +134,7 @@ function dispatchedTexts(): string[] {
 
 describe('a message accepted while the agent starts, then Orca stops', () => {
   it.each([
-    { how: 'quit', restart: () => rig.quitRestartHostProcess() },
+    { how: 'quit', restart: () => quitRestart() },
     { how: 'crash', restart: async () => rig.crashRestartHostProcess() }
   ])(
     'is a waiting card after a $how, and its submission is rejected unseen',
@@ -143,7 +169,7 @@ describe('a message accepted while the agent starts, then Orca stops', () => {
 
   it('quit writes nothing for it: no closed-chat rejection, still queued until the next open', async () => {
     const id = await acceptWhileStarting(sendRequest('kept through quit'))
-    await rig.quitRestartHostProcess()
+    await quitRestart()
     // Read beside the host, without opening the chat through it: the row the quit left.
     const leftover = await peekSubmission(id)
     expect(leftover).toMatchObject({ dispatchState: 'pending', handoverRecorded: true })
@@ -151,9 +177,8 @@ describe('a message accepted while the agent starts, then Orca stops', () => {
   })
 
   it('keeps several in the order they were accepted, ahead of the cards already queued', async () => {
-    const first = await acceptWhileStarting(sendRequest('first'))
     const second = sendRequest('second')
-    expect(await rig.host.send(QUEUED_RIG_CALLER, second)).toMatchObject({ ok: true })
+    const first = await acceptWhileStarting(sendRequest('first'), second)
     await rig.crashRestartHostProcess()
 
     expect(await rig.drafts()).toEqual([
@@ -168,7 +193,7 @@ describe('a message accepted while the agent starts, then Orca stops', () => {
 describe('the next accepted turn releases a kept card', () => {
   it('a later message runs first, then the card follows it in order', async () => {
     const id = await acceptWhileStarting(sendRequest('the kept words'))
-    await rig.quitRestartHostProcess()
+    await quitRestart()
 
     const next = rig.send('a new request')
     await next.result
@@ -192,10 +217,9 @@ describe('the next accepted turn releases a kept card', () => {
   })
 
   it('Send now sends it at once, and Delete removes it', async () => {
-    const sent = await acceptWhileStarting(sendRequest('send me now'))
     const deleted = sendRequest('delete me')
-    await rig.host.send(QUEUED_RIG_CALLER, deleted)
-    await rig.quitRestartHostProcess()
+    const sent = await acceptWhileStarting(sendRequest('send me now'), deleted)
+    await quitRestart()
 
     expect(await rig.deleteQueued(deleted.envelope.clientOperationId)).toMatchObject({
       ok: true,
@@ -214,7 +238,7 @@ describe('the next accepted turn releases a kept card', () => {
   it.each(['Edit', 'Delete'] as const)('%s leaves no trace of the kept send', async (action) => {
     const request = sendRequest('the kept words')
     const id = await acceptWhileStarting(request)
-    await rig.quitRestartHostProcess()
+    await quitRestart()
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     expect(await rig.deleteQueued(id)).toMatchObject({ ok: true, value: { deleted: true } })
     const edited = action === 'Edit' ? rig.send('the edited words') : null
@@ -268,7 +292,7 @@ describe('the next accepted turn releases a kept card', () => {
   // ahead of the cards queued behind that turn.
   it('a second restart still holds it; the next turn sends it before the cards queued after', async () => {
     const id = await acceptWhileStarting(sendRequest('kept twice over'))
-    await rig.quitRestartHostProcess()
+    await quitRestart()
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     rig.crashRestartHostProcess()
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -292,7 +316,7 @@ describe('the next accepted turn releases a kept card', () => {
 
   it('its own Send cut short by another quit brings it back at the head, waiting', async () => {
     const id = await acceptWhileStarting(sendRequest('the kept words'))
-    await rig.quitRestartHostProcess()
+    await quitRestart()
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     // A /compact runs, so the Send now waits behind it, and Orca quits before it is handed over.
     const fields = { command: 'compact' as const }
@@ -306,7 +330,7 @@ describe('the next accepted turn releases a kept card', () => {
     expect(await rig.sendNow(id)).toMatchObject({ ok: true })
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect((await rig.handoff(id))?.handedOverAt).toBeUndefined()
-    await rig.quitRestartHostProcess()
+    await quitRestart()
 
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     expect(journal().queuedMessages.get(id)?.holdReason).toBeNull()
@@ -333,7 +357,7 @@ describe('cards queued behind a working turn, then Orca stops', () => {
         value: { queued: { state: 'waiting' } }
       })
       if (how === 'quit') {
-        await rig.quitRestartHostProcess()
+        await quitRestart()
       } else {
         rig.crashRestartHostProcess()
       }
@@ -428,7 +452,7 @@ describe('the queue at a quit', () => {
     expect(await rig.sendNow(pushed.id)).toMatchObject({ ok: true })
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect((await rig.handoff(pushed.id))?.handedOverAt).toBeUndefined()
-    await rig.quitRestartHostProcess()
+    await quitRestart()
 
     expect(await rig.drafts()).toEqual([
       { messageId: pushed.id, ...KEPT },
@@ -449,7 +473,7 @@ describe('a message accepted while the agent starts, then the chat closes', () =
     'after a %s it is a waiting card the reopened chat shows, rejected as closed',
     async (cause) => {
       const id = await acceptWhileStarting(sendRequest('kept at close'))
-      await rig.host.close(SESSION, cause)
+      await closeWhileStarting(cause)
       rig.crashRestartHostProcess()
 
       expect(await rig.submission(id)).toMatchObject({ dispatchState: 'rejected', ...CHAT_CLOSED })
@@ -483,7 +507,7 @@ describe('the same send arriving again after the restart', () => {
   it('a client that never asked to queue is answered from its own record: one card, still waiting, nothing sent', async () => {
     const request = sendRequest('sent again by the outbox')
     const id = await acceptWhileStarting(request)
-    await rig.quitRestartHostProcess()
+    await quitRestart()
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     const submissionsBefore = (await rig.host.journalSnapshot(SESSION)).submissions.length
 
@@ -596,7 +620,7 @@ describe('what is not kept', () => {
       }
       return resolve.apply(this, args)
     })
-    await rig.quitRestartHostProcess()
+    await quitRestart()
     // The open's write failed; a new send wakes the delivery loop, whose first step settles it.
     const next = rig.send('wakes the loop')
     await next.result
@@ -609,7 +633,7 @@ describe('what is not kept', () => {
 describe('/clear carries a kept card', () => {
   it('the first turn in the new conversation releases it, after that turn', async () => {
     const id = await acceptWhileStarting(sendRequest('carried through clear'))
-    await rig.quitRestartHostProcess()
+    await quitRestart()
     expect(await rig.drafts()).toHaveLength(1)
     const fields = { command: 'clear' as const }
     const cleared = await rig.host.conversationCommand(QUEUED_RIG_CALLER, {
