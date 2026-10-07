@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   planTerminalLiveLayoutInsertions,
-  planTerminalLiveLayoutRemovals,
-  selectRetiredPaneIds,
-  trackRetiredLeafIds
+  planTerminalLiveLayoutRemovals
 } from './terminal-live-layout-reconciliation'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
 
@@ -204,8 +202,7 @@ describe('planTerminalLiveLayoutInsertions', () => {
 })
 
 describe('planTerminalLiveLayoutRemovals', () => {
-  // Every mounted leaf counted as retired: the layout alone must veto removals.
-  const BOTH = new Set(['leaf-a', 'leaf-b'])
+  const NONE = new Set<string>()
 
   it('plans the mounted leaf a host-retired layout no longer names', () => {
     // Why: closing one pane of a remote-server split kills its PTY on the host,
@@ -213,9 +210,7 @@ describe('planTerminalLiveLayoutRemovals', () => {
     // for the retired leaf must go too, or it lingers as a blank ghost.
     const layout: TerminalPaneLayoutNode = { type: 'leaf', leafId: 'leaf-a' }
 
-    expect(
-      planTerminalLiveLayoutRemovals(layout, ['leaf-a', 'leaf-b'], new Set(['leaf-b']))
-    ).toEqual(['leaf-b'])
+    expect(planTerminalLiveLayoutRemovals(layout, ['leaf-a', 'leaf-b'], NONE)).toEqual(['leaf-b'])
   })
 
   it('plans nothing when every mounted leaf is still in the layout', () => {
@@ -226,126 +221,21 @@ describe('planTerminalLiveLayoutRemovals', () => {
       second: { type: 'leaf', leafId: 'leaf-b' }
     }
 
-    expect(planTerminalLiveLayoutRemovals(layout, ['leaf-a', 'leaf-b'], BOTH)).toEqual([])
-    expect(planTerminalLiveLayoutRemovals(layout, ['leaf-a'], BOTH)).toEqual([])
+    expect(planTerminalLiveLayoutRemovals(layout, ['leaf-a', 'leaf-b'], NONE)).toEqual([])
+    expect(planTerminalLiveLayoutRemovals(layout, ['leaf-a'], NONE)).toEqual([])
   })
 
   it('plans nothing for an empty layout', () => {
-    expect(planTerminalLiveLayoutRemovals(null, ['leaf-a'], BOTH)).toEqual([])
-    expect(planTerminalLiveLayoutRemovals(undefined, ['leaf-a'], BOTH)).toEqual([])
+    expect(planTerminalLiveLayoutRemovals(null, ['leaf-a'], NONE)).toEqual([])
+    expect(planTerminalLiveLayoutRemovals(undefined, ['leaf-a'], NONE)).toEqual([])
   })
 
-  it('leaves a mounted leaf the host has never named alone', () => {
-    // Why: a pane the client just split is still spawning, so its transport has
-    // no PTY yet, and a host snapshot that lands mid-spawn does not name it.
-    // Only a leaf the host named before can be one the host retired.
+  it('keeps a pending pane the layout does not name yet', () => {
+    // Why: a pane this window just split is not in main's layout until main binds it.
     const layout: TerminalPaneLayoutNode = { type: 'leaf', leafId: 'leaf-a' }
 
     expect(
-      planTerminalLiveLayoutRemovals(layout, ['leaf-a', 'leaf-new'], new Set(['leaf-a']))
+      planTerminalLiveLayoutRemovals(layout, ['leaf-a', 'leaf-new'], new Set(['leaf-new']))
     ).toEqual([])
-    expect(planTerminalLiveLayoutRemovals(layout, ['leaf-a', 'leaf-new'], new Set())).toEqual([])
-  })
-})
-
-describe('selectRetiredPaneIds', () => {
-  const view = (startingPaneIds: number[] = []) => ({
-    paneIdForLeaf: (leafId: string) => (leafId === 'leaf-b' ? 2 : leafId === 'leaf-c' ? 3 : null),
-    isPaneStarting: (paneId: number) => startingPaneIds.includes(paneId)
-  })
-
-  it('detaches a retired pane whether or not it still holds its PTY', () => {
-    // Why: detaching never kills, so a live PTY main moved elsewhere needs no wait.
-    expect(selectRetiredPaneIds(['leaf-b', 'leaf-c'], view())).toEqual([2, 3])
-  })
-
-  it('keeps a pane that is still starting its PTY', () => {
-    // Main has not bound it yet, so a layout without it says nothing about it.
-    expect(selectRetiredPaneIds(['leaf-b', 'leaf-c'], view([2]))).toEqual([3])
-  })
-
-  it('skips a leaf that has no mounted pane', () => {
-    expect(selectRetiredPaneIds(['leaf-x'], view())).toEqual([])
-  })
-})
-
-describe('trackRetiredLeafIds', () => {
-  it('retires a mounted leaf the host dropped from its layout', () => {
-    expect(
-      trackRetiredLeafIds({
-        retiredLeafIds: new Set(),
-        previousLayoutLeafIds: new Set(['leaf-a', 'leaf-b']),
-        layoutLeafIds: new Set(['leaf-a']),
-        mountedLeafIds: ['leaf-a', 'leaf-b']
-      })
-    ).toEqual(new Set(['leaf-b']))
-  })
-
-  it('keeps a retired leaf until its pane is gone', () => {
-    // Why: the removal may have been skipped while the transport still held its
-    // PTY; the next reconciliation must still see the leaf as retired.
-    const args = {
-      retiredLeafIds: new Set(['leaf-b']),
-      previousLayoutLeafIds: new Set(['leaf-a']),
-      layoutLeafIds: new Set(['leaf-a'])
-    }
-    expect(trackRetiredLeafIds({ ...args, mountedLeafIds: ['leaf-a', 'leaf-b'] })).toEqual(
-      new Set(['leaf-b'])
-    )
-    expect(trackRetiredLeafIds({ ...args, mountedLeafIds: ['leaf-a'] })).toEqual(new Set())
-  })
-
-  it('forgets a retired leaf the host names again', () => {
-    expect(
-      trackRetiredLeafIds({
-        retiredLeafIds: new Set(['leaf-b']),
-        previousLayoutLeafIds: new Set(['leaf-a']),
-        layoutLeafIds: new Set(['leaf-a', 'leaf-b']),
-        mountedLeafIds: ['leaf-a', 'leaf-b']
-      })
-    ).toEqual(new Set())
-  })
-
-  it('never retires a leaf the host has not named', () => {
-    expect(
-      trackRetiredLeafIds({
-        retiredLeafIds: new Set(),
-        previousLayoutLeafIds: new Set(['leaf-a']),
-        layoutLeafIds: new Set(['leaf-a']),
-        mountedLeafIds: ['leaf-a', 'leaf-new']
-      })
-    ).toEqual(new Set())
-  })
-})
-
-describe('a retirement that lands while the pane is still starting', () => {
-  it('detaches the pane on a later reconciliation once it has started', () => {
-    const layout: TerminalPaneLayoutNode = { type: 'leaf', leafId: 'leaf-a' }
-    const mounted = ['leaf-a', 'leaf-b']
-    const paneIdForLeaf = (leafId: string) =>
-      leafId === 'leaf-a' ? 1 : leafId === 'leaf-b' ? 2 : null
-
-    let retired = trackRetiredLeafIds({
-      retiredLeafIds: new Set(),
-      previousLayoutLeafIds: new Set(mounted),
-      layoutLeafIds: new Set(['leaf-a']),
-      mountedLeafIds: mounted
-    })
-    let removals = planTerminalLiveLayoutRemovals(layout, mounted, retired)
-    expect(removals).toEqual(['leaf-b'])
-    expect(
-      selectRetiredPaneIds(removals, { paneIdForLeaf, isPaneStarting: (paneId) => paneId === 2 })
-    ).toEqual([])
-
-    retired = trackRetiredLeafIds({
-      retiredLeafIds: retired,
-      previousLayoutLeafIds: new Set(['leaf-a']),
-      layoutLeafIds: new Set(['leaf-a']),
-      mountedLeafIds: mounted
-    })
-    removals = planTerminalLiveLayoutRemovals(layout, mounted, retired)
-    expect(selectRetiredPaneIds(removals, { paneIdForLeaf, isPaneStarting: () => false })).toEqual([
-      2
-    ])
   })
 })

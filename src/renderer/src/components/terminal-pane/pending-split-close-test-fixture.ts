@@ -108,7 +108,9 @@ export async function preparePendingSplitClose(
     setCacheTimerStartedAt: vi.fn(),
     dropAgentStatus: vi.fn(),
     retireAgentPaneAuthority: vi.fn(),
-    suppressPtyExit: vi.fn()
+    suppressPtyExit: vi.fn(),
+    markPendingTerminalPane: vi.fn(),
+    settlePendingTerminalPaneRemoval: vi.fn()
   }) as unknown as AppState
   const spawn = Promise.withResolvers<PtyConnectResult>()
   vi.mocked(window.api.pty.spawn).mockReturnValueOnce(spawn.promise)

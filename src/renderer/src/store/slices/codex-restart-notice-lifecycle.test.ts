@@ -230,34 +230,3 @@ describe('codex restart notices with colliding account labels', () => {
     expect(useAppStore.getState().codexRestartNoticeByPtyId).toBe(dismissed)
   })
 })
-
-describe('replaceTerminalLayoutPanePtyId', () => {
-  const LEAF = '11111111-1111-4111-8111-111111111111'
-
-  it('rebinds one leaf and leaves split siblings alone', () => {
-    const OTHER_LEAF = '22222222-2222-4222-8222-222222222222'
-    useAppStore.setState({
-      terminalLayoutsByTabId: {
-        'tab-1': {
-          root: null,
-          activeLeafId: LEAF,
-          expandedLeafId: null,
-          ptyIdsByLeafId: { [LEAF]: 'pty-old', [OTHER_LEAF]: 'pty-sibling' }
-        }
-      }
-    })
-
-    useAppStore.getState().replaceTerminalLayoutPanePtyId('tab-1', LEAF, 'pty-new')
-
-    expect(useAppStore.getState().terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId).toEqual({
-      [LEAF]: 'pty-new',
-      [OTHER_LEAF]: 'pty-sibling'
-    })
-  })
-
-  it('does nothing for a tab with no layout', () => {
-    const before = useAppStore.getState().terminalLayoutsByTabId
-    useAppStore.getState().replaceTerminalLayoutPanePtyId('tab-none', LEAF, 'pty-new')
-    expect(useAppStore.getState().terminalLayoutsByTabId).toBe(before)
-  })
-})

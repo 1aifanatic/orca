@@ -114,12 +114,6 @@ function testDeps(args: {
     }
     terminalLayoutsByTabId[tabId] = { ...layout, ptyIdsByLeafId: { ...layout.ptyIdsByLeafId } }
   })
-  const replaceTerminalLayoutPanePtyId = vi.fn((tabId: string, leafId: string, ptyId: string) => {
-    const layout = terminalLayoutsByTabId[tabId]
-    if (layout) {
-      layout.ptyIdsByLeafId[leafId] = ptyId
-    }
-  })
   let createdCount = 0
   const createTab: TerminalSlice['createTab'] = vi.fn((worktreeId, _group, _shell, options) => {
     createdCount += 1
@@ -154,7 +148,6 @@ function testDeps(args: {
       sleeping.map((record) => [record.paneKey, record])
     ),
     updateTabPtyId,
-    replaceTerminalLayoutPanePtyId,
     terminalLayoutsByTabId,
     unifiedTabsByWorktree: {
       [WORKTREE_ID]: args.structured
@@ -337,9 +330,7 @@ describe('worktree agent activation gate', () => {
 
     // The host's graph omits unmounted panes; minting here forked the agent onto a second tab.
     expect(createTab).not.toHaveBeenCalled()
-    expect(deps.getState().terminalLayoutsByTabId['tab-live']?.ptyIdsByLeafId).toEqual({
-      [LIVE_LEAF_ID]: ptyId
-    })
+    // The leaf's binding is main's; this window records only the live attachment.
     expect(deps.getState().ptyIdsByTabId['tab-live']).toEqual([ptyId])
     expect(resume).not.toHaveBeenCalled()
   })
@@ -613,11 +604,6 @@ describe('worktree agent activation gate', () => {
 
     expect(createTab).not.toHaveBeenCalled()
     expect(store.updateTabPtyId).toHaveBeenCalledWith('tab-live', livePtyId)
-    expect(store.replaceTerminalLayoutPanePtyId).toHaveBeenCalledWith(
-      'tab-live',
-      LIVE_LEAF_ID,
-      livePtyId
-    )
   })
 
   it('materializes the host tab id for a surface this renderer never mounted', async () => {
@@ -736,9 +722,7 @@ describe('worktree agent activation gate', () => {
       await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
       expect(createTab).not.toHaveBeenCalled()
       expect(resume).not.toHaveBeenCalled()
-      expect(store.terminalLayoutsByTabId['tab-live']?.ptyIdsByLeafId).toEqual({
-        [LIVE_LEAF_ID]: livePtyId
-      })
+      expect(store.ptyIdsByTabId['tab-live']).toEqual([livePtyId])
     }
   )
 
@@ -759,9 +743,7 @@ describe('worktree agent activation gate', () => {
     await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
 
     expect(createTab).not.toHaveBeenCalled()
-    expect(store.terminalLayoutsByTabId['tab-live']?.ptyIdsByLeafId).toEqual({
-      [LIVE_LEAF_ID]: livePtyId
-    })
+    expect(store.ptyIdsByTabId['tab-live']).toEqual([livePtyId])
   })
 
   it('re-reads local ownership after the census before minting', async () => {

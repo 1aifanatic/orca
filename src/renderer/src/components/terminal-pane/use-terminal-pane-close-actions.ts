@@ -59,7 +59,11 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
             // The user closed a launch pane whose agent is still starting; main stops that launch.
             noteAgentLaunchPaneClosedByUser(tabId, leafId)
           }
-          commitTerminalSurfaceClose(worktreeId, { kind: 'pane', tabId, leafId })
+          commitTerminalSurfaceClose(useAppStore.getState(), worktreeId, {
+            kind: 'pane',
+            tabId,
+            leafId
+          })
           retireUnboundIpcTerminalPane({
             getState: useAppStore.getState,
             tabId,
@@ -245,6 +249,7 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
       void detachTerminalPaneToTab({
         livePtyId,
         getStore: useAppStore.getState,
+        subscribe: useAppStore.subscribe,
         manager: managerRef.current,
         persistLayoutSnapshot,
         sourcePaneId,

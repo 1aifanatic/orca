@@ -8,6 +8,7 @@ import type {
 } from '../../../../shared/terminal-tab-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { TerminalTopologySlice } from '../../../../shared/terminal-topology-slice'
+import type { PendingTerminalPane, PendingTerminalPaneKey } from './terminal-pending-panes'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
 import type { SetupSplitDirection } from '../../../../shared/worktree/launch-types'
 import type {
@@ -198,7 +199,6 @@ export type TerminalActions = {
   clearCodexRestartNotice: (ptyId: string) => void
   dismissCodexRestartNotices: (ptyIds: string[]) => void
   reopenCodexRestartPrompt: (ptyId: string) => void
-  replaceTerminalLayoutPanePtyId: (tabId: string, leafId: string, ptyId: string) => void
   setTabPaneExpanded: (tabId: string, expanded: boolean) => void
   setTabCanExpandPane: (tabId: string, canExpand: boolean) => void
   setTabLayout: (tabId: string, layout: TerminalLayoutSnapshot | null) => void
@@ -298,6 +298,9 @@ export type TerminalActions = {
     tabId: string,
     root: TerminalPaneLayoutNode
   ) => void
+  markPendingTerminalPane: (entry: PendingTerminalPane) => void
+  /** Main answered a close; the pending remove ends once the mirror holds `publishSeq`. */
+  settlePendingTerminalPaneRemoval: (pane: PendingTerminalPaneKey, publishSeq?: number) => void
   /** Hydrates canonical rows first, then transfers normalized pane authority post-publication. */
   hydrateWorkspaceSession: (
     session: WorkspaceSessionState,

@@ -16,7 +16,6 @@ describe('terminal no-op subscriber budget', () => {
 
     for (let i = 0; i < 25; i += 1) {
       const s = store.getState()
-      s.replaceTerminalLayoutPanePtyId('missing', 'leaf', 'pty')
       expect(s.consumeSuppressedPtyExit('missing')).toBe(false)
       expect(s.consumePendingCodexPaneRestart('missing')).toBe(false)
       s.clearCodexRestartNotice('missing')
@@ -50,7 +49,6 @@ describe('terminal no-op subscriber budget', () => {
       () => store.getState().markNativeChatLaunchPromptFailed('tab'),
       () => store.getState().markNativeChatLaunchDraftAdopted('tab'),
       () => store.getState().resolveNativeChatLaunchDraft('tab', draft),
-      () => store.getState().replaceTerminalLayoutPanePtyId('tab', 'leaf', 'pty'),
       () => store.getState().clearNativeChatLaunchPrompt('tab'),
       () => store.getState().clearNativeChatLaunchDraft('tab')
     ]

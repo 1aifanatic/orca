@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import { collectLeafIds } from '../components/terminal-pane/terminal-pane-layout-tree'
-import {
-  planTerminalLiveLayoutRemovals,
-  selectRetiredPaneIds,
-  trackRetiredLeafIds
-} from '../components/terminal-pane/terminal-live-layout-reconciliation'
+import { planTerminalLiveLayoutRemovals } from '../components/terminal-pane/terminal-live-layout-reconciliation'
 import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync'
 import {
   clearWebSessionTerminalOrphanRecoveryForTests,
@@ -61,28 +57,19 @@ function retiredSnapshot(): RuntimeMobileSessionTabsResult {
 
 function createReconciliation() {
   let state = makeState()
-  let previousLayoutLeafIds: ReadonlySet<string> = new Set()
-  let retiredLeafIds: ReadonlySet<string> = new Set()
   const mounted = new Set(mountedLeaves)
   const call = vi.fn(async () => {
     throw new Error('execution host unavailable')
   })
 
-  function plan(secondStarting = false): number[] {
+  function plan(secondPending = false): string[] {
     const root = state.terminalLayoutsByTabId[TAB_ID]?.root
     expect(root).toBeDefined()
-    const layoutLeafIds = new Set(root ? collectLeafIds(root) : [])
-    retiredLeafIds = trackRetiredLeafIds({
-      retiredLeafIds,
-      previousLayoutLeafIds,
-      layoutLeafIds,
-      mountedLeafIds: mounted
-    })
-    previousLayoutLeafIds = layoutLeafIds
-    return selectRetiredPaneIds(planTerminalLiveLayoutRemovals(root, mounted, retiredLeafIds), {
-      paneIdForLeaf: (leaf) => (leaf === LEAF_ID ? 1 : 2),
-      isPaneStarting: (pane) => pane === 2 && secondStarting
-    })
+    return planTerminalLiveLayoutRemovals(
+      root,
+      mounted,
+      new Set(secondPending ? [SECOND_LEAF_ID] : [])
+    )
   }
 
   return {
@@ -127,14 +114,14 @@ describe('host snapshot fences before split-pane retirement', () => {
     expect(view.plan()).toEqual([])
   })
 
-  it('defers proven retirement while the pane is starting and does not detach twice', async () => {
+  it('defers proven retirement while the pane is pending and does not detach twice', async () => {
     const view = createReconciliation()
     await view.receive(snapshot(2))
     view.plan()
     await view.receive(retiredSnapshot())
     expect(view.leaves()).toEqual([LEAF_ID])
     expect(view.plan(true)).toEqual([])
-    expect(view.plan()).toEqual([2])
+    expect(view.plan()).toEqual([SECOND_LEAF_ID])
     view.removeSecond()
     expect(view.plan()).toEqual([])
   })
