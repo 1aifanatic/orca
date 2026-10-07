@@ -43,6 +43,15 @@ function runtimeStub(overrides: {
     }
     return COMPOSER_READY
   })
+  const waitForAgentLaunchFallback = vi.fn(async () => ({
+    ready: true,
+    reason: 'foreground-match' as const
+  }))
+  const getTerminalPromptRequestBinding = () => ({
+    ptyId: 'pty-1',
+    processIncarnation: 'launch-1',
+    generation: 1
+  })
   const readLaunchedAgentForeground = vi.fn(async () => overrides.foreground ?? 'agent')
   const subscribeToTerminalData = vi.fn(() => () => {})
   const sendTerminalAgentPrompt = vi.fn<SendFn>(
@@ -53,8 +62,10 @@ function runtimeStub(overrides: {
     waitForFreshWorkerComposer,
     sendTerminalAgentPrompt,
     readLaunchedAgentForeground,
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the deliverer reaches exactly these five runtime methods; anything else would throw rather than read a wrong value.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub implements the runtime methods this deliverer reaches; an omitted method would throw.
     runtime: {
+      waitForAgentLaunchFallback,
+      getTerminalPromptRequestBinding,
       waitForTerminal,
       waitForFreshWorkerComposer,
       sendTerminalAgentPrompt,
@@ -107,7 +118,7 @@ describe('writing a launch prompt into a terminal agent', () => {
     expect(options.composerReady).toBe(true)
   })
 
-  it('writes a desktop launch once the budget is spent and the agent holds the pane, as the desktop paste did, on its Enter timing, and says its composer was never seen', async () => {
+  it('writes a desktop launch after positive fallback evidence, on its normal Enter timing, with composer unobserved', async () => {
     const stub = runtimeStub({})
     const onComposerUnobserved = vi.fn()
     const delivered = await deliverTerminalAgentLaunchPrompt({
@@ -122,7 +133,7 @@ describe('writing a launch prompt into a terminal agent', () => {
 
     expect(delivered).toBe(true)
     expect(stub.waitForTerminal).not.toHaveBeenCalled()
-    // Main's blind paste submitted on its normal Enter timing.
+    // Main's evidence-qualified fallback submits on its normal Enter timing.
     expect(stub.sendTerminalAgentPrompt.mock.calls[0]?.[2]?.composerReady).toBe(true)
     expect(onComposerUnobserved).toHaveBeenCalledOnce()
   })

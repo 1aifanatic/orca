@@ -12,8 +12,8 @@
  * proven in front (`readLaunchedAgentForeground`). A signal is never proof by itself: a shell back
  * at its prompt turns bracketed paste on too, so the write still needs the agent found in front.
  *
- * Where the desktop pasted blind once its budget ran out, the host falls back to the `tui-idle`
- * evidence ranking (idle titles, known ready screens), which also reports a dialog left up. Agents
+ * Desktop launches use its positive title/process/child fallback after the composer budget. Other
+ * callers use the `tui-idle` evidence ranking, which also reports a dialog left up. Agents
  * whose composer marker a captured boot proves (`composerReadyCaptures`) wait for their marker alone.
  */
 
@@ -37,6 +37,9 @@ export type LaunchedAgentReadinessRuntime = Pick<
   OrcaRuntimeService,
   'waitForTerminal' | 'waitForFreshWorkerComposer'
 >
+
+export type LaunchedAgentLaunchReadinessRuntime = LaunchedAgentReadinessRuntime &
+  Pick<OrcaRuntimeService, 'waitForAgentLaunchFallback'>
 
 /**
  * What keeps a ready signal from counting: a startup dialog in the pane's text or on its screen, or
@@ -149,17 +152,15 @@ export function waitForWorkerAgentReady(
  * ready, blocked by a dialog, or not ready. Throws when that runs out too.
  */
 export async function waitForLaunchedAgentComposer(
-  runtime: LaunchedAgentReadinessRuntime,
+  runtime: LaunchedAgentLaunchReadinessRuntime,
   handle: string,
   agent: TuiAgent,
   timeoutMs: number,
-  /** Where the desktop's paste wrote blind once its budget ran out on a screen with no dialog, answer
-   *  `budget-spent` so the caller writes, its guard still finding the agent in front. Never Codex,
-   *  which can hold provisional input it then discards. */
-  { writeWhenBudgetSpent = false }: { writeWhenBudgetSpent?: boolean } = {}
-): Promise<RuntimeTerminalWait | 'budget-spent'> {
+  /** The desktop qualifies a timed-out composer with positive fallback evidence; never Codex. */
+  { desktopFallback = false }: { desktopFallback?: boolean } = {}
+): Promise<RuntimeTerminalWait | 'fallback-ready'> {
   const markerLane = getLaunchedAgentReadinessLane(agent) === 'composer-marker'
-  if (markerLane && !writeWhenBudgetSpent) {
+  if (markerLane && !desktopFallback) {
     return runtime.waitForFreshWorkerComposer(handle, agent, timeoutMs)
   }
   const startedAt = Date.now()
@@ -173,9 +174,11 @@ export async function waitForLaunchedAgentComposer(
   } catch (error) {
     // Out of budget, a dialog up, or a pane it could not read: the idle wait answers each, and
     // throws for a handle that is gone.
-    if (writeWhenBudgetSpent && error instanceof Error && error.message === 'timeout') {
-      // Main's paste gave Codex up at its budget, and wrote every other agent blind.
-      return agent === 'codex' ? notReadyInBudget(handle) : 'budget-spent'
+    if (desktopFallback && error instanceof Error && error.message === 'timeout') {
+      if (agent !== 'codex' && (await runtime.waitForAgentLaunchFallback(handle, agent)).ready) {
+        return 'fallback-ready'
+      }
+      return notReadyInBudget(handle)
     }
   }
   if (markerLane) {
@@ -186,7 +189,7 @@ export async function waitForLaunchedAgentComposer(
       Math.max(1, timeoutMs - (Date.now() - startedAt))
     )
   }
-  // Checked, where the desktop pasted blind: an agent that shows no readiness keeps its text.
+  // Other callers retain the idle wait for the remaining launch budget.
   return runtime.waitForTerminal(handle, {
     condition: 'tui-idle',
     timeoutMs: Math.max(1, timeoutMs - (Date.now() - startedAt)),
