@@ -119,7 +119,7 @@ describe('a Claude start whose CLI answers initialize but not a control request'
     })
     expect(claude.child(SESSION).launch.options).toMatchObject({
       model: 'sonnet',
-      permissionMode: 'plan'
+      permissionMode: 'acceptEdits'
     })
     // The record keeps the saved choices through the start.
     await vi.waitFor(() => expect(record(host)?.options).toEqual({ ...saved, effort: 'high' }), {
@@ -216,7 +216,7 @@ describe('a Claude start whose CLI answers initialize but not a control request'
     expect(claude.child(replacement).launch.options).toMatchObject({
       sessionId: claudeSessionIdForOrcaSession(replacement),
       model: 'sonnet',
-      permissionMode: 'plan'
+      permissionMode: 'acceptEdits'
     })
     expect(claude.child(replacement).launch.options.resume).toBeUndefined()
     await vi.waitFor(() =>

@@ -37,12 +37,14 @@ let host: StructuredAgentSessionHost
 let adapter: ClaudeStructuredSessionAdapter
 let store: AgentSessionRecordStore
 let claude: ReturnType<typeof fakeClaude>
+let openConnection: ReturnType<typeof vi.fn<typeof claude.openConnection>>
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-permission-relaunch-'))
   resetHostTestOperationIds()
   const log = recordingStructuredAgentSessionLogger()
   claude = fakeClaude({ replayUuid: null })
+  openConnection = vi.fn(claude.openConnection)
   const lifecycle: Promise<void>[] = []
   adapter = new ClaudeStructuredSessionAdapter({
     // As the real resolver: the chat's stored mode, else the setting (here, Ask).
@@ -71,7 +73,7 @@ beforeEach(async () => {
     onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
     persistHandle: async () => undefined,
     logger: log.logger,
-    openConnection: claude.openConnection,
+    openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
     now: () => NOW
   })
@@ -156,8 +158,11 @@ it('keeps Full access as the chat mode and relaunches with the flag before the n
       ).toBe(true),
     { timeout: 10_000 }
   )
-  // The new child replays the chat's mode, which it can now take.
-  expect(permissionWrites(1)).toEqual([{ mode: 'bypassPermissions' }])
+  // The child starts with the flag instead of waiting for a permission restore request.
+  expect(openConnection.mock.calls[1]?.[0].options.extraArgs).toEqual({
+    'dangerously-skip-permissions': null
+  })
+  expect(permissionWrites(1)).toEqual([])
   // The message went only to the child launched for it.
   expect(
     claude.connections[0]?.sent.some((message) =>
