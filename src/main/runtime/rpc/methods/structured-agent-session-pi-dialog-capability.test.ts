@@ -338,4 +338,49 @@ describe('Pi dialog-shape client capability', () => {
       expect(replies).toHaveLength(seesPi ? 3 : 2)
     }
   })
+
+  it('filters Pi prompt alerts from a client that asked for prompts', async () => {
+    hostCalls.sessionAgent.mockImplementation((sessionId: string) =>
+      sessionId === SESSION ? 'pi' : 'codex'
+    )
+    hostCalls.subscribeTurnCompletions = vi.fn(
+      (subscriber: StructuredAgentSessionTurnCompletionSubscriber) => {
+        const prompt = {
+          scope: {
+            executionHostId: 'local',
+            wslDistro: null,
+            workspaceId: 'workspace-1',
+            workspaceKind: 'git-worktree' as const
+          },
+          sessionId: SESSION,
+          promptId: 'prompt-1',
+          raisedAt: 1
+        }
+        subscriber.emit({ type: 'prompt', prompt })
+        subscriber.emit({ type: 'prompt', prompt: { ...prompt, sessionId: 'codex-session' } })
+        subscriber.emit({ type: 'end' })
+        return () => undefined
+      }
+    )
+    for (const [client, seesPi] of [
+      [OLD_CLIENT, false],
+      [DESKTOP_CLIENT, true]
+    ] as const) {
+      const replies: unknown[] = []
+      await dispatcher().dispatchStreaming(
+        {
+          id: 'prompt-test',
+          authToken: 'token',
+          method: 'agentSession.subscribeTurnCompletions',
+          params: { includePrompts: true }
+        },
+        (raw) => replies.push(JSON.parse(raw)),
+        client
+      )
+      const serialized = JSON.stringify(replies)
+      expect(serialized).toContain('codex-session')
+      expect(serialized.includes(SESSION)).toBe(seesPi)
+      expect(replies).toHaveLength(seesPi ? 3 : 2)
+    }
+  })
 })
