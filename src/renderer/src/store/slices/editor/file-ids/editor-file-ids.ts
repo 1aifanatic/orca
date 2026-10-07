@@ -1,6 +1,7 @@
 import type { AppState } from '../../../types'
 import type { EditorSlice } from '../types/editor-slice'
 import type { DiffSource, EditorOpenTargetOptions, OpenFile } from '../types/open-file'
+import { toSshExecutionHostId } from '../../../../../../shared/execution-host'
 import { areLocalWindowsWslPathAliases } from '../../../../../../shared/cross-platform-path'
 import { editorDocumentIdentityKey, runtimeOwnerKey } from './editor-document-identity'
 import { getConnectionIdForFileFromState } from '@/lib/connection-owner-resolution'
@@ -18,6 +19,25 @@ export function isSameEditorOwner(
     file.worktreeId === worktreeId &&
     runtimeOwnerKey(file.runtimeEnvironmentId) === runtimeOwnerKey(runtimeEnvironmentId)
   )
+}
+
+export function mayShareEditorBackingFile(candidate: OpenFile, file: OpenFile): boolean {
+  if (
+    candidate.filePath !== file.filePath ||
+    runtimeOwnerKey(candidate.runtimeEnvironmentId) !== runtimeOwnerKey(file.runtimeEnvironmentId)
+  ) {
+    return false
+  }
+  const candidateHost =
+    candidate.operationProvenance?.generation.route.executionHostId ??
+    (candidate.externalSshTargetId
+      ? toSshExecutionHostId(candidate.externalSshTargetId)
+      : undefined)
+  const fileHost =
+    file.operationProvenance?.generation.route.executionHostId ??
+    (file.externalSshTargetId ? toSshExecutionHostId(file.externalSshTargetId) : undefined)
+  // Missing provenance cannot prove that a retained view uses a different backing file.
+  return !candidateHost || !fileHost || candidateHost === fileHost
 }
 
 export function canReuseLocalWslAlias(
@@ -124,11 +144,24 @@ export function collectSameDocumentOpenFileIds(
   if (file.mode !== 'edit') {
     return fileIds
   }
-  const closeIdentity = (candidate: OpenFile): string =>
-    JSON.stringify([
+  const closeIdentity = (candidate: OpenFile): string => {
+    const provenance = candidate.operationProvenance
+    const generation = provenance?.generation
+    return JSON.stringify([
+      editorDocumentIdentityKey(candidate),
       editorDocumentIdentityKey({ ...candidate, ...getPersistedEditorOwnerFields(candidate) }),
-      state ? getEditorModelOwnerKey(candidate, state) : null
+      state ? getEditorModelOwnerKey(candidate, state) : null,
+      provenance?.ownershipProjection,
+      provenance?.expectedSshConnectionGeneration,
+      generation?.route.executionHostId,
+      generation?.route.runtimeEnvironmentId,
+      generation?.runtimeConnectionGeneration,
+      generation?.runtimePairingRevision,
+      generation?.runtimeSshGeneration,
+      generation?.nestedSshGeneration,
+      generation?.directSshGeneration
     ])
+  }
   const identity = closeIdentity(file)
   const modes = getReusableOpenFileModes(file.mode)
   for (const candidate of openFiles) {

@@ -5,7 +5,10 @@ import { notifyHostOfMirroredEditorClose } from '@/runtime/close-mirrored-editor
 import { MAX_RECENT_CLOSED_EDITOR_TABS, type OpenFile } from '../types/open-file'
 import { removeMarkdownVisibilityKeys } from '../tabs/workspace-editor-item'
 import { isEditorTabContentType } from '../tabs/editor-tab-content-type'
-import { collectSameDocumentOpenFileIds } from '../file-ids/editor-file-ids'
+import {
+  collectSameDocumentOpenFileIds,
+  mayShareEditorBackingFile
+} from '../file-ids/editor-file-ids'
 import {
   deleteUntouchedUntitledFile,
   shouldDeleteUntouchedUntitledFile
@@ -18,8 +21,7 @@ export function createCloseFileAction(
 ): Pick<EditorSlice, 'closeFile'> {
   return {
     closeFile: (fileId) => {
-      // Why one snapshot: every read below describes the same pre-set() state, and closeFile runs
-      // once per tab in the bulk-close loops, so a get() per candidate is paid N times over.
+      // One snapshot keeps bulk-close decisions consistent without repeated store reads.
       const preCloseState = get()
       // Why: capture untitled+dirty state before set() mutates the store, so cleanup of throwaway untitled files can decide after removal.
       const preClose = preCloseState.openFiles.find((f) => f.id === fileId)
@@ -33,9 +35,7 @@ export function createCloseFileAction(
       const documentFiles = preCloseState.openFiles.filter(
         (file) => file.worktreeId === preClose?.worktreeId && documentFileIds.has(file.id)
       )
-      // Why: a pinned tab survives every bulk close (see `isPinned` in shared/tab-types.ts), and the
-      // sweep is a bulk close the user never aimed at that sibling — so pinning keeps it like a
-      // rival draft does. The named id still closes even when pinned: that one was aimed at.
+      // Only the named tab was explicitly closed; pinned siblings survive the sweep.
       const pinnedSiblingIds = new Set(
         preClose
           ? (preCloseState.unifiedTabsByWorktree?.[preClose.worktreeId] ?? [])
@@ -43,11 +43,7 @@ export function createCloseFileAction(
               .map((tab) => tab.entityId)
           : []
       )
-      // Why: duplicate records for one document each keep their own tab; closing one of them
-      // leaves the rest to reopen the file, so a close takes the whole identity with it.
-      // Why the unsaved filter: the caller's save/discard confirmation only asked about the named
-      // id, so a duplicate holding its own unsaved buffer stays open rather than being discarded
-      // silently — closing that one goes through the prompt on its own.
+      // Save/discard confirmation covers only the named record, never a sibling's draft.
       const keptSiblingIds = new Set(
         documentFiles
           .filter(
@@ -60,12 +56,25 @@ export function createCloseFileAction(
           ? documentFiles.filter((file) => !keptSiblingIds.has(file.id)).map((file) => file.id)
           : [fileId]
       )
+      const closedTabOrderIds = new Set([
+        ...siblingIds,
+        ...(preCloseState.unifiedTabsByWorktree?.[preClose?.worktreeId ?? ''] ?? [])
+          .filter((tab) => siblingIds.has(tab.entityId) && isEditorTabContentType(tab.contentType))
+          .map((tab) => tab.id)
+      ])
       const sweptUnsavedWork = documentFiles.some(
         (file) => siblingIds.has(file.id) && hasUnsavedWork(file)
       )
       // Why the kept-sibling guard: a surviving duplicate still points at the untitled placeholder on disk.
       const shouldDeleteFromDisk =
-        keptSiblingIds.size === 0 && shouldDeleteUntouchedUntitledFile(preClose, sweptUnsavedWork)
+        preClose !== undefined &&
+        keptSiblingIds.size === 0 &&
+        shouldDeleteUntouchedUntitledFile(preClose, sweptUnsavedWork) &&
+        !preCloseState.openFiles.some(
+          (file) =>
+            (file.worktreeId !== preClose.worktreeId || !siblingIds.has(file.id)) &&
+            mayShareEditorBackingFile(file, preClose)
+        )
 
       // Why: mirrored tabs are host-owned, so the host must close its copy or its next snapshot re-mirrors the file and the tab reopens.
       // Why per sibling: the notifier resolves the mirror from the id it is given, so a mirrored duplicate swept under another id is never reported.
@@ -212,7 +221,7 @@ export function createCloseFileAction(
             ? {
                 ...s.tabBarOrderByWorktree,
                 [worktreeId]: (s.tabBarOrderByWorktree[worktreeId] ?? []).filter(
-                  (entryId) => !siblingIds.has(entryId)
+                  (entryId) => !closedTabOrderIds.has(entryId)
                 )
               }
             : s.tabBarOrderByWorktree
@@ -286,14 +295,12 @@ export function createCloseFileAction(
 
       // Why: untitled unedited files exist on disk only because createUntitledMarkdownFile() eagerly writes a bindable path; delete the clutter (fire-and-forget).
       if (shouldDeleteFromDisk && preClose && typeof window !== 'undefined') {
-        deleteUntouchedUntitledFile(get(), preClose)
+        deleteUntouchedUntitledFile(get, preClose)
       }
 
       // Why: route editor/diff closes through the unified close path (MRU + visual-neighbor fallback) so they match terminal/browser tab-close behavior.
       // Why collected first: each close rewrites the tab maps this scan would otherwise be reading.
-      // Why scoped: every swept record shares preClose's worktree and an editor tab is filed under
-      // its file's worktree, so the other worktrees cost a pass per close and can only contribute a
-      // foreign tab that happens to reuse the id.
+      // Other workspaces may reuse the same file ID and must retain their tabs.
       const tabsByWorktree = get().unifiedTabsByWorktree ?? {}
       const scannedTabLists = preClose
         ? [tabsByWorktree[preClose.worktreeId] ?? []]
