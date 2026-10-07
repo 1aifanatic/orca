@@ -61,6 +61,23 @@ describe('probeAgentCliVersion', () => {
   })
 })
 
+describe('probeAgentCliVersion refusal', () => {
+  beforeEach(() => runProcess.mockReset())
+
+  it('says why it refused, with what the binary printed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    prints('', { code: 1, stderr: 'Error: EACCES mkdir /x\n' })
+    await probeAgentCliVersion(INPUT, anyVersion)
+    prints('2.0.21\n')
+    await probeAgentCliVersion(INPUT, () => false)
+    expect(warn.mock.calls.map(([line]) => line)).toEqual([
+      '[agent-cli-version] /opt/bin/agent --version: exited 1: Error: EACCES mkdir /x',
+      '[agent-cli-version] /opt/bin/agent --version: 2.0.21 is not a supported release'
+    ])
+    warn.mockRestore()
+  })
+})
+
 describe('isStableCliVersionOnLine', () => {
   const line = { major: 1, floor: '1.18.31' }
 

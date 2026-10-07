@@ -14,8 +14,12 @@ import {
   type AgentSessionProviderHandleChain
 } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
+import type { resolveCliCommand } from '../../shared/node-cli-command-resolution'
 import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
+import {
+  resolveStructuredAgentCommand,
+  type StructuredAgentCommandSettings
+} from '../native-chat/structured-agent-command-resolution'
 import { probeAgentCliVersion } from '../agent-cli-version-probe'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import type { JournalLoad } from '../native-chat/agent-session-journal/journal-open'
@@ -62,6 +66,8 @@ export type AcpStructuredLaunchResolverDeps = {
   resolveLaunchEnv?: (agent: string) => Record<string, string>
   /** The Agent Permissions setting's bypass posture for this agent, re-read per acquisition. */
   resolveFullAccess?: (agent: string) => boolean
+  /** The user's per-agent Command setting, re-read per acquisition; none runs the stock binary. */
+  resolveCommandSettings?: () => StructuredAgentCommandSettings
   resolveCommand?: typeof resolveCliCommand
   homePath?: string
   /** The environment the child process inherits at spawn; this process's own by default. */
@@ -69,18 +75,31 @@ export type AcpStructuredLaunchResolverDeps = {
   probeVersion?: typeof probeAgentCliVersion
 }
 
-/** The binary a launch with `env` spawns: PATH first, then the agent's own install directories.
- *  A create's version check resolves through here too, so it asks about the same file. */
+/** The binary a launch with `env` spawns: the user's Command setting when set, else the stock
+ *  binary from PATH, then the agent's own install directories. A create's version check resolves
+ *  through here too, so it asks about the same file. */
 export function resolveAcpLaunchCommand(
   spec: AcpLaunchSpec,
   env: Readonly<Record<string, string>>,
-  options: { resolveCommand?: typeof resolveCliCommand; homePath?: string } = {}
+  options: {
+    commandSettings?: StructuredAgentCommandSettings
+    resolveCommand?: typeof resolveCliCommand
+    homePath?: string
+  } = {}
 ): string {
   const homePath = env.HOME ?? env.USERPROFILE ?? options.homePath ?? homedir()
   const pathEnv = [env.PATH ?? env.Path, ...spec.installDirectories({ env, homePath })]
     .filter((entry): entry is string => Boolean(entry))
     .join(delimiter)
-  return (options.resolveCommand ?? resolveCliCommand)(spec.command, { pathEnv, homePath })
+  return resolveStructuredAgentCommand(
+    spec.agent,
+    options.commandSettings ?? {},
+    { pathEnv, homePath },
+    {
+      command: spec.command,
+      ...(options.resolveCommand ? { resolve: options.resolveCommand } : {})
+    }
+  )
 }
 
 /** Whether `command` is a release the spec runs a structured chat on; true when it names none. */
@@ -122,7 +141,10 @@ export function createAcpStructuredLaunchResolver(
     })
     const envToDelete = spec.scrubEnvironment?.(env, deps.inheritedEnv ?? process.env) ?? []
     Object.assign(env, spec.env)
-    const command = resolveAcpLaunchCommand(spec, env, deps)
+    const command = resolveAcpLaunchCommand(spec, env, {
+      ...deps,
+      ...(deps.resolveCommandSettings ? { commandSettings: deps.resolveCommandSettings() } : {})
+    })
     const cwd = await deps.resolveWorkspacePath(location.workspaceId)
     // Again at every launch: the binary on PATH may have changed since the chat was created.
     if (!(await acpLaunchVersionSupported(spec, { command, cwd, env }, deps.probeVersion))) {

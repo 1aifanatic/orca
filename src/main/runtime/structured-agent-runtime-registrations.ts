@@ -13,10 +13,12 @@ import {
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
-import type {
-  StructuredAgentSessionAdapter,
-  StructuredAgentSessionLifecycleEvent
+import {
+  isAgentSessionPreSpawnError,
+  type StructuredAgentSessionAdapter,
+  type StructuredAgentSessionLifecycleEvent
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type { StructuredAgentCommandSettings } from '../native-chat/structured-agent-command-resolution'
 import type { StructuredAgentDefinition } from '../native-chat/agent-session-wire/structured-agent-definition'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { readClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
@@ -92,7 +94,11 @@ export type StructuredAgentRuntimeRegistration = {
   supportsLocation: (location: AgentSessionExecutionLocation) => boolean
   /** Whether the agent installed on this host runs a structured chat, asked at create with the
    *  environment a launch starts from; absent when the location alone decides. */
-  supportsLaunch?: (input: { cwd: string; env: Record<string, string> }) => Promise<boolean>
+  supportsLaunch?: (input: {
+    cwd: string
+    env: Record<string, string>
+    commandSettings: StructuredAgentCommandSettings
+  }) => Promise<boolean>
   /** The account a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
   resolveAccountHome: (
     request: StructuredAgentAccountHomeRequest,
@@ -170,9 +176,18 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
     supportsLocation: (location) => supportsSupervisedProviderChildLocation(location),
     ...(spec.supportsVersion
       ? {
-          supportsLaunch: async ({ cwd, env }) => {
+          supportsLaunch: async ({ cwd, env, commandSettings }) => {
             const launchEnv = { ...env, ...spec.env }
-            const command = resolveAcpLaunchCommand(spec, launchEnv)
+            let command: string
+            try {
+              command = resolveAcpLaunchCommand(spec, launchEnv, { commandSettings })
+            } catch (error) {
+              // An unrunnable Command setting is the launch's refusal to state, not a terminal.
+              if (isAgentSessionPreSpawnError(error)) {
+                return true
+              }
+              throw error
+            }
             return acpLaunchVersionSupported(spec, { command, cwd, env: launchEnv })
           }
         }
@@ -192,6 +207,9 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
           resolveWorkspacePath: deps.resolveWorkspacePath,
           resolveEnvironment: context.environment.resolveBaseEnvironment,
           ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
+          ...(deps.resolveAgentCommandSettings
+            ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
+            : {}),
           ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
         }),
         connect: (launch, options) => createAcpAgentConnection(launch, options),

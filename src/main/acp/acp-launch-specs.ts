@@ -16,10 +16,11 @@ import { scrubOpenCodeAcpEnvironment } from '../opencode/opencode-acp-environmen
 import { openCodeStoredUserMessagesReader } from '../opencode/opencode-acp-stored-messages'
 import type { AcpStoredUserMessagesReader } from './acp-recovery-history'
 import { isStableCliVersionOnLine } from '../agent-cli-version-probe'
+import type { TuiAgent } from '../../shared/tui-agent'
 
 export type AcpLaunchSpec = {
-  /** The Orca agent id (a `TuiAgent`), which names the agent's records and its catalog label. */
-  agent: string
+  /** The Orca agent id, which names the agent's records, its catalog label and its settings. */
+  agent: TuiAgent
   command: string
   /** Built per launch: `fullAccess` is the Agent Permissions setting's bypass posture. */
   args(input: { fullAccess: boolean }): string[]

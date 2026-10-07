@@ -9,7 +9,8 @@ import { structuredAgentBaseEnvironment } from './structured-agent-shell-environ
 type LaunchEnvironmentSettings = Pick<
   GlobalSettings,
   'agentDefaultEnv' | 'nativeChatInheritShellEnvironment' | 'nativeChatShellEnvironmentVariables'
->
+> &
+  Partial<Pick<GlobalSettings, 'agentCmdOverrides'>>
 
 /** The environment every agent's launch on this host starts from, for a check made before the
  *  session host is built. */
@@ -28,8 +29,9 @@ type LaunchSupportRuntime = {
   resolveRuntimeFileTarget(selector: string): Promise<{ worktree: { path: string } }>
 }
 
-/** The agent's own check of what is installed on this host, with the environment its launch starts
- *  from, in the workspace it would launch in; true for an agent whose location alone decides. */
+/** The agent's own check of what is installed on this host, with the environment and Command
+ *  setting its launch starts from, in the workspace it would launch in; true for an agent whose
+ *  location alone decides. */
 export async function structuredAgentSupportsLaunch(
   agent: string,
   worktreeSelector: string,
@@ -45,5 +47,5 @@ export async function structuredAgentSupportsLaunch(
     ...(isTuiAgent(agent) ? resolveTuiAgentLaunchEnv(agent, settings.agentDefaultEnv) : {})
   }
   const cwd = (await runtime.resolveRuntimeFileTarget(worktreeSelector)).worktree.path
-  return supportsLaunch({ cwd, env })
+  return supportsLaunch({ cwd, env, commandSettings: settings })
 }
