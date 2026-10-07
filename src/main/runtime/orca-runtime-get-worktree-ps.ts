@@ -241,6 +241,8 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           this.requireStore().getSettings(),
           process.platform
         ),
+      resolveAgentCommand: (agent, options) =>
+        resolveStructuredAgentCommand(agent, this.requireStore().getSettings(), options),
       resolveAgentLaunchEnv: (agent) =>
         isTuiAgent(agent)
           ? resolveTuiAgentLaunchEnv(agent, this.requireStore().getSettings().agentDefaultEnv)

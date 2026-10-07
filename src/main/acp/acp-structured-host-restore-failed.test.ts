@@ -85,6 +85,7 @@ async function openRestoreRig(code: number, message: string) {
     readJournal: (sessionId) => replayJournal(journalDatabase.db, sessionId),
     resolveWorkspacePath: async () => '/workspace',
     resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
+    resolveLaunchArgs: () => [],
     resolveCommand: () => '/fake/grok'
   })
   const warnings = async () => {

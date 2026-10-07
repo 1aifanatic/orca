@@ -767,6 +767,14 @@ describe('saved Arguments refusals', () => {
       "Codex couldn't start. Saved Arguments include a prompt. Remove it from Codex's Arguments in Settings → Agents."
     ],
     [
+      { agent: 'Grok', option: '--cwd', problem: 'unsupportedOption' },
+      "Grok couldn't start. Grok chats can't use --cwd from saved Arguments. Remove it from Grok's Arguments in Settings → Agents. A chat already works in its workspace folder."
+    ],
+    [
+      { agent: 'Grok', option: '-m', problem: 'multipleValues' },
+      "Grok couldn't start. Saved Arguments give -m more than one value. Fix it in Grok's Arguments in Settings → Agents."
+    ],
+    [
       { agent: 'Claude', option: 'quote', problem: 'unclosedQuote' },
       "Claude couldn't start. Saved Arguments have a quote that isn't closed. Fix it in Claude's Arguments in Settings → Agents."
     ]

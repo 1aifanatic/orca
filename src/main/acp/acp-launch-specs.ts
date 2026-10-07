@@ -9,13 +9,15 @@ import {
 import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../ipc/pty/host-env/spawn-env-keys'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
+import { grokAgentArgv } from './acp-dialects/grok-launch-args'
 
 export type AcpLaunchSpec = {
   /** The Orca agent id (a `TuiAgent`), which names the agent's records and its catalog label. */
   agent: string
   command: string
-  /** Built per launch: `fullAccess` is the Agent Permissions setting's bypass posture. */
-  args(input: { fullAccess: boolean }): string[]
+  /** Built per launch: `fullAccess` is the Agent Permissions setting's bypass posture, and
+   *  `configured` the saved Arguments as typed. */
+  args(input: { fullAccess: boolean; configured: readonly string[] }): string[]
   /** Overlaid on the child's environment. */
   env: Readonly<Record<string, string>>
   dialect: AcpDialect
@@ -39,7 +41,7 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   agent: 'grok',
   command: 'grok',
   // `--always-approve` only for full access, as the user's setting chooses.
-  args: ({ fullAccess }) => ['agent', ...(fullAccess ? ['--always-approve'] : []), 'stdio'],
+  args: grokAgentArgv,
   env: {},
   dialect: GROK_ACP_DIALECT,
   loginCommand: ['grok', 'login'],

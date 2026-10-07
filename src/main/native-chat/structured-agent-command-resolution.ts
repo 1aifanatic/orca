@@ -1,5 +1,6 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { TuiAgent } from '../../shared/tui-agent'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import {
   resolveCliCommand,
   resolveExecutableCommand
@@ -37,11 +38,11 @@ function spawnableOn(platform: NodeJS.Platform, command: string): boolean {
 /** Re-read the existing setting for every session acquisition and catalog probe. A set Command
  *  that names no runnable program refuses the start rather than quietly running the stock CLI. */
 export function resolveStructuredAgentCommand(
-  agent: 'claude' | 'codex',
+  agent: string,
   settings: CommandSettings,
   options: CommandOptions = {}
 ): string {
-  if (!hasExplicitTuiLaunchCommand(settings, agent)) {
+  if (!isTuiAgent(agent) || !hasExplicitTuiLaunchCommand(settings, agent)) {
     return resolveCliCommand(agent, options)
   }
   const command = resolveOverride(agent, settings, options)

@@ -171,6 +171,8 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
           readJournal: (sessionId) => replayJournal(context.journalDatabase.db, sessionId),
           resolveWorkspacePath: deps.resolveWorkspacePath,
           resolveEnvironment: context.environment.resolveBaseEnvironment,
+          resolveLaunchArgs: deps.resolveLaunchArgs,
+          ...(deps.resolveAgentCommand ? { resolveCommand: deps.resolveAgentCommand } : {}),
           ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
           ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
         }),

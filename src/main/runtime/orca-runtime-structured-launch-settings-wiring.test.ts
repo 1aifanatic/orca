@@ -22,8 +22,16 @@ describe('execution host structured launch settings wiring', () => {
   it('reads saved Command and Arguments from the host settings and rereads changes', async () => {
     installed.mockClear()
     const settings: Partial<GlobalSettings> = {
-      agentCmdOverrides: { claude: `"${process.execPath}"`, codex: `"${process.execPath}"` },
-      agentDefaultArgs: { claude: '--model "model one"', codex: '-c model_reasoning_effort=high' }
+      agentCmdOverrides: {
+        claude: `"${process.execPath}"`,
+        codex: `"${process.execPath}"`,
+        grok: `"${process.execPath}"`
+      },
+      agentDefaultArgs: {
+        claude: '--model "model one"',
+        codex: '-c model_reasoning_effort=high',
+        grok: '--debug -m grok-4'
+      }
     }
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mocked installer only reads the store's getSettings method.
     const runtime = new OrcaRuntimeService({ getSettings: () => settings } as never)
@@ -34,6 +42,9 @@ describe('execution host structured launch settings wiring', () => {
     expect(deps?.resolveCodexCommand?.()).toBe(process.execPath)
     expect(await deps?.resolveLaunchArgs?.('claude')).toEqual(['--model', 'model one'])
     expect(await deps?.resolveLaunchArgs?.('codex')).toEqual(['-c', 'model_reasoning_effort=high'])
+    // A Grok chat reads its own saved Arguments and Command, keyed by its agent.
+    expect(await deps?.resolveLaunchArgs?.('grok')).toEqual(['--debug', '-m', 'grok-4'])
+    expect(deps?.resolveAgentCommand?.('grok', {})).toBe(process.execPath)
     settings.agentDefaultArgs = { claude: '--model second', codex: '' }
     expect(await deps?.resolveLaunchArgs?.('claude')).toEqual(['--model', 'second'])
     expect(await deps?.resolveLaunchArgs?.('codex')).toEqual([])
@@ -42,8 +53,11 @@ describe('execution host structured launch settings wiring', () => {
     expect(() => deps?.resolveClaudeCommand?.()).toThrow(notRunnable)
     settings.agentCmdOverrides = { codex: '/missing/codex' }
     expect(() => deps?.resolveCodexCommand?.()).toThrow(notRunnable)
+    settings.agentCmdOverrides = { grok: '/missing/grok' }
+    expect(() => deps?.resolveAgentCommand?.('grok', {})).toThrow(notRunnable)
     settings.agentCmdOverrides = {}
     expect(deps?.resolveClaudeCommand?.()).toBe(resolveCliCommand('claude'))
     expect(deps?.resolveCodexCommand?.()).toBe(resolveCliCommand('codex'))
+    expect(deps?.resolveAgentCommand?.('grok', {})).toBe(resolveCliCommand('grok'))
   })
 })

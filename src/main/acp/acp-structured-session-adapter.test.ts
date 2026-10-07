@@ -456,8 +456,12 @@ describe('ACP structured session adapter: close and exit', () => {
 
 describe('Grok launch spec', () => {
   it('runs `grok agent stdio`, asking for always-approve only with full access', () => {
-    expect(GROK.args({ fullAccess: false })).toEqual(['agent', 'stdio'])
-    expect(GROK.args({ fullAccess: true })).toEqual(['agent', '--always-approve', 'stdio'])
+    expect(GROK.args({ fullAccess: false, configured: [] })).toEqual(['agent', 'stdio'])
+    expect(GROK.args({ fullAccess: true, configured: [] })).toEqual([
+      'agent',
+      '--always-approve',
+      'stdio'
+    ])
     expect(GROK.env).toEqual({})
   })
 })

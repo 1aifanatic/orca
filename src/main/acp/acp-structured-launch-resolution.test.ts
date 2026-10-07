@@ -58,11 +58,14 @@ function journalWithTurns(...providerSessions: string[]): JournalLoad {
 function resolver(
   record: AgentSessionRecord,
   fullAccess = false,
-  readJournal: () => JournalLoad | null = () => null
+  readJournal: () => JournalLoad | null = () => null,
+  launchArgs: string[] = []
 ) {
   const searched: (string | null | undefined)[] = []
+  const argsReadFor: string[] = []
   return {
     searched,
+    argsReadFor,
     resolve: createAcpStructuredLaunchResolver(GROK, {
       store: { getRecord: () => record },
       readJournal,
@@ -70,9 +73,13 @@ function resolver(
       resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
       resolveLaunchEnv: () => ({ GROK_EXTRA: '1' }),
       resolveFullAccess: () => fullAccess,
-      resolveCommand: (command, options) => {
+      resolveLaunchArgs: (provider) => {
+        argsReadFor.push(provider)
+        return launchArgs
+      },
+      resolveCommand: (agent, options) => {
         searched.push(options?.pathEnv)
-        return `/resolved/${command}`
+        return `/resolved/${agent}`
       }
     })
   }
@@ -99,6 +106,20 @@ describe('ACP launch resolution', () => {
   it('asks the agent to approve everything only under full access', async () => {
     const launch = await resolver(grokRecord(), true).resolve({ identity })
     expect(launch.args).toContain('--always-approve')
+  })
+
+  it("places the chat's saved Arguments where `grok agent` reads them", async () => {
+    const { resolve, argsReadFor } = resolver(grokRecord(), false, () => null, [
+      '--debug',
+      '-m',
+      'grok-4',
+      '--no-leader',
+      '--sandbox',
+      'strict'
+    ])
+    const launch = await resolve({ identity })
+    expect(argsReadFor).toEqual(['grok'])
+    expect(launch.args).toEqual(['--debug', 'agent', '--model', 'grok-4', '--no-leader', 'stdio'])
   })
 
   it('resumes the chain head by its key, possibly unsaved only when this chat created it', async () => {

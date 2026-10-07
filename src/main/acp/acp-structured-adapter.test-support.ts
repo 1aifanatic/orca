@@ -172,7 +172,7 @@ export async function openAcpAdapterRig(
     resolveLaunch: async () => ({
       spec: GROK,
       command: '/opt/grok/bin/grok',
-      args: GROK.args({ fullAccess: false }),
+      args: GROK.args({ fullAccess: false, configured: [] }),
       cwd: '/workspace/project',
       env: { PATH: '/usr/bin', ORCA_PANE_KEY: 'tab-1:pane-1', ORCA_AGENT_HOOK_PORT: '1234' },
       fullAccess: false,

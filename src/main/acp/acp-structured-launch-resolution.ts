@@ -23,6 +23,7 @@ import {
   spelledProviderTimelineItemKey
 } from '../native-chat/agent-session-timeline/provider-timeline-identity'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AcpLaunchSpec } from './acp-launch-specs'
 import { acpSessionNotRestoredItem } from './acp-session-reopen-failure'
 
@@ -58,7 +59,10 @@ export type AcpStructuredLaunchResolverDeps = {
   resolveLaunchEnv?: (agent: string) => Record<string, string>
   /** The Agent Permissions setting's bypass posture for this agent, re-read per acquisition. */
   resolveFullAccess?: (agent: string) => boolean
-  resolveCommand?: typeof resolveCliCommand
+  /** The agent's saved Arguments, re-read per acquisition. */
+  resolveLaunchArgs: (provider: AgentSessionRecord['provider']) => Promise<string[]> | string[]
+  /** The agent's saved Command, else its stock CLI; refuses a Command that names no program. */
+  resolveCommand?: (agent: string, options: Parameters<typeof resolveCliCommand>[1]) => string
   homePath?: string
 }
 
@@ -97,16 +101,20 @@ export function createAcpStructuredLaunchResolver(
     const pathEnv = [env.PATH ?? env.Path, ...spec.installDirectories(accountHome.path)]
       .filter((entry): entry is string => Boolean(entry))
       .join(delimiter)
-    const command = (deps.resolveCommand ?? resolveCliCommand)(spec.command, {
+    const commandOptions = {
       pathEnv,
       homePath: env.HOME ?? env.USERPROFILE ?? deps.homePath ?? homedir()
-    })
+    }
+    const command = deps.resolveCommand
+      ? deps.resolveCommand(spec.agent, commandOptions)
+      : resolveCliCommand(spec.command, commandOptions)
     const fullAccess = deps.resolveFullAccess?.(spec.agent) ?? false
+    const configured = await deps.resolveLaunchArgs(record.provider)
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
     return {
       spec,
       command,
-      args: spec.args({ fullAccess }),
+      args: spec.args({ fullAccess, configured }),
       cwd: await deps.resolveWorkspacePath(location.workspaceId),
       env,
       fullAccess,

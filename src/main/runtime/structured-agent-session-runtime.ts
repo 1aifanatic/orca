@@ -62,6 +62,7 @@ import {
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
 import type { ClaudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
+import type { resolveCliCommand } from '../../shared/node-cli-command-resolution'
 
 /** Whether this profile holds a structured chat: a record or tab in the journal database. */
 export function hasPersistedStructuredAgentSessionStore(
@@ -111,6 +112,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
   /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
   resolveAgentFullAccess?: (agent: string) => boolean
+  /** A protocol-driven agent's saved Command, else its stock CLI on `options.pathEnv`. */
+  resolveAgentCommand?: (agent: string, options: Parameters<typeof resolveCliCommand>[1]) => string
   /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
   resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
