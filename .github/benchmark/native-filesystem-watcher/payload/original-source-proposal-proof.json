@@ -1,0 +1,42 @@
+{
+  "sourceHead": "7f43d9b2c2606228ba14616cb1f566a116c08af3",
+  "target": "config/scripts/vitest-node-runtime-files.mjs",
+  "patchSha256": "c6a5ca8641485d50ed6228a54d4f721af7e02c2ced3971ffa651fbf728ac25ce",
+  "beforeSha256": "72a9cb668dc80148345ccc7bb33ee522d4770bb5aa8a84335ef22a29206e6360",
+  "afterSha256": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+  "oneExactPathOnly": true,
+  "registryPatternCounts": {
+    "before": 491,
+    "after": 492,
+    "uniqueBefore": 484,
+    "uniqueAfter": 485
+  },
+  "nativeContractSourceFacts": [
+    "Direct value import subscribe from @parcel/watcher",
+    "Actual subscribe(root, callback, original ignore options)",
+    "Actual mkdtemp/realpath/mkdir/writeFile filesystem activity",
+    "Original eight-second native event wait unchanged",
+    "Original300ms real debounce drain unchanged",
+    "Subscription unsubscribe then rm cleanup unchanged"
+  ],
+  "allEightCaseSourceHashes": {
+    "src/main/ipc/filesystem-watcher-ignore-real.test.ts": "7d7aaaaa83e5d74f7e65bbe931f1223445351afb95805255473b0aab4f497370",
+    "src/main/ipc/filesystem-watcher-ignore.test.ts": "a412c36768cd3e707724885cdf362434d9a36e7f16a16a369ee5bce03ad4b8b6",
+    "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+    "config/scripts/vitest-node-runtime-pool.test.ts": "87b2b8b6b4eb2bbc504d3211b88aa5522376e256431712b8dbcd10854281a9a4",
+    "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+    "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+    "config/scripts/vitest-runtime-sequencer.test.mjs": "522022fa5b7516de388fa18e4e8a63df191b41c5530c173e26436e0866a744b0",
+    "config/scripts/ci-unit-sequencer.test.mjs": "627e0cd1545a7aed2fed7ec5644ae241ef95bed1c8886d2f0c576fa1e077d68a"
+  },
+  "counterexamplesStayOrdinary": [
+    "config/scripts/ci-unit-sequencer.test.mjs",
+    "config/scripts/vitest-runtime-boundary.test.ts",
+    "config/scripts/vitest-runtime-sequencer.test.mjs",
+    "src/main/ipc/filesystem-watcher-ignore.test.ts"
+  ],
+  "reuse": "Existing Node registry/custom pool and existing CI qualification workflow/controller; no broad new glob.",
+  "evidenceLimits": "Both passing and failing Bun full-CI observations exist. Registry patterns491 are not the physical Node file count; only canonical discovery intersection determines full routing.",
+  "all39SourceGuardsByteIdentical80dTo7f43": true,
+  "qualificationMode": "after-only; four isolated jobs; old before records remain independent"
+}
