@@ -147,11 +147,13 @@ describe('a not-sent row between two stopped sends', () => {
     rejection: { kind: 'cancelled' }
   })
   const submissions = [stopped('client-s1'), rejected(), stopped('client-s2')]
-  const shape = (messages: readonly { id: string; unsent?: true }[]) =>
+  const drawnOrder = (messages: readonly { id: string; unsent?: true }[]) =>
     messages.map((message) => `${message.id}${message.unsent ? ' (not sent)' : ''}`)
 
   it('sits at its journal place without splitting the run: one stop row, after the last', () => {
-    expect(shape(projectStructuredAgentSessionMessages(items, [], submissions, DESKTOP))).toEqual([
+    expect(
+      drawnOrder(projectStructuredAgentSessionMessages(items, [], submissions, DESKTOP))
+    ).toEqual([
       agentJournalSubmissionKey('client-s1'),
       `${agentJournalSubmissionKey(KEPT_ID)} (not sent)`,
       agentJournalSubmissionKey('client-s2'),
@@ -167,7 +169,7 @@ describe('a not-sent row between two stopped sends', () => {
           : { ...message, journalPosition: undefined }
       )
     expect(
-      shape(projectStructuredAgentSessionMessages(items, [], submissions, DESKTOP, unplaced))
+      drawnOrder(projectStructuredAgentSessionMessages(items, [], submissions, DESKTOP, unplaced))
     ).toEqual([
       agentJournalSubmissionKey('client-s1'),
       agentJournalSubmissionKey('client-s2'),
