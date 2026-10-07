@@ -83,3 +83,50 @@ describe('a send kept as a card', () => {
     expect(shown[0]).not.toHaveProperty('unsent')
   })
 })
+
+// The phone draws this list as it comes, so the projection itself must place a not-sent row.
+describe('a send the host recorded and then rejected', () => {
+  it('stays where the host placed it, above what came after, and above a held send', () => {
+    const answer: AgentJournalRenderItem = {
+      itemId: 'answer-3',
+      revision: 1,
+      sequence: 3,
+      observedAt: 3,
+      body: { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'Yes' }] }
+    }
+    const later: AgentJournalSubmission = {
+      ...rejected({ clientMessageId: 'client-later', payloadFingerprint: 'fingerprint-later' }),
+      dispatchState: 'accepted',
+      providerItemId: 'provider-later',
+      reason: null
+    }
+    delete later.rejection
+    const held: AgentJournalSubmission = {
+      ...later,
+      clientMessageId: 'client-held',
+      payloadFingerprint: 'fingerprint-held',
+      dispatchState: 'pending',
+      providerItemId: null,
+      handoverRecorded: true
+    }
+    const shown = projectStructuredAgentSessionMessages(
+      [
+        userItem(KEPT_ID, 'hello', 1),
+        userItem('client-later', 'are you there?', 2),
+        answer,
+        userItem('client-held', 'next', 4)
+      ],
+      [],
+      [rejected(), later, held],
+      DESKTOP
+    )
+    expect(shown.map((message) => [message.id, message.unsent ?? message.queued ?? false])).toEqual(
+      [
+        [agentJournalSubmissionKey(KEPT_ID), true],
+        [agentJournalSubmissionKey('client-later'), false],
+        ['answer-3', false],
+        [agentJournalSubmissionKey('client-held'), true]
+      ]
+    )
+  })
+})

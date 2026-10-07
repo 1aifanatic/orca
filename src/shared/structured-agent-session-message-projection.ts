@@ -159,17 +159,21 @@ export function projectStructuredAgentSessionMessages(
   if (shownStopped.size > 0) {
     moved = keepStoppedSendsInSendOrder(delivered, stoppedBeforeStart, shownStopped) || moved
   }
-  const conversation = moved
-    ? Array.from(collapseProviderRetryRuns(delivered)).sort(compareNativeChatTranscriptMessages)
-    : collapseProviderRetryRuns(delivered)
+  // In no turn, like the outbox's not-sent rows, and at their journal places, so a reader that
+  // draws this list as it comes (the phone) puts them where the host recorded them.
+  const unsent = projectItems(unsentItems).map((message) => ({ ...message, unsent: true as const }))
+  const conversation =
+    moved || unsent.length > 0
+      ? collapseProviderRetryRuns(delivered)
+          .concat(unsent)
+          .sort(compareNativeChatTranscriptMessages)
+      : collapseProviderRetryRuns(delivered)
   return [
     // After the held sends leave: they are drawn after the conversation, never inside a run.
     ...(shownStopped.size > 0
       ? withStopRowsAfterStoppedSends(conversation, shownStopped)
       : conversation),
     ...held,
-    // In no turn, like the outbox's not-sent rows; the journal position keeps their place.
-    ...projectItems(unsentItems).map((message) => ({ ...message, unsent: true as const })),
     ...optimistic
       .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))
       .map((entry): NativeChatMessage => ({
