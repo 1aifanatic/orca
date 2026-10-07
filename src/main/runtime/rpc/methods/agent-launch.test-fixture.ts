@@ -100,6 +100,7 @@ export function runtimeStub(options: AgentLaunchRuntimeStubOptions = {}) {
       }
     ),
     showRepo: vi.fn(async () => ({ id: 'repo-1' })),
+    createFolderWorkspace: vi.fn(async (_input: Record<string, unknown>) => ({ id: 'fw-new' })),
     createManagedWorktree: vi.fn(async (args: Record<string, unknown>) => {
       reportPromptCarry(options, args.onStartupPromptCarry, args.startupPrompt)
       if (args.startupAgent && options.startupTerminalPaneKey) {

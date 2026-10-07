@@ -130,4 +130,8 @@ export type AgentLaunchWorkspaceFactory = {
     /** Reported by the create that built the startup command's typed line. */
     promptRodeLaunchCommand?: boolean
   }>
+  /** A folder workspace has no startup terminal: the launch starts its agent there afterwards. */
+  createFolderWorkspace(args: {
+    create: Readonly<Record<string, unknown>>
+  }): Promise<{ worktreeId: string; connectionId: string | null }>
 }

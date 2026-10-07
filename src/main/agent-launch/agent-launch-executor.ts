@@ -42,10 +42,7 @@ import {
   settledAtCreation,
   settleLaunchPromptDisposal
 } from './agent-launch-prompt-delivery'
-import {
-  workspaceKindForWorktreeId,
-  type WorkspaceLaunchKind
-} from '../../shared/workspace-launch-kind'
+import { workspaceKindForLaunchTarget } from '../../shared/workspace-launch-kind'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { deriveAgentLaunchTerminalViewMode } from './agent-launch-view-mode'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../shared/agent-session-definitive-refusal'
@@ -98,7 +95,7 @@ export async function executeAgentLaunch(
   const preflight = decideAgentLaunchMode({
     placement: {
       agent: intent.agent,
-      workspaceKind: launchWorkspaceKind(intent.target),
+      workspaceKind: workspaceKindForLaunchTarget(intent.target),
       ...(intent.reuseTerminal ? { terminal: intent.reuseTerminal.handle } : {}),
       ...(intent.cwd ? { cwd: intent.cwd } : {}),
       ...(intent.target.kind === 'existing' && intent.target.workspacePath
@@ -251,6 +248,10 @@ async function resolveWorkspace(
     throw new Error('agent_launch_workspace_factory_required')
   }
   execution.onStage?.('worktree_create')
+  if (intent.target.kind === 'create-folder-workspace') {
+    const created = await workspaces.createFolderWorkspace({ create: intent.target.create })
+    return { ...created, startupTerminalHandle: undefined }
+  }
   const startupPrompt = launchCommandPrompt(intent, preflight.mode)
   const created = await workspaces.createWorktree({
     // A caller migrating from `worktree.create` passes its existing params; a stale `startupAgent`
@@ -388,13 +389,4 @@ function combineLaunchWarnings(
 
 function existingWorktreeId(target: AgentLaunchTarget): string {
   return target.kind === 'existing' ? target.worktree : ''
-}
-
-/**
- * Read from the id rather than carried alongside it, so the kind cannot disagree with the workspace
- * it describes. `worktree` here is never a caller's selector — the method resolved it to an id
- * before building the intent — and a create always produces a git worktree.
- */
-function launchWorkspaceKind(target: AgentLaunchTarget): WorkspaceLaunchKind {
-  return target.kind === 'existing' ? workspaceKindForWorktreeId(target.worktree) : 'git-worktree'
 }
