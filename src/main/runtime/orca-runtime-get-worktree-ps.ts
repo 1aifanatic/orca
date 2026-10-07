@@ -9,6 +9,7 @@ import {
   applyRuntimeWorktreePsSessionActivity,
   applyRuntimeWorktreePsTerminalActivity
 } from './runtime-worktree-ps-activity'
+import { applyRuntimeWorktreePsUnverifiableTerminals } from './runtime-worktree-ps-unverifiable-terminals'
 import { attachRuntimeWorktreeAgentRows } from './runtime-worktree-agent-rows'
 import { compareWorktreePs } from './runtime-worktree-status-projection'
 import type { Repo } from '../../shared/repo-types'
@@ -43,7 +44,11 @@ import { codexStructuredPermissionPolicyForSettings } from '../codex/codex-struc
 import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude-structured-auth-policy'
 import { resolveStructuredAgentCommand } from '../native-chat/structured-agent-command-resolution'
 import { structuredAgentConfiguredArgs } from '../native-chat/structured-agent-configured-args'
-import { claudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
+import { claudeCliFlagSupport } from '../claude/claude-cli-flag-support'
+import {
+  createNativeChatVisualsWorkspaceVerdicts,
+  readNativeChatVisualsWorkspaceCatalogs
+} from './native-chat-visuals-workspace-verdict'
 
 export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVisibleReadProbe {
   async getWorktreePs(
@@ -86,17 +91,30 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
     )
     const missingRuntimeWorktreeIds = new Set<string>()
     const session = this.store?.getWorkspaceSession?.()
+    const countedPtyIds = new Set<string>()
     const workingTerminalEvidenceByWorktreeId = applyRuntimeWorktreePsTerminalActivity({
       summaries,
       pathIndex: runtimeWorktreeSummaryPathIndex,
       missingIds: missingRuntimeWorktreeIds,
       freshPtyLiveness,
+      countedPtyIds,
       leaves: this.leaves.values(),
       ptysById: this.ptysById,
       tabs: this.tabs,
       session,
       getPaneKey: (leaf) => this.makeRuntimePaneKey(leaf),
       getTitleDisplayClear: (ptyId) => this.getPtyTitleDisplayClear(ptyId),
+      getSummary: (summaryMap, pathIndex, missingIds, worktreeId) =>
+        this.getSummaryForRuntimeWorktreeId(summaryMap, pathIndex, missingIds, worktreeId)
+    })
+    applyRuntimeWorktreePsUnverifiableTerminals({
+      summaries,
+      pathIndex: runtimeWorktreeSummaryPathIndex,
+      missingIds: missingRuntimeWorktreeIds,
+      countedPtyIds,
+      leaves: this.leaves.values(),
+      ptysById: this.ptysById,
+      getLivenessVerdict: (ptyId) => this.getPtyLivenessVerdict(ptyId),
       getSummary: (summaryMap, pathIndex, missingIds, worktreeId) =>
         this.getSummaryForRuntimeWorktreeId(summaryMap, pathIndex, missingIds, worktreeId)
     })
@@ -211,7 +229,13 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       resolvePiLaunchEnv: () =>
         resolveTuiAgentLaunchEnv('pi', this.requireStore().getSettings().agentDefaultEnv),
       // Wired only here, so a test runtime never runs a real `claude --version`.
-      claudeThinkingDisplay: claudeThinkingDisplaySupport,
+      claudeCliFlags: claudeCliFlagSupport,
+      nativeChatVisuals: {
+        // Chats and their visuals are shared by every profile; each profile keeps its own catalog.
+        workspaceVerdicts: createNativeChatVisualsWorkspaceVerdicts(() =>
+          this.store ? readNativeChatVisualsWorkspaceCatalogs(this.store) : null
+        )
+      },
       resolveShellEnvironmentPolicy: () =>
         nativeChatShellEnvironmentPolicy(this.requireStore().getSettings()),
       resolveClaudeAuthPolicy: () =>
@@ -233,6 +257,7 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         isTuiAgent(agent)
           ? resolveTuiAgentLaunchEnv(agent, this.requireStore().getSettings().agentDefaultEnv)
           : {},
+      resolveAgentCommandSettings: () => this.requireStore().getSettings(),
       // Same gate and same settings as agentSession.createSupport, re-read on every acquisition.
       getClaudeManagedAccountGateSettings: () => this.requireStore().getSettings(),
       resolveAgentAccountHome: (agent) => this.resolveStructuredAgentAccountHome(agent),

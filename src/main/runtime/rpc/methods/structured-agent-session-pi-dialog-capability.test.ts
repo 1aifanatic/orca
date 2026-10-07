@@ -12,8 +12,8 @@ import {
 import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import { remoteRuntimeClientCapabilities } from '../../../../shared/remote-runtime-client-capabilities'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
-import { CLAUDE_STRUCTURED_AGENT } from '../../../claude/claude-structured-agent-definition'
-import { PI_RPC_AGENT } from '../../../pi/rpc-agent-definition'
+import { STRUCTURED_AGENT_RUNTIME_REGISTRATIONS } from '../../structured-agent-runtime-registrations'
+import { STRUCTURED_AGENT_SESSION_AGENTS_METHODS } from './structured-agent-session-agents'
 import { DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES } from '../../../ipc/desktop-renderer-runtime-capabilities'
 import type {
   AgentSessionStatusSummary,
@@ -22,14 +22,12 @@ import type {
 import type { AgentSessionPromptAttention } from '../../../../shared/agent-session-turn-completion-wire'
 import type { StructuredAgentSessionStatusSubscriber } from '../../../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import type { StructuredAgentSessionTurnCompletionSubscriber } from '../../../native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
-import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   call,
   clearStructuredHostStub,
   dispatcher,
   envelope,
   hostCalls,
-  hostStub,
   installStructuredHostStub,
   runtimeCalls,
   SESSION,
@@ -75,20 +73,21 @@ afterEach(clearStructuredHostStub)
 
 describe('Pi dialog-shape client capability', () => {
   it('filters only Pi from the registered agent list of an older client', async () => {
-    setStructuredAgentSessionHost(
-      Object.assign(hostStub(), {
-        agentDefinitions: () => [CLAUDE_STRUCTURED_AGENT, PI_RPC_AGENT]
-      })
+    const registered = STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map(
+      ({ definition }) => definition.agent
     )
+    const listing = (agents: string[]) => ({
+      ok: true,
+      result: { agents: agents.map((agent) => ({ agent })) }
+    })
+    expect(registered).toContain('pi')
 
-    expect(await call('agentSession.agents', {}, OLD_CLIENT)).toMatchObject({
-      ok: true,
-      result: { agents: [{ agent: 'claude' }] }
-    })
-    expect(await call('agentSession.agents', {}, PI_CLIENT)).toMatchObject({
-      ok: true,
-      result: { agents: [{ agent: 'claude' }, { agent: 'pi' }] }
-    })
+    expect(
+      await call('agentSession.agents', {}, OLD_CLIENT, {}, STRUCTURED_AGENT_SESSION_AGENTS_METHODS)
+    ).toMatchObject(listing(registered.filter((agent) => agent !== 'pi')))
+    expect(
+      await call('agentSession.agents', {}, PI_CLIENT, {}, STRUCTURED_AGENT_SESSION_AGENTS_METHODS)
+    ).toMatchObject(listing(registered))
   })
 
   it('refuses Pi create support before asking the runtime, while other agents keep their path', async () => {

@@ -7,6 +7,7 @@ import {
   agentSessionProviderHandleKey,
   type AgentSessionProviderHandleLink
 } from '../../shared/agent-session-provider-handle'
+import { isLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
@@ -77,7 +78,11 @@ export function createPiRpcLaunchResolver(
     if (process.platform === 'win32' && !isWindowsProcessStartTimeAvailable()) {
       throw new Error('Pi structured sessions require Windows process creation-time proof')
     }
-    if (record.accountHome.variable !== 'PI_CODING_AGENT_DIR') {
+    const accountHome = record.accountHome
+    if (
+      !isLegacyAgentSessionAccountHome(accountHome) ||
+      accountHome.variable !== 'PI_CODING_AGENT_DIR'
+    ) {
       throw new Error('Pi account home does not match its binary')
     }
     const cwd = await deps.resolveWorkspacePath(record.location.workspaceId)
@@ -87,7 +92,7 @@ export function createPiRpcLaunchResolver(
         env[key] = value
       }
     }
-    env.PI_CODING_AGENT_DIR = record.accountHome.path
+    env.PI_CODING_AGENT_DIR = accountHome.path
     const previous = agentSessionProviderHandleChainHead(record.providerHandleChain)
     let sessionFile: string | undefined
     let forkFile: string | undefined

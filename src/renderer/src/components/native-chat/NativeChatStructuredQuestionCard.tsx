@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import type { AgentJournalQuestion } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionPromptResponse } from '../../../../shared/agent-session-question-answer'
 import { NativeChatQuestionCard } from './NativeChatQuestionCard'
@@ -5,11 +6,13 @@ import { NativeChatQuestionCard } from './NativeChatQuestionCard'
 export function NativeChatStructuredQuestionCard({
   questions,
   onAnswer,
-  onCancel
+  onCancel,
+  answerInputRef
 }: {
   questions: readonly AgentJournalQuestion[]
   onAnswer: (response: AgentSessionPromptResponse) => void
   onCancel: () => void
+  answerInputRef?: RefObject<HTMLInputElement | null>
 }): React.JSX.Element {
   return (
     <NativeChatQuestionCard
@@ -46,6 +49,7 @@ export function NativeChatStructuredQuestionCard({
         }
       }}
       onCancel={onCancel}
+      answerInputRef={answerInputRef}
     />
   )
 }

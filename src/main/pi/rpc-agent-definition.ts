@@ -1,6 +1,6 @@
-import type { StructuredAgentDefinition } from '../native-chat/agent-session-wire/structured-agent-definition'
+import type { DirectoryAccountAgentDefinition } from '../native-chat/agent-session-wire/structured-agent-definition'
 
-export const PI_RPC_AGENT: StructuredAgentDefinition = {
+export const PI_RPC_AGENT: DirectoryAccountAgentDefinition = {
   agent: 'pi',
   handleTransport: 'jsonl-rpc',
   accountHomeVariable: 'PI_CODING_AGENT_DIR',
