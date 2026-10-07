@@ -133,7 +133,7 @@ function collectWorkspaceIds(
   // off already name their workspaces.
   const none = new Map<string, string>()
   for (const field of SESSION_FIELDS) {
-    const workspaceOf = entryWorkspaceResolver(WORKSPACE_SESSION_FIELD_OWNERSHIP[field], none, none)
+    const workspaceOf = entryWorkspaceResolver(field, none, none)
     const value: unknown = host[field]
     const entries = Array.isArray(value)
       ? value.map((id: unknown) => [id, id] as const)
@@ -233,10 +233,11 @@ export function partitionRowsTheWriteWontReturn(
 
 /** Which workspace an entry of a scoped field belongs to; null for global and host-private fields. */
 function entryWorkspaceResolver(
-  ownership: WorkspaceSessionFieldOwnership,
+  field: keyof WorkspaceSessionState,
   worktreeIdByTabId: Map<string, string>,
   worktreeIdByFileId: Map<string, string>
 ): ((key: string, entry: unknown) => string | null | undefined) | null {
+  const ownership: WorkspaceSessionFieldOwnership = WORKSPACE_SESSION_FIELD_OWNERSHIP[field]
   switch (ownership) {
     case 'global':
     case 'hostPrivate':
@@ -270,11 +271,7 @@ function withoutWorkspaces(
   const worktreeIdByFileId = buildWorktreeIdByFileId(base)
   const next: KeyedRecord = { ...base }
   for (const field of SESSION_FIELDS) {
-    const workspaceOf = entryWorkspaceResolver(
-      WORKSPACE_SESSION_FIELD_OWNERSHIP[field],
-      worktreeIdByTabId,
-      worktreeIdByFileId
-    )
+    const workspaceOf = entryWorkspaceResolver(field, worktreeIdByTabId, worktreeIdByFileId)
     const keeps = (key: string, entry: unknown): boolean =>
       !workspaceIds.has(normalizeWorkspaceSessionKeyToWorkspaceId(workspaceOf?.(key, entry) ?? ''))
     const value: unknown = base[field]
@@ -293,13 +290,21 @@ function withoutWorkspaces(
 function keepUnsavedDrafts(next: WorkspaceSessionState, base: WorkspaceSessionState): void {
   for (const [key, baseFiles] of Object.entries(base.openFilesByWorktree ?? {})) {
     const files = next.openFilesByWorktree?.[key] ?? []
-    const held = new Set(files.map((file) => file.filePath))
-    const drafts = baseFiles.filter(
-      (file) => file.dirtyDraftContent !== undefined && !held.has(file.filePath)
+    const drafts = new Map(
+      baseFiles.filter((file) => file.dirtyDraftContent !== undefined).map((f) => [f.filePath, f])
     )
-    if (files !== baseFiles && drafts.length > 0) {
-      next.openFilesByWorktree = { ...next.openFilesByWorktree, [key]: [...files, ...drafts] }
+    if (files === baseFiles || drafts.size === 0) {
+      continue
     }
+    // A host entry with its own draft wins; a clean one yields to the base's draft for that path.
+    const held = new Set(files.map((file) => file.filePath))
+    const merged = [
+      ...files.map(
+        (file) => (file.dirtyDraftContent === undefined && drafts.get(file.filePath)) || file
+      ),
+      ...[...drafts.values()].filter((file) => !held.has(file.filePath))
+    ]
+    next.openFilesByWorktree = { ...next.openFilesByWorktree, [key]: merged }
   }
 }
 
@@ -338,11 +343,13 @@ export function adoptStrandedHostPartitionSession(
     contested.add(normalizeWorkspaceSessionKeyToWorkspaceId(key))
   }
   // Owned, uncontested and holding tabs: the host's copy is the live one. No tabs is not a close.
-  const superseded = new Set(
-    [...(options.ownedSessionKeys ?? [])]
-      .map(normalizeWorkspaceSessionKeyToWorkspaceId)
-      .filter((id) => !contested.has(id) && !hostHasNothingFor(host.tabsByWorktree?.[id]))
-  )
+  const superseded = new Set<string>()
+  for (const [key, tabs] of Object.entries(host.tabsByWorktree ?? {})) {
+    const id = normalizeWorkspaceSessionKeyToWorkspaceId(key)
+    if (!hostHasNothingFor(tabs) && !contested.has(id) && options.ownedSessionKeys?.has(id)) {
+      superseded.add(id)
+    }
+  }
   const base = superseded.size > 0 ? withoutWorkspaces(originalBase, superseded) : originalBase
   const adoptable = adoptableWorkspaceIds(base, host)
   for (const key of options.foreignSessionKeys ?? []) {
@@ -421,7 +428,7 @@ export function adoptStrandedHostPartitionSession(
       case 'surfaceTombstoneKeyed':
       case 'browserWorkspaceKeyed':
       case 'fileKeyed': {
-        const workspaceOf = entryWorkspaceResolver(ownership, worktreeIdByTabId, worktreeIdByFileId)
+        const workspaceOf = entryWorkspaceResolver(field, worktreeIdByTabId, worktreeIdByFileId)
         adoptRecord(next, host, field, (key, entry) => adopts(workspaceOf?.(key, entry) ?? ''))
         break
       }

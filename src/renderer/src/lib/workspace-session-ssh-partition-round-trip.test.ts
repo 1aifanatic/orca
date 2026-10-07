@@ -23,6 +23,7 @@ import type { WorkspaceSessionState } from '../../../shared/workspace-session-st
 import { shouldAutoCreateInitialTerminal } from '@/components/terminal/initial-terminal'
 import { mergeDirectSshRemoteWorkspaceSession } from '../hooks/remote-workspace-session-merge'
 import { fetchWorkspaceSessionWithRuntimeHostOwners } from './workspace-session-host-hydration'
+import { worktreeWorkspaceKey } from '../../../shared/workspace-scope'
 
 const TARGET_ID = 'target-1'
 const SSH_HOST_ID: ExecutionHostId = `ssh:${TARGET_ID}`
@@ -173,6 +174,21 @@ describe('ssh host partition hydration', () => {
     ])
   })
 
+  it('ignores a stray local copy when the ssh partition keys its tabs by workspace key', async () => {
+    const partitions = strandedPartitions([tab('tab-runtime')], [tab('tab-local')])
+    partitions[SSH_HOST_ID] = session({
+      tabsByWorktree: { [worktreeWorkspaceKey(WORKTREE_ID)]: [tab('tab-runtime')] }
+    })
+
+    const read = await fetchWorkspaceSessionWithRuntimeHostOwners(partitionedApi(partitions), repos)
+
+    expect(
+      Object.values(read.session.tabsByWorktree)
+        .flat()
+        .map((entry) => entry.id)
+    ).toEqual(['tab-runtime'])
+  })
+
   it("replaces a stray local copy's records for a tab id the ssh partition shares", async () => {
     // Relay reattach copied tab ids into `local`, so the stale and live rows can share a key.
     const partitions = strandedPartitions([tab('tab-shared')], [tab('tab-shared')])
@@ -223,6 +239,30 @@ describe('ssh host partition hydration', () => {
       ['src/live.ts', undefined],
       ['src/main.ts', 'unsaved work']
     ])
+  })
+
+  it("keeps a stray local copy's unsaved draft over the ssh partition's clean entry", async () => {
+    const file = {
+      filePath: `${WORKTREE_PATH}/src/main.ts`,
+      relativePath: 'src/main.ts',
+      worktreeId: WORKTREE_ID,
+      language: 'typescript'
+    }
+    const partitions = strandedPartitions([tab('tab-runtime')], [tab('tab-local')])
+    partitions.local = session({
+      ...partitions.local,
+      openFilesByWorktree: { [WORKTREE_ID]: [{ ...file, dirtyDraftContent: 'unsaved work' }] }
+    })
+    partitions[SSH_HOST_ID] = session({
+      ...partitions[SSH_HOST_ID],
+      openFilesByWorktree: { [WORKTREE_ID]: [file] }
+    })
+
+    const read = await fetchWorkspaceSessionWithRuntimeHostOwners(partitionedApi(partitions), repos)
+
+    expect(
+      read.session.openFilesByWorktree?.[WORKTREE_ID]?.map((entry) => entry.dirtyDraftContent)
+    ).toEqual(['unsaved work'])
   })
 
   it('leaves a populated local copy alone when the catalog cannot name its owner', async () => {
