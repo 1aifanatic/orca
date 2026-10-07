@@ -314,11 +314,24 @@ describe('waiting on a launch’s follow-up, one take at a time', () => {
     const t = manualClock()
     const waited = waitForRecordedLaunchFollowUp('op-1', RESOLUTION, undefined, t.clock)
     expect(state.heldThreads[0]!.keys).toEqual(['thread:thread-1'])
-    expect(t.timers).toBe(1)
     t.settle('op-1')
     await waited
     expect(state.runResolution).toHaveBeenCalledOnce()
     expect(t.listeners).toBe(0)
+    expect(t.timers).toBe(0)
+  })
+
+  it('asks again a few seconds after a click’s take failed, not at the deadline', async () => {
+    // The host's word came before the click's own take, so none will come again.
+    state.answers.push({ taken: [taken('op-1', RESOLUTION)], pending: [] })
+    const t = manualClock()
+    const waited = waitForRecordedLaunchFollowUp('op-1', RESOLUTION, undefined, t.clock)
+    t.advance(2_999)
+    expect(state.calls).toEqual([])
+    t.advance(1)
+    await waited
+    expect(state.calls).toEqual([['agent.takeLaunchFollowUps', { operationId: 'op-1' }]])
+    expect(state.runResolution).toHaveBeenCalledOnce()
     expect(t.timers).toBe(0)
   })
 })

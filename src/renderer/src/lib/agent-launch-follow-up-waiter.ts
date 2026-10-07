@@ -21,6 +21,8 @@ import {
 const PAST_DEADLINE_GRACE_MS = 15_000
 /** For a launch whose deadline the host could not say: its owed-prompt deadline. */
 const FALLBACK_WAIT_MS = 5 * 60_000
+/** A click's own take that missed is asked again once this soon: the host's word came before it. */
+const CLICK_RETAKE_MS = 3_000
 
 export type RecordedLaunchFollowUpClock = {
   now: () => number
@@ -63,7 +65,12 @@ class LaunchFollowUpWaiter {
   }
 
   /** Holds what the follow-up acts on until it is run, or the wait gives up. */
-  wait(operationId: string, followUp: AgentLaunchFollowUp, deadline?: number): Promise<void> {
+  wait(
+    operationId: string,
+    followUp: AgentLaunchFollowUp,
+    deadline?: number,
+    retakeAfterMs?: number
+  ): Promise<void> {
     const existing = this.waiting.get(operationId)
     if (existing) {
       return existing.done
@@ -75,10 +82,15 @@ class LaunchFollowUpWaiter {
     const cancelTimer = this.clock.schedule(Math.max(0, waitMs) + PAST_DEADLINE_GRACE_MS, () => {
       void this.take(operationId, true)
     })
+    const cancelRetake =
+      retakeAfterMs === undefined
+        ? () => {}
+        : this.clock.schedule(retakeAfterMs, () => void this.take(operationId, false))
     this.waiting.set(operationId, {
       done,
       finish: () => {
         cancelTimer()
+        cancelRetake()
         release()
       }
     })
@@ -179,12 +191,15 @@ export async function runRecordedLaunchFollowUps(
   }
 }
 
-/** A click's follow-up still on the record after its own take missed: waited on as startup's are. */
+/**
+ * A click's follow-up still on the record after its own take missed: waited on as startup's are,
+ * and asked for again once soon, since the host's word that it settled came before that take.
+ */
 export function waitForRecordedLaunchFollowUp(
   operationId: string,
   followUp: AgentLaunchFollowUp,
   deadline?: number,
   clock: RecordedLaunchFollowUpClock = WINDOW_CLOCK
 ): Promise<void> {
-  return waiterFor(clock).wait(operationId, followUp, deadline)
+  return waiterFor(clock).wait(operationId, followUp, deadline, CLICK_RETAKE_MS)
 }
