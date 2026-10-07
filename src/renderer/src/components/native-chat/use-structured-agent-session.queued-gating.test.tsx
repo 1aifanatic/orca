@@ -704,7 +704,7 @@ describe('a /compact against a host that holds commands in line', () => {
       blocks: [{ type: 'text' as const, text: '/compact' }],
       command: { name: 'compact' as const }
     },
-    ...(held ? { paused: true as const, pausedReason: 'kept' as const } : {})
+    ...(held ? { paused: true as const, pausedReason: 'send_failed' as const } : {})
   })
 
   it('a send behind a waiting command card queues, even with follow-ups off', () => {
@@ -716,7 +716,7 @@ describe('a /compact against a host that holds commands in line', () => {
     })
   })
 
-  it('a kept command card, which the queue skips, does not force a send to queue', () => {
+  it('a send-failed command card, which the queue skips, does not force a send to queue', () => {
     queuedMessages = [compactCard(true)]
     render(false)
     expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
