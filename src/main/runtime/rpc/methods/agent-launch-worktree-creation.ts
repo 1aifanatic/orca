@@ -32,10 +32,9 @@ type WorktreeCreateParams = Extract<
 
 const STRUCTURED_SETUP_WAIT_TIMEOUT_MS = 60_000
 
-/** What a replay-safe launch records about the workspace it creates, before anything runs in it. */
+/** What a replay-safe launch records about the workspace it creates, before `git worktree add`. */
 export type AgentLaunchCreateRecords = {
   createIntent: (intent: AgentSessionOperationCreateIntent) => Promise<void>
-  workspaceCreated: (worktreeId: string) => Promise<void>
 }
 
 export function agentLaunchWorkspaceFactory(
@@ -104,9 +103,8 @@ export function agentLaunchWorkspaceFactory(
           ...(onStartupAgentRequested ? { onStartupAgentRequested } : {}),
           ...(records
             ? {
-                onCreateCandidate: (candidate: { worktreePath: string; branchName: string }) =>
-                  records.createIntent({ repoId: repo.id, ...candidate }),
-                onWorktreeCreated: records.workspaceCreated
+                onCreateCandidate: (candidate: Omit<AgentSessionOperationCreateIntent, 'repoId'>) =>
+                  records.createIntent({ repoId: repo.id, ...candidate })
               }
             : {}),
           // The launch owns the agent whichever surface it settles on, so the workspace records

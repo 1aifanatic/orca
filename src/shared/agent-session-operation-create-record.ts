@@ -8,13 +8,16 @@ export type AgentSessionOperationCreateIntent = {
   repoId: string
   worktreePath: string
   branchName: string
+  /** Minted before `git worktree add` and written into the made worktree's metadata, so a worktree
+   *  found later at this path or branch is this create's only when its metadata names the same id. */
+  instanceId: string
 }
 
 /** Adds bookkeeping to an existing row; a row that is gone (expired, never admitted) stays gone. */
 export type AgentSessionOperationAnnotation = {
   callerKey: string
   operationId: string
-  annotation: Pick<AgentSessionOperationRow, 'createIntent' | 'createdWorktreeId'>
+  annotation: Pick<AgentSessionOperationRow, 'createIntent'>
 }
 
 export function annotateAgentSessionOperation(

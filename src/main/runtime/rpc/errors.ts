@@ -97,8 +97,11 @@ const COMPUTER_PASSTHROUGH_CODES: ReadonlySet<string> = new Set(Object.values(CO
 const LINEAR_PASSTHROUGH_CODES: ReadonlySet<string> = new Set(LINEAR_ERROR_CODES)
 const STRUCTURED_RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   WORKTREE_CREATE_COLLISION_CODE,
-  // Carries `data.worktreeId`, the workspace the launch kept, so it takes the path that keeps data.
+  // Both carry `data.worktreeId`, the workspace a create kept, so they take the path that keeps
+  // data. Only `agent.launch` throws the unknown one with a `code` property, always with the code
+  // as its message, so without data it maps exactly as the message passthrough below did.
   AGENT_LAUNCH_AGENT_NOT_STARTED_CODE,
+  'agent_session_operation_unknown',
   'worktree_id_requires_full_path',
   'run_not_found',
   'run_required',

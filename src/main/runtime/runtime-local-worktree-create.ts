@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { worktreeCreateGit } from '../git/worktree-create-git-executor'
 import { notifyCreateBookkeeping } from './worktree-create-bookkeeping'
 import { shouldRunSetupForCreate } from '../effective-hook-config'
@@ -117,10 +118,14 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
       hostedReviewExecutionContext: args.hostedReviewExecutionContext
     })
   )
+  // Minted before the add so whoever recorded the candidate can tell this worktree from any other
+  // later found at the same path or branch.
+  const instanceId = randomUUID()
   await notifyCreateBookkeeping('candidate', () =>
     request.onCreateCandidate?.({
       worktreePath: candidate.worktreePath,
-      branchName: candidate.branchName
+      branchName: candidate.branchName,
+      instanceId
     })
   )
   const git = await createRuntimeLocalGitWorktree({
@@ -148,6 +153,7 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     store,
     settings,
     created: git.created,
+    instanceId,
     remoteTrackingBase: git.remoteTrackingBase,
     sparseDirectories: git.sparseDirectories,
     configuredPushTarget: git.configuredPushTarget,

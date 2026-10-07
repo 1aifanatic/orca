@@ -243,8 +243,7 @@ async function executeAdmittedAgentLaunch(
       terminalSpawn,
       recordSurface: (provisional) => void settleQuietly(admission.record(provisional)),
       createRecords: {
-        createIntent: (createIntent) => admission.annotate({ createIntent }),
-        workspaceCreated: (createdWorktreeId) => admission.annotate({ createdWorktreeId })
+        createIntent: (createIntent) => admission.annotate({ createIntent })
       }
     })
   } catch (error) {

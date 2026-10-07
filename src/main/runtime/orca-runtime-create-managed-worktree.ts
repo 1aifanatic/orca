@@ -8,7 +8,6 @@ import { resolveWorktreeCreateRoute } from '../worktree-create-execution-host-ro
 import { ExecutionHostNotDispatchableError } from '../providers/execution-host-provider-dispatch'
 import { createRuntimeFolderWorktree } from './runtime-folder-worktree-create'
 import { createRuntimeLocalManagedWorktree } from './runtime-local-worktree-create'
-import { notifyCreateBookkeeping } from './worktree-create-bookkeeping'
 import type { PreparationRearmHolder } from '../worktree-create-preparation'
 import { prepareRuntimeLocalWorktreeSetup } from './runtime-local-worktree-setup'
 import { invalidateAuthorizedRootsCacheForRepo } from '../ipc/filesystem-auth'
@@ -182,7 +181,6 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
         rearm,
         timing
       })
-    await notifyCreateBookkeeping('created', () => args.onWorktreeCreated?.(worktree.id))
     const settings = createSettings
     const { lineage, workspaceLineage, warnings: lineageWarnings } = metadataResult
 

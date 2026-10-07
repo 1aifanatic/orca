@@ -55,6 +55,7 @@ describe('materializeRuntimeLocalWorktree', () => {
           isBare: false,
           isMainWorktree: false
         },
+        instanceId: 'instance-1',
         remoteTrackingBase: null,
         sparseDirectories: [],
         checkoutExistingBranch: false,

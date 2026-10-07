@@ -92,11 +92,9 @@ export type AgentSessionOperationRow = {
   ownedPane?: AgentSessionOperationOwnedPane
   /**
    * The worktree an `agent.launch` create was about to add, written before `git worktree add`, so a
-   * host that dies mid-create can find what it may have made. Not checked, as `ownedPane` is not.
+   * replay can find what it made. Not checked, as `ownedPane` is not.
    */
   createIntent?: AgentSessionOperationCreateIntent
-  /** The worktree the create made, written before any agent starts in it. Not checked either. */
-  createdWorktreeId?: string
 }
 
 /** Unexpired rows naming this pane as theirs. */
