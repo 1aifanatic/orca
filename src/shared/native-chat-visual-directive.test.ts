@@ -196,6 +196,16 @@ describe('withoutNativeChatVisualDirectiveLines', () => {
     expect(withoutNativeChatVisualDirectiveLines(`See ${LINE}`)).toBe(`See ${LINE}`)
   })
 
+  it('follows CommonMark fence rules: no info string on a closer, no backtick in an opener', () => {
+    // ```js inside a block does not close it, so the visual line is still code.
+    const notClosed = `\`\`\`\n\`\`\`js\n${LINE}\n\`\`\``
+    expect(withoutNativeChatVisualDirectiveLines(notClosed)).toBe(notClosed)
+    // Inline triple backticks open no fence, so a later visual line is still dropped.
+    expect(withoutNativeChatVisualDirectiveLines(`Use \`\`\`a\`\`\` inline\n${LINE}`)).toBe(
+      'Use ```a``` inline'
+    )
+  })
+
   it('returns text without a marker untouched', () => {
     expect(withoutNativeChatVisualDirectiveLines('  plain\n\n\n text  ')).toBe(
       '  plain\n\n\n text  '
