@@ -21,7 +21,6 @@ export function createTerminalLayoutActions(
   get: TerminalStoreGet
 ): Pick<
   TerminalSlice,
-  | 'replaceTerminalLayoutPanePtyId'
   | 'setTabPaneExpanded'
   | 'setTabCanExpandPane'
   | 'setTabLayout'
@@ -44,23 +43,6 @@ export function createTerminalLayoutActions(
           return { localOnlyScrollbackByTabId: next }
         }
         return { localOnlyScrollbackByTabId: { ...current, [tabId]: buffersByLeafId } }
-      })
-    },
-    replaceTerminalLayoutPanePtyId: (tabId, leafId, ptyId) => {
-      set((s) => {
-        const layout = s.terminalLayoutsByTabId[tabId]
-        if (!layout || layout.ptyIdsByLeafId?.[leafId] === ptyId) {
-          return s
-        }
-        return {
-          terminalLayoutsByTabId: {
-            ...s.terminalLayoutsByTabId,
-            [tabId]: {
-              ...layout,
-              ptyIdsByLeafId: { ...layout.ptyIdsByLeafId, [leafId]: ptyId }
-            }
-          }
-        }
       })
     },
     // Why: pane mount/unmount re-asserts the same booleans; bailing like setTabLayout keeps map subscribers asleep.

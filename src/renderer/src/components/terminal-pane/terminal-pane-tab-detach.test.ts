@@ -51,6 +51,7 @@ async function expectDeferredSplitDetachRejected(sourcePaneCwd: SourcePaneCwd): 
 
   const result = await detachTerminalPaneToTab({
     getStore: () => store,
+    subscribe: () => () => {},
     manager,
     persistLayoutSnapshot,
     sourcePaneCwd,
@@ -181,6 +182,7 @@ describe('detachTerminalPaneToTab', () => {
     const store = createStore({ ...splitLayout(), chatLeafId })
     await detachTerminalPaneToTab({
       getStore: () => store,
+      subscribe: () => () => {},
       manager: {
         getPanes: () => [{ id: 1 }, { id: 2 }],
         getLeafId: () => LEAF_2,
@@ -214,6 +216,7 @@ describe('detachTerminalPaneToTab', () => {
     const result = await detachTerminalPaneToTab({
       manager,
       getStore: () => store,
+      subscribe: () => () => {},
       persistLayoutSnapshot,
       sourcePaneCwd: {
         cwd: '/remote/repo',
@@ -279,6 +282,7 @@ describe('detachTerminalPaneToTab', () => {
 
       await detachTerminalPaneToTab({
         getStore: () => store,
+        subscribe: () => () => {},
         manager,
         persistLayoutSnapshot: vi.fn(),
         sourcePaneId: 1,
@@ -306,6 +310,7 @@ describe('detachTerminalPaneToTab', () => {
 
     const result = await detachTerminalPaneToTab({
       getStore: () => store,
+      subscribe: () => () => {},
       manager,
       persistLayoutSnapshot: vi.fn(),
       sourcePaneId: 1,
@@ -349,6 +354,7 @@ describe('detachTerminalPaneToTab', () => {
 
     await detachTerminalPaneToTab({
       getStore: () => store,
+      subscribe: () => () => {},
       manager,
       persistLayoutSnapshot: vi.fn(),
       sourcePaneId: 2,
@@ -385,6 +391,7 @@ describe('detachTerminalPaneToTab', () => {
     await detachTerminalPaneToTab({
       livePtyId: 'remote:env-2@@terminal-9',
       getStore: () => store,
+      subscribe: () => () => {},
       manager,
       persistLayoutSnapshot: vi.fn(),
       sourcePaneCwd: {
@@ -440,6 +447,7 @@ describe('detachTerminalPaneToTab', () => {
 
     const result = await detachTerminalPaneToTab({
       getStore: () => store,
+      subscribe: () => () => {},
       manager,
       persistLayoutSnapshot: vi.fn(),
       sourcePaneCwd: {

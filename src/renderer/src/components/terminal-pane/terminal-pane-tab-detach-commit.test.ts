@@ -1,36 +1,34 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useAppStore } from '@/store'
 import type {
   TerminalLeafMoveRequest,
   TerminalLeafMoveResult
 } from '../../../../shared/terminal-leaf-move'
+import type {
+  TerminalTopologyReply,
+  TerminalTopologySlice
+} from '../../../../shared/terminal-topology-slice'
 import { detachTerminalPaneToTab } from './terminal-pane-tab-detach'
 import {
-  createStore,
+  createTerminalTab,
   LEAF_1,
   LEAF_2,
   SOURCE_TAB_ID,
   splitLayout,
   TARGET_GROUP_ID,
-  unboundSplitLayout,
   WORKTREE_ID
 } from './terminal-pane-tab-detach-fixture'
 
 const toastErrorMock = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast: { error: toastErrorMock } }))
-const closeTerminalSurface = vi.fn(async () => {})
-beforeEach(() => {
-  toastErrorMock.mockClear()
-  closeTerminalSurface.mockClear()
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
-})
 
-/** Answers each call with the next result; an Error throws. */
-function mainAnswering(results: (TerminalLeafMoveResult | Error)[]) {
-  return vi.fn((_request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> => {
-    const next = results.shift() ?? { status: 'not_held' }
-    return next instanceof Error ? Promise.reject(next) : Promise.resolve(next)
-  })
-}
+const OTHER_GROUP_ID = 'group-other'
+const PTY = 'pty-right'
+const initial = useAppStore.getState()
+const state = () => useAppStore.getState()
+const closeTerminalSurface = vi.fn(async (): Promise<TerminalTopologyReply> => ({}))
+
+type MoveAnswer = TerminalLeafMoveResult & TerminalTopologyReply
 
 function managerWithPanes(paneIds: () => number[] = () => [1, 2]) {
   return {
@@ -40,233 +38,217 @@ function managerWithPanes(paneIds: () => number[] = () => [1, 2]) {
   }
 }
 
-type CommitMove = (request: TerminalLeafMoveRequest) => Promise<TerminalLeafMoveResult>
+/** Main's slice after the move: the source keeps LEAF_1, the new tab holds LEAF_2. */
+function movedSlice(publishSeq: number, targetTabId: string): TerminalTopologySlice {
+  return {
+    hostId: 'local',
+    worktreeId: WORKTREE_ID,
+    publishSeq,
+    revision: 2,
+    tabs: [
+      { id: SOURCE_TAB_ID, ptyId: 'pty-left', worktreeId: WORKTREE_ID, createdAt: 1 },
+      { id: targetTabId, ptyId: PTY, worktreeId: WORKTREE_ID, createdAt: 2 }
+    ],
+    layouts: {
+      [SOURCE_TAB_ID]: {
+        root: { type: 'leaf', leafId: LEAF_1 },
+        ptyIdsByLeafId: { [LEAF_1]: 'pty-left' }
+      },
+      [targetTabId]: {
+        root: { type: 'leaf', leafId: LEAF_2 },
+        ptyIdsByLeafId: { [LEAF_2]: PTY }
+      }
+    },
+    sleeping: {}
+  }
+}
+
+function seed(): void {
+  const layout = splitLayout()
+  useAppStore.setState({
+    tabsByWorktree: { [WORKTREE_ID]: [createTerminalTab(SOURCE_TAB_ID, 'pty-left')] },
+    terminalLayoutsByTabId: {
+      [SOURCE_TAB_ID]: { ...layout, ptyIdsByLeafId: { [LEAF_1]: 'pty-left', [LEAF_2]: PTY } }
+    },
+    ptyIdsByTabId: { [SOURCE_TAB_ID]: ['pty-left', PTY] },
+    unifiedTabsByWorktree: {
+      [WORKTREE_ID]: [
+        {
+          id: SOURCE_TAB_ID,
+          entityId: SOURCE_TAB_ID,
+          groupId: OTHER_GROUP_ID,
+          worktreeId: WORKTREE_ID,
+          contentType: 'terminal',
+          label: 'Terminal 2',
+          customLabel: null,
+          color: null,
+          sortOrder: 0,
+          createdAt: 1
+        }
+      ]
+    },
+    groupsByWorktree: {
+      [WORKTREE_ID]: [
+        {
+          id: OTHER_GROUP_ID,
+          worktreeId: WORKTREE_ID,
+          activeTabId: SOURCE_TAB_ID,
+          tabOrder: [SOURCE_TAB_ID]
+        },
+        { id: TARGET_GROUP_ID, worktreeId: WORKTREE_ID, activeTabId: null, tabOrder: [] }
+      ]
+    },
+    activeGroupIdByWorktree: { [WORKTREE_ID]: OTHER_GROUP_ID },
+    activeWorktreeId: WORKTREE_ID,
+    terminalTopologySeqByWorktree: { [WORKTREE_ID]: 1 }
+  })
+}
 
 function detach(
-  overrides: Partial<Parameters<typeof detachTerminalPaneToTab>[0]> & {
-    commitMove?: CommitMove
-    store?: ReturnType<typeof createStore>
-  }
+  answer: (request: TerminalLeafMoveRequest) => Promise<MoveAnswer>,
+  manager = managerWithPanes()
 ) {
-  const { commitMove = mainAnswering([]), store = createStore(), ...rest } = overrides
-  vi.stubGlobal('window', {
-    api: { pty: { moveLeafToNewTab: commitMove }, session: { closeTerminalSurface } }
-  })
-  return detachTerminalPaneToTab({
-    getStore: () => store,
-    manager: managerWithPanes(),
+  const moveLeafToNewTab = vi.fn(answer)
+  vi.stubGlobal('window', { api: { pty: { moveLeafToNewTab }, session: { closeTerminalSurface } } })
+  const result = detachTerminalPaneToTab({
+    getStore: state,
+    subscribe: useAppStore.subscribe,
+    manager,
     persistLayoutSnapshot: vi.fn(),
     sourcePaneId: 2,
     sourceTabId: SOURCE_TAB_ID,
     targetGroupId: TARGET_GROUP_ID,
-    worktreeId: WORKTREE_ID,
-    ...rest
+    worktreeId: WORKTREE_ID
   })
+  return { result, moveLeafToNewTab }
 }
 
-const moved: TerminalLeafMoveResult = { status: 'moved', ptyId: 'remote:env-1@@terminal-1' }
+const targetTabIdOf = (move: { mock: { calls: [TerminalLeafMoveRequest][] } }): string =>
+  move.mock.calls[0]?.[0].targetTabId ?? ''
 
-describe('detachTerminalPaneToTab rolls a committed move forward', () => {
-  it('refuses, silently, a pane whose PTY spawn is still in flight', async () => {
-    const commitMove = mainAnswering([{ status: 'moved', ptyId: null }])
-    const store = createStore(unboundSplitLayout())
+function expectTargetTabShownOnce(targetTabId: string): void {
+  const terminalIds = state().tabsByWorktree[WORKTREE_ID].map((tab) => tab.id)
+  expect(terminalIds).toEqual([SOURCE_TAB_ID, targetTabId])
+  const target = state().groupsByWorktree[WORKTREE_ID].find((g) => g.id === TARGET_GROUP_ID)
+  expect(target?.tabOrder).toEqual([targetTabId])
+  expect(state().activeTabId).toBe(targetTabId)
+  expect(state().ptyIdsByTabId[SOURCE_TAB_ID]).toEqual(['pty-left'])
+  expect(state().ptyIdsByTabId[targetTabId]).toEqual([PTY])
+  expect(closeTerminalSurface).not.toHaveBeenCalled()
+}
 
-    await expect(detach({ commitMove, store, sourceConnectPending: true })).resolves.toBeNull()
+beforeEach(() => {
+  toastErrorMock.mockClear()
+  closeTerminalSurface.mockReset()
+  closeTerminalSurface.mockResolvedValue({})
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  seed()
+})
 
-    expect(commitMove).not.toHaveBeenCalled()
-    expect(store.createTab).not.toHaveBeenCalled()
-    expect(toastErrorMock).not.toHaveBeenCalled()
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  useAppStore.setState(initial, true)
+})
+
+describe('dragging a pane out to a new tab follows main’s move', () => {
+  it('shows the new tab once when main’s push arrives before the reply', async () => {
+    const { result, moveLeafToNewTab } = detach(async (request) => {
+      // The reconciler detaches the source pane as soon as this push lands.
+      state().applyTerminalTopologySlice(movedSlice(2, request.targetTabId))
+      return { status: 'moved', ptyId: PTY, publishSeq: 2 }
+    })
+
+    await expect(result).resolves.toMatchObject({ leafId: LEAF_2, ptyId: PTY })
+    expect(moveLeafToNewTab).toHaveBeenCalledOnce()
+    expectTargetTabShownOnce(targetTabIdOf(moveLeafToNewTab))
   })
 
-  it('shows the failure toast and keeps the pane when main refuses or the commit throws', async () => {
-    for (const results of [
-      [{ status: 'refused', reason: 'pty_mismatch' } as const],
-      [new Error('write failed')]
-    ]) {
-      toastErrorMock.mockClear()
-      const store = createStore()
-      const manager = managerWithPanes()
+  it('waits for main’s push when the reply arrives first', async () => {
+    const { result, moveLeafToNewTab } = detach(async () => ({
+      status: 'moved',
+      ptyId: PTY,
+      publishSeq: 2
+    }))
+    await vi.waitFor(() => expect(moveLeafToNewTab).toHaveBeenCalledOnce())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(state().tabsByWorktree[WORKTREE_ID]).toHaveLength(1)
 
-      await expect(
-        detach({ commitMove: mainAnswering(results), store, manager })
-      ).resolves.toBeNull()
+    state().applyTerminalTopologySlice(movedSlice(2, targetTabIdOf(moveLeafToNewTab)))
 
-      expect(manager.detachPaneForExternalMove).not.toHaveBeenCalled()
-      expect(store.createTab).not.toHaveBeenCalled()
-      expect(toastErrorMock).toHaveBeenCalledOnce()
-    }
+    await expect(result).resolves.toMatchObject({ leafId: LEAF_2 })
+    expectTargetTabShownOnce(targetTabIdOf(moveLeafToNewTab))
   })
 
-  it('closes main’s new tab, without a toast, when the user closed the pane meanwhile', async () => {
-    let paneIds = [1, 2]
-    const manager = managerWithPanes(() => paneIds)
-    const commitMove = vi.fn(
-      async (_request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> => {
-        paneIds = [1]
-        manager.getLeafId.mockImplementation((paneId) => (paneId === 1 ? LEAF_1 : null))
-        return moved
-      }
-    )
-    const store = createStore()
+  it('closes main’s new tab when the user closed the pane meanwhile', async () => {
+    closeTerminalSurface.mockResolvedValue({ publishSeq: 3 })
+    const { result, moveLeafToNewTab } = detach(async () => {
+      state().markPendingTerminalPane({
+        worktreeId: WORKTREE_ID,
+        tabId: SOURCE_TAB_ID,
+        leafId: LEAF_2,
+        change: 'remove'
+      })
+      return { status: 'moved', ptyId: PTY, publishSeq: 2 }
+    })
 
-    await expect(detach({ commitMove, manager, store })).resolves.toBeNull()
-
-    const targetTabId = commitMove.mock.calls[0]?.[0]?.targetTabId
+    await expect(result).resolves.toBeNull()
+    const targetTabId = targetTabIdOf(moveLeafToNewTab)
     expect(closeTerminalSurface).toHaveBeenCalledWith({
       worktreeId: WORKTREE_ID,
       target: { kind: 'tab', tabId: targetTabId },
       reason: 'cleanup'
     })
-    expect(store.createTab).not.toHaveBeenCalled()
-    expect(toastErrorMock).not.toHaveBeenCalled()
+    // Main's push with the new tab can't show it meanwhile.
+    state().applyTerminalTopologySlice(movedSlice(2, targetTabId))
+    expect(state().tabsByWorktree[WORKTREE_ID].map((tab) => tab.id)).toEqual([SOURCE_TAB_ID])
   })
 
-  it('closes main’s new tab when the user closed the source tab meanwhile', async () => {
-    const store = createStore()
-    const commitMove = vi.fn(
-      async (_request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> => {
-        // A tab close drops its row and its layout.
-        store.tabsByWorktree[WORKTREE_ID] = []
-        delete store.terminalLayoutsByTabId[SOURCE_TAB_ID]
-        return moved
-      }
-    )
-
-    await expect(detach({ commitMove, store })).resolves.toBeNull()
-
-    expect(closeTerminalSurface).toHaveBeenCalledOnce()
-    expect(store.createTab).not.toHaveBeenCalled()
-  })
-
-  it('finds the pane by its leaf when its pane id changed meanwhile', async () => {
-    const manager = managerWithPanes(() => [1, 7])
-    manager.getLeafId.mockImplementation((paneId) => (paneId === 1 ? LEAF_1 : LEAF_2))
-    const commitMove = vi.fn(
-      async (_request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> => {
-        manager.getLeafId.mockImplementation((paneId) =>
-          paneId === 1 ? LEAF_1 : paneId === 7 ? LEAF_2 : null
-        )
-        return moved
-      }
-    )
-
-    await expect(detach({ commitMove, manager })).resolves.toMatchObject({ leafId: LEAF_2 })
-
-    expect(manager.detachPaneForExternalMove).toHaveBeenCalledWith(7)
-  })
-
-  it('closes main’s new tab when the pane manager refuses to detach the pane', async () => {
-    const manager = managerWithPanes()
-    manager.detachPaneForExternalMove.mockReturnValue(false)
-    const commitMove = mainAnswering([moved])
-    const store = createStore()
-
-    await expect(detach({ commitMove, manager, store })).resolves.toBeNull()
-
-    expect(closeTerminalSurface).toHaveBeenCalledWith({
-      worktreeId: WORKTREE_ID,
-      target: { kind: 'tab', tabId: commitMove.mock.calls[0]?.[0]?.targetTabId },
-      reason: 'cleanup'
-    })
-    expect(store.createTab).not.toHaveBeenCalled()
-    expect(store.setTabLayout).not.toHaveBeenCalled()
-  })
-
-  it('moves the last pane, after a sibling closed meanwhile, without killing its PTY', async () => {
-    const store = createStore()
+  it('closes the source tab, keeping the PTY, when a sibling closed meanwhile', async () => {
+    const closeTab = vi.spyOn(state(), 'closeTab')
     let paneIds = [1, 2]
-    const manager = managerWithPanes(() => paneIds)
-    const commitMove = vi.fn(async (_request: TerminalLeafMoveRequest) => {
-      // Closing a pane persists the layout synchronously (onLayoutChanged), as the real close does.
-      paneIds = [2]
-      store.terminalLayoutsByTabId[SOURCE_TAB_ID] = {
-        root: { type: 'leaf', leafId: LEAF_2 },
-        activeLeafId: LEAF_2,
-        expandedLeafId: null,
-        ptyIdsByLeafId: { [LEAF_2]: 'pty-right' }
-      }
-      return { status: 'moved', ptyId: 'pty-right' } satisfies TerminalLeafMoveResult
-    })
-
-    await expect(detach({ commitMove, manager, store })).resolves.toMatchObject({
-      leafId: LEAF_2,
-      ptyId: 'pty-right'
-    })
-
-    expect(closeTerminalSurface).not.toHaveBeenCalled()
-    expect(manager.detachPaneForExternalMove).not.toHaveBeenCalled()
-    expect(store.createTab).toHaveBeenCalledOnce()
-    expect(store.syncPaneDetachPtyOwnership).toHaveBeenCalledWith(
-      expect.objectContaining({ detachedLeafId: LEAF_2, detachedPtyId: 'pty-right' })
+    const { result } = detach(
+      async (request) => {
+        paneIds = [2]
+        state().applyTerminalTopologySlice(movedSlice(2, request.targetTabId))
+        return { status: 'moved', ptyId: PTY, publishSeq: 2 }
+      },
+      managerWithPanes(() => paneIds)
     )
-    expect(store.closeTab).toHaveBeenCalledWith(
+
+    await expect(result).resolves.toMatchObject({ leafId: LEAF_2 })
+    expect(closeTab).toHaveBeenCalledWith(
       SOURCE_TAB_ID,
       expect.objectContaining({ localPtyTeardownOwnedExternally: true })
     )
   })
 
-  it('commits the move in main before the target tab exists, using the same tab id', async () => {
-    const store = createStore()
-    let release!: () => void
-    const commitMove = vi.fn(
-      (_request: TerminalLeafMoveRequest) =>
-        new Promise<TerminalLeafMoveResult>((resolve) => {
-          release = () => resolve(moved)
-        })
-    )
-
-    const detaching = detach({ commitMove, store })
-    await vi.waitFor(() => expect(commitMove).toHaveBeenCalledOnce())
-    expect(store.createTab).not.toHaveBeenCalled()
-    release()
-    await detaching
-
-    const request = commitMove.mock.calls[0]?.[0]
-    expect(request).toEqual({
-      worktreeId: WORKTREE_ID,
-      sourceTabId: SOURCE_TAB_ID,
-      targetTabId: expect.any(String),
-      leafId: LEAF_2,
-      ptyId: expect.any(String)
-    })
-    expect(store.createTab).toHaveBeenCalledWith(
-      WORKTREE_ID,
-      TARGET_GROUP_ID,
-      'powershell.exe',
-      expect.objectContaining({ id: request?.targetTabId, initialLeafId: LEAF_2 })
-    )
+  it('shows the failure toast and keeps the pane when main refuses or the commit throws', async () => {
+    for (const answer of [
+      async (): Promise<MoveAnswer> => ({ status: 'refused', reason: 'pty_mismatch' }),
+      async (): Promise<MoveAnswer> => {
+        throw new Error('write failed')
+      }
+    ]) {
+      toastErrorMock.mockClear()
+      const manager = managerWithPanes()
+      await expect(detach(answer, manager).result).resolves.toBeNull()
+      expect(manager.detachPaneForExternalMove).not.toHaveBeenCalled()
+      expect(state().tabsByWorktree[WORKTREE_ID]).toHaveLength(1)
+      expect(toastErrorMock).toHaveBeenCalledOnce()
+    }
   })
 
   it('ignores a repeat drop of a pane whose move is still committing', async () => {
-    const store = createStore()
-    let release!: () => void
-    const commitMove = vi.fn(
-      (_request: TerminalLeafMoveRequest) =>
-        new Promise<TerminalLeafMoveResult>((resolve) => {
-          release = () => resolve(moved)
-        })
-    )
+    let release!: (answer: MoveAnswer) => void
+    const first = detach(() => new Promise<MoveAnswer>((resolve) => (release = resolve)))
+    await vi.waitFor(() => expect(first.moveLeafToNewTab).toHaveBeenCalledOnce())
+    const repeat = detach(async () => ({ status: 'moved', ptyId: PTY }))
 
-    const first = detach({ commitMove, store })
-    await vi.waitFor(() => expect(commitMove).toHaveBeenCalledOnce())
-    await expect(detach({ commitMove, store })).resolves.toBeNull()
-    release()
-
-    await expect(first).resolves.toMatchObject({ leafId: LEAF_2 })
-    expect(commitMove).toHaveBeenCalledOnce()
-    expect(toastErrorMock).not.toHaveBeenCalled()
-  })
-
-  it('binds the moved tab’s layout to the live PTY, not the saved one', async () => {
-    const store = createStore(splitLayout())
-    const saved = store.terminalLayoutsByTabId[SOURCE_TAB_ID]?.ptyIdsByLeafId?.[LEAF_2]
-    expect(saved).toBeTruthy()
-
-    const result = await detach({ livePtyId: 'pty-respawned', store })
-
-    expect(result?.ptyId).toBe('pty-respawned')
-    expect(store.terminalLayoutsByTabId['tab-detached']?.ptyIdsByLeafId?.[LEAF_2]).toBe(
-      'pty-respawned'
-    )
+    await expect(repeat.result).resolves.toBeNull()
+    expect(repeat.moveLeafToNewTab).not.toHaveBeenCalled()
+    state().applyTerminalTopologySlice(movedSlice(2, targetTabIdOf(first.moveLeafToNewTab)))
+    release({ status: 'moved', ptyId: PTY, publishSeq: 2 })
+    await expect(first.result).resolves.toMatchObject({ leafId: LEAF_2 })
   })
 })

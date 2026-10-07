@@ -73,16 +73,12 @@ function mount(
 function reconcile(
   view: Mounted,
   root: TerminalPaneLayoutNode,
-  options: { ptyIdsByLeafId?: Record<string, string>; retired?: string[]; starting?: string[] } = {}
+  options: { ptyIdsByLeafId?: Record<string, string>; added?: string[]; removed?: string[] } = {}
 ): boolean {
-  const startingPaneIds = new Set(
-    (options.starting ?? []).map((leafId) => view.manager.getNumericIdForLeaf(leafId))
-  )
   return reconcileMountedTerminalLayout(
     view.manager,
     { root, ptyIdsByLeafId: options.ptyIdsByLeafId ?? {} },
-    new Set(options.retired ?? []),
-    (paneId) => startingPaneIds.has(paneId)
+    { added: new Set(options.added ?? []), removed: new Set(options.removed ?? []) }
   )
 }
 
@@ -133,26 +129,32 @@ describe('reconcileMountedTerminalLayout', () => {
     expect(view.onLayoutChanged).toHaveBeenCalledWith()
   })
 
-  it('detaches a retired leaf instead of closing it', () => {
+  it('detaches a removed leaf instead of closing it', () => {
     const view = mount([A, B])
-    expect(reconcile(view, leaf(A), { retired: [B] })).toBe(true)
+    expect(reconcile(view, leaf(A))).toBe(true)
     expect(view.onPaneClosed).toHaveBeenCalledTimes(1)
     expect(view.onPaneClosed.mock.calls[0]?.[1]).toMatchObject({ leafId: B, reason: 'detach' })
     expect(tree(view)).toEqual(leaf(A))
   })
 
-  it('keeps a pane that is still starting, and one the layout never named', () => {
+  it('keeps a pending pane main has not named yet', () => {
     const view = mount([A, B])
-    expect(reconcile(view, leaf(A), { retired: [B], starting: [B] })).toBe(false)
-    expect(reconcile(view, leaf(A))).toBe(false)
+    expect(reconcile(view, leaf(A), { added: [B] })).toBe(false)
     expect(view.onPaneClosed).not.toHaveBeenCalled()
     expect(view.manager.getPanes().map((pane) => pane.leafId)).toEqual([A, B])
+  })
+
+  it('does not bring back a pane closed here that an older layout still names', () => {
+    const view = mount([A])
+    expect(reconcile(view, split(leaf(A), leaf(B)), { removed: [B] })).toBe(false)
+    expect(view.onPaneCreated).not.toHaveBeenCalled()
+    expect(tree(view)).toEqual(leaf(A))
   })
 
   it('removes before inserting, so the new leaf anchors on a pane that stays', () => {
     const view = mount([A, B])
     const layout = split(leaf(A), leaf(NEW))
-    reconcile(view, layout, { retired: [B] })
+    reconcile(view, layout)
     expect(tree(view)).toEqual(layout)
   })
 
@@ -219,7 +221,7 @@ describe('a leaf main moved to another tab', () => {
       })
       const source = mount([A, B], wiring('source'))
       const destination = mount([A], wiring('destination'))
-      const moveOut = (): boolean => reconcile(source, leaf(A), { retired: [B] })
+      const moveOut = (): boolean => reconcile(source, leaf(A))
       const moveIn = (): boolean =>
         reconcile(destination, split(leaf(A), leaf(B)), { ptyIdsByLeafId: { [B]: `pty-${B}` } })
 

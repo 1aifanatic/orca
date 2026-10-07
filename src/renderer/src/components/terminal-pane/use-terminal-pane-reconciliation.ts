@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect } from 'react'
 import {
   applyExpandedLayoutTo,
   cancelPendingPaneSizeRefreshFrames,
@@ -6,11 +6,9 @@ import {
 } from './expand-collapse'
 import { safeFit } from '@/lib/pane-manager/pane-tree-ops'
 import { resolvePaneKeyForManager } from '@/lib/pane-manager/pane-key-resolution'
-import {
-  reconcileMountedTerminalLayout,
-  trackRetiredLeafIds
-} from './terminal-live-layout-reconciliation'
-import { collectLeafIds } from './terminal-pane-layout-tree'
+import { useAppStore } from '@/store'
+import { pendingTerminalLeafIds } from '@/store/terminals/terminal-pending-panes'
+import { reconcileMountedTerminalLayout } from './terminal-live-layout-reconciliation'
 import { useTerminalPaneProcessExitActions } from './use-terminal-pane-process-exit-actions'
 import type { TerminalPaneCloseController } from './use-terminal-pane-close-actions'
 
@@ -25,16 +23,10 @@ export function useTerminalPaneReconciliation(controller: TerminalPaneCloseContr
     managerRef,
     paneCount,
     paneLayoutRevision,
-    paneTransportsRef,
     pendingPaneSizeRefreshFrameIdsRef,
     restoredLayout,
     tabId
   } = controller
-  // Leaves the last layout named, and the ones it has since dropped whose panes
-  // are still mounted; a removal needs the layout to have named the leaf first.
-  const layoutLeafIdsRef = useRef<ReadonlySet<string>>(new Set())
-  const retiredLeafIdsRef = useRef<ReadonlySet<string>>(new Set())
-
   useEffect(() => {
     closeTerminalLinkActions()
   }, [closeTerminalLinkActions, isActive, isRendererVisible, paneLayoutRevision])
@@ -45,22 +37,13 @@ export function useTerminalPaneReconciliation(controller: TerminalPaneCloseContr
     if (!manager || !root) {
       return
     }
-    const layoutLeafIds = new Set(collectLeafIds(root))
-    const retiredLeafIds = trackRetiredLeafIds({
-      retiredLeafIds: retiredLeafIdsRef.current,
-      previousLayoutLeafIds: layoutLeafIdsRef.current,
-      layoutLeafIds,
-      mountedLeafIds: manager.getPanes().map((pane) => pane.leafId)
-    })
-    layoutLeafIdsRef.current = layoutLeafIds
-    retiredLeafIdsRef.current = retiredLeafIds
+    const { pendingTerminalPanes } = useAppStore.getState()
     const panesChanged = reconcileMountedTerminalLayout(
       manager,
       { root, ptyIdsByLeafId: restoredLayout.ptyIdsByLeafId },
-      retiredLeafIds,
-      (paneId) => {
-        const transport = paneTransportsRef.current.get(paneId)
-        return !transport || transport.isConnectPending?.() === true
+      {
+        added: pendingTerminalLeafIds(pendingTerminalPanes, tabId, 'add'),
+        removed: pendingTerminalLeafIds(pendingTerminalPanes, tabId, 'remove')
       }
     )
     if (!panesChanged) {

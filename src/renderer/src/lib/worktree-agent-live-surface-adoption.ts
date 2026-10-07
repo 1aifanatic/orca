@@ -15,7 +15,6 @@ export type LiveSurfaceAdoptionStore = Pick<
   | 'tabsByWorktree'
   | 'terminalLayoutsByTabId'
   | 'updateTabPtyId'
-  | 'replaceTerminalLayoutPanePtyId'
 >
 
 function layoutContainsLeaf(
@@ -58,7 +57,6 @@ export function bindLivePtyToExactSurface(
       return false
     }
     store.updateTabPtyId(terminal.tabId, terminal.ptyId)
-    store.replaceTerminalLayoutPanePtyId(terminal.tabId, pane.leafId, terminal.ptyId)
     return true
   }
   const created = store.createTab(worktreeId, undefined, undefined, {

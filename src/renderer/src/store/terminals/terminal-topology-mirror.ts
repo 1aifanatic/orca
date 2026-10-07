@@ -1,5 +1,4 @@
 import type { SleepingAgentSessionRecord } from '../../../../shared/agent-session-resume'
-import { parseExecutionHostId } from '../../../../shared/execution-host'
 import { structuralValuesEqual } from '../../../../shared/structural-value-equality'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type {
@@ -13,6 +12,11 @@ import type { AppState } from '../types'
 import { emptyLayoutSnapshot } from '../slices/terminal-helpers'
 import type { TerminalSlice, TerminalStoreSet } from './terminal-state'
 import { mirrorTerminalUnifiedTabs } from './terminal-topology-mirror-unified-tabs'
+import {
+  isPendingTerminalTab,
+  isRuntimeHostedTab,
+  pendingAfterTerminalTopologySlice
+} from './terminal-pending-panes'
 
 const OPTIONAL_ROW_FIELDS = [
   'launchAgent',
@@ -89,16 +93,9 @@ function mirrorSleepingRecords(
   return structuralValuesEqual(next, current) ? current : next
 }
 
-/** Tabs a `runtime:` host publishes share the worktree id but never ride main's slice. */
-function isRuntimeHostedTab(state: AppState, worktreeId: string, tabId: string): boolean {
-  const entry = state.unifiedTabsByWorktree[worktreeId]?.find(
-    (tab) => tab.contentType === 'terminal' && (tab.entityId === tabId || tab.id === tabId)
-  )
-  return parseExecutionHostId(entry?.executionHostId)?.kind === 'runtime'
-}
-
 /**
- * Main's slice replaces the worktree's terminal topology; everything else is the window's.
+ * Main's slice replaces the worktree's terminal topology, except tabs still pending here (shown
+ * before main names them, or hidden before main drops them); everything else is the window's.
  * Unchanged rows and layouts keep their identity, so an identical slice changes only the seq.
  */
 export function mirrorTerminalTopologySlice(
@@ -106,6 +103,9 @@ export function mirrorTerminalTopologySlice(
   slice: TerminalTopologySlice
 ): Partial<AppState> {
   const { worktreeId } = slice
+  const pending = pendingAfterTerminalTopologySlice(state.pendingTerminalPanes, slice)
+  const isPending = (tabId: string, change: 'add' | 'remove'): boolean =>
+    isPendingTerminalTab(pending, worktreeId, tabId, change)
   const currentTabs = state.tabsByWorktree[worktreeId] ?? []
   const rowById = new Map(slice.tabs.map((row) => [row.id, row]))
   const kept = currentTabs.flatMap((tab) => {
@@ -113,11 +113,11 @@ export function mirrorTerminalTopologySlice(
     if (row) {
       return [mirrorTabRow(tab, row)]
     }
-    return isRuntimeHostedTab(state, worktreeId, tab.id) ? [tab] : []
+    return isRuntimeHostedTab(state, worktreeId, tab.id) || isPending(tab.id, 'add') ? [tab] : []
   })
   const currentIds = new Set(currentTabs.map((tab) => tab.id))
   const added = slice.tabs
-    .filter((row) => !currentIds.has(row.id))
+    .filter((row) => !currentIds.has(row.id) && !isPending(row.id, 'remove'))
     .map((row, index) => newTabRow(row, kept.length + index))
   const tabs = [...kept, ...added]
   const tabsChanged =
@@ -127,7 +127,9 @@ export function mirrorTerminalTopologySlice(
 
   const layouts = { ...state.terminalLayoutsByTabId }
   for (const [tabId, layout] of Object.entries(slice.layouts)) {
-    layouts[tabId] = mirrorLayout(layouts[tabId], layout)
+    if (!isPending(tabId, 'remove')) {
+      layouts[tabId] = mirrorLayout(layouts[tabId], layout)
+    }
   }
   for (const tab of added) {
     layouts[tab.id] ??= emptyLayoutSnapshot()
@@ -149,6 +151,7 @@ export function mirrorTerminalTopologySlice(
       ? { sleepingAgentSessionsByPaneKey: sleeping }
       : {}),
     ...mirrorTerminalUnifiedTabs(state, worktreeId, added, removedIds),
+    ...(pending !== state.pendingTerminalPanes ? { pendingTerminalPanes: pending } : {}),
     terminalTopologySeqByWorktree: {
       ...state.terminalTopologySeqByWorktree,
       [worktreeId]: slice.publishSeq
@@ -169,4 +172,28 @@ export function createTerminalTopologyMirrorActions(
       )
     }
   }
+}
+
+/** Resolves once this window has applied main's topology up to `publishSeq`. */
+export function terminalTopologyApplied(
+  subscribe: (listener: () => void) => () => void,
+  getState: () => Pick<AppState, 'terminalTopologySeqByWorktree'>,
+  worktreeId: string,
+  publishSeq: number | undefined
+): Promise<void> {
+  const applied = (): boolean =>
+    publishSeq === undefined ||
+    (getState().terminalTopologySeqByWorktree[worktreeId] ?? 0) >= publishSeq
+  return new Promise((resolve) => {
+    if (applied()) {
+      resolve()
+      return
+    }
+    const unsubscribe = subscribe(() => {
+      if (applied()) {
+        unsubscribe()
+        resolve()
+      }
+    })
+  })
 }

@@ -14,7 +14,7 @@ export type DetachedTerminalLayoutLeaf = {
   ptyId: string | null
 }
 
-function removeLeafFromTree(
+export function removeLeafFromTree(
   node: TerminalPaneLayoutNode,
   leafId: string
 ): { node: TerminalPaneLayoutNode | null; removed: boolean } {

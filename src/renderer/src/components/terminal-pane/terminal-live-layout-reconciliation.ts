@@ -5,6 +5,7 @@ import type {
 } from '../../../../shared/terminal-tab-types'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
 import { collectLeafIds } from './terminal-pane-layout-tree'
+import { removeLeafFromTree } from './terminal-layout-leaf-detach'
 
 export type TerminalLiveLayoutInsertion = {
   sourceLeafId: string
@@ -69,24 +70,21 @@ function mountedLeafIdsIn(
 }
 
 /**
- * Mounted leaves the layout no longer names: main closed, moved or retired
- * them, so a pane still mounted for one is a ghost. An empty layout plans
- * nothing — absence of a tree is not evidence about any pane.
+ * Mounted leaves the layout no longer names: main closed, moved or retired them, so a pane still
+ * mounted for one is a ghost. A pane this window made that main has not named yet is pending, not
+ * gone. An empty layout plans nothing — absence of a tree is not evidence about any pane.
  */
 export function planTerminalLiveLayoutRemovals(
   root: TerminalPaneLayoutNode | null | undefined,
   currentLeafIds: Iterable<string>,
-  retiredLeafIds: ReadonlySet<string>
+  pendingLeafIds: ReadonlySet<string>
 ): string[] {
   if (!root) {
     return []
   }
   const layoutLeafIds = new Set(collectLeafIds(root))
-  // Why: a mounted leaf the layout stopped naming is a removal only once the
-  // layout is known to have retired it (trackRetiredLeafIds). A snapshot landing
-  // while the client is still starting a pane must not read as a retirement.
   return [...currentLeafIds].filter(
-    (leafId) => !layoutLeafIds.has(leafId) && retiredLeafIds.has(leafId)
+    (leafId) => !layoutLeafIds.has(leafId) && !pendingLeafIds.has(leafId)
   )
 }
 
@@ -162,26 +160,25 @@ export function planTerminalLiveLayoutInsertions(
   return insertions
 }
 
-/** Panes to detach for leaves the layout retired. A pane still starting its PTY (no transport
- *  yet, or a spawn awaiting its id) is not in main's layout yet, so its absence retires nothing. */
-export function selectRetiredPaneIds(
-  retiredLeafIds: readonly string[],
-  view: {
-    paneIdForLeaf: (leafId: string) => number | null
-    isPaneStarting: (paneId: number) => boolean
+/** This tab's panes the window added or closed ahead of main's layout. */
+export type TerminalPendingLeaves = { added: ReadonlySet<string>; removed: ReadonlySet<string> }
+
+function withoutLeaves(
+  root: TerminalPaneLayoutNode,
+  leafIds: ReadonlySet<string>
+): TerminalPaneLayoutNode | null {
+  let next: TerminalPaneLayoutNode | null = root
+  for (const leafId of leafIds) {
+    next = next && removeLeafFromTree(next, leafId).node
   }
-): number[] {
-  return retiredLeafIds.flatMap((leafId) => {
-    const paneId = view.paneIdForLeaf(leafId)
-    return paneId === null || view.isPaneStarting(paneId) ? [] : [paneId]
-  })
+  return next
 }
 
 /**
- * Makes the mounted panes follow the store's layout: retired leaves detach (no kill; the PTY may
+ * Makes the mounted panes follow the store's layout: removed leaves detach (no kill; the PTY may
  * live on in another tab), then missing leaves mount and attach or spawn, then geometry applies
- * in place. It writes no layout back: the store already holds this one. Returns whether panes
- * were added or removed.
+ * in place. Pending leaves win over the layout until main has them. It writes no layout back: the
+ * store already holds this one. Returns whether panes were added or removed.
  */
 export function reconcileMountedTerminalLayout(
   manager: Pick<
@@ -193,18 +190,22 @@ export function reconcileMountedTerminalLayout(
     | 'applyLayoutGeometry'
   >,
   layout: Pick<TerminalLayoutSnapshot, 'ptyIdsByLeafId'> & { root: TerminalPaneLayoutNode },
-  retiredLeafIds: ReadonlySet<string>,
-  isPaneStarting: (paneId: number) => boolean
+  pending: TerminalPendingLeaves
 ): boolean {
+  const root = withoutLeaves(layout.root, pending.removed)
+  if (!root) {
+    return false
+  }
   const mountedLeafIds = (): string[] => manager.getPanes().map((pane) => pane.leafId)
-  const removals = planTerminalLiveLayoutRemovals(layout.root, mountedLeafIds(), retiredLeafIds)
   // Removals first, so insertions anchor on the panes that stay.
-  const detached = selectRetiredPaneIds(removals, {
-    paneIdForLeaf: (leafId) => manager.getNumericIdForLeaf(leafId),
-    isPaneStarting
-  }).filter((paneId) => manager.detachPaneForExternalMove(paneId))
+  const detached = planTerminalLiveLayoutRemovals(root, mountedLeafIds(), pending.added).filter(
+    (leafId) => {
+      const paneId = manager.getNumericIdForLeaf(leafId)
+      return paneId !== null && manager.detachPaneForExternalMove(paneId)
+    }
+  )
   let inserted = false
-  for (const insertion of planTerminalLiveLayoutInsertions(layout.root, mountedLeafIds())) {
+  for (const insertion of planTerminalLiveLayoutInsertions(root, mountedLeafIds())) {
     const sourcePaneId = manager.getNumericIdForLeaf(insertion.sourceLeafId)
     if (sourcePaneId === null || manager.getNumericIdForLeaf(insertion.newLeafId) !== null) {
       continue
@@ -228,29 +229,6 @@ export function reconcileMountedTerminalLayout(
     )
     inserted ||= created !== null
   }
-  manager.applyLayoutGeometry(layout.root)
+  manager.applyLayoutGeometry(root)
   return detached.length > 0 || inserted
-}
-
-/**
- * Leaves the layout dropped whose panes are still mounted. Only a leaf the
- * layout named before can be retired: a leaf it has never named belongs to a
- * pane the client is still starting. A retired leaf stays retired until its
- * pane is gone or the layout names it again, so a removal skipped while the
- * pane was still starting is planned again on a later reconciliation.
- */
-export function trackRetiredLeafIds(args: {
-  retiredLeafIds: ReadonlySet<string>
-  previousLayoutLeafIds: ReadonlySet<string>
-  layoutLeafIds: ReadonlySet<string>
-  mountedLeafIds: Iterable<string>
-}): ReadonlySet<string> {
-  const mounted = new Set(args.mountedLeafIds)
-  const next = new Set<string>()
-  for (const leafId of [...args.retiredLeafIds, ...args.previousLayoutLeafIds]) {
-    if (mounted.has(leafId) && !args.layoutLeafIds.has(leafId)) {
-      next.add(leafId)
-    }
-  }
-  return next
 }

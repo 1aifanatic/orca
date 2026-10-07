@@ -324,6 +324,7 @@ function restartReplacesLayoutRoot(
   )
 }
 
+// Main binds the replacement, so its push brings the leaf's new PTY id.
 function rebindCodexPaneLayoutLeaf(tabId: string, leafId: string, newPtyId: string): void {
   const store = useAppStore.getState()
   const layout = store.terminalLayoutsByTabId[tabId]
@@ -332,9 +333,7 @@ function rebindCodexPaneLayoutLeaf(tabId: string, leafId: string, newPtyId: stri
       tabId,
       singlePaneLayoutSnapshot(leafId, newPtyId, layout?.titlesByLeafId?.[leafId] ?? null)
     )
-    return
   }
-  store.replaceTerminalLayoutPanePtyId(tabId, leafId, newPtyId)
 }
 
 function reapUnboundCodexPty(ptyId: string, reason: string): void {

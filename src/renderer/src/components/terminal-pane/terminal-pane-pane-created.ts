@@ -1,6 +1,7 @@
 import type { ManagedPane } from '@/lib/pane-manager/pane-manager'
 import type { PaneSpawnHints } from '@/lib/pane-manager/pane-manager-types'
 import { useAppStore } from '@/store'
+import { markTerminalPaneIfAheadOfMain } from '@/store/terminals/terminal-pending-panes'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { createOsc52OscHandler } from './osc52-clipboard'
 import {
@@ -49,6 +50,11 @@ export function createTerminalPaneCreatedHandler(
       deps
     const { deferredSplitHandoffs } = context
     const paneKey = makePaneKey(deps.tabId, pane.leafId)
+    markTerminalPaneIfAheadOfMain(useAppStore.getState(), {
+      worktreeId: deps.worktreeId,
+      tabId: deps.tabId,
+      leafId: pane.leafId
+    })
     const restoredPtyId = ptyDeps.restoredPtyIdByLeafId?.[pane.leafId]
     const hasAuthoritativeSpawnHint = Boolean(spawnHints?.cwd || spawnHints?.ptyId || restoredPtyId)
     let effectiveSpawnHints = spawnHints

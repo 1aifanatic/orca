@@ -110,7 +110,18 @@ describe('createTerminalProviderSnapshotBoundPtyIdsSelector', () => {
     }
 
     expectRecollect('pty bound to a leaf', () => {
-      useAppStore.getState().replaceTerminalLayoutPanePtyId(tabId(0), 'leaf-b-0', 'pty-0-b-next')
+      useAppStore.setState((state) => {
+        const layout = state.terminalLayoutsByTabId[tabId(0)]
+        return {
+          terminalLayoutsByTabId: {
+            ...state.terminalLayoutsByTabId,
+            [tabId(0)]: {
+              ...layout,
+              ptyIdsByLeafId: { ...layout?.ptyIdsByLeafId, 'leaf-b-0': 'pty-0-b-next' }
+            }
+          }
+        }
+      })
     })
     expect(boundPtyIds).toContain('pty-0-b-next')
 

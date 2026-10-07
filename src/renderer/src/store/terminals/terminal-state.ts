@@ -22,6 +22,7 @@ import type { AutomaticAgentResumeClaim, CodexRestartNotice } from './terminal-c
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../types'
 import type { TerminalActions } from './terminal-actions'
+import type { PendingTerminalPane } from './terminal-pending-panes'
 
 export type DirectSshLayoutEdit = {
   targetId: string
@@ -115,6 +116,8 @@ export type TerminalState = {
   defaultTerminalTabsAppliedByWorktreeId: Record<string, true>
   /** The publishSeq of main's last applied terminal topology slice per worktree. */
   terminalTopologySeqByWorktree: Record<string, number>
+  /** What this window shows or hides ahead of main's topology; see terminal-pending-panes.ts. */
+  pendingTerminalPanes: PendingTerminalPane[]
   closedTerminalTabTombstonesByTabId: ClosedTerminalTabTombstonesByTabId
   hydrationSucceeded: boolean
   pendingReconnectWorktreeIds: string[]
