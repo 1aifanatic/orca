@@ -23,7 +23,8 @@ import {
 import {
   resolveStructuredPointerOperation,
   reconcileStructuredPointerOperations,
-  type StructuredPointerSubmission
+  type StructuredPointerSubmission,
+  type StructuredPointerQueuedSend
 } from './structured-pointer-operation-id'
 import { structuredMailSource } from './structured-mail-source'
 import type { SenderNameResolver } from './agent-message-sender'
@@ -58,6 +59,8 @@ export type StructuredPointerSendOutcome =
 export type StructuredPointerSessionFacts = {
   /** Every send the session recorded, oldest first: what the lane's own sends settled as. */
   submissions: readonly StructuredPointerSubmission[]
+  /** Original queue acceptance, including cards later consumed, withdrawn or carried. */
+  queuedSends: readonly StructuredPointerQueuedSend[]
 }
 
 export type StructuredMailboxPointerHost = {
@@ -224,6 +227,17 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     target: StructuredPointerTarget,
     reservedTypes: ReadonlySet<string> | undefined
   ): Promise<boolean> {
+    if (
+      !db.getStructuredPointerOperation(mailboxHandle) &&
+      selectOrchestrationPointerBatch({
+        db,
+        mailboxHandle,
+        waiters: this.deps.getMessageWaiters(mailboxHandle),
+        reservedTypes
+      }).length === 0
+    ) {
+      return false
+    }
     const sessionId = target.sessionId
     const fence = this.deps.host.currentFence(sessionId)
     const session = await this.deps.host.readSessionFacts(sessionId)
@@ -239,16 +253,17 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
       return false
     }
-    const pendingMessageIds = reconcileStructuredPointerOperations({
+    const ownership = reconcileStructuredPointerOperations({
       db,
       mailboxHandle,
       sessionId,
-      submissions: session.submissions
+      submissions: session.submissions,
+      queuedSends: session.queuedSends
     })
     if (!db.getStructuredPointerOperation(mailboxHandle)) {
       this.sentOperationIds.delete(mailboxHandle)
     }
-    if (pendingMessageIds.length > 0) {
+    if (ownership.pendingMessageIds.length > 0) {
       this.retain(mailboxHandle, sessionId, 'turn-unsettled', reservedTypes)
     }
     // A check or waiter may have acquired mail while the journal was being read.
@@ -257,7 +272,7 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       mailboxHandle,
       waiters: this.deps.getMessageWaiters(mailboxHandle),
       reservedTypes,
-      excludeMessageIds: pendingMessageIds
+      excludeMessageIds: ownership.ownedMessageIds
     })
     if (unread.length === 0) {
       return false
@@ -286,6 +301,7 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       sessionId,
       messageIds: staged,
       submissions: session.submissions,
+      queuedSends: session.queuedSends,
       sentByThisProcess: this.sentOperationIds.get(mailboxHandle)
     })
     if (operation.kind === 'stamp') {

@@ -211,6 +211,43 @@ describe('structured pointer operation id', () => {
     ).toEqual({ kind: 'stamp', messageIds: ['m1', 'm2'] })
   })
 
+  it('settles queue acceptance across actor and session changes using the original fingerprint', () => {
+    const db = fakeDb()
+    const input = { db, mailboxHandle: 'dispatch:d1', sessionId: 's1', now: 1_000 }
+    const first = resolveId({ ...input, messageIds: ['m1', 'm2'] })
+    expect(
+      resolveStructuredPointerOperation({
+        ...input,
+        sessionId: 'successor',
+        messageIds: ['m2'],
+        submissions: [],
+        queuedSends: [
+          {
+            operationId: first.operationId,
+            mailNotice: { mailbox: 'dispatch:d1', messageIds: ['m1', 'm2'] }
+          }
+        ],
+        sentByThisProcess: undefined
+      })
+    ).toEqual({ kind: 'stamp', messageIds: ['m1', 'm2'] })
+  })
+
+  it('retains queue acceptance with unverifiable original provenance instead of minting a duplicate', () => {
+    const db = fakeDb()
+    const input = { db, mailboxHandle: 'dispatch:d1', sessionId: 's1', now: 1_000 }
+    const first = resolveId({ ...input, messageIds: ['m1', 'm2'] })
+    expect(
+      resolveStructuredPointerOperation({
+        ...input,
+        messageIds: ['m2'],
+        submissions: [],
+        queuedSends: [{ operationId: first.operationId }],
+        sentByThisProcess: undefined
+      })
+    ).toEqual({ kind: 'park' })
+    expect(db.getStructuredPointerOperation('dispatch:d1')?.operation_id).toBe(first.operationId)
+  })
+
   it('admits independent messages without replacing an overlapping pending notice', () => {
     const db = fakeDb()
     const input = { db, mailboxHandle: 'dispatch:d1', sessionId: 's1', now: 1_000 }

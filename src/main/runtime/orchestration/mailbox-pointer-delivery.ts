@@ -99,8 +99,7 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
       return
     }
     const pending = db.getPendingMailboxPointerMessages(mailboxHandle)
-    if (
-      pending.length > 0 &&
+    if (pending.length > 0) {
       resumePendingOrchestrationMailboxPointer({
         deps: this.deps,
         state: this.state,
@@ -112,8 +111,6 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
         settle: (ptyId, flight) => this.settle(ptyId, flight),
         redrive: (redriveMailbox, force) => this.redrive(redriveMailbox, force)
       })
-    ) {
-      return
     }
     const unread = selectOrchestrationPointerBatch({
       db,

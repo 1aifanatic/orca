@@ -25,12 +25,20 @@ import type { StructuredPointerOperationRow } from './db/messages/structured-poi
 /** What the pointer lane reads off a session's journal for its own sends. */
 export type StructuredPointerSubmission = Pick<
   AgentJournalSubmission,
-  'clientMessageId' | 'dispatchState' | 'submittedAt'
+  'clientMessageId' | 'dispatchState' | 'submittedAt' | 'queuedMessageId'
 > & {
   /** Projected from the submitted message's existing provenance, never persisted separately. */
   mailNotice?: { mailbox: string; messageIds: readonly string[] }
   /** Its journal-owned turn ended; absent when that ownership or end cannot be proven. */
   turnSettled?: true
+}
+
+/** Host queue acceptance survives withdrawal, pause, carry and a fresh submission's verdict. */
+export type StructuredPointerQueuedSend = {
+  operationId: string
+  mailNotice?: StructuredPointerSubmission['mailNotice']
+  /** No retained card can send: withdrawn, or its current handoff's own turn conclusively ended. */
+  settled?: true
 }
 
 /**
@@ -53,12 +61,19 @@ export function decideStructuredPointerAttempt(input: {
   batchFingerprint: string
   /** The session's recorded sends; a rewind may have dropped the row's. */
   submissions: readonly StructuredPointerSubmission[]
+  queuedSends?: readonly StructuredPointerQueuedSend[]
   /** Whether this process minted the row's id. */
   mintedByThisProcess: boolean
   now: number
 }): StructuredPointerAttempt {
   const { row, submissions } = input
-  if (!row || row.session_id !== input.sessionId) {
+  if (!row) {
+    return 'mint'
+  }
+  if (input.queuedSends?.some((entry) => entry.operationId === row.operation_id)) {
+    return 'stamp'
+  }
+  if (row.session_id !== input.sessionId) {
     return 'mint'
   }
   const sent = submissions.find((entry) => entry.clientMessageId === row.operation_id)
@@ -105,7 +120,7 @@ export type StructuredPointerOperationStore = {
 
 function operationMessageIds(
   row: StructuredPointerOperationRow,
-  submission: StructuredPointerSubmission | undefined
+  submission: Pick<StructuredPointerSubmission, 'mailNotice'> | undefined
 ): readonly string[] | undefined {
   const notice = submission?.mailNotice
   return notice?.mailbox === row.mailbox_handle &&
@@ -120,14 +135,29 @@ export function reconcileStructuredPointerOperations(args: {
   mailboxHandle: string
   sessionId: string
   submissions: readonly StructuredPointerSubmission[]
-}): readonly string[] {
+  queuedSends: readonly StructuredPointerQueuedSend[]
+}): { pendingMessageIds: readonly string[]; ownedMessageIds: readonly string[] } {
   const stored = args.db.getStructuredPointerOperation(args.mailboxHandle)
   const pending = new Set<string>()
   const accepted = new Set<string>()
   let storedAccepted = false
+  for (const queued of args.queuedSends) {
+    const notice = queued.mailNotice
+    if (notice?.mailbox !== args.mailboxHandle) {
+      continue
+    }
+    const ownsStored = stored?.operation_id === queued.operationId
+    if (ownsStored && !operationMessageIds(stored, queued)) {
+      continue
+    }
+    for (const id of notice.messageIds) {
+      accepted.add(id)
+    }
+    storedAccepted ||= ownsStored
+  }
   for (const submission of args.submissions) {
     const notice = submission.mailNotice
-    if (notice?.mailbox !== args.mailboxHandle) {
+    if (submission.queuedMessageId || notice?.mailbox !== args.mailboxHandle) {
       continue
     }
     const ownsStored =
@@ -148,13 +178,20 @@ export function reconcileStructuredPointerOperations(args: {
       }
     }
   }
-  if (accepted.size > 0) {
-    args.db.markUnpointedMailboxMessagesAsDelivered(args.mailboxHandle, [...accepted])
+  try {
+    if (accepted.size > 0) {
+      args.db.markUnpointedMailboxMessagesAsDelivered(args.mailboxHandle, [...accepted])
+    }
+    if (storedAccepted) {
+      args.db.deleteStructuredPointerOperation(args.mailboxHandle)
+    }
+  } catch (error) {
+    console.warn('[orchestration] structured pointer bookkeeping failed', args.mailboxHandle, error)
   }
-  if (storedAccepted) {
-    args.db.deleteStructuredPointerOperation(args.mailboxHandle)
+  return {
+    pendingMessageIds: [...pending],
+    ownedMessageIds: [...new Set([...pending, ...accepted])]
   }
-  return [...pending]
 }
 
 export function resolveStructuredPointerOperation(args: {
@@ -164,6 +201,7 @@ export function resolveStructuredPointerOperation(args: {
   /** The rows this nudge stands for; batch identity, not the body, decides reuse. */
   messageIds: readonly string[]
   submissions: readonly StructuredPointerSubmission[]
+  queuedSends?: readonly StructuredPointerQueuedSend[]
   /** The operation id this process last sent for this mailbox, if any. */
   sentByThisProcess: string | undefined
   now?: number
@@ -176,12 +214,14 @@ export function resolveStructuredPointerOperation(args: {
     sessionId: args.sessionId,
     batchFingerprint,
     submissions: args.submissions,
+    queuedSends: args.queuedSends,
     mintedByThisProcess: stored?.operation_id === args.sentByThisProcess,
     now
   })
-  if (stored && stored.session_id === args.sessionId) {
+  const queued = args.queuedSends?.find((entry) => entry.operationId === stored?.operation_id)
+  if (stored && (stored.session_id === args.sessionId || queued)) {
     const sent = args.submissions.find((entry) => entry.clientMessageId === stored.operation_id)
-    const originalIds = operationMessageIds(stored, sent)
+    const originalIds = operationMessageIds(stored, queued ?? sent)
     if (attempt === 'park' && originalIds) {
       // Pending owns only its original members; independent mail remains a new send.
       if (args.messageIds.some((id) => originalIds.includes(id))) {
@@ -189,14 +229,20 @@ export function resolveStructuredPointerOperation(args: {
       }
       attempt = 'mint'
     } else if (attempt === 'stamp') {
-      if (originalIds || stored.batch_fingerprint === batchFingerprint) {
+      if (originalIds && args.messageIds.every((id) => !originalIds.includes(id))) {
+        // Proven independent work must not wait on the accepted owner's bookkeeping.
+        attempt = 'mint'
+      } else if (
+        originalIds ||
+        (stored.session_id === args.sessionId && stored.batch_fingerprint === batchFingerprint)
+      ) {
         return { kind: 'stamp', messageIds: originalIds ?? args.messageIds }
-      }
-      // A settled legacy turn may be replaced, without guessing which original members to stamp.
-      if (!sent?.turnSettled) {
+      } else if (queued ? !queued.settled : !sent?.turnSettled) {
         return { kind: 'park' }
+      } else {
+        // A settled legacy turn may be replaced without guessing its original members.
+        attempt = 'mint'
       }
-      attempt = 'mint'
     }
   }
   if (attempt === 'park') {

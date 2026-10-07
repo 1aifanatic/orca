@@ -62,7 +62,7 @@ function harness(options: {
   const sendMock = vi.mocked(send)
   const stored = new Map<string, StructuredPointerOperationRow>()
   const readSessionFacts = vi.fn<StructuredMailboxPointerHost['readSessionFacts']>(async () =>
-    attached ? { submissions } : null
+    attached ? { submissions, queuedSends: [] } : null
   )
   const db = {
     getDispatchContextById: () => ({ run_id: 'run_1' }),
@@ -378,7 +378,8 @@ describe('structured mailbox pointer delivery', () => {
       )
       let release: (() => void) | undefined
       readSessionFacts.mockImplementationOnce(
-        () => new Promise((resolve) => (release = () => resolve({ submissions: [] })))
+        () =>
+          new Promise((resolve) => (release = () => resolve({ submissions: [], queuedSends: [] })))
       )
       delivery.deliverForHandle('dispatch:d1')
       await flush()
@@ -436,7 +437,8 @@ describe('structured mailbox pointer delivery', () => {
       const { delivery, send, stored, readSessionFacts, setFence, setDbAvailable } = harness({})
       let release: (() => void) | undefined
       readSessionFacts.mockImplementationOnce(
-        () => new Promise((resolve) => (release = () => resolve({ submissions: [] })))
+        () =>
+          new Promise((resolve) => (release = () => resolve({ submissions: [], queuedSends: [] })))
       )
       delivery.deliverForHandle('dispatch:d1')
       await flush()
@@ -456,7 +458,8 @@ describe('structured mailbox pointer delivery', () => {
     const { delivery, send, readSessionFacts, setTargetSession } = harness({})
     let release: (() => void) | undefined
     readSessionFacts.mockImplementationOnce(
-      () => new Promise((resolve) => (release = () => resolve({ submissions: [] })))
+      () =>
+        new Promise((resolve) => (release = () => resolve({ submissions: [], queuedSends: [] })))
     )
     delivery.deliverForHandle('dispatch:d1')
     await flush()
@@ -677,7 +680,7 @@ describe('forgetting one settled worker', () => {
       getCliCommand: () => 'orca',
       senderName: () => null,
       host: {
-        readSessionFacts: async () => (attached ? { submissions: [] } : null),
+        readSessionFacts: async () => (attached ? { submissions: [], queuedSends: [] } : null),
         currentFence: () => 4,
         send
       }
@@ -775,7 +778,7 @@ describe('a mailbox a /clear moves while its nudge is in flight', () => {
       getCliCommand: () => 'orca-dev',
       senderName: () => null,
       host: {
-        readSessionFacts: async () => ({ submissions: [] }),
+        readSessionFacts: async () => ({ submissions: [], queuedSends: [] }),
         currentFence: () => 4,
         send
       }
