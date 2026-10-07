@@ -14,7 +14,7 @@ import {
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
 import { useStructuredAgentSessionHostQueuesMessagesState } from '@/runtime/structured-agent-session-host-capability'
-import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import { structuredAgentSessionStopControl } from './structured-agent-session-stop-control'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -186,11 +186,6 @@ export function useStructuredAgentSession(args: {
     blocked: conversationBusy || commandPending.current || queuedMessageIds.length > 0,
     write
   })
-  const canStop =
-    transportState.turnId !== null ||
-    (stopControl.stopsConversation &&
-      (transportState.isWorking ||
-        hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking || transportState.queueSendsNext
   const transcriptOutbox = useMemo(
@@ -218,6 +213,12 @@ export function useStructuredAgentSession(args: {
     isWorking,
     composerScopeKey,
     mutate
+  })
+  const stopOffer = structuredAgentSessionStopControl({
+    published: transportEnabled,
+    host: stopControl,
+    transportState,
+    outbox: outboxController
   })
   return {
     epoch: state.epoch,
@@ -270,9 +271,8 @@ export function useStructuredAgentSession(args: {
     turnActivity: transportState.turnActivity,
     backgroundTasks: transportState.backgroundTasks,
     turnId: transportState.turnId,
-    canStop,
+    ...stopOffer,
     stopPressed: stopControl.pressed,
-    stop: () => stopControl.stop(transportState.turnId, outboxController.withdrawUnsent),
     queuedMessages: queuedController,
     /** A send made now while the agent works is held as a queued card: the host queues, and this
      *  send asks it to (the setting is on and no pending prompt blocks the queue). */
@@ -320,7 +320,7 @@ export function useStructuredAgentSession(args: {
       )
     },
     ...sessionOptions,
-    unavailable: nativeChatComposerSendGate(sessionOptions.unavailable, canStop),
+    unavailable: nativeChatComposerSendGate(sessionOptions.unavailable, stopOffer.canStop),
     sessionCommands: transportEnabled ? (state.commands ?? undefined) : undefined,
     threadGoal,
     contextUsage

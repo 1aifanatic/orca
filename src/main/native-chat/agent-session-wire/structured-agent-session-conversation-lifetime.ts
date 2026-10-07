@@ -49,11 +49,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   const readRefusals = createJournalOpenReadRefusals(
     deferredStructuredAgentSessionLogger(() => deps().logger)
   )
-  // The owed copy fails as an open does: the reader gets the classified refusal, never its text.
-  const whenImported = (sessionId: string, session: StructuredAgentSessionHostSession) =>
-    session.journal.whenImported().catch((error: unknown) => {
-      throw readRefusals.refusal(sessionId, error)
-    })
   const stopAgent = (sessionId: string, ending: StructuredAgentSessionStopEnding) =>
     stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, ending)
 
@@ -118,11 +113,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
       const open = sessions.get(sessionId)
       if (open) {
-        // Restore left its per-chat file uncopied; a reader gets the chat from the one database.
-        // Awaited only then: an open conversation otherwise answers in the same turn.
-        if (open.journal.importPending) {
-          await whenImported(sessionId, open)
-        }
         readRefusals.forget(sessionId)
         return open
       }
@@ -145,18 +135,16 @@ export function createStructuredAgentSessionConversationLifetime(host: {
             reason: 'recordMissing'
           })
         }
-        // Restore may have opened it while this waited.
-        if (session.journal.importPending) {
-          await whenImported(sessionId, session)
-        }
         readRefusals.forget(sessionId)
         return session
       })
     },
     /** Ends a chat's resources, not the chat: its record and journal stay on disk, and what is
      *  still queued will not be sent; a person's message stays as a held card. */
-    close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> =>
-      serialize(sessionId, async () => {
+    close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> => {
+      // Outside the queue: a start the provider never answers must not hold the close behind it.
+      host.context().runtimeState.acquireAborts.abort(sessionId, 'closed while starting')
+      return serialize(sessionId, async () => {
         readRefusals.forget(sessionId)
         const session = sessions.get(sessionId)
         if (session) {
@@ -166,5 +154,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         await stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, { cause })
         await closeConversation(sessionId)
       })
+    }
   }
 }
