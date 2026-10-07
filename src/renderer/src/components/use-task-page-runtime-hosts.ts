@@ -7,6 +7,7 @@ import { resolveVisibleTaskProvider } from '../../../shared/task-providers'
 import type { TaskSourceContext } from '../../../shared/task-source-context'
 import type { RuntimeProviderPreflightStatus } from '@/components/task-source-provider-availability'
 import { buildExecutionHostRegistry } from '../../../shared/execution-host-registry'
+import { indexExecutionHostsById } from '../../../shared/managed-orcad-execution-host'
 import { getHostDisplayLabelOverrides } from '../../../shared/host-setting-overrides'
 import { parseExecutionHostId } from '../../../shared/execution-host'
 import { TASK_SOURCE_CONTEXT_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
@@ -55,7 +56,7 @@ export function useTaskPageRuntimeHosts(model: TaskPageRepoSelectionModel) {
   )
   const hostRegistryById = useMemo(
     () =>
-      new Map(
+      indexExecutionHostsById(
         buildExecutionHostRegistry({
           repos,
           settings,
@@ -64,7 +65,7 @@ export function useTaskPageRuntimeHosts(model: TaskPageRepoSelectionModel) {
           runtimeEnvironments,
           runtimeStatusByEnvironmentId,
           hostLabelOverrides: getHostDisplayLabelOverrides(settings)
-        }).map((host) => [host.id, host])
+        })
       ),
     [
       repos,

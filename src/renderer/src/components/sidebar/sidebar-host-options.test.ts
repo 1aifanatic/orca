@@ -213,4 +213,28 @@ describe('sidebar host options', () => {
     expect(getSidebarHostHealthLabel('blocked')).toBe('Update needed')
     expect(getSidebarHostHealthLabel('error')).toBe('Needs attention')
   })
+
+  it('names a host scope saved under a merged-away id after the merged host', () => {
+    const hosts = buildSidebarHostOptions({
+      repos: [],
+      sshTargetLabels: new Map([['omarchy-target', 'Omarchy']]),
+      settings: null,
+      runtimeEnvironments: [
+        {
+          id: 'omarchy-server',
+          name: 'Omarchy',
+          orcadDeployment: {
+            sshTargetId: 'omarchy-target',
+            sshTargetGeneration: 1,
+            localPort: 7001,
+            remotePort: 7002
+          }
+        }
+      ]
+    })
+
+    expect(hosts.map((host) => host.id)).toEqual(['local', 'runtime:omarchy-server'])
+    expect(getSidebarHostVisibilityLabel(['ssh:omarchy-target'], hosts)).toBe('Omarchy')
+    expect(getSidebarHostVisibilityLabel(['runtime:omarchy-server'], hosts)).toBe('Omarchy')
+  })
 })

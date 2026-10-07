@@ -17,6 +17,7 @@ import type { SshConnectionState, SshConnectionStatus } from './ssh-types'
 import type { RuntimeEnvironmentSource } from './runtime-environments'
 import type { GlobalSettings } from './global-settings-types'
 import type { Repo } from './repo-types'
+import { mergeManagedOrcadExecutionHosts } from './managed-orcad-execution-host'
 
 export type ExecutionHostHealth =
   | 'local'
@@ -41,12 +42,15 @@ export type ExecutionHostRegistryEntry = {
   platform?: NodeJS.Platform | null
   remoteControlState?: RuntimeStatus['remoteControl']
   source?: RuntimeEnvironmentSource
+  /** Ids this entry also answers for: the other half of an SSH host merged with its managed server. */
+  aliasHostIds?: readonly ExecutionHostId[]
 }
 
 type RuntimeEnvironmentSummary = {
   id: string
   name?: string | null
   source?: RuntimeEnvironmentSource
+  orcadDeployment?: { sshTargetId: string } | null
 }
 
 type RuntimeStatusByEnvironmentId = ReadonlyMap<string, RuntimeEnvironmentStatus>
@@ -246,9 +250,16 @@ export function buildExecutionHostRegistry(args: {
   }
 
   const sshTargetIds = new Set<string>()
+  const referencedHostIds = new Set<ExecutionHostId>()
   if (args.hostSource !== 'configured-only') {
+    if (parsedFocusedHost) {
+      referencedHostIds.add(parsedFocusedHost.id)
+    }
     for (const repo of args.repos) {
       const parsedHost = parseExecutionHostId(repo.executionHostId)
+      if (parsedHost) {
+        referencedHostIds.add(parsedHost.id)
+      }
       if (parsedHost?.kind === 'runtime') {
         addRuntimeHost(
           hosts,
@@ -276,6 +287,7 @@ export function buildExecutionHostRegistry(args: {
       const targetId = normalizeHostPart(repo.connectionId)
       if (targetId && !isRuntimeOwnedSshTargetId(targetId)) {
         sshTargetIds.add(targetId)
+        referencedHostIds.add(toSshExecutionHostId(targetId))
       }
     }
   }
@@ -292,12 +304,22 @@ export function buildExecutionHostRegistry(args: {
     })
   }
 
+  mergeManagedOrcadExecutionHosts({
+    hosts,
+    runtimeEnvironments: args.runtimeEnvironments ?? [],
+    sshConnectionStates: args.sshConnectionStates,
+    referencedHostIds
+  })
+
   const overrides = args.hostLabelOverrides
   if (!overrides || overrides.size === 0) {
     return [...hosts.values()]
   }
   return [...hosts.values()].map((host) => {
-    const label = overrides.get(host.id)
+    // Why the alias fallback: a rename saved on the merged-away id still names the merged row.
+    const label =
+      overrides.get(host.id) ??
+      host.aliasHostIds?.map((aliasHostId) => overrides.get(aliasHostId)).find(Boolean)
     return label ? { ...host, label } : host
   })
 }

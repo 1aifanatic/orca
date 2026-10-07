@@ -10,6 +10,7 @@ import {
   buildExecutionHostRegistry,
   type ExecutionHostHealth
 } from '../../../../shared/execution-host-registry'
+import { indexExecutionHostsById } from '../../../../shared/managed-orcad-execution-host'
 import type { RuntimeCompatVerdict } from '../../../../shared/protocol-compat'
 import type { SshConnectionState, SshConnectionStatus } from '../../../../shared/ssh-types'
 import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-environments'
@@ -27,6 +28,7 @@ export type SidebarHostOption = {
   compatibility?: RuntimeCompatVerdict
   // Why: lets host headers spell out auth-needed SSH states, not just an icon.
   connectionStatus?: SshConnectionStatus
+  aliasHostIds?: readonly ExecutionHostId[]
 }
 
 export type SidebarHostScopeOption = {
@@ -44,7 +46,10 @@ export function buildSidebarHostOptions(args: {
   // Why: live per-environment runtime status lets the registry surface compat
   // verdicts and blocked health in the sidebar without re-probing servers.
   runtimeStatusByEnvironmentId?: ReadonlyMap<string, RuntimeEnvironmentStatus>
-  runtimeEnvironments?: readonly Pick<PublicKnownRuntimeEnvironment, 'id' | 'name'>[]
+  runtimeEnvironments?: readonly Pick<
+    PublicKnownRuntimeEnvironment,
+    'id' | 'name' | 'source' | 'orcadDeployment'
+  >[]
   // Why: per-host display-label overrides rename hosts everywhere the sidebar
   // options feed (host headers, scope picker, focus menu).
   hostLabelOverrides?: ReadonlyMap<ExecutionHostId, string>
@@ -125,7 +130,7 @@ export function getSidebarHostVisibilityLabel(
     return translate('auto.components.sidebar.sidebarHostOptions.3e102f111c', 'All hosts')
   }
   if (visibleHostIds.length === 1) {
-    return hosts.find((host) => host.id === visibleHostIds[0])?.label ?? 'Hosts'
+    return indexExecutionHostsById(hosts).get(visibleHostIds[0])?.label ?? 'Hosts'
   }
   return translate(
     'auto.components.sidebar.sidebarHostOptions.visibleHostsCount',
