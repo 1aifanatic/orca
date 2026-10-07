@@ -115,6 +115,10 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
   /** The same setting for Codex, as app-server thread policy. */
   resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
+  resolveAgentFullAccess?: (agent: string) => boolean
+  /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
+  resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
   getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
@@ -131,6 +135,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   statusSink?: StructuredAgentSessionHostDeps['statusSink']
   /** See `StructuredAgentSessionHostDeps.hasOpenDispatch`. */
   hasOpenDispatch?: StructuredAgentSessionHostDeps['hasOpenDispatch']
+  /** See `StructuredAgentSessionHostDeps.onSessionTabHidden`. */
+  onSessionTabHidden?: StructuredAgentSessionHostDeps['onSessionTabHidden']
   /** Host-owned phone delivery and reconciliation from the current journal projection. */
   attentionDelivery?: StructuredAttentionMobileDelivery
   /** The account home a structured launch would pin right now, for catalog
@@ -270,6 +276,7 @@ async function installOnJournal(
   const context: StructuredAgentAdapterContext = {
     deps,
     store,
+    journalDatabase,
     environment: envResolvers,
     deliverLifecycle: lifecycle.deliver,
     followUps: createStructuredAgentSessionDispatchFollowUps({
@@ -299,6 +306,7 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
+    ...(deps.onSessionTabHidden ? { onSessionTabHidden: deps.onSessionTabHidden } : {}),
     ...(await modelCatalogHostDeps({ store, agents, deps, envResolvers }))
   })
   if (deps.attentionDelivery) {
