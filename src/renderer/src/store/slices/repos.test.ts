@@ -19,6 +19,7 @@ import {
   reposList,
   reposPickFolder,
   reposRemove,
+  reposRemoveForHost,
   reposReorder,
   reposUpdate,
   runtimeEnvironmentCall,
@@ -690,7 +691,7 @@ describe('repo slice runtime routing', () => {
 
     expect(store.getState().repos).toEqual([])
     expect(store.getState().activeRepoId).toBeNull()
-    expect(reposRemove).toHaveBeenCalledWith({ repoId: sshRepo.id })
+    expect(reposRemoveForHost).toHaveBeenCalledWith({ repoId: sshRepo.id, hostId: 'ssh:ssh-1' })
     expect(runtimeEnvironmentCall).not.toHaveBeenCalled()
   })
 
@@ -711,7 +712,7 @@ describe('repo slice runtime routing', () => {
 
     expect(store.getState().repos).toEqual([localRepo])
     expect(store.getState().lastVisitedAtByWorktreeId).toEqual({ [localWorktreeId]: 200 })
-    expect(reposRemove).toHaveBeenCalledWith({ repoId: sshRepo.id })
+    expect(reposRemoveForHost).toHaveBeenCalledWith({ repoId: sshRepo.id, hostId: 'ssh:ssh-1' })
   })
 
   it('drops persisted visit timestamps for removed unhydrated runtime repos', async () => {

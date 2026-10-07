@@ -29,7 +29,7 @@ beforeEach(() => {
   ptyKill.mockReset()
   vi.stubGlobal('window', {
     api: {
-      repos: { remove: reposRemove },
+      repos: { removeForHost: reposRemove },
       pty: { kill: ptyKill },
       runtimeEnvironments: { call: vi.fn() }
     }

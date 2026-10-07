@@ -177,7 +177,8 @@ describe('deleting one host copy of a same-named project', () => {
 
     await store.getState().removeProject('local-uuid', { hostId: 'local' })
 
-    expect(reposRemove).toHaveBeenCalledWith({ repoId: 'local-uuid' })
+    expect(reposRemoveForHost).toHaveBeenCalledWith({ repoId: 'local-uuid', hostId: 'local' })
+    expect(reposRemove).not.toHaveBeenCalled()
     expect(repoRmCalls()).toEqual([])
     expect(remainingRepoIds(store)).toEqual(['env-a-uuid'])
   })

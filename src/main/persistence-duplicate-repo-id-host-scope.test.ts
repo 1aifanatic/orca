@@ -111,6 +111,30 @@ describe('deleting one host copy of a repo id shared by two hosts', () => {
     expect(store.getRepos().map((repo) => repo.path)).toEqual(['/laptop/dup', '/remote/dup'])
   })
 
+  it.each(['git', 'folder'] as const)(
+    'refuses an id-only removeProject that would take the other host %s row and its metadata',
+    async (kind) => {
+      // A stale renderer catalog once sent id-only removal when it could not see the SSH twin (#13071).
+      const store = await createStoreFromState({
+        repos: duplicateIdRepos().map((repo) => ({ ...repo, kind }))
+      })
+      store.setWorktreeMetaForHost('dup::/remote/dup', 'ssh:ssh-1', { displayName: 'SSH wt' })
+
+      expect(() => store.removeProject('dup')).toThrow('repo_id_ambiguous')
+
+      expect(store.getRepos().map((repo) => repo.path)).toEqual(['/laptop/dup', '/remote/dup'])
+      expect(Object.values(store.getAllWorktreeMeta()).map((meta) => meta.displayName)).toContain(
+        'SSH wt'
+      )
+
+      store.removeProjectForHost('dup', 'local')
+      expect(store.getRepos().map((repo) => repo.path)).toEqual(['/remote/dup'])
+      expect(Object.values(store.getAllWorktreeMeta()).map((meta) => meta.displayName)).toContain(
+        'SSH wt'
+      )
+    }
+  )
+
   it('removeProjectForHost drops only the addressed host row', async () => {
     const store = await createStoreWithDuplicateRepoId()
 

@@ -61,7 +61,7 @@ beforeEach(() => {
     api: {
       repos: {
         list: reposList,
-        remove: vi.fn().mockResolvedValue(undefined)
+        removeForHost: vi.fn().mockResolvedValue(undefined)
       }
     }
   })

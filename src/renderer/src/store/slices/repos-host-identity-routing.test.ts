@@ -404,13 +404,13 @@ describe('repo slice host identity routing', () => {
   it('allows two removals of the same owner row to overlap', async () => {
     const { promise: firstRemoval, resolve: resolveFirstRemoval } = Promise.withResolvers<void>()
     const { promise: secondRemoval, resolve: resolveSecondRemoval } = Promise.withResolvers<void>()
-    reposRemove.mockReturnValueOnce(firstRemoval).mockReturnValueOnce(secondRemoval)
+    reposRemoveForHost.mockReturnValueOnce(firstRemoval).mockReturnValueOnce(secondRemoval)
     const store = createTestStore()
     store.setState({ repos: [localDuplicate] })
 
     const first = store.getState().removeProject(localDuplicate.id, { hostId: 'local' })
     const second = store.getState().removeProject(localDuplicate.id, { hostId: 'local' })
-    expect(reposRemove).toHaveBeenCalledTimes(2)
+    expect(reposRemoveForHost).toHaveBeenCalledTimes(2)
 
     resolveSecondRemoval()
     resolveFirstRemoval()

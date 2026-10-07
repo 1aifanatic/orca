@@ -22,7 +22,7 @@ beforeEach(() => {
   reposRemove.mockReset().mockResolvedValue(undefined)
   vi.stubGlobal('window', {
     api: {
-      repos: { remove: reposRemove },
+      repos: { removeForHost: reposRemove },
       pty: { kill: vi.fn() },
       runtimeEnvironments: { call: vi.fn() }
     }

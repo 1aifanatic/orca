@@ -80,10 +80,6 @@ export function createRepoRemovalActions(
         }
         // Why: derive the target from the owner row's host so an SSH host removal never routes repo.rm to the focused runtime.
         const target = getActiveRuntimeTarget(settingsForRepoOwner(get(), projectId, ownerHostId))
-        // Why: repos:remove is id-only and would delete every host's row; scope local removal to the owning host so cross-host duplicates keep other rows.
-        const idExistsOnOtherHost = get().repos.some(
-          (repo) => repo.id === projectId && getRepoExecutionHostId(repo) !== ownerHostId
-        )
         // Why before the host call: its announcement can start a listing refresh that drops these tabs.
         const chatDraftKeys = captureWorkspaceChatDraftKeys(
           get(),
@@ -93,10 +89,9 @@ export function createRepoRemovalActions(
           }))
         )
         try {
+          // Why: always host-scoped; this catalog may be stale and miss a same-id row on another host (#13071).
           await (target.kind === 'local'
-            ? idExistsOnOtherHost
-              ? window.api.repos.removeForHost({ repoId: projectId, hostId: ownerHostId })
-              : window.api.repos.remove({ repoId: projectId })
+            ? window.api.repos.removeForHost({ repoId: projectId, hostId: ownerHostId })
             : callRuntimeRpc(target, 'repo.rm', { repo: projectId }, { timeoutMs: 15_000 }))
         } catch (err) {
           // Why: the owner already dropped this project, so purge the local ghost row instead of aborting (#11994).
