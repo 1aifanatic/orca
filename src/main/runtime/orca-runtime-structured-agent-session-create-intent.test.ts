@@ -12,7 +12,12 @@ vi.mock('./structured-agent-session-create-adoption', () => ({
 }))
 
 import { OrcaRuntimeService } from './orca-runtime'
-import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
+import {
+  STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
+  structuredAgentRuntimeRegistration
+} from './structured-agent-runtime-registrations'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
+import { attachFingerprintFields } from '../native-chat/agent-session-wire/structured-agent-session-attach'
 
 beforeEach(() => {
   applyAgentWorkspaceTrust.mockClear()
@@ -20,7 +25,11 @@ beforeEach(() => {
   adoption.forCreate.mockReset().mockResolvedValue(null)
 })
 
-function createCodexIntentRuntime(settings: Record<string, unknown>) {
+function createCodexIntentRuntime(
+  settings: Record<string, unknown>,
+  workspaceId = 'workspace-1',
+  workspacePath = '/repos/workspace-1'
+) {
   const prepareCodexStructuredLaunch = vi.fn(() => '/accounts/selected/home')
   const runtime = new OrcaRuntimeService(
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: create intent only reads getSettings from the store.
@@ -35,15 +44,15 @@ function createCodexIntentRuntime(settings: Record<string, unknown>) {
     resolveStructuredAgentSessionLocation: vi.fn(async () => ({
       executionHostId: 'local',
       wslDistro: null,
-      workspaceId: 'workspace-1',
+      workspaceId,
       workspaceKind: 'git-worktree' as const
     })),
-    resolveRuntimeFileTarget: vi.fn(async () => ({ worktree: { path: '/repos/workspace-1' } }))
+    resolveRuntimeFileTarget: vi.fn(async () => ({ worktree: { path: workspacePath } }))
   })
   const createIntent = (resumeFrom?: { providerSessionId: string }) =>
     runtime.resolveStructuredAgentSessionCreateIntent({
       envelope: { sessionId: 'session-1', clientOperationId: 'operation-1' },
-      worktree: 'id:workspace-1',
+      worktree: `id:${workspaceId}`,
       agent: 'codex',
       ...(resumeFrom ? { resumeFrom, callerKey: 'caller-1' } : {})
     })
@@ -51,6 +60,24 @@ function createCodexIntentRuntime(settings: Record<string, unknown>) {
 }
 
 describe('structured Codex folder trust', () => {
+  it('takes a floating chat directory from the host-resolved workspace', async () => {
+    const { createIntent } = createCodexIntentRuntime(
+      {},
+      FLOATING_TERMINAL_WORKTREE_ID,
+      '/host/floating-folder'
+    )
+
+    const intent = await createIntent()
+
+    expect(intent.hostLaunchDirectory).toBe('/host/floating-folder')
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledWith(
+      'codex',
+      '/host/floating-folder',
+      expect.objectContaining({ codexHome: '/accounts/selected/home' })
+    )
+    expect(attachFingerprintFields(intent)).not.toHaveProperty('hostLaunchDirectory')
+  })
+
   it('pre-trusts the chat folder in the account home launch preparation picks', async () => {
     const { prepareCodexStructuredLaunch, createIntent } = createCodexIntentRuntime({})
 
@@ -141,8 +168,11 @@ describe('the Codex runtime registration', () => {
     )
   })
 
-  it('gives Claude no post-pin step', () => {
-    expect(structuredAgentRuntimeRegistration('claude')!.afterAccountHomePinned).toBeUndefined()
+  it('gives no other agent a post-pin step', () => {
+    const withStep = STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.filter(
+      (registration) => registration.afterAccountHomePinned
+    ).map((registration) => registration.definition.agent)
+    expect(withStep).toEqual(['codex'])
   })
 })
 

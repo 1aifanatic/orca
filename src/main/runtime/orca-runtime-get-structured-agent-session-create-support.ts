@@ -17,6 +17,10 @@ import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentS
 import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
+import {
+  isFloatingWorkspaceId,
+  isFloatingWorkspaceSelector
+} from '../../shared/floating-workspace-worktree'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import {
   agentSessionAccountHome,
@@ -67,7 +71,11 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }
 
   /** The registration's step for a launch whose account home is final; undefined when it has none. */
-  protected structuredAgentAccountHomePinnedHook(agent: StructuredAgentId, worktree: string) {
+  protected structuredAgentAccountHomePinnedHook(
+    agent: StructuredAgentId,
+    worktree: string,
+    hostLaunchDirectory?: string
+  ) {
     const afterAccountHomePinned = structuredAgentRuntimeRegistration(agent)?.afterAccountHomePinned
     if (!afterAccountHomePinned) {
       return undefined
@@ -76,7 +84,8 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       afterAccountHomePinned(
         {
           accountHomePath,
-          workspacePath: async () => (await this.resolveRuntimeFileTarget(worktree)).worktree.path
+          workspacePath: async () =>
+            hostLaunchDirectory ?? (await this.resolveRuntimeFileTarget(worktree)).worktree.path
         },
         this.structuredAgentAccountHomeServices()
       )
@@ -118,7 +127,10 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     const target = await this.resolveRuntimeFileTarget(worktreeSelector)
     const repo = this.store?.getRepo(target.worktree.repoId)
     const folderScope = parseWorkspaceKey(target.worktree.id)
-    const folderWorkspace = folderScope?.type === 'folder'
+    // The floating workspace is a plain directory with no repo git options, which is exactly what
+    // `folder` denotes here — it describes how Orca manages the place, not whether git is in it.
+    const folderWorkspace =
+      folderScope?.type === 'folder' || isFloatingWorkspaceId(target.worktree.id)
     // WSL routing describes *this* machine; no remote or runtime host may inherit
     // it. Both branches key on executionHostId: the target no longer carries a
     // connectionId, which used to spell remote, unresolved and local alike.
@@ -157,7 +169,10 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     agent: StructuredAgentId
     callerKey?: string
     resumeFrom?: { providerSessionId: string }
-  }): Promise<AgentSessionAttachParams> {
+  }): Promise<AgentSessionAttachParams & { hostLaunchDirectory?: string }> {
+    const hostLaunchDirectory = isFloatingWorkspaceSelector(input.worktree)
+      ? (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path
+      : undefined
     const resolveAccountHomePath = this.structuredAgentAccountHomePathResolver(
       input.agent,
       input.worktree,
@@ -168,11 +183,12 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
         reason: 'hostUnsupported'
       })
     }
-    return this.resolveStructuredAgentSessionIntent(
+    const resolved = await this.resolveStructuredAgentSessionIntent(
       input,
       resolveAccountHomePath,
-      this.structuredAgentAccountHomePinnedHook(input.agent, input.worktree)
+      this.structuredAgentAccountHomePinnedHook(input.agent, input.worktree, hostLaunchDirectory)
     )
+    return hostLaunchDirectory ? { ...resolved, hostLaunchDirectory } : resolved
   }
 
   /**

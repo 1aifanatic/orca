@@ -3,17 +3,19 @@
 // was open before the command saw, or the journal a client would load.
 
 import { beforeEach, expect, it, vi, type Mock } from 'vitest'
-import {
-  AgentJournalSubmissionSchema,
-  isAdmissibleAgentJournalItemBody
-} from '../../../shared/agent-session-journal-schemas'
+import { isAdmissibleAgentJournalItemBody } from '../../../shared/agent-session-journal-schemas'
+import { AgentJournalSubmissionSchema } from '../../../shared/agent-session-journal-submission-schema'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionStatusEvent,
+  AgentSessionStatusSummary,
+  AgentSessionSubscribeEvent
+} from '../../../shared/agent-session-wire'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
@@ -255,7 +257,9 @@ it('hands over a message held behind the command when the command ends just as t
     if (
       !ended &&
       read?.startsWith('compact:') &&
-      new Error('who reads').stack?.includes('StructuredAgentSessionDeliveryLoop.prepare')
+      /at (?:StructuredAgentSessionDeliveryLoop\.)?prepare \(.*structured-agent-session-delivery-loop/.test(
+        new Error('who reads').stack ?? ''
+      )
     ) {
       ended = true
       finish({ outcome: 'success' })
@@ -367,23 +371,26 @@ it('refuses the command for an agent that does not declare compaction, whatever 
 it('refuses the command at handover when the provider opened a turn meanwhile (B3)', async () => {
   await attach()
   const events = state.acquire.mock.calls.at(-1)?.[0].events
-  // The provider starts a turn of its own after acceptance, before the command is handed over.
-  Object.assign(state.host.deps.adapter, {
-    awaitStarted: vi.fn(async () => {
-      events?.appendItem(
-        { provider: 'codex', threadId: THREAD, turnId: 'provider-turn', ordinal: 0 },
-        { kind: 'turn', turnId: 'provider-turn', state: 'running' },
-        { turnScope: AGENT_JOURNAL_THREAD_SCOPE, lifecycle: true }
-      )
-    })
-  })
   const params = compactParams()
+  // Held, the command is accepted, then the provider starts a turn of its own, both ahead of the
+  // handover the acceptance asks for.
+  const held = Promise.withResolvers<void>()
+  void state.host['tasks'].serialize(SESSION, () => held.promise)
+  const commanded = state.host.conversationCommand(CALLER, params)
+  void state.host['tasks'].serialize(SESSION, async () => {
+    events?.appendItem(
+      { provider: 'codex', threadId: THREAD, turnId: 'provider-turn', ordinal: 0 },
+      { kind: 'turn', turnId: 'provider-turn', state: 'running' },
+      { turnScope: AGENT_JOURNAL_THREAD_SCOPE, lifecycle: true }
+    )
+  })
+  held.resolve()
 
   const refused = {
     kind: 'commandRefused',
     refusal: { code: 'agent_session_operation_invalid', details: { reason: 'turnActive' } }
   }
-  await expect(state.host.conversationCommand(CALLER, params)).resolves.toMatchObject({
+  await expect(commanded).resolves.toMatchObject({
     ok: true,
     value: { state: 'completed', error: "This command didn't run. Try it again.", failure: refused }
   })
@@ -475,6 +482,8 @@ it('leaves the command to the provider when it takes the Stop, and ends it as ca
 
 it('ends the command by stopping the child at a second Stop the provider never answered (B4)', async () => {
   await attach()
+  const statuses: AgentSessionStatusEvent[] = []
+  state.host.subscribeStatus({ id: 'list', emit: (event) => statuses.push(event) })
   const params = compactParams()
   const cmid = params.envelope.clientOperationId
   await state.host.conversationCommand(CALLER, params)
@@ -484,12 +493,24 @@ it('ends the command by stopping the child at a second Stop the provider never a
   // The provider takes the interrupt and then never answers it.
   await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
   expect(closeSession).not.toHaveBeenCalled()
+  // The chat reads Stopping, yet only the next Stop ends the command: clients keep Stop enabled.
+  expect(latestSummary(statuses)).toMatchObject({ status: 'working', stopping: true })
   await expect(stop(turnId)).resolves.toMatchObject({ ok: true, value: { cancelled: true } })
 
   expect(state.cancelTurn).toHaveBeenCalledOnce()
   expect(closeSession).toHaveBeenCalledOnce()
   expect(readAgentJournalTurn((await commandTurn(cmid))?.body)?.state).toBe('interrupted')
+  expect(latestSummary(statuses)).not.toHaveProperty('stopping')
 })
+
+/** The session's newest summary in what a session list received. */
+function latestSummary(events: AgentSessionStatusEvent[]): AgentSessionStatusSummary | undefined {
+  return events
+    .flatMap((event) =>
+      event.type === 'status' ? [event.session] : event.type === 'snapshot' ? event.sessions : []
+    )
+    .findLast((summary) => summary.sessionId === SESSION)
+}
 
 it('ends the command by stopping the child when the provider cannot take the Stop (B4)', async () => {
   await attach()
