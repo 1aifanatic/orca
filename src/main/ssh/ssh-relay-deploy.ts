@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { app } from 'electron'
 import { relayBundleCandidates } from './relay-bundle-paths'
 import { PinnedRelayFallbackError, resolveSshRemoteRuntime } from './ssh-relay-pinned-node'
+import { recordSshRelayRuntimeStep } from './ssh-host-node-runtime-mode'
 import {
   ensurePinnedRelayRuntime,
   prebuiltRelayNodePath,
@@ -453,6 +454,9 @@ async function deployAndLaunchRelayInner(
       // Why only a laddered pass: a plain host-npm connect has no rung decision to record.
       if (ladder.length > 1) {
         run.settle(step)
+      }
+      if (target) {
+        recordSshRelayRuntimeStep(target.id, step === 'legacy')
       }
       return result
     } catch (err) {

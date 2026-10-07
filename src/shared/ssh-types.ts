@@ -256,6 +256,8 @@ export type SshConnectionState = {
   remotePlatform?: SshRemotePlatform
   /** Set while connected without the Orca remote server (runtime ladder rung D). */
   plainSsh?: SshPlainSshMode
+  /** Set while the relay runs on the opt-in host-Node runtime, an unsupported configuration. */
+  hostNodeRuntime?: boolean
   /** Which server this host runs; optional so older clients simply ignore it. */
   managedServer?: SshManagedServerStatus
 }

@@ -321,6 +321,17 @@ export function SshTargetCard({
             {state.plainSsh.message}
           </p>
         ) : null}
+        {status === 'connected' && state?.hostNodeRuntime ? (
+          <p
+            data-ssh-host-node-runtime=""
+            className="mt-0.5 text-xs text-status-warning [overflow-wrap:anywhere]"
+          >
+            {translate(
+              'auto.components.settings.SshTargetCard.hostNodeUnsupported',
+              'Unsupported configuration: Orca runs on this host’s Node.js with terminal support installed by npm on the host. Set Runtime to Auto in this host’s SSH settings to use Orca-managed Node.'
+            )}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">

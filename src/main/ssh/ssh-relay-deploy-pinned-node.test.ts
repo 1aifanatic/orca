@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  isSshRelayOnHostNodeRuntime,
+  recordSshRelayRuntimeStep
+} from './ssh-host-node-runtime-mode'
 import type * as RelayRipgrepInstallModule from './ssh-relay-ripgrep-install'
 
 vi.mock('electron', () => ({
@@ -265,6 +269,16 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     expect(planPinnedNodeRelay).not.toHaveBeenCalled()
     expect(result.nodePath).toBe('/usr/bin/node')
     expect(result.serverBuildId).toBe('0.1.0+abcdef012345')
+    expect(isSshRelayOnHostNodeRuntime('target-1')).toBe(true)
+  })
+
+  it('clears the Host Node marker once a later connect launches on the ladder', async () => {
+    recordSshRelayRuntimeStep('target-1', true)
+    queueInstalledPinnedLaunch()
+
+    await deployAndLaunchRelay(makeConnection(), undefined, undefined, 'target-1')
+
+    expect(isSshRelayOnHostNodeRuntime('target-1')).toBe(false)
   })
 
   it('launches from the runtime-folded version dir with the pinned Node and no host Node probe', async () => {

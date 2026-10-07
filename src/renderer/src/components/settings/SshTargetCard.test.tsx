@@ -82,3 +82,26 @@ describe('the connection error on an SSH target card', () => {
     expect(container.textContent).not.toContain('Host key verification failed')
   })
 })
+
+describe('the Host Node runtime on an SSH target card', () => {
+  const connected: SshConnectionState = {
+    targetId: 'target-1',
+    status: 'connected',
+    error: null,
+    reconnectAttempt: 0
+  }
+
+  it('marks a relay running on the opt-in Host Node runtime as unsupported', async () => {
+    const container = await renderCard({ ...connected, hostNodeRuntime: true })
+
+    const note = container.querySelector('[data-ssh-host-node-runtime]')
+    expect(note?.textContent).toContain('Unsupported configuration')
+    expect(note?.textContent).toContain('Set Runtime to Auto')
+  })
+
+  it('says nothing about the runtime on a default connect', async () => {
+    const container = await renderCard(connected)
+
+    expect(container.querySelector('[data-ssh-host-node-runtime]')).toBeNull()
+  })
+})
