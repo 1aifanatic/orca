@@ -243,7 +243,7 @@ export function shouldReplaceTerminalTab(
   nextRemotePtyIds: ReadonlySet<string>,
   nextMirroredTerminalIds: ReadonlySet<string>,
   exactProvisionalHandoffs: ReadonlySet<string>,
-  executionHostId?: ExecutionHostId
+  executionHostId?: ExecutionHostId | null
 ): boolean {
   if (isTerminalTabOwnedByAnotherHost(tab, environmentId, executionHostId)) {
     return false
@@ -274,10 +274,11 @@ export function shouldReplaceTerminalTab(
 export function isTerminalTabOwnedByAnotherHost(
   tab: Pick<TerminalTab, 'ptyId'>,
   environmentId: string,
-  executionHostId?: ExecutionHostId
+  executionHostId?: ExecutionHostId | null
 ): boolean {
   const ptyEnvironmentId = tab.ptyId ? getRemoteRuntimePtyEnvironmentId(tab.ptyId) : null
   return Boolean(
+    executionHostId === null ||
     (executionHostId && executionHostId !== executionHostIdForSessionTabsOwner(environmentId)) ||
     (ptyEnvironmentId && ptyEnvironmentId !== environmentId)
   )

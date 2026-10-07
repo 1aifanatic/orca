@@ -41,7 +41,7 @@ export function prepareWebSessionTabsSnapshotBase(
   now: number,
   batchContext: WebSessionTabsBatchContext | undefined,
   options: WebSessionTabsSnapshotApplyOptions | undefined,
-  terminalHostById: ReadonlyMap<string, ExecutionHostId>,
+  terminalHostById: ReadonlyMap<string, ExecutionHostId | null>,
   terminalLocalIdByHostId: ReadonlyMap<string, string>
 ) {
   const snapshotHostTabId = (tab: RuntimeMobileSessionTabsResult['tabs'][number]): string =>
