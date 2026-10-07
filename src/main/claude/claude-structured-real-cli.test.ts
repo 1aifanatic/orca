@@ -363,7 +363,7 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
           identity: identity(providerSessionId),
           fence: 1,
           spawnToken: 'real-cli-saved-options',
-          options: { model: 'sonnet', permissionMode: 'plan', effort: 'low' }
+          options: { model: 'sonnet', permissionMode: 'accept-edits', effort: 'low' }
         })
         const dispatched = await adapter.dispatch({
           sessionId: 'real-cli-handshake',
@@ -392,7 +392,7 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
         // The turn's own init names what the child was launched with.
         expect(messages().find((m) => m.type === 'system' && m.subtype === 'init')).toMatchObject({
           model: 'claude-sonnet-5',
-          permissionMode: 'plan'
+          permissionMode: 'acceptEdits'
         })
       } finally {
         await adapter.closeAll()
