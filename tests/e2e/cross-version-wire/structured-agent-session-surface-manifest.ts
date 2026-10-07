@@ -8,6 +8,7 @@
 // makes the suite call it in both skew directions, so an addition cannot land without someone
 // stating what an older peer does with it.
 
+import { expect } from 'vitest'
 import { attachFingerprintFields } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-attach'
 import type { AgentSessionAttachParams } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-attach'
 import { computeAgentSessionPayloadFingerprint } from '../../../src/shared/agent-session-mutation-envelope'
@@ -199,11 +200,13 @@ export const STRUCTURED_CALLS: {
   // Teardown runs through the runtime's subscription registry rather than the
   // host, so its reply is the only signal that the gate opened.
   { method: 'agentSession.unsubscribe', hostMethod: null, result: { unsubscribed: true } },
-  // The host's registered agents, each with its declared capability record.
+  // The host's registered agents, each with its declared capability record. Builds before
+  // #25845 read them from the installed host; later ones from the registrations that host is
+  // built from, so they answer without installing it. Either way Codex is listed.
   {
     method: 'agentSession.agents',
-    hostMethod: 'agentDefinitions',
-    result: { agents: [{ agent: 'codex', capabilities: { compact: true } }] }
+    hostMethod: null,
+    result: { agents: expect.arrayContaining([expect.objectContaining({ agent: 'codex' })]) }
   }
 ]
 
