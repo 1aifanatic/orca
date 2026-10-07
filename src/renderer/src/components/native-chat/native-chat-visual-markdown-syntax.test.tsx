@@ -13,12 +13,14 @@ import {
 const NONCE = 'nonce-123'
 
 function Probe(props: ComponentProps<'div'> & ExtraProps): React.JSX.Element {
-  if (Reflect.get(props, 'data-orca-visual') !== NONCE) {
+  const nonce = 'data-orca-visual' in props ? props['data-orca-visual'] : undefined
+  if (nonce !== NONCE) {
     return <div className={props.className}>{props.children}</div>
   }
-  const title: unknown = Reflect.get(props, 'data-orca-visual-title')
+  const title = 'data-orca-visual-title' in props ? props['data-orca-visual-title'] : undefined
+  const file = 'data-orca-visual-file' in props ? props['data-orca-visual-file'] : undefined
   return (
-    <span data-visual={String(Reflect.get(props, 'data-orca-visual-file'))}>
+    <span data-visual={String(file)}>
       {typeof title === 'string' ? `[${title}]` : '[untitled]'}
     </span>
   )

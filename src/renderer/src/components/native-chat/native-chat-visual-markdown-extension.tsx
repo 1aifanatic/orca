@@ -15,8 +15,13 @@ import {
 
 type DivProps = ComponentPropsWithoutRef<'div'> & ExtraProps
 
-function dataAttribute(props: DivProps, name: string): unknown {
-  return Reflect.get(props, name)
+/** The placeholder's attributes, as react-markdown passed them (absent on an ordinary div). */
+function placeholderAttributes(props: DivProps): { nonce: unknown; file: unknown; title: unknown } {
+  return {
+    nonce: 'data-orca-visual' in props ? props['data-orca-visual'] : undefined,
+    file: 'data-orca-visual-file' in props ? props['data-orca-visual-file'] : undefined,
+    title: 'data-orca-visual-title' in props ? props['data-orca-visual-title'] : undefined
+  }
 }
 
 function newNonce(): string {
@@ -31,11 +36,10 @@ function createVisualExtension(
   nonce: string
 ): CommentMarkdownExtension {
   function VisualPlaceholder({ node: _node, ...props }: DivProps): React.JSX.Element {
-    const file = dataAttribute(props, 'data-orca-visual-file')
-    const title = dataAttribute(props, 'data-orca-visual-title')
+    const { nonce: placeholderNonce, file, title } = placeholderAttributes(props)
     // Only the parser's own placeholders carry this message's nonce; the fields are re-checked anyway.
     if (
-      dataAttribute(props, 'data-orca-visual') !== nonce ||
+      placeholderNonce !== nonce ||
       typeof file !== 'string' ||
       !isNativeChatVisualFileName(file) ||
       (title !== undefined &&

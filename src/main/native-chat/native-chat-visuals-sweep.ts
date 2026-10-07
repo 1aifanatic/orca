@@ -12,8 +12,7 @@ import type { AgentSessionExecutionLocation } from '../../shared/agent-session-r
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { yieldToEventLoop } from '../../shared/event-loop-yield'
 import type { StructuredAgentSessionLogger } from './agent-session-wire/structured-agent-session-logger'
-import { journalPathSegment } from './agent-session-journal/journal-paths'
-import { nativeChatVisualsRootFor } from './native-chat-visuals-folder'
+import { nativeChatVisualsFolderName, nativeChatVisualsRootFor } from './native-chat-visuals-folder'
 
 /** `removed` only on positive proof from the host that owns the workspace. */
 export type NativeChatVisualsWorkspaceVerdict = 'present' | 'removed' | 'unverifiable'
@@ -69,7 +68,7 @@ export async function sweepNativeChatVisualsFolders(
     return result
   }
   const sessionByFolder = new Map(
-    held.map((sessionId) => [journalPathSegment(sessionId), sessionId])
+    held.map((sessionId) => [nativeChatVisualsFolderName(sessionId), sessionId])
   )
   const remove = deps.remove ?? ((path: string) => rm(path, { recursive: true, force: true }))
   let verdict: ReturnType<NonNullable<NativeChatVisualsSweepDeps['workspaceVerdicts']>> | undefined

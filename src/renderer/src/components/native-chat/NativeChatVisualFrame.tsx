@@ -8,12 +8,14 @@ import {
   readNativeChatVisualFrameMessage
 } from '../../../../shared/native-chat-visual-shell'
 import type { NativeChatVisualDocument } from './native-chat-visual-read-client'
-import { createNativeChatVisualHeightGovernor } from './native-chat-visual-height-governor'
+import { createNativeChatVisualHeightGovernor } from '../../../../shared/native-chat-visual-height-governor'
 import { useNativeChatVisualTheme } from './use-native-chat-visual-theme'
 
 /** Height reserved before a visual reports its own, so the reply below does not jump far. */
 export const NATIVE_CHAT_VISUAL_RESERVED_HEIGHT = 160
-const LINK_COOLDOWN_MS = 1_000
+// Chromium keeps a click's activation for about five seconds; one open per window means one click
+// in the visual opens at most one page.
+const LINK_COOLDOWN_MS = 5_000
 
 function newChannel(): string {
   const bytes = new Uint8Array(16)
@@ -99,7 +101,8 @@ export function NativeChatVisualFrame({
         return
       }
       // A link opens only from a real gesture in this very frame: it must hold focus and the user
-      // must have just acted. This stops opens on load, not a page that waits for the next click.
+      // must have just acted. This stops opens on load, not a page that waits for the next click,
+      // and it cannot prove the click was on the link the page names.
       const now = performance.now()
       if (
         window.document.activeElement !== frame ||

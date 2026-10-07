@@ -1,8 +1,9 @@
 // `agentSession.readVisual` — one HTML visual from a chat's own visuals folder.
 //
-// Additive: an older host answers `method_not_found` and the client shows the visual as
-// unavailable. The host resolves the folder from its own state directory and record; a client
-// supplies only the session id and a bare file name.
+// Additive: an older host answers `method_not_found` (a phone gets `forbidden` from the mobile
+// allowlist gate on a host without the entry), and the client shows the visual as unavailable.
+// The host resolves the folder from its own state directory and record; a client supplies only the
+// session id and a bare file name.
 
 import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import {
@@ -10,6 +11,7 @@ import {
   type AgentSessionReadVisualResult
 } from '../../../../shared/rpc-contract/agent-session-visual-params'
 import { nativeChatVisualsFolderFor } from '../../../native-chat/native-chat-visuals-folder'
+import { getProfileUserDataPath } from '../../../orca-profiles/profile-storage-paths'
 import { readNativeChatVisualFile } from '../../../native-chat/native-chat-visual-file-read'
 import { defineMethod } from '../core'
 import { requireInstalledStructuredHost } from './structured-agent-session-gate'
@@ -32,10 +34,8 @@ export const STRUCTURED_AGENT_SESSION_VISUAL_METHODS = [
       ) {
         return { ok: false, error: 'unsupported_location' }
       }
-      const folder = nativeChatVisualsFolderFor(
-        host.deps.journalDatabase.stateDirectory,
-        params.sessionId
-      )
+      // The same state directory the chat host and its journal are opened in on this process.
+      const folder = nativeChatVisualsFolderFor(getProfileUserDataPath(), params.sessionId)
       return readNativeChatVisualFile(folder, params.file, params.knownRevision)
     }
   })

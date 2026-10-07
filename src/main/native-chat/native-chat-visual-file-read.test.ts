@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, rm, symlink, writeFile, link } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile, link } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -182,5 +182,23 @@ describe('readNativeChatVisualFile', () => {
       ok: true,
       html: '<p>new</p>'
     })
+  })
+
+  posixIt('reports an unexpected filesystem fault without the host path', async () => {
+    await writeFile(join(folder, 'chart.html'), '<p>a</p>')
+    await chmod(join(folder, 'chart.html'), 0o000)
+    try {
+      const failure = await readNativeChatVisualFile(folder, 'chart.html').then(
+        () => null,
+        (error: unknown) => error
+      )
+      // Root reads through the mode bits; everyone else gets the coded fault.
+      if (failure !== null) {
+        expect(String(failure)).toContain('visual_read_failed:EACCES')
+        expect(String(failure)).not.toContain(stateDirectory)
+      }
+    } finally {
+      await chmod(join(folder, 'chart.html'), 0o644)
+    }
   })
 })

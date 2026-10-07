@@ -37,7 +37,6 @@ import {
   releaseAgentSessionRecordStore,
   type OpenedAgentSessionRecordStore
 } from './agent-session-record-store-slot'
-import { legacyAgentSessionStorePath } from './agent-session-record-store-file'
 import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
 import { journalDatabaseHoldsAgentSessions } from '../native-chat/agent-session-journal/journal-database'
 import {
@@ -68,26 +67,21 @@ import {
   type NativeChatVisualsSweepDeps
 } from '../native-chat/native-chat-visuals-sweep'
 
-/** Whether this profile holds a structured chat: a record or tab in the journal database, or the
- *  records file a profile from before it carries while the database still owes its copy. */
+/** Whether this profile holds a structured chat: a record or tab in the journal database. */
 export function hasPersistedStructuredAgentSessionStore(
   stateDirectory: string,
   fileExists: (path: string) => boolean = existsSync
 ): boolean {
   const databasePath = journalDatabasePath(stateDirectory)
-  if (fileExists(databasePath)) {
-    try {
-      const holds = journalDatabaseHoldsAgentSessions(databasePath)
-      if (holds !== undefined) {
-        return holds
-      }
-    } catch {
-      // A database that cannot be read cannot say it is empty.
-      return true
-    }
+  if (!fileExists(databasePath)) {
+    return false
   }
-  const filePath = legacyAgentSessionStorePath(stateDirectory)
-  return fileExists(filePath) || fileExists(`${filePath}.bak`)
+  try {
+    return journalDatabaseHoldsAgentSessions(databasePath)
+  } catch {
+    // A database that cannot be read cannot say it is empty.
+    return true
+  }
 }
 
 export type StructuredAgentSessionRuntimeDeps = {
@@ -124,6 +118,10 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
   /** The same setting for Codex, as app-server thread policy. */
   resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
+  resolveAgentFullAccess?: (agent: string) => boolean
+  /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
+  resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
   getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
@@ -281,6 +279,7 @@ async function installOnJournal(
   const context: StructuredAgentAdapterContext = {
     deps,
     store,
+    journalDatabase,
     environment: envResolvers,
     deliverLifecycle: lifecycle.deliver,
     followUps: createStructuredAgentSessionDispatchFollowUps({

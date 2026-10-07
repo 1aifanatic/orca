@@ -1,4 +1,5 @@
 import { sliceAtCodeUnitLimit } from '../../shared/surrogate-safe-text-slice'
+import { withoutNativeChatVisualDirectiveLines } from '../../shared/native-chat-visual-directive'
 
 export { sliceAtCodeUnitLimit }
 
@@ -42,8 +43,10 @@ export function extractPreviewContentText(value: unknown): string | null {
   return normalizeContentText(value, SESSION_PREVIEW_TEXT_LIMIT)
 }
 
-export function normalizePreviewText(value: string): string | null {
-  return finalizeNormalizedText(normalizeStringText(value, SESSION_PREVIEW_TEXT_LIMIT))
+/** `role` 'assistant': a reply's visual lines show only in a chat transcript, so a preview drops them. */
+export function normalizePreviewText(value: string, role?: string): string | null {
+  const text = role === 'assistant' ? withoutNativeChatVisualDirectiveLines(value) : value
+  return finalizeNormalizedText(normalizeStringText(text, SESSION_PREVIEW_TEXT_LIMIT))
 }
 
 function normalizeContentText(value: unknown, limit: number): string | null {

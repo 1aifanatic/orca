@@ -146,7 +146,14 @@ var reported = -1
 var pending = false
 function measure() {
   pending = false
-  var height = Math.ceil(document.documentElement.getBoundingClientRect().height)
+  var height = document.documentElement.getBoundingClientRect().height
+  var body = document.body
+  if (body) {
+    // A page pinned to the frame (html/body height 100%) overflows its body instead of growing it.
+    var style = getComputedStyle(body)
+    height = Math.max(height, body.scrollHeight + (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0))
+  }
+  height = Math.ceil(height)
   if (height !== reported && height > 0) {
     reported = height
     send({ type: C.size, height: height })
@@ -162,6 +169,12 @@ if (typeof ResizeObserver === 'function') {
   var observer = new ResizeObserver(schedule)
   observer.observe(document.documentElement)
   document.addEventListener('DOMContentLoaded', function () { if (document.body) observer.observe(document.body) })
+}
+// Content that overflows a fixed-size body changes no observed box, so watch the content too.
+if (typeof MutationObserver === 'function') {
+  document.addEventListener('DOMContentLoaded', function () {
+    if (document.body) new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true })
+  })
 }
 document.addEventListener('DOMContentLoaded', schedule)
 window.addEventListener('load', schedule)
@@ -204,19 +217,17 @@ export function readNativeChatVisualFrameMessage(
   if (typeof data !== 'object' || data === null) {
     return null
   }
-  const field = (name: string): unknown => Reflect.get(data, name)
-  if (field('channel') !== channel) {
+  if (!('channel' in data) || data.channel !== channel || !('type' in data)) {
     return null
   }
-  const type = field('type')
-  if (type === NATIVE_CHAT_VISUAL_SIZE_TYPE) {
-    const height = field('height')
+  if (data.type === NATIVE_CHAT_VISUAL_SIZE_TYPE) {
+    const height = 'height' in data ? data.height : undefined
     return typeof height === 'number' && Number.isFinite(height) && height > 0
       ? { kind: 'size', height }
       : null
   }
-  if (type === NATIVE_CHAT_VISUAL_OPEN_LINK_TYPE) {
-    const url = field('url')
+  if (data.type === NATIVE_CHAT_VISUAL_OPEN_LINK_TYPE) {
+    const url = 'url' in data ? data.url : undefined
     if (typeof url !== 'string' || url.length > MAX_LINK_LENGTH) {
       return null
     }

@@ -306,7 +306,13 @@ export const MessageRow = memo(function MessageRow({
           allowFileUriLinks={allowFileUriLinks}
           linkifyFilePaths={onLinkClick !== undefined}
           visualMessageId={message.role === 'assistant' ? message.id : undefined}
-          streaming={message.state === 'running' && activeTurnIsWorking === true}
+          // Structured text streams in place with no per-row state: only the live turn's frontier
+          // row, still ending in prose, can be mid-sentence.
+          streaming={
+            activeTurnIsWorking === true &&
+            trailingRun === true &&
+            message.blocks.at(-1)?.type === 'text'
+          }
         />
       ) : null}
       {tools.length > 0 || subagentGroups.length > 0 || backgroundTasks.length > 0 ? (

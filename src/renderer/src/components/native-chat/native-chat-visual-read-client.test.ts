@@ -97,14 +97,18 @@ describe('readNativeChatVisual', () => {
     expect(await readNativeChatVisual(local)).toEqual({ ok: false, reason: 'unavailable' })
   })
 
-  it('passes host refusals through, degrades an unknown one, and forgets a deleted file', async () => {
+  it('passes host refusals through, degrades an unknown one, and forgets a refused file', async () => {
     callRuntimeRpc.mockResolvedValueOnce({ ok: true, revision: 'r1', sizeBytes: 3, html: '<p>' })
     await readNativeChatVisual(local)
     callRuntimeRpc.mockResolvedValueOnce({ ok: false, error: 'not_found' })
     expect(await readNativeChatVisual(local)).toEqual({ ok: false, reason: 'not_found' })
     expect(peekCachedNativeChatVisual(local)).toBeNull()
+    callRuntimeRpc.mockResolvedValueOnce({ ok: true, revision: 'r2', sizeBytes: 3, html: '<p>' })
+    await readNativeChatVisual(local)
     callRuntimeRpc.mockResolvedValueOnce({ ok: false, error: 'too_large' })
     expect(await readNativeChatVisual(local)).toEqual({ ok: false, reason: 'too_large' })
+    // A rewrite the host now refuses must not keep showing the old bytes on the next mount.
+    expect(peekCachedNativeChatVisual(local)).toBeNull()
     callRuntimeRpc.mockResolvedValueOnce({ ok: false, error: 'some_future_reason' })
     expect(await readNativeChatVisual(local)).toEqual({ ok: false, reason: 'unavailable' })
   })

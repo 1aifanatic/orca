@@ -12,6 +12,7 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
 }))
 
 import { NativeChatMarkdown } from './NativeChatMarkdown'
+import { MessageRow } from './NativeChatMessageRow'
 import {
   NativeChatVisualOwnerContext,
   type NativeChatVisualOwner
@@ -123,5 +124,32 @@ describe('NativeChatMarkdown visuals', () => {
     )
     expect(noOwner.container).toHaveTextContent('::orca-visual')
     expect(callRuntimeRpc).not.toHaveBeenCalled()
+  })
+
+  it('holds the tail of a text row while its turn works, though the row carries no state', () => {
+    const row = (activeTurnIsWorking: boolean, trailingRun = true) =>
+      withOwner(
+        <MessageRow
+          message={{
+            id: 'm1',
+            role: 'assistant',
+            timestamp: 0,
+            source: 'transcript',
+            blocks: [{ type: 'text', text: 'Here it is:\n::orca-visual{file="usa' }]
+          }}
+          expandSignal={false}
+          activeTurnIsWorking={activeTurnIsWorking}
+          trailingRun={trailingRun}
+          onScrollMessageToTop={vi.fn()}
+        />
+      )
+    const { container, rerender } = render(row(true))
+    expect(container).toHaveTextContent('Here it is:')
+    expect(container).not.toHaveTextContent('::orca-visual')
+    rerender(row(false))
+    expect(container).toHaveTextContent('::orca-visual{file="usa')
+    // An earlier row of a still-working turn has stopped growing, so it shows what it says.
+    rerender(row(true, false))
+    expect(container).toHaveTextContent('::orca-visual{file="usa')
   })
 })

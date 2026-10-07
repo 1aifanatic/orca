@@ -161,3 +161,40 @@ export function withoutPendingNativeChatVisualDirectiveTail(text: string): strin
     ? text.slice(0, lineStart)
     : text
 }
+
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/
+
+/**
+ * Reply text for plain-text surfaces (a sidebar row, a notification, a title): the visual lines are
+ * dropped, since only the transcript can show them. Lines inside fenced code stay, as the transcript
+ * shows them too.
+ */
+export function withoutNativeChatVisualDirectiveLines(text: string): string {
+  if (!text.includes(NATIVE_CHAT_VISUAL_DIRECTIVE_MARKER)) {
+    return text
+  }
+  let fence: string | null = null
+  const kept: string[] = []
+  for (const line of text.split('\n')) {
+    const opener = FENCE_OPEN.exec(line)?.[1]
+    if (fence) {
+      if (opener && opener[0] === fence[0] && opener.length >= fence.length) {
+        fence = null
+      }
+      kept.push(line)
+      continue
+    }
+    if (opener) {
+      fence = opener
+      kept.push(line)
+      continue
+    }
+    if (!parseNativeChatVisualDirectiveLine(line)) {
+      kept.push(line)
+    }
+  }
+  return kept
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}

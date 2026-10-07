@@ -1,5 +1,5 @@
+import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 import { createHash } from 'node:crypto'
-import { join } from 'node:path'
 import type {
   Options as ClaudeAgentSdkOptions,
   PermissionMode
@@ -28,7 +28,6 @@ import {
   structuredClaudeMatchesActiveManagedAccount,
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
-import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import {
   claudeChildEnv,
   claudeProbeEnv,
@@ -49,6 +48,10 @@ import {
   type NativeChatVisualsLaunch,
   type PrepareNativeChatVisuals
 } from '../native-chat/native-chat-visuals-delivery'
+import {
+  claudeLaunchResumesTranscript,
+  resolveClaudeStructuredLaunchHome
+} from './claude-structured-launch-home'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 import { CLAUDE_STRUCTURED_AGENT } from './claude-structured-agent-definition'
@@ -153,16 +156,6 @@ export type ClaudeStructuredLaunchResolverDeps = {
     providerSessionId: string
     claudeConfigDir: string
   }) => Promise<boolean>
-}
-
-async function claudeTranscriptExists(input: {
-  providerSessionId: string
-  claudeConfigDir: string
-}): Promise<boolean> {
-  const path = await resolveSessionFilePath('claude', input.providerSessionId, {
-    claudeProjectsDir: join(input.claudeConfigDir, 'projects')
-  })
-  return path !== null
 }
 
 export type ClaudeStructuredInvocation = { command: string; env: Record<string, string> }
@@ -290,7 +283,8 @@ export function createClaudeStructuredLaunchResolver(
     // Every acquisition, not just the first: the account state can change under a live session, and
     // a reacquire after an unexpected exit would otherwise spawn under whatever it has become.
     // Codex has no gate here — it resolves its account on a different path.
-    const gate = deps.readManagedAccountGate?.()
+    const router = getClaudeProfileRouter()
+    const gate = router ? undefined : deps.readManagedAccountGate?.()
     if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
       // Unreadable account state names no situation a person can act on, so only the log reads it.
       throw new AgentSessionPreSpawnError(
@@ -318,15 +312,6 @@ export function createClaudeStructuredLaunchResolver(
     const probeLaunch = { command: sources.command, cwd, env: claudeProbeEnv(sources) }
     const thinkingDisplay = claudeThinkingDisplayArgs(deps.cliFlags, probeLaunch)
     const visualsLaunch = claudeVisualsLaunch(deps, record.sessionId, probeLaunch)
-    // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
-    // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
-    const resumesTranscript =
-      head !== null &&
-      (claudeProviderHandleLeafUuid(head) !== null ||
-        (await (deps.hasTranscript ?? claudeTranscriptExists)({
-          providerSessionId,
-          claudeConfigDir: record.accountHome.path
-        })))
     const configured = claudeStructuredLaunchArgs(await deps.resolveLaunchArgs())
     const visuals = await visualsLaunch
     // The folder joins whatever the user's Arguments add; it never replaces their directories.
@@ -337,6 +322,20 @@ export function createClaudeStructuredLaunchResolver(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
     const thinkingDisplayArgs = await thinkingDisplay
+    // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
+    // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
+    const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null
+    const resumes = async (claudeConfigDir: string): Promise<boolean> =>
+      head !== null &&
+      (await claudeLaunchResumesTranscript({
+        router,
+        leafUuid,
+        providerSessionId,
+        claudeConfigDir,
+        hasTranscript: deps.hasTranscript
+      }))
+    // Why: without a router the home is fixed, so check it before the recheck that must stay last.
+    const resumedWithoutRouter = router ? undefined : await resumes(record.accountHome.path)
     // Last: it rechecks the account switch, which may have begun during any await above.
     const { command, env } = await resolveClaudeStructuredInvocation(
       deps,
@@ -355,6 +354,8 @@ export function createClaudeStructuredLaunchResolver(
         ),
       sources
     )
+    const launchHome = await resolveClaudeStructuredLaunchHome(router, env, record.accountHome.path)
+    const resumesTranscript = resumedWithoutRouter ?? (await resumes(launchHome))
     return {
       pathToClaudeCodeExecutable: command,
       options: {
@@ -373,9 +374,9 @@ export function createClaudeStructuredLaunchResolver(
       },
       cwd,
       env,
-      claudeConfigDir: record.accountHome.path,
+      claudeConfigDir: launchHome,
       providerSessionId,
-      resumeLeafUuid: resumesTranscript && head ? claudeProviderHandleLeafUuid(head) : null,
+      resumeLeafUuid: resumesTranscript ? leafUuid : null,
       resumesTranscript,
       continuesChain
     }
