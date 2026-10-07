@@ -59,6 +59,7 @@ import {
   agentLaunchWorkspaceFactory,
   type AgentLaunchCreateRecords
 } from './agent-launch-worktree-creation'
+import { callerRendersLaunchedChat } from './structured-agent-session-policy'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
 import {
   publishEarlyTab,
@@ -115,6 +116,7 @@ async function runAgentLaunch(
       view.early
     ),
     workspaces: agentLaunchWorkspaceFactory(context, intent.agent, replaySafe?.createRecords),
+    ...(callerRendersLaunchedChat(context, intent.agent) ? {} : { callerRendersStructured: false }),
     // The tab is shown as it is published, not after a prompt that can take a minute to land.
     onSurfacePublished: (surface) => {
       view.early?.surfacePublished(surface)

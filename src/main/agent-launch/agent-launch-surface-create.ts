@@ -1,7 +1,6 @@
 /** Creating the agent's surface — a structured session or a terminal — in a workspace that exists. */
 import type { AgentLaunchExecution } from './agent-launch-executor'
 import type { AgentLaunchIntent, AgentLaunchResult } from '../../shared/agent-launch-intent'
-import type { TuiAgent } from '../../shared/tui-agent'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import { argvLaunchPrompt } from './agent-launch-prompt-delivery'
 import { deriveAgentLaunchTerminalViewMode } from './agent-launch-view-mode'
@@ -24,7 +23,7 @@ export async function createSurface(
   settled: AgentLaunchModeReceipt
 ): Promise<CreatedSurface> {
   const { intent, surfaces } = execution
-  if (settled.mode === 'structured' && isStructuredProvider(intent.agent)) {
+  if (settled.mode === 'structured') {
     // One reservation serves either route: the tab half of the reserved pane is the chat's tab.
     const reservedTabId = intent.paneKey ? parsePaneKey(intent.paneKey)?.tabId : undefined
     const session = await surfaces.createStructuredSession({
@@ -106,8 +105,4 @@ export async function createTerminalSurface(
     ...(terminal.warning ? { warning: terminal.warning } : {}),
     ...(startupPrompt && terminal.promptRodeLaunchCommand ? { promptRodeLaunchCommand: true } : {})
   }
-}
-
-function isStructuredProvider(agent: TuiAgent): agent is 'claude' | 'codex' {
-  return agent === 'claude' || agent === 'codex'
 }
