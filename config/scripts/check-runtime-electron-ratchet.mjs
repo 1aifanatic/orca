@@ -113,12 +113,15 @@ const externalNativeAddons = {
 // Why `plugins`: lets a test add an Electron import to a real file in memory, never on disk.
 export async function collectElectronImporters(entryPoints, { plugins = [] } = {}) {
   const result = await build({
-    entryPoints,
+    // Why one stdin entry importing them all: one entry per file built thousands of full bundles
+    // in memory (~14 GB), enough to kill a CI runner; the import graph esbuild records is the same.
+    stdin: {
+      contents: entryPoints.map((file) => `import ${JSON.stringify(file)}`).join('\n'),
+      resolveDir: ROOT,
+      loader: 'js'
+    },
     bundle: true,
     write: false,
-    // Why outdir with write:false: esbuild refuses multiple entry points without one,
-    // even though nothing is emitted — the metafile is all this reads.
-    outdir: path.join(ROOT, 'runtime-electron-ratchet-metafile-only'),
     platform: 'node',
     target: 'node20',
     format: 'cjs',
