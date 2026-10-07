@@ -20,6 +20,7 @@ import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { ClaudeAtRestCommandCatalog } from '../claude/claude-at-rest-commands'
 import { openClaudeStreamJsonConnection } from '../claude/claude-stream-json-connection'
 import type { ClaudeCliFlagSupport } from '../claude/claude-cli-flag-support'
+import { prewarmClaudeCliFlags } from '../claude/claude-cli-flag-prewarm'
 import type { PrepareNativeChatVisuals } from '../native-chat/native-chat-visuals-delivery'
 
 export type StructuredClaudeRuntimeAdapterDeps = {
@@ -85,6 +86,18 @@ export function createStructuredClaudeRuntimeAdapter(
   deps: StructuredClaudeRuntimeAdapterDeps
 ): ClaudeStructuredSessionAdapter {
   const { store } = deps
+  if (deps.claudeCliFlags) {
+    // Before any chat launches, so the first one rarely waits on the version check.
+    void prewarmClaudeCliFlags({
+      cliFlags: deps.claudeCliFlags,
+      store,
+      resolveCommand: deps.resolveClaudeCommand ?? resolveClaudeCommand,
+      ...(deps.resolveClaudeLaunchEnv ? { resolveEnv: deps.resolveClaudeLaunchEnv } : {}),
+      ...(deps.resolveClaudeInheritedEnv
+        ? { resolveInheritedEnv: deps.resolveClaudeInheritedEnv }
+        : {})
+    })
+  }
   return new ClaudeStructuredSessionAdapter({
     atRestCommands: new ClaudeAtRestCommandCatalog({
       resolveWorkspacePath: deps.resolveWorkspacePath

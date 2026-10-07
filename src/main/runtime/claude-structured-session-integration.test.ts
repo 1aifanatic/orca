@@ -254,6 +254,7 @@ beforeEach(async () => {
         openClaudeConnection: claude.openConnection,
         claudeCliFlags: {
           supports: async (flag) => flag.option === '--thinking-display',
+          prewarm: () => {},
           observeExit: () => {}
         },
         // Production's sink wiring onto a real hook server, whose records a Stop reaches.

@@ -50,6 +50,9 @@ export type ClaudeCliFlagSupport = {
    * shares that one probe.
    */
   supports: (flag: ClaudeCliFlag, launch: ClaudeCliLaunch, budgetMs?: number) => Promise<boolean>
+  /** Starts the version probe for a binary nothing is known about yet, without waiting on it, so a
+   *  later launch finds the answer. Never throws. */
+  prewarm: (launch: ClaudeCliLaunch) => void
   /** A child that exited refusing a flag: that binary, in that workspace, never gets it again. */
   observeExit: (launch: Pick<ClaudeCliLaunch, 'command' | 'cwd'>, error: Error) => void
 }
@@ -160,6 +163,16 @@ export function createClaudeCliFlagSupport(
       // The probe's own budget, too: one already past it is not waited on again.
       await within(running.settled, Math.min(running.startedAt + budgetMs, deadline) - deps.now())
       return answer(key, flag)
+    },
+    prewarm: (launch) => {
+      void deps.keyOf(launch.command, launch.cwd).then(
+        (key) => {
+          if (key !== null && versionOf(key) === undefined && !probing.has(key)) {
+            probe(key, launch)
+          }
+        },
+        () => {}
+      )
     },
     observeExit: (launch, error) => {
       const option = UNKNOWN_OPTION_DIAGNOSTIC.exec(error.message)?.[1]

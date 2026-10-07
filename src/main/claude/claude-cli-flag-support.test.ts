@@ -234,4 +234,29 @@ describe('whether a launch passes a Claude CLI flag', () => {
     await expect(support.supports(CLAUDE_PLUGIN_DIR_FLAG, LAUNCH)).resolves.toBe(true)
     await expect(thinking(support, LAUNCH)).resolves.toBe(false)
   })
+
+  it('prewarms without waiting, so a later launch finds the answer and spawns nothing', async () => {
+    const held = heldProbe()
+    const { support, calls } = supportWith(held.probe, 20)
+    support.prewarm(LAUNCH)
+    await vi.waitFor(() => expect(calls).toHaveBeenCalledOnce())
+    held.answer('2.1.280')
+    await expect(support.supports(CLAUDE_PLUGIN_DIR_FLAG, LAUNCH)).resolves.toBe(true)
+    support.prewarm(LAUNCH)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(calls).toHaveBeenCalledOnce()
+  })
+
+  it('a prewarm that finds no binary probes nothing and throws nothing', async () => {
+    const { support, calls } = supportWith(
+      async () => '2.1.280',
+      20,
+      async () => {
+        throw new Error('EACCES')
+      }
+    )
+    support.prewarm(LAUNCH)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(calls).not.toHaveBeenCalled()
+  })
 })
