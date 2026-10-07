@@ -1,0 +1,438 @@
+{
+  "rootRawChecksPassed": true,
+  "qualified": true,
+  "originalCases": 36,
+  "reports": 8,
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "caseIdentityMapByFile": {
+    "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "skipped"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "skipped"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "skipped"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "skipped"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      }
+    ]
+  },
+  "snapshots": [
+    {
+      "runtime": "bun",
+      "seed": 104729,
+      "arm": "before",
+      "cases": 36,
+      "passed": 32,
+      "stockSkipped": 4
+    },
+    {
+      "runtime": "bun",
+      "seed": 104729,
+      "arm": "after",
+      "cases": 36,
+      "passed": 32,
+      "stockSkipped": 4
+    },
+    {
+      "runtime": "bun",
+      "seed": 130363,
+      "arm": "before",
+      "cases": 36,
+      "passed": 32,
+      "stockSkipped": 4
+    },
+    {
+      "runtime": "bun",
+      "seed": 130363,
+      "arm": "after",
+      "cases": 36,
+      "passed": 32,
+      "stockSkipped": 4
+    },
+    {
+      "runtime": "node",
+      "seed": 104729,
+      "arm": "before",
+      "cases": 36,
+      "passed": 32,
+      "stockSkipped": 4
+    },
+    {
+      "runtime": "node",
+      "seed": 104729,
+      "arm": "after",
+      "cases": 36,
+      "passed": 32,
+      "stockSkipped": 4
+    },
+    {
+      "runtime": "node",
+      "seed": 130363,
+      "arm": "before",
+      "cases": 36,
+      "passed": 32,
+      "stockSkipped": 4
+    },
+    {
+      "runtime": "node",
+      "seed": 130363,
+      "arm": "after",
+      "cases": 36,
+      "passed": 32,
+      "stockSkipped": 4
+    }
+  ],
+  "rawHashes": {
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before.json": "0ee2811a375310ea3a5a67ac6598b236a1410dc711d4d32695b82a652854eba1",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before-details.json": "e661b420a3ee666975311dfc3df7e071e770c9ca437092cb7088c22791471650",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before-source-proof.json": "39f707b1ab3f3bf7318a123b3a38bc5d434dbd82c986ea48b8a70ed6691552bf",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before.log": "ecb3e5ee38f6441fd69bff1ec974ad992a418aa9a30375471ab414149cf85dcc",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after.json": "dc0526d0ae56dedc9032f59d5e1730ba3bb3c30de126f877fac8945a3bde4370",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after-details.json": "f5ae5396b12dc7838caf398d3793e3f106084f5e66b9d921d14ca21b0edb074c",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after-source-proof.json": "4fad2dcf03892352f41f1ac97df8afc77ec052d180d8fed6ff9732f2389b3838",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after.log": "e5bd8f00993a6742cd4b3c5c7c113a6d3ebdda69514d3beec015728010fdc1e7",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before.json": "e0f911359082132e8f44afd3e18fb8559654c9db416dfc22285b4cb9ab37eea5",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before-details.json": "7af606b158f15963da79141d8583824e1057724ec3525ad2cff0251de36bbcad",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before-source-proof.json": "d0a81300b6c4112967b42ae9a7386e5b61efe3a2d9c2b80f94d1fdf4851016d6",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before.log": "705320a148bb964fe4419a44e28b4e62db3bfb58f3d5919f9b1cbde4b93e2906",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after.json": "b209d78252312c900fd50000971295b34b28f1869424c2424cb4e79d66bbf8b0",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after-details.json": "212873eadf5693a1538dc66dd00c0d2ad6e1b4710a1e33d255d9e4956399f211",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after-source-proof.json": "1427a1c9b736d774b2e7fe789fe83ced188287bd2a3682e8ae0c45e0a61b27f1",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after.log": "f5362f234bce1eca026e3812cde1a5a433d18839e0be133ecdc20b0c11595fef",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before.json": "8968eb75653ba340be6bedaf503ff41efa06fc2061cef14bb482d81090890b9e",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before-details.json": "24aded088cf4d80d7b7dd10bc0e9322d7ffd8daa30fdf4fdb5166a6015091ed5",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before-source-proof.json": "ecc032ee7a3c55bd02e9fd824ea0b4644bee99fa5169908a96a56a60a29b9f39",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before.log": "426b65efa7aa458d033dcc075ab0941a40bd97c887d8ee801beae71c0ce90ab9",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after.json": "95d1293b3a3b8b196c9c07846fc73f042869bda16e195e10bdce8a257bfac8bf",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after-details.json": "e2660a7ef3d19eff0374018a5f273e6885be5007f69d086e6497babeafd7f172",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after-source-proof.json": "c6bf28cb41241f13bebefb8155dd2effff2382a05881da5860a647fe144238ad",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after.log": "25db8ee1df9e467dc681c598bda36922cf21b982a34603dae1db9f93dd0278fa",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before.json": "1aaddc4c1c760946997dffc484005e1a925f12eb7b4196cf6367ae088ca86599",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before-details.json": "f06638f81d33db9f60ec4b4ab9525eddd9f4fe07a6ffe506b929187b37d3835c",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before-source-proof.json": "6d160f38a0d68fbd8bc4d6b1e2ea26d5d8352ea73b588068781ceb12235a1341",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before.log": "71e47ceffedb29bb66abc32f60e0bfe52ede8e32cee62e5f54413d846b52a339",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after.json": "4d5878ccc495121f63b20828e633dd8481cdc39fddd1973f70d2699dc354ddc8",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after-details.json": "d346a1e26885133e2b82014c85a4f70b5aa95d778d9ff275a31935103fb3ccea",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after-source-proof.json": "6bde4eaacf5ef498624d471e801cd80e651ab7d8747bbee75c0a56a2baa2bf77",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after.log": "2906d939afb43138bd4583d1954af943535ac7313397cde7cc79415eacdd030e"
+  },
+  "rootCollectorSha256": "4eceadaac6a9dd01d98163b629a2d10a76d75db9676143e049d4eae2c1c484b5",
+  "scope": "Actual eight original/candidate correctness reports only; timing pending; no full-suite speed claim.",
+  "testsOrConfigExecuted": false
+}

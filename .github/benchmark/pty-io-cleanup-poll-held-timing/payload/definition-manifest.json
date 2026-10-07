@@ -1,0 +1,107 @@
+{
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "diagnosticOnlyNeverMerge": true,
+  "sourceHashes": {
+    "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": "a52f3f8cc7798c0af239642a1ec99964580c6f1de4e3e7cc343347f405cd0fda",
+    "src/main/daemon/pty-subprocess-test-harness.ts": "06273ab97e275c5b548f342d030d44300e1ef99c9c4199fe4bb7e9011b8b903b",
+    "src/main/daemon/pty-subprocess/subprocess-handle.ts": "61e64c887e7a77c5055e049311e226d2974e7c14e546b76b68bc78f9d0905f24",
+    "src/main/daemon/terminal-host.ts": "fe147c36638e9ef08619b06797c64c16a1d8de2547c82ce0cca32ef1163e0da3",
+    "src/main/daemon/terminal-session-teardown.ts": "d7b1fea70276c8b33f7c45b96590123f0bef013085518b512e3ddeece43be910",
+    "src/main/daemon/session-termination-controller.ts": "307638f955ac4da0a946405cd5041678bb4715062c44c7ee2aceccffcb8cc696",
+    "src/main/daemon/session.ts": "2add4f909c66526d14cbc20378b056b46ff8aad8d704c9f17793adc3aba6fe96",
+    "src/main/daemon/headless-emulator.ts": "80ef25bba7f9fd1c92ded5876e894ca1ca9248e7684f03c6dd2d7081d9d2cf78",
+    "src/main/windows/windows-pty-job.ts": "f61bfdca38d320de6d58aef72cf063b92479087f17baa64dd492391aa25667c4",
+    "src/main/daemon/immediate-kill-reply-budget.ts": "0aad02aff5f51792f8607805d8d74749f8ca919c80e7063ab72935eb8d7fdcd8",
+    "src/shared/physical-exit-tracker.ts": "6d939e7e950f5e4fb00fbbcd7c5b17232c711e73811e869c985f695f6d42af7d",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "0efd5afed17d179d8527d3c301e7610e3868d7c5e9c4ad6885a1a5f26a31f345",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "src/main/daemon/terminal-host-disposal.ts": "ba60b9521e9d04f07481e3d741fd51ce9b2cba540a72df01ba5ac5ce98cced41",
+    "src/main/daemon/terminal-host-session-shutdown.ts": "18caea7d7d347f0e6af83584677aa57fadf299f83279995e5579afb3ed8b0f85",
+    "src/main/daemon/terminal-host-session-create.ts": "6cad7cc0d306436ba6ab23eceb4414534b3389423848825918abd3464ba2ec1a",
+    "src/main/daemon/terminal-descendant-shutdown.ts": "37ee1b2aca22f81ece9498b245400f2246457eb56a8b6ef445f1a7589a1670bf",
+    "src/main/daemon/pty-subprocess/pre-listener-events.ts": "32b290969b16c2676bbc9801cf563fc1988f16131678ce3cf0c627ffeaf401a2",
+    "src/main/daemon/pty-subprocess/foreground-process-tracker.ts": "717bbfb04291d716dbcba5561a572100d02fd8898ed42a728a0d72bd0cc3cdde",
+    "src/main/pty/posix-pty-process-groups.ts": "9b356d7dfd84b96e96c9e9f894e7013aed9ad5b03134f6490eb88b54485accb5",
+    "src/main/pty-descendant-termination.ts": "8dbd5166c582ac50e3ebcabda1f6f9ef254cdd0d8da0c79969a47bd853eed6fa",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06"
+  },
+  "isolatedDirectory": "notes/bun-migration/performance/pty-io-cleanup-poll-held-timing-ci-31a5",
+  "label": "pty-io-cleanup-poll-held-31a5",
+  "expectedCiPins": {
+    "node": "24.21.0",
+    "bun": "1.4.2",
+    "vitest": "5.0.3"
+  },
+  "schedule": [
+    [
+      "before",
+      0
+    ],
+    [
+      "after",
+      0
+    ],
+    [
+      "after",
+      1
+    ],
+    [
+      "before",
+      1
+    ],
+    [
+      "before",
+      2
+    ],
+    [
+      "after",
+      2
+    ]
+  ],
+  "payloadSha256": {
+    "actual-ci-runtime-result.json": "38279c4fcc8368e07ab14ccd271f2c140f1fca9b00e6e36fcc238f27443f3483",
+    "benchmark-persistence-import-reuse.mjs": "94070788bb47afa544938af517d58687bb2ea92a0743517abbafdf1e841865d5",
+    "independent-runtime-proof.json": "eed8f0a0be4e62ad61cc0e58b69b3df1b1e68b55b512de3e5f27be1b56345aa8",
+    "measurement-plan.json": "db59a36a3634e18ce13ee4890a76c0f27e73edfb49ef4d9f9fc8defb1dd68fa4",
+    "persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "shipping.patch": "33fb23490c150e27501a246d65f175e69da1537c3a3a4c0255b1b3f13770b429",
+    "source-proposal-proof.json": "c5b68f080e9a49a16cb3e8357b6864e239e8aa67e7ca80dc2ae63dd4a80e858b",
+    "terminal-ci-proof.json": "9ee0b01fea000a6a685a9763541a1b3ed1ea5654289f2eed0083ecd11e77ade8"
+  },
+  "destinationToPayload": {
+    "notes/bun-migration/performance/pty-io-cleanup-poll-held-timing-ci-31a5/actual-ci-runtime-result.json": "actual-ci-runtime-result.json",
+    "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs": "benchmark-persistence-import-reuse.mjs",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-held-timing-ci-31a5/independent-runtime-proof.json": "independent-runtime-proof.json",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-held-timing-ci-31a5/measurement-plan.json": "measurement-plan.json",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "persistence-import-reuse-benchmark-reporter.mjs",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-held-timing-ci-31a5/shipping.patch": "shipping.patch",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-held-timing-ci-31a5/source-proposal-proof.json": "source-proposal-proof.json",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-held-timing-ci-31a5/terminal-ci-proof.json": "terminal-ci-proof.json"
+  },
+  "actualQualificationRun": 37694502389,
+  "actualQualificationDefinition": "d9d628e8a4b81355686fe3fd0a861e926a432b44",
+  "scope": "Actual eight original/candidate reports and terminal five-job CI success admitted. Six counted whole-command timing samples remain pending; experiment only.",
+  "controllerSha256": "94070788bb47afa544938af517d58687bb2ea92a0743517abbafdf1e841865d5",
+  "reporterSha256": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+  "performanceQualificationPending": true,
+  "runtimeQualificationPending": false
+}

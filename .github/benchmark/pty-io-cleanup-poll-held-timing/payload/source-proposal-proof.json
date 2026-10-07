@@ -1,0 +1,53 @@
+{
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "target": "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts",
+  "beforeSha256": "a52f3f8cc7798c0af239642a1ec99964580c6f1de4e3e7cc343347f405cd0fda",
+  "afterSha256": "73d8a0602b524b6846304578fde01506719b5f493d6291e50d23bf9824fc935e",
+  "patchSha256": "33fb23490c150e27501a246d65f175e69da1537c3a3a4c0255b1b3f13770b429",
+  "onlyWaitForPollingOptionChanged": true,
+  "assertionsCyclesExitOrderAndCleanupPreserved": true,
+  "numberOfRepeatedWaitSites": 192,
+  "originalDefaultPollIntervalMs": 50,
+  "candidatePollIntervalMs": 1,
+  "originalDefaultAssertionTimeoutMs": 1000,
+  "timeoutUnchanged": true,
+  "productionAndMocksUnchanged": true,
+  "noFakeClock": true,
+  "localTestsExecuted": false,
+  "correctnessAndRuntimeTimingPending": true,
+  "causalHypothesis": "Each of3 simulatedplatforms\u00d72operations\u00d732 create/close cycles reaches forceKill after awaited mocked descendant sweep; waitFor runs immediately before that continuation, then uses interval polling. One50ms poll percycle predicts9.6s avoidable sleeps; actual call counts and saving require CI measurement.",
+  "installedVitestVersion": "5.0.3",
+  "installedWaitForSourceSha256": "82c2b55e5dd5245c0c5e9eccd73fa6d7ade2694644175967e27a28b67932cb9d",
+  "limits": [
+    "No gain measured; more frequent polling may add CPU work.",
+    "Native contract tests/production deadlines unchanged; CI-only execution."
+  ],
+  "independentSourceReview": {
+    "entireOriginalSourceRecoveredByRemovingOnlyIntervalOption": true,
+    "waitForCallbackAnd1000msTimeoutUnchanged": true,
+    "safeTimersRealPolling": true,
+    "immediateCallbackBeforeMockSweepContinuation": true,
+    "originalPendingKillRejectionAlreadyObserved": true,
+    "allFinallyExitAndHostDisposeExact": true,
+    "actualOsSignalsInterceptedInChangedCase": true,
+    "syntheticExitIsNotRealOsExitEvidence": true,
+    "entireSuiteCiOnly": true
+  },
+  "sourceRegistrationExpectation": {
+    "total": 36,
+    "passed": 32,
+    "stockSkipped": 4,
+    "runtimeMapsStillPending": true,
+    "skipOnlyTitle": "preserves ConPTY single-close ownership after I/O failure",
+    "skipOnlyPlatforms": [
+      "darwin",
+      "linux"
+    ],
+    "sourceExpansion": "3 platform rows \u00d7 2 operation rows \u00d7 6 cases; ConPTY case skips on two platforms."
+  },
+  "installedWaitForImplementation": {
+    "path": "node_modules/vitest/dist/chunks/index.C4tKZ0yW.js",
+    "sha256": "82c2b55e5dd5245c0c5e9eccd73fa6d7ade2694644175967e27a28b67932cb9d"
+  },
+  "nativeBoundary": "The changed loop injects mockPtyProcess and mock descendant/POSIX group termination and spies process.kill before host lifecycle calls. Other cases may import native job loader while simulating platform; this review does not authorize local execution. No production/native/SSH liveness rules changed."
+}

@@ -1,0 +1,3609 @@
+{
+  "qualified": true,
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "files": [
+    "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts"
+  ],
+  "runtimeDerivedCaseCount": 36,
+  "caseIdentityMapByFile": {
+    "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "skipped"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "skipped"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "darwin native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "skipped"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "skipped"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "linux native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "resize failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+        "title": "blocks reentrant termination from an exit listener after I/O failure",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+        "title": "keeps graceful and forced termination available until physical exit",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+        "title": "preserves ConPTY single-close ownership after I/O failure",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+        "title": "preserves early output and exit status while fencing listener cleanup",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+        "title": "suppresses repeated native I/O failures while still delivering output and exit",
+        "ancestorTitles": [
+          "win32 native-handle contract",
+          "write failure cleanup"
+        ],
+        "status": "passed"
+      }
+    ]
+  },
+  "candidateAddsNoCases": true,
+  "allEightOriginalSourceCommandProcessRuntimeConfigCaseStatusMapsEqual": true,
+  "contexts": [
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/ci-context.json",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/ci-context.json",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/ci-context.json",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/ci-context.json"
+  ],
+  "inputSignatures": [
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    }
+  ],
+  "snapshots": [
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "bun",
+      "seed": 104729,
+      "count": 36,
+      "reportedCount": 36,
+      "map": {
+        "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before-source-proof.json",
+      "report": "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before.json",
+      "details": "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "bun",
+      "seed": 104729,
+      "count": 36,
+      "reportedCount": 36,
+      "map": {
+        "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after-source-proof.json",
+      "report": "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after.json",
+      "details": "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "bun",
+      "seed": 130363,
+      "count": 36,
+      "reportedCount": 36,
+      "map": {
+        "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before-source-proof.json",
+      "report": "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before.json",
+      "details": "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "bun",
+      "seed": 130363,
+      "count": 36,
+      "reportedCount": 36,
+      "map": {
+        "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after-source-proof.json",
+      "report": "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after.json",
+      "details": "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "node",
+      "seed": 104729,
+      "count": 36,
+      "reportedCount": 36,
+      "map": {
+        "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before-source-proof.json",
+      "report": "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before.json",
+      "details": "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "node",
+      "seed": 104729,
+      "count": 36,
+      "reportedCount": 36,
+      "map": {
+        "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after-source-proof.json",
+      "report": "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after.json",
+      "details": "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "node",
+      "seed": 130363,
+      "count": 36,
+      "reportedCount": 36,
+      "map": {
+        "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before-source-proof.json",
+      "report": "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before.json",
+      "details": "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "node",
+      "seed": 130363,
+      "count": 36,
+      "reportedCount": 36,
+      "map": {
+        "src/main/daemon/pty-subprocess-io-failure-cleanup.test.ts": [
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "darwin native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "darwin native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "skipped"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "linux native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "linux native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract resize failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "resize failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup blocks reentrant termination from an exit listener after I/O failure",
+            "title": "blocks reentrant termination from an exit listener after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup keeps graceful and forced termination available until physical exit",
+            "title": "keeps graceful and forced termination available until physical exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves ConPTY single-close ownership after I/O failure",
+            "title": "preserves ConPTY single-close ownership after I/O failure",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup preserves early output and exit status while fencing listener cleanup",
+            "title": "preserves early output and exit status while fencing listener cleanup",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "title": "reaps every session and native handle across 32 failed-I/O create/close cycles",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "win32 native-handle contract write failure cleanup suppresses repeated native I/O failures while still delivering output and exit",
+            "title": "suppresses repeated native I/O failures while still delivering output and exit",
+            "ancestorTitles": [
+              "win32 native-handle contract",
+              "write failure cleanup"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after-source-proof.json",
+      "report": "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after.json",
+      "details": "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after-details.json"
+    }
+  ],
+  "artifactHashes": {
+    ".github/benchmark/pty-io-cleanup-poll/payload/shipping-launch-plan.json": "15781ccba98f217023dc0f2f15b636188bd5f8a02f565069e3e75bf918747dba",
+    ".github/benchmark/pty-io-cleanup-poll/payload/definition-manifest.json": "4831db931632a5abc15401e2fe6bf1119e8d6b3585bdec9142ac9fa5e14502e4",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/ci-context.json": "137793c2e24668d103af9c9b2d9883fd79a81524ec2a30c632c1c8fe660bca14",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/shipping-launch-plan.json": "15781ccba98f217023dc0f2f15b636188bd5f8a02f565069e3e75bf918747dba",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/shipping.patch": "33fb23490c150e27501a246d65f175e69da1537c3a3a4c0255b1b3f13770b429",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/source-proposal-proof.json": "c5b68f080e9a49a16cb3e8357b6864e239e8aa67e7ca80dc2ae63dd4a80e858b",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/ci-context.json": "8e93b154aa19c3fb891116713154de62be17f52ecdacdffaa599051f350a6baf",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/shipping-launch-plan.json": "15781ccba98f217023dc0f2f15b636188bd5f8a02f565069e3e75bf918747dba",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/shipping.patch": "33fb23490c150e27501a246d65f175e69da1537c3a3a4c0255b1b3f13770b429",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/source-proposal-proof.json": "c5b68f080e9a49a16cb3e8357b6864e239e8aa67e7ca80dc2ae63dd4a80e858b",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/ci-context.json": "b3fac46a5ab657253651a1d4cd84c1bd7264778a10637f2f0ed0263ae080f85d",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/shipping-launch-plan.json": "15781ccba98f217023dc0f2f15b636188bd5f8a02f565069e3e75bf918747dba",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/shipping.patch": "33fb23490c150e27501a246d65f175e69da1537c3a3a4c0255b1b3f13770b429",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/source-proposal-proof.json": "c5b68f080e9a49a16cb3e8357b6864e239e8aa67e7ca80dc2ae63dd4a80e858b",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/ci-context.json": "2a8d4c4977419d200d313ae24a1a30a1cf003e0e4d0b8b2e18b3c015ddb20dbb",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/shipping-launch-plan.json": "15781ccba98f217023dc0f2f15b636188bd5f8a02f565069e3e75bf918747dba",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/shipping.patch": "33fb23490c150e27501a246d65f175e69da1537c3a3a4c0255b1b3f13770b429",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/source-proposal-proof.json": "c5b68f080e9a49a16cb3e8357b6864e239e8aa67e7ca80dc2ae63dd4a80e858b",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before-source-proof.json": "39f707b1ab3f3bf7318a123b3a38bc5d434dbd82c986ea48b8a70ed6691552bf",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before.json": "0ee2811a375310ea3a5a67ac6598b236a1410dc711d4d32695b82a652854eba1",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before-details.json": "e661b420a3ee666975311dfc3df7e071e770c9ca437092cb7088c22791471650",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/before.log": "ecb3e5ee38f6441fd69bff1ec974ad992a418aa9a30375471ab414149cf85dcc",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after-source-proof.json": "4fad2dcf03892352f41f1ac97df8afc77ec052d180d8fed6ff9732f2389b3838",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after.json": "dc0526d0ae56dedc9032f59d5e1730ba3bb3c30de126f877fac8945a3bde4370",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after-details.json": "f5ae5396b12dc7838caf398d3793e3f106084f5e66b9d921d14ca21b0edb074c",
+    "wait-artifacts/pty-io-cleanup-poll-bun-104729/runs/bun-104729/after.log": "e5bd8f00993a6742cd4b3c5c7c113a6d3ebdda69514d3beec015728010fdc1e7",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before-source-proof.json": "d0a81300b6c4112967b42ae9a7386e5b61efe3a2d9c2b80f94d1fdf4851016d6",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before.json": "e0f911359082132e8f44afd3e18fb8559654c9db416dfc22285b4cb9ab37eea5",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before-details.json": "7af606b158f15963da79141d8583824e1057724ec3525ad2cff0251de36bbcad",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/before.log": "705320a148bb964fe4419a44e28b4e62db3bfb58f3d5919f9b1cbde4b93e2906",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after-source-proof.json": "1427a1c9b736d774b2e7fe789fe83ced188287bd2a3682e8ae0c45e0a61b27f1",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after.json": "b209d78252312c900fd50000971295b34b28f1869424c2424cb4e79d66bbf8b0",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after-details.json": "212873eadf5693a1538dc66dd00c0d2ad6e1b4710a1e33d255d9e4956399f211",
+    "wait-artifacts/pty-io-cleanup-poll-bun-130363/runs/bun-130363/after.log": "f5362f234bce1eca026e3812cde1a5a433d18839e0be133ecdc20b0c11595fef",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before-source-proof.json": "ecc032ee7a3c55bd02e9fd824ea0b4644bee99fa5169908a96a56a60a29b9f39",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before.json": "8968eb75653ba340be6bedaf503ff41efa06fc2061cef14bb482d81090890b9e",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before-details.json": "24aded088cf4d80d7b7dd10bc0e9322d7ffd8daa30fdf4fdb5166a6015091ed5",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/before.log": "426b65efa7aa458d033dcc075ab0941a40bd97c887d8ee801beae71c0ce90ab9",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after-source-proof.json": "c6bf28cb41241f13bebefb8155dd2effff2382a05881da5860a647fe144238ad",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after.json": "95d1293b3a3b8b196c9c07846fc73f042869bda16e195e10bdce8a257bfac8bf",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after-details.json": "e2660a7ef3d19eff0374018a5f273e6885be5007f69d086e6497babeafd7f172",
+    "wait-artifacts/pty-io-cleanup-poll-node-104729/runs/node-104729/after.log": "25db8ee1df9e467dc681c598bda36922cf21b982a34603dae1db9f93dd0278fa",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before-source-proof.json": "6d160f38a0d68fbd8bc4d6b1e2ea26d5d8352ea73b588068781ceb12235a1341",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before.json": "1aaddc4c1c760946997dffc484005e1a925f12eb7b4196cf6367ae088ca86599",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before-details.json": "f06638f81d33db9f60ec4b4ab9525eddd9f4fe07a6ffe506b929187b37d3835c",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/before.log": "71e47ceffedb29bb66abc32f60e0bfe52ede8e32cee62e5f54413d846b52a339",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after-source-proof.json": "6bde4eaacf5ef498624d471e801cd80e651ab7d8747bbee75c0a56a2baa2bf77",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after.json": "4d5878ccc495121f63b20828e633dd8481cdc39fddd1973f70d2699dc354ddc8",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after-details.json": "d346a1e26885133e2b82014c85a4f70b5aa95d778d9ff275a31935103fb3ccea",
+    "wait-artifacts/pty-io-cleanup-poll-node-130363/runs/node-130363/after.log": "2906d939afb43138bd4583d1954af943535ac7313397cde7cc79415eacdd030e"
+  },
+  "scope": "Isolated CI correctness only; exact original status maps and pins verified. No timing gain or real native cleanup claim."
+}

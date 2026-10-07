@@ -1,0 +1,60 @@
+{
+  "terminalConclusion": "success",
+  "allFiveJobsSuccess": true,
+  "runtimeCorrectnessQualified": true,
+  "eachCommandOriginalCasesPassed": 32,
+  "eachCommandOriginalCasesSkipped": 4,
+  "runId": 37694502389,
+  "definitionHead": "d9d628e8a4b81355686fe3fd0a861e926a432b44",
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "actualCiCollectorSha256": "38279c4fcc8368e07ab14ccd271f2c140f1fca9b00e6e36fcc238f27443f3483",
+  "actualCiCollector": "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/terminal-evidence/pty-io-cleanup-poll-result.json",
+  "independentEightRawPeerSha256": "16b17362de868560a76c0a671891a452adfa2e5de564b5209e0ebac862698534",
+  "actualCollectorMapConfigEqualsIndependentReplay": true,
+  "jobs": [
+    {
+      "id": 113042724943,
+      "name": "Polling interval node seed 130363",
+      "started_at": "2026-10-07T22:38:43Z",
+      "completed_at": "2026-10-07T22:39:51Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 113042725284,
+      "name": "Polling interval bun seed 104729",
+      "started_at": "2026-10-07T22:43:54Z",
+      "completed_at": "2026-10-07T22:45:04Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 113042725307,
+      "name": "Polling interval bun seed 130363",
+      "started_at": "2026-10-07T22:46:26Z",
+      "completed_at": "2026-10-07T22:47:39Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 113042725314,
+      "name": "Polling interval node seed 104729",
+      "started_at": "2026-10-07T22:53:35Z",
+      "completed_at": "2026-10-07T22:54:46Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 113058063394,
+      "name": "Independently verify eight original and candidate attempts",
+      "started_at": "2026-10-07T22:58:50Z",
+      "completed_at": "2026-10-07T22:59:08Z",
+      "conclusion": "success"
+    }
+  ],
+  "artifactHashes": {
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/run-20261007T230203Z.json": "662e6ffa891a10bb1681a562d88129d0fb4109d39f1fed8021705e2078c7fedb",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/jobs-20261007T230203Z.json": "dba89bd34ea127877feb854163e0eb1a75f5796175321a2426428bf62479c4ac",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/terminal-evidence/pty-io-cleanup-poll-result.json": "38279c4fcc8368e07ab14ccd271f2c140f1fca9b00e6e36fcc238f27443f3483",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/pty-io-cleanup-poll-evidence-37694502389-1.zip": "c1792063b832e983b89064e485a14bad3d164fcb3a8b8d25200e5b67702c0824",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/review-fixes-independent-eight-raw-correctness-proof.json": "16b17362de868560a76c0a671891a452adfa2e5de564b5209e0ebac862698534",
+    "notes/bun-migration/performance/pty-io-cleanup-poll-run-37694502389/review-fixes-preserved-eight-report-replay.json": "4eceadaac6a9dd01d98163b629a2d10a76d75db9676143e049d4eae2c1c484b5"
+  },
+  "scope": "Terminal isolated CI correctness only; no performance/native lifecycle proof."
+}
