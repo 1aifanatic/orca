@@ -13,6 +13,10 @@
  */
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import {
+  agentTurnDeliveryFor,
+  readOrchestrationBusyDelivery
+} from '../../../shared/orchestration-busy-delivery'
 import type { MessageRow, OrchestrationDb } from './db'
 import { formatMessagePointer } from './formatter'
 import type { OrchestrationCliCommand } from './cli-command'
@@ -26,6 +30,7 @@ import {
 } from './structured-pointer-operation-id'
 import { structuredMailSource } from './structured-mail-source'
 import type { SenderNameResolver } from './agent-message-sender'
+import type { AgentTurnDelivery } from './send-agent-turn'
 import {
   retainReasonForDispatch,
   structuredDispatchDelivered,
@@ -57,6 +62,8 @@ export type StructuredPointerSendOutcome =
 export type StructuredPointerSessionFacts = {
   /** Every send the session recorded, oldest first: what the lane's own sends settled as. */
   submissions: readonly StructuredPointerSubmission[]
+  /** A pending approval or question only a human can clear. */
+  awaitingHuman: boolean
 }
 
 export type StructuredMailboxPointerHost = {
@@ -69,6 +76,7 @@ export type StructuredMailboxPointerHost = {
     expectedRuntimeFence: number
     /** Names its senders as `from`. */
     body: AgentJournalMessageItem
+    delivery: AgentTurnDelivery
   }) => Promise<StructuredPointerSendOutcome>
   /** Current lease fence; `null` when no record backs the session any more. */
   currentFence: (sessionId: string) => number | null
@@ -100,6 +108,11 @@ export class OrchestrationStructuredMailboxPointerDelivery<
   TWaiter extends OrchestrationMessageWaiter
 > {
   private readonly inFlight = new Set<string>()
+  /**
+   * Mailboxes asked for while their send was in flight, each with the asker's reserved types.
+   * Re-read once that send settles, so new mail (a steer above all) does not wait for an edge.
+   */
+  private readonly rerunAfterFlight = new Map<string, ReadonlySet<string> | undefined>()
   /**
    * Mailboxes whose retry must wait for the session's next journal edge, each remembering the
    * session it is parked ON.
@@ -167,7 +180,11 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     attemptedSessions = new Set<string>()
   ): Promise<void> {
     const db = this.deps.getDb()
-    if (!db || this.inFlight.has(mailboxHandle)) {
+    if (!db) {
+      return
+    }
+    if (this.inFlight.has(mailboxHandle)) {
+      this.rerunAfterFlight.set(mailboxHandle, reservedTypes)
       return
     }
     // Don't re-nudge a mailbox whose consumer still holds an unacknowledged batch. The lookup is
@@ -196,6 +213,19 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       await this.followMovedTarget(mailboxHandle, target, reservedTypes, attemptedSessions).catch(
         () => undefined
       )
+      await this.rerunRequested(mailboxHandle).catch(() => undefined)
+    }
+  }
+
+  private async rerunRequested(mailboxHandle: string): Promise<void> {
+    if (!this.rerunAfterFlight.has(mailboxHandle) || this.inFlight.has(mailboxHandle)) {
+      return
+    }
+    const reservedTypes = this.rerunAfterFlight.get(mailboxHandle)
+    this.rerunAfterFlight.delete(mailboxHandle)
+    const current = this.deps.resolveStructuredTarget(mailboxHandle)
+    if (current) {
+      await this.deliver(mailboxHandle, current, reservedTypes)
     }
   }
 
@@ -238,6 +268,17 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     const fence = this.deps.host.currentFence(sessionId)
     if (fence === null) {
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
+      return
+    }
+    // From the batch alone: the operation id is keyed on it, so a reused id keeps its delivery.
+    const delivery = agentTurnDeliveryFor(
+      unread.some((message) => readOrchestrationBusyDelivery(message.busy_delivery) === 'steer')
+        ? 'steer'
+        : 'queue'
+    )
+    if (delivery === 'now' && session.awaitingHuman) {
+      // Answering it commits to the journal, whose edge steers this in.
+      this.retain(mailboxHandle, sessionId, 'awaiting-human', reservedTypes)
       return
     }
     const body: AgentJournalMessageItem = {
@@ -283,7 +324,8 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       dispatchId: target.dispatchId,
       operationId: operation.operationId,
       expectedRuntimeFence: fence,
-      body
+      body,
+      delivery
     })
     if (outcome.kind === 'unattached') {
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)

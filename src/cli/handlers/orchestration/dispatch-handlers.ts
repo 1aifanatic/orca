@@ -3,10 +3,17 @@ import { printResult } from '../../format'
 import { getOptionalStringFlag, getRequiredStringFlag } from '../../flags'
 import { RuntimeClientError } from '../../runtime-client'
 import { orchestrationMigrationData } from '../../../shared/orchestration-rpc-contract'
+import { getOptionalBusyDeliveryFlag } from './busy-delivery-flag'
 import { callOrchestrationMutation } from './mutation-request'
 import { isDevCliInvocation } from './runtime-compatibility'
 import { resolveCoordinatorTerminalHandle } from './terminal-identity'
 import { injectedSessionAddress } from '../../../shared/agent-session-caller-env'
+
+const CHAT_TASK_DELIVERY_WORDS = {
+  accepted: 'sent',
+  pending: 'sent; the chat is still starting',
+  queued: 'queued in the chat'
+} as const
 
 export const ORCHESTRATION_DISPATCH_HANDLER: Record<string, CommandHandler> = {
   'orchestration dispatch': async ({ flags, client, cwd, json }) => {
@@ -15,9 +22,12 @@ export const ORCHESTRATION_DISPATCH_HANDLER: Record<string, CommandHandler> = {
     const returnPreamble = flags.has('return-preamble') ? true : undefined
     // Why: --to is only required for non-dry-run; the RPC handler re-enforces.
     const to = dryRun ? getOptionalStringFlag(flags, 'to') : getRequiredStringFlag(flags, 'to')
+    const delivery = getOptionalBusyDeliveryFlag(flags)
     const result = await callOrchestrationMutation<{
       dispatch: { id: string; task_id: string; status: string } | null
       injected?: boolean
+      /** How a chat assignee took the task; absent for a terminal or an older runtime. */
+      delivery?: 'accepted' | 'pending' | 'queued'
       dryRun?: boolean
       preamble?: string
     }>(client, flags, 'orchestration.dispatch', {
@@ -26,6 +36,7 @@ export const ORCHESTRATION_DISPATCH_HANDLER: Record<string, CommandHandler> = {
       to,
       from,
       inject: flags.has('inject') ? true : undefined,
+      delivery,
       dryRun,
       returnPreamble,
       devMode: isDevCliInvocation()
@@ -34,7 +45,7 @@ export const ORCHESTRATION_DISPATCH_HANDLER: Record<string, CommandHandler> = {
       if (value.dryRun) {
         return value.preamble ?? ''
       }
-      const base = `Dispatched ${value.dispatch?.task_id} -> ${value.dispatch?.id} [${value.dispatch?.status}]`
+      const base = `Dispatched ${value.dispatch?.task_id} -> ${value.dispatch?.id} [${value.dispatch?.status}]${value.delivery ? ` (task ${CHAT_TASK_DELIVERY_WORDS[value.delivery]})` : ''}`
       return value.preamble ? `${base}\n\n--- Preamble ---\n${value.preamble}` : base
     })
   }

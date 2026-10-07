@@ -5,6 +5,10 @@ import {
   OptionalString,
   requiredString
 } from './rpc-param-primitives'
+import {
+  INVALID_ORCHESTRATION_BUSY_DELIVERY_MESSAGE,
+  ORCHESTRATION_BUSY_DELIVERIES
+} from '../orchestration-busy-delivery'
 
 export type DispatchMutationMessageType =
   | 'worker_done'
@@ -103,7 +107,11 @@ export const DispatchParams = z.object({
   dryRun: OptionalBoolean,
   returnPreamble: OptionalBoolean,
   devMode: OptionalBoolean,
-  run: OptionalString
+  run: OptionalString,
+  // Closed on purpose: a value this host does not know is refused, never quietly queued.
+  delivery: z
+    .enum(ORCHESTRATION_BUSY_DELIVERIES, { error: INVALID_ORCHESTRATION_BUSY_DELIVERY_MESSAGE })
+    .optional()
 })
 
 /** An Orca agent session id; the answer is its conversation's Orca session ID. */

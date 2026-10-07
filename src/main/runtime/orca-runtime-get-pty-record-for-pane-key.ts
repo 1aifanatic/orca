@@ -199,20 +199,22 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
   }
 
   /**
-   * Every structured session's status change reaches here. At its idle edge, retry what is parked
-   * on it and re-derive the mailboxes it owns, so mail it could not take earlier (mid-turn, closed)
-   * is pointed again. Workers and chats alike: this is not per-dispatch.
+   * Every structured session's status change reaches here. Each one retries what is parked on it:
+   * only workers subscribe to their journal, so for any other chat this is the edge an answered
+   * prompt steers held mail in on. At its idle edge it also re-derives the mailboxes it owns, so
+   * mail it could not take earlier (mid-turn, closed) is pointed again. Workers and chats alike:
+   * this is not per-dispatch.
    */
   onStructuredSessionStatusForMail(summary: {
     sessionId: string
     status: 'working' | 'attention' | 'idle' | null
   }): void {
-    if (summary.status === 'working' || summary.status === 'attention') {
-      return
-    }
     // Logged, never thrown: the same status callback goes on to the first-turn workspace rename.
     try {
       this.notifyStructuredSessionJournalActivity(summary.sessionId)
+      if (summary.status === 'working' || summary.status === 'attention') {
+        return
+      }
       const openDb = () => this.getExistingOrchestrationDb()
       const deliver = (mailbox: string) => this.deliverPendingMessagesForHandle(mailbox)
       structuredSessionIdleEdgeMailboxes(summary.sessionId, openDb).forEach(deliver)
