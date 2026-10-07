@@ -64,6 +64,8 @@ describe('browser screencast first-frame deadline', () => {
     expect(options.onError).toHaveBeenCalledExactlyOnceWith('Browser stream timed out.')
     expect(options.onFrame).not.toHaveBeenCalled()
     session.stop()
+    // The stop queues behind the capture: capturePage's 10 s bound, then the fallback's 8 s.
+    await vi.advanceTimersByTimeAsync(8_000)
     await session.done
   })
 

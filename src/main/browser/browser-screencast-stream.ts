@@ -13,6 +13,7 @@ import type {
   BrowserScreencastViewport
 } from './browser-screencast-stream-types'
 
+// Why: long enough for a slow first paint, short enough that a frameless viewer is told soon.
 const NO_FRAME_TIMEOUT_MS = 10_000
 
 export async function startBrowserScreencast(
@@ -204,7 +205,7 @@ export async function startBrowserScreencast(
       return pendingUpdate
     },
     stop: () => {
-      if (closed) {
+      if (closed || stopping) {
         return
       }
       stopping = true
