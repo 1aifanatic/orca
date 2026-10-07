@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { cn } from '@/lib/utils'
 import { openHttpLink } from '@/lib/http-link-routing'
 import {
@@ -46,8 +46,11 @@ export function NativeChatVisualFrame({
 }): React.JSX.Element {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const theme = useNativeChatVisualTheme(themeScope)
+  // The latest theme for the next document build and the load-time post, without rebuilding on it.
   const themeRef = useRef(theme)
-  themeRef.current = theme
+  useLayoutEffect(() => {
+    themeRef.current = theme
+  }, [theme])
   const [height, setHeight] = useState(NATIVE_CHAT_VISUAL_RESERVED_HEIGHT)
   const loadsRef = useRef(0)
 
