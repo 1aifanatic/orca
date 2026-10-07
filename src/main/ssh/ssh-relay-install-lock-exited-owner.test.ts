@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -46,8 +47,15 @@ function lockOwnedBy(owner: string, quietMinutes: number): string {
   return lock
 }
 
-async function steal(host: RemoteHostPlatform, lock: string): Promise<string> {
-  const command = tryStealInstallLockCommand(host, lock, 20 * 60, successor, exitedOwner)
+async function steal(
+  host: RemoteHostPlatform,
+  lock: string,
+  mutationLock?: string
+): Promise<string> {
+  const command = tryStealInstallLockCommand(host, lock, 20 * 60, successor, {
+    ...exitedOwner,
+    mutationLock
+  })
   const result =
     host.os === 'win32'
       ? await runProcess({
@@ -87,4 +95,20 @@ describe.each([
     expect(outputs.filter((output) => output.endsWith('OK'))).toHaveLength(1)
     expect(readdirSync(join(lock, '..')).filter((name) => name.includes('.tombstone'))).toEqual([])
   })
+
+  // The fence scope: the steal holds the state-mutation lock across the takeover (Astra 26087 r2).
+  it.runIf(runs)(
+    'takes a fence only while no state-mutation lock exists, and releases it',
+    async () => {
+      const lock = lockOwnedBy('t-exited', 10)
+      const mutationLock = join(lock, '..', 'orcad-state-mutation.lock')
+      mkdirSync(mutationLock)
+      expect(await steal(host, lock, mutationLock)).toBe('BUSY')
+      expect(readFileSync(join(lock, OWNER), 'utf8')).toBe('t-exited')
+      rmSync(mutationLock, { recursive: true })
+      expect(await steal(host, lock, mutationLock)).toBe('EXITED_OWNER_OK')
+      expect(readFileSync(join(lock, OWNER), 'utf8')).toBe('t-relaunch')
+      expect(existsSync(mutationLock)).toBe(false)
+    }
+  )
 })

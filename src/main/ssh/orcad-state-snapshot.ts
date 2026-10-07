@@ -17,6 +17,8 @@
  */
 import {
   currentOrcadFence,
+  ORCAD_FENCE_LOST_EXIT,
+  ORCAD_FENCE_LOST_MARKER,
   posixOrcadFenceGuard,
   posixOrcadFenceOwnedTest,
   type OrcadFence
@@ -108,6 +110,12 @@ export function serializedStateMutationCommand(
     `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { ${busy} }; fi;`,
     // Noclobber: a run that resumes after a takeover finds a pid already there and backs off.
     `set -C; { echo $$ > "$lock/pid"; } 2>/dev/null || { ${busy} }; set +C;`,
+    // Rechecked once the lock is held: an exited-owner steal holds it across the fence takeover.
+    ...(owned
+      ? [
+          `${posixOrcadFenceOwnedTest(owned)} || { rm -rf "$lock"; echo ${ORCAD_FENCE_LOST_MARKER}; exit ${ORCAD_FENCE_LOST_EXIT}; };`
+        ]
+      : []),
     'if [ "${ORCA_STATE_MUTATION_GROUP:-}" = 1 ]; then',
     `group=$(${posixProcessGroupCommand('$$')});`,
     'case "$group" in ""|*[!0-9]*) ;; *) echo "$group" > "$lock/pgid";; esac; fi;',
@@ -133,7 +141,7 @@ export function serializedStateMutationCommand(
     'else "$@"; fi; };',
     // Why timeout inside the group: KILL then reaches tar and rm, not only the shell.
     `if command -v timeout >/dev/null 2>&1; then orca_state_group timeout -s KILL ${ORCAD_STATE_MUTATION_DEADLINE_SECONDS} ${run}; else orca_state_group ${run}; fi;`,
-    `status=$?; if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then echo ${ORCAD_STATE_MUTATION_DEADLINE}; fi`
+    `status=$?; ${owned ? `[ "$status" -eq ${ORCAD_FENCE_LOST_EXIT} ] && exit ${ORCAD_FENCE_LOST_EXIT}; ` : ''}if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then echo ${ORCAD_STATE_MUTATION_DEADLINE}; fi`
   ].join(' ')
 }
 

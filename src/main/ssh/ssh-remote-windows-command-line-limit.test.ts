@@ -53,7 +53,8 @@ describe('Windows remote command line limit', () => {
         {
           fileName: '.orca-fence-owner',
           token: '123e4567-e89b-12d3-a456-426614174001',
-          quietSeconds: 180
+          quietSeconds: 180,
+          mutationLock: 'C:\\Users\\orca\\.orca-remote\\orcad-state-mutation.lock'
         }
       )
     ],

@@ -60,16 +60,14 @@ Object.assign(ops, {
     answer('RELEASED')
   },
   // Read-only: names which of \`tokens\` (clients proven exited) the lock holds, once it is quiet
-  // and, with guardArg '1', its state mutation is gone: missing, or its holder proven exited.
+  // and, with guardArg '1', no state-mutation lock exists.
   // The steal then takes the lock under its own arbitration, so nothing here writes.
   'fence-exited-owner'(lockDir, guardArg, ...tokens) {
     const quiet = (target) => Date.now() - (lstatOrNull(target)?.mtimeMs ?? Date.now()) > ${ORCAD_EXITED_OWN_LOCK_QUIET_SECONDS * 1000}
     const token = fenceOwner(lockDir)
     if (!tokens.includes(token) || !quiet(lockDir)) return answer('KEPT')
-    if (guardArg === '1' && lstatOrNull(MUTATION_LOCK)) {
-      const owner = readOwner()
-      if (owner ? holderState(owner) !== 'dead' : !quiet(MUTATION_LOCK)) return answer('KEPT')
-    }
+    // Any mutation lock refuses, as the steal does: it can only take an absent one.
+    if (guardArg === '1' && lstatOrNull(MUTATION_LOCK)) return answer('KEPT')
     answer('EXITED_OWNER ' + token)
   }
 })

@@ -233,6 +233,8 @@ export type InstallLockExitedOwnerProof = {
   find(lockDir: string): Promise<string | null>
   reclaimed(token: string): void
   quietSeconds: number
+  /** Held by the steal across the takeover, so no mutation is admitted under the old owner. */
+  mutationLock?: string
 }
 
 async function exitedOwnerFor(
@@ -246,7 +248,12 @@ async function exitedOwnerFor(
   const token = await proof.find(lockDir)
   return token === null
     ? undefined
-    : { fileName: options.owner.fileName, token, quietSeconds: proof.quietSeconds }
+    : {
+        fileName: options.owner.fileName,
+        token,
+        quietSeconds: proof.quietSeconds,
+        mutationLock: proof.mutationLock
+      }
 }
 
 function waitForInstallLockPoll(signal?: AbortSignal): Promise<void> {

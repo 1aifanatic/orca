@@ -84,4 +84,19 @@ describe('reclaiming this desktop’s exited lock on a Windows host', () => {
     await expect(find(true)).resolves.toBeNull()
     expect(remote.commands).toEqual([])
   })
+
+  it('falls back to the stale window when the check would not fit cmd.exe', async () => {
+    hold({ token: 't-exited', pid: EXITED_PID })
+    remote.reply = 'EXITED_OWNER t-exited\n'
+    const deep = `C:/Users/me/${'nested-folder/'.repeat(200)}.orca-remote`
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: execCommand is mocked, so the connection is never used.
+    const target = { conn: {} as never, host }
+    await expect(
+      findExitedOwnLockToken(target, `${deep}/.install-lock`, {
+        baseDir: deep,
+        guardsStateMutation: true
+      })
+    ).resolves.toBeNull()
+    expect(remote.commands).toEqual([])
+  })
 })

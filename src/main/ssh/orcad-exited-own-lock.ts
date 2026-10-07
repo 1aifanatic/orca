@@ -4,8 +4,8 @@
  * without the 20-minute wait, but only through its own arbitration and only while the lock is the
  * same instance and still names the exited holder's token. Process exit alone is not enough: sshd
  * keeps pty-less steps running, so the lock must also be quiet for three heartbeats and, for the
- * fence, no state mutation may still be live. Windows hosts check in the host script, where a
- * mutation's holder counts as gone only once its pid and creation time prove it exited.
+ * fence, there must be no state-mutation lock at all; the steal then holds that lock across the
+ * takeover, and a mutation rechecks its fence once it holds it, so the two never overlap.
  */
 import {
   ORCAD_FENCE_OWNER_FILENAME,
@@ -25,6 +25,7 @@ import {
   ORCAD_EXITED_OWN_LOCK_QUIET_SECONDS,
   ORCAD_STATE_MUTATION_LOCK_DIRNAME
 } from './orcad-state-snapshot-members'
+import { CMD_EXE_COMMAND_LINE_MAX_CHARS } from '../providers/windows-shell-args'
 import { shellEscape } from './ssh-connection-utils'
 import type { InstallLockExitedOwnerProof } from './ssh-relay-install-lock'
 import { isWindowsRemoteHost, joinRemotePath } from './ssh-remote-platform'
@@ -42,7 +43,8 @@ export function exitedOwnLockProof(
   return {
     find: (lockDir) => findExitedOwnLockToken(target, lockDir, scope),
     reclaimed: forgetHeldOrcadFence,
-    quietSeconds: ORCAD_EXITED_OWN_LOCK_QUIET_SECONDS
+    quietSeconds: ORCAD_EXITED_OWN_LOCK_QUIET_SECONDS,
+    mutationLock: mutationLockOf(target, scope) ?? undefined
   }
 }
 
@@ -67,6 +69,12 @@ export async function findExitedOwnLockToken(
   }
 }
 
+function mutationLockOf(target: OrcadRemoteExecTarget, scope: ExitedOwnLockScope): string | null {
+  return scope.guardsStateMutation
+    ? joinRemotePath(target.host, scope.baseDir, ORCAD_STATE_MUTATION_LOCK_DIRNAME)
+    : null
+}
+
 async function findOnPosix(
   target: OrcadRemoteExecTarget,
   lockDir: string,
@@ -82,10 +90,7 @@ async function findOnPosix(
   if (!exited.includes(token)) {
     return null
   }
-  const mutationLock = scope.guardsStateMutation
-    ? joinRemotePath(target.host, scope.baseDir, ORCAD_STATE_MUTATION_LOCK_DIRNAME)
-    : null
-  const command = exitedOwnLockCheckCommand({ lockDir, token }, mutationLock)
+  const command = exitedOwnLockCheckCommand({ lockDir, token }, mutationLockOf(target, scope))
   return (await execOrcadRemote(target, command)).trim() === 'EXITED_OWNER' ? token : null
 }
 
@@ -96,15 +101,17 @@ async function findOnWindows(
   scope: ExitedOwnLockScope,
   exited: string[]
 ): Promise<string | null> {
+  const command = orcadWindowsHostOpCommand(target.host, scope.baseDir, 'fence-exited-owner', [
+    lockDir,
+    scope.guardsStateMutation ? '1' : '0',
+    ...exited
+  ])
+  // Too long for sshd's cmd.exe: no proof, so the stale window applies.
+  if (command.length > CMD_EXE_COMMAND_LINE_MAX_CHARS) {
+    return null
+  }
   await installOrcadWindowsHostScript(target, scope.baseDir)
-  const output = await execOrcadRemote(
-    target,
-    orcadWindowsHostOpCommand(target.host, scope.baseDir, 'fence-exited-owner', [
-      lockDir,
-      scope.guardsStateMutation ? '1' : '0',
-      ...exited
-    ])
-  )
+  const output = await execOrcadRemote(target, command)
   const match = /^EXITED_OWNER (\S+)$/u.exec(output.trim().split(/\r?\n/u).at(-1) ?? '')
   return match ? match[1] : null
 }
@@ -119,12 +126,8 @@ function exitedOwnLockCheckCommand(
     `${posixOrcadFenceOwnedTest(lock)} && ${quiet(shellEscape(lock.lockDir))} || exit 0;`,
     ...(mutationLock
       ? [
-          `m=${shellEscape(mutationLock)};`,
-          // A mutation lock is gone only once its group, its shell and its heartbeat all are.
-          'if [ -d "$m" ]; then g=$(cat "$m/pgid" 2>/dev/null); p=$(cat "$m/pid" 2>/dev/null);',
-          '{ [ -n "$g" ] && kill -0 "-$g" 2>/dev/null; } && exit 0;',
-          '{ [ -n "$p" ] && kill -0 "$p" 2>/dev/null; } && exit 0;',
-          `${quiet('"$m"')} || exit 0; fi;`
+          // Any mutation lock refuses, as the steal does: it can only take an absent one.
+          `[ -e ${shellEscape(mutationLock)} ] && exit 0;`
         ]
       : []),
     'echo EXITED_OWNER'
