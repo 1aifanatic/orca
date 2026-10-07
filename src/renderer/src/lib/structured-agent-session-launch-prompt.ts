@@ -7,6 +7,8 @@ import {
   type StructuredAgentSessionReservedSend
 } from '@/components/native-chat/structured-agent-session-message-sender'
 import { noteStructuredAgentSessionFence } from '@/components/native-chat/structured-agent-session-send-attempt'
+import { publishStructuredAgentSessionSends } from '@/components/native-chat/structured-agent-session-pending-sends'
+import { agentSessionWriteNoticeText } from '@/components/native-chat/agent-session-write-notice-text'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 
 export type StructuredPromptDeliveryResult = {
@@ -118,17 +120,29 @@ export function hasStagedStructuredLaunchPrompt(sessionId: string): boolean {
   return (staged.get(sessionId)?.size ?? 0) > 0
 }
 
-/** Puts a launch's text in its chat's composer, unless its sender keeps it. True when it did. */
+/** Puts a launch's text in its chat's composer, unless its sender keeps it. True when it did; a
+ *  draft write that throws is reported in the chat instead, and never stops its caller. */
 function handBackStagedPrompt(prompt: StagedStructuredLaunchPrompt): boolean {
   if (prompt.callerKeepsText) {
     return false
   }
-  handBackStructuredAgentSessionMessage(
-    prompt.sessionId,
-    `launch-${prompt.sessionId}`,
-    structuredAgentSessionSendBody(prompt.text, [])
-  )
-  return true
+  try {
+    handBackStructuredAgentSessionMessage(
+      prompt.sessionId,
+      `launch-${prompt.sessionId}`,
+      structuredAgentSessionSendBody(prompt.text, [])
+    )
+    return true
+  } catch (error) {
+    console.error(
+      '[native-chat-send] a launch message could not be put back in the composer',
+      error
+    )
+    publishStructuredAgentSessionSends(prompt.sessionId, {
+      notice: agentSessionWriteNoticeText(['messageNotSaved'])
+    })
+    return false
+  }
 }
 
 function sendStagedPrompt(

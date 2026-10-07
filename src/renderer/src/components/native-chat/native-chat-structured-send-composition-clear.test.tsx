@@ -18,7 +18,7 @@ vi.mock('./NativeChatComposerActions', () => ({
   }
 }))
 vi.mock('./NativeChatAutocompleteMenus', () => ({
-  NativeChatMentionHint: () => null,
+  NativeChatMentionMenu: () => null,
   NativeChatPickerMenu: () => null
 }))
 vi.mock('../../store', () => {

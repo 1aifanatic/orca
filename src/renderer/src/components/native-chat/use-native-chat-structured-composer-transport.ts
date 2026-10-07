@@ -24,7 +24,7 @@ export function useNativeChatStructuredComposerTransport(args: {
   worktreeId: string | undefined
   optionPickerRequest: NativeChatOptionPickerRequest | null
   setOptionPickerRequest: Dispatch<SetStateAction<NativeChatOptionPickerRequest | null>>
-  onError: (message: string | null) => void
+  onError: NativeChatStructuredComposerTransport['onError']
   onSubmitted: () => void
   queuedMessages: Pick<StructuredAgentSessionQueuedMessagesController, 'queueHold' | 'queueResume'>
 }): NativeChatStructuredComposerTransport {

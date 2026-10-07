@@ -17721,8 +17721,10 @@
         "send": "보내기",
         "noPty": "라이브 terminal이 없습니다. 다시 연결하려면 다시 전환하세요.",
         "locked": "입력이 다른 장치에 의해 보류됩니다.",
-        "placeholder": "메시지 보내기…",
-        "mentionHint": "참조 파일:",
+        "placeholder": "무엇이든 물어보세요, @로 파일 멘션, /로 명령어",
+        "loadingFiles": "파일 로드 중...",
+        "noFiles": "일치하는 파일이 없습니다",
+        "filesLoadFailed": "파일을 불러오지 못했습니다",
         "attach": "파일첨부",
         "startDictation": "받아쓰기 시작",
         "stopDictation": "받아쓰기 중지",
@@ -17748,6 +17750,8 @@
         "options": "옵션",
         "sessionOptions": "세션 옵션",
         "chooseInAgentPicker": "에이전트 선택기에서 선택…",
+        "searchModels": "모델 검색…",
+        "noModelsMatch": "검색어와 일치하는 모델이 없습니다.",
         "toggleOption": "{{value0}} 전환",
         "pillAccessibleName": "{{value0}} {{value1}}",
         "sentNotConfirmed": "에이전트에 전송됨 — 확인되지 않음",
@@ -17791,7 +17795,9 @@
         "workspaceAttachmentMismatch": "파일은 소스 워크스페이스에만 첨부할 수 있습니다.",
         "attachmentOwnerChanged": "이 워크스페이스는 첨부하는 동안 호스트를 변경했습니다. 파일을 다시 삭제하세요.",
         "attachmentUnreadable": "삭제된 파일을 읽을 수 없습니다.",
-        "tooManyAttachments": "한 번에 {{value0}}개 이하의 파일을 첨부하세요."
+        "tooManyAttachments": "한 번에 {{value0}}개 이하의 파일을 첨부하세요.",
+        "pasteFailed": "붙여넣기 실패.",
+        "commandAttachmentsUnsupported": "채팅 세션 명령을 사용하기 전에 첨부 파일을 제거하세요."
       },
       "tool": {
         "running": "실행 중…",
@@ -17997,7 +18003,9 @@
         "plan": "계획",
         "historyRepaired": "이 채팅 기록의 일부를 불러올 수 없습니다.",
         "historyItemTooLarge": "채팅의 이 부분은 너무 커서 표시할 수 없습니다.",
-        "stoppedBeforeStart": "에이전트가 시작되기 전에 중지됨"
+        "stoppedBeforeStart": "에이전트가 시작되기 전에 중지됨",
+        "dismiss": "닫기",
+        "copyError": "오류 복사"
       },
       "providerFrame": {
         "byteLength": "{{value0}}바이트"
