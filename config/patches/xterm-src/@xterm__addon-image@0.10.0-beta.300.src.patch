@@ -122,11 +122,106 @@ index 0000000000000000000000000000000000000000..c33775e908c37b5347e717179658b76f
 +    throw new RangeError('Pending image checkpoint exceeds byte budget');
 +  }
 +}
+diff --git a/src/IIPActiveCheckpoint.ts b/src/IIPActiveCheckpoint.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f5190509c4ccd13b563b139a306ed1b2ed1fee60
+--- /dev/null
++++ b/src/IIPActiveCheckpoint.ts
+@@ -0,0 +1,89 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import Base64Decoder from 'xterm-wasm-parts/lib/base64/Base64Decoder.wasm';
++import { ImageCheckpointResources, type ICheckpointResource } from './ImageCheckpointResources';
++import { planBase64UploadCheckpoint, copyBase64UploadCheckpoint, validateBase64UploadCheckpoint,
++  restoreBase64UploadCheckpoint, checkUploadCheckpointBudget, type IBase64UploadCheckpoint } from './Base64UploadCheckpoint';
++import { HeaderParser, HeaderState, SequenceType, type IHeaderFields } from './IIPHeaderParser';
++import { captureHeaderFields, prepareFileHeader, IIP_HEADER_CHECKPOINT_BYTES,
++  type IHeaderFieldsCheckpoint, type IHeaderParserCheckpoint } from './IIPHeaderCheckpoint';
++
++export interface IIIPActiveState {
++  readonly aborted: boolean;
++  readonly isMultipart: boolean;
++  readonly abortMulti: boolean;
++  readonly multipartEncodedSize: number;
++}
++export interface IIIPActiveCheckpointMetadata extends IIIPActiveState {
++  readonly headerParser: IHeaderParserCheckpoint;
++  readonly header: IHeaderFieldsCheckpoint;
++  readonly headerByteLength: number;
++  readonly base64?: IBase64UploadCheckpoint;
++  readonly byteLength: number;
++  readonly resources: readonly ICheckpointResource[];
++}
++export class IIPActiveCheckpoint extends ImageCheckpointResources<IIIPActiveCheckpointMetadata> {}
++
++export function captureIIPActiveCheckpoint(
++  state: IIIPActiveState, parser: HeaderParser, header: IHeaderFields, decoder: Base64Decoder, maxBytes: number
++): IIPActiveCheckpoint {
++  checkUploadCheckpointBudget(maxBytes, 0);
++  const headerParser = parser.captureCheckpoint();
++  const copiedHeader = captureHeaderFields({ type: header.type, name: header.name, size: header.size,
++    width: header.width, height: header.height, preserveAspectRatio: header.preserveAspectRatio, inline: header.inline });
++  const headerByteLength = headerParser.byteLength + copiedHeader.byteLength;
++  if (headerByteLength > IIP_HEADER_CHECKPOINT_BYTES) throw new RangeError('IIP active checkpoint exceeds header budget');
++  const live = (state.isMultipart && !state.abortMulti)
++    || (!state.aborted && parser.state === HeaderState.END && parser.fields.type === SequenceType.FILE);
++  const plan = live ? planBase64UploadCheckpoint(decoder, decoder.loadedBytes) : undefined;
++  checkUploadCheckpointBudget(maxBytes, plan?.byteLength ?? 0);
++  const resources = new Map<number, Uint8Array>();
++  const base64 = plan ? Object.freeze({ resourceId: 1, decodedByteLength: plan.decodedByteLength,
++    tailByteLength: plan.tailByteLength, encodedByteLength: plan.encodedByteLength, byteLength: plan.byteLength }) : undefined;
++  if (plan) resources.set(1, copyBase64UploadCheckpoint(plan));
++  return new IIPActiveCheckpoint(Object.freeze({ ...state, headerParser, header: copiedHeader, headerByteLength,
++    base64, byteLength: plan?.byteLength ?? 0,
++    resources: Object.freeze([...resources].map(([id, bytes]) => Object.freeze({ id, byteLength: bytes.byteLength })))
++  }), resources);
++}
++
++export function prepareIIPActiveCheckpoint(
++  checkpoint: IIPActiveCheckpoint, maxEncodedBytes: number, initialBytes: number, storageBytes: number
++): { state: IIIPActiveState; parser: HeaderParser; header: IHeaderFields; decoder?: Base64Decoder } {
++  if (checkpoint.isDisposed) throw new Error('Active IIP checkpoint lease is disposed');
++  const supplied = checkpoint.metadata;
++  const state: IIIPActiveState = Object.freeze({ aborted: supplied.aborted, isMultipart: supplied.isMultipart,
++    abortMulti: supplied.abortMulti, multipartEncodedSize: supplied.multipartEncodedSize });
++  const parser = new HeaderParser();
++  parser.restoreCheckpoint(supplied.headerParser);
++  const header = prepareFileHeader(supplied.header);
++  const headerByteLength = supplied.headerParser.byteLength + supplied.header.byteLength;
++  if (supplied.headerByteLength !== headerByteLength || headerByteLength > IIP_HEADER_CHECKPOINT_BYTES
++    || ![state.aborted, state.isMultipart, state.abortMulti].every(flag => typeof flag === 'boolean')
++    || !Number.isSafeInteger(state.multipartEncodedSize) || state.multipartEncodedSize < 0) {
++    throw new Error('Invalid IIP active checkpoint state');
++  }
++  const base64 = supplied.base64 ? Object.freeze({ ...supplied.base64 }) : undefined;
++  if (!Array.isArray(supplied.resources) || supplied.resources.length > 1) throw new Error('Invalid IIP active resource count');
++  const descriptors = supplied.resources.map(r => ({ id: r.id, byteLength: r.byteLength }));
++  const live = (state.isMultipart && !state.abortMulti)
++    || (!state.aborted && parser.state === HeaderState.END && parser.fields.type === SequenceType.FILE);
++  if (live !== Boolean(base64)) throw new Error('Invalid IIP active decoder ownership');
++  if (!base64) {
++    if (supplied.byteLength !== 0 || descriptors.length) throw new Error('Invalid IIP active resource length');
++    return { state, parser, header };
++  }
++  if (base64.resourceId !== 1 || supplied.byteLength !== base64.byteLength || descriptors.length !== 1
++    || descriptors[0].id !== 1 || descriptors[0].byteLength !== base64.byteLength
++    || (state.isMultipart && state.multipartEncodedSize > base64.encodedByteLength)) {
++    throw new Error('Invalid IIP active decoder counters');
++  }
++  validateBase64UploadCheckpoint(checkpoint, base64, maxEncodedBytes);
++  if (maxEncodedBytes + 131072 > storageBytes) throw new RangeError('Active IIP checkpoint exceeds decoder capacity budget');
++  const decoder = new Base64Decoder(0, maxEncodedBytes, initialBytes);
++  restoreBase64UploadCheckpoint(checkpoint, base64, decoder);
++  return { state, parser, header, decoder };
++}
 diff --git a/src/IIPHandler.ts b/src/IIPHandler.ts
-index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b1159881914340db1222d 100644
+index 559b907416eb38318f439d060d7f89311ed34c7e..a270014664b939a299d191b0990339ee3f3130bb 100644
 --- a/src/IIPHandler.ts
 +++ b/src/IIPHandler.ts
-@@ -2,19 +2,24 @@
+@@ -2,19 +2,26 @@
   * Copyright (c) 2023 The xterm.js authors. All rights reserved.
   * @license MIT
   */
@@ -140,6 +235,8 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
  import QoiDecoder from 'xterm-wasm-parts/lib/qoi/QoiDecoder.wasm';
  import { HeaderParser, IHeaderFields, HeaderState, SequenceType } from './IIPHeaderParser';
  import { imageType, UNSUPPORTED_TYPE } from './IIPMetrics';
++import { IIPActiveCheckpoint, captureIIPActiveCheckpoint, prepareIIPActiveCheckpoint } from './IIPActiveCheckpoint';
++import { requireImageParserState, startImageCheckpointParser } from './ImageParserCheckpoint';
 +import { IIPUploadCheckpoint, captureIIPUploadCheckpoint, prepareIIPUploadCheckpoint } from './IIPUploadCheckpoint';
  
  // Local const enum mirror - esbuild can't inline const enums from external packages
@@ -153,13 +250,14 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
    // Initial buffer allocation for the decoder.
    INITIAL_DATA = 1048576,
    // Local mirror of const enum (esbuild can't inline const enums from external packages)
-@@ -33,14 +38,20 @@ const DEFAULT_HEADER: IHeaderFields = {
+@@ -33,14 +40,21 @@ const DEFAULT_HEADER: IHeaderFields = {
  };
  
  
 -export class IIPHandler implements IOscHandler, IResetHandler {
 +export class IIPHandler implements IOscHandler, IResetHandler, IDisposable {
 +  private _generation = 0;
++  private _escapeActive = false;
    private _aborted = false;
 +  private _disposed = false;
    private _hp = new HeaderParser();
@@ -175,7 +273,7 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
  
    constructor(
      private readonly _opts: IImageAddonOptions,
-@@ -48,18 +59,55 @@ export class IIPHandler implements IOscHandler, IResetHandler {
+@@ -48,19 +62,93 @@ export class IIPHandler implements IOscHandler, IResetHandler {
      private readonly _storage: IIPImageStorage,
      private readonly _coreTerminal: ITerminalExt
    ) {
@@ -231,10 +329,48 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
 +    if (decoder) this._dec = decoder;
 +  }
 +
++  public captureActiveCheckpoint(maxBytes: number): IIPActiveCheckpoint | undefined {
++    if (this._disposed) throw new Error('IIP handler is disposed');
++    if (!this._escapeActive) return undefined;
++    requireImageParserState(this._coreTerminal, 8);
++    return captureIIPActiveCheckpoint({ aborted: this._aborted, isMultipart: this._isMultipart,
++      abortMulti: this._abortMulti, multipartEncodedSize: this._multipartEncodedSize },
++    this._hp, this._header, this._dec, maxBytes);
++  }
++
++  public restoreActiveCheckpoint(checkpoint: IIPActiveCheckpoint): void {
++    if (this._disposed) throw new Error('IIP handler is disposed');
++    requireImageParserState(this._coreTerminal, 0);
++    const generation = this._generation;
++    const prepared = prepareIIPActiveCheckpoint(checkpoint, this._maxEncodedBytes,
++      this._initialEncodedBytes, this._opts.storageLimit * 1000000);
++    try {
++      if (this._disposed || generation !== this._generation || checkpoint.isDisposed) {
++        throw new Error('IIP handler changed during active checkpoint preparation');
++      }
++      requireImageParserState(this._coreTerminal, 0);
++      startImageCheckpointParser(this._coreTerminal, [0x1B, 0x5D, 0x31, 0x33, 0x33, 0x37, 0x3B], 8);
++      this._hp = prepared.parser;
++      this._header = prepared.header;
++      this._aborted = prepared.state.aborted;
++      this._isMultipart = prepared.state.isMultipart;
++      this._abortMulti = prepared.state.abortMulti;
++      this._multipartEncodedSize = prepared.state.multipartEncodedSize;
++      this._dec.release();
++      if (prepared.decoder) this._dec = prepared.decoder;
++    } catch (error) {
++      prepared.decoder?.release();
++      throw error;
++    }
++  }
++
    public start(): void {
++    this._generation++;
++    this._escapeActive = true;
      this._aborted = false;
      this._hp.reset();
-@@ -70,8 +118,7 @@ export class IIPHandler implements IOscHandler, IResetHandler {
+   }
+@@ -70,8 +158,7 @@ export class IIPHandler implements IOscHandler, IResetHandler {
  
      if (this._hp.state === HeaderState.END) {
        if ((this._dec.put(data.subarray(start, end)) as number) !== DecoderConst.OK) {
@@ -244,7 +380,7 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
        }
      } else {
        const dataPos = this._hp.parse(data, start, end);
-@@ -92,15 +139,16 @@ export class IIPHandler implements IOscHandler, IResetHandler {
+@@ -92,34 +179,44 @@ export class IIPHandler implements IOscHandler, IResetHandler {
              this._aborted = true;
              return;
            }
@@ -265,7 +401,13 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
          }
        }
      }
-@@ -113,13 +161,21 @@ export class IIPHandler implements IOscHandler, IResetHandler {
+   }
+ 
+   public end(success: boolean): boolean | Promise<boolean> {
++    this._escapeActive = false;
+     if (this._aborted) return true;
+ 
+     if (this._hp.state !== HeaderState.END) {
        if (this._hp.end()) return true;
      }
      const seqType = this._hp.fields.type;
@@ -290,7 +432,7 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
        if (this._renderer.dimensions) {
          w = this._renderer.dimensions.css.canvas.width / this._coreTerminal.cols;
          h = this._renderer.dimensions.css.canvas.height / this._coreTerminal.rows;
-@@ -134,8 +190,11 @@ export class IIPHandler implements IOscHandler, IResetHandler {
+@@ -134,8 +231,11 @@ export class IIPHandler implements IOscHandler, IResetHandler {
        this._header = Object.assign({}, DEFAULT_HEADER, this._hp.fields);
        this._isMultipart = true;
        this._abortMulti = false;
@@ -303,7 +445,7 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
        return true;
      }
  
-@@ -177,41 +236,66 @@ export class IIPHandler implements IOscHandler, IResetHandler {
+@@ -177,41 +277,66 @@ export class IIPHandler implements IOscHandler, IResetHandler {
        return true;
      }
  
@@ -399,6 +541,181 @@ index 559b907416eb38318f439d060d7f89311ed34c7e..f96f5022838552adee5b115988191434
      const width = this._renderer.dimensions?.css.canvas.width || cw * this._coreTerminal.cols;
      const height = this._renderer.dimensions?.css.canvas.height || ch * this._coreTerminal.rows;
  
+diff --git a/src/IIPHeaderCheckpoint.ts b/src/IIPHeaderCheckpoint.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7de82ea741eea1e6e066365bb6e864447223e35f
+--- /dev/null
++++ b/src/IIPHeaderCheckpoint.ts
+@@ -0,0 +1,135 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import type { HeaderState, IHeaderFields, SequenceType } from './IIPHeaderParser';
++
++export const IIP_HEADER_CHECKPOINT_BYTES = 65536;
++const MAX_FIELDS = 128;
++const MAX_CHARS = 1024;
++type HeaderValue = number | string | Uint32Array | null | undefined;
++export type IHeaderCheckpointValue =
++  | Readonly<{ kind: 'number'; text: string }>
++  | Readonly<{ kind: 'string'; text: string }>
++  | Readonly<{ kind: 'codepoints'; points: readonly number[] }>
++  | Readonly<{ kind: 'null' | 'undefined' }>;
++export interface IHeaderFieldsCheckpoint {
++  readonly entries: readonly Readonly<{ name: string; value: IHeaderCheckpointValue }>[];
++  readonly byteLength: number;
++}
++export interface IHeaderParserCheckpoint {
++  readonly state: HeaderState;
++  readonly buffer: readonly number[];
++  readonly key: string;
++  readonly fields: IHeaderFieldsCheckpoint;
++  readonly byteLength: number;
++}
++
++function numberText(value: number): string {
++  return Object.is(value, -0) ? '-0' : String(value);
++}
++function checkedString(value: string): number {
++  if (typeof value !== 'string' || value.length > MAX_CHARS) throw new Error('Invalid IIP checkpoint string');
++  return value.length * 4;
++}
++function checkedPoints(points: readonly number[] | Uint32Array): number {
++  if (points.length > MAX_CHARS || points.some(n => !Number.isInteger(n) || n < 0 || n > 0x10FFFF)) {
++    throw new Error('Invalid IIP checkpoint codepoints');
++  }
++  return points.length * 4;
++}
++function valueBytes(value: HeaderValue): number {
++  if (typeof value === 'string') return checkedString(value);
++  if (typeof value === 'number') return numberText(value).length * 4;
++  if (value instanceof Uint32Array) return checkedPoints(value);
++  if (value === null || value === undefined) return 4;
++  throw new Error('Unsupported IIP checkpoint field');
++}
++function copyValue(value: HeaderValue): IHeaderCheckpointValue {
++  if (typeof value === 'number') return Object.freeze({ kind: 'number', text: numberText(value) });
++  if (typeof value === 'string') return Object.freeze({ kind: 'string', text: value });
++  if (value instanceof Uint32Array) return Object.freeze({ kind: 'codepoints', points: Object.freeze(Array.from(value)) });
++  return Object.freeze({ kind: value === null ? 'null' : 'undefined' });
++}
++export function captureHeaderFields(fields: Record<string, HeaderValue>): IHeaderFieldsCheckpoint {
++  let byteLength = 0;
++  let count = 0;
++  for (const name in fields) {
++    if (!Object.prototype.hasOwnProperty.call(fields, name)) continue;
++    if (++count > MAX_FIELDS) throw new RangeError('IIP checkpoint has too many header fields');
++    byteLength += checkedString(name) + valueBytes(fields[name]) + 8;
++    if (byteLength > IIP_HEADER_CHECKPOINT_BYTES) throw new RangeError('IIP checkpoint header exceeds byte budget');
++  }
++  const entries = [];
++  for (const name in fields) {
++    if (Object.prototype.hasOwnProperty.call(fields, name)) entries.push(Object.freeze({ name, value: copyValue(fields[name]) }));
++  }
++  return Object.freeze({ entries: Object.freeze(entries), byteLength });
++}
++export function restoreHeaderFields(snapshot: IHeaderFieldsCheckpoint): Record<string, HeaderValue> {
++  if (!Array.isArray(snapshot.entries) || snapshot.entries.length > MAX_FIELDS) throw new Error('Invalid IIP checkpoint field count');
++  const fields: Record<string, HeaderValue> = {};
++  let byteLength = 0;
++  for (const entry of snapshot.entries) {
++    byteLength += checkedString(entry.name) + 8;
++    if (Object.prototype.hasOwnProperty.call(fields, entry.name)) throw new Error('Duplicate IIP checkpoint field');
++    const v = entry.value;
++    let value: HeaderValue;
++    switch (v.kind) {
++      case 'number':
++        if (typeof v.text !== 'string' || v.text.length > 32 || numberText(Number(v.text)) !== v.text) {
++          throw new Error('Invalid IIP checkpoint numeric field');
++        }
++        value = Number(v.text);
++        break;
++      case 'string': value = v.text; break;
++      case 'codepoints':
++        if (!Array.isArray(v.points)) throw new Error('Invalid IIP checkpoint codepoints');
++        checkedPoints(v.points);
++        value = new Uint32Array(v.points);
++        break;
++      case 'null': value = null; break;
++      case 'undefined': value = undefined; break;
++      default: throw new Error('Invalid IIP checkpoint field type');
++    }
++    byteLength += valueBytes(value);
++    if (byteLength > IIP_HEADER_CHECKPOINT_BYTES) throw new RangeError('IIP checkpoint header exceeds byte budget');
++    Object.defineProperty(fields, entry.name, { value, writable: true, enumerable: true, configurable: true });
++  }
++  if (snapshot.byteLength !== byteLength) throw new Error('Invalid IIP checkpoint header length');
++  return fields;
++}
++function isHeaderState(value: unknown): value is HeaderState {
++  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 4;
++}
++function isSequenceType(value: unknown): value is SequenceType {
++  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 5;
++}
++export function captureHeaderParser(
++  state: HeaderState, buffer: Uint32Array, key: string, fields: Record<string, HeaderValue>
++): IHeaderParserCheckpoint {
++  const copiedFields = captureHeaderFields(fields);
++  const byteLength = copiedFields.byteLength + checkedPoints(buffer) + checkedString(key);
++  if (byteLength > IIP_HEADER_CHECKPOINT_BYTES) throw new RangeError('IIP parser checkpoint exceeds header budget');
++  return Object.freeze({ state, buffer: Object.freeze(Array.from(buffer)), key, fields: copiedFields, byteLength });
++}
++export function prepareHeaderParser(snapshot: IHeaderParserCheckpoint): {
++  state: HeaderState; buffer: Uint32Array; key: string; fields: Record<string, HeaderValue>
++} {
++  if (!isHeaderState(snapshot.state) || !Array.isArray(snapshot.buffer)) throw new Error('Invalid IIP header parser state');
++  const bytes = checkedPoints(snapshot.buffer) + checkedString(snapshot.key);
++  const fields = restoreHeaderFields(snapshot.fields);
++  const byteLength = snapshot.fields.byteLength + bytes;
++  if (snapshot.byteLength !== byteLength || byteLength > IIP_HEADER_CHECKPOINT_BYTES) throw new Error('Invalid IIP header parser length');
++  return { state: snapshot.state, buffer: new Uint32Array(snapshot.buffer), key: snapshot.key, fields };
++}
++export function prepareFileHeader(snapshot: IHeaderFieldsCheckpoint): IHeaderFields {
++  const fields = restoreHeaderFields(snapshot);
++  const { type, name, size, width, height, preserveAspectRatio, inline } = fields;
++  if (!isSequenceType(type) || typeof name !== 'string' || typeof size !== 'number'
++    || (width !== undefined && typeof width !== 'string') || (height !== undefined && typeof height !== 'string')
++    || (preserveAspectRatio !== undefined && typeof preserveAspectRatio !== 'number')
++    || (inline !== undefined && typeof inline !== 'number')) throw new Error('Invalid IIP file header');
++  return { type, name, size, width, height, preserveAspectRatio, inline };
++}
+diff --git a/src/IIPHeaderParser.ts b/src/IIPHeaderParser.ts
+index 9c20262b12f3cba326d2a787faa2a56d8b4907db..ec7cc5e581877c682bc3a67118b6220b7abc812a 100644
+--- a/src/IIPHeaderParser.ts
++++ b/src/IIPHeaderParser.ts
+@@ -3,6 +3,8 @@
+  * @license MIT
+  */
+ 
++import { captureHeaderParser, prepareHeaderParser, type IHeaderParserCheckpoint } from './IIPHeaderCheckpoint';
++
+ // eslint-disable-next-line
+ declare const Buffer: any;
+ 
+@@ -125,6 +127,20 @@ export class HeaderParser {
+   private _key = '';
+   public fields: {[key: string]: number | string | Uint32Array | null | undefined} = {};
+ 
++  public captureCheckpoint(): IHeaderParserCheckpoint {
++    return captureHeaderParser(this.state, this._buffer.subarray(0, this._position), this._key, this.fields);
++  }
++
++  public restoreCheckpoint(snapshot: IHeaderParserCheckpoint): void {
++    const prepared = prepareHeaderParser(snapshot);
++    this._buffer.fill(0);
++    this._buffer.set(prepared.buffer);
++    this._position = prepared.buffer.length;
++    this._key = prepared.key;
++    this.state = prepared.state;
++    this.fields = prepared.fields;
++  }
++
+   public reset(): void {
+     this._buffer.fill(0);
+     this.state = HeaderState.START;
 diff --git a/src/IIPImageStorage.ts b/src/IIPImageStorage.ts
 index 28037a8973014b7892a7fe397d8136e39e18c73a..e9777c6e502768920f82ccbc71356b46e0490d7e 100644
 --- a/src/IIPImageStorage.ts
