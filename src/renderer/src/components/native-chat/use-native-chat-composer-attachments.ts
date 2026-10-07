@@ -86,6 +86,14 @@ export function useNativeChatComposerAttachments({
     localRef.current = next
     setLocal(next)
   }, [])
+  useEffect(
+    () => () => {
+      const current = localRef.current
+      current.pending.forEach((attachment) => releasePreviewUrl(attachment.previewUrl))
+      current.previews.forEach(releasePreviewUrl)
+    },
+    []
+  )
   const imageAttachments = useMemo(
     () => [
       ...settled.map((image) => {
