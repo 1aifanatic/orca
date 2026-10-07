@@ -1,0 +1,23 @@
+diff --git a/codec/dec/webp_dec.d.ts b/codec/dec/webp_dec.d.ts
+index ff6a597432928d549fb2dd2aa85df6470d6d0d7b..fb2704204b3ede96fc418fb97af3ef912537291c 100644
+--- a/codec/dec/webp_dec.d.ts
++++ b/codec/dec/webp_dec.d.ts
+@@ -1,7 +1,16 @@
+-export interface WebPModule extends EmscriptenWasm.Module {
++export interface DecoderModuleOptions {
++  noInitialRun?: boolean;
++  printErr?: (message: string) => void;
++  instantiateWasm?: (
++    imports: WebAssembly.Imports,
++    successCallback: (instance: WebAssembly.Instance) => void
++  ) => WebAssembly.Exports;
++}
++
++export interface WebPModule {
+   decode(data: BufferSource): ImageData | null;
+ }
+ 
+-declare var moduleFactory: EmscriptenWasm.ModuleFactory<WebPModule>;
++declare var moduleFactory: (options?: DecoderModuleOptions) => Promise<WebPModule>;
+ 
+ export default moduleFactory;

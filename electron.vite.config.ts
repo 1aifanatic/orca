@@ -17,6 +17,12 @@ const BUNDLED_MAIN_DEPENDENCIES = new Set([
   'stream-chain',
   '@xterm/headless',
   '@xterm/addon-serialize',
+  '@xterm/addon-image',
+  '@jsquash/png',
+  '@jsquash/jpeg',
+  '@jsquash/webp',
+  '@jsquash/avif',
+  'omggif',
   'tldts',
   'smol-toml',
   // Why: Windows NSIS deploys app.asar before external resources; bootstrap must

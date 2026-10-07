@@ -3,6 +3,8 @@
   "include": [
     "../src/cli/**/*",
     "../src/shared/**/*",
+    "../src/shared/terminal-raster-codec-assets.json",
+    "../src/shared/__fixtures__/terminal-raster-*.json",
     "../src/main/agent-state-file-reader.ts",
     "../src/main/gitlab/project-ref-parser.ts",
     "../src/main/agent-hooks/grok-replay-guard.ts",

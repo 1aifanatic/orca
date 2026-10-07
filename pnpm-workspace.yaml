@@ -64,3 +64,7 @@ patchedDependencies:
   lint-staged@16.4.0: config/patches/lint-staged@16.4.0.patch
   '@vscode/windows-process-tree@0.8.0': config/patches/@vscode__windows-process-tree@0.8.0.patch
   i18next-cli@1.74.2: config/patches/i18next-cli@1.74.2.patch
+  '@jsquash/png@3.1.1': config/patches/@jsquash__png@3.1.1.patch
+  '@jsquash/jpeg@1.6.0': config/patches/@jsquash__jpeg@1.6.0.patch
+  '@jsquash/webp@1.5.0': config/patches/@jsquash__webp@1.5.0.patch
+  '@jsquash/avif@2.1.1': config/patches/@jsquash__avif@2.1.1.patch

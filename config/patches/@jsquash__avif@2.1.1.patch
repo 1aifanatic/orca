@@ -1,0 +1,25 @@
+diff --git a/codec/dec/avif_dec.d.ts b/codec/dec/avif_dec.d.ts
+index 4d602e4c56040c8971363f5cb0c58f395144b506..be7213ad0bbafc9cb194a9c3e63762c495093c17 100644
+--- a/codec/dec/avif_dec.d.ts
++++ b/codec/dec/avif_dec.d.ts
+@@ -1,9 +1,18 @@
+-export interface AVIFModule extends EmscriptenWasm.Module {
++export interface DecoderModuleOptions {
++  noInitialRun?: boolean;
++  printErr?: (message: string) => void;
++  instantiateWasm?: (
++    imports: WebAssembly.Imports,
++    successCallback: (instance: WebAssembly.Instance) => void
++  ) => WebAssembly.Exports;
++}
++
++export interface AVIFModule {
+   decode(data: BufferSource, bitDepth: 10 | 12 | 16): { data: Uint16Array, height: number, width: number } | null;
+   decode(data: BufferSource, bitDepth: 8): ImageData | null;
+   decode(data: BufferSource, bitDepth: 8 | 10 | 12 | 16): { data: Uint16Array, height: number, width: number } | ImageData | null;
+ }
+ 
+-declare var moduleFactory: EmscriptenWasm.ModuleFactory<AVIFModule>;
++declare var moduleFactory: (options?: DecoderModuleOptions) => Promise<AVIFModule>;
+ 
+ export default moduleFactory;

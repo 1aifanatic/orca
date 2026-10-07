@@ -1,0 +1,23 @@
+diff --git a/codec/dec/mozjpeg_dec.d.ts b/codec/dec/mozjpeg_dec.d.ts
+index 9031c05fb01b20710056c426b5e8793067d52aa9..9e414c6e3f266d1bd8c8805cf28be1a7b22341fe 100644
+--- a/codec/dec/mozjpeg_dec.d.ts
++++ b/codec/dec/mozjpeg_dec.d.ts
+@@ -1,7 +1,16 @@
+-export interface MozJPEGModule extends EmscriptenWasm.Module {
++export interface DecoderModuleOptions {
++  noInitialRun?: boolean;
++  printErr?: (message: string) => void;
++  instantiateWasm?: (
++    imports: WebAssembly.Imports,
++    successCallback: (instance: WebAssembly.Instance) => void
++  ) => WebAssembly.Exports;
++}
++
++export interface MozJPEGModule {
+   decode(data: BufferSource, preserveOrientation: boolean): ImageData | null;
+ }
+ 
+-declare var moduleFactory: EmscriptenWasm.ModuleFactory<MozJPEGModule>;
++declare var moduleFactory: (options?: DecoderModuleOptions) => Promise<MozJPEGModule>;
+ 
+ export default moduleFactory;

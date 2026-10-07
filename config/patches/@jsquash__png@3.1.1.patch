@@ -1,0 +1,32 @@
+diff --git a/codec/pkg/squoosh_png.d.ts b/codec/pkg/squoosh_png.d.ts
+index 82ab0580cc4ccaa106c90b7fe5f96b470213a72b..eddcf87fd7f761b857ef115761c94a491a1b1c91 100644
+--- a/codec/pkg/squoosh_png.d.ts
++++ b/codec/pkg/squoosh_png.d.ts
+@@ -69,3 +69,5 @@ export function initSync(module: SyncInitInput): InitOutput;
+ * @returns {Promise<InitOutput>}
+ */
+ export default function __wbg_init (module_or_path?: InitInput | Promise<InitInput>): Promise<InitOutput>;
++
++export function releaseDecoder(): void;
+diff --git a/codec/pkg/squoosh_png.js b/codec/pkg/squoosh_png.js
+index efe70e447315b78e21fed710b07acdf1ae8be420..64727bd2c73bb2871b4d55f5f62cf078801a1718 100644
+--- a/codec/pkg/squoosh_png.js
++++ b/codec/pkg/squoosh_png.js
+@@ -251,6 +251,17 @@ function __wbg_finalize_init(instance, module) {
+     return wasm;
+ }
+ 
++export function releaseDecoder() {
++    wasm = undefined;
++    cachedInt32Memory0 = null;
++    cachedUint8Memory0 = null;
++    cachedUint8ClampedMemory0 = null;
++    heap.length = 128;
++    heap.push(undefined, null, true, false);
++    heap_next = heap.length;
++    WASM_VECTOR_LEN = 0;
++}
++
+ function initSync(module) {
+     if (wasm !== undefined) return wasm;
+ 
