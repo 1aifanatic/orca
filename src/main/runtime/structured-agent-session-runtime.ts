@@ -34,6 +34,10 @@ import { StructuredAgentRegistry } from '../native-chat/agent-session-wire/struc
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import {
+  installAgentSessionAttachments,
+  stopAgentSessionAttachments
+} from './structured-agent-session-attachment-wiring'
+import {
   openAgentSessionRecordStoreOnce,
   releaseAgentSessionRecordStore,
   type OpenedAgentSessionRecordStore
@@ -198,6 +202,7 @@ export async function stopStructuredAgentSessionRuntime(options?: {
   const pending = installing
   installing = null
   setStructuredAgentSessionHost(null)
+  stopAgentSessionAttachments()
   const outstanding = [...pendingTeardown]
   pendingTeardown.clear()
   const installed = pending ? await pending.catch(() => null) : null
@@ -325,6 +330,12 @@ async function installOnJournal(
     })
   }
   setStructuredAgentSessionHost(host)
+  installAgentSessionAttachments({
+    stateDirectory: deps.stateDirectory,
+    store,
+    journalDatabase,
+    logger: deps.logger
+  })
   return {
     host,
     adapter,
