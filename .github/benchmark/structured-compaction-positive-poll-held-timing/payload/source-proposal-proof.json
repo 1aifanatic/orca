@@ -1,0 +1,166 @@
+{
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "target": "src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts",
+  "sourceBeforeSha256": "be6d62bdd2c862b21a5244d9aa9c36eb4f4ea5dd37cd0be55653d7ac7445cb74",
+  "sourceAfterSha256": "6ad100d977e8a452647e239f2d40b0fe984191623a934975025dc218d7f28a3d",
+  "patchSha256": "4e43bf7fe02064ce52f85310d4eb4d64a73379caff8d29e75b0fe5223812941d",
+  "selectedPositivePolls": 24,
+  "changedCallbacks": [
+    {
+      "line": 164,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 204,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 217,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 230,
+      "callback": "() => expect(state.dispatch).toHaveBeenCalledTimes(2)",
+      "callbackSha256": "1b4b160c6e983a615152db5477a50bf5deb422ce79c73eb895459d8294d07781"
+    },
+    {
+      "line": 249,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 272,
+      "callback": "() => expect(state.dispatch).toHaveBeenCalledOnce()",
+      "callbackSha256": "0a1adf80a5063f1d95cdb5c9d9e49fe48f806fdcf0a01b9d5b86039320cffaf9"
+    },
+    {
+      "line": 292,
+      "callback": "() => expect(state.dispatch).toHaveBeenCalledOnce()",
+      "callbackSha256": "0a1adf80a5063f1d95cdb5c9d9e49fe48f806fdcf0a01b9d5b86039320cffaf9"
+    },
+    {
+      "line": 463,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 490,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 522,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 537,
+      "callback": "() => expect(state.dispatch).toHaveBeenCalledOnce()",
+      "callbackSha256": "0a1adf80a5063f1d95cdb5c9d9e49fe48f806fdcf0a01b9d5b86039320cffaf9"
+    },
+    {
+      "line": 546,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 585,
+      "callback": "() => expect(crash).toHaveBeenCalled()",
+      "callbackSha256": "c291a92d3cc181871a2d22aa92a50dcf11fc13d330ea564d4b1f7bcb27cc7eb1"
+    },
+    {
+      "line": 606,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 612,
+      "callback": "() => expect(state.dispatch).toHaveBeenCalledOnce()",
+      "callbackSha256": "0a1adf80a5063f1d95cdb5c9d9e49fe48f806fdcf0a01b9d5b86039320cffaf9"
+    },
+    {
+      "line": 656,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 676,
+      "callback": "() => expect(state.dispatch).toHaveBeenCalledOnce()",
+      "callbackSha256": "0a1adf80a5063f1d95cdb5c9d9e49fe48f806fdcf0a01b9d5b86039320cffaf9"
+    },
+    {
+      "line": 705,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 732,
+      "callback": "() => expect(state.dispatch).toHaveBeenCalledOnce()",
+      "callbackSha256": "0a1adf80a5063f1d95cdb5c9d9e49fe48f806fdcf0a01b9d5b86039320cffaf9"
+    },
+    {
+      "line": 763,
+      "callback": "() => expect(state.dispatch).toHaveBeenCalledOnce()",
+      "callbackSha256": "0a1adf80a5063f1d95cdb5c9d9e49fe48f806fdcf0a01b9d5b86039320cffaf9"
+    },
+    {
+      "line": 768,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 791,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 809,
+      "callback": "() => expect(compact).toHaveBeenCalledOnce()",
+      "callbackSha256": "cf7311b72d926ca67f2f4767f21f1d68989604caccb2c452dfa901d248d09aea"
+    },
+    {
+      "line": 823,
+      "callback": "() => expect(compact).toHaveBeenCalledTimes(2)",
+      "callbackSha256": "e7ff1ed3bf62e09504123f29c0a18e02dabb9cfde0337fe4850df937ee1d830d"
+    }
+  ],
+  "fullModuleAstEqualAfterRemovingOnly24IntervalOptions": true,
+  "allOriginalCaseCallbacksEqualExceptDeclaredOptions": true,
+  "literalCaseRegistrations": 21,
+  "runtimeCaseCount": null,
+  "entireUnselectedWaitsAndOriginal20And50msWindowsRetained": true,
+  "defaultSafetyTimeout1000Unchanged": true,
+  "productionSourcesChanged": false,
+  "localBindingsUnchanged": true,
+  "scope": "Only synchronous positive compact/dispatch/crash vi.fn observations; every original callback expression/assertion identical. Async journal/read/command predicates and child-null wait untouched.",
+  "localNativeSafety": "Entire suite CI-only: canonical realSQL/record-store/recovery-capsule owners retained. No new runtime/clock/mock seam; no local launch allowed.",
+  "originalCaseCallbackHashes": [
+    "cc342c2b1c59e0d5434911bf2ab3d6d26f15a4e84ffc4fe262eababd9f500d66",
+    "5206d2be5347dc469bc68768ab21e939e7cd27b88a3c62446d8de0d1f25e4306",
+    "a5ff238a8019ec3faa0451824ef968f542043aeaaeb6b91322c21e0c70f4ead9",
+    "f9bc0b168510b7e32f40c3df99ba794107d4ce75c5a6d6280aee9c983ebf64fb",
+    "38a02be8030c3f329c0b0d64fc0233fad1936d6c766c870172350044cbcfb9c1",
+    "9ed135424e429d4ceb4ecfbd0584fb054ab009ccea80c96a139809583d23f26b",
+    "46e9bfed262d7ae366895008eb605d914de7587680bac2bca8439609d43a2b45",
+    "c0d86b4a1ddf885000aabb4038e5b2b8a3be194fe00a7732d459213e465df5c9",
+    "dc513dbdebafa9803c736d810ac36143f02981639f168b0774919d6dafccdda3",
+    "a621c2704b90cad84415094bbce4416fb816b99799ed994b26ac817601a6a9ab",
+    "bb6926a68093bd7222cde93644d5df545f20bba40253c4227a31bb02b9f93e7c",
+    "fc3a9ae05c5560478b9b5f992bf15ef1ba20d317d8efe6c7672aff066e1de33c",
+    "eddbbe522c57c1ad4a7f0aeca8f92a5a29724d0c2bf33a4b38e743117b8698b1",
+    "a9d4279ca147402a277387eef06824202ed4e0e0464ca22924f4dde7774f1e2f",
+    "c51998f3d6c2006844ef81adccf8195ab6d41a38e8392f37b5858d882a8b8b81",
+    "5582968e42332a63b5ab0b88f481d6bd7890f3e23dc0f6563ce822550924d969",
+    "bc6f4f2269e602f12605205c50eb2d38fb3f61a0dbdb11a5875b20275109d11a",
+    "47c6f052ad2a9379184d8db18d2b21748e463c5369c289100e99fd6ecc22ab7f",
+    "69fdbbbfbc029865c98be9bf9fe738d42e16abf231e13d61da8b55f19a207a5e",
+    "5a3b87ec7574c62e65abae15ab433b163d0c00430f2053962f7557e153ce9607",
+    "359ff980983ddbe69e44afa21ed09ecf28bbb3a28c25975da1b6319ecc37cfd2"
+  ],
+  "changedPredicateHashesPreserved": true,
+  "oxfmtOnlyExecuted": true,
+  "testsOrConfigurationOrProductionExecuted": false
+}

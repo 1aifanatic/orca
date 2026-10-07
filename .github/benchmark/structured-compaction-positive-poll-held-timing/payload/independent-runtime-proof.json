@@ -1,0 +1,173 @@
+{
+  "rootRawChecksPassed": true,
+  "qualified": true,
+  "originalCases": 21,
+  "reports": 8,
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "caseIdentityMapByFile": {
+    "src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts": [
+      {
+        "fullName": "answers a refused command's message before ending its turn, so a crash between them leaves a turn the sweep settles (B4)",
+        "title": "answers a refused command's message before ending its turn, so a crash between them leaves a turn the sweep settles (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "answers at handover, then journals its own entry, turn and result (B1, B16)",
+        "title": "answers at handover, then journals its own entry, turn and result (B1, B16)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "counts a message held behind the command from its handover, not its send",
+        "title": "counts a message held behind the command from its handover, not its send",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "delivers the next message after a command whose child died and whose settlement could not be written",
+        "title": "delivers the next message after a command whose child died and whose settlement could not be written",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "does not stop the child for a Stop naming a command that already ended (B4)",
+        "title": "does not stop the child for a Stop naming a command that already ended (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "ends the command by stopping the child at a second Stop the provider never answered (B4)",
+        "title": "ends the command by stopping the child at a second Stop the provider never answered (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "ends the command by stopping the child when the provider cannot take the Stop (B4)",
+        "title": "ends the command by stopping the child when the provider cannot take the Stop (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "hands over a message held behind the command when the command ends just as the loop stops for it",
+        "title": "hands over a message held behind the command when the command ends just as the loop stops for it",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "holds messages sent during the command and delivers them after it, in order (B2)",
+        "title": "holds messages sent during the command and delivers them after it, in order (B2)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "ignores an older build's unconfirmed compaction record, and answers its operation without rerunning it (B15)",
+        "title": "ignores an older build's unconfirmed compaction record, and answers its operation without rerunning it (B15)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "leaves a command whose start failed not sent, beside one start-failure row (B3)",
+        "title": "leaves a command whose start failed not sent, beside one start-failure row (B3)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "leaves the command to the provider when it takes the Stop, and ends it as cancelled (B4)",
+        "title": "leaves the command to the provider when it takes the Stop, and ends it as cancelled (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "never lets a provider echo alias the command entry",
+        "title": "never lets a provider echo alias the command entry",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "refuses a /compact pressed again under a new id while one runs, and runs one pressed after it ended",
+        "title": "refuses a /compact pressed again under a new id while one runs, and runs one pressed after it ended",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "refuses the command at handover when the provider opened a turn meanwhile (B3)",
+        "title": "refuses the command at handover when the provider opened a turn meanwhile (B3)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "refuses the command for an agent that does not declare compaction, whatever its adapter has",
+        "title": "refuses the command for an agent that does not declare compaction, whatever its adapter has",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "replays the reply for the same operation without running it again (B16)",
+        "title": "replays the reply for the same operation without running it again (B16)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "says only that the compaction failed when the provider refused it without words",
+        "title": "says only that the compaction failed when the provider refused it without words",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "settles a command the provider refused as a failure with its reason, and moves on (B3)",
+        "title": "settles a command the provider refused as a failure with its reason, and moves on (B3)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "settles a command whose adapter call threw after the start as unknown (B4)",
+        "title": "settles a command whose adapter call threw after the start as unknown (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "writes one exit row when the child dies mid-command, and the loop writes nothing but moves on (B4)",
+        "title": "writes one exit row when the child dies mid-command, and the loop writes nothing but moves on (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      }
+    ]
+  },
+  "rawHashes": {
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-104729/runs/bun-104729/before.json": "705f71c617befad9653730f170824d3d0db09b322c67f7daac6295bf214fc813",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-104729/runs/bun-104729/before-details.json": "0ba9cf33021668a05f33806c54b53f6aa04e42d115cab98c41cbe19c1361b7f7",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-104729/runs/bun-104729/before-source-proof.json": "7c8d0f4f4d35befce22278b9d116dca7b859deaf12d252b414f09a695d8e4151",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-104729/runs/bun-104729/before.log": "7bccb500bb2322e7780a8b77199d969cdff721fbe3383336cf559e2fe1c1b1e7",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-104729/runs/bun-104729/after.json": "4040e1021b7e651ea83720040ba5f7c21c4e1c5dc938bb3a55eacccb1642648a",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-104729/runs/bun-104729/after-details.json": "15446a0e313d785cd01d0ab78ca5ccee691f99e072a50d061eabbdb15fef9429",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-104729/runs/bun-104729/after-source-proof.json": "5681373bd8c275ed79fc44dbed29fb32f5d54ef5eca69e2a42e4f03618fc7b5b",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-104729/runs/bun-104729/after.log": "bcf3ca9e2d39298a097f3fb26a216c5d1954b8ded582e416fe1571d497377e6a",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-130363/runs/bun-130363/before.json": "168d9d4ade01f511ff2626b2d32be5b03513a3c34dd409854458b86ae052b445",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-130363/runs/bun-130363/before-details.json": "b8fdeedbba764c94854f29f9c60db213a5a5039772a4f1722632fe025b3a55ce",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-130363/runs/bun-130363/before-source-proof.json": "f2148d4b935146c729e67cd2dde51015c9237675779f878b9e3c22beb27af8cf",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-130363/runs/bun-130363/before.log": "25c874daedb35d7cdbc65a69050fdc56b82a50894fa58a87e1b078dc39d2770a",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-130363/runs/bun-130363/after.json": "b4f1c32dc21a813bea9a51fd100188f70dc83d37fed08ddcbb22c7ca7c959f1e",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-130363/runs/bun-130363/after-details.json": "6154ebe9899e08249e661a5ef9b6d21a8d784ca7dd4835d5468f357dddf61d30",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-130363/runs/bun-130363/after-source-proof.json": "9f442484192675df686c8fd8101fc038663641a1199b0f860a0ac6d2b7fd0c11",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-bun-130363/runs/bun-130363/after.log": "11e9b59834c8236cfc276197c6385d77540128ae42cf4ffebb23a9a2c9c2b5c3",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-104729/runs/node-104729/before.json": "77b40ea96fc02f1a934d8ed471ab3e665ce636dcb66bc690b1eae350791e7aba",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-104729/runs/node-104729/before-details.json": "70b14734f534c555bd787b05c5adde850b11994f7ec2889fed3a0c47628b7d2a",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-104729/runs/node-104729/before-source-proof.json": "7f2d0893b31f485cd3ab7363e92dbfd98a05511e3a66efdc968293b56142a3d8",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-104729/runs/node-104729/before.log": "f84ed6da5d0f2cb5eeafa4df99035713ada09604cf2957ad5b27e902720c5df4",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-104729/runs/node-104729/after.json": "6fba51bd98a2d767eb7b96d96aa41f2ddef8c5fc901626cd238d58da69f06b45",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-104729/runs/node-104729/after-details.json": "2ce0325ee067ef46e4b7172fc1a111e486764305c60e66dc9f78220fa497926d",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-104729/runs/node-104729/after-source-proof.json": "13afa925241f3a90f9584e820e6ef63508b8aef18626a3238363803e25310650",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-104729/runs/node-104729/after.log": "f307a1a4b93d0293fd3d5b217b182b8e99cb2a23ed6ce07e3eda7a215e29bdac",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-130363/runs/node-130363/before.json": "cab5cec81a90170cad725a5d7f3c1e7f9468fa5d21be376e64a727ec17d3632f",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-130363/runs/node-130363/before-details.json": "8d23860218e2b3309abb6d527289dc661f70af357232af6c4db8abc709eaa43c",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-130363/runs/node-130363/before-source-proof.json": "e4953203e898bc89a4eb80652011eba2f3b6c004bc2600ad7b6a12b54ce27d21",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-130363/runs/node-130363/before.log": "0d4ab8d6f80b3aa9723a6edb879c9e9dbcaba203c1444b60b90ab3844f079d09",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-130363/runs/node-130363/after.json": "f5279d67e328c0006da4d68bd16c7c99bbc1f1398488844ccba05929ca2491fd",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-130363/runs/node-130363/after-details.json": "1ed53dc84f2edc8221cc59482e113349793f9b5cd64ae3bfcba130ba22855e6d",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-130363/runs/node-130363/after-source-proof.json": "494bea051debdcc265257744ffcb3e60258a612ffdff9789d761ce7709022650",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/wait-artifacts/structured-compaction-positive-poll-node-130363/runs/node-130363/after.log": "8a45d15ecec5d18aa82c82ea0a04deefa86212f70b802bb1b313a2ece6a8e5f6"
+  },
+  "scope": "Actual eight correctness reports only; timing pending.",
+  "testsOrConfigExecuted": false
+}

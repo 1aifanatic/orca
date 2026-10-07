@@ -1,0 +1,59 @@
+{
+  "terminalConclusion": "success",
+  "allFiveJobsSuccess": true,
+  "runtimeCorrectnessQualified": true,
+  "eachCommandOriginalCasesPassed": 21,
+  "eachCommandOriginalCasesSkipped": 0,
+  "runId": 37699229724,
+  "definitionHead": "cc048c61efe363206abd5239e6d199789dd41df2",
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "actualCiCollectorSha256": "bc505f0a00b1518f02c3c3c0ff3249fcc6ff5a367dac225d46486f153272a5b4",
+  "actualCiCollector": "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/terminal-evidence/structured-compaction-positive-poll-result.json",
+  "independentEightRawPeerSha256": "6a6549fa652f70c5b2f8e15d09a429a03cf2693f5c56964a4ade8e941970db00",
+  "actualCollectorMapConfigEqualsIndependentReplay": true,
+  "jobs": [
+    {
+      "id": 113058399070,
+      "name": "Compaction positive polls node seed 130363",
+      "started_at": "2026-10-07T23:06:01Z",
+      "completed_at": "2026-10-07T23:07:07Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 113058399292,
+      "name": "Compaction positive polls node seed 104729",
+      "started_at": "2026-10-07T23:06:00Z",
+      "completed_at": "2026-10-07T23:07:14Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 113058399313,
+      "name": "Compaction positive polls bun seed 104729",
+      "started_at": "2026-10-07T23:06:49Z",
+      "completed_at": "2026-10-07T23:07:56Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 113058399351,
+      "name": "Compaction positive polls bun seed 130363",
+      "started_at": "2026-10-07T23:08:27Z",
+      "completed_at": "2026-10-07T23:09:37Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 113062928911,
+      "name": "Independently verify eight original and candidate attempts",
+      "started_at": "2026-10-07T23:09:47Z",
+      "completed_at": "2026-10-07T23:10:09Z",
+      "conclusion": "success"
+    }
+  ],
+  "artifactHashes": {
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/run-20261007T231144Z.json": "103e24ccd5ab0988f8f9ade3a7a8615eafe32c9fb7e99a96910b6710851be2b8",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/jobs-20261007T231144Z.json": "97dfa7964979e806a1e3dc42b7c0f710228ac92da48cddfa64a961ee402b9867",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/terminal-evidence/structured-compaction-positive-poll-result.json": "bc505f0a00b1518f02c3c3c0ff3249fcc6ff5a367dac225d46486f153272a5b4",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/review-fixes-independent-eight-raw-correctness-proof.json": "6a6549fa652f70c5b2f8e15d09a429a03cf2693f5c56964a4ade8e941970db00",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-run-37699229724/review-fixes-preserved-eight-report-replay.json": "10d12eab47db8d75fbd79300f15a4d612b3638e3eb5c227f35efe8a5eddca329"
+  },
+  "scope": "Terminal isolated CI correctness only; no performance claim."
+}
