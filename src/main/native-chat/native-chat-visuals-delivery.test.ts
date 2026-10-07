@@ -3,10 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  NATIVE_CHAT_VISUAL_FILE_MAX_LENGTH,
   NATIVE_CHAT_VISUAL_MAX_BYTES,
   NATIVE_CHAT_VISUAL_MAX_PER_MESSAGE,
-  NATIVE_CHAT_VISUAL_TITLE_MAX_LENGTH,
   parseNativeChatVisualDirectiveLine
 } from '../../shared/native-chat-visual-directive'
 import { NATIVE_CHAT_VISUAL_THEME_TOKENS } from '../../shared/native-chat-visual-shell'
@@ -16,7 +14,7 @@ import {
   NATIVE_CHAT_VISUALS_DIR_ENV,
   withNativeChatVisualsEnv
 } from './native-chat-visuals-delivery'
-import { nativeChatVisualsFolderFor } from './native-chat-visuals-folder'
+import { nativeChatVisualsFolderFor, nativeChatVisualsRootFor } from './native-chat-visuals-folder'
 import { buildClaudeChildProcessEnv } from '../claude/claude-child-process-environment'
 import { codexStructuredChildEnvironment } from '../codex/codex-structured-child-environment'
 import { resolveProviderChildEnv } from '../provider-process/provider-process-launch'
@@ -62,7 +60,7 @@ describe('preparing a chat for visuals', () => {
     })
     await expect(prepare('disabled-chat')).resolves.toBeNull()
     expect(resolveSkill).not.toHaveBeenCalled()
-    expect(existsSync(join(state, 'native-chat-visuals'))).toBe(false)
+    expect(existsSync(nativeChatVisualsRootFor(state))).toBe(false)
     enabled = true
     const launched = await prepare('enabled-chat')
     expect(launched).toEqual({
@@ -185,9 +183,7 @@ describe('the bundled skill', () => {
       file: 'latency-by-region-7c1e.html',
       title: 'Latency by region'
     })
-    expect(SKILL_TEXT).toContain(`At most ${NATIVE_CHAT_VISUAL_MAX_PER_MESSAGE} visuals`)
-    expect(SKILL_TEXT).toContain(`at most ${NATIVE_CHAT_VISUAL_FILE_MAX_LENGTH} characters`)
-    expect(SKILL_TEXT).toContain(`at most ${NATIVE_CHAT_VISUAL_TITLE_MAX_LENGTH}`)
+    expect(SKILL_TEXT).toContain(`At most ${NATIVE_CHAT_VISUAL_MAX_PER_MESSAGE} per reply`)
     expect(SKILL_TEXT).toContain(`under ${NATIVE_CHAT_VISUAL_MAX_BYTES / 1024} KB`)
     expect(SKILL_TEXT).toContain(NATIVE_CHAT_VISUALS_DIR_ENV)
     expect(SKILL_TEXT).toMatch(new RegExp(`^name: ${NATIVE_CHAT_VISUALS_SKILL_NAME}$`, 'm'))

@@ -17498,9 +17498,6 @@
         }
       },
       "nativeChat": {
-        "inlineVisualsTitle": "Inline visuals",
-        "inlineVisualsCopy": "Let the agent show charts, diagrams and mockups inside its replies. Applies to newly started chats.",
-        "inlineVisualsToggleLabel": "Toggle inline visuals",
         "contextMenu": {
           "copy": "Copy"
         }
@@ -18927,6 +18924,9 @@
       },
       "nativeChat": {
         "queueFollowUpsTitle": "Queue follow-ups",
+        "inlineVisualsTitle": "Inline visuals",
+        "inlineVisualsCopy": "Let the agent show charts, diagrams and mockups inside its replies. Applies to newly started chats.",
+        "inlineVisualsToggleLabel": "Toggle inline visuals",
         "queueFollowUpsCopy": "Messages you send while the agent is working wait as cards you can steer, edit, or delete. Messages with images send right away.",
         "queueFollowUpsToggleLabel": "Toggle queue follow-ups"
       }

@@ -22,7 +22,9 @@ const SKILL = { pluginDir: '/app/plugin', skillsRoot: '/app/plugin/skills' }
 const MANUAL = { approvalPolicy: 'on-request', sandbox: 'workspace-write' } as const
 const scratch: string[] = []
 afterEach(() => {
-  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of scratch.splice(0)) {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 function delivery(isEnabled: () => boolean) {
