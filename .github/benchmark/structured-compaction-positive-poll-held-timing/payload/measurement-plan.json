@@ -1,0 +1,261 @@
+{
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "maxWorkers": 4,
+  "driver": "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs",
+  "driverChanges": false,
+  "schedule": [
+    [
+      "before",
+      0
+    ],
+    [
+      "after",
+      0
+    ],
+    [
+      "after",
+      1
+    ],
+    [
+      "before",
+      1
+    ],
+    [
+      "before",
+      2
+    ],
+    [
+      "after",
+      2
+    ]
+  ],
+  "label": "structured-compaction-positive-poll-held-31a5",
+  "patch": "notes/bun-migration/performance/structured-compaction-positive-poll-held-timing-ci-31a5/shipping.patch",
+  "patchSha256": "4e43bf7fe02064ce52f85310d4eb4d64a73379caff8d29e75b0fe5223812941d",
+  "sourceBeforeSha256": {
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "0efd5afed17d179d8527d3c301e7610e3868d7c5e9c4ad6885a1a5f26a31f345",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts": "be6d62bdd2c862b21a5244d9aa9c36eb4f4ea5dd37cd0be55653d7ac7445cb74",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-test-harness.ts": "d7b283a29d40802c75dfe501cbf87dfcb6ee640a0848550c00e23d2f7a6175f9",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host.ts": "51279f8ae90a22014af56b1843591f126bd5b4ca1c197d5ecd58fdc00267dd5c",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-teardown.ts": "1ea09744f8cb043b2cb033679736d9fd2da73e3eec4216b75bc3d1ab15f3fec9",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-adapter.ts": "ef07893e483af9c4371ea5ab66e27dbda24e652a25255047ee3b0438e70cda89",
+    "src/main/native-chat/agent-session-wire/structured-conversation-command-outcome.ts": "90b6e9793a59f0886eeb3c16ff64a11c859419c3aaaf39e4c6505676451f19b5",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-command-turn.ts": "f21577cbc9ece854d188d3faf02a06c045a0a2dbed95f15e94ac46ad7650a491",
+    "src/main/native-chat/agent-session-journal/journal-host-database-test-support.ts": "f2c95a846019e18dea957f7b6dbc71fea15898c2a364696dfe1facbee3e96701",
+    "src/main/runtime/agent-session-record-store-test-harness.ts": "cc87225f9b497c42d8b33e0ec7cc0db59f5924ee703d1f4a20e62d43257c6881",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-test-recovery-capsule.ts": "59e9b9a95520e575eb5204ea18b52810fce292cc1df5cd5c81071926ec667782",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "src/shared/child-process/run-process.ts": "f4d9683c0a0d2ea3ceb9c99b5b713b502496a2f3f982e2c63728063d5f1b239d"
+  },
+  "sourceAfterSha256": {
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "0efd5afed17d179d8527d3c301e7610e3868d7c5e9c4ad6885a1a5f26a31f345",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts": "6ad100d977e8a452647e239f2d40b0fe984191623a934975025dc218d7f28a3d",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-test-harness.ts": "d7b283a29d40802c75dfe501cbf87dfcb6ee640a0848550c00e23d2f7a6175f9",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host.ts": "51279f8ae90a22014af56b1843591f126bd5b4ca1c197d5ecd58fdc00267dd5c",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-teardown.ts": "1ea09744f8cb043b2cb033679736d9fd2da73e3eec4216b75bc3d1ab15f3fec9",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-adapter.ts": "ef07893e483af9c4371ea5ab66e27dbda24e652a25255047ee3b0438e70cda89",
+    "src/main/native-chat/agent-session-wire/structured-conversation-command-outcome.ts": "90b6e9793a59f0886eeb3c16ff64a11c859419c3aaaf39e4c6505676451f19b5",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-command-turn.ts": "f21577cbc9ece854d188d3faf02a06c045a0a2dbed95f15e94ac46ad7650a491",
+    "src/main/native-chat/agent-session-journal/journal-host-database-test-support.ts": "f2c95a846019e18dea957f7b6dbc71fea15898c2a364696dfe1facbee3e96701",
+    "src/main/runtime/agent-session-record-store-test-harness.ts": "cc87225f9b497c42d8b33e0ec7cc0db59f5924ee703d1f4a20e62d43257c6881",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-test-recovery-capsule.ts": "59e9b9a95520e575eb5204ea18b52810fce292cc1df5cd5c81071926ec667782",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "src/shared/child-process/run-process.ts": "f4d9683c0a0d2ea3ceb9c99b5b713b502496a2f3f982e2c63728063d5f1b239d"
+  },
+  "files": [
+    "src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts"
+  ],
+  "timedFiles": [
+    "src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts"
+  ],
+  "caseCount": 21,
+  "caseIdentityMapByFile": {
+    "src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts": [
+      {
+        "fullName": "answers a refused command's message before ending its turn, so a crash between them leaves a turn the sweep settles (B4)",
+        "title": "answers a refused command's message before ending its turn, so a crash between them leaves a turn the sweep settles (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "answers at handover, then journals its own entry, turn and result (B1, B16)",
+        "title": "answers at handover, then journals its own entry, turn and result (B1, B16)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "counts a message held behind the command from its handover, not its send",
+        "title": "counts a message held behind the command from its handover, not its send",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "delivers the next message after a command whose child died and whose settlement could not be written",
+        "title": "delivers the next message after a command whose child died and whose settlement could not be written",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "does not stop the child for a Stop naming a command that already ended (B4)",
+        "title": "does not stop the child for a Stop naming a command that already ended (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "ends the command by stopping the child at a second Stop the provider never answered (B4)",
+        "title": "ends the command by stopping the child at a second Stop the provider never answered (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "ends the command by stopping the child when the provider cannot take the Stop (B4)",
+        "title": "ends the command by stopping the child when the provider cannot take the Stop (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "hands over a message held behind the command when the command ends just as the loop stops for it",
+        "title": "hands over a message held behind the command when the command ends just as the loop stops for it",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "holds messages sent during the command and delivers them after it, in order (B2)",
+        "title": "holds messages sent during the command and delivers them after it, in order (B2)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "ignores an older build's unconfirmed compaction record, and answers its operation without rerunning it (B15)",
+        "title": "ignores an older build's unconfirmed compaction record, and answers its operation without rerunning it (B15)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "leaves a command whose start failed not sent, beside one start-failure row (B3)",
+        "title": "leaves a command whose start failed not sent, beside one start-failure row (B3)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "leaves the command to the provider when it takes the Stop, and ends it as cancelled (B4)",
+        "title": "leaves the command to the provider when it takes the Stop, and ends it as cancelled (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "never lets a provider echo alias the command entry",
+        "title": "never lets a provider echo alias the command entry",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "refuses a /compact pressed again under a new id while one runs, and runs one pressed after it ended",
+        "title": "refuses a /compact pressed again under a new id while one runs, and runs one pressed after it ended",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "refuses the command at handover when the provider opened a turn meanwhile (B3)",
+        "title": "refuses the command at handover when the provider opened a turn meanwhile (B3)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "refuses the command for an agent that does not declare compaction, whatever its adapter has",
+        "title": "refuses the command for an agent that does not declare compaction, whatever its adapter has",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "replays the reply for the same operation without running it again (B16)",
+        "title": "replays the reply for the same operation without running it again (B16)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "says only that the compaction failed when the provider refused it without words",
+        "title": "says only that the compaction failed when the provider refused it without words",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "settles a command the provider refused as a failure with its reason, and moves on (B3)",
+        "title": "settles a command the provider refused as a failure with its reason, and moves on (B3)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "settles a command whose adapter call threw after the start as unknown (B4)",
+        "title": "settles a command whose adapter call threw after the start as unknown (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      },
+      {
+        "fullName": "writes one exit row when the child dies mid-command, and the loop writes nothing but moves on (B4)",
+        "title": "writes one exit row when the child dies mid-command, and the loop writes nothing but moves on (B4)",
+        "ancestorTitles": [],
+        "status": "passed"
+      }
+    ]
+  },
+  "runtimeManifestPending": false,
+  "expectedModuleRoutes": [
+    {
+      "file": "src/main/native-chat/agent-session-wire/structured-conversation-compaction.test.ts",
+      "project": "bun",
+      "pool": "forks"
+    }
+  ],
+  "identityProofFiles": {
+    "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs": "94070788bb47afa544938af517d58687bb2ea92a0743517abbafdf1e841865d5",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-held-timing-ci-31a5/independent-runtime-proof.json": "ba38e8aabb761ea07e60f92c3b5a3df2ef87586fe1d5781d43fc7bd1ea981e74",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-held-timing-ci-31a5/actual-ci-runtime-result.json": "bc505f0a00b1518f02c3c3c0ff3249fcc6ff5a367dac225d46486f153272a5b4",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-held-timing-ci-31a5/terminal-ci-proof.json": "73478737a884d12a423b4578055aaf3919004bc9aa59e1279cb3016cbe552c7a",
+    "notes/bun-migration/performance/structured-compaction-positive-poll-held-timing-ci-31a5/source-proposal-proof.json": "e77f110a319c14793da9a383b21b0f9c738563bfa5553392ecc16e58bea0872f"
+  },
+  "scope": "CI-only admitted scoped timing experiment. All six complete AB/BA/AB pnpm walls, stock4/fsfalse/isolation/sixsetups/original1000ms deadlines and original20/50ms windows retained. No audit/primer/retry/discard. First commands retained; shared Bun runtime/transpiler and OS warming prevents independent-cold-arm claims. Complete original21-case maps and terminal five-job correctness qualification are bound; performance remains pending."
+}
