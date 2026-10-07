@@ -173,6 +173,7 @@
     "../src/main/codex/codex-managed-trust-reconciliation.ts",
     "../src/main/provider-process/provider-process-exit-deadline.ts",
     "../src/main/provider-process/managed-provider-process.ts",
+    "../src/main/provider-process/provider-executable-missing.ts",
     "../src/main/provider-process/provider-process-close.ts",
     "../src/main/provider-process/provider-process-launch.ts",
     "../src/main/provider-process/provider-process-supervisor.ts",
