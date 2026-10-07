@@ -48,6 +48,8 @@ export type ScriptedClaudeBehavior = {
   optionWritesFail?: boolean
   /** The init frame names another provider session than the one launched. */
   initNamesForeignSession?: boolean
+  /** Initialize reports an account with no credentials, as a signed-out CLI does. */
+  signedOut?: boolean
 }
 
 export type ScriptedClaudeChild = {
@@ -122,7 +124,12 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
         closed: false,
         exitVerdict: { root: 'live', tree: 'unverifiable' },
         initializationResult: () => {
-          const initialized = { models: [{ value: 'sonnet', displayName: 'Sonnet' }] }
+          const initialized = {
+            models: [{ value: 'sonnet', displayName: 'Sonnet' }],
+            ...(behavior.signedOut
+              ? { account: { apiProvider: 'firstParty', tokenSource: 'none' } }
+              : {})
+          }
           const announce = (): void =>
             handlers.onMessage?.({
               type: 'system',
