@@ -2,7 +2,7 @@ import type { CommandSpec } from '../args'
 import { GLOBAL_FLAGS } from '../args'
 import { ORCHESTRATION_WORKER_COMMAND_SPECS } from './orchestration-worker-specs'
 import {
-  ORCHESTRATION_DELIVERY_NOTE,
+  ORCHESTRATION_DISPATCH_DELIVERY_NOTE,
   ORCHESTRATION_MESSAGE_COMMAND_SPECS
 } from './orchestration-message-specs'
 
@@ -108,7 +108,7 @@ export const ORCHESTRATION_COMMAND_SPECS: CommandSpec[] = [
       'retry-request'
     ],
     identityFlagRoles: { from: 'caller' },
-    notes: [ORCHESTRATION_DELIVERY_NOTE]
+    notes: [ORCHESTRATION_DISPATCH_DELIVERY_NOTE]
   },
   {
     path: ['orchestration', 'request-show'],

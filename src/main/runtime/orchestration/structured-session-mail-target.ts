@@ -117,6 +117,32 @@ export function structuredSessionOwnedMailboxes(sessionId: string, db: Orchestra
   return mailboxes
 }
 
+type StructuredMailStatus = 'working' | 'attention' | 'idle' | null
+
+/**
+ * A structured session's status changed. Retry what is parked on it only on the edges that can
+ * change a parked verdict, never on a streamed frame, since each retry reads the whole journal: an
+ * answered prompt, which is the edge a held steer goes in on (only workers subscribe to their
+ * journal, so other chats get it here), and idle, which also re-derives the mailboxes it owns.
+ */
+export function redriveStructuredSessionMailOnStatus(
+  summary: { sessionId: string; status: StructuredMailStatus },
+  previousStatus: StructuredMailStatus | undefined,
+  actions: {
+    retryParked: (sessionId: string) => void
+    openDb: () => OrchestrationDb | null
+    deliver: (mailboxHandle: string) => void
+  }
+): void {
+  const idle = summary.status !== 'working' && summary.status !== 'attention'
+  if (idle || (summary.status === 'working' && previousStatus === 'attention')) {
+    actions.retryParked(summary.sessionId)
+  }
+  if (idle) {
+    structuredSessionIdleEdgeMailboxes(summary.sessionId, actions.openDb).forEach(actions.deliver)
+  }
+}
+
 /** The mailboxes a session's idle edge re-derives, opening an existing database if nothing has
  *  yet: after a restart this edge is what redrives mail stored before it. No database file means
  *  no mail, so `openDb` answers null and nothing is created. */

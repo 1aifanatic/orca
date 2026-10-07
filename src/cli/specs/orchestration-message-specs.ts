@@ -1,7 +1,10 @@
 import { GLOBAL_FLAGS, type CommandSpec } from '../args'
 
-export const ORCHESTRATION_DELIVERY_NOTE =
-  "--delivery steer puts the message into a busy chat's running turn instead of its queue (default queue), never past an open approval or question. Terminal agents are unaffected; they get mail at their next idle point or check --wait."
+const ORCHESTRATION_DELIVERY_NOTE =
+  '--delivery steer: a busy chat gets the "you have mail" notice in its running turn instead of as a queued card; an agent that runs one prompt at a time ends its turn and takes it next, as a person\'s Send now does. While an approval or question is open the notice waits for the answer. Default queue. Terminal agents get mail at their next idle point or check --wait.'
+
+export const ORCHESTRATION_DISPATCH_DELIVERY_NOTE =
+  '--delivery steer (needs --inject): a busy chat takes the task into its running turn (an agent that runs one prompt at a time ends its turn first) instead of as a queued card, or as a card while an approval or question is open. A task to a terminal is typed in at once either way.'
 
 /** The verbs that move messages between agents: send, check, reply, inbox. */
 export const ORCHESTRATION_MESSAGE_COMMAND_SPECS: CommandSpec[] = [

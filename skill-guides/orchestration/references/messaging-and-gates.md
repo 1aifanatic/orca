@@ -34,12 +34,15 @@ Use a stable Dispatch address for attempt-specific coordinator guidance:
 ORCA orchestration send --to dispatch:<dispatch_id> --subject "Follow-up" --body "<guidance>" --json
 ```
 
-A chat agent busy in a turn holds an agent's message as a queued card, sent
-when the turn ends. Add `--delivery steer` to `send` or `dispatch` to put it
-into the running turn instead; an open approval or question still holds it.
-It applies to every chat a group reaches, and not across Orca servers. Terminal
-agents are unaffected: they get mail at their next idle point or from
-`check --wait`. Never steer a heartbeat.
+A busy chat agent holds an agent's message as a queued card, run when its
+turn ends. For a redirect or stop that cannot wait, add `--delivery steer`.
+With `send`, the chat gets the "you have mail" notice in its running turn
+(Claude and Codex take it mid-turn; an agent that runs one prompt at a time
+ends its turn and takes it next, as a person's Send now does); it waits while
+an approval or question is open. With `dispatch --inject`, the task goes in
+the same way, or becomes a card while a prompt is open. Another Orca server
+queues it. Terminal agents are unaffected: they get mail at their next idle
+point or from `check --wait`.
 
 Do not substitute a remote terminal handle. Omit `--from` for ordinary
 coordinator calls; a dispatched worker instead copies the exact `--from` and

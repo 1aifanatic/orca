@@ -109,7 +109,7 @@ export class OrchestrationStructuredMailboxPointerDelivery<
 > {
   private readonly inFlight = new Set<string>()
   /**
-   * Mailboxes asked for while their send was in flight, each with the asker's reserved types.
+   * Mailboxes asked for while their send was in flight, each with its askers' reserved types.
    * Re-read once that send settles, so new mail (a steer above all) does not wait for an edge.
    */
   private readonly rerunAfterFlight = new Map<string, ReadonlySet<string> | undefined>()
@@ -184,7 +184,12 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       return
     }
     if (this.inFlight.has(mailboxHandle)) {
-      this.rerunAfterFlight.set(mailboxHandle, reservedTypes)
+      // Every asker's reserved types, as the PTY lane's parked redelivery merges them.
+      const prior = this.rerunAfterFlight.get(mailboxHandle)
+      this.rerunAfterFlight.set(
+        mailboxHandle,
+        prior || reservedTypes ? new Set([...(prior ?? []), ...(reservedTypes ?? [])]) : undefined
+      )
       return
     }
     // Don't re-nudge a mailbox whose consumer still holds an unacknowledged batch. The lookup is
@@ -276,11 +281,6 @@ export class OrchestrationStructuredMailboxPointerDelivery<
         ? 'steer'
         : 'queue'
     )
-    if (delivery === 'now' && session.awaitingHuman) {
-      // Answering it commits to the journal, whose edge steers this in.
-      this.retain(mailboxHandle, sessionId, 'awaiting-human', reservedTypes)
-      return
-    }
     const body: AgentJournalMessageItem = {
       kind: 'message',
       role: 'user',
@@ -316,6 +316,11 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     }
     if (operation.kind === 'park') {
       this.retain(mailboxHandle, sessionId, 'turn-unsettled', reservedTypes)
+      return
+    }
+    if (delivery === 'now' && session.awaitingHuman) {
+      // Answering it is the edge that steers this in; a send already accepted was stamped above.
+      this.retain(mailboxHandle, sessionId, 'awaiting-human', reservedTypes)
       return
     }
     this.sentOperationIds.set(mailboxHandle, operation.operationId)

@@ -11,7 +11,7 @@ import { createRootDispatch } from '../../../../orchestration/db/root-dispatch-t
 
 // What the sender asks a chat that is mid-turn to do with its message: stored on every row, read
 // by the pointer that nudges the chat later.
-describe('orchestration.send --delivery', () => {
+describe('orchestration send and dispatch --delivery', () => {
   const h = createOrchestrationRpcHarness()
   let db: OrchestrationDb
   let runtime: OrcaRuntimeService
@@ -31,11 +31,11 @@ describe('orchestration.send --delivery', () => {
     return db.getInbox(100).map((message) => message.busy_delivery)
   }
 
-  async function refusal(params: Record<string, unknown>) {
+  async function refusal(params: Record<string, unknown>, method = 'orchestration.send') {
     const response = await new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS }).dispatch({
       id: 'req_1',
       authToken: 'token',
-      method: 'orchestration.send',
+      method,
       params,
       orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION
     })
@@ -109,5 +109,17 @@ describe('orchestration.send --delivery', () => {
       })
     ).toMatchObject({ code: 'invalid_argument', message: expect.stringContaining('heartbeat') })
     expect(db.getInbox(100)).toHaveLength(0)
+  })
+
+  it('refuses a dispatch --delivery without --inject, which would send the task nowhere', async () => {
+    setup()
+    const task = db.createTask({ spec: 'work' })
+    expect(
+      await refusal(
+        { task: task.id, to: 'term_worker', from: 'term_coord', delivery: 'steer' },
+        'orchestration.dispatch'
+      )
+    ).toMatchObject({ code: 'invalid_argument', message: expect.stringContaining('--inject') })
+    expect(db.getDispatchContext(task.id)).toBeUndefined()
   })
 })

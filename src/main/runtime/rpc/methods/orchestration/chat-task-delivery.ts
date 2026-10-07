@@ -75,7 +75,7 @@ export async function sendChatTask(args: {
     callerKey: structuredPointerCallerKey(args.dispatch.id),
     turn: {
       body,
-      delivery: await chatTaskTurnDelivery(observed.session.sessionId, args.delivery ?? 'queue'),
+      ...(await chatTaskTurnDelivery(observed.session.sessionId, args.delivery ?? 'queue')),
       operationId: chatTaskOperationId(args.dispatch),
       expectedRuntimeFence: observed.session.lease.runtimeFence
     }
@@ -95,15 +95,22 @@ export async function sendChatTask(args: {
 
 /**
  * A steer never goes past an open approval or question, as the person's own Steer does not. This
- * one send cannot wait the prompt out, so it queues as a card, which the result reports.
+ * one send cannot wait the prompt out, so it queues as a card, which the result reports. A steer
+ * into a running turn reports its hand-off at once: the chat takes it at its next step.
  */
 async function chatTaskTurnDelivery(
   sessionId: string,
   delivery: OrchestrationBusyDelivery
-): Promise<AgentTurnDelivery> {
+): Promise<{ delivery: AgentTurnDelivery; awaitsStart?: boolean }> {
   if (delivery === 'queue') {
-    return 'queue'
+    return { delivery: 'queue' }
   }
   const gate = await readStructuredSessionGateFacts(sessionId)
-  return agentTurnDeliveryFor(gate?.awaitingHuman ? 'queue' : delivery)
+  if (gate?.awaitingHuman) {
+    return { delivery: 'queue' }
+  }
+  return {
+    delivery: agentTurnDeliveryFor(delivery),
+    ...(gate?.turnRunning ? { awaitsStart: false } : {})
+  }
 }

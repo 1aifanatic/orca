@@ -254,6 +254,7 @@ export class StructuredAgentSessionStatusFeed {
     try {
       this.deps.onStatusChanged?.(summary, {
         replay: options?.replay === true,
+        previousStatus: previous?.status,
         firstInputSubmissionKey: projection.firstInputSubmissionKey
       })
     } catch (error) {

@@ -14,6 +14,10 @@ export const INVALID_ORCHESTRATION_BUSY_DELIVERY_MESSAGE =
 /** A beat that steered would interrupt the coordinator's turn on every beat. */
 export const HEARTBEAT_STEER_REFUSAL_MESSAGE = 'A heartbeat cannot use --delivery steer.'
 
+/** Without --inject a dispatch sends the assignee nothing, so a delivery would silently do nothing. */
+export const DISPATCH_DELIVERY_WITHOUT_INJECT_MESSAGE =
+  '--delivery applies only with --inject; without it the task is not sent to the assignee.'
+
 export function isOrchestrationBusyDelivery(value: unknown): value is OrchestrationBusyDelivery {
   return value === 'queue' || value === 'steer'
 }

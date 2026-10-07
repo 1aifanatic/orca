@@ -132,9 +132,39 @@ describe('orca cli worktree awareness', () => {
     process.exitCode = undefined
   })
 
+  it('refuses dispatch --delivery without --inject before any request', async () => {
+    process.env.ORCA_TERMINAL_HANDLE = 'term_sender'
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(
+      [
+        'orchestration',
+        'dispatch',
+        '--task',
+        'task_1',
+        '--to',
+        'term_worker',
+        '--delivery',
+        'steer',
+        '--json'
+      ],
+      '/tmp/repo'
+    )
+
+    expect(callMock).not.toHaveBeenCalled()
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_argument', message: expect.stringContaining('--inject') }
+    })
+    process.exitCode = undefined
+  })
+
   it.each([
     ['queued', ' (task queued in the chat)'],
     ['accepted', ' (task sent)'],
+    ['pending', ' (task handed to the chat; not taken yet)'],
+    // A newer runtime's arm this CLI does not know, and an older runtime that sends none.
+    ['steered', ''],
     [undefined, '']
   ])(
     'sends dispatch --delivery steer, and says how a chat took its task (%s)',

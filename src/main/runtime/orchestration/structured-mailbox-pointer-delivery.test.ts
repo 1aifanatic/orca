@@ -78,7 +78,10 @@ function harness(options: {
     hasOutstandingMailboxDelivery: (handle: string) =>
       ((options.outstandingRunDelivery ?? false) && handle.startsWith('run:')) ||
       ((options.outstandingOwnDelivery ?? false) && !handle.startsWith('run:')),
-    getUndeliveredUnreadMessages: () => mail.filter((message) => !pointed.has(message.id)),
+    getUndeliveredUnreadMessages: vi.fn(
+      (_handle: string, _since: undefined, _options: { excludeTypes: string[] }) =>
+        mail.filter((message) => !pointed.has(message.id))
+    ),
     markAsDelivered,
     getStructuredPointerOperation: (key: string) => stored.get(key),
     putStructuredPointerOperation: (row: StructuredPointerOperationRow) =>
@@ -102,6 +105,7 @@ function harness(options: {
   return {
     delivery,
     markAsDelivered,
+    selectBatch: db.getUndeliveredUnreadMessages,
     send: sendMock,
     onRetain,
     stored,
@@ -504,6 +508,37 @@ describe("a sender's choice for a chat that is mid-turn", () => {
     })
     releaseSend()
     await vi.waitFor(() => expect(markAsDelivered).toHaveBeenCalledWith(['m2']))
+  })
+
+  it('stamps a steer the chat already took even while a prompt is open', async () => {
+    const { delivery, send, setSubmissions, setAwaitingHuman, markAsDelivered, onRetain } = harness(
+      { busyDelivery: 'steer', dispatchState: 'unknown' }
+    )
+    delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    const first = send.mock.calls[0]![0].operationId
+    setSubmissions([{ clientMessageId: first, dispatchState: 'accepted', submittedAt: Date.now() }])
+    setAwaitingHuman(true)
+    delivery.onJournalActivity('session-1')
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(markAsDelivered).toHaveBeenCalledWith(['m1'])
+    expect(onRetain).not.toHaveBeenCalledWith(expect.objectContaining({ reason: 'awaiting-human' }))
+  })
+
+  it('reruns with every reserved type asked for while the send was in flight', async () => {
+    const { delivery, receive, releaseSend, selectBatch, send } = harness({ holdSends: true })
+    delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    receive('m2', 4)
+    delivery.deliverForHandle('dispatch:d1', new Set(['question']))
+    delivery.deliverForHandle('dispatch:d1', new Set(['escalation']))
+    releaseSend()
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2))
+    expect(new Set(selectBatch.mock.calls.at(-1)![2].excludeTypes)).toEqual(
+      new Set(['question', 'escalation'])
+    )
+    releaseSend()
   })
 
   it('steers a later message on its own while an earlier queued card still waits', async () => {

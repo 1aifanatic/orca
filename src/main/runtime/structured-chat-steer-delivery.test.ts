@@ -1,7 +1,8 @@
 import './rpc/unused-default-rpc-methods.test-fixture'
 // An agent's message sent with `--delivery steer` into a chat mid-turn, end to end on the
-// coordinator-mail rig: it takes the composer's plain send into the running turn instead of
-// waiting as a queued card, and never past an approval the person has not answered.
+// coordinator-mail rig: it takes the composer's send-now path instead of waiting as a queued card,
+// and never goes past an approval the person has not answered. The rig's provider refuses
+// `turn/steer`, so these prove the path taken, not how a real provider folds the message in.
 
 import { describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
@@ -109,7 +110,7 @@ async function chatDispatch(): Promise<{ chat: FakeConnection; mailbox: string }
 }
 
 describe('mail sent to steer into a chat mid-turn', () => {
-  it('joins the running turn as a steer, with no card', async () => {
+  it('takes the send-now path into a running turn, with no card', async () => {
     const { chat, mailbox } = await chatDispatch()
     const endTurn = await runningUserTurn(chat)
 
@@ -128,7 +129,7 @@ describe('mail sent to steer into a chat mid-turn', () => {
     await endTurn()
   })
 
-  it('waits out an open approval, then steers once it is answered', async () => {
+  it('waits out an open approval, then takes the send-now path once it is answered', async () => {
     const { chat, mailbox } = await chatDispatch()
     const endTurn = await runningUserTurn(chat)
     const approve = await pendingApproval(chat)
@@ -154,26 +155,43 @@ describe('mail sent to steer into a chat mid-turn', () => {
 })
 
 describe('a task dispatched to steer into a chat mid-turn', () => {
-  it('joins the running turn and reports it sent, with no card', async () => {
+  it('takes the send-now path into a running turn and reports the hand-off without waiting for it to be taken', async () => {
     await openChat(COORDINATOR)
     const chat = await openChat(PEER_CHAT)
     const { taskId } = await coordinatorRunAndTask()
     const endTurn = await runningUserTurn(chat)
+
+    // Nothing settles the steered send: the provider takes it at its own next step.
+    const result = await call(
+      'orchestration.dispatch',
+      { task: taskId, to: WORKER, inject: true, delivery: 'steer' },
+      { sessionId: COORDINATOR }
+    )
+
+    expect(result).toMatchObject({ injected: true, delivery: 'pending' })
+    expect(await queuedCardTexts(PEER_CHAT)).toEqual([])
+    // The hand-over to the provider follows the answer.
+    await vi.waitFor(() => expect(chat.methods).toContain('turn/steer'), WAIT)
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
+    expect(turnText(chat.turns[1]!)).toContain(idOf(result.dispatch))
+    await settleTurn(PEER_CHAT, 1)
+    await endTurn()
+  })
+
+  it('still waits out the start of an idle chat, and reports it taken', async () => {
+    await openChat(COORDINATOR)
+    const chat = await openChat(PEER_CHAT)
+    const { taskId } = await coordinatorRunAndTask()
 
     const dispatched = call(
       'orchestration.dispatch',
       { task: taskId, to: WORKER, inject: true, delivery: 'steer' },
       { sessionId: COORDINATOR }
     )
-    await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
-    await settleTurn(PEER_CHAT, 1)
-    const result = await dispatched
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(1), WAIT)
+    await settleTurn(PEER_CHAT, 0)
 
-    expect(result).toMatchObject({ injected: true, delivery: 'accepted' })
-    expect(chat.methods).toContain('turn/steer')
-    expect(turnText(chat.turns[1]!)).toContain(idOf(result.dispatch))
-    expect(await queuedCardTexts(PEER_CHAT)).toEqual([])
-    await endTurn()
+    expect(await dispatched).toMatchObject({ injected: true, delivery: 'accepted' })
   })
 
   it('queues it as a card, and reports that, while an approval is open', async () => {
