@@ -1087,7 +1087,15 @@ jobs:
       - name: Install Linux package tooling
         id: linux-package-tools
         background: true
-        run: sudo apt-get update && sudo apt-get install -y cpio rpm
+        run: |
+          # Use the shell lane's bounded refresh; required tooling installation stays fatal.
+          sudo tee /etc/apt/apt.conf.d/99-orca-package-tools >/dev/null <<'APTCONF'
+          Acquire::http::Timeout "15";
+          Acquire::https::Timeout "15";
+          Acquire::Retries "1";
+          APTCONF
+          timeout 120 sudo apt-get update || true
+          timeout 300 sudo apt-get install -y cpio rpm
 
       - name: Build package inputs
         run: |
