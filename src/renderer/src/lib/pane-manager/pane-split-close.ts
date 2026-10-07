@@ -34,6 +34,8 @@ type SplitManagedPaneArgs = {
   direction: 'vertical' | 'horizontal'
   opts?: PaneSplitOptions
   sourceContainer?: HTMLElement
+  /** Before publishing, so the pane-created tree already has the final order. */
+  newPaneFirst?: boolean
   panes: Map<number, ManagedPaneInternal>
   root: HTMLElement
   styleOptions: PaneStyleOptions
@@ -65,7 +67,10 @@ export function splitManagedPane(args: SplitManagedPaneArgs): ManagedPane | null
 
   const movedPaneStates = prepareMovedPanesForSplit(existingContainer, existing, args.panes)
 
-  wrapInSplit(existingContainer, newPane.container, isVertical, divider, args.opts)
+  wrapInSplit(existingContainer, newPane.container, isVertical, divider, {
+    ratio: args.opts?.ratio,
+    newPaneFirst: args.newPaneFirst
+  })
   args.setActivePaneId(newPane.id)
   openSplitPane(args, newPane, existing.leafId, args.opts?.cwd)
 

@@ -216,7 +216,7 @@ describe('splitManagedPane', () => {
       newPane.container,
       true,
       expect.anything(),
-      undefined
+      { ratio: undefined, newPaneFirst: undefined }
     )
     expect(scheduleSplitScrollRestore).toHaveBeenCalledTimes(2)
     expect(scheduleSplitScrollRestore).toHaveBeenNthCalledWith(

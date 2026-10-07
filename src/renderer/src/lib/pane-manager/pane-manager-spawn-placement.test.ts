@@ -59,10 +59,14 @@ describe('PaneManager spawn placement hints', () => {
     )
   })
 
-  it('names the anchor pane for a split placed before a mounted subtree', () => {
+  it('publishes a split placed before a mounted subtree with its final order', () => {
     const first = manager.createInitialPane({ leafId: LEAF_A })
     manager.splitPane(first.id, 'vertical', { leafId: LEAF_B })
-    onPaneCreated.mockClear()
+    const treesAtCreation: unknown[] = []
+    onPaneCreated.mockReset().mockImplementation(() => {
+      const top = root.firstElementChild
+      treesAtCreation.push(top instanceof HTMLElement ? serializePaneTree(top) : null)
+    })
 
     manager.splitPaneAroundLeafIds([LEAF_A, LEAF_B], first.id, 'horizontal', {
       leafId: LEAF_C,
@@ -73,13 +77,19 @@ describe('PaneManager spawn placement hints', () => {
       expect.objectContaining({ leafId: LEAF_C }),
       { placement: { kind: 'split', parentLeafId: LEAF_A, direction: 'horizontal' } }
     )
-    // The placement type has no before/after, so it only names the anchor; the tree carries the order.
-    const top = root.firstElementChild
-    expect(top instanceof HTMLElement ? serializePaneTree(top) : null).toMatchObject({
-      type: 'split',
-      direction: 'horizontal',
-      first: { type: 'leaf', leafId: LEAF_C },
-      second: { type: 'split', direction: 'vertical' }
-    })
+    // The pane-created handler serializes proposedRoot from the DOM, so the order must be final then.
+    expect(treesAtCreation).toEqual([
+      {
+        type: 'split',
+        direction: 'horizontal',
+        first: { type: 'leaf', leafId: LEAF_C },
+        second: {
+          type: 'split',
+          direction: 'vertical',
+          first: { type: 'leaf', leafId: LEAF_A },
+          second: { type: 'leaf', leafId: LEAF_B }
+        }
+      }
+    ])
   })
 })
