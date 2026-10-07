@@ -14,6 +14,7 @@ vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: vi.fn() } 
 let fence = 3
 let items: AgentJournalRenderItem[] = []
 let submissions: AgentJournalSubmission[] = []
+let nextQueuedMessageId: string | null = null
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -31,6 +32,7 @@ vi.mock('./use-structured-agent-session-read', () => ({
       commands: undefined,
       items,
       submissions,
+      nextQueuedMessageId,
       status: 'ready',
       error: null,
       hasOlder: false,
@@ -95,6 +97,7 @@ describe('the send gate the session hands its composer', () => {
     fence = 3
     items = []
     submissions = []
+    nextQueuedMessageId = null
     mocks.call.mockImplementation((_target, method) =>
       method === 'agentSession.options'
         ? Promise.resolve(OPTIONS)
@@ -134,6 +137,26 @@ describe('the send gate the session hands its composer', () => {
     expect(result.current.canStop).toBe(true)
     expect(result.current.unavailable).toBeNull()
     items = []
+    rerender()
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+  })
+
+  it('lifts the gate while the queue is about to send its next card, as Stop shows', async () => {
+    const { result, rerender } = renderHook(() =>
+      useStructuredAgentSession({
+        sessionId: 'session-queue',
+        target: LOCAL_TARGET,
+        agent: 'codex',
+        isVisible: true
+      })
+    )
+    await waitFor(() => expect(result.current.unavailable?.reason).toBe('notSignedIn'))
+    nextQueuedMessageId = 'queued-1'
+    rerender()
+    expect(result.current.canStop).toBe(false)
+    expect(result.current.queueSendsNext).toBe(true)
+    expect(result.current.unavailable).toBeNull()
+    nextQueuedMessageId = null
     rerender()
     expect(result.current.unavailable?.reason).toBe('notSignedIn')
   })

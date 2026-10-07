@@ -320,7 +320,10 @@ export function useStructuredAgentSession(args: {
       )
     },
     ...sessionOptions,
-    unavailable: nativeChatComposerSendGate(sessionOptions.unavailable, stopOffer.canStop),
+    unavailable: nativeChatComposerSendGate(
+      sessionOptions.unavailable,
+      stopOffer.canStop || transportState.queueSendsNext
+    ),
     sessionCommands: transportEnabled ? (state.commands ?? undefined) : undefined,
     threadGoal,
     contextUsage
