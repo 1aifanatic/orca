@@ -39,7 +39,9 @@ export const AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY =
 export const AGENT_LAUNCH_PLACEMENT_RUNTIME_CAPABILITY = 'agent.launch.placement.v1' as const
 
 // Host-advertised: accepts `target.kind: 'create-folder-workspace'`. An older host refuses the
-// unknown target kind, so a client offers the new-folder-workspace launch only on this.
+// unknown target kind, so a client offers the new-folder-workspace launch only on this. It is not
+// enough on its own: the target also needs `folderWorkspace.create` authorization, which a
+// mobile-scope device lacks, so a phone folder launch needs its own gate.
 export const AGENT_LAUNCH_CREATE_FOLDER_WORKSPACE_RUNTIME_CAPABILITY =
   'agent.launch.create-folder-workspace.v1' as const
 

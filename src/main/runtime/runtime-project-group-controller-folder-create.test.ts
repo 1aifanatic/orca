@@ -39,7 +39,7 @@ describe('RuntimeProjectGroupController.createFolderWorkspace refusals', () => {
     const refused = deps.controller.createFolderWorkspace({ projectGroupId: groupId })
 
     await expect(refused).rejects.toBeInstanceOf(FolderWorkspaceCreateRefusedError)
-    await expect(refused).rejects.toThrow(code)
+    await expect(refused).rejects.toMatchObject({ message: code })
     expect(deps.createFolderWorkspace).not.toHaveBeenCalled()
     expect(deps.notifyReposChanged).not.toHaveBeenCalled()
   })

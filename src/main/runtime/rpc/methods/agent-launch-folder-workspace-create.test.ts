@@ -221,6 +221,24 @@ describe('a replayed folder launch', () => {
     expect(retry.createFolderWorkspace).not.toHaveBeenCalled()
   })
 
+  // The path is shown to the user, so a replay names the whole folder or none of it.
+  it.each([
+    ['repeats a long path in full', `/srv/${'nested/'.repeat(30)}notes`, true],
+    ['drops a path no filesystem accepts', `/srv/${'n'.repeat(5000)}`, false]
+  ])('%s when it replays a refused create', async (_case, path, keepsPath) => {
+    const refusal = `folder_workspace_path_missing:${path}`
+    const first = folderRuntime({ settings: {} })
+    first.createFolderWorkspace.mockRejectedValueOnce(
+      new FolderWorkspaceCreateRefusedError(refusal)
+    )
+    await expect(replay(first)).rejects.toMatchObject({ message: refusal })
+
+    const replayed = keepsPath ? refusal : 'folder_workspace_path_missing'
+    await expect(replay(folderRuntime({ settings: {} }))).rejects.toMatchObject({
+      message: replayed
+    })
+  })
+
   it('stays unknown when the failure came after the workspace was created', async () => {
     const first = folderRuntime({ settings: {} })
     // The same words as a refused create, but untyped: only the create's own refusal proves nothing.
