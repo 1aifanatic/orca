@@ -51,7 +51,7 @@
     },
     {
       "file": "app/h/[hostId]/files/[worktreeId].web.tsx",
-      "reason": "The shell renders this page for the file explorer, so the page has no shell to mount inside itself and no flag to read; the switch already happened natively. Its native file reaches OrcaMobileWebShellView, whose requireNativeViewManager call runs at import and throws in a browser — reproduced in the render check, which painted that console error instead of the route."
+      "reason": "The shell renders this page for the file explorer, so the page has no shell to mount inside itself and no flag to read; the switch already happened natively. Its native file reaches OrcaMobileWebShellView, whose requireNativeViewManager call runs at import and throws in a browser \u2014 reproduced in the render check, which painted that console error instead of the route."
     },
     {
       "file": "app/h/[hostId]/files/preview/[worktreeId].web.tsx",
@@ -87,7 +87,7 @@
     },
     {
       "file": "src/components/pr-sidebar/MermaidDiagram.web.tsx",
-      "reason": "The native component seals the diagram inside a WebView whose document embeds the whole mermaid bundle as a string, because react-native-webview is a native component with no browser counterpart: importing it runs a codegen lookup that throws, and the route manifest imports every route, so one such import takes the whole page down rather than one diagram. This one renders the same diagram in this document instead — mermaid is a browser library, so it is an import() inside the render effect rather than a 3.7 MB literal, and the two hosts share one MERMAID_DIAGRAM_CONFIG. What replaces the sandbox is mermaid's own securityLevel: 'strict', which runs the serialized SVG through DOMPurify; the native path's </script> escaping has no analogue because the source is a JS string argument rather than text spliced into an inline script. Both are measured in both engines under the shipped CSP by config/scripts/mobile-web-app-mermaid-render.test.mjs, which also pins the rendered SVG byte for byte against the native document's own render."
+      "reason": "The native component seals the diagram inside a WebView whose document embeds the whole mermaid bundle as a string, because react-native-webview is a native component with no browser counterpart: importing it runs a codegen lookup that throws, and the route manifest imports every route, so one such import takes the whole page down rather than one diagram. This one renders the same diagram in this document instead \u2014 mermaid is a browser library, so it is an import() inside the render effect rather than a 3.7 MB literal, and the two hosts share one MERMAID_DIAGRAM_CONFIG. What replaces the sandbox is mermaid's own securityLevel: 'strict', which runs the serialized SVG through DOMPurify; the native path's </script> escaping has no analogue because the source is a JS string argument rather than text spliced into an inline script. Both are measured in both engines under the shipped CSP by config/scripts/mobile-web-app-mermaid-render.test.mjs, which also pins the rendered SVG byte for byte against the native document's own render."
     },
     {
       "file": "app/h/[hostId]/tasks.web.tsx",
@@ -99,7 +99,7 @@
     },
     {
       "file": "app/h/[hostId]/review/[worktreeId].web.tsx",
-      "reason": "The shell renders this page for diff review, for the same reason as the source-control hub beside it: no nested shell, and a native file that reaches requireNativeViewManager at import. Shorter than its siblings because the route body is MobileDiffReviewRouteScreen, which reads its own params — the native file had to extract that anyway so the review controller does not subscribe behind the page."
+      "reason": "The shell renders this page for diff review, for the same reason as the source-control hub beside it: no nested shell, and a native file that reaches requireNativeViewManager at import. Shorter than its siblings because the route body is MobileDiffReviewRouteScreen, which reads its own params \u2014 the native file had to extract that anyway so the review controller does not subscribe behind the page."
     },
     {
       "file": "app/h/[hostId]/session/[worktreeId].web.tsx",
@@ -107,7 +107,7 @@
     },
     {
       "file": "src/browser/browser-frame-layer-paint.web.ts",
-      "reason": "setNativeProps does not exist on React Native Web: an Image or View ref is the DOM node itself, so both native writes throw rather than paint and the pane never shows a frame. This file writes the same two things through the element — the frame as a background-image on the child RN Web sizes, the double buffer as one opacity write per layer — so the pane still never re-renders while it streams. It also answers whenBrowserFrameDisplayable, which is a no-op natively: a background write fires no load event, so the flip to the pending layer is armed from an image decode instead of the Image's onLoad."
+      "reason": "setNativeProps does not exist on React Native Web: an Image or View ref is the DOM node itself, so both native writes throw rather than paint and the pane never shows a frame. This file writes the same two things through the element \u2014 the frame as a background-image on the child RN Web sizes, the double buffer as one opacity write per layer \u2014 so the pane still never re-renders while it streams. It also answers whenBrowserFrameDisplayable, which is a no-op natively: a background write fires no load event, so the flip to the pending layer is armed from an image decode instead of the Image's onLoad."
     },
     {
       "file": "src/browser/browser-frame-data-uri.web.ts",
@@ -135,11 +135,11 @@
     },
     {
       "file": "src/terminal/TerminalWebView.web.tsx",
-      "reason": "react-native-webview has no web build that renders anything: on the page it paints the line \"React Native WebView does not support this platform\" where the terminal was, which is a red line and no terminal rather than a crash. This file mounts the same document the WebView loads — xterm imported from @xterm/xterm with the unicode11 and webgl addons, and the document's own modules imported in the order the generator emits them — behind the identical TerminalWebViewProps and TerminalWebViewHandle, so nothing above the contract can tell the two apart."
+      "reason": "react-native-webview has no web build that renders anything: on the page it paints the line \"React Native WebView does not support this platform\" where the terminal was, which is a red line and no terminal rather than a crash. This file mounts the same document the WebView loads \u2014 xterm imported from @xterm/xterm with the unicode11 and webgl addons, and the document's own modules imported in the order the generator emits them \u2014 behind the identical TerminalWebViewProps and TerminalWebViewHandle, so nothing above the contract can tell the two apart."
     },
     {
       "file": "src/terminal/terminal-webview-html.web.ts",
-      "reason": "The native file composes the whole WebView document, which splices in the 612 KiB minified xterm engine string. On the page that string is unusable — the shell's CSP is script-src 'self' with frame-src 'none', so there is no nested document to load it into — and it would be the largest single module in the session route's closure. The web file answers the caret options, the markup and the stylesheet, which is everything the page mounts, and nothing else; mobile-web-terminal-engine-closure.test.mjs is the fence."
+      "reason": "The native file composes the whole WebView document, which splices in the 612 KiB minified xterm engine string. On the page that string is unusable \u2014 the shell's CSP is script-src 'self' with frame-src 'none', so there is no nested document to load it into \u2014 and it would be the largest single module in the session route's closure. The web file answers the caret options, the markup and the stylesheet, which is everything the page mounts, and nothing else; mobile-web-terminal-engine-closure.test.mjs is the fence."
     },
     {
       "file": "src/platform/dictation-capture.web.ts",
@@ -155,7 +155,7 @@
     },
     {
       "file": "src/components/MobileRichMarkdownEditor.web.tsx",
-      "reason": "The native editor is a rich document inside a WebView, and react-native-webview is a native component with no browser counterpart: importing it runs a codegen lookup that throws, and the route manifest imports every route, so one such import takes the whole page down rather than one editor. This one renders the Markdown source in a plain field on the text-input seam, which is the state the screen around it already handles — the text, every edit through onChange, and Save, Discard, Copy and Refresh unchanged. The degradation is the formatting toolbar and the rendered view: the toolbar's fifteen commands are the rich document's, and a contenteditable reimplementation is a different surface with its own escaping and its own proof rather than a smaller version of this one (rulings-ota-c7.md ruling 8). onKeyboardInsetChange is never called, which is correct rather than missing: it exists because native Keyboard events under-report a WebView's covered area, and on the page keyboard-occlusion.web.ts is the only measurement there is."
+      "reason": "The native editor is a rich document inside a WebView, and react-native-webview is a native component with no browser counterpart: importing it runs a codegen lookup that throws, and the route manifest imports every route, so one such import takes the whole page down rather than one editor. This one renders the Markdown source in a plain field on the text-input seam, which is the state the screen around it already handles \u2014 the text, every edit through onChange, and Save, Discard, Copy and Refresh unchanged. The degradation is the formatting toolbar and the rendered view: the toolbar's fifteen commands are the rich document's, and a contenteditable reimplementation is a different surface with its own escaping and its own proof rather than a smaller version of this one (rulings-ota-c7.md ruling 8). onKeyboardInsetChange is never called, which is correct rather than missing: it exists because native Keyboard events under-report a WebView's covered area, and on the page keyboard-occlusion.web.ts is the only measurement there is."
     },
     {
       "file": "src/components/AuthFailedBannerActions.web.tsx",
@@ -191,7 +191,7 @@
     },
     {
       "file": "src/transport/host-app-version-store.web.ts",
-      "reason": "The page keeps no record of the host's status.get app version because nothing in it reads one — the reader is the native troubleshoot screen's — and a key the page only writes is not page state, so it is not admitted through page-storage-keys.ts and every mount's write was refused and logged instead."
+      "reason": "The page keeps no record of the host's status.get app version because nothing in it reads one \u2014 the reader is the native troubleshoot screen's \u2014 and a key the page only writes is not page state, so it is not admitted through page-storage-keys.ts and every mount's write was refused and logged instead."
     },
     {
       "file": "src/notifications/push-token.web.ts",
@@ -208,6 +208,14 @@
     {
       "file": "src/app-update/use-wall-app-update.web.ts",
       "reason": "The update checker runs in the app, not the page. The native file hands the compatibility wall the release that check found; this one offers none, so the wall inside the page keeps its store or releases link and the page bundle never carries the checker."
+    },
+    {
+      "file": "src/files/MobileMediaPlayback.web.tsx",
+      "reason": "The browser and hybrid shell play cached Blob URLs with HTML media controls. The native sibling uses the existing WebView to play its private cache file."
+    },
+    {
+      "file": "src/files/mobile-media-preview-cache.web.ts",
+      "reason": "The page has no native filesystem. This cache creates a temporary Blob URL from bounded chunks and revokes it when the preview closes; native builds write the chunks to a cache file."
     }
   ]
 }
