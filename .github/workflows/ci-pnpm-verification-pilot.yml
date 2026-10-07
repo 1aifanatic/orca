@@ -1,65 +1,141 @@
-name: pnpm verification cache pilot
-
+name: ADJUSTED original baseline and shipping full reference
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      original_source_sha:
+        description: Exact reviewed ADJUSTED baseline source only
+        required: true
+        type: string
+      current_source_sha:
+        description: Exact reviewed qualified shipping source only
+        required: true
+        type: string
 permissions:
   contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
+  actions: read
 env:
   ORCA_BACKGROUND_LAUNCH: '1'
-
+  ORCA_BALANCE_UNIT_SHARDS: '1'
+concurrency:
+  group: adjusted-original-current-full-reference
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
+  reference_shard:
+    name: ${{ matrix.arm }} full reference ${{ matrix.shard }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 15
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+        include:
+          - { arm: original, shard: 1 }
+          - { arm: original, shard: 2 }
+          - { arm: original, shard: 3 }
+          - { arm: original, shard: 4 }
+          - { arm: original, shard: 5 }
+          - { arm: current, shard: 1 }
+          - { arm: current, shard: 2 }
+          - { arm: current, shard: 3 }
+          - { arm: current, shard: 4 }
+          - { arm: current, shard: 5 }
+          - { arm: current, shard: 6 }
+          - { arm: current, shard: 7 }
+          - { arm: current, shard: 8 }
+          - { arm: current, shard: 9 }
+          - { arm: current, shard: 10 }
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ matrix.arm == 'original' && inputs.original_source_sha || inputs.current_source_sha }}
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
+      - name: Reject source drift before installation
         env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          REFERENCE_ARM: ${{ matrix.arm }}
+          ORIGINAL_SOURCE: ${{ inputs.original_source_sha }}
+          CURRENT_SOURCE: ${{ inputs.current_source_sha }}
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          test "$ORIGINAL_SOURCE" = 83580a289558826f325c52952ab477ad701014b0
+          test "$CURRENT_SOURCE" = 7b26725ff4b38e1981ad2e1153118fa24faa7ac3
+          if [ "$REFERENCE_ARM" = original ]; then
+            test "$(git rev-parse HEAD)" = "$ORIGINAL_SOURCE"
+          else
+            test "$(git rev-parse HEAD)" = "$CURRENT_SOURCE"
+          fi
+      - name: Checkout reviewed definition separately
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .benchmark-definition
+          persist-credentials: false
+      - name: Obtain immutable original admission
+        uses: actions/download-artifact@v8
+        with:
+          run-id: 37683088541
+          github-token: ${{ github.token }}
+          name: original-node4-admission-evidence
+          path: .original-admission
+      - name: Require the independently qualified original admission
+        run: echo 'e8993d0b750fa3f28f05c36cf0629d87c2721bbbde84ba25ecd49f05ad9cce9d  .original-admission/original-node4-admission-result.json' | sha256sum -c -
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          node-version: '24.21.0'
+          native-runtime: node
+          cache-electron-package: 'true'
+      - name: Install the source revision Electron package binary
+        run: node config/scripts/install-electron-package-binary.mjs
+      - name: Install the shipping pinned Bun only for the current arm
+        if: matrix.arm == 'current'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: config/.bun-version
+      - name: Materialize fresh stock discovery and assignments
+        env:
+          BENCH_SOURCE_SHA: ${{ matrix.arm == 'original' && inputs.original_source_sha || inputs.current_source_sha }}
+          ORIGINAL_ADMISSION_RESULT: .original-admission/original-node4-admission-result.json
+        run: node .benchmark-definition/.github/benchmark/original-current-reference/materialize-reference.mjs ${{ matrix.arm }}
+      - name: Count first complete stock-order command
+        run: node .github/benchmark/original-current-reference/run-reference-shard.mjs ${{ matrix.arm }} ${{ matrix.shard }} 0
+      - name: Count second complete stock-order command
+        run: node .github/benchmark/original-current-reference/run-reference-shard.mjs ${{ matrix.arm }} ${{ matrix.shard }} 1
+      - name: Count third complete stock-order command
+        run: node .github/benchmark/original-current-reference/run-reference-shard.mjs ${{ matrix.arm }} ${{ matrix.shard }} 2
+      - name: Preserve every reference attempt and raw evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reference-${{ matrix.arm }}-shard-${{ matrix.shard }}
+          retention-days: 14
+          if-no-files-found: warn
+          include-hidden-files: true
+          path: |
+            .github/benchmark/original-current-reference/
+            !.github/benchmark/original-current-reference/cache/**
+  reference_evidence:
+    name: Complete ADJUSTED baseline and shipping reference proof
+    if: always()
+    needs: reference_shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.21.0'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: reference-*-shard-*
+          path: reference-artifacts
+      - name: Independently require all45 counted commands
+        run: node .github/benchmark/original-current-reference/collect-reference.mjs reference-artifacts
+      - name: Preserve aggregate proof including rejection
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-current-reference-evidence
+          retention-days: 14
+          if-no-files-found: warn
+          path: original-current-reference-result.json
