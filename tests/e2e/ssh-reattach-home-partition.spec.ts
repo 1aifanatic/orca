@@ -13,6 +13,7 @@ import { connectDockerSshRelayTarget } from './helpers/docker-ssh-relay-connecti
 import { dropDockerSshRelayTransport } from './helpers/docker-ssh-relay-faults'
 import { createRestartSession, readRestartRendererState } from './helpers/orca-restart'
 import { readPersistedProfileState } from './helpers/persisted-profile-state'
+import { toSshExecutionHostId } from '../../src/shared/execution-host'
 
 const RUN_DOCKER_SSH = process.env.ORCA_E2E_SSH_DOCKER === '1'
 
@@ -35,6 +36,36 @@ async function readWorkspace(page: Page, worktreeId: string): Promise<string | n
       })
     }, worktreeId)
   ).catch(() => null)
+}
+
+function readPersistedSshOpenFiles(
+  userDataDir: string,
+  targetId: string,
+  worktreeId: string
+): unknown[] {
+  const sessions = readPersistedProfileState(userDataDir).workspaceSessionsByHostId
+  const session = isRecord(sessions) ? sessions[toSshExecutionHostId(targetId)] : undefined
+  const files =
+    isRecord(session) && isRecord(session.openFilesByWorktree)
+      ? session.openFilesByWorktree[worktreeId]
+      : undefined
+  return Array.isArray(files)
+    ? files.map((file) => (isRecord(file) ? file.relativePath : undefined))
+    : []
+}
+
+type PrivateInvokeHandlers = {
+  _invokeHandlers?: Map<string, (event: unknown, args: unknown) => unknown>
+}
+
+/** Main's SSH state, read without a renderer; it reports `connected` only once the relay's
+ *  reattach has finished (the relay override holds `reconnecting` until then). */
+function readMainSshState(app: ElectronApplication, targetId: string): Promise<unknown> {
+  return app.evaluate(({ ipcMain }, id) => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: test-only read of Electron's private invoke-handler map; the handler is called only if present.
+    const { _invokeHandlers: handlers } = ipcMain as unknown as PrivateInvokeHandlers
+    return handlers?.get('ssh:getState')?.({}, { targetId: id })
+  }, targetId)
 }
 
 /**
@@ -61,7 +92,7 @@ test.describe('SSH relay reattach home partition', () => {
       let page = first.page
       await waitForSessionReady(page)
       const remote = await connectDockerSshRelayTarget(page, target)
-      const { worktreeId } = remote
+      const { targetId, worktreeId } = remote
       await expect.poll(() => waitForActiveWorktree(page), { timeout: 30_000 }).toBe(worktreeId)
       await waitForActiveTerminalManager(page, 60_000)
       await waitForActivePanePtyId(page, 60_000)
@@ -80,8 +111,14 @@ test.describe('SSH relay reattach home partition', () => {
       )
       const expected = JSON.stringify({ tabs: 2, files: ['README.md'] })
       await expect.poll(() => readWorkspace(page, worktreeId)).toBe(expected)
-      // Past the ~1s debounced save, so the SSH partition holds the open file.
-      await page.waitForTimeout(3_000)
+      await expect
+        .poll(() => readPersistedSshOpenFiles(restart.userDataDir, targetId, worktreeId))
+        .toEqual(['README.md'])
+      const before = await readMainSshState(first.app, targetId)
+      expect(before).toMatchObject({
+        status: 'connected',
+        connectionGeneration: expect.any(Number)
+      })
 
       await app.evaluate(({ app: electronApp, BrowserWindow }) => {
         // Linux/Windows quit when the last window closes; keep running as macOS does.
@@ -93,7 +130,21 @@ test.describe('SSH relay reattach home partition', () => {
       })
       expect(dropDockerSshRelayTransport(target)).toBeGreaterThan(0)
       // Main reconnects on its own and reattaches both panes; no window is left to save over it.
-      await new Promise((resolve) => setTimeout(resolve, 30_000))
+      await expect
+        .poll(
+          async () => {
+            const after = await readMainSshState(first.app, targetId)
+            return (
+              isRecord(after) &&
+              isRecord(before) &&
+              after.status === 'connected' &&
+              (after.providerEpoch !== before.providerEpoch ||
+                after.connectionGeneration !== before.connectionGeneration)
+            )
+          },
+          { timeout: 120_000 }
+        )
+        .toBe(true)
       await restart.close(app)
       app = null
       const local = readPersistedProfileState(restart.userDataDir).workspaceSession
