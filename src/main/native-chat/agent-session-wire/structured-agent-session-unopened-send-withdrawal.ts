@@ -1,5 +1,5 @@
-// Which unanswered sends a dying Codex child takes with it as never sent, read from the journal at
-// the settlement that lands, so a retried wind-down reads the same rows.
+// Which unanswered sends a person's Stop takes back as never sent, when Codex takes it or the child
+// ends, read from the journal at the settlement that lands, so a retried settle reads the same rows.
 
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
@@ -44,7 +44,7 @@ export function sendStopCanTakeBack(
 
 /**
  * Withdraws the sends a Codex child left unanswered when a person's Stop, in force since they were
- * sent, ends it: each one that started its own turn (handed over with no turn running, so its
+ * sent, ends the child or is taken by Codex: each one that started its own turn (handed over with no turn running, so its
  * message belongs to no turn) when no turn has opened since. Codex records a prompt only once its
  * turn starts (core tasks/regular.rs:50, session/turn.rs:886-902), so they never ran. A send that
  * joined a running turn may be in it, so it, a send with no recorded place, and any other end stay
