@@ -4,7 +4,7 @@
 // always resend or discard, so this never stands between them and the chat.
 
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
-import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
+import { agentSessionSendBodyFingerprint } from '../../shared/structured-agent-session-send-mutation'
 import type {
   AgentJournalSubmission,
   AgentSessionJournalIdentity
@@ -48,10 +48,10 @@ function sendsInDoubt(load: JournalLoad): AgentJournalSubmission[] {
 }
 
 function fingerprintOf(sessionId: string, message: AcpStoredUserMessage): string {
-  return computeAgentSessionPayloadFingerprint({
-    method: 'agentSession.send',
-    sessionId,
-    fields: { body: { kind: 'message', role: 'user', blocks: message.blocks } }
+  return agentSessionSendBodyFingerprint(sessionId, {
+    kind: 'message',
+    role: 'user',
+    blocks: message.blocks
   })
 }
 
