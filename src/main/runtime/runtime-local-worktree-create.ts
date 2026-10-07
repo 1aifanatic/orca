@@ -21,6 +21,7 @@ import { hasLocalWorktreeBaseRef } from '../git/worktree-base-ref-probe'
 import { resolveRuntimeLocalWorktreeCreateCandidate } from './runtime-local-worktree-create-candidate'
 import { createRuntimeLocalGitWorktree } from './runtime-local-git-worktree-create'
 import { materializeRuntimeLocalWorktree } from './runtime-local-worktree-materialization'
+import { resolveRuntimeSetupDecision } from './runtime-local-worktree-setup'
 import type { PreparationRearmHolder } from '../worktree-create-preparation'
 import {
   localWorktreeCreateExecutionHost,
@@ -60,16 +61,16 @@ export function createRuntimeLocalManagedWorktree<T>(args: RuntimeLocalWorktreeC
 
 async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCreateArgs<T>) {
   const { request, repo, store } = args
-  // Why before the add: an `ask` repo with no decision must refuse with nothing created, as the
-  // desktop create does; checked after, it left an orphan worktree behind.
-  if (getEffectiveHooks(repo)?.scripts.setup) {
-    shouldRunSetupForCreate(repo, request.runHooks ? 'run' : (request.setupDecision ?? 'inherit'))
-  }
   const settings = store.getSettings()
   const pathSettings = getWorktreePathSettings(repo, settings, getWorktreeMirrorDistro(store, repo))
   const gitExecOptions = getLocalProjectGitExecOptions(store, repo)
   const worktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
   args.timing.recordExecutionHost(localWorktreeCreateExecutionHost(gitExecOptions))
+  // Why before any git work: an `ask` repo with no decision must refuse with nothing created, as
+  // the desktop create does; checked after the add, it left an orphan worktree behind.
+  if (getEffectiveHooks(repo)?.scripts.setup) {
+    shouldRunSetupForCreate(repo, resolveRuntimeSetupDecision(request))
+  }
   // Username and base resolution are independent read-only probes. Starting
   // both before awaiting removes one serial git/config round trip from create.
   const usernamePromise =

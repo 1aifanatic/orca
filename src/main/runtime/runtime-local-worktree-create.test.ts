@@ -370,12 +370,24 @@ describe('runtime create setup decision', () => {
     mocks.effectiveHooks.mockReturnValue({ scripts: { setup: 'pnpm install' } })
   })
 
-  it('refuses an ask repo with no decision before adding the worktree', async () => {
-    await expect(createWorktree({}, undefined, undefined, askRepo)).rejects.toThrow(
+  it('refuses an ask repo with no decision before any git work', async () => {
+    const timing = createWorktreeCreateTimingRecorder()
+    // No requested base, so a create that got past the check would resolve the default base.
+    const request = { baseBranch: undefined }
+    await expect(createWorktree(request, undefined, timing, askRepo)).rejects.toThrow(
       'Setup decision required for this repository'
     )
-    expect(mocks.add).not.toHaveBeenCalled()
+    // Hooks come from the main checkout (no worktree path): the new worktree doesn't exist yet.
+    expect(mocks.effectiveHooks.mock.calls).toEqual([[expect.objectContaining({ path: '/repo' })]])
+    for (const gitWork of [mocks.defaultBase, mocks.remoteBase, mocks.hasBase, mocks.refresh]) {
+      expect(gitWork).not.toHaveBeenCalled()
+    }
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(mocks.branchName).not.toHaveBeenCalled()
     expect(mocks.consume).not.toHaveBeenCalled()
+    expect(mocks.add).not.toHaveBeenCalled()
+    // The refusal's failure telemetry still says where the create ran.
+    expect(timing.finish().executionHost).toBe('local')
   })
 
   it.each([
