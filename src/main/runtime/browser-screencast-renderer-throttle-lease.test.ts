@@ -2,6 +2,7 @@
  * A remote browser stream keeps the desktop window drawing for exactly as long as it lives: guest
  * frames come from the embedder's compositor, which a throttled hidden window stops running.
  */
+import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentBrowserBridge } from '../browser/agent-browser-bridge'
 import type { BrowserScreencastOptions } from '../browser/browser-screencast-stream-types'
@@ -22,7 +23,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../browser/browser-screencast-stream', () => ({ startBrowserScreencast }))
 
-function createCommandsHost(): RuntimeBrowserCommandHost {
+function createCommandsHost(window: EventEmitter): RuntimeBrowserCommandHost {
   const runtimeBrowserPages = new RuntimeBrowserPageRegistry()
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: screencast reads only these bridge members.
   const bridge = {
@@ -39,7 +40,7 @@ function createCommandsHost(): RuntimeBrowserCommandHost {
     resolveWorktreeSelector: async () => ({ id: 'wt-1' }),
     getAgentBrowserBridge: () => bridge,
     getRuntimeBrowserPageRegistry: () => runtimeBrowserPages,
-    getAvailableAuthoritativeWindow: vi.fn(() => null),
+    getAvailableAuthoritativeWindow: vi.fn(() => window),
     getOffscreenBrowserBackend: vi.fn(() => null)
   } as unknown as RuntimeBrowserCommandHost
 }
@@ -53,9 +54,13 @@ type PageStream = {
 function createRig() {
   const { runtime } = createScreencastHarness()
   const setBackgroundThrottling = vi.fn()
-  const window = { webContents: { isDestroyed: () => false, setBackgroundThrottling } }
+  const window = Object.assign(new EventEmitter(), {
+    webContents: { isDestroyed: () => false, setBackgroundThrottling }
+  })
+  const guest = { isDestroyed: () => false, setBackgroundThrottling: vi.fn() }
+  webContentsFromId.mockReturnValue(guest)
   Object.assign(runtime, {
-    browserCommands: new RuntimeBrowserCommands(createCommandsHost()),
+    browserCommands: new RuntimeBrowserCommands(createCommandsHost(window)),
     getAvailableAuthoritativeWindow: () => window
   })
   const pageStreams: PageStream[] = []
@@ -109,7 +114,9 @@ function createRig() {
     stopControl,
     // The window draws while hidden only after its last setBackgroundThrottling was `false`.
     lifted: () => setBackgroundThrottling.mock.calls.at(-1)?.[0] === false,
-    throttleCalls: () => setBackgroundThrottling.mock.calls.map(([allowed]) => allowed)
+    throttleCalls: () => setBackgroundThrottling.mock.calls.map(([allowed]) => allowed),
+    window,
+    guestThrottleCalls: () => guest.setBackgroundThrottling.mock.calls.map(([allowed]) => allowed)
   }
 }
 
@@ -301,5 +308,81 @@ describe('remote browser screencast renderer throttle lease', () => {
     const calls = rig.throttleCalls()
     expect(calls.filter((allowed) => !allowed)).toHaveLength(calls.filter(Boolean).length)
     expect(rig.lifted()).toBe(false)
+  })
+})
+
+describe('remote browser screencast guest painting', () => {
+  beforeEach(() => {
+    webContentsFromId.mockReset()
+    startBrowserScreencast.mockReset()
+  })
+
+  it('unthrottles the guest before the stream starts capturing', async () => {
+    const rig = createRig()
+    let guestCallsAtStart: boolean[] = []
+    const started = startBrowserScreencast.getMockImplementation()
+    startBrowserScreencast.mockImplementation(async (...args: unknown[]) => {
+      guestCallsAtStart = rig.guestThrottleCalls()
+      return started?.(...args)
+    })
+
+    const phone = rig.subscribe('conn-phone')
+    await phone.ready()
+
+    expect(guestCallsAtStart).toEqual([false])
+  })
+
+  it('unthrottles the guest again when the window hides or minimizes mid-stream', async () => {
+    const rig = createRig()
+    const phone = rig.subscribe('conn-phone')
+    await phone.ready()
+
+    rig.window.emit('hide')
+    rig.window.emit('minimize')
+
+    expect(rig.guestThrottleCalls()).toEqual([false, false, false])
+  })
+
+  it('applies once per page stream, not once per viewer', async () => {
+    const rig = createRig()
+    const phone = rig.subscribe('conn-phone')
+    await phone.ready()
+    const tablet = rig.subscribe('conn-tablet')
+    await tablet.ready()
+
+    rig.window.emit('hide')
+
+    expect(rig.guestThrottleCalls()).toEqual([false, false])
+  })
+
+  it('leaves the guest alone while no stream is live', async () => {
+    const rig = createRig()
+    rig.window.emit('hide')
+    rig.window.emit('minimize')
+    expect(rig.guestThrottleCalls()).toEqual([])
+
+    const phone = rig.subscribe('conn-phone')
+    const subscriptionId = await phone.ready()
+    rig.runtime.cleanupSubscription(subscriptionId)
+    await phone.done
+    // The page stream drops its window listeners once Chromium's stream has closed.
+    await vi.waitFor(() => expect(rig.window.listenerCount('hide')).toBe(0))
+    expect(rig.window.listenerCount('minimize')).toBe(0)
+    rig.window.emit('hide')
+    rig.window.emit('minimize')
+
+    expect(rig.guestThrottleCalls()).toEqual([false])
+  })
+
+  it('makes no further guest call when the stream ends', async () => {
+    const rig = createRig()
+    const phone = rig.subscribe('conn-phone')
+    const subscriptionId = await phone.ready()
+
+    rig.runtime.cleanupSubscription(subscriptionId)
+    await phone.done
+
+    expect(rig.guestThrottleCalls()).toEqual([false])
+    expect(rig.throttleCalls()).toEqual([false, true])
   })
 })

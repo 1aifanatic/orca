@@ -53,7 +53,10 @@ function createCommandsHost(): RuntimeBrowserCommandHost {
 describe('RuntimeBrowserCommands screencast fanout', () => {
   beforeEach(() => {
     webContentsFromId.mockReset()
-    webContentsFromId.mockReturnValue({ isDestroyed: () => false })
+    webContentsFromId.mockReturnValue({
+      isDestroyed: () => false,
+      setBackgroundThrottling: vi.fn()
+    })
     startBrowserScreencast.mockReset()
   })
 
@@ -290,7 +293,10 @@ describe('RuntimeBrowserCommands screencast fanout', () => {
 describe('RuntimeBrowserCommands screencast ghost eviction', () => {
   beforeEach(() => {
     webContentsFromId.mockReset()
-    webContentsFromId.mockReturnValue({ isDestroyed: () => false })
+    webContentsFromId.mockReturnValue({
+      isDestroyed: () => false,
+      setBackgroundThrottling: vi.fn()
+    })
     startBrowserScreencast.mockReset()
   })
 

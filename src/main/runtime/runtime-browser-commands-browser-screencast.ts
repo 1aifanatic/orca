@@ -17,6 +17,7 @@ import type { BrowserEvalResult, BrowserScreencastResult } from '../../shared/ru
 import { BrowserError } from '../browser/browser-error'
 import { randomUUID } from 'node:crypto'
 import { startBrowserScreencast } from '../browser/browser-screencast-stream'
+import { keepScreencastGuestPainting } from '../browser/browser-screencast-guest-paint'
 import { sendRemoteBrowserScreencastFrame } from './remote-browser-screencast-frame-admission'
 import {
   INITIAL_SCREENCAST_SUBSCRIBER_DELIVERY,
@@ -69,6 +70,10 @@ export class RuntimeBrowserCommandsWithBrowserScreencast extends RuntimeBrowserC
         viewportOwnerSubscriptionId: null,
         appliedBudget: budget
       } as ActiveBrowserScreencastPage
+      const stopKeepingGuestPainting = keepScreencastGuestPainting(
+        guest,
+        this.host.getAvailableAuthoritativeWindow()
+      )
       record.started = startBrowserScreencast(guest, {
         format: params.format,
         ...budget,
@@ -119,6 +124,7 @@ export class RuntimeBrowserCommandsWithBrowserScreencast extends RuntimeBrowserC
           return session.done
         })
         .finally(() => {
+          stopKeepingGuestPainting()
           if (this.activeScreencastsByPageId.get(browserPageId) === record) {
             this.activeScreencastsByPageId.delete(browserPageId)
           }

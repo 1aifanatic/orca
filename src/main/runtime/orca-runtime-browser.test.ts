@@ -631,7 +631,10 @@ describe('RuntimeBrowserCommands browser screencast', () => {
 
   it('fans one page screencast out to multiple subscribers', async () => {
     const { RuntimeBrowserCommands } = await import('./orca-runtime-browser')
-    webContentsFromIdMock.mockReturnValue({ isDestroyed: () => false })
+    webContentsFromIdMock.mockReturnValue({
+      isDestroyed: () => false,
+      setBackgroundThrottling: vi.fn()
+    })
     const done = deferred<void>()
     const stop = vi.fn(() => done.resolve())
     const updateViewport = vi.fn(async () => {})
@@ -680,7 +683,10 @@ describe('RuntimeBrowserCommands browser screencast', () => {
 
   it('admits screencast frames through the paired-runtime size guard', async () => {
     const { RuntimeBrowserCommands } = await import('./orca-runtime-browser')
-    webContentsFromIdMock.mockReturnValue({ isDestroyed: () => false })
+    webContentsFromIdMock.mockReturnValue({
+      isDestroyed: () => false,
+      setBackgroundThrottling: vi.fn()
+    })
     const done = deferred<void>()
     startBrowserScreencastMock.mockResolvedValue({
       stop: vi.fn(() => done.resolve()),
@@ -748,7 +754,10 @@ describe('RuntimeBrowserCommands headless offscreen routing', () => {
 
   it('publishes a headless session snapshot after explicit navigation', async () => {
     const { RuntimeBrowserCommands } = await import('./orca-runtime-browser')
-    webContentsFromIdMock.mockReturnValue({ isDestroyed: () => false })
+    webContentsFromIdMock.mockReturnValue({
+      isDestroyed: () => false,
+      setBackgroundThrottling: vi.fn()
+    })
     const notifyHeadlessBrowserSessionTabsChanged = vi.fn()
     const bridge = {
       getRegisteredTabs: vi.fn(() => new Map([['page-offscreen', 202]])),
