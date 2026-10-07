@@ -24,7 +24,10 @@ type VisibilityListener = (isVisible: boolean) => void
 const visibilityListeners = new Map<Element, VisibilityListener>()
 let visibilityObserver: IntersectionObserver | null = null
 
-function observeTranscriptVisibility(element: Element, listener: VisibilityListener): () => void {
+export function observeTranscriptVisibility(
+  element: Element,
+  listener: VisibilityListener
+): () => void {
   if (typeof IntersectionObserver === 'undefined') {
     listener(true)
     return () => {}
