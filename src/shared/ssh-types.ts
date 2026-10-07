@@ -11,14 +11,14 @@ export const DEFAULT_SSH_RELAY_GRACE_PERIOD_SECONDS = 0
 export const SSH_RELAY_CONFIGURE_GRACE_TIME_METHOD = 'relay.configureGraceTime'
 
 /**
- * Which runtime executes the SSH relay. `legacy` runs it on the host's Node with native deps
- * installed on the host; `pinned-node` uploads Orca's pinned Node and prebuilt addons (design D5).
+ * Which runtime executes the SSH relay. `pinned-node` runs the D6 ladder on Orca's uploaded Node and
+ * prebuilt addons (design D5); `legacy` is the opt-in host Node with native deps installed by npm.
  */
 export const SSH_REMOTE_RUNTIMES = ['legacy', 'pinned-node'] as const
 export type SshRemoteRuntime = (typeof SSH_REMOTE_RUNTIMES)[number]
-export const DEFAULT_SSH_REMOTE_RUNTIME: SshRemoteRuntime = 'legacy'
+export const DEFAULT_SSH_REMOTE_RUNTIME: SshRemoteRuntime = 'pinned-node'
 
-/** Where the design D6 fallback ladder landed; `legacy` is the host-npm path outside it. */
+/** Where the design D6 fallback ladder landed; `legacy` is the opt-in host-npm path outside it. */
 export const SSH_REMOTE_RUNTIME_RUNGS = ['A', 'B', 'C', 'D', 'legacy'] as const
 export type SshRemoteRuntimeRung = (typeof SSH_REMOTE_RUNTIME_RUNGS)[number]
 

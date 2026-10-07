@@ -65,37 +65,23 @@ afterEach(() => {
 })
 
 describe('remote runtime setting', () => {
-  it('defaults to legacy, lets the host setting win, and accepts only known env values', () => {
-    expect(resolveSshRemoteRuntime(undefined, {})).toBe('legacy')
-    expect(resolveSshRemoteRuntime({}, { [SSH_REMOTE_RUNTIME_ENV]: 'pinned-node' })).toBe(
-      'pinned-node'
-    )
-    expect(resolveSshRemoteRuntime({}, { [SSH_REMOTE_RUNTIME_ENV]: 'bun' })).toBe('legacy')
+  it('defaults to the pinned ladder, lets the host setting win, and accepts only known env values', () => {
+    expect(resolveSshRemoteRuntime(undefined, {})).toBe('pinned-node')
+    expect(resolveSshRemoteRuntime({}, {})).toBe('pinned-node')
+    expect(resolveSshRemoteRuntime({}, { [SSH_REMOTE_RUNTIME_ENV]: 'legacy' })).toBe('legacy')
+    expect(resolveSshRemoteRuntime({}, { [SSH_REMOTE_RUNTIME_ENV]: 'bun' })).toBe('pinned-node')
     expect(
       resolveSshRemoteRuntime(
         { remoteRuntime: 'legacy' },
         { [SSH_REMOTE_RUNTIME_ENV]: 'pinned-node' }
       )
     ).toBe('legacy')
-  })
-
-  it('runs the pinned ladder where managed orcad was found unable to run, unless the host opts out', () => {
-    const unavailable = { reason: 'runtime_self_test', appVersion: '1.0.0' }
-    expect(resolveSshRemoteRuntime({ managedServerUnavailable: unavailable }, {})).toBe(
-      'pinned-node'
-    )
     expect(
       resolveSshRemoteRuntime(
-        { managedServerUnavailable: unavailable, remoteRuntime: 'legacy' },
-        {}
-      )
-    ).toBe('legacy')
-    expect(
-      resolveSshRemoteRuntime(
-        { managedServerUnavailable: unavailable },
+        { remoteRuntime: 'pinned-node' },
         { [SSH_REMOTE_RUNTIME_ENV]: 'legacy' }
       )
-    ).toBe('legacy')
+    ).toBe('pinned-node')
   })
 })
 

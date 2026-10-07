@@ -38,8 +38,6 @@ export type HostileHostExpectation =
       reason: RemoteRuntimeUnavailableReason
       refusals: readonly RungRefusal[]
     }
-  /** The ladder fell through to the host-npm path, which cannot run on this host either. */
-  | { outcome: 'legacy_failed'; refusals: readonly RungRefusal[] }
   /** The host opted out: the ladder never runs and nothing enters the pinned runtime store. */
   | { outcome: 'legacy_opt_out' }
 
@@ -254,7 +252,7 @@ export function selectHostileHostCells(
 }
 
 export type HostileHostObservation = {
-  /** The rung the ladder settled on, or null when it never settled (legacy failure). */
+  /** The rung the ladder settled on, or null when it never settled. */
   settledRung: SshRemoteRuntimeRung | null
   /** The server target of a launched relay, when the ladder resolved one. */
   target: ServerTarget | null
@@ -282,9 +280,8 @@ export function hostileHostCellViolations(
       `refusals ${describeRefusals(observed.refusals)}, expected ${describeRefusals(expectedRefusals)}`
     )
   }
-  // Why every ladder outcome: no rung reached before legacy may reach for npm or a compiler.
-  const legacy = expect.outcome === 'legacy_failed' || expect.outcome === 'legacy_opt_out'
-  if (!legacy && observed.forbiddenToolCalls.length > 0) {
+  // Why every ladder outcome: no rung may reach for npm or a compiler.
+  if (expect.outcome !== 'legacy_opt_out' && observed.forbiddenToolCalls.length > 0) {
     violations.push(`toolchain invoked: ${observed.forbiddenToolCalls.join('; ')}`)
   }
   switch (expect.outcome) {
@@ -307,14 +304,6 @@ export function hostileHostCellViolations(
         violations.push(
           `rung D reason ${observed.unavailableReason ?? 'none'}, expected ${expect.reason}`
         )
-      }
-      break
-    case 'legacy_failed':
-      if (observed.settledRung !== null) {
-        violations.push(`settled on ${observed.settledRung}, expected the host-npm path to fail`)
-      }
-      if (!observed.deployError) {
-        violations.push('deploy succeeded on a host with no runnable runtime')
       }
       break
     case 'legacy_opt_out':

@@ -214,12 +214,9 @@ function queueInstalledPinnedLaunch(): void {
     .mockResolvedValueOnce('READY')
 }
 
-function queueInstalledLegacyLaunch(options: { platformProbed?: boolean } = {}): void {
-  // A later ladder step reuses the platform the first step detected.
-  if (!options.platformProbed) {
-    vi.mocked(execCommand).mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
-  }
+function queueInstalledLegacyLaunch(): void {
   vi.mocked(execCommand)
+    .mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
     .mockResolvedValueOnce('/home/user')
     .mockResolvedValueOnce('ORCA-NATIVE-DEPS-OK')
     .mockResolvedValueOnce('') // launch namespace marker
@@ -245,8 +242,22 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     resetSshRemoteRuntimeTelemetryForTests()
   })
 
-  it('keeps the legacy host-Node path when the host has no runtime setting', async () => {
+  it('runs the pinned ladder when the host has no runtime setting and nothing recorded', async () => {
     const conn = makeConnection()
+    queueInstalledPinnedLaunch()
+
+    const result = await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
+
+    expect(resolveRemoteNodePath).not.toHaveBeenCalled()
+    expect(result.nodePath).toBe(PINNED_NODE)
+    expect(result.serverBuildId).toBe(PINNED_VERSION)
+    expect(
+      vi.mocked(execCommand).mock.calls.some(([, cmd]) => String(cmd).includes('NATIVE-DEPS'))
+    ).toBe(false)
+  })
+
+  it('keeps the host-npm path for a host that opts into Host Node', async () => {
+    const conn = makeConnection('legacy')
     queueInstalledLegacyLaunch()
 
     const result = await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
@@ -293,7 +304,7 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
   })
 
   it('leaves the runtime store alone on the legacy host-Node path', async () => {
-    const conn = makeConnection()
+    const conn = makeConnection('legacy')
     queueInstalledLegacyLaunch()
 
     await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
@@ -303,8 +314,8 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     expect(gcRemoteNodeRuntimeStore).not.toHaveBeenCalled()
   })
 
-  it('steps down the ladder to the host-npm relay on classified refusals', async () => {
-    const conn = makeConnection('pinned-node')
+  it('steps down the ladder to rung D, never the host-npm relay, on classified refusals', async () => {
+    const conn = makeConnection()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(ensurePinnedRelayRuntime).mockRejectedValueOnce(
       new PinnedRelayFallbackError('missing_lib', 'libstdc++.so.6: cannot open')
@@ -315,13 +326,23 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     vi.mocked(execCommand)
       .mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
       .mockResolvedValueOnce('/home/user')
-    queueInstalledLegacyLaunch({ platformProbed: true })
 
-    const result = await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
+    const failure = await deployAndLaunchRelay(conn, undefined, undefined, 'target-1').catch(
+      (error: unknown) => error
+    )
 
-    expect(result.nodePath).toBe('/usr/bin/node')
-    expect(result.serverBuildId).toBe('0.1.0+abcdef012345')
-    expect(detachedLaunchCommand(conn)).toContain("'/usr/bin/node' relay.js --detached")
+    expect(failure).toBeInstanceOf(RemoteRuntimeUnavailableError)
+    expect(String(failure)).toContain("set this host's Runtime to Host Node")
+    expect(String(failure)).toContain("Orca's Node: missing_lib; host Node: libc_floor")
+    expect(terminalUnavailableCauseFromError(failure)).toMatchObject({
+      status: 'blocked',
+      reason: 'no_runtime'
+    })
+    expect(resolveRemoteNodePath).not.toHaveBeenCalled()
+    expect(
+      vi.mocked(execCommand).mock.calls.some(([, cmd]) => /NATIVE-DEPS|npm /.test(String(cmd)))
+    ).toBe(false)
+    expect(detachedLaunchCommand(conn)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('rung A unavailable (missing_lib)'))
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('rung B unavailable (artifacts_unavailable)')
@@ -358,35 +379,6 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     warn.mockRestore()
   })
 
-  it('runs the ladder to rung B where this connect just recorded that managed orcad cannot run', async () => {
-    const registry = {
-      getTarget: vi.fn(() => ({
-        id: 'target-1',
-        managedServerUnavailable: { reason: 'runtime_self_test', appVersion: '1.0.0' }
-      })),
-      updateTarget: vi.fn(() => null)
-    }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the ladder reads and writes only these two registry members.
-    vi.mocked(getSshTargetRegistryStore).mockReturnValue(registry as unknown as SshConnectionStore)
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const oldGlibc = { major: 2, minor: 17 }
-    vi.mocked(resolvePinnedRelayTargetFacts).mockResolvedValue({
-      target: 'linux-x64-glibc',
-      glibc: oldGlibc
-    })
-    vi.mocked(planPinnedNodeRelay)
-      .mockResolvedValueOnce({ kind: 'host-node', fallbackReason: 'libc_floor' })
-      .mockResolvedValueOnce({ ...pinnedPlan(), target: 'linux-x64-glibc217', glibc: oldGlibc })
-    queueInstalledPinnedLaunch()
-
-    // The connection's own target predates the record and carries no runtime setting.
-    const result = await deployAndLaunchRelay(makeConnection(), undefined, undefined, 'target-1')
-
-    expect(resolveRemoteNodePath).not.toHaveBeenCalled()
-    expect(result.nodePath).toBe(COMPAT_NODE)
-    expect(planHostNodeAddonRelay).not.toHaveBeenCalled()
-  })
-
   it('skips rung B on a current glibc when rung A refused for a reason B cannot answer', async () => {
     const conn = makeConnection('pinned-node')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -394,9 +386,11 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
       kind: 'host-node',
       fallbackReason: 'illegal_instruction'
     })
-    queueInstalledLegacyLaunch()
+    vi.mocked(execCommand).mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
 
-    await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
+    await expect(
+      deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
+    ).rejects.toBeInstanceOf(RemoteRuntimeUnavailableError)
 
     expect(planPinnedNodeRelay).toHaveBeenCalledOnce()
     expect(warn).toHaveBeenCalledWith(
@@ -556,12 +550,13 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     vi.mocked(execCommand)
       .mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
       .mockResolvedValueOnce('/home/user')
-    queueInstalledLegacyLaunch({ platformProbed: true })
 
-    await deployAndLaunchRelay(makeConnection('pinned-node'), undefined, undefined, 'target-1')
+    await expect(
+      deployAndLaunchRelay(makeConnection('pinned-node'), undefined, undefined, 'target-1')
+    ).rejects.toBeInstanceOf(RemoteRuntimeUnavailableError)
 
     expect(stored.remoteRuntimeResolution).toMatchObject({
-      rung: 'legacy',
+      rung: 'D',
       pinnedRefusal: 'illegal_instruction',
       glibc: '2.31',
       runtimeSha256: RUNTIME_SHA

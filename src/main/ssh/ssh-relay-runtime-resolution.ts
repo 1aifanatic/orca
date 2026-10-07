@@ -187,7 +187,14 @@ export class RemoteRuntimeUnavailableError extends Error {
     readonly reason: RemoteRuntimeUnavailableReason,
     run: RelayRuntimeLadderRun
   ) {
-    super(remoteRuntimeUnavailableMessage(reason, run.firstRefusal, run.noexecRemembered))
+    super(
+      remoteRuntimeUnavailableMessage(
+        reason,
+        run.firstRefusal,
+        run.noexecRemembered,
+        run.lastRefusal
+      )
+    )
     this.name = 'RemoteRuntimeUnavailableError'
     const glibc = run.facts?.glibc
     this.data = {

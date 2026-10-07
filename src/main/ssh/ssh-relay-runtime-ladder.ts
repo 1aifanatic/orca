@@ -4,8 +4,9 @@
  *   A  Orca's pinned Node + slot prebuilds
  *   B  a compat pinned Node + compat addons (chosen only when a compat runtime exists)
  *   C  the host's Node >= 18 + Orca's N-API prebuilds, no npm
- *   legacy  the host's Node + npm install (kept until the default flips)
  *   D  nothing runs: plain SSH terminals and SFTP, recording the classified reason
+ *
+ * The host's Node + npm install (`legacy`) sits outside the ladder, reached only by opting in.
  *
  * The ladder steps down only on a classified refusal (a `PinnedRelayFallbackError`); an
  * unverifiable probe or self-test throws and the next connect retries the same rung.
@@ -49,7 +50,8 @@ export const COMPAT_RELAY_RUNTIMES: readonly CompatRelayRuntime[] = [
 ]
 
 export function relayRuntimeLadder(runtime: SshRemoteRuntime): readonly RelayRuntimeStep[] {
-  return runtime === 'pinned-node' ? ['A', 'B', 'C', 'legacy', 'D'] : ['legacy']
+  // Why no legacy rung: a host npm install needs a compiler or network the ladder exists to avoid.
+  return runtime === 'pinned-node' ? ['A', 'B', 'C', 'D'] : ['legacy']
 }
 
 export function compatRelayRuntimeFor(
@@ -120,9 +122,8 @@ export function relayRuntimeStorePins(
 export type RelayRuntimeStepReason = RelayRuntimeFallbackReason
 
 /**
- * noexec defeats every rung, because each loads addons from the same `~/.orca-remote` tree;
- * no host Node rules out the npm path too, since it needs a host Node as well. A remembered
- * refusal only skips its own rung: the mount may have changed since it was proved.
+ * noexec defeats every rung, because each loads addons from the same `~/.orca-remote` tree.
+ * A remembered refusal only skips its own rung: the mount may have changed since it was proved.
  */
 export function nextRelayRuntimeStep(
   ladder: readonly RelayRuntimeStep[],
@@ -130,7 +131,7 @@ export function nextRelayRuntimeStep(
   reason: RelayRuntimeStepReason,
   remembered = false
 ): RelayRuntimeStep {
-  if ((reason === 'noexec' && !remembered) || (current === 'C' && reason === 'host_node_missing')) {
+  if (reason === 'noexec' && !remembered) {
     return 'D'
   }
   const index = ladder.indexOf(current)
@@ -165,15 +166,26 @@ const REMEMBERED_NOEXEC_MESSAGE =
   'mounted noexec, so nothing under ~/.orca-remote may execute. Remote terminals and file ' +
   'browsing are unavailable until exec is allowed there; Orca re-checks on the next connect.'
 
+// Why its own wording: a host Node was found or can't help, so only the opt-in npm path is left.
+const HOST_NODE_REFUSED_MESSAGE =
+  "Orca can't run its remote runtime on this host: its bundled Node.js was refused and Orca's " +
+  "prebuilt addons can't run on the host's Node.js. To install them with npm on the host " +
+  "instead, set this host's Runtime to Host Node in its SSH settings, then reconnect."
+
 export function remoteRuntimeUnavailableMessage(
   reason: RemoteRuntimeUnavailableReason,
   refusal: RelayRuntimeStepReason | null,
-  noexecRemembered = false
+  noexecRemembered = false,
+  /** Rung C's refusal: the last rung before D. */
+  hostNodeRefusal: RelayRuntimeStepReason | null = null
 ): string {
   if (reason === 'home_noexec') {
     return noexecRemembered
       ? REMEMBERED_NOEXEC_MESSAGE
       : REMOTE_RUNTIME_UNAVAILABLE_MESSAGES.home_noexec
+  }
+  if (hostNodeRefusal && hostNodeRefusal !== 'host_node_missing') {
+    return `${HOST_NODE_REFUSED_MESSAGE} (Orca's Node: ${refusal ?? 'none'}; host Node: ${hostNodeRefusal})`
   }
   const base = REMOTE_RUNTIME_UNAVAILABLE_MESSAGES[reason]
   return refusal ? `${base} (Orca's Node: ${refusal})` : base

@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs'
 import { app } from 'electron'
 import { relayBundleCandidates } from './relay-bundle-paths'
-import { PinnedRelayFallbackError, resolveConnectRemoteRuntime } from './ssh-relay-pinned-node'
+import { PinnedRelayFallbackError, resolveSshRemoteRuntime } from './ssh-relay-pinned-node'
 import {
   ensurePinnedRelayRuntime,
   prebuiltRelayNodePath,
@@ -429,9 +429,7 @@ async function deployAndLaunchRelayInner(
 ): Promise<RelayDeployResult> {
   const target = typeof conn.getTarget === 'function' ? conn.getTarget() : undefined
   const registry = getSshTargetRegistryStore()
-  const ladder = relayRuntimeLadder(
-    resolveConnectRemoteRuntime(target, target && registry?.getTarget(target.id))
-  )
+  const ladder = relayRuntimeLadder(resolveSshRemoteRuntime(target))
   const run = new RelayRuntimeLadderRun(
     target?.id ?? relayInstanceId ?? '',
     target && registry ? sshTargetRelayRuntimeDecisionStore(registry) : null
