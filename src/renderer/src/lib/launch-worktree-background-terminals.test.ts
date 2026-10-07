@@ -88,7 +88,7 @@ describe('launchWorktreeBackgroundTerminals', () => {
       return tab
     })
     // Placement reads the row back from the store, so title and color writes must land there.
-    const patchTab = (tabId: string, patch: object): void => {
+    const patchTab = (tabId: string, patch: { customTitle?: string; color?: string }): void => {
       state.tabsByWorktree['wt-1'] = state.tabsByWorktree['wt-1'].map((tab) =>
         tab.id === tabId ? { ...tab, ...patch } : tab
       )
