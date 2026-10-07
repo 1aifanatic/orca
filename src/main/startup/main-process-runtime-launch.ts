@@ -27,6 +27,7 @@ import { prepareCodexSessionResumeForLaunch } from './codex-session-resume-launc
 import { startWindowsDesktopBeforeShellPathReady } from './windows-desktop-shell-path-startup'
 import { repairKnownPoisonedInstallDirBeforeWindow } from './windows-install-dir-acl-recovery'
 import { registerServeSignalHandlers } from './serve-signal-handlers'
+import { registerHeadlessServeSshHandlers } from './headless-serve-ssh-registration'
 import { settleServeDesktopActivation } from './serve-desktop-activation'
 import {
   recordRuntimeRpcStartFailure,
@@ -158,6 +159,8 @@ async function launchServeMode(
     )
   }
   publishHeadlessRuntimeGraph(runtime)
+  // Why before RPC binds: the first paired client must already see this host's SSH targets.
+  registerHeadlessServeSshHandlers(state.store!, runtime)
   await runtimeRpc.start().catch((error) => {
     console.error('[runtime] Failed to start headless RPC transport:', error)
     throw error

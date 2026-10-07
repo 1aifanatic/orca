@@ -156,6 +156,7 @@
     "reportCrash": "クラッシュを報告…",
     "file": "ファイル",
     "exit": "終了",
+    "quitApp": "{{appName}} を終了",
     "edit": "編集",
     "appearance": "外観",
     "toggleLeftSidebar": "左サイドバーの表示/非表示",

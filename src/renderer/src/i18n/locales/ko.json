@@ -156,6 +156,7 @@
     "reportCrash": "크래시 신고...",
     "file": "파일",
     "exit": "종료",
+    "quitApp": "{{appName}} 종료",
     "edit": "편집",
     "appearance": "외관",
     "toggleLeftSidebar": "왼쪽 사이드바 표시/숨기기",

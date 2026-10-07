@@ -329,6 +329,7 @@
     "reportCrash": "Report Crash...",
     "file": "File",
     "exit": "Exit",
+    "quitApp": "Quit {{appName}}",
     "edit": "Edit",
     "appearance": "Appearance",
     "toggleLeftSidebar": "Toggle Left Sidebar",
