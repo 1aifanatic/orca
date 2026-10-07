@@ -13,6 +13,7 @@ import {
 import { HostProtocolGate } from '../../src/components/HostProtocolGate'
 import { HostScreen } from '../../src/host-screen/HostScreen'
 import { HostStack } from '../../src/navigation/host-stack'
+import { HostSidebarRevealContext } from '../../src/layout/host-sidebar-reveal'
 
 // Keep at least this much room for the detail pane when resizing the sidebar.
 const MIN_DETAIL_WIDTH = 320
@@ -64,13 +65,13 @@ export default function HostGroupLayout() {
   }, [windowWidth])
 
   const hideSidebar = useCallback(() => setSidebarOpen(false), [])
+  const revealSidebar = useCallback(() => setSidebarOpen(true), [])
   const showSidebar = isWideLayout && !!hostId
   const detailHasContent = !!hostId && pathname !== `/h/${hostId}`
   const canCollapseSidebar = showSidebar && detailHasContent
 
-  // Why: there is no reveal button — navigating Back to the base host route brings
-  // the sidebar back (and that route's detail pane is only a placeholder, so a
-  // hidden sidebar would leave nothing useful).
+  // Why: the base host route's detail pane is only a placeholder, so a hidden
+  // sidebar there would leave nothing useful.
   useEffect(() => {
     if (showSidebar && !detailHasContent) {
       setSidebarOpen(true)
@@ -124,7 +125,11 @@ export default function HostGroupLayout() {
           </View>
         ) : null}
         <View style={styles.detail}>
-          <HostStack animation={showSidebar ? 'none' : 'default'} />
+          <HostSidebarRevealContext.Provider
+            value={showSidebar && !sidebarOpen ? revealSidebar : null}
+          >
+            <HostStack animation={showSidebar ? 'none' : 'default'} />
+          </HostSidebarRevealContext.Provider>
         </View>
       </View>
     </HostProtocolGate>

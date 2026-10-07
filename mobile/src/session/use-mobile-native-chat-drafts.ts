@@ -31,6 +31,10 @@ import { mobileNativeChatScopeKey } from './mobile-native-chat-scope-key'
 import { useMobileNativeChatLaunchDraftSeed } from './use-mobile-native-chat-launch-draft-seed'
 import type { MobileNativeChatLaunchDraftSeed } from './use-mobile-native-chat-launch-draft-seed'
 import { MobileNativeChatDraftEditGenerations } from './mobile-native-chat-draft-edit-generations'
+import {
+  setMobileNativeChatDrafts,
+  useMobileNativeChatDraft
+} from './mobile-native-chat-draft-store'
 
 export type { MobileNativeChatPendingMessage, MobileNativeChatSendOrigin }
 
@@ -102,7 +106,8 @@ export function useMobileNativeChatDrafts(args: {
   } = args
   const draftKey = mobileNativeChatScopeKey(hostId, worktreeId, tabId)
   const pendingKey = draftKey && sessionId ? `${draftKey}\0${sessionId}` : null
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const composerText = useMobileNativeChatDraft(draftKey)
+  const setDrafts = setMobileNativeChatDrafts
   const [pendingBySession, setPendingBySession] = useState<
     Record<string, MobileNativeChatPendingMessage[]>
   >({})
@@ -302,7 +307,7 @@ export function useMobileNativeChatDrafts(args: {
   }, [messages, pending, pendingKey, transcriptSettled])
 
   return {
-    composerText: draftKey ? (drafts[draftKey] ?? '') : '',
+    composerText,
     setComposerText,
     appendComposerText,
     getComposerEditGeneration: draftEditGenerationsRef.current.readComposer,
