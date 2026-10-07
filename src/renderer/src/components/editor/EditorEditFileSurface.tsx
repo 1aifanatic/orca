@@ -1,4 +1,5 @@
 import { translate } from '@/i18n/i18n'
+import { getConnectionIdForFile } from '@/lib/connection-context'
 import type { MarkdownViewMode, OpenFile, PendingEditorReveal } from '@/store/slices/editor'
 import type { GitDiffResult } from '../../../../shared/git-diff-compare-types'
 import type { GitStatusEntry } from '../../../../shared/git-status-types'
@@ -10,7 +11,8 @@ import {
   ImageViewer,
   IpynbViewer,
   MermaidViewer,
-  MonacoEditor
+  MonacoEditor,
+  VideoViewer
 } from './editor-lazy-views'
 import type { EditorConflictNavigation } from './useEditorConflictNavigation'
 import { EditorFileLoadErrorView } from './EditorFileLoadErrorView'
@@ -122,6 +124,20 @@ export function EditorEditFileSurface({
     )
   }
   if (fileContent.isBinary) {
+    if (fileContent.videoUrl) {
+      return (
+        <VideoViewer
+          key={fileContent.videoUrl}
+          src={fileContent.videoUrl}
+          filePath={activeFile.filePath}
+          canOpenLocally={
+            !activeFile.externalSshTargetId &&
+            !activeFile.runtimeEnvironmentId &&
+            getConnectionIdForFile(activeFile.worktreeId, activeFile.filePath) === null
+          }
+        />
+      )
+    }
     if (fileContent.isImage) {
       return (
         <ImageViewer
