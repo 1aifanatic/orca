@@ -86,11 +86,17 @@ export function forgetHeldOrcadFence(token: string): void {
   )
 }
 
-/** Only a positively exited earlier process of this machine and boot; anything else may live. */
-export function orcadFenceHeldByExitedProcess(token: string): boolean {
-  const entry = file ? readHeld().find((held) => held.token === token) : undefined
+/** Tokens only positively exited earlier processes of this machine and boot held; any other may live. */
+export function orcadFenceTokensHeldByExitedProcesses(): string[] {
+  return file
+    ? readHeld()
+        .filter(heldByExitedProcess)
+        .map((entry) => entry.token)
+    : []
+}
+
+function heldByExitedProcess(entry: HeldFence): boolean {
   if (
-    !entry ||
     entry.pid === process.pid ||
     entry.host !== hostname() ||
     Math.abs(entry.bootedAt - bootedAt()) > BOOT_TOLERANCE_MS
@@ -103,8 +109,4 @@ export function orcadFenceHeldByExitedProcess(token: string): boolean {
   } catch (error) {
     return error instanceof Error && 'code' in error && error.code === 'ESRCH'
   }
-}
-
-export function hasHeldOrcadFences(): boolean {
-  return file !== null && readHeld().length > 0
 }

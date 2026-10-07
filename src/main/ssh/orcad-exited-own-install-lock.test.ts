@@ -68,7 +68,11 @@ function versionDirWithLock(owner: string, heldToken: string) {
     acquireInstallLock(target.conn, dir, target.host, {
       waitTimeoutMs,
       owner: { fileName: '.orca-fence-owner', token: 't-relaunch' },
-      beforeStaleCheck: (lockDir) => orphanExitedOwnLock(target, lockDir, null)
+      beforeStaleCheck: (lockDir) =>
+        orphanExitedOwnLock(target, lockDir, {
+          baseDir: join(home, '.orca-remote'),
+          guardsStateMutation: false
+        })
     })
   return { lock, acquire }
 }

@@ -148,16 +148,6 @@ describe.skipIf(process.platform === 'win32')('a fence this desktop’s exited p
     expect(readFileSync(join(fence, '.orca-fence-owner'), 'utf-8')).toBe('successor')
     expect(Date.now() - statSync(fence).mtimeMs).toBeLessThan(60_000)
   })
-
-  it.skipIf(process.platform === 'win32')(
-    'keeps the 20-minute window on a Windows host',
-    async () => {
-      const { fence, options } = hostWithFence('t-exited', [entry('t-exited', EXITED_PID)])
-      const windows = { ...options, host: getRemoteHostPlatform('win32-x64') }
-      expect((await orcadActivationFenceRefusal(windows, 'update')).cleared).toBeUndefined()
-      expect(existsSync(fence)).toBe(true)
-    }
-  )
 })
 
 describe.skipIf(process.platform === 'win32')('the held fence token record', () => {

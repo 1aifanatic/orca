@@ -1,12 +1,14 @@
 /**
  * The activation fence's ownership check and conditional release inside the Windows host script,
- * matching the POSIX guard in `orcad-activation-fence-scope.ts`.
+ * matching the POSIX guard in `orcad-activation-fence-scope.ts`, and the exited-own-lock backdate
+ * of `orcad-exited-own-lock.ts`.
  */
 import {
   ORCAD_FENCE_LOST_EXIT,
   ORCAD_FENCE_LOST_MARKER,
   ORCAD_FENCE_OWNER_FILENAME
 } from './orcad-activation-fence-scope'
+import { ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS } from './orcad-state-snapshot-members'
 
 export const ORCAD_WINDOWS_FENCE_ARG = '--fence'
 
@@ -56,6 +58,22 @@ Object.assign(ops, {
     else if (!fs.existsSync(lockDir)) fs.renameSync(lockAside, lockDir)
     try { fs.rmdirSync(path.dirname(lockDir)) } catch {}
     answer('RELEASED')
+  },
+  // Ages a lock one of \`tokens\` (clients proven exited) holds, once it is quiet for three
+  // heartbeats and, with guardArg '1', its state mutation is gone: missing, or its holder proven exited.
+  'fence-orphan-exited'(lockDir, guardArg, ...tokens) {
+    const quiet = (target) => Date.now() - (lstatOrNull(target)?.mtimeMs ?? Date.now()) > ${3 * ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 1000}
+    const token = fenceOwner(lockDir)
+    if (!tokens.includes(token) || !quiet(lockDir)) return answer('KEPT')
+    if (guardArg === '1' && lstatOrNull(MUTATION_LOCK)) {
+      const owner = readOwner()
+      if (owner ? holderState(owner) !== 'dead' : !quiet(MUTATION_LOCK)) return answer('KEPT')
+    }
+    fs.utimesSync(lockDir, new Date(), new Date(Date.UTC(2000, 0, 1)))
+    if (fenceOwner(lockDir) === token) return answer('ORPHANED ' + token)
+    // A successor that took the lock between the check and the backdate gets its freshness back.
+    try { const now = new Date(); fs.utimesSync(lockDir, now, now) } catch {}
+    answer('KEPT')
   }
 })
 `
