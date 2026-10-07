@@ -1247,7 +1247,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..4d62369d0005f465318ec93e221fd3ee
    }
  }
 diff --git a/src/browser/renderer/dom/DomRenderer.ts b/src/browser/renderer/dom/DomRenderer.ts
-index 657217f7104c97ce54b98e88b381b325b061604c..d2ed39120196bc26227936a07f412977d628783b 100644
+index 657217f7104c97ce54b98e88b381b325b061604c..f24018066a9c24e468eceb806b19593dc4fea2e1 100644
 --- a/src/browser/renderer/dom/DomRenderer.ts
 +++ b/src/browser/renderer/dom/DomRenderer.ts
 @@ -11,7 +11,7 @@ import { createSelectionRenderModel } from '../shared/SelectionRenderModel';
@@ -1259,11 +1259,12 @@ index 657217f7104c97ce54b98e88b381b325b061604c..d2ed39120196bc26227936a07f412977
  import { color } from '../../../common/Color';
  import { Disposable, toDisposable } from '../../../common/Lifecycle';
  import { IBufferService, ICoreService, IInstantiationService, IOptionsService } from '../../../common/services/Services';
-@@ -524,6 +524,13 @@ export class DomRenderer extends Disposable implements IRenderer {
+@@ -524,6 +524,14 @@ export class DomRenderer extends Disposable implements IRenderer {
      }
    }
  
 +  public setImageLayerProvider(provider: IImageGlyphProvider | undefined): void {
++    if (this._store.isDisposed) return;
 +    this._rowFactory.imageLayersEnabled = provider?.hasNegativeImages?.() ?? !!provider;
 +    this._rowFactory.getHiddenGlyphColumns = provider?.getHiddenGlyphColumns?.bind(provider);
 +    this._selectionContainer.style.zIndex = this._rowFactory.imageLayersEnabled ? '3' : '';
