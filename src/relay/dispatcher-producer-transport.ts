@@ -133,6 +133,7 @@ export abstract class RelayDispatcherProducerTransport extends RelayDispatcherRp
             }
           })
         ) {
+          finish()
           return
         }
         if (!removeCapacityListener) {
