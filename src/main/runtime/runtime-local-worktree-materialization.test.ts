@@ -22,6 +22,7 @@ vi.mock('../git/worktree-shared-directories', () => ({
 
 import { materializeRuntimeLocalWorktree } from './runtime-local-worktree-materialization'
 import { createWorktreeCreateTimingRecorder } from '../worktree-create-timing'
+import type { RuntimeStore } from './runtime-store-contract'
 
 describe('materializeRuntimeLocalWorktree', () => {
   it('records lineage immediately after metadata and before filesystem setup', async () => {
@@ -46,7 +47,8 @@ describe('materializeRuntimeLocalWorktree', () => {
           addedAt: 1,
           symlinkPaths: ['node_modules']
         },
-        store,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this fixture supplies metadata persistence; the mocked link step throws before further store access.
+        store: store as RuntimeStore,
         settings: { workspaceDir: '/worktrees', nestWorkspaces: true },
         created: {
           path: '/worktrees/app',
@@ -62,6 +64,7 @@ describe('materializeRuntimeLocalWorktree', () => {
         baseBranch: 'main',
         branchName: 'feature/app',
         effectiveRequestedName: 'app',
+        displayNameKind: undefined,
         effectiveSanitizedName: 'app',
         localWorktreeGitOptions: {},
         onMetadataPersisted: () => {
@@ -69,7 +72,7 @@ describe('materializeRuntimeLocalWorktree', () => {
           return null
         },
         timing: createWorktreeCreateTimingRecorder()
-      } as never)
+      })
     ).rejects.toThrow('link failed')
 
     expect(order).toEqual(['metadata', 'filesystem'])
