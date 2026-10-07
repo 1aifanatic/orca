@@ -6,7 +6,6 @@ import {
   type ExecutionHostId
 } from '../../../../shared/execution-host'
 import { buildExecutionHostRegistry } from '../../../../shared/execution-host-registry'
-import { indexExecutionHostsById } from '../../../../shared/managed-orcad-execution-host'
 import { getHostDisplayLabelOverrides } from '../../../../shared/host-setting-overrides'
 import type { ProjectHostSetup } from '../../../../shared/project-types'
 import type { Repo } from '../../../../shared/repo-types'
@@ -144,7 +143,7 @@ export function RepositoryHostSetupsSection({
     projectHostSetups: allProjectHostSetups,
     hostOptions
   })
-  const hostOptionById = indexExecutionHostsById(hostOptions)
+  const hostOptionById = new Map(hostOptions.map((option) => [option.id, option]))
   const [deletingSetupId, setDeletingSetupId] = useState<string | null>(null)
   // Why: split clone entries share a projectId, so each keeps its own selection.
   const selectionKey = settingsSelectionKey ?? selectedProjectHostSetup?.projectId

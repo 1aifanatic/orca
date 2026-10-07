@@ -1,6 +1,7 @@
 /**
- * An SSH host and the managed Orca server Orca runs on it are one machine to the user, so host
- * lists show them as one row: the SSH host's name, keyed by whichever route serves it now.
+ * An SSH host and the managed Orca server Orca runs on it are one machine to the user. The registry
+ * keeps both ids, since workspaces, setups and folders are owned by one or the other; pickers show
+ * one row for the pair and expand a choice of that row to both ids.
  */
 import {
   toRuntimeExecutionHostId,
@@ -15,6 +16,15 @@ export type ManagedOrcadEnvironmentSummary = {
   orcadDeployment?: { sshTargetId: string } | null
 }
 
+/** The merge fields a host row carries; picker option types extend it. */
+export type MergedExecutionHost = {
+  id: ExecutionHostId
+  /** On the row pickers show: the merged-away id it also stands for. */
+  aliasHostIds?: readonly ExecutionHostId[]
+  /** On the merged-away entry: the row that stands for it. */
+  mergedIntoHostId?: ExecutionHostId
+}
+
 /** The SSH target this environment is the managed Orca server for; null for any other server. */
 export function getManagedOrcadSshTargetId(
   environment: ManagedOrcadEnvironmentSummary
@@ -23,15 +33,13 @@ export function getManagedOrcadSshTargetId(
 }
 
 /**
- * Collapses each listed SSH host and its managed server into one entry, in place. The server's id
- * survives unless main reports the host on its relay; the other id is kept as an alias for
- * persisted selections, or kept as its own row while workspaces still point at it.
+ * Pairs each listed SSH host with its managed server, in place. The row pickers show is keyed by
+ * the route serving the host now: the server, unless main reports the host on its relay.
  */
-export function mergeManagedOrcadExecutionHosts(args: {
+export function annotateManagedOrcadExecutionHosts(args: {
   hosts: Map<ExecutionHostId, ExecutionHostRegistryEntry>
   runtimeEnvironments: readonly ManagedOrcadEnvironmentSummary[]
   sshConnectionStates?: ReadonlyMap<string, Pick<SshConnectionState, 'managedServer'>>
-  referencedHostIds: ReadonlySet<ExecutionHostId>
 }): void {
   for (const environment of args.runtimeEnvironments) {
     const targetId = getManagedOrcadSshTargetId(environment)
@@ -47,37 +55,62 @@ export function mergeManagedOrcadExecutionHosts(args: {
       continue
     }
     const onRelay = args.sshConnectionStates?.get(targetId)?.managedServer?.kind === 'relay'
-    const retiredHostId = onRelay ? runtimeHostId : sshHostId
-    const keepRetired = args.referencedHostIds.has(retiredHostId)
-    const aliasHostIds = keepRetired ? undefined : [retiredHostId]
-    if (onRelay) {
-      args.hosts.set(sshHostId, { ...sshHost, ...(aliasHostIds ? { aliasHostIds } : {}) })
-    } else {
-      // Why the server's id: a managed host has no relay, so only the server can serve it.
-      args.hosts.set(runtimeHostId, {
-        ...runtimeHost,
-        label: sshHost.label,
-        detail: sshHost.detail,
-        ...(aliasHostIds ? { aliasHostIds } : {})
-      })
-    }
-    if (!keepRetired) {
-      args.hosts.delete(retiredHostId)
-    }
+    const shown = onRelay ? sshHost : runtimeHost
+    const mergedAway = onRelay ? runtimeHost : sshHost
+    // Why the SSH host's name and detail: that is the identity the user configured.
+    args.hosts.set(shown.id, {
+      ...shown,
+      label: sshHost.label,
+      detail: sshHost.detail,
+      aliasHostIds: [mergedAway.id]
+    })
+    args.hosts.set(mergedAway.id, {
+      ...mergedAway,
+      label: sshHost.label,
+      mergedIntoHostId: shown.id
+    })
   }
 }
 
-/** Indexes hosts by id and alias, so a selection saved under a merged-away id still resolves. */
-export function indexExecutionHostsById<T extends Pick<ExecutionHostRegistryEntry, 'id'>>(
-  hosts: readonly (T & { aliasHostIds?: readonly ExecutionHostId[] })[]
+export function isMergedAwayExecutionHost(host: MergedExecutionHost): boolean {
+  return host.mergedIntoHostId !== undefined
+}
+
+/** The rows a picker shows: one per machine. */
+export function pickerExecutionHosts<T extends MergedExecutionHost>(hosts: readonly T[]): T[] {
+  return hosts.filter((host) => !isMergedAwayExecutionHost(host))
+}
+
+/** Indexes hosts by id, with a merged-away id resolving to the row that stands for it. */
+export function indexExecutionHostsById<T extends MergedExecutionHost>(
+  hosts: readonly T[]
 ): Map<ExecutionHostId, T> {
   const byId = new Map<ExecutionHostId, T>(hosts.map((host) => [host.id, host]))
   for (const host of hosts) {
-    for (const aliasHostId of host.aliasHostIds ?? []) {
-      if (!byId.has(aliasHostId)) {
-        byId.set(aliasHostId, host)
-      }
+    const shown = host.mergedIntoHostId ? byId.get(host.mergedIntoHostId) : undefined
+    if (shown) {
+      byId.set(host.id, shown)
     }
   }
   return byId
+}
+
+/** Every id the given ids stand for, so a choice of a merged row matches both owners. */
+export function expandEquivalentExecutionHostIds(
+  hosts: readonly MergedExecutionHost[],
+  hostIds: Iterable<ExecutionHostId>
+): ExecutionHostId[] {
+  const byId = indexExecutionHostsById(hosts)
+  const expanded = new Set<ExecutionHostId>()
+  for (const hostId of hostIds) {
+    expanded.add(hostId)
+    const shown = byId.get(hostId)
+    if (shown) {
+      expanded.add(shown.id)
+      for (const aliasHostId of shown.aliasHostIds ?? []) {
+        expanded.add(aliasHostId)
+      }
+    }
+  }
+  return [...expanded]
 }

@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { buildExecutionHostRegistry } from './execution-host-registry'
-import { indexExecutionHostsById } from './managed-orcad-execution-host'
+import {
+  expandEquivalentExecutionHostIds,
+  indexExecutionHostsById,
+  pickerExecutionHosts
+} from './managed-orcad-execution-host'
 import type { SshConnectionState } from './ssh-types'
 
 const SSH_TARGETS = new Map([['omarchy-target', 'Omarchy']])
 const MANAGED_SERVER = {
   id: 'omarchy-server',
-  name: 'Omarchy',
+  name: 'Omarchy server',
   orcadDeployment: { sshTargetId: 'omarchy-target' }
 }
 
@@ -27,60 +31,55 @@ function connectionStates(
   ])
 }
 
-function hostIdsAndLabels(
-  hosts: ReturnType<typeof buildExecutionHostRegistry>
-): [string, string][] {
-  return hosts.map((host) => [host.id, host.label])
+function registry(managedServer?: SshConnectionState['managedServer']) {
+  return buildExecutionHostRegistry({
+    repos: [],
+    settings: null,
+    hostSource: 'configured-only',
+    sshTargetLabels: SSH_TARGETS,
+    sshConnectionStates: managedServer ? connectionStates(managedServer) : undefined,
+    runtimeEnvironments: [MANAGED_SERVER]
+  })
 }
 
 describe('managed Orca server host merging', () => {
-  it('shows an SSH host and its managed server as one row routed to the server', () => {
-    const hosts = buildExecutionHostRegistry({
-      repos: [],
-      settings: null,
-      hostSource: 'configured-only',
-      sshTargetLabels: SSH_TARGETS,
-      sshConnectionStates: connectionStates({ kind: 'managed', environmentId: 'omarchy-server' }),
-      runtimeEnvironments: [MANAGED_SERVER]
-    })
+  it('keeps both ids resolvable and shows one row routed to the server', () => {
+    const hosts = registry({ kind: 'managed', environmentId: 'omarchy-server' })
 
-    expect(hostIdsAndLabels(hosts)).toEqual([
-      ['local', expect.any(String)],
-      ['runtime:omarchy-server', 'Omarchy']
+    // Why both: setups, folders and filters are owned by one id or the other.
+    expect(hosts.map((host) => host.id)).toEqual([
+      'local',
+      'runtime:omarchy-server',
+      'ssh:omarchy-target'
     ])
-    expect(hosts[1]).toMatchObject({
-      kind: 'runtime',
-      detail: 'SSH',
-      aliasHostIds: ['ssh:omarchy-target']
+    expect(pickerExecutionHosts(hosts).map((host) => [host.id, host.label, host.detail])).toEqual([
+      ['local', expect.any(String), 'This computer'],
+      ['runtime:omarchy-server', 'Omarchy', 'SSH']
+    ])
+    expect(hosts[1]?.aliasHostIds).toEqual(['ssh:omarchy-target'])
+    expect(hosts[2]).toMatchObject({
+      label: 'Omarchy',
+      mergedIntoHostId: 'runtime:omarchy-server'
     })
   })
 
-  it('merges a disconnected managed host the same way, before main reports its route', () => {
-    const hosts = buildExecutionHostRegistry({
-      repos: [],
-      settings: null,
-      sshTargetLabels: SSH_TARGETS,
-      runtimeEnvironments: [MANAGED_SERVER]
-    })
-
-    expect(hosts.map((host) => host.id)).toEqual(['local', 'runtime:omarchy-server'])
+  it('routes to the server before main reports a route', () => {
+    expect(pickerExecutionHosts(registry()).map((host) => host.id)).toEqual([
+      'local',
+      'runtime:omarchy-server'
+    ])
   })
 
-  it('keeps the SSH id when main reports the host on its relay', () => {
-    const hosts = buildExecutionHostRegistry({
-      repos: [],
-      settings: null,
-      hostSource: 'configured-only',
-      sshTargetLabels: SSH_TARGETS,
-      sshConnectionStates: connectionStates({ kind: 'relay', reason: 'source_changed' }),
-      runtimeEnvironments: [MANAGED_SERVER]
-    })
+  it('shows the SSH id when main reports the host on its relay', () => {
+    const hosts = registry({ kind: 'relay', reason: 'source_changed' })
 
-    expect(hostIdsAndLabels(hosts)).toEqual([
+    expect(pickerExecutionHosts(hosts).map((host) => [host.id, host.label])).toEqual([
       ['local', expect.any(String)],
       ['ssh:omarchy-target', 'Omarchy']
     ])
-    expect(hosts[1]).toMatchObject({ kind: 'ssh', aliasHostIds: ['runtime:omarchy-server'] })
+    expect(hosts.find((host) => host.id === 'runtime:omarchy-server')?.mergedIntoHostId).toBe(
+      'ssh:omarchy-target'
+    )
   })
 
   it('keeps a manually paired server that no SSH host deployed', () => {
@@ -92,7 +91,7 @@ describe('managed Orca server host merging', () => {
       runtimeEnvironments: [{ id: 'paired-server', name: 'Omarchy' }]
     })
 
-    expect(hosts.map((host) => host.id)).toEqual([
+    expect(pickerExecutionHosts(hosts).map((host) => host.id)).toEqual([
       'local',
       'runtime:paired-server',
       'ssh:omarchy-target'
@@ -108,54 +107,27 @@ describe('managed Orca server host merging', () => {
       runtimeEnvironments: [MANAGED_SERVER]
     })
 
-    expect(hostIdsAndLabels(hosts)).toEqual([
+    expect(pickerExecutionHosts(hosts).map((host) => [host.id, host.label])).toEqual([
       ['local', expect.any(String)],
-      ['runtime:omarchy-server', 'Omarchy']
+      ['runtime:omarchy-server', 'Omarchy server']
     ])
     expect(hosts[1]?.aliasHostIds).toBeUndefined()
   })
 
-  it('keeps the SSH row while workspaces still point at it, so they never lose their host', () => {
-    const hosts = buildExecutionHostRegistry({
-      repos: [{ connectionId: 'omarchy-target' }],
-      settings: null,
-      sshTargetLabels: SSH_TARGETS,
-      runtimeEnvironments: [MANAGED_SERVER]
-    })
+  it.each([
+    ['managed', { kind: 'managed', environmentId: 'omarchy-server' } as const],
+    ['relay', { kind: 'relay', reason: 'source_changed' } as const]
+  ])('resolves a selection saved under either id to the %s row', (_route, managedServer) => {
+    const hosts = registry(managedServer)
+    const shownId = managedServer.kind === 'relay' ? 'ssh:omarchy-target' : 'runtime:omarchy-server'
+    const byId = indexExecutionHostsById(hosts)
 
-    expect(hosts.map((host) => host.id)).toEqual([
-      'local',
-      'runtime:omarchy-server',
-      'ssh:omarchy-target'
-    ])
-    expect(hosts.find((host) => host.id === 'runtime:omarchy-server')?.aliasHostIds).toBeUndefined()
-  })
-
-  it('resolves a selection saved under either id to the one merged row', () => {
-    const managed = indexExecutionHostsById(
-      buildExecutionHostRegistry({
-        repos: [],
-        settings: null,
-        hostSource: 'configured-only',
-        sshTargetLabels: SSH_TARGETS,
-        runtimeEnvironments: [MANAGED_SERVER]
-      })
+    expect(byId.get('runtime:omarchy-server')?.id).toBe(shownId)
+    expect(byId.get('ssh:omarchy-target')?.id).toBe(shownId)
+    expect(byId.get('runtime:omarchy-server')?.label).toBe('Omarchy')
+    expect(new Set(expandEquivalentExecutionHostIds(hosts, [shownId]))).toEqual(
+      new Set(['runtime:omarchy-server', 'ssh:omarchy-target'])
     )
-    const relay = indexExecutionHostsById(
-      buildExecutionHostRegistry({
-        repos: [],
-        settings: null,
-        hostSource: 'configured-only',
-        sshTargetLabels: SSH_TARGETS,
-        sshConnectionStates: connectionStates({ kind: 'relay', reason: 'source_changed' }),
-        runtimeEnvironments: [MANAGED_SERVER]
-      })
-    )
-
-    expect(managed.get('runtime:omarchy-server')?.label).toBe('Omarchy')
-    expect(managed.get('ssh:omarchy-target')?.id).toBe('runtime:omarchy-server')
-    expect(relay.get('runtime:omarchy-server')?.id).toBe('ssh:omarchy-target')
-    expect(relay.get('runtime:omarchy-server')?.label).toBe('Omarchy')
   })
 
   it('names the merged row with a rename saved on either id', () => {

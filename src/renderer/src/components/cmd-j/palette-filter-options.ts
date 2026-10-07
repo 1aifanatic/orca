@@ -11,6 +11,7 @@ import type { Worktree } from '../../../../shared/worktree/types'
 import { getProjectHeaderRevealTarget } from '../sidebar/worktree-list/grouping/project-grouping'
 import type { ProjectGroupingModel } from '../sidebar/worktree-list/grouping/project-grouping'
 import type { SidebarHostOption } from '../sidebar/sidebar-host-options'
+import { pickerExecutionHosts } from '../../../../shared/managed-orcad-execution-host'
 import { buildPaletteFilterOptionSearchText } from './palette-filter-option-list'
 
 export type PaletteFilterOption = {
@@ -53,6 +54,8 @@ export type PaletteFilterModel = {
   repoById: ReadonlyMap<string, Pick<Repo, 'connectionId' | 'executionHostId'>>
   /** The focused runtime host, which host-less repos and worktrees inherit. */
   defaultHostId: ExecutionHostId
+  /** Merged-away ids each host row also stands for; absent rows stand only for themselves. */
+  hostAliasesById?: ReadonlyMap<string, readonly ExecutionHostId[]>
 }
 
 function buildRepoHostIndex(
@@ -136,13 +139,20 @@ export function buildPaletteFilterModel({
   }
 
   // Registry order (local first, then SSH/runtime) matches the sidebar host headers.
-  const hosts = hostOptions.map((host) =>
+  const hostRows = pickerExecutionHosts(hostOptions)
+  const hosts = hostRows.map((host) =>
     toFilterOption({
       id: host.id,
       label: host.label,
       detail: host.detail,
-      count: worktreeCountByHostId.get(host.id) ?? 0
+      count: [host.id, ...(host.aliasHostIds ?? [])].reduce(
+        (count, hostId) => count + (worktreeCountByHostId.get(hostId) ?? 0),
+        0
+      )
     })
+  )
+  const hostAliasesById = new Map(
+    hostRows.flatMap((host) => (host.aliasHostIds ? [[host.id, host.aliasHostIds] as const] : []))
   )
 
   // Keep repository IDs aligned with the sidebar; project grouping remains a row concern.
@@ -164,6 +174,7 @@ export function buildPaletteFilterModel({
     repoIdsByProjectKey,
     hostIdsByRepoId,
     repoById,
-    defaultHostId
+    defaultHostId,
+    hostAliasesById
   }
 }
