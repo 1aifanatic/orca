@@ -32,6 +32,7 @@ import {
   subscribeToStructuredAgentSessionPendingSends
 } from './structured-agent-session-pending-sends'
 import { noteStructuredAgentSessionFence } from './structured-agent-session-send-attempt'
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 
 const SESSION = 'session-1'
 const target = { kind: 'local' } as const
@@ -450,6 +451,46 @@ describe('structured agent session message sender', () => {
     await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS * 2)
     expect(sendCalls()).toBe(1)
   })
+
+  // This window answers a re-paired server's call itself, before forwarding it: nothing went out.
+  it('gives back as not sent a send this window turned away because the server was re-paired', async () => {
+    mocks.call.mockRejectedValueOnce(
+      new RuntimeRpcCallError({
+        id: 'agentSession.send',
+        ok: false,
+        error: {
+          code: 'runtime_environment_changed',
+          message: 'Runtime environment pairing changed; refresh and try again'
+        },
+        _meta: { runtimeId: 'runtime-1' }
+      })
+    )
+    const a = send('a')
+    expect(await a.outcome).toBe('returned')
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toContain('Your message was not sent.')
+    expect(getStructuredAgentSessionSendNotice(SESSION)).not.toContain("couldn't confirm")
+    expect(sendCalls()).toBe(1)
+  })
+
+  // A link that drops once the request is out proves nothing, whatever code the transport names.
+  it.each(['runtime_timeout', 'remote_runtime_unavailable'])(
+    'gives back as unconfirmed a send whose link failed with %s',
+    async (code) => {
+      mocks.call.mockRejectedValueOnce(
+        new RuntimeRpcCallError({
+          id: 'agentSession.send',
+          ok: false,
+          error: { code, message: 'lost' },
+          _meta: { runtimeId: 'runtime-1' }
+        })
+      )
+      const a = send('a')
+      expect(await a.outcome).toBe('unconfirmed')
+      expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
+        "Orca couldn't confirm your message reached the agent"
+      )
+    }
+  )
 
   // Bookkeeping never gates a send: a hand-back that throws still frees the chat, and says so.
   it('frees the chat and answers the caller when putting the text back throws', async () => {

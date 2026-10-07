@@ -82,6 +82,9 @@ export type StructuredAgentSessionSendAttempt =
 
 const NOT_SENT = agentSessionWriteNotDoneParts('composer-send')
 
+/** The code a remote call gets when its environment's pairing or identity changed under it. */
+const RUNTIME_ENVIRONMENT_CHANGED = 'runtime_environment_changed'
+
 /** What a failure before the request says: this client and the server can't talk, what the host
  *  refused, that Orca couldn't reach it, or only that nothing was sent. */
 function notSentParts(error: unknown): AgentSessionWriteNoticePart[] {
@@ -138,6 +141,11 @@ export async function attemptStructuredAgentSessionSend(args: {
         : await callStructuredAgentSession<SendAnswer>(target, 'agentSession.send', params)
     answer = { kind: 'result', result }
   } catch (error) {
+    // This window answers it before forwarding anything (the server was re-paired, as a managed
+    // server's update does), so the request never went out.
+    if (error instanceof RuntimeRpcCallError && error.code === RUNTIME_ENVIRONMENT_CHANGED) {
+      return args.abandoned() ? null : { kind: 'not-sent', parts: notSentParts(error) }
+    }
     answer = {
       kind: 'thrown',
       error,
