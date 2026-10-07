@@ -79,7 +79,7 @@ afterEach(() => {
 })
 
 describe('same-path models on different execution hosts', () => {
-  it('uses captured ownership over stale fields for persistence and clean duplicate close', () => {
+  it('persists captured ownership while preserving contradictory records until explicitly closed', async () => {
     const { owners, store, attach } = createHostModels()
     const remote = owners[3]!
     const stale = {
@@ -99,7 +99,13 @@ describe('same-path models on different execution hosts', () => {
     })
     attach()
     store.getState().closeFile(remote.file.id)
+    await Promise.resolve()
+    expect(store.getState().openFiles).toEqual([stale])
+    expect(remote.model.isDisposed()).toBe(false)
+    store.getState().closeFile(stale.id)
+    await Promise.resolve()
     expect(store.getState().openFiles).toHaveLength(0)
+    expect(remote.model.isDisposed()).toBe(true)
   })
 
   it.each(['clean', 'same-draft', 'different-drafts'] as const)(
