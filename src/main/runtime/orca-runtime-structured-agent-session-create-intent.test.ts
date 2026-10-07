@@ -31,6 +31,7 @@ function createCodexIntentRuntime(
   workspacePath = '/repos/workspace-1'
 ) {
   const prepareCodexStructuredLaunch = vi.fn(() => '/accounts/selected/home')
+  const resolveRuntimeFileTarget = vi.fn(async () => ({ worktree: { path: workspacePath } }))
   const runtime = new OrcaRuntimeService(
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: create intent only reads getSettings from the store.
     { getSettings: () => ({ agentDefaultEnv: { codex: {} }, ...settings }) } as never,
@@ -47,7 +48,7 @@ function createCodexIntentRuntime(
       workspaceId,
       workspaceKind: 'git-worktree' as const
     })),
-    resolveRuntimeFileTarget: vi.fn(async () => ({ worktree: { path: workspacePath } }))
+    resolveRuntimeFileTarget
   })
   const createIntent = (resumeFrom?: { providerSessionId: string }) =>
     runtime.resolveStructuredAgentSessionCreateIntent({
@@ -56,7 +57,7 @@ function createCodexIntentRuntime(
       agent: 'codex',
       ...(resumeFrom ? { resumeFrom, callerKey: 'caller-1' } : {})
     })
-  return { prepareCodexStructuredLaunch, createIntent }
+  return { prepareCodexStructuredLaunch, resolveRuntimeFileTarget, createIntent }
 }
 
 describe('structured Codex folder trust', () => {
@@ -76,6 +77,31 @@ describe('structured Codex folder trust', () => {
       expect.objectContaining({ codexHome: '/accounts/selected/home' })
     )
     expect(attachFingerprintFields(intent)).not.toHaveProperty('hostLaunchDirectory')
+  })
+
+  it('trusts the floating host launch directory, and a worktree chat its resolved path', async () => {
+    const floating = createCodexIntentRuntime({}, FLOATING_TERMINAL_WORKTREE_ID, '/repos/later')
+    // Why distinct: a hook that re-resolved the selector instead of using the host directory would pass otherwise.
+    floating.resolveRuntimeFileTarget.mockResolvedValueOnce({
+      worktree: { path: '/host/floating-folder' }
+    })
+
+    expect((await floating.createIntent()).hostLaunchDirectory).toBe('/host/floating-folder')
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledTimes(1)
+    expect(applyAgentWorkspaceTrust).toHaveBeenLastCalledWith(
+      'codex',
+      '/host/floating-folder',
+      expect.objectContaining({ codexHome: '/accounts/selected/home' })
+    )
+
+    const worktree = createCodexIntentRuntime({}, 'workspace-2', '/repos/workspace-2')
+    expect((await worktree.createIntent()).hostLaunchDirectory).toBeUndefined()
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledTimes(2)
+    expect(applyAgentWorkspaceTrust).toHaveBeenLastCalledWith(
+      'codex',
+      '/repos/workspace-2',
+      expect.objectContaining({ codexHome: '/accounts/selected/home' })
+    )
   })
 
   it('pre-trusts the chat folder in the account home launch preparation picks', async () => {
