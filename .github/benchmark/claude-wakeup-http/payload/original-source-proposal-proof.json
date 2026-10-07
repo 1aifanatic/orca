@@ -1,0 +1,124 @@
+{
+  "sourceHead": "98945fd8f44a6d83baba213225e221a2c42adf0d",
+  "target": "src/main/agent-hooks/server-claude-task-wakeup-lifecycle.test.ts",
+  "sourceBeforeSha256": "62dddada401ebc5a4c14b3eca0d2d84535850159df04d702c2160e372408814c",
+  "sourceAfterSha256": "4254fbc04fb1de31259405d0fa8388b9aac00b7c3575871b47f97e614cf9fb64",
+  "patchSha256": "966e907645cf8dd101b6bb4fc165eb48c1013bb835321864f3cdcdf789955867",
+  "sourceOnly": true,
+  "testsRun": false,
+  "trackedEdits": false,
+  "shippingDecisionPending": true,
+  "failingRun": {
+    "runId": 37639529667,
+    "jobId": 112855599918,
+    "prHead": "60a80615188bb5c517f0fffed60f904268d5fed2",
+    "sourceHead": "98945fd8f44a6d83baba213225e221a2c42adf0d",
+    "rawLog": "notes/bun-migration/performance/pr26237-unit-1.log",
+    "actualFileCaseResult": {
+      "passed": 50,
+      "failed": 1
+    },
+    "failedCase": "Claude cancellation with an owed wake-up remote=true > keeps cancellation bounded unless a new prompt opens a turn: true",
+    "boundary": "Stop POST at291 immediately after synchronous advanceTimersByTime(120000) at287; fake timers enabled before real host start at249–255."
+  },
+  "edit": "Add standard Connection: close only to existing real relay POST headers; no retry, simulated ingress, request-body/auth token change, timeout or assertion change.",
+  "allOriginalRegistrationCallbacksUnchanged": true,
+  "originalCallbackInventory": [
+    {
+      "registration": "beforeEach",
+      "literalTitle": null,
+      "callbackSha256": "5bc1eed12d441d0759fd1f236faf75644a8cd9ce17be8753551c4870a3646aa3"
+    },
+    {
+      "registration": "afterEach",
+      "literalTitle": null,
+      "callbackSha256": "32fd94fb97021606bc5ce8958eebfacf3b43c21894524568580d820d1fe8fd1d"
+    },
+    {
+      "registration": "describe.each([false, true])",
+      "literalTitle": "Claude wake-up production ingress remote=%s",
+      "callbackSha256": "c6b7d63e7e9599e7872610c2cbd43b403577103e0c04240980e2e1dc42287e9a"
+    },
+    {
+      "registration": "it.each(['Agent', 'Bash', 'Monitor'])",
+      "literalTitle": "rejects a blank %s launch without phantom debt",
+      "callbackSha256": "97ed22c3d4055ffa6a9593fa4b965f1e4bb890b8e7fd8dc4ea9fd7250905f0e2"
+    },
+    {
+      "registration": "it.each(['Agent', 'Bash', 'Monitor'])",
+      "literalTitle": "matches a padded %s launch to its canonical wake-up",
+      "callbackSha256": "a003864b14145fb45add79ca7723926e9644265cd26f0b11a294631c15909242"
+    },
+    {
+      "registration": "it.each([\n    'one-subagent',\n    'two-subagents-together',\n    'subagent-resumed',\n    'subagent-with-own-shell',\n    'two-shells-together'\n  ])",
+      "literalTitle": "%s never exposes completion before the final captured wake-up",
+      "callbackSha256": "d8143a1e13dfba2f1e623bc978f5efcf09b32f46243b827ba25c0767182571d7"
+    },
+    {
+      "registration": "it",
+      "literalTitle": "does not reopen notification debt for a duplicate child-end post",
+      "callbackSha256": "580abc5424c3dc67b2c87a16cb4694bf5704504f2c69f835f7ce733f0a21328b"
+    },
+    {
+      "registration": "it",
+      "literalTitle": "accepts a delayed wake-up and waits for its main-agent finishing turn",
+      "callbackSha256": "7d0a902aa438289577ba89bb0656a5525b80c778d9ab7d83886768647389733b"
+    },
+    {
+      "registration": "describe.each([false, true])",
+      "literalTitle": "Claude cancellation with an owed wake-up remote=%s",
+      "callbackSha256": "53a0cd8ba7793b68876ae80904a4dcb6a001f49b4e20f422c7b87a2dda973122"
+    },
+    {
+      "registration": "it.each([false, true])",
+      "literalTitle": "keeps cancellation bounded unless a new prompt opens a turn: %s",
+      "callbackSha256": "c242c8d154bd4f1e084417a887b54f4604c1941950e93e3b584d7eace2105f17"
+    },
+    {
+      "registration": "describe.each([false, true])",
+      "literalTitle": "real automation Claude wake-up oracle remote=%s",
+      "callbackSha256": "f7bcf6c2e0e437e6c91f7c273b5668d275b5ebd7000995e6ee85b0481d15e00b"
+    },
+    {
+      "registration": "it.each([\n    'stop',\n    'missing-notification',\n    'native-idle',\n    'cancel',\n    'duplicate',\n    'shell-duplicate',\n    'end-before-launch',\n    'notification-before-launch',\n    'notification-before-end'\n  ])",
+      "literalTitle": "waits on captured ready bytes through task finishing or missing wake-up expiry: %s",
+      "callbackSha256": "cb9b68af201320e4b21b5d3dfb8864b2aa306e9c05eaa51953f1346ee1994730"
+    },
+    {
+      "registration": "describe",
+      "literalTitle": "Claude finishing turn permission restoration",
+      "callbackSha256": "bf15ef13c20d3673a6b10d0e8cca80e6e89bd30d542cea1e7b00164c7b797568"
+    },
+    {
+      "registration": "it.each(['lead', 'child'])",
+      "literalTitle": "retains the cycle through a %s question and clears it on Stop or a fresh prompt",
+      "callbackSha256": "f706d0573ed52e1a0f6ff3406da244c322097b06f8a08f6190e49497c5a41952"
+    },
+    {
+      "registration": "it",
+      "literalTitle": "pairs a sticky child permission with the current lead cycle instead of retaining a stale phase",
+      "callbackSha256": "b4f037e7bed95d6a8fecb72f4e1f85ae70b0632c4c94a84b5dc92efd1c4be3b4"
+    }
+  ],
+  "originalFullModuleRecoveredByRemovingOneHeader": true,
+  "productionChanges": false,
+  "policyWindowsUnchanged": true,
+  "allActualLocalAndRemoteCasesRetained": true,
+  "officialSource": {
+    "url": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.2/src/js/node/_http_server.ts",
+    "lines": [
+      "1344–1384",
+      "1800–1826",
+      "2291–2314"
+    ],
+    "mechanism": "Real server idle socket timeouts use global setTimeout. First callback clears idle-start before granting remaining captured-Date.now budget; the next callback can reach socket timeout/destruction when fake time advances again. Native fetch connection reuse can race its close notification after synchronous policy-clock advancement.",
+    "inferenceBoundary": "Source demonstrates possible transport/policy-clock interference; failing-socket timer identity and root cause have not been observed."
+  },
+  "qualificationRequired": [
+    "Record real relay request/response and owned connection-close evidence around the original120000ms jump; no retries or relaxed deadlines.",
+    "All51 original expanded cases under both coordinators/two shuffle seeds with identical names/statuses and original registry/config/setups.",
+    "Retain unrelated extraction EEXIST failure separately; a green HTTP fixture does not resolve that error.",
+    "Check real auth token,204 status, forwarded ssh-owner attribution and existing wake-up/cancellation assertions; no keep-alive reuse contract is asserted by this file.",
+    "Normal owned command close/no unhandled or leaked server/socket events; retain failing baseline and diagnostic raw evidence."
+  ]
+}
