@@ -18,6 +18,10 @@
 //     draft. Answering a first send, it is that message: sent, then stopped. As a
 //     retained replay it cannot be told from a new send of the same text, and it
 //     provably never ran, so the caller sends it again under a fresh id.
+//   recorded, then rejected — the chat draws it as not sent and its row holds the
+//     text, so it spends the id and answers `queued`: no banner, nothing handed
+//     back. As a retained replay it cannot be told from a new send of the same
+//     text, so the caller sends it again under a fresh id.
 //   rejected — a terminal refusal or rejected submission spends a fresh id. A
 //     pending-admission refusal, or any refusal after earlier transport doubt,
 //     keeps it because neither proves a retained delivery did not happen. Two
@@ -60,6 +64,23 @@ export function mobileStructuredSendWithdrawnBeforeStart(
     submission.queuedMessageId === undefined &&
     submission.dispatchState === 'rejected' &&
     dispatchWasWithdrawn(submission)
+  )
+}
+
+/** Whether a send answer is its own submission, which the host recorded and then rejected: the
+ *  chat draws it in place as not sent. One a Stop withdrew or the queue holds is drawn otherwise. */
+export function mobileStructuredSendRecordedNotSent(
+  result: StructuredAgentSessionMutationCallResult<AgentSessionSendResult>
+): boolean {
+  if (result.status !== 'accepted' || !('submission' in result.value)) {
+    return false
+  }
+  const { submission } = result.value
+  return (
+    submission.dispatchState === 'rejected' &&
+    submission.queuedMessageId === undefined &&
+    submission.keptAsQueuedMessageId === undefined &&
+    !dispatchWasWithdrawn(submission)
   )
 }
 
@@ -127,6 +148,11 @@ export function mobileStructuredSendDelivery(
     // The chat draws it with its stop row, so it is never handed back to the composer as well. A
     // retained replay is resent by the caller.
     return { outcome: retained ? 'rejected' : 'accepted', operationIdSpent: true, error: null }
+  }
+  if (mobileStructuredSendRecordedNotSent(result)) {
+    // Its row in the chat holds the text and says why it was not sent, so nothing is handed back
+    // and no banner repeats it. A retained replay is resent by the caller.
+    return { outcome: retained ? 'rejected' : 'queued', operationIdSpent: true, error: null }
   }
   if (submission.dispatchState === 'rejected') {
     return {

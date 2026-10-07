@@ -70,6 +70,11 @@ export const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.metaSize
   },
+  unsentLabel: {
+    marginTop: spacing.xs,
+    color: colors.textMuted,
+    fontSize: typography.metaSize
+  },
   toolRun: {
     marginTop: spacing.xs
   },

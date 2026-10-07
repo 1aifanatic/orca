@@ -22,8 +22,12 @@ function ok(result: unknown): RpcResponse {
   return { id: 'request-1', ok: true, result, _meta: { runtimeId: 'runtime-1' } }
 }
 
-/** Its own submission, which a Stop took back before the agent started it. */
-function stoppedAnswer(clientMessageId: string): RpcResponse {
+/** Its own submission, in that state: delivered, recorded and then rejected, or taken back by a
+ *  Stop before the agent started it. */
+function submissionAnswer(
+  clientMessageId: string,
+  answer: 'accepted' | 'recorded' | 'stopped'
+): RpcResponse {
   return ok({
     ok: true,
     replayed: false,
@@ -35,9 +39,14 @@ function stoppedAnswer(clientMessageId: string): RpcResponse {
         clientMessageId,
         fence: 3,
         payloadFingerprint: 'fingerprint',
-        dispatchState: 'rejected',
+        dispatchState: answer === 'accepted' ? 'accepted' : 'rejected',
         providerItemId: null,
-        reason: DISPATCH_REJECTED_CANCELLED,
+        reason:
+          answer === 'stopped'
+            ? DISPATCH_REJECTED_CANCELLED
+            : answer === 'recorded'
+              ? 'provider_write_failed: broken pipe'
+              : null,
         submittedAt: 10,
         resolvedAt: 10
       }
@@ -56,8 +65,10 @@ function queuedAnswer(clientMessageId: string, state: 'waiting' | 'withdrawn'): 
 }
 
 /** Each `agentSession.send` answered in turn: a lost answer, a queued draft in that state, or its
- *  submission stopped. */
-function hostAnswering(answers: readonly ('lost' | 'waiting' | 'withdrawn' | 'stopped')[]) {
+ *  submission in that state. */
+function hostAnswering(
+  answers: readonly ('lost' | 'waiting' | 'withdrawn' | 'accepted' | 'recorded' | 'stopped')[]
+) {
   const ids: string[] = []
   const deliveries: unknown[] = []
   const sendRequest = vi.fn<RpcClient['sendRequest']>(async (_method, params) => {
@@ -69,7 +80,9 @@ function hostAnswering(answers: readonly ('lost' | 'waiting' | 'withdrawn' | 'st
     if (answer === 'lost' || answer === undefined) {
       throw markRpcDeliveryUnknown(new Error('Connection closed'))
     }
-    return answer === 'stopped' ? stoppedAnswer(id) : queuedAnswer(id, answer)
+    return answer === 'waiting' || answer === 'withdrawn'
+      ? queuedAnswer(id, answer)
+      : submissionAnswer(id, answer)
   })
   const client: RpcClient = {
     sendRequest,
@@ -211,5 +224,42 @@ describe('a resend past a saved record storage would not clear', () => {
     expect(onError.mock.calls).toEqual([
       ["Sent, but this phone couldn't update its record of sent messages."]
     ])
+  })
+
+  // Its row says it was not sent, so replaying the kept id would answer that again and do nothing.
+  it('sends the same text as a new message when its kept id answers as recorded and rejected', async () => {
+    const { client, ids } = hostAnswering(['lost', 'recorded', 'accepted'])
+    const onError = vi.fn()
+    expect(await sendAgain(client, onError, false)).toBe('unknown')
+    expect(await sendAgain(client, onError, false)).toBe('accepted')
+    expect(ids).toHaveLength(3)
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[0])
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('never says a resend went out when the host recorded and rejected it', async () => {
+    const { client, ids } = hostAnswering(['lost', 'withdrawn', 'recorded'])
+    const onError = vi.fn()
+    expect(await sendAgain(client, onError)).toBe('unknown')
+    asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
+    asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
+    expect(await sendAgain(client, onError)).toBe('queued')
+    expect(ids).toHaveLength(3)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('leaves a replay of its own recorded rejection to the row once it was resent', async () => {
+    const { client, ids } = hostAnswering(['lost', 'recorded', 'lost', 'recorded', 'recorded'])
+    const onError = vi.fn()
+    expect(await sendAgain(client, onError, false)).toBe('unknown')
+    asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
+    asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
+    expect(await sendAgain(client, onError, false)).toBe('unknown')
+    // The resend's own id replays a recorded rejection: its row holds the text, nothing comes back.
+    expect(await sendAgain(client, onError, false)).toBe('queued')
+    expect(ids).toHaveLength(5)
+    expect(ids[4]).toBe(ids[2])
+    expect(onError).not.toHaveBeenCalled()
   })
 })

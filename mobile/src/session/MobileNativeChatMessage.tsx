@@ -21,6 +21,7 @@ import type { NativeChatTurnStatus } from './use-mobile-native-chat-turn-status'
 import { isRenderableImageUri } from './mobile-native-chat-image-preview'
 import { styles, TEXT_SIZE } from './mobile-native-chat-message-styles'
 import { agentMessageAttribution } from './mobile-agent-message-attribution'
+import { AGENT_SESSION_WRITE_NOTICE_COPY } from '../../../src/shared/agent-session-write-notice-copy'
 
 function Prose({
   block,
@@ -106,7 +107,8 @@ function MobileNativeChatMessageImpl({
   structuredActivityUi = false,
   reasoningIsLive = false,
   reasoningExpanded,
-  onToggleReasoning
+  onToggleReasoning,
+  unsentNotice
 }: {
   message: NativeChatMessage
   toolsExpanded?: boolean
@@ -132,6 +134,8 @@ function MobileNativeChatMessageImpl({
   /** The transcript-held disclosure of a reasoning row; one stable handler takes its key. */
   reasoningExpanded?: boolean
   onToggleReasoning?: (key: string) => void
+  /** Why the host did not deliver this message, when it is shown as not sent. */
+  unsentNotice?: string
 }): React.JSX.Element {
   // Another agent's message is set apart from the person's bubble, left-aligned and named.
   const attribution = agentMessageAttribution('Message from', message.from)
@@ -243,6 +247,11 @@ function MobileNativeChatMessageImpl({
             />
           ) : null}
         </Content>
+        {isUser && message.unsent === true ? (
+          <NativeText style={styles.unsentLabel}>
+            {unsentNotice ?? AGENT_SESSION_WRITE_NOTICE_COPY.notDoneSend}
+          </NativeText>
+        ) : null}
       </View>
       {actionsOpen ? (
         <MobileNativeChatMessageActionsSheet

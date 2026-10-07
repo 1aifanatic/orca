@@ -16,6 +16,7 @@ import {
 import { structuredSessionOperationId } from './structured-session-operation-id'
 import {
   mobileStructuredSendDelivery,
+  mobileStructuredSendRecordedNotSent,
   mobileStructuredSendWithdrawnBeforeStart
 } from './mobile-structured-send-delivery'
 import {
@@ -39,13 +40,13 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   delivery?: 'queue-if-active'
   deadline?: number
   onError: (message: string) => void
-  /** Internal: the one fresh-id resend after a withdrawn replay. */
-  resendingAfterWithdrawal?: true
-  /** Internal: that resend when the withdrawn id's record could not be cleared. It bypasses the
+  /** Internal: the one fresh-id resend after a replay that settled without delivering. */
+  resendingAfterSettledReplay?: true
+  /** Internal: that resend when the settled id's record could not be cleared. It bypasses the
    *  record, so failing storage never blocks the send; its id is kept in memory for this app run,
    *  so a retry after a lost answer replays it rather than sending again. */
   bypassRetainedRecord?: true
-  /** Internal: on that resend, the key the withdrawn record matched. The remembered id is keyed
+  /** Internal: on that resend, the key the settled record matched. The remembered id is keyed
    *  by it, so a capability change since the lost answer never mints another id. */
   resendOperationKey?: string
 }): Promise<MobileNativeChatSendOutcome> {
@@ -169,37 +170,42 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
       'queued' in result.value &&
       result.value.queued?.state === 'withdrawn') ||
     (operation.retained && mobileStructuredSendWithdrawnBeforeStart(result))
-  if (withdrawnReplay && operation.retained && !input.resendingAfterWithdrawal) {
-    // The retained id's draft or submission was withdrawn, so it never reached the agent:
-    // this identical message is a new one, not a replay to swallow. A record
-    // storage would not clear is bookkeeping: it is reported, never allowed to
+  const recordedReplay = operation.retained && mobileStructuredSendRecordedNotSent(result)
+  if (
+    (withdrawnReplay || recordedReplay) &&
+    operation.retained &&
+    !input.resendingAfterSettledReplay
+  ) {
+    // The retained id's message never reached the agent (its draft or submission was withdrawn,
+    // or the host recorded and rejected it): this identical message is a new one, not a replay to
+    // swallow. A record storage would not clear is bookkeeping: it is reported, never allowed to
     // block the send.
-    const resent = await sendMobileStructuredAgentSessionMessage({
+    return sendMobileStructuredAgentSessionMessage({
       ...input,
-      resendingAfterWithdrawal: true,
+      resendingAfterSettledReplay: true,
       resendOperationKey: operationKey,
       ...(released ? {} : { bypassRetainedRecord: true as const })
     })
-    // Only when the resend is known to have gone out; an unconfirmed one may not have.
-    if (!released && (resent === 'accepted' || resent === 'queued')) {
-      input.onError("Sent, but this phone couldn't update its record of sent messages.")
-    }
-    return resent
   }
-  if (withdrawnReplay && mobileStructuredSendWithdrawnBeforeStart(result)) {
-    // Not resent, but the chat draws it with its stop row: handing it back too would show it twice.
-    return 'accepted'
-  }
-  if (withdrawnReplay) {
+  if (withdrawnReplay && !mobileStructuredSendWithdrawnBeforeStart(result)) {
     // Not resent: no card and no bubble holds the text, so it goes back to the
     // composer rather than vanishing.
     input.onError('Message not sent')
     return 'rejected'
   }
+  // Not resent, but the chat draws it with its stop row or as not sent: no hand-back as well.
+  const answer = withdrawnReplay ? 'accepted' : recordedReplay ? 'queued' : outcome.outcome
   if (outcome.error !== null) {
     input.onError(outcome.error)
   }
-  return outcome.outcome
+  // Only once the resend is known to have gone out: an unconfirmed one may not have, and one the
+  // host recorded and rejected shows as not sent.
+  const wentOut =
+    answer === 'accepted' || (answer === 'queued' && !mobileStructuredSendRecordedNotSent(result))
+  if (input.bypassRetainedRecord && wentOut) {
+    input.onError("Sent, but this phone couldn't update its record of sent messages.")
+  }
+  return answer
 }
 
 /** The id a resend past an uncleared record goes out under: the one this app run already used

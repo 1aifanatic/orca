@@ -465,7 +465,7 @@ describe('a rejected message the queue holds', () => {
 })
 
 describe('the phone', () => {
-  it('still hides a message the host failed to deliver, but draws one a Stop withdrew', () => {
+  it('draws a message the host failed to deliver as not sent, and one a Stop withdrew', () => {
     const items = [
       ...SEED_ROWS,
       userItem('lost', 3, 'fix the parser'),
@@ -477,9 +477,10 @@ describe('the phone', () => {
       withdrawn('stopped', 'never mind', 4)
     ]
 
-    const messages = projectShared(items, [], submissions, { rejectedInPlace: false })
+    const messages = projectShared(items, [], submissions, { rejectedInPlace: true })
     expect(rows(messages)).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
+      { id: agentJournalSubmissionKey('lost'), text: 'fix the parser', unsent: true },
       { id: agentJournalSubmissionKey('stopped'), text: 'never mind', unsent: false }
     ])
     expectStopRowRightAfterStopped(messages)

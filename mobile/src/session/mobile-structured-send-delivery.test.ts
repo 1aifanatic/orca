@@ -115,17 +115,23 @@ describe('mobileStructuredSendDelivery', () => {
     }
   })
 
-  it('spends the id of a rejection and withholds its internal reason', () => {
+  it('spends the id of a recorded rejection and leaves the message to its row in the chat', () => {
     // Provably undelivered and terminal, so the id can only replay it: spending the
-    // id makes the retry a first delivery. The marker itself names nothing a person
-    // can act on, so it must not reach the screen.
-    expect(
-      mobileStructuredSendDelivery(accepted('rejected', 'provider_write_failed: broken pipe'))
-    ).toEqual({
-      outcome: 'rejected',
-      operationIdSpent: true,
-      error: "Orca couldn't reach the agent. Your message was not sent. Send it again."
-    })
+    // id makes the retry a first delivery. The host recorded the message, so its row
+    // holds it and says why it was not sent: no banner, no hand-back.
+    for (const reason of ['provider_write_failed: broken pipe', 'Claude does not support .bmp']) {
+      expect(mobileStructuredSendDelivery(accepted('rejected', reason))).toEqual({
+        outcome: 'queued',
+        operationIdSpent: true,
+        error: null
+      })
+      // A retained replay cannot be told from a new send of the same text: the caller resends it.
+      expect(mobileStructuredSendDelivery(accepted('rejected', reason), true)).toEqual({
+        outcome: 'rejected',
+        operationIdSpent: true,
+        error: null
+      })
+    }
   })
 
   it('answers a send the host kept as a card like a queued one, first send or replay', () => {
@@ -177,16 +183,6 @@ describe('mobileStructuredSendDelivery', () => {
       })
     }
   )
-
-  it('shows a provider content rejection verbatim', () => {
-    expect(
-      mobileStructuredSendDelivery(accepted('rejected', 'Claude does not support .bmp'))
-    ).toEqual({
-      outcome: 'rejected',
-      operationIdSpent: true,
-      error: 'Claude does not support .bmp'
-    })
-  })
 
   it('spends only refusals that prove the operation is settled', () => {
     expect(
