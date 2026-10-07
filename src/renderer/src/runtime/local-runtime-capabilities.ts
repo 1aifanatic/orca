@@ -46,6 +46,27 @@ export async function ensureLocalRuntimeCapabilities(): Promise<
   return localRuntimeCapabilities
 }
 
+/** Resolves with the capabilities once a probe lands them, probing once now; a failed probe does
+ *  not end the wait, since the next probe anyone makes still answers it. `stop` drops the wait. */
+export function awaitLocalRuntimeCapabilities(): {
+  known: Promise<readonly RuntimeCapability[]>
+  stop: () => void
+} {
+  let stop = (): void => {}
+  const known = new Promise<readonly RuntimeCapability[]>((resolve) => {
+    if (localRuntimeCapabilities !== null) {
+      resolve(localRuntimeCapabilities)
+      return
+    }
+    stop = subscribeLocalRuntimeCapabilitiesKnown((capabilities) => {
+      stop()
+      resolve(capabilities)
+    })
+    void refreshLocalRuntimeCapabilities()
+  })
+  return { known, stop: () => stop() }
+}
+
 /** `refreshLocalRuntimeCapabilities` is not `async`, so a missing or broken preload bridge would
  *  throw synchronously out of it instead of settling into the unknown state its catch owns. */
 function startLocalRuntimeCapabilityProbe(): ReturnType<typeof window.api.runtime.getStatus> {

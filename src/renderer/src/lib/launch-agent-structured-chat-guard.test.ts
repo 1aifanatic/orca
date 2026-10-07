@@ -161,7 +161,9 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: () => hostCapabilities,
-  ensureLocalRuntimeCapabilities: async () => hostCapabilities
+  ensureLocalRuntimeCapabilities: async () => hostCapabilities,
+  // A launch made before the runtime answered hears back that it supports no structured chat.
+  awaitLocalRuntimeCapabilities: () => ({ known: Promise.resolve([]), stop: () => {} })
 }))
 vi.mock('@/lib/worktree-runtime-owner', () => ({
   getExecutionHostIdForWorktree: () =>

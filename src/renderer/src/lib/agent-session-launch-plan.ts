@@ -27,7 +27,7 @@ import {
 import type { StructuredAgentLaunchOptions } from '@/lib/structured-agent-session-launch'
 import type { AgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 import { relearnHostStructuredAgents } from '@/runtime/host-structured-agents'
-import { ensureLocalRuntimeCapabilities } from '@/runtime/local-runtime-capabilities'
+import { awaitLocalRuntimeCapabilities } from '@/runtime/local-runtime-capabilities'
 
 export type AgentSessionLaunchRequest = AgentLaunchRouteArgs & {
   /** The user action this launch serves, minted where that action is handled. */
@@ -235,11 +235,16 @@ export function awaitStructuredRouteHostAnswer(
   if (!awaits) {
     return null
   }
+  let stopCapabilitiesWait = (): void => {}
   const ask = async (): Promise<void> => {
-    const capabilities =
-      awaits === 'local-capabilities'
-        ? await ensureLocalRuntimeCapabilities()
-        : input.hostCapabilities
+    let capabilities = input.hostCapabilities
+    // Either route may be missing this computer's capabilities: wait for the probe that lands
+    // them, since one that failed at startup answers null at once.
+    if (capabilities === null && parseExecutionHostId(input.executionHostId)?.kind === 'local') {
+      const wait = awaitLocalRuntimeCapabilities()
+      stopCapabilitiesWait = wait.stop
+      capabilities = await wait.known
+    }
     await relearnHostStructuredAgents(
       input.executionHostId,
       capabilities,
@@ -253,7 +258,10 @@ export function awaitStructuredRouteHostAnswer(
   const deadline = new Promise<void>((resolve) => {
     timer = setTimeout(resolve, waitMs)
   })
-  return Promise.race([answered, deadline]).finally(() => clearTimeout(timer))
+  return Promise.race([answered, deadline]).finally(() => {
+    clearTimeout(timer)
+    stopCapabilitiesWait()
+  })
 }
 
 /** The one place a launch route is decided. Delivery mode is fixed here too, so the settle loop
