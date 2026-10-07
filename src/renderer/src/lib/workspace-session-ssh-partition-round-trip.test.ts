@@ -121,25 +121,57 @@ describe('ssh host partition hydration', () => {
     ).toBe('session-1')
   })
 
-  it('leaves a workspace the local partition already holds tabs for untouched', async () => {
-    // The other direction of the same rule, and the reason adoption is only gap-filling: merging
-    // into a populated row would re-add tabs the user had closed on every launch.
+  it('ignores a stray local copy of a workspace the catalog places on the ssh target', async () => {
+    // `local` rows for an SSH workspace are residue (#23390, #25616). Keeping them restored tabs
+    // the user had closed and dropped the live ones the SSH partition holds.
     const read = await fetchWorkspaceSessionWithRuntimeHostOwners(
       partitionedApi(strandedPartitions([tab('tab-runtime')], [tab('tab-local')])),
       repos
     )
 
     expect(read.session.tabsByWorktree[WORKTREE_ID]?.map((entry) => entry.id)).toEqual([
-      'tab-local'
+      'tab-runtime'
+    ])
+    expect(read.session.activeTabIdByWorktree?.[WORKTREE_ID]).toBe('tab-runtime')
+    expect(read.contestedPrimaryHostBySessionKey[WORKTREE_ID]).toBe(SSH_HOST_ID)
+  })
+
+  it('keeps the ssh partition agent-resume records beside a stray local copy', async () => {
+    const partitions = strandedPartitions([tab('tab-runtime')], [tab('tab-local')])
+    partitions[SSH_HOST_ID] = session({
+      ...partitions[SSH_HOST_ID],
+      sleepingAgentSessionsByPaneKey: {
+        'tab-runtime:leaf-1': {
+          paneKey: 'tab-runtime:leaf-1',
+          worktreeId: WORKTREE_ID,
+          tabId: 'tab-runtime',
+          agent: 'claude',
+          providerSession: { key: 'session_id', id: 'session-1' },
+          prompt: 'resume me',
+          state: 'done',
+          capturedAt: 5,
+          updatedAt: 5
+        } satisfies SleepingAgentSessionRecord
+      }
+    })
+
+    const read = await fetchWorkspaceSessionWithRuntimeHostOwners(partitionedApi(partitions), repos)
+
+    expect(Object.keys(read.session.sleepingAgentSessionsByPaneKey ?? {})).toEqual([
+      'tab-runtime:leaf-1'
     ])
   })
 
-  it("leaves that workspace's other rows alone as well", async () => {
+  it('leaves a populated local copy alone when the catalog cannot name its owner', async () => {
+    // Without a repo row the local copy may be the live one, so the gap-filling rule still applies.
     const read = await fetchWorkspaceSessionWithRuntimeHostOwners(
       partitionedApi(strandedPartitions([tab('tab-runtime')], [tab('tab-local')])),
-      repos
+      []
     )
 
+    expect(read.session.tabsByWorktree[WORKTREE_ID]?.map((entry) => entry.id)).toEqual([
+      'tab-local'
+    ])
     expect(read.session.activeTabIdByWorktree?.[WORKTREE_ID]).toBeUndefined()
   })
 

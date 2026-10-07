@@ -51,7 +51,9 @@ import {
  * that anything was closed (`mergeDirectSshRemoteWorkspaceSession` argues this at length, and
  * docs/reference/ssh-execution-boundary.md makes it general — "we could not see it" is
  * `unverifiable`, never proof of absence). Treating it as the truth is what published an empty tab
- * list and let `replace-session` delete the host's copy (#12721).
+ * list and let `replace-session` delete the host's copy (#12721). Boot hydration removes `local`
+ * copies of workspaces the repo catalog places on the SSH target before calling this, so the rule
+ * only decides for workspaces whose owner it cannot name (#23390).
  */
 
 type KeyedRecord = Record<string, unknown>
