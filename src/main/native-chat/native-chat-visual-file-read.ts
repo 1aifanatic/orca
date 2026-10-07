@@ -95,8 +95,13 @@ async function openVisual(candidate: string): Promise<FileHandle> {
   }
 }
 
-/** After the open: the handle must still be the file directly inside the canonical folder. */
+/**
+ * After the open: the handle must still be the file directly inside the canonical folder, and the
+ * folder that canonical path names must still be the real directory at Orca's own path (a symlink
+ * swapped in and out around the first check would otherwise aim `folderReal` elsewhere).
+ */
 async function assertStillContained(
+  folder: string,
   candidate: string,
   folderReal: string,
   file: string,
@@ -105,9 +110,24 @@ async function assertStillContained(
   let resolved: string
   let current: Stats
   try {
+    const [parentNow, folderNow, canonicalFolderNow] = await Promise.all([
+      lstat(dirname(folder)),
+      lstat(folder),
+      lstat(folderReal)
+    ])
+    if (
+      parentNow.isSymbolicLink() ||
+      folderNow.isSymbolicLink() ||
+      !sameFile(folderNow, canonicalFolderNow)
+    ) {
+      refuse('outside_folder')
+    }
     resolved = await realpath(candidate)
     current = await lstat(candidate)
   } catch (error) {
+    if (error instanceof VisualReadRefusal) {
+      throw error
+    }
     if (isENOENT(error)) {
       refuse('not_found')
     }
@@ -161,7 +181,7 @@ async function readContained(
     if (stats.size > NATIVE_CHAT_VISUAL_MAX_BYTES) {
       refuse('too_large')
     }
-    await assertStillContained(candidate, folderReal, file, stats)
+    await assertStillContained(folder, candidate, folderReal, file, stats)
     let buffer: Buffer
     try {
       buffer = await readLocalFileBounded(handle, NATIVE_CHAT_VISUAL_MAX_BYTES, stats.size)
@@ -184,7 +204,8 @@ async function readContained(
 
 /**
  * The visual `file` from `folder`, or the refusal the host observed. Unexpected filesystem faults
- * still throw, so the client reads them as unavailable rather than as a verdict about the file.
+ * still throw, so the client reads them as unavailable rather than as a verdict about the file; the
+ * thrown error names only the error code, never a host path.
  */
 export async function readNativeChatVisualFile(
   folder: string,
@@ -197,6 +218,6 @@ export async function readNativeChatVisualFile(
     if (error instanceof VisualReadRefusal) {
       return { ok: false, error: error.refusal }
     }
-    throw error
+    throw new Error(`visual_read_failed:${errorCode(error) ?? 'unknown'}`)
   }
 }
