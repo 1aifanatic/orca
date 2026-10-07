@@ -57,6 +57,16 @@ directly instead of creating another encoded buffer through `Blob.arrayBuffer()`
 This permits synchronous source access on execution hosts; browser bitmap decoding
 remains asynchronous. `config/scripts/xterm-image-source-bytes-contract.test.mjs`
 checks decoder reuse, caller-buffer isolation and unaligned RGB input windows.
+Raster creation and transforms share `ImageSourceOperations`. The default backend
+uses browser bitmaps or Canvas; an injected `IImageRasterBackend` supplies owned
+RGBA buffers and synchronous decoding, inflation, crop, resize and offset operations.
+Import the backend types from `@xterm/addon-image/src/ImageRasterBackend` to include
+the option's type augmentation. Every host operation remains synchronous through
+the protocol handler, so headless `writeSync` consumes following text in the same
+write. Temporary sources have one owner across transforms and stale-result cleanup;
+placement cell metrics are copied before storage. The contract suite loads the actual
+headless terminal without DOM globals, using a fixture backend. This boundary alone
+does not provide production host codecs, file transport or graphics checkpoints.
 The patch also bounds decompression before joining decoded chunks, validates PNG
 dimensions before native decoding, and closes stale asynchronous image results
 after reset, disable or disposal. `config/scripts/xterm-image-lifecycle-contract.test.mjs`
