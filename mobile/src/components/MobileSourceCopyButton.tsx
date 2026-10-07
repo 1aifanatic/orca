@@ -1,8 +1,10 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { Alert, Pressable, StyleSheet, Text } from 'react-native'
+import { Alert, Platform, Pressable, StyleSheet, Text } from 'react-native'
 import { Check, Copy } from 'lucide-react-native'
 import { useClipboardWriter } from '../platform/clipboard'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
+
+type CopyFeedback = { status: 'copied'; text: string } | { status: 'failed' }
 
 export function MobileSourceCopyButton({
   text,
@@ -14,29 +16,41 @@ export function MobileSourceCopyButton({
   partial?: boolean
 }): React.JSX.Element {
   const clipboard = useClipboardWriter()
-  const [copiedText, setCopiedText] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<CopyFeedback | null>(null)
   const latestAttempt = useRef<{ sourceVersion: number } | null>(null)
   const sourceVersion = useRef(0)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  if (copiedText !== null && copiedText !== text) {
-    setCopiedText(null)
+  if (feedback?.status === 'copied' && feedback.text !== text) {
+    setFeedback(null)
   }
   useLayoutEffect(
     () => () => {
       latestAttempt.current = null
+      if (resetTimer.current !== null) {
+        clearTimeout(resetTimer.current)
+        resetTimer.current = null
+      }
     },
     []
   )
   // Streaming invalidates success feedback, while the pending user action still owns failures.
   useLayoutEffect(() => {
     sourceVersion.current++
-    return () => {
-      if (resetTimer.current !== null) {
-        clearTimeout(resetTimer.current)
-        resetTimer.current = null
-      }
+    if (feedback?.status !== 'failed' && resetTimer.current !== null) {
+      clearTimeout(resetTimer.current)
+      resetTimer.current = null
     }
   }, [text])
+
+  const showFeedback = (result: CopyFeedback, attempt: { sourceVersion: number }) => {
+    setFeedback(result)
+    resetTimer.current = setTimeout(() => {
+      resetTimer.current = null
+      if (latestAttempt.current === attempt) {
+        setFeedback(null)
+      }
+    }, 1500)
+  }
 
   const copy = async () => {
     if (text.length === 0) {
@@ -48,32 +62,39 @@ export function MobileSourceCopyButton({
       clearTimeout(resetTimer.current)
       resetTimer.current = null
     }
-    setCopiedText(null)
+    setFeedback(null)
     try {
       await clipboard.writeText(text)
     } catch (error) {
       if (latestAttempt.current !== attempt) {
         return
       }
-      Alert.alert(
-        'Copy failed',
-        error instanceof Error ? error.message : 'The clipboard rejected the text.'
-      )
+      if (Platform.OS === 'web') {
+        showFeedback({ status: 'failed' }, attempt)
+      } else {
+        Alert.alert(
+          'Copy failed',
+          error instanceof Error ? error.message : 'The clipboard rejected the text.'
+        )
+      }
       return
     }
     if (latestAttempt.current !== attempt || sourceVersion.current !== attempt.sourceVersion) {
       return
     }
-    setCopiedText(text)
-    resetTimer.current = setTimeout(() => {
-      resetTimer.current = null
-      if (latestAttempt.current === attempt) {
-        setCopiedText(null)
-      }
-    }, 1500)
+    showFeedback({ status: 'copied', text }, attempt)
   }
-  const copied = copiedText === text
-  const label = copied ? (partial ? 'Copied loaded' : 'Copied') : partial ? 'Copy loaded' : 'Copy'
+  const copied = feedback?.status === 'copied' && feedback.text === text
+  const failed = feedback?.status === 'failed'
+  const label = failed
+    ? 'Failed'
+    : copied
+      ? partial
+        ? 'Copied loaded'
+        : 'Copied'
+      : partial
+        ? 'Copy loaded'
+        : 'Copy'
   const Icon = copied ? Check : Copy
   return (
     <Pressable
@@ -81,13 +102,16 @@ export function MobileSourceCopyButton({
       hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityValue={{ text: copied ? label : undefined }}
+      accessibilityValue={{ text: failed ? "Couldn't copy" : copied ? label : undefined }}
+      aria-valuetext={failed ? "Couldn't copy" : copied ? label : undefined}
       accessibilityState={{ disabled: text.length === 0 }}
       disabled={text.length === 0}
       onPress={() => void copy()}
     >
       <Icon size={14} color={colors.textSecondary} />
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label} accessibilityLiveRegion={failed ? 'polite' : undefined}>
+        {label}
+      </Text>
     </Pressable>
   )
 }

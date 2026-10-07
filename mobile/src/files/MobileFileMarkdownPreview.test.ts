@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MobileFileMarkdownPreview } from './MobileFileMarkdownPreview'
 
 vi.mock('react-native', () => ({
-  Alert: { alert: vi.fn() },
+  Alert: { alert },
+  Platform: { OS: 'ios' },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   Text: 'Text',
@@ -19,7 +20,7 @@ vi.mock('lucide-react-native', () => ({
   Check: 'Check'
 }))
 
-const { writeText } = vi.hoisted(() => ({ writeText: vi.fn() }))
+const { writeText, alert } = vi.hoisted(() => ({ writeText: vi.fn(), alert: vi.fn() }))
 vi.mock('../platform/clipboard', () => ({ useClipboardWriter: () => ({ writeText }) }))
 
 vi.mock('../components/MobileMarkdown', () => ({
@@ -86,6 +87,7 @@ describe('MobileFileMarkdownPreview', () => {
 
   beforeEach(() => {
     writeText.mockClear()
+    alert.mockClear()
     writeText.mockResolvedValue(undefined)
   })
 
@@ -131,6 +133,26 @@ describe('MobileFileMarkdownPreview', () => {
     expect(writeText.mock.calls).toEqual([[source]])
     await selectMode(renderer, 'View Markdown source')
     expect(modeToggle(renderer, 'Copy loaded Markdown source')).toBeDefined()
+  })
+
+  it('keeps native clipboard failure feedback and permits a retry', async () => {
+    const source = '# Loaded source'
+    renderer = await renderPreview({
+      relativePath: 'notes/file.md',
+      content: source,
+      truncated: false,
+      byteLength: source.length
+    })
+    writeText.mockRejectedValueOnce(new Error('Clipboard unavailable'))
+    await selectMode(renderer, 'Copy Markdown source')
+    expect(alert).toHaveBeenCalledExactlyOnceWith('Copy failed', 'Clipboard unavailable')
+    expect(
+      renderer.root
+        .findAll((node) => String(node.type) === 'Text')
+        .some((node) => node.props.children === 'Copied')
+    ).toBe(false)
+    await selectMode(renderer, 'Copy Markdown source')
+    expect(writeText.mock.calls).toEqual([[source], [source]])
   })
 
   it('resets the selected mode for a new file or line target without remounting the preview', async () => {
