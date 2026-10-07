@@ -52,7 +52,7 @@ function sessionView(): React.JSX.Element {
   )
 }
 
-function composerSend(): (text: string, attachments: unknown[]) => boolean {
+function composerSend(): (text: string, attachments: unknown[]) => boolean | 'queued' {
   const send = mocks.composerProps?.structuredTransport?.send
   if (typeof send !== 'function') {
     throw new Error('Structured composer transport was not installed')
@@ -225,6 +225,18 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
       expect(mocks.send).not.toHaveBeenCalled()
     }
   )
+
+  // Launch Retry relaunches the chat, and the reader may have scrolled up in it.
+  it('brings the latest into view when launch Retry relaunches a failed chat', async () => {
+    mocks.launchLifecycle = 'failed'
+    render(sessionView())
+    await screen.findByRole('button', { name: 'Retry' })
+    mocks.revealLatest.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(mocks.revealLatest).toHaveBeenCalledOnce()
+  })
 
   it.each([null, 'published'] as const)(
     'enables provider transport for lifecycle %s',

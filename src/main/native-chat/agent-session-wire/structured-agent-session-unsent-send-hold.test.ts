@@ -33,7 +33,12 @@ import {
 /** Orchestration mail as the mailbox sends it: from another agent, naming its sender. */
 const MAIL_SOURCE: AgentMessageSource = {
   kind: 'agent',
-  senders: [{ party: { address: 'agent:coordinator', terminalHandle: null, orcaSessionId: null } }],
+  senders: [
+    {
+      party: { address: 'agent:coordinator', terminalHandle: null, orcaSessionId: null },
+      name: null
+    }
+  ],
   orchestration: { message: 'mail-notice', mailbox: 'agent:worker', dispatchId: null, messages: [] }
 }
 
@@ -302,10 +307,10 @@ describe('only an action on the card releases a kept card', () => {
 })
 
 // The queue stops with delivery at quit, so a quit makes no hand-off only the next process could
-// settle: the queued cards come back as a crash leaves them, under the restart's pause.
+// settle: the queued cards come back as a crash leaves them, under the restart's hold.
 describe('cards queued behind a working turn, then Orca stops', () => {
   it.each(['quit', 'crash'] as const)(
-    'after a %s they wait under the restart pause, not kept, with no hand-off made',
+    'after a %s they wait under the restart hold, not kept, with no hand-off made',
     async (how) => {
       await rig.workingSend()
       const first = rig.send('queued behind work', 'queue-if-active')
@@ -328,7 +333,8 @@ describe('cards queued behind a working turn, then Orca stops', () => {
         { messageId: first.id, state: 'waiting' },
         { messageId: second.id, state: 'waiting' }
       ])
-      expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+      // The restart's hold is never published; the cards still wait.
+      expect(await rig.queuePause()).toBeNull()
       expect(await rig.handoff(first.id)).toBeUndefined()
       expect(journal().queuedMessages.get(first.id)?.holdReason).toBeNull()
     }
@@ -397,7 +403,7 @@ describe('the queue at a quit', () => {
       rig.crashRestartHostProcess()
 
       expect(await rig.drafts()).toEqual([{ messageId: queued.id, state: 'waiting' }])
-      expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+      expect(await rig.queuePause()).toBeNull()
       expect(await rig.handoff(queued.id)).toBeUndefined()
       expect(rig.dispatch).not.toHaveBeenCalled()
     }
@@ -419,7 +425,7 @@ describe('the queue at a quit', () => {
       { messageId: pushed.id, ...KEPT },
       { messageId: first.id, state: 'waiting' }
     ])
-    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    expect(await rig.queuePause()).toBeNull()
     await rig.resume()
     await eventually(() => expect(dispatchedTexts()).toEqual(['first queued']))
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -514,18 +520,31 @@ describe('the same send arriving again after the restart', () => {
 })
 
 describe('what is not kept', () => {
-  // Mail names its sender (an agent); a dispatch preamble names none. Neither is a person's.
+  // Mail names its sender on its body (an agent); a dispatch preamble names none. Neither is a
+  // person's, and the submission's kind is read off that.
   it.each([
-    { by: 'mail', source: MAIL_SOURCE, recorded: { kind: 'agent' } },
-    { by: 'dispatch', source: undefined, recorded: undefined }
-  ])('an orchestration $by send is rejected, as before', async ({ by, source, recorded }) => {
+    { by: 'mail', from: MAIL_SOURCE, recorded: { kind: 'agent' } },
+    { by: 'dispatch', from: undefined, recorded: undefined }
+  ])('an orchestration $by send is rejected, as before', async ({ by, from, recorded }) => {
     const { userSend: _person, ...sent } = sendRequest(by)
-    await acceptWhileStarting({ ...sent, ...(source ? { source } : {}) })
+    await acceptWhileStarting({ ...sent, ...(from ? { body: { ...sent.body, from } } : {}) })
     await rig.crashRestartHostProcess()
     expect(await rig.drafts()).toEqual([])
     const submission = await rig.submission(sent.envelope.clientOperationId)
     expect(submission).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
     expect(submission?.source).toEqual(recorded)
+  })
+
+  // Not a client's send, but the person's: the host sends a launch's first prompt for them.
+  it("keeps a launch's first prompt, which the host sends for the person", async () => {
+    const { userSend: _client, ...sent } = sendRequest('the launch prompt')
+    await acceptWhileStarting({ ...sent, personsMessage: true })
+    await rig.crashRestartHostProcess()
+    expect(await rig.drafts()).toEqual([{ messageId: sent.envelope.clientOperationId, ...KEPT }])
+    expect(await rig.submission(sent.envelope.clientOperationId)).toMatchObject({
+      origin: 'host',
+      source: { kind: 'user' }
+    })
   })
 
   it('a send whose card could not be written is rejected as before, and nothing stays queued', async () => {

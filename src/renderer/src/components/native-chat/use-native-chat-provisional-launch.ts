@@ -77,7 +77,7 @@ export function useNativeChatProvisionalLaunch(
   // While the chat starts it takes no send, so Send stays off and the text stays in the box.
   const starting = lifecycle === 'pending' || lifecycle === 'visibility-unknown'
   const sendThroughLaunch = useCallback(
-    (text: string, withImages: boolean, send: () => boolean): boolean => {
+    (text: string, withImages: boolean, send: () => boolean | 'queued'): boolean | 'queued' => {
       if (starting) {
         return false
       }

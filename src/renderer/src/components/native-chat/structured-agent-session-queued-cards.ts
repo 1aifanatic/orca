@@ -3,9 +3,15 @@
 
 import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionQueuePause
+} from '../../../../shared/agent-session-wire'
+import {
+  readAgentMessageSource,
+  type AgentMessageSource
+} from '../../../../shared/agent-session-message-source'
 import { handedOffQueuedMessageIds } from '../../../../shared/structured-agent-session-draft-hand-off'
-import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
@@ -29,6 +35,8 @@ export type QueuedMessageCard = {
   returnedReason?: string | null
   /** The typed fact the returned card's submission settled with; read like its `rejection`. */
   returnedRejection?: UnreadAgentSessionFailureFact
+  /** Another agent's card: who sent it. */
+  from?: AgentMessageSource
 }
 
 function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string {
@@ -68,6 +76,7 @@ export function projectQueuedMessageCards(
                 ? 'awaiting-answer'
                 : 'turn'
     behindReturned = behindReturned || message.state === 'returned'
+    const from = readAgentMessageSource(message.body.from)
     return {
       messageId: message.messageId,
       position: message.position,
@@ -78,9 +87,25 @@ export function projectQueuedMessageCards(
       ...(message.returnedReason !== undefined ? { returnedReason: message.returnedReason } : {}),
       ...(message.returnedRejection !== undefined
         ? { returnedRejection: message.returnedRejection }
-        : {})
+        : {}),
+      ...(from ? { from } : {})
     }
   })
+}
+
+/** The pause the header row names, while it holds a card. A pause over cards Resume would not
+ *  send (returned, held on their own, or behind a returned one) offers nothing to press. */
+export function queuedMessagesQueuePause(
+  cards: readonly QueuedMessageCard[],
+  queuePause: AgentSessionQueuePause | null
+): AgentSessionQueuePause | null {
+  return cards.some((card) => card.hold === 'queue-paused') ? queuePause : null
+}
+
+/** Steer names the mid-turn jump, also while the whole queue is paused; a card held on its own or
+ *  returned is not waiting on the turn, so its action is plainly Send. */
+export function queuedMessageCardSteers(card: QueuedMessageCard): boolean {
+  return card.hold !== 'paused' && card.hold !== 'returned'
 }
 
 /** The card Cmd/Ctrl+Enter steers: the newest one; every shown card takes Send-now. */
@@ -95,11 +120,9 @@ export function newestSteerableQueuedMessageCard(
  * card, and so is one asking to be queued while the agent works, which would otherwise paint in the
  * transcript until its card appears. A recorded one stays drawn until its row arrives.
  */
-export function pendingSendsOutsideQueuedCards(
-  pending: readonly StructuredAgentSessionPendingSend[],
-  heldIds: readonly string[],
-  isWorking: boolean
-): readonly StructuredAgentSessionPendingSend[] {
+export function pendingSendsOutsideQueuedCards<
+  Send extends { clientMessageId: string; delivery?: 'queue-if-active' }
+>(pending: readonly Send[], heldIds: readonly string[], isWorking: boolean): readonly Send[] {
   const held = new Set(heldIds)
   const next = pending.filter(
     (entry) =>

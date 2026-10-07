@@ -117,7 +117,6 @@ export function useStructuredAgentSession(args: {
   })
   // Only a capable host may see `delivery`; a card any host publishes shows, with its actions.
   const queueCapability = useStructuredAgentSessionHostQueuesMessagesState(target)
-  const queueCapable = queueCapability === 'supported'
   const queuedMessageIds = useMemo(
     () => (transportState.queuedMessages ?? []).map((message) => message.messageId),
     [transportState.queuedMessages]
@@ -146,6 +145,7 @@ export function useStructuredAgentSession(args: {
     queuedMessageIds,
     queue,
     historyLoaded: transportEnabled && state.status === 'ready',
+    isWorking: transportState.isWorking,
     stopping: stopControl.stopping
   })
 
@@ -191,7 +191,7 @@ export function useStructuredAgentSession(args: {
     transportState.turnId !== null ||
     (stopControl.stopsConversation && (transportState.isWorking || sending))
   // A queued send is a card, never a transcript bubble.
-  const isWorking = transportState.isWorking
+  const isWorking = transportState.isWorking || transportState.queueSendsNext
   const transcriptPending = useMemo(
     () => pendingSendsOutsideQueuedCards(pending, queuedMessageIds, isWorking),
     [isWorking, pending, queuedMessageIds]
@@ -210,11 +210,11 @@ export function useStructuredAgentSession(args: {
     transportState.submissions
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
-    enabled: queueCapable && transportState.fence !== null,
-    queuedMessages: transportState.queuedMessages,
-    queuePause: transportState.queuePause,
-    submissions: transportState.submissions,
+    // Its published list, pause and submissions; the rest is named below.
+    ...transportState,
+    enabled: queueCapability === 'supported' && transportState.fence !== null,
     hasPendingPrompt: prompts.length > 0,
+    isWorking,
     composerScopeKey,
     mutate
   })
@@ -264,7 +264,8 @@ export function useStructuredAgentSession(args: {
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
       rewind.admitsSend() &&
       sends.send(...input),
-    isWorking: transportState.isWorking,
+    isWorking,
+    queueSendsNext: transportState.queueSendsNext,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,
     turnActivity: transportState.turnActivity,

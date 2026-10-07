@@ -3434,6 +3434,14 @@
           },
           "TerminalRestoringPlaceholder": {
             "restoring": "Restauration du terminal…"
+          },
+          "AgentLaunchPaneNotice": {
+            "commandNotFound": "Sa commande est introuvable sur cette machine.",
+            "copyPrompt": "Copier le prompt",
+            "exitedDuringStart": "Il s'est arrêté pendant le démarrage.",
+            "notStarted": "L'agent n'a pas pu démarrer.",
+            "unconfirmed": "Impossible de confirmer que l'agent a démarré.",
+            "workspaceGone": "Son espace de travail n'est plus disponible."
           }
         }
       },
@@ -17708,6 +17716,9 @@
         "providerRateLimited": "{{agent}} est limité en débit et réessaie.",
         "providerRetrying": "{{agent}} a rencontré un problème temporaire et réessaie.",
         "providerRetryingQuoted": "{{agent}} réessaie : {{detail}}.",
+        "providerRetryNumber": "Nouvelle tentative {{attempt}}.",
+        "providerRetryNumberOf": "Nouvelle tentative {{attempt}} sur {{maxRetries}}.",
+        "providerRetryLastError": "Dernière erreur : {{detail}}.",
         "previousExitUnverifiable": "Impossible d'arrêter l'exécution précédente de {{agent}}."
       },
       "writeNotice": {
@@ -17836,6 +17847,10 @@
         "viewAttachment": "Voir l'image",
         "imagePreview": "Aperçu de l'image en taille réelle",
         "imagePreviewUnavailable": "Aperçu indisponible",
+        "copyImage": "Copier l’image",
+        "copyImageFailed": "Impossible de copier l’image",
+        "copyImageTooLarge": "L’image est trop volumineuse pour être copiée.",
+        "imageCopied": "Image copiée",
         "workspaceAttachmentMismatch": "Les fichiers ne peuvent être joints qu'à leur espace de travail source.",
         "attachmentOwnerChanged": "Cet espace de travail a changé d'hôte lors de la connexion : supprimez à nouveau les fichiers.",
         "attachmentUnreadable": "Impossible de lire les fichiers supprimés.",
@@ -17949,6 +17964,7 @@
         "toggleDetails": "Basculer les détails du tour"
       },
       "jumpToLatest": "Aller au dernier message",
+      "transcriptLabel": "Conversation",
       "toggle": {
         "showTerminal": "Afficher le terminal",
         "showChat": "Afficher la vue chat"
@@ -18140,6 +18156,10 @@
         "used": "Contexte : {{used}} tokens utilisés, estimation basée sur la dernière réponse.",
         "unreported": "L'utilisation du contexte n'est pas disponible pour cette session."
       },
+      "agentMessage": {
+        "messageFrom": "Message de",
+        "unnamedSender": "un agent"
+      },
       "goal": {
         "placeholder": "Décrivez votre objectif, définissez des résultats mesurables pour de meilleurs résultats",
         "clear": "Objectif clair",
@@ -18189,10 +18209,16 @@
         "pausedKept": "Pas encore envoyé. Appuyez sur Envoyer pour l'envoyer.",
         "paused": "En pause",
         "queuePausedStopped": "File d'attente en pause, car vous avez interrompu",
-        "queuePausedRestarted": "File d'attente en pause, car Orca a redémarré",
         "queuePausedCleared": "File d'attente en pause après l'effacement de la conversation",
         "queuePaused": "File d'attente en pause",
-        "resume": "Reprendre"
+        "resume": "Reprendre",
+        "sendConfirmTitle": "Envoyer le message ?",
+        "sendConfirmBody": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer les {{count}} messages déjà en file d'attente ?",
+        "sendConfirmBody_one": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer {{count}} message déjà en file d'attente ?",
+        "sendConfirmBody_other": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer les {{count}} messages déjà en file d'attente ?",
+        "sendConfirmClear": "Vider la file d'attente",
+        "sendConfirmSend": "Envoyer le message",
+        "from": "De {{names}}"
       },
       "thought": "A réfléchi",
       "thoughtForDuration": "A réfléchi pendant {{duration}}",
