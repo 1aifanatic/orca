@@ -4,25 +4,17 @@
  * Without the per-target opt-in, the caller (`from` / `terminal`) must be a terminal on the bridged
  * host. A party outside the host is reachable only as the coordinator of a Dispatch the caller works
  * on, so a worker reports back to whoever dispatched it but cannot message or read anyone else.
+ * Routing stores mail under `run:`/`dispatch:` addresses, so ownership is resolved to those exact
+ * mailboxes the caller's live pane reads, never to a Run it merely shares.
  */
-import type { DispatchContextRow, MessageRow, RunRow } from '../orchestration/types'
+import type { OrcaRuntimeService } from '../orca-runtime'
+import type { OrchestrationDb } from '../orchestration/db'
+import {
+  resolveTerminalOwnedMailboxes,
+  type TerminalOwnedMailboxes
+} from './methods/orchestration/messaging/terminal-owned-mailboxes'
 
-type DispatchParty = Pick<
-  DispatchContextRow,
-  'run_id' | 'assignee_handle' | 'assignee_pane_key' | 'creator_handle'
->
-
-export type SshBridgeOrchestrationLookup = {
-  getDispatchContextById(id: string): DispatchParty | undefined
-  getActiveDispatchForIdentity(handle: string, paneKey?: string): DispatchParty | undefined
-  getRun(id: string): Pick<RunRow, 'coordinator_handle'> | undefined
-  getMessageById(id: string): Pick<MessageRow, 'run_id' | 'to_handle'> | undefined
-}
-
-export type SshBridgeOrchestrationRuntime = {
-  getTerminalPaneKey(handle: string): string | null
-  getOrchestrationDb(): SshBridgeOrchestrationLookup
-}
+export type SshBridgeOrchestrationRuntime = OrcaRuntimeService
 
 const TERMINAL_CALLER_METHODS: ReadonlySet<string> = new Set([
   'orchestration.check',
@@ -63,10 +55,11 @@ export async function findSshBridgeOrchestrationViolation(
   if (run && ownDispatch?.run_id !== run && db.getRun(run)?.coordinator_handle !== caller) {
     return `run '${run}'`
   }
+  const owned = resolveTerminalOwnedMailboxes(runtime, db, caller)
   if (methodName === 'orchestration.reply') {
     const id = readStringParam(params, 'id') ?? ''
     const original = db.getMessageById(id)
-    return original?.to_handle === caller && (!run || run === original.run_id)
+    return original && owned.addresses.has(original.to_handle) && (!run || run === original.run_id)
       ? null
       : `message '${id}'`
   }
@@ -86,10 +79,36 @@ export async function findSshBridgeOrchestrationViolation(
     }
   }
   const to = readStringParam(params, 'to')
-  if (!to || (ownDispatch?.creator_handle && to === ownDispatch.creator_handle)) {
+  if (
+    !to ||
+    (ownDispatch?.creator_handle && to === ownDispatch.creator_handle) ||
+    (await isOwnCanonicalRecipient(db, owned, isOwnTerminal, to))
+  ) {
     return null
   }
   return (await isOwnTerminal(to)) ? null : `recipient '${to}'`
+}
+
+// A canonical address is in scope when it is the caller's own mailbox, the Run mailbox its held
+// Dispatch reports to, or a same-host worker's Dispatch in the Run the caller coordinates.
+async function isOwnCanonicalRecipient(
+  db: OrchestrationDb,
+  owned: TerminalOwnedMailboxes,
+  isOwnTerminal: (handle: string) => Promise<boolean>,
+  to: string
+): Promise<boolean> {
+  if (owned.addresses.has(to) || (owned.dispatch && to === `run:${owned.dispatch.run_id}`)) {
+    return true
+  }
+  if (!to.startsWith('dispatch:') || owned.runId === undefined) {
+    return false
+  }
+  const dispatch = db.getDispatchContextById(to.slice('dispatch:'.length))
+  return (
+    dispatch?.run_id === owned.runId &&
+    dispatch.assignee_handle !== null &&
+    (await isOwnTerminal(dispatch.assignee_handle))
+  )
 }
 
 function readPayloadDispatchId(params: unknown): string | null {

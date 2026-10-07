@@ -5,6 +5,7 @@ import type { RpcResponse } from './core'
 import { RpcDispatcher } from './dispatcher'
 import { createOrchestrationRpcHarness } from './methods/orchestration/rpc-test-harness'
 import type { RpcCallerScope } from './rpc-caller-scope'
+import { readStringParam } from './ssh-bridge-orchestration-binding'
 import { ORCHESTRATION_CONTRACT_VERSION } from '../../../shared/protocol-version'
 
 const HOST_BOUND: RpcCallerScope = {
@@ -186,5 +187,191 @@ describe('SSH bridge orchestration without the per-host opt-in', () => {
       run: other.id
     })
     expect(forbidden(response)).toBe(true)
+  })
+
+  function callAsOwner(method: string, params: Record<string, unknown>): Promise<RpcResponse> {
+    return new RpcDispatcher({ runtime }).dispatch({
+      id: `owner-${method}`,
+      authToken: 'unused',
+      method,
+      params,
+      orchestrationContractVersion: ORCHESTRATION_CONTRACT_VERSION
+    })
+  }
+
+  function placeCoordinatorOnHost(): void {
+    vi.mocked(runtime.showTerminal).mockImplementation(async (handle) => {
+      const host = handle === 'term_coord' ? 'ssh:box-1' : HOSTS[handle]
+      if (!host) {
+        throw new Error('terminal_not_found')
+      }
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the binding reads only executionHostId.
+      return { handle, executionHostId: host } as Awaited<
+        ReturnType<OrcaRuntimeService['showTerminal']>
+      >
+    })
+  }
+
+  it("lets a worker reply to coordinator mail routed to its own Dispatch's mailbox", async () => {
+    setup()
+    const worker = dispatchFromCoordinator('worker', WORKER_PANE)
+    const sent = await callAsOwner('orchestration.send', {
+      from: 'term_coord',
+      to: 'term_worker',
+      subject: 'Please confirm',
+      body: 'Continue?',
+      type: 'status'
+    })
+    expect(sent).toMatchObject({
+      ok: true,
+      result: { message: { to_handle: `dispatch:${worker.dispatchId}` } }
+    })
+    const result: unknown = sent.ok ? sent.result : null
+    const message =
+      typeof result === 'object' && result !== null ? Reflect.get(result, 'message') : null
+    const reply = await callAsBridge('orchestration.reply', {
+      from: 'term_worker',
+      id: readStringParam(message, 'id'),
+      body: 'Confirmed'
+    })
+    expect(reply.ok).toBe(true)
+  })
+
+  it('lets an SSH coordinator answer a worker question stored in its own Run mailbox', async () => {
+    setup()
+    placeCoordinatorOnHost()
+    const worker = dispatchFromCoordinator('worker', WORKER_PANE)
+    const runId = db.getDispatchContextById(worker.dispatchId)?.run_id ?? ''
+    const { message, question } = db.createQuestion({
+      runId,
+      dispatchId: worker.dispatchId,
+      askerHandle: 'term_worker',
+      question: 'May I continue?',
+      options: []
+    })
+    expect(message.to_handle).toBe(`run:${runId}`)
+    const reply = await callAsBridge('orchestration.reply', {
+      from: 'term_coord',
+      id: message.id,
+      body: 'Proceed'
+    })
+    expect(reply.ok).toBe(true)
+    expect(db.getQuestion(question.message_id)?.status).toBe('answered')
+  })
+
+  it("lets a worker address its own Run's mailbox and its own Dispatch explicitly", async () => {
+    setup()
+    const worker = dispatchFromCoordinator('worker', WORKER_PANE)
+    const runId = db.getDispatchContextById(worker.dispatchId)?.run_id ?? ''
+    for (const to of [`run:${runId}`, `dispatch:${worker.dispatchId}`]) {
+      const sent = await callAsBridge('orchestration.send', {
+        from: 'term_worker',
+        to,
+        subject: 'p'
+      })
+      expect(forbidden(sent)).toBe(false)
+    }
+    const asked = await callAsBridge('orchestration.ask', {
+      from: 'term_worker',
+      to: `run:${runId}`,
+      question: 'Proceed?',
+      timeoutMs: 1
+    })
+    expect(forbidden(asked)).toBe(false)
+  })
+
+  it('refuses a reply to mail addressed to another terminal, Dispatch, or Run', async () => {
+    setup()
+    dispatchFromCoordinator('worker', WORKER_PANE)
+    const sibling = dispatchFromCoordinator('sibling', SIBLING_PANE)
+    const other = db.createRun({
+      objective: 'Other',
+      coordinatorHandle: 'term_local',
+      coordinatorPaneKey: LOCAL_PANE
+    })
+    for (const to of ['term_local', `dispatch:${sibling.dispatchId}`, `run:${other.id}`]) {
+      const original = db.insertMessage({ from: 'term_coord', to, subject: 's', body: 's' })
+      const reply = await callAsBridge('orchestration.reply', {
+        from: 'term_worker',
+        id: original.id,
+        body: 'forged'
+      })
+      expect(forbidden(reply)).toBe(true)
+      expect(db.getMessageById(original.id)?.read).toBe(0)
+    }
+  })
+
+  it("refuses a worker reply to its Run's question, which only the coordinator owns", async () => {
+    setup()
+    const worker = dispatchFromCoordinator('worker', WORKER_PANE)
+    const runId = db.getDispatchContextById(worker.dispatchId)?.run_id ?? ''
+    const { message } = db.createQuestion({
+      runId,
+      dispatchId: worker.dispatchId,
+      askerHandle: 'term_worker',
+      question: 'May I continue?',
+      options: []
+    })
+    const reply = await callAsBridge('orchestration.reply', {
+      from: 'term_worker',
+      id: message.id,
+      body: 'Proceed'
+    })
+    expect(forbidden(reply)).toBe(true)
+  })
+
+  it("refuses explicit addresses for another worker's Dispatch or an unrelated Run", async () => {
+    setup()
+    dispatchFromCoordinator('worker', WORKER_PANE)
+    const sibling = dispatchFromCoordinator('sibling', SIBLING_PANE)
+    const other = db.createRun({
+      objective: 'Other',
+      coordinatorHandle: 'term_local',
+      coordinatorPaneKey: LOCAL_PANE
+    })
+    for (const to of [`dispatch:${sibling.dispatchId}`, `run:${other.id}`]) {
+      const sent = await callAsBridge('orchestration.send', {
+        from: 'term_worker',
+        to,
+        subject: 'p'
+      })
+      expect(forbidden(sent)).toBe(true)
+    }
+  })
+
+  it('refuses a forged pane claiming the Dispatch mailbox', async () => {
+    setup()
+    const worker = dispatchFromCoordinator('worker', WORKER_PANE)
+    // A process on the worker's handle that does not hold the Dispatch's pane owns no Dispatch mail.
+    vi.mocked(runtime.getTerminalPaneKey).mockImplementation((handle) =>
+      handle === 'term_worker'
+        ? SIBLING_PANE
+        : handle === 'term_coord'
+          ? harness.coordinatorPaneKey
+          : null
+    )
+    const original = db.insertMessage({
+      from: 'term_coord',
+      to: `dispatch:${worker.dispatchId}`,
+      subject: 's',
+      body: 's'
+    })
+    const reply = await callAsBridge('orchestration.reply', {
+      from: 'term_worker',
+      id: original.id,
+      body: 'forged'
+    })
+    expect(forbidden(reply)).toBe(true)
+  })
+
+  it("lets an SSH coordinator address a same-host worker's Dispatch but not another host's", async () => {
+    setup()
+    placeCoordinatorOnHost()
+    const worker = dispatchFromCoordinator('worker', WORKER_PANE)
+    const sibling = dispatchFromCoordinator('sibling', SIBLING_PANE)
+    const send = (to: string) =>
+      callAsBridge('orchestration.send', { from: 'term_coord', to, subject: 'p' })
+    expect(forbidden(await send(`dispatch:${worker.dispatchId}`))).toBe(false)
+    expect(forbidden(await send(`dispatch:${sibling.dispatchId}`))).toBe(true)
   })
 })
