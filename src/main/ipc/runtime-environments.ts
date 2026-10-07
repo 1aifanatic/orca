@@ -6,6 +6,7 @@ import {
 } from './runtime-environment-subscription-handlers'
 import { app, ipcMain } from 'electron'
 import { listEnvironments } from '../../shared/runtime-environment-store'
+import { parseExecutionHostId } from '../../shared/execution-host'
 import type { Store } from '../persistence'
 import {
   isRuntimeEnvironmentManuallyDisconnected,
@@ -26,7 +27,6 @@ import { registerOrcadRuntimeConversionHandlers } from './orcad-runtime-conversi
 import { registerOrcadDeltaMoveHandlers } from './orcad-delta-move-handlers'
 import { registerOrcadRuntimeMaintenanceHandlers } from './orcad-runtime-maintenance-handlers'
 import { clearPublishedManagedServer } from './ssh-renderer-broadcast'
-import { reconcileOrphanedRuntimeSessions } from './runtime-environment-session-reconcile'
 import { registerRuntimeSshAccessHandlers } from './runtime-ssh-access-handlers'
 import { retirePairedRuntimeBrowserClientHostEnvironment } from '../browser/paired-runtime-browser-client-host-runtime'
 import { registerRuntimeEnvironmentBrowserClientHostHandler } from './runtime-environment-browser-client-host-handler'
@@ -101,7 +101,6 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
     ipcMain.removeHandler(channel)
   }
   ipcMain.removeAllListeners('runtimeEnvironments:subscriptionBinary')
-  reconcileOrphanedRuntimeSessions(store, getUserDataPath())
 
   registerRuntimeEnvironmentConnectivityHandlers({
     store,
@@ -138,7 +137,12 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
     getActiveEnvironmentId: () => store.getSettings().activeRuntimeEnvironmentId,
     invalidateTransport: invalidateRuntimeEnvironmentTransport,
     clearHostServerStatus: clearPublishedManagedServer,
-    forgetHostSession: (hostId) => store.removeWorkspaceSessionHost(hostId)
+    forgetHostSession: async (hostId) => {
+      const host = parseExecutionHostId(hostId)
+      if (host?.kind === 'runtime') {
+        await retireUnownedRuntimeSession(store, host.environmentId)
+      }
+    }
   })
   registerRuntimeEnvironmentSubscriptionHandlers({
     getUserDataPath,

@@ -416,7 +416,7 @@ describe('removal failure ordering', () => {
         'repo-a::/audit/before'
       ])
       expect(warn).toHaveBeenCalledWith(
-        '[runtime-environments] Preserving session partition after custody lookup failure:',
+        '[runtime-environments] Preserving session after custody lookup failure:',
         expect.any(Error)
       )
     }

@@ -87,7 +87,6 @@ describe('registerRuntimeEnvironmentHandlers', () => {
     getSettings: () => { activeRuntimeEnvironmentId: string | null }
     removeRuntimeWorkspaceSessionPartition: ReturnType<typeof vi.fn>
     updateSettings: ReturnType<typeof vi.fn>
-    removeWorkspaceSessionHost: ReturnType<typeof vi.fn>
   }
 
   beforeEach(() => {
@@ -95,7 +94,6 @@ describe('registerRuntimeEnvironmentHandlers', () => {
     activeRuntimeEnvironmentId = null
     store = {
       getSettings: () => ({ activeRuntimeEnvironmentId }),
-      removeWorkspaceSessionHost: vi.fn(),
       removeRuntimeWorkspaceSessionPartition: vi.fn(),
       updateSettings: vi.fn((updates: { activeRuntimeEnvironmentId: string | null }) => {
         activeRuntimeEnvironmentId = updates.activeRuntimeEnvironmentId

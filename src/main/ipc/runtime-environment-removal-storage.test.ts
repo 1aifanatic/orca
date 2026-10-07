@@ -54,8 +54,7 @@ describe('runtime environment removal storage clearing', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The mocked custody path uses only these Store methods.
       store: {
         getSettings: () => ({}),
-        removeRuntimeWorkspaceSessionPartition: vi.fn(),
-        removeWorkspaceSessionHost: vi.fn()
+        removeRuntimeWorkspaceSessionPartition: vi.fn()
       } as never,
       getUserDataPath: () => '/tmp/orca-user-data',
       invalidateTransport: () => teardown
@@ -79,8 +78,7 @@ describe('runtime environment removal storage clearing', () => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The mocked custody path uses only these Store methods.
       store: {
         getSettings: () => ({}),
-        removeRuntimeWorkspaceSessionPartition: vi.fn(),
-        removeWorkspaceSessionHost: vi.fn()
+        removeRuntimeWorkspaceSessionPartition: vi.fn()
       } as never,
       getUserDataPath: () => '/tmp/orca-user-data',
       invalidateTransport: () => Promise.resolve()

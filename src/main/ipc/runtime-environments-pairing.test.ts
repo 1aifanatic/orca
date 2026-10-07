@@ -105,7 +105,6 @@ describe('registerRuntimeEnvironmentHandlers', () => {
     getSettings: () => { activeRuntimeEnvironmentId: string | null }
     removeRuntimeWorkspaceSessionPartition: ReturnType<typeof vi.fn>
     updateSettings: ReturnType<typeof vi.fn>
-    removeWorkspaceSessionHost: ReturnType<typeof vi.fn>
   }
 
   beforeEach(() => {
@@ -113,7 +112,6 @@ describe('registerRuntimeEnvironmentHandlers', () => {
     activeRuntimeEnvironmentId = null
     store = {
       getSettings: () => ({ activeRuntimeEnvironmentId }),
-      removeWorkspaceSessionHost: vi.fn(),
       removeRuntimeWorkspaceSessionPartition: vi.fn(),
       updateSettings: vi.fn((updates: { activeRuntimeEnvironmentId: string | null }) => {
         activeRuntimeEnvironmentId = updates.activeRuntimeEnvironmentId
@@ -289,9 +287,9 @@ describe('registerRuntimeEnvironmentHandlers', () => {
     })
     expect(activeRuntimeEnvironmentId).toBeNull()
     expect(closeRemoteRuntimeRequestConnectionMock).toHaveBeenCalledWith(added.environment.id)
-    // A removed server's session partition goes too, so listings stop naming it as a host.
-    expect(store.removeWorkspaceSessionHost).toHaveBeenCalledWith(
-      `runtime:${encodeURIComponent(added.environment.id)}`
+    expect(store.removeRuntimeWorkspaceSessionPartition).toHaveBeenCalledWith(
+      `runtime:${encodeURIComponent(added.environment.id)}`,
+      expect.any(Function)
     )
     expect(JSON.stringify(removed)).not.toContain('device-token')
     expect(await list(null, undefined)).toEqual([])
