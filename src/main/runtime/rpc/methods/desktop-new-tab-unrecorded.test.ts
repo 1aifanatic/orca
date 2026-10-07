@@ -103,7 +103,9 @@ describe('desktop live input uses the existing optional-identity public route', 
             transport: { kind: 'desktop-new-tab', promptDelivery: scenario.mode }
           }
         })
-        const pending = (recorded ? REPLAY : LAUNCH).handler(params, context)
+        const pending = recorded
+          ? REPLAY.handler(REPLAY.params.parse(params), context)
+          : LAUNCH.handler(params, context)
         if (scenario.pasted) {
           await vi.waitFor(() =>
             expect(writes).toHaveLength(params.prompt?.delivery === 'submit' ? 2 : 1)
@@ -149,7 +151,7 @@ describe('desktop live input uses the existing optional-identity public route', 
             kind: 'review-notes-delivered'
           })
           expect(store.listOperationRows()[0]?.promptDelivery).toBeUndefined()
-          expect(await REPLAY.handler(params, context)).toEqual(result)
+          expect(await REPLAY.handler(REPLAY.params.parse(params), context)).toEqual(result)
           expect(spawn).toHaveBeenCalledOnce()
         } else {
           expect(open).not.toHaveBeenCalled()

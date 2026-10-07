@@ -138,7 +138,7 @@ describe('public desktop launch reuses the upstream host readiness boundary', ()
       handle,
       condition: 'tui-idle',
       satisfied: true,
-      status: 'idle',
+      status: 'running',
       exitCode: null
     }))
     const { pending } = await rig.start()
@@ -159,7 +159,7 @@ describe('public desktop launch reuses the upstream host readiness boundary', ()
       handle,
       condition: 'tui-idle',
       satisfied: true,
-      status: 'idle',
+      status: 'running',
       exitCode: null
     }))
     const { pending } = await rig.start()

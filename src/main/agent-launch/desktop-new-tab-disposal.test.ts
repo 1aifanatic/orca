@@ -19,7 +19,9 @@ function execution(
 ): AgentLaunchExecution {
   return {
     runtime: {
-      getClientSettings: () => ({}),
+      getClientSettings: () => {
+        throw new Error('settings_unavailable_in_fixture')
+      },
       getStructuredAgentSessionCreateSupport: async () => ({ supported: false, reason: 'agent' })
     },
     intent: {
@@ -50,7 +52,7 @@ describe('desktop startup and live paste receipts', () => {
       'terminal',
       { freshLaunch: true }
     )
-    expect(promptReceipt({ prompt }, result)).toEqual({
+    expect(promptReceipt(execution(async () => true).intent, result)).toEqual({
       prompt: { delivery: 'draft', outcome: 'handed-to-terminal' }
     })
   })
@@ -78,9 +80,10 @@ describe('desktop startup and live paste receipts', () => {
   it('empty compatibility picks have no prompt receipt or write obligation', async () => {
     const empty = { ...prompt, text: ' \n ' }
     const delivered = vi.fn(async () => true)
-    expect(promptReceipt({ prompt: empty }, settledAtCreation({ prompt: empty }, {}))).toEqual({})
+    const launch = execution(delivered, empty)
+    expect(promptReceipt(launch.intent, settledAtCreation(launch.intent, {}))).toEqual({})
     expect(
-      await deliverTerminalLaunchPrompt(execution(delivered, empty), 'terminal', {
+      await deliverTerminalLaunchPrompt(launch, 'terminal', {
         freshLaunch: true
       })
     ).toEqual({ outcome: 'not-delivered' })

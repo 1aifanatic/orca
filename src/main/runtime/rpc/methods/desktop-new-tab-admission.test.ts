@@ -17,6 +17,8 @@ const PARAMS = {
     transport: { kind: 'desktop-new-tab', promptDelivery: 'draft' }
   }
 } as const
+const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
+const REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 
 // This checkpoint deliberately refuses the incomplete guarantee before publication or admission.
 describe('an unadvertised desktop startup contract cannot be admitted', () => {
@@ -45,8 +47,6 @@ describe('an unadvertised desktop startup contract cannot be admitted', () => {
   for (const name of ['agent.launch', 'agent.launchReplay'] as const) {
     it(`${name} refuses even a client advertising the new capability before any side effect`, async () => {
       const runtime = runtimeStub({ settings: {} })
-      const method = methodNamed(AGENT_LAUNCH_METHODS, name)
-      const params = method.params.parse(PARAMS)
       const context = rpcContext(runtime, {
         caller: DESKTOP_RPC_CALLER,
         clientKind: 'runtime',
@@ -55,9 +55,11 @@ describe('an unadvertised desktop startup contract cannot be admitted', () => {
           AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
         ]
       })
-      await expect(method.handler(params, context)).rejects.toThrow(
-        'agent_launch_desktop_new_tab_unsupported'
-      )
+      const pending =
+        name === 'agent.launch'
+          ? LAUNCH.handler(LAUNCH.params.parse(PARAMS), context)
+          : REPLAY.handler(REPLAY.params.parse(PARAMS), context)
+      await expect(pending).rejects.toThrow('agent_launch_desktop_new_tab_unsupported')
       expect(runtime.showTerminalWorkspaceLaunchScope).not.toHaveBeenCalled()
       expect(runtime.publishAgentLaunchTab).not.toHaveBeenCalled()
       expect(runtime.openAgentSessionRecordStore).not.toHaveBeenCalled()
