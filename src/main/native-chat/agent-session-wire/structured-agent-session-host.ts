@@ -1,5 +1,4 @@
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
-import type { StructuredAgentDefinition } from './structured-agent-definition'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
@@ -213,7 +212,7 @@ export class StructuredAgentSessionHost {
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
   /** Every agent this runtime registered: what `agentSession.agents` publishes. */
-  agentDefinitions = (): readonly StructuredAgentDefinition[] => this.deps.agents.definitions()
+  agentDefinitions = () => this.deps.agents.definitions()
 
   /** Saved chats can outlive their registration; both vocabularies bound a client's audience. */
   knownAgentIds = (): readonly string[] => [
@@ -233,6 +232,7 @@ export class StructuredAgentSessionHost {
   getSessionTabId = this.tabs.getSessionTabId
   showSessionTabs = this.tabs.showSessionTabs
   setSessionTabVisibility = this.tabs.setSessionTabVisibility
+  notifySessionTabHidden = this.tabs.notifySessionTabHidden
   /** The records file could not be read this launch, so chats it holds are not listed yet. */
   legacyRecordImportOwed = (): boolean => this.deps.journalDatabase.legacyRecordImportOwed === true
   /** This runtime holds a chat: a record, or the records file's chats still owed their copy. */
@@ -352,8 +352,9 @@ export class StructuredAgentSessionHost {
   /** Every session's projected status for session lists; unlike `subscribe`, retains nothing. */
   subscribeStatus = this.clientDelivery.subscribeStatus
 
-  /** Turns that settle from now on. Live-only: nothing missed is replayed. */
+  /** Turns that settle, and prompts raised, from now on. Live-only: nothing missed is replayed. */
   subscribeTurnCompletions = this.clientDelivery.subscribeTurnCompletions
+  readStatusSummary = this.clientDelivery.readStatusSummary
 
   /** Test rigs only: the collaborators the host builds itself, typed, for tests that drive them. */
   collaboratorsForTests = () => ({
