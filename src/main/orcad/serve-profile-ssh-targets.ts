@@ -8,7 +8,8 @@ import { classifyProfileStateStorage } from '../persistence/profile-state/profil
 
 /**
  * Whether the profile `orca serve` would load has saved SSH targets. Read-only: never creates,
- * migrates or locks the profile, because the serve host that starts next owns it.
+ * migrates or locks the profile, because the serve host that starts next owns it. Throws when it
+ * cannot tell, including for an older schema the serve host would still migrate.
  */
 export function serveProfileHasSshTargets(userDataPath: string): boolean {
   // A profile index predates any profile-state import, so no index means the legacy root files.

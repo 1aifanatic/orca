@@ -63,8 +63,9 @@ export async function selectServeRuntime(
   }
   // Why: orcad has no SSH connection stack yet, so a default serve on it would list no targets
   // and fail every connect (#25886, #8489). An explicit ORCA_SERVE_RUNTIME=orcad keeps orcad.
-  if (!requested && profileNeedsSsh(input)) {
-    return electron('this profile has SSH targets, which orcad cannot serve yet')
+  const sshReason = requested ? null : profileSshReason(input)
+  if (sshReason) {
+    return electron(sshReason)
   }
   const target = (input.hostTarget ?? (() => nativeSlotName(detectNativeHostAbi())))()
   if (!isServerTarget(target)) {
@@ -114,12 +115,16 @@ export async function selectServeRuntime(
   }
 }
 
-function profileNeedsSsh(input: ServeRuntimeSelectionInput): boolean {
+/** Why this profile must serve on Electron for SSH, or null when it provably has no targets. */
+function profileSshReason(input: ServeRuntimeSelectionInput): string | null {
   try {
     return (input.profileHasSshTargets ?? serveProfileHasSshTargets)(input.userDataPath)
-  } catch {
-    // An unreadable profile is the serve host's to report; it is no reason to change hosts.
-    return false
+      ? 'this profile has SSH targets, which orcad cannot serve yet'
+      : null
+  } catch (error) {
+    // Why: fail closed. The read-only probe rejects profiles the serve host would still migrate
+    // (an older schema), and guessing "no SSH" there leaves saved targets unreachable.
+    return `could not tell whether this profile has SSH targets, which orcad cannot serve yet (${errorText(error)})`
   }
 }
 
