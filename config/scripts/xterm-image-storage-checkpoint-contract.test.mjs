@@ -1,45 +1,9 @@
-import { createRequire } from 'node:module'
+import { terminal } from './xterm-image-checkpoint-test-terminal.mjs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fixtures from '../../src/shared/__fixtures__/terminal-raster-red.json'
-import { NodeTerminalRasterBackend } from '../../src/shared/node-terminal-raster-backend'
 import { releaseTerminalRasterDecoder } from '../../src/shared/terminal-raster-wasm-decoder'
 
-const require = createRequire(import.meta.url)
-const { Terminal } = require('@xterm/headless')
-const { ImageAddon } = require('@xterm/addon-image')
-const { SerializeAddon } = require('@xterm/addon-serialize')
 afterEach(releaseTerminalRasterDecoder)
-
-function terminal() {
-  const core = new Terminal({
-    cols: 20,
-    rows: 10,
-    scrollback: 20,
-    allowProposedApi: true,
-    logLevel: 'off'
-  })
-  const backend = new NodeTerminalRasterBackend({
-    getCellSize: () => ({ width: 2, height: 2 }),
-    getColors: () => ({
-      foreground: { rgba: 0xffffffff },
-      background: { rgba: 0x000000ff },
-      ansi: []
-    })
-  })
-  const addon = new ImageAddon({
-    rasterBackend: backend,
-    pixelLimit: 8_000_000,
-    storageLimit: 32,
-    enableSizeReports: false,
-    kittySizeLimit: 8 * 1024 * 1024,
-    iipSizeLimit: 8 * 1024 * 1024,
-    sixelSizeLimit: 8 * 1024 * 1024
-  })
-  const serializer = new SerializeAddon()
-  core.loadAddon(addon)
-  core.loadAddon(serializer)
-  return { core, addon, backend, serializer, storage: addon._storage }
-}
 
 const raw = Buffer.from(Array.from({ length: 64 }, (_, i) => [255, i % 2 ? 0 : 100, 0, 255]).flat())
 const kitty = (command, bytes = raw) => `\x1b_G${command};${bytes.toString('base64')}\x1b\\`

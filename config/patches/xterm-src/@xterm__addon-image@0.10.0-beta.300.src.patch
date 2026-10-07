@@ -306,6 +306,64 @@ index 8fd39543118cd420e36c1614c1af370b6c7bbfbb..ff6dd36b41a5e6f927a2c4b590a01d54
        const kittyHandler = new KittyGraphicsHandler(this._opts, this._renderer!, kittyStorage, terminal);
        this._handlers.set('kitty', kittyHandler);
        this._disposeLater(
+diff --git a/src/ImageCheckpointResources.ts b/src/ImageCheckpointResources.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..756015835a844580e18585439c96ae2f3144b8f2
+--- /dev/null
++++ b/src/ImageCheckpointResources.ts
+@@ -0,0 +1,52 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++export const CHECKPOINT_CHUNK_BYTES = 262144;
++export const CHECKPOINT_LEASE_BYTES = 128 * 1024 * 1024;
++
++export interface ICheckpointResource {
++  readonly id: number;
++  readonly byteLength: number;
++}
++
++export class ImageCheckpointResources<T> {
++  private _disposed = false;
++
++  constructor(
++    public readonly metadata: T,
++    protected readonly _resources: Map<number, Uint8Array>
++  ) {}
++
++  public get isDisposed(): boolean { return this._disposed; }
++
++  public readResource(id: number, offset: number, length: number): Uint8Array {
++    if (this._disposed) throw new Error('Image checkpoint lease is disposed');
++    const bytes = this._resources.get(id);
++    if (!bytes || !Number.isSafeInteger(offset) || !Number.isSafeInteger(length)
++      || offset < 0 || length < 0 || length > CHECKPOINT_CHUNK_BYTES || offset + length > bytes.byteLength) {
++      throw new RangeError('Invalid image checkpoint resource window');
++    }
++    return bytes.slice(offset, offset + length);
++  }
++
++  public copyResource(id: number, length: number): Uint8Array {
++    if (this.isDisposed) throw new Error('Image checkpoint lease is disposed');
++    const source = this._resources.get(id);
++    if (!source || !Number.isSafeInteger(length) || length < 0 || length > CHECKPOINT_LEASE_BYTES || length !== source.byteLength) {
++      throw new RangeError('Invalid image checkpoint resource length');
++    }
++    const bytes = new Uint8Array(length);
++    for (let offset = 0; offset < length; offset += CHECKPOINT_CHUNK_BYTES) {
++      bytes.set(this.readResource(id, offset, Math.min(CHECKPOINT_CHUNK_BYTES, length - offset)), offset);
++    }
++    if (this.isDisposed) throw new Error('Image checkpoint lease is disposed');
++    return bytes;
++  }
++
++  public dispose(): void {
++    this._disposed = true;
++    this._resources.clear();
++  }
++}
 diff --git a/src/ImageRasterBackend.ts b/src/ImageRasterBackend.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..61ec2e72df783eca41ef1218edd1ec2a10cd59ae
@@ -1382,16 +1440,18 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..fe61679719649d9a6a6932c5be7174b4
        }
 diff --git a/src/ImageStorageCheckpoint.ts b/src/ImageStorageCheckpoint.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..a2a3a63ead95909b341258375617a51472cf3a64
+index 0000000000000000000000000000000000000000..ff15ab557ab5740272fd966e6b4009ebb010ff3c
 --- /dev/null
 +++ b/src/ImageStorageCheckpoint.ts
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,67 @@
 +/**
 + * Copyright (c) 2026 The xterm.js authors. All rights reserved.
 + * @license MIT
 + */
 +
 +import type { ICellSize, IImageSpec } from './Types';
++import { ImageCheckpointResources } from './ImageCheckpointResources';
++export { CHECKPOINT_CHUNK_BYTES } from './ImageCheckpointResources';
 +
 +export interface ICheckpointImage {
 +  readonly id: number;
@@ -1429,32 +1489,12 @@ index 0000000000000000000000000000000000000000..a2a3a63ead95909b341258375617a514
 +  readonly byteLength: number;
 +}
 +
-+export const CHECKPOINT_CHUNK_BYTES = 262144;
 +export const CHECKPOINT_TILE_BYTES = 32;
 +
 +// This lease covers decoded storage only; protocol state belongs to its handlers.
-+export class ImageStorageCheckpoint {
-+  private _disposed = false;
-+
-+  constructor(
-+    public readonly metadata: IImageStorageCheckpointMetadata,
-+    private readonly _resources: Map<number, Uint8Array>
-+  ) {}
-+
-+  public get isDisposed(): boolean { return this._disposed; }
-+
-+  public readResource(id: number, offset: number, length: number): Uint8Array {
-+    if (this._disposed) throw new Error('Image checkpoint lease is disposed');
-+    const bytes = this._resources.get(id);
-+    if (!bytes || !Number.isSafeInteger(offset) || !Number.isSafeInteger(length)
-+      || offset < 0 || length < 0 || length > CHECKPOINT_CHUNK_BYTES || offset + length > bytes.byteLength) {
-+      throw new RangeError('Invalid image checkpoint resource window');
-+    }
-+    return bytes.slice(offset, offset + length);
-+  }
-+
++export class ImageStorageCheckpoint extends ImageCheckpointResources<IImageStorageCheckpointMetadata> {
 +  public forEachTileRun(visit: (run: ICheckpointTileRun) => void): void {
-+    if (this._disposed) throw new Error('Image checkpoint lease is disposed');
++    if (this.isDisposed) throw new Error('Image checkpoint lease is disposed');
 +    const bytes = this._resources.get(this.metadata.tilesResourceId);
 +    if (!bytes) throw new Error('Missing image checkpoint tiles');
 +    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -1470,17 +1510,13 @@ index 0000000000000000000000000000000000000000..a2a3a63ead95909b341258375617a514
 +    }
 +  }
 +
-+  public dispose(): void {
-+    this._disposed = true;
-+    this._resources.clear();
-+  }
 +}
 diff --git a/src/ImageStorageCheckpointCapture.ts b/src/ImageStorageCheckpointCapture.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..1caf56824f4c6540775a196ddb7dee6ff495b563
+index 0000000000000000000000000000000000000000..056e06a756ea4c600c7cdc32b5b33ce1d8520c4a
 --- /dev/null
 +++ b/src/ImageStorageCheckpointCapture.ts
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,112 @@
 +/**
 + * Copyright (c) 2026 The xterm.js authors. All rights reserved.
 + * @license MIT
@@ -1488,6 +1524,7 @@ index 0000000000000000000000000000000000000000..1caf56824f4c6540775a196ddb7dee6f
 +
 +import type { IBuffer } from 'common/buffer/Types';
 +import { isImageRaster } from './ImageSource';
++import { CHECKPOINT_LEASE_BYTES } from './ImageCheckpointResources';
 +import { BgFlags, type IImageSpec, type ITerminalExt } from './Types';
 +import {
 +  CHECKPOINT_TILE_BYTES, ImageStorageCheckpoint,
@@ -1529,7 +1566,7 @@ index 0000000000000000000000000000000000000000..1caf56824f4c6540775a196ddb7dee6f
 +export function captureImageStorageCheckpoint(
 +  terminal: ITerminalExt, images: ReadonlyMap<number, IImageSpec>, lastId: number, maxBytes: number
 +): ImageStorageCheckpoint {
-+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > 128 * 1024 * 1024) {
++  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > CHECKPOINT_LEASE_BYTES) {
 +    throw new RangeError('Invalid image checkpoint byte budget');
 +  }
 +  if (!Number.isSafeInteger(lastId) || lastId < 0 || images.size > 4096) throw new RangeError('Invalid image checkpoint IDs');
@@ -1594,17 +1631,17 @@ index 0000000000000000000000000000000000000000..1caf56824f4c6540775a196ddb7dee6f
 +}
 diff --git a/src/ImageStorageCheckpointRestore.ts b/src/ImageStorageCheckpointRestore.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..a0e8eda726c96e6b543c092495ebf5690ef4bde1
+index 0000000000000000000000000000000000000000..4794cd4b4d25007dd284375e1214c8df9c256e57
 --- /dev/null
 +++ b/src/ImageStorageCheckpointRestore.ts
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,60 @@
 +/**
 + * Copyright (c) 2026 The xterm.js authors. All rights reserved.
 + * @license MIT
 + */
 +
 +import type { IBufferLine } from 'common/buffer/Types';
-+import { CHECKPOINT_CHUNK_BYTES, type ImageStorageCheckpoint } from './ImageStorageCheckpoint';
++import type { ImageStorageCheckpoint } from './ImageStorageCheckpoint';
 +import { closeImageSource, ImageSourceOperations, type IImageSource } from './ImageSource';
 +import type { IImageAddonOptions, ITerminalExt } from './Types';
 +
@@ -1636,10 +1673,7 @@ index 0000000000000000000000000000000000000000..a0e8eda726c96e6b543c092495ebf569
 +    for (const image of checkpoint.metadata.images) {
 +      const length = image.width * image.height * 4;
 +      if (image.width * image.height > opts.pixelLimit) throw new RangeError('Image checkpoint exceeds target pixel limit');
-+      const bytes = new Uint8Array(length);
-+      for (let offset = 0; offset < length; offset += CHECKPOINT_CHUNK_BYTES) {
-+        bytes.set(checkpoint.readResource(image.resourceId, offset, Math.min(CHECKPOINT_CHUNK_BYTES, length - offset)), offset);
-+      }
++      const bytes = checkpoint.copyResource(image.resourceId, length);
 +      sources.set(image.id, await operations.fromRgba(bytes, image.width, image.height, true));
 +      if (checkpoint.isDisposed) throw new Error('Image checkpoint lease was disposed during preparation');
 +    }
@@ -2636,10 +2670,10 @@ index 4288dd0a4180eca8f3ae28ec0805f834b2a0a629..af35df437a20441a46eda558520d5fca
 +  return location;
 +}
 diff --git a/src/kitty/KittyImageStorage.ts b/src/kitty/KittyImageStorage.ts
-index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6700e8706 100644
+index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..860210f523ab615e9953382ab2360f1f579883f3 100644
 --- a/src/kitty/KittyImageStorage.ts
 +++ b/src/kitty/KittyImageStorage.ts
-@@ -4,15 +4,24 @@
+@@ -4,48 +4,60 @@
   */
  
  import { IDisposable } from '@xterm/xterm';
@@ -2650,6 +2684,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
 -import { IKittyImageData } from './KittyGraphicsTypes';
 +import { Attributes, IBufferLineExt, ImageLayer, IAddImageOpts, IImageDrawCall } from '../Types';
 +import { decodePlaceholderLocation, IKittyImageData, IPlaceholderLocation, IVirtualPlacement, PLACEHOLDER_CHAR } from './KittyGraphicsTypes';
++import { captureKittyStorageCheckpoint, prepareKittyCheckpointImages, type KittyStorageCheckpoint } from './KittyStorageCheckpoint';
 +
 +interface IPlaceholderCell {
 +  imageId: number;
@@ -2666,9 +2701,10 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
  // - mirrors shared-storage evictions into kitty maps
  // - applies protocol-level undisplayed-image eviction policy
  export class KittyImageStorage implements IDisposable {
-@@ -20,32 +29,33 @@ export class KittyImageStorage implements IDisposable {
+   private static readonly _maxStoredImages = 256;
  
    private _nextImageId = 1;
++  private _disposed = false;
    private readonly _images: Map<number, IKittyImageData> = new Map();
 -  // TODO: Support multiple placements per image. The kitty spec identifies
 -  // placements by an (image id, placement id) pair — same i + different p
@@ -2711,7 +2747,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
    ) {
      this._previousOnImageDeleted = this._storage.onImageDeleted;
      this._wrappedOnImageDeleted = (storageId: number) => {
-@@ -53,6 +63,8 @@ export class KittyImageStorage implements IDisposable {
+@@ -53,6 +65,8 @@ export class KittyImageStorage implements IDisposable {
        this._handleStorageImageDeleted(storageId);
      };
      this._storage.onImageDeleted = this._wrappedOnImageDeleted;
@@ -2720,16 +2756,46 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
    }
  
    public reset(): void {
-@@ -60,6 +72,8 @@ export class KittyImageStorage implements IDisposable {
+@@ -60,18 +74,57 @@ export class KittyImageStorage implements IDisposable {
      this._images.clear();
      this._kittyIdToStorageId.clear();
      this._storageIdToKittyId.clear();
 +    this._virtualPlacements.clear();
 +    this._virtualStorageIds.clear();
++  }
++
++  public captureCheckpoint(maxBytes: number): KittyStorageCheckpoint {
++    if (this._disposed) throw new Error('Kitty image storage is disposed');
++    return captureKittyStorageCheckpoint(this._images, this._kittyIdToStorageId, this._virtualPlacements, this._nextImageId, maxBytes);
++  }
++
++  public restoreCheckpoint(checkpoint: KittyStorageCheckpoint, maxPayloadBytes: number): void {
++    if (this._disposed) throw new Error('Kitty image storage is disposed');
++    const images = prepareKittyCheckpointImages(checkpoint, this._storage, maxPayloadBytes);
++    this.reset();
++    this._nextImageId = checkpoint.metadata.nextImageId;
++    for (const [id, image] of images) this._images.set(id, image);
++    for (const placement of checkpoint.metadata.physicalPlacements) {
++      this._kittyIdToStorageId.set(placement.kittyId, placement.storageId);
++      this._storageIdToKittyId.set(placement.storageId, placement.kittyId);
++    }
++    for (const placement of checkpoint.metadata.virtualPlacements) {
++      let placements = this._virtualPlacements.get(placement.kittyId);
++      if (!placements) {
++        placements = new Map();
++        this._virtualPlacements.set(placement.kittyId, placements);
++      }
++      placements.set(placement.placementId, {
++        placementId: placement.placementId, storageId: placement.storageId, cols: placement.cols, rows: placement.rows
++      });
++      this._virtualStorageIds.set(placement.storageId, { kittyId: placement.kittyId, placementId: placement.placementId });
++    }
++    this._renderer.refreshAll();
    }
  
    public dispose(): void {
-@@ -67,11 +81,18 @@ export class KittyImageStorage implements IDisposable {
++    this._disposed = true;
+     this.reset();
      if (this._storage.onImageDeleted === this._wrappedOnImageDeleted) {
        this._storage.onImageDeleted = this._previousOnImageDeleted;
      }
@@ -2748,7 +2814,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
      const oldStorageId = this._kittyIdToStorageId.get(imageId);
      if (oldStorageId !== undefined) {
        this._storage.deleteImage(oldStorageId);
-@@ -79,18 +100,34 @@ export class KittyImageStorage implements IDisposable {
+@@ -79,18 +132,34 @@ export class KittyImageStorage implements IDisposable {
        this._storageIdToKittyId.delete(oldStorageId);
      }
  
@@ -2786,7 +2852,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
      // Clean up stale reverse-mapping from a previous placement of the same
      // kitty image.  The old shared-storage entry is kept (it may still be
      // visible on screen) but its reverse mapping is removed so that eviction
-@@ -102,6 +139,7 @@ export class KittyImageStorage implements IDisposable {
+@@ -102,6 +171,7 @@ export class KittyImageStorage implements IDisposable {
      this._addImageOpts.scrolling = scrolling;
      this._addImageOpts.layer = layer;
      this._addImageOpts.zIndex = zIndex;
@@ -2794,7 +2860,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
      const storageId = this._storage.addImage(image, this._addImageOpts);
      this._kittyIdToStorageId.set(kittyId, storageId);
      this._storageIdToKittyId.set(storageId, kittyId);
-@@ -111,23 +149,68 @@ export class KittyImageStorage implements IDisposable {
+@@ -111,23 +181,68 @@ export class KittyImageStorage implements IDisposable {
      return this._images.get(kittyId);
    }
  
@@ -2871,7 +2937,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
    }
  
    public get images(): ReadonlyMap<number, IKittyImageData> {
-@@ -142,14 +225,111 @@ export class KittyImageStorage implements IDisposable {
+@@ -142,14 +257,111 @@ export class KittyImageStorage implements IDisposable {
      return this._nextImageId - 1;
    }
  
@@ -2990,3 +3056,120 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c064cd927bceeb3f4779fe3c7a4391a6
 +    return placement;
    }
  }
+diff --git a/src/kitty/KittyStorageCheckpoint.ts b/src/kitty/KittyStorageCheckpoint.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d07d0c0a4e9e10dc9dfa2e22a0f64488e407534
+--- /dev/null
++++ b/src/kitty/KittyStorageCheckpoint.ts
+@@ -0,0 +1,111 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import { ImageCheckpointResources, CHECKPOINT_LEASE_BYTES, type ICheckpointResource } from '../ImageCheckpointResources';
++import type { ImageStorage } from '../ImageStorage';
++import type { IKittyImageData, IVirtualPlacement } from './KittyGraphicsTypes';
++
++export interface IKittyCheckpointImage extends Omit<IKittyImageData, 'data'> {
++  readonly resourceId: number;
++  readonly byteLength: number;
++}
++
++export interface IKittyCheckpointPlacement extends Readonly<IVirtualPlacement> {
++  readonly kittyId: number;
++}
++
++export interface IKittyStorageCheckpointMetadata {
++  readonly nextImageId: number;
++  readonly images: readonly Readonly<IKittyCheckpointImage>[];
++  readonly physicalPlacements: readonly Readonly<{ kittyId: number; storageId: number }>[];
++  readonly virtualPlacements: readonly IKittyCheckpointPlacement[];
++  readonly resources: readonly ICheckpointResource[];
++  readonly byteLength: number;
++}
++
++export class KittyStorageCheckpoint extends ImageCheckpointResources<IKittyStorageCheckpointMetadata> {}
++
++export function captureKittyStorageCheckpoint(
++  images: ReadonlyMap<number, IKittyImageData>, physical: ReadonlyMap<number, number>,
++  virtual: ReadonlyMap<number, ReadonlyMap<number, IVirtualPlacement>>, nextImageId: number, maxBytes: number
++): KittyStorageCheckpoint {
++  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > CHECKPOINT_LEASE_BYTES) {
++    throw new RangeError('Invalid Kitty checkpoint byte budget');
++  }
++  const virtualPlacements: IKittyCheckpointPlacement[] = [];
++  for (const [kittyId, placements] of virtual) {
++    for (const placement of placements.values()) {
++      virtualPlacements.push(Object.freeze({ ...placement, kittyId }));
++      if (virtualPlacements.length + physical.size > 4096) throw new RangeError('Kitty checkpoint exceeds placement limit');
++    }
++  }
++  if (images.size > 256 || physical.size > 4096) throw new RangeError('Kitty checkpoint exceeds object limit');
++  let byteLength = 0;
++  for (const image of images.values()) {
++    byteLength += image.data.byteLength;
++    if (byteLength > maxBytes) throw new RangeError('Kitty checkpoint exceeds byte budget');
++  }
++  const resources = new Map<number, Uint8Array>();
++  const entries: Readonly<IKittyCheckpointImage>[] = [];
++  for (const image of images.values()) {
++    const resourceId = resources.size + 1;
++    resources.set(resourceId, new Uint8Array(image.data));
++    entries.push(Object.freeze({
++      id: image.id, width: image.width, height: image.height, format: image.format,
++      compression: image.compression, resourceId, byteLength: image.data.byteLength
++    }));
++  }
++  return new KittyStorageCheckpoint(Object.freeze({
++    nextImageId, images: Object.freeze(entries), byteLength,
++    physicalPlacements: Object.freeze([...physical].map(([kittyId, storageId]) => Object.freeze({ kittyId, storageId }))),
++    virtualPlacements: Object.freeze(virtualPlacements),
++    resources: Object.freeze([...resources].map(([id, bytes]) => Object.freeze({ id, byteLength: bytes.byteLength })))
++  }), resources);
++}
++
++export function prepareKittyCheckpointImages(
++  checkpoint: KittyStorageCheckpoint, storage: ImageStorage, maxPayloadBytes: number
++): Map<number, IKittyImageData> {
++  if (checkpoint.isDisposed) throw new Error('Kitty checkpoint lease is disposed');
++  if (!Number.isSafeInteger(maxPayloadBytes) || maxPayloadBytes <= 0 || maxPayloadBytes > CHECKPOINT_LEASE_BYTES) {
++    throw new RangeError('Invalid Kitty checkpoint payload limit');
++  }
++  const metadata = checkpoint.metadata;
++  if (!Number.isSafeInteger(metadata.nextImageId) || metadata.nextImageId < 1
++    || metadata.images.length > 256 || metadata.virtualPlacements.length + metadata.physicalPlacements.length > 4096) {
++    throw new RangeError('Invalid Kitty checkpoint counts');
++  }
++  const used = new Set<number>();
++  const checkPlacement = (kittyId: number, storageId: number, virtual: boolean): void => {
++    const spec = storage.getImageSpec(storageId);
++    if (!spec || spec.kittyId !== kittyId || !!spec.virtual !== virtual || used.has(storageId)) {
++      throw new Error('Kitty checkpoint does not match restored decoded placements');
++    }
++    used.add(storageId);
++  };
++  for (const placement of metadata.physicalPlacements) checkPlacement(placement.kittyId, placement.storageId, false);
++  for (const placement of metadata.virtualPlacements) checkPlacement(placement.kittyId, placement.storageId, true);
++  let byteLength = 0;
++  const ids = new Set<number>();
++  for (const image of metadata.images) {
++    if (ids.has(image.id) || !Number.isSafeInteger(image.byteLength) || image.byteLength < 0 || image.byteLength > maxPayloadBytes) {
++      throw new RangeError('Kitty checkpoint exceeds payload limit or repeats a source');
++    }
++    ids.add(image.id);
++    byteLength += image.byteLength;
++  }
++  // A single admitted source can exceed a smaller configured cache budget.
++  if (byteLength > Math.max(storage.getLimit() * 1000000, maxPayloadBytes)) {
++    throw new RangeError('Kitty checkpoint exceeds source storage budget');
++  }
++  const images = new Map<number, IKittyImageData>();
++  for (const image of metadata.images) {
++    images.set(image.id, {
++      id: image.id, width: image.width, height: image.height, format: image.format,
++      compression: image.compression, data: checkpoint.copyResource(image.resourceId, image.byteLength)
++    });
++  }
++  return images;
++}

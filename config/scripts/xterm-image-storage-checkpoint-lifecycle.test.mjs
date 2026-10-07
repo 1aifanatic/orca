@@ -1,32 +1,7 @@
-import { createRequire } from 'node:module'
+import { terminal } from './xterm-image-checkpoint-test-terminal.mjs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NodeTerminalRasterBackend } from '../../src/shared/node-terminal-raster-backend'
 
-const require = createRequire(import.meta.url)
-const { Terminal } = require('@xterm/headless')
-const { ImageAddon } = require('@xterm/addon-image')
 afterEach(() => vi.unstubAllGlobals())
-
-function terminal(browser = false) {
-  const core = new Terminal({ cols: 20, rows: 10, allowProposedApi: true, logLevel: 'off' })
-  const backend = new NodeTerminalRasterBackend({
-    getCellSize: () => ({ width: 2, height: 2 }),
-    getColors: () => ({
-      foreground: { rgba: 0xffffffff },
-      background: { rgba: 0x000000ff },
-      ansi: []
-    })
-  })
-  const addon = new ImageAddon({
-    rasterBackend: browser ? undefined : backend,
-    storageLimit: 32,
-    pixelLimit: 8_000_000,
-    kittySizeLimit: 8 * 1024 * 1024,
-    enableSizeReports: false
-  })
-  core.loadAddon(addon)
-  return { core, addon, backend, storage: addon._storage }
-}
 
 function add(h, value = 255) {
   h.core._core.writeSync(
