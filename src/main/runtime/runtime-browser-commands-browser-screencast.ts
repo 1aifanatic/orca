@@ -103,6 +103,12 @@ export class RuntimeBrowserCommandsWithBrowserScreencast extends RuntimeBrowserC
           for (const subscriber of record.subscribers.values()) {
             subscriber.emit?.({ type: 'error', message })
           }
+          // Why: every stream error is terminal; marking it stopping makes a newcomer start a fresh
+          // stream instead of joining this one and waiting on frames that will never come.
+          if (record.session && !record.stopping) {
+            record.stopping = true
+            record.session.stop()
+          }
         }
       })
       active = record

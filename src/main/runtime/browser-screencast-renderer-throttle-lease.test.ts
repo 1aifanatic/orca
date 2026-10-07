@@ -44,7 +44,11 @@ function createCommandsHost(): RuntimeBrowserCommandHost {
   } as unknown as RuntimeBrowserCommandHost
 }
 
-type PageStream = { options: BrowserScreencastOptions; close: () => void }
+type PageStream = {
+  options: BrowserScreencastOptions
+  close: () => void
+  stop: ReturnType<typeof vi.fn>
+}
 
 function createRig() {
   const { runtime } = createScreencastHarness()
@@ -55,15 +59,22 @@ function createRig() {
     getAvailableAuthoritativeWindow: () => window
   })
   const pageStreams: PageStream[] = []
+  // Models Chromium's asynchronous teardown: a held stop leaves the stream open until `close()`.
+  const stopControl = { hold: false }
   startBrowserScreencast.mockImplementation(
     async (_guest: unknown, options: BrowserScreencastOptions) => {
       let close!: () => void
       const done = new Promise<void>((resolve) => {
         close = resolve
       })
-      pageStreams.push({ options, close })
+      const stop = vi.fn(() => {
+        if (!stopControl.hold) {
+          close()
+        }
+      })
+      pageStreams.push({ options, close, stop })
       return {
-        stop: () => close(),
+        stop,
         done,
         updateViewport: vi.fn(async () => {}),
         updateFrameBudget: vi.fn(async () => {})
@@ -71,11 +82,15 @@ function createRig() {
     }
   )
 
-  const subscribe = (connectionId: string, sendBinary = vi.fn(() => true)) => {
+  const subscribe = (
+    connectionId: string,
+    sendBinary = vi.fn(() => true),
+    signal?: AbortSignal
+  ) => {
     const emit = vi.fn()
     const done = runtime.browserScreencast(
       { worktree: 'id:wt-1', page: 'page-1', format: 'jpeg' },
-      { connectionId, clientKind: 'mobile', sendBinary, emit }
+      { connectionId, clientKind: 'mobile', sendBinary, signal, emit }
     )
     const ready = async (): Promise<string> => {
       await vi.waitFor(() =>
@@ -83,13 +98,15 @@ function createRig() {
       )
       return emit.mock.calls.find(([event]) => event.type === 'ready')?.[0].subscriptionId
     }
-    return { done, ready, emit }
+    const eventTypes = (): string[] => emit.mock.calls.map(([event]) => event.type)
+    return { done, ready, emit, eventTypes }
   }
 
   return {
     runtime,
     subscribe,
     pageStreams,
+    stopControl,
     // The window draws while hidden only after its last setBackgroundThrottling was `false`.
     lifted: () => setBackgroundThrottling.mock.calls.at(-1)?.[0] === false,
     throttleCalls: () => setBackgroundThrottling.mock.calls.map(([allowed]) => allowed)
@@ -206,5 +223,83 @@ describe('remote browser screencast renderer throttle lease', () => {
     rig.runtime.cleanupSubscription(tabletSubscription)
     await tablet.done
     expect(rig.throttleCalls()).toEqual([false, true])
+  })
+
+  it('ends the stream on the no-frame timeout, then restores the throttle', async () => {
+    const rig = createRig()
+    const phone = rig.subscribe('conn-phone')
+    await phone.ready()
+
+    rig.pageStreams[0].options.onError?.('Browser stream timed out.')
+    await phone.done
+
+    expect(rig.pageStreams[0].stop).toHaveBeenCalledOnce()
+    expect(phone.eventTypes()).toEqual(['ready', 'error', 'end'])
+    expect(rig.throttleCalls()).toEqual([false, true])
+  })
+
+  it('starts a fresh stream for a viewer that joins while the timed-out one tears down', async () => {
+    const rig = createRig()
+    const phone = rig.subscribe('conn-phone')
+    await phone.ready()
+    rig.stopControl.hold = true
+
+    rig.pageStreams[0].options.onError?.('Browser stream timed out.')
+    const guestLookups = webContentsFromId.mock.calls.length
+    const tablet = rig.subscribe('conn-tablet')
+    // Past its guest lookup, the joiner reaches the page record with no further await.
+    await vi.waitFor(() =>
+      expect(webContentsFromId.mock.calls.length).toBeGreaterThan(guestLookups)
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+    rig.pageStreams[0].close()
+    await tablet.ready()
+
+    expect(startBrowserScreencast).toHaveBeenCalledTimes(2)
+    expect(tablet.eventTypes()).toEqual(['ready'])
+    await phone.done
+  })
+
+  it('restores it when the subscription is aborted before ready', async () => {
+    const rig = createRig()
+    let releaseStart!: () => void
+    const started = startBrowserScreencast.getMockImplementation()
+    startBrowserScreencast.mockImplementation(async (...args: unknown[]) => {
+      await new Promise<void>((resolve) => {
+        releaseStart = resolve
+      })
+      return started?.(...args)
+    })
+    const abort = new AbortController()
+    const phone = rig.subscribe(
+      'conn-phone',
+      vi.fn(() => true),
+      abort.signal
+    )
+    await vi.waitFor(() => expect(releaseStart).toBeTypeOf('function'))
+
+    abort.abort()
+    releaseStart()
+    await phone.done
+
+    expect(phone.eventTypes()).not.toContain('ready')
+    expect(rig.throttleCalls()).toEqual([false, true])
+  })
+
+  it('stays balanced when the same connection re-subscribes', async () => {
+    const rig = createRig()
+    const first = rig.subscribe('conn-phone')
+    await first.ready()
+    const second = rig.subscribe('conn-phone')
+    const subscriptionId = await second.ready()
+    await first.done
+    expect(rig.lifted()).toBe(true)
+
+    rig.runtime.cleanupSubscription(subscriptionId)
+    await second.done
+
+    const calls = rig.throttleCalls()
+    expect(calls.filter((allowed) => !allowed)).toHaveLength(calls.filter(Boolean).length)
+    expect(rig.lifted()).toBe(false)
   })
 })

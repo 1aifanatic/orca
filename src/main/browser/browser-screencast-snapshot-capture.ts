@@ -10,7 +10,6 @@ import { positiveInteger, scaleSnapshotToFit } from './browser-screencast-viewpo
 import { withTimeout } from '../../shared/promise-timeout-fallback'
 
 const SNAPSHOT_CAPTURE_TIMEOUT_MS = 10_000
-const CAPTURE_FAILED = Symbol('capture-failed')
 
 type BrowserScreencastSnapshotCaptureDeps = {
   webContents: WebContents
@@ -21,7 +20,6 @@ type BrowserScreencastSnapshotCaptureDeps = {
   getSeq: () => number
   queueFrame: (frame: PendingScreencastFrame) => void
   applyDeviceMetricsOverride: () => Promise<void>
-  reportNoFrame: () => void
 }
 
 export type BrowserScreencastSnapshotCapture = {
@@ -35,7 +33,7 @@ export function createBrowserScreencastSnapshotCapture(
   deps: BrowserScreencastSnapshotCaptureDeps
 ): BrowserScreencastSnapshotCapture {
   const { webContents, dbg, options, isClosed, isStopping, getSeq, queueFrame } = deps
-  const { applyDeviceMetricsOverride, reportNoFrame } = deps
+  const { applyDeviceMetricsOverride } = deps
 
   let snapshotGeneration = 0
   let navigationCaptureTimer: ReturnType<typeof setTimeout> | null = null
@@ -126,23 +124,10 @@ export function createBrowserScreencastSnapshotCapture(
       if (isSnapshotStale(initialOnly, generation)) {
         return
       }
-      // Why: a hidden, throttled embedder stops compositing and both captures then hang outright.
-      const image = await withTimeout<Uint8Array | null | typeof CAPTURE_FAILED>(
-        captureImage(),
-        SNAPSHOT_CAPTURE_TIMEOUT_MS,
-        CAPTURE_FAILED
-      )
-      if (isSnapshotStale(initialOnly, generation)) {
-        return
-      }
-      if (image === CAPTURE_FAILED) {
-        // Why: with no live frame either, the viewer has nothing to show and would wait forever.
-        if (getSeq() === 0) {
-          reportNoFrame()
-        }
-        return
-      }
-      if (!image) {
+      // Why: a hidden, throttled embedder stops compositing and capturePage then never settles,
+      // which would wedge every later viewport update and the stop queued behind this capture.
+      const image = await withTimeout(captureImage(), SNAPSHOT_CAPTURE_TIMEOUT_MS, null)
+      if (!image || isSnapshotStale(initialOnly, generation)) {
         return
       }
       const viewportWidth = positiveInteger(options.viewportWidth)

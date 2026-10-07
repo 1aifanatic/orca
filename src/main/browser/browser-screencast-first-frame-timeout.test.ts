@@ -1,6 +1,6 @@
 /**
- * A hidden, throttled embedder stops compositing, and then both capturePage and
- * Page.captureScreenshot neither resolve nor reject. The stream must give up and say so.
+ * A hidden, throttled embedder stops compositing: capturePage never settles and no live frame
+ * comes. The stream says so once, 10 s after it started, and only if no frame arrived by then.
  */
 import { Buffer } from 'node:buffer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,6 +17,14 @@ function start(webContents: object, options: BrowserScreencastOptions) {
   return startBrowserScreencast(webContents as never, options)
 }
 
+function liveFrame(webContents: ReturnType<typeof createMockScreencastWebContents>): void {
+  webContents.debugger.emit('message', {}, 'Page.screencastFrame', {
+    data: Buffer.from('live').toString('base64'),
+    sessionId: 1,
+    metadata: { deviceWidth: 390, deviceHeight: 844, pageScaleFactor: 1 }
+  })
+}
+
 function startOptions(viewport: boolean) {
   return {
     format: 'jpeg' as const,
@@ -31,7 +39,7 @@ function startOptions(viewport: boolean) {
   }
 }
 
-describe('browser screencast first-frame capture time limit', () => {
+describe('browser screencast first-frame deadline', () => {
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -39,7 +47,7 @@ describe('browser screencast first-frame capture time limit', () => {
     vi.useRealTimers()
   })
 
-  it('reports a failure and ends the stream when both captures hang', async () => {
+  it('reports no frame at 10 s when both captures hang', async () => {
     const webContents = Object.assign(createMockScreencastWebContents(), {
       capturePage: vi.fn(() => never())
     })
@@ -48,22 +56,18 @@ describe('browser screencast first-frame capture time limit', () => {
     )
     const options = startOptions(true)
     const session = await start(webContents, options)
-    let ended = false
-    void session.done.then(() => {
-      ended = true
-    })
 
     await vi.advanceTimersByTimeAsync(9_999)
     expect(options.onError).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(options.onError).toHaveBeenCalledOnce()
-    expect(ended).toBe(true)
-    expect(webContents.debugger.sendCommand).toHaveBeenCalledWith('Page.stopScreencast', {})
+    expect(options.onError).toHaveBeenCalledExactlyOnceWith('Browser stream timed out.')
     expect(options.onFrame).not.toHaveBeenCalled()
+    session.stop()
+    await session.done
   })
 
-  it('reports a failure when the screenshot fallback gives up without a frame', async () => {
+  it('waits for the 10 s deadline when the screenshot fallback gives up at 8 s', async () => {
     const webContents = createMockScreencastWebContents()
     webContents.debugger.sendCommand.mockImplementation(async (method: string) =>
       method === 'Page.captureScreenshot' ? never() : {}
@@ -71,10 +75,34 @@ describe('browser screencast first-frame capture time limit', () => {
     const options = startOptions(false)
     const session = await start(webContents, options)
 
-    await vi.advanceTimersByTimeAsync(10_000)
+    await vi.advanceTimersByTimeAsync(9_999)
+    expect(options.onError).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
 
     expect(options.onError).toHaveBeenCalledOnce()
-    await expect(session.done).resolves.toBeUndefined()
+    session.stop()
+    await session.done
+  })
+
+  it('keeps streaming when a fast capture refusal is followed by live frames', async () => {
+    const webContents = createMockScreencastWebContents()
+    webContents.debugger.sendCommand.mockImplementation(async (method: string) => {
+      if (method === 'Page.captureScreenshot') {
+        throw new Error('Unable to capture screenshot')
+      }
+      return {}
+    })
+    const options = startOptions(false)
+    const session = await start(webContents, options)
+    await vi.advanceTimersByTimeAsync(1_000)
+    liveFrame(webContents)
+
+    await vi.advanceTimersByTimeAsync(20_000)
+
+    expect(options.onFrame).toHaveBeenCalledOnce()
+    expect(options.onError).not.toHaveBeenCalled()
+    session.stop()
+    await session.done
   })
 
   it('drops a capture that settles after the limit', async () => {
@@ -90,7 +118,6 @@ describe('browser screencast first-frame capture time limit', () => {
     const options = startOptions(true)
     const session = await start(webContents, options)
     await vi.advanceTimersByTimeAsync(10_000)
-    await session.done
 
     settleCapture({
       getSize: () => ({ width: 390, height: 844 }),
@@ -100,6 +127,8 @@ describe('browser screencast first-frame capture time limit', () => {
     await vi.advanceTimersByTimeAsync(1_000)
 
     expect(options.onFrame).not.toHaveBeenCalled()
+    session.stop()
+    await session.done
   })
 
   it('leaves the stream alone when a live frame arrived first', async () => {
@@ -108,11 +137,7 @@ describe('browser screencast first-frame capture time limit', () => {
     })
     const options = startOptions(true)
     const session = await start(webContents, options)
-    webContents.debugger.emit('message', {}, 'Page.screencastFrame', {
-      data: Buffer.from('live').toString('base64'),
-      sessionId: 1,
-      metadata: { deviceWidth: 390, deviceHeight: 844, pageScaleFactor: 1 }
-    })
+    liveFrame(webContents)
 
     await vi.advanceTimersByTimeAsync(10_000)
 

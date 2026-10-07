@@ -122,11 +122,11 @@ export class RuntimeBrowserScreencastController {
       return options.sendBinary?.(bytes)
     }
 
+    // Why: guest frames come from the window's compositor, which a throttled hidden window stops.
+    const releaseRendererThrottle = this.deps.liftRendererThrottle()
     // Why: rotation can happen before ready, so replacements are connection-scoped immediately.
     this.activeByConnection.set(connectionKey, { cancel, done: activeDone, connectionKey })
     options.signal?.addEventListener('abort', abortScreencast, { once: true })
-    // Why: guest frames come from the window's compositor, which a throttled hidden window stops.
-    const releaseRendererThrottle = this.deps.liftRendererThrottle()
     try {
       screencast = await this.deps.getCommands().browserScreencast(params, {
         sendBinary: sendBinaryAfterReady,

@@ -13,6 +13,8 @@ import type {
   BrowserScreencastViewport
 } from './browser-screencast-stream-types'
 
+const NO_FRAME_TIMEOUT_MS = 10_000
+
 export async function startBrowserScreencast(
   webContents: WebContents,
   options: BrowserScreencastOptions
@@ -44,6 +46,7 @@ export async function startBrowserScreencast(
   let dialogSettlement: Promise<boolean> | null = null
   let dialogGeneration = 0
   let resolveDone!: () => void
+  let noFrameTimer: ReturnType<typeof setTimeout> | null = null
   // Serializes viewport and frame-budget changes against the snapshot capture they trigger.
   let pendingUpdate = Promise.resolve()
   const done = new Promise<void>((resolve) => {
@@ -62,12 +65,7 @@ export async function startBrowserScreencast(
     isStopping,
     getSeq: framePacer.getSeq,
     queueFrame: framePacer.queueFrame,
-    applyDeviceMetricsOverride: deviceMetrics.apply,
-    // Why: ending the stream lets the viewer show the error instead of waiting on a frame forever.
-    reportNoFrame: () => {
-      options.onError?.('Browser stream timed out.')
-      stop()
-    }
+    applyDeviceMetricsOverride: deviceMetrics.apply
   })
   const handleMessage = createBrowserScreencastMessageHandler({
     dbg,
@@ -101,6 +99,10 @@ export async function startBrowserScreencast(
       return
     }
     closed = true
+    if (noFrameTimer) {
+      clearTimeout(noFrameTimer)
+      noFrameTimer = null
+    }
     dialogOpen = false
     dialogSettlement = null
     snapshotCapture.clearNavigationCaptureTimer()
@@ -113,45 +115,9 @@ export async function startBrowserScreencast(
   }
 
   const handleDetach = (): void => {
-    options.onError?.('Browser debugger detached while streaming.')
+    // Why: finish first so an owner that stops the stream on this error finds it already closed.
     finish()
-  }
-
-  const stop = (): void => {
-    if (closed) {
-      return
-    }
-    stopping = true
-    snapshotCapture.bumpGeneration()
-    snapshotCapture.clearNavigationCaptureTimer()
-    framePacer.clearPending(true)
-    try {
-      void (async () => {
-        await pendingUpdate.catch(() => {})
-        // Why: only this CDP session may answer the dialog it reported, and a session that did
-        // not see it cannot even enable the Page domain while it is up — both measured on
-        // Chromium 1217, 2026-09-20. Leaving one outstanding would block the page for good,
-        // because the stream that replaces this one hangs on its own start. Dismissing is the
-        // conservative answer for every dialog type, and the automation path has taken it since
-        // `cdp-debugger-events.ts`.
-        if (dialogOpen) {
-          dialogOpen = false
-          const pending = dialogSettlement
-          dialogSettlement = null
-          // An answer already on its way settles it; a second command here would be the
-          // duplicate this session refuses to send anywhere else.
-          await (
-            pending ?? sendDebuggerCommand(dbg, 'Page.handleJavaScriptDialog', { accept: false })
-          ).catch(() => {})
-        }
-        await sendDebuggerCommand(dbg, 'Page.stopScreencast').catch(() => {})
-        if (deviceMetrics.isOverridden()) {
-          await deviceMetrics.clear().catch(() => {})
-        }
-      })().finally(finish)
-    } catch {
-      finish()
-    }
+    options.onError?.('Browser debugger detached while streaming.')
   }
 
   dbg.on('message', handleMessage as never)
@@ -162,6 +128,14 @@ export async function startBrowserScreencast(
     await deviceMetrics.apply()
     await startScreencast()
     pendingUpdate = snapshotCapture.emitSnapshotFrame(true)
+    // Why: a page whose embedder stopped compositing yields no frame at all; the owner ends the
+    // stream on this error so the viewer leaves its spinner. A failed capture alone is not proof.
+    noFrameTimer = setTimeout(() => {
+      noFrameTimer = null
+      if (!closed && !stopping && framePacer.getSeq() === 0) {
+        options.onError?.('Browser stream timed out.')
+      }
+    }, NO_FRAME_TIMEOUT_MS)
   } catch (error) {
     if (deviceMetrics.isOverridden()) {
       await deviceMetrics.clear().catch(() => {})
@@ -229,7 +203,42 @@ export async function startBrowserScreencast(
         })
       return pendingUpdate
     },
-    stop,
+    stop: () => {
+      if (closed) {
+        return
+      }
+      stopping = true
+      snapshotCapture.bumpGeneration()
+      snapshotCapture.clearNavigationCaptureTimer()
+      framePacer.clearPending(true)
+      try {
+        void (async () => {
+          await pendingUpdate.catch(() => {})
+          // Why: only this CDP session may answer the dialog it reported, and a session that did
+          // not see it cannot even enable the Page domain while it is up — both measured on
+          // Chromium 1217, 2026-09-20. Leaving one outstanding would block the page for good,
+          // because the stream that replaces this one hangs on its own start. Dismissing is the
+          // conservative answer for every dialog type, and the automation path has taken it since
+          // `cdp-debugger-events.ts`.
+          if (dialogOpen) {
+            dialogOpen = false
+            const pending = dialogSettlement
+            dialogSettlement = null
+            // An answer already on its way settles it; a second command here would be the
+            // duplicate this session refuses to send anywhere else.
+            await (
+              pending ?? sendDebuggerCommand(dbg, 'Page.handleJavaScriptDialog', { accept: false })
+            ).catch(() => {})
+          }
+          await sendDebuggerCommand(dbg, 'Page.stopScreencast').catch(() => {})
+          if (deviceMetrics.isOverridden()) {
+            await deviceMetrics.clear().catch(() => {})
+          }
+        })().finally(finish)
+      } catch {
+        finish()
+      }
+    },
     done
   }
 }
