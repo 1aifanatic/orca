@@ -170,6 +170,12 @@ export function mergeClaudeProfilePromptHistory(
   }
   // Why: directory order is not creation order; generations keep prompts in the order they were written.
   pendings.sort((left, right) => left.generation - right.generation)
+  // Why: a cross-volume share is refused below; draining first would leak this account's prompts.
+  if (platform === 'win32' && pendings.length > 0) {
+    if (statSync(profile).dev !== statSync(destination).dev) {
+      throw crossFilesystem()
+    }
+  }
   for (const { name } of pendings) {
     try {
       drainHistory(join(profile, name), destination, shared)

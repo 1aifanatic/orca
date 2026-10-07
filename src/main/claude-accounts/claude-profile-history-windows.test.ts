@@ -137,6 +137,24 @@ describe('Claude profile history sharing on Windows', () => {
     ])
     expect(f.history()).toBe('')
   })
+  it('leaves a set-aside copy in place when the share is refused across volumes', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'd1\n')
+    fs.writeFileSync(join(f.profileHome, 'history.jsonl.orca-profile-merge'), 'saved\n')
+    const actual = vi.mocked(fs.statSync).getMockImplementation()!
+    vi.mocked(fs.statSync).mockImplementation((file, options) => {
+      const stats = actual(file, options)
+      return file === f.profileHome && stats ? Object.assign(stats, { dev: -1 }) : stats
+    })
+    const report = await f.share()
+    expect(report.warnings).toContainEqual(
+      expect.objectContaining({ surface: 'history.jsonl', code: 'cross-filesystem' })
+    )
+    expect(f.history()).toBe('d1\n')
+    expect(fs.readFileSync(join(f.profileHome, 'history.jsonl.orca-profile-merge'), 'utf8')).toBe(
+      'saved\n'
+    )
+  })
   it('keeps prompt history private when the hardlink cannot be made', async () => {
     const f = fixture()
     fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'private\n')
