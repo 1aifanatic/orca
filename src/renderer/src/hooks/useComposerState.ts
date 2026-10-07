@@ -58,7 +58,6 @@ export type UseComposerStateResult = {
   onComposerNodeChange: (node: HTMLDivElement | null) => void
   promptTextareaRef: RefObject<HTMLTextAreaElement | null>
   nameInputRef: RefObject<HTMLInputElement | null>
-  submit: () => Promise<void>
   submitQuick: (agent: TuiAgent | null) => Promise<void>
   createDisabled: boolean
   selectAddedProjectRepo: (repoId: string) => void
@@ -221,7 +220,6 @@ export function useComposerState(options: UseComposerStateOptions): UseComposerS
     onComposerNodeChange: model.handleComposerNodeChange,
     promptTextareaRef: model.promptTextareaRef,
     nameInputRef: model.nameInputRef,
-    submit: model.submit,
     submitQuick: model.submitQuick,
     createDisabled,
     selectAddedProjectRepo: model.selectAddedProjectRepo

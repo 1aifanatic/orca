@@ -116,7 +116,6 @@ export function buildComposerCardProps(state: ComposerModel) {
     sparsePresets,
     sparseSelectedPresetId,
     startFromResetHint,
-    submit,
     tuiAgent
   } = state
 
@@ -216,7 +215,6 @@ export function buildComposerCardProps(state: ComposerModel) {
     createDisabled,
     projectError: isProjectGroupTarget ? pathStatusProjectError : projectError,
     creating,
-    onCreate: () => void submit(),
     baseBranch: isProjectGroupTarget ? undefined : baseBranch,
     onBaseBranchChange: isProjectGroupTarget ? () => {} : handleBaseBranchChange,
     onBaseBranchPrSelect: isProjectGroupTarget ? () => {} : handleBaseBranchPrSelect,
