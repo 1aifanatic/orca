@@ -615,7 +615,7 @@ describe('catalog availability evidence', () => {
     expect(probe).toHaveBeenCalledTimes(2)
   })
 
-  it("backs off only the client's timer reads; a person's read re-checks after the TTL", async () => {
+  it("spaces the client's timer by the backed-off hold, and re-checks any read after the TTL", async () => {
     let at = 1000
     const store = new AgentModelCatalogStore({ now: () => at })
     const fingerprint = selectedHomeFingerprint('/homes/a')
@@ -624,14 +624,44 @@ describe('catalog availability evidence', () => {
     await store.refresh(fingerprint, 'codex', probe, () => probe('/homes/a'))
     await store.refresh(fingerprint, 'codex', probe, () => probe('/homes/a'))
     const service = availabilityService(store, probe)
-    // Two blocked probes in a row: the timer's hold is 60 s.
-    at += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
-    const timer = await service.read({ agent: 'codex', scheduledRecheck: true })
-    expect(timer.availability).toMatchObject({ state: 'notSignedIn', recheckInMs: 30_000 })
+    // Two blocked probes in a row: the client's timer is told to wait the 60 s hold.
+    const now = await service.read({ agent: 'codex' })
+    expect(now.availability).toMatchObject({ state: 'notSignedIn', recheckInMs: 60_000 })
     expect(probe).toHaveBeenCalledTimes(2)
-    // Someone back at the window, say from `codex login`, is re-checked now.
+    // Someone back at the window, say from `codex login`, is re-checked once the TTL is up.
+    at += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
     await service.read({ agent: 'codex' })
     expect(probe).toHaveBeenCalledTimes(3)
+  })
+
+  it('an account change during the first probe of a home with no catalog re-probes the new account', async () => {
+    const store = new AgentModelCatalogStore({ now: () => 1000 })
+    const runs: {
+      resolve: (value: AgentModelCatalogSuccess) => void
+      reject: (e: unknown) => void
+    }[] = []
+    const probe = vi.fn(
+      () =>
+        new Promise<AgentModelCatalogSuccess>((resolve, reject) => runs.push({ resolve, reject }))
+    )
+    const service = availabilityService(store, probe)
+    // A chat's first read starts the home's first probe, under the old account.
+    expect(await service.read({ agent: 'codex' })).toMatchObject({ listingInProgress: true })
+    store.statuses.recheck('codex')
+    // The picker's re-read after the switch waits for a first catalog.
+    const picker = service.read({ agent: 'codex', waitForListing: true })
+    await Promise.resolve()
+    runs[0]!.resolve(listing('gpt-a'))
+    // It names the fresh probe still owed, so the client asks once more for its verdict.
+    expect(await picker).toMatchObject({ origin: 'probe', listingInProgress: true })
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(2))
+    const verdict = service.read({ agent: 'codex', waitForAvailability: true })
+    await Promise.resolve()
+    runs[1]!.reject(
+      new AgentModelCatalogUnavailableError({ reason: 'notSignedIn', account: 'managed' })
+    )
+    expect((await verdict).availability).toMatchObject({ state: 'notSignedIn' })
+    expect(probe).toHaveBeenCalledTimes(2)
   })
 
   it('an untyped probe failure makes the answer unknown and keeps the cached models', async () => {

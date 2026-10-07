@@ -56,6 +56,10 @@ import type {
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { useStructuredAgentSession } from './use-structured-agent-session'
+import { agentJournalItemKey } from '../../../../shared/agent-session-journal-item-key'
+import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
+import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 
 const LOCAL_TARGET = { kind: 'local' } as const
 
@@ -132,5 +136,82 @@ describe('the send gate the session hands its composer', () => {
     items = []
     rerender()
     expect(result.current.unavailable?.reason).toBe('notSignedIn')
+  })
+
+  const signedOutStart: AgentJournalRenderItem = {
+    itemId: agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('start-1')),
+    revision: 1,
+    sequence: 1,
+    observedAt: 1,
+    body: {
+      kind: 'status',
+      tone: 'error',
+      ...agentSessionFailureWords(agentSessionFailureFact('notSignedIn'), {
+        agentName: 'Codex',
+        surface: 'row'
+      })
+    }
+  }
+  const running: AgentJournalRenderItem = {
+    itemId: 'turn-status',
+    revision: 0,
+    sequence: 2,
+    observedAt: 2,
+    body: {
+      kind: 'status',
+      text: 'Working',
+      turnLifecycle: { turnId: 'turn-1', state: 'running', startedAt: 2 }
+    }
+  }
+  const showsStartLine = (messages: unknown) => JSON.stringify(messages).includes('codex login')
+
+  it("hides the start's sign-in line on the host's answer, even while a turn suspends the gate", async () => {
+    items = [signedOutStart]
+    const { result, rerender } = renderHook(() =>
+      useStructuredAgentSession({
+        sessionId: 'session-hide',
+        target: LOCAL_TARGET,
+        agent: 'codex',
+        isVisible: true
+      })
+    )
+    await waitFor(() => expect(result.current.unavailable?.reason).toBe('notSignedIn'))
+    expect(showsStartLine(result.current.messages)).toBe(false)
+    items = [signedOutStart, running]
+    rerender()
+    expect(result.current.unavailable).toBeNull()
+    expect(showsStartLine(result.current.messages)).toBe(false)
+    items = [signedOutStart]
+    rerender()
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+    expect(showsStartLine(result.current.messages)).toBe(false)
+  })
+
+  it('shows the start line when the host gives no answer', async () => {
+    mocks.call.mockImplementation((_target, method) =>
+      method === 'agentSession.options'
+        ? Promise.resolve(OPTIONS)
+        : method === 'agentSession.modelCatalog'
+          ? Promise.resolve({ origin: 'unknown' })
+          : Promise.resolve(null)
+    )
+    items = [signedOutStart]
+    const { result } = renderHook(() =>
+      useStructuredAgentSession({
+        sessionId: 'session-unknown',
+        target: LOCAL_TARGET,
+        agent: 'codex',
+        isVisible: true
+      })
+    )
+    await waitFor(() =>
+      expect(mocks.call).toHaveBeenCalledWith(
+        LOCAL_TARGET,
+        'agentSession.modelCatalog',
+        expect.anything()
+      )
+    )
+    expect(result.current.unavailable).toBeNull()
+    expect(showsStartLine(result.current.messages)).toBe(true)
   })
 })

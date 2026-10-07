@@ -527,16 +527,14 @@ describe("the account's status beside the catalog", () => {
       await block()
       const hold = store.statuses.get('fp-1', true)
       holds.push(hold && hold.state !== 'ready' ? hold.recheckInMs : 0)
-      // Every timer read before the hold is up serves the held answer and starts no probe.
-      at.now += holds.at(-1)! - 1
-      expect(store.statuses.needsProbe('fp-1', true)).toBe(false)
-      at.now += 1
-      expect(store.statuses.needsProbe('fp-1', true)).toBe(true)
+      // The client's timer reads again when the hold is up, which is past the TTL.
+      at.now += holds.at(-1)!
+      expect(store.statuses.needsProbe('fp-1')).toBe(true)
     }
     expect(holds).toEqual([30_000, 60_000, 120_000, 240_000, 300_000, 300_000])
   })
 
-  it("re-checks for a person's read past the TTL, inside the timer's backed-off hold", async () => {
+  it("re-checks a read past the TTL, inside the timer's backed-off hold", async () => {
     const at = { now: 1_000 }
     const { store, block } = blockedStore(at)
     await block()
@@ -546,7 +544,8 @@ describe("the account's status beside the catalog", () => {
     expect(store.statuses.needsProbe('fp-1')).toBe(false)
     at.now += 1
     expect(store.statuses.needsProbe('fp-1')).toBe(true)
-    expect(store.statuses.needsProbe('fp-1', true)).toBe(false)
+    // The timer is still told to wait out the rest of its 2 min hold.
+    expect(status(store)).toMatchObject({ recheckInMs: 90_000 })
   })
 
   it("an account change during a home's first probe drops that probe's old-account answer", async () => {

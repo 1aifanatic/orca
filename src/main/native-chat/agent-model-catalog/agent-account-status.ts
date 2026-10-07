@@ -11,8 +11,8 @@ import {
 // of the model catalog or its failure backoff. In memory only and capped; an entry lives until a
 // newer answer replaces it, an untyped probe failure makes it unknown, the cap evicts it, or the
 // process restarts. A blocked answer is re-derived by the next read's probe, and served until that
-// probe answers, once an account change follows it, once a person's read finds it older than the
-// TTL, or once the client's own timer read finds it past its backed-off hold.
+// probe answers, once an account change follows it or once it is older than the TTL. The client's
+// own timer reads again only when `recheckInMs` says, which backs off while the block repeats.
 
 /** The probe's typed verdict that no new child can start under this account. */
 export class AgentModelCatalogUnavailableError extends Error {
@@ -91,9 +91,9 @@ export class AgentAccountStatuses {
   }
 
   /** True when this read should start the probe: marked by an account change, or blocked past the
-   *  TTL for a person's read. Only the client's timer read waits out the backed-off hold, so
-   *  someone back from signing in elsewhere is re-checked within the TTL. */
-  needsProbe(fingerprint: string, scheduled = false): boolean {
+   *  TTL. Someone back from signing in elsewhere is re-checked within the TTL; only the client's
+   *  timer is spaced out, by the hold `recheckInMs` reports. */
+  needsProbe(fingerprint: string): boolean {
     const status = this.statuses.get(fingerprint)
     if (!status) {
       return false
@@ -105,7 +105,7 @@ export class AgentAccountStatuses {
       return false
     }
     const age = this.now() - status.taken.at
-    return scheduled ? this.holdLeft(status) <= 0 : age < 0 || age >= this.ttlMs
+    return age < 0 || age >= this.ttlMs
   }
 
   /** The probe running now began before the account change it would have to answer for. */

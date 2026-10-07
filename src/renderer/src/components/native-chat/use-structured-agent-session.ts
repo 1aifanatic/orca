@@ -193,8 +193,8 @@ export function useStructuredAgentSession(args: {
     (stopControl.stopsConversation &&
       (transportState.isWorking ||
         hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
-  // The verdict as the composer's Send gate states it; a start-failure row it states is hidden.
-  const { unavailable, gated } = nativeChatComposerVerdict(sessionOptions, canStop)
+  // Send's gate, and the host's answer that hides a start-failure row it states.
+  const verdict = nativeChatComposerVerdict(sessionOptions, canStop)
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(
@@ -213,7 +213,7 @@ export function useStructuredAgentSession(args: {
     transcriptItems,
     transcriptOutbox,
     transportState.submissions,
-    gated
+    verdict.hostReason
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
@@ -233,7 +233,8 @@ export function useStructuredAgentSession(args: {
         agentName: structuredAgentLabel(agent),
         pending: commandPending,
         blocked: conversationBusy || rewind.blockedRef.current,
-        startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items, gated),
+        startFailures: () =>
+          structuredAgentSessionStartFailureFacts(stateRef.current.items, verdict.hostReason),
         send: (command) =>
           write<AgentSessionConversationCommandResult>(
             'agentSession.conversationCommand',
@@ -324,7 +325,7 @@ export function useStructuredAgentSession(args: {
       )
     },
     ...sessionOptions,
-    unavailable,
+    ...verdict,
     sessionCommands: transportEnabled ? (state.commands ?? undefined) : undefined,
     threadGoal,
     contextUsage

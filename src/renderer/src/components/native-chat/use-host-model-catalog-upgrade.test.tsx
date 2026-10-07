@@ -434,24 +434,41 @@ describe('Send availability follows the current catalog', () => {
     await flush()
     expect(result.current.unavailable).toBeNull()
   })
-  it('marks only its timer read as scheduled; a focus read is a person looking', async () => {
+  it("re-arms its timer from each blocked answer's backed-off hold", async () => {
+    const held = (recheckInMs: number) => ({
+      ...blocked,
+      availability: { ...blocked.availability, recheckInMs }
+    })
     answerCatalog([
-      () => Promise.resolve(blocked),
-      () => Promise.resolve(blocked),
-      () => Promise.resolve(blocked)
+      () => Promise.resolve(held(60_000)),
+      () => Promise.resolve(held(120_000)),
+      () => Promise.resolve(held(120_000))
     ])
     renderOptions()
     await flush()
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30000)
+      await vi.advanceTimersByTimeAsync(59_999)
     })
+    expect(catalogReads()).toHaveLength(1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(catalogReads()).toHaveLength(2)
+    // A focus read in between re-arms from its own answer rather than adding a second timer.
     act(() => window.dispatchEvent(new Event('focus')))
     await flush()
-    expect(catalogReads()).toEqual([
-      { agent: 'codex', sessionId },
-      { agent: 'codex', sessionId, scheduledRecheck: true },
-      { agent: 'codex', sessionId }
-    ])
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(119_999)
+    })
+    expect(catalogReads()).toHaveLength(3)
+    // One timer, armed from the newest answer: exactly one more read when it is due.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(catalogReads()).toHaveLength(4)
+    expect(catalogReads().every((params) => !JSON.stringify(params).includes('scheduled'))).toBe(
+      true
+    )
   })
   it('a focus refresh with an unknown answer clears the blocker', async () => {
     answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])

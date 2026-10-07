@@ -11,8 +11,8 @@ import {
 
 /** The one rule for when the host's verdict blocks Send: only a send that starts the agent. While
  *  a turn runs, Send is Stop and a follow-up queues behind it as it always has. Applied once, where
- *  the session hands the verdict to its composer, so the button, Enter, goal mode and the hidden
- *  start-failure line all read the same value. */
+ *  the session hands the verdict to its composer, so the button, Enter and goal mode all read the
+ *  same value. */
 export function nativeChatComposerSendGate(
   unavailable: AgentSessionUnavailable | null | undefined,
   isWorking: boolean
@@ -20,13 +20,16 @@ export function nativeChatComposerSendGate(
   return isWorking ? null : (unavailable ?? null)
 }
 
-/** The session's verdict as its composer gates on it, and what that says about a start failure. */
+/** Two views of the host's one answer: the Send gate, which a running turn suspends, and what the
+ *  answer says now, which hides a start-failure line it states whether or not a turn runs. */
 export function nativeChatComposerVerdict(
   options: { unavailable: AgentSessionUnavailable | null; accountVerified: boolean },
   isWorking: boolean
-): { unavailable: AgentSessionUnavailable | null; gated: NativeChatGateReason } {
-  const unavailable = nativeChatComposerSendGate(options.unavailable, isWorking)
-  return { unavailable, gated: nativeChatGateReason(unavailable, options.accountVerified) }
+): { unavailable: AgentSessionUnavailable | null; hostReason: NativeChatGateReason } {
+  return {
+    unavailable: nativeChatComposerSendGate(options.unavailable, isWorking),
+    hostReason: nativeChatGateReason(options.unavailable, options.accountVerified)
+  }
 }
 
 export function nativeChatComposerSendState(

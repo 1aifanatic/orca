@@ -163,7 +163,7 @@ export function useHostModelCatalogUpgrade(args: {
     let expiry: ReturnType<typeof setTimeout> | undefined
     const params = { agent, sessionId, ...(namesDefault && worktree ? { worktree } : {}) }
     const read = (
-      flag?: 'waitForListing' | 'waitForAvailability' | 'scheduledRecheck'
+      flag?: 'waitForListing' | 'waitForAvailability'
     ): Promise<AgentSessionModelCatalogResult> =>
       callStructuredAgentSession<AgentSessionModelCatalogResult>(
         target,
@@ -184,10 +184,10 @@ export function useHostModelCatalogUpgrade(args: {
       if (!catalog) {
         return
       }
-      // Only a blocked answer needs re-deriving on its own; the host says when, and spaces out
-      // these unattended reads. Only a host that sent `availability` arms it, so knows the param.
+      // Only a blocked answer needs re-deriving on its own; the host says when, backing off while
+      // the block repeats. Every answer re-arms it, so one served mid-probe can't fire early twice.
       if (answer && answer.state !== 'ready') {
-        expiry = setTimeout(() => refresh(true), answer.recheckInMs)
+        expiry = setTimeout(refresh, answer.recheckInMs)
       }
       updateOptionState((current) =>
         current.record === activeOptionRecordRef.current
@@ -231,8 +231,7 @@ export function useHostModelCatalogUpgrade(args: {
       )
       leaves.add(leaveWait)
     }
-    // Focus, visibility, mount and a start failure are someone looking: never `scheduled`.
-    const refresh = (scheduled = false): void => {
+    const refresh = (): void => {
       if (stale || document.visibilityState === 'hidden') {
         return
       }
@@ -240,7 +239,7 @@ export function useHostModelCatalogUpgrade(args: {
       if (isHostModelListingWaitInFlight(waitKey)) {
         waitFor('waitForListing', requestGeneration)
       } else {
-        void read(scheduled ? 'scheduledRecheck' : undefined)
+        void read()
           .then((catalog) => {
             if (stale || generation !== requestGeneration) {
               return
@@ -269,15 +268,14 @@ export function useHostModelCatalogUpgrade(args: {
         refresh()
       }
     }
-    const refreshNow = (): void => refresh()
     refresh()
-    window.addEventListener('focus', refreshNow)
+    window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       stale = true
       clearTimeout(expiry)
       leave()
-      window.removeEventListener('focus', refreshNow)
+      window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [

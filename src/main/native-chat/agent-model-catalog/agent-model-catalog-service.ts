@@ -43,8 +43,6 @@ export type AgentModelCatalogService = {
     waitForListing?: boolean
     /** Answer once the probe already running has its sign-in/CLI verdict. */
     waitForAvailability?: boolean
-    /** The client's own timer read, which waits out the backed-off hold; a person's read doesn't. */
-    scheduledRecheck?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
 }
 
@@ -128,20 +126,30 @@ export function createAgentModelCatalogService(
       const home = accountHomePath
       // Without an entry, answer from any running listing instead of starting a second one.
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
+      // Set when this read chained a fresh probe, which its reply then says is still owed.
+      let chained = false
       const reprobe = (): Promise<AgentModelCatalogEntry | null> | null => {
         if (!probe || !home) {
           return null
         }
         const run = deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
         // A probe that began before an account change can't answer for it: one fresh probe follows.
-        return deps.store.statuses.probeStartedBeforeRecheck(fingerprint)
-          ? run.then(() => deps.store.refresh(fingerprint, params.agent, probe, () => probe(home)))
-          : run
+        if (!deps.store.statuses.probeStartedBeforeRecheck(fingerprint)) {
+          return run
+        }
+        chained = true
+        return run.then(() =>
+          deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+        )
       }
       if (probe && home) {
-        // A blocked answer past its hold, or one an account change marked, is re-derived here by
-        // the probe whatever else is listing; no chat's own listing can answer for the account.
-        if (deps.store.statuses.needsProbe(fingerprint, params.scheduledRecheck === true)) {
+        // A blocked answer past the TTL, one an account change marked, or a running probe that began
+        // before the change, is re-derived here by the probe whatever else is listing; no chat's own
+        // listing can answer for the account.
+        if (
+          deps.store.statuses.needsProbe(fingerprint) ||
+          deps.store.statuses.probeStartedBeforeRecheck(fingerprint)
+        ) {
           void reprobe()
           listing = !entry ? (listing ?? deps.store.pendingListing(fingerprint)) : null
         } else if (entry && deps.store.shouldRefresh(fingerprint)) {
@@ -168,7 +176,7 @@ export function createAgentModelCatalogService(
       // A catalog or a held answer can land before the probe's, which one more read waits for.
       const inProgress = params.waitForAvailability
         ? false
-        : (!params.waitForListing && listing !== null) || probeRunning()
+        : (!params.waitForListing && listing !== null) || probeRunning() || chained
       const observation = {
         ...(availability ? { availability } : {}),
         ...(inProgress ? { listingInProgress: true as const } : {})

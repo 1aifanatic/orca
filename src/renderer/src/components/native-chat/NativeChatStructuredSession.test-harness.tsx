@@ -197,6 +197,7 @@ export function createStructuredSessionMocks() {
         await import('./use-structured-agent-session-outbox')
       const { projectStructuredAgentSessionMessages } =
         await import('../../../../shared/structured-agent-session-message-projection')
+      const { nativeChatGateReason } = await import('./native-chat-start-failure-presentation')
       return {
         useStructuredAgentSession: (props: {
           sessionId: string
@@ -215,6 +216,7 @@ export function createStructuredSessionMocks() {
             journalItems: mocks.journalItems,
             unavailable: mocks.unavailable,
             accountVerified: mocks.accountVerified,
+            hostReason: nativeChatGateReason(mocks.unavailable, mocks.accountVerified),
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
