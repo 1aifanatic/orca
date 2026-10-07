@@ -336,6 +336,8 @@ describe('a Stop that names no turn', () => {
     expect(items.filter((item) => item.body.kind === 'turn').map((item) => item.body)).toEqual([
       expect.objectContaining({ turnId: 'turn-1', state: 'interrupted' })
     ])
+    // Something of it ran, so it is never taken back as unrun. Codex sends no item before a turn's
+    // start, so this order only guards the record; the send's own end is not this test's.
     expect((await submission(first.id))?.dispatchState).not.toBe('rejected')
   })
 
