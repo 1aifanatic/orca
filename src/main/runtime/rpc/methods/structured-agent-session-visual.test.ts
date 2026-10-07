@@ -62,14 +62,15 @@ describe('agentSession.readVisual', () => {
       { sessionId: SESSION, file: 'chart.html' },
       STRUCTURED_CLIENT
     )
-    const revision = first.ok ? (first.result as { revision: string }).revision : ''
+    const result: unknown = first.ok ? first.result : null
+    const revision = String(Reflect.get(result ?? {}, 'revision'))
     const again = await call(
       'agentSession.readVisual',
       { sessionId: SESSION, file: 'chart.html', knownRevision: revision },
       STRUCTURED_CLIENT
     )
     expect(again).toMatchObject({ ok: true, result: { ok: true, unchanged: true, revision } })
-    expect(again.ok && 'html' in (again.result as object)).toBe(false)
+    expect(again.ok ? Reflect.has(Object(again.result), 'html') : true).toBe(false)
   })
 
   it('reports a session this host has no record of', async () => {

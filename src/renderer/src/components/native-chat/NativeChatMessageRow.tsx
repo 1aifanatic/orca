@@ -305,6 +305,8 @@ export const MessageRow = memo(function MessageRow({
           onLinkClick={onLinkClick}
           allowFileUriLinks={allowFileUriLinks}
           linkifyFilePaths={onLinkClick !== undefined}
+          visualMessageId={message.role === 'assistant' ? message.id : undefined}
+          streaming={message.state === 'running' && activeTurnIsWorking === true}
         />
       ) : null}
       {tools.length > 0 || subagentGroups.length > 0 || backgroundTasks.length > 0 ? (
