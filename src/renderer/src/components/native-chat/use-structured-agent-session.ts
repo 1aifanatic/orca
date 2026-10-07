@@ -147,6 +147,7 @@ export function useStructuredAgentSession(args: {
     composerScopeKey,
     queueDelivery,
     queuedMessageIds,
+    isWorking: transportState.isWorking,
     stopping: stopControl.stopping
   })
 
@@ -211,10 +212,9 @@ export function useStructuredAgentSession(args: {
     transportState.submissions
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
+    // Its published list, pause and submissions; the rest is named below.
+    ...transportState,
     enabled: queueCapability === 'supported' && transportState.fence !== null,
-    queuedMessages: transportState.queuedMessages,
-    queuePause: transportState.queuePause,
-    submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
     isWorking,
     composerScopeKey,

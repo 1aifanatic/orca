@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type { AgentMessageSource } from '../../../../shared/agent-session-message-source'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuePause
@@ -58,6 +59,17 @@ function handOff(
   return submission(id, dispatchState, draftId)
 }
 
+/** Another agent's message, which names its sender on its body. */
+const AGENT_FROM: AgentMessageSource = {
+  kind: 'agent',
+  senders: [],
+  orchestration: { message: 'mail-notice', mailbox: 'run:r1', dispatchId: null, messages: [] }
+}
+
+function mailDraft(id: string, position: number): AgentSessionQueuedMessage {
+  const base = draft(id, position)
+  return { ...base, body: { ...base.body, from: AGENT_FROM } }
+}
 const IDLE = { hasPendingPrompt: false }
 const STOPPED = { reason: 'stopped' } as const
 const QUEUEING = { capability: 'supported', enabled: true } as const
@@ -167,7 +179,7 @@ describe('queued message cards', () => {
 
   // Another agent's mail runs when the stop lands, so only a person's card reads paused.
   it("a person's Stop holds every card but mail; any other pause holds mail too", () => {
-    const mail = draft('mail', 2, { source: { kind: 'agent' } })
+    const mail = mailDraft('mail', 2)
     const project = (queuePause: AgentSessionQueuePause) =>
       projectQueuedMessageCards([draft('typed', 1), mail], [], {
         hasPendingPrompt: false,
@@ -296,5 +308,27 @@ describe('queued message cards', () => {
       entry('queued', { state: 'dispatching', lastAttemptAt: 2, sentDelivery: 'queue-if-active' })
     ]
     expect(ids(outboxOutsideQueuedCards(sent, [], true, unknown))).toEqual(['plain'])
+  })
+})
+
+describe("another agent's card", () => {
+  it('carries who it is from, read through the shared reader', () => {
+    const from = {
+      kind: 'agent' as const,
+      senders: [
+        {
+          party: { address: 'term_a', terminalHandle: 'term_a', orcaSessionId: null },
+          name: 'Coder'
+        }
+      ],
+      orchestration: null
+    }
+    const agentDraft = draft('a', 1)
+    const cards = projectQueuedMessageCards(
+      [{ ...agentDraft, body: { ...agentDraft.body, from } }, draft('b', 2)],
+      [],
+      { hasPendingPrompt: false }
+    )
+    expect(cards.map((card) => card.from)).toEqual([from, undefined])
   })
 })

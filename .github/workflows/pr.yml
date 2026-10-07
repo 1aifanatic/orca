@@ -197,6 +197,12 @@ jobs:
             pnpm-lock.yaml
             mobile/pnpm-lock.yaml
 
+      - name: Set up Bun for localization checks
+        if: needs.code_paths.outputs.static_analysis == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: config/bun-version
+
       # Keep each check in its own log while sharing this runner.
       - name: Lint
         if: '!cancelled()'
@@ -1061,6 +1067,7 @@ jobs:
           src/main/browser/browser-route-webrtc-egress.electron.test.ts
           src/main/browser/browser-route-h3-egress.electron.test.ts
           src/main/browser/browser-route-dns-prefetch.electron.test.ts
+          src/main/persistence/profile-state/profile-state-writer-stall.electron.test.ts
 
       # Restore independent fixtures during builds; keep native lifecycle probes serial.
       - uses: ./.github/actions/prepare-linux-package-fixture
@@ -1232,6 +1239,7 @@ jobs:
           src/main/browser/browser-route-webrtc-egress.electron.test.ts
           src/main/browser/browser-route-h3-egress.electron.test.ts
           src/main/browser/browser-route-dns-prefetch.electron.test.ts
+          src/main/persistence/profile-state/profile-state-writer-stall.electron.test.ts
           src/main/providers/windows-conpty-wide-char-duplication.node-pty.test.ts
           src/main/providers/pty-repaint-wide-char-buffer.node-pty.test.ts
           src/shared/child-process/windows-command-line.win32.test.ts

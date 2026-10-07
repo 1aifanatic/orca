@@ -31,7 +31,7 @@ import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { claudeProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
-import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 
 const IDENTITY: AgentSessionJournalIdentity = {
   sessionId: 'session-p',
@@ -59,8 +59,8 @@ function open(): Promise<AgentSessionJournal> {
   })
 }
 
-/** Orchestration mail, as another agent's queued send records its sender. */
-const MAIL: AgentSessionMessageSource = {
+/** Orchestration mail's sender, as another agent's message names it on its body. */
+const MAIL: AgentMessageSource = {
   kind: 'agent',
   senders: [],
   orchestration: { message: 'mail-notice', mailbox: 'inbox', dispatchId: null, messages: [] }
@@ -70,14 +70,13 @@ function queueDraft(
   journal: AgentSessionJournal,
   messageId: string,
   carriedFrom?: string,
-  source: AgentSessionMessageSource = { kind: 'user' }
+  from?: AgentMessageSource
 ) {
   return journal.queuedMessages.insert({
     messageId,
-    body: message(messageId),
+    body: { ...message(messageId), ...(from ? { from } : {}) },
     fingerprint: `fp-${messageId}`,
     hostInstance: HOST,
-    source,
     ...(carriedFrom ? { carriedFrom } : {})
   })
 }
@@ -562,8 +561,7 @@ describe("a restart's pause", () => {
       messageId: 'draft-restart',
       body: message('written before the restart'),
       fingerprint: 'fp-draft-restart',
-      hostInstance: 'proc-0',
-      source: { kind: 'user' }
+      hostInstance: 'proc-0'
     })
     expect(reason(journal)).toBe('restarted')
     await queueDraft(journal, 'draft-legacy')
@@ -593,7 +591,6 @@ describe("a restart's pause", () => {
       body: message('kept across a restart'),
       fingerprint: 'fp-kept',
       hostInstance: 'proc-0',
-      source: { kind: 'user' },
       holdReason: QUEUED_MESSAGE_PAUSED_KEPT
     })
     expect(kept.holdReason).toBe(QUEUED_MESSAGE_PAUSED_KEPT)
@@ -623,13 +620,13 @@ describe('which cards the pauses in force hold', () => {
       holdReason: null,
       hostInstance: HOST,
       carriedFrom: null,
-      source: { kind: 'user' } as const
+      body: {}
     }
     return { messageId, ...base, ...fields }
   }
 
   function mail(messageId: string, fields: Partial<Card> = {}): Card {
-    return card(messageId, { source: MAIL, ...fields })
+    return card(messageId, { body: { from: MAIL }, ...fields })
   }
 
   /** A Stop at sequence 5 unless `stopped` is 0; no turn or Resume since. */

@@ -15,9 +15,9 @@
 
 import type {
   AgentJournalCursor,
+  AgentJournalMessageItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import type { JournalStopEvent, JournalTombstoneRow } from './journal-row-schema'
 
 export type QueuePauseReason = 'stopped' | 'cleared' | 'restarted'
@@ -53,7 +53,7 @@ type QueueCard = {
   holdReason: string | null
   hostInstance: string
   carriedFrom: string | null
-  source: AgentSessionMessageSource
+  body: Pick<AgentJournalMessageItem, 'from'>
 }
 
 export function createJournalQueuePauseMarks(): JournalQueuePauseMarks {
@@ -155,8 +155,9 @@ export function deriveQueuePauses(input: {
   return pauses
 }
 
+/** Another agent's message names its sender on its body; a client's send cannot set it. */
 function isOrchestrationMail(card: QueueCard): boolean {
-  return card.source.kind === 'agent'
+  return card.body.from !== undefined
 }
 
 /** A person's Stop holds every card but mail, one sent while it winds down too; /clear the cards

@@ -58,21 +58,20 @@ export type AgentSessionQueuedMessage = {
    *  `classifyDispatchRejection({ reason: returnedReason, rejection: returnedRejection })`. */
   returnedReason?: string | null
   returnedRejection?: UnreadAgentSessionFailureFact
-  /** Who it is from: the kind of its sender ('user' or 'agent'), as a submission's `source`. Only
-   *  the kind: the senders stay host-only. Absent from an older host, read as the person's. */
-  source?: { kind: string }
 }
 
 /** Whether the queue's pause holds this card: a person's Stop holds every card but another
- *  agent's mail, which runs when the stop lands; any other pause, an unknown one too, holds all. */
+ *  agent's mail, which runs when the stop lands; any other pause, an unknown one too, holds all.
+ *  Mail is a body naming its sender (`from`), whatever its shape, as the host reads it; a client's
+ *  own send cannot set it. */
 export function queuePauseHoldsCard(
   pause: AgentSessionQueuePause | null | undefined,
-  card: Pick<AgentSessionQueuedMessage, 'source'>
+  card: Pick<AgentSessionQueuedMessage, 'body'>
 ): boolean {
   if (!pause) {
     return false
   }
-  return pause.reason !== 'stopped' || card.source?.kind !== 'agent'
+  return pause.reason !== 'stopped' || card.body.from === undefined
 }
 
 /** No body: the card leaving the published list IS the outcome, so a lost

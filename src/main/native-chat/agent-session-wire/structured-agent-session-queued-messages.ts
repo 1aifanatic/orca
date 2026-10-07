@@ -13,10 +13,7 @@ import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
-import {
-  createStructuredAgentSessionOperationId,
-  structuredAgentSessionPayloadFingerprint
-} from '../../../shared/structured-agent-session-mutation'
+import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
 import { structuredAgentSessionSendBlock } from './structured-agent-session-send-preparation'
 import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -165,16 +162,6 @@ export function shouldQueueStructuredAgentSessionSend(input: {
     return true
   }
   return oldestActionableQueuedMessage(input.journal) !== null
-}
-
-/** A draft's payload fingerprint in the session that will send it: the reducer
- *  aliases the provider's echo to the submission by recomputing exactly this. */
-export function queuedMessageFingerprint(sessionId: string, body: AgentJournalMessageItem): string {
-  return structuredAgentSessionPayloadFingerprint({
-    method: 'agentSession.send',
-    sessionId,
-    fields: { body }
-  })
 }
 
 /** The accept-side budget refusal, or null when the draft fits. */

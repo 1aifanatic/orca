@@ -12,7 +12,18 @@
   },
   "settings": {
     "chat": {
-      "description": "チャットの外観を選びます。"
+      "description": "チャットの外観と名前の付け方を選びます。",
+      "names": {
+        "title": "チャット名",
+        "description": "選択したツールが最初のメッセージから新規チャットの名前を生成します。名前が生成されない場合は、Claude Chat または Codex Chat のままです。",
+        "enable": "チャットに自動で名前を付ける",
+        "recipe": "チャット名",
+        "recipeDescription": "新規チャットの最初のメッセージから短い名前を生成します。",
+        "customCommandDescription": "「カスタムコマンド」を選ぶレシピで共有するコマンドです。{prompt} を使うと入力を引数として渡し、使わない場合は標準入力で渡します。",
+        "saveFailed": "チャット名の設定を保存できませんでした。",
+        "searchAgent": "Agent",
+        "searchTemplate": "コマンドテンプレート"
+      }
     },
     "terminal": {
       "optionLayoutAlt": "ABCまたはU.S. — OptionはAlt/Escシーケンスを送信します",
@@ -3318,6 +3329,14 @@
           },
           "TerminalRestoringPlaceholder": {
             "restoring": "ターミナルを復元中…"
+          },
+          "AgentLaunchPaneNotice": {
+            "commandNotFound": "このマシンでコマンドが見つかりませんでした。",
+            "copyPrompt": "プロンプトをコピー",
+            "exitedDuringStart": "起動中に終了しました。",
+            "notStarted": "Agent を起動できませんでした。",
+            "unconfirmed": "Agent が起動したか確認できませんでした。",
+            "workspaceGone": "ワークスペースは利用できなくなりました。"
           }
         }
       },
@@ -8329,8 +8348,8 @@
           "3c88ec55d6": "検索条件に一致する設定が見つかりませんでした:「",
           "c7ad095d96": "設定を読み込んでいます…",
           "acc7bbdefd": "もう一度 ESC を押して設定を終了します",
-          "43b68e10f0": "Git AI Author の変更が保存されていません。離れるとそれらは破棄されます。",
-          "17bdee4ff1": "保存されていない Git AI Author の変更を破棄しますか?",
+          "43b68e10f0": "未保存の AI 設定があります。移動すると変更は破棄されます。",
+          "17bdee4ff1": "未保存の AI 設定を破棄しますか？",
           "084d8fac5b": "プライバシーとセキュリティ",
           "23931df7e8": "リモートホスト",
           "mobile_group": "モバイル",
@@ -17578,6 +17597,7 @@
         "sendToTryAgain": "もう一度試すには、メッセージを送信してください。",
         "sendAgainToTryOnceMore": "メッセージをもう一度送信して、再度お試しください。",
         "couldNotStart": "{{agent}} を起動できませんでした。",
+        "editSavedArguments": "設定 > Agent > 引数で編集してください。",
         "couldNotRestart": "{{agent}} を再起動できませんでした。",
         "notSignedIn": "{{agent}} は選択したアカウントでサインインしていません。",
         "signInFirst": "先にサインインしてください。",
@@ -17625,12 +17645,19 @@
         "stopRefusedQuoted": "{{agent}} は停止しませんでした: {{detail}}。",
         "noTurnToStop": "{{agent}} には停止できる実行中のターンがありませんでした。",
         "answerUnconfirmed": "回答は記録されましたが、Agent は確認しませんでした。",
+        "argumentsMissingValue": "保存された引数の {{option}} に値が必要です。",
+        "argumentsMultipleValues": "保存された引数の {{option}} に複数の値が指定されています。",
+        "argumentsPositionalPrompt": "保存された引数にプロンプトが含まれています。",
+        "argumentsUnsupportedOption": "保存された引数に未対応のオプション（{{option}}）が含まれています。",
         "hostFault": "Orca で問題が発生したため、この操作は完了しませんでした。",
         "hostFaultTryAgain": "Orca で問題が発生したため、この操作は完了しませんでした。もう一度お試しください。",
         "hostStopped": "{{agent}} の起動が完了しなかったため、Orca が停止しました。",
         "providerRateLimited": "{{agent}} はレート制限を受けているため、再試行しています。",
         "providerRetrying": "{{agent}} で一時的な問題が発生したため、再試行しています。",
         "providerRetryingQuoted": "{{agent}} は再試行しています: {{detail}}。",
+        "providerRetryNumber": "{{attempt}} 回目の再試行です。",
+        "providerRetryNumberOf": "{{maxRetries}} 回中 {{attempt}} 回目の再試行です。",
+        "providerRetryLastError": "直近のエラー: {{detail}}。",
         "previousExitUnverifiable": "以前の {{agent}} を停止できませんでした。"
       },
       "writeNotice": {
@@ -17759,6 +17786,10 @@
         "viewAttachment": "画像を見る",
         "imagePreview": "フルサイズの画像プレビュー",
         "imagePreviewUnavailable": "プレビューは利用できません",
+        "copyImage": "画像をコピー",
+        "copyImageFailed": "画像をコピーできませんでした",
+        "copyImageTooLarge": "画像が大きすぎるためコピーできません。",
+        "imageCopied": "画像をコピーしました",
         "workspaceAttachmentMismatch": "ファイルはソースワークスペースにのみ添付できます。",
         "attachmentOwnerChanged": "このワークスペースは接続中にホストを変更しました。ファイルを再度ドロップしてください。",
         "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。",
@@ -17871,6 +17902,7 @@
         "toggleDetails": "ターンの詳細を切り替えます"
       },
       "jumpToLatest": "最新にジャンプ",
+      "transcriptLabel": "会話",
       "toggle": {
         "showTerminal": "ターミナルを表示",
         "showChat": "チャットビューを表示"
@@ -17966,7 +17998,8 @@
         "details": "詳細",
         "plan": "プラン",
         "historyRepaired": "このチャットの履歴の一部を読み込めませんでした。",
-        "historyItemTooLarge": "チャットのこの部分は大きすぎるため表示できません。"
+        "historyItemTooLarge": "チャットのこの部分は大きすぎるため表示できません。",
+        "stoppedBeforeStart": "Agent の開始前に停止しました"
       },
       "providerFrame": {
         "byteLength": "{{value0}}バイト"
@@ -18061,6 +18094,10 @@
         "used": "コンテキスト: {{used}} トークン使用済み、最後の応答から推定。",
         "unreported": "このセッションではコンテキストの使用量を表示できません。"
       },
+      "agentMessage": {
+        "messageFrom": "送信元:",
+        "unnamedSender": "Agent"
+      },
       "goal": {
         "placeholder": "目標を説明し、最良の結果を得るために測定可能な結果を​​定義する",
         "clear": "明確な目標",
@@ -18118,7 +18155,8 @@
         "sendConfirmBody_one": "メッセージを送信しようとしています。キューに入っている {{count}} 件のメッセージを消去しますか？",
         "sendConfirmBody_other": "メッセージを送信しようとしています。キューに入っている {{count}} 件のメッセージを消去しますか？",
         "sendConfirmClear": "キューを消去",
-        "sendConfirmSend": "メッセージを送信"
+        "sendConfirmSend": "メッセージを送信",
+        "from": "送信元: {{names}}"
       },
       "thought": "考えました",
       "thoughtForDuration": "{{duration}} 考えました",

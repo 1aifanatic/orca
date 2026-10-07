@@ -97,7 +97,7 @@ it('with queueing on, asks a queueing host to queue it, and draws no bubble', as
   ])
   const { result } = renderStopping(true)
 
-  expect(result.current.send('run this after the stop')).toBe(true)
+  expect(result.current.send('run this after the stop')).toBe('queued')
 
   await waitFor(() => expect(sends()).toHaveLength(1))
   expect(sends()[0]?.delivery).toBe('queue-if-active')

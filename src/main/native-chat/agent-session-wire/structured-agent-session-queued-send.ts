@@ -6,16 +6,12 @@ import type {
   AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import {
-  USER_MESSAGE_SOURCE,
-  type AgentSessionMessageSource
-} from '../../../shared/agent-session-message-source'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import {
   queuedMessageBodyIsTextOnly,
   queuedMessageBudgetRefusal,
-  queuedMessageFingerprint,
   shouldQueueStructuredAgentSessionSend
 } from './structured-agent-session-queued-messages'
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
@@ -30,8 +26,6 @@ export async function runQueueableStructuredAgentSessionSend(
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
     delivery?: 'queue-if-active'
-    userSend?: true
-    source?: AgentSessionMessageSource
   },
   immediate: () => Promise<TurnOutcome<AgentSessionSendResult>>
 ): Promise<TurnOutcome<AgentSessionSendResult>> {
@@ -64,10 +58,6 @@ export async function maybeQueueStructuredAgentSessionSend(
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
     delivery?: 'queue-if-active'
-    /** A person's send at a chat surface; it outranks any `source`. */
-    userSend?: true
-    /** Who a host-side send is from. */
-    source?: AgentSessionMessageSource
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -146,9 +136,9 @@ async function insertQueuedSend(
     {
       messageId: clientMessageId,
       body: params.body,
-      fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-      hostInstance: structuredAgentSessionHostInstance(),
-      source: params.userSend ? USER_MESSAGE_SOURCE : (params.source ?? USER_MESSAGE_SOURCE)
+      // In the session that will send it: the reducer aliases the provider's echo by exactly this.
+      fingerprint: agentSessionSendBodyFingerprint(ctx.sessionId, params.body),
+      hostInstance: structuredAgentSessionHostInstance()
     },
     ctx.operationReceipt
   )

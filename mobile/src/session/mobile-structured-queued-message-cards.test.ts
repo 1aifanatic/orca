@@ -7,6 +7,7 @@ import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED
 } from '../../../src/shared/agent-session-wire'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
+import type { AgentMessageSource } from '../../../src/shared/agent-session-message-source'
 import {
   mobileQueueHasResumableCard,
   mobileQueuePauseLabel,
@@ -17,6 +18,13 @@ import {
 function returnedAs(fact: Parameters<typeof agentSessionFailureWords>[0]) {
   const { reason, rejection } = agentSessionFailureWords(fact, { surface: 'rejection' })
   return { state: 'returned' as const, returnedReason: reason, returnedRejection: rejection }
+}
+
+/** Another agent's message, which names its sender on its body. */
+const AGENT_FROM: AgentMessageSource = {
+  kind: 'agent',
+  senders: [],
+  orchestration: { message: 'mail-notice', mailbox: 'run:r1', dispatchId: null, messages: [] }
 }
 
 const STOPPED = { reason: 'stopped' } as const
@@ -32,6 +40,11 @@ function draft(overrides: Partial<AgentSessionQueuedMessage> & { messageId: stri
     state: 'waiting' as const,
     ...overrides
   }
+}
+
+function mailDraft(messageId: string, position: number) {
+  const base = draft({ messageId, position })
+  return { ...base, body: { ...base.body, from: AGENT_FROM } }
 }
 
 describe('mobileQueuedMessageCards', () => {
@@ -50,7 +63,8 @@ describe('mobileQueuedMessageCards', () => {
       state: 'waiting',
       paused: false,
       needsAttention: false,
-      caption: null
+      caption: null,
+      attribution: null
     })
   })
 
@@ -74,10 +88,7 @@ describe('mobileQueuedMessageCards', () => {
   // Another agent's mail runs when the stop lands: only a person's card waits on the Stop's pause.
   it("captions mail as an ordinary waiting card under a person's Stop", () => {
     const cards = mobileQueuedMessageCards(
-      [
-        draft({ messageId: 'typed' }),
-        draft({ messageId: 'mail', position: 2, source: { kind: 'agent' } })
-      ],
+      [draft({ messageId: 'typed' }), mailDraft('mail', 2)],
       [],
       { pendingPrompt: true, queuePause: STOPPED }
     )

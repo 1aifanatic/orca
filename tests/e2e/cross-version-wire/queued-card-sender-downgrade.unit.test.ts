@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import type { AgentMessageSource } from '../../../src/shared/agent-session-message-source'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuePause
@@ -6,24 +7,34 @@ import type {
 import { projectQueuedMessageCards } from '../../../src/renderer/src/components/native-chat/structured-agent-session-queued-cards'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
-// Each published card now names the kind of its sender (`source`), so a client labels another
-// agent's mail, which a person's Stop does not hold, as waiting rather than paused. The field is
-// optional: a build without it ignores it and labels every card under a pause as before, and this
-// build reads a card from a host without it as the person's. The main commit this change branched
-// from, which has the queue; move it to the newest release that has the queue and predates this
-// change. A baseline holding this change tests no downgrade.
-const BASELINE_REF = '5a56636f6679071d6ec68b851ef7932cd3222560'
+// A person's Stop no longer holds another agent's mail, so a client labels a card whose body names
+// its sender (`from`) as waiting rather than paused. No wire change: `from` already rides on each
+// card's body. A build without this change labels every card under a pause as before, and this build
+// reads a card from a host without `from` (one that also predates this rule, so holds mail) as the
+// person's. The main commit this change branched from, which has the queue and `from`; move it to
+// the newest release that has both and predates this change. A baseline holding this change tests
+// no downgrade.
+const BASELINE_REF = '0c96550ee9ab44c86b770518cc0deb56a0c130d0'
 const CARDS = 'src/renderer/src/components/native-chat/structured-agent-session-queued-cards.ts'
 const STOPPED: AgentSessionQueuePause = { reason: 'stopped' }
+const AGENT_FROM: AgentMessageSource = {
+  kind: 'agent',
+  senders: [],
+  orchestration: { message: 'mail-notice', mailbox: 'run:r1', dispatchId: null, messages: [] }
+}
 
-function card(messageId: string, position: number, kind?: string): AgentSessionQueuedMessage {
+function card(messageId: string, position: number, from?: AgentMessageSource) {
   return {
     messageId,
     position,
-    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: messageId }] },
-    state: 'waiting',
-    ...(kind === undefined ? {} : { source: { kind } })
-  }
+    body: {
+      kind: 'message' as const,
+      role: 'user' as const,
+      blocks: [{ type: 'text' as const, text: messageId }],
+      ...(from ? { from } : {})
+    },
+    state: 'waiting' as const
+  } satisfies AgentSessionQueuedMessage
 }
 
 type OlderProjection = (
@@ -44,7 +55,7 @@ async function olderProjection(): Promise<OlderProjection> {
 
 test("an older client reads this host's cards, mail included, as paused under a person's Stop, as before", async () => {
   const project = await olderProjection()
-  const held = project([card('typed', 1, 'user'), card('mail', 2, 'agent')], [], {
+  const held = project([card('typed', 1), card('mail', 2, AGENT_FROM)], [], {
     hasPendingPrompt: false,
     queuePaused: true
   })
@@ -54,8 +65,8 @@ test("an older client reads this host's cards, mail included, as paused under a 
   ])
 })
 
-test("this client reads an older host's cards, which name no sender, as the person's", () => {
-  const held = projectQueuedMessageCards([card('typed', 1), card('mail-unnamed', 2)], [], {
+test("this client reads a card whose body names no sender as the person's", () => {
+  const held = projectQueuedMessageCards([card('typed', 1), card('unnamed', 2)], [], {
     hasPendingPrompt: false,
     queuePause: STOPPED
   })

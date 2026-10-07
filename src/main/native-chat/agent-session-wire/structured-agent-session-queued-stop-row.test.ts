@@ -202,7 +202,8 @@ describe("a restart's hold over a card queued after a Stop", () => {
     await rig.settleAccepted(working, 'stopped')
     const mail = await mailTurn()
     const queued = await rig.send('mail queued during the mail turn', 'queue-if-active', {
-      source: RIG_MAIL
+      internal: true,
+      from: RIG_MAIL
     }).result
     if (!queued.ok || !('queued' in queued.value)) {
       throw new Error('expected a queued receipt')
@@ -226,7 +227,8 @@ describe("a restart's hold over a card queued after a Stop", () => {
     const working = await rig.workingSend()
     await rig.stop()
     const mail = await rig.send('mail sent while the interrupt lands', 'queue-if-active', {
-      source: RIG_MAIL
+      internal: true,
+      from: RIG_MAIL
     }).result
     if (!mail.ok || !('queued' in mail.value)) {
       throw new Error('expected a queued receipt')
