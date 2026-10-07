@@ -3329,6 +3329,14 @@
           "TerminalQuickCommandsSubmenu": {
             "3ccc7981bb": "Anfitrión no disponible",
             "54f29b7c0d": "Cargando host…"
+          },
+          "AgentLaunchPaneNotice": {
+            "commandNotFound": "Su comando no se encontró en este equipo.",
+            "copyPrompt": "Copiar prompt",
+            "exitedDuringStart": "Se cerró mientras se iniciaba.",
+            "notStarted": "El agente no pudo iniciarse.",
+            "unconfirmed": "No se pudo confirmar que el agente se iniciara.",
+            "workspaceGone": "Su espacio de trabajo ya no está disponible."
           }
         }
       },
@@ -17980,10 +17988,15 @@
         "pausedKept": "Aún no se ha enviado. Pulsa Enviar para enviarlo.",
         "paused": "En pausa",
         "queuePausedStopped": "Cola en pausa porque interrumpiste",
-        "queuePausedRestarted": "Cola en pausa porque Orca se reinició",
         "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar",
+        "sendConfirmTitle": "¿Enviar mensaje?",
+        "sendConfirmBody": "Estás a punto de enviar un mensaje. ¿Quieres borrar los {{count}} mensajes que había en cola?",
+        "sendConfirmBody_one": "Estás a punto de enviar un mensaje. ¿Quieres borrar {{count}} mensaje que había en cola?",
+        "sendConfirmBody_other": "Estás a punto de enviar un mensaje. ¿Quieres borrar los {{count}} mensajes que había en cola?",
+        "sendConfirmClear": "Vaciar cola",
+        "sendConfirmSend": "Enviar mensaje",
         "from": "De {{names}}"
       },
       "thought": "Pensó",
