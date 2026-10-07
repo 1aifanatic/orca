@@ -49,6 +49,33 @@ describe('session snapshot host isolation', () => {
     expect(next.terminalLayoutsByTabId).toEqual(wsl.terminalLayoutsByTabId)
   })
 
+  it.each([
+    { reverse: true, bound: true },
+    { reverse: false, bound: true },
+    { reverse: true, bound: false },
+    { reverse: false, bound: false }
+  ])('preserves conflicting legacy owners regardless of row order (%j)', ({ reverse, bound }) => {
+    const wsl = apply(makeState(), terminalSnapshot('shared-tab'), 'wsl')
+    const original = wsl.unifiedTabsByWorktree[WT]![0]!
+    const rows = [
+      original,
+      { ...original, id: 'legacy-mac-alias', executionHostId: 'runtime:mac' as const }
+    ]
+    const originalTerminal = wsl.tabsByWorktree[WT]![0]!
+    const corrupted = {
+      ...wsl,
+      tabsByWorktree: {
+        [WT]: [{ ...originalTerminal, ptyId: bound ? originalTerminal.ptyId : null }]
+      },
+      unifiedTabsByWorktree: { [WT]: reverse ? rows.toReversed() : rows }
+    }
+    const next = apply(corrupted, terminalSnapshot('shared-tab'), 'mac')
+
+    expect(next.ptyIdsByTabId).toMatchObject(wsl.ptyIdsByTabId)
+    expect(next.tabsByWorktree[WT]).toContainEqual(corrupted.tabsByWorktree[WT]![0])
+    expect(next.tabsByWorktree[WT]).toHaveLength(2)
+  })
+
   it('keeps terminals from both servers, then closes only the publishing server’s tabs', () => {
     const wsl = apply(makeState(), terminalSnapshot('wsl-tab'), 'wsl')
     const both = apply(wsl, terminalSnapshot('mac-tab'), 'mac')

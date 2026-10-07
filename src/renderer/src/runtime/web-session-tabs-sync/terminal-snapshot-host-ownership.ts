@@ -1,3 +1,4 @@
+import { indexTerminalTabExecutionHosts } from '@/lib/terminal-tab-execution-hosts'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import type { Tab } from '../../../../shared/tab-types'
@@ -20,14 +21,8 @@ const canonicalTerminalOwners = createTerminalTabOwnerIndex<Tab>((tab) =>
 export function indexTerminalSnapshotHosts(
   state: WebSessionTabsSyncState,
   worktreeId: string
-): ReadonlyMap<string, ExecutionHostId> {
-  return new Map(
-    (state.unifiedTabsByWorktree[worktreeId] ?? []).flatMap((tab) =>
-      tab.contentType === 'terminal' && tab.executionHostId
-        ? [[tab.entityId, tab.executionHostId] as const, [tab.id, tab.executionHostId] as const]
-        : []
-    )
-  )
+): ReadonlyMap<string, ExecutionHostId | null> {
+  return indexTerminalTabExecutionHosts(state.unifiedTabsByWorktree[worktreeId] ?? [])
 }
 
 /** Keep ordinary IDs stable; namespace collisions before writing global pane records. */
@@ -35,7 +30,7 @@ export function resolveTerminalSnapshotLocalIds(
   state: WebSessionTabsSyncState,
   snapshot: RuntimeMobileSessionTabsResult,
   environmentId: string,
-  terminalHostById: ReadonlyMap<string, ExecutionHostId>
+  terminalHostById: ReadonlyMap<string, ExecutionHostId | null>
 ): ReadonlyMap<string, string> {
   const localIds = new Map<string, string>()
   const currentRows = new Map(
@@ -45,7 +40,7 @@ export function resolveTerminalSnapshotLocalIds(
     [snapshot.worktree, currentRows]
   ])
   const hostsByWorktree = new Map([[snapshot.worktree, terminalHostById]])
-  const hostsForWorktree = (worktreeId: string): ReadonlyMap<string, ExecutionHostId> => {
+  const hostsForWorktree = (worktreeId: string): ReadonlyMap<string, ExecutionHostId | null> => {
     let hosts = hostsByWorktree.get(worktreeId)
     if (!hosts) {
       hosts = indexTerminalSnapshotHosts(state, worktreeId)
