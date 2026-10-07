@@ -24,6 +24,7 @@ import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-sessi
 import {
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+  AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY,
   AGENT_SESSION_PENDING_SEND_RESULT_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
@@ -98,7 +99,9 @@ beforeAll(async () => {
  */
 function legacyClientCapabilities(): string[] {
   return baseline.capabilities.filter(
-    (capability) => capability !== STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+    (capability) =>
+      capability !== STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY &&
+      capability !== AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY
   )
 }
 

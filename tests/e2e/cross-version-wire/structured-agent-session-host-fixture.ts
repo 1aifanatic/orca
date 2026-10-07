@@ -25,6 +25,7 @@ export function structuredHostStub(
     restartResumeAll: vi.fn(async () => []),
     restartContinueAll: vi.fn(async () => ({ resumed: [], continued: [] })),
     attach: vi.fn(async () => ({ ok: true, replayed: false, value: { sessionId } })),
+    create: vi.fn(async () => ({ ok: true, replayed: false, value: { sessionId } })),
     // Attach-shaped entries take a client-supplied location, so the host is asked whether it
     // supports creating there. A real host always answers; leaving it unstubbed made every
     // `ensure` refuse for the harness's own reason rather than the location's.
@@ -110,7 +111,10 @@ export function installableHost(
   const host = {
     ...hostCalls,
     // The catalog read checks the session's record for a floating chat's own folder; none here.
-    deps: { modelCatalog: { read: hostCalls.modelCatalog }, store: { getRecord: () => null } },
+    deps: {
+      modelCatalog: { read: hostCalls.modelCatalog },
+      store: { getRecord: () => null, getOperationRow: () => null }
+    },
     restartResume: {
       list: hostCalls.restartResumableList,
       listFailures: hostCalls.restartResumableFailures,

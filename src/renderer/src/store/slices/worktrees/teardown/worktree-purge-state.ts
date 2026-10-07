@@ -16,7 +16,7 @@ import {
   structuredLaunchStates
 } from '@/lib/structured-agent-session-launch-registry'
 import { discardStructuredAgentSessionChatSends } from '@/lib/structured-agent-session-launch-prompt'
-import { retireStructuredAgentSessionReadOwner } from '@/components/native-chat/structured-agent-session-read-owner'
+import { retireStructuredAgentSessionReadOwner } from '@/components/native-chat/structured-agent-session-read-owner-registry'
 import { clearWebSessionFocusIntentIfMatches } from '@/runtime/web-session-focus-intent'
 import {
   structuredAgentSessionFocusOwner,

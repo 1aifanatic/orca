@@ -1,7 +1,7 @@
 import { structuredAgentSessionSendBody } from '../../../shared/structured-agent-session-send-mutation'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionFirstMessage } from '../../../shared/structured-agent-session-create'
-import { StructuredAgentSessionCreateRefusalError } from './launch-structured-agent-session'
+import { StructuredAgentSessionCreateRefusalError } from './structured-agent-session-launch-errors'
 import { agentSessionThrownFailure } from '../../../shared/agent-session-write-failure'
 import { handBackStructuredAgentSessionMessage } from '@/components/native-chat/structured-agent-session-message-hand-back'
 import {

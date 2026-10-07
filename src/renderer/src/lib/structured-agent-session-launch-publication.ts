@@ -1,13 +1,26 @@
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import { deleteStructuredAgentLaunchRecord } from './structured-agent-session-launch-persistence'
-import { confirmStructuredLaunchFirstMessagePublication } from './structured-agent-session-launch-publication-confirmation'
 import {
   getPersistedStructuredAgentLaunchRecord,
   getStructuredLaunchStateBySessionId,
   hasStructuredAgentSessionLaunchCancellationTombstone,
   notifyStructuredLaunchListeners
 } from './structured-agent-session-launch-registry'
+
+function confirmStructuredLaunchFirstMessagePublication(
+  worktreeId: string,
+  sessionId: string
+): void {
+  // Store teardown imports publication bookkeeping; recovery may read the store after it exists.
+  void import('./structured-agent-session-launch-publication-confirmation')
+    .then((confirmation) =>
+      confirmation.confirmStructuredLaunchFirstMessagePublication(worktreeId, sessionId)
+    )
+    .catch((error: unknown) => {
+      console.warn('[native-chat] confirming a published opening message failed', error)
+    })
+}
 
 /** `executionHostId` published the chat; only the host its launch was sent to settles it. */
 export function markStructuredAgentSessionLaunchPublished(
