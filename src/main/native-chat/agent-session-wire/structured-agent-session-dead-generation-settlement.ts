@@ -59,7 +59,6 @@ export type DeadGenerationJournal = Omit<UnopenedSendJournal, 'submissions'> & {
   markPendingSubmissionsUnknown: AgentSessionJournal['markPendingSubmissionsUnknown']
   rejectPendingSubmissions: AgentSessionJournal['rejectPendingSubmissions']
   pendingSubmissions?: AgentSessionJournal['pendingSubmissions']
-  startFailureAlreadyStated?: AgentSessionJournal['startFailureAlreadyStated']
 }
 
 export type StructuredAgentSessionUnfinishedWork = {

@@ -1,7 +1,6 @@
 // Append-only journal store for one agent session. It owns the chat's fold and write queue, and no
 // connection: every statement goes through the host's one journal database.
 
-import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import { randomUUID } from 'node:crypto'
 import type {
@@ -68,7 +67,6 @@ import type { AgentJournalEpochReason, JournalStopEvent } from './journal-row-sc
 import type { JournalOperationReceipt, JournalRowWriter } from './journal-row-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalWriteQueue } from './journal-write-queue'
-import { journalStartFailureAlreadyStated } from './journal-start-failure-run'
 import { createJournalStoreCollaborators } from './journal-store-collaborators'
 import type { JournalItemAppender } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
@@ -261,10 +259,6 @@ export class AgentSessionJournal {
     this.state.receipts.get(clientMessageId) ?? null
 
   canonicalItemId = (itemId: string): string => resolveJournalItemId(this.state, itemId)
-
-  /** Whether a start failing so would repeat the row of its run (`journal-start-failure-run`). */
-  startFailureAlreadyStated = (failure: AgentSessionFailureFact): boolean =>
-    journalStartFailureAlreadyStated(this.state, failure)
 
   /** Reads the fold with every write issued before this call committed, and none issued after: at
    *  once unless writes still wait behind an owed import or a running write. */

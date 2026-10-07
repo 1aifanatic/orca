@@ -29,7 +29,7 @@ import { structuredAgentSessionFailureWordsContext } from './structured-agent-se
 
 type StartFailureJournal = Pick<
   AgentSessionJournal,
-  'submissions' | 'itemBody' | 'appendLifecycleBatch' | 'startFailureAlreadyStated'
+  'submissions' | 'itemBody' | 'appendLifecycleBatch'
 >
 
 /** A failed start's row in the chat: an error row keyed by its message (or by the start, from the
@@ -48,10 +48,10 @@ export function structuredAgentSessionStartFailureRow(
 }
 
 /** Rejects a message its start failed and writes that start's row with it, keyed by the message, in
- *  one append; no row when the run's row already states it. Writes nothing once `which` no longer
- *  holds for it: Stop withdrew it, or another writer settled it. */
+ *  one append; the journal's lane drops the row when its run's row already states it. Writes
+ *  nothing once `which` no longer holds for it: Stop withdrew it, or another writer settled it. */
 export async function rejectWithStartFailureRow(
-  journal: Pick<AgentSessionJournal, 'appendLifecycleBatch' | 'startFailureAlreadyStated'>,
+  journal: Pick<AgentSessionJournal, 'appendLifecycleBatch'>,
   input: {
     clientMessageId: string
     words: AgentJournalDispatchRejection
@@ -64,9 +64,7 @@ export async function rejectWithStartFailureRow(
     settlementId: `start-failure:${clientMessageId}`,
     fence,
     recovered: true,
-    mutations: journal.startFailureAlreadyStated(words.rejection)
-      ? []
-      : [structuredAgentSessionStartFailureRow(clientMessageId, words)],
+    mutations: [structuredAgentSessionStartFailureRow(clientMessageId, words)],
     rejects: { clientMessageId, ...words, which }
   })
 }
@@ -128,12 +126,9 @@ export function rejectedAsFailedStartAt(submission: FailedStartSubmission, fence
  *  With none, a message still waiting on the start is the delivery loop's to record with its own
  *  row, and one already rejected as this start's failure has its writer's; anything else — a
  *  command, goal or rewind start, or one no message is charged with — has only this row to say why.
- *  None when its run's row already says it. */
+ *  The journal's lane drops it when its run's row already says it. */
 export function exitStartFailureRow(
-  journal: {
-    submissions?: () => FailedStartSubmission[]
-    startFailureAlreadyStated?: AgentSessionJournal['startFailureAlreadyStated']
-  },
+  journal: { submissions?: () => FailedStartSubmission[] },
   exit: {
     startKey: string
     fence: number
@@ -148,9 +143,7 @@ export function exitStartFailureRow(
       (journal.submissions?.() ?? []).some((submission) =>
         rejectedAsFailedStartAt(submission, exit.fence)
       ))
-  return recordedElsewhere || journal.startFailureAlreadyStated?.(exit.words.rejection) === true
-    ? []
-    : [structuredAgentSessionStartFailureRow(exit.startKey, exit.words)]
+  return recordedElsewhere ? [] : [structuredAgentSessionStartFailureRow(exit.startKey, exit.words)]
 }
 
 export function oldestQueuedSubmission(
