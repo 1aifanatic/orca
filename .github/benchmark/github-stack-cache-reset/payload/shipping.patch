@@ -1,0 +1,9 @@
+--- a/src/main/github/client-test-harness.ts
++++ b/src/main/github/client-test-harness.ts
+@@ -88,5 +88,6 @@
+   mocks.acquireMock.mockResolvedValue(undefined)
+   _resetOwnerRepoCache()
+   _resetMergeQueueCacheForTests()
++  _resetPRStackSummaryCacheForTests()
+   __resetPRConflictSummaryCachesForTests()
+ }

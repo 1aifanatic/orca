@@ -1,0 +1,24 @@
+{
+  "sourceHead": "29ad785b1cd000b580ba3b3da87affb835a601ad",
+  "target": "src/main/github/client-test-harness.ts",
+  "beforeSha256": "f58587d8e1bc411f51b7e6d4c489e096540385603a4525c933ce1c86303e2563",
+  "afterSha256": "731ea0bef229dd33133e45d776e92a81a1fdd1eb07d2c9ef09a95ac439052f96",
+  "patchSha256": "60eaaa3ec1da5a9cdfdd908a27f87f498ee238060703cf4bffb25c477daf6bad",
+  "change": "Call the already imported canonical PR stack summary reset alongside the existing merge queue reset.",
+  "restoration": "Removing only the inserted call at resetGraphQLRateLimitGuardMocks recovers the complete original source byte-for-byte.",
+  "productionChanged": false,
+  "originalTestCallbacksAndAssertionsChanged": false,
+  "newCacheOwnerOrAbstraction": false,
+  "runtimeQualificationPending": true,
+  "passiveAllEightEvidenceBindingPending": false,
+  "originalKnownFailedEvidenceRetained": true,
+  "passiveActualEvidence": {
+    "path": "notes/bun-migration/performance/github-cache-passive-run-37689475723/catalog-complete-passive-cache-evidence-proof.json",
+    "sha256": "ab4cc679396e15ad15e927ab5626365361f239bd398f4d4a9268eb48ebb3e83a"
+  },
+  "fixtureSourceRestoration": "Removing the inserted existing reset call recovers the full original harness bytes; original27 testfiles and production modules are unchanged.",
+  "correctnessAdmissionPending": true,
+  "importNarrowingAbsent": true,
+  "actualFailedDiagnosticRunPreserved": 37689475723,
+  "originalRejectedImportRunPreserved": 37685804504
+}
