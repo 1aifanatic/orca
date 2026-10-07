@@ -51,7 +51,7 @@ describe('Claude structured launch arguments', () => {
     expect(tokensOf(args)).toEqual(args)
   })
 
-  // The CLI is the authority on its own options; one it rejects fails the start generically.
+  // The CLI is the authority on its own options; one it rejects is named as the saved option.
   it('forwards an unknown option and its bare words as typed', () => {
     expect(tokensOf(['-m', 'opus', '--future-flag', 'a', 'b', '--chrome'])).toEqual([
       '-m',

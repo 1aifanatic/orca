@@ -352,7 +352,7 @@ describe('Claude Agent SDK contract pins', () => {
       canUseTool: (async () => ({ behavior: 'deny', message: 'unused' })) as CanUseTool,
       spawnClaudeCodeProcess: recordingSpawner(
         spawns,
-        (launch.configuredArgs ?? []).flatMap((arg) => arg.tokens)
+        launch.configuredArgs.flatMap((arg) => arg.tokens)
       )
     })
 
