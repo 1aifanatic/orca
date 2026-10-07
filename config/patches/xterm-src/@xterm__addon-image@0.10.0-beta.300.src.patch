@@ -971,14 +971,17 @@ index 0000000000000000000000000000000000000000..ac5c3557b998ca129a3b6b445b64c92c
 +  }
 +}
 diff --git a/src/ImageStorage.ts b/src/ImageStorage.ts
-index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998ab4452f75 100644
+index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..fe61679719649d9a6a6932c5be7174b4e4947fd5 100644
 --- a/src/ImageStorage.ts
 +++ b/src/ImageStorage.ts
-@@ -5,10 +5,11 @@
+@@ -5,10 +5,14 @@
  
  import { IDisposable } from '@xterm/xterm';
  import { ImageRenderer } from './ImageRenderer';
 +import { closeImageSource, isImageRaster, type IImageSource } from './ImageSource';
++import { captureImageStorageCheckpoint } from './ImageStorageCheckpointCapture';
++import type { ImageStorageCheckpoint } from './ImageStorageCheckpoint';
++import { checkImageCheckpointGeometry, prepareImageCheckpointSources, visitImageCheckpointCells } from './ImageStorageCheckpointRestore';
  import {
    ITerminalExt, IExtendedAttrsImage, IImageAddonOptions, IImageSpec,
    IBufferLineExt, BgFlags, Cell, Content, ICellSize, ExtFlags, Attributes,
@@ -987,7 +990,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
  } from './Types';
  
  
-@@ -54,7 +55,7 @@ class ExtendedAttrsImage implements IExtendedAttrsImage {
+@@ -54,7 +58,7 @@ class ExtendedAttrsImage implements IExtendedAttrsImage {
    }
    public set underlineColor(value: number) {
      this._ext &= ~(Attributes.CM_MASK | Attributes.RGB_MASK);
@@ -996,7 +999,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
    }
  
    public get underlineVariantOffset(): number {
-@@ -100,7 +101,8 @@ class ExtendedAttrsImage implements IExtendedAttrsImage {
+@@ -100,7 +104,8 @@ class ExtendedAttrsImage implements IExtendedAttrsImage {
    }
  
    public isEmpty(): boolean {
@@ -1006,7 +1009,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
    }
  }
  const EMPTY_ATTRS = new ExtendedAttrsImage();
-@@ -114,12 +116,11 @@ const EMPTY_ATTRS = new ExtendedAttrsImage();
+@@ -114,12 +119,13 @@ const EMPTY_ATTRS = new ExtendedAttrsImage();
   * TODO: image composition for overwrites
   */
  export class ImageStorage implements IDisposable {
@@ -1017,10 +1020,12 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
    private _lastId = 0;
 -  // last evicted id
 -  private _lowestId = 0;
++  private _checkpointGeneration = 0;
++  private _disposed = false;
    // whether a full clear happened before
    private _fullyCleared = false;
    // whether render should do a full clear
-@@ -130,6 +131,9 @@ export class ImageStorage implements IDisposable {
+@@ -130,6 +136,9 @@ export class ImageStorage implements IDisposable {
    private _viewportMetrics: { cols: number, rows: number };
    public onImageAdded: (() => void) | undefined;
    public onImageDeleted: ((storageId: number) => void) | undefined;
@@ -1030,12 +1035,18 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
  
    constructor(
      private _terminal: ITerminalExt,
-@@ -155,12 +159,9 @@ export class ImageStorage implements IDisposable {
+@@ -151,19 +160,79 @@ export class ImageStorage implements IDisposable {
+   }
+ 
+   public dispose(): void {
++    this._disposed = true;
+     this.reset();
    }
  
    public reset(): void {
 -    for (const spec of this._images.values()) {
 -      spec.marker?.dispose();
++    ++this._checkpointGeneration;
 +    for (const id of [...this._images.keys()]) {
 +      this.deleteImage(id);
      }
@@ -1045,18 +1056,86 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
      this._renderer.clearAll();
    }
  
-@@ -173,7 +174,7 @@ export class ImageStorage implements IDisposable {
++  public captureCheckpoint(maxBytes: number): ImageStorageCheckpoint {
++    if (this._disposed) throw new Error('Image storage is disposed');
++    return captureImageStorageCheckpoint(this._terminal, this._images, this._lastId, maxBytes);
++  }
++
++  // The snapshot owner must hold terminal output until this preparation finishes.
++  public async restoreCheckpoint(checkpoint: ImageStorageCheckpoint): Promise<void> {
++    if (this._disposed) throw new Error('Image storage is disposed');
++    checkImageCheckpointGeometry(this._terminal, checkpoint);
++    const generation = ++this._checkpointGeneration;
++    const sources = await prepareImageCheckpointSources(checkpoint, this._opts);
++    let committed = false;
++    try {
++      checkImageCheckpointGeometry(this._terminal, checkpoint);
++      if (this._disposed || generation !== this._checkpointGeneration) throw new Error('Image storage changed during restoration');
++      // Old marker callbacks must finish before IDs are reused by the new entries.
++      this.reset();
++      const { normal, alt } = this._terminal._core.buffers;
++      for (const buffer of [normal, alt]) {
++        const cell = buffer.getNullCell();
++        for (let row = 0; row < buffer.lines.length; ++row) {
++          const line = buffer.lines.get(row);
++          if (!line) continue;
++          for (let col = 0; col < line.length; ++col) {
++            if (!(line.getBg(col) & BgFlags.HAS_EXTENDED)) continue;
++            line.loadCell(col, cell);
++            if (!('imageId' in cell.extended)) continue;
++            cell.extended = new ExtendedAttrsImage(cell.extended.ext, cell.extended.urlId);
++            line.setCell(col, cell);
++          }
++        }
++      }
++      for (const image of checkpoint.metadata.images) {
++        const source = sources.get(image.id);
++        const marker = image.markerLine === undefined ? undefined : normal.addMarker(image.markerLine);
++        marker?.onDispose(() => this._delImg(image.id));
++        this._images.set(image.id, {
++          orig: source, actual: source,
++          origCellSize: { ...image.origCellSize }, actualCellSize: { ...image.origCellSize },
++          marker, tileCount: image.tileCount, virtual: image.virtual,
++          bufferType: image.bufferType, layer: image.layer, zIndex: image.zIndex, kittyId: image.kittyId
++        });
++      }
++      const cell = normal.getNullCell();
++      visitImageCheckpointCells(this._terminal, checkpoint, (line, col, imageId, tileId) => {
++        line.loadCell(col, cell);
++        cell.extended = new ExtendedAttrsImage(cell.extended.ext, cell.extended.urlId, imageId, tileId);
++        cell.bg |= BgFlags.HAS_EXTENDED;
++        line.setCell(col, cell);
++      });
++      this._lastId = checkpoint.metadata.lastId;
++      this._viewportMetrics = { cols: this._terminal.cols, rows: this._terminal.rows };
++      this._needsFullClear = true;
++      this._fullyCleared = false;
++      committed = true;
++      this._renderer.refreshAll();
++    } finally {
++      if (!committed) for (const source of sources.values()) closeImageSource(source);
++    }
++  }
++
+   public getLimit(): number {
+     return this._pixelLimit * 4 / 1000000;
+   }
+@@ -172,8 +241,9 @@ export class ImageStorage implements IDisposable {
+     if (value < 0.5 || value > 1000) {
        throw RangeError('invalid storageLimit, should be at least 0.5 MB and not exceed 1G');
      }
++    ++this._checkpointGeneration;
      this._pixelLimit = (value / 4 * 1000000) >>> 0;
 -    this._evictOldest(0);
 +    this._evictImages(0, 0);
    }
  
    public getUsage(): number {
-@@ -197,11 +198,9 @@ export class ImageStorage implements IDisposable {
+@@ -196,18 +266,18 @@ export class ImageStorage implements IDisposable {
+   private _delImg(id: number): void {
      const spec = this._images.get(id);
      if (!spec) return;
++    ++this._checkpointGeneration;
      this._images.delete(id);
 -    // FIXME: really ugly workaround to get bitmaps deallocated :(
 -    if (window.ImageBitmap && spec.orig instanceof ImageBitmap) {
@@ -1068,11 +1147,19 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
    }
  
    /**
-@@ -236,6 +235,37 @@ export class ImageStorage implements IDisposable {
+    * Wipe canvas and images on alternate buffer.
+    */
+   public wipeAlternate(): void {
++    ++this._checkpointGeneration;
+     // remove all alternate tagged images
+     const zero = [];
+     for (const [id, spec] of this._images.entries()) {
+@@ -236,6 +306,38 @@ export class ImageStorage implements IDisposable {
      }
    }
  
 +  public addUnplacedImage(img: IImageSource, opts: IAddImageOpts): number {
++    ++this._checkpointGeneration;
 +    // never allow storage to exceed memory limit
 +    this._evictImages(img.width * img.height);
 +
@@ -1106,19 +1193,20 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
    /**
     * Method to add an image to the storage.
     * @param img - The image to add (canvas or bitmap).
-@@ -247,9 +277,9 @@ export class ImageStorage implements IDisposable {
+@@ -247,9 +349,10 @@ export class ImageStorage implements IDisposable {
     *   - cursorPos:  'vt340' for bottom-left, 'iip' for bottom.right.
     * @returns The internal image ID assigned to the stored image.
     */
 -  public addImage(img: HTMLCanvasElement | ImageBitmap, opts: IAddImageOpts): number {
 +  public addImage(img: IImageSource, opts: IAddImageOpts): number {
++    ++this._checkpointGeneration;
      // never allow storage to exceed memory limit
 -    this._evictOldest(img.width * img.height);
 +    this._evictImages(img.width * img.height);
  
      // calc rows x cols needed to display the image
      let cellSize = this._renderer.cellSize;
-@@ -307,7 +337,7 @@ export class ImageStorage implements IDisposable {
+@@ -307,7 +410,7 @@ export class ImageStorage implements IDisposable {
      // deleted images with zero tile count
      const zero = [];
      for (const [id, spec] of this._images.entries()) {
@@ -1127,7 +1215,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
          spec.marker?.dispose();
          zero.push(id);
        }
-@@ -342,7 +372,8 @@ export class ImageStorage implements IDisposable {
+@@ -342,7 +445,8 @@ export class ImageStorage implements IDisposable {
        tileCount,
        bufferType: this._terminal.buffer.active.type,
        layer: opts.layer,
@@ -1137,7 +1225,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
      };
  
      // finally add the image
-@@ -352,6 +383,21 @@ export class ImageStorage implements IDisposable {
+@@ -352,6 +456,21 @@ export class ImageStorage implements IDisposable {
    }
  
  
@@ -1159,7 +1247,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
    /**
     * Render method. Collects buffer information and triggers
     * canvas updates.
-@@ -370,6 +416,8 @@ export class ImageStorage implements IDisposable {
+@@ -370,6 +489,8 @@ export class ImageStorage implements IDisposable {
        if (hasTopImages && hasBottomImages) break;
      }
  
@@ -1168,7 +1256,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
      // Lazily insert layers that are needed
      if (hasTopImages && !this._renderer.hasLayer('top')) {
        this._renderer.insertLayerToDom('top');
-@@ -423,13 +471,14 @@ export class ImageStorage implements IDisposable {
+@@ -423,13 +544,14 @@ export class ImageStorage implements IDisposable {
      this._renderer.clearLines(start, end);
  
      // Collect draw calls so we can sort by z-index (lower z drawn first).
@@ -1184,7 +1272,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
        for (let col = 0; col < cols; ++col) {
          if (line.getBg(col) & BgFlags.HAS_EXTENDED) {
            let e: IExtendedAttrsImage = line._extendedAttrs[col] ?? EMPTY_ATTRS;
-@@ -472,7 +521,8 @@ export class ImageStorage implements IDisposable {
+@@ -472,7 +594,8 @@ export class ImageStorage implements IDisposable {
      }
  
      // Sort by z-index so lower z draws first (higher z renders on top)
@@ -1194,7 +1282,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
  
      // Draw placeholders first (lowest priority)
      for (const call of placeholderCalls) {
-@@ -481,7 +531,12 @@ export class ImageStorage implements IDisposable {
+@@ -481,11 +604,17 @@ export class ImageStorage implements IDisposable {
  
      // Draw images in z-index order
      for (const call of drawCalls) {
@@ -1208,7 +1296,12 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
      }
    }
  
-@@ -554,12 +609,13 @@ export class ImageStorage implements IDisposable {
+   public viewportResize(metrics: { cols: number, rows: number }): void {
++    ++this._checkpointGeneration;
+     // exit early if we have nothing in storage
+     if (!this._images.size) {
+       this._viewportMetrics = metrics;
+@@ -554,12 +683,13 @@ export class ImageStorage implements IDisposable {
        const e: IExtendedAttrsImage = line._extendedAttrs[x] ?? EMPTY_ATTRS;
        if (e.imageId && e.imageId !== -1) {
          const orig = this._images.get(e.imageId)?.orig;
@@ -1225,7 +1318,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
        }
      }
    }
-@@ -581,20 +637,42 @@ export class ImageStorage implements IDisposable {
+@@ -581,20 +711,42 @@ export class ImageStorage implements IDisposable {
      }
    }
  
@@ -1278,7 +1371,7 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
        }
      }
      return used - current;
-@@ -656,7 +734,7 @@ export class ImageStorage implements IDisposable {
+@@ -656,7 +808,7 @@ export class ImageStorage implements IDisposable {
      // deleted images with zero tile count
      const zero = [];
      for (const [id, spec] of this._images.entries()) {
@@ -1287,6 +1380,287 @@ index 322b9e02f1aed1d75feff0057ce7a9ded9094ea5..8bd4ba0d371b7103a20b658f2f78998a
          spec.marker?.dispose();
          zero.push(id);
        }
+diff --git a/src/ImageStorageCheckpoint.ts b/src/ImageStorageCheckpoint.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a2a3a63ead95909b341258375617a51472cf3a64
+--- /dev/null
++++ b/src/ImageStorageCheckpoint.ts
+@@ -0,0 +1,89 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import type { ICellSize, IImageSpec } from './Types';
++
++export interface ICheckpointImage {
++  readonly id: number;
++  readonly width: number;
++  readonly height: number;
++  readonly resourceId: number;
++  readonly origCellSize: Readonly<ICellSize>;
++  readonly bufferType: IImageSpec['bufferType'];
++  readonly layer: IImageSpec['layer'];
++  readonly zIndex: number;
++  readonly kittyId: number | undefined;
++  readonly virtual: boolean;
++  readonly markerLine: number | undefined;
++  readonly tileCount: number;
++}
++
++export interface ICheckpointTileRun {
++  readonly bufferType: IImageSpec['bufferType'];
++  readonly row: number;
++  readonly col: number;
++  readonly imageId: number;
++  readonly tileId: number;
++  readonly count: number;
++}
++
++export interface IImageStorageCheckpointMetadata {
++  readonly cols: number;
++  readonly rows: number;
++  readonly normalLength: number;
++  readonly alternateLength: number;
++  readonly lastId: number;
++  readonly images: readonly ICheckpointImage[];
++  readonly tilesResourceId: number;
++  readonly resources: readonly Readonly<{ id: number; byteLength: number }>[];
++  readonly byteLength: number;
++}
++
++export const CHECKPOINT_CHUNK_BYTES = 262144;
++export const CHECKPOINT_TILE_BYTES = 32;
++
++// This lease covers decoded storage only; protocol state belongs to its handlers.
++export class ImageStorageCheckpoint {
++  private _disposed = false;
++
++  constructor(
++    public readonly metadata: IImageStorageCheckpointMetadata,
++    private readonly _resources: Map<number, Uint8Array>
++  ) {}
++
++  public get isDisposed(): boolean { return this._disposed; }
++
++  public readResource(id: number, offset: number, length: number): Uint8Array {
++    if (this._disposed) throw new Error('Image checkpoint lease is disposed');
++    const bytes = this._resources.get(id);
++    if (!bytes || !Number.isSafeInteger(offset) || !Number.isSafeInteger(length)
++      || offset < 0 || length < 0 || length > CHECKPOINT_CHUNK_BYTES || offset + length > bytes.byteLength) {
++      throw new RangeError('Invalid image checkpoint resource window');
++    }
++    return bytes.slice(offset, offset + length);
++  }
++
++  public forEachTileRun(visit: (run: ICheckpointTileRun) => void): void {
++    if (this._disposed) throw new Error('Image checkpoint lease is disposed');
++    const bytes = this._resources.get(this.metadata.tilesResourceId);
++    if (!bytes) throw new Error('Missing image checkpoint tiles');
++    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
++    for (let offset = 0; offset < bytes.byteLength; offset += CHECKPOINT_TILE_BYTES) {
++      visit({
++        bufferType: view.getUint32(offset, true) ? 'alternate' : 'normal',
++        row: view.getUint32(offset + 4, true),
++        col: view.getUint32(offset + 8, true),
++        imageId: view.getFloat64(offset + 12, true),
++        tileId: view.getFloat64(offset + 20, true),
++        count: view.getUint32(offset + 28, true)
++      });
++    }
++  }
++
++  public dispose(): void {
++    this._disposed = true;
++    this._resources.clear();
++  }
++}
+diff --git a/src/ImageStorageCheckpointCapture.ts b/src/ImageStorageCheckpointCapture.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1caf56824f4c6540775a196ddb7dee6ff495b563
+--- /dev/null
++++ b/src/ImageStorageCheckpointCapture.ts
+@@ -0,0 +1,111 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import type { IBuffer } from 'common/buffer/Types';
++import { isImageRaster } from './ImageSource';
++import { BgFlags, type IImageSpec, type ITerminalExt } from './Types';
++import {
++  CHECKPOINT_TILE_BYTES, ImageStorageCheckpoint,
++  type ICheckpointImage, type ICheckpointTileRun
++} from './ImageStorageCheckpoint';
++
++function visitBufferTiles(buffer: IBuffer, bufferType: IImageSpec['bufferType'], visit: (run: ICheckpointTileRun) => void): void {
++  const cell = buffer.getNullCell();
++  for (let row = 0; row < buffer.lines.length; ++row) {
++    const line = buffer.lines.get(row);
++    if (!line) throw new Error('Missing image checkpoint buffer line');
++    let run: ICheckpointTileRun | undefined;
++    for (let col = 0; col < line.length; ++col) {
++      let imageId = -1;
++      let tileId = -1;
++      if (line.getBg(col) & BgFlags.HAS_EXTENDED) {
++        const attrs = line.loadCell(col, cell).extended;
++        if ('imageId' in attrs && 'tileId' in attrs && typeof attrs.imageId === 'number' && typeof attrs.tileId === 'number') {
++          imageId = attrs.imageId;
++          tileId = attrs.tileId;
++        }
++      }
++      if (imageId !== -1 && tileId !== -1) {
++        if (!Number.isSafeInteger(imageId) || imageId <= 0 || !Number.isSafeInteger(tileId) || tileId < 0) {
++          throw new RangeError('Invalid image checkpoint tile');
++        }
++        if (run && run.imageId === imageId && run.tileId + run.count === tileId) {
++          run = { ...run, count: run.count + 1 };
++          continue;
++        }
++      }
++      if (run) visit(run);
++      run = imageId !== -1 && tileId !== -1 ? { bufferType, row, col, imageId, tileId, count: 1 } : undefined;
++    }
++    if (run) visit(run);
++  }
++}
++
++export function captureImageStorageCheckpoint(
++  terminal: ITerminalExt, images: ReadonlyMap<number, IImageSpec>, lastId: number, maxBytes: number
++): ImageStorageCheckpoint {
++  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > 128 * 1024 * 1024) {
++    throw new RangeError('Invalid image checkpoint byte budget');
++  }
++  if (!Number.isSafeInteger(lastId) || lastId < 0 || images.size > 4096) throw new RangeError('Invalid image checkpoint IDs');
++  const { normal, alt } = terminal._core.buffers;
++  const visitTiles = (visit: (run: ICheckpointTileRun) => void): void => {
++    visitBufferTiles(normal, 'normal', visit);
++    visitBufferTiles(alt, 'alternate', visit);
++  };
++  let byteLength = 0;
++  for (const [id, spec] of images) {
++    const source = spec.orig;
++    if (!Number.isSafeInteger(id) || id <= 0 || id > lastId || !source || !isImageRaster(source)
++      || !Number.isSafeInteger(source.width) || !Number.isSafeInteger(source.height)
++      || source.width <= 0 || source.height <= 0 || source.data.byteLength !== source.width * source.height * 4) {
++      throw new RangeError('Image checkpoint requires valid execution-host rasters');
++    }
++    byteLength += source.data.byteLength;
++    if (byteLength > maxBytes) throw new RangeError('Image checkpoint exceeds byte budget');
++  }
++  let tileBytes = 0;
++  visitTiles(() => {
++    tileBytes += CHECKPOINT_TILE_BYTES;
++    if (byteLength + tileBytes > maxBytes) throw new RangeError('Image checkpoint exceeds byte budget');
++  });
++  const resources = new Map<number, Uint8Array>();
++  const entries: ICheckpointImage[] = [];
++  for (const [id, spec] of images) {
++    const source = spec.orig;
++    if (!source || !isImageRaster(source)) throw new Error('Image checkpoint source changed during capture');
++    const resourceId = resources.size + 1;
++    resources.set(resourceId, new Uint8Array(source.data));
++    entries.push(Object.freeze({
++      id, width: source.width, height: source.height, resourceId,
++      origCellSize: Object.freeze({ ...spec.origCellSize }),
++      bufferType: spec.bufferType, layer: spec.layer, zIndex: spec.zIndex, kittyId: spec.kittyId,
++      virtual: !!spec.virtual, markerLine: spec.marker?.isDisposed ? undefined : spec.marker?.line,
++      tileCount: spec.tileCount
++    }));
++  }
++  const tiles = new Uint8Array(tileBytes);
++  const view = new DataView(tiles.buffer);
++  let offset = 0;
++  visitTiles(run => {
++    view.setUint32(offset, run.bufferType === 'normal' ? 0 : 1, true);
++    view.setUint32(offset + 4, run.row, true);
++    view.setUint32(offset + 8, run.col, true);
++    // Internal image IDs are safe integers, rather than unsigned protocol IDs.
++    view.setFloat64(offset + 12, run.imageId, true);
++    view.setFloat64(offset + 20, run.tileId, true);
++    view.setUint32(offset + 28, run.count, true);
++    offset += CHECKPOINT_TILE_BYTES;
++  });
++  const tilesResourceId = resources.size + 1;
++  resources.set(tilesResourceId, tiles);
++  return new ImageStorageCheckpoint(Object.freeze({
++    cols: terminal.cols, rows: terminal.rows,
++    normalLength: normal.lines.length, alternateLength: alt.lines.length, lastId,
++    images: Object.freeze(entries), tilesResourceId,
++    resources: Object.freeze([...resources].map(([id, bytes]) => Object.freeze({ id, byteLength: bytes.byteLength }))),
++    byteLength: byteLength + tileBytes
++  }), resources);
++}
+diff --git a/src/ImageStorageCheckpointRestore.ts b/src/ImageStorageCheckpointRestore.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a0e8eda726c96e6b543c092495ebf5690ef4bde1
+--- /dev/null
++++ b/src/ImageStorageCheckpointRestore.ts
+@@ -0,0 +1,63 @@
++/**
++ * Copyright (c) 2026 The xterm.js authors. All rights reserved.
++ * @license MIT
++ */
++
++import type { IBufferLine } from 'common/buffer/Types';
++import { CHECKPOINT_CHUNK_BYTES, type ImageStorageCheckpoint } from './ImageStorageCheckpoint';
++import { closeImageSource, ImageSourceOperations, type IImageSource } from './ImageSource';
++import type { IImageAddonOptions, ITerminalExt } from './Types';
++
++export function checkImageCheckpointGeometry(terminal: ITerminalExt, checkpoint: ImageStorageCheckpoint): void {
++  const metadata = checkpoint.metadata;
++  if (checkpoint.isDisposed || metadata.cols !== terminal.cols || metadata.rows !== terminal.rows
++    || metadata.normalLength !== terminal._core.buffers.normal.lines.length
++    || metadata.alternateLength !== terminal._core.buffers.alt.lines.length) {
++    throw new Error('Image checkpoint does not match restored text buffers');
++  }
++  checkpoint.forEachTileRun(run => {
++    const buffer = run.bufferType === 'normal' ? terminal._core.buffers.normal : terminal._core.buffers.alt;
++    const line = buffer.lines.get(run.row);
++    if (!line || run.col + run.count > line.length) throw new Error('Missing image checkpoint target cells');
++  });
++}
++
++export async function prepareImageCheckpointSources(
++  checkpoint: ImageStorageCheckpoint, opts: IImageAddonOptions
++): Promise<Map<number, IImageSource>> {
++  const sources = new Map<number, IImageSource>();
++  const operations = new ImageSourceOperations(opts.pixelLimit, opts.rasterBackend);
++  let pixels = 0;
++  for (const image of checkpoint.metadata.images) pixels += image.width * image.height;
++  if (pixels * 4 > Math.max(opts.storageLimit * 1000000, opts.pixelLimit * 4)) {
++    throw new RangeError('Image checkpoint exceeds target storage budget');
++  }
++  try {
++    for (const image of checkpoint.metadata.images) {
++      const length = image.width * image.height * 4;
++      if (image.width * image.height > opts.pixelLimit) throw new RangeError('Image checkpoint exceeds target pixel limit');
++      const bytes = new Uint8Array(length);
++      for (let offset = 0; offset < length; offset += CHECKPOINT_CHUNK_BYTES) {
++        bytes.set(checkpoint.readResource(image.resourceId, offset, Math.min(CHECKPOINT_CHUNK_BYTES, length - offset)), offset);
++      }
++      sources.set(image.id, await operations.fromRgba(bytes, image.width, image.height, true));
++      if (checkpoint.isDisposed) throw new Error('Image checkpoint lease was disposed during preparation');
++    }
++    return sources;
++  } catch (error) {
++    for (const source of sources.values()) closeImageSource(source);
++    throw error;
++  }
++}
++
++export function visitImageCheckpointCells(
++  terminal: ITerminalExt, checkpoint: ImageStorageCheckpoint,
++  visit: (line: IBufferLine, col: number, imageId: number, tileId: number) => void
++): void {
++  checkpoint.forEachTileRun(run => {
++    const buffer = run.bufferType === 'normal' ? terminal._core.buffers.normal : terminal._core.buffers.alt;
++    const line = buffer.lines.get(run.row);
++    if (!line) throw new Error('Missing image checkpoint target line');
++    for (let col = 0; col < run.count; ++col) visit(line, run.col + col, run.imageId, run.tileId + col);
++  });
++}
 diff --git a/src/SixelHandler.ts b/src/SixelHandler.ts
 index 1af2d85bcdd541ed60b1e707f6186a91f1bbf1b2..490f9121e120427e65063efc8223d22e8c7ded2f 100644
 --- a/src/SixelHandler.ts
