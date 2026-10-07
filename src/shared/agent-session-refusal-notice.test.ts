@@ -7,11 +7,11 @@ import {
   agentSessionReadHistoryRefusalParts,
   agentSessionRefusalCauseParts,
   agentSessionRefusalNotice,
-  agentSessionRefusalReasonWords,
   agentSessionWriteFailureNotice,
   agentSessionWriteNoticeEnglish,
   agentSessionWriteNoticeParts
 } from './agent-session-refusal-notice'
+import { agentSessionRefusalReasonWords } from './agent-session-refusal-reason-words'
 import {
   AGENT_SESSION_WRITE_NOTICE_COPY,
   type AgentSessionWriteNoticeSentence
@@ -32,7 +32,7 @@ import {
   DISPATCH_REJECTED_QUEUE_FULL,
   DISPATCH_REJECTED_WRITE_FAILED
 } from './structured-agent-session-dispatch-rejection'
-import { structuredAgentSessionRejectionParts } from './structured-agent-session-send-disposition'
+import { structuredAgentSessionRejectionParts } from './structured-agent-session-rejection-words'
 
 const WRITES: AgentSessionWriteKind[] = [
   'read-history',

@@ -1,4 +1,5 @@
 import type { NativeChatQueueResume } from './native-chat-composer-primary-action'
+import type { NativeChatComposerNotice } from './native-chat-composer-notice'
 import type { AgentSessionConversationCommand } from '../../../../shared/agent-session-conversation-command'
 import type { StructuredAgentContextUsage } from '../../../../shared/structured-agent-session-context-usage'
 import type { AgentSessionSlashCommand } from '../../../../shared/agent-session-wire'
@@ -12,6 +13,7 @@ import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import type { NativeChatAfterStopSend } from './native-chat-composer-target'
 import type { NativeChatLocalCommandAnswer } from './use-native-chat-local-command-answer'
+import type { NativeChatRecallSource } from './native-chat-sent-prompt-history'
 
 export type NativeChatOptionPickerRequest = {
   id: string
@@ -32,6 +34,8 @@ export type NativeChatStructuredComposerTransport = {
     text: string,
     attachments: readonly NativeChatComposerImageAttachment[]
   ) => boolean | 'queued'
+  /** A send is out: Send stays disabled, and a send returns false, until it settles. */
+  sendOut?: boolean
   dispatchCommand: (text: string) => Promise<StructuredAgentSessionCommandOutcome>
   optionsSurface: SessionOptionsSurface
   optionSnapshot: SessionOptionDescriptor[]
@@ -39,12 +43,15 @@ export type NativeChatStructuredComposerTransport = {
   /** The `/` surface the running session reports. Absent keeps the curated
    *  per-agent catalog, which is what an older host leaves the client with. */
   sessionCommands?: readonly AgentSessionSlashCommand[]
+  /** False when the agent takes no image input, as its host registered it. */
+  acceptsImages?: boolean
   /** The session's context usage; null until the journal can state it. */
   contextUsage?: StructuredAgentContextUsage | null
   worktreeId?: string
   /** Present only where the host can set this session's goal. */
   threadGoal?: { setObjective: (objective: string) => Promise<boolean> }
-  onError: (message: string | null) => void
+  /** `errorText` is error text Orca did not write, shown apart and copyable. */
+  onError: (message: string | null, errorText?: string) => void
   /** A local send: brings the latest into view at the press, not when the host answers. */
   onSubmitted?: () => void
   runtime: 'local' | 'remote'
@@ -114,6 +121,10 @@ export type NativeChatComposerProps = {
   /** Cmd/Ctrl+Enter from an empty composer: send the newest queued draft now.
    *  False = nothing queued, and the chord falls through to a plain send. */
   steerQueued?: () => boolean
+  /** The chat's own notices, shown in the composer's notice card above its input. */
+  notices?: readonly NativeChatComposerNotice[]
+  /** The conversation Up/Down recalls prompts from. */
+  recallSource?: NativeChatRecallSource
 }
 
 /** Launch context prefilled into the TUI input as an unsent draft, plus the two

@@ -33,11 +33,14 @@ import { StructuredAgentRegistry } from '../native-chat/agent-session-wire/struc
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import {
+  installAgentSessionAttachments,
+  stopAgentSessionAttachments
+} from './structured-agent-session-attachment-wiring'
+import {
   openAgentSessionRecordStoreOnce,
   releaseAgentSessionRecordStore,
   type OpenedAgentSessionRecordStore
 } from './agent-session-record-store-slot'
-import { legacyAgentSessionStorePath } from './agent-session-record-store-file'
 import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
 import { journalDatabaseHoldsAgentSessions } from '../native-chat/agent-session-journal/journal-database'
 import {
@@ -64,26 +67,21 @@ import {
 } from './structured-agent-model-catalog-wiring'
 import type { ClaudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
 
-/** Whether this profile holds a structured chat: a record or tab in the journal database, or the
- *  records file a profile from before it carries while the database still owes its copy. */
+/** Whether this profile holds a structured chat: a record or tab in the journal database. */
 export function hasPersistedStructuredAgentSessionStore(
   stateDirectory: string,
   fileExists: (path: string) => boolean = existsSync
 ): boolean {
   const databasePath = journalDatabasePath(stateDirectory)
-  if (fileExists(databasePath)) {
-    try {
-      const holds = journalDatabaseHoldsAgentSessions(databasePath)
-      if (holds !== undefined) {
-        return holds
-      }
-    } catch {
-      // A database that cannot be read cannot say it is empty.
-      return true
-    }
+  if (!fileExists(databasePath)) {
+    return false
   }
-  const filePath = legacyAgentSessionStorePath(stateDirectory)
-  return fileExists(filePath) || fileExists(`${filePath}.bak`)
+  try {
+    return journalDatabaseHoldsAgentSessions(databasePath)
+  } catch {
+    // A database that cannot be read cannot say it is empty.
+    return true
+  }
 }
 
 export type StructuredAgentSessionRuntimeDeps = {
@@ -115,6 +113,10 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
   /** The same setting for Codex, as app-server thread policy. */
   resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
+  resolveAgentFullAccess?: (agent: string) => boolean
+  /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
+  resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
   getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
@@ -197,6 +199,7 @@ export async function stopStructuredAgentSessionRuntime(options?: {
   const pending = installing
   installing = null
   setStructuredAgentSessionHost(null)
+  stopAgentSessionAttachments()
   const outstanding = [...pendingTeardown]
   pendingTeardown.clear()
   const installed = pending ? await pending.catch(() => null) : null
@@ -272,6 +275,7 @@ async function installOnJournal(
   const context: StructuredAgentAdapterContext = {
     deps,
     store,
+    journalDatabase,
     environment: envResolvers,
     deliverLifecycle: lifecycle.deliver,
     followUps: createStructuredAgentSessionDispatchFollowUps({
@@ -323,6 +327,12 @@ async function installOnJournal(
     })
   }
   setStructuredAgentSessionHost(host)
+  installAgentSessionAttachments({
+    stateDirectory: deps.stateDirectory,
+    store,
+    journalDatabase,
+    logger: deps.logger
+  })
   return {
     host,
     adapter,

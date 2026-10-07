@@ -8,10 +8,10 @@ import {
 import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
 import {
   isNativeChatRowInLiveWorkingTurn,
-  nativeChatMessagesWaitingBehindLiveTurn,
   nativeChatTurnMembership,
   type NativeChatTurnJournal
 } from '../../../src/shared/native-chat-turn-membership'
+import { nativeChatMessagesWaitingBehindLiveTurn } from '../../../src/shared/native-chat-messages-waiting-behind-live-turn'
 import {
   nativeChatRowsInDrawOrder,
   nativeChatTurnBarRows
@@ -33,6 +33,8 @@ export type MobileNativeChatTurnRow = {
   /** Set only on a settled turn — the one row that has activity to disclose. */
   turnKey?: string
   activeTurnIsWorking: boolean
+  /** The newest assistant row of a live turn with no prompt open: its last text may still grow. */
+  mayStillGrow: boolean
   /** The live activity line discloses this open reasoning block, so its row draws nothing. */
   reasoningIsLive: boolean
   /** A reasoning row's disclosure, keyed like the live line's so an opened block stays open. */
@@ -135,7 +137,12 @@ export function useMobileNativeChatTurnDisclosure({
   // A message waiting behind the live turn draws after that turn's live status, not in the list.
   const waiting = useMemo(() => {
     const ids = enabled
-      ? nativeChatMessagesWaitingBehindLiveTurn(rows, turnJournal?.items, stopping)
+      ? nativeChatMessagesWaitingBehindLiveTurn(
+          rows,
+          turnJournal?.items,
+          stopping,
+          turnJournal?.submissions
+        )
       : null
     if (!ids?.size) {
       return { listMessages: rows, waitingRows: [], indexById: null }
@@ -190,6 +197,10 @@ export function useMobileNativeChatTurnDisclosure({
       },
     [expandedReasoning, line]
   )
+  const latestAssistantId = useMemo(
+    () => waiting.listMessages.findLast((row) => row.role === 'assistant')?.id ?? null,
+    [waiting.listMessages]
+  )
   const resolveRow = useCallback(
     (listIndex: number, message: NativeChatMessage): MobileNativeChatTurnRow => {
       const index = waiting.indexById?.get(message.id) ?? listIndex
@@ -214,6 +225,7 @@ export function useMobileNativeChatTurnDisclosure({
         turnKey: turnKey && turnStatus?.workedSeconds != null ? turnKey : undefined,
         // With no user boundary at all, the session's working state stays authoritative.
         activeTurnIsWorking: inLiveWorkingTurn(index),
+        mayStillGrow: !lineYields && message.id === latestAssistantId,
         reasoningIsLive: message.id === liveReasoningId,
         reasoningExpanded:
           message.role === 'reasoning' &&
@@ -231,6 +243,8 @@ export function useMobileNativeChatTurnDisclosure({
       completedByTurn,
       expandedTurnIds,
       inLiveWorkingTurn,
+      latestAssistantId,
+      lineYields,
       liveReasoningId,
       expandedReasoning,
       toggleReasoning

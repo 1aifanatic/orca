@@ -11,6 +11,7 @@ import type {
   AgentSessionBackgroundTaskRunState
 } from './agent-session-background-task-wire'
 import type { AgentSessionTokenUsage } from './agent-session-context-usage'
+import type { AgentSessionOrcaStop } from './agent-session-orca-stop'
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import type {
   AgentJournalMessageSendMode,
@@ -63,6 +64,8 @@ export type NativeChatTextBlock = {
   }
   /** On a status line that reports a failure: what failed, typed. */
   failure?: AgentSessionFailureFact
+  /** On the line about a reply Orca's own stop cut off: why, and the turn it cut. */
+  orcaStop?: AgentSessionOrcaStop & { turnItemId?: string }
 }
 
 /** A tool invocation by the agent. `input` is the (already-serialized) tool
@@ -243,6 +246,9 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   unsent?: true
   /** This client's send, made while the chat read Stopping, that the host has not recorded yet. */
   sentWhileStopping?: true
+  /** This client's send the host has not recorded, which only the user's Retry sends again: the
+   *  host holds nothing for it, so it never waits behind a turn. */
+  awaitsRetry?: true
   /** A send a Stop took back (its submission withdrawn): no rail tick, as the conversation
    *  outline the host serves leaves it out. */
   stoppedBeforeStart?: true

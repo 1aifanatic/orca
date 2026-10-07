@@ -993,7 +993,6 @@
         "workspaceHostUnresolved": "El espacio de trabajo de destino abarca más de un host, así que esta ejecución no tiene un único host que usar."
       },
       "useComposerState": {
-        "7eb3f44ff7": "El agente seleccionado está deshabilitado. Elige un agente habilitado antes de crear.",
         "b2ead86962": "No se pudo resolver la base del PR.",
         "3db83fc58a": "No hay ninguna ruta de proyecto remoto disponible para los archivos adjuntos.",
         "ba6cb77082": "No se pudo conectar al proyecto.",
@@ -7199,7 +7198,7 @@
             "shellEnvToggleLabel": "Alternar el uso del entorno de tu shell",
             "resumeCopy": "Cuando Orca se cierra o instala una actualización, los chats que estaban trabajando se reanudan automáticamente al volver a abrir Orca.",
             "structuredTitle": "Utilice el chat nativo estructurado actualizado",
-            "structuredCopy": "Abra nuevos agentes de Codex y Claude como chats estructurados. Si está desactivado, los abre en el chat respaldado por la terminal. Los chats que ya existen permanecen como están.",
+            "structuredCopy": "Abra nuevos agentes como chats estructurados cuando sea posible. Si está desactivado, los abre en el chat respaldado por la terminal. Los chats que ya existen permanecen como están.",
             "structuredScope": "Se ejecuta en esta máquina y en servidores Orca emparejados que ejecutan una versión que lo admita; los servidores más antiguos mantienen el chat de terminal. Los hosts WSL y SSH continúan usando el chat de terminal.",
             "structuredToggleLabel": "Alternar chat nativo estructurado actualizado",
             "resumeTitle": "Reanudar los chats de trabajo automáticamente después de reiniciar",
@@ -12838,7 +12837,6 @@
             "ea4788705e": "Cancelar",
             "7ec6abbf2a": "Reiniciar",
             "f4f3c9ca4a": "Plantilla de prompt",
-            "1bc0bdbb5e": "Lanzamiento:",
             "fe119187bb": "--model sonnet",
             "bc8dc39f4b": "Argumentos CLI",
             "b99c33cec5": "Ajustes",
@@ -17410,11 +17408,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "a5e7f14068": "Reintentar",
-            "1f772bb5d0": "La entrega del mensaje no está confirmada.",
-            "93ef441197": "El mensaje no se envió."
-          },
           "NativeChatLaunchRetry": {
             "retry": "Reintentar",
             "failed": "No se pudo iniciar el chat.",
@@ -17625,7 +17618,8 @@
         "providerRetryNumber": "Reintento {{attempt}}.",
         "providerRetryNumberOf": "Reintento {{attempt}} de {{maxRetries}}.",
         "providerRetryLastError": "Último error: {{detail}}.",
-        "previousExitUnverifiable": "No se pudo detener la ejecución anterior de {{agent}}."
+        "previousExitUnverifiable": "No se pudo detener la ejecución anterior de {{agent}}.",
+        "sessionNotRestored": "{{agent}} no pudo reabrir su sesión anterior, así que este chat continúa en una nueva. {{agent}} no recuerda los mensajes anteriores."
       },
       "writeNotice": {
         "notDoneReadHistory": "No se pudo cargar el historial de este chat.",
@@ -17656,6 +17650,8 @@
         "cannotRunHere": "Orca no puede ejecutar este agente en un chat aquí.",
         "unreachable": "Orca no pudo comunicarse con el agente.",
         "recordFailed": "Orca no pudo guardar esto en el historial del chat.",
+        "attachmentExpired": "Este archivo adjunto caducó.",
+        "reattachFile": "Quítelo y vuelva a adjuntarlo.",
         "conversationCleared": "Esta conversación se borró.",
         "openCurrentConversation": "Abra la conversación actual para continuar.",
         "clearUnfinished": "El último /clear no terminó.",
@@ -17690,13 +17686,18 @@
         "send": "Enviar",
         "noPty": "No hay terminal activa: vuelva a alternar para volver a conectarse.",
         "locked": "La entrada está retenida por otro dispositivo.",
-        "placeholder": "Enviar un mensaje…",
-        "mentionHint": "Archivo de referencia:",
+        "placeholder": "Pregunta lo que quieras, @ para mencionar archivos, / para comandos",
+        "loadingFiles": "Cargando archivos...",
+        "noFiles": "No hay archivos coincidentes",
+        "filesLoadFailed": "No se pudieron cargar los archivos",
         "attach": "Adjuntar archivo",
         "startDictation": "Iniciar dictado",
         "stopDictation": "Detener dictado",
         "noSkills": "Sin habilidades coincidentes",
         "localAttachmentUnsupported": "Los archivos adjuntos locales no están disponibles para sesiones remotas.",
+        "attachFailed": "No se pudo adjuntar {{files}}.",
+        "attachFailedBecause": "No se pudo adjuntar {{files}}. {{reason}}",
+        "uploadingFile": "Subiendo {{name}}…",
         "removeAttachment": "Quitar archivo adjunto",
         "pastedImageLabel": "Imagen pegada",
         "copyImage": "Copiar imagen",
@@ -17721,6 +17722,8 @@
         "options": "Opciones",
         "sessionOptions": "Opciones de sesión",
         "chooseInAgentPicker": "Elegir en el selector del agente…",
+        "searchModels": "Buscar modelos…",
+        "noModelsMatch": "Ningún modelo coincide con la búsqueda.",
         "toggleOption": "Alternar {{value0}}",
         "pillAccessibleName": "{{value0}} {{value1}}",
         "sentNotConfirmed": "Enviado al agente — sin confirmar",
@@ -17760,7 +17763,9 @@
         "workspaceAttachmentMismatch": "Los archivos solo se pueden adjuntar a su espacio de trabajo de origen.",
         "attachmentOwnerChanged": "Este espacio de trabajo cambió de host durante la conexión; vuelve a soltar los archivos.",
         "attachmentUnreadable": "No se pudieron leer los archivos soltados.",
-        "tooManyAttachments": "Adjunta {{value0}} archivos o menos a la vez."
+        "tooManyAttachments": "Adjunta {{value0}} archivos o menos a la vez.",
+        "pasteFailed": "Error al pegar.",
+        "commandAttachmentsUnsupported": "Quita los archivos adjuntos antes de usar un comando de la sesión de chat."
       },
       "tool": {
         "running": "Ejecutando…",
@@ -17982,10 +17987,8 @@
         "turnOffQueueing": "Desactivar la cola",
         "withdrawnHold": "Detenido antes de enviarse",
         "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar.",
-        "pausedKept": "Aún no se ha enviado. Pulsa Enviar para enviarlo.",
         "paused": "En pausa",
         "queuePausedStopped": "Cola en pausa porque interrumpiste",
-        "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar",
         "sendConfirmTitle": "¿Enviar mensaje?",
@@ -18079,7 +18082,13 @@
         "plan": "Plan",
         "historyRepaired": "No se pudo cargar parte del historial de este chat.",
         "historyItemTooLarge": "Esta parte del chat era demasiado grande para mostrarla.",
-        "stoppedBeforeStart": "Detenido antes de que el agente empezara"
+        "stoppedBeforeStart": "Detenido antes de que el agente empezara",
+        "dismiss": "Descartar",
+        "copyError": "Copiar error",
+        "orcaStopUpdate": "Orca en {{machine}} se reinició para actualizarse mientras esta respuesta estaba en curso.",
+        "orcaStopQuit": "Orca en {{machine}} se cerró mientras esta respuesta estaba en curso.",
+        "orcaStopCrash": "Orca en {{machine}} se detuvo inesperadamente mientras esta respuesta estaba en curso.",
+        "orcaStopCanContinue": "Puedes continuar en esta conversación."
       },
       "providerFrame": {
         "byteLength": "{{value0}} bytes"
@@ -18135,6 +18144,11 @@
         "offline": "{{hostName}} está sin conexión",
         "reconnecting": "{{hostName}} se está reconectando…",
         "reconnect": "Reconectar"
+      },
+      "interruptedContinue": {
+        "continue": "Continuar",
+        "failed": "No se pudo continuar este chat. Inténtalo de nuevo o envía un mensaje.",
+        "explanation": "Continúa y el agente comprobará primero si su último paso terminó."
       }
     },
     "tab": {
@@ -18527,6 +18541,13 @@
       "label": "Asignado",
       "automatic": "Automático",
       "assignToMe": "Asignármelo ({{name}})"
+    },
+    "markdown-callout": {
+      "note": "Nota",
+      "tip": "Consejo",
+      "important": "Importante",
+      "warning": "Advertencia",
+      "caution": "Precaución"
     }
   },
   "dashboardPopout": {
@@ -19185,5 +19206,10 @@
       "confirm": "Eliminar todos los worktrees indicados",
       "preservedBranches": "Se conservaron algunas ramas de worktrees anidados"
     }
+  },
+  "mediaPreview": {
+    "unavailable": "No se puede reproducir este archivo multimedia. El archivo puede no estar disponible o usar un códec no compatible.",
+    "openFailed": "No se pudo abrir el archivo en la aplicación predeterminada.",
+    "openDefault": "Abrir en la aplicación predeterminada"
   }
 }

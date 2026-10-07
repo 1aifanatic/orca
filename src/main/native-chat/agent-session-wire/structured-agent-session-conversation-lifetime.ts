@@ -49,15 +49,10 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   const readRefusals = createJournalOpenReadRefusals(
     deferredStructuredAgentSessionLogger(() => deps().logger)
   )
-  // The owed copy fails as an open does: the reader gets the classified refusal, never its text.
-  const whenImported = (sessionId: string, session: StructuredAgentSessionHostSession) =>
-    session.journal.whenImported().catch((error: unknown) => {
-      throw readRefusals.refusal(sessionId, error)
-    })
   const stopAgent = (sessionId: string, ending: StructuredAgentSessionStopEnding) =>
     stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, ending)
 
-  const closeConversation = async (sessionId: string): Promise<boolean> => {
+  const closeConversation = async (sessionId: string, atRest = false): Promise<boolean> => {
     // The handle carries the proof that releases a lease its child's wind-down could not.
     if (await releaseLeaseOfEndedStructuredAgentSessionChild(host.context(), sessionId)) {
       return false
@@ -71,7 +66,8 @@ export function createStructuredAgentSessionConversationLifetime(host: {
           host.closeStatus(id, { listed: !tabs.present || tabs.sessionIds.includes(id) })
         }
       },
-      sessionId
+      sessionId,
+      atRest
     )
   }
 
@@ -96,7 +92,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
       stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, {
         cause: 'host-stop'
       }),
-    closeConversation,
+    closeConversation: (sessionId) => closeConversation(sessionId, true),
     logger: deps().logger,
     ...deps().idleSweep
   })
@@ -118,11 +114,6 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     conversation: async (sessionId: string): Promise<StructuredAgentSessionHostSession> => {
       const open = sessions.get(sessionId)
       if (open) {
-        // Restore left its per-chat file uncopied; a reader gets the chat from the one database.
-        // Awaited only then: an open conversation otherwise answers in the same turn.
-        if (open.journal.importPending) {
-          await whenImported(sessionId, open)
-        }
         readRefusals.forget(sessionId)
         return open
       }
@@ -145,26 +136,28 @@ export function createStructuredAgentSessionConversationLifetime(host: {
             reason: 'recordMissing'
           })
         }
-        // Restore may have opened it while this waited.
-        if (session.journal.importPending) {
-          await whenImported(sessionId, session)
-        }
         readRefusals.forget(sessionId)
         return session
       })
     },
     /** Ends a chat's resources, not the chat: its record and journal stay on disk, and what is
-     *  still queued will not be sent; a person's message stays as a held card. */
-    close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> =>
-      serialize(sessionId, async () => {
+     *  still queued waits for the chat's next turn; a person's unsent message stays as a card. */
+    close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> => {
+      // Outside the queue: a start the provider never answers must not hold the close behind it.
+      host.context().runtimeState.acquireAborts.abort(sessionId, 'closed while starting')
+      return serialize(sessionId, async () => {
         readRefusals.forget(sessionId)
         const session = sessions.get(sessionId)
         if (session) {
-          // Settled before the stop, so no start delivers it.
-          await holdClosedStructuredAgentSessionSends(deps(), sessionId, session.journal)
+          // Settled and marked before the stop, so no start delivers it, and nothing it closed with
+          // sends by itself, even if the handle stays open.
+          await holdClosedStructuredAgentSessionSends(deps(), sessionId, session.journal, {
+            mark: 'always'
+          })
         }
         await stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, { cause })
         await closeConversation(sessionId)
       })
+    }
   }
 }

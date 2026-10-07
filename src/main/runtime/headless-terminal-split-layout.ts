@@ -4,19 +4,6 @@ import type {
 } from '../../shared/terminal-tab-types'
 import { splitLayoutLeaf } from '../persistence/terminal-topology/terminal-pane-placement-apply'
 
-export function terminalLayoutContainsLeaf(
-  node: TerminalPaneLayoutNode | null | undefined,
-  leafId: string
-): boolean {
-  if (!node) {
-    return false
-  }
-  return node.type === 'leaf'
-    ? node.leafId === leafId
-    : terminalLayoutContainsLeaf(node.first, leafId) ||
-        terminalLayoutContainsLeaf(node.second, leafId)
-}
-
 /**
  * Insert a newly split-off leaf into a terminal tab's persisted layout tree.
  *
