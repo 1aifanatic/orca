@@ -11,6 +11,7 @@ import {
 } from '@/lib/agent-launch-route-input'
 import {
   resolveAgentLaunchRoute,
+  structuredAgentLaunchDowngrade,
   structuredAgentLaunchSupported,
   type AgentLaunchRoute,
   type AgentLaunchRoutingInput
@@ -24,6 +25,7 @@ import {
 } from '@/lib/structured-agent-launch-settlement'
 import type { StructuredAgentLaunchOptions } from '@/lib/structured-agent-session-launch'
 import type { AgentLaunchRequestId } from '@/lib/agent-launch-request-id'
+import { relearnHostStructuredAgents } from '@/runtime/host-structured-agents'
 
 export type AgentSessionLaunchRequest = AgentLaunchRouteArgs & {
   /** The user action this launch serves, minted where that action is handled. */
@@ -167,6 +169,34 @@ export function resolveAgentSessionLaunchRoute(
   return resolveAgentLaunchRoute(buildAgentLaunchRouteInput(store, request))
 }
 
+/** Says in the console why a launch with structured chat on opens a terminal, and asks again a
+ *  host whose agent list was never learned, so the next launch can open its chat. */
+function reportStructuredLaunchDowngrade(
+  store: AgentLaunchRouteStore,
+  input: AgentLaunchRoutingInput,
+  route: AgentLaunchRoute
+): void {
+  const downgrade = structuredAgentLaunchDowngrade(input, route)
+  if (!downgrade) {
+    return
+  }
+  console.warn(
+    `[agent-launch-route] ${input.agent} opens ${route}: ${downgrade} (host ${input.executionHostId}, ` +
+      `host agents ${input.hostStructuredAgents ? 'listed' : 'not learned'}, ` +
+      `host capabilities ${input.hostCapabilities ? 'known' : 'unknown'})`
+  )
+  if (downgrade === 'agent-without-structured-session' && !input.hostStructuredAgents) {
+    // Bookkeeping: a failed re-ask never touches this launch.
+    relearnHostStructuredAgents(
+      input.executionHostId,
+      input.hostCapabilities,
+      store.runtimeStatusByEnvironmentId
+    ).catch((error: unknown) => {
+      console.warn('[agent-launch-route] could not ask the host for its agents again', error)
+    })
+  }
+}
+
 /** The one place a launch route is decided. Delivery mode is fixed here too, so the settle loop
  *  later receives exactly the prompt and mode the route was decided on. */
 export function planAgentSessionLaunch(
@@ -175,6 +205,7 @@ export function planAgentSessionLaunch(
 ): AgentSessionLaunchPlan {
   const input = buildAgentLaunchRouteInput(store, request)
   const route = resolveAgentLaunchRoute(input)
+  reportStructuredLaunchDowngrade(store, input, route)
   const executionHostId =
     route === 'structured-native-chat' ? parseExecutionHostId(input.executionHostId)?.id : undefined
   return adoptAgentSessionLaunchVerdict({

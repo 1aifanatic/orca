@@ -60,17 +60,17 @@ export function resolveStructuredOpenCodeAccountHome(input: {
   // Inline credentials cannot be pinned without storing them, and a relative directory names no
   // account: the chat is refused, so the launch opens in the terminal instead.
   if (environment.OPENCODE_AUTH_CONTENT) {
-    throw unpinnableAccount()
+    throw unpinnableAccount('OPENCODE_AUTH_CONTENT is set')
   }
   for (const key of ['XDG_DATA_HOME', 'XDG_STATE_HOME'] as const) {
     const value = environment[key]?.trim()
     if (value && !isAbsolute(value)) {
-      throw unpinnableAccount()
+      throw unpinnableAccount(`${key} is not an absolute path`)
     }
   }
   const configuredHome = childHomeDirectory(environment)
   if (configuredHome && !isAbsolute(configuredHome)) {
-    throw unpinnableAccount()
+    throw unpinnableAccount('the home directory is not an absolute path')
   }
   const defaults = defaultDirectories(input.homeDirectory ?? configuredHome ?? homedir())
   const dataHome = environment.XDG_DATA_HOME?.trim() || defaults.dataHome
@@ -145,7 +145,9 @@ function defaultDirectories(home: string): { dataHome: string; stateHome: string
   return { dataHome: join(home, '.local', 'share'), stateHome: join(home, '.local', 'state') }
 }
 
-function unpinnableAccount(): Error {
+/** Names which variable refused, never its value. */
+function unpinnableAccount(why: string): Error {
+  console.warn(`[opencode-account] a chat cannot pin its OpenCode account: ${why}`)
   return agentSessionRefusalError('structured_agent_session_unsupported', {
     reason: 'hostUnsupported'
   })

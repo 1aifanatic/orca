@@ -47,3 +47,21 @@ export function resolveStructuredAgentSessionCreateSupport(input: {
   }
   return { supported: true }
 }
+
+/** Which create-support check said no: where the chat would run, the installed agent (its binary
+ *  and version on this host), or Claude's managed-account binding. */
+export type StructuredAgentSessionCreateSupportCheck = 'location' | 'installed-agent' | 'account'
+
+/** One main-log line per create-support verdict that sends a launch to the terminal; names the
+ *  check and never a path or environment value. */
+export function warnStructuredAgentSessionCreateUnsupported(
+  agent: StructuredAgentId,
+  support: StructuredAgentSessionCreateSupport,
+  check: StructuredAgentSessionCreateSupportCheck
+): void {
+  if (!support.supported) {
+    console.warn(
+      `[structured-create-support] ${agent} unsupported: ${check} check refused (reason ${support.reason ?? 'none'})`
+    )
+  }
+}

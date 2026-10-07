@@ -49,6 +49,7 @@ export async function probeAgentCliVersion(
     warnRefused(input.program, `${version} is not a supported release`)
     return false
   }
+  console.info(`[agent-cli-version] ${input.program} --version: ${version} is supported`)
   return true
 }
 

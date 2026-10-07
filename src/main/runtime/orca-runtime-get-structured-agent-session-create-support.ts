@@ -2,7 +2,6 @@
 import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 import { OrcaRuntimeWithGetWorktreePs } from './orca-runtime-get-worktree-ps'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { resolveStructuredAgentSessionCreateSupport } from '../native-chat/structured-agent-session-create-support'
 import {
   resolveCommittedStructuredAgentSessionAdoptionIntent,
   resolveStructuredAgentSessionAdoptionForCreate
@@ -13,7 +12,7 @@ import type { AgentSessionAttachParams } from '../native-chat/agent-session-wire
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
 import {
   resolveHostStructuredAgentBaseEnvironment,
-  structuredAgentSupportsLaunch
+  resolveHostStructuredAgentCreateSupport
 } from './structured-agent-launch-support'
 import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
@@ -41,21 +40,13 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     worktreeSelector: string,
     agent: StructuredAgentId
   ): Promise<{ supported: boolean; reason?: 'agent' | 'remote' | 'wsl' }> {
-    const location = await this.resolveStructuredAgentSessionLocation(worktreeSelector)
-    return resolveStructuredAgentSessionCreateSupport({
+    return resolveHostStructuredAgentCreateSupport({
       agent,
-      location,
-      adapterSupportsCreate:
-        (await this.structuredAgentSupportsLocation(agent, location)) &&
-        (await structuredAgentSupportsLaunch(agent, worktreeSelector, this)),
+      worktreeSelector,
+      location: await this.resolveStructuredAgentSessionLocation(worktreeSelector),
+      runtime: this,
       getSettings: () => this.requireStore().getSettings()
     })
-  }
-
-  /** The agent's own location rule, from its registration: answered without installing the host,
-   *  and false for an agent this runtime does not register. */
-  protected async structuredAgentSupportsLocation(agent: StructuredAgentId, location) {
-    return structuredAgentRuntimeRegistration(agent)?.supportsLocation(location) ?? false
   }
 
   /** Where a launch of `agent` finds its account, resolved on this host by the agent's own

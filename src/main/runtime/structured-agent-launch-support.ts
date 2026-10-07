@@ -1,7 +1,15 @@
+import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
+import type { StructuredAgentId } from '../../shared/agent-session-provider-handle'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
 import { isTuiAgent } from '../../shared/tui-agent-config'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
+import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
+import {
+  resolveStructuredAgentSessionCreateSupport,
+  warnStructuredAgentSessionCreateUnsupported,
+  type StructuredAgentSessionCreateSupport
+} from '../native-chat/structured-agent-session-create-support'
 import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
 import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
 import { structuredAgentBaseEnvironment } from './structured-agent-shell-environment'
@@ -48,4 +56,34 @@ export async function structuredAgentSupportsLaunch(
   }
   const cwd = (await runtime.resolveRuntimeFileTarget(worktreeSelector)).worktree.path
   return supportsLaunch({ cwd, env, commandSettings: settings })
+}
+
+/** `agentSession.createSupport` on this host: the agent's location rule and installed-agent check
+ *  from its registration, without installing the host, then the account gate. A refusal logs which
+ *  check said no. */
+export async function resolveHostStructuredAgentCreateSupport(input: {
+  agent: StructuredAgentId
+  worktreeSelector: string
+  location: AgentSessionExecutionLocation
+  runtime: LaunchSupportRuntime
+  getSettings: () => ClaudeManagedAccountGateSettings
+}): Promise<StructuredAgentSessionCreateSupport> {
+  const { agent, location } = input
+  const supportsLocation =
+    structuredAgentRuntimeRegistration(agent)?.supportsLocation(location) ?? false
+  const supportsLaunch =
+    supportsLocation &&
+    (await structuredAgentSupportsLaunch(agent, input.worktreeSelector, input.runtime))
+  const support = resolveStructuredAgentSessionCreateSupport({
+    agent,
+    location,
+    adapterSupportsCreate: supportsLaunch,
+    getSettings: input.getSettings
+  })
+  warnStructuredAgentSessionCreateUnsupported(
+    agent,
+    support,
+    !supportsLocation ? 'location' : !supportsLaunch ? 'installed-agent' : 'account'
+  )
+  return support
 }
