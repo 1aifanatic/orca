@@ -16,6 +16,9 @@ import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { RpcDispatcher } from '../dispatcher'
+import { startRuntimeLocalWorktreeTerminals } from '../../runtime-local-worktree-terminal-startup'
+import type { RuntimeManagedWorktreeCreateArgs } from '../../runtime-managed-worktree-create-types'
+import type { Worktree } from '../../../../shared/worktree/types'
 import {
   methodNamed,
   runtimeStub,
@@ -216,6 +219,60 @@ describe('a launch whose terminal fails', () => {
     })
     expect(outcomeOf(OPERATION_ID)?.status).toBe('unknown')
   })
+
+  it('stays unknown when the create asked for its startup agent before its own terminal failed', async () => {
+    // The real startup step runs on the stub's terminals: its spawn request leaves and the reply is
+    // lost, so that agent may run. The launch's second terminal then fails before its request
+    // leaves, which proves nothing about the first.
+    const runtime = runtimeStub({ settings: {} })
+    runtime.createManagedWorktree.mockImplementationOnce(async (args: Record<string, unknown>) => {
+      const started = await startRuntimeLocalWorktreeTerminals({
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch's own create args, as `createManagedWorktree` receives them.
+        request: args as unknown as RuntimeManagedWorktreeCreateArgs,
+        repo: { id: 'repo-1', path: '/repo', displayName: 'repo', badgeColor: 'blue', addedAt: 1 },
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the startup step reads only the worktree's id and path.
+        worktree: { id: 'wt-new', path: '/worktrees/task' } as Worktree,
+        createdWithAgent: 'claude',
+        startup: { command: 'claude' },
+        ports: {
+          canSpawn: true,
+          createTerminal: async (selector, options) => ({
+            ...(await runtime.createTerminal(selector, options)),
+            worktreeId: 'wt-new',
+            title: null
+          }),
+          pasteDraft: vi.fn(),
+          sendFollowup: vi.fn(),
+          provision: vi.fn(),
+          activate: vi.fn()
+        }
+      })
+      return { worktree: { id: 'wt-new' }, startupTerminal: undefined, warning: started.warning }
+    })
+    runtime.createTerminal
+      .mockImplementationOnce(async (_selector: string, options?: Record<string, unknown>) => {
+        const dispatched = options?.onPtySpawnDispatched
+        if (typeof dispatched === 'function') {
+          dispatched()
+        }
+        throw new Error('reply lost')
+      })
+      .mockImplementationOnce(async () => {
+        throw new Error(NO_LAUNCH_COMMAND)
+      })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const response = await replay(runtime, CREATE_LAUNCH)
+    warn.mockRestore()
+
+    expect(runtime.createTerminal).toHaveBeenCalledTimes(2)
+    expect(response).toMatchObject({
+      ok: false,
+      error: { code: 'agent_session_operation_unknown' }
+    })
+    expect(outcomeOf(OPERATION_ID)?.status).toBe('unknown')
+  })
+
   it.each([
     { ...CREATE_LAUNCH, agent: 'opencode', sessionOptions: { model: 'private-proof/model-b' } },
     {

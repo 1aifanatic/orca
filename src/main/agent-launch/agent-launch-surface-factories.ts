@@ -120,6 +120,9 @@ export type AgentLaunchWorkspaceFactory = {
     paneKey?: string
     /** The launch's session options, read as the startup terminal's model/effort/mode preferences. */
     options?: Readonly<Record<string, unknown>>
+    /** Told when the create asks for the startup agent: its spawn request left, or the window was
+     *  handed it. A create that never calls it asked for no agent. */
+    onStartupAgentRequested?: () => void
   }): Promise<{
     worktreeId: string
     /** The new workspace's SSH connection; `null` is local. Decides what its agent tab can show. */

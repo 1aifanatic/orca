@@ -52,7 +52,8 @@ export function agentLaunchWorkspaceFactory(
       cwd,
       launchSource,
       paneKey,
-      options
+      options,
+      onStartupAgentRequested
     }) => {
       const startupLaunchPreferences = toAgentLaunchPreferences(options)
       let promptRodeLaunchCommand = false
@@ -100,6 +101,7 @@ export function agentLaunchWorkspaceFactory(
           ...(launchSource ? { startupLaunchSource: launchSource } : {}),
           ...(paneKey ? { startupPaneKey: paneKey } : {}),
           ...(startupLaunchPreferences ? { startupLaunchPreferences } : {}),
+          ...(onStartupAgentRequested ? { onStartupAgentRequested } : {}),
           ...(records
             ? {
                 onCreateCandidate: (candidate: { worktreePath: string; branchName: string }) =>

@@ -42,6 +42,8 @@ import {
 } from './agent-launch-prompt-delivery'
 import { AgentLaunchTabClosedError } from '../../shared/agent-launch-tab-closed'
 import { AgentLaunchWorkspaceKeptError } from '../../shared/agent-launch-agent-not-started'
+import { AgentLaunchPaneAlreadyLiveError } from '../../shared/agent-launch-pane-already-live'
+import { AgentLaunchSessionAlreadyExistsError } from '../../shared/agent-launch-session-already-exists'
 import {
   workspaceKindForWorktreeId,
   type WorkspaceLaunchKind
@@ -134,7 +136,12 @@ export async function executeAgentLaunch(
     }
   }
 
-  const placed = await resolveWorkspace(execution, preflight)
+  // The create may ask for the agent itself (its startup terminal). Once it has, no later failure
+  // proves the agent never started, whatever happens to the surface built after it.
+  let startupAgentRequested = false
+  const placed = await resolveWorkspace(execution, preflight, () => {
+    startupAgentRequested = true
+  })
   // Agent-first creation already produced the agent, so the pre-flight verdict is final.
   if (placed.startupTerminalHandle) {
     const startup = published(execution, {
@@ -165,7 +172,9 @@ export async function executeAgentLaunch(
   const { settled, created } = await keepWorkspaceWhenAgentNeverStarted(
     intent,
     placed,
-    (error) => !agentRequested || execution.surfaces.failedBeforeAgentStart?.(error) === true,
+    (error) =>
+      !startupAgentRequested &&
+      (!agentRequested || execution.surfaces.failedBeforeAgentStart?.(error) === true),
     async () => {
       execution.onStage?.('mode_settle')
       let settled = await resolveAgentLaunchModeOnHost(
@@ -244,7 +253,8 @@ function downgradeAgentLaunchModeForStructuredRefusal(
 
 async function resolveWorkspace(
   execution: AgentLaunchExecution,
-  preflight: AgentLaunchModeReceipt
+  preflight: AgentLaunchModeReceipt,
+  onStartupAgentRequested: () => void
 ): Promise<{
   worktreeId: string
   connectionId: string | null | undefined
@@ -273,7 +283,8 @@ async function resolveWorkspace(
     create: withoutReservedAgentCreateFields(intent.target.create),
     startupAgent: preflight.mode === 'structured' ? undefined : intent.agent,
     ...(startupPrompt ? { startupPrompt } : {}),
-    ...(preflight.mode === 'structured' ? {} : terminalLaunchInputs(intent))
+    ...(preflight.mode === 'structured' ? {} : terminalLaunchInputs(intent)),
+    onStartupAgentRequested
   })
   // Only when a startup terminal actually came back: a create that produced none ran no command,
   // so nothing carried the prompt and the launch still owes it to whatever surface it builds next.
@@ -317,7 +328,8 @@ function launchWorkspaceKind(target: AgentLaunchTarget): WorkspaceLaunchKind {
  * A create whose workspace exists and whose agent provably never started keeps the workspace, and
  * says so instead of an unknown outcome. A failure after an agent was asked for proves nothing (a
  * spawn whose reply was lost may still be running), so it propagates as before; a tab the user
- * closed has its own answer.
+ * closed has its own answer. A live reserved pane or a taken reserved session in the workspace this
+ * launch just made is most likely its own agent, so neither is ever "not started".
  */
 async function keepWorkspaceWhenAgentNeverStarted<T>(
   intent: AgentLaunchIntent,
@@ -331,6 +343,8 @@ async function keepWorkspaceWhenAgentNeverStarted<T>(
     if (
       intent.target.kind !== 'create-worktree' ||
       error instanceof AgentLaunchTabClosedError ||
+      error instanceof AgentLaunchPaneAlreadyLiveError ||
+      error instanceof AgentLaunchSessionAlreadyExistsError ||
       !neverStarted(error)
     ) {
       throw error

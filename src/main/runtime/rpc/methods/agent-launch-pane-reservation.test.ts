@@ -8,7 +8,6 @@ import '../unused-default-rpc-methods.test-fixture'
  * exists, so a caller whose reservation lost (older host, replay, structured route) can tell.
  */
 
-import { AGENT_LAUNCH_AGENT_NOT_STARTED_CODE } from '../../../../shared/agent-launch-agent-not-started'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -276,7 +275,7 @@ describe('a live-pane refusal under a named operation', () => {
     expect(outcomeOf(OPERATION_ID)).toMatchObject({ status: 'failed' })
   })
 
-  it('answers a create-worktree launch with the workspace it kept, since that already exists', async () => {
+  it('leaves a create-worktree launch unknown, because its workspace was already created', async () => {
     const runtime = runtimeStub({ settings: TERMINAL_ONLY, terminalPaneAlreadyLive: true })
     // No startup terminal came back, so the launch builds its own in the new workspace.
     runtime.createManagedWorktree.mockResolvedValueOnce({
@@ -294,11 +293,8 @@ describe('a live-pane refusal under a named operation', () => {
     expect(runtime.createTerminal).toHaveBeenCalledTimes(1)
     expect(response).toMatchObject({
       ok: false,
-      error: { code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE, data: { worktreeId: 'wt-new' } }
+      error: { code: 'agent_session_operation_unknown' }
     })
-    expect(outcomeOf(OPERATION_ID)).toMatchObject({
-      status: 'failed',
-      code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE
-    })
+    expect(outcomeOf(OPERATION_ID)?.status).toBe('unknown')
   })
 })
