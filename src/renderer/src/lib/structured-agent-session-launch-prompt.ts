@@ -99,6 +99,20 @@ export function discardStructuredAgentSessionChatSends(sessionId: string): void 
   dropStructuredAgentSessionSends(sessionId)
 }
 
+/** A Stop before the chat is published: text its launch has not sent goes back to the composer,
+ *  never sent. The start itself goes on. */
+export function takeBackStructuredLaunchPrompts(sessionId: string): void {
+  for (const prompt of staged.get(sessionId) ?? []) {
+    if (prompt.delivery) {
+      continue
+    }
+    unstage(prompt)
+    prompt.discarded = true
+    handBackStagedPrompt(prompt)
+    prompt.discard()
+  }
+}
+
 /** Whether a launch still holds text for this chat that has not reached its host. */
 export function hasStagedStructuredLaunchPrompt(sessionId: string): boolean {
   return (staged.get(sessionId)?.size ?? 0) > 0

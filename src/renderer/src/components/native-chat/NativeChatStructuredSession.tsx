@@ -3,12 +3,10 @@ import { NATIVE_CHAT_APPEARANCE_ROOT_CLASS } from './native-chat-appearance-styl
 import { useNativeChatStoreAppearanceStyle } from './use-native-chat-store-appearance-style'
 import { useMemo, useRef, useState } from 'react'
 import { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
-import { dispatchStructuredAgentSessionComposerCommand } from '../../../../shared/structured-agent-session-composer'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
-import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
 import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
@@ -39,6 +37,7 @@ import { nativeChatStructuredStopControls } from './native-chat-structured-stop-
 import { chatApprovalFromJournal } from './native-chat-interactive-prompt'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
+import { useNativeChatStructuredComposerTransport } from './use-native-chat-structured-composer-transport'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
@@ -183,69 +182,18 @@ export function NativeChatStructuredSession(
   })
   const questionBody = prompt?.body.kind === 'question' ? prompt.body : null
   const questions = questionBody ? agentSessionPromptQuestions(questionBody) : []
-  const structuredTransport = useMemo(() => {
-    const threadGoal = controller.threadGoal
-    const setThreadGoalObjective = threadGoal
-      ? (objective: string) => threadGoal.change({ kind: 'set', objective })
-      : null
-    return {
-      send: (
-        text: string,
-        attachments: readonly NativeChatComposerImageAttachment[]
-      ): boolean | 'queued' =>
-        sendThroughLaunch(text, attachments.length > 0, () =>
-          controller.send(
-            text,
-            attachments.map(({ path, connectionId }) => ({
-              path,
-              previewUri: path,
-              ...(connectionId ? { connectionId } : {})
-            }))
-          )
-        ),
-      dispatchCommand: (text: string) =>
-        dispatchStructuredAgentSessionComposerCommand(text, {
-          agent: props.agent,
-          snapshot: controller.optionSnapshot,
-          invokeAction: async (id) => {
-            setOptionPickerRequest((current) => ({ id, sequence: (current?.sequence ?? 0) + 1 }))
-            return true
-          },
-          setOption: controller.setStructuredOption,
-          conversationCommands: controller.conversationCommands,
-          runConversationCommand: controller.runConversationCommand,
-          ...(setThreadGoalObjective ? { setThreadGoalObjective } : {})
-        }),
-      ...(setThreadGoalObjective ? { threadGoal: { setObjective: setThreadGoalObjective } } : {}),
-      sendOut: controller.sendOut || provisionalLaunch.starting,
-      optionsSurface: controller.optionSurface,
-      conversationCommands: controller.conversationCommands,
-      optionSnapshot: controller.optionSnapshot,
-      optionPickerRequest,
-      sessionCommands: controller.sessionCommands,
-      contextUsage: controller.contextUsage,
-      worktreeId: ownerWorktreeId ?? undefined,
-      onError: setComposerError,
-      onSubmitted: revealLatest,
-      runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
-      sessionId: props.sessionId,
-      runtimeEnvironmentId:
-        props.target.kind === 'local' ? null : (props.target.environmentId ?? null),
-      queueHold: submits.queuedMessages.queueHold,
-      queueResume: submits.queuedMessages.queueResume
-    }
-  }, [
+  const structuredTransport = useNativeChatStructuredComposerTransport({
+    props,
     controller,
-    optionPickerRequest,
-    ownerWorktreeId,
-    props.agent,
-    props.sessionId,
-    props.target,
-    provisionalLaunch.starting,
-    revealLatest,
     sendThroughLaunch,
-    submits.queuedMessages
-  ])
+    starting: provisionalLaunch.starting,
+    worktreeId: ownerWorktreeId ?? undefined,
+    optionPickerRequest,
+    setOptionPickerRequest,
+    onError: setComposerError,
+    onSubmitted: revealLatest,
+    queuedMessages: submits.queuedMessages
+  })
 
   return (
     <div

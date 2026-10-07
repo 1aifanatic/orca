@@ -33,7 +33,8 @@ import {
   discardStructuredLaunchPrompts,
   hasStagedStructuredLaunchPrompt,
   settleStructuredAgentLaunchPrompt,
-  stageStructuredLaunchPrompt
+  stageStructuredLaunchPrompt,
+  takeBackStructuredLaunchPrompts
 } from './structured-agent-session-launch-prompt'
 
 const SESSION = 'session-1'
@@ -172,6 +173,29 @@ describe('settleStructuredAgentLaunchPrompt', () => {
 
     expect(sends()).toHaveLength(0)
     expect(draft()).toBe('')
+  })
+
+  it('gives a Stop before the chat is published its prompt back, and never sends it', async () => {
+    const stagedPrompt = stageStructuredLaunchPrompt(SESSION, 'review this')
+    let publish: (receipt: { sessionId: string; fence: number }) => void = () => {}
+    const settled = settleStructuredAgentLaunchPrompt({
+      launchResult: new Promise((resolve) => {
+        publish = resolve
+      }),
+      target,
+      options: { prompt: 'review this' },
+      stagedPrompt
+    })
+    expect(pendingTexts()).toEqual(['review this:sending'])
+
+    takeBackStructuredLaunchPrompts(SESSION)
+    publish({ sessionId: SESSION, fence: 1 })
+
+    await expect(settled).resolves.toEqual({ delivered: false, failureNotified: true })
+    expect(draft()).toBe('review this')
+    expect(pendingTexts()).toEqual([])
+    expect(sends()).toHaveLength(0)
+    expect(hasStagedStructuredLaunchPrompt(SESSION)).toBe(false)
   })
 
   it('reports a prompt the host refused as not delivered, with its text back in the composer', async () => {

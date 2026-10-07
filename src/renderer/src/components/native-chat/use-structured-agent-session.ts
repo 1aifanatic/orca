@@ -8,11 +8,13 @@ import type { AgentSessionConversationCommand } from '../../../../shared/agent-s
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
+import { takeBackStructuredLaunchPrompts } from '@/lib/structured-agent-session-launch-prompt'
 import {
   supportsStructuredAgentSessionPromptCancel,
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
 import { useStructuredAgentSessionHostQueuesMessagesState } from '@/runtime/structured-agent-session-host-capability'
+import { structuredAgentSessionStopControl } from './structured-agent-session-stop-control'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -186,9 +188,6 @@ export function useStructuredAgentSession(args: {
     blocked: conversationBusy || commandPending.current || queuedMessageIds.length > 0,
     write
   })
-  const canStop =
-    transportState.turnId !== null ||
-    (stopControl.stopsConversation && (transportState.isWorking || sending))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking || transportState.queueSendsNext
   const transcriptPending = useMemo(
@@ -265,9 +264,17 @@ export function useStructuredAgentSession(args: {
     turnActivity: transportState.turnActivity,
     backgroundTasks: transportState.backgroundTasks,
     turnId: transportState.turnId,
-    canStop,
+    ...structuredAgentSessionStopControl({
+      published: transportEnabled,
+      host: stopControl,
+      transportState,
+      sends: {
+        sending,
+        stopSends: sends.stopSends,
+        takeBackLaunchText: () => takeBackStructuredLaunchPrompts(sessionId)
+      }
+    }),
     stopPressed: stopControl.pressed,
-    stop: () => stopControl.stop(transportState.turnId, sends.stopSends),
     queuedMessages: queuedController,
     /** A send made now while the agent works is held as a queued card: the host queues, and this
      *  send asks it to (the setting is on and no pending prompt blocks the queue). */
