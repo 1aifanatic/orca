@@ -100,7 +100,7 @@ export function NativeChatComposerActions({
             : translate('components.native-chat.stop', 'Stop the agent')
           : resumes
             ? translate('components.native-chat.queuedMessages.resume', 'Resume')
-            : translate('components.native-chat.composer.send', 'Send')
+            : (sendReason ?? translate('components.native-chat.composer.send', 'Send'))
       }
       disabled={sendDisabled || (isWorking && isStopping)}
       onClick={handleCriticalAction}
@@ -199,13 +199,9 @@ export function NativeChatComposerActions({
         {sendReason ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span
-                role="button"
-                tabIndex={0}
-                aria-disabled="true"
-                aria-label={sendReason}
-                className="inline-flex shrink-0"
-              >
+              {/* A disabled button gets no pointer events or focus, so the wrapper carries the
+                  hover and keyboard focus. */}
+              <span tabIndex={0} className="inline-flex">
                 {sendButton}
               </span>
             </TooltipTrigger>

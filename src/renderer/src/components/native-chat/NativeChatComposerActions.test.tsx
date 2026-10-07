@@ -166,9 +166,7 @@ describe('NativeChatComposerActions', () => {
     const send = screen.getByRole('button', {
       name: "An image couldn't be brought back. Remove it to send."
     })
-    expect(send.getAttribute('aria-disabled')).toBe('true')
-    expect(send.getAttribute('tabindex')).toBe('0')
-    expect(screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled')).toBe(true)
+    expect(send.hasAttribute('disabled')).toBe(true)
   })
 
   it('marks a draft that could not be saved only after storage refused it', () => {

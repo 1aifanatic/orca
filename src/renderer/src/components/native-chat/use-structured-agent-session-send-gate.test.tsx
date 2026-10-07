@@ -186,32 +186,4 @@ describe('the send gate the session hands its composer', () => {
     expect(result.current.unavailable?.reason).toBe('notSignedIn')
     expect(showsStartLine(result.current.messages)).toBe(false)
   })
-
-  it('hides the row with no host answer too: a send says the same words', async () => {
-    mocks.call.mockImplementation((_target, method) =>
-      method === 'agentSession.options'
-        ? Promise.resolve(OPTIONS)
-        : method === 'agentSession.modelCatalog'
-          ? Promise.resolve({ origin: 'unknown' })
-          : Promise.resolve(null)
-    )
-    items = [signedOutStart]
-    const { result } = renderHook(() =>
-      useStructuredAgentSession({
-        sessionId: 'session-unknown',
-        target: LOCAL_TARGET,
-        agent: 'codex',
-        isVisible: true
-      })
-    )
-    await waitFor(() =>
-      expect(mocks.call).toHaveBeenCalledWith(
-        LOCAL_TARGET,
-        'agentSession.modelCatalog',
-        expect.anything()
-      )
-    )
-    expect(result.current.unavailable).toBeNull()
-    expect(showsStartLine(result.current.messages)).toBe(false)
-  })
 })

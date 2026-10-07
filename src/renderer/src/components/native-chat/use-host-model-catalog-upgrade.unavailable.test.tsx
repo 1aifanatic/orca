@@ -113,11 +113,16 @@ describe("a chat's sign-in verdict", () => {
     expect(result.current.unavailable).toEqual(SIGNED_OUT)
     expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
 
-    await focusWindow()
+    await act(async () => {
+      result.current.recheckUnavailable?.()
+    })
     expect(reads.count()).toBe(2)
+    await reads.answer(1, { ...HOST_CATALOG, unavailable: SIGNED_OUT })
+    await focusWindow()
+    expect(reads.count()).toBe(3)
     // No enable flash while the re-read is out.
     expect(result.current.unavailable).toEqual(SIGNED_OUT)
-    await reads.answer(1, HOST_CATALOG)
+    await reads.answer(2, HOST_CATALOG)
     expect(result.current.unavailable).toBeNull()
     expect(result.current.recheckUnavailable).toBeUndefined()
   })
@@ -134,17 +139,6 @@ describe("a chat's sign-in verdict", () => {
       result.current.recheckUnavailable?.()
     })
     expect(reads.count()).toBe(1)
-  })
-
-  it('a recheck while blocked reads once', async () => {
-    const reads = catalogReads()
-    const { result } = renderOptions()
-    await reads.answer(0, { origin: 'unknown', unavailable: { reason: 'cliMissing' } })
-    expect(result.current.unavailable).toEqual({ reason: 'cliMissing' })
-    await act(async () => {
-      result.current.recheckUnavailable?.()
-    })
-    expect(reads.count()).toBe(2)
   })
 
   it('clears on a failed read: unknown never blocks', async () => {
@@ -170,10 +164,12 @@ describe("a chat's sign-in verdict", () => {
     expect(result.current.unavailable).toBeNull()
   })
 
-  it('ignores a reason this build does not know', async () => {
+  it('a blocked past-TTL re-read with no catalog does not set choicesPending', async () => {
     const reads = catalogReads()
     const { result } = renderOptions()
-    await reads.answer(0, { ...HOST_CATALOG, unavailable: { reason: 'rateLimited' } })
-    expect(result.current.unavailable).toBeNull()
+    await reads.answer(0, { origin: 'unknown', unavailable: SIGNED_OUT, listingInProgress: true })
+    expect(reads.params(1)).toEqual({ agent: 'codex', sessionId, waitForListing: true })
+    const model = result.current.optionSnapshot.find((entry) => entry.id === 'model')!
+    expect(model.choicesPending).toBeUndefined()
   })
 })

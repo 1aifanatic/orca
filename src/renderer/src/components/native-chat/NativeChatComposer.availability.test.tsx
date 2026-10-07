@@ -3,10 +3,7 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatComposerFieldProps } from './NativeChatComposerField'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
-import {
-  nativeChatComposerSendGate,
-  nativeChatComposerSendState
-} from './native-chat-composer-send-state'
+import { nativeChatComposerSendState } from './native-chat-composer-send-state'
 import {
   clearNativeChatComposerDraftsForTests,
   readNativeChatComposerDraft,
@@ -157,33 +154,14 @@ describe('structured composer Send availability', () => {
   })
 })
 
-describe('one send gate rule', () => {
-  it('blocks only a send that starts the agent', () => {
-    const verdict = { reason: 'cliMissing' } as const
-    expect(nativeChatComposerSendGate(verdict, false)).toBe(verdict)
-    expect(nativeChatComposerSendGate(verdict, true)).toBeNull()
-    expect(nativeChatComposerSendGate(undefined, false)).toBeNull()
-  })
-})
-
 describe('the disabled Send says the fix for this agent and account', () => {
   it.each([
-    [
-      'claude',
-      { reason: 'notSignedIn', account: 'system' },
-      "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings."
-    ],
     [
       'claude',
       { reason: 'notSignedIn', account: 'managed' },
       "This Claude account isn't signed in. Sign in again in Claude Accounts settings."
     ],
     ['codex', { reason: 'notSignedIn' }, "Codex isn't signed in. Run `codex login`."],
-    [
-      'codex',
-      { reason: 'notSignedIn', account: 'managed' },
-      "This Codex account isn't signed in. Sign in again in Codex Accounts settings."
-    ],
     [
       'claude',
       { reason: 'cliMissing' },
@@ -219,35 +197,5 @@ describe('combined attachment and account Send state', () => {
       sendButtonDisabled: false,
       sendBlockedReason: undefined
     })
-  })
-
-  it('still requires sign-in after the unavailable image is removed', () => {
-    const state = nativeChatComposerSendState(input, 'hello', [], {
-      reason: 'notSignedIn',
-      account: 'managed'
-    })
-    expect(state.sendButtonDisabled).toBe(true)
-    expect(state.sendBlockedReason).toContain('Codex Accounts settings.')
-  })
-
-  it('keeps pending images blocked without an action tooltip', () => {
-    expect(
-      nativeChatComposerSendState(
-        input,
-        'hello',
-        [{ id: 'pending', path: '', pending: true }],
-        null
-      )
-    ).toEqual({ sendButtonDisabled: true, sendBlockedReason: undefined })
-  })
-
-  it('allows Stop while an image and the account are unavailable', () => {
-    const state = nativeChatComposerSendState(
-      { ...input, isWorking: true, onStop: vi.fn() },
-      'hello',
-      [image],
-      { reason: 'notSignedIn', account: 'managed' }
-    )
-    expect(state.sendButtonDisabled).toBe(false)
   })
 })

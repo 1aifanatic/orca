@@ -103,9 +103,11 @@ export function useStructuredAgentSessionOptions(args: {
     activeOptionRecordRef,
     updateOptionState
   })
-  // A list in hand, the running provider's or the host's, ends the wait for the host's.
+  // A list in hand, the running provider's or the host's, ends the wait for the host's; so does a
+  // verdict, whose re-check is for Send, not the picker.
   const modelListPending =
     hostCatalog.awaitingListing &&
+    hostCatalog.unavailable === null &&
     optionState.catalogSource !== 'live' &&
     optionState.catalogSource !== 'host'
 

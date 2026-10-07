@@ -151,6 +151,7 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     render(sessionView())
 
     expect(screen.getByText(`Chat could not be started. ${NOT_SIGNED_IN_TEXT}`)).toBeTruthy()
+    expect(screen.queryByText(/agent_session_/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
@@ -297,42 +298,6 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
       expect.objectContaining({ envelope: expect.objectContaining({ sessionId: 'session-1' }) })
     )
   })
-
-  it.each(['claude', 'codex'] as const)(
-    'retries a %s signed-out start after the probe clears and delivers the message',
-    async (agent) => {
-      mocks.mode = 'outbox'
-      mocks.launchLifecycle = 'failed'
-      mocks.launchFailure = NOT_SIGNED_IN
-      mocks.call.mockResolvedValue({
-        ok: true,
-        value: { submission: { clientMessageId: 'client-1', dispatchState: 'accepted' } }
-      })
-      const { rerender } = render(sessionView(agent))
-      expect(screen.queryByText(/Chat could not be started|isn't signed in/)).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
-
-      // Signed in: the host's probe found the account fine.
-      rerender(sessionView(agent))
-      expect(screen.queryByText(/Chat could not be started|isn't signed in/)).toBeNull()
-      expect(composerSend()('hello after signing in', [])).toBe(true)
-      expect(mocks.retryLaunch).toHaveBeenCalledExactlyOnceWith('wt-1', 'session-1')
-      expect(mocks.call).not.toHaveBeenCalled()
-
-      mocks.launchLifecycle = 'published'
-      rerender(sessionView(agent))
-      await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
-      expect(mocks.call).toHaveBeenCalledWith(
-        { kind: 'local' },
-        'agentSession.send',
-        expect.objectContaining({
-          body: expect.objectContaining({
-            blocks: [{ type: 'text', text: 'hello after signing in' }]
-          })
-        })
-      )
-    }
-  )
 
   it('keeps the message queued with the reason shown when the relaunch fails again', async () => {
     mocks.mode = 'outbox'

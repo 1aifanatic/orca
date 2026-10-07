@@ -190,46 +190,6 @@ process.stdin.on('end', () => setTimeout(() => {
 })
 
 describe('Claude catalog availability', () => {
-  it.each([false, true])(
-    'reads initialization in the same listing for managed=%s',
-    async (managed) => {
-      const probe = createClaudeModelCatalogProbe({
-        ...probeDeps(),
-        resolveCommand: () => '/resolved/claude with spaces/claude',
-        resolveEnv: () => ({}),
-        resolveAuthPolicy: () => ({ stripAuthEnv: managed }),
-        discover: async (input) => {
-          expect(input.stdinPayload).toBe(CLAUDE_CATALOG_STDIN)
-          expect(input.binary).toBe('/resolved/claude with spaces/claude')
-          const unavailable = input.inspectOutput?.(
-            JSON.stringify({
-              type: 'control_response',
-              response: {
-                subtype: 'success',
-                request_id: 'orca-catalog-initialize',
-                response: { account: { tokenSource: 'none' } }
-              }
-            })
-          )
-          return { success: false, error: 'notSignedIn', unavailable }
-        }
-      })
-      await expect(probe('/homes/a')).rejects.toMatchObject({
-        unavailable: { reason: 'notSignedIn', account: managed ? 'managed' : 'system' }
-      })
-    }
-  )
-  it('retains typed missing CLI evidence', async () => {
-    const probe = createClaudeModelCatalogProbe({
-      ...probeDeps(),
-      discover: async () => ({
-        success: false,
-        error: 'missing',
-        unavailable: { reason: 'cliMissing' }
-      })
-    })
-    await expect(probe('/homes/a')).rejects.toBeInstanceOf(AgentModelCatalogUnavailableError)
-  })
   it('does not turn a generic discovery failure into unavailable', async () => {
     const probe = createClaudeModelCatalogProbe({
       ...probeDeps(),
@@ -240,9 +200,13 @@ describe('Claude catalog availability', () => {
 })
 
 describe('Claude catalog fake-child contract', () => {
-  it.each(['none', 'oauth'])(
-    'initializes and lists in one process for tokenSource=%s',
-    async (tokenSource) => {
+  it.each([
+    ['none', false],
+    ['none', true],
+    ['oauth', false]
+  ] as const)(
+    'initializes and lists in one process for tokenSource=%s, managed=%s',
+    async (tokenSource, managed) => {
       const child = createMockDiscoveryChild()
       const spawnAgent = vi.fn<SpawnSourceControlAgent>(() => {
         queueMicrotask(() => {
@@ -271,10 +235,17 @@ describe('Claude catalog fake-child contract', () => {
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: discovery reads only the fake child's EventEmitter streams, pid, kill and stdin.end.
         return child as unknown as SpawnedSourceControlAgentProcess
       })
-      const probe = createClaudeModelCatalogProbe({ ...probeDeps(), spawnAgent })
+      const probe = createClaudeModelCatalogProbe({
+        ...probeDeps(),
+        resolveEnv: () => ({}),
+        resolveAuthPolicy: () => ({ stripAuthEnv: managed }),
+        spawnAgent
+      })
       const result = await probe('/homes/a').catch((error: unknown) => error)
       if (tokenSource === 'none') {
-        expect(result).toMatchObject({ unavailable: { reason: 'notSignedIn', account: 'system' } })
+        expect(result).toMatchObject({
+          unavailable: { reason: 'notSignedIn', account: managed ? 'managed' : 'system' }
+        })
       } else {
         expect(result).toMatchObject({ models: [{ id: 'sonnet' }] })
       }

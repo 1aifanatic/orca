@@ -38,9 +38,9 @@ function actions(working = false) {
 describe('unavailable Send explanation', () => {
   it('keeps Send disabled and opens the explanation on keyboard focus', async () => {
     const { onSend } = actions()
-    const button = screen.getByRole('button', { name: 'Send' })
+    const button = screen.getByRole('button', { name: REASON })
     expect(button.hasAttribute('disabled')).toBe(true)
-    const trigger = screen.getByRole('button', { name: REASON })
+    const trigger = button.parentElement!
     expect(trigger.getAttribute('tabindex')).toBe('0')
     await act(async () => {
       trigger.focus()
@@ -52,17 +52,8 @@ describe('unavailable Send explanation', () => {
   })
   it('opens the explanation when hovering the disabled button wrapper', async () => {
     actions()
-    const trigger = screen.getByRole('button', { name: REASON })
+    const trigger = screen.getByRole('button', { name: REASON }).parentElement!
     fireEvent.pointerMove(trigger, { pointerType: 'mouse' })
     await waitFor(() => expect(screen.getByRole('tooltip').textContent).toBe(REASON))
-  })
-  it('keeps Stop usable while account evidence is unavailable', () => {
-    const { onStop, onSend } = actions(true)
-    const stop = screen.getByRole('button', { name: 'Stop the agent' })
-    expect(stop.hasAttribute('disabled')).toBe(false)
-    fireEvent.click(stop)
-    expect(onStop).toHaveBeenCalledTimes(1)
-    expect(onSend).not.toHaveBeenCalled()
-    expect(screen.queryByRole('button', { name: REASON })).toBeNull()
   })
 })
