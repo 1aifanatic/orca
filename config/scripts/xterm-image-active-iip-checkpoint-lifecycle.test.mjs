@@ -32,7 +32,7 @@ describe('active IIP checkpoint validation and ownership', () => {
   it('owns frozen typed header fields and resources after the source is disposed', () => {
     const source = terminal(),
       target = terminal()
-    let checkpoint
+    let checkpoint, transported
     try {
       write(
         source,
@@ -50,12 +50,14 @@ describe('active IIP checkpoint validation and ownership', () => {
       checkpoint.readResource(1, 0, 10).fill(0)
       handler(source)._hp.fields.ignored.fill(0)
       source.core.dispose()
-      handler(target).restoreActiveCheckpoint(checkpoint)
+      transported = modified(checkpoint, (m) => JSON.parse(JSON.stringify(m)))
+      handler(target).restoreActiveCheckpoint(transported)
       expect(handler(target)._header.size).toBe(Infinity)
       expect(handler(target)._hp.fields.ignored).toEqual(new Uint32Array([97, 98, 99]))
       write(target, `${encoded.slice(131069)}\x07`)
       expect(rendered(target)).toEqual(new Uint8ClampedArray(rgba))
     } finally {
+      transported?.dispose()
       checkpoint?.dispose()
       source.core.dispose()
       target.core.dispose()
@@ -319,6 +321,19 @@ describe('active IIP checkpoint validation and ownership', () => {
       checkpoint?.dispose()
       source.core.dispose()
       target.core.dispose()
+    }
+  })
+
+  it('bounds aggregate source header bytes before copying fields and leaves the producer usable', () => {
+    const source = terminal()
+    try {
+      const fields = Array.from({ length: 20 }, (_, i) => `field${i}=${'x'.repeat(1024)}`).join(';')
+      write(source, `\x1b]1337;${file};${fields};name=`)
+      expect(() => handler(source).captureActiveCheckpoint(1024)).toThrow(/header.*budget/i)
+      write(source, `${Buffer.from('valid.png').toString('base64')}:${encoded}\x07`)
+      expect(rendered(source)).toEqual(new Uint8ClampedArray(rgba))
+    } finally {
+      source.core.dispose()
     }
   })
 
