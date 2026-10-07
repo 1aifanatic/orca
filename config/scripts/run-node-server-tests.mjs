@@ -1,7 +1,7 @@
 // Runs the headless-server suites under the pinned Node (design D4/D4a), not the host's.
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { globSync, readFileSync } from 'node:fs'
 import { ORCAD_VERSION_FILENAME } from '../../src/shared/orcad-artifacts.ts'
 import { NODE_RUNTIME_PIN } from '../../src/shared/node-runtime-pin.ts'
 import {
@@ -11,6 +11,7 @@ import {
 import { packagedNodeRuntimePath } from './build-orcad-node.mjs'
 import { ensurePinnedNodeExecutable } from './pinned-node-downloads.mjs'
 import { currentTarget } from './server-build-target.mjs'
+import { UNIT_INCLUDE } from './ci-unit-files.mjs'
 import { describeProcessFailure, runProcessSync } from './script-child-process.mjs'
 import {
   CROSS_RUNTIME_TEST_PATHS,
@@ -84,38 +85,14 @@ run(runtimePath, [
 ])
 
 function defaultTestArgs() {
-  // Why resolve the files: Vitest's per-project excludes override a CLI --exclude, so a directory
-  // selector would still run Electron probes, which need a display these containers lack.
-  const vitest = join(root, 'node_modules/vitest/vitest.mjs')
+  // Why: vitest 5 drops CLI --exclude for inline projects, so the selectors' substring matches
+  // are resolved to files here and filtered before vitest sees them.
+  // Electron probes run in desktop jobs; headless compatibility containers have no display.
   const selectors = nodeServerTestPaths({ artifact, crossRuntime })
-  const result = runProcessSync({
-    program: runtimePath,
-    args: [
-      vitest,
-      'list',
-      '--config',
-      'config/vitest.config.ts',
-      ...selectors,
-      '--filesOnly',
-      '--json'
-    ],
-    cwd: root,
-    env,
-    timeoutMs: 120_000,
-    maxOutputBytes: 16 * 1024 * 1024
-  })
-  if (result.code !== 0 || result.timedOut || result.outputTruncated) {
-    throw new Error(`Listing node-server tests failed: ${describeProcessFailure(result)}`)
-  }
-  // A directory selector would otherwise pull cross-runtime tests into lanes that lack their inputs.
-  const skipped = crossRuntime ? [] : CROSS_RUNTIME_TEST_PATHS
-  const files = [...new Set(JSON.parse(result.stdout).map((entry) => entry.file))].filter(
-    (file) =>
-      !file.endsWith('.electron.test.ts') &&
-      !skipped.some((path) => file.replaceAll('\\', '/').endsWith(path))
-  )
-  if (files.length === 0) {
-    throw new Error('No node-server tests were selected')
-  }
-  return files
+  const skipped = new Set(crossRuntime ? [] : CROSS_RUNTIME_TEST_PATHS)
+  return globSync(UNIT_INCLUDE, { cwd: root })
+    .map((path) => path.replaceAll('\\', '/'))
+    .filter((path) => selectors.some((selector) => path.includes(selector)))
+    .filter((path) => !path.endsWith('.electron.test.ts') && !skipped.has(path))
+    .sort()
 }
