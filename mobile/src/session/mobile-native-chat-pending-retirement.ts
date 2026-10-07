@@ -1,3 +1,4 @@
+import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   countImageSourceTurnsAfter,
@@ -152,7 +153,9 @@ export function retireLandedMobileNativeChatPending(
   reachedHost: MobileStructuredSendReachedHost = NO_STRUCTURED_SENDS
 ): MobileNativeChatPendingMessage[] {
   const landedCounts = new Map<string, number>()
+  const messageIds = new Set<string>()
   for (const message of messages) {
+    messageIds.add(message.id)
     const text = normalizedUserText(message)
     if (text) {
       landedCounts.set(text, (landedCounts.get(text) ?? 0) + 1)
@@ -169,8 +172,11 @@ export function retireLandedMobileNativeChatPending(
       continue
     }
     if (item.clientMessageId !== undefined) {
-      // A photo has bound to its row above when that row is drawn; one the chat hides retires unbound.
-      if (reachedHost(item.clientMessageId)) {
+      // A photo whose own row is drawn waits to bind to it above; one the chat hides retires unbound.
+      const photoWaitsForRow =
+        Boolean(item.images?.length) &&
+        messageIds.has(agentJournalSubmissionKey(item.clientMessageId))
+      if (reachedHost(item.clientMessageId) && !photoWaitsForRow) {
         landedPendingIds.add(item.id)
         exactLandedIds.add(item.id)
       }
