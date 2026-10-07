@@ -11,6 +11,7 @@ import type {
 } from './orca-runtime-core'
 import { RuntimeBrowserDriverController } from './runtime-browser-driver-controller'
 import { RemoteDesktopTerminalFloor } from './remote-desktop-terminal-floor'
+import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
 import type { StatsCollector } from '../stats/collector'
 import { RuntimeRemoteFetchController } from './runtime-remote-fetch-controller'
 import { RuntimeWorktreeBaseReconciliation } from './runtime-worktree-base-reconciliation'
@@ -65,7 +66,11 @@ export class OrcaRuntimeWithTerminalDrivers extends OrcaRuntimeWithFitOverrideLi
       getDriver: (browserPageId) => this.browserDrivers.get(browserPageId),
       setDriver: (browserPageId, next) => this.browserDrivers.set(browserPageId, next),
       notifyRemoteViewersChanged: (browserPageId, hasRemoteViewers) =>
-        this.notifier?.browserRemoteViewersChanged?.(browserPageId, hasRemoteViewers)
+        this.notifier?.browserRemoteViewersChanged?.(browserPageId, hasRemoteViewers),
+      liftRendererThrottle: () => {
+        const win = this.getAvailableAuthoritativeWindow()
+        return win ? rendererPublicationThrottle.acquire(win.webContents) : () => {}
+      }
     },
     getBrowserCommands: () => this.browserCommands,
     emulatorHost: {

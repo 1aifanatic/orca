@@ -18,6 +18,7 @@ type RuntimeBrowserScreencastControllerDeps = {
   getDriver: (browserPageId: string) => RuntimeBrowserDriverState
   setDriver: (browserPageId: string, next: RuntimeBrowserDriverState) => void
   notifyRemoteViewersChanged: (browserPageId: string, hasRemoteViewers: boolean) => void
+  liftRendererThrottle: () => () => void
 }
 
 export class RuntimeBrowserScreencastController {
@@ -124,6 +125,8 @@ export class RuntimeBrowserScreencastController {
     // Why: rotation can happen before ready, so replacements are connection-scoped immediately.
     this.activeByConnection.set(connectionKey, { cancel, done: activeDone, connectionKey })
     options.signal?.addEventListener('abort', abortScreencast, { once: true })
+    // Why: guest frames come from the window's compositor, which a throttled hidden window stops.
+    const releaseRendererThrottle = this.deps.liftRendererThrottle()
     try {
       screencast = await this.deps.getCommands().browserScreencast(params, {
         sendBinary: sendBinaryAfterReady,
@@ -186,6 +189,7 @@ export class RuntimeBrowserScreencastController {
           )
         }
       }
+      releaseRendererThrottle()
       resolveActiveDone()
     }
   }

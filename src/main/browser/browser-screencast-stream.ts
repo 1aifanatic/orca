@@ -62,7 +62,12 @@ export async function startBrowserScreencast(
     isStopping,
     getSeq: framePacer.getSeq,
     queueFrame: framePacer.queueFrame,
-    applyDeviceMetricsOverride: deviceMetrics.apply
+    applyDeviceMetricsOverride: deviceMetrics.apply,
+    // Why: ending the stream lets the viewer show the error instead of waiting on a frame forever.
+    reportNoFrame: () => {
+      options.onError?.('Browser stream timed out.')
+      stop()
+    }
   })
   const handleMessage = createBrowserScreencastMessageHandler({
     dbg,
@@ -110,6 +115,43 @@ export async function startBrowserScreencast(
   const handleDetach = (): void => {
     options.onError?.('Browser debugger detached while streaming.')
     finish()
+  }
+
+  const stop = (): void => {
+    if (closed) {
+      return
+    }
+    stopping = true
+    snapshotCapture.bumpGeneration()
+    snapshotCapture.clearNavigationCaptureTimer()
+    framePacer.clearPending(true)
+    try {
+      void (async () => {
+        await pendingUpdate.catch(() => {})
+        // Why: only this CDP session may answer the dialog it reported, and a session that did
+        // not see it cannot even enable the Page domain while it is up — both measured on
+        // Chromium 1217, 2026-09-20. Leaving one outstanding would block the page for good,
+        // because the stream that replaces this one hangs on its own start. Dismissing is the
+        // conservative answer for every dialog type, and the automation path has taken it since
+        // `cdp-debugger-events.ts`.
+        if (dialogOpen) {
+          dialogOpen = false
+          const pending = dialogSettlement
+          dialogSettlement = null
+          // An answer already on its way settles it; a second command here would be the
+          // duplicate this session refuses to send anywhere else.
+          await (
+            pending ?? sendDebuggerCommand(dbg, 'Page.handleJavaScriptDialog', { accept: false })
+          ).catch(() => {})
+        }
+        await sendDebuggerCommand(dbg, 'Page.stopScreencast').catch(() => {})
+        if (deviceMetrics.isOverridden()) {
+          await deviceMetrics.clear().catch(() => {})
+        }
+      })().finally(finish)
+    } catch {
+      finish()
+    }
   }
 
   dbg.on('message', handleMessage as never)
@@ -187,42 +229,7 @@ export async function startBrowserScreencast(
         })
       return pendingUpdate
     },
-    stop: () => {
-      if (closed) {
-        return
-      }
-      stopping = true
-      snapshotCapture.bumpGeneration()
-      snapshotCapture.clearNavigationCaptureTimer()
-      framePacer.clearPending(true)
-      try {
-        void (async () => {
-          await pendingUpdate.catch(() => {})
-          // Why: only this CDP session may answer the dialog it reported, and a session that did
-          // not see it cannot even enable the Page domain while it is up — both measured on
-          // Chromium 1217, 2026-09-20. Leaving one outstanding would block the page for good,
-          // because the stream that replaces this one hangs on its own start. Dismissing is the
-          // conservative answer for every dialog type, and the automation path has taken it since
-          // `cdp-debugger-events.ts`.
-          if (dialogOpen) {
-            dialogOpen = false
-            const pending = dialogSettlement
-            dialogSettlement = null
-            // An answer already on its way settles it; a second command here would be the
-            // duplicate this session refuses to send anywhere else.
-            await (
-              pending ?? sendDebuggerCommand(dbg, 'Page.handleJavaScriptDialog', { accept: false })
-            ).catch(() => {})
-          }
-          await sendDebuggerCommand(dbg, 'Page.stopScreencast').catch(() => {})
-          if (deviceMetrics.isOverridden()) {
-            await deviceMetrics.clear().catch(() => {})
-          }
-        })().finally(finish)
-      } catch {
-        finish()
-      }
-    },
+    stop,
     done
   }
 }
