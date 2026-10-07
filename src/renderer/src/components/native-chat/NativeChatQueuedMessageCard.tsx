@@ -206,7 +206,7 @@ export function NativeChatQueuedMessageCard({
         {expanded || clipped ? (
           <QueuedMessageExpandToggle
             expanded={expanded}
-            controls={textId}
+            controls={expanded ? textId : undefined}
             onToggle={() => setExpanded(!expanded)}
           />
         ) : null}
@@ -298,8 +298,8 @@ function QueuedMessageExpandToggle({
   onToggle
 }: {
   expanded: boolean
-  /** The text element it opens and folds. */
-  controls: string
+  /** The opened text element; absent while folded, when no such element exists. */
+  controls: string | undefined
   onToggle: () => void
 }): React.JSX.Element {
   const label = expanded
