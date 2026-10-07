@@ -754,7 +754,7 @@ test('adopts runtime-owned agent and Setup PTYs on first mount', async ({
   await expect
     .poll(() => orcaPage.evaluate(() => window.api.pty.getRendererDeliveryDebugSnapshot()))
     .toMatchObject(postReloadDelivery)
-  const remountAgentLiveMarker = `AGENT_LIVE_${randomUUID()}`
+  const remountAgentLiveMarker = `AGENT_LIVE_${randomUUID().slice(0, 8)}`
   await client.call('terminal.send', {
     terminal: agent!.handle,
     text: remountAgentLiveMarker,
@@ -768,7 +768,7 @@ test('adopts runtime-owned agent and Setup PTYs on first mount', async ({
   expect(
     await orcaPage.evaluate(() => window.api.pty.getRendererDeliveryDebugSnapshot())
   ).toMatchObject(postReloadDelivery)
-  const remountAgentAcceptedMarker = `AGENT_ACCEPTED_${randomUUID()}`
+  const remountAgentAcceptedMarker = `AGENT_ACCEPTED_${randomUUID().slice(0, 8)}`
   expect(
     await orcaPage.evaluate(
       ({ marker, ptyId }) => window.api.pty.writeAccepted(ptyId, `${marker}\r`, 'driving'),
@@ -795,7 +795,7 @@ test('adopts runtime-owned agent and Setup PTYs on first mount', async ({
   const remountedSetupPtyId = await waitForActivePanePtyId(orcaPage)
   expect(remountedSetupPtyId).toBe(setup!.ptyId)
   await enableTerminalAccessibility(orcaPage, setup!.tabId)
-  const remountSetupLiveMarker = `SETUP_LIVE_${randomUUID()}`
+  const remountSetupLiveMarker = `SETUP_LIVE_${randomUUID().slice(0, 8)}`
   await client.call('terminal.send', {
     terminal: setup!.handle,
     text: remountSetupLiveMarker,
