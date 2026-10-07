@@ -23,14 +23,15 @@ export const SendBlock = z.discriminatedUnion('type', [
     )
 ])
 
-export const SendBody = z
+export const SendBodyStructure = z
   .object({
     kind: z.literal('message'),
     role: z.literal('user'),
     blocks: z.array(SendBlock).min(1).max(MAX_BLOCKS)
   })
   .strict()
-  .refine(
-    (value) => Buffer.byteLength(JSON.stringify(value.blocks), 'utf8') <= MAX_PROMPT_BYTES,
-    'Message is too large'
-  )
+
+export const SendBody = SendBodyStructure.refine(
+  (value) => Buffer.byteLength(JSON.stringify(value.blocks), 'utf8') <= MAX_PROMPT_BYTES,
+  'Message is too large'
+)

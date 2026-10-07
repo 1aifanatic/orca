@@ -1,6 +1,7 @@
 import type { StructuredAgentId } from './agent-session-provider-handle'
 import type { AgentSessionMutationEnvelope } from './agent-session-wire'
-import type { AgentJournalMessageItem } from './agent-session-journal-types'
+import type { z } from 'zod'
+import type { SendBody } from './rpc-contract/structured-agent-session-message-params'
 import {
   createStructuredAgentSessionOperationId,
   structuredAgentSessionCreateFingerprint
@@ -33,7 +34,7 @@ export type StructuredAgentSessionCreateParams = {
 
 export type StructuredAgentSessionFirstMessage = {
   clientMessageId: string
-  body: AgentJournalMessageItem
+  body: z.infer<typeof SendBody>
 }
 
 /** Provider-prefixed so a session id names its lane on sight, and underscore-only

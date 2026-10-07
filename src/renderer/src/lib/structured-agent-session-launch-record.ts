@@ -5,7 +5,7 @@ import type {
   StructuredAgentSessionResumeSource
 } from '../../../shared/structured-agent-session-create'
 import { isAgentSessionOptions } from '../../../shared/agent-session-record'
-import { isAdmissibleAgentJournalMessageBody } from '../../../shared/agent-session-journal-schemas'
+import { SendBodyStructure } from '../../../shared/rpc-contract/structured-agent-session-message-params'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import type { StructuredAgentSessionLaunchIntent } from './launch-structured-agent-session'
 
@@ -120,6 +120,6 @@ function validFirstMessage(value: unknown): value is StructuredAgentSessionFirst
     'clientMessageId' in value &&
     typeof value.clientMessageId === 'string' &&
     'body' in value &&
-    isAdmissibleAgentJournalMessageBody(value.body)
+    SendBodyStructure.safeParse(value.body).success
   )
 }
