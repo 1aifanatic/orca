@@ -174,6 +174,7 @@ it('names a reconnecting host above the composer only once the grace has passed'
   })
   expect(region.textContent).toBe('Build box is reconnecting…')
   expect(screen.getByText('Build box is reconnecting…')).toHaveClass('text-muted-foreground')
+  expect(document.querySelector('.lucide-server-off')).toHaveClass('text-muted-foreground')
   expect(screen.getByRole('listitem')).toHaveAttribute('data-notice-kind', 'host')
   expect(screen.queryByRole('status')).toBeNull()
   expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull()
@@ -190,7 +191,7 @@ it('says a disconnected host is offline at once and offers Reconnect', async () 
   setHost(hostStatus('blocked', 'disconnected', true))
 
   expect(screen.getByText('Build box is offline')).toHaveClass('text-status-warning')
-  expect(document.querySelector('.lucide-wifi-off')).toHaveClass('text-status-warning')
+  expect(document.querySelector('.lucide-server-off')).toHaveClass('text-destructive')
   expect(mocks.messageListProps?.session?.hasMore).toBe(false)
 
   reconnectHost.mockResolvedValue(true)
