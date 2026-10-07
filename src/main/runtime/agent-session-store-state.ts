@@ -20,3 +20,8 @@ export type AgentSessionStoreState = {
    *  and never ended; read once at load. A runtime it lacks, or null, attributes no death to Orca. */
   runtimeEnds?: ReadonlyMap<string, AgentSessionOrcaStopCause> | null
 }
+
+/** Every session id the state holds a row for, readable or not. */
+export function heldAgentSessionIds(state: AgentSessionStoreState): string[] {
+  return [...state.records.keys(), ...state.unreadableRecords.keys()]
+}

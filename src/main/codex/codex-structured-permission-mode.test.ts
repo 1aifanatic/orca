@@ -13,6 +13,7 @@ import {
 } from './codex-structured-session-options'
 import {
   codexChatPermissionMode,
+  adoptCodexOpenedPermissionState,
   codexPermissionModesFor,
   codexTurnPermissionOverrides
 } from './codex-structured-permission-mode'
@@ -125,6 +126,26 @@ describe('codexTurnPermissionOverrides', () => {
         approvalsReviewer: 'user',
         sandboxPolicy: { type: 'workspaceWrite' }
       }
+    })
+  })
+
+  // The turn's sandbox replaces the thread's, so the roots it opened with (the chat's visuals
+  // folder among them) go with it.
+  it('restates the writable roots the thread opened with when leaving Full access', () => {
+    const state = {
+      ...permissionState('ask', 'bypass'),
+      ...adoptCodexOpenedPermissionState(
+        new Map(),
+        {
+          permissionMode: 'bypass',
+          threadConfig: { 'sandbox_workspace_write.writable_roots': ['/home/me/scratch', '/v'] }
+        },
+        { approvalsReviewerSupported: true }
+      )
+    }
+    expect(codexTurnPermissionOverrides(state)?.params.sandboxPolicy).toEqual({
+      type: 'workspaceWrite',
+      writableRoots: ['/home/me/scratch', '/v']
     })
   })
 

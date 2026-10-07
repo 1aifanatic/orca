@@ -6,12 +6,15 @@ import {
   type AgentSessionPermissionModes
 } from '../../shared/agent-chat-permission-mode'
 import { codexStructuredPermissionPolicy } from './codex-structured-permission-policy'
+import { codexThreadWritableRoots } from './codex-structured-visuals'
 
 /** What a Codex chat's mode is read from: its pick, and what its thread runs. */
 export type CodexPermissionModeState = {
   options: ReadonlyMap<string, string>
   threadPermissionMode?: AgentChatPermissionMode
   approvalsReviewerSupported?: boolean
+  /** Writable roots the thread opened with; a turn leaving Full access restates them. */
+  workspaceWriteRoots?: readonly string[]
 }
 
 function reviewerSupport(state: CodexPermissionModeState): { autoReview: boolean } {
@@ -79,10 +82,30 @@ export function codexTurnPermissionOverrides(
             sandboxPolicy:
               policy.sandbox === 'danger-full-access'
                 ? { type: 'dangerFullAccess' }
-                : { type: 'workspaceWrite' }
+                : {
+                    type: 'workspaceWrite',
+                    ...(state.workspaceWriteRoots?.length
+                      ? { writableRoots: [...state.workspaceWriteRoots] }
+                      : {})
+                  }
           }
         : {})
     }
+  }
+}
+
+/** Persists the chat's effective mode and returns the permission state its session keeps. */
+export function adoptCodexOpenedPermissionState(
+  options: Map<string, string>,
+  launch: { permissionMode?: AgentChatPermissionMode; threadConfig?: Record<string, unknown> },
+  opened: { approvalsReviewerSupported?: boolean }
+): Omit<CodexPermissionModeState, 'options'> {
+  restoreCodexChatPermissionMode(options, launch, opened)
+  const workspaceWriteRoots = codexThreadWritableRoots(launch.threadConfig)
+  return {
+    ...(launch.permissionMode ? { threadPermissionMode: launch.permissionMode } : {}),
+    approvalsReviewerSupported: opened.approvalsReviewerSupported === true,
+    ...(workspaceWriteRoots ? { workspaceWriteRoots } : {})
   }
 }
 

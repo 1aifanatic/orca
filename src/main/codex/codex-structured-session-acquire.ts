@@ -1,4 +1,4 @@
-import { restoreCodexChatPermissionMode } from './codex-structured-permission-mode'
+import { adoptCodexOpenedPermissionState } from './codex-structured-permission-mode'
 import {
   CODEX_STRUCTURED_HANDLE_NAMESPACE,
   isAgentSessionProviderHandleInNamespace
@@ -22,8 +22,9 @@ import {
   codexProviderHandleLink,
   codexSpawnedProcessIdentity
 } from './codex-structured-owner-identity'
-import { buildCodexStructuredChildEnvironment } from './codex-structured-child-environment'
+import { codexStructuredChildEnvironment } from './codex-structured-child-environment'
 import { openCodexThread } from './codex-structured-thread-open'
+import { withCodexVisualsThreadConfig } from './codex-structured-visuals'
 import {
   closeCodexPublishedSession,
   handleCodexSessionExit
@@ -108,7 +109,6 @@ export async function acquireCodexStructuredSession(input: {
         }
       })
     : null
-  const open = deps.openConnection ?? openCodexAppServerConnection
   const spawnIdentity = codexSpawnedProcessIdentity(acquireInput, deps.readProcessStartTime)
   try {
     await stopSupersededCodexAcquisition({
@@ -135,12 +135,12 @@ export async function acquireCodexStructuredSession(input: {
         throw new AgentSessionPreSpawnError(error)
       })
     acquisitions.assertCurrent(sessionId, attempt)
-    const connection = await open(
+    const connection = await (deps.openConnection ?? openCodexAppServerConnection)(
       {
         command: launch.command,
         args: launch.args,
         cwd: launch.cwd,
-        env: buildCodexStructuredChildEnvironment(launch, acquireInput.spawnToken, sessionId)
+        ...codexStructuredChildEnvironment(launch, acquireInput.spawnToken, sessionId)
       },
       {
         onNotification: codexAcquisitionNotificationHandler({
@@ -196,7 +196,12 @@ export async function acquireCodexStructuredSession(input: {
       })
     }
     acquisitions.assertCurrent(sessionId, attempt)
-    const opened = await openCodexThread(connection, launch, deps.requestTimeoutMs)
+    const threadLaunch = await withCodexVisualsThreadConfig(connection, launch, {
+      sessionId,
+      ...(deps.logger ? { logger: deps.logger } : {})
+    })
+    acquisitions.assertCurrent(sessionId, attempt)
+    const opened = await openCodexThread(connection, threadLaunch, deps.requestTimeoutMs)
     acquisitions.assertCurrent(sessionId, attempt)
     primaryThreadId = opened.threadId
     const restoreAdmission = translator?.restoreThread(opened.threadId, opened.thread ?? {})
@@ -223,7 +228,6 @@ export async function acquireCodexStructuredSession(input: {
     assertCodexConnectionOpen(connection, sessionId)
     acquisitions.assertCurrent(sessionId, attempt)
     const options = restoredCodexSessionOptions(acquireInput.options)
-    restoreCodexChatPermissionMode(options, launch, opened)
     const catalogAccess = codexAcquireCatalogAccess(deps, launch)
     const fastModeCatalog = codexAcquireFastModeCatalog({
       catalogAccess,
@@ -244,8 +248,7 @@ export async function acquireCodexStructuredSession(input: {
       abortedTurnIds: new Set(),
       prompts: acquisition.prompts,
       options,
-      ...(launch.permissionMode ? { threadPermissionMode: launch.permissionMode } : {}),
-      approvalsReviewerSupported: opened.approvalsReviewerSupported === true,
+      ...adoptCodexOpenedPermissionState(options, threadLaunch, opened),
       reportedOptions: reportedCodexThreadOptions(opened),
       ...(catalogAccess ? { catalogAccess } : {}),
       dispatchEchoes,

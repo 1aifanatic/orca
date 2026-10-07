@@ -19,6 +19,7 @@ import { agentChatLaunchPermissionMode } from '../../shared/agent-chat-permissio
 import { resolvePinnedCodexRolloutProof } from './codex-pinned-rollout-proof'
 import { codexStructuredLaunchArgs } from './codex-structured-launch-args'
 import { CODEX_STRUCTURED_AGENT } from './codex-structured-agent-definition'
+import type { PrepareNativeChatVisuals } from '../native-chat/native-chat-visuals-delivery'
 
 export type CodexStructuredLaunchResolverDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinLaunchDirectory'>
@@ -33,6 +34,8 @@ export type CodexStructuredLaunchResolverDeps = {
   resolveRollout?: typeof resolvePinnedCodexRolloutProof
   /** The host chat default; absent means Ask. */
   resolveDefaultPermissionMode?: () => AgentChatPermissionMode
+  /** This chat's visuals folder and skill; absent or null ⇒ the chat gets neither. */
+  prepareVisuals?: PrepareNativeChatVisuals
 }
 
 export type CodexStructuredInvocation = {
@@ -96,6 +99,7 @@ export function createCodexStructuredLaunchResolver(
     const resumeThreadId = head?.handle.nativeId ?? null
     // The same saved options every turn sends, so the thread and its turns name one model.
     const model = record.options?.model
+    const visuals = (await deps.prepareVisuals?.(record.sessionId)) ?? null
     return {
       command,
       args: [...args, 'app-server'],
@@ -112,6 +116,7 @@ export function createCodexStructuredLaunchResolver(
       permissionMode,
       permissionPolicy: codexStructuredPermissionPolicy(permissionMode),
       ...(model ? { model } : {}),
+      ...(visuals ? { visuals } : {}),
       ...(resumeThreadId
         ? {
             resumePath: await (deps.resolveRollout ?? resolvePinnedCodexRolloutProof)(
