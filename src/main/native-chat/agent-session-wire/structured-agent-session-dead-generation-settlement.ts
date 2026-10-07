@@ -8,7 +8,6 @@ import {
   parseAgentJournalItemKey
 } from '../../../shared/agent-session-journal-item-key'
 import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
-import { agentSessionResponseInterruptedStoredBody } from '../../../shared/agent-session-host-status-rows'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
@@ -46,8 +45,9 @@ import {
 } from './structured-agent-session-stale-turn-verdict'
 import {
   exitedRootTurnScope,
-  runningRootTurnScope
+  settledRootTurnScope
 } from './structured-agent-session-exit-turn-scope'
+import { orcaStopRowBody } from './structured-agent-session-orca-stop-row'
 import {
   hasUnfinishedStructuredAgentSessionWork,
   isInProgressStructuredAgentSessionItem,
@@ -242,11 +242,12 @@ export async function settleStaleStructuredAgentSessionState(input: {
       },
       // The death evidence is Orca's log text, never a sentence for a person, and it proves only that
       // the agent's process is gone, not who ended it: a quit's close and an agent exit whose own
-      // settle failed both read `exit-observed`. So the row blames no one. Written, not left to the
-      // reader's derived notice, because a client older than that notice sees only this row, and
-      // stored red so a client older than its presentation does not fold it away.
-      body: agentSessionResponseInterruptedStoredBody(),
-      turnScope: runningRootTurnScope(items)
+      // settle failed both read `exit-observed`. So the row blames no one, and names how Orca ended
+      // when the provider died with it. Written, not left to the reader's derived notice, because a
+      // client older than that notice sees only this row, and stored red so a client older than its
+      // presentation does not fold it away.
+      body: orcaStopRowBody(evidence.runtimeEnd),
+      turnScope: settledRootTurnScope(items, turnEnds)
     })
   }
   for (const chunk of partitionJournalLifecycleMutations(settlementId, mutations)) {

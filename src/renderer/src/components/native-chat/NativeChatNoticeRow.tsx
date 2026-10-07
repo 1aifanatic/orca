@@ -11,6 +11,8 @@ import {
   type AgentSessionHostStatusPresentation
 } from '../../../../shared/agent-session-host-status-rows'
 import type { NativeChatTextBlock } from '../../../../shared/native-chat-types'
+import { useNativeChatOrcaStopView } from './native-chat-orca-stop-context'
+import { nativeChatOrcaStopRowText } from './native-chat-orca-stop-words'
 import { ProviderFrameRow } from './NativeChatTranscriptChrome'
 
 const HOST_STATUS_WORDS: Record<AgentSessionHostStatusPresentation, () => string> = {
@@ -42,6 +44,11 @@ export function NativeChatNoticeRow({
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
 }): React.JSX.Element {
+  const { hostLabel, continueAvailable } = useNativeChatOrcaStopView()
+  const { orcaStop } = block
+  // The host's row about an Orca stop names the cause and the machine, muted: Orca stopped, not the
+  // agent. With no machine to name it reads as any other interrupted response.
+  const named = orcaStop !== undefined && hostLabel !== null
   if (block.presentation === 'compaction') {
     const label = translate('components.native-chat.notices.compaction', 'Context compacted')
     return (
@@ -64,7 +71,7 @@ export function NativeChatNoticeRow({
       </pre>
     )
   }
-  if (isAgentSessionHostStatusPresentation(block.presentation)) {
+  if (!named && isAgentSessionHostStatusPresentation(block.presentation)) {
     // The look of any other host status line; only the words are the reader's.
     return (
       <p className="min-w-0 max-w-full select-text text-sm text-muted-foreground [overflow-wrap:anywhere]">
@@ -94,7 +101,10 @@ export function NativeChatNoticeRow({
       </Card>
     )
   }
-  const tone = block.tone
+  const text = named
+    ? nativeChatOrcaStopRowText(orcaStop.cause, hostLabel, { continueAvailable })
+    : block.text
+  const tone = named ? 'notice' : block.tone
   const Icon =
     tone === 'warning'
       ? AlertTriangle
@@ -115,7 +125,7 @@ export function NativeChatNoticeRow({
     >
       <div className="flex items-start gap-2">
         {Icon ? <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" /> : null}
-        <p className="min-w-0 whitespace-pre-wrap break-words">{block.text}</p>
+        <p className="min-w-0 whitespace-pre-wrap break-words">{text}</p>
       </div>
       {block.providerFrame ? (
         <ProviderFrameRow

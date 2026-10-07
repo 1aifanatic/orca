@@ -150,6 +150,8 @@ export function buildNativeChatTranscriptSlots(
         isBackgroundTaskBlock(block) ||
         isStoppedBeforeStartBlock(block)
     ),
+    // A row that says a turn was cut short is stored red for clients that predate it; it reports no
+    // failure.
     reportsFailure: message.blocks.some(
       (block) =>
         block.type === 'text' &&

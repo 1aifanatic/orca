@@ -11,8 +11,8 @@ export const AGENT_SESSION_HOST_STATUS_COPY = {
   /** A turn cut short with nobody asking (a crash, quit, restart or eviction, or an agent exit whose
    *  own settle failed), worded for every cause because a reader can't tell them apart. */
   'response-interrupted': 'This response was interrupted. You can continue in this conversation.',
-  /** A host's row about Orca stopping under a turn (a quit, an update), which names its cause in
-   *  `orcaStop` for a client that words it; this client says only that it was interrupted. */
+  /** A host's row about Orca stopping under a turn (a quit, an update, a crash), which names its
+   *  cause in `orcaStop`; worded so only where the reader can't name the machine. */
   'orca-stop': 'This response was interrupted. You can continue in this conversation.'
 } as const
 

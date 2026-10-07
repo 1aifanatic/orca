@@ -12,9 +12,9 @@ import { attachFingerprintFields } from '../../../src/main/native-chat/agent-ses
 import type { AgentSessionAttachParams } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-attach'
 import { computeAgentSessionPayloadFingerprint } from '../../../src/shared/agent-session-mutation-envelope'
 import {
-  createStructuredAgentSessionOutboxEntry,
-  structuredAgentSessionSendRequest
-} from '../../../src/shared/structured-agent-session-outbox'
+  structuredAgentSessionMessageSendMutation,
+  structuredAgentSessionSendBody
+} from '../../../src/shared/structured-agent-session-send-mutation'
 
 export const SESSION = 'session-alpha'
 export const WORKSPACE = 'workspace-1'
@@ -170,6 +170,12 @@ export const STRUCTURED_CALLS: {
     hostMethod: 'restartContinueAll',
     result: { resumed: [], continued: [] }
   },
+  // Continue on a reply an Orca stop cut off. Clients call it only on a host advertising it.
+  {
+    method: 'agentSession.continueInterrupted',
+    hostMethod: 'continueInterrupted',
+    result: { sessionId: SESSION, outcome: 'superseded' }
+  },
   { method: 'agentSession.release', hostMethod: null, result: { released: true } },
   {
     method: 'agentSession.history',
@@ -266,21 +272,20 @@ export function createIntentParams(): Record<string, unknown> {
   return { envelope: envelope({ method: 'agentSession.create', fields, fence: null }), ...fields }
 }
 
-/** Built by the outbox clients send from, so an older host is handed exactly what a current
- *  client puts on the wire, fingerprint included. */
+/** Built by the sender clients use, so an older host is handed exactly what a current client puts
+ *  on the wire, fingerprint included. */
 export function sendParams(
   text: string,
   fence: number,
   sentDelivery?: 'queue-if-active'
 ): Record<string, unknown> {
-  const entry = createStructuredAgentSessionOutboxEntry({
-    clientMessageId: operationId(),
+  return structuredAgentSessionMessageSendMutation({
     sessionId: SESSION,
-    text,
-    attachments: [],
-    queuedAt: NOW
+    clientOperationId: operationId(),
+    expectedRuntimeFence: fence,
+    body: structuredAgentSessionSendBody(text, []),
+    ...(sentDelivery ? { delivery: sentDelivery } : {})
   })
-  return structuredAgentSessionSendRequest({ ...entry, sentDelivery }, fence)
 }
 
 /** Schema-valid params per method; values only need to survive validation. */
@@ -346,6 +351,8 @@ export function paramsFor(method: string): unknown {
     case 'agentSession.restartContinue':
       // Whole-surface calls: they name no session, and resume/continue narrow by an optional list.
       return {}
+    case 'agentSession.continueInterrupted':
+      return { sessionId: SESSION, turnItemId: 'legacy:codex:s:turn-1' }
     default:
       return { sessionId: SESSION }
   }
