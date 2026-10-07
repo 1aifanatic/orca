@@ -36,6 +36,7 @@ export class ProviderStdioWriteQueue {
     return new Promise((resolve, reject) => {
       const write: Write = { line, resolve, reject }
       const abort = (): void => {
+        // Why: a line already handed to the stream can't be taken back, and later writes wait on it.
         if (this.active === write) {
           this.onFailure(
             signal?.reason instanceof Error ? signal.reason : new Error('Agent write aborted')
