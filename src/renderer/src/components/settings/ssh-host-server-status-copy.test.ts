@@ -8,10 +8,10 @@ describe('SSH host server status line', () => {
     expect(sshHostServerStatusLine(plain, undefined)).toBeNull()
   })
 
-  it('names the managed server, setup progress and why a host stays on the relay', () => {
+  it('stays quiet for a healthy managed server, names setup progress and why a host stays on the relay', () => {
     expect(
       sshHostServerStatusLine(plain, { managedServer: { kind: 'managed', environmentId: 'e' } })
-    ).toMatchObject({ tone: 'muted', text: 'Runs a managed Orca server' })
+    ).toBeNull()
     expect(
       sshHostServerStatusLine(plain, { managedServer: { kind: 'setting-up', phase: 'converting' } })
         ?.text
@@ -67,7 +67,7 @@ describe('SSH host server status line', () => {
     ).not.toHaveProperty('action')
     expect(
       sshHostServerStatusLine(plain, { managedServer: { kind: 'managed', environmentId: 'e' } })
-    ).not.toHaveProperty('action')
+    ).toBeNull()
   })
 
   it('offers the setup failure, log tail included, beside a retry line', () => {
@@ -139,9 +139,7 @@ describe('SSH host server status line', () => {
   })
 
   it('keeps durable reasons visible without a live state', () => {
-    expect(sshHostServerStatusLine({ orcadFence: { environmentId: 'e' } }, undefined)?.text).toBe(
-      'Runs a managed Orca server'
-    )
+    expect(sshHostServerStatusLine({ orcadFence: { environmentId: 'e' } }, undefined)).toBeNull()
     expect(
       sshHostServerStatusLine(
         { orcadFence: { environmentId: 'e', sourceChangedAt: '2026-10-05T00:00:00Z' } },
