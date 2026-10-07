@@ -1,5 +1,5 @@
 import { translate } from '@/i18n/i18n'
-import { extractIpcErrorMessage } from '@/lib/ipc-error'
+import { setNativeChatPasteFailure } from './native-chat-composer-notice'
 import {
   nativeChatLocalAttachmentUnsupportedNotice,
   prepareNativeChatSessionAttachmentUpload,
@@ -47,7 +47,12 @@ export type NativeChatClipboardImageFailureCause = 'serverTooOld' | 'failed'
 export async function saveNativeChatClipboardImage(
   owner: NativeChatAttachmentOwner,
   report: {
-    setNotice: (notice: string, cause: NativeChatClipboardImageFailureCause) => void
+    /** `errorText`: the failure's own words, kept apart from Orca's notice. */
+    setNotice: (
+      notice: string,
+      cause: NativeChatClipboardImageFailureCause,
+      errorText?: string
+    ) => void
     /** The image has somewhere to go, now that any server it goes to has said it takes one. */
     ready?: () => void
   }
@@ -70,12 +75,14 @@ export async function saveNativeChatClipboardImage(
   } catch (error) {
     // A failed save must be visible: over SSH it fails whenever the
     // connection drops, and a silent no-op reads as a broken paste.
-    report.setNotice(
-      extractIpcErrorMessage(
-        error,
-        translate('components.native-chat.composer.imagePasteFailed', 'Image paste failed.')
-      ),
-      'failed'
+    setNativeChatPasteFailure(
+      (notice, errorText) => {
+        if (notice !== null) {
+          report.setNotice(notice, 'failed', errorText)
+        }
+      },
+      error,
+      translate('components.native-chat.composer.imagePasteFailed', 'Image paste failed.')
     )
     return { status: 'failed' }
   }

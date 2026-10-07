@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useRef } from 'react'
 import { useNativeChatPasteLifetime } from './use-native-chat-paste-lifetime'
 import { nativeChatAttachmentOwnerUnchanged } from './native-chat-resolved-path-ownership'
 import { assertClipboardTextWithinLimit } from '../../../../shared/clipboard-text'
-import { extractIpcErrorMessage } from '@/lib/ipc-error'
+import { setNativeChatPasteFailure } from './native-chat-composer-notice'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { NATIVE_CHAT_CONTEXT_PASTE_MAX_BYTES } from './native-chat-composer-target'
 import { nativeChatPasteUnavailableNotice } from '@/lib/native-chat-paste-request'
@@ -44,7 +44,7 @@ export type UseNativeChatComposerPasteArgs = {
   dropPendingImageAttachment: (id: string) => void
   insertTypedText: (text: string) => boolean
   setCaret: (caret: number) => void
-  setNotice: (notice: string | null) => void
+  setNotice: (notice: string | null, errorText?: string) => void
 }
 
 export function useNativeChatComposerPaste({
@@ -94,11 +94,11 @@ export function useNativeChatComposerPaste({
     ) =>
       saveNativeChatClipboardImage(owner, {
         ready,
-        setNotice: (notice, cause) => {
+        setNotice: (notice, cause, errorText) => {
           void (cause === 'serverTooOld' ? besidePastedText() : Promise.resolve(false)).then(
             (quiet) => {
               if (!quiet && canPaste()) {
-                setNotice(notice)
+                setNotice(notice, errorText)
               }
             }
           )
@@ -162,7 +162,7 @@ export function useNativeChatComposerPaste({
             showPasteUnavailable()
           }
         } catch (error) {
-          setNotice(extractIpcErrorMessage(error, 'Paste failed.'))
+          setNativeChatPasteFailure(setNotice, error)
         }
       }
       if (!imageFile) {
@@ -249,7 +249,7 @@ export function useNativeChatComposerPaste({
       })
       .catch((error) => {
         if (canPaste()) {
-          setNotice(extractIpcErrorMessage(error, 'Paste failed.'))
+          setNativeChatPasteFailure(setNotice, error)
         }
         return null
       })

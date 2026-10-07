@@ -17949,15 +17949,19 @@
         "plan": "Plan",
         "historyRepaired": "Part of this chat's history couldn't be loaded.",
         "historyItemTooLarge": "This part of the chat was too large to show.",
-        "stoppedBeforeStart": "Stopped before the agent started"
+        "stoppedBeforeStart": "Stopped before the agent started",
+        "dismiss": "Dismiss",
+        "copyError": "Copy error"
       },
       "composer": {
         "imageUnsupported": "Image paste is not supported for this agent.",
         "send": "Send",
         "noPty": "No live terminal — toggle back to reconnect.",
         "locked": "Input is held by another device.",
-        "placeholder": "Send a message…",
-        "mentionHint": "Referencing file:",
+        "placeholder": "Ask anything, @ to mention files, / for commands",
+        "loadingFiles": "Loading files...",
+        "noFiles": "No matching files",
+        "filesLoadFailed": "Couldn't load files",
         "attach": "Attach file",
         "startDictation": "Start dictation",
         "stopDictation": "Stop dictation",
@@ -18002,6 +18006,8 @@
         "options": "Options",
         "sessionOptions": "Session options",
         "chooseInAgentPicker": "Choose in agent picker…",
+        "searchModels": "Search models…",
+        "noModelsMatch": "No models match your search.",
         "toggleOption": "Toggle {{value0}}",
         "pillAccessibleName": "{{value0}} {{value1}}",
         "sentNotConfirmed": "Sent to the agent — not confirmed",
@@ -18029,7 +18035,9 @@
         "workspaceAttachmentMismatch": "Files can only be attached to their source workspace.",
         "attachmentOwnerChanged": "This workspace changed hosts while attaching — drop the files again.",
         "attachmentUnreadable": "Couldn't read the dropped files.",
-        "tooManyAttachments": "Attach {{value0}} or fewer files at a time."
+        "tooManyAttachments": "Attach {{value0}} or fewer files at a time.",
+        "pasteFailed": "Paste failed.",
+        "commandAttachmentsUnsupported": "Remove attachments before using a chat-session command."
       },
       "tool": {
         "exitCode": "exit {{value0}}",
