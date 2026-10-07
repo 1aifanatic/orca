@@ -3,9 +3,10 @@
  *
  * A paired client (a phone, or a desktop client of a remote server) that launches into an existing
  * workspace gets the new tab as its own selection, recorded the way `session.tabs.createTerminal`
- * selects the tab it creates for its caller. In-process callers keep today's behaviour, and a
- * launch that creates its workspace keeps `worktree.create`'s navigation, whose host activation is
- * what runs the new workspace's setup.
+ * selects the tab it creates for its caller. In-process callers keep today's behaviour. A launch
+ * that creates a git worktree keeps `worktree.create`'s navigation, whose host activation is what
+ * runs the new workspace's setup. A folder workspace has no setup, so its create navigates like an
+ * existing workspace and leaves the host where it was.
  */
 
 import type { AgentLaunchTarget } from '../../../../shared/agent-launch-intent'
@@ -19,7 +20,7 @@ export function agentLaunchCallerNavigationId(
   target: AgentLaunchTarget,
   context: Pick<RpcContext, 'caller'>
 ): string | null {
-  return target.kind === 'existing' && context.caller?.kind === 'paired-device'
+  return target.kind !== 'create-worktree' && context.caller?.kind === 'paired-device'
     ? context.caller.deviceId
     : null
 }

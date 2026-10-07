@@ -13,6 +13,7 @@ import {
   AGENT_LAUNCH_SESSION_ALREADY_EXISTS_CODE
 } from '../../../../shared/agent-launch-session-already-exists'
 import type { TerminalSpawnDispatch } from '../../../agent-launch/agent-launch-not-started'
+import { FolderWorkspaceCreateRefusedError } from '../../../project-groups/folder-workspace-create-refusal'
 
 /** Long enough for every code this path raises, with room for one a later guard adds. */
 const LAUNCH_FAILURE_CODE_MAX_LENGTH = 128
@@ -35,8 +36,9 @@ export function agentLaunchFailureCode(error: unknown): string {
 
 /**
  * Only a typed refusal raised before anything was created proves the claimed launch had no effects.
- * A live reserved pane or an existing reserved session proves it only for an existing workspace; on
- * create-worktree the workspace already exists by the time the surface is refused.
+ * A refused create proves it for any target, since the create is the launch's first effect. A live
+ * reserved pane or an existing reserved session proves it only for an existing workspace; on a
+ * create target the workspace already exists by the time the surface is refused.
  */
 export function launchFailureWithoutEffectsCode(
   error: unknown,
@@ -45,6 +47,9 @@ export function launchFailureWithoutEffectsCode(
 ): string | null {
   if (error instanceof WorktreeCreateCollisionError) {
     return WORKTREE_CREATE_COLLISION_CODE
+  }
+  if (error instanceof FolderWorkspaceCreateRefusedError) {
+    return agentLaunchFailureCode(error)
   }
   if (error instanceof AgentLaunchPaneAlreadyLiveError && targetKind === 'existing') {
     return AGENT_LAUNCH_PANE_ALREADY_LIVE_CODE
