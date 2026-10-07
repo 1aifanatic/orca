@@ -63,7 +63,8 @@ export type AgentLaunchAdmission =
        *  the running agent instead of refusing an unknown outcome. */
       record: (provisional: AgentLaunchResult) => Promise<void>
       settle: (result: AgentLaunchResult) => Promise<void>
-      fail: (code: string) => Promise<void>
+      /** `keptWorktreeId` names the workspace a create kept, settled with the code in one write. */
+      fail: (code: string, keptWorktreeId?: string) => Promise<void>
       /** Bookkeeping about a create, written before anything runs in its workspace. */
       annotate: (
         annotation: Pick<AgentSessionOperationRow, 'createIntent' | 'createdWorktreeId'>
@@ -94,7 +95,8 @@ function answerFromRecordedRow(
       refusal: {
         code: outcome.code,
         message:
-          outcome.message ?? `Launch operation ${operationId} already failed: ${outcome.code}.`
+          outcome.message ?? `Launch operation ${operationId} already failed: ${outcome.code}.`,
+        ...(outcome.keptWorktreeId ? { data: { worktreeId: outcome.keptWorktreeId } } : {})
       }
     }
   }
@@ -176,12 +178,11 @@ function withLiveTerminalHandle(
 function presentRecordedAnswer(
   context: RpcContext,
   operationId: string,
-  answer: AgentLaunchAdmission,
-  row: Pick<AgentSessionOperationRow, 'createdWorktreeId'>
+  answer: AgentLaunchAdmission
 ): AgentLaunchAdmission {
   if (answer.decision === 'refuse' && answer.refusal.code === AGENT_LAUNCH_AGENT_NOT_STARTED_CODE) {
-    return row.createdWorktreeId && readsAgentLaunchWorkspaceKept(context)
-      ? { ...answer, refusal: { ...answer.refusal, data: { worktreeId: row.createdWorktreeId } } }
+    return answer.refusal.data && readsAgentLaunchWorkspaceKept(context)
+      ? answer
       : refusal(operationId, 'agent_session_operation_unknown', 'created its workspace only')
   }
   if (
@@ -248,7 +249,7 @@ export async function admitAgentLaunchOperation(
     const row = await reconcileInterruptedCreate(context, store, callerKey, admitted.row)
     const answer = answerFromRecordedRow(operationId, row.outcome)
     if (answer) {
-      return presentRecordedAnswer(context, operationId, answer, row)
+      return presentRecordedAnswer(context, operationId, answer)
     }
   }
   // Unreachable with both steps in one transaction; answered as uncertain rather than run twice.
@@ -265,7 +266,7 @@ export async function admitAgentLaunchOperation(
     const row = await reconcileInterruptedCreate(context, store, callerKey, claim.row)
     const answer = answerFromRecordedRow(operationId, row.outcome)
     return answer
-      ? presentRecordedAnswer(context, operationId, answer, row)
+      ? presentRecordedAnswer(context, operationId, answer)
       : refusal(operationId, 'agent_session_operation_unknown', 'is claimed but unsettled')
   }
   const succeeded = (result: AgentLaunchResult) =>
@@ -286,11 +287,11 @@ export async function admitAgentLaunchOperation(
     // The same row shape twice: a build that predates the first write reads either one.
     record: succeeded,
     settle: succeeded,
-    fail: (code) =>
+    fail: (code, keptWorktreeId) =>
       store.recordOperationOutcome({
         callerKey,
         operationId,
-        outcome: { status: 'failed', code }
+        outcome: { status: 'failed', code, ...(keptWorktreeId ? { keptWorktreeId } : {}) }
       }),
     annotate: (annotation) => store.annotateOperation({ callerKey, operationId, annotation })
   }
@@ -316,7 +317,7 @@ function refusal(
  */
 async function reconcileInterruptedCreate(
   context: RpcContext,
-  store: Pick<AgentSessionRecordStore, 'annotateOperation' | 'recordOperationOutcome'>,
+  store: Pick<AgentSessionRecordStore, 'recordOperationOutcome'>,
   callerKey: string,
   row: AgentSessionOperationRow
 ): Promise<AgentSessionOperationRow> {
@@ -332,12 +333,14 @@ async function reconcileInterruptedCreate(
   if (!exists) {
     return row
   }
-  const outcome = { status: 'failed', code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE } as const
-  const { operationId } = row
+  const outcome = {
+    status: 'failed',
+    code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE,
+    keptWorktreeId: worktreeId
+  } as const
   // Bookkeeping: a failed write still answers this caller; the next replay reconciles again.
   await store
-    .annotateOperation({ callerKey, operationId, annotation: { createdWorktreeId: worktreeId } })
+    .recordOperationOutcome({ callerKey, operationId: row.operationId, outcome })
     .catch(() => {})
-  await store.recordOperationOutcome({ callerKey, operationId, outcome }).catch(() => {})
   return { ...row, createdWorktreeId: worktreeId, outcome }
 }

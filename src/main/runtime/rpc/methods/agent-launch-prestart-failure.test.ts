@@ -191,8 +191,17 @@ describe('a launch whose terminal fails', () => {
     })
     expect(outcomeOf(OPERATION_ID)).toMatchObject({
       status: 'failed',
-      code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE
+      code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE,
+      keptWorktreeId: 'wt-new'
     })
+
+    // The same id again answers from the one settle, without creating anything.
+    const retry = runtimeStub({ settings: {} })
+    expect(await replay(retry, CREATE_LAUNCH)).toMatchObject({
+      ok: false,
+      error: { code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE, data: { worktreeId: 'wt-new' } }
+    })
+    expect(retry.createManagedWorktree).not.toHaveBeenCalled()
 
     const olderPhone = await replay(keepsWorkspace(), CREATE_LAUNCH, OTHER_OPERATION_ID, {
       clientKind: 'mobile',

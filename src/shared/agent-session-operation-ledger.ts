@@ -65,6 +65,9 @@ export type AgentSessionOperationOutcome =
       /** Beside the code, so a replay says what the first answer did. Read back against the code,
        *  since the code is a string here; a row written before details carries none. */
       details?: AgentSessionAnyRefusalDetails
+      /** The workspace an `agent.launch` create made and kept when it failed without starting its
+       *  agent, written in the same settle as the code so every replay names it. */
+      keptWorktreeId?: string
     }
   /** The effect may or may not have happened; replay this answer instead of spawning again. */
   | { status: 'unknown' }

@@ -252,9 +252,8 @@ async function executeAdmittedAgentLaunch(
       await settleLaunchWhoseTabWasClosed(context, view.early, admission)
     }
     if (error instanceof AgentLaunchWorkspaceKeptError) {
-      // The workspace stays; its record names it, so every replay answers the same.
-      await settleQuietly(admission.annotate({ createdWorktreeId: error.worktreeId }))
-      await settleQuietly(admission.fail(AGENT_LAUNCH_AGENT_NOT_STARTED_CODE))
+      // The workspace stays; the one settle names it, so every replay answers the same.
+      await settleQuietly(admission.fail(AGENT_LAUNCH_AGENT_NOT_STARTED_CODE, error.worktreeId))
     }
     const failedWithoutEffects = launchFailureWithoutEffectsCode(
       error,
