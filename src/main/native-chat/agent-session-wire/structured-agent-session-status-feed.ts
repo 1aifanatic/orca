@@ -32,6 +32,7 @@ import {
 } from './structured-agent-session-status-journal-projection'
 import { structuredStatusSummariesEqual } from './structured-agent-session-status-summary-equality'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { StructuredAgentSessionStatusPublications } from './structured-agent-session-status-publications'
 import {
   StructuredAgentSessionStatusSubscribers,
   type StructuredAgentSessionStatusSubscriber
@@ -79,13 +80,7 @@ export class StructuredAgentSessionStatusFeed {
     this.deps.statusSink?.()
   )
   private readonly subscribers = new StructuredAgentSessionStatusSubscribers()
-  private readonly published = new Map<
-    string,
-    {
-      summary: AgentSessionStatusSummary
-      firstInputSubmissionKey: string | null
-    }
-  >()
+  private readonly published = new StructuredAgentSessionStatusPublications()
   /** The user's newest accepted send each session was last projected with; a new one retires
    *  settled children. */
   private readonly acceptedSends = new Map<string, string>()
@@ -104,10 +99,7 @@ export class StructuredAgentSessionStatusFeed {
     for (const [sessionId] of this.deps.sessions) {
       this.publish(sessionId, undefined, { replay: true })
     }
-    this.subscribers.add(subscriber, {
-      type: 'snapshot',
-      sessions: [...this.published.values()].map(({ summary }) => summary)
-    })
+    this.subscribers.add(subscriber, { type: 'snapshot', sessions: this.published.summaries() })
     return () => this.unsubscribe(subscriber.id)
   }
 
@@ -128,18 +120,14 @@ export class StructuredAgentSessionStatusFeed {
     } catch (error) {
       this.logFailure('status-sink-forget', 'status sink forget failed', sessionId, error)
     }
-    const publication = this.published.get(sessionId)
-    const previous = publication?.summary
+    const previous = this.published.get(sessionId)?.summary
     if (!previous || (!previous.children && !previous.backgroundTasks)) {
       return
     }
     const { children: _children, backgroundTasks: _backgroundTasks, ...rest } = previous
     const childWork = structuredStatusChildWork(this.readChildWork(sessionId), previous.agent)
     const retained = { ...rest, ...statusSummaryChildWorkFields(childWork) }
-    this.published.set(sessionId, {
-      summary: retained,
-      firstInputSubmissionKey: publication?.firstInputSubmissionKey ?? null
-    })
+    this.published.replace(sessionId, retained)
     this.broadcast({ type: 'status', session: retained })
   }
 
@@ -150,8 +138,7 @@ export class StructuredAgentSessionStatusFeed {
   /** Revoke live execution authority while retaining the last projection for reload history. A
    *  Stop still ending work is live state too: with the host gone, nothing here is ending it. */
   revokeLive(sessionId: string): void {
-    const publication = this.published.get(sessionId)
-    const previous = publication?.summary
+    const previous = this.published.get(sessionId)?.summary
     if (!previous) {
       return
     }
@@ -161,15 +148,30 @@ export class StructuredAgentSessionStatusFeed {
       stopping: _stopping,
       ...retained
     } = previous
-    this.published.set(sessionId, {
-      summary: retained,
-      firstInputSubmissionKey: publication?.firstInputSubmissionKey ?? null
-    })
+    this.published.replace(sessionId, retained)
     this.sink(retained)
     this.broadcast({
       type: 'status',
       session: retained
     })
+  }
+
+  /** The record's name changed outside the journal. A closed chat's retained row follows it too,
+   *  so every list still showing that conversation learns the name without a tab. */
+  publishConversationName(sessionId: string): void {
+    if (this.deps.sessions.has(sessionId)) {
+      this.publish(sessionId)
+      return
+    }
+    const previous = this.published.get(sessionId)?.summary
+    const name = this.deps.getRecord(sessionId)?.conversationName
+    if (!previous || previous.conversationName === name) {
+      return
+    }
+    const { conversationName: _previous, ...rest } = previous
+    const summary = name ? { ...rest, conversationName: name } : rest
+    this.published.replace(sessionId, summary)
+    this.broadcast({ type: 'status', session: summary })
   }
 
   /** The summary last published for the session, as every status subscriber last saw it. */
@@ -256,10 +258,7 @@ export class StructuredAgentSessionStatusFeed {
       }
       return
     }
-    this.published.set(sessionId, {
-      summary,
-      firstInputSubmissionKey: firstInputSubmissionKey ?? null
-    })
+    this.published.set(sessionId, summary, firstInputSubmissionKey ?? null)
     if (summaryChanged) {
       this.sink(summary, location)
       this.broadcast({ type: 'status', session: summary })

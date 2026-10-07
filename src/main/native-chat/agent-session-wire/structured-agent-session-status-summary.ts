@@ -51,6 +51,7 @@ export function structuredAgentSessionStatusSummary(input: {
     ...statusSummaryChildWorkFields(input.childWork),
     ...(providerSession ? { providerSession } : {}),
     ...(launchDirectory ? { launchDirectory } : {}),
+    ...(record?.conversationName ? { conversationName: record.conversationName } : {}),
     updatedAt: input.lastActivityAt || input.now()
   }
 }

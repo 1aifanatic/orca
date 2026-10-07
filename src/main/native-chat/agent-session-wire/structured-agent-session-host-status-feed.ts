@@ -1,5 +1,3 @@
-// The host's status feed, wired to the host's own deps.
-
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   deferredStructuredAgentSessionLogger,
