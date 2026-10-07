@@ -394,6 +394,14 @@ describe('Claude Agent SDK contract pins', () => {
     const sessionAt = argv.indexOf('--session-id')
     expect(sessionAt).toBeGreaterThanOrEqual(0)
     expect(argv[sessionAt + 1]).toBe(launch.providerSessionId)
+    // A system prompt in initialize would replace the one saved Arguments put on the command line;
+    // Orca's preset sends none.
+    const initialize = scenario
+      .readReport()
+      .controlRequests.find((frame) => frame.request.subtype === 'initialize')?.request
+    expect(initialize).toBeDefined()
+    expect(initialize).not.toHaveProperty('systemPrompt')
+    expect(initialize).not.toHaveProperty('appendSystemPrompt')
   })
 
   it('still exposes the runtime get_settings reader the auth diagnostic depends on', async () => {

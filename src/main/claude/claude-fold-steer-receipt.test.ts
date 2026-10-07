@@ -83,6 +83,7 @@ async function riggedAdapter(
   const deps: ClaudeStructuredSessionAdapterDeps = {
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: '/work/repo',
       claudeConfigDir: '/accounts/claude',

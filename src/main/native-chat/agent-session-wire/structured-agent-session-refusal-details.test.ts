@@ -20,6 +20,7 @@ import {
 } from './structured-agent-session-failed-create-refusal'
 import { withObservedProviderExit } from './structured-agent-session-failure-text'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
+import { StructuredAgentArgumentsError } from '../structured-agent-arguments-error'
 
 const CLAUDE_CREATE = {
   record: agentSessionRecordFixture(),
@@ -80,6 +81,20 @@ describe('a ledger replay names the details its first answer did', () => {
     [
       new AgentSessionAcquisitionExitProvenError(new Error('spawn claude ENOENT')),
       "Claude couldn't start. Send your message to try again."
+    ],
+    // The CLI refused an option the user saved: the card names it, not a provider stop.
+    [
+      new AgentSessionAcquisitionExitProvenError(
+        new StructuredAgentArgumentsError(
+          'Claude',
+          '--modle',
+          'unsupportedOption',
+          withObservedProviderExit(
+            new Error("claude stream-json exited (code 1): error: unknown option '--modle'")
+          )
+        )
+      ),
+      "Claude couldn't start. Claude chats can't use --modle from saved Arguments. Remove it from Claude's Arguments in Settings → Agents. Send your message to try again."
     ],
     [
       new AgentSessionAcquisitionRefusal(

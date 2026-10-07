@@ -74,9 +74,11 @@ export function providerStartupFailureFact(cause?: unknown): SubmissionRejection
   if (typed) {
     return agentSessionFailureFact(typed)
   }
+  const argumentProblem = argumentProblemOf(cause)
+  // A saved option the provider refused is the Arguments' to fix, though the provider exited.
   return agentSessionFailureFact(
-    providerExitObserved(cause) ? 'providerStartFailed' : 'startFailed',
-    { detail: providerDiagnosticOf(cause), argumentProblem: argumentProblemOf(cause) }
+    providerExitObserved(cause) && !argumentProblem ? 'providerStartFailed' : 'startFailed',
+    { detail: providerDiagnosticOf(cause), argumentProblem }
   )
 }
 

@@ -19,7 +19,10 @@ type LateSettlement = Parameters<
 
 const SLOW_INIT_MS = 12_000
 
-function startingAdapter(claude: ReturnType<typeof fakeClaude>): {
+function startingAdapter(
+  claude: ReturnType<typeof fakeClaude>,
+  launch: Parameters<typeof adapterAtPublishFor>[1] = {}
+): {
   adapter: ReturnType<typeof adapterAtPublishFor>
   events: ClaudeStructuredSessionEvent[]
   late: LateSettlement[]
@@ -28,7 +31,7 @@ function startingAdapter(claude: ReturnType<typeof fakeClaude>): {
   const late: LateSettlement[] = []
   const adapter = adapterAtPublishFor(
     claude,
-    {},
+    launch,
     events,
     [],
     undefined,
@@ -213,6 +216,30 @@ describe('Claude structured session publishes before the CLI answers initialize'
     })
     expect(claude.connections[0].sent).toEqual([])
     expect(claude.connections[0].closeCount).toBe(1)
+  })
+
+  // The CLI's own refusal of a saved option fails the start as the refusal that names it.
+  it('names the saved option the CLI refused when it dies before init', async () => {
+    const claude = fakeClaude({
+      initDelayMs: SLOW_INIT_MS,
+      exitBeforeInit: "claude stream-json exited (code 1): error: unknown option '--modle'"
+    })
+    const { adapter, events } = startingAdapter(claude, {
+      configuredArgs: [{ option: '--modle', tokens: ['--modle', 'opus'] }]
+    })
+    await adapter.acquire(ACQUIRE)
+
+    await vi.advanceTimersByTimeAsync(SLOW_INIT_MS)
+    await claudeStartupSettled(adapter, 'session-1')
+    await adapter.drainObservedExits()
+
+    expect(events.find((event) => event.type === 'ended')).toMatchObject({
+      failure: {
+        kind: 'startFailed',
+        argumentProblem: { agent: 'Claude', option: '--modle', problem: 'unsupportedOption' }
+      },
+      cause: 'unexpected-exit'
+    })
   })
 
   it('ends a start whose root exit was seen first-hand even when its descendants are unverifiable', async () => {

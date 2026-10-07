@@ -122,6 +122,7 @@ describe("the account catalog a child's listing writes through", () => {
     const adapter = new ClaudeStructuredSessionAdapter({
       resolveLaunch: async () => ({
         pathToClaudeCodeExecutable: 'claude',
+        configuredArgs: [],
         options: {},
         cwd: '/work/repo',
         claudeConfigDir: ACCOUNT_HOME,

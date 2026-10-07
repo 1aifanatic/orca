@@ -99,6 +99,7 @@ async function startChild(
   const adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: '/work/repo',
       claudeConfigDir: ACCOUNT_HOME,

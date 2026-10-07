@@ -41,6 +41,7 @@ import { readClaudeTranscriptEntryUuid } from './claude-transcript-entry-uuid'
 import { persistClaudeTurnResumePoint } from './claude-structured-resume-point'
 import { withAgentSessionCreatePhase } from '../observability/agent-session-instrumentation'
 import { resolveClaudeAcquisitionLaunch } from './claude-structured-acquisition-launch'
+import { claudeSavedOptionRejection } from './claude-structured-launch-args'
 import { claudeAcquireCatalogAccess } from './claude-structured-acquire-catalog'
 import {
   bindClaudeConnectionJournalControls,
@@ -176,7 +177,7 @@ export async function acquireClaudeSession({
         {
           pathToClaudeCodeExecutable: launch.pathToClaudeCodeExecutable,
           options: launch.options,
-          configuredArgs: launch.configuredArgs ?? [],
+          configuredArgs: launch.configuredArgs,
           cwd: launch.cwd,
           env: {
             ...launch.env,
@@ -195,8 +196,9 @@ export async function acquireClaudeSession({
           canUseTool,
           onUserDialog,
           onFault: (error) => {
-            childEnded ??= error
-            initProof.reject(error)
+            const named = claudeSavedOptionRejection(error, launch.configuredArgs)
+            childEnded ??= named
+            initProof.reject(named)
           },
           onExit: (error, exit) => {
             if (exit?.expected) {
@@ -206,9 +208,10 @@ export async function acquireClaudeSession({
             }
             // The child exited on its own; marked in place, as the fault report may hold this error.
             withObservedProviderExit(error)
-            childEnded ??= error
-            initProof.reject(error)
-            callbacks.handleExit(sessionId, attempt, error)
+            const named = claudeSavedOptionRejection(error, launch.configuredArgs)
+            childEnded ??= named
+            initProof.reject(named)
+            callbacks.handleExit(sessionId, attempt, named)
           }
         }
       )

@@ -64,6 +64,7 @@ describe('ClaudeStructuredSessionAdapter close and exit recovery', () => {
     const adapter = new ClaudeStructuredSessionAdapter({
       resolveLaunch: async () => ({
         pathToClaudeCodeExecutable: 'claude',
+        configuredArgs: [],
         options: {},
         cwd: '/work/repo',
         claudeConfigDir: '/accounts/claude',
@@ -310,6 +311,7 @@ describe('ClaudeStructuredSessionAdapter close and exit recovery', () => {
       if (durableLeafUuid === null) {
         return {
           pathToClaudeCodeExecutable: 'claude',
+          configuredArgs: [],
           options: { sessionId: PROVIDER_SESSION_ID },
           cwd: '/work/repo',
           claudeConfigDir: '/accounts/claude',
@@ -321,6 +323,7 @@ describe('ClaudeStructuredSessionAdapter close and exit recovery', () => {
       }
       return {
         pathToClaudeCodeExecutable: 'claude',
+        configuredArgs: [],
         options: { resume: PROVIDER_SESSION_ID },
         cwd: '/work/repo',
         claudeConfigDir: '/accounts/claude',

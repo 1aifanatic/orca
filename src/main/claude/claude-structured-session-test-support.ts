@@ -271,6 +271,7 @@ export function adapterAtPublishFor(
   return new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: '/work/repo',
       claudeConfigDir: '/accounts/claude',
@@ -285,11 +286,7 @@ export function adapterAtPublishFor(
     readProcessStartTime: async () => 1_700_000_000_000,
     now: () => 1_700_000_000_500,
     ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
-    persistHandle:
-      persistHandle ??
-      (async (handle) => {
-        persistedHandles.push(handle)
-      }),
+    persistHandle: persistHandle ?? (async (handle) => void persistedHandles.push(handle)),
     ...(onChildWorkEvidence ? { onChildWorkEvidence } : {}),
     ...(onDispatchSettledLate ? { onDispatchSettledLate } : {})
   })

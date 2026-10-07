@@ -16,7 +16,6 @@ const PROBLEM_COPY = {
   unclosedQuote: 'argumentsUnclosedQuote'
 } as const satisfies Record<AgentSessionArgumentProblem['problem'], AgentSessionFailureCopyId>
 
-/** Options a chat refuses that have an equivalent, or no need, in a chat. */
 const CODEX_OPTION_HINTS = new Map<string, AgentSessionFailureCopyId>([
   ['--profile', 'argumentsProfileHint'],
   ['-p', 'argumentsProfileHint'],
@@ -33,6 +32,7 @@ const CLAUDE_OPTION_HINTS = new Map<string, AgentSessionFailureCopyId>([
   ['--worktree', 'argumentsWorkspaceHint'],
   ['-w', 'argumentsWorkspaceHint']
 ])
+/** Options a chat refuses that have an equivalent, or no need, in a chat. */
 const OPTION_HINTS: Record<
   AgentSessionArgumentProblem['agent'],
   ReadonlyMap<string, AgentSessionFailureCopyId>

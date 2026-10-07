@@ -111,6 +111,7 @@ async function replayCapture(name: string): Promise<Replay> {
   const deps: ClaudeStructuredSessionAdapterDeps = {
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: '/work/repo',
       claudeConfigDir: '/accounts/claude',

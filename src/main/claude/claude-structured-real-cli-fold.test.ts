@@ -82,6 +82,7 @@ describe.skipIf(!realClaudeAvailable)('Claude structured real CLI fold', () => {
       const adapter = new ClaudeStructuredSessionAdapter({
         resolveLaunch: async () => ({
           pathToClaudeCodeExecutable: realClaudeCommand,
+          configuredArgs: [],
           options: {
             ...CLAUDE_STRUCTURED_BASE_OPTIONS,
             extraArgs: {

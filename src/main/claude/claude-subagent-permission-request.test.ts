@@ -202,6 +202,7 @@ async function pipeline() {
   const adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: '/work/repo',
       claudeConfigDir: '/accounts/claude',

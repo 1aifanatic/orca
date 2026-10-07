@@ -5,6 +5,7 @@ export type AgentSessionArgumentProblem = {
   problem:
     | 'unsupportedOption'
     | 'missingValue'
+    // Older hosts only: nothing emits it now, but their refusals still reach new clients.
     | 'multipleValues'
     | 'positionalPrompt'
     | 'unclosedQuote'

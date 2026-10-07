@@ -1,47 +1,11 @@
 import { findOptionOccurrence } from './command-option-occurrence'
 import type { AgentType } from './agent-status-types'
+import { CLAUDE_CLI_REQUIRED_VALUE_OPTIONS } from './claude-cli-options'
 
 // Required values consume dash-leading text; boolean and optional-valued options are excluded.
 // Codex (clap) and OpenCode (yargs) never take a dash-leading value, so they have no entry.
 const VALUE_OPTIONS: Partial<Record<AgentType, readonly string[]>> = {
-  claude: [
-    '--add-dir',
-    '--agent',
-    '--agents',
-    '--allowedTools',
-    '--allowed-tools',
-    '--append-system-prompt',
-    '--append-system-prompt-file',
-    '--autocompact',
-    '--betas',
-    '--debug-file',
-    '--disallowedTools',
-    '--disallowed-tools',
-    '--effort',
-    '--environment',
-    '--fallback-model',
-    '--file',
-    '--input-format',
-    '--json-schema',
-    '--max-budget-usd',
-    '--mcp-config',
-    '--model',
-    '-n',
-    '--name',
-    '--output-format',
-    '--permission-mode',
-    '--permission-prompts',
-    '--plugin-dir',
-    '--plugin-url',
-    '--remote-control-session-name-prefix',
-    '--session-id',
-    '--setting-sources',
-    '--settings',
-    '--system-prompt',
-    '--system-prompt-file',
-    '--system-prompt-snapshot',
-    '--tools'
-  ],
+  claude: CLAUDE_CLI_REQUIRED_VALUE_OPTIONS,
   cursor: [
     '--api-key',
     '-H',

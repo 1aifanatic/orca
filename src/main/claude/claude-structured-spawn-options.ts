@@ -87,7 +87,7 @@ export function claudeStructuredSpawnOptions(input: {
   const options = new Map<string, string>()
   const skipped: string[] = []
   let sdkOptions: ClaudeStructuredSdkOptions = { ...input.launch.options }
-  let configuredArgs = input.launch.configuredArgs ?? []
+  let configuredArgs = input.launch.configuredArgs
   let fastModeAtStart = false
   const model = saved.get('model')
   if (model !== undefined) {

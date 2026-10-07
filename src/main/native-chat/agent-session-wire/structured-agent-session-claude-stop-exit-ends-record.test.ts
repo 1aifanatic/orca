@@ -58,6 +58,7 @@ beforeEach(async () => {
   adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: root,
       claudeConfigDir: join(root, 'claude-home'),

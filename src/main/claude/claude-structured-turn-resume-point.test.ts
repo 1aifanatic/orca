@@ -61,6 +61,7 @@ async function liveOwner(
   const adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: { resume: PROVIDER_SESSION_ID },
       cwd: '/work/repo',
       claudeConfigDir: '/accounts/claude',

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
-import { StructuredAgentArgumentsError } from '../native-chat/structured-agent-arguments-error'
+import {
+  claudeSavedOptionRejection,
+  claudeStructuredLaunchArgs
+} from './claude-structured-launch-args'
+import {
+  argumentProblemOf,
+  StructuredAgentArgumentsError
+} from '../native-chat/structured-agent-arguments-error'
 
 const tokensOf = (args: readonly string[]): string[] =>
   claudeStructuredLaunchArgs(args).flatMap((arg) => arg.tokens)
@@ -88,12 +94,13 @@ describe('Claude structured launch arguments', () => {
     ).toEqual(['--model', 'opus'])
   })
 
-  // Pending product decision; one switch each in claude-structured-launch-args.ts.
-  it('drops --permission-mode and forwards tool rules under both spellings', () => {
+  // Agent Permissions owns the mode; tool rules pass. One switch each in the launch arguments.
+  it('drops a typed permission mode and forwards tool rules under both spellings', () => {
     expect(
       tokensOf([
         '--permission-mode',
         'plan',
+        '--inherit-permission-mode=acceptEdits',
         '--allowedTools',
         'Bash(git:*)',
         'Edit',
@@ -101,6 +108,22 @@ describe('Claude structured launch arguments', () => {
         'Bash(rm:*)'
       ])
     ).toEqual(['--allowedTools', 'Bash(git:*)', 'Edit', '--disallowed-tools', 'Bash(rm:*)'])
+  })
+
+  // Every option of the CLI's own table is read with its arity, hidden ones included.
+  it('reads the values of options the CLI hides, dash-leading ones too', () => {
+    const args = [
+      '--append-subagent-system-prompt',
+      '-v always',
+      '--restricted',
+      '--max-turns',
+      '3',
+      '-d2e'
+    ]
+    expect(tokensOf(args)).toEqual(args)
+    expect(() => tokensOf(['--restricted', 'review this'])).toThrow(
+      expect.objectContaining({ argumentProblem: expect.objectContaining({ option: 'prompt' }) })
+    )
   })
 
   it('drops a bare trailing --', () => {
@@ -119,6 +142,8 @@ describe('Claude structured launch arguments', () => {
     { args: ['--teleport'], option: '--teleport', problem: 'unsupportedOption' },
     { args: ['--remote-control'], option: '--remote-control', problem: 'unsupportedOption' },
     { args: ['--tmux'], option: '--tmux', problem: 'unsupportedOption' },
+    { args: ['--environment', 'private'], option: '--environment', problem: 'unsupportedOption' },
+    { args: ['--pool=private'], option: '--pool', problem: 'unsupportedOption' },
     { args: ['--append-system-prompt'], option: '--append-system-prompt', problem: 'missingValue' },
     { args: ['--add-dir'], option: '--add-dir', problem: 'missingValue' },
     { args: ['-n'], option: '-n', problem: 'missingValue' }
@@ -131,5 +156,30 @@ describe('Claude structured launch arguments', () => {
       expect(error).toMatchObject({ argumentProblem: { agent: 'Claude', option, problem } })
       expect(String(error)).not.toContain('private')
     }
+  })
+
+  // The CLI's own refusal of a saved option, named so the chat says which one to remove.
+  it('names a saved option the CLI rejected at start', () => {
+    const configured = claudeStructuredLaunchArgs(['--chrome', '--modle=opus', '-x'])
+    const exited = (option: string) =>
+      new Error(`claude stream-json exited (code 1): error: unknown option '${option}'`)
+
+    for (const [rejected, option] of [
+      ['--modle=opus', '--modle'],
+      ['-x', '-x']
+    ] as const) {
+      const named = claudeSavedOptionRejection(exited(rejected), configured)
+      expect(argumentProblemOf(named)).toEqual({
+        agent: 'Claude',
+        option,
+        problem: 'unsupportedOption'
+      })
+      expect(named.cause).toBeInstanceOf(Error)
+    }
+    // Only the CLI's exact refusal of an option the user saved; anything else stays as it was.
+    const other = exited('--thinking-display')
+    expect(claudeSavedOptionRejection(other, configured)).toBe(other)
+    const crash = new Error('claude stream-json exited (code 1): boom')
+    expect(claudeSavedOptionRejection(crash, configured)).toBe(crash)
   })
 })

@@ -77,7 +77,8 @@ export type ClaudeStructuredSdkOptions = Pick<
  */
 export const CLAUDE_STRUCTURED_BASE_OPTIONS: ClaudeStructuredSdkOptions = {
   includePartialMessages: true,
-  // Keep the SDK on Claude Code's own system-prompt contract.
+  // Keep the SDK on Claude Code's own system-prompt contract. No `append`: one sent in initialize
+  // would replace the system prompt a user saved in Arguments.
   systemPrompt: { type: 'preset', preset: 'claude_code' },
   settingSources: [...CLAUDE_DEFAULT_SETTING_SOURCES],
   supportedDialogKinds: [],
@@ -100,8 +101,8 @@ export type ClaudeStructuredLaunch = {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string
   options: ClaudeStructuredSdkOptions
-  /** The saved Arguments the child gets after the SDK's own flags, as typed. Absent: none. */
-  configuredArgs?: readonly ClaudeConfiguredArg[]
+  /** The saved Arguments the child gets after the SDK's own flags, as typed. */
+  configuredArgs: readonly ClaudeConfiguredArg[]
   cwd: string
   env?: Record<string, string>
   claudeConfigDir: string
