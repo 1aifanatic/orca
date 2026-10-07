@@ -231,6 +231,27 @@ describe('production Relay capacity cell admission', () => {
     ])
   })
 
+  it('refuses to fall back to an unpaced drain when the cell rejects a slower window', async () => {
+    for (const paceWindowMs of [900_000, 1_200_000]) {
+      const bodies = []
+      await assert.rejects(
+        prepareProductionCapacityCell(
+          { ...config, mode: 'drain', paceWindowMs },
+          {
+            token: 'token',
+            wait: async () => {},
+            fetch: async (_url, init) => {
+              bodies.push(JSON.parse(init.body))
+              return response({ error: 'invalid_request' }, 400)
+            }
+          }
+        ),
+        /refusing to drain faster than asked/
+      )
+      assert.deepEqual(bodies, [{ v: 1, graceMs: 0, paceWindowMs }])
+    }
+  })
+
   it('fails a paced drain that the cell rejects for any other reason', async () => {
     await assert.rejects(
       prepareProductionCapacityCell(
@@ -253,10 +274,12 @@ describe('production Relay capacity cell admission', () => {
       '--mode', 'drain',
       '--pace-window-ms', value
     ]
-    for (const value of ['-1', '300001', '1.5', 'soon']) {
+    for (const value of ['-1', '1200001', '1.5', 'soon']) {
       assert.throws(() => parseProductionCapacityCellArguments(argv(value)), /pace-window-ms/)
     }
-    assert.equal(parseProductionCapacityCellArguments(argv('300000')).paceWindowMs, 300_000)
+    for (const value of [300_000, 900_000, 1_200_000]) {
+      assert.equal(parseProductionCapacityCellArguments(argv(String(value))).paceWindowMs, value)
+    }
   })
 
   it('restores only the selected cell to general admission', async () => {

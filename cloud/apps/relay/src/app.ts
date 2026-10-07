@@ -73,8 +73,9 @@ const ASSIGNMENT_REJECTION_LOG_WINDOW_MS = 10_000
 // A release holds the row for about one lock timeout, so one second is enough.
 const ASSIGNMENT_ROW_BUSY_RETRY_AFTER_SECONDS = 1
 const REGION_CATALOG_CACHE_MS = 30_000
-// A drain that outlives the roll step it belongs to is an outage, not a pacing win.
-const DRAIN_PACE_WINDOW_MAX_MS = 5 * 60 * 1_000
+// A drain that outlives the roll step it belongs to is an outage, not a pacing win. The roll
+// step's timeout scales with the window, up to the same-cap wave's slowest pace.
+const DRAIN_PACE_WINDOW_MAX_MS = 20 * 60 * 1_000
 
 type AdmissionRejectionLogEntry = {
   route: 'assign' | 'resolve'

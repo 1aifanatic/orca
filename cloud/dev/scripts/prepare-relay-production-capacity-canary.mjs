@@ -36,7 +36,10 @@ function cellOrigin(cellId) {
 const APPROVED_CELL_LISTS = { 'same-cap': SAME_CAP_CELLS }
 
 // Matches the cell's own cap on /v1/admin/drain.
-const MAX_PACE_WINDOW_MS = 5 * 60 * 1_000
+const MAX_PACE_WINDOW_MS = 20 * 60 * 1_000
+// Every paced image before the cap rose rejects a longer window with the same 400 an unpaced
+// image gives, and an unpaced drain is the opposite of what a slower window asked for.
+const LEGACY_MAX_PACE_WINDOW_MS = 5 * 60 * 1_000
 
 export function parseProductionCapacityCellArguments(argv) {
   const values = {}
@@ -75,7 +78,7 @@ export function parseProductionCapacityCellArguments(argv) {
     paceWindowMs < 0 ||
     paceWindowMs > MAX_PACE_WINDOW_MS
   ) {
-    throw new Error('--pace-window-ms must be an integer between 0 and 300000')
+    throw new Error('--pace-window-ms must be an integer between 0 and 1200000')
   }
   return {
     directorOrigin: DIRECTOR_ORIGIN,
@@ -126,6 +129,11 @@ export async function prepareProductionCapacityCell(config, overrides = {}) {
       // An unpaced drain is the behaviour that cell already has, so fall back to it.
       if (paced.status !== 400) throw new Error(`/v1/admin/drain returned ${paced.status}`)
       await paced.json().catch(() => ({}))
+      if (paceWindowMs > LEGACY_MAX_PACE_WINDOW_MS) {
+        throw new Error(
+          `cell rejected a ${paceWindowMs} ms drain pace; refusing to drain faster than asked`
+        )
+      }
     }
     await postAt(config.cellOrigin, '/v1/admin/drain', { v: 1, graceMs: 0 })
     return { changed: false, drained: true, paceWindowMs: 0 }
