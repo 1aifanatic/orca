@@ -55,11 +55,8 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
       const { claudeTaskWakeupPending: _pendingWakeup, ...persistedStatus } =
         persistedPayload.payload
       const commitment = this.toAuthorityEvidence(payload, launchTokenHash)
-      // Why: a hash the pane's ended launch carried is no commitment for a restart to restore.
-      const persistedTokenHash =
-        launchTokenHash === this.endedLaunchTokenHashByPaneKey.get(paneKey)
-          ? undefined
-          : launchTokenHash
+      // Why: a hash the pane's ended launch carried (no commitment) is nothing for a restart to restore.
+      const persistedTokenHash = commitment ? launchTokenHash : undefined
       entries[paneKey] = {
         ...persistedPayload,
         payload: persistedStatus,
