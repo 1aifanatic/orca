@@ -55,7 +55,11 @@ function mirrorLayout(
   layout: TerminalTopologyLayout
 ): TerminalLayoutSnapshot {
   if (!current) {
-    const activeLeafId = resolvePtyBoundActiveLeafId({ ...layout, activeLeafId: null })
+    const activeLeafId = resolvePtyBoundActiveLeafId({
+      root: layout.root,
+      activeLeafId: null,
+      ptyIdsByLeafId: layout.ptyIdsByLeafId
+    })
     return { ...emptyLayoutSnapshot(), ...layout, activeLeafId }
   }
   if (
