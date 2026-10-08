@@ -1,4 +1,4 @@
-import type { KeybindingPlatform } from '../../../../shared/keybindings'
+import { keybindingMatchesAction, type KeybindingPlatform } from '../../../../shared/keybindings'
 import type { KeyboardHandlersDeps } from './terminal-keyboard-dependencies'
 import type { createTerminalKeyboardRuntime } from './terminal-keyboard-runtime'
 import { normalizeSelectedTextForFileSearch } from '@/lib/file-search-selection'
@@ -223,8 +223,13 @@ export function createTerminalKeyboardEventHandlers(context: EventContext) {
     if (!action) {
       return
     }
-    // The chat covering this pane owns find; the hidden terminal buffer is not what the user sees.
-    if (action.type === 'toggleSearch' && isInsideNativeChatCover(e.target)) {
+    // The chat covering this pane owns find, on whatever chord it is bound to; the hidden
+    // terminal buffer is not what the user sees.
+    if (
+      isInsideNativeChatCover(e.target) &&
+      (action.type === 'toggleSearch' ||
+        keybindingMatchesAction('chat.find', e, shortcutPlatform, keybindings))
+    ) {
       return
     }
 

@@ -17728,12 +17728,6 @@
           "insertColumnRight": "在右侧插入列",
           "deleteColumn": "删除列",
           "deleteTable": "删除表格"
-        },
-        "findBar": {
-          "label": "在窗口中查找",
-          "previousMatch": "上一个匹配项",
-          "nextMatch": "下一个匹配项",
-          "close": "关闭"
         }
       }
     }
@@ -18076,6 +18070,13 @@
         "toggleDetails": "切换回合详情"
       },
       "jumpToLatest": "跳到最新消息",
+      "find": {
+        "label": "在聊天中查找",
+        "noResults": "没有结果",
+        "previousMatch": "上一个结果",
+        "nextMatch": "下一个结果",
+        "close": "关闭"
+      },
       "transcriptLabel": "对话",
       "toggle": {
         "showTerminal": "显示终端",

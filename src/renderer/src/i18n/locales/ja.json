@@ -17728,12 +17728,6 @@
           "insertColumnRight": "右に列を挿入",
           "deleteColumn": "列を削除",
           "deleteTable": "テーブルを削除"
-        },
-        "findBar": {
-          "label": "ウィンドウ内を検索",
-          "previousMatch": "前の一致",
-          "nextMatch": "次の一致",
-          "close": "閉じる"
         }
       }
     }
@@ -18111,6 +18105,13 @@
         "toggleDetails": "ターンの詳細を切り替えます"
       },
       "jumpToLatest": "最新にジャンプ",
+      "find": {
+        "label": "チャット内を検索",
+        "noResults": "結果はありません",
+        "previousMatch": "前の一致",
+        "nextMatch": "次の一致",
+        "close": "閉じる"
+      },
       "transcriptLabel": "会話",
       "toggle": {
         "showTerminal": "ターミナルを表示",

@@ -17829,12 +17829,6 @@
           "insertColumnRight": "Insérer une colonne à droite",
           "deleteColumn": "Supprimer la colonne",
           "deleteTable": "Supprimer le tableau"
-        },
-        "findBar": {
-          "label": "Rechercher dans la fenêtre",
-          "previousMatch": "Occurrence précédente",
-          "nextMatch": "Occurrence suivante",
-          "close": "Fermer"
         }
       }
     }
@@ -18177,6 +18171,13 @@
         "toggleDetails": "Basculer les détails du tour"
       },
       "jumpToLatest": "Aller au dernier message",
+      "find": {
+        "label": "Rechercher dans le chat",
+        "noResults": "Aucun résultat",
+        "previousMatch": "Correspondance précédente",
+        "nextMatch": "Correspondance suivante",
+        "close": "Fermer"
+      },
       "transcriptLabel": "Conversation",
       "toggle": {
         "showTerminal": "Afficher le terminal",

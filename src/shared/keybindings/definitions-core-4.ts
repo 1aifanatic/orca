@@ -4,10 +4,10 @@ import { platformBindings } from './definitions-support'
 export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
   {
     id: 'chat.find',
-    title: 'Find in window',
+    title: 'Find in chat',
     group: 'Chat',
     scope: 'chat',
-    searchKeywords: ['shortcut', 'chat', 'find', 'search', 'window'],
+    searchKeywords: ['shortcut', 'chat', 'find', 'search'],
     defaultBindings: platformBindings(['Mod+F'])
   },
   {
