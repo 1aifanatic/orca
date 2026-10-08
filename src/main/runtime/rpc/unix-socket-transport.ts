@@ -1,6 +1,6 @@
 // Why: this is the original Unix socket / named pipe transport extracted from
-// runtime-rpc.ts. It preserves the exact same behavior: newline-delimited JSON,
-// 30s idle timeout, 1MB max message, 128 max connections, chmod 0o600 on Unix.
+// runtime-rpc.ts: newline-delimited JSON, 30s idle timeout, 1MB max message,
+// 128 max connections (raised from 32), chmod 0o600 on Unix.
 // It also owns the keepalive timer and per-connection abort signal so the
 // server-side handler can cancel long-poll dispatches when the client goes
 // away. See design doc §3.1.

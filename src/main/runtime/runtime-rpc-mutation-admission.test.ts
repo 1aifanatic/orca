@@ -214,7 +214,10 @@ describe('slow mutations under passive observation load', () => {
           })
         )
       }
-      await waitFor(() => server['activeLongPolls'] === cap && dispatchedActions.size === cap)
+      await waitFor(
+        () => server['activeLongPolls'] === cap && dispatchedActions.size === cap,
+        10_000
+      )
 
       const short = await sendOrNoReply(endpoint, {
         id: 'short',
