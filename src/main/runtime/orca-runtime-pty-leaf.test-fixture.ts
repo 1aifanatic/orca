@@ -1,9 +1,13 @@
 import { OrcaRuntimeService } from './orca-runtime'
+import type { RuntimeLeafRecord } from './runtime-terminal-state-records'
 
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
 
 /** A runtime whose single tab leaf is bound to `ptyId`, so onPtyData updates PTY and leaf tails. */
-export function runtimeWithLeaf(ptyId: string): { runtime: OrcaRuntimeService; leaf: unknown } {
+export function runtimeWithLeaf(ptyId: string): {
+  runtime: OrcaRuntimeService
+  leaf: RuntimeLeafRecord
+} {
   const runtime = new OrcaRuntimeService()
   runtime.attachWindow(1)
   runtime.syncWindowGraph(1, {
@@ -19,18 +23,17 @@ export function runtimeWithLeaf(ptyId: string): { runtime: OrcaRuntimeService; l
       }
     ]
   })
-  const leaves: unknown = Reflect.get(runtime, 'leaves')
-  if (!(leaves instanceof Map) || leaves.size !== 1) {
+  const leaves = runtime['leaves']
+  const leaf = leaves.values().next().value
+  if (leaves.size !== 1 || !leaf) {
     throw new Error('Expected exactly one runtime leaf')
   }
-  return { runtime, leaf: leaves.values().next().value }
+  return { runtime, leaf }
 }
 
 export function readPtyTail(runtime: OrcaRuntimeService, ptyId: string): string[] {
-  const ptys: unknown = Reflect.get(runtime, 'ptysById')
-  const pty: unknown = ptys instanceof Map ? ptys.get(ptyId) : undefined
-  const lines: unknown = pty && typeof pty === 'object' ? Reflect.get(pty, 'tailBuffer') : undefined
-  if (!Array.isArray(lines)) {
+  const lines = runtime['ptysById'].get(ptyId)?.tailBuffer
+  if (!lines) {
     throw new Error('PTY record has no tail')
   }
   return lines.map(String)

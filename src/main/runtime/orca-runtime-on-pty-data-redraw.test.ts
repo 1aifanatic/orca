@@ -40,18 +40,15 @@ describe('onPtyData redraw cost', () => {
   it('normalizes a chunk once when a diverged leaf carries the same escape prefix', async () => {
     const ptyId = 'pty-diverged'
     const { runtime, leaf } = runtimeWithLeaf(ptyId)
-    if (!leaf || typeof leaf !== 'object') {
-      throw new Error('Runtime leaf missing')
-    }
     // Different retained history sends the leaf down its own tail update.
-    Reflect.set(leaf, 'tailBuffer', ['leaf-only history'])
-    Reflect.set(leaf, 'tailLinesTotal', 1)
+    leaf.tailBuffer = ['leaf-only history']
+    leaf.tailLinesTotal = 1
     const normalize = vi.spyOn(ansiNormalization, 'normalizeTerminalChunk')
     try {
       const chunk = panelFrames(80, 3)
       runtime.onPtyData(ptyId, chunk, 1_000)
       expect(normalize.mock.calls.filter(([data]) => data === chunk)).toHaveLength(1)
-      expect(Reflect.get(leaf, 'tailBuffer')).toContain(`hint ${'─'.repeat(75)}`)
+      expect(leaf.tailBuffer).toContain(`hint ${'─'.repeat(75)}`)
     } finally {
       normalize.mockRestore()
       await runtime.onPtyExit(ptyId, 0)
