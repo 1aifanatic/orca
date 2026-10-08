@@ -25,6 +25,7 @@ import { parseArgs } from './orcad-command-arguments'
 import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 import {
   admitOrcadAutomaticStop,
+  prepareOrcadUserStop,
   prepareOrcadStructuredWorkBoundary
 } from './orcad-structured-work-boundary'
 import { installOrcadStopRequestListeners } from './orcad-stop-request-listener'
@@ -424,6 +425,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     installRoot: resolveOrcadInstallRoot(),
     managedStop: handle.managedStop,
     admitAutomaticStop: admitOrcadAutomaticStop,
+    beforeUserStop: prepareOrcadUserStop,
     beforeManagedStop: prepareOrcadManagedStop
   })
   bindOrcadIdleShutdown(requestShutdown)

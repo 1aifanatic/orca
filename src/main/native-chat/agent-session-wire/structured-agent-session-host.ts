@@ -2,6 +2,7 @@ import type { AgentSessionRewindParams } from '../../../shared/agent-session-rew
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 import { createStructuredAgentSessionServerLifetime } from './structured-agent-session-server-lifetime'
+import { restoreRetiredStructuredAgentSessionConversation } from './structured-agent-session-retired-conversation'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
 // Mutations share one durable admission path and serialize per session. A conversation is reached
 // only through `conversation`, which opens it at rest; an agent is started only by work that needs
@@ -89,7 +90,16 @@ export class StructuredAgentSessionHost {
     tasks: this.tasks,
     deliveryActive: (id) => this.conversationDelivery.loop.isRunning(id),
     childWork: (id) => this.clientDelivery.readChildWork(id),
-    stopDelivery: () => this.stopDelivery()
+    stopDelivery: () => this.stopDelivery(),
+    restoreRetiredConversation: (id) =>
+      restoreRetiredStructuredAgentSessionConversation(
+        {
+          deps: this.deps,
+          sessions: this.sessions,
+          adoptOpened: this.conversationDelivery.adoptOpened
+        },
+        id
+      )
   })
   private readonly runtimeState: StructuredAgentSessionHostRuntimeState
   private readonly reconcileLeases: ReturnType<typeof createRestartReconciler>

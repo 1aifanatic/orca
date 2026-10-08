@@ -1,4 +1,7 @@
-import { runKeyedSerializedOperation } from '../../cli/keyed-promise-queue'
+import {
+  getKeyedSerializedQueueTail,
+  runKeyedSerializedOperation
+} from '../../cli/keyed-promise-queue'
 import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 
 export class StructuredAgentSessionTaskQueue {
@@ -18,7 +21,10 @@ export class StructuredAgentSessionTaskQueue {
   }
 
   serializeDuringShutdown<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
-    return runKeyedSerializedOperation(this.chains, sessionId, task)
+    const operation = runKeyedSerializedOperation(this.chains, sessionId, task)
+    const tail = getKeyedSerializedQueueTail(this.chains, sessionId)
+    // Observers finish after their own tail clears, so a probe does not count itself as work.
+    return operation.finally(() => tail)
   }
 
   hasPending = (): boolean => this.chains.size > 0 || this.attaching.size > 0

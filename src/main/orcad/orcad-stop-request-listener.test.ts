@@ -222,7 +222,13 @@ describe('orcad stop-request listeners', () => {
     const managedStop = managedContext()
     const onRequest = vi.fn()
     const automatic = vi.fn(() => false)
-    listen(onRequest, { installRoot, managedStop, admitAutomaticStop: automatic })
+    const abandon = vi.fn(async () => {})
+    listen(onRequest, {
+      installRoot,
+      managedStop,
+      admitAutomaticStop: automatic,
+      beforeUserStop: abandon
+    })
     if (kind === 'slot') {
       writeFileSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME), '{"intent":"user"}')
     } else {
@@ -238,5 +244,42 @@ describe('orcad stop-request listeners', () => {
     }
     await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
     expect(automatic).not.toHaveBeenCalled()
+    expect(abandon).toHaveBeenCalledOnce()
   })
+
+  it.each(['slot', 'managed'])(
+    'honors a user %s stop when abandonment bookkeeping fails',
+    async (kind) => {
+      const installRoot = directory()
+      const managedStop = managedContext()
+      const onRequest = vi.fn()
+      const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+      listen(onRequest, {
+        installRoot,
+        managedStop,
+        admitAutomaticStop: () => false,
+        beforeUserStop: async () => {
+          throw new Error('store unreadable')
+        }
+      })
+      if (kind === 'slot') {
+        writeFileSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME), '{"intent":"user"}')
+      } else {
+        writeFileSync(
+          orcadManagedStopRequestPath(managedStop.instance),
+          JSON.stringify({
+            schemaVersion: 1,
+            transactionId: '0b9f6a3e-9e2c-4c8e-8f58-4c0f6b1d2e3a',
+            ...managedStop,
+            intent: 'user'
+          })
+        )
+      }
+      await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
+      expect(report).toHaveBeenCalledWith(
+        '[orcad] user stop preparation failed; stop continues:',
+        expect.any(Error)
+      )
+    }
+  )
 })

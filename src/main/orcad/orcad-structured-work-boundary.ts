@@ -1,4 +1,22 @@
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
+import { withTimeout } from '../../shared/promise-timeout-fallback'
+
+const USER_RESERVATION_ABANDON_TIMEOUT_MS = 2_000
+
+export async function prepareOrcadUserStop(): Promise<void> {
+  const host = getStructuredAgentSessionHost()
+  if (!host) {
+    return
+  }
+  const recorded = await withTimeout(
+    host.serverRetirement.abandonOwnerlessReservations().then(() => true),
+    USER_RESERVATION_ABANDON_TIMEOUT_MS,
+    false
+  )
+  if (!recorded) {
+    console.error('[orcad] recording reservation abandonment timed out; user stop continues')
+  }
+}
 
 export function admitOrcadAutomaticStop(commit: () => boolean): boolean {
   return getStructuredAgentSessionHost()?.serverRetirement.admitStop(commit) ?? false

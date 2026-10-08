@@ -101,6 +101,7 @@ export function installOrcadStopRequestListeners(
     admitAutomaticStop: (commit: () => boolean) => boolean
     /** Runs once for a validated managed request before the stop; it cannot prevent it. */
     beforeManagedStop?: (request: OrcadManagedStopRequest) => Promise<void>
+    beforeUserStop?: () => Promise<void>
     pollIntervalMs?: number
   }
 ): OrcadStopRequestListener {
@@ -110,6 +111,13 @@ export function installOrcadStopRequestListeners(
   const close = (): void => {
     for (const listener of listeners) {
       listener.close()
+    }
+  }
+  const prepareUserStop = async (): Promise<void> => {
+    try {
+      await options.beforeUserStop?.()
+    } catch (error) {
+      console.error('[orcad] user stop preparation failed; stop continues:', error)
     }
   }
   listeners.push(
@@ -123,9 +131,17 @@ export function installOrcadStopRequestListeners(
           unlinkSync(path)
           return true
         }
-        return user ? consume() : options.admitAutomaticStop(consume) ? true : null
+        const admitted = user ? consume() : options.admitAutomaticStop(consume)
+        return admitted ? user : null
       },
-      () => onRequest(),
+      (user) => {
+        close()
+        if (user) {
+          void prepareUserStop().finally(onRequest)
+        } else {
+          onRequest()
+        }
+      },
       pollIntervalMs
     )
   )
@@ -148,15 +164,19 @@ export function installOrcadStopRequestListeners(
             }
             return true
           }
-          const admitted = orcadManagedStopIsUserRequested(request)
-            ? commit()
-            : options.admitAutomaticStop(commit)
-          return admitted ? request : null
+          const user = orcadManagedStopIsUserRequested(request)
+          const admitted = user ? commit() : options.admitAutomaticStop(commit)
+          return admitted ? { request, user } : null
         },
-        (request) => {
+        ({ request, user }) => {
           close()
           // Preparation is best effort: whatever it reports, the stop proceeds.
-          void prepare(request)
+          void (async () => {
+            if (user) {
+              await prepareUserStop()
+            }
+            await prepare(request)
+          })()
             .catch((error: unknown) =>
               console.error('[orcad] managed stop preparation failed:', error)
             )

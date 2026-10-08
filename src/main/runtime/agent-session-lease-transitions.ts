@@ -17,6 +17,7 @@ import {
   type AgentSessionProviderHandleLink
 } from '../../shared/agent-session-provider-handle'
 import { agentSessionProviderHandleBelongsTo } from '../../shared/agent-session-provider-handle-encoding'
+import { nextAgentSessionFence } from '../../shared/agent-session-next-fence'
 import type {
   AgentSessionDeathEvidence,
   AgentSessionLease,
@@ -231,6 +232,36 @@ export function evictAgentSessionOwner(args: {
     throw new Error('agent_session_ownership_unknown')
   }
   return releasedAgentSessionLease(record, adjudication.nextFence, adjudication.evidence, args.now)
+}
+
+export function isOwnerlessAgentSessionReservation(record: AgentSessionRecord): boolean {
+  return (
+    record.lease.runtimeKind === 'native' &&
+    record.lease.claimStatus !== 'released' &&
+    record.lease.ownerProcess === null &&
+    record.lease.reservedSpawnToken !== null
+  )
+}
+
+/** A deliberate host stop abandons a reservation without claiming its process exited. */
+export function abandonAgentSessionOwnerlessReservation(args: {
+  record: AgentSessionRecord
+  expectedFence: number
+  now: number
+}): AgentSessionRecord {
+  if (
+    args.record.lease.runtimeFence !== args.expectedFence ||
+    !isOwnerlessAgentSessionReservation(args.record)
+  ) {
+    return args.record
+  }
+  const released = releasedAgentSessionLease(
+    args.record,
+    nextAgentSessionFence(args.record.lease),
+    null,
+    args.now
+  )
+  return { ...released, lease: { ...released.lease, unreconciled: false } }
 }
 
 function releasedAgentSessionLease(

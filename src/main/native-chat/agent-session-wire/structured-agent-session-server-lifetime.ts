@@ -8,6 +8,11 @@ import type { StructuredAgentSessionTaskQueue } from './structured-agent-session
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { structuredAgentSessionOwesWork } from './structured-agent-session-owed-work'
 import { isProvenDeadProbe } from '../../../shared/agent-session-lease-adjudication'
+import {
+  abandonAgentSessionOwnerlessReservation,
+  isOwnerlessAgentSessionReservation
+} from '../../runtime/agent-session-lease-transitions'
+import { ownerlessReservationPastRetirementDeadline } from './structured-agent-session-reservation-retirement'
 
 export const STRUCTURED_AGENT_SESSION_UNANSWERED_PROMPT_MAX_AGE_MS = 24 * 60 * 60_000
 
@@ -17,6 +22,7 @@ export function createStructuredAgentSessionServerLifetime(input: {
   deliveryActive: (id: string) => boolean
   childWork: (id: string) => readonly AgentChildWorkView[] | undefined
   stopDelivery: () => void
+  restoreRetiredConversation: (sessionId: string) => Promise<void>
 }) {
   const read = (): number | null => {
     const deps = input.context().deps
@@ -32,7 +38,15 @@ export function createStructuredAgentSessionServerLifetime(input: {
       for (const record of deps.store.listRecords()) {
         const session = input.context().sessions.get(record.sessionId)
         // A lease without its transport must be reconciled by its execution host.
-        if (!session?.child && record.lease.claimStatus !== 'released') {
+        if (
+          !session?.child &&
+          record.lease.claimStatus !== 'released' &&
+          !ownerlessReservationPastRetirementDeadline(
+            record,
+            deps.platform ?? process.platform,
+            deps.now?.() ?? Date.now()
+          )
+        ) {
           return null
         }
         const loaded = session ? null : replayJournal(deps.journalDatabase.db, record.sessionId)
@@ -67,29 +81,60 @@ export function createStructuredAgentSessionServerLifetime(input: {
   }
   return {
     read,
+    abandonOwnerlessReservations: async (): Promise<void> => {
+      input.tasks.closeAdmission()
+      input.stopDelivery()
+      const { deps, runtimeState } = input.context()
+      runtimeState.acquireAborts.abortAll('abandoned by user server stop')
+      await Promise.allSettled(
+        deps.store
+          .listRecords()
+          .filter(isOwnerlessAgentSessionReservation)
+          .map((record) =>
+            deps.store
+              .transitionHandoff(record.sessionId, (latest) =>
+                abandonAgentSessionOwnerlessReservation({
+                  record: latest,
+                  expectedFence: record.lease.runtimeFence,
+                  now: deps.now?.() ?? Date.now()
+                })
+              )
+              .catch((error: unknown) =>
+                deps.logger.warn('recording user abandonment of a reservation failed', {
+                  scope: 'server-reservation-abandon',
+                  sessionId: record.sessionId,
+                  error
+                })
+              )
+          )
+      )
+    },
     observe: async (): Promise<number | null> => {
       try {
         const context = input.context()
-        for (const { sessionId, lease } of context.deps.store.listRecords()) {
-          if (!context.sessions.get(sessionId)?.child && lease.claimStatus !== 'released') {
+        for (const { sessionId } of context.deps.store.listRecords()) {
+          if (!context.sessions.get(sessionId)?.child) {
             await input.tasks.serialize(sessionId, async () => {
               const current = input.context()
               const record = current.deps.store.getRecord(sessionId)
               if (!record || current.sessions.get(sessionId)?.child) {
                 return
               }
-              const probe = await current.runtimeState.probeRecord(record)
-              if (
-                isProvenDeadProbe(probe) ||
-                (record.lease.ownerProcess === null && probe.outcome === 'reservation-unused')
-              ) {
-                await current.deps.store.evictProvenDeadOwner({
-                  sessionId,
-                  expectedFence: record.lease.runtimeFence,
-                  probe,
-                  now: current.now()
-                })
+              if (record.lease.claimStatus !== 'released') {
+                const probe = await current.runtimeState.probeRecord(record)
+                if (
+                  isProvenDeadProbe(probe) ||
+                  (record.lease.ownerProcess === null && probe.outcome === 'reservation-unused')
+                ) {
+                  await current.deps.store.evictProvenDeadOwner({
+                    sessionId,
+                    expectedFence: record.lease.runtimeFence,
+                    probe,
+                    now: current.now()
+                  })
+                }
               }
+              await input.restoreRetiredConversation(sessionId)
             })
           }
         }
