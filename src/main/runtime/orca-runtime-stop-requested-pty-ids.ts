@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import { CommandForegroundTracker } from '../../shared/command-foreground-tracker'
 import { OrchestrationStructuredMailboxPointerDelivery } from './orchestration/structured-mailbox-pointer-delivery'
 import { createStructuredMailboxPointerHost } from './orchestration/structured-mailbox-pointer-host'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
@@ -182,8 +183,8 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
     },
     readForegroundCommandLine: (ptyId, foregroundProcess) =>
       readLocalPtyForegroundCommandLine(ptyId, foregroundProcess),
-    // Why after the chunk's facts: the renderer drops an exited agent's row on command-finished
-    // unless the row changed after it, so the run's Done must arrive after that fact.
+    // Why after the chunk's facts: the host ends an exited agent's row on command-finished unless
+    // the row changed after it, so the run's Done must arrive after that fact.
     publish: (ptyId, payload, yieldsToHookSince) =>
       this.runAfterPendingTerminalSideEffectFacts(ptyId, () =>
         this.emitTerminalAgentStatusEvents(
@@ -192,6 +193,18 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
           { origin: 'process', yieldsToHookSince }
         )
       ),
+    now: () => Date.now()
+  })
+
+  protected readonly commandForeground = new CommandForegroundTracker({
+    read: async (ptyId) => {
+      const pty = this.ptysById.get(ptyId)
+      // Why: SSH foregrounds are the relay's to read, and WSL's live in the guest.
+      if (!pty || pty.connectionId || pty.wslDistro || this.wslDistroByPtyId.has(ptyId)) {
+        return { available: false, process: null }
+      }
+      return (await this.ptyForegroundAgent.read(ptyId)) ?? { available: false, process: null }
+    },
     now: () => Date.now()
   })
 

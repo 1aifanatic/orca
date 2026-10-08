@@ -61,13 +61,19 @@ async function startRelay() {
   return { server, forward, post, codex, last }
 }
 
-describe('relay: a launched agent command finishing', () => {
-  it('ends a process-less owner killed mid-turn, drops its late hooks, revives on a new run', async () => {
+const ran = (agent: string) => ({
+  foreground: { kind: 'agent' as const, agent },
+  startedAt: 0,
+  finishedAt: Date.now() + 1
+})
+
+describe('relay: the host ending the agent a finished command ran', () => {
+  it("ends a typed Codex Ctrl-C'd mid-turn, drops its late hooks, revives on a new run", async () => {
     const { server, forward, codex, last } = await startRelay()
     await codex('UserPromptSubmit', { prompt: 'codex task' })
     await codex('PreToolUse', toolUse)
     expect(last()?.payload.state).toBe('working')
-    server.endLaunch(paneKey, 'codex')
+    server.endCommand(paneKey, ran('codex'))
     expect(last()).toMatchObject({ providerSessionOnly: true, agentPresence: { ended: true } })
     const forwarded = forward.mock.calls.length
     await codex('Stop')
@@ -78,22 +84,20 @@ describe('relay: a launched agent command finishing', () => {
     expect(last()?.providerSessionOnly).toBeFalsy()
   })
 
-  it('leaves an owner that is not the launched agent', async () => {
+  it('keeps a Codex whose command another program held (`codex &`, then `ls`)', async () => {
     const { server, forward, codex } = await startRelay()
     await codex('UserPromptSubmit', { prompt: 'codex task' })
     const forwarded = forward.mock.calls.length
-    server.endLaunch(paneKey, 'claude')
+    server.endCommand(paneKey, {
+      foreground: { kind: 'program' },
+      startedAt: 0,
+      finishedAt: Date.now() + 1
+    })
+    server.endCommand(paneKey, ran('claude'))
     expect(forward.mock.calls.length).toBe(forwarded)
   })
 
-  it('ends a claude-agent-teams launch, whose hooks report claude', async () => {
-    const { server, post, last } = await startRelay()
-    await post('claude', { hook_event_name: 'UserPromptSubmit', session_id: 'claude-a' }, 4001)
-    server.endLaunch(paneKey, 'claude-agent-teams')
-    expect(last()).toMatchObject({ providerSessionOnly: true, agentPresence: { ended: true } })
-  })
-
-  it('hands the pane to the guest held behind the launched owner', async () => {
+  it('keeps a waiting guest visible, with its prompt, when a launched Claude is killed (e2e i)', async () => {
     const { server, post, codex, last } = await startRelay()
     await post(
       'claude',
@@ -102,8 +106,14 @@ describe('relay: a launched agent command finishing', () => {
     )
     await codex('UserPromptSubmit', { prompt: 'codex task' })
     await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce())
-    expect(last()?.payload.agentType).toBe('claude')
-    server.endLaunch(paneKey, 'claude')
+    probe.mockResolvedValue('exited')
+    await server.checkAgentPresence(paneKey)
     expect(last()).toMatchObject({ payload: { agentType: 'codex', prompt: 'codex task' } })
+    server.endCommand(paneKey, ran('claude'))
+    await codex('PreToolUse', toolUse)
+    expect(last()).toMatchObject({
+      payload: { agentType: 'codex', prompt: 'codex task', toolName: 'Bash' }
+    })
+    expect(last()?.providerSessionOnly).toBeFalsy()
   })
 })

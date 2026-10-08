@@ -47,9 +47,15 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
         launchToken,
         ...persistedPayload
       } = enrichedPayload
-      const launchTokenHash = launchToken?.trim()
+      const rowLaunchTokenHash = launchToken?.trim()
         ? createHash('sha256').update(launchToken.trim()).digest('hex')
         : this.hydratedLaunchTokenHashByPaneKey.get(paneKey)
+      // Why: a row can outlive its ended launch (a nested shell's leaked command end); that token is
+      // no commitment for a restart to restore.
+      const launchTokenHash =
+        rowLaunchTokenHash === this.endedLaunchTokenHashByPaneKey.get(paneKey)
+          ? undefined
+          : rowLaunchTokenHash
       // `payload.mainAgent` rides inside the payload; the legacy `claudeLeadBoundaryChildOnly` flag it
       // replaced is read at hydrate and never written again.
       const { claudeTaskWakeupPending: _pendingWakeup, ...persistedStatus } =
@@ -59,7 +65,7 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
         payload: persistedStatus,
         ...(launchTokenHash ? { launchTokenHash } : {})
       }
-      const commitment = this.toAuthorityEvidence(payload, launchTokenHash)
+      const commitment = launchTokenHash ? this.toAuthorityEvidence(payload, launchTokenHash) : null
       if (commitment && !conflictedCommitments.has(paneKey)) {
         const existing = authorityCommitments[paneKey]
         if (existing && !authorityCommitmentsMatch(existing, commitment)) {

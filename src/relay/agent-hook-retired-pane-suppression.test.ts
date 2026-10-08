@@ -169,7 +169,8 @@ describe('RelayAgentHookRuntime wiring', () => {
     const ptyHandler = {
       addEnvAugmenter: vi.fn(),
       setAgentPresenceTrigger: vi.fn(),
-      setAgentLaunchEndListener: vi.fn(),
+      setAgentCommandEndListener: vi.fn(),
+      observeAgentActivity: vi.fn(),
       setClaudeTerminalEvidenceListener,
       setExitListener: vi.fn(),
       getAgentLaunchToken: () => undefined,

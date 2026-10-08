@@ -3,6 +3,10 @@ import type { TmuxManagedPty } from '../shared/tmux-agent-hook-owner'
 import { resolveSynchronizedOutputSafeSplit } from '../shared/terminal-synchronized-output-scan'
 import { restoreManagedDataAccountEnvironment } from '../shared/managed-data-account-environment'
 import { createTerminalTitleTracker } from '../shared/terminal-output-side-effects'
+import {
+  CommandForegroundTracker,
+  type FinishedCommand
+} from '../shared/command-foreground-tracker'
 import { getDecorativeTitleGateKey } from '../shared/agent-decorative-title-signature'
 import type { ClaudeTerminalEvidence } from '../shared/claude-terminal-interrupt'
 import { FreebuffStatusProjection } from './freebuff-status-projection'
@@ -273,8 +277,6 @@ type ManagedPty = {
   shellCwd?: string
   shellPathEnv?: string
   agentLaunchToken?: string
-  /** The agent Orca launched here, until its command finishes. */
-  launchAgent?: TuiAgent
   envToDelete: string[]
   gitCredentialPromptGuarded: boolean
   historyIsolationEnabled?: boolean
@@ -760,16 +762,37 @@ export class PtyHandler {
   }
 
   private agentPresenceTrigger: ((paneKey: string) => void) | null = null
-  private agentLaunchEndListener: ((paneKey: string, launchAgent: TuiAgent) => void) | null = null
+  private agentCommandEndListener: ((paneKey: string, command: FinishedCommand) => void) | null =
+    null
+  private readonly commandForeground = new CommandForegroundTracker({
+    read: async (id) => {
+      const managed = this.ptys.get(id)
+      if (!managed || managed.disposed) {
+        return { available: false, process: null }
+      }
+      const process = await getForegroundProcessName(managed.pty.pid, managed.pty.process || null)
+      return { available: process !== null, process }
+    },
+    now: () => Date.now()
+  })
 
   setAgentPresenceTrigger(listener: ((paneKey: string) => void) | null): void {
     this.agentPresenceTrigger = listener
   }
 
-  setAgentLaunchEndListener(
-    listener: ((paneKey: string, launchAgent: TuiAgent) => void) | null
+  /** A command finished in a pane: the hook server ends the agent it ran (the host's command-end rule). */
+  setAgentCommandEndListener(
+    listener: ((paneKey: string, command: FinishedCommand) => void) | null
   ): void {
-    this.agentLaunchEndListener = listener
+    this.agentCommandEndListener = listener
+  }
+
+  /** An agent reported in this pane: let its running command read who holds the foreground. */
+  observeAgentActivity(paneKey: string): void {
+    const managed = this.getCurrentManagedPty(paneKey)
+    if (managed) {
+      this.commandForeground.observeActivity(managed.id)
+    }
   }
 
   private claudeTerminalEvidenceListener:
@@ -1149,12 +1172,14 @@ export class PtyHandler {
         }
         lastTitleGateKey = gateKey
       },
+      onCommandStarted: () => this.commandForeground.started(managed.id),
       onCommandFinished: () => {
-        const launchAgent = managed.launchAgent
-        managed.launchAgent = undefined
-        if (managed.paneKey && launchAgent) {
-          this.agentLaunchEndListener?.(managed.paneKey, launchAgent)
-        }
+        const paneKey = managed.paneKey
+        void this.commandForeground.finished(managed.id).then((command) => {
+          if (command && paneKey) {
+            this.agentCommandEndListener?.(paneKey, command)
+          }
+        })
         recheckAgentPresence()
       }
     })
@@ -1246,6 +1271,7 @@ export class PtyHandler {
       return
     }
     managed.exitListenerNotified = true
+    this.commandForeground.forget(managed.id)
     // Why: notify exactly once — both physical exit and whole-relay disposal reach here.
     if (this.exitListener) {
       try {
@@ -2247,7 +2273,6 @@ export class PtyHandler {
       shellCwd: cwd,
       shellPathEnv: spawnEnv.PATH,
       agentLaunchToken: ptyEnv.ORCA_AGENT_LAUNCH_TOKEN?.trim() || undefined,
-      ...(launchAgent ? { launchAgent } : {}),
       ownerBackend: resolvePtyOwnerBackend({
         platform: process.platform,
         shellPath: shell,
