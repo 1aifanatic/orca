@@ -1,0 +1,37 @@
+{
+  "sourceHead": "3b24c0d4e77f011327eee9215b4e7418883594dc",
+  "diagnosticOnlyUntilActualQualification": true,
+  "targets": {
+    "config/scripts/mobile-web-app-preview-arm-driver.mjs": {
+      "beforeSha256": "04e62d302f28070230d017d1fbda97bc35566d49dc15b30a406f4bd3ce3bd7df",
+      "afterSha256": "35dc083e4ca18a38f8d53bed5451d788c917b9771638bd28448e3380f3ff797a",
+      "candidate": "notes/bun-migration/performance/mobile-html-preview-navigation-3b24-candidate/candidate/mobile-web-app-preview-arm-driver.mjs"
+    },
+    "config/scripts/mobile-web-app-preview-request-log.mjs": {
+      "beforeSha256": "e7cf0464d66d420ac6fed3396d131bbd88ab0b2a6f7d7c109a1b6249654c8a04",
+      "afterSha256": "6dc48d29f69200a14f85802fe4e394594b13f581ecee900eb94972083e10e0f5",
+      "candidate": "notes/bun-migration/performance/mobile-html-preview-navigation-3b24-candidate/candidate/mobile-web-app-preview-request-log.mjs"
+    },
+    "config/scripts/mobile-web-app-preview-frame-readiness.mjs": {
+      "beforeSha256": "f82cb575714b47709a2497ba5479577184cf592750d5380b62c970f5963f20d0",
+      "afterSha256": "a76f39f6a4bde645be6cbb501064de608a392812f350c6350947cbf76b367f5d",
+      "candidate": "notes/bun-migration/performance/mobile-html-preview-navigation-3b24-candidate/candidate/mobile-web-app-preview-frame-readiness.mjs"
+    }
+  },
+  "testFileUnchanged": true,
+  "productFilesUnchanged": true,
+  "originalCallbacksAssertionsDeadlinesUnchanged": true,
+  "navigationRecordMs": 10000,
+  "observationLimits": [
+    "Listeners/CDP attachment can perturb scheduling; passing instrumented cases alone do not prove prior failure cause.",
+    "CDP binds the loaded frame after readiness; parser requests predating that binding may remain unobserved.",
+    "The original trusted Playwright input, product sandbox/CSP and all case assertions remain unchanged."
+  ],
+  "supportedParentSessionFallback": {
+    "pinnedPlaywright": "1.63.0",
+    "exactError": "browserContext.newCDPSession: This frame does not have a separate CDP session, it is a part of the parent frame's session",
+    "requiresPageNetworkEnableSuccess": true,
+    "actualSessionModeRecorded": true,
+    "publicApiPrefixOwner": "playwright-core/lib/coreBundle.js:57438"
+  }
+}
