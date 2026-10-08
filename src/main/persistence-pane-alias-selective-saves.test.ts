@@ -31,6 +31,7 @@ vi.mock('./telemetry/cohort-classifier', () => ({ getCohortAtEmit: vi.fn() }))
 
 const SOURCE = makePaneKey('tab-source', '11111111-1111-4111-8111-111111111111')
 const TARGET = makePaneKey('tab-target', '22222222-2222-4222-8222-222222222222')
+const FINAL = makePaneKey('tab-final', '33333333-3333-4333-8333-333333333333')
 const migrationEntry = {
   ptyId: 'ssh:ssh-1@@legacy-pty',
   worktreeId: 'repo-1::/worktree',
@@ -135,15 +136,17 @@ describe('pane alias and migration listeners save only their sections', () => {
     expectOnlyChanged(before, after, ['legacyPaneKeyAliasEntries'])
   })
 
-  it('saves a timestamp-only alias update', async () => {
+  it('saves a chained alias update', async () => {
     const { store } = await durableBaseline()
     agentHookServer.transferPaneAuthority(SOURCE, TARGET, 'pty-1', 10)
     await runBackgroundSave(store)
-    agentHookServer.transferPaneAuthority(SOURCE, TARGET, 'pty-1', 20)
+    agentHookServer.transferPaneAuthority(TARGET, FINAL, 'pty-1', 20)
     await runBackgroundSave(store)
 
     const payload = readDocuments().get('legacyPaneKeyAliasEntries')?.payload ?? 'null'
-    expect(JSON.parse(payload)).toEqual([expect.objectContaining({ updatedAt: 20 })])
+    expect(JSON.parse(payload)).toEqual([
+      expect.objectContaining({ stablePaneKey: FINAL, updatedAt: 20 })
+    ])
   })
 
   it('writes an empty migration list as an empty array, not a deletion', async () => {

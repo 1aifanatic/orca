@@ -25,6 +25,8 @@ vi.mock('../../ssh/ssh-config-parser', () => ({
 
 const SOURCE_A = makePaneKey('tab-a', '11111111-1111-4111-8111-111111111111')
 const TARGET_A = makePaneKey('tab-a2', '22222222-2222-4222-8222-222222222222')
+const TARGET_A_2 = makePaneKey('tab-a3', '55555555-5555-4555-8555-555555555555')
+const TARGET_A_3 = makePaneKey('tab-a4', '66666666-6666-4666-8666-666666666666')
 const SOURCE_B = makePaneKey('tab-b', '33333333-3333-4333-8333-333333333333')
 const TARGET_B = makePaneKey('tab-b2', '44444444-4444-4444-8444-444444444444')
 const MIGRATION_ENTRY = {
@@ -62,14 +64,14 @@ async function holdAliasCommit(point: 'after-commit' | 'before-failure') {
     }
   })
   // Commit A also carries a section no later edit touches, so only restored intent can save it.
-  agentHookServer.transferPaneAuthority(SOURCE_A, TARGET_A, 'pty-a', 2)
+  agentHookServer.transferPaneAuthority(TARGET_A, TARGET_A_2, 'pty-a', 2)
   setMigrationUnsupportedPty(MIGRATION_ENTRY)
   const controller = new AbortController()
   const pending = store.flushPendingOrThrowAsync({ signal: controller.signal })
   const settled = pending.catch((error: unknown) => error)
   await started.promise
   // Newer edits arrive while commit A is unacknowledged.
-  agentHookServer.transferPaneAuthority(SOURCE_A, TARGET_A, 'pty-a', 3)
+  agentHookServer.transferPaneAuthority(TARGET_A_2, TARGET_A_3, 'pty-a', 3)
   agentHookServer.clearPaneKeyAliasesForPty('pty-b')
   store.setWorkspaceSession(
     { ...getDefaultWorkspaceSession(), activeRepoId: 'remote-repo' },
@@ -85,7 +87,7 @@ function expectLatestOwedState(state: {
 }): void {
   expect(state.migrationUnsupportedPtyEntries).toEqual([MIGRATION_ENTRY])
   expect(state.legacyPaneKeyAliasEntries).toEqual([
-    { ptyId: 'pty-a', legacyPaneKey: SOURCE_A, stablePaneKey: TARGET_A, updatedAt: 3 }
+    { ptyId: 'pty-a', legacyPaneKey: SOURCE_A, stablePaneKey: TARGET_A_3, updatedAt: 3 }
   ])
   expect(state.workspaceSessionsByHostId?.['ssh:ssh-1']).toMatchObject({
     activeRepoId: 'remote-repo'
