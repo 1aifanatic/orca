@@ -38,7 +38,7 @@ test('the pool-herd metric thresholds the interval maximum the relay emits', () 
   const emitter = read('../../apps/relay/src/postgres-pool-pressure.ts')
   assert.match(emitter, /\bdatabasePoolWaitersMax: number\b/)
   const metric = block('google_logging_metric', 'relay_cell_pool_herd')
-  // 200, not lower: asia-east2 cells reach 184-196 waiters outside any herd.
+  // 200, not lower: single-cell stalls of 50-196 waiters recur daily; herds go past 200.
   assert.match(metric, /jsonPayload\.databasePoolWaitersMax>200"/)
   const policy = block('google_monitoring_alert_policy', 'relay_cell_pool_herd')
   assert.match(policy, /threshold_value\s*=\s*0\n/)
