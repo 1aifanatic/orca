@@ -279,6 +279,31 @@ describe('pairing.delegatedMobileDevice.sync', () => {
     expect(registry.getDevice(child!.deviceId)).not.toBeNull()
   })
 
+  it('fails a sync whose dropped child cannot be revoked, keeping that child', async () => {
+    const { server, registry } = await startServer()
+    const desktop = pairDesktop(server)
+    const [child] = await sync(desktop, [{ phoneKey: 'p', name: 'p' }])
+    expect(
+      server.setMobileRelayBinding(child!.deviceId, {
+        relayHostId: 'host',
+        relayDeviceId: child!.deviceId,
+        ownerIdentityKey: 'owner'
+      })
+    ).toBe(true)
+    const enqueue = vi.spyOn(server.getRelayRevokeOutbox(), 'enqueue').mockImplementation(() => {
+      throw new Error('disk full')
+    })
+    cleanups.push(() => enqueue.mockRestore())
+
+    await expect(sendSync(desktop, [{ phoneKey: 'q', name: 'q' }])).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'runtime_error', message: 'delegated_device_revoke_failed' }
+    })
+    expect(registry.listDelegatedMobileDevices(desktop.pairedDeviceId!)).toMatchObject([
+      { deviceId: child!.deviceId }
+    ])
+  })
+
   it('keeps the parent link across a restart, so the cascade still applies', async () => {
     const first = await startServer()
     const desktop = pairDesktop(first.server)

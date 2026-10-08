@@ -162,6 +162,7 @@ export class DeviceRegistry {
     scope: DeviceScope = 'mobile',
     pairingReach: RuntimePairingReach = 'network'
   ): DeviceEntry {
+    // Why: a pending runtime device has no delegated children — its first auth sets lastSeenAt before any sync.
     const retainedDevices = this.devices.filter((d) => d.lastSeenAt !== 0 || d.scope !== scope)
     return this.createAndPersistDevice(retainedDevices, name, scope, pairingReach)
   }

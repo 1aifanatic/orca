@@ -66,8 +66,11 @@ export class RuntimeRpcMobileDevices extends RuntimeRpcRequestAdmission {
     }
     const wanted = new Set(phones.map((phone) => phone.phoneKey))
     for (const child of registry.listDelegatedMobileDevices(parentDeviceId)) {
-      if (!child.phoneKey || !wanted.has(child.phoneKey)) {
-        this.revokeMobileDeviceNow(child.deviceId)
+      if (
+        (!child.phoneKey || !wanted.has(child.phoneKey)) &&
+        !this.revokeMobileDeviceNow(child.deviceId)
+      ) {
+        throw new Error('delegated_device_revoke_failed')
       }
     }
     return {
