@@ -54,6 +54,7 @@ export {
 export {
   hydrateNativeChatComposerDrafts,
   isNativeChatComposerDraftLoadPending,
+  subscribeToNativeChatComposerDraftLoad,
   waitForNativeChatComposerDrafts
 } from './native-chat-composer-draft-load'
 
@@ -110,6 +111,14 @@ export function subscribeToNativeChatComposerDraft(
 /** A draft read back from storage this run whose image files have not been checked yet. */
 export function isNativeChatComposerDraftUnverified(scopeKey: string): boolean {
   return unverifiedScopes.has(scopeKey)
+}
+
+/** A moved draft read from storage still needs its image files checked in the new scope. */
+export function markNativeChatComposerDraftUnverified(scopeKey: string): void {
+  if (!unverifiedScopes.has(scopeKey)) {
+    unverifiedScopes.add(scopeKey)
+    notifyScope(scopeKey)
+  }
 }
 
 export function markNativeChatComposerDraftVerified(scopeKey: string): void {

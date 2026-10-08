@@ -16,10 +16,7 @@ import {
   setNativeChatComposerDraftStorageForTests
 } from './native-chat-composer-draft-storage'
 import { writeNativeChatDraftCache } from './native-chat-draft-cache'
-import {
-  moveStructuredAgentSessionDraft,
-  resetStructuredAgentSessionDraftMoveForTests
-} from './structured-agent-session-draft-move'
+import { moveStructuredAgentSessionDraft } from './structured-agent-session-draft-move'
 
 vi.mock('@/lib/native-chat-telemetry', () => ({ emitNativeChatMessageSent: vi.fn() }))
 vi.mock('@/lib/worker-terminal-takeover-report', () => ({
@@ -35,14 +32,13 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-  resetStructuredAgentSessionDraftMoveForTests()
   clearNativeChatComposerDraftsForTests()
 })
 
-// The host moves the chat's tab before the /clear's reply lands, and the box holds "/clear" until then.
-it('moves only what was typed after /clear when the chat moves before the reply', async () => {
+// The host moves the chat before the command reply lands.
+async function clearHarness() {
   updateNativeChatComposerDraft(from, { text: '/clear' }, 'immediate')
-  let reply: () => void = () => {}
+  let reply: (accepted: boolean) => void = () => {}
   const transport: NativeChatStructuredComposerTransport = {
     send: vi.fn(() => true),
     dispatchCommand: (text: string) =>
@@ -54,7 +50,7 @@ it('moves only what was typed after /clear when the chat moves before the reply'
         conversationCommands: ['clear'],
         runConversationCommand: () =>
           new Promise((resolve) => {
-            reply = () => resolve({ accepted: true, error: null })
+            reply = (accepted) => resolve({ accepted, error: accepted ? null : 'not cleared' })
           })
       }),
     optionsSurface: {
@@ -77,18 +73,55 @@ it('moves only what was typed after /clear when the chat moves before the reply'
       structuredTransport: transport,
       isComposing: () => false,
       clearSkillOrigin: vi.fn(),
-      setHistory: vi.fn(),
       setDraft: (value) => writeNativeChatDraftCache(from, value),
       setCaret: vi.fn()
     })
   )
 
-  const sent = result.current('/clear')
-  updateNativeChatComposerDraft(from, { text: '/clear\nnext question' }, 'immediate')
-  moveStructuredAgentSessionDraft('session-a', 'session-b')
-  reply()
+  return { send: result.current, reply: (accepted: boolean) => reply(accepted) }
+}
+
+it('moves only what was typed after /clear when the chat moves before the reply', async () => {
+  const { send, reply } = await clearHarness()
+  const sent = send('/clear')
+  expect(readNativeChatComposerDraft(from).text).toBe('')
+  updateNativeChatComposerDraft(from, { text: 'next question' }, 'immediate')
+  await moveStructuredAgentSessionDraft('session-a', 'session-b')
+  reply(true)
   await sent
 
-  expect(readNativeChatComposerDraft(to).text).toBe('\nnext question')
+  expect(readNativeChatComposerDraft(to).text).toBe('next question')
   expect(readNativeChatComposerDraft(from).text).toBe('')
+})
+
+it('restores a refused clear command if no new draft replaced it', async () => {
+  const { send, reply } = await clearHarness()
+  const sent = send('/clear')
+  expect(readNativeChatComposerDraft(from).text).toBe('')
+  reply(false)
+  await sent
+  expect(readNativeChatComposerDraft(from).text).toBe('/clear')
+})
+
+it('leaves text and images typed after a refused clear untouched', async () => {
+  const { send, reply } = await clearHarness()
+  const sent = send('/clear')
+  const image = { id: 'image', path: '/remote/image.png', connectionId: 'ssh-1' }
+  updateNativeChatComposerDraft(from, { text: 'next question', images: [image] }, 'immediate')
+  reply(false)
+  await sent
+  expect(readNativeChatComposerDraft(from)).toMatchObject({
+    text: 'next question',
+    images: [image]
+  })
+})
+
+it('leaves the new composer empty when clear succeeds with no following input', async () => {
+  const { send, reply } = await clearHarness()
+  const sent = send('/clear')
+  await moveStructuredAgentSessionDraft('session-a', 'session-b')
+  reply(true)
+  await sent
+  expect(readNativeChatComposerDraft(to)).toMatchObject({ text: '', images: [] })
+  expect(readNativeChatComposerDraft(from)).toMatchObject({ text: '', images: [] })
 })

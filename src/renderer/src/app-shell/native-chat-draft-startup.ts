@@ -3,6 +3,7 @@ import { resolveNativeChatDraftOwner } from '../lib/native-chat-draft-owner'
 import {
   hydrateNativeChatComposerDrafts,
   setNativeChatComposerDraftOwnerResolver,
+  subscribeToNativeChatComposerDraftLoad,
   waitForNativeChatComposerDrafts
 } from '@/components/native-chat/native-chat-composer-draft-store'
 import {
@@ -19,9 +20,21 @@ export function startNativeChatDraftLoad(): () => void {
   setNativeChatComposerDraftOwnerResolver((scopeKey) =>
     resolveNativeChatDraftOwner(useAppStore.getState(), scopeKey)
   )
+  const restoreMoves = (): void => {
+    for (const { from, to } of structuredAgentSessionConversationMoves(
+      {},
+      useAppStore.getState().unifiedTabsByWorktree
+    )) {
+      void moveStructuredAgentSessionDraft(from, to).catch((error) => {
+        console.warn('[native-chat-drafts] a restored chat draft could not move', error)
+      })
+    }
+  }
+  const stopLoad = subscribeToNativeChatComposerDraftLoad(restoreMoves)
   void hydrateNativeChatComposerDrafts()
+  restoreMoves()
   // In the same store update as the tab's move, so the chat's new composer mounts with the draft.
-  return useAppStore.subscribe((state, previous) => {
+  const stopTabs = useAppStore.subscribe((state, previous) => {
     if (state.unifiedTabsByWorktree === previous.unifiedTabsByWorktree) {
       return
     }
@@ -30,13 +43,15 @@ export function startNativeChatDraftLoad(): () => void {
       state.unifiedTabsByWorktree
     )) {
       // Why caught: a draft that fails to move must not fail the tab update that triggered it.
-      try {
-        moveStructuredAgentSessionDraft(from, to)
-      } catch (error) {
+      void moveStructuredAgentSessionDraft(from, to).catch((error) => {
         console.warn('[native-chat-drafts] a cleared chat draft could not move', error)
-      }
+      })
     }
   })
+  return () => {
+    stopLoad()
+    stopTabs()
+  }
 }
 
 /** Startup waits for the drafts alongside the session read, so a composer shows its draft from

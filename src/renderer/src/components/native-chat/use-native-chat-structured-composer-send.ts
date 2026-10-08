@@ -15,12 +15,12 @@ import { nativeChatNoticeFromError } from './native-chat-composer-notice'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import { translate } from '@/i18n/i18n'
 import {
+  clearNativeChatComposerDraftIfUnchanged,
   readNativeChatComposerDraft,
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
 import { nativeChatComposerDraftLeftAfterSend } from './native-chat-composer-draft-comparison'
 import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
-import { noteNativeChatDraftSendOut } from './structured-agent-session-draft-move'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
@@ -92,12 +92,29 @@ export function useNativeChatStructuredComposerSend({
         structuredTransport.onSubmitted?.()
       }
       const submitted = sentFrom ?? readNativeChatComposerDraft(draftScopeKey)
-      // A /clear can move the chat before its reply lands; its own text must not move along.
-      const settled = noteNativeChatDraftSendOut(draftScopeKey, submitted)
+      // Consume /clear before the host replaces the conversation and its composer.
+      const clearedAtSubmit =
+        hostCommand &&
+        /^\/clear(?:\s|$)/i.test(text) &&
+        clearNativeChatComposerDraftIfUnchanged(draftScopeKey, submitted)
+      if (clearedAtSubmit) {
+        setDraft('')
+        setCaret(0)
+        clearSkillOrigin()
+      }
+      const restoreCommand = (): void => {
+        const current = readNativeChatComposerDraft(draftScopeKey)
+        if (clearedAtSubmit && current.text === '' && current.images.length === 0) {
+          updateNativeChatComposerDraft(draftScopeKey, submitted, 'immediate')
+          setDraft(submitted.text)
+          setCaret(submitted.text.length)
+        }
+      }
       await dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
         .then(({ accepted, error, revealsTranscript }) => {
           structuredTransport.onError(error)
           if (!accepted) {
+            restoreCommand()
             return
           }
           emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
@@ -111,6 +128,9 @@ export function useNativeChatStructuredComposerSend({
             structuredTransport.sessionId,
             structuredTransport.runtimeEnvironmentId
           )
+          if (clearedAtSubmit) {
+            return
+          }
           // Why: the send settles after a round trip, while this or another composer of the same
           // conversation may have changed the draft; only what was sent leaves it.
           const left = nativeChatComposerDraftLeftAfterSend(
@@ -128,13 +148,13 @@ export function useNativeChatStructuredComposerSend({
           clearSkillOrigin()
         })
         .catch((error) => {
+          restoreCommand()
           const notice = nativeChatNoticeFromError(
             error,
             agentSessionWriteNoticeText([hostCommand ? 'notDoneCommand' : 'notDoneSend'])
           )
           structuredTransport.onError(notice.text, notice.errorText)
         })
-        .finally(settled)
     },
     [
       agent,

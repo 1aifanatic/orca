@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { startNativeChatDraftLoad } from './native-chat-draft-startup'
 import { applyWebSessionTabsSnapshot } from '@/runtime/web-session-tabs-sync'
@@ -15,6 +15,7 @@ import {
   readNativeChatComposerDraft,
   structuredAgentSessionDraftScopeKey,
   updateNativeChatComposerDraft,
+  nativeChatComposerDraftWritesSettled,
   waitForNativeChatComposerDrafts
 } from '@/components/native-chat/native-chat-composer-draft-store'
 import {
@@ -36,6 +37,40 @@ afterEach(() => {
   stop()
   useAppStore.setState(initialState, true)
   clearNativeChatComposerDraftsForTests()
+  vi.useRealTimers()
+})
+
+it('re-derives a saved draft move after the first storage load fails and a retry succeeds', async () => {
+  stop()
+  clearNativeChatComposerDraftsForTests()
+  vi.useFakeTimers()
+  const storage = createMemoryNativeChatComposerDraftStorage()
+  storage.drafts.set(structuredAgentSessionDraftScopeKey('old-session'), {
+    text: 'saved despite the failed load',
+    images: [],
+    savedAt: 1
+  })
+  storage.loadAll = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('temporarily unavailable'))
+    .mockImplementationOnce(async () => new Map(storage.drafts))
+  setNativeChatComposerDraftStorageForTests(storage)
+  useAppStore.setState({
+    unifiedTabsByWorktree: {
+      [WT]: [{ ...chatTab('new-session'), agentSessionReplacesSessionId: 'old-session' }]
+    }
+  })
+  stop = startNativeChatDraftLoad()
+  await waitForNativeChatComposerDrafts(1_000)
+  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
+    ''
+  )
+  await vi.advanceTimersByTimeAsync(1_000)
+  await nativeChatComposerDraftWritesSettled()
+  await Promise.resolve()
+  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
+    'saved despite the failed load'
+  )
 })
 
 function chatTab(entityId: string) {
@@ -55,7 +90,7 @@ function chatTab(entityId: string) {
 }
 
 // The host moves a cleared chat's tab to its new conversation, whichever client ran the /clear.
-it("moves what the chat's box held into the conversation its tab moved to", () => {
+it("moves what the chat's box held into the conversation its tab moved to", async () => {
   useAppStore.setState({
     unifiedTabsByWorktree: { [WT]: [chatTab('old-session')] },
     groupsByWorktree: {
@@ -97,6 +132,9 @@ it("moves what the chat's box held into the conversation its tab moved to", () =
     )
   )
 
+  await nativeChatComposerDraftWritesSettled()
+  await Promise.resolve()
+
   expect(useAppStore.getState().unifiedTabsByWorktree[WT]?.[0]).toMatchObject({
     id: 'local-pane',
     entityId: 'new-session'
@@ -107,6 +145,33 @@ it("moves what the chat's box held into the conversation its tab moved to", () =
     text: 'typed during the clear',
     images: [{ id: 'i1', path: '/remote/shot.png', connectionId: 'ssh-1' }]
   })
+  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
+    ''
+  )
+})
+
+it('restores a saved source into an already switched tab when startup reads its replacement', async () => {
+  stop()
+  clearNativeChatComposerDraftsForTests()
+  const storage = createMemoryNativeChatComposerDraftStorage()
+  storage.drafts.set(structuredAgentSessionDraftScopeKey('old-session'), {
+    text: 'saved before the switch',
+    images: [],
+    savedAt: 1
+  })
+  setNativeChatComposerDraftStorageForTests(storage)
+  useAppStore.setState({
+    unifiedTabsByWorktree: {
+      [WT]: [{ ...chatTab('new-session'), agentSessionReplacesSessionId: 'old-session' }]
+    }
+  })
+  stop = startNativeChatDraftLoad()
+  await waitForNativeChatComposerDrafts(1_000)
+  await nativeChatComposerDraftWritesSettled()
+  await Promise.resolve()
+  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
+    'saved before the switch'
+  )
   expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
     ''
   )

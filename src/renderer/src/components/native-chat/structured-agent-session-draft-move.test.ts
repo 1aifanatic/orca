@@ -3,13 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Tab } from '../../../../shared/tab-types'
 import {
   moveStructuredAgentSessionDraft,
-  noteNativeChatDraftSendOut,
-  resetStructuredAgentSessionDraftMoveForTests,
   structuredAgentSessionConversationMoves
 } from './structured-agent-session-draft-move'
 import {
   clearNativeChatComposerDraftsForTests,
   hydrateNativeChatComposerDrafts,
+  isNativeChatComposerDraftUnverified,
   readNativeChatComposerDraft,
   structuredAgentSessionDraftScopeKey,
   updateNativeChatComposerDraft
@@ -28,12 +27,11 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-  resetStructuredAgentSessionDraftMoveForTests()
   clearNativeChatComposerDraftsForTests()
 })
 
 describe('moving a cleared conversation draft', () => {
-  it('moves text, SSH images and skill chips whole into the new conversation', () => {
+  it('moves text, SSH images and skill chips whole into the new conversation', async () => {
     const document = { type: 'doc', content: [{ type: 'paragraph' }] }
     updateNativeChatComposerDraft(
       scope('a'),
@@ -41,7 +39,7 @@ describe('moving a cleared conversation draft', () => {
       'immediate'
     )
 
-    moveStructuredAgentSessionDraft('a', 'b')
+    await moveStructuredAgentSessionDraft('a', 'b')
 
     expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
       text: 'typed during clear',
@@ -51,56 +49,99 @@ describe('moving a cleared conversation draft', () => {
     expect(readNativeChatComposerDraft(scope('a'))).toMatchObject({ text: '', images: [] })
   })
 
-  it('goes after what the new conversation already holds', () => {
+  it('goes after what the new conversation already holds', async () => {
     updateNativeChatComposerDraft(scope('a'), { text: 'moved' }, 'immediate')
     updateNativeChatComposerDraft(scope('b'), { text: 'already here' }, 'immediate')
 
-    moveStructuredAgentSessionDraft('a', 'b')
+    await moveStructuredAgentSessionDraft('a', 'b')
 
     expect(readNativeChatComposerDraft(scope('b')).text).toBe('already here\n\nmoved')
   })
 
-  it("leaves a send's own text behind for it to clear, and moves what was typed after it", () => {
-    updateNativeChatComposerDraft(scope('a'), { text: '/clear' }, 'immediate')
-    const settled = noteNativeChatDraftSendOut(scope('a'), readNativeChatComposerDraft(scope('a')))
+  it('moves nothing from an empty draft', async () => {
+    updateNativeChatComposerDraft(scope('b'), { text: 'mine' }, 'immediate')
+    await moveStructuredAgentSessionDraft('a', 'b')
+    expect(readNativeChatComposerDraft(scope('b')).text).toBe('mine')
+  })
+
+  it('keeps the source when saving the destination fails', async () => {
+    const storage = createMemoryNativeChatComposerDraftStorage()
+    setNativeChatComposerDraftStorageForTests(storage)
+    updateNativeChatComposerDraft(scope('a'), { text: 'still owed' }, 'immediate')
+    storage.refuseWrites = true
+
+    await moveStructuredAgentSessionDraft('a', 'b')
+
+    expect(readNativeChatComposerDraft(scope('a')).text).toBe('still owed')
+    expect(readNativeChatComposerDraft(scope('b')).text).toBe('still owed')
+    storage.refuseWrites = false
+    await moveStructuredAgentSessionDraft('a', 'b')
+    expect(readNativeChatComposerDraft(scope('b')).text).toBe('still owed')
+    expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
+  })
+
+  it('saves the skill document before removing its source, and restores it after restart', async () => {
+    const storage = createMemoryNativeChatComposerDraftStorage()
+    setNativeChatComposerDraftStorageForTests(storage)
+    const document = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'nativeChatSkill', attrs: { token: '/review' } }] }
+      ]
+    }
     updateNativeChatComposerDraft(
       scope('a'),
-      { text: '/clear\nnext question', images: [SSH_IMAGE] },
+      { text: '/review', document, images: [SSH_IMAGE] },
       'immediate'
     )
 
-    moveStructuredAgentSessionDraft('a', 'b')
-
+    await moveStructuredAgentSessionDraft('a', 'b')
+    expect(storage.drafts.get(scope('b'))).toMatchObject({ document, images: [SSH_IMAGE] })
+    clearNativeChatComposerDraftsForTests()
+    setNativeChatComposerDraftStorageForTests(storage)
+    await hydrateNativeChatComposerDrafts()
     expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
-      text: '\nnext question',
+      text: '/review',
+      document,
       images: [SSH_IMAGE]
     })
-    expect(readNativeChatComposerDraft(scope('a'))).toMatchObject({ text: '/clear', images: [] })
-    settled()
-    updateNativeChatComposerDraft(scope('a'), { text: '/clear more' }, 'immediate')
-    moveStructuredAgentSessionDraft('a', 'b')
-    expect(readNativeChatComposerDraft(scope('b')).text).toBe('\nnext question\n\n/clear more')
+    expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
   })
 
-  it('moves nothing from an empty draft', () => {
-    updateNativeChatComposerDraft(scope('b'), { text: 'mine' }, 'immediate')
-    moveStructuredAgentSessionDraft('a', 'b')
-    expect(readNativeChatComposerDraft(scope('b')).text).toBe('mine')
+  it('keeps unavailable images intact and deduplicates an already copied image', async () => {
+    const image = { id: 'missing', path: '', unavailableName: 'notes.png' }
+    updateNativeChatComposerDraft(scope('a'), { text: 'moved', images: [image] }, 'immediate')
+    updateNativeChatComposerDraft(scope('b'), { text: 'moved', images: [image] }, 'immediate')
+    await moveStructuredAgentSessionDraft('a', 'b')
+    expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
+      text: 'moved',
+      images: [image]
+    })
+  })
+
+  it('does not clear a source edited while the destination save is outstanding', async () => {
+    updateNativeChatComposerDraft(scope('a'), { text: 'moved' }, 'immediate')
+    const moving = moveStructuredAgentSessionDraft('a', 'b')
+    updateNativeChatComposerDraft(scope('a'), { text: 'new old-chat draft' }, 'immediate')
+    await moving
+    expect(readNativeChatComposerDraft(scope('a')).text).toBe('new old-chat draft')
+    expect(readNativeChatComposerDraft(scope('b')).text).toBe('moved')
   })
 
   it('waits for the saved drafts to load before moving one only storage holds', async () => {
     clearNativeChatComposerDraftsForTests()
     const storage = createMemoryNativeChatComposerDraftStorage()
-    storage.drafts.set(scope('a'), { text: 'saved before quit', images: [], savedAt: 1 })
+    storage.drafts.set(scope('a'), { text: 'saved before quit', images: [SSH_IMAGE], savedAt: 1 })
     setNativeChatComposerDraftStorageForTests(storage)
     const loading = hydrateNativeChatComposerDrafts()
 
-    moveStructuredAgentSessionDraft('a', 'b')
+    await moveStructuredAgentSessionDraft('a', 'b')
     await loading
     await Promise.resolve()
 
     expect(readNativeChatComposerDraft(scope('b')).text).toBe('saved before quit')
     expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
+    expect(isNativeChatComposerDraftUnverified(scope('b'))).toBe(true)
   })
 })
 
@@ -134,4 +175,21 @@ describe('which chats moved conversation', () => {
       { from: 'a', to: 'b' }
     ])
   })
+})
+
+it('derives a move from a first host replacement and ignores repeated publication', () => {
+  const target = { ...chat('new-tab', 'b'), agentSessionReplacesSessionId: 'a' }
+  expect(structuredAgentSessionConversationMoves({}, { wt: [target] })).toEqual([
+    { from: 'a', to: 'b' }
+  ])
+  expect(
+    structuredAgentSessionConversationMoves({ wt: [target] }, { wt: [{ ...target }] })
+  ).toEqual([])
+})
+
+it('keeps a draft in a source explicitly reopened from history after restart', () => {
+  const target = { ...chat('new-tab', 'b'), agentSessionReplacesSessionId: 'a' }
+  expect(
+    structuredAgentSessionConversationMoves({}, { wt: [target, chat('history', 'a')] })
+  ).toEqual([])
 })
