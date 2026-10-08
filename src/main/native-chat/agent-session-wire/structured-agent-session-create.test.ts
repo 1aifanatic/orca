@@ -190,6 +190,68 @@ it('an immediate Stop cancels the queued first message before acquire and replay
   expect(rig.adapter.dispatch).not.toHaveBeenCalled()
 })
 
+it('holds the created first message until the child proves its start, then hands it over once', async () => {
+  const first = firstMessage()
+  const spawn = rig.adapter.acquire.getMockImplementation()!
+  let generation = ''
+  rig.adapter.acquire.mockImplementationOnce(async (input) => {
+    const child = await spawn(input)
+    generation = child.acquisitionGeneration
+    return { ...child, providerChildPhase: 'starting' as const }
+  })
+  expect(
+    await rig.host.create(CALLER, createTestParams(first), { firstMessage: first })
+  ).toMatchObject({ ok: true })
+  await vi.waitFor(() => expect(rig.adapter.acquire).toHaveBeenCalledOnce())
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(rig.adapter.dispatch).not.toHaveBeenCalled()
+  const held = (await rig.host.journalSnapshot(SESSION)).submissions
+  expect(held).toEqual([expect.objectContaining({ clientMessageId: first.clientMessageId })])
+  expect(held[0].handedOverAt).toBeUndefined()
+
+  await rig.host.handleAdapterEvent({
+    type: 'started',
+    sessionId: SESSION,
+    fence: rig.store.getRecord(SESSION)?.lease.runtimeFence ?? 0,
+    acquisitionGeneration: generation,
+    reportedOptions: { model: 'gpt-live' },
+    restoreSkippedOptions: [],
+    optionRevision: rig.host.collaboratorsForTests().runtimeState.optionRevisions.current(SESSION)
+  })
+
+  await vi.waitFor(() => expect(rig.adapter.dispatch).toHaveBeenCalledOnce())
+  expect(rig.adapter.dispatch).toHaveBeenCalledWith(expect.objectContaining({ body: first.body }))
+  expect((await rig.host.journalSnapshot(SESSION)).submissions).toHaveLength(1)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(rig.adapter.dispatch).toHaveBeenCalledOnce()
+})
+
+it('Stop while the child proves its start withdraws the created first message once, unsent', async () => {
+  const first = firstMessage()
+  const spawn = rig.adapter.acquire.getMockImplementation()!
+  rig.adapter.acquire.mockImplementationOnce(async (input) => ({
+    ...(await spawn(input)),
+    providerChildPhase: 'starting' as const
+  }))
+  expect(
+    await rig.host.create(CALLER, createTestParams(first), { firstMessage: first })
+  ).toMatchObject({ ok: true })
+  await vi.waitFor(() => expect(rig.adapter.acquire).toHaveBeenCalledOnce())
+
+  expect(await stopCreatedChat(rig.host)).toMatchObject({ ok: true, value: { cancelled: true } })
+
+  const submissions = (await rig.host.journalSnapshot(SESSION)).submissions
+  expect(submissions).toEqual([
+    expect.objectContaining({
+      clientMessageId: first.clientMessageId,
+      dispatchState: 'rejected',
+      rejection: expect.objectContaining({ kind: 'cancelled' })
+    })
+  ])
+  expect(submissions[0].handedOverAt).toBeUndefined()
+  expect(rig.adapter.dispatch).not.toHaveBeenCalled()
+})
+
 it('Stop aborts a handshake outside the lane and the next send sends only its own text', async () => {
   const first = firstMessage()
   const params = createTestParams(first)
