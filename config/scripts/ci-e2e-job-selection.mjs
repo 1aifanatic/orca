@@ -54,6 +54,8 @@ export const ORCAD_IDLE_EXIT_E2E_SPEC = 'tests/e2e/ssh-orcad-idle-exit.spec.ts'
 export const ORCAD_MARKDOWN_CONVERSION_E2E_SPEC = 'tests/e2e/ssh-orcad-markdown-conversion.spec.ts'
 export const ORCAD_MARKDOWN_LINK_REFRESH_E2E_SPEC =
   'tests/e2e/ssh-orcad-markdown-link-refresh.spec.ts'
+export const ORCAD_MARKDOWN_LIVE_DOCUMENTS_E2E_SPEC =
+  'tests/e2e/ssh-orcad-markdown-live-documents.spec.ts'
 export const DEDICATED_E2E_SPECS = [
   ...DOCKER_SSH_E2E_SPECS,
   NODE_NETWORK_E2E_SPEC,
@@ -65,7 +67,8 @@ export const DEDICATED_E2E_SPECS = [
   WINDOWS_MISSING_APPDATA_E2E_SPEC,
   ORCAD_IDLE_EXIT_E2E_SPEC,
   ORCAD_MARKDOWN_CONVERSION_E2E_SPEC,
-  ORCAD_MARKDOWN_LINK_REFRESH_E2E_SPEC
+  ORCAD_MARKDOWN_LINK_REFRESH_E2E_SPEC,
+  ORCAD_MARKDOWN_LIVE_DOCUMENTS_E2E_SPEC
 ]
 const dedicatedSpecs = new Set(DEDICATED_E2E_SPECS)
 const dockerSpecs = new Set(DOCKER_SSH_E2E_SPECS)
@@ -109,7 +112,8 @@ export function classifyE2eJobs(input, sshSourceChanged = 'false') {
           spec === ORCAD_AUTO_CONVERT_E2E_SPEC ||
           spec === ORCAD_IDLE_EXIT_E2E_SPEC ||
           spec === ORCAD_MARKDOWN_CONVERSION_E2E_SPEC ||
-          spec === ORCAD_MARKDOWN_LINK_REFRESH_E2E_SPEC
+          spec === ORCAD_MARKDOWN_LINK_REFRESH_E2E_SPEC ||
+          spec === ORCAD_MARKDOWN_LIVE_DOCUMENTS_E2E_SPEC
       )
   }
 }

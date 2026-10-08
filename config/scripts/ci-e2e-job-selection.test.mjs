@@ -151,6 +151,7 @@ it('runs remaining SSH tests after real failures and stops them when a run is ca
 
 const MARKDOWN_CONVERSION_SPEC = 'tests/e2e/ssh-orcad-markdown-conversion.spec.ts'
 const MARKDOWN_LINK_REFRESH_SPEC = 'tests/e2e/ssh-orcad-markdown-link-refresh.spec.ts'
+const MARKDOWN_LIVE_DOCUMENTS_SPEC = 'tests/e2e/ssh-orcad-markdown-live-documents.spec.ts'
 
 it.each([
   ['src/renderer/src/components/editor/useMarkdownDocuments.ts', MARKDOWN_CONVERSION_SPEC],
@@ -166,6 +167,15 @@ it.each([
   [
     'src/renderer/src/components/editor/useRichMarkdownProgrammaticSync.ts',
     MARKDOWN_LINK_REFRESH_SPEC
+  ],
+  ['src/renderer/src/components/editor/useMarkdownDocuments.ts', MARKDOWN_LIVE_DOCUMENTS_SPEC],
+  [
+    'src/renderer/src/components/editor/use-markdown-document-watch-refresh.ts',
+    MARKDOWN_LIVE_DOCUMENTS_SPEC
+  ],
+  [
+    'src/renderer/src/components/editor/markdown-document-list-request.ts',
+    MARKDOWN_LIVE_DOCUMENTS_SPEC
   ]
 ])('routes %s to the template-building Markdown lane %s', (file, spec) => {
   expect(selectPrE2eSpecs([file])).toContain(spec)
