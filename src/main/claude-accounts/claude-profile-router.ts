@@ -39,6 +39,9 @@ import {
 } from './claude-account-folder'
 import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
 
+const REFRESH_WAIT_MS = 5_000
+const CLAUDE_VERSION_REUSE_MS = 5 * 60_000
+
 export type ClaudeProfileRouterSettings = Pick<
   GlobalSettings,
   | 'claudeManagedAccounts'
@@ -55,6 +58,7 @@ export type ClaudeProfileRouterSettings = Pick<
 export class ClaudeProfileRouter {
   readonly pointerPath: string
   private readonly setups = new Map<string, Promise<ClaudeProfileSetupReport>>()
+  private version: { at: number; value: Promise<string | null> } | undefined
   private env: NodeJS.ProcessEnv
   private readonly envReady: Promise<unknown>
   constructor(
@@ -66,6 +70,8 @@ export class ClaudeProfileRouter {
       env?: NodeJS.ProcessEnv
       /** Tests replace the worker. */
       runSetup?: typeof runClaudeProfileSetupInWorker
+      /** Tests shorten how long a launch waits on a refresh. */
+      refreshWaitMs?: number
     }
   ) {
     this.pointerPath = join(args.dataRoot, 'claude-profiles', 'selected-host')
@@ -164,7 +170,7 @@ export class ClaudeProfileRouter {
     })
   }
 
-  /** Waits for a first setup that never finished, running or not; otherwise launches at once. */
+  /** Refreshes the routed folder first; only a first setup that fails stops the launch. */
   async prepareLaunch(): Promise<ClaudeRuntimeAuthPreparation> {
     const selected = this.selectedProfile()
     // Why wait only without the account's own login: System default, and whether it covers the
@@ -181,14 +187,20 @@ export class ClaudeProfileRouter {
       }
       return this.preparation()
     }
-    // Why the marker: setup writes it last, so a missing folder is set up too. A re-run of a
-    // set-up folder never blocks.
+    // Why the marker: setup writes it last, so a missing folder is set up too.
     if (!existsSync(claudeProfileMarkerPath(profile))) {
       const report = await this.setUp(profile).catch(() => null)
       if (report?.outcome !== 'prepared') {
         throw claudeProfileSetupFailed()
       }
+      return this.preparation()
     }
+    // Why capped and never thrown: a set-up folder runs on its last refresh rather than not at all.
+    const refresh = this.setUp(profile).catch((error: unknown) => {
+      console.warn('[claude-profile] Account refresh failed:', error)
+    })
+    const waitMs = this.args.refreshWaitMs ?? REFRESH_WAIT_MS
+    await Promise.race([refresh, new Promise((resolve) => setTimeout(resolve, waitMs).unref())])
     return this.preparation()
   }
 
@@ -241,10 +253,19 @@ export class ClaudeProfileRouter {
     return run
   }
 
+  /** Why remembered: every launch refreshes, and the hook plan needs only a recent version. */
+  private claudeVersion(): Promise<string | null> {
+    const now = Date.now()
+    if (!this.version || now - this.version.at > CLAUDE_VERSION_REUSE_MS) {
+      this.version = { at: now, value: probeClaudeCliVersion(resolveClaudeCommand()) }
+    }
+    return this.version.value
+  }
+
   private async runSetup(profile: ClaudeProfileDescriptor): Promise<ClaudeProfileSetupReport> {
     await this.envReady
     const hooks = isAgentStatusHooksEnabledForAgent(this.args.getSettings(), 'claude')
-    const claudeVersion = hooks ? await probeClaudeCliVersion(resolveClaudeCommand()) : null
+    const claudeVersion = hooks ? await this.claudeVersion() : null
     const report = await (this.args.runSetup ?? runClaudeProfileSetupInWorker)({
       dataRoot: this.args.dataRoot,
       profile,
@@ -277,6 +298,11 @@ export class ClaudeProfileRouter {
     }
     try {
       this.writePointer()
+      // Why in the background: a pane never waits; its `claude` starts after the refresh, mostly.
+      const profile = this.routedProfile()
+      if (profile) {
+        this.setUpInBackground(profile)
+      }
       const env = this.launchEnv()
       const userConfigDir = this.userConfigDir()
       // Why: the injected value replaces the user's own; the claude function restores it on System default.

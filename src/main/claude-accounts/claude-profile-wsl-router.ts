@@ -122,7 +122,7 @@ export class ClaudeWslProfileRouter {
     })
   }
 
-  /** Waits for a first setup that never finished, running or not; otherwise launches at once. */
+  /** Waits for a first setup that never finished, running or not; otherwise refreshes alongside. */
   async prepareLaunch(distro: string): Promise<ClaudeRuntimeAuthPreparation> {
     const { home, selected, profile } = await this.resolve(distro)
     // Why the marker: setup writes it last, so a missing folder is set up too. A re-run of a
@@ -132,7 +132,8 @@ export class ClaudeWslProfileRouter {
         console.warn('[claude-profile] WSL account setup failed:', error)
         throw claudeProfileSetupFailed()
       })
-    } else if (selected && !profile) {
+    } else if (selected) {
+      // Why in the background: a guest refresh starts a guest Node, too slow for every launch.
       this.setUpInBackground(distro, home, selected.accountId)
     }
     // Why: a missing or stale guest pointer would run the pane's `claude` under another account.

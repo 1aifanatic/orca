@@ -138,10 +138,12 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
         ORCA_CLAUDE_INJECTED_CONFIG_DIR: f.profileHome
       }
     })
-    // The failed first setup left no marker, so this launch ran setup again; the next does not.
+    // The failed first setup left no marker, so this launch ran setup again; the next refreshes
+    // alongside the launch instead of before it.
     expect(f.setup.calls).toBe(2)
+    f.setup.gate = new Promise(() => {})
     await f.router.prepareLaunch('Ubuntu')
-    expect(f.setup.calls).toBe(2)
+    expect(f.setup.calls).toBe(3)
   })
 
   it('makes a launch redo a first setup that was cut off after its ownership gate', async () => {
@@ -183,7 +185,8 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     await expect(f.router.prepareLaunch('Ubuntu')).resolves.toMatchObject({
       configDir: f.profileHome
     })
-    expect(f.setup.calls).toBe(1)
+    // That launch refreshed in the background.
+    expect(f.setup.calls).toBe(2)
   })
 
   it('sets up a new account folder for sign-in and deletes it without following its links', async () => {

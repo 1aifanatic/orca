@@ -96,7 +96,8 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
     dataRoot,
     userHome,
     env,
-    runSetup
+    runSetup,
+    refreshWaitMs: 500
   })
   const home = (id: string) => join(dataRoot, 'claude-profiles', id, 'home')
   return { root, userHome, dataRoot, settings, router, home, setup }
@@ -219,7 +220,7 @@ describe('ClaudeProfileRouter', () => {
     expect(f.setup.calls).toBe(1)
   })
 
-  it('never makes a launch wait on, or fail with, a re-run of a set-up folder', async () => {
+  it('refreshes a set-up folder before each launch, which never fails or hangs on it', async () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })
     const first = f.router.prepareLaunch()
@@ -227,15 +228,27 @@ describe('ClaudeProfileRouter', () => {
     f.setup.settle()
     await expect(first).resolves.toMatchObject({ configDir: f.home('a') })
 
-    // Startup or a switch re-runs setup; it stays pending, then fails.
-    f.setup.outcome = 'refused'
-    f.router.publish()
+    // The next launch waits for its refresh.
+    let launched = false
+    const second = f.router.prepareLaunch().then((prepared) => {
+      launched = true
+      return prepared
+    })
     await vi.waitFor(() => expect(f.setup.calls).toBe(2))
+    expect(launched).toBe(false)
+    f.setup.settle()
+    await expect(second).resolves.toMatchObject({ configDir: f.home('a') })
+
+    // A refresh that hangs, then fails, only delays a launch briefly.
+    f.setup.outcome = 'refused'
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
+    expect(f.setup.calls).toBe(3)
     f.setup.settle()
     await new Promise((resolve) => setTimeout(resolve, 10))
-    await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
-    expect(f.setup.calls).toBe(2)
+    const fourth = f.router.prepareLaunch()
+    await vi.waitFor(() => expect(f.setup.calls).toBe(4))
+    f.setup.settle()
+    await expect(fourth).resolves.toMatchObject({ configDir: f.home('a') })
   })
 
   it('makes a launch redo a first setup that was cut off after its ownership gate', async () => {

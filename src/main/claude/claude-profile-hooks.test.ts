@@ -111,10 +111,11 @@ describe('Claude hooks at an explicit profile', () => {
     await sync(f)
     expect(stop(f.profile)[0]).toEqual(hook('notify-v2'))
     expect(orcaCount(f.profile)).toBe(1)
+    // The default home is the master copy: an edit made in the profile lasts until the next refresh.
     setStop(f.profile, ['profile-only'])
     setStop(f.defaultDir, ['notify-v3'])
     await sync(f)
-    expect(stop(f.profile)[0]).toEqual(hook('profile-only'))
+    expect(stop(f.profile)[0]).toEqual(hook('notify-v3'))
     expect(orcaCount(f.profile)).toBe(1)
   })
   it('carries a default-home statusline opt-out and an old-Claude retire to the profile', async () => {
