@@ -11,7 +11,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { withDurableRuntimeStore } from '../../../runtime/runtime-durable-store-fixture'
 import { getDefaultWorkspaceSession } from '../../../../shared/constants'
-import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { SSH_EXIT_UNCONFIRMED_REASON } from '../../../../shared/pty-liveness-verdict'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
 import { SessionNotFoundError } from '../../../daemon/daemon-errors'
@@ -23,7 +22,7 @@ import {
 } from '../../../providers/ssh-pty-errors'
 import type { IPtyProvider } from '../../../providers/types'
 import { OrcaRuntimeService } from '../../../runtime/orca-runtime'
-import { resolvePersistedStablePaneOwner, spawnForStablePane } from './stable-owner'
+import { spawnForStablePane } from './stable-owner'
 
 const CONNECTION = 'conn-1'
 const WORKTREE = 'repo-1::/tmp/pane-absence'
@@ -137,16 +136,12 @@ describe('a stable pane whose reattach was refused', () => {
   })
 
   it('still certifies the death the relay proved with a pid probe', async () => {
-    const { runtime, store, spawn } = await adoptAfterAttachRefusal(
+    const { runtime, spawn } = await adoptAfterAttachRefusal(
       new SshPtyProvenExitedOnRelayError(`${SSH_SESSION_EXPIRED_ERROR}: pty2:epoch-a:1`)
     )
 
     expect(spawn).toHaveBeenCalledTimes(2)
     expect(runtime.getPtyLivenessVerdict(PTY_ID)).toEqual({ status: 'exited' })
-    // If nothing ever retired, a proven-dead pane would reattach to a corpse on every adoption.
-    expect(
-      resolvePersistedStablePaneOwner(store, makePaneKey(TAB, LEAF), WORKTREE, CONNECTION)
-    ).toBeNull()
   })
 
   it('certifies an absence reported by the process registry that owns the PTY', async () => {

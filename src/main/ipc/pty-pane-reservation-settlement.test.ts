@@ -184,16 +184,16 @@ describe('registerPtyHandlers', () => {
       expect(remoteSpawn.mock.calls[1]?.[0]).toMatchObject({
         command: 'codex resume exact-dead-ssh-provider-session'
       })
-      expect(store.setWorkspaceSession).toHaveBeenCalledWith(expect.anything(), hostId)
-      expect(store.persistPtyBinding).toHaveBeenCalledWith(
-        expect.objectContaining({
-          worktreeId,
-          tabId,
-          leafId,
-          ptyId: freshPtyId
-        }),
-        hostId
-      )
+      expect(store.setWorkspaceSession).not.toHaveBeenCalled()
+      // The fresh spawn replaces the absent owner, so its bind swaps the binding naming it.
+      const [input, persistHostId] = store.persistPtyBinding.mock.calls[0] ?? []
+      expect(persistHostId).toBe(hostId)
+      expect(typeof input === 'function' ? input() : input).toMatchObject({
+        worktreeId,
+        tabId,
+        leafId,
+        ptyId: freshPtyId
+      })
     } finally {
       unregisterSshPtyProvider(connectionId)
     }
