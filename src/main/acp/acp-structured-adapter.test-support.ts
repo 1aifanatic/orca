@@ -107,8 +107,8 @@ export class FakeAcpChild extends AcpSessionRuntime implements AcpStructuredConn
   override close(error?: Error): Promise<boolean> {
     this.closes += 1
     this.closing ||= !this.gone
-    super.close(error)
-    return this.proveClose()
+    this.drainNotifications(error)
+    return this.proveClose().finally(() => super.close(error))
   }
   /** The agent process ends on its own (or Orca's close landed). */
   exit(): void {

@@ -222,6 +222,10 @@ export class AcpSessionRuntime {
     this.listeners.clear()
   }
 
+  protected drainNotifications(error?: Error): void {
+    this.peer.drainNotifications(error)
+  }
+
   private sessionId(): string {
     if (!this.started) {
       throw new Error('ACP session has not started')
