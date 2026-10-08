@@ -60,7 +60,9 @@ export async function reopenNativeChatRestartOffer(
   if (getNativeChatRestartResuming().size === 0) {
     await Promise.all(machines.filter(readableNow).map(readForClick))
   }
-  if (getNativeChatRestartResuming().size > 0 || getNativeChatRestartOffers().size > 0) {
+  // Only over rows: a dialog with nothing to list draws nothing, and a request nothing draws would
+  // stay open unseen. A resume still running keeps its machine's rows listed until it answers.
+  if (getNativeChatRestartOffers().size > 0) {
     requestNativeChatResumeOnRestartDialog(focusOf(machines))
   }
 }

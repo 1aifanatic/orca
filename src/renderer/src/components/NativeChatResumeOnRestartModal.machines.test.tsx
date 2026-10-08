@@ -17,6 +17,8 @@ import {
 } from './native-chat-resume-on-restart-dialog'
 import { requestLaunchResumePrompt } from './native-chat-resume-on-restart-launch-prompt'
 import { readNativeChatRestartMachine } from './native-chat-resume-on-restart-store'
+import { continueNativeChatRestartOffers } from './native-chat-restart-offer-actions'
+import { reopenNativeChatRestartOffer } from './native-chat-restart-offer-reopen'
 import { _resetNativeChatRestartOffer } from './native-chat-restart-offer-triggers'
 import { pairedEnvironment } from './native-chat-restart-offer-test-support'
 import { lastToastShow } from './native-chat-resume-toast.test-support'
@@ -236,14 +238,22 @@ it('locks only the machine whose resume is still running', async () => {
 
 // The launch read joining a dialog the user opened must not move its focus.
 it("keeps the user's ticks and open machine when this computer's launch read lands", async () => {
+  // Only the server is listed when the user opens it; this computer's read answers afterwards.
+  localRows = []
   await stage({ studio: [row('s1', 'own'), row('s2', 'own')] })
   await open('environment:studio')
-  expect(button('Resume 3 chats')).toBeTruthy()
+  expect(button('Resume 2 chats')).toBeTruthy()
   await act(async () => machineToggle('studio-mac').click())
-  expect(button('Resume 1 chat')).toBeTruthy()
+  expect(button('Resume 0 chats')).toBeTruthy()
+
+  localRows = [row('l1', 'own')]
+  await act(async () => void (await readNativeChatRestartMachine({ kind: 'local' })))
   await act(async () => requestLaunchResumePrompt())
   expect(getNativeChatResumeOnRestartDialogRequest()).toEqual({ focus: 'environment:studio' })
+  // This computer joins the open dialog with its chat ticked; the server's unticks stay.
+  expect(machineRow('Local')).toBeTruthy()
   expect(button('Resume 1 chat')).toBeTruthy()
+  expect(machineToggle('studio-mac').getAttribute('data-state')).toBe('unchecked')
   expect(machineRow('studio-mac').getAttribute('aria-expanded')).toBe('true')
 })
 
@@ -347,6 +357,80 @@ it('opens this computer’s offer after a server-only dialog the user closed', a
   await act(async () => requestLaunchResumePrompt())
   expect(getNativeChatResumeOnRestartDialogRequest()).toEqual({ focus: 'local' })
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Prompt l1')
+})
+
+// The open dialog lists a server's restart as it lands, so no toast repeats it.
+it('raises no restart toast for a server whose chats land in the open dialog', async () => {
+  window.localStorage.clear()
+  await stage({})
+  await open('local')
+  vi.mocked(toast).mockClear()
+  await stage({ studio: [row('s1', 'own')] })
+  expect(toast).not.toHaveBeenCalled()
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('studio-mac')
+})
+
+// A "Resuming" click while a concurrent read lists nothing opens nothing and leaves nothing behind:
+// once that resume's answer is lost, a later server's restart still gets its toast and does not
+// open the dialog by itself.
+it('leaves no unseen request behind a Resuming click with nothing listed', async () => {
+  window.localStorage.clear()
+  localRows = []
+  await stage({ studio: [row('s1', 'own')] })
+  await act(async () =>
+    root.render(
+      <TooltipProvider>
+        <NativeChatResumeOnRestartModal />
+      </TooltipProvider>
+    )
+  )
+  const continued = Promise.withResolvers<unknown>()
+  let serverRows: Record<string, ResumeCandidate[]> = { studio: [] }
+  let studioReadsFail = false
+  rpc.mockImplementation(async (target, method) => {
+    if (method === 'agentSession.restartContinue') {
+      return continued.promise
+    }
+    if (target.kind === 'local') {
+      return { sessions: localRows }
+    }
+    if (studioReadsFail && target.environmentId === 'studio') {
+      throw new Error('offline')
+    }
+    return { sessions: serverRows[target.environmentId] ?? [] }
+  })
+  const studio = { kind: 'environment' as const, environmentId: 'studio' }
+  // 1-2. The server's only chat starts resuming; a read racing it lists nothing.
+  let resume = Promise.resolve()
+  await act(async () => {
+    resume = continueNativeChatRestartOffers([
+      { machine: 'environment:studio', sessionIds: ['s1'] }
+    ])
+  })
+  await act(async () => void (await readNativeChatRestartMachine(studio)))
+  // 3. The status entry's "Resuming" click: nothing to list, so nothing opens.
+  await act(async () => reopenNativeChatRestartOffer())
+  expect(getNativeChatResumeOnRestartDialogRequest()).toBeNull()
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  // 4. The answer is lost and its re-read fails.
+  studioReadsFail = true
+  await act(async () => {
+    continued.reject(new Error('lost'))
+    await resume
+  })
+  // 5. Another server restarts with the user's chat.
+  studioReadsFail = false
+  serverRows = { studio: [], build: [row('b1', 'own')] }
+  vi.mocked(toast).mockClear()
+  await act(
+    async () =>
+      void (await readNativeChatRestartMachine({ kind: 'environment', environmentId: 'build' }))
+  )
+  expect(vi.mocked(toast).mock.calls.map(([title]) => title)).toEqual([
+    'build-box restarted for an update'
+  ])
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  expect(getNativeChatResumeOnRestartDialogRequest()).toBeNull()
 })
 
 // The server's provider refused to carry the chat on: the host files the failure and lists it. One

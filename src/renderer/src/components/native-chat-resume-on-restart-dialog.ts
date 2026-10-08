@@ -6,6 +6,8 @@ export type NativeChatResumeOnRestartDialogRequest = Readonly<{
 }>
 
 let pending: NativeChatResumeOnRestartDialogRequest | null = null
+/** Whether the dialog is drawn right now, as the dialog itself reports it. */
+let showing = false
 const listeners = new Set<() => void>()
 
 function notify(): void {
@@ -41,6 +43,16 @@ export function getNativeChatResumeOnRestartDialogRequest(): NativeChatResumeOnR
   return pending
 }
 
+/** Set by the dialog: an open request with something to list. */
+export function setNativeChatResumeDialogShowing(next: boolean): void {
+  showing = next
+}
+
+/** Whether the user is looking at the dialog now; a pending request alone does not say so. */
+export function isNativeChatResumeDialogShowing(): boolean {
+  return showing
+}
+
 export function subscribeNativeChatResumeOnRestartDialog(listener: () => void): () => void {
   listeners.add(listener)
   return () => {
@@ -51,4 +63,5 @@ export function subscribeNativeChatResumeOnRestartDialog(listener: () => void): 
 /** @internal - tests need a clean module between cases. */
 export function _resetNativeChatResumeOnRestartDialog(): void {
   pending = null
+  showing = false
 }

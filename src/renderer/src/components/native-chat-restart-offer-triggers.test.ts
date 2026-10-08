@@ -9,6 +9,7 @@ import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
   getNativeChatResumeOnRestartDialogRequest,
+  setNativeChatResumeDialogShowing,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 import {
@@ -307,11 +308,19 @@ it('continues an interruption at most once per run when storage refuses writes a
   }
 })
 
-// The dialog opens as soon as it is asked for, and lists every machine: no toast repeats it.
-it('raises no toast while a resume dialog is open, which lists the server too', async () => {
+// A dialog on screen lists every machine: no toast repeats it. The dialog reports itself drawn.
+it('raises no toast while a resume dialog is on screen, which lists the server too', async () => {
   requestNativeChatResumeOnRestartDialog('local')
+  setNativeChatResumeDialogShowing(true)
   await connect({ runtimeId: 'r2' })
   expect(toast).not.toHaveBeenCalled()
+})
+
+// A request alone is not a dialog the user sees: one nothing draws must not swallow the toast.
+it('still announces a paired interruption while a request is pending but no dialog is drawn', async () => {
+  requestNativeChatResumeOnRestartDialog('local')
+  await connect({ runtimeId: 'r2' })
+  expect(toastTitles()).toEqual(['studio-mac restarted for an update'])
 })
 
 it('announces a paired interruption once no resume dialog is open', async () => {
@@ -339,8 +348,10 @@ it('forgets the old pairing’s rows as soon as the saved record is re-paired', 
 
 it('decides what an open dialog already shows without a toast', async () => {
   requestNativeChatResumeOnRestartDialog(null)
+  setNativeChatResumeDialogShowing(true)
   await connect({ runtimeId: 'r2' })
   expect(toast).not.toHaveBeenCalled()
+  setNativeChatResumeDialogShowing(false)
   consumeNativeChatResumeOnRestartDialogRequest()
   await readNativeChatRestartMachine(TARGET)
   expect(toast).not.toHaveBeenCalled()
