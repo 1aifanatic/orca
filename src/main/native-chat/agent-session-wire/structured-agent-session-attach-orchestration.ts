@@ -36,10 +36,8 @@ import {
 } from './structured-agent-session-provider-child'
 import type { DeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import {
-  isStructuredAgentSessionStartupExpired,
-  type StructuredAgentSessionStartupAttempt
-} from './structured-agent-session-startup-attempt'
+import { isStructuredAgentSessionStartupExpired } from './structured-agent-session-startup-attempt'
+import type { StructuredAgentSessionStartupAttempt } from './structured-agent-session-startup-attempt-contract'
 import {
   addAgentSessionCreatePhaseAttributes,
   withAgentSessionCreatePhase,

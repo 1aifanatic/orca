@@ -47,10 +47,8 @@ import {
 } from '../../observability/agent-session-instrumentation'
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import { readProviderHistoryWindow } from './structured-agent-session-provider-history-window'
-import type {
-  StructuredAgentSessionStartupAttempt,
-  StructuredAgentSessionStartupProgress
-} from './structured-agent-session-startup-attempt'
+import type { StructuredAgentSessionStartupAttempt } from './structured-agent-session-startup-attempt-contract'
+import type { StructuredAgentSessionStartupProgress } from './structured-agent-session-startup-attempt'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 

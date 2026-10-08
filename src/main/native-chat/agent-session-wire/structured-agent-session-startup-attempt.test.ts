@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   STRUCTURED_AGENT_SESSION_STARTUP_CEILING_MS as CEILING_MS,
-  STRUCTURED_AGENT_SESSION_STARTUP_SILENCE_MS as SILENCE_MS,
+  STRUCTURED_AGENT_SESSION_STARTUP_SILENCE_MS as SILENCE_MS
+} from './structured-agent-session-startup-attempt-contract'
+import {
   StructuredAgentSessionStartupAttempts,
   mintStructuredAgentSessionStartupAttempt,
   type StructuredAgentSessionExpiredStartup,

@@ -25,7 +25,7 @@ import type { AgentModelCatalogService } from '../agent-model-catalog/agent-mode
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
-import type { StructuredAgentSessionStartupLimits } from './structured-agent-session-startup-attempt'
+import type { StructuredAgentSessionStartupLimits } from './structured-agent-session-startup-attempt-contract'
 
 export type StructuredAgentSessionCaller = { callerKey: string }
 

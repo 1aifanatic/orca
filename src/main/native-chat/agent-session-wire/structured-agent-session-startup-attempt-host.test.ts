@@ -32,7 +32,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
-import type { StructuredAgentSessionStartupLimits } from './structured-agent-session-startup-attempt'
+import type { StructuredAgentSessionStartupLimits } from './structured-agent-session-startup-attempt-contract'
 
 const CALLER = { callerKey: 'client-1' }
 
