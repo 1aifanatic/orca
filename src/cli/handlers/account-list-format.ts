@@ -37,7 +37,7 @@ export function formatAccountsBlock(label: string, block: AccountsBlock): string
   const lines = block.accounts.map(
     (account) =>
       `  ${account.email}${activeAccountIds.has(account.id) ? ' (active)' : ''}${
-        account.needsSignIn ? ' (sign in again in Orca Settings > Accounts)' : ''
+        account.needsSignIn ? ' (sign in again in Orca Settings > AI Provider Accounts)' : ''
       }`
   )
   return `Managed ${label} accounts (${block.accounts.length}):\n${lines.join('\n')}`
