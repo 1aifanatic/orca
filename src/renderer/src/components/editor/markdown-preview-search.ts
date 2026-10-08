@@ -7,10 +7,10 @@ import {
 } from '../../lib/dom-text-search-highlights'
 export {
   findTextMatchRanges,
-  isMarkdownPreviewSearchQueryTooLarge,
-  MARKDOWN_PREVIEW_SEARCH_QUERY_MAX_BYTES,
+  isTextSearchQueryTooLarge as isMarkdownPreviewSearchQueryTooLarge,
+  TEXT_SEARCH_QUERY_MAX_BYTES as MARKDOWN_PREVIEW_SEARCH_QUERY_MAX_BYTES,
   type TextMatchOptions
-} from './markdown-text-matches'
+} from '../../lib/text-match-ranges'
 
 export function isMarkdownPreviewFindShortcut(
   event: Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>,

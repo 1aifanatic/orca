@@ -10,28 +10,32 @@ import { NativeChatFindBar } from './NativeChatFindBar'
 import { useNativeChatFind } from './use-native-chat-find'
 import { useNativeChatPasteBridge } from './use-native-chat-paste-bridge'
 import { routeNativeChatRootKeyToInput } from './native-chat-root-key-routing'
+import { shouldFocusNativeChatPaneFromPointerTarget } from './native-chat-typing-redirect'
+import { useNativeChatComposerKeyDown } from './use-native-chat-composer-keydown'
+import { useNativeChatPromptCardFocus } from './use-native-chat-prompt-card-focus'
 import type { NativeChatComposerHandle } from './NativeChatComposer'
 
 const mocks = vi.hoisted(() => {
   const bindings: { current?: KeybindingOverrides } = {}
-  return { bindings }
+  return { bindings, web: false }
 })
 vi.mock('../../store', () => ({
   useAppStore: { getState: () => ({ keybindings: mocks.bindings.current }) }
 }))
+vi.mock('@/lib/web-client-location', () => ({ isWebClientLocation: () => mocks.web }))
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 
-type Composer = NativeChatComposerHandle & { element: HTMLTextAreaElement }
+/** `element` is the rendered composer field, set when it mounts. */
+type Composer = NativeChatComposerHandle & { element: HTMLElement }
 
 function composerHandle(): Composer {
-  const element = document.createElement('textarea')
-  return {
-    element,
+  const handle: Composer = {
+    element: document.createElement('div'),
     focus: vi.fn(() => {
-      if (!element.isConnected) {
+      if (!handle.element.isConnected) {
         return false
       }
-      element.focus()
+      handle.element.focus()
       return true
     }),
     insertTypedText: vi.fn(() => true),
@@ -39,24 +43,82 @@ function composerHandle(): Composer {
     acceptsText: () => true,
     handlePasteEvent: vi.fn(),
     pasteFromClipboard: vi.fn(),
-    contains: (node) => element.contains(node)
+    contains: (node) => handle.element.contains(node)
   }
+  return handle
+}
+
+/** The real composer key handling, wired as the composer field wires it (onKeyDownCapture). */
+function ComposerField({
+  composer,
+  interrupt,
+  suggestionsOpen
+}: {
+  composer: Composer
+  interrupt: () => void
+  suggestionsOpen: boolean
+}): React.JSX.Element {
+  const dismissPicker = vi.fn()
+  const onKeyDown = useNativeChatComposerKeyDown({
+    autocomplete: suggestionsOpen
+      ? { mode: 'mention', query: '', triggerKey: '@' }
+      : { mode: 'none' },
+    mentionFiles: { files: [], loading: false, failed: false },
+    completeMention: vi.fn(),
+    activeSuggestion: 0,
+    draft: '',
+    isComposing: () => false,
+    completePickerItem: vi.fn(),
+    dispatchPickerCommand: vi.fn(),
+    dismissPicker,
+    interrupt,
+    send: vi.fn(),
+    setActiveSuggestion: vi.fn(),
+    setDraft: vi.fn(),
+    setCaret: vi.fn()
+  })
+  return (
+    <div
+      ref={(node) => {
+        if (node) {
+          composer.element = node
+        }
+      }}
+      role="textbox"
+      aria-label="Message"
+      aria-expanded={suggestionsOpen}
+      contentEditable
+      tabIndex={0}
+      onKeyDownCapture={onKeyDown}
+    />
+  )
 }
 
 type ChatProps = {
   composer: Composer
   transcript: ReactNode
   enabled?: boolean
-  reveal?: (match: Range) => void
-  onComposerEscape?: () => void
+  reveal?: (match: Range, bar: DOMRectReadOnly | null) => void
+  interrupt?: () => void
+  suggestionsOpen?: boolean
+  card?: boolean
 }
 
+function PromptCard(): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null)
+  useNativeChatPromptCardFocus(ref, true)
+  return <div ref={ref} data-testid="card" tabIndex={-1} />
+}
+
+/** Mirrors a chat root: pointer focus, root key routing, the find bar over the transcript. */
 function Chat({
   composer,
   transcript,
   enabled = true,
   reveal = vi.fn(),
-  onComposerEscape
+  interrupt = vi.fn(),
+  suggestionsOpen = false,
+  card = false
 }: ChatProps): React.JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<NativeChatComposerHandle | null>(composer)
@@ -64,26 +126,28 @@ function Chat({
   const find = useNativeChatFind(enabled, rootRef, composerRef, messageListRef)
   useNativeChatPasteBridge({ rootRef, composerRef })
   return (
-    <div ref={rootRef} data-native-chat-root="true" tabIndex={-1}>
+    <div
+      ref={rootRef}
+      data-native-chat-root="true"
+      tabIndex={-1}
+      onPointerDownCapture={(event) => {
+        if (event.button === 0 && shouldFocusNativeChatPaneFromPointerTarget(event.target)) {
+          rootRef.current?.focus({ preventScroll: true })
+        }
+      }}
+      onKeyDownCapture={(event) => {
+        find.onKeyDownCapture(event)
+        routeNativeChatRootKeyToInput(event, composerRef.current, null)
+      }}
+    >
       <div className="relative">
         {find.isOpen ? <NativeChatFindBar find={find} isVisible /> : null}
         <div data-native-chat-scroll>
           <div data-native-chat-transcript-column>{transcript}</div>
         </div>
       </div>
-      <div
-        ref={(node) => {
-          if (node && !node.contains(composer.element)) {
-            node.append(composer.element)
-            composer.element.addEventListener('keydown', (event) => {
-              // Mirrors the composer: an Escape nothing claimed interrupts the turn.
-              if (event.key === 'Escape' && !event.defaultPrevented) {
-                onComposerEscape?.()
-              }
-            })
-          }
-        }}
-      />
+      {card ? <PromptCard /> : null}
+      <ComposerField composer={composer} interrupt={interrupt} suggestionsOpen={suggestionsOpen} />
     </div>
   )
 }
@@ -147,25 +211,27 @@ const TRANSCRIPT = (
     <span className="sr-only">alpha label</span>
     <div hidden>alpha collapsed</div>
     <span style={{ display: 'none' }}>alpha undisplayed</span>
-    <span style={{ opacity: 0 }}>alpha hover-only control</span>
+    <div data-native-chat-find-skip>alpha hover-only timestamp</div>
   </>
 )
 
 beforeEach(() => {
   delete mocks.bindings.current
+  mocks.web = false
 })
 
 afterEach(() => {
   cleanup()
   document.body.replaceChildren()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('native chat find', () => {
   it('opens from the composer and counts only what the transcript shows', () => {
     const composer = composerHandle()
-    composer.element.value = 'alpha in the draft'
     render(<Chat composer={composer} transcript={TRANSCRIPT} />)
+    composer.element.textContent = 'alpha in the draft'
     composer.element.focus()
 
     expect(pressModF(composer.element).defaultPrevented).toBe(true)
@@ -199,7 +265,7 @@ describe('native chat find', () => {
 
     press(findInput()!, 'Enter')
     expect(status()).toBe('2/2')
-    expect(reveal).toHaveBeenLastCalledWith(expect.any(Range))
+    expect(reveal).toHaveBeenLastCalledWith(expect.any(Range), expect.any(DOMRect))
     expect(reveal.mock.lastCall?.[0].toString()).toBe('alpha')
     press(findInput()!, 'Enter', { shiftKey: true })
     expect(status()).toBe('1/2')
@@ -260,31 +326,34 @@ describe('native chat find', () => {
     expect(document.activeElement).toBe(composer.element)
   })
 
-  it('Escape elsewhere in the chat closes the bar first; the next Escape reaches the composer', () => {
-    const onComposerEscape = vi.fn()
+  it('Escape in the composer closes the bar first; the next Escape interrupts the turn', () => {
+    const interrupt = vi.fn()
     const composer = composerHandle()
-    render(<Chat composer={composer} transcript={TRANSCRIPT} onComposerEscape={onComposerEscape} />)
+    render(<Chat composer={composer} transcript={TRANSCRIPT} interrupt={interrupt} />)
     pressModF(composer.element)
     composer.element.focus()
 
     expect(press(composer.element, 'Escape').defaultPrevented).toBe(true)
     expect(findInput()).toBeNull()
-    expect(onComposerEscape).not.toHaveBeenCalled()
+    expect(interrupt).not.toHaveBeenCalled()
     expect(document.activeElement).toBe(composer.element)
 
     press(composer.element, 'Escape')
-    expect(onComposerEscape).toHaveBeenCalledTimes(1)
+    expect(interrupt).toHaveBeenCalledTimes(1)
   })
 
   it('leaves Escape to an open suggestion list or a layer that already used it', () => {
+    const interrupt = vi.fn()
     const composer = composerHandle()
-    render(<Chat composer={composer} transcript={TRANSCRIPT} />)
+    const view = render(
+      <Chat composer={composer} transcript={TRANSCRIPT} interrupt={interrupt} suggestionsOpen />
+    )
     pressModF(composer.element)
-    composer.element.setAttribute('aria-expanded', 'true')
-    expect(press(composer.element, 'Escape').defaultPrevented).toBe(false)
+    press(composer.element, 'Escape')
     expect(findInput()).not.toBeNull()
+    expect(interrupt).not.toHaveBeenCalled()
 
-    composer.element.setAttribute('aria-expanded', 'false')
+    view.rerender(<Chat composer={composer} transcript={TRANSCRIPT} interrupt={interrupt} />)
     const claimed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     claimed.preventDefault()
     act(() => {
@@ -386,5 +455,118 @@ describe('native chat find', () => {
     }
     expect(composer.insertTypedText).not.toHaveBeenCalled()
     expect(composer.focus).not.toHaveBeenCalled()
+  })
+  it('keeps the find input focused when a prompt card arrives mid-query', () => {
+    const composer = composerHandle()
+    const view = render(<Chat composer={composer} transcript={TRANSCRIPT} />)
+    pressModF(composer.element)
+    const input = findInput()
+    view.rerender(<Chat composer={composer} transcript={TRANSCRIPT} card />)
+    expect(document.activeElement).toBe(input)
+  })
+
+  it('keeps typing in the find input after a press on the count or padding', () => {
+    const composer = composerHandle()
+    render(<Chat composer={composer} transcript={TRANSCRIPT} />)
+    pressModF(composer.element)
+    typeQuery('alpha')
+    const input = findInput()!
+    const count = input.parentElement!.querySelector('[aria-live]')!
+    fireEvent.pointerDown(count, { button: 0 })
+    expect(fireEvent.mouseDown(count, { button: 0 })).toBe(false)
+    expect(document.activeElement).toBe(input)
+    press(document.activeElement!, 'x')
+    expect(composer.insertTypedText).not.toHaveBeenCalled()
+  })
+
+  it('steps only on Enter from the input; the buttons keep their own Enter', () => {
+    const composer = composerHandle()
+    render(<Chat composer={composer} transcript={TRANSCRIPT} />)
+    pressModF(composer.element)
+    typeQuery('alpha')
+    for (const name of ['Previous match', 'Close']) {
+      const button = screen.getByRole('button', { name })
+      button.focus()
+      expect(press(button, 'Enter').defaultPrevented).toBe(false)
+      expect(status()).toBe('1/2')
+    }
+  })
+
+  it('starts from the first visible match when the active match scrolled out of the window', async () => {
+    function Window({ rows }: { rows: string[] }): React.JSX.Element {
+      return (
+        <>
+          {rows.map((row) => (
+            <p key={row}>alpha {row}</p>
+          ))}
+        </>
+      )
+    }
+    const composer = composerHandle()
+    const view = render(
+      <Chat composer={composer} transcript={<Window rows={['r1', 'r2', 'r3', 'r4', 'r5']} />} />
+    )
+    pressModF(composer.element)
+    typeQuery('alpha')
+    for (let step = 0; step < 3; step += 1) {
+      press(findInput()!, 'Enter')
+    }
+    expect(status()).toBe('4/5')
+    view.rerender(
+      <Chat
+        composer={composer}
+        transcript={<Window rows={['p1', 'p2', 'p3', 'p4', 'r1', 'r2']} />}
+      />
+    )
+    await nextFrame()
+    // Not "4/6": that index now points at an unrelated row.
+    expect(status()).toBe('1/6')
+  })
+
+  it('re-searches text growing in place on a short timer, not every frame', async () => {
+    const composer = composerHandle()
+    render(<Chat composer={composer} transcript={<p data-testid="streaming">alpha</p>} />)
+    pressModF(composer.element)
+    typeQuery('alpha')
+    expect(status()).toBe('1/1')
+    const text = screen.getByTestId('streaming').firstChild
+    if (!(text instanceof Text)) {
+      throw new Error('no streaming text node')
+    }
+    text.data = 'alpha alpha'
+    await nextFrame()
+    expect(status()).toBe('1/1')
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    })
+    expect(status()).toBe('1/2')
+  })
+
+  it('leaves Mod+F to the browser in the web client', () => {
+    mocks.web = true
+    const composer = composerHandle()
+    render(<Chat composer={composer} transcript={TRANSCRIPT} />)
+    expect(pressModF(composer.element).defaultPrevented).toBe(false)
+    expect(findInput()).toBeNull()
+  })
+  it('picks the first visible match while typing without scrolling or leaving the end', () => {
+    const reveal = vi.fn()
+    const composer = composerHandle()
+    const { container } = render(
+      <Chat composer={composer} transcript={TRANSCRIPT} reveal={reveal} />
+    )
+    const scroller = container.querySelector('[data-native-chat-scroll]')!
+    Object.defineProperty(scroller, 'getBoundingClientRect', {
+      value: () => DOMRect.fromRect({ x: 0, y: 100, width: 800, height: 600 })
+    })
+    // The first match sits above the view; the second in the top band, left of the bar.
+    vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function (this: Range) {
+      const above = this.startContainer.textContent === 'alpha one'
+      return DOMRect.fromRect({ x: 20, y: above ? -200 : 110, width: 40, height: 18 })
+    })
+    pressModF(composer.element)
+    typeQuery('alpha')
+    expect(status()).toBe('2/2')
+    expect(reveal).not.toHaveBeenCalled()
   })
 })

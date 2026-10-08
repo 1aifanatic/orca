@@ -1,7 +1,4 @@
-import {
-  findTextMatchRanges,
-  isMarkdownPreviewSearchQueryTooLarge
-} from '../components/editor/markdown-text-matches'
+import { findTextMatchRanges, isTextSearchQueryTooLarge } from './text-match-ranges'
 
 // Why: React owns the searched DOM. Injecting <mark> by splitting its text nodes
 // left React holding stale child pointers (NotFoundError on the next commit), so
@@ -135,9 +132,17 @@ export type DomTextSearchScope = {
   rejectElement?: (element: HTMLElement) => boolean
   /** Selector for elements whose text matches as one string (e.g. highlighted code split into spans). */
   joinedTextSelector?: string
+  /** The previous search's ranges, moved instead of allocated: every live Range slows the
+   *  document's own text writes until it is collected, which a per-frame search outpaces. */
+  reuse?: Range[]
 }
 
-function appendTextSearchRanges(nodes: Text[], query: string, ranges: Range[]): void {
+function appendTextSearchRanges(
+  nodes: Text[],
+  query: string,
+  ranges: Range[],
+  reuse: Range[] | undefined
+): void {
   const text = nodes.map((node) => node.data).join('')
   if (!text.trim()) {
     return
@@ -148,7 +153,7 @@ function appendTextSearchRanges(nodes: Text[], query: string, ranges: Range[]): 
     while (nodeIndex < nodes.length - 1 && offset + nodes[nodeIndex].length <= start) {
       offset += nodes[nodeIndex++].length
     }
-    const range = document.createRange()
+    const range = reuse?.pop() ?? document.createRange()
     range.setStart(nodes[nodeIndex], start - offset)
     while (nodeIndex < nodes.length - 1 && offset + nodes[nodeIndex].length < end) {
       offset += nodes[nodeIndex++].length
@@ -165,10 +170,10 @@ export function findDomTextSearchRanges(
   scope: DomTextSearchScope = {}
 ): Range[] {
   const ranges: Range[] = []
-  if (!query || isMarkdownPreviewSearchQueryTooLarge(query)) {
+  if (!query || isTextSearchQueryTooLarge(query)) {
     return ranges
   }
-  const { rejectElement, joinedTextSelector } = scope
+  const { rejectElement, joinedTextSelector, reuse } = scope
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement
@@ -205,7 +210,7 @@ export function findDomTextSearchRanges(
       nodes.push(next)
       next = walker.nextNode()
     }
-    appendTextSearchRanges(nodes, query, ranges)
+    appendTextSearchRanges(nodes, query, ranges, reuse)
     currentNode = next
   }
   return ranges

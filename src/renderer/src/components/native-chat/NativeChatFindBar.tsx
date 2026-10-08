@@ -18,6 +18,7 @@ export function NativeChatFindBar({
   const { query, setQuery, close, rootRef, barRef, inputRef, revealMatch } = find
   const { matchCount, activeIndex, step } = useNativeChatFindMatches({
     rootRef,
+    barRef,
     query,
     isVisible,
     revealMatch
@@ -40,9 +41,20 @@ export function NativeChatFindBar({
     <div
       ref={barRef}
       role="search"
+      // The chat sends clicks on its plain surface to the composer; the bar's are its own.
+      data-native-chat-typing-redirect-ignore="true"
+      data-native-chat-find-bar="true"
       className="absolute top-2 right-4 z-20 flex w-85 max-w-[calc(100%-2rem)] items-center gap-1 rounded-lg border border-border bg-popover/95 px-2 py-1 text-popover-foreground shadow-floating backdrop-blur-sm"
+      onMouseDown={(event) => {
+        // A press on the count or padding keeps typing in the find input.
+        if (!(event.target instanceof Element) || !event.target.closest('button, input')) {
+          event.preventDefault()
+          inputRef.current?.focus()
+        }
+      }}
       onKeyDown={(event) => {
-        if (event.key === 'Enter') {
+        // Buttons keep their own Enter (Previous, Close); only the input steps.
+        if (event.key === 'Enter' && event.target === inputRef.current) {
           event.preventDefault()
           step(event.shiftKey ? -1 : 1)
         }

@@ -5,6 +5,7 @@ import {
   type DomTextSearchInstance,
   type DomTextSearchScope
 } from '@/lib/dom-text-search-highlights'
+import { nativeChatFindGeometry } from './native-chat-find-visibility'
 
 // Must match the ::highlight() selectors in native-chat-find.css.
 const chatFindHighlights = createDomTextSearchHighlights({
@@ -14,24 +15,28 @@ const chatFindHighlights = createDomTextSearchHighlights({
 
 const TRANSCRIPT_COLUMN_SELECTOR = '[data-native-chat-transcript-column]'
 const TRANSCRIPT_SCROLL_SELECTOR = '[data-native-chat-scroll]'
+/** Row chrome that only shows on hover (timestamps, copy): marked, so counts never follow the mouse. */
+const SKIPPED_TEXT_SELECTOR = '.sr-only, [hidden], [data-native-chat-find-skip]'
+/** Streamed text grows every frame; re-searching it this often is plenty and keeps frames free. */
+const TEXT_GROWTH_SEARCH_DELAY_MS = 120
 
-/** Only what the reader can see: no screen-reader labels, no hidden or faded-out controls. */
-function visibleTextScope(): DomTextSearchScope {
+function visibleTextScope(reuse: Range[]): DomTextSearchScope {
   const rejected = new Map<HTMLElement, boolean>()
   return {
     rejectElement: (element) => {
       let reject = rejected.get(element)
       if (reject === undefined) {
         reject =
-          element.closest('.sr-only, [hidden]') !== null ||
+          element.closest(SKIPPED_TEXT_SELECTOR) !== null ||
           (typeof element.checkVisibility === 'function' &&
-            !element.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
+            !element.checkVisibility({ visibilityProperty: true }))
         rejected.set(element, reject)
       }
       return reject
     },
     // Highlighted code splits a line into token spans; match across them.
-    joinedTextSelector: 'code'
+    joinedTextSelector: 'code',
+    reuse
   }
 }
 
@@ -41,18 +46,38 @@ function anchorOf(range: Range | undefined): MatchAnchor | null {
   return range ? { node: range.startContainer, offset: range.startOffset } : null
 }
 
-/** After the transcript changed, the same match if it survived, else the next one after it. */
-function stableMatchIndex(
+/** The first match the reader can see; else the first below the view; else the last. */
+function firstVisibleMatch(
   matches: readonly Range[],
-  anchor: MatchAnchor | null,
-  previousIndex: number
-): number {
+  scroller: Element | null,
+  bar: DOMRectReadOnly | null
+): { index: number; inView: boolean } {
   if (matches.length === 0) {
-    return -1
+    return { index: -1, inView: false }
   }
-  if (!anchor || !anchor.node.isConnected) {
-    return Math.min(Math.max(previousIndex, 0), matches.length - 1)
+  if (!scroller) {
+    return { index: 0, inView: false }
   }
+  const geometry = nativeChatFindGeometry(scroller)
+  const viewTop = scroller.getBoundingClientRect().top
+  let below = -1
+  for (const [index, match] of matches.entries()) {
+    const rect = match.getBoundingClientRect()
+    if (rect.bottom < viewTop) {
+      continue
+    }
+    if (geometry.inView(match, bar)) {
+      return { index, inView: true }
+    }
+    if (below === -1 && rect.top >= viewTop) {
+      below = index
+    }
+  }
+  return { index: below === -1 ? matches.length - 1 : below, inView: false }
+}
+
+/** After the transcript changed: the same match if it survived, else the next one after it. */
+function survivingMatchIndex(matches: readonly Range[], anchor: MatchAnchor): number {
   const exact = matches.findIndex(
     (match) => match.startContainer === anchor.node && match.startOffset === anchor.offset
   )
@@ -67,16 +92,6 @@ function stableMatchIndex(
   return after === -1 ? matches.length - 1 : after
 }
 
-/** For a new query: the first match not above what the reader is looking at. */
-function firstMatchInView(matches: readonly Range[], scroller: Element | null): number {
-  if (matches.length === 0) {
-    return -1
-  }
-  const viewTop = scroller?.getBoundingClientRect().top ?? Number.NEGATIVE_INFINITY
-  const index = matches.findIndex((match) => match.getBoundingClientRect().bottom >= viewTop)
-  return index === -1 ? matches.length - 1 : index
-}
-
 export type NativeChatFindMatches = {
   matchCount: number
   /** -1 when there is no match. */
@@ -87,11 +102,13 @@ export type NativeChatFindMatches = {
 /** Searches the chat transcript's DOM and keeps the matches current while it streams and scrolls. */
 export function useNativeChatFindMatches({
   rootRef,
+  barRef,
   query,
   isVisible,
   revealMatch
 }: {
   rootRef: React.RefObject<HTMLDivElement | null>
+  barRef: React.RefObject<HTMLElement | null>
   query: string
   isVisible: boolean
   revealMatch: (match: Range) => void
@@ -117,25 +134,30 @@ export function useNativeChatFindMatches({
   const search = useCallback(() => {
     const root = rootRef.current
     const column = root?.querySelector<HTMLElement>(TRANSCRIPT_COLUMN_SELECTOR)
-    const matches = column ? findDomTextSearchRanges(column, query, visibleTextScope()) : []
+    const scroller = root?.querySelector(TRANSCRIPT_SCROLL_SELECTOR) ?? null
+    const found = column
+      ? findDomTextSearchRanges(column, query, visibleTextScope([...matchesRef.current]))
+      : []
+    const geometry = scroller ? nativeChatFindGeometry(scroller) : null
+    const matches = geometry ? found.filter((match) => !geometry.clippedAway(match)) : found
     const newQuery = searchedQueryRef.current !== query
     searchedQueryRef.current = query
     matchesRef.current = matches
     chatFindHighlights.setMatches(instance, matches)
     setMatchCount(matches.length)
-    if (newQuery) {
-      const index = firstMatchInView(
-        matches,
-        root?.querySelector(TRANSCRIPT_SCROLL_SELECTOR) ?? null
-      )
-      activate(matches, index)
-      if (index >= 0) {
-        revealMatch(matches[index])
-      }
+    const anchor = anchorRef.current
+    if (!newQuery && matches.length > 0 && anchor?.node.isConnected) {
+      activate(matches, survivingMatchIndex(matches, anchor))
       return
     }
-    activate(matches, stableMatchIndex(matches, anchorRef.current, activeIndexRef.current))
-  }, [activate, instance, query, revealMatch, rootRef])
+    // A new query, or the active match's row scrolled out of the window: start from what is on screen.
+    const bar = barRef.current?.getBoundingClientRect() ?? null
+    const first = firstVisibleMatch(matches, scroller, bar)
+    activate(matches, first.index)
+    if (newQuery && first.index !== -1 && !first.inView) {
+      revealMatch(matches[first.index])
+    }
+  }, [activate, barRef, instance, query, revealMatch, rootRef])
 
   useEffect(() => {
     const root = rootRef.current
@@ -147,19 +169,32 @@ export function useNativeChatFindMatches({
       return
     }
     let frame: number | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const runSearch = (): void => {
+      if (frame !== null) {
+        cancelAnimationFrame(frame)
+        frame = null
+      }
+      if (timer !== null) {
+        clearTimeout(timer)
+        timer = null
+      }
+      search()
+    }
     let column = root.querySelector(TRANSCRIPT_COLUMN_SELECTOR)
-    // Streaming, rows mounting as the reader scrolls, and disclosures all land here; one search per frame.
     const observer = new MutationObserver((records) => {
       const current = root.querySelector(TRANSCRIPT_COLUMN_SELECTOR)
-      const relevant =
-        current !== column ||
-        (current !== null && records.some((record) => current.contains(record.target)))
+      const changed = records.filter((record) => current?.contains(record.target))
+      const replaced = current !== column
       column = current
-      if (relevant && frame === null) {
-        frame = requestAnimationFrame(() => {
-          frame = null
-          search()
-        })
+      if (!replaced && changed.length === 0) {
+        return
+      }
+      // Rows mounting or opening change what is findable now; text growing in place can wait.
+      if (replaced || changed.some((record) => record.type !== 'characterData')) {
+        frame ??= requestAnimationFrame(runSearch)
+      } else {
+        timer ??= setTimeout(runSearch, TEXT_GROWTH_SEARCH_DELAY_MS)
       }
     })
     observer.observe(root, {
@@ -175,6 +210,9 @@ export function useNativeChatFindMatches({
       if (frame !== null) {
         cancelAnimationFrame(frame)
       }
+      if (timer !== null) {
+        clearTimeout(timer)
+      }
     }
   }, [isVisible, query, rootRef, search])
 
@@ -182,6 +220,10 @@ export function useNativeChatFindMatches({
 
   const step = useCallback(
     (direction: 1 | -1) => {
+      // A row that unmounted since the last search leaves collapsed ranges: refresh first.
+      if (matchesRef.current.some((match) => match.collapsed)) {
+        search()
+      }
       const matches = matchesRef.current
       if (matches.length === 0) {
         return
@@ -196,7 +238,7 @@ export function useNativeChatFindMatches({
       activate(matches, index)
       revealMatch(matches[index])
     },
-    [activate, revealMatch]
+    [activate, revealMatch, search]
   )
 
   return { matchCount, activeIndex, step }

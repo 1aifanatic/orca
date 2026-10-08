@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject
+} from 'react'
 import { keybindingMatchesAction } from '../../../../shared/keybindings'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
 import { isEditableTarget } from '@/lib/editable-target'
+import { isWebClientLocation } from '@/lib/web-client-location'
 import { useAppStore } from '../../store'
 import type { NativeChatComposerHandle } from './native-chat-composer-types'
 import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
@@ -12,10 +20,12 @@ export type NativeChatFind = {
   query: string
   setQuery: (query: string) => void
   close: () => void
+  /** For the chat root's onKeyDownCapture: an Escape while open closes the bar. */
+  onKeyDownCapture: (event: ReactKeyboardEvent) => void
   rootRef: RefObject<HTMLDivElement | null>
   barRef: RefObject<HTMLDivElement | null>
   inputRef: RefObject<HTMLInputElement | null>
-  /** Brings a match into the transcript's view as a reader step would. */
+  /** Brings a match into the transcript's view, clear of the bar, as a reader step would. */
   revealMatch: (match: Range) => void
 }
 
@@ -72,7 +82,8 @@ export function useNativeChatFind(
   }, [composerRef, rootRef])
 
   useEffect(() => {
-    if (!enabled) {
+    // Out of scope in the web client: the browser's own find keeps Mod+F there.
+    if (!enabled || isWebClientLocation()) {
       return
     }
     const platform = getShortcutPlatform()
@@ -102,35 +113,46 @@ export function useNativeChatFind(
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
   }, [enabled, rootRef])
 
-  useEffect(() => {
-    const root = rootRef.current
-    if (!isOpen || !root) {
-      return
-    }
-    // On the root, not the window: popovers and cards that close on Escape at the document claim it first.
-    const onEscape = (e: KeyboardEvent): void => {
+  // Why React capture on the root: it runs before the composer's own onKeyDownCapture (outer
+  // first), so the composer never interrupts the turn; layers that close on Escape at the
+  // document (Radix popovers, the context card) still claim it earlier.
+  const onKeyDownCapture = useCallback(
+    (event: ReactKeyboardEvent) => {
       if (
-        e.key !== 'Escape' ||
-        e.defaultPrevented ||
-        e.isComposing ||
-        e.keyCode === 229 ||
-        ownsEscape(e.target)
+        !isOpen ||
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        event.nativeEvent.isComposing ||
+        event.keyCode === 229 ||
+        ownsEscape(event.target)
       ) {
         return
       }
-      // Consumed, so the composer's Escape does not also interrupt the turn.
-      e.preventDefault()
-      e.stopPropagation()
+      event.preventDefault()
+      event.stopPropagation()
       close()
-    }
-    root.addEventListener('keydown', onEscape, { capture: true })
-    return () => root.removeEventListener('keydown', onEscape, { capture: true })
-  }, [close, isOpen, rootRef])
+    },
+    [close, isOpen]
+  )
 
   const revealMatch = useCallback(
-    (match: Range) => messageListRef.current?.revealFindMatch(match),
+    (match: Range) =>
+      messageListRef.current?.revealFindMatch(
+        match,
+        barRef.current?.getBoundingClientRect() ?? null
+      ),
     [messageListRef]
   )
 
-  return { isOpen, query, setQuery, close, rootRef, barRef, inputRef, revealMatch }
+  return {
+    isOpen,
+    query,
+    setQuery,
+    close,
+    onKeyDownCapture,
+    rootRef,
+    barRef,
+    inputRef,
+    revealMatch
+  }
 }

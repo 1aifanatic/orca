@@ -24,7 +24,13 @@ export function useNativeChatPromptCardFocus(
   useLayoutEffect(() => {
     const card = cardRef.current
     const active = document.activeElement
-    if (shouldFocus && isInNativeChatPaneOf(card, active) && !card?.contains(active)) {
+    // The pane's find bar is a surface of its own: a card arriving mid-query does not take its keys.
+    if (
+      shouldFocus &&
+      isInNativeChatPaneOf(card, active) &&
+      !card?.contains(active) &&
+      !active?.closest('[data-native-chat-find-bar]')
+    ) {
       card?.focus()
     }
   }, [cardRef, shouldFocus, step])

@@ -1,8 +1,16 @@
 import { useEffect, type RefObject } from 'react'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
+import { isEditableTarget } from '@/lib/editable-target'
 import { keybindingMatchesAction, type KeybindingOverrides } from '../../../../shared/keybindings'
 
-/** Find belongs to this PDF when focus is in it, or nowhere in particular while it is on screen. */
+const GROUP_BODY_SELECTOR = '[data-tab-group-body-id]'
+const GROUP_STRIP_SELECTOR = '[data-tab-group-strip-id]'
+
+/**
+ * Find belongs to this PDF unless the key came from another content surface (a chat, terminal or
+ * editor in some group's body), another group's tab strip, or a text field. Its own tab, the file
+ * explorer and other app chrome leave it to the PDF on screen.
+ */
 export function pdfViewerOwnsFind(root: HTMLElement | null, target: EventTarget | null): boolean {
   if (!root || !(target instanceof Node)) {
     return false
@@ -10,12 +18,19 @@ export function pdfViewerOwnsFind(root: HTMLElement | null, target: EventTarget 
   if (root.contains(target)) {
     return true
   }
-  const unfocused = target === root.ownerDocument.body || target === root.ownerDocument
-  return (
-    unfocused &&
-    (typeof root.checkVisibility !== 'function' ||
-      root.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
-  )
+  if (
+    typeof root.checkVisibility === 'function' &&
+    !root.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+  ) {
+    return false
+  }
+  const element = target instanceof Element ? target : target.parentElement
+  if (element?.closest(GROUP_BODY_SELECTOR) || isEditableTarget(element)) {
+    return false
+  }
+  const strip = element?.closest<HTMLElement>(GROUP_STRIP_SELECTOR)
+  const group = root.closest<HTMLElement>(GROUP_BODY_SELECTOR)?.dataset.tabGroupBodyId
+  return !strip || strip.dataset.tabGroupStripId === group
 }
 
 export function usePdfViewerShortcuts({

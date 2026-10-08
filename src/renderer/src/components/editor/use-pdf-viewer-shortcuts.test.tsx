@@ -67,4 +67,37 @@ describe('PDF viewer find shortcut', () => {
     hiddenSurface.style.opacity = '0'
     expect(pdfViewerOwnsFind(root, document.body)).toBe(false)
   })
+  it('opens from its own tab or the file explorer, not from a chat or another group', () => {
+    const groupBody = (id: string): HTMLElement => {
+      const body = document.createElement('div')
+      body.dataset.tabGroupBodyId = id
+      return body
+    }
+    const strip = (id: string): HTMLElement => {
+      const element = document.createElement('div')
+      element.dataset.tabGroupStripId = id
+      const tab = document.createElement('div')
+      tab.tabIndex = 0
+      element.append(tab)
+      return element
+    }
+    const pdfGroup = groupBody('g1')
+    const root = document.createElement('div')
+    pdfGroup.append(root)
+    const ownStrip = strip('g1')
+    const otherStrip = strip('g2')
+    const chatGroup = groupBody('g2')
+    const chatComposer = document.createElement('div')
+    chatComposer.setAttribute('data-native-chat-root', 'true')
+    chatGroup.append(chatComposer)
+    const explorerRow = document.createElement('button')
+    const sidebarSearch = document.createElement('input')
+    document.body.append(ownStrip, pdfGroup, otherStrip, chatGroup, explorerRow, sidebarSearch)
+
+    expect(pdfViewerOwnsFind(root, ownStrip.firstElementChild)).toBe(true)
+    expect(pdfViewerOwnsFind(root, explorerRow)).toBe(true)
+    expect(pdfViewerOwnsFind(root, otherStrip.firstElementChild)).toBe(false)
+    expect(pdfViewerOwnsFind(root, chatComposer)).toBe(false)
+    expect(pdfViewerOwnsFind(root, sidebarSearch)).toBe(false)
+  })
 })

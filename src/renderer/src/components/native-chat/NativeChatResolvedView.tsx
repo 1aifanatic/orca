@@ -350,6 +350,7 @@ export function NativeChatResolvedView({
         }
       }}
       onKeyDownCapture={(event) => {
+        find.onKeyDownCapture(event)
         const splitDirection = event.repeat
           ? null
           : matchNativeChatSplitShortcut(event, getShortcutPlatform(), keybindings)

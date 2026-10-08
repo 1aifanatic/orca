@@ -201,7 +201,7 @@ describe('reader navigation', () => {
       value: () => DOMRect.fromRect({ y: viewTop - 2000, height: 20 })
     })
 
-    act(() => handle.current?.revealFindMatch(match))
+    act(() => handle.current?.revealFindMatch(match, null))
     fireEvent.scroll(scroller)
     const foundAt = scroller.scrollTop
     expect(distanceFromBottom(container)).toBeGreaterThan(1000)

@@ -238,7 +238,10 @@ export function NativeChatStructuredSession(
       data-native-chat-working={controller.isWorking ? 'true' : 'false'}
       tabIndex={-1}
       onPointerDownCapture={paneCommands.onPointerDownCapture}
-      onKeyDownCapture={paneCommands.onKeyDownCapture}
+      onKeyDownCapture={(event) => {
+        find.onKeyDownCapture(event)
+        paneCommands.onKeyDownCapture(event)
+      }}
       onContextMenuCapture={paneCommands.onContextMenuCapture}
       className={cn(
         NATIVE_CHAT_APPEARANCE_ROOT_CLASS,

@@ -6,6 +6,7 @@ import {
   readerGestureLeavesEnd,
   type ReaderGesture
 } from './native-chat-autoscroll'
+import { nativeChatFindGeometry, nativeChatFindScrollDelta } from './native-chat-find-visibility'
 
 const READER_SCROLL_KEYS = new Set([
   'ArrowUp',
@@ -134,23 +135,6 @@ export function nativeChatReaderScrollInputHandlers({
   }
 }
 
-/** Room the find bar takes over the top of the transcript; a match under it is not in view. */
-const FIND_BAR_CLEARANCE_PX = 48
-
-type VerticalBounds = Pick<DOMRect, 'top' | 'bottom'>
-
-/** How far to scroll so a find match sits mid-view, or null when it is already in view. */
-export function nativeChatFindScrollDelta(
-  match: VerticalBounds,
-  view: VerticalBounds
-): number | null {
-  const visibleTop = view.top + FIND_BAR_CLEARANCE_PX
-  if (match.top >= visibleTop && match.bottom <= view.bottom) {
-    return null
-  }
-  return (match.top + match.bottom) / 2 - (visibleTop + view.bottom) / 2
-}
-
 /** The transcript scroller's input props, the wheel the rail overlaying it forwards, and find steps. */
 export function useNativeChatReaderScrollInput(
   scrollRef: React.RefObject<HTMLElement | null>,
@@ -159,7 +143,7 @@ export function useNativeChatReaderScrollInput(
   scrollerProps: NativeChatReaderScrollInputHandlers
   railWheel: (deltaY: number) => void
   /** A find step moves the transcript for the reader, so it ends following like a gesture. */
-  revealFindMatch: (match: Range) => void
+  revealFindMatch: (match: Range, bar: DOMRectReadOnly | null) => void
 } {
   const onReaderScroll = useCallback(() => {
     onScrollInput()
@@ -184,20 +168,23 @@ export function useNativeChatReaderScrollInput(
     [onLeaveEnd, onReaderScroll, scrollRef]
   )
   const revealFindMatch = useCallback(
-    (match: Range) => {
+    (match: Range, bar: DOMRectReadOnly | null) => {
       const transcript = scrollRef.current
-      const delta = transcript
-        ? nativeChatFindScrollDelta(
-            match.getBoundingClientRect(),
-            transcript.getBoundingClientRect()
-          )
-        : null
-      if (!transcript || delta === null) {
+      if (!transcript) {
+        return
+      }
+      const geometry = nativeChatFindGeometry(transcript)
+      geometry.scrollIntoBoxes(match)
+      if (geometry.inView(match, bar)) {
         return
       }
       onReaderScroll()
       onLeaveEnd()
-      transcript.scrollTop += delta
+      transcript.scrollTop += nativeChatFindScrollDelta(
+        match.getBoundingClientRect(),
+        transcript.getBoundingClientRect(),
+        bar
+      )
     },
     [onLeaveEnd, onReaderScroll, scrollRef]
   )
