@@ -3,8 +3,7 @@ import { act, create } from 'react-test-renderer'
 import { describe, expect, it, vi } from 'vitest'
 
 const route = vi.hoisted(() => {
-  const state: { params: Record<string, string>; capabilities: string[] } = {
-    params: {},
+  const state: { capabilities: string[] } = {
     capabilities: []
   }
   return state
@@ -14,18 +13,16 @@ const desktop = vi.hoisted(() => {
   return state
 })
 
-vi.mock('expo-router', () => ({ useLocalSearchParams: () => route.params }))
-vi.mock('react-native', () => ({}))
 vi.mock('../components/host-protocol-gates-context', () => ({
   useOptionalHostProtocolGates: () => ({ hostCapabilities: route.capabilities })
 }))
 vi.mock('./client-context', () => ({
-  useHostClient: () => ({ client: desktop.client, clientId: 'client-1', state: 'connected' }),
-  useForceReconnect: () => () => undefined
+  useHostClient: () => ({ client: desktop.client, clientId: 'client-1', state: 'connected' })
 }))
 
+import { normalizeExecutionHostId } from '../../../src/shared/execution-host'
 import { MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY } from '../../../src/shared/mobile-desktop-relay-contract'
-import { WorkspaceRoute } from '../navigation/workspace-route'
+import { WorkspaceExecutionHostContext } from '../navigation/workspace-execution-host'
 import { FakeSession } from './mobile-endpoint-supervisor-test-fakes'
 import type { RpcClient } from './rpc-client'
 import { useWorkspaceClient } from './use-workspace-client'
@@ -34,7 +31,6 @@ async function workspaceClientFor(
   params: Record<string, string>,
   capabilities: string[]
 ): Promise<{ client: RpcClient | null; session: FakeSession }> {
-  route.params = params
   route.capabilities = capabilities
   const session = new FakeSession('connected')
   desktop.client = session
@@ -44,7 +40,13 @@ async function workspaceClientFor(
     return null
   }
   await act(async () => {
-    create(createElement(WorkspaceRoute, null, createElement(Probe)))
+    create(
+      createElement(
+        WorkspaceExecutionHostContext.Provider,
+        { value: normalizeExecutionHostId(params.executionHost) ?? undefined },
+        createElement(Probe)
+      )
+    )
   })
   return { client: held.client, session }
 }

@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ChevronLeft, X } from 'lucide-react-native'
 import { useWorkspaceRouteHandoff } from '../navigation/workspace-route-handoff'
+import { useForceReconnect } from '../transport/client-context'
 import { useWorkspaceClient } from '../transport/use-workspace-client'
 import { connectionRetryAction } from '../transport/connection-retry-action'
 import { getWorktreeLabel } from '../session/worktree-label'
@@ -44,7 +45,8 @@ export function MobileFileExplorerPanel(props: {
 }) {
   const { hostId, worktreeId, name, embedded, onRequestClose } = props
   const router = useWorkspaceRouteHandoff()
-  const { client, state: connState, forceReconnect } = useWorkspaceClient(hostId)
+  const { client, state: connState } = useWorkspaceClient(hostId)
+  const forceReconnect = useForceReconnect()
   const scopeRef = useRef('')
   const scope = `${hostId}:${worktreeId}`
   scopeRef.current = scope

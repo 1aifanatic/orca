@@ -1,4 +1,8 @@
 import { withWorkspaceRoute } from '../../../../src/navigation/workspace-route'
+import {
+  useWorkspaceExecutionHost,
+  workspaceRouteParams
+} from '../../../../src/navigation/workspace-execution-host'
 import { useCallback } from 'react'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { MobileSessionRouteScreen } from '../../../../src/session/MobileSessionRouteScreen'
@@ -39,10 +43,10 @@ export default withWorkspaceRoute(function MobileSessionScreen() {
     created?: string | string[]
     warning?: string | string[]
     paneKey?: string | string[]
-    executionHost?: string | string[]
   }>()
   const hostId = firstParam(params.hostId)
   const worktreeId = firstParam(params.worktreeId)
+  const executionHost = useWorkspaceExecutionHost()
   const router = useRouter()
   const native = <MobileSessionRouteScreen />
   const paneKey = firstParam(params.paneKey) ?? ''
@@ -66,11 +70,14 @@ export default withWorkspaceRoute(function MobileSessionScreen() {
   // the create flow sets to `1`, `warning` is the host's own text, `name` is a label the screen
   // otherwise derives from the workspace, and `paneKey` empty is exactly what the notification hook
   // writes back to say the tap is spent.
-  const routeParams = Object.fromEntries(
-    (['name', 'created', 'warning', 'paneKey', 'executionHost'] as const)
-      .map((key) => [key, firstParam(params[key])] as const)
-      .filter(([, value]) => value !== '')
-  )
+  const routeParams: Record<string, string> = {
+    ...Object.fromEntries(
+      (['name', 'created', 'warning', 'paneKey'] as const)
+        .map((key) => [key, firstParam(params[key])] as const)
+        .filter(([, value]) => value !== '')
+    ),
+    ...workspaceRouteParams(executionHost)
+  }
   const route =
     hostId && worktreeId
       ? shellScreenRoute({

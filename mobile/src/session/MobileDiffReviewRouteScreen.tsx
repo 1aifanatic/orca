@@ -4,6 +4,7 @@ import { MobileDiffReviewScreenView } from '../components/MobileDiffReviewScreen
 import { firstReviewParam, normalizeReviewFilterParam } from './mobile-diff-review-screen-model'
 import { normalizeReviewAreaParam } from './mobile-diff-review-positioning'
 import { useMobileDiffReviewController } from './use-mobile-diff-review-controller'
+import { useForceReconnect } from '../transport/client-context'
 import { useWorkspaceClient } from '../transport/use-workspace-client'
 import { useHostProtocolGates } from '../components/HostProtocolGate'
 import { useWorkspaceRouteHandoff } from '../navigation/workspace-route-handoff'
@@ -42,7 +43,8 @@ export function MobileDiffReviewRouteScreen() {
   // Not `useRouter`: inside the shell's page the session screen is native, so that replace has to
   // be handed back to the app rather than posted into a document that does not render it.
   const router = useWorkspaceRouteHandoff()
-  const { client, state: connState, forceReconnect } = useWorkspaceClient(hostId)
+  const { client, state: connState } = useWorkspaceClient(hostId)
+  const forceReconnect = useForceReconnect()
 
   const openSession = useCallback(() => {
     const query = name ? `?${new URLSearchParams({ name }).toString()}` : ''

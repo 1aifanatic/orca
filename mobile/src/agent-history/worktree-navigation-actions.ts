@@ -10,8 +10,8 @@ type Args = {
   hostId: string
   worktreeId: string
   worktreeName: string
-  /** The row's server when it runs on one, so the opened screen works there. */
-  executionHost?: ExecutionHostId
+  /** The row's server when it runs on one, so the opened screen works there; null when unreachable. */
+  executionHost?: ExecutionHostId | null
   hostCapabilities: readonly string[]
   navigate: (target: string) => void
   onDone: () => void
@@ -23,6 +23,10 @@ type Args = {
 // navigate to a screen that would call a missing RPC method. Extracted from the
 // host index action sheet to keep that file under its max-lines budget.
 export function buildWorktreeNavigationActions(args: Args): ActionSheetAction[] {
+  if (args.executionHost === null) {
+    return []
+  }
+  const executionHost = args.executionHost
   const actions: ActionSheetAction[] = [
     {
       label: 'Source Control',
@@ -32,7 +36,7 @@ export function buildWorktreeNavigationActions(args: Args): ActionSheetAction[] 
         args.navigate(
           workspaceRouteHref(
             `/h/${encodeURIComponent(args.hostId)}/source-control/${encodeURIComponent(args.worktreeId)}?${params.toString()}`,
-            args.executionHost
+            executionHost
           )
         )
         args.onDone()
@@ -49,7 +53,7 @@ export function buildWorktreeNavigationActions(args: Args): ActionSheetAction[] 
         args.navigate(
           workspaceRouteHref(
             `/h/${encodeURIComponent(args.hostId)}/agent-history/${encodeURIComponent(args.worktreeId)}?${params.toString()}`,
-            args.executionHost
+            executionHost
           )
         )
         args.onDone()

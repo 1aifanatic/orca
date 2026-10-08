@@ -1,4 +1,8 @@
 import { withWorkspaceRoute } from '../../../../src/navigation/workspace-route'
+import {
+  useWorkspaceExecutionHost,
+  workspaceRouteParams
+} from '../../../../src/navigation/workspace-execution-host'
 import { useLocalSearchParams } from 'expo-router'
 import { MobileDiffReviewRouteScreen } from '../../../../src/session/MobileDiffReviewRouteScreen'
 import { firstReviewParam } from '../../../../src/session/mobile-diff-review-screen-model'
@@ -32,20 +36,23 @@ export default withWorkspaceRoute(function MobileDiffReviewScreen() {
     scope?: string | string[]
     file?: string | string[]
     area?: string | string[]
-    executionHost?: string | string[]
   }>()
   const hostId = firstReviewParam(params.hostId)
   const worktreeId = firstReviewParam(params.worktreeId)
+  const executionHost = useWorkspaceExecutionHost()
   const native = <MobileDiffReviewRouteScreen />
 
   // The four query params are read by the screen itself, so they are carried across whole rather
   // than re-derived here; each is omitted when empty, because the screen's own normalizers treat an
   // absent scope, file or area differently from one named nothing.
-  const routeParams = Object.fromEntries(
-    (['name', 'scope', 'file', 'area', 'executionHost'] as const)
-      .map((key) => [key, firstReviewParam(params[key])] as const)
-      .filter(([, value]) => value !== '')
-  )
+  const routeParams: Record<string, string> = {
+    ...Object.fromEntries(
+      (['name', 'scope', 'file', 'area'] as const)
+        .map((key) => [key, firstReviewParam(params[key])] as const)
+        .filter(([, value]) => value !== '')
+    ),
+    ...workspaceRouteParams(executionHost)
+  }
   const route =
     hostId && worktreeId
       ? shellScreenRoute({

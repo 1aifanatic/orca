@@ -15,13 +15,19 @@ export function relaysToServers(client: RpcClient, hostCapabilities: readonly st
   )
 }
 
-/** Local and SSH workspaces are the desktop's own; only a server's are named, and only if reachable. */
-export function canTargetExecutionHost(
-  client: RpcClient,
+/**
+ * The `executionHost` a route into a workspace carries: none for the desktop's own (local, SSH),
+ * the server for a reachable one, and null for one this phone cannot reach, which must not open.
+ */
+export function workspaceRouteExecutionHost(
+  client: RpcClient | null,
   hostCapabilities: readonly string[],
   executionHost: ExecutionHostId | undefined
-): executionHost is `runtime:${string}` {
-  return executionHost?.startsWith('runtime:') === true && relaysToServers(client, hostCapabilities)
+): ExecutionHostId | undefined | null {
+  if (!executionHost?.startsWith('runtime:')) {
+    return undefined
+  }
+  return client && relaysToServers(client, hostCapabilities) ? executionHost : null
 }
 
 /**
@@ -73,10 +79,9 @@ export function rpcClientForExecutionHost(
   hostCapabilities: readonly string[],
   executionHost: ExecutionHostId | undefined
 ): RpcClient | null {
-  if (!executionHost?.startsWith('runtime:')) {
+  const routeHost = workspaceRouteExecutionHost(client, hostCapabilities, executionHost)
+  if (routeHost === undefined) {
     return client
   }
-  return canTargetExecutionHost(client, hostCapabilities, executionHost)
-    ? scopeRpcClientToExecutionHost(client, executionHost)
-    : null
+  return routeHost && scopeRpcClientToExecutionHost(client, routeHost)
 }

@@ -7,8 +7,8 @@ import { removeHostAndCloseClient } from '../transport/host-removal-lifecycle'
 import { isPageHostRemovalUnavailable } from '../transport/page-host-removal-refusal'
 import type { RpcClient } from '../transport/rpc-client'
 import {
-  canTargetExecutionHost,
-  rpcClientForExecutionHost
+  rpcClientForExecutionHost,
+  workspaceRouteExecutionHost
 } from '../transport/execution-host-scoped-rpc-client'
 import { serverUpdateNeededNotice } from '../host-route-notice'
 import type { ConnectionState } from '../transport/types'
@@ -231,6 +231,10 @@ export function useHostWorktreeActions(args: {
         setServerNotice(serverUpdateNeededNotice(server.label))
         return
       }
+      const routeHost = workspaceRouteExecutionHost(client, hostCapabilities, item.hostId)
+      if (routeHost === null) {
+        return
+      }
       setOptimisticActiveWorktreeIdentity(getWorktreeRowIdentity(item))
       const rowClient = clientForRow(item)
       if (rowClient && connState === 'connected') {
@@ -245,10 +249,7 @@ export function useHostWorktreeActions(args: {
       // `?? ''` and not a cast: the hook takes `hostId` optional and every other member guards it,
       // so an absent one builds `/h//session/...` — a pathname the shell's segment rule refuses —
       // rather than the string "undefined", which it would accept as a host named undefined.
-      const executionHost =
-        client && canTargetExecutionHost(client, hostCapabilities, item.hostId)
-          ? `&executionHost=${encodeURIComponent(item.hostId)}`
-          : ''
+      const executionHost = routeHost ? `&executionHost=${encodeURIComponent(routeHost)}` : ''
       const target = `/h/${encodeURIComponent(hostId ?? '')}/session/${encodeURIComponent(item.worktreeId)}?name=${encodeURIComponent(item.displayName || item.repo)}${executionHost}`
       navigateFromHostList(target)
     },

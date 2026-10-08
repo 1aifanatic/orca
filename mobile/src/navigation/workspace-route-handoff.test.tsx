@@ -10,24 +10,22 @@ const route = vi.hoisted(() => {
     navigate: (href: unknown) => opened.push(['navigate', href]),
     back: () => opened.push(['back'])
   }
-  const state: { params: Record<string, string>; opened: unknown[]; router: typeof router } = {
-    params: {},
+  const state: { opened: unknown[]; router: typeof router } = {
     opened,
     router
   }
   return state
 })
 
-vi.mock('expo-router', () => ({ useLocalSearchParams: () => route.params }))
 vi.mock('./route-handoff', () => ({ useRouteHandoff: () => route.router }))
 
 import { useWorkspaceRouteHandoff } from './workspace-route-handoff'
-import { WorkspaceRoute } from './workspace-route'
+import { normalizeExecutionHostId } from '../../../src/shared/execution-host'
+import { WorkspaceExecutionHostContext } from './workspace-execution-host'
 
 async function workspaceRouterFor(
   params: Record<string, string>
 ): Promise<ReturnType<typeof useWorkspaceRouteHandoff>> {
-  route.params = params
   route.opened.length = 0
   const held: { router: ReturnType<typeof useWorkspaceRouteHandoff> | null } = { router: null }
   function Probe(): null {
@@ -35,7 +33,13 @@ async function workspaceRouterFor(
     return null
   }
   await act(async () => {
-    create(createElement(WorkspaceRoute, null, createElement(Probe)))
+    create(
+      createElement(
+        WorkspaceExecutionHostContext.Provider,
+        { value: normalizeExecutionHostId(params.executionHost) ?? undefined },
+        createElement(Probe)
+      )
+    )
   })
   if (!held.router) {
     throw new Error('probe did not render')

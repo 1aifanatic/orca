@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY } from '../../../src/shared/mobile-desktop-relay-contract'
 import {
-  canTargetExecutionHost,
-  scopeRpcClientToExecutionHost
+  scopeRpcClientToExecutionHost,
+  workspaceRouteExecutionHost
 } from './execution-host-scoped-rpc-client'
 import { MobileRelayRpcStreams } from './mobile-relay-rpc-streams'
 import type { RpcClient } from './rpc-client'
@@ -151,9 +151,11 @@ describe('executionHost on the envelope', () => {
 })
 
 function fakeClient(carries?: boolean) {
-  const sendRequest = vi.fn(
-    async (): Promise<RpcResponse> => ({ id: 'reply', ok: true, result: null })
-  )
+  const sendRequest = vi.fn(async (): Promise<RpcResponse> => ({
+    id: 'reply',
+    ok: true,
+    result: null
+  }))
   const subscribe = vi.fn(() => () => {})
   const close = vi.fn()
   const client = {
@@ -194,14 +196,15 @@ describe('scopeRpcClientToExecutionHost', () => {
     expect(scopeRpcClientToExecutionHost(client, 'runtime:env-2')).not.toBe(view)
   })
 
-  it('targets only server workspaces on a relaying desktop over a transport that keeps the field', () => {
+  it('routes a server workspace only through a relaying desktop over a transport that keeps the field', () => {
     const relays = [MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY]
-    expect(canTargetExecutionHost(fakeClient(), relays, SERVER)).toBe(true)
-    expect(canTargetExecutionHost(fakeClient(true), relays, SERVER)).toBe(true)
-    expect(canTargetExecutionHost(fakeClient(false), relays, SERVER)).toBe(false)
-    expect(canTargetExecutionHost(fakeClient(), [], SERVER)).toBe(false)
-    expect(canTargetExecutionHost(fakeClient(), relays, 'local')).toBe(false)
-    expect(canTargetExecutionHost(fakeClient(), relays, 'ssh:box')).toBe(false)
-    expect(canTargetExecutionHost(fakeClient(), relays, undefined)).toBe(false)
+    expect(workspaceRouteExecutionHost(fakeClient(), relays, SERVER)).toBe(SERVER)
+    expect(workspaceRouteExecutionHost(fakeClient(true), relays, SERVER)).toBe(SERVER)
+    expect(workspaceRouteExecutionHost(fakeClient(false), relays, SERVER)).toBeNull()
+    expect(workspaceRouteExecutionHost(fakeClient(), [], SERVER)).toBeNull()
+    expect(workspaceRouteExecutionHost(null, relays, SERVER)).toBeNull()
+    expect(workspaceRouteExecutionHost(fakeClient(), relays, 'local')).toBeUndefined()
+    expect(workspaceRouteExecutionHost(fakeClient(), relays, 'ssh:box')).toBeUndefined()
+    expect(workspaceRouteExecutionHost(fakeClient(), relays, undefined)).toBeUndefined()
   })
 })

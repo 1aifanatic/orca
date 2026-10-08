@@ -2,7 +2,7 @@ import { openExternalLink } from '../platform/external-link'
 import { Pressable, Text, View } from 'react-native'
 import { Check, Moon } from 'lucide-react-native'
 import { buildWorktreeNavigationActions } from '../agent-history/worktree-navigation-actions'
-import { canTargetExecutionHost } from '../transport/execution-host-scoped-rpc-client'
+import { workspaceRouteExecutionHost } from '../transport/execution-host-scoped-rpc-client'
 import { ActionSheetContent } from '../components/ActionSheetModal'
 import { BottomDrawer } from '../components/BottomDrawer'
 import { ConfirmModal } from '../components/ConfirmModal'
@@ -165,11 +165,11 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
                       hostId,
                       worktreeId: actionTarget.worktreeId,
                       worktreeName: actionTarget.displayName || actionTarget.repo,
-                      executionHost:
-                        client &&
-                        canTargetExecutionHost(client, hostCapabilities, actionTarget.hostId)
-                          ? actionTarget.hostId
-                          : undefined,
+                      executionHost: workspaceRouteExecutionHost(
+                        client,
+                        hostCapabilities,
+                        actionTarget.hostId
+                      ),
                       hostCapabilities,
                       navigate: actions.navigateFromHostList,
                       onDone: () => state.setActionTarget(null)

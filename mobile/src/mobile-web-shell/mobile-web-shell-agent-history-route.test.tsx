@@ -35,6 +35,10 @@ vi.mock('react-native', () => ({
   View: 'View'
 }))
 
+// The workspace route reads the desktop's connection to decide whether a server is reachable.
+vi.mock('../transport/client-context', () => ({
+  useHostClient: () => ({ client: null, state: 'disconnected' })
+}))
 vi.mock('expo-router', () => ({ useLocalSearchParams: () => dependencies.params }))
 
 vi.mock('../agent-history/MobileAgentSessionHistoryPanel', () => ({

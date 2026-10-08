@@ -290,6 +290,16 @@ describe("a desktop's server workspaces on the phone", () => {
     expect(screen.notice()).toBe('Update Orca on ThinkPad to open its workspaces from your phone.')
   })
 
+  it('opens nothing for a listed server workspace once the phone can no longer reach it', async () => {
+    const screen = await mountScreen(desktop(), RELAYS)
+    const oldShell = desktop({ carriesExecutionHost: false })
+    await screen.swapClient(oldShell)
+    expect(screen.rows().map((entry) => entry.worktreeId)).toContain('runtime:vm-wt')
+    screen.open('runtime:vm-wt')
+    expect(screen.navigations).toEqual([])
+    expect(calledMethods(oldShell)).not.toContain('worktree.activate')
+  })
+
   it('pins a server workspace on that server, as the desktop does', async () => {
     const client = desktop()
     const screen = await mountScreen(client, RELAYS)
