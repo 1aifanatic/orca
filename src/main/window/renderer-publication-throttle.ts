@@ -8,22 +8,8 @@ export type RendererPublicationThrottleTarget = {
   ) => Promise<unknown>
 }
 
-// Why: an empty rect keeps the hidden capture side-effect free (Chromium DCHECKs a sized stayHidden capture).
+// Why: an empty rect sets no capture-size hint, which could resize a hidden view (DCHECKed for stayHidden).
 const REHIDE_CAPTURE_RECT = { x: 0, y: 0, width: 0, height: 0 }
-
-// Why: re-throttling only clears Electron's disable_hidden flag, so a hide swallowed while leased never
-// replays; a stayHidden capture's completion re-applies the current visibility without showing the page.
-function rehideCoveredRenderer(target: RendererPublicationThrottleTarget): void {
-  // Why: a focused renderer sits in an on-screen key window, so it has no swallowed hide to replay.
-  if (target.isFocused?.() === true) {
-    return
-  }
-  try {
-    target.capturePage(REHIDE_CAPTURE_RECT, { stayHidden: true }).catch(() => {})
-  } catch {
-    // Best-effort: a failed re-hide leaves the residue until the next cover cycle, never a stuck lease.
-  }
-}
 
 export class RendererPublicationThrottle {
   private readonly leasesByTarget = new Map<RendererPublicationThrottleTarget, number>()
@@ -48,7 +34,10 @@ export class RendererPublicationThrottle {
       this.leasesByTarget.delete(target)
       if (target.isDestroyed?.() !== true) {
         target.setBackgroundThrottling(true)
-        rehideCoveredRenderer(target)
+        // Why: a stayHidden capture replays the hide swallowed while leased; a covered window loses focus, so skip focused ones.
+        if (target.isFocused?.() !== true) {
+          target.capturePage(REHIDE_CAPTURE_RECT, { stayHidden: true }).catch(() => {})
+        }
       }
     }
   }

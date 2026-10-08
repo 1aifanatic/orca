@@ -24,7 +24,13 @@ type PageStream = { options: BrowserScreencastOptions; close: () => void }
 function createRig() {
   const { runtime } = createScreencastHarness()
   const setBackgroundThrottling = vi.fn()
-  const window = { webContents: { isDestroyed: () => false, setBackgroundThrottling } }
+  const window = {
+    webContents: {
+      isDestroyed: () => false,
+      setBackgroundThrottling,
+      capturePage: vi.fn(async () => null)
+    }
+  }
   Object.assign(runtime, {
     browserCommands: new RuntimeBrowserCommands(createSinglePageBrowserCommandsHost(window))
   })

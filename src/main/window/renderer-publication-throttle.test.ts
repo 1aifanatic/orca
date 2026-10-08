@@ -62,7 +62,7 @@ describe('RendererPublicationThrottle', () => {
     expect(target.calls).toEqual([false, true, REHIDE_CAPTURE])
   })
 
-  it('skips the re-hide capture on a focused renderer, which cannot be covered', () => {
+  it('skips the re-hide capture on a focused renderer, which a cover would have unfocused', () => {
     const target = createTarget()
     const throttle = new RendererPublicationThrottle()
 
@@ -93,20 +93,6 @@ describe('RendererPublicationThrottle', () => {
     } finally {
       process.off('unhandledRejection', onUnhandled)
     }
-  })
-
-  it('releases even when the re-hide capture throws synchronously', () => {
-    const target = createTarget(() => {
-      throw new Error('capturePage unavailable')
-    })
-    const throttle = new RendererPublicationThrottle()
-
-    const release = throttle.acquire(target)
-    expect(() => release()).not.toThrow()
-    expect(target.calls).toEqual([false, true, REHIDE_CAPTURE])
-
-    throttle.acquire(target)
-    expect(target.calls).toEqual([false, true, REHIDE_CAPTURE, false])
   })
 
   it('does not restore throttling on a destroyed renderer', () => {
