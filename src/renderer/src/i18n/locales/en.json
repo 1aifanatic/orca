@@ -19147,7 +19147,7 @@
     "nativeChatUpgrade": {
       "eyebrow": "New",
       "title": "Native chat got an upgrade",
-      "description": "Chats now talk to the agent directly instead of mirroring a terminal.",
+      "description": "New chats now talk to the agent directly instead of mirroring a terminal.",
       "cta": "Got it",
       "sessionHistoryIntro": "In Agent Session History, in the right sidebar:",
       "resumeInChatLabel": "Resume in New Native Chat",

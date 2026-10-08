@@ -19104,7 +19104,7 @@
     "nativeChatUpgrade": {
       "eyebrow": "신규",
       "title": "기본 채팅이 업그레이드되었습니다",
-      "description": "이제 채팅은 터미널을 그대로 비추는 대신 에이전트와 직접 대화합니다.",
+      "description": "이제 새 채팅은 터미널을 그대로 비추는 대신 에이전트와 직접 대화합니다.",
       "cta": "확인",
       "sessionHistoryIntro": "오른쪽 사이드바의 Agent 세션 기록에서:",
       "resumeInChatLabel": "새 기본 채팅에서 재개",

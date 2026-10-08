@@ -19104,7 +19104,7 @@
     "nativeChatUpgrade": {
       "eyebrow": "新機能",
       "title": "ネイティブチャットがアップグレードされました",
-      "description": "チャットはターミナルを映すのではなく、Agent と直接やり取りするようになりました。",
+      "description": "新規チャットはターミナルを映すのではなく、Agent と直接やり取りするようになりました。",
       "cta": "了解",
       "sessionHistoryIntro": "右サイドバーの Agent セッション履歴で:",
       "resumeInChatLabel": "新規ネイティブチャットで再開",
