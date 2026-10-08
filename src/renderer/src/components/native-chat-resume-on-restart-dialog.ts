@@ -6,8 +6,8 @@ export type NativeChatResumeOnRestartDialogRequest = Readonly<{
 }>
 
 let pending: NativeChatResumeOnRestartDialogRequest | null = null
-/** Whether the dialog is drawn right now, as the dialog itself reports it. */
-let showing = false
+/** How many resume dialogs are mounted to draw a request (the app mounts one). */
+let mountedDialogs = 0
 const listeners = new Set<() => void>()
 
 function notify(): void {
@@ -43,14 +43,18 @@ export function getNativeChatResumeOnRestartDialogRequest(): NativeChatResumeOnR
   return pending
 }
 
-/** Set by the dialog: an open request with something to list. */
-export function setNativeChatResumeDialogShowing(next: boolean): void {
-  showing = next
+/** The dialog's own mount; returns its unmount. */
+export function mountNativeChatResumeDialog(): () => void {
+  mountedDialogs += 1
+  return () => {
+    mountedDialogs -= 1
+  }
 }
 
-/** Whether the user is looking at the dialog now; a pending request alone does not say so. */
-export function isNativeChatResumeDialogShowing(): boolean {
-  return showing
+/** Whether a mounted dialog would draw a request right now, given whether any machine lists rows.
+ *  Read at the moment of asking, from the state the dialog renders from: never a copy of it. */
+export function nativeChatResumeDialogOnScreen(rowsListed: boolean): boolean {
+  return pending !== null && rowsListed && mountedDialogs > 0
 }
 
 export function subscribeNativeChatResumeOnRestartDialog(listener: () => void): () => void {
@@ -63,5 +67,4 @@ export function subscribeNativeChatResumeOnRestartDialog(listener: () => void): 
 /** @internal - tests need a clean module between cases. */
 export function _resetNativeChatResumeOnRestartDialog(): void {
   pending = null
-  showing = false
 }

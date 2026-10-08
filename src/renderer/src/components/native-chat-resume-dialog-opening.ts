@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { useNativeChatRestartOfferEnabled } from './native-chat-restart-offer-gate'
 import {
   getNativeChatResumeOnRestartDialogRequest,
-  setNativeChatResumeDialogShowing,
+  mountNativeChatResumeDialog,
   subscribeNativeChatResumeOnRestartDialog,
   type NativeChatResumeOnRestartDialogRequest
 } from './native-chat-resume-on-restart-dialog'
@@ -37,10 +37,7 @@ export function useNativeChatResumeDialogOpening(): {
   // What the open dialog shows is decided: a later read of a paired server does not announce it,
   // and a restart toast still up goes, since the dialog lists its chats and blocks clicks on it.
   const showing = request !== null && machines.length > 0
-  useEffect(() => {
-    setNativeChatResumeDialogShowing(showing)
-    return () => setNativeChatResumeDialogShowing(false)
-  }, [showing])
+  useEffect(mountNativeChatResumeDialog, [])
   useEffect(() => {
     if (!showing) {
       return

@@ -27,7 +27,7 @@ import { requestLaunchResumePrompt } from './native-chat-resume-on-restart-launc
 import { markNativeChatLaunchResumeDecided } from './native-chat-launch-resume-decision'
 import {
   _resetNativeChatResumeOnRestartDialog,
-  isNativeChatResumeDialogShowing
+  nativeChatResumeDialogOnScreen
 } from './native-chat-resume-on-restart-dialog'
 import {
   _resetRestartDecidedMemory,
@@ -140,7 +140,7 @@ function decidePairedAnswer(target: RuntimeClientTarget, candidates: readonly Re
     fresh.map(restartInterruptionKey)
   )
   // A resume dialog on screen lists every machine: what it shows needs no toast.
-  if (fresh.length === 0 || isNativeChatResumeDialogShowing()) {
+  if (fresh.length === 0 || nativeChatResumeDialogOnScreen(getNativeChatRestartOffers().size > 0)) {
     return
   }
   if (autoResumeEnabled()) {

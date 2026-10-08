@@ -370,6 +370,44 @@ it('raises no restart toast for a server whose chats land in the open dialog', a
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain('studio-mac')
 })
 
+// The dialog's last rows go and a server's restart lands in the same tick, before React renders:
+// the dialog is already gone for the user, so the server's restart gets its toast.
+it('announces a server restart that lands in the same tick the dialog loses its last rows', async () => {
+  window.localStorage.clear()
+  await stage({})
+  await open('local')
+  const localRead = Promise.withResolvers<unknown>()
+  const studioRead = Promise.withResolvers<unknown>()
+  rpc.mockImplementation((target, method) =>
+    method !== 'agentSession.restartResumable'
+      ? Promise.resolve({ continued: [], sessions: [] })
+      : target.kind === 'local'
+        ? localRead.promise
+        : studioRead.promise
+  )
+  vi.mocked(toast).mockClear()
+  // Outside act on purpose: React's passive effects must not run between the two answers.
+  const reads = Promise.all([
+    readNativeChatRestartMachine({ kind: 'local' }),
+    readNativeChatRestartMachine({ kind: 'environment', environmentId: 'studio' })
+  ])
+  // Both requests are out (the server's after its capability check) before either answers.
+  await vi.waitFor(() =>
+    expect(
+      rpc.mock.calls.filter((call) => call[1] === 'agentSession.restartResumable')
+    ).toHaveLength(2)
+  )
+  localRead.resolve({ sessions: [] })
+  studioRead.resolve({ sessions: [row('s1', 'own')] })
+  await reads
+  await act(async () => {})
+  expect(getNativeChatResumeOnRestartDialogRequest()).toBeNull()
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  expect(vi.mocked(toast).mock.calls.map(([title]) => title)).toEqual([
+    'studio-mac restarted for an update'
+  ])
+})
+
 // A "Resuming" click while a concurrent read lists nothing opens nothing and leaves nothing behind:
 // once that resume's answer is lost, a later server's restart still gets its toast and does not
 // open the dialog by itself.

@@ -9,7 +9,7 @@ import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
   getNativeChatResumeOnRestartDialogRequest,
-  setNativeChatResumeDialogShowing,
+  mountNativeChatResumeDialog,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 import {
@@ -308,12 +308,16 @@ it('continues an interruption at most once per run when storage refuses writes a
   }
 })
 
-// A dialog on screen lists every machine: no toast repeats it. The dialog reports itself drawn.
+// A dialog on screen lists every machine: no toast repeats it.
 it('raises no toast while a resume dialog is on screen, which lists the server too', async () => {
-  requestNativeChatResumeOnRestartDialog('local')
-  setNativeChatResumeDialogShowing(true)
-  await connect({ runtimeId: 'r2' })
-  expect(toast).not.toHaveBeenCalled()
+  const unmount = mountNativeChatResumeDialog()
+  try {
+    requestNativeChatResumeOnRestartDialog('local')
+    await connect({ runtimeId: 'r2' })
+    expect(toast).not.toHaveBeenCalled()
+  } finally {
+    unmount()
+  }
 })
 
 // A request alone is not a dialog the user sees: one nothing draws must not swallow the toast.
@@ -347,11 +351,11 @@ it('forgets the old pairing’s rows as soon as the saved record is re-paired', 
 })
 
 it('decides what an open dialog already shows without a toast', async () => {
+  const unmount = mountNativeChatResumeDialog()
   requestNativeChatResumeOnRestartDialog(null)
-  setNativeChatResumeDialogShowing(true)
   await connect({ runtimeId: 'r2' })
   expect(toast).not.toHaveBeenCalled()
-  setNativeChatResumeDialogShowing(false)
+  unmount()
   consumeNativeChatResumeOnRestartDialogRequest()
   await readNativeChatRestartMachine(TARGET)
   expect(toast).not.toHaveBeenCalled()
