@@ -1,65 +1,109 @@
-name: pnpm verification cache pilot
-
+name: Manual mocked recovery pacing one-host correctness and timing
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      source_sha:
+        description: Exact reviewed 3b24 source only; definition must never merge.
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  group: manual-recovery-delay-clock
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  qualify-and-measure:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      WAIT_SOURCE_SHA: ${{ inputs.source_sha }}
+      WAIT_TIMING_SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .benchmark-definition
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
-        id: deps
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          node-version: '24.21.0'
+          native-runtime: node
+          cache-electron-package: 'true'
+      - name: Install Electron package binary
+        run: node config/scripts/install-electron-package-binary.mjs
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: config/.bun-version
+      - name: Materialize guarded stock controllers and contexts
+        run: node .benchmark-definition/.github/benchmark/recovery-delay-clock/materialize.mjs
+      - name: Preserve four first original correctness commands
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          directory=notes/bun-migration/performance/recovery-delay-clock-ci-3b24
+          for runtime in bun node; do
+            for seed in 104729 130363; do
+              python3 notes/bun-migration/performance/qualify-fixture-reuse.py before "$runtime" "$directory/shipping-launch-plan.json" "recovery-delay-clock-ci-3b24/runs/$runtime-$seed/before" "$seed"
+            done
+          done
+      - name: Apply only the reviewed case-local pacing seam
+        run: |
+          git apply --check notes/bun-migration/performance/recovery-delay-clock-ci-3b24/shipping.patch
+          git apply notes/bun-migration/performance/recovery-delay-clock-ci-3b24/shipping.patch
+      - name: Preserve four first candidate correctness commands
+        run: |
+          directory=notes/bun-migration/performance/recovery-delay-clock-ci-3b24
+          for runtime in bun node; do
+            for seed in 104729 130363; do
+              python3 notes/bun-migration/performance/qualify-fixture-reuse.py after "$runtime" "$directory/shipping-launch-plan.json" "recovery-delay-clock-ci-3b24/runs/$runtime-$seed/after" "$seed"
+            done
+          done
+      - name: Preserve raw qualification views
+        if: always()
+        run: python3 notes/bun-migration/performance/recovery-delay-clock-ci-3b24/prepare-held-plan.py views notes/bun-migration/performance/recovery-delay-clock-ci-3b24
+      - name: Independently require all eight original and candidate maps
+        if: always()
+        run: python3 .benchmark-definition/.github/benchmark/recovery-delay-clock/collect-qualification.py notes/bun-migration/performance/recovery-delay-clock-ci-3b24/qualification-artifacts .benchmark-definition/.github/benchmark/recovery-delay-clock/payload notes/bun-migration/performance/recovery-delay-clock-ci-3b24/qualification-result.json
+      - name: Derive exact runtime golden plan and restore original source
+        run: |
+          python3 notes/bun-migration/performance/recovery-delay-clock-ci-3b24/prepare-held-plan.py plan notes/bun-migration/performance/recovery-delay-clock-ci-3b24
+          git apply --reverse --check notes/bun-migration/performance/recovery-delay-clock-ci-3b24/shipping.patch
+          git apply --reverse notes/bun-migration/performance/recovery-delay-clock-ci-3b24/shipping.patch
+          git diff --exit-code HEAD
+      - name: Count all six first whole commands without retries
+        run: |
+          driver=notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs
+          plan=notes/bun-migration/performance/recovery-delay-clock-ci-3b24/measurement-plan.json
+          patch=notes/bun-migration/performance/recovery-delay-clock-ci-3b24/shipping.patch
+          node "$driver" before 0 "$plan"
+          git apply --check "$patch"
+          git apply "$patch"
+          node "$driver" after 0 "$plan"
+          node "$driver" after 1 "$plan"
+          git apply --reverse --check "$patch"
+          git apply --reverse "$patch"
+          git diff --exit-code HEAD
+          node "$driver" before 1 "$plan"
+          node "$driver" before 2 "$plan"
+          git apply --check "$patch"
+          git apply "$patch"
+          node "$driver" after 2 "$plan"
+      - name: Independently replay original eight reports again
+        if: always()
+        run: python3 .benchmark-definition/.github/benchmark/recovery-delay-clock/collect-qualification.py notes/bun-migration/performance/recovery-delay-clock-ci-3b24/qualification-artifacts .benchmark-definition/.github/benchmark/recovery-delay-clock/payload notes/bun-migration/performance/recovery-delay-clock-ci-3b24/qualification-result-replayed.json
+      - name: Independently verify all six retained timing commands
+        if: always()
+        run: python3 .benchmark-definition/.github/benchmark/recovery-delay-clock/collect-timing.py notes/bun-migration/performance .benchmark-definition/.github/benchmark/recovery-delay-clock/payload notes/bun-migration/performance/recovery-delay-clock-ci-3b24/held-six-result.json
+      - name: Preserve all first attempts and every partial failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-delay-clock-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            notes/bun-migration/performance/recovery-delay-clock-ci-3b24/
+            notes/bun-migration/performance/recovery-delay-clock-held-3b24-*

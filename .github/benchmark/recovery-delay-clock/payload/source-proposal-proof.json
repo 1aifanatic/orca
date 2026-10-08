@@ -1,0 +1,57 @@
+{
+  "classification": "SOURCE ONLY; HELD pending peer/root/actual qualification; no measured saving",
+  "source": "3b24c0d4e77f011327eee9215b4e7418883594dc",
+  "target": "src/main/native-chat/agent-session-wire/structured-agent-session-wedged-profile-migration.test.ts",
+  "beforeSha256": "5b9de3276094beb42f0941f8fa14d0b18a786cc76f07547928fd4f82fba8b6e8",
+  "afterSha256": "89f606327bc0c4c6016e05deb99d92e5db694ce8585f5a0f9fa6867ee6411808",
+  "patchSha256": "e2c40e0004f72ce548a7c0163409240a28fd9f6bd41a0e14f17af22e003ecfa0",
+  "namedGuards": {
+    "src/main/native-chat/agent-session-wire/structured-agent-session-wedged-profile-migration.test.ts": "5b9de3276094beb42f0941f8fa14d0b18a786cc76f07547928fd4f82fba8b6e8",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-recovery-resolution.ts": "8168a3e314172e7bbdd58ef6ce06c05a95fb2b3b662d81c7ae84d401734e6099",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-recovery-resolution.test.ts": "136d032dde7dedbdb2de60c7c14562b2333d58a0ac8532358e6047a5810e6c19",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-runtime-state.ts": "7ff599bbd741dddc4616c9e29cdeb5ecae1d787e0565439889892da32ed2b3f7",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-types.ts": "81db6e215ae9af9e33f5e6e5e80fb69675c2794d60887a72fb1e9120f34cab3b",
+    "src/main/provider-process/provider-process-supervisor.ts": "c87dfb6af5f31dc0448e1f75482aeedf7b317dff7b937aafe588020839ae375d"
+  },
+  "currentRawProofPath": "notes/bun-migration/performance/ci-five-shard-final-after-upstream-writer-fix-20261008/independent-full-console-runtime-enrollment-proof-v2.json",
+  "currentRawProofSha256": "5589c2b84662137465fa792ac902ff233592b668f690c76209b4127d53b81334",
+  "currentActualModule": {
+    "project": "node-runtime",
+    "cases": 19,
+    "moduleState": "passed",
+    "skipped": 0,
+    "expectedFail": 0
+  },
+  "observedSlowCaseTitle": "releases an owner that survives every stop signal, and the chat starts again",
+  "observedCaseMs": 6798,
+  "delayOwner": "resolveStructuredSessionRecovery deps.delay",
+  "existingCanonicalTestReuse": "structured-agent-session-recovery-resolution.test.ts deps() delay: async () => {}",
+  "allowedChange": "One namespace import and case-local pass-through spy; delegate exact resolver with unchanged actual deps except pre-existing delay seam. Restore before all original assertions/host.attach and on rejection.",
+  "exactOriginalWholeSourceRecovery": true,
+  "originalCasesAssertionsSubjectsDeadlinesFreshStoreSqliteJournalAndMockOwnerCallbacksUnchanged": true,
+  "noProductionChange": true,
+  "noGlobalClockChange": true,
+  "noRealChildOrPidOrSocketStopAffected": true,
+  "fixedSemanticNowPreserved": true,
+  "stopLoopIdentity": "actual production23SIGTERM+4SIGKILL probes with250ms pacing callbacks; mocked probe always identity-matched and stop mock remains exact",
+  "nominalSyntheticPacingMs": 6750,
+  "actualProbeCountOrSavingQualified": false,
+  "prospectiveQualification": {
+    "reuse": "existing strict eight before/after Node/Bun seeds104729/130363 controller/reporter; no new runner",
+    "files": [
+      "src/main/native-chat/agent-session-wire/structured-agent-session-wedged-profile-migration.test.ts",
+      "src/main/native-chat/agent-session-wire/structured-agent-session-recovery-resolution.test.ts",
+      "src/main/provider-process/provider-process-supervisor.integration.test.ts"
+    ],
+    "protectActualNode": true,
+    "stockFsModuleCache": true,
+    "maxWorkers": 4,
+    "isolation": true,
+    "setupFiles": 6,
+    "actualFullRawCaseStatusMaps": "derive from unchanged original reports;19current module observed not hardcoded acrosssourcegrowth",
+    "assertions": "all original case identities/statuses/execution subjects preserved; original stop/signals/release/reacquisition asserts remain; exact production loop unchanged",
+    "noNativeDesktopExecution": true,
+    "noTimingUntilCorrectnessP": true
+  },
+  "capacityScope": "At most this one mocked case synthetic6.75s; do not project2x or sum collection overhead as removed work."
+}

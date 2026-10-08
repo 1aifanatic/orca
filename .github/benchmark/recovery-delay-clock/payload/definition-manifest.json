@@ -1,0 +1,127 @@
+{
+  "sourceHead": "3b24c0d4e77f011327eee9215b4e7418883594dc",
+  "sourceHashes": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "8201c2fe598cc8487dec7421cf67870ca800a1e7ebb962fd1c9b6a3fa1e2a83d",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "config/scripts/ensure-native-runtime.mjs": "ba33bac7159cc8cd9375f20617d662a7ab5ef85120f94ea3b4f0877569f97365",
+    "config/scripts/windows-process-tree-gyp-rebuild.mjs": "6b15a16b0ec64c04e9c81243454cc271c5e24d24c4322bd3c10e42501939142b",
+    "config/scripts/msbuild-file-tracking.mjs": "c44c4e03e140aac9e95b70f9103180c451f4ca02ce2afdb80f763aad14d625b5",
+    "config/scripts/node-pty-job-ownership.cjs": "3c8d0b9de689ff5fdbf2a1bac33cd423c3d128f9e581a10d4513e2f8e2115037",
+    "config/scripts/windows-process-tree-creation-time.cjs": "ec19475647e1ba70a3df65085c395cbe8262b23c5599ce4f252cb9b96f56427f",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-wedged-profile-migration.test.ts": "5b9de3276094beb42f0941f8fa14d0b18a786cc76f07547928fd4f82fba8b6e8",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-recovery-resolution.ts": "8168a3e314172e7bbdd58ef6ce06c05a95fb2b3b662d81c7ae84d401734e6099",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-recovery-resolution.test.ts": "136d032dde7dedbdb2de60c7c14562b2333d58a0ac8532358e6047a5810e6c19",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-runtime-state.ts": "7ff599bbd741dddc4616c9e29cdeb5ecae1d787e0565439889892da32ed2b3f7",
+    "src/main/native-chat/agent-session-wire/structured-agent-session-host-types.ts": "81db6e215ae9af9e33f5e6e5e80fb69675c2794d60887a72fb1e9120f34cab3b",
+    "src/main/provider-process/provider-process-supervisor.ts": "c87dfb6af5f31dc0448e1f75482aeedf7b317dff7b937aafe588020839ae375d",
+    "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+    "src/shared/child-process/run-process.ts": "f4d9683c0a0d2ea3ceb9c99b5b713b502496a2f3f982e2c63728063d5f1b239d",
+    "src/shared/child-process/spawn-resolution.ts": "e1e06c941550fe6dd73580c14715c4cf31bcdb3e8e518fed5bdfdc3b11e9f852",
+    "src/shared/child-process/spawn-observer.ts": "bc079eea792bbb05faeb21f15e150c6b477ebcd7aa6524e821c15b39e9494e68",
+    "src/shared/child-process/process-spec.ts": "d3e9ae81766d52a9ded14c0ac764be847387d0bcfffaf6f24b3b1cbd887ec4d3",
+    "src/shared/child-process/windows-command-line.ts": "dd51e7944c17e6871f62c23b2d25d05318a2a379d661e5c758b515304f84dc3e",
+    "src/shared/child-process/windows-cmd-shim-resolution.ts": "5044e3a9140a19c8bb713044de655b611244659a754f32e5a5df7f519df40eb3"
+  },
+  "expectedCiPins": {
+    "node": "24.21.0",
+    "bun": "1.4.2",
+    "vitest": "5.0.3"
+  },
+  "controllerSha256": "269599bf9ada70ccae13fb5d71a8b6d37a7d7d0d135d713dc8b3de5aeeeee2d6",
+  "timingControllerSha256": "3260581eb3bf48b84712da5172c2695f5fd110be1cc37e68c1a41d18176e4626",
+  "reporterSha256": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+  "shuffleSeeds": [
+    104729,
+    130363
+  ],
+  "phaseOrder": [
+    "before",
+    "after"
+  ],
+  "isolatedDirectory": "notes/bun-migration/performance/recovery-delay-clock-ci-3b24",
+  "runtimeQualificationPending": true,
+  "singleHeldJob": true,
+  "files": [
+    "src/main/native-chat/agent-session-wire/structured-agent-session-wedged-profile-migration.test.ts"
+  ],
+  "expectedOriginalCountObservedCurrent": 19,
+  "scope": "One held allocation: eight original-map correctness commands then six ABBAAB timing commands; data-only replay, no test retries or primer.",
+  "absentProfilingEnvironment": [
+    "BUN_CPU_PROFILE",
+    "BUN_CPU_PROFILE_DIR",
+    "BUN_CPU_PROFILE_NAME",
+    "BUN_JSC_forceGCSlowPaths",
+    "BUN_JSC_useConcurrentJIT",
+    "VITEST_PROFILE"
+  ],
+  "payloadToHashKey": {
+    "qualify-fixture-reuse.py": "qualifier",
+    "benchmark-persistence-import-reuse.mjs": "timingDriver",
+    "persistence-import-reuse-benchmark-reporter.mjs": "reporter",
+    "shipping-launch-plan.json": "shippingLaunch",
+    "shipping.patch": "shippingPatch",
+    "source-proposal-proof.json": "sourceProof",
+    "measurement-plan-template.json": "timingTemplate",
+    "prepare-held-plan.py": "metadata"
+  },
+  "payloadSha256": {
+    "qualifier": "269599bf9ada70ccae13fb5d71a8b6d37a7d7d0d135d713dc8b3de5aeeeee2d6",
+    "timingDriver": "3260581eb3bf48b84712da5172c2695f5fd110be1cc37e68c1a41d18176e4626",
+    "reporter": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "shippingLaunch": "ed40dc9686c1dfec7ac2f1404d00819249b46881f548aeb12fec0416130ed819",
+    "shippingPatch": "e2c40e0004f72ce548a7c0163409240a28fd9f6bd41a0e14f17af22e003ecfa0",
+    "sourceProof": "ee0d03dfcf055c213952b8c176fb0ff7a3f15f1d186aebf717f537bd5bbba046",
+    "timingTemplate": "7a81998218b440dcf832eb3749422ef838a4a65e51f05af918feb9a7e0a13d8b",
+    "metadata": "0b2a482c826b788d57b0813cb730f3d3fb813e1605c5b8b4cdd86c5e390035a9"
+  },
+  "timingPayloadSha256": {
+    "qualify-fixture-reuse.py": "269599bf9ada70ccae13fb5d71a8b6d37a7d7d0d135d713dc8b3de5aeeeee2d6",
+    "benchmark-persistence-import-reuse.mjs": "3260581eb3bf48b84712da5172c2695f5fd110be1cc37e68c1a41d18176e4626",
+    "persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "shipping-launch-plan.json": "ed40dc9686c1dfec7ac2f1404d00819249b46881f548aeb12fec0416130ed819",
+    "shipping.patch": "e2c40e0004f72ce548a7c0163409240a28fd9f6bd41a0e14f17af22e003ecfa0",
+    "source-proposal-proof.json": "ee0d03dfcf055c213952b8c176fb0ff7a3f15f1d186aebf717f537bd5bbba046",
+    "measurement-plan-template.json": "7a81998218b440dcf832eb3749422ef838a4a65e51f05af918feb9a7e0a13d8b",
+    "prepare-held-plan.py": "0b2a482c826b788d57b0813cb730f3d3fb813e1605c5b8b4cdd86c5e390035a9"
+  },
+  "destinationToPayload": {
+    "notes/bun-migration/performance/qualify-fixture-reuse.py": "qualify-fixture-reuse.py",
+    "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs": "benchmark-persistence-import-reuse.mjs",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "persistence-import-reuse-benchmark-reporter.mjs",
+    "notes/bun-migration/performance/recovery-delay-clock-ci-3b24/shipping-launch-plan.json": "shipping-launch-plan.json",
+    "notes/bun-migration/performance/recovery-delay-clock-ci-3b24/shipping.patch": "shipping.patch",
+    "notes/bun-migration/performance/recovery-delay-clock-ci-3b24/source-proposal-proof.json": "source-proposal-proof.json",
+    "notes/bun-migration/performance/recovery-delay-clock-ci-3b24/measurement-plan-template.json": "measurement-plan-template.json",
+    "notes/bun-migration/performance/recovery-delay-clock-ci-3b24/prepare-held-plan.py": "prepare-held-plan.py"
+  },
+  "nodeExecutableEvidenceScope": "CI Node launcher/preflight executable path/version/byte hash and source-bound unchanged worker spawn contract; no sampled worker PID executable/version.",
+  "launcherExecutableRetentionAndReplayLimit": {
+    "liveCiExecutableReadAndRehash": true,
+    "installedExecutableBinaryBytesArchived": false,
+    "nodeExecutableAbsoluteIdentityInputArchived": false,
+    "offlineReplayScope": "Recorded producer launcher path/version/hash plus exact pinned source chain and raw route/config/case/process evidence only; cannot independently read original installed binary bytes. Reexecuting the copied collector offline requires an explicitly reviewed receipt-only adapter for this absolute identity input; no such adapter or binary-byte proof is provided.",
+    "sampledWorkerExecutableOrVersion": false,
+    "extraInstalledBinaryCopyOrUpload": false
+  }
+}
