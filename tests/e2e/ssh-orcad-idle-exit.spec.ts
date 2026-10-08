@@ -19,6 +19,7 @@ import {
   cleanupDockerSshRelayTarget,
   DOCKER_SSH_RELAY_REMOTE_REPO_PATH,
   execDockerSshRelayTargetCommand,
+  shellQuote,
   startDockerSshRelayTarget,
   type DockerSshRelayTarget
 } from './helpers/docker-ssh-relay-target'
@@ -65,23 +66,7 @@ test('a managed orcad stops after idling and starts again on the next connect', 
     app = first.app
     await waitForSessionReady(first.page)
     // A managed host is reached through its server, not a relay, so no relay repo is added.
-    const remote = await first.page.evaluate(
-      async (input) => {
-        const { target: created } = await window.api.ssh.addTarget({ target: input })
-        const state = await window.api.ssh.connect({ targetId: created.id })
-        return { targetId: created.id, managedServer: state?.managedServer ?? null }
-      },
-      {
-        label: `orcad idle E2E ${Date.now()}`,
-        host: target.host,
-        port: target.port,
-        username: 'root',
-        identityFile: target.identityFile,
-        identitiesOnly: true,
-        relayGracePeriodSeconds: 1
-      }
-    )
-    expect(remote.managedServer).toMatchObject({ kind: 'managed' })
+    const remote = await connectManagedHost(first.page, target)
     expect(runningOrcadPids(target)).toHaveLength(1)
 
     // While the client is connected the server stays up past its quiet period.
@@ -109,9 +94,23 @@ test('a managed orcad stops after idling and starts again on the next connect', 
     app = second.app
     await waitForSessionReady(second.page)
     const connected = await reconnect(second.page, remote.targetId)
-    // A start inherited from the launch-time connect this reconnect dropped would report `serving`.
     expect(JSON.parse(connected)).toMatchObject({ kind: 'managed' })
-    expect(JSON.parse(connected)).not.toHaveProperty('serving')
+    expect(JSON.parse(connected)).not.toHaveProperty(
+      'serving.detail',
+      'SSH operation was cancelled'
+    )
+    const current = await second.page.evaluate(
+      (targetId) => window.api.ssh.getState({ targetId }),
+      remote.targetId
+    )
+    expect(current?.providerEpoch).toEqual(expect.any(String))
+    await expect
+      .poll(
+        async () =>
+          (await callEnvironment(second.page, remote.environmentId, 'terminal.list', {})).ok,
+        { timeout: 60_000 }
+      )
+      .toBe(true)
     expect(runningOrcadPids(target)).toHaveLength(1)
     // The restarted server read the record, so a later crash cannot be mistaken for an idle stop.
     expect(readIdleStopRecord(target)).toBeNull()
@@ -222,6 +221,125 @@ test('a live managed process that does not answer remains unverifiable', async (
       ok: true
     })
     expect(runningOrcadPids(target)).toEqual([pid])
+  } finally {
+    if (pausedPid) {
+      execDockerSshRelayTargetCommand(target, `kill -CONT ${pausedPid}`)
+    }
+    if (app) {
+      await session.close(app)
+    }
+    await session.dispose()
+    cleanupDockerSshRelayTarget(target)
+  }
+})
+
+test('a reconnect uses its current transport while a cold server start is pending', async (// oxlint-disable-next-line no-empty-pattern -- This test owns its isolated app and host.
+{}, testInfo) => {
+  test.skip(
+    HOST !== 'docker' || !TEMPLATE_SOURCE,
+    'Requires the owned Docker SSH host and template'
+  )
+  test.setTimeout(5 * 60_000)
+  const target = startDockerSshRelayTarget(testInfo)
+  const session = createRestartSession(testInfo, { ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_SOURCE! })
+  let app: ElectronApplication | null = null
+  const marker = '/tmp/orca-cold-start-held'
+  let pausedPid: string | null = null
+  try {
+    const launched = await session.launch()
+    app = launched.app
+    const page = launched.page
+    await waitForSessionReady(page)
+    const { targetId, environmentId } = await connectManagedHost(page, target)
+    await page.evaluate((targetId) => window.api.ssh.disconnect({ targetId }), targetId)
+    const pids = runningOrcadPids(target)
+    expect(pids).toHaveLength(1)
+    expect(pids[0]).toMatch(/^\d+$/)
+    execDockerSshRelayTargetCommand(target, `kill -TERM ${pids[0]}`)
+    await expect.poll(() => runningOrcadPids(target), { timeout: 30_000 }).toEqual([])
+    const watcher =
+      'qa_deadline=$((SECONDS + 60)); while ((SECONDS < qa_deadline)); do ' +
+      'for qa_pid_file in /root/.orca-remote/orcad-*/.orcad-pid; do ' +
+      'qa_started_pid=$(cat "$qa_pid_file" 2>/dev/null); ' +
+      'case "$qa_started_pid" in ""|*[!0-9]*) continue;; esac; ' +
+      `if [ "$qa_started_pid" != '${pids[0]}' ] && kill -0 "$qa_started_pid" 2>/dev/null; then ` +
+      `kill -STOP "$qa_started_pid" && printf '%s' "$qa_started_pid" > ${marker}; exit; fi; done; sleep 0.01; done`
+    execDockerSshRelayTargetCommand(
+      target,
+      `nohup bash -c ${shellQuote(watcher)} > /tmp/orca-cold-start-watch.log 2>&1 < /dev/null &`
+    )
+    const retired = page.evaluate((targetId) => window.api.ssh.connect({ targetId }), targetId)
+    const retiredOutcome = retired.then(
+      (state) => JSON.stringify(state),
+      (error: unknown) => String(error)
+    )
+    await expect
+      .poll(() => execDockerSshRelayTargetCommand(target, `cat ${marker} 2>/dev/null || true`), {
+        timeout: 60_000
+      })
+      .toMatch(/^\d+$/)
+    pausedPid = execDockerSshRelayTargetCommand(target, `cat ${marker}`).trim()
+    expect(execDockerSshRelayTargetCommand(target, `cat /proc/${pausedPid}/status`)).toMatch(
+      /State:\s+T/
+    )
+    const startedPids = runningOrcadPids(target)
+    expect(startedPids).toEqual([pausedPid])
+    console.log('[managed-cold-start] held', JSON.stringify({ startedPids }))
+    await page.evaluate((targetId) => window.api.ssh.disconnect({ targetId }), targetId)
+    const entered = page.waitForEvent('console', {
+      predicate: (message) => message.text() === '[managed-cold-start] current attempt entered',
+      timeout: 30_000
+    })
+    const current = page.evaluate(async (targetId) => {
+      const unsubscribe = window.api.ssh.onStateChanged((event) => {
+        if (
+          event.targetId === targetId &&
+          event.state.managedServer?.kind === 'setting-up' &&
+          event.state.managedServer.phase === 'connecting'
+        ) {
+          console.log('[managed-cold-start] current attempt entered')
+        }
+      })
+      try {
+        return await window.api.ssh.connect({ targetId })
+      } finally {
+        unsubscribe()
+      }
+    }, targetId)
+    const currentOutcome = current.then(
+      (state) => ({ state }),
+      (error: unknown) => ({ error: String(error) })
+    )
+    await entered
+    execDockerSshRelayTargetCommand(target, `kill -CONT ${pausedPid}`)
+    pausedPid = null
+    const outcome = await currentOutcome
+    console.log('[managed-cold-start] current outcome', JSON.stringify(outcome))
+    if ('error' in outcome) {
+      throw new Error(outcome.error)
+    }
+    const connected = outcome.state
+    console.log(
+      '[managed-cold-start] result',
+      JSON.stringify({ connected, retired: await retiredOutcome, pids: runningOrcadPids(target) })
+    )
+    expect(connected?.managedServer).toMatchObject({ kind: 'managed', environmentId })
+    await expect
+      .poll(
+        async () => {
+          const rpc = await callEnvironment(page, environmentId, 'terminal.list', {})
+          console.log('[managed-cold-start] RPC', JSON.stringify(rpc))
+          return rpc.ok
+        },
+        { timeout: 60_000 }
+      )
+      .toBe(true)
+    expect(runningOrcadPids(target)).toEqual(startedPids)
+    expect(connected?.providerEpoch).toEqual(expect.any(String))
+    expect(connected?.managedServer).not.toHaveProperty(
+      'serving.detail',
+      'SSH operation was cancelled'
+    )
   } finally {
     if (pausedPid) {
       execDockerSshRelayTargetCommand(target, `kill -CONT ${pausedPid}`)

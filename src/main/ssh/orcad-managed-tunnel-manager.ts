@@ -289,7 +289,15 @@ export class OrcadManagedTunnelManager {
       targetId: target.id,
       transportGeneration
     })
-    if ((await this.checkServing(environment)).rebind && !rebound) {
+    const recorded = this.active.get(environment.id)
+    const serving = await this.checkServing(environment)
+    if (!stillOwned() || connection.getConnectGeneration() !== transportGeneration) {
+      if (recorded) {
+        await dropActiveOrcadTunnel(this.active, this.forwards, environment.id, recorded)
+      }
+      throw supersededTunnelError()
+    }
+    if (serving.rebind && !rebound) {
       await this.ensureManagedTunnel(environment, resolveCurrent, true)
     }
   }
