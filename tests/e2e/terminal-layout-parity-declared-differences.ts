@@ -9,16 +9,13 @@ import type {
  */
 export const TERMINAL_LAYOUT_PARITY_DECLARED_DIFFERENCES: readonly DeclaredParityDifference[] = [
   // The core's mechanism: main alone authors terminal topology, so a window save no longer erases
-  // main's per-pane incarnations, and the binding write counts every membership change it makes.
-  // Saved-profile fields only; nothing on screen differs.
+  // main's per-pane incarnations or the fence that guards them. Saved-profile fields only; nothing
+  // on screen differs. Close and move scenarios save exactly what main does.
   ...[
     'create-tab',
     'split-right-down',
-    'close-pane',
-    'close-tab',
     'reorder-panes',
     'cli-split',
-    'drag-out-to-tab',
     'restart-restore',
     'folder-workspace',
     'setup-split-first-activation',
