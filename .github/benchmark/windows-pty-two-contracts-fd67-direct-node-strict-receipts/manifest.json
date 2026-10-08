@@ -1,0 +1,364 @@
+{
+  "schema": 1,
+  "status": "SOURCE-READY-runtime-pending",
+  "sourceSha": "fd67a8569d5558e51ced9d5c892e95512ac313e0",
+  "namespace": ".github/benchmark/windows-pty-two-contracts-fd67-direct-node-strict-receipts",
+  "resultRoot": "notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci",
+  "commonTargets": [
+    "src/main/windows/windows-pty-job.win32.test.ts",
+    "config/scripts/windows-pty-pre-ready-teardown.cjs"
+  ],
+  "afterTargets": [
+    "config/patches/node-pty@1.1.0.patch",
+    "config/relay-assets/node-pty-1.1.0-windows-pty-teardown-patch.cjs",
+    "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs"
+  ],
+  "sourceGuards": {
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8",
+    "config/vitest.config.ts": "b188ce469dd21695fd39cde507211fa6bab920991536583c0eeb46c8df5dda2e",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "src/main/windows/windows-pty-job.win32.test.ts": "3e9306296a6ce1aff55ccbd30b8dd9ae85c9dafb71c816aa7b0e435b65b4cbfd",
+    "src/main/windows/windows-pty-job.ts": "f61bfdca38d320de6d58aef72cf063b92479087f17baa64dd492391aa25667c4",
+    "config/scripts/windows-pty-table-stress.cjs": "5c00636fb0471e133386b1f5a2f7dbcb85e45ac673f497ce72b9320627de7e19",
+    "config/scripts/windows-pty-table-stress-observer.mjs": "93ef077bac7717eff2921d4c694e74a2d7a1dcb7ead98a6823cd8a4f3cf815c6",
+    "config/scripts/pty-transcript-secret-scan.mjs": "d07942534d7c242e198ff37e256f3e082ef3e7b565975885a226eed21d40bed1",
+    "src/shared/child-process/run-process.ts": "f4d9683c0a0d2ea3ceb9c99b5b713b502496a2f3f982e2c63728063d5f1b239d",
+    "config/relay-assets/node-pty-1.1.0-windows-pty-teardown-patch.cjs": "9b1c958fada0478250a95ae0f806fe964a9613854c1b975ae51855a11535e7ac",
+    "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs": "7806e6255f6c4795ca862be6a1f51573527f37bfaa4dd62d06f1eb0d169705a3",
+    "config/patches/node-pty@1.1.0.patch": "92c95cffab383d86b3b13a460c75a08074468ebf1f3911db8e874e083201f192",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "3b0c083973a443427135b8d2e23638c0b12a9f57cc8040f05451c3e0125588ec",
+    "pnpm-workspace.yaml": "69df28e0aaec6e6e73f6836097ae6ed594890d67be9a2a1e25cd2c053795e400",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "config/scripts/windows-pty-pre-ready-teardown.cjs": null
+  },
+  "payload": {
+    "src/main/windows/windows-pty-job.win32.test.ts": {
+      "file": "source-0.ts",
+      "sha256": "8310981bf40cff79f41c3747afa53185106a8071e2650d2dc7ddf7077e0ff501"
+    },
+    "config/scripts/windows-pty-pre-ready-teardown.cjs": {
+      "file": "source-1.cjs",
+      "sha256": "2e0d53dfe7be57b279d163382037703cdd157598bf651719f5c151bb17ede5d4"
+    },
+    "config/patches/node-pty@1.1.0.patch": {
+      "file": "source-2.patch",
+      "sha256": "0b1ed40ad9a9950b2a7b78f65950ed9450c85ae3f1e3a5560278a5af22ee188d"
+    },
+    "config/relay-assets/node-pty-1.1.0-windows-pty-teardown-patch.cjs": {
+      "file": "source-3.cjs",
+      "sha256": "719a6b14e5c8c0829f5607f49a7174d0fbe04bb7db253a8d05b4954c58761f3a"
+    },
+    "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs": {
+      "file": "source-4.mjs",
+      "sha256": "86dcfa28f954a3f811151b7a14f2520f11df11cb04a751353251e1904eaf93ac"
+    },
+    "lib/windowsTerminal.js": {
+      "file": "candidate-windowsTerminal.js",
+      "sha256": "3060c6514a8e9e3285f91b9b549930e7d25d59d4cf7e1ed3a25b9a680dd1ded5"
+    },
+    "src/windowsTerminal.ts": {
+      "file": "candidate-windowsTerminal.ts",
+      "sha256": "3ef9632c6ccf5992e0964079a9b7b1c474d28f0dea3c5c6e57ee4d5174d3cf33"
+    }
+  },
+  "installedBefore": {
+    "lib/windowsTerminal.js": "8247ecd69be8b18257050fb026b290024612c5ffc6d492ff1d46f81e613be2cf",
+    "src/windowsTerminal.ts": "57d2bea3cc9d480da32d49c2810782994c646b1323a5048bb9baedf15df56603"
+  },
+  "reporterSha256": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+  "setups": [
+    "config/scripts/vitest-real-agent-home-write-guard.ts",
+    "config/scripts/vitest-bun-node-builtins.ts",
+    "config/scripts/happy-dom-offscreen-canvas.ts",
+    "config/scripts/happy-dom-mutation-observer-retention.ts",
+    "config/scripts/vitest-host-ports-setup.ts",
+    "config/scripts/vitest-caller-identity-env-setup.ts"
+  ],
+  "cases": {
+    "before": [
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "reports this build as able to own pty trees",
+        "fullName": "ConPTY job ownership reports this build as able to own pty trees",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "keeps the native table intact while shell cleanup overlaps new terminals",
+        "fullName": "ConPTY job ownership keeps the native table intact while shell cleanup overlaps new terminals",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "counts a detached grandchild as part of the pane tree",
+        "fullName": "ConPTY job ownership counts a detached grandchild as part of the pane tree",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "kills the shell and the detached grandchild in one call",
+        "fullName": "ConPTY job ownership kills the shell and the detached grandchild in one call",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "leaves a backgrounded process alone when the shell exits cleanly",
+        "fullName": "ConPTY job ownership leaves a backgrounded process alone when the shell exits cleanly",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "still starts a backgrounded child from inside the job",
+        "fullName": "ConPTY job ownership still starts a backgrounded child from inside the job",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "stops answering once the tree is gone, rather than claiming it is empty",
+        "fullName": "ConPTY job ownership stops answering once the tree is gone, rather than claiming it is empty",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "retires a quiet child with kill at the connected fence",
+        "fullName": "ConPTY job ownership retires a quiet child with kill at the connected fence",
+        "status": "failed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "retires a quiet child with destroy at the immediate fence",
+        "fullName": "ConPTY job ownership retires a quiet child with destroy at the immediate fence",
+        "status": "failed"
+      }
+    ],
+    "after": [
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "reports this build as able to own pty trees",
+        "fullName": "ConPTY job ownership reports this build as able to own pty trees",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "keeps the native table intact while shell cleanup overlaps new terminals",
+        "fullName": "ConPTY job ownership keeps the native table intact while shell cleanup overlaps new terminals",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "counts a detached grandchild as part of the pane tree",
+        "fullName": "ConPTY job ownership counts a detached grandchild as part of the pane tree",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "kills the shell and the detached grandchild in one call",
+        "fullName": "ConPTY job ownership kills the shell and the detached grandchild in one call",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "leaves a backgrounded process alone when the shell exits cleanly",
+        "fullName": "ConPTY job ownership leaves a backgrounded process alone when the shell exits cleanly",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "still starts a backgrounded child from inside the job",
+        "fullName": "ConPTY job ownership still starts a backgrounded child from inside the job",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "stops answering once the tree is gone, rather than claiming it is empty",
+        "fullName": "ConPTY job ownership stops answering once the tree is gone, rather than claiming it is empty",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "retires a quiet child with kill at the connected fence",
+        "fullName": "ConPTY job ownership retires a quiet child with kill at the connected fence",
+        "status": "passed"
+      },
+      {
+        "file": "src/main/windows/windows-pty-job.win32.test.ts",
+        "ancestorTitles": [
+          "ConPTY job ownership"
+        ],
+        "title": "retires a quiet child with destroy at the immediate fence",
+        "fullName": "ConPTY job ownership retires a quiet child with destroy at the immediate fence",
+        "status": "passed"
+      },
+      {
+        "file": "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs",
+        "ancestorTitles": [
+          "Windows SSH relay node-pty ConPTY teardown patch"
+        ],
+        "title": "takes the desktop error listeners verbatim",
+        "fullName": "Windows SSH relay node-pty ConPTY teardown patch takes the desktop error listeners verbatim",
+        "status": "passed"
+      },
+      {
+        "file": "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs",
+        "ancestorTitles": [
+          "Windows SSH relay node-pty ConPTY teardown patch"
+        ],
+        "title": "releases conin after the console-list fork, unlike the desktop patch placement",
+        "fullName": "Windows SSH relay node-pty ConPTY teardown patch releases conin after the console-list fork, unlike the desktop patch placement",
+        "status": "passed"
+      },
+      {
+        "file": "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs",
+        "ancestorTitles": [
+          "Windows SSH relay node-pty ConPTY teardown patch"
+        ],
+        "title": "installs and verifies idempotently",
+        "fullName": "Windows SSH relay node-pty ConPTY teardown patch installs and verifies idempotently",
+        "status": "passed"
+      },
+      {
+        "file": "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs",
+        "ancestorTitles": [
+          "Windows SSH relay node-pty ConPTY teardown patch"
+        ],
+        "title": "upgrades the exact previous Windows terminal patch without changing relay agent ordering",
+        "fullName": "Windows SSH relay node-pty ConPTY teardown patch upgrades the exact previous Windows terminal patch without changing relay agent ordering",
+        "status": "passed"
+      },
+      {
+        "file": "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs",
+        "ancestorTitles": [
+          "Windows SSH relay node-pty ConPTY teardown patch"
+        ],
+        "title": "refuses a different package version or unexpected source",
+        "fullName": "Windows SSH relay node-pty ConPTY teardown patch refuses a different package version or unexpected source",
+        "status": "passed"
+      },
+      {
+        "file": "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs",
+        "ancestorTitles": [
+          "Windows SSH relay node-pty ConPTY teardown patch"
+        ],
+        "title": "refuses a half-applied tree, so one file cannot pass for both",
+        "fullName": "Windows SSH relay node-pty ConPTY teardown patch refuses a half-applied tree, so one file cannot pass for both",
+        "status": "passed"
+      }
+    ]
+  },
+  "quietPairs": [
+    [
+      "kill",
+      "connected"
+    ],
+    [
+      "destroy",
+      "immediate"
+    ]
+  ],
+  "resourceError": "Public teardown must retire the actual input pipe at forwarding connection before first data",
+  "sameNativeBinaryRequired": true,
+  "jobMaximumSeconds": 600,
+  "rootFormattedReceiptSha256": "85633e38a012d6c15464afe615bb7f7535285476575925f87a7f41d272065757",
+  "sourceReadySha256": "7d8fb3a6138b0148a07368ef71391b17764e9aae5bb2082179972e9b0d589713",
+  "persistentPatchLockQualification": false,
+  "argv": {
+    "before": [
+      "node",
+      "node_modules/vitest/vitest.mjs",
+      "run",
+      "--config",
+      "config/vitest.config.ts",
+      "--maxWorkers=4",
+      "src/main/windows/windows-pty-job.win32.test.ts",
+      "--reporter=default",
+      "--reporter=json",
+      "--reporter=./notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/report-details-reporter.mjs",
+      "--outputFile=notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/before-report.json"
+    ],
+    "after": [
+      "node",
+      "node_modules/vitest/vitest.mjs",
+      "run",
+      "--config",
+      "config/vitest.config.ts",
+      "--maxWorkers=4",
+      "src/main/windows/windows-pty-job.win32.test.ts",
+      "config/scripts/node-pty-windows-pty-teardown-patch.test.mjs",
+      "--reporter=default",
+      "--reporter=json",
+      "--reporter=./notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/report-details-reporter.mjs",
+      "--outputFile=notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/after-report.json"
+    ]
+  },
+  "nodeContract": {
+    "major": 24,
+    "normalInstallActionResolution": true,
+    "actualVersionAndExecutableSameBothArms": true,
+    "appNodePinIsSeparateGuardedSource": true
+  }
+}

@@ -1,65 +1,82 @@
-name: pnpm verification cache pilot
-
+name: Manual Windows two-contract native diagnostic
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      source_sha:
+        description: Exact reviewed fd67 source; temporary definition never merges.
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  group: manual-windows-pty-two-contracts-fd67-direct-node-strict-receipts
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  diagnose:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      PTY_DIAGNOSTIC_SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
+      - name: Preserve named source bytes
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 2
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .benchmark-definition
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
-        id: deps
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          native-runtime: node
+          persist-native-cache: 'false'
+      - name: Bind original installed owners and common real fixtures
+        run: node .benchmark-definition/.github/benchmark/windows-pty-two-contracts-fd67-direct-node-strict-receipts/materialize.mjs prepare
+      - name: First full before command
+        shell: pwsh
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          $PSNativeCommandUseErrorActionPreference = $false
+          $env:ORCA_IMPORT_REUSE_DETAILS = 'notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/before-details.json'
+          $started = [DateTime]::UtcNow.ToString('o')
+          $clock = [Diagnostics.Stopwatch]::StartNew()
+          $arguments = @('node_modules/vitest/vitest.mjs', 'run', '--config', 'config/vitest.config.ts', '--maxWorkers=4', 'src/main/windows/windows-pty-job.win32.test.ts', '--reporter=default', '--reporter=json', '--reporter=./notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/report-details-reporter.mjs', '--outputFile=notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/before-report.json')
+          & node @arguments 2>&1 | Tee-Object -FilePath notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/before-command.log
+          $code = $LASTEXITCODE
+          $clock.Stop()
+          node .benchmark-definition/.github/benchmark/windows-pty-two-contracts-fd67-direct-node-strict-receipts/materialize.mjs record before "$code" "$started" "$($clock.Elapsed.TotalMilliseconds)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python .benchmark-definition/.github/benchmark/windows-pty-two-contracts-fd67-direct-node-strict-receipts/collect-results.py notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci before
+          exit $LASTEXITCODE
+      - name: Switch only installed JavaScript and TypeScript owners
+        run: node .benchmark-definition/.github/benchmark/windows-pty-two-contracts-fd67-direct-node-strict-receipts/materialize.mjs switch
+      - name: First full after command
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $env:ORCA_IMPORT_REUSE_DETAILS = 'notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/after-details.json'
+          $started = [DateTime]::UtcNow.ToString('o')
+          $clock = [Diagnostics.Stopwatch]::StartNew()
+          $arguments = @('node_modules/vitest/vitest.mjs', 'run', '--config', 'config/vitest.config.ts', '--maxWorkers=4', 'src/main/windows/windows-pty-job.win32.test.ts', 'config/scripts/node-pty-windows-pty-teardown-patch.test.mjs', '--reporter=default', '--reporter=json', '--reporter=./notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/report-details-reporter.mjs', '--outputFile=notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/after-report.json')
+          & node @arguments 2>&1 | Tee-Object -FilePath notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/after-command.log
+          $code = $LASTEXITCODE
+          $clock.Stop()
+          node .benchmark-definition/.github/benchmark/windows-pty-two-contracts-fd67-direct-node-strict-receipts/materialize.mjs record after "$code" "$started" "$($clock.Elapsed.TotalMilliseconds)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          exit $code
+      - name: Retain fail-closed complete diagnostic disposition
+        if: always()
+        run: python .benchmark-definition/.github/benchmark/windows-pty-two-contracts-fd67-direct-node-strict-receipts/collect-results.py notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci final
+      - name: Preserve both first attempts and native bytes even on failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-pty-two-contracts-fd67-direct-node-strict-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: notes/bun-migration/performance/windows-pty-two-contracts-fd67-direct-node-strict-receipts-ci/
