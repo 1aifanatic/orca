@@ -24,6 +24,12 @@ import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetr
 import { applyAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import type { RuntimeStore } from './runtime-store-contract'
+import {
+  agentLaunchSettingsMutationUpdates,
+  projectAgentLaunchSettings,
+  type AgentLaunchSettings,
+  type AgentLaunchSettingsMutation
+} from '../../shared/agent-launch-settings'
 
 export type RuntimeClientSettings = Pick<
   GlobalSettings,
@@ -178,6 +184,26 @@ export class RuntimeClientSettingsController {
       throw new Error('runtime_unavailable')
     }
     return this.store.getSettings().terminalQuickCommands ?? []
+  }
+
+  getAgentLaunch(): AgentLaunchSettings {
+    if (!this.store?.getSettings) {
+      throw new Error('runtime_unavailable')
+    }
+    return projectAgentLaunchSettings(this.store.getSettings())
+  }
+
+  async mutateAgentLaunch(mutation: AgentLaunchSettingsMutation): Promise<AgentLaunchSettings> {
+    if (!this.store?.getSettings || !this.store.updateSettings) {
+      throw new Error('runtime_unavailable')
+    }
+    const updates = agentLaunchSettingsMutationUpdates(
+      this.store.getSettings(),
+      mutation,
+      process.platform
+    )
+    await this.update(updates)
+    return this.getAgentLaunch()
   }
 
   updateTerminalQuickCommands(mutation: TerminalQuickCommandMutation): TerminalQuickCommand[] {

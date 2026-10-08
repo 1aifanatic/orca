@@ -11,8 +11,21 @@ import { FeatureInteractionIdParam, UiUpdate } from './client-ui-schemas'
 // the typecheck graph so drift fails the build instead of a paired client.
 
 import { TerminalQuickCommandsUpdate } from './terminal-quick-command-rpc-schema'
+import { AgentLaunchSettingsMutation } from '../../../../shared/rpc-contract/agent-launch-settings-params'
 
 export const CLIENT_UI_METHODS = [
+  defineMethod({
+    name: 'settings.getAgentLaunch',
+    params: null,
+    handler: (_params, { runtime }) => ({ settings: runtime.getClientAgentLaunchSettings() })
+  }),
+  defineMethod({
+    name: 'settings.mutateAgentLaunch',
+    params: AgentLaunchSettingsMutation,
+    handler: async (params, { runtime }) => ({
+      settings: await runtime.mutateClientAgentLaunchSettings(params)
+    })
+  }),
   defineMethod({
     name: 'settings.get',
     params: null,
