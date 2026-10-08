@@ -280,6 +280,7 @@ describe('desktop startup activation', () => {
       pairingAddress: null,
       noPairing: true,
       mobilePairing: false,
+      grantDesktopControl: false,
       recipeJson: false,
       projectRoot: null
     })
