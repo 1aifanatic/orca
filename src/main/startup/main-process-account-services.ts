@@ -203,6 +203,7 @@ export function initializeMainProcessAccountServices(): void {
       .filter((account) => !activeIds.has(account.id))
       .map((account) => ({
         id: account.id,
+        managedAuthPath: account.managedAuthPath,
         managedAuthRuntime: account.managedAuthRuntime,
         wslDistro: account.wslDistro,
         wslLinuxAuthPath: account.wslLinuxAuthPath
