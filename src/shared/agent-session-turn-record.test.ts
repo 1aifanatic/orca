@@ -66,7 +66,7 @@ describe('agentJournalTurnBody', () => {
     expect(agentJournalTurnBody(complete)).toEqual({ kind: 'turn', ...complete })
   })
 
-  it('rewrites only known fields without changing the saved lifecycle', () => {
+  it('normalizes known fields and preserves extensions without changing the saved lifecycle', () => {
     const saved = {
       ...turn,
       kind: 'tool-call',
@@ -78,6 +78,7 @@ describe('agentJournalTurnBody', () => {
     expect(agentJournalTurnBody(saved)).toEqual({
       kind: 'turn',
       ...turn,
+      laterField: { kept: true },
       contextUsage: { window: { tokens: 10, capturedAt: 1 } }
     })
     expect(saved).toEqual(before)

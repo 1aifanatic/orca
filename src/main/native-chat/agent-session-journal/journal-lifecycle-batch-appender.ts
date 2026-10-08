@@ -70,9 +70,6 @@ export class JournalLifecycleBatchAppender {
     input: JournalResolvedLifecycleBatchInput
   ): ((seq: number, ts: number) => JournalRow)[] {
     const mutations = input.resolve()
-    // Every chunk is built before any commits, so a second chunk naming the same item would
-    // reuse the first chunk's revision.
-    this.assertDistinctItems(mutations)
     return this.planMutations(input, mutations)
   }
 
@@ -80,22 +77,15 @@ export class JournalLifecycleBatchAppender {
     input: Pick<JournalLifecycleBatchInput, 'settlementId' | 'fence' | 'recovered'>,
     mutations: readonly JournalLifecycleMutationInput[]
   ): ((seq: number, ts: number) => JournalRow)[] {
+    // All rows use the same fold, so repeated items would reuse a revision.
+    this.assertDistinctItems(mutations)
     if (this.wasApplied(input.settlementId)) {
       return []
     }
     const current = this.deps.state()
-    // Unadvanceable saved revisions stay untouched without vetoing the other items.
-    const advanceable = mutations.filter((mutation) => {
-      const itemId = journalLifecycleMutationItemId(mutation)
-      const resolved = current.aliases.get(itemId) ?? itemId
-      return [
-        current.items.get(resolved)?.revision ?? 0,
-        current.tombstones.get(resolved) ?? 0
-      ].every((revision) => Number.isSafeInteger(revision) && revision < Number.MAX_SAFE_INTEGER)
-    })
     const options = { ...input, epoch: current.epoch }
     let namedSettlement = false
-    return partitionJournalLifecycleMutations(input.settlementId, advanceable, options).flatMap(
+    return partitionJournalLifecycleMutations(input.settlementId, mutations, options).flatMap(
       (chunk): ((seq: number, ts: number) => JournalRow)[] => {
         const [only] = chunk.mutations
         if (

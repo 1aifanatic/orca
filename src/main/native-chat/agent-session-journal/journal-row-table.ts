@@ -44,7 +44,7 @@ export function insertJournalRow(
   const rowJson = serializeJournalRow(row)
   // A row the reader rejects would fail the chat's next load, so it is never written: the throw
   // rolls back the caller's transaction.
-  const readBack = parseJournalRow(rowJson, 'write')
+  const readBack = parseJournalRow(rowJson)
   if (!readBack.ok || readBack.row.seq !== row.seq) {
     throw new AgentSessionJournalError(
       'journal_row_rejected',

@@ -462,9 +462,9 @@ describe('producer linkage on the persisted row', () => {
   })
 })
 
-describe('journal revision write admission', () => {
-  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 1e100])(
-    'refuses revision %s in item and tombstone writes, including nested mutations',
+describe('journal revision admission', () => {
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1, 1e100])(
+    'uses the same integer rule for revision %s in rows and nested mutations',
     (revision) => {
       for (const kind of ['item', 'tombstone'] as const) {
         const mutation = {
@@ -473,8 +473,9 @@ describe('journal revision write admission', () => {
           revision,
           ...(kind === 'item' ? { body: { kind: 'status', text: 'x' } } : {})
         }
-        const row = { ...BASE, ...mutation }
-        expect(parseJournalRow(JSON.stringify(row), 'write').ok).toBe(false)
+        expect(parseJournalRow(JSON.stringify({ ...BASE, ...mutation })).ok).toBe(
+          Number.isInteger(revision)
+        )
         expect(
           parseJournalRow(
             JSON.stringify({
@@ -482,25 +483,12 @@ describe('journal revision write admission', () => {
               kind: 'lifecycle-batch',
               settlementId: 'end',
               mutations: [mutation]
-            }),
-            'write'
+            })
           ).ok
-        ).toBe(false)
-        expect(parseJournalRow(JSON.stringify(row)).ok).toBe(Number.isInteger(revision))
+        ).toBe(Number.isInteger(revision))
       }
     }
   )
-
-  it('admits positive safe revisions through the last safe value', () => {
-    for (const revision of [1, Number.MAX_SAFE_INTEGER]) {
-      expect(
-        parseJournalRow(
-          JSON.stringify({ ...BASE, kind: 'tombstone', itemId: 'old', revision }),
-          'write'
-        ).ok
-      ).toBe(true)
-    }
-  })
 })
 
 it('preserves stored keys and reducer aliases across an item revision and a tombstone', () => {
@@ -517,7 +505,7 @@ it('preserves stored keys and reducer aliases across an item revision and a tomb
     turnScope: AGENT_JOURNAL_THREAD_SCOPE
   })
   expect(row).toMatchObject({ itemId: 'provider:opaque%ZZ', revision: 8 })
-  expect(parseJournalRow(JSON.stringify(row), 'write').ok).toBe(true)
+  expect(parseJournalRow(JSON.stringify(row)).ok).toBe(true)
   applyJournalRow(state, row)
   expect([...state.items.keys()]).toEqual(['canonical'])
   const removed = journalLifecycleBatchRowBuilder(
@@ -529,7 +517,7 @@ it('preserves stored keys and reducer aliases across an item revision and a tomb
   expect(removed.mutations).toEqual([
     { kind: 'tombstone', itemId: 'provider:opaque%ZZ', revision: 9 }
   ])
-  expect(parseJournalRow(JSON.stringify(removed), 'write').ok).toBe(true)
+  expect(parseJournalRow(JSON.stringify(removed)).ok).toBe(true)
   applyJournalRow(state, removed)
   expect(state.items.size).toBe(0)
   expect(state.tombstones.get('canonical')).toBe(9)
