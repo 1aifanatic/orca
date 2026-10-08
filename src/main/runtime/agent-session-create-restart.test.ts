@@ -379,6 +379,19 @@ describe('terminal agent creation across a runtime restart', () => {
     await expect(first.service.createAgentSession(action)).resolves.toEqual(adopted)
     expect(first.reconcile).not.toHaveBeenCalled()
   })
+
+  it('persists only the known fields of the answer it returns', async () => {
+    const first = await runtime()
+    vi.spyOn(first.service, 'createTerminal').mockImplementation(async (_scope, options) => ({
+      ...terminal(options?.preAllocatedHandle ?? ''),
+      launchEnvLeak: 'sk-unreviewed-field'
+    }))
+    await first.service.createAgentSession(request())
+    const persisted = JSON.stringify(await readPersistedTestAgentSessionStore(directory))
+    expect(persisted).toContain('surviving-pty')
+    expect(persisted).not.toContain('launchEnvLeak')
+    expect(persisted).not.toContain('sk-unreviewed-field')
+  })
 })
 
 describe('terminal agent creation when its record cannot be written', () => {
@@ -510,6 +523,28 @@ describe('terminal agent creation when its record cannot be written', () => {
     await expect(downgraded.service.createAgentSession(uncertain)).rejects.toThrow(
       'connection lost'
     )
+    expect(create).toHaveBeenCalledTimes(2)
+  })
+
+  it('replays a create the store could not claim, ahead of its pending durable row', async () => {
+    const { service, store } = await runtime()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const create = vi
+      .spyOn(service, 'createTerminal')
+      .mockRejectedValueOnce(new Error('preflight failed'))
+      .mockImplementation(async (_scope, options) => terminal(options?.preAllocatedHandle ?? ''))
+    const action = request()
+    await expect(service.createAgentSession(action)).rejects.toThrow('preflight failed')
+    vi.spyOn(store, 'admitAndClaimOperation').mockRejectedValueOnce(new Error('SQLITE_BUSY'))
+    const created = await service.createAgentSession(action)
+    expect(created.disposition).toBe('created')
+    expect(
+      store.getOperationRow('trusted-local:runtime', action.clientOperationId)?.outcome
+    ).toEqual({ status: 'pending' })
+    await expect(service.createAgentSession(action)).resolves.toEqual({
+      ...created,
+      disposition: 'replayed'
+    })
     expect(create).toHaveBeenCalledTimes(2)
   })
 })
