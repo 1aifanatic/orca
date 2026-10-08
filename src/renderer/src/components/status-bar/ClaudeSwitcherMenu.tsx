@@ -34,9 +34,14 @@ import {
   resolveClaudeStatusAccountState
 } from './status-bar-claude-accounts'
 import { AccountRuntimeToggle } from './StatusBarAccountControls'
-import { InlineUsageBars, InlineUsageSkeleton } from './InlineProviderUsage'
+import {
+  InlineUsageBars,
+  InlineUsageSignInAction,
+  InlineUsageSkeleton
+} from './InlineProviderUsage'
 import { ProviderDetailsMenu } from './ProviderDetailsMenu'
 import { getClaudeAccountSyncKey } from './provider-account-sync-key'
+import { signInToClaudeAccount } from '@/lib/claude-account-sign-in'
 
 // Exported so its account-switch/reset logic is preserved for row drill-in even
 // though the footer now opens the consolidated UsageRosterPanel first.
@@ -61,6 +66,8 @@ export function ClaudeSwitcherMenu({
     activeAccountIdsByRuntime: { host: null, wsl: {} }
   })
   const [isSwitching, setIsSwitching] = useState(false)
+  const [signingInId, setSigningInId] = useState<string | null>(null)
+  const signingInRef = useRef(false)
   const mountedRef = useRef(true)
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
@@ -181,6 +188,25 @@ export function ClaudeSwitcherMenu({
     }
   }
 
+  const handleSignIn = async (accountId: string): Promise<void> => {
+    // Why a ref: the row and its button both sign in, and state lags a double press.
+    if (signingInRef.current) {
+      return
+    }
+    signingInRef.current = true
+    setSigningInId(accountId)
+    try {
+      if (await signInToClaudeAccount(accountId)) {
+        await loadAccounts()
+      }
+    } finally {
+      signingInRef.current = false
+      if (mountedRef.current) {
+        setSigningInId(null)
+      }
+    }
+  }
+
   const handleSelectRuntime = async (group: ClaudeStatusSwitchGroup): Promise<void> => {
     const currentKey = getCodexStatusRuntimeKey(
       normalizeClaudeStatusRuntimeTarget(accountState, toCodexStatusRuntimeTarget(claudeTarget))
@@ -275,14 +301,22 @@ export function ClaudeSwitcherMenu({
               const inactiveUsage = target.id
                 ? inactiveClaudeAccounts.find((a) => a.accountId === target.id)
                 : null
+              // Why local only: the hidden sign-in runs on this device, not a remote server.
+              const signInId = target.needsSignIn && !hasActiveRuntimeEnvironment ? target.id : null
 
               return (
                 <DropdownMenuItem
                   key={`${selectedGroup.key}:${target.id ?? 'system'}`}
-                  disabled={isSwitching || target.active || target.disabled}
+                  disabled={
+                    isSwitching ||
+                    signingInId !== null ||
+                    (signInId === null && (target.active || target.disabled))
+                  }
                   onSelect={(event) => {
                     event.preventDefault()
-                    if (!target.active) {
+                    if (signInId) {
+                      void handleSignIn(signInId)
+                    } else if (!target.active) {
                       void handleSelectAccount(target.id, target.runtimeTarget)
                     }
                   }}
@@ -296,7 +330,15 @@ export function ClaudeSwitcherMenu({
                         </span>
                       ) : null}
                     </div>
-                    {target.hint ? (
+                    {signInId ? (
+                      <InlineUsageSignInAction
+                        isFetching={false}
+                        isSigningIn={signingInId === signInId}
+                        disabled={isSwitching || signingInId !== null}
+                        reason={target.hint ?? undefined}
+                        onSignIn={() => void handleSignIn(signInId)}
+                      />
+                    ) : target.hint ? (
                       <span className="text-[10px] leading-4 text-muted-foreground">
                         {target.hint}
                       </span>

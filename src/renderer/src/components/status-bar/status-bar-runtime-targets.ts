@@ -29,6 +29,8 @@ export type ClaudeStatusSwitchTarget = {
   runtimeTarget: CodexStatusRuntimeTarget
   /** Set for an account that must be signed in again (or fixed) before it can be selected. */
   disabled?: boolean
+  /** Its folder holds no login yet; the switcher offers Sign in on it. */
+  needsSignIn?: boolean
   hint?: string | null
 }
 

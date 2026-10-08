@@ -98,6 +98,7 @@ export function buildClaudeStatusSwitchGroups(
           ...(account.needsSignIn
             ? {
                 disabled: true,
+                needsSignIn: true,
                 hint: translate(
                   'accounts.claude.signInRequired',
                   'Sign in again to use this account'

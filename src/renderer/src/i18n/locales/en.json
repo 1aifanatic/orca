@@ -18594,6 +18594,9 @@
         "continue": "Continue",
         "failed": "Couldn't continue this chat. Try again, or send a message.",
         "explanation": "Continue, and the agent first checks whether its last step finished."
+      },
+      "claudeSignIn": {
+        "signingIn": "Signing in…"
       }
     },
     "tab": {
@@ -19431,7 +19434,12 @@
       "signInRequired": "Sign in again to use this account",
       "signInAgain": "Sign in again",
       "usageSignInLabel": "Sign in again",
-      "usageSignInMessage": "The selected Claude account needs you to sign in again. Open Settings > Accounts, or choose System default."
+      "usageSignInMessage": "The selected Claude account needs you to sign in again. Open Settings > Accounts, or choose System default.",
+      "signIn": "Sign in",
+      "signInNotice": {
+        "title": "Claude accounts now stay signed in on their own.",
+        "description": "Sign in once to each account to keep using it."
+      }
     },
     "managedData": {
       "description": "Add accounts by running this command in a terminal on the Orca host. Selection applies to new explicit agent launches on that host; direct SSH relay and Windows-hosted WSL launches use their own credentials.",
