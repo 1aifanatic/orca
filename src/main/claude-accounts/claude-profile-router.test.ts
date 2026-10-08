@@ -140,6 +140,20 @@ describe('ClaudeProfileRouter', () => {
     expect(f.router.coveredBySystemDefault('a')).toBe(false)
   })
 
+  it('tells whether a terminal opened before routing runs another account than the selected one', () => {
+    const f = fixture()
+    expect(f.router.systemDefaultRunsAnotherAccount()).toBe(true)
+    signIn(f.userHome, 'a@example.test')
+    expect(f.router.systemDefaultRunsAnotherAccount()).toBe(false)
+    // The account's own login names it once it has one.
+    const other = fixture()
+    signIn(other.userHome, 'a@example.test')
+    signIn(other.home('a'), 'someone-else@example.test')
+    expect(other.router.systemDefaultRunsAnotherAccount()).toBe(true)
+    f.settings.activeClaudeManagedAccountId = null
+    expect(f.router.systemDefaultRunsAnotherAccount()).toBeNull()
+  })
+
   it('keeps an account on its own folder when System default is signed in to another email, or out', async () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })

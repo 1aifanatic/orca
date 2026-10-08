@@ -48,6 +48,10 @@ const logins = new Map<
   { mtimeMs: number; size: number; readAt: number; login: ClaudeFolderLogin | null }
 >()
 
+export function sameClaudeEmail(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase()
+}
+
 /** The login parsed Claude state names; null before Claude finishes a sign-in. */
 export function claudeStateLogin(state: Record<string, unknown>): ClaudeFolderLogin | null {
   const parsed = oauthAccount.safeParse(state.oauthAccount)

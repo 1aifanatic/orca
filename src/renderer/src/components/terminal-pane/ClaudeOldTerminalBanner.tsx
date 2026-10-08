@@ -13,24 +13,22 @@ import { PaneBannerLearnMore, PaneTopWarningBanner } from './PaneTopWarningBanne
 const dismissedPtyIds = new Set<string>()
 
 // Why a selection, not just saved accounts: with System default selected, this terminal already
-// matches a new one.
-function hasSelectedClaudeAccount(state: AppState): boolean {
+// matches a new one. A key, so a switch asks again whether this terminal runs another account.
+function selectedClaudeAccountKey(state: AppState): string | null {
   const settings = state.settings
   if (!settings || settings.claudeManagedAccounts.length === 0) {
-    return false
+    return null
   }
   const selection = settings.activeClaudeManagedAccountIdsByRuntime
-  return Boolean(
-    selection?.host ??
-    settings.activeClaudeManagedAccountId ??
-    Object.values(selection?.wsl ?? {}).some(Boolean)
-  )
+  const host = selection?.host ?? settings.activeClaudeManagedAccountId ?? null
+  const wsl = Object.entries(selection?.wsl ?? {}).filter(([, id]) => id)
+  return host || wsl.length > 0 ? JSON.stringify([host, wsl]) : null
 }
 
-function useOpenedBeforeClaudeAccounts(ptyId: string, enabled: boolean): boolean {
+function useOpenedBeforeClaudeAccounts(ptyId: string, selectionKey: string | null): boolean {
   const [openedBefore, setOpenedBefore] = useState(false)
   useEffect(() => {
-    if (!enabled) {
+    if (!selectionKey) {
       return
     }
     let cancelled = false
@@ -46,7 +44,7 @@ function useOpenedBeforeClaudeAccounts(ptyId: string, enabled: boolean): boolean
       cancelled = true
       setOpenedBefore(false)
     }
-  }, [enabled, ptyId])
+  }, [selectionKey, ptyId])
   return openedBefore
 }
 
@@ -62,7 +60,7 @@ export function ClaudeOldTerminalBanner({
 }): React.JSX.Element | null {
   const paneKey = makePaneKey(tabId, leafId)
   const [dismissed, setDismissed] = useState(() => dismissedPtyIds.has(ptyId))
-  const accountSelected = useAppStore(hasSelectedClaudeAccount)
+  const selectionKey = useAppStore(selectedClaudeAccountKey)
   // Why either signal: a typed claude is seen by the process read, or by its hooks.
   const claudeInPane = useAppStore(
     (state) =>
@@ -71,7 +69,7 @@ export function ClaudeOldTerminalBanner({
   )
   const openedBefore = useOpenedBeforeClaudeAccounts(
     ptyId,
-    accountSelected && claudeInPane && !dismissed
+    claudeInPane && !dismissed ? selectionKey : null
   )
   const [dialogOpen, setDialogOpen] = useState(false)
   // Why: the dialog has no Radix trigger, so closing it would leave focus on document.body.

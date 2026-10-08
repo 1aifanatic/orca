@@ -34,6 +34,7 @@ import {
   claudeStateFile,
   readClaudeFolderLogin,
   removeClaudeAccountFolder,
+  sameClaudeEmail,
   type ClaudeFolderLogin
 } from './claude-account-folder'
 import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
@@ -156,7 +157,7 @@ export class ClaudeProfileRouter {
     }
     const home = this.routedProfile()?.home ?? ''
     // Why compare first: launches re-sync it, and most find it unchanged.
-    if (readFileIfPresent(this.pointerPath) !== home) {
+    if (!existsSync(this.pointerPath) || readFileSync(this.pointerPath, 'utf8') !== home) {
       mkdirSync(dirname(this.pointerPath), { recursive: true, mode: 0o700 })
       writeFileAtomically(this.pointerPath, home, { mode: 0o600 })
     }
@@ -327,6 +328,22 @@ export class ClaudeProfileRouter {
     }
   }
 
+  /**
+   * Whether `claude` in a terminal opened before routing, which runs System default's login, runs
+   * another account than the selected host one. Null with no host account selected.
+   */
+  systemDefaultRunsAnotherAccount(): boolean | null {
+    const profile = this.selectedProfile()
+    if (!profile) {
+      return null
+    }
+    const email =
+      this.accountLogin(profile.accountId)?.email ??
+      this.args.getSettings().claudeManagedAccounts.find((a) => a.id === profile.accountId)?.email
+    const systemDefault = this.systemDefaultLogin(5_000)?.email
+    return !email || !systemDefault || !sameClaudeEmail(email, systemDefault)
+  }
+
   /** Whether launches run in an account's folder, which owns their auth, rather than System default. */
   routesToAccount(): boolean {
     return this.routedProfile() !== null
@@ -355,17 +372,5 @@ export class ClaudeProfileRouter {
   /** Every account folder on this host, selected or not. */
   accountHomes(): string[] {
     return listClaudeProfileHomes(this.args.dataRoot)
-  }
-}
-
-export function sameClaudeEmail(left: string, right: string): boolean {
-  return left.trim().toLowerCase() === right.trim().toLowerCase()
-}
-
-function readFileIfPresent(file: string): string | null {
-  try {
-    return readFileSync(file, 'utf8')
-  } catch {
-    return null
   }
 }
