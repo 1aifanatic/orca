@@ -84,8 +84,14 @@ async function startOrcadManagedIdleExit(
     },
     stop: async (evidence) => {
       await stopForIdle(input, evidence, retireOrcadDaemonIfIdle)
-      // Provider startup may complete while daemon retirement is awaiting its reply.
-      if (hasChatProviders()) {
+      // Clients or providers may return while daemon retirement awaits its reply.
+      const activity = input.rpc.readClientActivity()
+      if (
+        hasChatProviders() ||
+        activity.openConnections > 0 ||
+        activity.requestsInFlight > 0 ||
+        activity.lastRequestAt > evidence.quietSince
+      ) {
         discardOrcadIdleStopRecord(input.userDataPath)
         return false
       }

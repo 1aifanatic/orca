@@ -35,33 +35,40 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs())
 
-it('rechecks providers after daemon retirement before requesting an idle shutdown', async () => {
-  const retire = Promise.withResolvers<{ retirement: string; reason: null }>()
-  vi.mocked(retireOrcadDaemonIfIdle).mockImplementationOnce(async () => ({
-    ...(await retire.promise),
-    retirement: 'retired',
-    liveSessions: 0
-  }))
-  const shutdown = vi.fn(() => true)
-  bindOrcadIdleShutdown(shutdown)
-  await beginOrcadIdleExit('test-profile').start({
-    rpc: {
-      readClientActivity: () => ({ openConnections: 0, requestsInFlight: 0, lastRequestAt: 0 })
-    },
-    agentStates: () => [],
-    hasStagedMigration: () => false,
-    automationsBusy: () => false,
-    registerCleanup: () => {}
-  })
-  const installed = vi.mocked(installOrcadManagedIdleExit).mock.calls.at(-1)?.[0]
-  if (!installed) {
-    throw new Error('idle monitor was not installed')
-  }
-  const stopping = installed.stop({ quietSince: 0, stoppedAt: 900_000, timeoutMs: 900_000 })
-  hasLoadedProviders.mockReturnValue(true)
-  retire.resolve({ retirement: 'retired', reason: null })
+it.each(['provider', 'client', 'request', 'recent request'])(
+  'rechecks a returning %s after daemon retirement before requesting an idle shutdown',
+  async (returning) => {
+    const activity = { openConnections: 0, requestsInFlight: 0, lastRequestAt: 0 }
+    const retire = Promise.withResolvers<{ retirement: string; reason: null }>()
+    vi.mocked(retireOrcadDaemonIfIdle).mockImplementationOnce(async () => ({
+      ...(await retire.promise),
+      retirement: 'retired',
+      liveSessions: 0
+    }))
+    const shutdown = vi.fn(() => true)
+    bindOrcadIdleShutdown(shutdown)
+    await beginOrcadIdleExit('test-profile').start({
+      rpc: {
+        readClientActivity: () => activity
+      },
+      agentStates: () => [],
+      hasStagedMigration: () => false,
+      automationsBusy: () => false,
+      registerCleanup: () => {}
+    })
+    const installed = vi.mocked(installOrcadManagedIdleExit).mock.calls.at(-1)?.[0]
+    if (!installed) {
+      throw new Error('idle monitor was not installed')
+    }
+    const stopping = installed.stop({ quietSince: 0, stoppedAt: 900_000, timeoutMs: 900_000 })
+    hasLoadedProviders.mockReturnValue(returning === 'provider')
+    activity.openConnections = returning === 'client' ? 1 : 0
+    activity.requestsInFlight = returning === 'request' ? 1 : 0
+    activity.lastRequestAt = returning === 'recent request' ? 1 : 0
+    retire.resolve({ retirement: 'retired', reason: null })
 
-  expect(await stopping).toBe(false)
-  expect(shutdown).not.toHaveBeenCalled()
-  expect(discardOrcadIdleStopRecord).toHaveBeenCalledWith('test-profile')
-})
+    expect(await stopping).toBe(false)
+    expect(shutdown).not.toHaveBeenCalled()
+    expect(discardOrcadIdleStopRecord).toHaveBeenCalledWith('test-profile')
+  }
+)
