@@ -22,12 +22,9 @@ export function normalizeAmpEvent(
 ): ParsedAgentStatusPayload | null {
   const ampCacheKey = getAmpCacheKey(paneKey, hookPayload)
   if (eventName === 'session.start') {
-    clearProducerTurnCacheState(state, ampCacheKey)
-    state.ampCompletedCacheKeys.delete(ampCacheKey)
-    const producerKey = producerCacheKey(paneKey, 'amp')
-    if (ampCacheKey !== producerKey) {
-      clearProducerTurnCacheState(state, producerKey)
-      state.ampCompletedCacheKeys.delete(producerKey)
+    for (const key of [ampCacheKey, producerCacheKey(paneKey, 'amp')]) {
+      clearProducerTurnCacheState(state, key)
+      state.ampCompletedCacheKeys.delete(key)
     }
     return null
   }

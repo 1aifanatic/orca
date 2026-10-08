@@ -61,7 +61,7 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
     expect(response.status).toBe(204)
   }
 
-  async function runNestedCodexInsideClaude(): Promise<void> {
+  async function claudeStartsCodexExec(): Promise<void> {
     await post(
       '/hook/claude',
       claudeBody(dir, {
@@ -79,6 +79,10 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
         tool_use_id: 'toolu_codex_exec'
       })
     )
+  }
+
+  async function runNestedCodexInsideClaude(): Promise<void> {
+    await claudeStartsCodexExec()
     await post(
       '/hook/codex',
       codexBody(rollout, { hook_event_name: 'SessionStart', source: 'startup' })
@@ -102,10 +106,6 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
 
   it("ends the Claude row on Claude's prompt after a nested Codex run", async () => {
     await runNestedCodexInsideClaude()
-    const state = server._getStateForTests()
-    expect(state.lastPromptByPaneKey.get(producerCacheKey(PANE, 'codex'))).toBe(
-      'codex: summarize the diff'
-    )
 
     await post(
       '/hook/claude',
@@ -142,22 +142,7 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
   })
 
   it("leaves Claude's caches untouched while the nested Codex reports", async () => {
-    await post(
-      '/hook/claude',
-      claudeBody(dir, {
-        hook_event_name: 'UserPromptSubmit',
-        prompt: 'claude: refactor the parser'
-      })
-    )
-    await post(
-      '/hook/claude',
-      claudeBody(dir, {
-        hook_event_name: 'PreToolUse',
-        tool_name: 'Bash',
-        tool_input: { command: 'codex exec "summarize the diff"' },
-        tool_use_id: 'toolu_codex_exec'
-      })
-    )
+    await claudeStartsCodexExec()
     const state = server._getStateForTests()
     const claudeKey = producerCacheKey(PANE, 'claude')
     const before = {

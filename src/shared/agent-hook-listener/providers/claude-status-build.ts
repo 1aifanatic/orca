@@ -25,9 +25,9 @@ export function buildClaudeStatusPayload(
     claudeTaskWakeupPending?: ParsedAgentStatusPayload['claudeTaskWakeupPending']
   }
 ): ParsedAgentStatusPayload | null {
-  // Why: child-driven refreshes are roster bookkeeping, not lead tool activity; read the cached snapshot without merging so they can't clear a live AskUserQuestion card or clobber the tool preview.
   // Why 'claude' for qwen-code too: it shares this normalizer and every claude* pane map with Claude.
   const cacheKey = producerCacheKey(paneKey, 'claude')
+  // Why: child-driven refreshes are roster bookkeeping, not lead tool activity; read the cached snapshot without merging so they can't clear a live AskUserQuestion card or clobber the tool preview.
   const snapshot = options.updateToolSnapshot
     ? resolveToolState(state, cacheKey, extractToolFields('claude', eventName, hookPayload), {
         resetOnNewTurn: isNewTurnEvent('claude', eventName)

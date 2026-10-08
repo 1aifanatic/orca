@@ -277,6 +277,21 @@ export function reapRestoredClaudeSubagentsForDeadPane(
   return true
 }
 
+/** A cleared wait drops the cached tool and card but keeps the lead's last reply. */
+function keepOnlyClaudeAssistantMessage(state: HookListenerState, paneKey: string): void {
+  const cacheKey = producerCacheKey(paneKey, 'claude')
+  const previousTool = state.lastToolByPaneKey.get(cacheKey)
+  state.lastToolByPaneKey.set(
+    cacheKey,
+    previousTool?.lastAssistantMessage
+      ? {
+          lastAssistantMessage: previousTool.lastAssistantMessage,
+          lastAssistantMessageIsToolOutput: previousTool.lastAssistantMessageIsToolOutput
+        }
+      : {}
+  )
+}
+
 /** Drop a child-owned waiting state when the child stops/idles, restoring the displaced lead state. */
 export function clearClaudePendingWaitForAgent(
   state: HookListenerState,
@@ -288,17 +303,7 @@ export function clearClaudePendingWaitForAgent(
     return
   }
   setClaudeMainAgentTurnState(state, paneKey, lead.stateBeforeWait ?? { state: 'working' })
-  const toolCacheKey = producerCacheKey(paneKey, 'claude')
-  const previousTool = state.lastToolByPaneKey.get(toolCacheKey)
-  state.lastToolByPaneKey.set(
-    toolCacheKey,
-    previousTool?.lastAssistantMessage
-      ? {
-          lastAssistantMessage: previousTool.lastAssistantMessage,
-          lastAssistantMessageIsToolOutput: previousTool.lastAssistantMessageIsToolOutput
-        }
-      : {}
-  )
+  keepOnlyClaudeAssistantMessage(state, paneKey)
 }
 
 /** Clear an AskUserQuestion wait after the answer is typed (answering emits no hook event; the caller infers it from the submit keystroke). Restores the stashed pre-wait lead state or 'working', drops the cached card, and returns the pane state to emit (gated up to 'working' while children run). */
@@ -321,17 +326,7 @@ export function clearClaudeAnsweredQuestionWait(
       : { state: 'working' as const }
   const restored = setClaudeMainAgentTurnState(state, paneKey, { ...stash })
   const publishedMainAgent = claudeMainAgentStatusForPayload(restored)
-  const toolCacheKey = producerCacheKey(paneKey, 'claude')
-  const previousTool = state.lastToolByPaneKey.get(toolCacheKey)
-  state.lastToolByPaneKey.set(
-    toolCacheKey,
-    previousTool?.lastAssistantMessage
-      ? {
-          lastAssistantMessage: previousTool.lastAssistantMessage,
-          lastAssistantMessageIsToolOutput: previousTool.lastAssistantMessageIsToolOutput
-        }
-      : {}
-  )
+  keepOnlyClaudeAssistantMessage(state, paneKey)
   const resolved = resolveClaudePaneStatus(state, paneKey, restored)
   return {
     state: resolved.stateName,

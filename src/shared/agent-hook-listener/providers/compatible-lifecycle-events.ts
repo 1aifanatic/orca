@@ -80,9 +80,7 @@ export function normalizeCompatibleLifecycleEvent(
   ) {
     toolFields.toolName = 'AskUserQuestion'
   }
-  const snapshot = resolveToolState(state, cacheKey, toolFields, {
-    resetOnNewTurn
-  })
+  const snapshot = resolveToolState(state, cacheKey, toolFields, { resetOnNewTurn })
   return normalizeAgentStatusPayload({
     state: stateName,
     agentType: source,

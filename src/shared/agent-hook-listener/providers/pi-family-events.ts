@@ -49,7 +49,6 @@ export function normalizePiCompatibleEvent(
     if (
       !previous ||
       previous.providerSessionOnly === true ||
-      previous.payload.agentType !== agentType ||
       (eventName === 'model_select' && !model)
     ) {
       return null
@@ -156,7 +155,5 @@ function holdsOmpApproval(
     return false
   }
   const previous = producerPreviousStatus(state, paneKey, agentType)?.payload
-  return (
-    previous?.agentType === 'omp' && previous.state === 'blocked' && previous.toolName !== 'ask'
-  )
+  return previous?.state === 'blocked' && previous.toolName !== 'ask'
 }

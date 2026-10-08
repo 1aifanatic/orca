@@ -90,9 +90,7 @@ export function normalizeZCodeEvent(
 
   return normalizeAgentStatusPayload({
     state: turn.stateName,
-    prompt: resolvePrompt(state, cacheKey, promptText, {
-      resetOnNewTurn
-    }),
+    prompt: resolvePrompt(state, cacheKey, promptText, { resetOnNewTurn }),
     agentType: 'zcode',
     toolName: snapshot.toolName,
     toolInput: snapshot.toolInput,

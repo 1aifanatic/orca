@@ -64,9 +64,7 @@ export function normalizeJcodeEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, cacheKey, promptText, {
-      resetOnNewTurn
-    }),
+    prompt: resolvePrompt(state, cacheKey, promptText, { resetOnNewTurn }),
     agentType: 'jcode',
     // Why: jcode stamps the live model on session_start/turn_start/turn_end, so
     // the row keeps naming the right model after an in-session `/model` switch.
