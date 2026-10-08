@@ -1,0 +1,40 @@
+{
+  "source": "e9b3efa7d75cf36244e2a1a03bfdd6f27a114f5b",
+  "sourceTree": "f8136d4e87dd845b678ea0da3f026555d9ca188b",
+  "originalPredicateProposalSha256": "b8d71bb793f03f2e3f5c143d61cb2732e0a34cb73b183e36be1eb96d75a73416",
+  "predicatePatchSha256": "9025221b3e762471b87510e7827c24642070e7928d136924cd47f1fb99e9fba3",
+  "controllerDonorSha256": "89dc7af36d69123bf58bb51e9c93f1ce10a129e684fbc048a5caf1ad1a97199e",
+  "controllerAdaptation": "Only explicit capture instrumentation tracked-path allowance, exact fresh capture env/absent overrides, and observed capture byte/hash receipt. Command/process/source census unchanged. Capture SHA is streamed in fixed1MiB blocks.",
+  "safeReporterDonorSha256": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+  "comparatorUnchangedSha256": "36a5ee4b98e5386d5b0fbacbc2423b532977705d5ac86d90d9f9ab9f6663609b",
+  "captureInstrumentation": {
+    "src/main/daemon/serialize-grid-transcript-replay.test.ts": {
+      "beforeSha256": "7c645e37e616e3279a98cb04878b721d30ec1b41e3a2a9edd43dbccdd501a728",
+      "instrumentedSha256": "ac3ea395a37a74e8353720514d650901096e74b6b5fc15b9737ca8176e059ac9"
+    }
+  },
+  "capturePatchSha256": "02b71062a5016cc49543e1ab107071ecb65cbbceb26c88a54df9ffc85957872a",
+  "captureInstrumentationScope": "The prior appendFileSync/createHash full capture seam, formatted and reanchored only. All original registrations/callback content/assertions/matrix unchanged except adding observation after run; no normalization.",
+  "installedOwnerSha256": {
+    "node_modules/@xterm/headless/package.json": "9d9ee2d00fa85318c0f31c3ee228f1876cd4712a70046ce2bff332780aab9b91",
+    "node_modules/@xterm/headless/lib-headless/xterm-headless.js": "e71666dbadcd0d4be1012b59c72c000d8f3624493050413d422bb0acebcce1d3",
+    "node_modules/@xterm/addon-serialize/package.json": "88b5a91951677f8d0c2fb5975a6bf7a90befc6a22fce116b48f6211e51b5fee6",
+    "node_modules/@xterm/addon-serialize/lib/addon-serialize.js": "e9e83997b45ca88a0660ad8faceaf55627aaeccd36949da1a3ad172b389fe451",
+    "node_modules/@xterm/addon-unicode11/package.json": "d4ef41169e15e74d57c0dc7960df22c0349ee8679682fd9fc832038a7e703086",
+    "node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js": "a8de2ab38b140e56206d08176753872ed44ad7068c286fbea2a2b116c0253771",
+    "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "1530a89d189ebdc57a1577e7fbfcd34eac55a0165589265b8d776b33f83678bd",
+    "node_modules/vitest/dist/chunks/init-forks.hzLs7kMZ.js": "60d4cdf744079a261cf557a1dc47cb359428abc55c1259cbc0c26b9689e22a8d",
+    "node_modules/vitest/dist/workers/forks.js": "e5550fddbe19ed8a86ad2917ff26022d67746c29945f11cd2529fc5d177629f7",
+    "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+    "node_modules/@xterm/headless/lib-headless/xterm-headless.js.map": "593c3d75f22146a34afad73aa8b8295084116796e82b46721ea5ce4f14a1307a",
+    "node_modules/@xterm/headless/lib-headless/xterm-headless.mjs": "c16fa7f9b2b793ef6cd446b43a9d0799fa0fbe3ca50d92247f8d2a0003daff60",
+    "node_modules/@xterm/headless/lib-headless/xterm-headless.mjs.map": "c8182632041858f708157aa24632da9ae03ca9b55d6c115ddb525eec70e90724",
+    "node_modules/@xterm/headless/typings/xterm-headless.d.ts": "ae6a096d3e3bbcb76631b128a36cd85c8b0102bc8210751c514edebcdb4fb001"
+  },
+  "nativeContracts": "Original four real-headless consumers retained; actual routes must equal recorded ordinary/forks routes. Dedicated native-boundary suites are not claimed exercised.",
+  "caseCounts": "Prospective until actual four-consumer reports;112/1792 source expectations validated from actual replay maps/captures,9838 historical checkpoint count not hardcoded or credited.",
+  "semanticReviews": {
+    "serialize-oracle-default-blank-predicate-review-fixes-semantic-source-peer.json": "59c0a70b7bdb05e032dd4ba199465f44c5b2536a1f006dee2cb293db2621b489",
+    "serialize-oracle-default-blank-predicate-root-semantic-source-review.json": "92e00c180da6045ca6e925685c30585dd2e4faf043e646cba1fa9dddbbefd29c"
+  }
+}

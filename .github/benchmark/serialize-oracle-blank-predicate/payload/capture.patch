@@ -1,0 +1,29 @@
+--- a/src/main/daemon/serialize-grid-transcript-replay.test.ts
++++ b/src/main/daemon/serialize-grid-transcript-replay.test.ts
+@@ -1,5 +1,5 @@
+ import { createHash } from 'node:crypto'
+-import { existsSync, readdirSync, readFileSync } from 'node:fs'
++import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+ import { basename, join } from 'node:path'
+ import { describe, expect, it } from 'vitest'
+ import { mulberry32 } from '../../shared/agent-tui-ansi-fuzz-stream'
+@@ -228,6 +228,19 @@
+           for (let seed = 1; seed <= SEEDS; seed++) {
+             const testCase = buildReplayCase(transcript, schedule, conpty, seed)
+             const run = await runSerializeFuzzCase(testCase, serializers)
++            if (process.env.ORCA_SERIALIZE_CHECKPOINT_CAPTURE) {
++              appendFileSync(
++                process.env.ORCA_SERIALIZE_CHECKPOINT_CAPTURE,
++                JSON.stringify({
++                  transcript: transcript.name,
++                  schedule,
++                  conpty,
++                  seed,
++                  inputSha256: createHash('sha256').update(JSON.stringify(testCase)).digest('hex'),
++                  run
++                }) + '\n'
++              )
++            }
+             expect(run.sourceCrash).toBeNull()
+             for (const check of run.checks) {
+               counts.checks = (counts.checks ?? 0) + 1
