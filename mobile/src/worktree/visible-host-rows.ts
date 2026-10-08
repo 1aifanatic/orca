@@ -5,15 +5,12 @@ import {
 import type { Worktree } from './workspace-list-types'
 import { resolveWorktreeHostId } from './worktree-host-context-labels'
 
-/**
- * The hosts the desktop's sidebar shows, or null for all. One shown host is how the desktop
- * stores a single-host focus too, and the phone follows hidden hosts, not focus.
- */
+/** The hosts the desktop's sidebar shows, mirrored exactly; null shows every host. */
 export function readVisibleHostIds(
   value: readonly string[] | null | undefined
 ): ReadonlySet<ExecutionHostId> | null {
   const ids = normalizeVisibleExecutionHostIds(value)
-  return ids && ids.length > 1 ? new Set(ids) : null
+  return ids ? new Set(ids) : null
 }
 
 export function filterVisibleHostRows(

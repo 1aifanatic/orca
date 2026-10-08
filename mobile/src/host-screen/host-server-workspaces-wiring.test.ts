@@ -250,9 +250,9 @@ describe("a desktop's server workspaces on the phone", () => {
     const screen = await mountScreen(desktop(), RELAYS)
     screen.hideHosts(['local', 'runtime:old'])
     expect(screen.rows().map((entry) => entry.worktreeId)).toEqual(['mac-wt', 'runtime:old-wt'])
-    // One shown host is the desktop's single-host focus, which the phone does not follow.
+    // A one-host list narrows the phone too, exactly as it narrows the desktop's sidebar.
     screen.hideHosts(['runtime:old'])
-    expect(screen.rows()).toHaveLength(3)
+    expect(screen.rows().map((entry) => entry.worktreeId)).toEqual(['runtime:old-wt'])
   })
 
   it('opens a ready server workspace there, and explains one that needs an update', async () => {
