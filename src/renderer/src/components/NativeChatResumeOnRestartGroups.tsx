@@ -22,14 +22,16 @@ import {
 } from './native-chat-resume-workspace-lookups'
 import { ResumeCandidateRow } from './NativeChatResumeOnRestartAgentRow'
 import { ResumeTreeCount, ResumeTreeRow } from './NativeChatResumeTreeRow'
-import { ResumeTreeDepthContext, useResumeTreeExpansion } from './native-chat-resume-tree-state'
 import {
-  selectableUnder,
-  workspaceKeys,
+  chatState,
+  coveredKeys,
+  ResumeTreeDepthContext,
+  treeBusy,
+  useResumeTreeExpansion,
   type FailureProps,
   type MachineProps,
   type TreeProps
-} from './native-chat-resume-tree-props'
+} from './native-chat-resume-tree-state'
 import {
   groupResumeCandidates,
   groupResumeCandidatesByHost,
@@ -38,6 +40,7 @@ import {
   resolveResumeGroupHeader,
   resumeSelectionState,
   resumeWorkspaceKind,
+  resumeWorkspaceCandidates,
   toggleResumeSelection,
   type ResumeCandidate,
   type ResumeWorkspaceGroup,
@@ -91,7 +94,7 @@ function GroupNode({
         onExpandedChange={(next) => tree.setExpanded(nodeKey, next)}
         name={name}
         checked={selection.checked}
-        disabled={tree.busyFor(hostId) || selection.total === 0}
+        disabled={treeBusy(tree, hostId) || selection.total === 0}
         onCheckedChange={() => toggleResumeSelection(covered, selection, tree.onToggle)}
         checkboxLabel={checkboxLabel}
       >
@@ -134,7 +137,7 @@ function WorkspaceNode({
         'Select all chats in {{value0}}',
         { value0: name }
       )}
-      covered={workspaceKeys(node, tree).filter(tree.selectable)}
+      covered={coveredKeys(resumeWorkspaceCandidates(node), tree)}
       tree={tree}
       label={
         <>
@@ -150,21 +153,19 @@ function WorkspaceNode({
     >
       <ResumeTreeDepthContext.Provider value={depth + 1}>
         {group.candidates.map((candidate) => {
-          const key = tree.keyOf(candidate)
+          const chat = chatState(candidate, tree)
           return (
             <ResumeCandidateRow
-              key={key}
+              key={chat.key}
               candidate={candidate}
               workspaceName={name}
               listedAt={tree.listedAt}
-              checked={tree.selected.has(key)}
-              disabled={tree.busyFor(hostId)}
-              onCheckedChange={(checked) => tree.onToggle(key, checked)}
-              failure={tree.failureFor?.(key)}
-              onFailureAction={
-                tree.onFailureAction && ((action) => tree.onFailureAction?.(action, key))
-              }
-              originLabel={tree.originLabelFor?.(key)}
+              checked={chat.checked}
+              disabled={treeBusy(tree, hostId)}
+              onCheckedChange={chat.onCheckedChange}
+              failure={chat.failure}
+              onFailureAction={chat.onFailureAction}
+              originLabel={chat.originLabel}
             />
           )
         })}
@@ -217,7 +218,7 @@ function ProjectNode({
         'Select all chats in {{value0}}',
         { value0: header.name }
       )}
-      covered={workspaces.flatMap((node) => workspaceKeys(node, tree)).filter(tree.selectable)}
+      covered={coveredKeys(workspaces.flatMap(resumeWorkspaceCandidates), tree)}
       tree={tree}
       label={
         <>
@@ -326,7 +327,7 @@ function MachineNode({
         'Select all chats on {{value0}}',
         { value0: name }
       )}
-      covered={candidates.map(tree.keyOf).filter(tree.selectable)}
+      covered={coveredKeys(candidates, tree)}
       tree={tree}
       label={
         <>
@@ -388,16 +389,16 @@ export function ResumeOnRestartGroups({
   const expansion = useResumeTreeExpansion(defaultExpanded)
   const tree: TreeProps = {
     listedAt,
-    busyFor: (hostId) => busy || busyFor?.(hostId) === true,
+    busy,
     selected,
     onToggle,
-    keyOf: rowKey ?? ((candidate) => candidate.sessionId),
-    selectable: selectableUnder(failureFor),
     ...expansion,
     repoIdOf,
     ancestorsOf,
     failureFor,
     onFailureAction,
+    rowKey,
+    busyFor,
     originLabelFor
   }
   // Why: the machine is worth a level only when it is not obvious.

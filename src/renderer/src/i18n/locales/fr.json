@@ -17667,7 +17667,6 @@
         "activityMonitorMany": "Surveillance de {{value0}} tâches en arrière-plan",
         "machineCauseUpdate": "A installé une mise à jour",
         "machineCauseQuit": "A été quitté",
-        "selectMachine": "Reprendre toutes les discussions sur {{value0}}",
         "machinesBody": "Ces discussions étaient en cours quand Orca s'est fermé ou a installé une mise à jour sur leur machine. Les reprendre restaure chacune là où elle s'est arrêtée, avec tout son contexte, et demande à l'agent de vérifier ce qu'il faisait avant de continuer. Votre propre prompt n'est pas renvoyé.",
         "continuedOneOnMachine": "1 chat a été repris sur {{value0}}",
         "continuedManyOnMachine": "{{value0}} chats ont été repris sur {{value1}}",

@@ -129,6 +129,16 @@ it('heads a single SSH host with its machine node, named and marked SSH', () => 
   expect(itemOf(nodeBox('parent')).textContent).not.toContain(machine)
 })
 
+// A paired Orca server's runtime host is not this machine, but it is not SSH either.
+it('heads a runtime host with its machine node and no SSH chip', () => {
+  const runtime: ExecutionHostId = 'runtime:env-1'
+  render({ candidates: seedTree({ parent: runtime, child: runtime }) })
+
+  const machine = getHostContextLabel(runtime)
+  expect(treeOutline()[0]).toBe(`1:machine:${machine}`)
+  expect(itemOf(nodeBox(machine)).textContent).not.toContain('SSH')
+})
+
 // A target saved through Add SSH target gets a generated id; the sidebar names it by its label.
 it('names an SSH machine by its saved name, not its target id', () => {
   const targetId = 'ssh-1728291234567-abc12d'

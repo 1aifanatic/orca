@@ -17551,7 +17551,6 @@
         "activityMonitorMany": "正在监控 {{value0}} 个后台任务",
         "machineCauseUpdate": "安装了更新",
         "machineCauseQuit": "已退出",
-        "selectMachine": "恢复 {{value0}} 上的所有聊天",
         "machinesBody": "这些聊天在其所在机器上的 Orca 关闭或安装更新时正在工作。恢复会让每个聊天从停止处恢复，保留完整上下文，并让代理在继续之前先检查它刚才在做什么。你自己的提示不会被重新发送。",
         "continuedOneOnMachine": "已在 {{value0}} 上恢复 1 个聊天",
         "continuedManyOnMachine": "已在 {{value1}} 上恢复 {{value0}} 个聊天",

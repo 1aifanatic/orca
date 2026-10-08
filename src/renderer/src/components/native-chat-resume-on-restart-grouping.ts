@@ -194,11 +194,8 @@ export function nestResumeWorkspaces(
 }
 
 /** A workspace's chats followed by those of every workspace nested under it, in list order. */
-export function resumeWorkspaceSessionIds(node: ResumeWorkspaceNode): string[] {
-  return [
-    ...node.group.candidates.map((candidate) => candidate.sessionId),
-    ...node.children.flatMap(resumeWorkspaceSessionIds)
-  ]
+export function resumeWorkspaceCandidates(node: ResumeWorkspaceNode): ResumeCandidate[] {
+  return [...node.group.candidates, ...node.children.flatMap(resumeWorkspaceCandidates)]
 }
 
 export type ResumeSelectionState = {

@@ -17551,7 +17551,6 @@
         "activityMonitorMany": "{{value0}} 個のバックグラウンドタスクを監視中",
         "machineCauseUpdate": "アップデートをインストールしました",
         "machineCauseQuit": "終了しました",
-        "selectMachine": "{{value0}} のすべてのチャットを再開",
         "machinesBody": "これらのチャットは、各マシンの Orca が終了したかアップデートをインストールしたときに作業中でした。再開すると、各チャットが完全なコンテキストとともに停止した場所から復元され、続行する前に何をしていたかを確認するよう Agent に要求されます。自分自身のプロンプトは再送信されません。",
         "continuedOneOnMachine": "{{value0}} の 1 件のチャットを再開しました",
         "continuedManyOnMachine": "{{value1}} の {{value0}} 件のチャットを再開しました",

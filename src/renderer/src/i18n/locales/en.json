@@ -2131,7 +2131,6 @@
         "activityMonitorMany": "Monitoring {{value0}} background tasks",
         "machineCauseUpdate": "Installed an update",
         "machineCauseQuit": "Was quit",
-        "selectMachine": "Resume every chat on {{value0}}",
         "machinesBody": "These chats were working when Orca on their machine closed or installed an update. Resuming restores each one where it stopped, with its full context, and asks the agent to check what it was doing before carrying on. Your own prompt is not re-sent.",
         "continuedOneOnMachine": "Resumed 1 chat on {{value0}}",
         "continuedManyOnMachine": "Resumed {{value0}} chats on {{value1}}",

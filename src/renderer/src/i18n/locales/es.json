@@ -17547,7 +17547,6 @@
         "dismiss": "Descartar",
         "machineCauseUpdate": "Instaló una actualización",
         "machineCauseQuit": "Se cerró",
-        "selectMachine": "Reanudar todos los chats en {{value0}}",
         "machinesBody": "Estos chats estaban trabajando cuando Orca se cerró o instaló una actualización en su máquina. Al reanudarlos, cada uno se restaura donde se detuvo, con todo su contexto, y se pide al agente que revise lo que estaba haciendo antes de continuar. Tu propio prompt no se vuelve a enviar.",
         "continuedOneOnMachine": "Se reanudó 1 chat en {{value0}}",
         "continuedManyOnMachine": "Se reanudaron {{value0}} chats en {{value1}}",

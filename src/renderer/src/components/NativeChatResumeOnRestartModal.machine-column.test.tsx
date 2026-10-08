@@ -143,6 +143,42 @@ it('puts each machine in the tree’s one checkbox column, its chats one level f
   }
 })
 
+// One tree lists every machine: a paired server is one machine node, never a node inside a row of
+// this dialog's own. The tree's keys pass the rows' own dismiss controls by: they are not checkboxes.
+it('shows a paired server as exactly one machine node, and its keys pass the rows’ dismiss', async () => {
+  await stage({ sessions: [row('l1', 'own')] }, { studio: { sessions: SERVER_ROWS } })
+  await open('environment:studio')
+  const named = [...document.querySelectorAll('[role="treeitem"]')].filter(
+    (item) =>
+      item.getAttribute('aria-level') === '1' &&
+      item.querySelector('[role="checkbox"]')?.getAttribute('aria-label')?.includes('studio-mac')
+  )
+  expect(named).toHaveLength(1)
+  expect(document.querySelectorAll('[aria-label="Select all chats on studio-mac"]')).toHaveLength(1)
+
+  // Another device's chat has its own dismiss beside it; Down from that chat goes to the next box.
+  const s2Row = chatBox('s2').closest('[role="treeitem"]')!
+  expect(s2Row.querySelector('button[aria-label^="Dismiss"]')).not.toBeNull()
+  const press = (target: Element, key: string) =>
+    act(async () => {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    })
+  chatBox('s2').focus()
+  await press(chatBox('s2'), 'ArrowDown')
+  expect(document.activeElement).toBe(namedBox('Select all chats in workspace-s3'))
+  // From the tree's own Tab stop: Down enters at the first box, End at the last.
+  const tree = document.querySelector<HTMLElement>('[role="tree"]')!
+  tree.focus()
+  await press(tree, 'ArrowDown')
+  expect(document.activeElement).toBe(namedBox('Select all chats'))
+  tree.focus()
+  await press(tree, 'End')
+  expect(document.activeElement).toBe(chatBox('s3'))
+  // A pressed arrow hands focus to its machine's checkbox, beside the machine's subtitle.
+  await act(async () => machineDisclosure('studio-mac').click())
+  expect(document.activeElement).toBe(machineToggle('studio-mac'))
+})
+
 // A machine is a node of the tree: its row heads its workspaces, says why it stopped and when, and
 // Left/Right on its checkbox close and open it as on any node.
 it('heads each machine’s workspaces with its own row, opened and closed from its checkbox', async () => {
