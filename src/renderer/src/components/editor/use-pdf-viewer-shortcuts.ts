@@ -1,6 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
 import { isEditableTarget } from '@/lib/editable-target'
+import { isEventTargetInsideFloatingWorkspacePanel } from '@/lib/floating-workspace-terminal-actions'
 import { keybindingMatchesAction, type KeybindingOverrides } from '../../../../shared/keybindings'
 
 /**
@@ -20,7 +21,13 @@ export function pdfViewerOwnsFind(
   if (root.contains(target)) {
     return true
   }
-  return ownsShortcuts && !isEditableTarget(target instanceof Element ? target : null)
+  // The floating panel has its own focused group: each window surface answers only its own keys.
+  return (
+    ownsShortcuts &&
+    !isEditableTarget(target instanceof Element ? target : null) &&
+    isEventTargetInsideFloatingWorkspacePanel(target) ===
+      isEventTargetInsideFloatingWorkspacePanel(root)
+  )
 }
 
 export function usePdfViewerShortcuts({

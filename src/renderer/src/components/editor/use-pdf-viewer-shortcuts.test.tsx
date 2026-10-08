@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
-import { cleanup, render } from '@testing-library/react'
+import { act, cleanup, render } from '@testing-library/react'
 import { useContext, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EditorShortcutOwnerContext } from './editor-shortcut-owner'
 import { usePdfViewerShortcuts } from './use-pdf-viewer-shortcuts'
+import { useNativeChatFind } from '../native-chat/use-native-chat-find'
+
+vi.mock('@/store', () => ({ useAppStore: { getState: () => ({ keybindings: undefined }) } }))
+vi.mock('../../store', () => ({ useAppStore: { getState: () => ({ keybindings: undefined }) } }))
+vi.mock('@/lib/web-client-location', () => ({ isWebClientLocation: () => false }))
 
 afterEach(() => {
   cleanup()
@@ -129,5 +134,58 @@ describe('PDF viewer find shortcut', () => {
     const { openFind } = setup(null)
     expect(pressFind(document.body).defaultPrevented).toBe(false)
     expect(openFind.pdf).not.toHaveBeenCalled()
+  })
+  it('answers only keys from its own window surface, not the floating workspace panel', () => {
+    function Chat({ testId }: { testId: string }): React.JSX.Element {
+      const rootRef = useRef<HTMLDivElement>(null)
+      const composerRef = useRef(null)
+      const listRef = useRef(null)
+      const find = useNativeChatFind(true, rootRef, composerRef, listRef)
+      return (
+        <div ref={rootRef} tabIndex={-1} data-native-chat-root="true" data-testid={testId}>
+          {find.isOpen ? <div data-testid={`${testId}-find`} /> : null}
+        </div>
+      )
+    }
+    const mainPdf = vi.fn()
+    const floatingPdf = vi.fn()
+    // Each surface keeps its own focused group: `owns` names the surfaces whose PDF group is focused.
+    const surfaces = (owns: 'main' | 'floating'): React.JSX.Element => (
+      <div>
+        <div data-tab-group-body-id="main">
+          <EditorShortcutOwnerContext.Provider value={owns === 'main'}>
+            <PdfViewerStandIn name="main" openFind={mainPdf} />
+          </EditorShortcutOwnerContext.Provider>
+        </div>
+        <Chat testId="main-chat" />
+        <div data-floating-terminal-panel="">
+          <div data-tab-group-body-id="floating">
+            <EditorShortcutOwnerContext.Provider value={owns === 'floating'}>
+              <PdfViewerStandIn name="floating" openFind={floatingPdf} />
+            </EditorShortcutOwnerContext.Provider>
+          </div>
+          <Chat testId="floating-chat" />
+        </div>
+      </div>
+    )
+    // The main window's PDF group is focused; the panel's focused group is its chat.
+    const view = render(surfaces('main'))
+    const floatingChat = view.getByTestId('floating-chat')
+    floatingChat.focus()
+    act(() => {
+      pressFind(floatingChat)
+    })
+    expect(mainPdf).not.toHaveBeenCalled()
+    expect(view.queryByTestId('floating-chat-find')).not.toBeNull()
+
+    // And the reverse: the panel's PDF group is focused; the main window's focused group is its chat.
+    view.rerender(surfaces('floating'))
+    const mainChat = view.getByTestId('main-chat')
+    mainChat.focus()
+    act(() => {
+      pressFind(mainChat)
+    })
+    expect(floatingPdf).not.toHaveBeenCalled()
+    expect(view.queryByTestId('main-chat-find')).not.toBeNull()
   })
 })

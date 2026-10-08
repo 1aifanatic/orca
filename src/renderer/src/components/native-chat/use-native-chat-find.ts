@@ -73,7 +73,8 @@ export function useNativeChatFind(
       previous?.isConnected && root.contains(previous) && !previous.closest('[hidden], [inert]')
         ? previous
         : null
-    // A prompt card that arrived while the bar held focus takes it now, as it would have then.
+    // A shown prompt card that wants focus takes it, as it would have with the bar closed (one that
+    // arrived while the bar held focus included), unless focus came from a control inside it.
     if (focusNativeChatPromptCard(root, usable)) {
       return
     }
