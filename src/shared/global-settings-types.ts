@@ -216,7 +216,7 @@ export type GlobalSettings = NativeChatGlobalSettings & {
   terminalLinkClickBehavior?: 'actions' | 'open' | 'none'
   /** Middle mouse URL behavior; defaults to opening the primary routed destination. */
   terminalUrlMiddleClickBehavior?: 'open' | 'actions' | 'none'
-  /** Experimental native chat surface for Claude/Codex sessions; off by default. */
+  /** New supported agent launches use structured Chat UI; off defaults to terminal UI. */
   experimentalNativeChat?: boolean
   /** Opt-in: resume working structured chats automatically on the next launch. Off still offers
    *  the list, so the user sees exactly what would run before anything spends tokens. */
