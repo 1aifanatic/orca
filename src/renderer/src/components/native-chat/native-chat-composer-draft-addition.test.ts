@@ -5,6 +5,7 @@ import type * as DraftCache from './native-chat-draft-cache'
 import { withNativeChatComposerDraftAddition } from './native-chat-composer-draft-addition'
 import {
   createMemoryNativeChatComposerDraftStorage,
+  type NativeChatComposerDraft,
   type NativeChatComposerDraftStorage
 } from './native-chat-composer-draft-storage'
 
@@ -47,6 +48,22 @@ function slowLoading(): { using: NativeChatComposerDraftStorage; land: () => voi
 }
 
 const SCOPE = 'agent-session:s1'
+const pickedDraft: NativeChatComposerDraft = {
+  text: '$review-long',
+  images: [],
+  document: {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'nativeChatSkill', attrs: { token: '$review' } },
+          { type: 'text', text: '-long' }
+        ]
+      }
+    ]
+  }
+}
 
 beforeEach(() => {
   localStorage.clear()
@@ -114,5 +131,56 @@ describe('native-chat composer draft addition', () => {
     expect(storage.drafts.get(SCOPE)?.text).toBe('typed earlier\n\ngo')
     expect(next.drafts.readNativeChatDraftCache('agent-session:s2')).toBe('please go\n\ngo')
     expect(storage.drafts.get('agent-session:s2')?.text).toBe('please go\n\ngo')
+  })
+
+  it('preserves picked nodes while appending literal text and file references', () => {
+    const result = withNativeChatComposerDraftAddition(pickedDraft, {
+      text: '$review\n@/report.pdf'
+    })
+    expect(result.text).toBe('$review-long\n\n$review\n@/report.pdf')
+    expect(result.document?.content).toEqual([
+      pickedDraft.document?.content?.[0],
+      { type: 'paragraph', content: [] },
+      { type: 'paragraph', content: [{ type: 'text', text: '$review' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: '@/report.pdf' }] }
+    ])
+  })
+
+  it('keeps the document unchanged for image-only additions and duplicate text replay', () => {
+    const imageOnly = withNativeChatComposerDraftAddition(pickedDraft, {
+      images: [{ id: 'image', path: '/image.png' }]
+    })
+    expect(imageOnly.document).toBe(pickedDraft.document)
+    const first = withNativeChatComposerDraftAddition(pickedDraft, { text: 'go' })
+    expect(withNativeChatComposerDraftAddition(first, { text: 'go' }).document).toBe(first.document)
+  })
+
+  it('keeps picked nodes when a hand-back waits for the stored draft to load', async () => {
+    storage.drafts.set(SCOPE, { ...pickedDraft, savedAt: 1 })
+    const { using, land } = slowLoading()
+    const next = await reload({ using, hydrate: false })
+    await next.store.waitForNativeChatComposerDrafts(1)
+    next.drafts.appendNativeChatDraftCache(SCOPE, 'go')
+    land()
+    await next.store.waitForNativeChatComposerDrafts(1_000)
+    await next.store.nativeChatComposerDraftWritesSettled()
+    const result = next.store.readNativeChatComposerDraft(SCOPE)
+    expect(result.text).toBe('$review-long\n\ngo')
+    expect(result.document?.content?.[0]).toEqual(pickedDraft.document?.content?.[0])
+    expect(storage.drafts.get(SCOPE)?.document).toEqual(result.document)
+  })
+
+  it('replays an unconfirmed append after a crash without flattening picked nodes', async () => {
+    storage.drafts.set(SCOPE, { ...pickedDraft, savedAt: 1 })
+    const crashing = { ...storage, write: () => new Promise<void>(() => {}) }
+    const crashed = await reload({ using: crashing })
+    expect(crashed.drafts.appendNativeChatDraftCache(SCOPE, 'go')).toBe(true)
+    crashed.store.clearNativeChatComposerDraftsForTests()
+    const next = await reload()
+    const result = next.store.readNativeChatComposerDraft(SCOPE)
+    expect(result.text).toBe('$review-long\n\ngo')
+    expect(result.document?.content?.[0]).toEqual(pickedDraft.document?.content?.[0])
+    await next.store.nativeChatComposerDraftWritesSettled()
+    expect(storage.drafts.get(SCOPE)?.document).toEqual(result.document)
   })
 })
