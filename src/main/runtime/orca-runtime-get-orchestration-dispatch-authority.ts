@@ -140,12 +140,13 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
     // Why: collect before the delete below, which drops the restored-authority receipt a
     // receipt-only pane's key comes from.
     const paneKeys = this.collectPaneKeysForPty(ptyId)
+    const launchAgent = pty.launchAgent ?? null
     this.restoredOrchestrationAuthorityByPtyId.delete(ptyId)
     pty.launchToken = null
     pty.launchIncarnationId = null
     pty.launchAgent = null
     for (const paneKey of paneKeys) {
-      this.retireAgentHookCompatibilityAuthorityFn?.(paneKey)
+      this.retireAgentHookCompatibilityAuthorityFn?.(paneKey, launchAgent)
     }
   }
 

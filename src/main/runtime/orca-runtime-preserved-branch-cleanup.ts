@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import type { TuiAgent } from '../../shared/tui-agent'
 import { OrcaRuntimeWithTerminalDrivers } from './orca-runtime-terminal-drivers'
 import { confirmRunTerminalShellAlone, readRunTerminalClientUse } from './run-terminal-client-use'
 import { ALL_EXECUTION_HOSTS_SCOPE, type ExecutionHostScope } from '../../shared/execution-host'
@@ -119,7 +120,9 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
       }) => AgentHookAuthorityAttestation | null)
     | null
 
-  protected readonly retireAgentHookCompatibilityAuthorityFn: ((paneKey: string) => void) | null
+  protected readonly retireAgentHookCompatibilityAuthorityFn:
+    | ((paneKey: string, launchAgent: TuiAgent | null) => void)
+    | null
 
   protected readonly checkHookAgentPresenceFn:
     | ((paneKey: string) => Promise<'live' | 'unverifiable' | 'exited' | null>)

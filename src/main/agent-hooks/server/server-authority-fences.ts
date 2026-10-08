@@ -1,4 +1,9 @@
-import { clearPaneCacheState } from '../../../shared/agent-hook-listener/listener-state'
+import {
+  admitLegacyAgentStatus,
+  clearPaneCacheState
+} from '../../../shared/agent-hook-listener/listener-state'
+import { currentOwner } from '../../../shared/agent-hook-presence-transition'
+import { AGENT_STATUS_2A_CURRENT_PRODUCER_MODE } from '../../../shared/agent-status-legacy-adapter'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import { AgentHookServerAuthorityAliases } from './server-authority-aliases'
 import type {
@@ -8,6 +13,32 @@ import type {
 } from './server-types'
 
 export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuthorityAliases {
+  /** The pane's launched agent command ended. Retire that launch only: an owner the launch already
+   *  handed the pane to keeps it unfenced, and the pane keeps its resume remnant. */
+  endLaunchAuthority(paneKey: string, launchAgent: string | null): void {
+    const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
+    const row = this.state.lastStatusByPaneKey.get(ownerPaneKey) as
+      | EnrichedAgentHookEventPayload
+      | undefined
+    const owner = currentOwner(row)
+    if (owner && launchAgent && owner.agent !== launchAgent) {
+      return
+    }
+    this.retirePaneAuthority(paneKey)
+    if (row?.providerSessionOnly) {
+      admitLegacyAgentStatus(
+        this.state,
+        'main-status-cleanup',
+        row,
+        AGENT_STATUS_2A_CURRENT_PRODUCER_MODE
+      )
+      this.commitStatusRowMutation(undefined, row)
+      this.scheduleStatusPersist()
+      this.notifyStatusChangeListeners()
+    }
+  }
+
   // Why: retirement fences a pane and every alias of it, then deletes those aliases.
   retirePaneAuthority(paneKey: string, retirementId?: string): void {
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)

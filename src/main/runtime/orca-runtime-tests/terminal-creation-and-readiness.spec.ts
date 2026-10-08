@@ -283,7 +283,7 @@ describe('OrcaRuntimeService', () => {
 
     runtime.onPtyData('pty-authority', '\x1b]133;D;0\x07', 100)
 
-    expect(retireAuthority).toHaveBeenCalledWith(spawnEnv.ORCA_PANE_KEY)
+    expect(retireAuthority).toHaveBeenCalledWith(spawnEnv.ORCA_PANE_KEY, 'codex')
     expect(runtime.verifyOrchestrationCompatibilityCaller(evidence)).toBeNull()
     expect((await runtime.listTerminals()).terminals).toEqual([
       expect.not.objectContaining({ agentIdentity: expect.anything() })
@@ -343,8 +343,8 @@ describe('OrcaRuntimeService', () => {
     runtime.onPtyExit('pty-restored-exit', 0, 'restored-exit')
     runtime.onPtyExit('pty-ordinary-shell', 0, 'ordinary-shell')
 
-    expect(retireAuthority).toHaveBeenCalledWith(firstPane)
-    expect(retireAuthority).toHaveBeenCalledWith(secondPane)
+    expect(retireAuthority).toHaveBeenCalledWith(firstPane, null)
+    expect(retireAuthority).toHaveBeenCalledWith(secondPane, null)
     expect(retireAuthority).toHaveBeenCalledTimes(2)
   })
 
