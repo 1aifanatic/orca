@@ -177,6 +177,26 @@ describe('pushNotificationRouteData', () => {
     })
   })
 
+  it('opens a server workspace on its server, from either provider shape', () => {
+    for (const shape of [apnsData, fcmData]) {
+      const data = pushNotificationRouteData(
+        shape({
+          hostFingerprint,
+          worktreeId: 'repo::/srv/feature',
+          executionHost: 'runtime:env-1',
+          source: 'agent-task-complete'
+        }),
+        hosts,
+        true
+      )
+      expect(getNotificationNavigationTarget(data)?.sessionTarget?.params).toEqual({
+        hostId: 'host-1',
+        worktreeId: 'repo::/srv/feature',
+        executionHost: 'runtime:env-1'
+      })
+    }
+  })
+
   it('maps a push without a worktree to the host screen', () => {
     const data = pushNotificationRouteData(
       fcmData({ hostFingerprint, source: 'terminal-bell' }),
