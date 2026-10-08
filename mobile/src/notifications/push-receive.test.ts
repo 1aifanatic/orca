@@ -178,9 +178,9 @@ describe('pushNotificationRouteData', () => {
   })
 
   it('opens a server workspace on its server, from either provider shape', () => {
-    for (const shape of [apnsData, fcmData]) {
+    for (const providerData of [apnsData, fcmData]) {
       const data = pushNotificationRouteData(
-        shape({
+        providerData({
           hostFingerprint,
           worktreeId: 'repo::/srv/feature',
           executionHost: 'runtime:env-1',
