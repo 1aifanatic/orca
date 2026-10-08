@@ -7,8 +7,8 @@ import { inspectMacProcessCodeIdentity } from './daemon-mac-code-identity'
 import { MAC_DAEMON_BUNDLE_FOLDER, writeMacDaemonJobRecord } from './macos-daemon-bundle-retirement'
 
 /** Packaged by config/scripts/macos-terminal-host-bundle.cjs; its main executable is plain Node. */
-const TERMINAL_HOST_BUNDLE = 'Orca Terminal Host.app'
-const TERMINAL_HOST_EXECUTABLE = 'orca-terminal-host'
+export const MAC_TERMINAL_HOST_BUNDLE = 'Orca Terminal Host.app'
+export const MAC_TERMINAL_HOST_EXECUTABLE = 'orca-terminal-host'
 
 export type MacDaemonBundle = {
   directory: string
@@ -63,7 +63,7 @@ export async function materializeMacDaemonBundle(
   }
   const runningBundle = await realpath(appBundleForMainExecutable(running.executablePath))
   // Copying only the helper keeps each retained runtime ~124 MiB instead of the whole app.
-  const sourceBundle = join(runningBundle, 'Contents', 'Helpers', TERMINAL_HOST_BUNDLE)
+  const sourceBundle = join(runningBundle, 'Contents', 'Helpers', MAC_TERMINAL_HOST_BUNDLE)
   if (!(await stat(sourceBundle).catch(() => null))?.isDirectory()) {
     throw new Error('The running app has no macOS terminal host helper')
   }
@@ -111,7 +111,7 @@ export async function materializeMacDaemonBundle(
     return {
       directory,
       bundlePath,
-      execPath: join(bundlePath, 'Contents', 'MacOS', TERMINAL_HOST_EXECUTABLE),
+      execPath: join(bundlePath, 'Contents', 'MacOS', MAC_TERMINAL_HOST_EXECUTABLE),
       entryPath: join(
         bundlePath,
         'Contents',

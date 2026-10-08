@@ -392,11 +392,7 @@ module.exports = {
         join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`),
         context.packager.appInfo.productFilename
       )
-      const architectureByEnum = { 1: 'x64', 3: 'arm64' }
-      const architecture = architectureByEnum[context.arch]
-      if (!architecture) {
-        throw new Error(`Unsupported local-build compatibility architecture: ${context.arch}`)
-      }
+      const architecture = macSliceArch(context.arch, 'local-build compatibility')
       const version = context.packager.appInfo.version
       let commit = process.env.ORCA_BUILD_COMMIT || process.env.GITHUB_SHA || 'unknown'
       if (commit === 'unknown') {
@@ -797,9 +793,18 @@ async function signMacComputerUseHelper(helperAppPath, packager) {
   })
 }
 
+// electron-builder `Arch` enum: x64=1, arm64=3. A universal (4) slice has no single arch.
+function macSliceArch(archEnum, purpose) {
+  const arch = { 1: 'x64', 3: 'arm64' }[archEnum]
+  if (!arch) {
+    throw new Error(`Unsupported ${purpose} architecture: ${archEnum}`)
+  }
+  return arch
+}
+
 // Why after the node_modules prune: the helper copies this slice's node-pty.
 async function packageMacTerminalHost(appPath, context) {
-  const arch = { 1: 'x64', 3: 'arm64' }[context.arch]
+  const arch = macSliceArch(context.arch, 'macOS terminal host')
   await buildMacTerminalHost({
     appPath,
     arch,

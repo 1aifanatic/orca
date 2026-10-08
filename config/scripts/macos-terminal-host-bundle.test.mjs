@@ -10,8 +10,12 @@ import {
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  MAC_TERMINAL_HOST_BUNDLE,
+  MAC_TERMINAL_HOST_EXECUTABLE
+} from '../../src/main/daemon/macos-daemon-bundle.ts'
 
 const require = createRequire(import.meta.url)
 const {
@@ -129,9 +133,10 @@ describe('terminal host packaging config', () => {
     expect(pattern.test('/out/mac-arm64/Orca.app/Contents/Frameworks/Orca Helper.app')).toBe(false)
   })
 
-  it('leaves the Linux and Windows configs without the helper', () => {
-    expect(JSON.stringify(electronBuilderConfig.linux)).not.toContain('Terminal Host')
-    expect(JSON.stringify(electronBuilderConfig.win)).not.toContain('Terminal Host')
+  it('packages the helper where the desktop looks for it', () => {
+    const paths = macTerminalHostPaths('/Orca.app')
+    expect(paths.bundle).toBe(join('/Orca.app', 'Contents', 'Helpers', MAC_TERMINAL_HOST_BUNDLE))
+    expect(basename(paths.executable)).toBe(MAC_TERMINAL_HOST_EXECUTABLE)
   })
 })
 
