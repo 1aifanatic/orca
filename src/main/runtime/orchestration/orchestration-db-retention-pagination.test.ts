@@ -167,6 +167,31 @@ describe('OrchestrationDb mutation receipt admission', () => {
     expect(db.getTask(task.id)).toMatchObject({ status: 'dispatched' })
     expect(db.getMutationReceipt('caller', 'worker_overflow')).toMatchObject({ state: 'pending' })
   })
+
+  it('rolls back worker acceptance when its receipt cannot be written', () => {
+    const store = new OrchestrationDb(':memory:')
+    db = store
+    const task = store.createTask({ runId: 'run_legacy_local', spec: 'accept one worker' })
+    store.db.exec(`CREATE TRIGGER refuse_receipt BEFORE INSERT ON mutation_receipts
+      BEGIN SELECT RAISE(ABORT, 'receipt unavailable'); END`)
+
+    expect(() =>
+      store.createStartingWorkerDispatch({
+        creator: { kind: 'system' },
+        maxDepth: Number.MAX_SAFE_INTEGER,
+        taskId: task.id,
+        startOptions: {},
+        mutationReceipt: {
+          callerFingerprint: 'caller',
+          requestId: 'worker_refused',
+          method: 'orchestration.workerStart',
+          payloadHash: 'hash_worker_refused'
+        }
+      })
+    ).toThrow('receipt unavailable')
+    expect(store.getTask(task.id)).toMatchObject({ status: 'ready' })
+    expect(store.getMutationReceipt('caller', 'worker_refused')).toBeUndefined()
+  })
 })
 
 describe('OrchestrationDb Run pagination', () => {

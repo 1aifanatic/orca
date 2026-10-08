@@ -1,13 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  getAppEnvironment,
-  hasAppEnvironment,
-  setAppEnvironment,
-  type AppEnvironment
-} from '../../../shared/app-environment'
 import Database from '../../sqlite/sync-database'
 import { OrcaRuntimeWithAutomationOperations } from '../orca-runtime-automation-operations'
 import { OrchestrationDb } from './db'
@@ -58,7 +52,6 @@ describe('mutation receipt maintenance', () => {
   let db: OrchestrationDb | undefined
   let other: Database.Database | undefined
   let directory: string | undefined
-  let previousEnvironment: AppEnvironment | null = null
 
   afterEach(() => {
     other?.close()
@@ -67,10 +60,6 @@ describe('mutation receipt maintenance', () => {
     db = undefined
     vi.useRealTimers()
     vi.restoreAllMocks()
-    if (previousEnvironment) {
-      setAppEnvironment(previousEnvironment)
-      previousEnvironment = null
-    }
     if (directory) {
       rmSync(directory, { recursive: true, force: true })
       directory = undefined
@@ -180,21 +169,12 @@ describe('mutation receipt maintenance', () => {
 
   it('runs for the database the runtime opens and stops when another one is injected', () => {
     vi.useFakeTimers()
-    directory = mkdtempSync(join(tmpdir(), 'orca-receipt-maintenance-runtime-'))
-    const userData = directory
-    previousEnvironment = hasAppEnvironment() ? getAppEnvironment() : null
-    setAppEnvironment({
-      getPath: () => userData,
-      getAppPath: () => userData,
-      getVersion: () => '0.0.0-test',
-      isPackaged: () => false,
-      onWillQuit: () => {},
-      exit: () => {},
-      getAppMetrics: () => []
-    })
+    const dbPath = join(mkdtempSync(join(tmpdir(), 'orca-receipt-maintenance-runtime-')), 'o.db')
+    directory = dirname(dbPath)
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a prototype-only probe; the stubs below are every field these two methods read.
     const runtime = Object.assign(Object.create(OrcaRuntimeWithAutomationOperations.prototype), {
       _orchestrationDb: null,
+      orchestrationDbPath: () => dbPath,
       ensureOrchestrationFederationRelay: vi.fn(),
       scheduleRestoredMessageRepoints: vi.fn(),
       orchestrationFederation: { resetForDatabaseChange: vi.fn() },
