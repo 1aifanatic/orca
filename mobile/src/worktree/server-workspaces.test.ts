@@ -18,7 +18,13 @@ function row(worktreeId: string): Worktree {
     repo: 'orca',
     branch: 'main',
     displayName: worktreeId,
-    path: `/srv/${worktreeId}`
+    path: `/srv/${worktreeId}`,
+    liveTerminalCount: 0,
+    hasAttachedPty: false,
+    preview: '',
+    unread: false,
+    isPinned: false,
+    linkedPR: null
   }
 }
 
