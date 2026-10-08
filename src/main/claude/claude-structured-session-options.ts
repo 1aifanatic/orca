@@ -4,6 +4,7 @@ import type {
   AgentSessionOptionsResult
 } from '../../shared/agent-session-wire'
 import {
+  claudeFallbackModelOption,
   currentModelId,
   listedModels,
   matchListedModel,
@@ -325,10 +326,9 @@ export function claudeStructuredSessionOptionsFrom(
   const listed = discovered.length > 0 ? discovered : savedOrSeedModels(session.catalogAccess)
   const current = readClaudeCurrentModel(session)
   const model = currentModelId(listed, current.id)
-  const models = structuredAgentSessionOptionModels(listed, model, (row) => ({
-    ...row,
-    resolvedModel: null
-  }))
+  const models = structuredAgentSessionOptionModels(listed, model, (row) =>
+    discovered.length > 0 ? { ...row, resolvedModel: null } : claudeFallbackModelOption(row)
+  )
   const effort =
     session.options.get('effort') ??
     session.reportedOptions.effort ??

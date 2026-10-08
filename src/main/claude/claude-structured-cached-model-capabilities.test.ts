@@ -29,7 +29,11 @@ const SAVED_MODEL = {
   supportsFastMode: false
 }
 
-function fixture(saved: boolean, listing: 'empty' | 'error') {
+function fixture(
+  saved: boolean,
+  listing: 'empty' | 'error' | 'no-effort' | 'limited',
+  currentModel = SAVED_MODEL.id
+) {
   const store = new AgentModelCatalogStore()
   const access = claudeAcquireCatalogAccess(store, ACCOUNT_HOME)
   if (!access) {
@@ -45,14 +49,23 @@ function fixture(saved: boolean, listing: 'empty' | 'error') {
   const claude = fakeClaude({
     initModels: [],
     ...(saved
-      ? { settings: { applied: { model: SAVED_MODEL.id, effort: 'high' }, effective: {} } }
+      ? { settings: { applied: { model: currentModel, effort: 'high' }, effective: {} } }
       : {}),
     routes: {
       list_models: () => {
         if (listing === 'error') {
           throw new Error('temporarily unavailable')
         }
-        return []
+        return listing === 'empty'
+          ? []
+          : [
+              {
+                value: currentModel,
+                displayName: 'Current model',
+                supportsEffort: listing === 'limited',
+                supportedEffortLevels: listing === 'limited' ? ['low', 'high'] : []
+              }
+            ]
       }
     }
   })
@@ -78,6 +91,63 @@ function fixture(saved: boolean, listing: 'empty' | 'error') {
 }
 
 describe('Claude cached model capabilities', () => {
+  it.each(['empty', 'error'] as const)(
+    'keeps xhigh usable for a current model missing from saved choices after an %s listing',
+    async (listing) => {
+      const { adapter, store, access } = fixture(true, listing, 'new-current-model')
+      try {
+        await adapter.acquire({ identity: identityFor(), fence: 7, spawnToken: 'spawn-9' })
+        await claudeStartupSettled(adapter, 'session-1')
+        const result = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
+        expect(result.current.model).toBe('new-current-model')
+        expect(result.models).toContainEqual(
+          expect.objectContaining({ id: SAVED_MODEL.id, label: SAVED_MODEL.label })
+        )
+        const state = applyStructuredAgentSessionOptions(
+          createStructuredAgentSessionOptionState('claude', CLAUDE_SESSION_OPTION_CATALOG),
+          CLAUDE_SESSION_OPTION_CATALOG,
+          result
+        )
+        await expect(
+          adapter.setOption({ sessionId: 'session-1', key: 'effort', value: 'xhigh', fence: 7 })
+        ).resolves.toMatchObject({ effort: 'xhigh' })
+        expect(canSetStructuredAgentSessionOption(state, 'effort', 'xhigh')).toBe(true)
+        const current = result.models.find((model) => model.id === result.current.model)
+        expect(current).not.toHaveProperty('defaultEffort')
+        expect(current).not.toHaveProperty('supportsFastMode')
+        expect(store.get(access.fingerprint)?.models).toEqual([SAVED_MODEL])
+      } finally {
+        await adapter.closeAll()
+      }
+    }
+  )
+
+  it.each(['no-effort', 'limited'] as const)(
+    'keeps the live %s capability restriction authoritative over saved choices',
+    async (listing) => {
+      const { adapter } = fixture(true, listing, 'new-current-model')
+      try {
+        await adapter.acquire({ identity: identityFor(), fence: 7, spawnToken: 'spawn-9' })
+        await claudeStartupSettled(adapter, 'session-1')
+        const result = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
+        const state = applyStructuredAgentSessionOptions(
+          createStructuredAgentSessionOptionState('claude', CLAUDE_SESSION_OPTION_CATALOG),
+          CLAUDE_SESSION_OPTION_CATALOG,
+          result
+        )
+        expect(canSetStructuredAgentSessionOption(state, 'effort', 'xhigh')).toBe(false)
+        expect(canSetStructuredAgentSessionOption(state, 'effort', 'high')).toBe(
+          listing === 'limited'
+        )
+        await expect(
+          adapter.setOption({ sessionId: 'session-1', key: 'effort', value: 'xhigh', fence: 7 })
+        ).rejects.toThrow('does not accept effort xhigh')
+      } finally {
+        await adapter.closeAll()
+      }
+    }
+  )
+
   it.each(['empty', 'error'] as const)(
     'keeps xhigh usable after an %s listing without reusing saved defaults',
     async (listing) => {

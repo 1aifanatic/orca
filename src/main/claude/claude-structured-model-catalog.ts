@@ -96,20 +96,22 @@ export function seedModels(): ListedModel[] {
 }
 
 /** Saved names remain choices; only this child's listing can restrict capabilities. */
+export function claudeFallbackModelOption(model: AgentSessionModelOption): ListedModel {
+  return {
+    id: model.id,
+    label: model.label,
+    ...(model.description ? { description: model.description } : {}),
+    isDefault: false,
+    efforts: seedEfforts(CLAUDE_SESSION_OPTION_CATALOG.unknownModelOptions ?? []),
+    resolvedModel: null
+  }
+}
+
 export function savedOrSeedModels(
   access: AgentModelCatalogSessionAccess | undefined
 ): ListedModel[] {
   const saved = access?.store.get(access.fingerprint)
-  return (
-    saved?.models.map((model) => ({
-      id: model.id,
-      label: model.label,
-      ...(model.description ? { description: model.description } : {}),
-      isDefault: false,
-      efforts: seedEfforts(CLAUDE_SESSION_OPTION_CATALOG.unknownModelOptions ?? []),
-      resolvedModel: null
-    })) ?? seedModels()
-  )
+  return saved?.models.map(claudeFallbackModelOption) ?? seedModels()
 }
 
 export function currentModelId(models: ListedModel[], reportedModel: string | undefined): string {
