@@ -11,6 +11,7 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-translation'
 import { dispatchCodexTurn, isCodexTurnOptionKey } from './codex-structured-turn-start'
+import { observeCodexSubmissionTurn } from './codex-structured-submission-turn'
 import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
 import { supportsCodexStructuredLocation } from './codex-structured-location-support'
 import { CodexStructuredSessionTeardown } from './codex-structured-session-teardown'
@@ -228,6 +229,10 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       sessions: this.sessions,
       requestTimeoutMs: this.deps.requestTimeoutMs
     })
+
+  observeSubmissionTurn: NonNullable<StructuredAgentSessionAdapter['observeSubmissionTurn']> = (
+    input
+  ) => observeCodexSubmissionTurn(this.sessions.get(input.sessionId), input)
 
   rewindSupport: NonNullable<StructuredAgentSessionAdapter['rewindSupport']> = (sessionId) =>
     this.sessions.get(sessionId)?.historyMode === 'legacy'
