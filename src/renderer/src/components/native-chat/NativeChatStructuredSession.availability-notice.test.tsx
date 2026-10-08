@@ -84,7 +84,6 @@ function turnRow(): AgentJournalRenderItem {
 }
 
 it('says a signed-out Codex above the composer and still sends', () => {
-  mocks.mode = 'outbox'
   mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
   render(pane())
 
@@ -100,6 +99,7 @@ it('says a signed-out Codex above the composer and still sends', () => {
     admitted = send('hello', [])
   })
   expect(admitted).toBe(true)
+  expect(mocks.send).toHaveBeenCalledWith('hello', [])
 })
 
 it('stays dismissed for the same verdict, and shows again when it changes or comes back', () => {
