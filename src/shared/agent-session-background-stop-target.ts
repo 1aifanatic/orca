@@ -2,7 +2,7 @@ import { agentChildWorkViewOffersStop } from './agent-child-work-stop-targets'
 import {
   agentChildWorkFencesEqual,
   type AgentChildWorkInvocationFence
-} from './agent-status-child-work'
+} from './agent-child-work-invocation'
 import type { AgentChildWorkView } from './agent-status-child-work-view'
 
 export type AgentSessionBackgroundStopTarget = {
