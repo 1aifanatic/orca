@@ -18118,6 +18118,7 @@
       },
       "receipt": {
         "unavailable": "Selected answer unavailable",
+        "emptyAnswer": "Empty answer",
         "cancelled": "Cancelled",
         "resolved": "Resolved",
         "resolver": "Answered on {{device}}",
@@ -18546,6 +18547,10 @@
       "messageNotSent": "Message not sent",
       "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying",
       "messageSending": "Sending…",
+      "userMessage": {
+        "showFull": "Show full message",
+        "showLess": "Show less"
+      },
       "visualUnavailable": "Visualization unavailable",
       "visualLoading": "Loading visualization",
       "visualOpenInSidebar": "Open in sidebar",
