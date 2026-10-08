@@ -122,8 +122,10 @@ it('keeps next-launch preference out of the current resume action', async () => 
 it('offers exactly Dismiss all and the resume action', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(<NativeChatResumeOnRestartModal />)
-  // Row and preference checkboxes are buttons too; the controls are what is left after them.
-  const controls = document.querySelectorAll('[role="dialog"] button:not([role="checkbox"])')
+  // Checkboxes and tree arrows are buttons too; the controls are what is left after them.
+  const controls = document.querySelectorAll(
+    '[role="dialog"] button:not([role="checkbox"]):not([aria-expanded])'
+  )
   expect([...controls].map((entry) => entry.textContent?.trim())).toEqual([
     'Dismiss all',
     'Resume 2 chats',
@@ -667,9 +669,11 @@ it('keeps a lost resume request marked failed when its Dismiss fails', async () 
 
 /** Every button in the dialog, in order; row checkboxes are buttons too, so they are left out. */
 function dialogControls(): (string | null)[] {
-  return [...document.querySelectorAll('[role="dialog"] button:not([role="checkbox"])')].map(
-    (entry) => entry.textContent?.trim() || entry.getAttribute('aria-label')
-  )
+  return [
+    ...document.querySelectorAll(
+      '[role="dialog"] button:not([role="checkbox"]):not([aria-expanded])'
+    )
+  ].map((entry) => entry.textContent?.trim() || entry.getAttribute('aria-label'))
 }
 
 // A chat the resume could not carry on stays in the same dialog — same title, checkboxes and

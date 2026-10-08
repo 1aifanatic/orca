@@ -15,6 +15,7 @@ import { useAppStore } from '../store'
 import { translate } from '@/i18n/i18n'
 import { activateAiVaultStructuredSession } from '@/lib/activate-ai-vault-structured-session'
 import { ResumeOnRestartGroups } from './NativeChatResumeOnRestartGroups'
+import { ResumeTreeRow } from './NativeChatResumeTreeRow'
 import {
   resumeFailureGuidance,
   resumeFailureSelectable,
@@ -69,21 +70,34 @@ function selectedByDefault(failure: ResumeFailure | undefined): boolean {
   return guidance.primary === 'retry' || guidance.secondary === 'retry'
 }
 
-/** Up/Down step between the list's checkboxes; Space toggles the focused one natively. */
-function moveCheckboxFocus(event: React.KeyboardEvent<HTMLElement>): void {
-  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
-    return
-  }
+/**
+ * Tree keys on a row's checkbox: Up/Down step between the enabled checkboxes, Left collapses and
+ * Right expands the focused node through its own disclosure. Space toggles the checkbox natively.
+ */
+function moveInTree(event: React.KeyboardEvent<HTMLElement>): void {
   const target = event.target
   if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'checkbox') {
     return
   }
-  const boxes = [
-    ...event.currentTarget.querySelectorAll<HTMLElement>('[role="checkbox"]:not(:disabled)')
-  ]
-  const next = boxes[boxes.indexOf(target) + (event.key === 'ArrowDown' ? 1 : -1)]
-  event.preventDefault()
-  next?.focus()
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    const boxes = [
+      ...event.currentTarget.querySelectorAll<HTMLElement>('[role="checkbox"]:not(:disabled)')
+    ]
+    event.preventDefault()
+    boxes[boxes.indexOf(target) + (event.key === 'ArrowDown' ? 1 : -1)]?.focus()
+    return
+  }
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    // Rows are flat treeitems, so the nearest one is this checkbox's own node.
+    const disclosure = target
+      .closest('[role="treeitem"]')
+      ?.querySelector<HTMLButtonElement>('button[aria-expanded]')
+    const open = disclosure?.getAttribute('aria-expanded') === 'true'
+    if (disclosure && open === (event.key === 'ArrowLeft')) {
+      disclosure.click()
+    }
+  }
 }
 
 export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
@@ -206,6 +220,10 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   }
 
   const interruptedByUpdate = rows.some((row) => row.trigger === 'update')
+  const selectAllLabel = translate(
+    'auto.components.NativeChatResumeOnRestartModal.selectAllLabel',
+    'Select all'
+  )
 
   return (
     <Dialog
@@ -257,37 +275,34 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
         </DialogHeader>
 
         <div
-          role="group"
+          role="tree"
           tabIndex={0}
           aria-label={translate(
             'auto.components.NativeChatResumeOnRestartModal.listLabel',
             'Chats that would be resumed'
           )}
           // The sidebar's own surface, so its workspaces read here as they do there.
-          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar pt-1 pb-1.5"
-          onKeyDown={moveCheckboxFocus}
+          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar p-1.5 pb-2"
+          onKeyDown={moveInTree}
         >
-          {/* Here, not in the groups: a list may hold one set of groups per machine. */}
-          <label className="group/row grid h-7 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center has-[:disabled]:cursor-default">
-            <span className="flex justify-center">
-              <Checkbox
-                checked={allSelection.checked}
-                disabled={busy || allSelection.total === 0}
-                onCheckedChange={() =>
-                  toggleResumeSelection(selectable, allSelection, toggleSelected)
-                }
-                aria-label={translate(
-                  'auto.components.NativeChatResumeOnRestartModal.selectAll',
-                  'Select all chats'
-                )}
-              />
-            </span>
-            <span className="mr-1.5 flex h-full min-w-0 items-center gap-1.5 pr-2.5 pl-2 group-hover/row:bg-worktree-sidebar-accent">
+          {/* Here, not in the groups: a list may hold one set of groups per machine. The tree's one
+              divider sets it apart from the nodes. */}
+          <div className="mb-1 border-b border-worktree-sidebar-border pb-0.5">
+            <ResumeTreeRow
+              depth={0}
+              name={selectAllLabel}
+              checked={allSelection.checked}
+              disabled={busy || allSelection.total === 0}
+              onCheckedChange={() =>
+                toggleResumeSelection(selectable, allSelection, toggleSelected)
+              }
+              checkboxLabel={translate(
+                'auto.components.NativeChatResumeOnRestartModal.selectAll',
+                'Select all chats'
+              )}
+            >
               <span className="min-w-0 truncate text-xs font-semibold text-muted-foreground">
-                {translate(
-                  'auto.components.NativeChatResumeOnRestartModal.selectAllLabel',
-                  'Select all'
-                )}
+                {selectAllLabel}
               </span>
               <span className="ml-auto shrink-0 pl-2 text-[11px] tabular-nums text-muted-foreground">
                 {translate(
@@ -296,8 +311,8 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
                   { value0: allSelection.selectedCount, value1: allSelection.total }
                 )}
               </span>
-            </span>
-          </label>
+            </ResumeTreeRow>
+          </div>
           <ResumeOnRestartGroups
             candidates={rows}
             listedAt={listedAt}

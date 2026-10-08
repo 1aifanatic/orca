@@ -17500,7 +17500,11 @@
         "selectAll": "Sélectionner toutes les discussions",
         "selectAllLabel": "Tout sélectionner",
         "selectedCount": "{{value0}} sur {{value1}} sélectionnées",
-        "selectProject": "Sélectionner toutes les discussions dans {{value0}}"
+        "selectProject": "Sélectionner toutes les discussions dans {{value0}}",
+        "collapseNode": "Réduire {{value0}}",
+        "expandNode": "Développer {{value0}}",
+        "selectMachine": "Sélectionner toutes les discussions sur {{value0}}",
+        "sshHost": "SSH"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "Filtrage des statuts des équipes {{value0}} sur {{value1}} : les problèmes des équipes restantes ne sont pas inclus.",

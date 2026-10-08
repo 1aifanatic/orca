@@ -1,6 +1,6 @@
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import type { AgentSessionWorkspaceKind } from '../../../shared/agent-session-record'
-import type { ExecutionHostId } from '../../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import { projectGroupIdFromRepoId } from '../../../shared/folder-workspace-worktree'
 import type { RepoIcon } from '../../../shared/repo-icon'
 import type { AgentSessionRestartActivity } from '../../../shared/agent-session-restart-activity'
@@ -73,6 +73,28 @@ export function resumeWorkspaceKind(candidate: ResumeCandidate): AgentSessionWor
     candidate.workspaceKind ??
     (isFolderWorkspaceId(candidate.workspaceId) ? 'folder' : 'git-worktree')
   )
+}
+
+export type ResumeMachineGroup = {
+  hostId: ExecutionHostId
+  candidates: ResumeCandidate[]
+}
+
+/** Groups by the machine each chat runs on, in first-seen order; no host id means this machine. */
+export function groupResumeCandidatesByHost(
+  candidates: readonly ResumeCandidate[]
+): ResumeMachineGroup[] {
+  const groups = new Map<ExecutionHostId, ResumeCandidate[]>()
+  for (const candidate of candidates) {
+    const hostId = candidate.executionHostId ?? LOCAL_EXECUTION_HOST_ID
+    const existing = groups.get(hostId)
+    if (existing) {
+      existing.push(candidate)
+    } else {
+      groups.set(hostId, [candidate])
+    }
+  }
+  return [...groups].map(([hostId, entries]) => ({ hostId, candidates: entries }))
 }
 
 /** Groups by workspace, preserving the order the host offered them so the list is stable. */

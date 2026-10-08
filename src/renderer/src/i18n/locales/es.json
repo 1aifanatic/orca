@@ -17379,7 +17379,11 @@
         "selectAll": "Seleccionar todos los chats",
         "selectAllLabel": "Seleccionar todo",
         "selectedCount": "{{value0}} de {{value1}} seleccionados",
-        "selectProject": "Seleccionar todos los chats en {{value0}}"
+        "selectProject": "Seleccionar todos los chats en {{value0}}",
+        "collapseNode": "Contraer {{value0}}",
+        "expandNode": "Expandir {{value0}}",
+        "selectMachine": "Seleccionar todos los chats en {{value0}}",
+        "sshHost": "SSH"
       },
       "NativeChatResumeOutcomeRow": {
         "openChat": "Abrir chat",

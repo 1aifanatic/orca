@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   allResumeSessionIds,
   groupResumeCandidates,
+  groupResumeCandidatesByHost,
   groupResumeWorkspacesByRepo,
   nestResumeWorkspaces,
   resolveResumeGroupHeader,
@@ -224,6 +225,24 @@ describe('group checkboxes', () => {
       ['b', true],
       ['a', false],
       ['b', false]
+    ])
+  })
+})
+
+describe('grouping by machine', () => {
+  it('groups by host in first-seen order, a missing host id counting as this machine', () => {
+    const groups = groupResumeCandidatesByHost([
+      candidate({ sessionId: 'a', executionHostId: 'ssh:box' }),
+      candidate({ sessionId: 'b', executionHostId: undefined }),
+      candidate({ sessionId: 'c', executionHostId: 'ssh:box' }),
+      candidate({ sessionId: 'd', executionHostId: 'local' })
+    ])
+
+    expect(
+      groups.map((group) => [group.hostId, group.candidates.map((entry) => entry.sessionId)])
+    ).toEqual([
+      ['ssh:box', ['a', 'c']],
+      ['local', ['b', 'd']]
     ])
   })
 })

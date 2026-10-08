@@ -17384,7 +17384,11 @@
         "selectAll": "すべてのチャットを選択",
         "selectAllLabel": "すべて選択",
         "selectedCount": "{{value1}} 件中 {{value0}} 件を選択",
-        "selectProject": "{{value0}} のチャットをすべて選択"
+        "selectProject": "{{value0}} のチャットをすべて選択",
+        "collapseNode": "{{value0}} を折りたたむ",
+        "expandNode": "{{value0}} を展開します",
+        "selectMachine": "{{value0}} のチャットをすべて選択",
+        "sshHost": "SSH"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "{{value0}}/{{value1}} チームステータスをフィルタリングしています。残りのチームからの問題は含まれません。",
