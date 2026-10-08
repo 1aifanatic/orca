@@ -10,24 +10,25 @@ import type { SubscriberDeliveryPort } from './agent-session-subscriber-catch-up
 import type { Subscriber } from './structured-agent-session-subscribers'
 import { isStructuredAgentSessionStopNote } from './structured-agent-session-command-turn'
 
-/** A stale in-flight history page can land after its note's live correction was out of window. */
-export function refreshDerivedStopNotes(
+/** Reconnect refreshes derived bodies whose durable revision has not changed. */
+export function refreshDerivedJournalItems(
   port: Pick<SubscriberDeliveryPort, 'emit' | 'isActive'>,
   subscriber: Subscriber,
   journal: AgentSessionJournal,
   hostNow: number
 ): void {
-  let hasUnconfirmedStop = false
+  let hasDerivedItem = false
   journal.visitItems((itemId, _sequence, body) => {
     if (
-      body.kind === 'status' &&
-      body.failure?.kind === 'cancelUnconfirmed' &&
-      isStructuredAgentSessionStopNote(itemId)
+      journal.isReopenedLiveWorkItem(itemId) ||
+      (body.kind === 'status' &&
+        body.failure?.kind === 'cancelUnconfirmed' &&
+        isStructuredAgentSessionStopNote(itemId))
     ) {
-      hasUnconfirmedStop = true
+      hasDerivedItem = true
     }
   })
-  if (!hasUnconfirmedStop) {
+  if (!hasDerivedItem) {
     return
   }
   const snapshot = journal.snapshot()
@@ -50,10 +51,11 @@ export function refreshDerivedStopNotes(
     }
     const raw = journal.itemBody(item.itemId)
     if (
-      raw?.kind !== 'status' ||
-      raw.failure?.kind !== 'cancelUnconfirmed' ||
-      item.body.kind !== 'status' ||
-      item.body.failure !== undefined
+      !journal.isReopenedLiveWorkItem(item.itemId) &&
+      (raw?.kind !== 'status' ||
+        raw.failure?.kind !== 'cancelUnconfirmed' ||
+        item.body.kind !== 'status' ||
+        item.body.failure !== undefined)
     ) {
       continue
     }

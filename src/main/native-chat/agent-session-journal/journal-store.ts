@@ -74,6 +74,7 @@ import type { JournalItemAppender } from './journal-item-appender'
 import type { JournalLifecycleBatchAppender } from './journal-lifecycle-batch-appender'
 import type { JournalStepWriter } from './journal-step-writer'
 import type { JournalStopMarks } from './journal-stop-marks'
+import type { JournalReopenedLiveWork } from './journal-reopened-live-work'
 
 export { AgentSessionJournalError } from './journal-write-guards'
 
@@ -95,6 +96,7 @@ export class AgentSessionJournal {
   private readonly submissionWriter: JournalSubmissionWriter
   private readonly stepWriter: JournalStepWriter
   private readonly restore: () => Promise<void>
+  private readonly reopenedLiveWork: JournalReopenedLiveWork
   /** Draft rows queued while the agent works; never reducer input or owed work. */
   readonly queuedMessages: JournalQueuedMessages
   readonly stopMarks: JournalStopMarks
@@ -138,6 +140,7 @@ export class AgentSessionJournal {
     this.queuedMessages = collaborators.queuedMessages
     this.stopMarks = collaborators.stopMarks
     this.restore = collaborators.restore
+    this.reopenedLiveWork = collaborators.reopenedLiveWork
   }
 
   get epoch(): string {
@@ -188,6 +191,9 @@ export class AgentSessionJournal {
   })
 
   snapshot = (): AgentJournalSnapshot => renderJournalState(this.state)
+
+  isReopenedLiveWorkItem = (itemId: string): boolean =>
+    this.reopenedLiveWork.hasUnpersistedItem(itemId)
 
   /** Visits reduced items without allocating and sorting a full snapshot. */
   visitItems = (
@@ -262,7 +268,14 @@ export class AgentSessionJournal {
 
   readSince(cursor: AgentJournalCursor, limit?: number): JournalReadSince {
     const { sessionId } = this.identity
-    const rowsAfter = journalRowsAfterReader(this.database.db, sessionId, this.state.epoch, limit)
+    const rawRowsAfter = journalRowsAfterReader(
+      this.database.db,
+      sessionId,
+      this.state.epoch,
+      limit
+    )
+    const rowsAfter = (sequence: number) =>
+      rawRowsAfter(sequence).map((row) => this.reopenedLiveWork.readRow(row))
     return readJournalSince({ state: this.state, rowsAfter }, cursor, () => this.cursor())
   }
 
