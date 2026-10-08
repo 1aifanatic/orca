@@ -18453,8 +18453,8 @@
       }
     },
     "agentSessionContinuation": {
-      "continueInNewSession": "新規セッションで続ける…",
-      "dialogTitle": "新規セッションで続ける",
+      "handOffToAnotherAgent": "別の Agent に引き継ぐ…",
+      "dialogTitle": "別の Agent に引き継ぐ",
       "dialogDescription": "この時点から新しい Agent セッションを開始します。元のセッションは変更されません。",
       "untitledSession": "現在のセッション",
       "originalAgent": "元の Agent: {{agent}}",

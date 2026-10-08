@@ -18417,8 +18417,8 @@
       }
     },
     "agentSessionContinuation": {
-      "continueInNewSession": "Continuar en una sesión nueva…",
-      "dialogTitle": "Continuar en una sesión nueva",
+      "handOffToAnotherAgent": "Pasar a otro agente…",
+      "dialogTitle": "Pasar a otro agente",
       "dialogDescription": "Inicia una sesión nueva del agente desde este punto. La sesión original no cambia.",
       "untitledSession": "Sesión actual",
       "originalAgent": "Agente original: {{agent}}",
