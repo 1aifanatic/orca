@@ -56,6 +56,7 @@ async function restartAfterCrash(): Promise<void> {
   runtimeState.currentEventSink(SESSION)?.close()
   await sessions.get(SESSION)?.journal.close()
   closeTestJournalHostDatabases()
+  rig.clock.now = RESTARTED_AT
   rig.store = await openTestAgentSessionRecordStore(rig.root)
   rig.host = new StructuredAgentSessionHost({
     ...old.deps,
@@ -105,7 +106,6 @@ describe('provider output survives host restart', () => {
   ] as const)('times saved Codex %s output rather than item start', async (type, method) => {
     const events = await beginTurn()
     let receivedAt = HOST_TEST_NOW
-    vi.spyOn(Date, 'now').mockImplementation(() => receivedAt)
     const translator = createCodexJournalTranslator({
       sink: events,
       primaryThreadId: () => THREAD,

@@ -98,6 +98,7 @@ async function restartAfterCrash(): Promise<void> {
   runtimeState.currentEventSink(SESSION)?.close()
   await sessions.get(SESSION)?.journal.close()
   closeTestJournalHostDatabases()
+  rig.clock.now = RESTARTED_AT
   rig.store = await openTestAgentSessionRecordStore(rig.root)
   rig.host = new StructuredAgentSessionHost({
     ...old.deps,
