@@ -36,7 +36,7 @@ export function applySshManagedServerTransition(
     }
     return
   }
-  if (!next || next.kind === 'relay') {
+  if (next?.kind === 'relay') {
     catalogLoadByTarget.delete(targetId)
   }
   if (isNewMoveOffer(previous, next) && canMoveSshHostToManagedServer()) {
