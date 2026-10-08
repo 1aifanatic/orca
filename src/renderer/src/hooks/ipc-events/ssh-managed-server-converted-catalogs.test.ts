@@ -72,6 +72,7 @@ beforeEach(() => {
   // Main hides the retained relay-era rows, so its own lists come back empty.
   vi.stubGlobal('window', {
     api: {
+      cache: { setGitHub: vi.fn(async () => undefined) },
       repos: { list: vi.fn(async () => []) },
       projects: { list: vi.fn(async () => []), listHostSetups: vi.fn(async () => []) },
       projectGroups: { list: vi.fn(async () => []) },
@@ -93,7 +94,10 @@ beforeEach(() => {
     },
     projectGroups: [{ ...group, connectionId: 'ssh-1' }],
     folderWorkspaces: [folder],
-    runtimeEnvironments: []
+    runtimeEnvironments: [],
+    startupWorktreeRefreshCompleted: false,
+    activeWorktreeId: null,
+    activeWorkspaceExecutionHostId: null
   })
 })
 
@@ -179,5 +183,94 @@ describe('a host that just moved to its managed server', () => {
     )
     expect(window.api.runtimeEnvironments.list).toHaveBeenCalledTimes(1)
     expect(window.api.repos.list).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['repo.list', 'projectGroup.list', 'folderWorkspace.list'])(
+    'keeps the relay rows and retries after a failed %s refresh',
+    async (method) => {
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const warningLog = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      let failed = false
+      const call = vi.fn(async (args: RuntimeEnvironmentCallRequest) => {
+        if (args.method === method && !failed) {
+          failed = true
+          throw new Error('connection dropped during conversion catalog refresh')
+        }
+        return serverReply(args)
+      })
+      Object.assign(window.api.runtimeEnvironments, { call })
+      const managed = { kind: 'managed', environmentId: 'env-1' } as const
+      const targetId = `ssh-retry-${method}`
+      store.setState({
+        repos: [{ ...repo, connectionId: targetId, executionHostId: `ssh:${targetId}` }],
+        worktreesByRepo: {
+          'repo-1': [makeWorktree({ id: worktreeId, repoId: 'repo-1', hostId: `ssh:${targetId}` })]
+        },
+        projectGroups: [{ ...group, connectionId: targetId }]
+      })
+      applySshManagedServerTransition(targetId, undefined, managed)
+      await vi.waitFor(() => expect(errorLog).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(store.getState().worktreesByRepo['repo-1']).toHaveLength(1)
+      const callsBeforeReconnect = call.mock.calls.filter(([args]) => args.method === method).length
+      applySshManagedServerTransition(targetId, managed, {
+        kind: 'setting-up',
+        phase: 'connecting'
+      })
+      applySshManagedServerTransition(
+        targetId,
+        { kind: 'setting-up', phase: 'connecting' },
+        managed
+      )
+      await vi.waitFor(() =>
+        expect(call.mock.calls.filter(([args]) => args.method === method).length).toBeGreaterThan(
+          callsBeforeReconnect
+        )
+      )
+      await vi.waitFor(() =>
+        expect(store.getState().folderWorkspaces.map((entry) => entry.executionHostId)).toEqual([
+          'runtime:env-1'
+        ])
+      )
+      errorLog.mockRestore()
+      warningLog.mockRestore()
+    }
+  )
+
+  it('reloads the server names after a failed environment list on reconnect', async () => {
+    const warningLog = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const list = vi.mocked(window.api.runtimeEnvironments.list)
+    list.mockRejectedValueOnce(new Error('environment catalog unavailable'))
+    const managed = { kind: 'managed', environmentId: 'env-1' } as const
+    applySshManagedServerTransition('ssh-list-retry', undefined, managed)
+    await vi.waitFor(() => expect(warningLog).toHaveBeenCalled())
+    applySshManagedServerTransition('ssh-list-retry', managed, {
+      kind: 'setting-up',
+      phase: 'connecting'
+    })
+    applySshManagedServerTransition('ssh-list-retry', undefined, managed)
+    await vi.waitFor(() =>
+      expect(store.getState().runtimeEnvironments.map((entry) => entry.name)).toEqual([
+        'Box server'
+      ])
+    )
+    expect(list).toHaveBeenCalledTimes(2)
+    warningLog.mockRestore()
+  })
+
+  it('abandons an in-flight conversion refresh when the host returns to the relay', async () => {
+    const pending =
+      Promise.withResolvers<Awaited<ReturnType<typeof window.api.runtimeEnvironments.list>>>()
+    vi.mocked(window.api.runtimeEnvironments.list).mockReturnValueOnce(pending.promise)
+    const managed = { kind: 'managed', environmentId: 'env-1' } as const
+    applySshManagedServerTransition('ssh-cancel-load', undefined, managed)
+    applySshManagedServerTransition('ssh-cancel-load', managed, {
+      kind: 'relay',
+      reason: 'orcad_unavailable'
+    })
+    pending.resolve([])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(window.api.repos.list).not.toHaveBeenCalled()
   })
 })
