@@ -342,6 +342,7 @@ jobs:
               . != "tests/e2e/terminal-retention-budget.spec.ts" and
               . != "tests/e2e/ssh-startup-exec-readiness.spec.ts" and
               . != "tests/e2e/paired-startup-exec-readiness.spec.ts" and
+              . != "tests/e2e/workspace-layout-oracle-ssh.spec.ts" and
               . != "tests/e2e/ssh-browser-network-execution-route.docker.unit.test.ts" and
               . != "tests/e2e/ssh-localhost.spec.ts" and
               . != "tests/e2e/terminal-ibus-hangul-native.spec.ts" and
@@ -417,7 +418,8 @@ jobs:
       contains(inputs.test_files, 'tests/e2e/ssh-terminal-parking.spec.ts') ||
       contains(inputs.test_files, 'tests/e2e/terminal-retention-budget.spec.ts') ||
       contains(inputs.test_files, 'tests/e2e/ssh-startup-exec-readiness.spec.ts') ||
-      contains(inputs.test_files, 'tests/e2e/paired-startup-exec-readiness.spec.ts')
+      contains(inputs.test_files, 'tests/e2e/paired-startup-exec-readiness.spec.ts') ||
+      contains(inputs.test_files, 'tests/e2e/workspace-layout-oracle-ssh.spec.ts')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

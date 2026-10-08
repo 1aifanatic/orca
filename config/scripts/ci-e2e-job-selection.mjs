@@ -33,7 +33,8 @@ export const DOCKER_SSH_E2E_SPECS = [
   'tests/e2e/ssh-terminal-parking.spec.ts',
   'tests/e2e/terminal-retention-budget.spec.ts',
   'tests/e2e/ssh-startup-exec-readiness.spec.ts',
-  'tests/e2e/paired-startup-exec-readiness.spec.ts'
+  'tests/e2e/paired-startup-exec-readiness.spec.ts',
+  'tests/e2e/workspace-layout-oracle-ssh.spec.ts'
 ]
 
 export const NODE_NETWORK_E2E_SPEC =

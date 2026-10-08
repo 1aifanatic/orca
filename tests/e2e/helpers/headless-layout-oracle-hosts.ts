@@ -156,10 +156,15 @@ async function startElectronHost(scratch: string): Promise<StartedHost> {
   }
 }
 
-/** Unix sockets live in userData and macOS caps their path at 104 bytes, so a long TMPDIR falls back to /tmp. */
+/** Unix sockets live in userData and macOS caps their path at 104 bytes; a short dir in $HOME fits. */
 function profileParent(): string {
   const tmp = os.tmpdir()
-  return process.platform === 'win32' || tmp.length <= 32 ? tmp : '/tmp'
+  if (process.platform === 'win32' || tmp.length <= 32) {
+    return tmp
+  }
+  const parent = path.join(os.homedir(), '.orca-lo')
+  mkdirSync(parent, { recursive: true })
+  return parent
 }
 
 export async function startHeadlessOracleHost(kind: HeadlessHostKind): Promise<HeadlessOracleHost> {
