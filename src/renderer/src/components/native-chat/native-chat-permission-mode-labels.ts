@@ -56,17 +56,17 @@ export function nativeChatPermissionModeDescription(
       if (provider !== 'claude') {
         return translate(
           'components.native-chat.composer.permissionAskSharedDescription',
-          'Claude asks before edits and commands; Codex asks beyond the workspace sandbox'
+          'Claude asks unless your settings allow it; Codex asks beyond the workspace sandbox'
         )
       }
       return translate(
         'components.native-chat.composer.permissionAskDescription',
-        'Always asks before edits and commands'
+        "Asks before edits and commands your settings don't allow"
       )
     case 'accept-edits':
       return translate(
         'components.native-chat.composer.permissionAcceptEditsDescription',
-        'Edits files without asking; asks before commands'
+        'Approves file edits and file commands; asks for the rest'
       )
     case 'auto':
       return translate(
@@ -74,9 +74,21 @@ export function nativeChatPermissionModeDescription(
         'Reviews approval requests for you'
       )
     case 'bypass':
+      if (provider === 'codex') {
+        return translate(
+          'components.native-chat.composer.permissionBypassCodexDescription',
+          'Never asks; no sandbox'
+        )
+      }
+      if (provider !== 'claude') {
+        return translate(
+          'components.native-chat.composer.permissionBypassSharedDescription',
+          'Skips approval prompts; Codex also runs without its sandbox'
+        )
+      }
       return translate(
         'components.native-chat.composer.permissionBypassDescription',
-        'Never asks; no sandbox or approval checks'
+        'Skips approval prompts; your Claude rules and sandbox still apply'
       )
   }
 }

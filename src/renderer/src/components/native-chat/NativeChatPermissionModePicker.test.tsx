@@ -133,10 +133,16 @@ describe('NativeChatPermissionModePicker', () => {
         .map((row) => row.getAttribute('data-value'))
     ).toEqual(['ask', 'accept-edits', 'auto', 'bypass'])
     expect(within(menu).getByText('Ask for approval')).toBeTruthy()
-    expect(within(menu).getByText('Always asks before edits and commands')).toBeTruthy()
-    expect(within(menu).getByText('Edits files without asking; asks before commands')).toBeTruthy()
+    expect(
+      within(menu).getByText("Asks before edits and commands your settings don't allow")
+    ).toBeTruthy()
+    expect(
+      within(menu).getByText('Approves file edits and file commands; asks for the rest')
+    ).toBeTruthy()
     expect(within(menu).getByText('Reviews approval requests for you')).toBeTruthy()
-    expect(within(menu).getByText('Never asks; no sandbox or approval checks')).toBeTruthy()
+    expect(
+      within(menu).getByText('Skips approval prompts; your Claude rules and sandbox still apply')
+    ).toBeTruthy()
   })
 
   it('offers Codex no edits-only mode', () => {
@@ -149,13 +155,19 @@ describe('NativeChatPermissionModePicker', () => {
     expect(option('ask').textContent).toContain(
       'Works inside the workspace sandbox; asks before going beyond it'
     )
-    expect(screen.queryByText('Always asks before edits and commands')).toBeNull()
+    expect(
+      screen.queryByText("Asks before edits and commands your settings don't allow")
+    ).toBeNull()
+    expect(option('bypass').textContent).toContain('Never asks; no sandbox')
   })
 
   it('describes both providers in the new-chat setting', () => {
     render(<NativeChatPermissionModePicker picker={picker({ provider: null })} />)
     expect(option('ask').textContent).toContain(
-      'Claude asks before edits and commands; Codex asks beyond the workspace sandbox'
+      'Claude asks unless your settings allow it; Codex asks beyond the workspace sandbox'
+    )
+    expect(option('bypass').textContent).toContain(
+      'Skips approval prompts; Codex also runs without its sandbox'
     )
   })
 

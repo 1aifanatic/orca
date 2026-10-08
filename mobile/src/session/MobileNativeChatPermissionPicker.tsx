@@ -17,16 +17,22 @@ export type MobileNativeChatPermissionPickerState = {
 }
 
 const MODE_COPY: Record<AgentChatPermissionMode, { label: string; description: string }> = {
-  ask: { label: 'Ask for approval', description: 'Always asks before edits and commands' },
+  ask: {
+    label: 'Ask for approval',
+    description: "Asks before edits and commands your settings don't allow"
+  },
   'accept-edits': {
     label: 'Accept edits',
-    description: 'Edits files without asking; asks before commands'
+    description: 'Approves file edits and file commands; asks for the rest'
   },
   auto: {
     label: 'Approve for me',
     description: 'Reviews approval requests for you'
   },
-  bypass: { label: 'Full access', description: 'Never asks; no sandbox or approval checks' }
+  bypass: {
+    label: 'Full access',
+    description: 'Skips approval prompts; your Claude rules and sandbox still apply'
+  }
 }
 
 function modeDescription(mode: AgentChatPermissionMode, provider?: string | null): string {
@@ -34,7 +40,13 @@ function modeDescription(mode: AgentChatPermissionMode, provider?: string | null
     return 'Works inside the workspace sandbox; asks before going beyond it'
   }
   if (mode === 'ask' && provider !== 'claude') {
-    return 'Claude asks before edits and commands; Codex asks beyond the workspace sandbox'
+    return 'Claude asks unless your settings allow it; Codex asks beyond the workspace sandbox'
+  }
+  if (mode === 'bypass' && provider === 'codex') {
+    return 'Never asks; no sandbox'
+  }
+  if (mode === 'bypass' && provider !== 'claude') {
+    return 'Skips approval prompts; Codex also runs without its sandbox'
   }
   return MODE_COPY[mode].description
 }

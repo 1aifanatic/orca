@@ -128,7 +128,7 @@ describe('MobileNativeChatPermissionPicker', () => {
 
     expect(textNode('Ask for approval')).toBeTruthy()
     expect(textNode('Reviews approval requests for you')).toBeTruthy()
-    expect(textNode('Always asks before edits and commands')).toBeTruthy()
+    expect(textNode("Asks before edits and commands your settings don't allow")).toBeTruthy()
     expect(() => textNode('Accept edits')).toThrow()
     expect(row('Ask for approval').props.accessibilityState).toMatchObject({ checked: true })
   })
@@ -137,7 +137,8 @@ describe('MobileNativeChatPermissionPicker', () => {
     mount({ provider: 'codex', supported: ['ask', 'auto', 'bypass'] })
     act(() => pill().props.onPress())
     expect(textNode('Works inside the workspace sandbox; asks before going beyond it')).toBeTruthy()
-    expect(() => textNode('Always asks before edits and commands')).toThrow()
+    expect(() => textNode("Asks before edits and commands your settings don't allow")).toThrow()
+    expect(textNode('Never asks; no sandbox')).toBeTruthy()
   })
 
   it('keeps the drawer open when the write is unconfirmed', async () => {
