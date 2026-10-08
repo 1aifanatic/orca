@@ -33,6 +33,7 @@ export class RelayRuntimeServices {
   readonly gitHandler: GitHandler
   readonly skillInstallHandler: SkillInstallHandler
   readonly agentExecHandler: AgentExecHandler
+  private readonly workspaceSessionHandler: WorkspaceSessionHandler
   private readonly responseStreams: GitResponseStreamRegistry
   private readonly aiVaultService: ReturnType<typeof createRelayAiVaultService> | null
   private readonly sessionSearch: { dispose(): void } | null
@@ -81,7 +82,7 @@ export class RelayRuntimeServices {
     const externalAutomationsHandler = new ExternalAutomationsHandler(dispatcher)
     const portScanHandler = new PortScanHandler(dispatcher)
     this.agentExecHandler = new AgentExecHandler(dispatcher)
-    const workspaceSessionHandler = new WorkspaceSessionHandler(dispatcher)
+    this.workspaceSessionHandler = new WorkspaceSessionHandler(dispatcher)
     const relayPlatform = parseUnameToRelayPlatform(process.platform, process.arch)
     const hostPlatform = relayPlatform ? getRemoteHostPlatform(relayPlatform) : undefined
     this.aiVaultService = hostPlatform ? createRelayAiVaultService(homedir(), hostPlatform) : null
@@ -107,7 +108,7 @@ export class RelayRuntimeServices {
       externalAutomationsHandler,
       portScanHandler,
       this.agentExecHandler,
-      workspaceSessionHandler,
+      this.workspaceSessionHandler,
       new AiVaultHandler(dispatcher, {
         hostPlatform,
         service: this.aiVaultService ?? undefined
@@ -125,6 +126,9 @@ export class RelayRuntimeServices {
   // Why: answering a stream's request does not prove its detached pumps, descriptors or children
   // are gone; only these registry drains do.
   async disposeOwnedProcesses(): Promise<void> {
+    // The PTY teardown that follows retires every pane on each client; recording that here would
+    // erase the tabs the clients restore from this snapshot once they reconnect.
+    this.workspaceSessionHandler.close()
     const owned = await Promise.allSettled([
       this.agentExecHandler.dispose(),
       this.responseStreams.disposeAllAndWait(),
@@ -158,6 +162,7 @@ export class RelayRuntimeServices {
   }
 
   reopenOwnedProcesses(): void {
+    this.workspaceSessionHandler.reopen()
     this.agentExecHandler.reopen()
     this.responseStreams.reopen()
     this.fsHandler.reopen()

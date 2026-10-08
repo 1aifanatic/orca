@@ -442,6 +442,22 @@ describe('main exports a session write to the hosts it agrees with', () => {
     expect(patchRequests('target-1')).toHaveLength(2)
   })
 
+  it('exports nothing over a new connection until a pull on it agrees', async () => {
+    // A relay restart retires the dead PTYs' tabs here before the window re-pulls; exporting
+    // that under the old connection's agreement erased the tabs the pull would have restored.
+    await agreeWith('target-1')
+    muxByTargetId.delete('target-1')
+
+    driver.write(sessionWithTab)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(patchRequests('target-1')).toEqual([])
+
+    await agreeWith('target-1')
+    driver.write({ ...sessionWithTab, activeTabId: null })
+    await driver.nextPushes()
+    expect(patchRequests('target-1')).toHaveLength(1)
+  })
+
   it('reports nothing for an export a newer pull superseded', async () => {
     const observed = await observeTarget('target-1')
     driver.agree('target-1', observed)
