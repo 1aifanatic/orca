@@ -9,7 +9,7 @@ export function getExtraAgentArgsFlag(flags: Map<string, string | boolean>): str
   if (typeof value !== 'string') {
     throw new RuntimeClientError(
       'invalid_argument',
-      '--extra-agent-args requires a value; use --extra-agent-args="--model opus", or --extra-agent-args= to clear'
+      '--extra-agent-args requires a value; use --extra-agent-args="--model opus --effort high", or --extra-agent-args= to clear'
     )
   }
   return value
