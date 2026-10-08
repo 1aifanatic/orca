@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNativeChatRestartOfferEnabled } from './native-chat-restart-offer-gate'
 import { RotateCcw } from 'lucide-react'
 import { Button } from './ui/button'
@@ -29,6 +29,7 @@ import {
 import {
   continueNativeChatRestartOffer,
   dismissNativeChatRestartOffer,
+  markFinishedNativeChatRestartRunShown,
   releaseFinishedNativeChatRestartRun,
   useNativeChatRestartOffer,
   useNativeChatRestartResuming,
@@ -124,12 +125,18 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     (sessionId: string) => failureBySession.get(sessionId),
     [failureBySession]
   )
+  const run = useNativeChatRestartRun()
   const runPanel = useResumeRunPanel({
-    run: useNativeChatRestartRun(),
+    run,
     rows,
     failureFor,
     open
   })
+  useEffect(() => {
+    if (offerEnabled && open && run) {
+      markFinishedNativeChatRestartRunShown(run)
+    }
+  }, [offerEnabled, open, run])
 
   const toggleSelected = useCallback((sessionId: string, checked: boolean) => {
     setOverrides((current) => new Map(current).set(sessionId, checked))

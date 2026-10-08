@@ -13,6 +13,7 @@ export type ResumeRun = Readonly<{
   entries: readonly Readonly<{ candidate: ResumeCandidate; observedStatus?: ResumeRunHostStatus }>[]
   inFlight: boolean
   continued?: readonly RestartContinuationOutcome[]
+  finishedViewShown?: boolean
 }>
 
 function progressRank(status: ResumeRunHostStatus | undefined): number {

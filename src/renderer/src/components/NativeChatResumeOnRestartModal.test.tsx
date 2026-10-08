@@ -185,8 +185,9 @@ it('never re-offers a resumed chat when the status entry reopens the dialog', as
   await act(async () => button('1 chat to resume').click())
   expect(document.querySelector('[role="dialog"]')).not.toBeNull()
   expect(offerIds()).toEqual(['b'])
-  // One offered row plus the preference box — never the resumed chat again.
+  // The resumed chat is history, while only the offered chat remains selectable.
   expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
+  expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
 })
 
 // The resume outlives the dialog, as a skill update does: the status bar carries it while in flight.
@@ -505,8 +506,9 @@ it('answers a mixed Resume with one toast whose Show opens the dialog', async ()
   // Show opens the dialog the click closed, over a fresh read of the list.
   await act(async () => lastToastShow()?.())
   const dialog = document.querySelector('[role="dialog"]')
+  expect(dialog?.textContent).toContain('Resumed 1 of 2 chats')
   expect(dialog?.textContent).toContain('Prompt b')
-  expect(dialog?.textContent).not.toContain('Prompt a')
+  expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
 })
 
 // A Dismiss the host never took leaves the chat shown as failed, not back as a plain offer.
@@ -543,8 +545,7 @@ function dialogControls(): (string | null)[] {
   )
 }
 
-// A chat the resume could not carry on stays in the same dialog — same title, checkboxes and
-// footer — with its row saying what went wrong and what to do.
+// The finished summary keeps successful chats alongside current failures and their actions.
 it('lists a chat the resume could not carry on when the dialog reopens, with what to do', async () => {
   fakeHost({}, (sessionId) => (sessionId === 'b' ? 'refused' : 'continued'))
   await mount(<NativeChatResumeOnRestartModal />)
@@ -554,17 +555,19 @@ it('lists a chat the resume could not carry on when the dialog reopens, with wha
   await act(async () => requestNativeChatResumeOnRestartDialog())
   const dialog = document.querySelector('[role="dialog"]')
   expect(dialog).not.toBeNull()
-  // Unchanged chrome: the title, the preference box, and the two footer actions.
-  expect(dialog?.textContent).toContain('Resume interrupted chats?')
+  expect(dialog?.textContent).toContain('Resumed 1 of 2 chats')
   expect(dialog?.textContent).toContain("Don't ask again (resume automatically)")
   expect(dialog?.textContent).not.toContain('Dismiss failed')
-  // The resumed chat left the list as it always did; the failed one is a row with a checkbox.
-  expect(dialog?.textContent).not.toContain('Prompt a')
+  expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
   expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
   expect(document.querySelector('[aria-label="Prompt b: Couldn’t resume"]')).not.toBeNull()
   expect(dialog?.textContent).toContain('To resume:')
   expect(dialog?.textContent).toContain('Open the chat and reply.')
   expect(dialogControls()).toEqual([
+    'All2',
+    'In progress0',
+    'Resumed1',
+    'Need you1',
     'Dismiss "Prompt b" in workspace',
     'Open chat',
     'Dismiss all',

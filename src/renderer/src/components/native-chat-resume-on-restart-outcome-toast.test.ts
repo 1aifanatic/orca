@@ -129,9 +129,8 @@ it('raises no toast when the host had nothing left for an opted-in launch to res
   expect(toast).not.toHaveBeenCalled()
 })
 
-// The agent was seen carrying on while the toast was up, so the host retired the failure: Show
-// re-reads and opens nothing, rather than latching a request for a dialog with no rows to draw.
-it('opens nothing from Show once the host no longer lists the chat', async () => {
+// A withdrawn failure cannot recreate attention, but the unseen run summary stays available.
+it('opens the retained summary from Show after the host withdraws a failure', async () => {
   let failed = [{ ...offered[0]!, failedAt: 1, outcome: 'unconfirmed', reason: 'unknown' }]
   rpc.mockImplementation(async (_target, method) =>
     method === 'agentSession.restartResumable'
@@ -148,5 +147,5 @@ it('opens nothing from Show once the host no longer lists the chat', async () =>
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(rpc.mock.calls.at(-1)?.[1]).toBe('agentSession.restartResumable')
   expect(getNativeChatRestartOffer().failed).toEqual([])
-  expect(getNativeChatResumeOnRestartDialogRequest()).toBe(false)
+  expect(getNativeChatResumeOnRestartDialogRequest()).toBe(true)
 })

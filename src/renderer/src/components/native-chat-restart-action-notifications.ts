@@ -75,18 +75,25 @@ function descriptionFrom(lines: readonly string[]): ReactNode {
       )
 }
 
-/** One toast per resume. No names: the dialog behind Show has the list. Unconfirmed chats get their
- *  own count because the agent may well be working; "couldn't be resumed" would invite a second
- *  send. Without a failure list there is nothing for Show to open. */
+/** One toast per resume; Show opens the run summary. Unconfirmed chats may already be working. */
 function announceResume(
   continued: number,
   refused: number,
   unconfirmed: number,
   show: (() => Promise<void>) | undefined
 ): void {
+  const action =
+    show === undefined
+      ? {}
+      : {
+          action: {
+            label: translate('auto.components.NativeChatResumeOnRestartModal.show', 'Show'),
+            onClick: () => void show()
+          }
+        }
   if (refused === 0 && unconfirmed === 0) {
     if (continued > 0) {
-      toast(continuedCountText(continued))
+      toast(continuedCountText(continued), action)
     }
     return
   }
@@ -97,14 +104,7 @@ function announceResume(
   ]
   toast(title, {
     ...(lines.length === 0 ? {} : { description: descriptionFrom(lines) }),
-    ...(show === undefined
-      ? {}
-      : {
-          action: {
-            label: translate('auto.components.NativeChatResumeOnRestartModal.show', 'Show'),
-            onClick: () => void show()
-          }
-        })
+    ...action
   })
 }
 
@@ -163,10 +163,11 @@ export function announceRestartResults(
     (failed.get(sessionId) ?? (sentUnconfirmed(sessionId) ? 'unconfirmed' : 'refused')) ===
     'unconfirmed'
   const unconfirmedCount = reported.filter(unconfirmed).length
+  const continuedCount = new Set(requested).size - notContinued.length
   announceResume(
-    new Set(requested).size - notContinued.length,
+    continuedCount,
     reported.length - unconfirmedCount,
     unconfirmedCount,
-    hostFailed === undefined ? undefined : show
+    hostFailed === undefined && continuedCount === 0 ? undefined : show
   )
 }

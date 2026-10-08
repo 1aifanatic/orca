@@ -26,7 +26,6 @@ import {
 } from './native-chat-resume-unsent-requests'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
-  getNativeChatResumeOnRestartDialogRequest,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 import { createOfferedChatWatch } from './native-chat-resume-offered-chat-watch'
@@ -63,8 +62,7 @@ let launch: Promise<void> | undefined
  *  a re-read that raced it must neither pre-empt nor undo. */
 let actionsBegun = 0
 let actionsSettled = 0
-/** The resume this window ran, so the status bar and a reopened dialog can follow it after the
- *  dialog that started it closed. In memory only; replaced by the next run once it has finished. */
+/** Memory-only history: retires after viewing and closing its finished summary, or on replacement. */
 let run: ResumeRun | null = null
 let releaseRunStatus: (() => void) | undefined
 let resuming: readonly string[] = resumeRunPendingIds(null)
@@ -130,9 +128,15 @@ export function getNativeChatRestartRun(): ResumeRun | null {
   return run
 }
 
-/** Closing the dialog after a run finished drops its rows; the host's list carries what is left. */
+/** A finished summary must be shown before closing can retire it. */
+export function markFinishedNativeChatRestartRunShown(shown: ResumeRun): void {
+  if (run === shown && !shown.inFlight && !shown.finishedViewShown) {
+    setRun({ ...shown, finishedViewShown: true })
+  }
+}
+
 export function releaseFinishedNativeChatRestartRun(): void {
-  if (run && !resumeRunInFlight(run)) {
+  if (run?.finishedViewShown && !resumeRunInFlight(run)) {
     setRun(null)
   }
 }
@@ -265,16 +269,12 @@ export async function continueNativeChatRestartOffer(sessionIds: readonly string
     actionsSettled += 1
     // Publish the offer first: reopening must never expose the old selection as actionable.
     if (run === actionRun) {
-      setRun(
-        getNativeChatResumeOnRestartDialogRequest()
-          ? {
-              ...actionRun,
-              entries: actionRun.entries.filter((entry) => !skipped.has(entry.candidate.sessionId)),
-              inFlight: false,
-              continued
-            }
-          : null
-      )
+      setRun({
+        ...actionRun,
+        entries: actionRun.entries.filter((entry) => !skipped.has(entry.candidate.sessionId)),
+        inFlight: false,
+        continued
+      })
     }
   }
   announceRestartResults(...outcome)
