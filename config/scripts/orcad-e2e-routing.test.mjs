@@ -6,6 +6,7 @@ import {
   classifyE2eJobs,
   ORCAD_AUTO_CONVERT_E2E_SPEC,
   ORCAD_IDLE_EXIT_E2E_SPEC,
+  ORCAD_MANUAL_UPDATE_E2E_SPEC,
   ORCAD_SERVE_MODE_SWITCH_E2E_SPEC,
   WINDOWS_MISSING_APPDATA_E2E_SPEC
 } from './ci-e2e-job-selection.mjs'
@@ -71,11 +72,32 @@ it('routes the idle-exit spec from its idle sources and the shared convert harne
   )
 })
 
+it('routes the manual-update spec from its maintenance and publication sources', () => {
+  expectRouted(
+    [
+      'src/main/ipc/managed-orcad-actions.ts',
+      'src/main/ipc/runtime-environment-managed-tunnel.ts',
+      'src/main/ipc/runtime-environments.ts',
+      'src/main/ssh/orcad-runtime-maintenance.ts',
+      'tests/e2e/helpers/orcad-template-variant.ts'
+    ],
+    ORCAD_MANUAL_UPDATE_E2E_SPEC
+  )
+  expect(
+    selectPrE2eSpecs(['src/main/ipc/orcad-runtime-maintenance-handlers.test.ts'])
+  ).not.toContain(ORCAD_MANUAL_UPDATE_E2E_SPEC)
+  const run = jobs['orcad-auto-convert-docker'].steps.find((step) =>
+    step.run?.includes('playwright test')
+  ).run
+  expect(run).toContain(ORCAD_MANUAL_UPDATE_E2E_SPEC)
+})
+
 it('builds the e2e app when only a build-dependent orcad spec is requested', () => {
   for (const spec of [
     ORCAD_SERVE_MODE_SWITCH_E2E_SPEC,
     ORCAD_AUTO_CONVERT_E2E_SPEC,
-    ORCAD_IDLE_EXIT_E2E_SPEC
+    ORCAD_IDLE_EXIT_E2E_SPEC,
+    ORCAD_MANUAL_UPDATE_E2E_SPEC
   ]) {
     expect(classifyE2eJobs(JSON.stringify([spec])), spec).toEqual({
       e2e_run_changed: false,
@@ -87,7 +109,11 @@ it('builds the e2e app when only a build-dependent orcad spec is requested', () 
 
 it('runs the auto-convert lane only when routed, not on every SSH source change', () => {
   const condition = jobs['orcad-auto-convert-docker'].if
-  for (const spec of [ORCAD_AUTO_CONVERT_E2E_SPEC, ORCAD_IDLE_EXIT_E2E_SPEC]) {
+  for (const spec of [
+    ORCAD_AUTO_CONVERT_E2E_SPEC,
+    ORCAD_IDLE_EXIT_E2E_SPEC,
+    ORCAD_MANUAL_UPDATE_E2E_SPEC
+  ]) {
     expect(condition).toContain(`contains(inputs.test_files, '${spec}')`)
   }
   expect(condition).not.toContain('ssh_source_changed')

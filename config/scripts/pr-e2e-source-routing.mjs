@@ -46,6 +46,18 @@ export const PR_E2E_SOURCE_ROUTES = [
         ))
   },
   {
+    id: 'ssh.orcad-manual-update',
+    specs: ['tests/e2e/ssh-orcad-manual-update.spec.ts'],
+    matches: (file) =>
+      /^tests\/e2e\/helpers\/(?:orcad-convert-(?:flow|host)|orcad-template-variant)\.ts$/.test(
+        file
+      ) ||
+      (isProductSource(file) &&
+        /^src\/main\/(?:ipc\/(?:managed-orcad-actions|orcad-runtime-maintenance-handlers|runtime-environment-managed-tunnel|runtime-environments)\.ts$|ssh\/(?:orcad-runtime-maintenance|orcad-managed-update-deferrals|orcad-managed-update-on-restore)\.ts$)/.test(
+          file
+        ))
+  },
+  {
     id: 'ssh.orcad-idle-exit',
     specs: ['tests/e2e/ssh-orcad-idle-exit.spec.ts'],
     matches: (file) =>

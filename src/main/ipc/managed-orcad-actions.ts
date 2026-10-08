@@ -9,12 +9,14 @@ import {
 } from '../ssh/orcad-runtime-lifecycle'
 import type { ManagedServerActions } from '../runtime/managed-server-actions-registry'
 import type { ExecutionHostId } from '../../shared/execution-host'
+import type { SshManagedServerStatus } from '../../shared/ssh-types'
 import { retireRemovedRuntimeEnvironment } from './runtime-environment-removal-cleanup'
 
 export type ManagedOrcadActionOptions = {
   getUserDataPath: () => string
   getActiveEnvironmentId: () => string | null | undefined
   invalidateTransport: (environmentId: string) => Promise<void> | void
+  publishHostServerStatus: (targetId: string, status: SshManagedServerStatus) => void
   /** Drops the SSH host's stale managed-server state once its server is unlinked. */
   clearHostServerStatus: (sshTargetId: string) => void
   /** Drops the unlinked server's workspace session partition. */
@@ -32,6 +34,15 @@ export function createManagedOrcadActions(
       // Why: a restarted orcad drops the old connection; reconnect on the new one.
       if (result.outcome === 'updated') {
         await options.invalidateTransport(result.environment.id)
+      }
+      if (result.outcome !== 'deferred') {
+        const targetId = result.environment.orcadDeployment?.sshTargetId
+        if (targetId) {
+          options.publishHostServerStatus(targetId, {
+            kind: 'managed',
+            environmentId: result.environment.id
+          })
+        }
       }
       return result
     },

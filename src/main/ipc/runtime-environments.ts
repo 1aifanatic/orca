@@ -24,6 +24,7 @@ import { registerOrcadRuntimeConversionHandlers } from './orcad-runtime-conversi
 import { registerOrcadDeltaMoveHandlers } from './orcad-delta-move-handlers'
 import { registerOrcadRuntimeMaintenanceHandlers } from './orcad-runtime-maintenance-handlers'
 import { clearPublishedManagedServer } from './ssh-renderer-broadcast'
+import { publishHostServerStatus } from './runtime-environment-managed-tunnel'
 import { reconcileOrphanedRuntimeSessions } from './runtime-environment-session-reconcile'
 import { registerRuntimeSshAccessHandlers } from './runtime-ssh-access-handlers'
 import { retirePairedRuntimeBrowserClientHostEnvironment } from '../browser/paired-runtime-browser-client-host-runtime'
@@ -129,6 +130,7 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
     getActiveEnvironmentId: () => store.getSettings().activeRuntimeEnvironmentId,
     invalidateTransport: invalidateRuntimeEnvironmentTransport,
     clearHostServerStatus: clearPublishedManagedServer,
+    publishHostServerStatus,
     forgetHostSession: (hostId) => store.removeWorkspaceSessionHost(hostId)
   })
   registerRuntimeEnvironmentSubscriptionHandlers({

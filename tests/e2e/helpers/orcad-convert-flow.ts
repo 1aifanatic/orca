@@ -12,8 +12,16 @@ const CONVERT_TIMEOUT_MS = 8 * 60_000
 const RECONNECT_STEP_TIMEOUT_MS = 6 * 60_000
 
 /** Returns what the connect itself resolved to; a step that hangs fails naming itself. */
-export async function reconnect(page: Page, targetId: string): Promise<string> {
-  for (const step of ['disconnect', 'connect'] as const) {
+export async function reconnect(
+  page: Page,
+  targetId: string,
+  options: { disconnectFirst?: boolean } = {}
+): Promise<string> {
+  const steps =
+    options.disconnectFirst === false
+      ? (['connect'] as const)
+      : (['disconnect', 'connect'] as const)
+  for (const step of steps) {
     const run = page.evaluate(
       async ({ id, step }) => {
         try {
