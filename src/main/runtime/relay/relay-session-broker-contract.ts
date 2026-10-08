@@ -30,7 +30,8 @@ export type RelaySessionBrokerOptions = {
   mobileSocketWiring: MobileSocketWiring
   isCurrent: () => boolean
   refreshAccessToken: () => Promise<RelayAccessTokenRefresh>
-  onRenewalExpired?: () => void
+  /** The broker closed itself after renewal failed past expiry; no retry is armed. */
+  onExpired?: () => void
   resolvePreferredRegion?: () => Promise<RelayRegion | undefined>
   measureRegionDecision?: (window: RelayRegionWindow) => Promise<RelayRegionDecision>
   onAssignedCellActive?: (cellUrl: string) => void

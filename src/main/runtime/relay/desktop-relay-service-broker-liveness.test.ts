@@ -4,7 +4,7 @@ import type { OrcaRuntimeRpcServer } from '../runtime-rpc'
 
 const fakes = vi.hoisted(() => {
   const brokers: { live: boolean }[] = []
-  const connectOptions: { onRenewalExpired?: () => void }[] = []
+  const connectOptions: { onExpired?: () => void }[] = []
   return { readRelayAuthContext: vi.fn(), brokers, connectOptions }
 })
 
@@ -29,7 +29,7 @@ vi.mock('./relay-session-broker', () => {
       }
       return { v: 1, relayHostId: this.hostId, relayDeviceId, inviteExpiresAt: 0 }
     }
-    static connect = vi.fn(async (options: { onRenewalExpired?: () => void }) => {
+    static connect = vi.fn(async (options: { onExpired?: () => void }) => {
       fakes.connectOptions.push(options)
       const broker = new RelaySessionBroker()
       fakes.brokers.push(broker)
@@ -130,7 +130,7 @@ describe('DesktopRelayService broker liveness', () => {
 
       // The broker closes itself; no liveness tick or user action follows.
       fakes.brokers[0]!.live = false
-      fakes.connectOptions[0]!.onRenewalExpired?.()
+      fakes.connectOptions[0]!.onExpired?.()
 
       await vi.waitFor(() => expect(fakes.brokers).toHaveLength(2))
       expect(fakes.brokers[1]!.live).toBe(true)

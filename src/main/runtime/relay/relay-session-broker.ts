@@ -297,8 +297,7 @@ export class RelaySessionBroker {
       }
       this.closeNow()
       if (current) {
-        // Why: no retry is armed after this close, so the owner must reconcile now.
-        this.options.onRenewalExpired?.()
+        this.options.onExpired?.()
       }
     }
   }
