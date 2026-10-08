@@ -13,6 +13,7 @@ export function normalizeGeminiEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'gemini')
   // Why: Gemini CLI's native pre-tool event is BeforeTool; PreToolUse/PostToolUse still accepted for legacy Antigravity-compatible payloads.
   const stateName =
     eventName === 'BeforeAgent' ||
@@ -31,14 +32,14 @@ export function normalizeGeminiEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'gemini'),
+    cacheKey,
     extractToolFields('gemini', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('gemini', eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'gemini'), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: isNewTurnEvent('gemini', eventName)
     }),
     agentType: 'gemini',

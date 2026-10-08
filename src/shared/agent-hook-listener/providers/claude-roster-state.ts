@@ -245,11 +245,12 @@ export function seedClaudeLeadTurnFromPersistedStatus(
         ? { turnCompletedAt: status.payload.turnCompletedAt }
         : {})
     })
+    const cacheKey = producerCacheKey(paneKey, 'claude')
     if (status.payload.prompt) {
-      state.lastPromptByPaneKey.set(producerCacheKey(paneKey, 'claude'), status.payload.prompt)
+      state.lastPromptByPaneKey.set(cacheKey, status.payload.prompt)
     }
     if (status.payload.lastAssistantMessage) {
-      state.lastToolByPaneKey.set(producerCacheKey(paneKey, 'claude'), {
+      state.lastToolByPaneKey.set(cacheKey, {
         lastAssistantMessage: status.payload.lastAssistantMessage,
         lastAssistantMessageIsToolOutput: status.payload.lastAssistantMessageIsToolOutput
       })

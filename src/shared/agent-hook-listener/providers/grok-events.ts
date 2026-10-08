@@ -153,6 +153,7 @@ export function normalizeGrokEvent(
   hookPayload: Record<string, unknown>,
   grokHome?: string
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'grok')
   // Why: child sessions reuse their parent's pane route; their lifecycle cannot settle the parent.
   if (isGrokSubagentEvent(hookPayload)) {
     return null
@@ -160,7 +161,7 @@ export function normalizeGrokEvent(
   if (isGrokEvent(eventName, 'session_start')) {
     // Why: SessionStart resets stale per-turn state but must not create a working row before any prompt/tool event.
     // The main agent clock goes with it: a new process is a new main agent.
-    clearProducerTurnCacheState(state, producerCacheKey(paneKey, 'grok'))
+    clearProducerTurnCacheState(state, cacheKey)
     state.grokActiveTurnByPaneKey.delete(paneKey)
     state.grokMainAgentStatusByPaneKey.delete(paneKey)
     return null
@@ -254,7 +255,7 @@ export function normalizeGrokEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'grok'),
+    cacheKey,
     extractToolFields('grok', eventName, hookPayload, { grokHome }),
     { resetOnNewTurn: isNewTurnEvent('grok', eventName) }
   )
@@ -266,7 +267,7 @@ export function normalizeGrokEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'grok'), effectivePrompt, {
+    prompt: resolvePrompt(state, cacheKey, effectivePrompt, {
       resetOnNewTurn: isNewTurnEvent('grok', eventName)
     }),
     agentType: 'grok',

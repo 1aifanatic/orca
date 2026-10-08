@@ -25,9 +25,10 @@ export function normalizePiCompatibleEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, agentType)
   if (agentType !== 'omp' && eventName === 'session_start') {
     // Why: Pi's session_start fires on TUI open/resume; discard stale turn details, no working row before user activity.
-    clearProducerTurnCacheState(state, producerCacheKey(paneKey, agentType))
+    clearProducerTurnCacheState(state, cacheKey)
     // Why: a custom modal can switch sessions before its promise resolves.
     if (agentType !== 'pi' || hookPayload.ui_prompt_active !== true) {
       return null
@@ -107,14 +108,14 @@ export function normalizePiCompatibleEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, agentType),
+    cacheKey,
     extractToolFields(agentType, eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent(agentType, eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, agentType), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: isNewTurnEvent(agentType, eventName)
     }),
     agentType,

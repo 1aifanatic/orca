@@ -30,10 +30,11 @@ export function normalizeJcodeEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'jcode')
   if (eventName === 'session_start') {
     // Why: jcode fires session_start on idle TUI open/attach/resume; mapping it
     // to 'working' would show a spinner before the user typed (mirrors Devin).
-    clearProducerTurnCacheState(state, producerCacheKey(paneKey, 'jcode'))
+    clearProducerTurnCacheState(state, cacheKey)
     state.jcodeTurnPromptByPaneKey.delete(paneKey)
     return null
   }
@@ -51,7 +52,7 @@ export function normalizeJcodeEvent(
   const resetOnNewTurn = isNewTurnEvent('jcode', eventName)
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'jcode'),
+    cacheKey,
     extractToolFields('jcode', eventName, hookPayload),
     { resetOnNewTurn }
   )
@@ -63,7 +64,7 @@ export function normalizeJcodeEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'jcode'), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn
     }),
     agentType: 'jcode',

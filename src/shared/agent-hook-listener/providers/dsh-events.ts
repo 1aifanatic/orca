@@ -32,6 +32,7 @@ export function normalizeDshEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'dsh')
   if (shouldIgnoreCompactContinuationUserPromptSubmit(eventName, promptText)) {
     return null
   }
@@ -64,14 +65,14 @@ export function normalizeDshEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'dsh'),
+    cacheKey,
     extractToolFields('dsh', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('dsh', eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'dsh'), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: isNewTurnEvent('dsh', eventName)
     }),
     agentType: 'dsh',

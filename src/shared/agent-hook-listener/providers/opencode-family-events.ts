@@ -17,6 +17,7 @@ export function normalizeOpenCodeFamilyEvent(
   hookPayload: Record<string, unknown>,
   previousMainAgent?: AgentMainAgentStatus
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, source)
   const resetsTurn =
     isNewTurnEvent(source, eventName) ||
     (eventName === 'MessagePart' && hookPayload.role === 'user')
@@ -37,7 +38,7 @@ export function normalizeOpenCodeFamilyEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, source),
+    cacheKey,
     extractToolFields(source, eventName, hookPayload),
     {
       resetOnNewTurn: resetsTurn
@@ -69,7 +70,7 @@ export function normalizeOpenCodeFamilyEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, source), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: resetsTurn
     }),
     agentType: source,

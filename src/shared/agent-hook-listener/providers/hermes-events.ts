@@ -32,6 +32,7 @@ export function normalizeHermesEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'hermes')
   const stateName = typeof eventName === 'string' ? HERMES_EVENT_STATES[eventName] : undefined
 
   if (!stateName) {
@@ -40,14 +41,14 @@ export function normalizeHermesEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'hermes'),
+    cacheKey,
     extractToolFields('hermes', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('hermes', eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'hermes'), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: isNewTurnEvent('hermes', eventName)
     }),
     agentType: 'hermes',

@@ -13,6 +13,7 @@ export function normalizeCommandCodeEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'command-code')
   const stateName =
     eventName === 'PreToolUse' || eventName === 'PostToolUse'
       ? 'working'
@@ -25,14 +26,14 @@ export function normalizeCommandCodeEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'command-code'),
+    cacheKey,
     extractToolFields('command-code', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('command-code', eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'command-code'), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: isNewTurnEvent('command-code', eventName)
     }),
     agentType: 'command-code',

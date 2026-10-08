@@ -13,6 +13,7 @@ export function normalizeCursorEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'cursor')
   // Why: Cursor can emit final response text after `stop`; enrich the completed row, don't resurrect the agent as working.
   const previousStatus = producerPreviousStatus(state, paneKey, 'cursor')?.payload
   const stateName =
@@ -39,7 +40,7 @@ export function normalizeCursorEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'cursor'),
+    cacheKey,
     extractToolFields('cursor', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('cursor', eventName) }
   )
@@ -53,7 +54,7 @@ export function normalizeCursorEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'cursor'), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: isNewTurnEvent('cursor', eventName)
     }),
     agentType: 'cursor',

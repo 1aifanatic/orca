@@ -24,6 +24,7 @@ export function normalizeKimiEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'kimi')
   if (shouldIgnoreCompactContinuationUserPromptSubmit(eventName, promptText)) {
     return null
   }
@@ -51,7 +52,7 @@ export function normalizeKimiEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'kimi'),
+    cacheKey,
     extractToolFields('kimi', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('kimi', eventName) }
   )
@@ -61,7 +62,7 @@ export function normalizeKimiEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'kimi'), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: isNewTurnEvent('kimi', eventName)
     }),
     agentType: 'kimi',

@@ -57,6 +57,7 @@ export function normalizeMuseEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'muse')
   if (shouldIgnoreCompactContinuationUserPromptSubmit(eventName, promptText)) {
     return null
   }
@@ -133,7 +134,7 @@ export function normalizeMuseEvent(
 
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'muse'),
+    cacheKey,
     extractToolFields('muse', toolEventName, toolPayload),
     { resetOnNewTurn: isNewTurnEvent('muse', eventName) }
   )
@@ -144,14 +145,9 @@ export function normalizeMuseEvent(
   return normalizeAgentStatusPayload({
     state: stateName,
     // Why: Notification's `message` is status copy ("<dir> — waiting for approval"), not the user's prompt.
-    prompt: resolvePrompt(
-      state,
-      producerCacheKey(paneKey, 'muse'),
-      eventName === 'Notification' ? '' : promptText,
-      {
-        resetOnNewTurn: isNewTurnEvent('muse', eventName)
-      }
-    ),
+    prompt: resolvePrompt(state, cacheKey, eventName === 'Notification' ? '' : promptText, {
+      resetOnNewTurn: isNewTurnEvent('muse', eventName)
+    }),
     agentType: 'muse',
     toolName: snapshot.toolName,
     toolInput: snapshot.toolInput,

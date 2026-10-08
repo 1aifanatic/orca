@@ -21,6 +21,7 @@ export function normalizeAntigravityEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'antigravity')
   const transcriptPath = readFirstString(hookPayload, ['transcriptPath', 'transcript_path'])
   if (eventName === 'PreInvocation') {
     state.antigravityCompletedTranscriptByPaneKey.delete(paneKey)
@@ -55,21 +56,19 @@ export function normalizeAntigravityEvent(
 
   const resetsTurn = isNewTurnEvent('antigravity', eventName)
   // Why: once the prompt is cached for this pane, avoid rescanning the (potentially large) Antigravity transcript per hook.
-  const cachedPrompt = resetsTurn
-    ? undefined
-    : state.lastPromptByPaneKey.get(producerCacheKey(paneKey, 'antigravity'))
+  const cachedPrompt = resetsTurn ? undefined : state.lastPromptByPaneKey.get(cacheKey)
   const effectivePrompt =
     promptText || cachedPrompt || readLastUserPromptFromTranscript(transcriptPath) || ''
   const snapshot = resolveToolState(
     state,
-    producerCacheKey(paneKey, 'antigravity'),
+    cacheKey,
     extractToolFields('antigravity', eventName, hookPayload),
     { resetOnNewTurn: resetsTurn }
   )
 
   const payload = normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'antigravity'), effectivePrompt, {
+    prompt: resolvePrompt(state, cacheKey, effectivePrompt, {
       resetOnNewTurn: resetsTurn
     }),
     agentType: 'antigravity',

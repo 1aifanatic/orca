@@ -55,6 +55,7 @@ export function normalizeCompatibleLifecycleEvent(
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, source)
   if (shouldIgnoreCompactContinuationUserPromptSubmit(eventName, promptText)) {
     return null
   }
@@ -79,7 +80,7 @@ export function normalizeCompatibleLifecycleEvent(
   ) {
     toolFields.toolName = 'AskUserQuestion'
   }
-  const snapshot = resolveToolState(state, producerCacheKey(paneKey, source), toolFields, {
+  const snapshot = resolveToolState(state, cacheKey, toolFields, {
     resetOnNewTurn
   })
   return normalizeAgentStatusPayload({
@@ -87,7 +88,7 @@ export function normalizeCompatibleLifecycleEvent(
     agentType: source,
     prompt: resolvePrompt(
       state,
-      producerCacheKey(paneKey, source),
+      cacheKey,
       source === 'codebuddy' && eventName === 'Notification' ? '' : promptText,
       { resetOnNewTurn }
     ),
