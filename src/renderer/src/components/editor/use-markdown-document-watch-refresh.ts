@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import type { FsChangedPayload } from '../../../../shared/filesystem-entry-types'
 import {
   normalizeRuntimePathForComparison,
@@ -47,8 +47,6 @@ export function useMarkdownDocumentWatchRefresh({
   runtimeEnvironmentId: string | null | undefined
   refresh: (requireFresh: boolean, freshAfter: number) => Promise<void>
 }): void {
-  const refreshRef = useRef(refresh)
-  refreshRef.current = refresh
   const owner = runtimeEnvironmentId?.trim() || null
 
   useEffect(() => {
@@ -68,7 +66,7 @@ export function useMarkdownDocumentWatchRefresh({
       // Each pane can join a scan begun after this burst, while bypassing an older snapshot.
       timer = setTimeout(() => {
         timer = undefined
-        void refreshRef.current(false, changedAt)
+        void refresh(false, changedAt)
       }, DOCUMENT_WATCH_DEBOUNCE_MS)
     }
     window.addEventListener(ORCA_WORKTREE_FILE_CHANGE_EVENT, handleChange)
@@ -78,5 +76,5 @@ export function useMarkdownDocumentWatchRefresh({
       }
       window.removeEventListener(ORCA_WORKTREE_FILE_CHANGE_EVENT, handleChange)
     }
-  }, [enabled, owner, worktreePath])
+  }, [enabled, owner, worktreePath, refresh])
 }
