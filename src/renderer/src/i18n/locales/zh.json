@@ -19370,6 +19370,9 @@
     "paneMove": {
       "failed": "无法将窗格移动到新选项卡。"
     },
+    "topologyChange": {
+      "refused": "无法保存该终端更改，已将其撤销。"
+    },
     "paneTopBanner": {
       "openNewTerminal": "打开新终端",
       "learnMore": "了解更多",

@@ -48,8 +48,8 @@ function fakeMain(pulled: () => TerminalTopologySlice[]) {
 }
 
 const tabIds = () => (useAppStore.getState().tabsByWorktree[WT] ?? []).map((tab) => tab.id)
-const apply = (next: TerminalTopologySlice) =>
-  useAppStore.getState().applyTerminalTopologySlice(next)
+const apply = (slices: readonly TerminalTopologySlice[]) =>
+  useAppStore.getState().applyTerminalTopologySlices(slices)
 
 afterEach(() => {
   useAppStore.setState(initial, true)

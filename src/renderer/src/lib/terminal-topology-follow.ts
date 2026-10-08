@@ -11,17 +11,17 @@ type TerminalTopologySource = {
  */
 export async function followTerminalTopology(
   source: TerminalTopologySource,
-  apply: (slice: TerminalTopologySlice) => void,
+  apply: (slices: readonly TerminalTopologySlice[]) => void,
   signal: AbortSignal
 ): Promise<void> {
   if (signal.aborted) {
     return
   }
-  signal.addEventListener('abort', source.onTerminalTopologyChanged(apply), { once: true })
+  const unsubscribe = source.onTerminalTopologyChanged((slice) => apply([slice]))
+  signal.addEventListener('abort', unsubscribe, { once: true })
   try {
-    for (const slice of await source.getTerminalTopologySlices()) {
-      apply(slice)
-    }
+    // One batch, so the startup pull mirrors every worktree in one store update.
+    apply(await source.getTerminalTopologySlices())
   } catch (error) {
     // The hydrated session came from the same store, so the window stays usable; pushes still apply.
     console.warn('[terminal-topology] Startup pull failed:', error)

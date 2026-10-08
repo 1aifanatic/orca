@@ -207,7 +207,7 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
           await timeRendererStartupStep('follow-terminal-topology', () =>
             followTerminalTopology(
               window.api.session,
-              useAppStore.getState().applyTerminalTopologySlice,
+              useAppStore.getState().applyTerminalTopologySlices,
               abortController.signal
             )
           )

@@ -187,26 +187,28 @@ function pushSetupSplitSlice(
   setupPtyId: string,
   publishSeq: number
 ): void {
-  useAppStore.getState().applyTerminalTopologySlice({
-    hostId: 'local',
-    worktreeId,
-    publishSeq,
-    revision: 1,
-    tabs: [{ id: TAB_B, ptyId: primaryPtyId, worktreeId, createdAt: 1 }],
-    presentation: {},
-    layouts: {
-      [TAB_B]: {
-        root: {
-          type: 'split',
-          direction: 'vertical',
-          first: { type: 'leaf', leafId: PRIMARY_LEAF },
-          second: { type: 'leaf', leafId: SETUP_LEAF }
-        },
-        ptyIdsByLeafId: { [PRIMARY_LEAF]: primaryPtyId, [SETUP_LEAF]: setupPtyId }
-      }
-    },
-    sleeping: {}
-  })
+  useAppStore.getState().applyTerminalTopologySlices([
+    {
+      hostId: 'local',
+      worktreeId,
+      publishSeq,
+      revision: 1,
+      tabs: [{ id: TAB_B, ptyId: primaryPtyId, worktreeId, createdAt: 1 }],
+      presentation: {},
+      layouts: {
+        [TAB_B]: {
+          root: {
+            type: 'split',
+            direction: 'vertical',
+            first: { type: 'leaf', leafId: PRIMARY_LEAF },
+            second: { type: 'leaf', leafId: SETUP_LEAF }
+          },
+          ptyIdsByLeafId: { [PRIMARY_LEAF]: primaryPtyId, [SETUP_LEAF]: setupPtyId }
+        }
+      },
+      sleeping: {}
+    }
+  ])
 }
 
 function setupSplitReveal(

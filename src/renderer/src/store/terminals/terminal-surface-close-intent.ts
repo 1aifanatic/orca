@@ -1,11 +1,14 @@
 import type { TerminalSurfaceCloseTarget } from '../../../../shared/terminal-surface-close-target'
-import { commitPendingTerminalChange } from './terminal-pending-panes'
+import {
+  commitPendingTerminalChange,
+  type PendingTerminalChangeStore
+} from './terminal-pending-panes'
 import type { TerminalSlice } from './terminal-state'
 
 /** Commits a terminal tab or split-pane close in main, which owns membership. The surface stays
  *  hidden here until main's topology drops it, so an older push cannot bring it back. */
 export function commitTerminalSurfaceClose(
-  store: Pick<TerminalSlice, 'markPendingTerminalPane' | 'settlePendingTerminalPane'>,
+  store: PendingTerminalChangeStore & Pick<TerminalSlice, 'markPendingTerminalPane'>,
   worktreeId: string,
   target: TerminalSurfaceCloseTarget,
   reason?: 'user' | 'cleanup'

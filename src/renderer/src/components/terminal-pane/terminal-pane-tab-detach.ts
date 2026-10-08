@@ -24,6 +24,7 @@ export type TerminalPaneTabDetachStore = Pick<
   | 'moveUnifiedTabToGroup'
   | 'pendingTerminalPanes'
   | 'reorderUnifiedTabs'
+  | 'restoreTerminalTopologySlice'
   | 'setActiveTab'
   | 'setActiveTabType'
   | 'setTabLayout'

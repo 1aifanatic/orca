@@ -19328,6 +19328,9 @@
     "paneMove": {
       "failed": "Couldn't move the pane to a new tab."
     },
+    "topologyChange": {
+      "refused": "Couldn't save that terminal change, so it was undone."
+    },
     "claudeOldTerminalBanner": {
       "title": "This terminal was opened before Orca's Claude account update, so claude here uses System default's login.",
       "dialogTitle": "Why claude here doesn't use the selected account",

@@ -19370,6 +19370,9 @@
     "paneMove": {
       "failed": "ペインを新規タブに移動できませんでした。"
     },
+    "topologyChange": {
+      "refused": "このターミナルの変更を保存できなかったため、元に戻しました。"
+    },
     "paneTopBanner": {
       "openNewTerminal": "新規ターミナルを開く",
       "learnMore": "詳しく見る",

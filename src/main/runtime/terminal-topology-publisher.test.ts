@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { SleepingAgentSessionRecord } from '../../shared/agent-session-resume'
 import { getDefaultWorkspaceSession } from '../../shared/constants'
 import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
@@ -102,6 +103,44 @@ describe('TerminalTopologyPublisher', () => {
       [WT, 1],
       [WT_B, 2]
     ])
+  })
+
+  it("reads a partition's sleeping records once per reconcile, however many worktrees it holds", () => {
+    const worktreeIds = Array.from({ length: 50 }, (_, index) => `repo-1::/tmp/wt-${index}`)
+    const session = sessionWith(worktreeIds)
+    let enumerations = 0
+    const records: Record<string, SleepingAgentSessionRecord> = {}
+    for (const worktreeId of worktreeIds) {
+      const paneKey = `tab-${worktreeId}:${TEST_LEAF_1}`
+      records[paneKey] = {
+        paneKey,
+        worktreeId,
+        agent: 'claude',
+        providerSession: { key: 'session_id', id: worktreeId },
+        prompt: 'hi',
+        state: 'done',
+        capturedAt: 1,
+        updatedAt: 2
+      }
+    }
+    session.sleepingAgentSessionsByPaneKey = new Proxy(records, {
+      ownKeys: (target) => {
+        enumerations += 1
+        return Reflect.ownKeys(target)
+      }
+    })
+    const pushes: TerminalTopologySlice[] = []
+    const publisher = new TerminalTopologyPublisher(
+      () => new Map(worktreeIds.map((worktreeId) => [worktreeId, { hostId: 'local', session }])),
+      (slice) => pushes.push(slice)
+    )
+
+    publisher.markDirty()
+    publisher.flush()
+
+    expect(enumerations).toBe(1)
+    expect(pushes).toHaveLength(worktreeIds.length)
+    expect(Object.keys(pushes[7]!.sleeping)).toEqual([`tab-${worktreeIds[7]}:${TEST_LEAF_1}`])
   })
 
   it('pushes only the worktree whose topology changed, once per burst', async () => {

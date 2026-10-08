@@ -156,7 +156,7 @@ describe('dragging a pane out to a new tab follows main’s move', () => {
   it('shows the new tab once when main’s push arrives before the reply', async () => {
     const { result, moveLeafToNewTab } = detach(async (request) => {
       // The reconciler detaches the source pane as soon as this push lands.
-      state().applyTerminalTopologySlice(movedSlice(2, request.targetTabId))
+      state().applyTerminalTopologySlices([movedSlice(2, request.targetTabId)])
       return { status: 'moved', ptyId: PTY, publishSeq: 2 }
     })
 
@@ -175,7 +175,7 @@ describe('dragging a pane out to a new tab follows main’s move', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(state().tabsByWorktree[WORKTREE_ID]).toHaveLength(1)
 
-    state().applyTerminalTopologySlice(movedSlice(2, targetTabIdOf(moveLeafToNewTab)))
+    state().applyTerminalTopologySlices([movedSlice(2, targetTabIdOf(moveLeafToNewTab))])
 
     await expect(result).resolves.toMatchObject({ leafId: LEAF_2 })
     expectTargetTabShownOnce(targetTabIdOf(moveLeafToNewTab))
@@ -201,7 +201,7 @@ describe('dragging a pane out to a new tab follows main’s move', () => {
       reason: 'cleanup'
     })
     // Main's push with the new tab can't show it meanwhile.
-    state().applyTerminalTopologySlice(movedSlice(2, targetTabId))
+    state().applyTerminalTopologySlices([movedSlice(2, targetTabId)])
     expect(state().tabsByWorktree[WORKTREE_ID].map((tab) => tab.id)).toEqual([SOURCE_TAB_ID])
   })
 
@@ -211,7 +211,7 @@ describe('dragging a pane out to a new tab follows main’s move', () => {
     const { result } = detach(
       async (request) => {
         paneIds = [2]
-        state().applyTerminalTopologySlice(movedSlice(2, request.targetTabId))
+        state().applyTerminalTopologySlices([movedSlice(2, request.targetTabId)])
         return { status: 'moved', ptyId: PTY, publishSeq: 2 }
       },
       managerWithPanes(() => paneIds)
@@ -248,7 +248,7 @@ describe('dragging a pane out to a new tab follows main’s move', () => {
 
     await expect(repeat.result).resolves.toBeNull()
     expect(repeat.moveLeafToNewTab).not.toHaveBeenCalled()
-    state().applyTerminalTopologySlice(movedSlice(2, targetTabIdOf(first.moveLeafToNewTab)))
+    state().applyTerminalTopologySlices([movedSlice(2, targetTabIdOf(first.moveLeafToNewTab))])
     release({ status: 'moved', ptyId: PTY, publishSeq: 2 })
     await expect(first.result).resolves.toMatchObject({ leafId: LEAF_2 })
   })

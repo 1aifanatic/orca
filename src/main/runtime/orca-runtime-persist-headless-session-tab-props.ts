@@ -131,10 +131,14 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
     if (!existing) {
       return undefined
     }
+    const root = args.root ?? existing.root
+    // A tree with other panes is stale, and its focus and titles may name panes main no longer holds.
+    if (!sameTerminalLeafSet(existing.root, root)) {
+      return existing
+    }
     const layout = {
       ...cloneTerminalLayoutSnapshot(existing),
-      // A tree with other panes is stale, so main's stands; the client's focus and titles still apply.
-      root: args.root && sameTerminalLeafSet(existing.root, args.root) ? args.root : existing.root,
+      root,
       expandedLeafId: args.expandedLeafId,
       ...(args.chatLeafId !== undefined ? { chatLeafId: args.chatLeafId ?? undefined } : {}),
       ...(args.titlesByLeafId ? { titlesByLeafId: args.titlesByLeafId } : {})

@@ -1,9 +1,12 @@
 import { isDeepStrictEqual } from 'node:util'
 import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
 import type { TerminalSessionPartition } from '../persistence/terminal-topology/terminal-topology-membership'
+import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import {
   emptyTerminalTopologySlice,
+  groupSleepingRecordsByWorktree,
   projectTerminalTopologySlice,
+  type SleepingRecordsByWorktree,
   type UnsequencedTerminalTopologySlice
 } from './terminal-topology-projection'
 
@@ -75,11 +78,15 @@ export class TerminalTopologyPublisher {
 
   private reconcile(): void {
     const owners = this.readOwners()
+    const sleepingBySession = new Map<WorkspaceSessionState, SleepingRecordsByWorktree>()
     const next: UnsequencedTerminalTopologySlice[] = []
     for (const [worktreeId, owner] of owners) {
       // The last slice stands until the owner resolves.
       if (owner) {
-        next.push(projectTerminalTopologySlice(owner.session, owner.hostId, worktreeId))
+        const { session, hostId } = owner
+        const sleeping = sleepingBySession.get(session) ?? groupSleepingRecordsByWorktree(session)
+        sleepingBySession.set(session, sleeping)
+        next.push(projectTerminalTopologySlice(session, hostId, worktreeId, sleeping))
       }
     }
     const withdrawn: UnsequencedTerminalTopologySlice[] = []
