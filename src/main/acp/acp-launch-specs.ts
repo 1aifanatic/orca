@@ -34,8 +34,15 @@ export type AcpModelDiscovery =
         initialized: InitializeResponse,
         connection: { requestExtension(method: string, params: unknown): Promise<unknown> }
       ): Promise<AgentSessionModelOption[]>
+      /** The listing marks the model the account is configured to run as its default. */
+      listingNamesConfiguredModel: boolean
     }
-  | { kind: 'command'; args: readonly string[]; parse(stdout: string): AgentSessionModelOption[] }
+  | {
+      kind: 'command'
+      args: readonly string[]
+      parse(stdout: string): AgentSessionModelOption[]
+      listingNamesConfiguredModel: boolean
+    }
   | { kind: 'unavailable'; reason: string }
 
 export type AcpLaunchSpec = {
@@ -90,7 +97,12 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   account: directoryAccountBinding('GROK_HOME', (homePath) => join(homePath, '.grok')),
   installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : []),
   // Grok computes its model state in `initialize`, before and without any session.
-  modelDiscovery: { kind: 'initialize', read: readGrokModelCatalog }
+  // With no session, Grok's `currentModelId` is the account's configured model.
+  modelDiscovery: {
+    kind: 'initialize',
+    read: readGrokModelCatalog,
+    listingNamesConfiguredModel: true
+  }
 }
 
 // OpenCode 1.x serves ACP in-process through `opencode acp`. OpenCode 2 (`opencode2`, and any
@@ -117,7 +129,9 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   modelDiscovery: {
     kind: 'command',
     args: OPENCODE_MODEL_LISTING_ARGS,
-    parse: parseOpenCodeModelListing
+    parse: parseOpenCodeModelListing,
+    // The listing marks no default, and a project's `opencode.json` may pick the model.
+    listingNamesConfiguredModel: false
   }
 }
 

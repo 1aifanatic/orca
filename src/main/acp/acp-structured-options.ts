@@ -135,10 +135,12 @@ export class AcpStructuredOptions {
     const models: AgentSessionModelOption[] = listed.map((model) => {
       const info = this.models?.availableModels.find((entry) => entry.modelId === model.id)
       const advertised = info ? this.dialect.modelEfforts?.(info) : undefined
+      const sessionMenu = { efforts: model.id === currentModel ? sessionEfforts : [] }
       return {
         ...model,
         isDefault: false,
-        ...(advertised ?? { efforts: model.id === currentModel ? sessionEfforts : [] })
+        // An empty advertised menu is no menu: the running model keeps the one its session offers.
+        ...(advertised && advertised.efforts.length > 0 ? advertised : sessionMenu)
       }
     })
     const confirmed = [...(currentModel ? ['model'] : []), ...(effortOption ? ['effort'] : [])]

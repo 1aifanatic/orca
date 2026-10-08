@@ -142,6 +142,10 @@ export async function readStructuredAgentSessionOptions(
             })
           )
         : null
+  if (live) {
+    // What a running child listed is its account's catalog too, so the next chat opens warm.
+    context.deps.modelCatalog?.recordLiveListing(sessionId, live)
+  }
   const options = live ?? (await readStructuredAgentSessionOptionsAtRest(context.deps, sessionId))
   // Re-acquired after the reads above: the handle they saw may have closed and reopened since.
   const session = await context.conversation(sessionId)

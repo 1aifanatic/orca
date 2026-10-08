@@ -7,5 +7,11 @@ import type { AgentModelCatalogProbe } from './agent-model-catalog-store'
  * placeholder until a live session reports.
  */
 export type AgentModelCatalogDiscovery =
-  | { kind: 'probe'; probe: AgentModelCatalogProbe }
+  | {
+      kind: 'probe'
+      probe: AgentModelCatalogProbe
+      /** The listing marks the model the account is configured to run as its default, so a new
+       *  chat launches the listed default. False where the agent's own settings may pick another. */
+      listingNamesConfiguredModel: boolean
+    }
   | { kind: 'unavailable'; reason: string }

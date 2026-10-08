@@ -187,14 +187,4 @@ describe('ACP model catalog probes', () => {
     )
     expect(runListing).not.toHaveBeenCalled()
   })
-
-  it('reports an agent that declares no session-free listing', async () => {
-    const spec: AcpLaunchSpec = {
-      ...GROK,
-      modelDiscovery: { kind: 'unavailable', reason: 'no listing without a session' }
-    }
-    await expect(
-      createAcpModelCatalogProbe(spec, scriptedGrok({}).deps)(GROK_HOME)
-    ).rejects.toThrow('no listing without a session')
-  })
 })

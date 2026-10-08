@@ -344,10 +344,11 @@ describe('useStructuredAgentSessionOptions', () => {
         ).toBe(true)
       })
       expect(currentValue(result.current.optionSnapshot, 'model')).toBeNull()
-      // Nothing to withhold, so the read names no workspace for the host to inspect.
+      // Every new chat names its workspace: the host decides whether its listed default runs there.
       expect(mocks.call).toHaveBeenCalledWith(LOCAL_TARGET, 'agentSession.modelCatalog', {
         agent: 'claude',
-        sessionId: 'session-1'
+        sessionId: 'session-1',
+        worktree: 'id:wt-1'
       })
       rerender({ ...claude, launchSeedOptions: SEED })
       expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.5')

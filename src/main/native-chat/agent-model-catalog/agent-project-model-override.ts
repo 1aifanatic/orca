@@ -57,7 +57,11 @@ export async function workspaceMayOverrideDefaultModel(input: {
   workspacePath: string
   accountHomePath: string
 }): Promise<boolean> {
-  // Claude's user settings or env can pick another model wherever it runs; only Codex's listed default is its configured one.
+  // Grok reads its default model from user, managed and env config only, never a project's.
+  if (input.agent === 'grok') {
+    return false
+  }
+  // Every other agent's own settings or env may pick another model; Codex's project layers are checked.
   if (input.agent !== 'codex') {
     return true
   }

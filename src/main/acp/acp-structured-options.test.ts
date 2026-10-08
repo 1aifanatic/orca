@@ -96,4 +96,25 @@ describe('ACP session options', () => {
     ])
     expect(options.reported()).toEqual({ model: 'model-b', effort: 'high' })
   })
+
+  it('keeps the session’s effort menu for the running model when its advertised one is empty', () => {
+    const options = new AcpStructuredOptions(GROK_ACP_DIALECT)
+    options.adoptSession({
+      configOptions,
+      models: {
+        currentModelId: 'model-b',
+        availableModels: [
+          { modelId: 'model-a', name: 'Model A' },
+          { modelId: 'model-b', name: 'Model B', _meta: { supportsReasoningEffort: false } }
+        ]
+      }
+    })
+    const [modelA, modelB] = options.read().models
+    expect(modelA?.efforts).toEqual([])
+    expect(modelB?.efforts).toEqual([
+      { value: 'low', label: 'Low' },
+      { value: 'high', label: 'High' }
+    ])
+    expect(modelB?.defaultEffort).toBeUndefined()
+  })
 })

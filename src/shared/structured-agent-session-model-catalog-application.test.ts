@@ -27,7 +27,8 @@ const HOST_CATALOG: AgentSessionModelCatalogResult = {
   fetchedAt: 1_000
 }
 
-const LAUNCH = { namesDefault: true }
+// HOST_CATALOG omits `listingNamesConfiguredModel`, as an older host's does.
+const LAUNCH = { newLaunch: true }
 
 describe('structured option state from the host model catalog', () => {
   it('renders a pickable snapshot from the seed before any host or live answer', () => {
@@ -61,7 +62,7 @@ describe('structured option state from the host model catalog', () => {
       createStructuredAgentSessionOptionState('codex', SEED),
       SEED,
       HOST_CATALOG,
-      { namesDefault: false }
+      { newLaunch: false }
     )
     const snapshot = structuredAgentSessionOptionSnapshot(state)
     const model = snapshot.find((descriptor) => descriptor.id === 'model')!
@@ -71,6 +72,22 @@ describe('structured option state from the host model catalog', () => {
     expect(model.kind.type === 'select' ? model.kind.currentValue : null).toBeUndefined()
     const effort = snapshot.find((descriptor) => descriptor.id === 'effort')
     expect(effort?.kind.type === 'select' ? effort.kind.currentValue : undefined).toBeUndefined()
+  })
+
+  it('follows the host on whether its listed default is what a new chat runs', () => {
+    const currentModel = (listingNamesConfiguredModel: boolean): unknown => {
+      const state = applyStructuredAgentSessionModelCatalog(
+        createStructuredAgentSessionOptionState('codex', SEED),
+        SEED,
+        { ...HOST_CATALOG, listingNamesConfiguredModel },
+        LAUNCH
+      )
+      const model = structuredAgentSessionOptionSnapshot(state).find((d) => d.id === 'model')!
+      return model.kind.type === 'select' ? model.kind.currentValue : null
+    }
+    expect(currentModel(true)).toBe('gpt-hosted')
+    // A workspace whose own config may pick another model: the host says so, over the seed.
+    expect(currentModel(false)).toBeUndefined()
   })
 
   it('names the default effort the listing states, and none it does not', () => {

@@ -14,6 +14,8 @@ export function codexModelCatalogDiscovery({
 }: StructuredAgentModelCatalogContext): AgentModelCatalogDiscovery {
   return {
     kind: 'probe',
+    // `model/list` marks the account's configured model as its default.
+    listingNamesConfiguredModel: true,
     probe: createCodexModelCatalogProbe({
       resolveEnvironment: environment.resolveCodexEnvironment,
       ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
@@ -27,6 +29,8 @@ export function claudeModelCatalogDiscovery({
 }: StructuredAgentModelCatalogContext): AgentModelCatalogDiscovery {
   return {
     kind: 'probe',
+    // Claude's settings or env can pick a model other than the one its listing recommends.
+    listingNamesConfiguredModel: false,
     probe: createClaudeModelCatalogProbe({
       resolveInheritedEnv: environment.resolveClaudeInheritedEnv,
       resolveAuthPolicy: deps.resolveClaudeAuthPolicy,
@@ -40,8 +44,13 @@ export function acpModelCatalogDiscovery(
   spec: AcpLaunchSpec,
   { deps, environment }: StructuredAgentModelCatalogContext
 ): AgentModelCatalogDiscovery {
+  const discovery = spec.modelDiscovery
+  if (discovery.kind === 'unavailable') {
+    return { kind: 'unavailable', reason: discovery.reason }
+  }
   return {
     kind: 'probe',
+    listingNamesConfiguredModel: discovery.listingNamesConfiguredModel,
     probe: createAcpModelCatalogProbe(spec, {
       resolveEnvironment: environment.resolveBaseEnvironment,
       ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),

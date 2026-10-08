@@ -63,6 +63,8 @@ export const PI_RPC_RUNTIME_REGISTRATION: StructuredAgentRuntimeRegistration = {
   createAdapter: createPiRpcAdapter,
   modelCatalog: (context) => ({
     kind: 'probe',
+    // `--list-models` marks no model as the one Pi runs by default.
+    listingNamesConfiguredModel: false,
     probe: createPiModelCatalogProbe({
       resolveEnvironment: piEnvironment(context),
       ...(context.deps.resolveAgentCommandSettings

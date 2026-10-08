@@ -43,6 +43,7 @@ export function createAcpModelCatalogProbe(
 ): AgentModelCatalogProbe {
   return async (accountHome): Promise<AgentModelCatalogSuccess> => {
     const discovery = spec.modelDiscovery
+    // Registered as unavailable instead (`acpModelCatalogDiscovery`); never built for one.
     if (discovery.kind === 'unavailable') {
       throw new Error(discovery.reason)
     }

@@ -34,19 +34,37 @@ export async function attachAgentModelCatalogPersistenceOnce(
   }
 }
 
-/** One probe per registration that has one: the registration list is the only agent roster. */
-export function registeredModelCatalogProbes(
-  registrations: readonly Pick<StructuredAgentRuntimeRegistration, 'definition' | 'modelCatalog'>[],
+type CatalogRegistration = Pick<
+  StructuredAgentRuntimeRegistration,
+  'definition' | 'modelCatalog' | 'adapterRecordsLiveListings'
+>
+
+/** What the catalog service learns from the registration list, the only agent roster. */
+export function registeredModelCatalogDiscovery(
+  registrations: readonly CatalogRegistration[],
   context: StructuredAgentModelCatalogContext
-): Record<string, AgentModelCatalogProbe> {
+): {
+  probes: Record<string, AgentModelCatalogProbe>
+  listingNamesConfiguredModel: Set<string>
+  recordsLiveListingsOf: Set<string>
+} {
   const probes: Record<string, AgentModelCatalogProbe> = {}
+  const listingNamesConfiguredModel = new Set<string>()
+  const recordsLiveListingsOf = new Set<string>()
   for (const registration of registrations) {
+    const { agent } = registration.definition
     const discovery = registration.modelCatalog(context)
     if (discovery.kind === 'probe') {
-      probes[registration.definition.agent] = discovery.probe
+      probes[agent] = discovery.probe
+      if (discovery.listingNamesConfiguredModel) {
+        listingNamesConfiguredModel.add(agent)
+      }
+    }
+    if (!registration.adapterRecordsLiveListings) {
+      recordsLiveListingsOf.add(agent)
     }
   }
-  return probes
+  return { probes, listingNamesConfiguredModel, recordsLiveListingsOf }
 }
 
 /**
@@ -58,7 +76,7 @@ export function registeredModelCatalogProbes(
 export async function modelCatalogHostDeps(input: {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
   agents: Pick<StructuredAgentRegistry, 'definition'>
-  registrations: readonly Pick<StructuredAgentRuntimeRegistration, 'definition' | 'modelCatalog'>[]
+  registrations: readonly CatalogRegistration[]
   deps: StructuredAgentModelCatalogContext['deps']
   environment: StructuredAgentModelCatalogContext['environment']
 }): Promise<{ modelCatalog?: AgentModelCatalogService }> {
@@ -73,7 +91,7 @@ export async function modelCatalogHostDeps(input: {
     drivesRecord: (record) => agentDrivesSession(input.agents, record),
     resolveAccountHome: deps.resolveAgentAccountHome,
     workspaceMayOverrideDefaultModel,
-    probes: registeredModelCatalogProbes(input.registrations, {
+    ...registeredModelCatalogDiscovery(input.registrations, {
       deps,
       environment: input.environment
     })

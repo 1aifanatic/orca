@@ -97,7 +97,7 @@ export function useStructuredAgentSessionOptions(args: {
     optionCatalog,
     enabled: args.isVisible,
     // A resumed conversation may keep its own model, so only a new one runs the listed default.
-    namesDefault: launch?.kind === 'new' && optionCatalog?.hostListingNamesConfiguredModel === true,
+    newLaunch: launch?.kind === 'new',
     ...(launch?.worktree ? { worktree: launch.worktree } : {}),
     fence,
     activeOptionRecordRef,

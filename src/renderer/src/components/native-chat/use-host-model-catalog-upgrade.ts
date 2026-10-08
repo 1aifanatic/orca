@@ -35,7 +35,7 @@ export function useHostModelCatalogUpgrade(args: {
   /** The pane is on screen: a read can start a listing process, so hidden restored tabs must not. */
   enabled: boolean
   /** A launch runs the CLI default when nothing is seeded; a reopened session may not. */
-  namesDefault: boolean
+  newLaunch: boolean
   /** Where the launch runs: the host names no default its config could replace. */
   worktree?: string
   fence: number | null
@@ -49,7 +49,7 @@ export function useHostModelCatalogUpgrade(args: {
     agent,
     enabled,
     fence,
-    namesDefault,
+    newLaunch,
     optionCatalog,
     sessionId,
     target,
@@ -66,7 +66,7 @@ export function useHostModelCatalogUpgrade(args: {
       return
     }
     let stale = false
-    const params = { agent, sessionId, ...(namesDefault && worktree ? { worktree } : {}) }
+    const params = { agent, sessionId, ...(newLaunch && worktree ? { worktree } : {}) }
     const read = (waitForListing: boolean): Promise<AgentSessionModelCatalogResult> =>
       callStructuredAgentSession<AgentSessionModelCatalogResult>(
         target,
@@ -77,7 +77,7 @@ export function useHostModelCatalogUpgrade(args: {
       updateOptionState((current) =>
         current.record === activeOptionRecordRef.current
           ? applyStructuredAgentSessionModelCatalog(current, optionCatalog, catalog, {
-              namesDefault
+              newLaunch
             })
           : current
       )
@@ -119,7 +119,7 @@ export function useHostModelCatalogUpgrade(args: {
     agent,
     enabled,
     fence,
-    namesDefault,
+    newLaunch,
     optionCatalog,
     sessionId,
     target,

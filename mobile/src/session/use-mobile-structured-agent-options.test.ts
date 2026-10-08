@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, it, vi } from 'vitest'
 import type {
+  AgentSessionModelCatalogResult,
   AgentSessionOptionResult,
   AgentSessionOptionsResult
 } from '../../../src/shared/agent-session-wire'
@@ -69,11 +70,25 @@ type SentRequest = { method: string; params: unknown }
 
 /** `reads` yields what each successive `agentSession.options` call resolves to, so a test can
  *  make the post-write refresh disagree with the first read. */
-function optionsClient(reads: () => Promise<AgentSessionOptionsResult>) {
+function optionsClient(
+  reads: () => Promise<AgentSessionOptionsResult>,
+  catalog?: (params: unknown) => Promise<AgentSessionModelCatalogResult>
+) {
   const sent: SentRequest[] = []
   const client: RpcClient = {
     sendRequest: async (method: string, params?: unknown) => {
       sent.push({ method, params })
+      if (method === 'agentSession.modelCatalog') {
+        // Without a scripted catalog, the host predates the method.
+        return catalog
+          ? rpcSuccess(await catalog(params))
+          : {
+              id: 'rpc-1',
+              ok: false as const,
+              error: { code: 'method_not_found', message: 'Unknown method' },
+              _meta: { runtimeId: 'runtime-1' }
+            }
+      }
       return rpcSuccess(method === 'agentSession.options' ? await reads() : {})
     },
     subscribe: () => () => {},
@@ -416,6 +431,83 @@ describe('useMobileStructuredAgentOptions for every agent', () => {
     ])
     expect(client.methods('settings.mutateNativeChatSessionOptions')[0]?.params).toMatchObject({
       agent: 'grok'
+    })
+    await harness.unmount()
+  })
+})
+
+describe('useMobileStructuredAgentOptions host catalog', () => {
+  const HOST_CATALOG: AgentSessionModelCatalogResult = {
+    origin: 'probe',
+    models: [
+      {
+        id: 'grok-4',
+        label: 'Grok 4',
+        isDefault: true,
+        defaultEffort: 'high',
+        efforts: [
+          { value: 'low', label: 'Low' },
+          { value: 'high', label: 'High' }
+        ]
+      }
+    ],
+    fetchedAt: 1,
+    listingNamesConfiguredModel: true
+  }
+
+  it('lists the host’s models while the session’s own options read is still waiting', async () => {
+    const pending = deferred<AgentSessionOptionsResult>()
+    const client = optionsClient(
+      () => pending.promise,
+      async () => HOST_CATALOG
+    )
+    const { mutate } = recordingMutate(async () => ({ status: 'unknown' }))
+    const harness = await mountOptions({ ...BASE, agent: 'grok', client: client.client, mutate })
+
+    expect(client.methods('agentSession.modelCatalog')[0]?.params).toEqual({
+      agent: 'grok',
+      sessionId: 'session-1'
+    })
+    const model = descriptorFor(harness.current().optionSnapshot, 'model')
+    expect(model?.kind.type === 'select' && model.kind.choices.map((c) => c.value)).toEqual([
+      'grok-4'
+    ])
+    // An existing chat may run a model picked in it, so the listing's default is not named.
+    expect(currentValueOf(harness.current().optionSnapshot, 'model')).toBeUndefined()
+
+    pending.resolve({ ...OPTIONS, current: { model: 'gpt-live', confirmed: ['model'] } })
+    await settle()
+    expect(currentValueOf(harness.current().optionSnapshot, 'model')).toBe('gpt-live')
+    await harness.unmount()
+  })
+
+  it('waits once for the host’s first listing of the account', async () => {
+    const catalog = vi.fn(async (params: unknown): Promise<AgentSessionModelCatalogResult> =>
+      typeof params === 'object' && params !== null && 'waitForListing' in params
+        ? HOST_CATALOG
+        : { origin: 'unknown', listingInProgress: true }
+    )
+    const client = optionsClient(() => deferred<AgentSessionOptionsResult>().promise, catalog)
+    const { mutate } = recordingMutate(async () => ({ status: 'unknown' }))
+    const harness = await mountOptions({ ...BASE, agent: 'grok', client: client.client, mutate })
+    await settle()
+
+    expect(catalog).toHaveBeenCalledTimes(2)
+    const model = descriptorFor(harness.current().optionSnapshot, 'model')
+    expect(model?.kind.type === 'select' && model.kind.choices.map((c) => c.value)).toEqual([
+      'grok-4'
+    ])
+    await harness.unmount()
+  })
+
+  it('keeps the provider-default pill when an older host has no catalog method', async () => {
+    const client = optionsClient(() => deferred<AgentSessionOptionsResult>().promise)
+    const { mutate } = recordingMutate(async () => ({ status: 'unknown' }))
+    const harness = await mountOptions({ ...BASE, agent: 'grok', client: client.client, mutate })
+
+    expect(descriptorFor(harness.current().optionSnapshot, 'model')).toMatchObject({
+      settable: false,
+      valueSource: 'unknown'
     })
     await harness.unmount()
   })

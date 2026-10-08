@@ -26,6 +26,7 @@ import {
   type StructuredAgentSessionMutate
 } from './mobile-structured-agent-session-rpc'
 import { persistMobileStructuredOptionPicks } from './mobile-native-chat-session-option-persistence'
+import { useMobileHostModelCatalogUpgrade } from './use-mobile-host-model-catalog-upgrade'
 import { encodeStructuredAgentSessionOptionValue } from '../../../src/shared/structured-agent-session-option-codec'
 
 type StructuredOptionsController = {
@@ -47,8 +48,13 @@ export function useMobileStructuredAgentOptions(args: {
   mutate: StructuredAgentSessionMutate
 }): StructuredOptionsController {
   const { agent, client, enabled, fence, mutate, sessionId } = args
+  // Every agent's seed, as on the desktop: a built-in list or the provider-default pill.
+  const optionCatalog = useMemo(
+    () => (agent ? structuredAgentSessionSeedCatalog(agent) : null),
+    [agent]
+  )
   const [optionState, setOptionState] = useState(() =>
-    createStructuredAgentSessionOptionState(agent ?? 'codex')
+    createStructuredAgentSessionOptionState(agent ?? 'codex', optionCatalog)
   )
   const optionStateRef = useRef(optionState)
   const activeOptionRecordRef = useRef(optionState.record)
@@ -70,20 +76,27 @@ export function useMobileStructuredAgentOptions(args: {
     sessionId: string
     commands: readonly AgentSessionConversationCommand[]
   } | null>(null)
-  // Every agent reads the host's options, which at rest carry the host catalog for the chat's account.
-  const optionCatalog = useMemo(
-    () => (agent ? structuredAgentSessionSeedCatalog(agent) : null),
-    [agent]
-  )
 
   useEffect(() => {
-    const next = createStructuredAgentSessionOptionState(agent ?? 'codex')
+    const next = createStructuredAgentSessionOptionState(agent ?? 'codex', optionCatalog)
     optionMutationGeneration.current += 1
     pendingOptionRef.current = null
     optionStateRef.current = next
     activeOptionRecordRef.current = next.record
     setOptionState(next)
-  }, [agent, enabled, fence, sessionId])
+  }, [agent, enabled, fence, optionCatalog, sessionId])
+
+  useMobileHostModelCatalogUpgrade({
+    agent,
+    client,
+    sessionId,
+    enabled,
+    fence,
+    optionCatalog,
+    activeOptionRecordRef,
+    optionMutationGeneration,
+    updateOptionState
+  })
 
   useEffect(() => {
     if (!client || !sessionId || !enabled || !optionCatalog) {

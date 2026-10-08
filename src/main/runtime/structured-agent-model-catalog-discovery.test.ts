@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { STRUCTURED_AGENT_RUNTIME_REGISTRATIONS } from './structured-agent-runtime-registrations'
-import { registeredModelCatalogProbes } from './structured-agent-model-catalog-wiring'
+import { registeredModelCatalogDiscovery } from './structured-agent-model-catalog-wiring'
+import { acpModelCatalogDiscovery } from './structured-agent-model-catalog-discovery'
+import { acpLaunchSpecFor } from '../acp/acp-launch-specs'
 import type { StructuredAgentModelCatalogContext } from './structured-agent-runtime-registrations'
 
 function context(): StructuredAgentModelCatalogContext {
@@ -34,7 +36,10 @@ describe('the model catalog contract on every registration', () => {
   })
 
   it('gives the catalog service a probe for exactly the registrations that have one', () => {
-    const probes = registeredModelCatalogProbes(STRUCTURED_AGENT_RUNTIME_REGISTRATIONS, context())
+    const { probes } = registeredModelCatalogDiscovery(
+      STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
+      context()
+    )
     const listing = STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.filter(
       (registration) => registration.modelCatalog(context()).kind === 'probe'
     ).map((registration) => registration.definition.agent)
@@ -45,5 +50,31 @@ describe('the model catalog contract on every registration', () => {
         (registration) => registration.definition.agent
       ).sort()
     )
+  })
+
+  it('says per registration whether a listing names the model a new chat runs', () => {
+    const { listingNamesConfiguredModel } = registeredModelCatalogDiscovery(
+      STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
+      context()
+    )
+    // Codex's `model/list` and Grok's session-free `currentModelId` name it; the rest may be overridden.
+    expect([...listingNamesConfiguredModel].sort()).toEqual(['codex', 'grok'])
+  })
+
+  it('records live listings at the host for every agent whose adapter does not', () => {
+    const { recordsLiveListingsOf } = registeredModelCatalogDiscovery(
+      STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
+      context()
+    )
+    expect([...recordsLiveListingsOf].sort()).toEqual(['grok', 'opencode', 'pi'])
+  })
+
+  it('maps an ACP agent with no session-free listing to an unavailable registration', () => {
+    const spec = acpLaunchSpecFor('grok')!
+    const discovery = acpModelCatalogDiscovery(
+      { ...spec, modelDiscovery: { kind: 'unavailable', reason: 'no listing without a session' } },
+      context()
+    )
+    expect(discovery).toEqual({ kind: 'unavailable', reason: 'no listing without a session' })
   })
 })

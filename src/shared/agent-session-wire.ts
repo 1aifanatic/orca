@@ -418,6 +418,9 @@ export type AgentSessionModelCatalogResult =
       models: AgentSessionModelOption[]
       fastModeSupport?: AgentSessionFastModeSupport
       fetchedAt: number
+      /** The listed default is the model a new chat here launches with: the agent's listing names
+       *  its configured model and no workspace config can replace it. Absent from an older host. */
+      listingNamesConfiguredModel?: boolean
     }
 
 /** One entry of the `/` menu the running provider reports for itself. `skill`

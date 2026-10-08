@@ -146,7 +146,7 @@ export function applyStructuredAgentSessionModelCatalog(
   state: StructuredAgentSessionOptionState,
   seed: AgentSessionOptionCatalog,
   catalog: AgentSessionModelCatalogResult,
-  options: { namesDefault: boolean }
+  options: { newLaunch: boolean }
 ): StructuredAgentSessionOptionState {
   if (state.catalogSource === 'live' || catalog.origin === 'unknown') {
     return state
@@ -157,6 +157,11 @@ export function applyStructuredAgentSessionModelCatalog(
   if (models.length === 0) {
     return state
   }
+  // The host says whether its listed default is what this launch runs; an older host never says,
+  // so the client's own knowledge of the agent stands in. A reopened chat may keep its own model.
+  const namesDefault =
+    options.newLaunch &&
+    (catalog.listingNamesConfiguredModel ?? seed.hostListingNamesConfiguredModel === true)
   return {
     ...state,
     // `isDefault` came from a real listing, so a launch's CLI default is nameable —
@@ -164,7 +169,7 @@ export function applyStructuredAgentSessionModelCatalog(
     catalog: {
       ...seed,
       models,
-      ...(options.namesDefault ? { defaultModelIsCliDefault: true } : {})
+      ...(namesDefault ? { defaultModelIsCliDefault: true } : {})
     },
     catalogSource: 'host'
   }
