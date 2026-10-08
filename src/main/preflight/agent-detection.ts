@@ -44,7 +44,6 @@ import { invalidateWslGuestEnvironment } from '../wsl/wsl-guest-environment'
 import { prunePreflightWslCache } from '../preflight-wsl-cache'
 import { detectAgentCommandsOnHost } from './agent-command-detection'
 export { detectAgentCommandsOnHost } from './agent-command-detection'
-export { detectCodexInstallationOnHost } from './codex-host-installation'
 
 export type PreflightStatus = {
   git: { installed: boolean }
