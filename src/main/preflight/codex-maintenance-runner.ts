@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { executeCodexMaintenanceProcess } from './codex-maintenance-process'
+import { codexMaintenanceDiagnostic } from './codex-maintenance-diagnostic'
 import { spawnProcess, type ProcessSpec } from '../../shared/child-process/run-process'
 import type { CodexMaintenanceJob, CodexMaintenanceState } from '../../shared/codex-cli-maintenance'
 import { invalidateCodexCliInstallation } from './codex-cli-installation'
@@ -116,12 +117,18 @@ export class CodexMaintenanceRunner {
     } catch (error) {
       job.error = error instanceof Error ? error.message : String(error)
     } finally {
+      // Spawn, timeout and supervision errors may never reach the command's stderr.
+      if (job.error) {
+        append(`\n${codexMaintenanceDiagnostic(job.error)}\n`)
+      }
       this.revision += 1
       this.deps.invalidate()
       try {
         await (resolved.recheck?.() ?? this.deps.resolve(context))
       } catch (error) {
-        append(`\n${error instanceof Error ? error.message : String(error)}\n`)
+        append(
+          `\n${codexMaintenanceDiagnostic(error instanceof Error ? error.message : String(error))}\n`
+        )
       }
       job.phase = 'completed'
       const entry = this.jobs.get(job.id)

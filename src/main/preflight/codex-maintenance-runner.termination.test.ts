@@ -28,6 +28,7 @@ it('settles an unverifiable job, re-derives whether its owned root is live, and 
     const state = await runner.status(first.job?.id)
     expect(state.job?.phase).toBe('completed')
     expect(state.job?.termination).toBe('unverifiable')
+    expect(state.job?.output).toContain('\nProcess termination is unverifiable.\n')
     expect(state.canRun).toBe(false)
   })
   await expect(runner.start()).rejects.toThrow('still live')

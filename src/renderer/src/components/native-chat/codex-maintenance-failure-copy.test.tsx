@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { codexCliInstallation } from '../../../../shared/codex-cli-installation'
 import {
@@ -73,6 +73,43 @@ async function flush() {
 import { agentSessionRefusalFailure } from '../../../../shared/agent-session-write-failure'
 import { structuredSessionNotices } from './native-chat-structured-session-notices'
 describe('Codex failure and manual repair copy', () => {
+  it.each([
+    { error: 'spawn C:\\tools\\node.exe EACCES', exitCode: null },
+    { error: 'Codex maintenance timed out.', exitCode: null },
+    { error: null, exitCode: 17 }
+  ])(
+    'renders and copies the host diagnostic with error $error and exit $exitCode',
+    async ({ error, exitCode }) => {
+      const initial = state(false, null)
+      if (!initial.action) {
+        throw new Error('No action')
+      }
+      const diagnostic = error ?? 'npm ERR! EACCES: permission denied'
+      const output = `$ npm install -g @openai/codex\n${diagnostic}\n`
+      const completed: CodexMaintenanceState = {
+        ...initial,
+        job: { id: 'failed', phase: 'completed', action: initial.action, output, error, exitCode }
+      }
+      call.mockImplementation(async (_target, params) =>
+        params.operation === 'start' ? completed : initial
+      )
+      const write = vi.fn().mockResolvedValue(undefined)
+      Object.assign(window, { api: { ui: { writeClipboardText: write } } })
+      render(<Composer />)
+      await flush()
+      fireEvent.click(screen.getByRole('button', { name: 'Install Codex' }))
+      expect(
+        await screen.findByText(
+          error ? 'Codex could not be installed. Try again.' : 'Command exited with code 17'
+        )
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText((text) => text.includes(diagnostic), { selector: 'pre' })
+      ).toHaveTextContent(diagnostic)
+      fireEvent.click(screen.getByRole('button', { name: 'Copy log' }))
+      await waitFor(() => expect(write).toHaveBeenCalledExactlyOnceWith(output))
+    }
+  )
   it('shows an exact manual command when repair cannot run here', async () => {
     call.mockResolvedValue(state(true, '0.135.0', false))
     render(
