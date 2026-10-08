@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  TerminalStreamOpcode,
-  decodeTerminalStreamFrame,
-  decodeTerminalStreamText
-} from '../../../../shared/terminal-stream-protocol'
-import {
   createRemoteRuntimeTransportMocks,
   readyHostSessionInventoryResponse,
   type MultiplexSubscriptionCallbacks
@@ -18,8 +13,9 @@ let resolvedPaneHandle = 'terminal-1'
 const {
   runtimeCall,
   runtimeSubscribe,
-  subscriptionSendBinary,
   latestSubscribePayload,
+  inputFrameTexts,
+  subscribeFrameCount,
   emitSnapshot,
   resetRemoteRuntimeTransport
 } = createRemoteRuntimeTransportMocks({
@@ -36,21 +32,6 @@ const {
 const PAIRING_CHANGED = 'Runtime environment pairing changed; refresh and try again'
 
 type RevisionedRequest = { method?: string; expectedEnvironmentPairingRevision?: number }
-
-function inputFrameTexts(): string[] {
-  return subscriptionSendBinary.mock.calls.flatMap(([bytes]) => {
-    const frame = decodeTerminalStreamFrame(bytes)
-    return frame?.opcode === TerminalStreamOpcode.Input
-      ? [decodeTerminalStreamText(frame.payload)]
-      : []
-  })
-}
-
-function subscribeFrameCount(): number {
-  return subscriptionSendBinary.mock.calls.filter(
-    ([bytes]) => decodeTerminalStreamFrame(bytes)?.opcode === TerminalStreamOpcode.Subscribe
-  ).length
-}
 
 function requestRevision(request: unknown): number | undefined {
   return typeof request === 'object' &&

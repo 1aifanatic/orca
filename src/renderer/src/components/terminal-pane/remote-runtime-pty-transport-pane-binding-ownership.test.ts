@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  TerminalStreamOpcode,
-  decodeTerminalStreamFrame,
-  decodeTerminalStreamText
-} from '../../../../shared/terminal-stream-protocol'
-import {
   createRemoteRuntimeTransportMocks,
   readyHostSessionInventoryResponse,
   type MultiplexSubscriptionCallbacks
@@ -16,8 +11,8 @@ let resolvedPaneHandle = 'terminal-1'
 const {
   runtimeCall,
   runtimeSubscribe,
-  subscriptionSendBinary,
   latestSubscribePayload,
+  inputFrameTexts,
   emitSnapshot,
   resetRemoteRuntimeTransport
 } = createRemoteRuntimeTransportMocks({
@@ -34,15 +29,6 @@ const {
 function unreachable(): Error {
   return Object.assign(new Error('Remote Orca runtime closed the connection.'), {
     code: 'remote_runtime_unavailable'
-  })
-}
-
-function inputFrameTexts(): string[] {
-  return subscriptionSendBinary.mock.calls.flatMap(([bytes]) => {
-    const frame = decodeTerminalStreamFrame(bytes)
-    return frame?.opcode === TerminalStreamOpcode.Input
-      ? [decodeTerminalStreamText(frame.payload)]
-      : []
   })
 }
 
