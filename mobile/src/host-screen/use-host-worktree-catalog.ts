@@ -58,7 +58,8 @@ export function useHostWorktreeCatalog(args: {
     setWorktreesLoaded,
     worktreeCatalogRef
   } = state
-  const serverFetchInFlightRef = useRef(false)
+  // Keyed by client: a fetch still running on a replaced client must not skip the new one's.
+  const serverFetchInFlightRef = useRef<RpcClient | null>(null)
 
   // Why beside worktree.ps, not inside it: a slow server must not hold back the desktop's own rows.
   const fetchServerRows = useCallback(
@@ -68,10 +69,10 @@ export function useHostWorktreeCatalog(args: {
         setServerWorkspaces(NO_SERVER_WORKSPACES)
         return
       }
-      if (serverFetchInFlightRef.current) {
+      if (serverFetchInFlightRef.current === requestClient) {
         return
       }
-      serverFetchInFlightRef.current = true
+      serverFetchInFlightRef.current = requestClient
       try {
         const fetched = await fetchServerWorkspaces(requestClient)
         if (fetched && clientRef.current === requestClient) {
@@ -80,7 +81,9 @@ export function useHostWorktreeCatalog(args: {
       } catch {
         // Keeps the rows shown; the next poll retries.
       } finally {
-        serverFetchInFlightRef.current = false
+        if (serverFetchInFlightRef.current === requestClient) {
+          serverFetchInFlightRef.current = null
+        }
       }
     },
     [hostCapabilities]

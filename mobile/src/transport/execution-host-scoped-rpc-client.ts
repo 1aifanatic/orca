@@ -63,13 +63,20 @@ export function scopeRpcClientToExecutionHost(
   return view
 }
 
-/** The client for calls about a workspace on `executionHost`: scoped when it may be named. */
+/**
+ * The client for calls about a workspace on `executionHost`: the desktop's own for its workspaces,
+ * a scoped view for a reachable server, and null for a server not reachable yet — never the
+ * desktop client for a server's workspace, which would run the call on the wrong computer.
+ */
 export function rpcClientForExecutionHost(
   client: RpcClient,
   hostCapabilities: readonly string[],
   executionHost: ExecutionHostId | undefined
-): RpcClient {
+): RpcClient | null {
+  if (!executionHost?.startsWith('runtime:')) {
+    return client
+  }
   return canTargetExecutionHost(client, hostCapabilities, executionHost)
     ? scopeRpcClientToExecutionHost(client, executionHost)
-    : client
+    : null
 }

@@ -5,7 +5,7 @@ import { ChevronLeft, Save } from 'lucide-react-native'
 import { useRouteHandoff } from '../navigation/route-handoff'
 import { getWorktreeLabel } from '../session/worktree-label'
 import { colors, spacing } from '../theme/mobile-theme'
-import { useForceReconnect, useHostClient } from '../transport/client-context'
+import { useWorkspaceClient } from '../transport/use-workspace-client'
 import { connectionRetryAction } from '../transport/connection-retry-action'
 import {
   loadMobileFilePreview,
@@ -37,8 +37,7 @@ type Props = {
 export function MobileFilePreviewScreen({ route }: Props) {
   const router = useRouteHandoff()
   const previewParams = route.ok ? route.params : null
-  const { client, state: connState } = useHostClient(previewParams?.hostId)
-  const forceReconnect = useForceReconnect()
+  const { client, state: connState, forceReconnect } = useWorkspaceClient(previewParams?.hostId)
   const [preview, setPreview] = useState<MobileFilePreviewResult>(() =>
     route.ok ? { status: 'loading', message: 'Loading preview...' } : previewError(route.message)
   )

@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
 import { act, create } from 'react-test-renderer'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -96,10 +96,15 @@ type Screen = {
   open: (worktreeId: string) => void
   notice: () => string | null
   catalogError: () => string | null
+  pin: (worktreeId: string) => void
+  serverWorkspaces: () => unknown
+  swapClient: (next: FakeSession) => Promise<void>
   navigations: string[]
 }
 
-async function mountScreen(client: FakeSession, hostCapabilities: string[]): Promise<Screen> {
+async function mountScreen(first: FakeSession, hostCapabilities: string[]): Promise<Screen> {
+  let client = first
+  let rerender: (() => void) | null = null
   const navigations: string[] = []
   const router = { push: (to: string) => navigations.push(to), replace: () => {} }
   const held: {
@@ -109,6 +114,8 @@ async function mountScreen(client: FakeSession, hostCapabilities: string[]): Pro
     actions?: ReturnType<typeof useHostWorktreeActions>
   } = { rows: [] }
   function Probe(): null {
+    const [, setTick] = useState(0)
+    rerender = () => setTick((tick) => tick + 1)
     const state = useHostScreenState('host-1', undefined)
     state.clientRef.current = client
     const catalog = useHostWorktreeCatalog({
@@ -161,6 +168,15 @@ async function mountScreen(client: FakeSession, hostCapabilities: string[]): Pro
       }),
     notice: () => held.state?.serverNotice ?? null,
     catalogError: () => held.state?.catalogError ?? null,
+    pin: (worktreeId) =>
+      act(() => {
+        held.actions?.togglePin(held.rows.find((entry) => entry.worktreeId === worktreeId)!)
+      }),
+    serverWorkspaces: () => held.state?.serverWorkspaces,
+    swapClient: async (next) => {
+      client = next
+      await act(async () => rerender?.())
+    },
     navigations
   }
 }
@@ -272,5 +288,35 @@ describe("a desktop's server workspaces on the phone", () => {
     screen.open('runtime:old-wt')
     expect(screen.navigations).toHaveLength(1)
     expect(screen.notice()).toBe('Update Orca on ThinkPad to open its workspaces from your phone.')
+  })
+
+  it('pins a server workspace on that server, as the desktop does', async () => {
+    const client = desktop()
+    const screen = await mountScreen(client, RELAYS)
+    screen.pin('runtime:vm-wt')
+    expect(client.sendRequest).toHaveBeenCalledWith(
+      'worktree.set',
+      { worktree: 'id:runtime:vm-wt', isPinned: true },
+      { executionHost: 'runtime:vm' }
+    )
+    expect(screen.rows().find((entry) => entry.worktreeId === 'runtime:vm-wt')?.isPinned).toBe(true)
+  })
+
+  it('reads a replaced client\u2019s servers at once, and keeps an unchanged poll\u2019s list', async () => {
+    const stuck = desktop()
+    const base = stuck.sendRequest.getMockImplementation()!
+    stuck.sendRequest.mockImplementation((method: string, params?: unknown) =>
+      method === 'mobileRelay.hosts.list'
+        ? new Promise<RpcResponse>(() => {})
+        : base(method, params)
+    )
+    const screen = await mountScreen(stuck, RELAYS)
+    const next = desktop()
+    await screen.swapClient(next)
+    await screen.poll()
+    expect(calledMethods(next)).toContain('mobileRelay.hosts.list')
+    const listedOnce = screen.serverWorkspaces()
+    await screen.poll()
+    expect(screen.serverWorkspaces()).toBe(listedOnce)
   })
 })

@@ -71,7 +71,7 @@ export function hostWorktreeActionMountAdapters(
             return hook.mount()
           }
           if (name === 'toggle-pin') {
-            return performHookAction(() => actions.togglePin(ROW.worktreeId))
+            return performHookAction(() => actions.togglePin(ROW))
           }
           if (name === 'delete') {
             return performHookAction(() => actions.handleDeleteWorktree(ROW))

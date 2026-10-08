@@ -5,6 +5,7 @@ import type { MobileRelayHost } from '../../../src/shared/mobile-relay-hosts-con
 import type { RpcOperationSender } from '../transport/rpc-operation-sender'
 import { relayHostsListRead, relayHostWorktreesRead } from './server-workspace-operations'
 import type { Worktree } from './workspace-list-types'
+import { areWorktreeListsEqual } from './worktree-list-snapshot'
 
 /** The desktop's servers and their rows, each stamped by the desktop with the server's host id. */
 export type ServerWorkspaces = { hosts: readonly MobileRelayHost[]; worktrees: readonly Worktree[] }
@@ -69,7 +70,10 @@ export async function fetchServerWorkspaces(
   return { hosts, rows: await Promise.all(hosts.map((host) => fetchHostRows(client, host.hostId))) }
 }
 
-/** A server whose rows were not read keeps those shown; one the desktop dropped loses its rows. */
+/**
+ * A server whose rows were not read keeps those shown; one the desktop dropped loses its rows.
+ * An unchanged poll returns `previous` itself, so the list does not rebuild every few seconds.
+ */
 export function applyServerWorkspaces(
   previous: ServerWorkspaces,
   fetched: FetchedServerWorkspaces
@@ -78,5 +82,8 @@ export function applyServerWorkspaces(
     (host, index) =>
       fetched.rows[index] ?? previous.worktrees.filter((row) => row.hostId === host.hostId)
   )
-  return { hosts: fetched.hosts, worktrees }
+  const unchanged =
+    JSON.stringify(fetched.hosts) === JSON.stringify(previous.hosts) &&
+    areWorktreeListsEqual(worktrees, previous.worktrees)
+  return unchanged ? previous : { hosts: fetched.hosts, worktrees }
 }

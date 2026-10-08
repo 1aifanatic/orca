@@ -1,3 +1,4 @@
+import { withWorkspaceRoute } from '../../../../src/navigation/workspace-route'
 import { useCallback } from 'react'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { MobileSessionRouteScreen } from '../../../../src/session/MobileSessionRouteScreen'
@@ -26,7 +27,7 @@ import { useShellSwitchDecision } from '../../../../src/mobile-web-shell/shell-s
  * the native param once the page has been handed it, exactly as the notification hook did, so no
  * later `init` can replay a spent tap.
  */
-export default function MobileSessionScreen() {
+export default withWorkspaceRoute(function MobileSessionScreen() {
   // Through `firstParam` on every param, as every switch does: expo-router answers a repeated query
   // key with an array, and a bare read puts `String(['a','b'])` into the template, where
   // `encodeURIComponent` makes it the single segment `a%2Cb` — which the bridge's segment rule
@@ -103,4 +104,4 @@ export default function MobileSessionScreen() {
       onRouteParamClear={erasePaneKey}
     />
   )
-}
+})

@@ -14,7 +14,11 @@ import { serverUpdateNeededNotice } from '../host-route-notice'
 import type { ConnectionState } from '../transport/types'
 import { setHostRouteNewWorktreeVisible } from '../host-route-action-state'
 import { leaveHostRoute } from '../host-route-exit'
-import { getWorktreeRowIdentity, removeWorktreeRow } from '../worktree/worktree-host-row-identity'
+import {
+  getWorktreeRowIdentity,
+  isSameWorktreeRow,
+  removeWorktreeRow
+} from '../worktree/worktree-host-row-identity'
 import { isWorktreePinned, type Worktree } from '../worktree/workspace-list-sections'
 import { worktreeActivate, worktreePinWrite, worktreeRemove } from './host-screen-operations'
 import type { HostScreenState } from './use-host-screen-state'
@@ -55,6 +59,7 @@ export function useHostWorktreeActions(args: {
     serverWorkspaces,
     setRouteActionState,
     setServerNotice,
+    setServerWorkspaces,
     setWorktrees,
     worktrees
   } = state
@@ -101,7 +106,26 @@ export function useHostWorktreeActions(args: {
   )
 
   const togglePin = useCallback(
-    (worktreeId: string) => {
+    (item: Worktree) => {
+      // Why: the desktop pins a server's workspace on that server (worktree.set at its owner).
+      if (item.hostId?.startsWith('runtime:')) {
+        const rowClient = clientForRow(item)
+        if (!rowClient) {
+          return
+        }
+        const isPinned = !item.isPinned
+        setServerWorkspaces((prev) => ({
+          ...prev,
+          worktrees: prev.worktrees.map((w) =>
+            isSameWorktreeRow(w, item) ? { ...w, isPinned } : w
+          )
+        }))
+        void worktreePinWrite
+          .request(rowClient, { worktree: `id:${item.worktreeId}`, isPinned })
+          .catch(() => {})
+        return
+      }
+      const { worktreeId } = item
       const worktree = worktrees.find((w) => w.worktreeId === worktreeId)
       const currentlyPinned = worktree
         ? isWorktreePinned(worktree, pinnedIds)
@@ -126,7 +150,7 @@ export function useHostWorktreeActions(args: {
           .catch(() => {})
       }
     },
-    [client, worktrees, pinnedIds, updateLocalPins]
+    [client, clientForRow, worktrees, pinnedIds, updateLocalPins]
   )
 
   const handleDeleteWorktree = useCallback(

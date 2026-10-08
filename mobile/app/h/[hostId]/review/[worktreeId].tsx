@@ -1,3 +1,4 @@
+import { withWorkspaceRoute } from '../../../../src/navigation/workspace-route'
 import { useLocalSearchParams } from 'expo-router'
 import { MobileDiffReviewRouteScreen } from '../../../../src/session/MobileDiffReviewRouteScreen'
 import { firstReviewParam } from '../../../../src/session/mobile-diff-review-screen-model'
@@ -20,7 +21,7 @@ import { useShellSwitchDecision } from '../../../../src/mobile-web-shell/shell-s
  * `matchesRoutePattern` is segment-count exact with literal equality on the static segments, so
  * these five segments collide with nothing: the explorer's five carry `files`.
  */
-export default function MobileDiffReviewScreen() {
+export default withWorkspaceRoute(function MobileDiffReviewScreen() {
   // Through `firstReviewParam`, which is this domain's spelling of the rule every switch follows:
   // expo-router answers a repeated query key with an array, and a bare read would build a single
   // segment out of `String(['a','b'])` that the bridge's segment rule accepts.
@@ -31,6 +32,7 @@ export default function MobileDiffReviewScreen() {
     scope?: string | string[]
     file?: string | string[]
     area?: string | string[]
+    executionHost?: string | string[]
   }>()
   const hostId = firstReviewParam(params.hostId)
   const worktreeId = firstReviewParam(params.worktreeId)
@@ -40,7 +42,7 @@ export default function MobileDiffReviewScreen() {
   // than re-derived here; each is omitted when empty, because the screen's own normalizers treat an
   // absent scope, file or area differently from one named nothing.
   const routeParams = Object.fromEntries(
-    (['name', 'scope', 'file', 'area'] as const)
+    (['name', 'scope', 'file', 'area', 'executionHost'] as const)
       .map((key) => [key, firstReviewParam(params[key])] as const)
       .filter(([, value]) => value !== '')
   )
@@ -71,4 +73,4 @@ export default function MobileDiffReviewScreen() {
       fallback={native}
     />
   )
-}
+})
