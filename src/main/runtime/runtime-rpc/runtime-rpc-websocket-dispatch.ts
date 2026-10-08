@@ -11,6 +11,7 @@ import type { DeviceScope } from '../device-registry'
 import { RuntimeRpcMobileDevices } from './runtime-rpc-mobile-devices'
 import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import { MOBILE_RPC_METHOD_ALLOWLIST } from './runtime-rpc-mobile-method-allowlist'
+import { MOBILE_RPC_METHOD_ROUTES } from './runtime-rpc-mobile-method-routing'
 import { parseExecutionHostId } from '../../../shared/execution-host'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
@@ -43,6 +44,10 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcMobileDevices {
     }
     const target = parseExecutionHostId(typeof executionHost === 'string' ? executionHost : null)
     if (target?.kind === 'local' || target?.kind === 'ssh') {
+      return false
+    }
+    // Why: the phone tags every call on a workspace screen; only this Mac's routing table decides.
+    if (target && MOBILE_RPC_METHOD_ROUTES.get(request.method) === 'paired-desktop') {
       return false
     }
     if (!target) {
