@@ -1,0 +1,2109 @@
+{
+  "qualified": true,
+  "scope": "Independent named Git tree and direct raw data supplement; no test/config/API execution or performance qualification",
+  "sourceHead": "907cb6e6038efda0fd1ee1975a3787200d0801b6",
+  "definition": "d96eafac0f82168b3f8fb3782756a027ec651b0b",
+  "definitionTree": "6c1f2c037d8481c34366600cf21d9077e03f7d9b",
+  "soleParentExactlySource": true,
+  "exactDeploymentTargets": {
+    ".github/workflows/ci-pnpm-verification-pilot.yml": {
+      "sha256": "11c0e529809be5bc957addb0987103dfb52f296aa8e93067b2c6c407de6c40c8",
+      "bytes": 6583
+    },
+    ".github/benchmark/shared-vite-server/materialize.mjs": {
+      "sha256": "4ebd781f7899716710c25ce7ca5fdde4768ed6f170301a5bba609529e21c63f0",
+      "bytes": 5814
+    },
+    ".github/benchmark/shared-vite-server/payload/apply-framework-correction.mjs": {
+      "sha256": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+      "bytes": 3006
+    },
+    ".github/benchmark/shared-vite-server/payload/baseline-config.ts": {
+      "sha256": "eb6e346f3c20910feb1dbe009c7a027c0d65de72cff576f2590ba18ad4dd5c5b",
+      "bytes": 3576
+    },
+    ".github/benchmark/shared-vite-server/payload/candidate-config.ts": {
+      "sha256": "ad72da5d62b0166d37bf81a318a1de6b3e1f93d9afbc5535dfb5bfe69e36067f",
+      "bytes": 4140
+    },
+    ".github/benchmark/shared-vite-server/payload/collect-results.py": {
+      "sha256": "5ac83cfb2c9e2791d562344b647bbdd7e8a2b3662fbd698770acf77078115714",
+      "bytes": 21053
+    },
+    ".github/benchmark/shared-vite-server/payload/config-choice.ts": {
+      "sha256": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+      "bytes": 44
+    },
+    ".github/benchmark/shared-vite-server/payload/definition-manifest.json": {
+      "sha256": "49d2ae4dd9efeaa5058fe02da2196831c94d4e0e21d63417244079a3e03524a8",
+      "bytes": 12746
+    },
+    ".github/benchmark/shared-vite-server/payload/framework-correction.patch": {
+      "sha256": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da",
+      "bytes": 1787
+    },
+    ".github/benchmark/shared-vite-server/payload/functional-source.patch": {
+      "sha256": "22f0f5cc06f7b62661e43f8307b4165bcfe75225c383e09cb21aeb8df4bbcb7d",
+      "bytes": 1769
+    },
+    ".github/benchmark/shared-vite-server/payload/mock-target.ts": {
+      "sha256": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+      "bytes": 41
+    },
+    ".github/benchmark/shared-vite-server/payload/ordinary.test.ts": {
+      "sha256": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+      "bytes": 2697
+    },
+    ".github/benchmark/shared-vite-server/payload/persistence-import-reuse-benchmark-reporter.mjs": {
+      "sha256": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+      "bytes": 1513
+    },
+    ".github/benchmark/shared-vite-server/payload/protected-retention.test.ts": {
+      "sha256": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+      "bytes": 2698
+    },
+    ".github/benchmark/shared-vite-server/payload/qualify-fixture-reuse.py": {
+      "sha256": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+      "bytes": 7001
+    },
+    ".github/benchmark/shared-vite-server/payload/relocation.ts": {
+      "sha256": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+      "bytes": 42
+    },
+    ".github/benchmark/shared-vite-server/payload/reset-state.ts": {
+      "sha256": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+      "bytes": 39
+    },
+    ".github/benchmark/shared-vite-server/payload/shared-server-preflight.mjs": {
+      "sha256": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+      "bytes": 9336
+    },
+    ".github/benchmark/shared-vite-server/payload/shipping-launch-plan.json": {
+      "sha256": "88615fbdf0d933f302a782a83955e02215d10e389ac0c6409d2f8234e04f32be",
+      "bytes": 856471
+    },
+    ".github/benchmark/shared-vite-server/payload/shipping.patch": {
+      "sha256": "256d77bf959c4dffcd221abb228c2cfdac3d22aa0f5fbe703b539a4a4bc6bdf6",
+      "bytes": 1769
+    },
+    ".github/benchmark/shared-vite-server/payload/source-value.ts": {
+      "sha256": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+      "bytes": 85
+    }
+  },
+  "onlyDefinitionPathsChanged": true,
+  "namedSourceGuards": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+    "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+    "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+    "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+    "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+    "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+    "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+    "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+    "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+    "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+    "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+    "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+    "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+    "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+    "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+    "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+    "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+    "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+    "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+    "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+    "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+    "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+    "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c"
+  },
+  "sourceAbsentPaths": [
+    "src/main/pi/prefill-extension-source.test.ts",
+    "src/renderer/src/lazy-use-ref-ratchet.test.ts"
+  ],
+  "rawSnapshots": [
+    {
+      "runtime": "bun",
+      "seed": 104729,
+      "phase": "before",
+      "serverCount": 4,
+      "canonicalCount": 11869,
+      "discoveryCount": 11922,
+      "selectedRoutes": [
+        {
+          "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-runtime-boundary.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+          "project": "node-measurement",
+          "pool": "node-runtime",
+          "groupOrder": 2
+        },
+        {
+          "file": "src/main/ipc/filesystem-import.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/mobile-presence-lock.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orchestration/federation-sync.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/rpc-caller-scope.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/editor/closed-editor-model-registry.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/completed-worker-retirement-resume.unit.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/structured-attention-prompt-relay.unit.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        }
+      ],
+      "observedCoordinator": {
+        "node": "26.3.0",
+        "bun": "1.4.2",
+        "bunRevision": "744846f844374847c902b5e7fd59b4342a51ef99",
+        "executable": "/home/runner/.bun/bin/bun",
+        "expectedNodeVersion": "24.21.0",
+        "expectedNodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node"
+      },
+      "sourceFingerprints": {
+        ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+        ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+        ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+        "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+        "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+        "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+        "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+        "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+        "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+        "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+        "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+        "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+        "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+        "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+        "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+        "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+        "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+        "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+        "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+        "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+        "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+        "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+        "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "config/vitest.config.ts": "eb6e346f3c20910feb1dbe009c7a027c0d65de72cff576f2590ba18ad4dd5c5b",
+        "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+        "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+        "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+        "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+        "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+        "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+        "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+        "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+        "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+        "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+        "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+        "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+        "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+        "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+        "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+        "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+        "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+        "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+        "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+        "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+        "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+        "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c",
+        "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+        "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+        "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "1530a89d189ebdc57a1577e7fbfcd34eac55a0165589265b8d776b33f83678bd",
+        "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+        "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+        "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2",
+        "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+        "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+        "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+        "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+        "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+        "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+        "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+        "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+        "notes/bun-migration/performance/qualify-fixture-reuse.py": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+        "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/shared-server-preflight.mjs": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/apply-framework-correction.mjs": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/framework-correction.patch": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da"
+      },
+      "passed": 296,
+      "originalPassed": 278,
+      "separateProbePassed": 18
+    },
+    {
+      "runtime": "bun",
+      "seed": 104729,
+      "phase": "after",
+      "serverCount": 1,
+      "canonicalCount": 11869,
+      "discoveryCount": 11922,
+      "selectedRoutes": [
+        {
+          "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-runtime-boundary.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+          "project": "node-measurement",
+          "pool": "node-runtime",
+          "groupOrder": 2
+        },
+        {
+          "file": "src/main/ipc/filesystem-import.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/mobile-presence-lock.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orchestration/federation-sync.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/rpc-caller-scope.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/editor/closed-editor-model-registry.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/completed-worker-retirement-resume.unit.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/structured-attention-prompt-relay.unit.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        }
+      ],
+      "observedCoordinator": {
+        "node": "26.3.0",
+        "bun": "1.4.2",
+        "bunRevision": "744846f844374847c902b5e7fd59b4342a51ef99",
+        "executable": "/home/runner/.bun/bin/bun",
+        "expectedNodeVersion": "24.21.0",
+        "expectedNodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node"
+      },
+      "sourceFingerprints": {
+        ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+        ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+        ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+        "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+        "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+        "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+        "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+        "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+        "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+        "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+        "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+        "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+        "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+        "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+        "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+        "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+        "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+        "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+        "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+        "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+        "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+        "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+        "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "config/vitest.config.ts": "ad72da5d62b0166d37bf81a318a1de6b3e1f93d9afbc5535dfb5bfe69e36067f",
+        "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+        "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+        "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+        "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+        "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+        "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+        "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+        "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+        "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+        "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+        "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+        "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+        "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+        "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+        "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+        "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+        "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+        "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+        "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+        "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+        "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+        "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c",
+        "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+        "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+        "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "17dd61ced975a44caa05f8c692dbdcedd404c004edecfc123a0e2c89fa31085b",
+        "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+        "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+        "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2",
+        "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+        "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+        "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+        "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+        "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+        "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+        "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+        "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+        "notes/bun-migration/performance/qualify-fixture-reuse.py": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+        "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/shared-server-preflight.mjs": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/apply-framework-correction.mjs": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/framework-correction.patch": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da"
+      },
+      "passed": 296,
+      "originalPassed": 278,
+      "separateProbePassed": 18
+    },
+    {
+      "runtime": "bun",
+      "seed": 130363,
+      "phase": "before",
+      "serverCount": 4,
+      "canonicalCount": 11869,
+      "discoveryCount": 11922,
+      "selectedRoutes": [
+        {
+          "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-runtime-boundary.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+          "project": "node-measurement",
+          "pool": "node-runtime",
+          "groupOrder": 2
+        },
+        {
+          "file": "src/main/ipc/filesystem-import.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/mobile-presence-lock.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orchestration/federation-sync.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/rpc-caller-scope.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/editor/closed-editor-model-registry.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/completed-worker-retirement-resume.unit.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/structured-attention-prompt-relay.unit.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        }
+      ],
+      "observedCoordinator": {
+        "node": "26.3.0",
+        "bun": "1.4.2",
+        "bunRevision": "744846f844374847c902b5e7fd59b4342a51ef99",
+        "executable": "/home/runner/.bun/bin/bun",
+        "expectedNodeVersion": "24.21.0",
+        "expectedNodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node"
+      },
+      "sourceFingerprints": {
+        ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+        ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+        ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+        "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+        "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+        "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+        "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+        "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+        "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+        "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+        "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+        "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+        "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+        "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+        "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+        "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+        "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+        "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+        "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+        "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+        "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+        "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+        "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "config/vitest.config.ts": "eb6e346f3c20910feb1dbe009c7a027c0d65de72cff576f2590ba18ad4dd5c5b",
+        "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+        "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+        "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+        "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+        "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+        "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+        "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+        "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+        "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+        "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+        "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+        "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+        "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+        "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+        "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+        "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+        "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+        "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+        "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+        "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+        "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+        "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c",
+        "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+        "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+        "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "1530a89d189ebdc57a1577e7fbfcd34eac55a0165589265b8d776b33f83678bd",
+        "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+        "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+        "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2",
+        "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+        "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+        "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+        "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+        "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+        "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+        "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+        "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+        "notes/bun-migration/performance/qualify-fixture-reuse.py": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+        "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/shared-server-preflight.mjs": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/apply-framework-correction.mjs": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/framework-correction.patch": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da"
+      },
+      "passed": 296,
+      "originalPassed": 278,
+      "separateProbePassed": 18
+    },
+    {
+      "runtime": "bun",
+      "seed": 130363,
+      "phase": "after",
+      "serverCount": 1,
+      "canonicalCount": 11869,
+      "discoveryCount": 11922,
+      "selectedRoutes": [
+        {
+          "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-runtime-boundary.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+          "project": "node-measurement",
+          "pool": "node-runtime",
+          "groupOrder": 2
+        },
+        {
+          "file": "src/main/ipc/filesystem-import.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/mobile-presence-lock.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orchestration/federation-sync.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/rpc-caller-scope.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/editor/closed-editor-model-registry.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/completed-worker-retirement-resume.unit.test.ts",
+          "project": "node-runtime",
+          "pool": "node-runtime",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/structured-attention-prompt-relay.unit.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "groupOrder": 1
+        }
+      ],
+      "observedCoordinator": {
+        "node": "26.3.0",
+        "bun": "1.4.2",
+        "bunRevision": "744846f844374847c902b5e7fd59b4342a51ef99",
+        "executable": "/home/runner/.bun/bin/bun",
+        "expectedNodeVersion": "24.21.0",
+        "expectedNodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node"
+      },
+      "sourceFingerprints": {
+        ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+        ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+        ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+        "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+        "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+        "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+        "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+        "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+        "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+        "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+        "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+        "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+        "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+        "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+        "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+        "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+        "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+        "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+        "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+        "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+        "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+        "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+        "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "config/vitest.config.ts": "ad72da5d62b0166d37bf81a318a1de6b3e1f93d9afbc5535dfb5bfe69e36067f",
+        "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+        "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+        "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+        "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+        "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+        "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+        "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+        "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+        "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+        "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+        "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+        "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+        "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+        "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+        "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+        "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+        "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+        "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+        "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+        "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+        "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+        "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c",
+        "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+        "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+        "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "17dd61ced975a44caa05f8c692dbdcedd404c004edecfc123a0e2c89fa31085b",
+        "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+        "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+        "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2",
+        "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+        "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+        "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+        "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+        "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+        "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+        "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+        "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+        "notes/bun-migration/performance/qualify-fixture-reuse.py": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+        "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/shared-server-preflight.mjs": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/apply-framework-correction.mjs": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/framework-correction.patch": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da"
+      },
+      "passed": 296,
+      "originalPassed": 278,
+      "separateProbePassed": 18
+    },
+    {
+      "runtime": "node",
+      "seed": 104729,
+      "phase": "before",
+      "serverCount": 3,
+      "canonicalCount": 11869,
+      "discoveryCount": 11922,
+      "selectedRoutes": [
+        {
+          "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+          "project": "node-measurement",
+          "pool": "forks",
+          "groupOrder": 2
+        },
+        {
+          "file": "src/main/ipc/filesystem-import.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/mobile-presence-lock.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orchestration/federation-sync.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/rpc-caller-scope.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/editor/closed-editor-model-registry.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/completed-worker-retirement-resume.unit.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/structured-attention-prompt-relay.unit.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        }
+      ],
+      "observedCoordinator": {
+        "node": "24.21.0",
+        "bun": null,
+        "bunRevision": null,
+        "executable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+        "expectedNodeVersion": "24.21.0",
+        "expectedNodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node"
+      },
+      "sourceFingerprints": {
+        ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+        ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+        ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+        "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+        "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+        "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+        "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+        "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+        "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+        "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+        "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+        "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+        "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+        "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+        "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+        "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+        "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+        "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+        "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+        "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+        "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+        "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+        "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "config/vitest.config.ts": "eb6e346f3c20910feb1dbe009c7a027c0d65de72cff576f2590ba18ad4dd5c5b",
+        "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+        "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+        "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+        "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+        "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+        "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+        "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+        "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+        "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+        "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+        "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+        "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+        "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+        "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+        "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+        "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+        "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+        "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+        "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+        "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+        "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+        "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c",
+        "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+        "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+        "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "1530a89d189ebdc57a1577e7fbfcd34eac55a0165589265b8d776b33f83678bd",
+        "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+        "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+        "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2",
+        "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+        "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+        "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+        "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+        "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+        "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+        "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+        "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+        "notes/bun-migration/performance/qualify-fixture-reuse.py": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+        "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/shared-server-preflight.mjs": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/apply-framework-correction.mjs": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/framework-correction.patch": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da"
+      },
+      "passed": 296,
+      "originalPassed": 278,
+      "separateProbePassed": 18
+    },
+    {
+      "runtime": "node",
+      "seed": 104729,
+      "phase": "after",
+      "serverCount": 1,
+      "canonicalCount": 11869,
+      "discoveryCount": 11922,
+      "selectedRoutes": [
+        {
+          "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+          "project": "node-measurement",
+          "pool": "forks",
+          "groupOrder": 2
+        },
+        {
+          "file": "src/main/ipc/filesystem-import.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/mobile-presence-lock.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orchestration/federation-sync.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/rpc-caller-scope.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/editor/closed-editor-model-registry.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/completed-worker-retirement-resume.unit.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/structured-attention-prompt-relay.unit.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        }
+      ],
+      "observedCoordinator": {
+        "node": "24.21.0",
+        "bun": null,
+        "bunRevision": null,
+        "executable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+        "expectedNodeVersion": "24.21.0",
+        "expectedNodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node"
+      },
+      "sourceFingerprints": {
+        ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+        ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+        ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+        "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+        "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+        "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+        "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+        "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+        "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+        "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+        "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+        "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+        "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+        "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+        "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+        "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+        "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+        "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+        "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+        "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+        "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+        "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+        "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "config/vitest.config.ts": "ad72da5d62b0166d37bf81a318a1de6b3e1f93d9afbc5535dfb5bfe69e36067f",
+        "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+        "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+        "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+        "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+        "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+        "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+        "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+        "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+        "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+        "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+        "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+        "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+        "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+        "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+        "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+        "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+        "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+        "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+        "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+        "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+        "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+        "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c",
+        "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+        "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+        "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "17dd61ced975a44caa05f8c692dbdcedd404c004edecfc123a0e2c89fa31085b",
+        "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+        "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+        "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2",
+        "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+        "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+        "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+        "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+        "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+        "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+        "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+        "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+        "notes/bun-migration/performance/qualify-fixture-reuse.py": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+        "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/shared-server-preflight.mjs": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/apply-framework-correction.mjs": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/framework-correction.patch": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da"
+      },
+      "passed": 296,
+      "originalPassed": 278,
+      "separateProbePassed": 18
+    },
+    {
+      "runtime": "node",
+      "seed": 130363,
+      "phase": "before",
+      "serverCount": 3,
+      "canonicalCount": 11869,
+      "discoveryCount": 11922,
+      "selectedRoutes": [
+        {
+          "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+          "project": "node-measurement",
+          "pool": "forks",
+          "groupOrder": 2
+        },
+        {
+          "file": "src/main/ipc/filesystem-import.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/mobile-presence-lock.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orchestration/federation-sync.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/rpc-caller-scope.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/editor/closed-editor-model-registry.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/completed-worker-retirement-resume.unit.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/structured-attention-prompt-relay.unit.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        }
+      ],
+      "observedCoordinator": {
+        "node": "24.21.0",
+        "bun": null,
+        "bunRevision": null,
+        "executable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+        "expectedNodeVersion": "24.21.0",
+        "expectedNodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node"
+      },
+      "sourceFingerprints": {
+        ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+        ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+        ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+        "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+        "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+        "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+        "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+        "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+        "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+        "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+        "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+        "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+        "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+        "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+        "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+        "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+        "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+        "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+        "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+        "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+        "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+        "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+        "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "config/vitest.config.ts": "eb6e346f3c20910feb1dbe009c7a027c0d65de72cff576f2590ba18ad4dd5c5b",
+        "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+        "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+        "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+        "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+        "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+        "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+        "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+        "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+        "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+        "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+        "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+        "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+        "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+        "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+        "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+        "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+        "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+        "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+        "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+        "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+        "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+        "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c",
+        "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+        "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+        "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "1530a89d189ebdc57a1577e7fbfcd34eac55a0165589265b8d776b33f83678bd",
+        "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+        "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+        "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2",
+        "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+        "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+        "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+        "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+        "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+        "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+        "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+        "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+        "notes/bun-migration/performance/qualify-fixture-reuse.py": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+        "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/shared-server-preflight.mjs": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/apply-framework-correction.mjs": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/framework-correction.patch": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da"
+      },
+      "passed": 296,
+      "originalPassed": 278,
+      "separateProbePassed": 18
+    },
+    {
+      "runtime": "node",
+      "seed": 130363,
+      "phase": "after",
+      "serverCount": 1,
+      "canonicalCount": 11869,
+      "discoveryCount": 11922,
+      "selectedRoutes": [
+        {
+          "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+          "project": "node-measurement",
+          "pool": "forks",
+          "groupOrder": 2
+        },
+        {
+          "file": "src/main/ipc/filesystem-import.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/mobile-presence-lock.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/orchestration/federation-sync.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/rpc/rpc-caller-scope.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/editor/closed-editor-model-registry.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/completed-worker-retirement-resume.unit.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        },
+        {
+          "file": "tests/e2e/structured-attention-prompt-relay.unit.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "groupOrder": 1
+        }
+      ],
+      "observedCoordinator": {
+        "node": "24.21.0",
+        "bun": null,
+        "bunRevision": null,
+        "executable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+        "expectedNodeVersion": "24.21.0",
+        "expectedNodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node"
+      },
+      "sourceFingerprints": {
+        ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+        ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+        ".github/workflows/pr.yml": "1e845efbfc3ae34a2de631914ed2cbc9b261edd2d357a3fe94ff7e4e1400a090",
+        "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+        "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+        "config/scripts/ci-shard-timings.json": "145ce8545b8c1517fd9553277d170ec623cf1261b9520c6ea3e19734c39da77e",
+        "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+        "config/scripts/ci-unit-selection.mjs": "480f9e1affc068e3c9aa128b48e00653da2390a7a6612dd8c07b57b6bbd2ed38",
+        "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+        "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+        "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+        "config/scripts/mobile-web-app-preview-arm-driver.mjs": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+        "config/scripts/pr-preflight-gates.test.mjs": "faf00b88ea0a5ef1147ed9c790f3ef39b6e88e29b54621e94dc6e1e0badce87d",
+        "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+        "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+        "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+        "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+        "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+        "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+        "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+        "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+        "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+        "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "config/vitest.config.ts": "ad72da5d62b0166d37bf81a318a1de6b3e1f93d9afbc5535dfb5bfe69e36067f",
+        "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+        "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "pnpm-workspace.yaml": "7235d2e4bb93d8789cd9e9c77f84983d82be6ec56cfd99cbff3a0881ef6ff1f8",
+        "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+        "src/main/ipc/filesystem-import.test.ts": "27f9fa37a6d3eb411efcb810a5ac9a0e24c1fa4251df56b7bd7de1c6878ecf49",
+        "src/main/persistence/loading-store/pty-spawn-exit-durability.test.ts": "0919eefaccb325a7d78930f4d6c5d8e40635ffec0eda5cf0f2bb9100b09186b0",
+        "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+        "src/main/runtime/mobile-presence-lock.test.ts": "397c8d876d1f482e5bda40453d48a516ff92cf53ed3d3b37ad7415534eb4d596",
+        "src/main/runtime/orca-runtime-terminal-rename-retention.test.ts": "f8c35f30083c08f4740dc2f5202ec11e0f4099e92a3121154f59a1c20e63aead",
+        "src/main/runtime/orchestration/federation-sync.test.ts": "f8d00070b9f51d4ac8591486d4d41fd52fccb80cf74508c96a5fd038f089b8ec",
+        "src/main/runtime/rpc/methods/orchestration/worker/worker-abandon-caller.test.ts": "d6fe8329d568b85ed8d06d7ede3d76b6194fdc0a830a4fd10e636d6d16ad4bc2",
+        "src/main/runtime/rpc/orchestration-legacy-takeover-dispatcher.test.ts": "2227cafabf49973c07d19b45ad4d605325148b7c69e3ff07c3b5a89745a9c28a",
+        "src/main/runtime/rpc/orchestration-mutation-request-show.test.ts": "33dc66778b8a3104b5f8e0a1e8fa4f19443d7cc6329d18c44cdc8356a969496c",
+        "src/main/runtime/rpc/rpc-caller-scope.test.ts": "2fa615b08cfc5f477a4dced62618024a128d5821758ecec1233e8478ab8b4ceb",
+        "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+        "src/main/runtime/tui-idle-name-only-real-pty.integration.test.ts": "5a607934d053580ba0b90de99b4caf576f3147d5e60fe9a3c50fce6d7b5d3332",
+        "src/renderer/src/components/editor/closed-editor-model-registry.test.ts": "4c102ff23282dcce0285ae79cb05fe22d07698a5447f78694fab078f19a4e6f1",
+        "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+        "src/renderer/src/components/terminal-pane/terminal-pane-store-subscription-budget.test.tsx": "e7794cfbf217defe795999b982885b3f1ac304140c9516ade3b33983138aaf17",
+        "src/renderer/src/hooks/useInstalledAgentSkills.react.test.tsx": "11618fc35dc3037a6d90e40e9f62c474d7fe00063ab180d9e20f7c1cf1748b83",
+        "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+        "tests/e2e/completed-worker-retirement-resume.unit.test.ts": "8605597afe9f8d8f3a5cefd830c5d48dd81729e4643168e69362fab973b28d5e",
+        "tests/e2e/structured-attention-prompt-relay.unit.test.ts": "ae5879df8a28e427af80f3b6c0a1ae9ae53d7fa2b058d38d6fcbe6717ee49f9c",
+        "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+        "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+        "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "17dd61ced975a44caa05f8c692dbdcedd404c004edecfc123a0e2c89fa31085b",
+        "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+        "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+        "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2",
+        "node_modules/vitest/dist/chunks/cac.DfDGTQ9W.js": "96e83ae033d86fe0880fe4be5653b2f951dc64da1a4949d57e9fe13f30193c2b",
+        "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+        "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+        "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+        "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+        "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+        "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+        "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+        "notes/bun-migration/performance/qualify-fixture-reuse.py": "a2771efa48e81e61f24f7b18d3b03bb8d2a8ced9beedd1759c7f07b81c65b69b",
+        "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "1242b3745143d051bdccbf6be1b1566f78ca562ae566c3f5bc8332069c08b77a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/shared-server-preflight.mjs": "6add0b50f83f24ee13a1fc9fb3d4a4e001a31edf46bfc24c87cff9597d7b56ff",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/apply-framework-correction.mjs": "5bd1bb7182793cb938d9852b03052fd8a4ac6bc8771077ef70a0afc207418f2a",
+        "notes/bun-migration/performance/shared-vite-server-corrected-ci-907/framework-correction.patch": "4750b1534f15bf0e2fa70d04b48161e3b8755f1609e501e388c3f8bf6e62b8da"
+      },
+      "passed": 296,
+      "originalPassed": 278,
+      "separateProbePassed": 18
+    }
+  ],
+  "allFourPairedPublicWorkerViteProvidedOptionsOrderedCoverageFullDiscoveryAndRoutesExactlyEqual": true,
+  "rawPerStatusCountersExactly296Passed": true,
+  "eightUniqueCommandsReplayedByFrozenCollector": true,
+  "directRawTitleStatusAndDuplicateMapsProofSha256": "82d28330e1ca852a2c50b736fcf85df7ea34c2d4b2da5513fb0ad18dbc7ec5a4",
+  "queueAndOccupancy": {
+    "runCreatedAt": "2026-10-08T14:37:27Z",
+    "jobCreatedAt": "2026-10-08T14:37:29Z",
+    "jobStartedAt": "2026-10-08T14:37:34Z",
+    "jobCompletedAt": "2026-10-08T14:45:06Z",
+    "runCreatedToPickupSeconds": 7.0,
+    "jobCreatedToPickupSeconds": 5.0,
+    "runCreatedToJobCreatedSeconds": 2.0,
+    "occupiedSeconds": 452.0,
+    "sumStepSeconds": 439.0
+  },
+  "queueIntervalsAreAlternativesNotSummedWithOccupancy": true,
+  "producerInstalledFrameworkFingerprintNotOfflineInstalledChunkOrWorkerBinary": true,
+  "inputsSha256": {
+    "notes/bun-migration/performance/vitest-shared-transform-server-907cb6e-ordered-preflight-prefixes-draft/preparation-proof.json": "1d763a9d089e41306020f6faac1178da477688f6d125be7427b1eb9b663587ac",
+    "notes/bun-migration/performance/vitest-shared-transform-server-907cb6e-ordered-preflight-prefixes-draft/payload/definition-manifest.json": "49d2ae4dd9efeaa5058fe02da2196831c94d4e0e21d63417244079a3e03524a8",
+    "notes/bun-migration/performance/vitest-shared-transform-server-907cb6e-ordered-preflight-prefixes-draft/payload/shipping-launch-plan.json": "88615fbdf0d933f302a782a83955e02215d10e389ac0c6409d2f8234e04f32be",
+    "notes/bun-migration/performance/shared-transform-corrected-907-independent-actual-eight-replay/independent-official-eight-raw-and-cost-proof.json": "82d28330e1ca852a2c50b736fcf85df7ea34c2d4b2da5513fb0ad18dbc7ec5a4",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/root-materialized-definition-proof.json": "9ac84115a6ee61d56e6dd3adfb0861f56457749817107cc2e8a6995973823792",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-104729/before.json": "73f9b77bd54fce535568afc7284a4de1d4b1f9dadb9e4e1651e68219c98a1aaa",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-104729/before-preflight.json": "1a6dd016d5bd4c99901e44fa2e90619795e1b139eecaf583dbbf0621eea6b688",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-104729/before-source-proof.json": "adca41b93dc0b3261e57edb367c208d6d93b1ff5b4f4afdd17c8a748611db2f6",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-104729/before-details.json": "19ef5d1627bf8802e0ffe6bb816630f8bbc2a0b298f07c5799a148ff000fd44c",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-104729/after.json": "d9e94af445b743f0f2e859ee820b20c0a42dd146d27cd966a3ce0ef7b6f5ec9f",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-104729/after-preflight.json": "4efe16ed91c0a3947839f6a569a6f33d3065f1d7d26a0da8afe80f35a9130c03",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-104729/after-source-proof.json": "a06105f8c70f7759fe2581eadd4f40b65b029efecbad43d01b7e81354c64190a",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-104729/after-details.json": "7c1a337ce2c04cb4ef1b68337ac228308d4c5205259f828cb6a6b11e5a7ceef8",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-130363/before.json": "6cfcc1d2a2a6b6f8af1e81dfd5d36552778d365cd65e5c987914d2f7a21ef4a4",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-130363/before-preflight.json": "5311769670fb9f629dac445fb17042ffe7138c4595dfcac8c7ac03ac1289d4e8",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-130363/before-source-proof.json": "55dd28309353a5c3bcb8235cf6166406239b03539d6a2848d42ebeacfcbdbb57",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-130363/before-details.json": "f1dca7b83010631aaa5608bdc314af8622d6a8fecc872b6559e6d1fe221ac5cd",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-130363/after.json": "293f00bf7aae4298ee61c2c67e5b49baadd0008285509263b9e6d2fbd177cdbd",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-130363/after-preflight.json": "05b8f3a9747bc2eb75ad425815cb0227bd0aca2e63390ea8c6c586857c12604d",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-130363/after-source-proof.json": "1c40f2fb3cceed4b27f702eddbef03fc53375c2ebfbdb481c9eb3bcfb439e9cc",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/bun-130363/after-details.json": "a4ac5b459133ff57430951a741fd6b2029cc9b886fc8f28e38296d66b61eba97",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-104729/before.json": "5bf2dbcbd59817a9f4eb093fbb8c2692e70bcaaae3d1e49e47adc3f1be825bad",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-104729/before-preflight.json": "7848aee49ab25fea64b4f98c2df980489f5a2a433cc0bee7c00c3c564a082d7f",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-104729/before-source-proof.json": "77978863f58387c57f0818d4c167b6bd51d2c58e8713e3729d22d247379ea47c",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-104729/before-details.json": "9eae0bee5f6ea4276aa8369f0f91b5838b6bbecb0dcf7322b23db025720deeea",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-104729/after.json": "fd668541ec869ce3c1311acfb07f0aed178e6739b812291d180d3d5c5c97b28a",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-104729/after-preflight.json": "986ba24007dec5b506b6b6dcffb34d719489c432c3ec005227e015b069e87d2a",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-104729/after-source-proof.json": "63aba0fb8aa29ff381b72764b14b2e8f2a2f890a36e6f2e93f13d2f42595f272",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-104729/after-details.json": "b48a20bfa129209fadaee14918c7e8d256930753129e13879d28359dae5059b4",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-130363/before.json": "2ec2a430ea6e9bdb80db7d56c645c91ee4cd70ecdd1af7b79b12677be19908c2",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-130363/before-preflight.json": "638460b8d16490eb6312f2b17fad5a43a10b14629d2f2b34e53d01c614a44ede",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-130363/before-source-proof.json": "f51008a386ff5e140aff23accfb65d61f6363ead2df33fd3a9b7b56d78e4c275",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-130363/before-details.json": "c5a944cd1d36602187745b2ed6aca400453058a07c45ed0fdde5763f6260a113",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-130363/after.json": "fd7530d2d9b7c3a46b020d07719f5cc98e65594085e01c0d231faaea390a005a",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-130363/after-preflight.json": "952bef130fef3d03669777d449df25009b233f24667a943b0b0aaf718e313cdb",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-130363/after-source-proof.json": "0483bc3599fd8db608cc0b869a20dcdad35f1bba22b210f1256a3fc2d870512e",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/official-artifacts/runs/node-130363/after-details.json": "eeaf0b8d5e123b392d6da63b1fc15c9001ee2d4a6ee85067a6afa83b31a99e97",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/root-poll-3-run-37793987040.json": "040f95f9ccf82918741fe9bd47e1abffd7de96b042edefa53434a844476c981c",
+    "notes/bun-migration/performance/vitest-shared-transform-corrected-907-prefix-safe-definition-publication-20261008/root-poll-2-jobs-37793987040.json": "6f46ed9963dd54e35d94aa1b21e6203d91c88c6c2f7d174fe1ed8275e9c7b8cc"
+  },
+  "noRuntimePerformanceCrossPlatformClaim": true
+}
