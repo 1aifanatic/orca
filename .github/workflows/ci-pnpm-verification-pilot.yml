@@ -1,65 +1,54 @@
-name: pnpm verification cache pilot
-
+name: TypeScript checker-count capacity diagnostic
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      source_sha:
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  group: typescript-checkers-two-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  observe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 19
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      TRIAL_DEFINITION_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
+      - name: Preserve owned definition payload
         env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          SOURCE_INPUT: ${{ inputs.source_sha }}
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          test "$SOURCE_INPUT" = b46a2eb9beec05b1a4ff3527c7a75a3dd77004b9
+          test "$(git rev-parse HEAD)" = "$TRIAL_DEFINITION_SHA"
+          mkdir "$RUNNER_TEMP/checker-count-payload"
+          cp .github/benchmark/typescript-checkers-two/* "$RUNNER_TEMP/checker-count-payload/"
+      - uses: actions/checkout@v6
+        with:
+          ref: b46a2eb9beec05b1a4ff3527c7a75a3dd77004b9
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: none
+          node-version: '24.21.0'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: config/.bun-version
+      - name: Six counted wrappers then negative incremental parity
+        run: python3 "$RUNNER_TEMP/checker-count-payload/trial.py" "$RUNNER_TEMP/checker-count-payload" "$RUNNER_TEMP/checker-count-evidence"
+      - name: Retain every attempt and failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: typescript-checkers-two-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/checker-count-evidence
+            ${{ runner.temp }}/checker-count-payload
+          if-no-files-found: error
+          retention-days: 14

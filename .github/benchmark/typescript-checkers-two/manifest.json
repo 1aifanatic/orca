@@ -1,0 +1,105 @@
+{
+  "sourceHead": "b46a2eb9beec05b1a4ff3527c7a75a3dd77004b9",
+  "sourceTree": "a36e450e2412f5875f0a08771ccecfd13693e69c",
+  "sourceHashes": {
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "config/scripts/run-typecheck-projects-in-parallel.mjs": "fe76f86de22faf8318349b037001e379a5128c051b2fdff8f019879b1f9286e4",
+    "config/scripts/run-typecheck-projects-in-parallel.test.mjs": "8d543463a239eed3974d672d9616907692f6ec515f809629030d053792385614",
+    ".github/workflows/pr.yml": "945cd635eae0a73b9bf4f00ae13ef6bc1d252cbce48c3000a012dc625624287b",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/tsconfig.node.json": "2376343959098fb004485a4148dc4199bacc716c481bbfc17fc22e497628c8d7",
+    "config/tsconfig.cli.json": "c9909ff477ed1ee362d9e9062e6e28242e954bb56be4893e769395c57d82f5f1",
+    "config/tsconfig.tc.cli.json": "2121732f5f64622421a1ee5ff3c748bf3b03afcc63df44650567574d1e9772b3",
+    "config/tsconfig.web.json": "c8b79d519544edd7f6134e68daa7fd50fd5297ebdb1f10661054d47760363672",
+    "config/tsconfig.tc.web.json": "e8a5f7faa6cee4389968d29ad417357cdc1a90391333d0c00a0b027f11723e8e",
+    "pnpm-workspace.yaml": "c6a151d1b5d2734bc6be54d48104a0aa6a18da0cd22e3e4799c99fd9665f7d04",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/actions/restore-pnpm-verification/action.yml": "4cda84b74eb8063262fb463d9289d2c9e19d00c2a89ccd4d559bcbeaad96085e",
+    ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8"
+  },
+  "sourceAbsentPaths": [
+    ".node-version",
+    ".npmrc",
+    ".pnpmfile.cjs"
+  ],
+  "ownedPathsAbsentInNamedSource": [
+    "config/scripts/run-typecheck-checkers-4-owned.mjs",
+    "config/scripts/run-typecheck-checkers-2-owned.mjs",
+    "src/shared/checker-capacity-incremental-negative.ts"
+  ],
+  "installedCommonHashes": {
+    "node_modules/typescript/package.json": "3722b30210616a13a3213ded11575ba6b2dbab10c32a5ef67afca8513e27017e",
+    "node_modules/typescript/bin/tsc": "2219f428a7e55aaf1f7ad85b9b0f0cf5078aeb76ccc9a7c6036c92d48f492ffd",
+    "node_modules/typescript/lib/tsc.js": "cbdfbf11c26ed00dfc073155e316a42d6d6d8a387be61006b82fa9aa93ac572e",
+    "node_modules/typescript/lib/getExePath.js": "96c10fd3a18e165d7323de8e314ac8d755ad96811f9fbc304a5b3ba4e05285cc",
+    "node_modules/typescript-api/package.json": "9332e97c30d3e53ed54910b89207ed657fb444066484df6e5b6965bf130865e9",
+    "node_modules/@electron-toolkit/tsconfig/package.json": "30b98fe10a21a482b82dc3c3b91f56cb5068ddae0b037e29d03ac23d260d7322",
+    "node_modules/@electron-toolkit/tsconfig/tsconfig.json": "fcda29fc2cc20819694501e12dcc576915991450cf1f0a480d794625efcd007a",
+    "node_modules/@electron-toolkit/tsconfig/tsconfig.node.json": "cadf70586bc221033a27318df449d40fe1b416dd96007a45a63cfd0f596f33fe",
+    "node_modules/@electron-toolkit/tsconfig/tsconfig.web.json": "0a21612980d4d30db1eab21707ca3ff8052dce21be29d3322ec7d052b0eb7155"
+  },
+  "pins": {
+    "node": "24.21.0",
+    "bun": "1.4.2+744846f84",
+    "pnpm": "12.8.1",
+    "typescriptNative": "7.0.2",
+    "typescriptApi": "6.0.3"
+  },
+  "configs": [
+    "tsconfig.node.json",
+    "tsconfig.tc.web.json",
+    "tsconfig.tc.cli.json"
+  ],
+  "projects": [
+    {
+      "config": "tsconfig.node.json",
+      "heapGib": 7
+    },
+    {
+      "config": "tsconfig.tc.web.json",
+      "heapGib": 6
+    },
+    {
+      "config": "tsconfig.tc.cli.json",
+      "heapGib": 2
+    }
+  ],
+  "buildinfoNames": [
+    "tsconfig.node.tsbuildinfo",
+    "tsconfig.tc.web.tsbuildinfo",
+    "tsconfig.tc.cli.tsbuildinfo"
+  ],
+  "schedule": [
+    "4-cold",
+    "2-cold",
+    "2-warm1",
+    "4-warm1",
+    "4-warm2",
+    "2-warm2"
+  ],
+  "negativeFixture": "src/shared/checker-capacity-incremental-negative.ts",
+  "negativeBytes": "export const checkerCapacityNegative: number = 'owned-incremental-error'\n",
+  "payloadHashes": {
+    "wrapper-4.mjs": "388c2413b1aef5d5f02aa1d9d6890ab4fb414f427598fd05267515b9f4ec8eab",
+    "wrapper-2.mjs": "af8c61a1234ba43dbef444674a15d57330f094a3cc2ae379ec524f3e967832af",
+    "trial.py": "54e4c5e3e1a133d8a02552e1aaa08ad12cf270a3b0ac0ee19cec3049b05dea18"
+  },
+  "diagnosticOnlyNeverMerge": true,
+  "compilerQualificationPending": true,
+  "performancePending": true,
+  "negativeChecksAfterTimings": true,
+  "expectedWholeCommands": 10,
+  "timedWholeCommands": 6,
+  "timedCompilerInvocations": 18,
+  "postTimingCompilerInvocations": 12,
+  "independentlyColdOsHosts": false,
+  "maximumResidentSizeScope": "GNU time largest single-process maximum in the waited tree; not concurrent aggregate peak RSS.",
+  "observerOverhead": "Same bounded FD capture and extendedDiagnostics in both arms; guards/cache receipts outside counted walls.",
+  "fixedMemoryBudgetUnchanged": true,
+  "sourceUsesExistingParallelWrapper": true,
+  "stockInstallActionOnce": true,
+  "jobTimeoutMinutes": 19,
+  "bunCheckOnPinnedRuntime": "Unavailable; not installed or attempted in this definition."
+}
