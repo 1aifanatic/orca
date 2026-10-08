@@ -337,13 +337,14 @@ if (graphErrors.length > 0) {
   }
 }
 
+/** @type {{ label: string, smoke: (outDir: string, options?: { runtimePath?: string }) => unknown }[]} */
 const workerSmokes = [
-  ['profile state worker', smokeProfileStateWorkers],
-  ['foreign SQLite reader worker', smokeForeignSqliteReaderWorker],
-  ['session scanner service', smokeSessionScannerService]
+  { label: 'profile state worker', smoke: smokeProfileStateWorkers },
+  { label: 'foreign SQLite reader worker', smoke: smokeForeignSqliteReaderWorker },
+  { label: 'session scanner service', smoke: smokeSessionScannerService }
 ]
 // Each shipped child is checked under the build's Node and, when set, the pinned runtime.
-for (const [label, smoke] of workerSmokes) {
+for (const { label, smoke } of workerSmokes) {
   try {
     await smoke(OUT_DIR)
     if (nodeRuntimePath) {

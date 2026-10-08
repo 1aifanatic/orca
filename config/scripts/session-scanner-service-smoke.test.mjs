@@ -66,7 +66,9 @@ describe('session scanner service build smoke', () => {
 
   it('runs in the orcad build under both runtimes', () => {
     const source = readFileSync(resolve('config/scripts/build-orcad.mjs'), 'utf8')
-    expect(source).toContain("['session scanner service', smokeSessionScannerService]")
+    expect(source).toContain(
+      "{ label: 'session scanner service', smoke: smokeSessionScannerService }"
+    )
     expect(source).toContain('await smoke(OUT_DIR, { runtimePath: nodeRuntimePath })')
   })
 })
