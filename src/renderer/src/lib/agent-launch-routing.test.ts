@@ -35,6 +35,14 @@ describe('new agent launch routing', () => {
     expect(route({ settings: { experimentalNativeChat: true } })).toBe('structured-native-chat')
   })
 
+  // Why: a TUI caps a mirrored draft at forty lines; the structured composer has no such limit.
+  it('routes a draft longer than the terminal mirror cap to structured chat', () => {
+    const sixtyLineDraft = Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join('\n')
+    expect(route({ launchText: sixtyLineDraft, promptDelivery: 'draft' })).toBe(
+      'structured-native-chat'
+    )
+  })
+
   it('opens the terminal when Chat UI is off', () => {
     expect(route({ settings: { experimentalNativeChat: false } })).toBe('terminal-tui')
     expect(route({ settings: null })).toBe('terminal-tui')
@@ -44,6 +52,8 @@ describe('new agent launch routing', () => {
     expect(route({ hostCapabilities: [] })).toBe('terminal-tui')
     expect(route({ hostCapabilities: null })).toBe('terminal-tui')
     expect(route({ agent: 'openclaude' })).toBe('terminal-tui')
+    // Grok has no built-in structured adapter; only a host agent list admits it.
+    expect(route({ agent: 'grok' })).toBe('terminal-tui')
     expect(route({ startsOutsideWorkspaceRoot: true })).toBe('terminal-tui')
     expect(route({ executionHostId: 'ssh:host-a' })).toBe('terminal-tui')
     expect(
@@ -57,6 +67,20 @@ describe('new agent launch routing', () => {
             distro: 'Ubuntu',
             reason: 'project-override',
             cacheKey: 'wsl'
+          }
+        }
+      })
+    ).toBe('terminal-tui')
+    expect(
+      route({
+        projectRuntime: {
+          status: 'repair-required',
+          repair: {
+            projectId: 'repo-1',
+            preferredRuntime: { kind: 'wsl', distro: null },
+            reason: 'wsl-distro-required',
+            source: 'project-override',
+            cacheKey: 'repair'
           }
         }
       })
@@ -107,16 +131,34 @@ describe('new agent launch routing', () => {
         clientCapabilities: negotiated
       })
     ).toBe('terminal-tui')
-    expect(
-      route({
-        executionHostId: 'runtime:environment-a',
-        hostCapabilities: negotiated,
-        clientCapabilities: []
-      })
-    ).toBe('terminal-tui')
+    const server = {
+      executionHostId: 'runtime:environment-a',
+      hostCapabilities: negotiated,
+      clientCapabilities: negotiated
+    }
+    // A client that never told the server it reads structured sessions keeps the host terminal.
+    expect(route({ ...server, clientCapabilities: [] })).toBe('terminal-tui')
+    expect(route({ ...server, clientCapabilities: undefined })).toBe('terminal-tui')
+    // The server has not answered yet, or answered without structured sessions.
+    expect(route({ ...server, hostCapabilities: null })).toBe('terminal-tui')
+    expect(route({ ...server, hostCapabilities: [] })).toBe('terminal-tui')
+  })
+})
+
+describe('explicit structured chat requests', () => {
+  it.each(['claude', 'codex'] as const)('supports %s history resume on a capable host', (agent) => {
+    const input = {
+      agent,
+      settings,
+      executionHostId: 'local',
+      hostCapabilities: [STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY],
+      workspaceKind: 'folder' as const
+    }
+    expect(structuredAgentLaunchSupported(input)).toBe(true)
+    expect(structuredAgentLaunchSupported({ ...input, hostCapabilities: [] })).toBe(false)
   })
 
-  it('still permits an explicit structured history request when the new-launch switch is off', () => {
+  it('still permits an explicit structured history request while Chat UI is off', () => {
     const input = {
       agent: 'codex' as const,
       settings: { experimentalNativeChat: false },
@@ -125,5 +167,6 @@ describe('new agent launch routing', () => {
     }
     expect(resolveAgentLaunchRoute(input)).toBe('terminal-tui')
     expect(structuredAgentLaunchSupported(input)).toBe(true)
+    expect(structuredAgentLaunchSupported({ ...input, settings: null })).toBe(true)
   })
 })

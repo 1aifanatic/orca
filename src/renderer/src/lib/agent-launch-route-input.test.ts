@@ -101,8 +101,7 @@ describe('buildAgentLaunchRouteInput', () => {
       agent: 'codex',
       workspace: { kind: 'git-worktree', worktreeId: 'wt-1' },
       prompt: 'fix the flaky test',
-      promptDelivery: 'auto-submit',
-      initialSessionOptions: { model: 'gpt-5.4' }
+      promptDelivery: 'auto-submit'
     })
     expect(input).toEqual({
       agent: 'codex',
@@ -114,8 +113,7 @@ describe('buildAgentLaunchRouteInput', () => {
       promptDelivery: 'auto-submit',
       launchText: 'fix the flaky test',
       nativeChatTranscriptIsLocalReadable: true,
-      startsOutsideWorkspaceRoot: false,
-      initialSessionOptions: { model: 'gpt-5.4' }
+      startsOutsideWorkspaceRoot: false
     })
     expect(mocks.getExecutionHostIdForWorktree).toHaveBeenCalledWith(appStore, 'wt-1')
     expect(mocks.getLocalProjectExecutionRuntimeContext).toHaveBeenCalledWith(appStore, 'wt-1')

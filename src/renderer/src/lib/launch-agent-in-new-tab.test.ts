@@ -349,7 +349,7 @@ describe('launchAgentInNewTab', () => {
     expect(mockCreateTab.mock.calls[0]?.[3]).not.toHaveProperty('viewMode')
   })
 
-  it('mirrors a multi-line draft into chat and opens the tab there', async () => {
+  it('mirrors a multi-line draft into chat without opening the tab there', async () => {
     store.settings = {
       agentCmdOverrides: {},
       agentDefaultArgs: {},
@@ -422,7 +422,7 @@ describe('launchAgentInNewTab', () => {
     expect(launch.sessionOptions).toBeUndefined()
   })
 
-  it('applies saved session preferences without automatically opening terminal chat', async () => {
+  it('keeps Chat UI model preferences out of a terminal fallback launch', async () => {
     store.settings = {
       agentCmdOverrides: {},
       agentDefaultArgs: {},
@@ -448,9 +448,9 @@ describe('launchAgentInNewTab', () => {
     })
 
     const launch = mockQueueTabStartupCommand.mock.calls[0]?.[1]
-    expect(launch.command).toContain("'-m' 'gpt-5.2-codex'")
-    expect(launch.command).toContain("'-c' 'model_reasoning_effort=medium'")
-    expect(launch.sessionOptions).toEqual({ model: 'gpt-5.2-codex', effort: 'medium' })
+    expect(launch.command).not.toContain("'-m'")
+    expect(launch.command).not.toContain('model_reasoning_effort=')
+    expect(launch.sessionOptions).toBeUndefined()
     expect(mockCreateTab).toHaveBeenCalledWith(
       'wt-1',
       undefined,
@@ -461,7 +461,7 @@ describe('launchAgentInNewTab', () => {
     expect(mockSetTabViewMode).not.toHaveBeenCalled()
   })
 
-  it('preserves paired-host draft delivery and supported launch preferences', async () => {
+  it('preserves paired-host draft delivery without Chat UI launch preferences', async () => {
     mockIsWebRuntimeSessionActive.mockReturnValue(true)
     store.settings = {
       agentCmdOverrides: {},
@@ -495,11 +495,13 @@ describe('launchAgentInNewTab', () => {
         prompt: 'review before sending',
         promptDelivery: 'draft',
         agentArgs: '--permission-mode plan',
-        launchPreferences: { model: 'opus', effort: 'high' },
         agent: 'claude',
         launchDraft: 'review before sending'
       })
     )
+    expect(
+      mockCreateWebRuntimeAgentSessionTerminalWithLaunchDraft.mock.calls[0]?.[0]
+    ).not.toHaveProperty('launchPreferences')
     expect(mockCreateWebRuntimeSessionTerminal).not.toHaveBeenCalled()
     expect(mockCreateTab).not.toHaveBeenCalled()
   })

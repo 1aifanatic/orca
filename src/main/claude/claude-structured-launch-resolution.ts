@@ -96,6 +96,7 @@ export function claudeStructuredPermissionOptions(
 export type ClaudeStructuredLaunch = {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string
+  account?: ClaudeStructuredInvocation['account']
   options: ClaudeStructuredSdkOptions
   cwd: string
   env?: Record<string, string>
@@ -144,7 +145,11 @@ export type ClaudeStructuredLaunchResolverDeps = {
   }) => Promise<boolean>
 }
 
-export type ClaudeStructuredInvocation = { command: string; env: Record<string, string> }
+export type ClaudeStructuredInvocation = {
+  command: string
+  env: Record<string, string>
+  account: 'managed' | 'system'
+}
 
 /**
  * The one place a structured Claude child's binary and environment are
@@ -170,7 +175,8 @@ export async function resolveClaudeStructuredInvocation(
   }
   return {
     command: sources.command,
-    env: claudeChildEnv(sources, auth.stripAuthEnv, decorateEnv)
+    env: claudeChildEnv(sources, auth.stripAuthEnv, decorateEnv),
+    account: auth.stripAuthEnv ? 'managed' : 'system'
   }
 }
 
@@ -228,7 +234,7 @@ export function createClaudeStructuredLaunchResolver(
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const { command, env } = await resolveClaudeStructuredInvocation(
+    const { command, env, account } = await resolveClaudeStructuredInvocation(
       deps,
       (base) =>
         // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
@@ -260,6 +266,7 @@ export function createClaudeStructuredLaunchResolver(
       }))
     return {
       pathToClaudeCodeExecutable: command,
+      account,
       options: {
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         ...permission,
