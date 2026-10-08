@@ -31,6 +31,15 @@ export const AGENT_SESSION_FAILURE_COPY = {
   quitTerminalAgent: QUIT_TERMINAL_AGENT,
   startNewChat: START_NEW_CHAT,
   notSignedIn: '{{agent}} is not signed in for the selected account.',
+  claudeSystemNotSignedIn:
+    "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings.",
+  claudeManagedNotSignedIn:
+    "This Claude account isn't signed in. Sign in again in Claude Accounts settings.",
+  codexSystemNotSignedIn: "Codex isn't signed in. Run `codex login`.",
+  codexManagedNotSignedIn:
+    "This Codex account isn't signed in. Sign in again in Codex Accounts settings.",
+  cliMissing:
+    "{{agent}} wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents.",
   signInFirst: 'Sign in first.',
   signInThenRunCommand: 'Sign in, then run /{{command}} again.',
   signInThenSend: 'Sign in, then send your message again.',
@@ -42,6 +51,10 @@ export const AGENT_SESSION_FAILURE_COPY = {
     'While a Claude account is added in WSL, Claude chats need a Windows Claude account.',
   launchFolderMissing:
     'The folder this chat ran in no longer exists. Restore it to continue this chat.',
+  historyInOtherAccount:
+    "This chat's history is in another Claude account. Switch back to that account to continue it.",
+  agentCommandNotRunnable:
+    "{{agent}}'s Command in Settings → Agents must be a program path or name Orca can find, with no arguments or variables. Change it or reset it.",
   chooseClaudeAccount: 'Choose or add one in Claude Accounts settings.',
   chooseClaudeAccountThenRunCommand:
     'Choose or add one in Claude Accounts settings, then run /{{command}} again.',
@@ -102,7 +115,12 @@ export const AGENT_SESSION_FAILURE_COPY = {
   providerRateLimited: '{{agent}} is rate-limited and retrying.',
   providerRetrying: '{{agent}} hit a temporary problem and is retrying.',
   providerRetryingQuoted: '{{agent}} is retrying: {{detail}}.',
-  previousExitUnverifiable: "Couldn't stop {{agent}} from before."
+  providerRetryNumber: 'Retry {{attempt}}.',
+  providerRetryNumberOf: 'Retry {{attempt}} of {{maxRetries}}.',
+  providerRetryLastError: 'Last error: {{detail}}.',
+  previousExitUnverifiable: "Couldn't stop {{agent}} from before.",
+  sessionNotRestored:
+    "{{agent}} couldn't reopen its earlier session, so this chat continues in a new one. {{agent}} doesn't remember the earlier messages."
 } as const
 
 export type AgentSessionFailureCopyId = keyof typeof AGENT_SESSION_FAILURE_COPY
@@ -115,6 +133,8 @@ export type AgentSessionFailureCopyValues = {
   option?: string
   limit?: string
   size?: string
+  attempt?: string
+  maxRetries?: string
 }
 
 /** One piece in the reader's language, placeholders filled. */

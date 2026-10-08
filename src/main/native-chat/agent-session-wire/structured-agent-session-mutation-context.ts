@@ -13,6 +13,8 @@ import {
 } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-lifetime'
+import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
+import type { StructuredAgentSessionOptionRevisions } from './structured-agent-session-option-revisions'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -46,6 +48,11 @@ export type StructuredAgentSessionMutationContext = {
   wakeQueuedDrain?: (sessionId: string) => void
   /** What follows a committed /clear (the tab move, the source's close), outside its serialize. */
   afterClear?: (sessionId: string) => Promise<void>
+  /** The provider wait each session's serialize is on (a start, an option write), which a caller
+   *  outside that serialize aborts. */
+  acquireAborts: Pick<StructuredAgentSessionAcquireAborts, 'abort' | 'begin'>
+  /** Moved by every pick a running child takes, so a report it read before is never persisted. */
+  optionRevisions: Pick<StructuredAgentSessionOptionRevisions, 'advance'>
   now: () => number
 }
 
@@ -69,7 +76,6 @@ export function mutateStructuredAgentSession<TValue>(
       journal: () => context.sessions.get(envelope.sessionId)?.journal,
       prepareSession,
       publish: (journal) => context.publish(envelope.sessionId, journal),
-      providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
       now: () => context.now()
     })
   )

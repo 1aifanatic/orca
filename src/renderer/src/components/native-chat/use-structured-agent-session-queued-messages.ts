@@ -1,8 +1,9 @@
 // Host-held drafts as this pane acts on them: the card list, Send-now (Steer),
-// Delete, Edit, and the Cmd/Ctrl+Enter steer chord. Everything durable lives on
-// the host, and no draft text ever travels back over the wire: Edit copies the
-// text the card already shows into the composer, locally, before deleting the
-// draft, so no RPC outcome can lose it.
+// Delete, Edit, the Cmd/Ctrl+Enter steer chord, Resume of a held queue, and
+// clearing it before a new message.
+// Everything durable lives on the host, and no draft text ever travels back over
+// the wire: Edit copies the text the card already shows into the composer,
+// locally, before deleting the draft, so no RPC outcome can lose it.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -16,28 +17,30 @@ import type {
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
-import type { StructuredAgentSessionQueueDelivery } from '../../../../shared/structured-agent-session-outbox-delivery'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 import { nativeChatComposerDraftWriteSettled } from './native-chat-composer-draft-store'
 import {
   newestSteerableQueuedMessageCard,
   projectQueuedMessageCards,
-  outboxQueueSendsOnTheirWay,
+  pendingQueueSendsOnTheirWay,
+  queuedMessagesQueuePause,
   sendingQueuedMessageCards,
   type QueuedMessageCard
 } from './structured-agent-session-queued-cards'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
+import type { NativeChatQueueHold } from './native-chat-composer-types'
 
 export type StructuredAgentSessionQueuedMessagesController = {
   cards: QueuedMessageCard[]
   /** The host queues sends. Without it a card can still show — a message the host kept unsent —
    *  but queueing settings and the steer chord would do nothing. */
   queueCapable: boolean
-  /** Why the whole queue sends nothing on its own; null when it drains. Shown only with cards.
-   *  A string reason: a newer host may name one this build does not know. */
+  /** Why the queue holds cards Resume would send: the header row above them. A string reason: a
+   *  newer host may name one this build does not know. */
   pause: { reason: string } | null
-  /** Lift the queue's pause; a failure is a toast, and the Resume button is the retry. */
-  resume: () => Promise<void>
+  /** Whether the host lifted the pause; a failure is a toast, and Resume is the retry. Shared by
+   *  the header row and the composer. */
+  resume: () => Promise<boolean>
   /** A Resume is in flight. */
   resuming: boolean
   /** Send-now into the running turn; the transcript shows it at delivery position. */
@@ -47,13 +50,21 @@ export type StructuredAgentSessionQueuedMessagesController = {
   edit: (messageId: string) => Promise<void>
   /** Cmd/Ctrl+Enter: Send-now the newest card. False when there is none to steer. */
   steerNewest: () => boolean
+  /** Present while the header row shows and the queue could send now: the composer offers
+   *  Resume. A failure is a toast, and Resume stays the retry. */
+  queueResume: StructuredAgentSessionQueueResume | undefined
+  /** Present while `queueResume` is: a new message first asks whether to clear the cards. */
+  queueHold: NativeChatQueueHold | undefined
 }
 
-const NO_SENDS: readonly StructuredAgentSessionOutboxEntry[] = []
-const NO_DELIVERY: StructuredAgentSessionQueueDelivery = {
-  capability: 'unsupported',
-  enabled: false
+export type StructuredAgentSessionQueueResume = {
+  /** Whether the host lifted the pause (`resume`). */
+  resume: () => Promise<boolean>
+  /** A Resume is in flight. */
+  resuming: boolean
 }
+
+const NO_SENDS: readonly StructuredAgentSessionPendingSend[] = []
 
 function alreadySentNotice(): void {
   toast.error(
@@ -68,53 +79,44 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
   hasPendingPrompt: boolean
-  /** Background tasks run: a /clear next in line says it waits them out. */
+  /** A turn is running, whoever started it, or the queue is about to send its next card. */
+  isWorking: boolean
   backgroundTasksRunning?: boolean
-  /** This pane's outbox, whose queue sends the host has no record of yet show as sending, and
-   *  the chat's Working rule. */
-  sending?: {
-    outbox: readonly StructuredAgentSessionOutboxEntry[]
-    isWorking: boolean
-    queueDelivery: StructuredAgentSessionQueueDelivery
-  }
+  /** This pane's sends without a host record yet show as sending cards. */
+  sending?: readonly StructuredAgentSessionPendingSend[]
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
-  const backgroundTasksRunning = args.backgroundTasksRunning === true
-  const pause = args.queuePause
-  const { outbox = NO_SENDS, isWorking = false, queueDelivery = NO_DELIVERY } = args.sending ?? {}
-  // The chat's Working rule, a running turn included: a command card offers no send then.
-  const agentWorking = isWorking
+  const { isWorking, queuePause, backgroundTasksRunning } = args
+  const sending = args.sending ?? NO_SENDS
 
   const cards = useMemo(
     () => [
       ...projectQueuedMessageCards(queuedMessages, submissions, {
         hasPendingPrompt,
-        agentWorking,
+        // A command card offers no send while the agent works.
+        agentWorking: isWorking,
         backgroundTasksRunning,
-        queuePaused: pause !== null
+        queuePaused: queuePause !== null
       }),
       ...sendingQueuedMessageCards(
-        outboxQueueSendsOnTheirWay(
-          outbox,
+        pendingQueueSendsOnTheirWay(
+          sending,
           (queuedMessages ?? []).map((message) => message.messageId),
           isWorking,
-          queueDelivery,
           submissions
         )
       )
     ],
     [
-      agentWorking,
-      backgroundTasksRunning,
       hasPendingPrompt,
       isWorking,
-      outbox,
-      pause,
-      queueDelivery,
+      sending,
+      queuePause,
       queuedMessages,
-      submissions
+      submissions,
+      backgroundTasksRunning
     ]
   )
   const cardsRef = useRef(cards)
@@ -151,9 +153,11 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     [actOnce, mutate]
   )
 
-  const remove = useCallback(
-    (messageId: string): Promise<void> =>
-      actOnce(messageId, async () => {
+  /** True once the card has left the queue, deleted or already sent; a failure is a toast. */
+  const removeCard = useCallback(
+    async (messageId: string): Promise<boolean> => {
+      let removed = false
+      await actOnce(messageId, async () => {
         const result = await mutate<AgentSessionQueuedMessageDeleteResult>(
           'agentSession.queuedMessageDelete',
           'agentSession.queuedMessageDelete',
@@ -162,8 +166,17 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         if (result && !result.deleted && result.disposition === 'dispatched') {
           alreadySentNotice()
         }
-      }),
+        removed = result !== null
+      })
+      return removed
+    },
     [actOnce, mutate]
+  )
+  const remove = useCallback(
+    async (messageId: string): Promise<void> => {
+      await removeCard(messageId)
+    },
+    [removeCard]
   )
 
   const edit = useCallback(
@@ -199,26 +212,6 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     [actOnce, composerScopeKey, mutate]
   )
 
-  const resumingRef = useRef(false)
-  const [resuming, setResuming] = useState(false)
-  const resume = useCallback(async (): Promise<void> => {
-    if (resumingRef.current) {
-      return
-    }
-    resumingRef.current = true
-    setResuming(true)
-    try {
-      await mutate<AgentSessionQueuedMessagesResumeResult>(
-        'agentSession.queuedMessagesResume',
-        'agentSession.queuedMessagesResume',
-        {}
-      )
-    } finally {
-      resumingRef.current = false
-      setResuming(false)
-    }
-  }, [mutate])
-
   const steerNewest = useCallback((): boolean => {
     if (!enabled) {
       return false
@@ -231,6 +224,49 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     return true
   }, [enabled, steer])
 
+  const resumingRef = useRef(false)
+  const [resuming, setResuming] = useState(false)
+  const resume = useCallback(async (): Promise<boolean> => {
+    if (resumingRef.current) {
+      return false
+    }
+    resumingRef.current = true
+    setResuming(true)
+    try {
+      const result = await mutate<AgentSessionQueuedMessagesResumeResult>(
+        'agentSession.queuedMessagesResume',
+        'agentSession.queuedMessagesResume',
+        {}
+      )
+      return result?.resumed === true
+    } finally {
+      resumingRef.current = false
+      setResuming(false)
+    }
+  }, [mutate])
+  const pause = useMemo(() => queuedMessagesQueuePause(cards, queuePause), [cards, queuePause])
+  // Resume and the "Send message?" choice only where the queue could send now: no turn runs (the
+  // queue's coming send counts, as the host names it) and no prompt waits, which holds the queue
+  // too; the composer shows beside a prompt only when this build cannot answer it.
+  const held = enabled && pause !== null && !isWorking && !hasPendingPrompt
+  const queueResume = useMemo(
+    () => (held ? { resume, resuming } : undefined),
+    [held, resume, resuming]
+  )
+
+  // Every card shown, held or not: Clear queue empties the list the person sees. One at a time,
+  // stopping at the first failure, so one failed press is one toast.
+  const clear = useCallback(
+    (): Promise<boolean> =>
+      cardsRef.current.reduce<Promise<boolean>>(
+        (previous, card) => previous.then((removed) => removed && removeCard(card.messageId)),
+        Promise.resolve(true)
+      ),
+    [removeCard]
+  )
+  const count = cards.length
+  const queueHold = useMemo(() => (held ? { count, clear } : undefined), [held, count, clear])
+
   return {
     cards,
     queueCapable: enabled,
@@ -240,6 +276,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     steer,
     remove,
     edit,
-    steerNewest
+    steerNewest,
+    queueResume,
+    queueHold
   }
 }

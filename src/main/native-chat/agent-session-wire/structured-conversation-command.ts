@@ -43,6 +43,8 @@ export type ConversationCommandParams = {
   command: AgentSessionConversationCommand
   /** Wait as a card while the agent works, as a queued send does. */
   delivery?: 'queue-if-active'
+  /** Host-local, set by the client-facing command RPC as for an ordinary send. */
+  userSend?: true
 }
 export type ConversationReplacement = {
   sourceSessionId: string
@@ -161,7 +163,8 @@ export function runStructuredConversationCommand(
             const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, {
               envelope,
               body: structuredAgentSessionClearBody(),
-              delivery: params.delivery
+              delivery: params.delivery,
+              ...(params.userSend ? { userSend: true as const } : {})
             })
             if (queued && !queued.ok) {
               return queued

@@ -8,20 +8,17 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
-import {
-  createStructuredAgentSessionOutboxEntry,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  outboxArgs: Array.of<{ queueDelivery?: { capability: string; enabled: boolean } }>(),
+  sendArgs: Array.of<{ queue?: { capability: string; enabled: boolean } }>(),
   operations: 0
 }))
 let items: AgentJournalRenderItem[] = []
 let queuedMessages: AgentSessionQueuedMessage[] | undefined
 /** A replaced chat's messages the carry is asking about, drawn in this chat's transcript. */
-let askedEntries: StructuredAgentSessionOutboxEntry[] = []
+let askedEntries: StructuredAgentSessionPendingSend[] = []
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -44,21 +41,14 @@ vi.mock('./use-structured-agent-session-read', () => ({
   })
 }))
 
-vi.mock('./use-structured-agent-session-outbox', () => ({
-  structuredSessionOperationId: () => `operation-${++mocks.operations}`,
-  useStructuredAgentSessionOutbox: (args: {
-    queueDelivery?: { capability: string; enabled: boolean }
-  }) => {
-    mocks.outboxArgs.push(args)
-    return {
-      outbox: [],
-      askedRows: askedEntries,
-      error: null,
-      send: vi.fn(),
-      retry: vi.fn(),
-      withdrawUnsent: vi.fn()
-    }
+vi.mock('./use-structured-agent-session-sends', () => ({
+  useStructuredAgentSessionSends: (args: { queue?: { capability: string; enabled: boolean } }) => {
+    mocks.sendArgs.push(args)
+    return { pending: [], error: null, send: vi.fn(), stopSends: vi.fn() }
   }
+}))
+vi.mock('./use-structured-agent-session-replacement-carry', () => ({
+  useStructuredAgentSessionReplacementCarry: () => askedEntries
 }))
 
 import {
@@ -119,7 +109,7 @@ function answerCommands(value: Record<string, unknown>): void {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.outboxArgs.length = 0
+  mocks.sendArgs.length = 0
   mocks.call.mockImplementation(async () => null)
   items = [RUNNING_TURN]
   queuedMessages = undefined
@@ -185,18 +175,18 @@ describe('a /clear against a host that runs it from the queue', () => {
 
   it.each([
     { card: 'waiting', held: false, enabled: true },
-    { card: 'held (kept or couldn’t send), which the queue skips', held: true, enabled: false }
+    { card: 'held (couldn’t send), which the queue skips', held: true, enabled: false }
   ])('a $card /clear card decides whether a send queues behind it', ({ held, enabled }) => {
     setLocalRuntimeCapabilitiesForTests(CLEAR_WAITS)
     queuedMessages = [
       {
         ...draft('clear-1'),
         body: { ...draft('clear-1').body, command: { name: 'clear' } },
-        ...(held ? { paused: true as const, pausedReason: 'kept' as const } : {})
+        ...(held ? { paused: true as const, pausedReason: 'send_failed' as const } : {})
       }
     ]
     render(false)
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({ capability: 'supported', enabled })
+    expect(mocks.sendArgs.at(-1)?.queue).toEqual({ capability: 'supported', enabled })
   })
 
   it.each([
@@ -209,16 +199,18 @@ describe('a /clear against a host that runs it from the queue', () => {
       items = turn ? [RUNNING_TURN] : []
       askedEntries = [
         {
-          ...createStructuredAgentSessionOutboxEntry({
-            clientMessageId: 'asked',
-            sessionId: 'old-session',
-            text: 'message asked about',
-            attachments: [],
-            queuedAt: 1
-          }),
-          state: 'dispatching',
-          lastAttemptAt: 2,
-          sentDelivery: 'queue-if-active'
+          clientMessageId: 'asked',
+          sessionId: 'old-session',
+          body: {
+            kind: 'message',
+            role: 'user',
+            blocks: [{ type: 'text', text: 'message asked about' }]
+          },
+          previewUris: [],
+          queuedAt: 1,
+          phase: 'sending',
+          issued: true,
+          delivery: 'queue-if-active'
         }
       ]
       const { result } = render()

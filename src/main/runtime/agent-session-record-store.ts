@@ -66,7 +66,7 @@ import {
   type AgentSessionReserveRequest,
   type AgentSessionReserveResult
 } from './agent-session-reservation-admission'
-import type { AgentSessionStoreState } from './agent-session-record-store-file'
+import { heldAgentSessionIds, type AgentSessionStoreState } from './agent-session-store-state'
 import {
   agentSessionVisibleTabIndex,
   listVisibleAgentSessionIds,
@@ -102,7 +102,7 @@ export class AgentSessionRecordStore {
     journalDatabase: JournalHostDatabase
     hostId: string
   }): AgentSessionRecordStore {
-    const rows = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId)
+    const rows = loadAgentSessionStoreRows(args.journalDatabase.db)
     const transactions = new AgentSessionStoreTransactions(args.journalDatabase, rows)
     return new AgentSessionRecordStore(transactions, args.hostId)
   }
@@ -120,6 +120,9 @@ export class AgentSessionRecordStore {
     this.state.records.get(sessionId) ?? null
 
   listRecords = (): AgentSessionRecord[] => [...this.state.records.values()]
+
+  /** Every chat this host holds a row for, readable or not. */
+  listHeldSessionIds = (): string[] => heldAgentSessionIds(this.state)
 
   /** Whether this host has recorded a chat, readable or not. Nothing removes a record row. */
   holdsRecords = (): boolean => this.state.records.size > 0 || this.state.unreadableRecords.size > 0
@@ -304,7 +307,7 @@ export class AgentSessionRecordStore {
 
   /** Admission and, when `claimAfter` allows, the claim: one durable write before the effect. */
   admitAndClaimOperation = (
-    args: AgentSessionOperationAdmission,
+    args: Parameters<typeof admitAndClaimAgentSessionOperationInto>[1],
     claimAfter: ClaimAfterAdmission
   ) => this.transact((draft) => admitAndClaimAgentSessionOperationInto(draft, args, claimAfter))
 

@@ -6,6 +6,7 @@
 // value the provider wrote — never recovered from a string afterwards, since by then nothing can
 // tell a provider's sentence from Orca's.
 
+import type { AgentSessionAccountKind } from './agent-session-availability'
 import {
   readAgentSessionArgumentProblem,
   type AgentSessionArgumentProblem
@@ -25,11 +26,15 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   /** A start that did not land, with no one to blame: Orca's fault, a failed spawn, a close. */
   'startFailed',
   'notSignedIn',
+  /** The agent's CLI is not installed where the chat runs: its spawn found no such file. */
+  'cliMissing',
   'historyTooLarge',
   'managedAccountEnvOverride',
   'accountSwitchInProgress',
   'managedAccountUnsupported',
   'launchFolderMissing',
+  'historyInOtherAccount',
+  'agentCommandNotRunnable',
   'providerExited',
   'restartFailed',
   'providerRejected',
@@ -56,7 +61,9 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   /** The provider is retrying a request its API refused; not a failure yet. */
   'providerRetrying',
   /** A child a Stop could not prove gone: its exit is unverifiable. Kept for rows hosts wrote. */
-  'previousExitUnverifiable'
+  'previousExitUnverifiable',
+  /** The agent could not reopen the chat's saved session, so a fresh one without its memory continues it. */
+  'sessionNotRestored'
 ] as const
 export type AgentSessionFailureKind = (typeof AGENT_SESSION_FAILURE_KINDS)[number]
 
@@ -72,7 +79,8 @@ const STATUS_ROW_ONLY_FAILURE_KINDS = [
   'stopRefused',
   'answerUnconfirmed',
   'providerRetrying',
-  'previousExitUnverifiable'
+  'previousExitUnverifiable',
+  'sessionNotRestored'
 ] as const satisfies readonly AgentSessionFailureKind[]
 
 /** Why a message was not sent. A new failure kind is one of these until listed above. */
@@ -128,10 +136,15 @@ export type AgentSessionProviderRetry = {
   status?: number
   /** The provider's own account of what failed, written for a person: the row's second line. */
   cause?: string
+  /** Which retry this is, counted from 1. */
+  attempt?: number
+  /** The most retries the provider makes before it gives up. */
+  maxRetries?: number
 }
 
 export type AgentSessionFailureFact = {
   kind: AgentSessionFailureKind
+  account?: AgentSessionAccountKind
   /** Provider-authored only; absent whenever Orca wrote the words. */
   detail?: ProviderDiagnostic
   /** On `restartFailed` and `startFailed`: the refusal that kept the agent from starting. On
@@ -170,6 +183,7 @@ export function providerDiagnostic(
 export function agentSessionFailureFact<TKind extends AgentSessionFailureKind>(
   kind: TKind,
   extra: {
+    account?: AgentSessionAccountKind
     detail?: ProviderDiagnostic
     refusal?: AgentSessionRefusalReference
     attachment?: AgentSessionAttachmentProblem
@@ -183,6 +197,7 @@ export function agentSessionFailureFact<TKind extends AgentSessionFailureKind>(
     : undefined
   return {
     kind,
+    ...(extra.account ? { account: extra.account } : {}),
     ...(detail ? { detail } : {}),
     ...(extra.refusal ? { refusal: extra.refusal } : {}),
     ...(extra.attachment ? { attachment: extra.attachment } : {}),
@@ -224,15 +239,26 @@ export function readProviderRetry(value: unknown): AgentSessionProviderRetry | u
   }
   const error =
     typeof value.error === 'string' && value.error.trim() ? value.error.trim() : undefined
-  const status =
-    typeof value.status === 'number' && Number.isInteger(value.status) && value.status > 0
-      ? value.status
-      : undefined
+  const status = positiveInteger(value.status)
   const cause =
     typeof value.cause === 'string' ? providerDiagnostic(value.cause, 'person')?.text : undefined
-  return error || status || cause
-    ? { ...(error ? { error } : {}), ...(status ? { status } : {}), ...(cause ? { cause } : {}) }
+  const attempt = positiveInteger(value.attempt)
+  // A maximum bounds a retry; alone, or below the retry it bounds, it says nothing.
+  const max = positiveInteger(value.maxRetries)
+  const maxRetries = attempt && max && max >= attempt ? max : undefined
+  return error || status || cause || attempt
+    ? {
+        ...(error ? { error } : {}),
+        ...(status ? { status } : {}),
+        ...(cause ? { cause } : {}),
+        ...(attempt ? { attempt } : {}),
+        ...(maxRetries ? { maxRetries } : {})
+      }
     : undefined
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined
 }
 
 /** A fact as a reader meets it. Undefined for anything this build cannot place, including a kind a
@@ -246,6 +272,9 @@ export function readAgentSessionFailureFact(value: unknown): AgentSessionFailure
   const retry = readProviderRetry(value.retry)
   const argumentProblem = readAgentSessionArgumentProblem(value.argumentProblem)
   return agentSessionFailureFact(value.kind, {
+    ...(value.account === 'managed' || value.account === 'system'
+      ? { account: value.account }
+      : {}),
     ...(isProviderDiagnostic(value.detail) ? { detail: value.detail } : {}),
     ...(refusal ? { refusal } : {}),
     ...(attachment ? { attachment } : {}),

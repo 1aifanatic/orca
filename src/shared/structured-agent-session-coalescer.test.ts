@@ -79,7 +79,7 @@ describe('structured agent session event coalescer', () => {
       state: 'waiting' as const
     }
 
-    coalescer.push({ ...batch(1), queuedMessages: [draft], queuePause: { reason: 'restarted' } })
+    coalescer.push({ ...batch(1), queuedMessages: [draft], queuePause: { reason: 'stopped' } })
     coalescer.push({ ...batch(2), queuedMessages: [], queuePause: null })
     // A later frame with no list leaves the delivered ones as they are.
     coalescer.push(batch(3))
@@ -88,7 +88,7 @@ describe('structured agent session event coalescer', () => {
     expect(events).toHaveLength(3)
     expect(events[0]).toMatchObject({
       queuedMessages: [draft],
-      queuePause: { reason: 'restarted' }
+      queuePause: { reason: 'stopped' }
     })
     expect(events[1]).toMatchObject({ queuedMessages: [], queuePause: null })
     expect(events[2]).not.toHaveProperty('queuedMessages')
@@ -116,6 +116,29 @@ describe('structured agent session event coalescer', () => {
     ])
     expect(events[1]).toMatchObject({ queuedMessages: [{ messageId: 'card-1' }] })
     coalescer.dispose()
+  })
+
+  it("delivers the queue's next card with its list, ahead of a later token batch", () => {
+    const events: AgentSessionSubscribeEvent[] = []
+    const coalescer = createStructuredAgentSessionEventCoalescer((event) => events.push(event))
+    coalescer.push({ ...batch(1), queuedMessages: [], nextQueuedMessageId: 'draft-1' })
+    const token = {
+      itemId: 'assistant-1',
+      revision: 1,
+      sequence: 2,
+      observedAt: 2,
+      body: {
+        kind: 'message' as const,
+        role: 'assistant' as const,
+        blocks: [{ type: 'text' as const, text: 'streaming' }]
+      }
+    }
+    const tokens = batch(2)
+    coalescer.push({ ...tokens, batch: { ...tokens.batch, items: [token] } })
+    coalescer.flush()
+    expect(events).toHaveLength(2)
+    expect(events[0]).toMatchObject({ nextQueuedMessageId: 'draft-1' })
+    expect(events[1]).not.toHaveProperty('queuedMessages')
   })
 
   it('keeps the latest turn a coalesced frame carried, and a null one as an answer', () => {

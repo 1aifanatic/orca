@@ -70,6 +70,10 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
   unreachable: () => translate('components.native-chat.writeNotice.unreachable', COPY.unreachable),
   recordFailed: () =>
     translate('components.native-chat.writeNotice.recordFailed', COPY.recordFailed),
+  attachmentExpired: () =>
+    translate('components.native-chat.writeNotice.attachmentExpired', COPY.attachmentExpired),
+  reattachFile: () =>
+    translate('components.native-chat.writeNotice.reattachFile', COPY.reattachFile),
   conversationCleared: () =>
     translate('components.native-chat.writeNotice.conversationCleared', COPY.conversationCleared),
   openCurrentConversation: () =>
@@ -131,6 +135,9 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
       'components.native-chat.writeNotice.notSentBackInComposer',
       COPY.notSentBackInComposer
     ),
+  queueTooLarge: () =>
+    translate('components.native-chat.writeNotice.queueTooLarge', COPY.queueTooLarge),
+  shrinkQueue: () => translate('components.native-chat.writeNotice.shrinkQueue', COPY.shrinkQueue),
   optionRejected: () =>
     translate('components.native-chat.writeNotice.optionRejected', COPY.optionRejected),
   goalsUnsupported: () =>

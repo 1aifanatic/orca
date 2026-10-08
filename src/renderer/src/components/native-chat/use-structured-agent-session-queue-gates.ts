@@ -10,7 +10,7 @@ import {
   useStructuredAgentSessionHostQueuesMessagesState
 } from '@/runtime/structured-agent-session-host-capability'
 import { commandCardWaiting } from './structured-agent-session-queued-cards'
-import type { StructuredAgentSessionQueueDelivery } from '../../../../shared/structured-agent-session-outbox-delivery'
+import type { StructuredAgentSessionQueueDelivery } from './structured-agent-session-queue-request'
 
 export function useStructuredAgentSessionQueueGates(args: {
   target: RuntimeClientTarget

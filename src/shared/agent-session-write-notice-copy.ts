@@ -31,7 +31,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   notDoneCommand: "The command didn't run.",
   notDoneGoal: "The goal wasn't changed.",
   restartFailed: "The agent couldn't restart.",
-  capacity: 'Orca has received too many requests in the last day.',
+  capacity:
+    'Orca on the computer running this chat has hit a request limit. Update Orca there, then try again.',
   outcomeUnknown: "Orca couldn't confirm what happened. Check the chat.",
   sendOutcomeLost:
     "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed.",
@@ -49,6 +50,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   cannotRunHere: "Orca can't run this agent in a chat here.",
   unreachable: "Orca couldn't reach the agent.",
   recordFailed: "Orca couldn't save this to the chat's history.",
+  attachmentExpired: 'This attachment expired.',
+  reattachFile: 'Remove it and attach it again.',
   conversationCleared: 'This conversation has been cleared.',
   openCurrentConversation: 'Open the current conversation to continue.',
   clearUnfinished: "The last /clear didn't finish.",
@@ -75,6 +78,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   compactAfterSending: 'Your earlier message is still being sent. Run /compact once it has gone.',
   sentAsCleared: "The chat was cleared before your message went out. It's back in the composer.",
   notSentBackInComposer: "Your message wasn't sent. It's back in the composer.",
+  queueTooLarge: 'Too much text is waiting in the queue.',
+  shrinkQueue: 'Delete a queued message, or wait for one to go through, then try again.',
   optionRejected: "The agent didn't accept this setting.",
   goalsUnsupported: "This agent doesn't support goals.",
   agentRefused: 'The agent turned this down.',

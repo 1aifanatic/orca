@@ -17,15 +17,15 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
 import { translate } from '@/i18n/i18n'
-import { structuredAgentSessionReturnedCardParts } from '../../../../shared/structured-agent-session-send-disposition'
+import { structuredAgentSessionReturnedCardParts } from '../../../../shared/structured-agent-session-rejection-words'
 import { classifyDispatchRejection } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import {
-  QUEUED_MESSAGE_PAUSED_KEPT,
-  QUEUED_MESSAGE_PAUSED_SEND_FAILED
-} from '../../../../shared/agent-session-wire'
+import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
-import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
+import {
+  queuedMessageCardSteers,
+  type QueuedMessageCard
+} from './structured-agent-session-queued-cards'
 import { queuedCardSenderLine } from './native-chat-agent-message-sender-label'
 
 /** The visible caption under the text; the default waiting hold needs none. */
@@ -68,18 +68,6 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
               "Couldn't send — press Send to retry."
             )
       }
-      if (card.pausedReason === QUEUED_MESSAGE_PAUSED_KEPT) {
-        // A command card's Send shows only while the agent is idle.
-        return card.waitsForAgent
-          ? translate(
-              'components.native-chat.queuedMessages.pausedKeptWaiting',
-              'Not sent yet — press Send to send it once the agent finishes.'
-            )
-          : translate(
-              'components.native-chat.queuedMessages.pausedKept',
-              'Not sent yet — press Send to send it.'
-            )
-      }
       return translate('components.native-chat.queuedMessages.paused', 'Paused')
     case 'behind-returned':
       return translate(
@@ -105,15 +93,14 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
   }
 }
 
-/** Steer names the mid-turn jump, also while the whole queue is paused; a card held on its own
- *  or returned is not waiting on the turn, so its action and tooltip are plainly Send. */
+/** Steer's or Send's label and tooltip (`queuedMessageCardSteers`). */
 export function queuedMessageCardSendNow(card: QueuedMessageCard): {
   /** Steer's ↳, or Send's paper plane. */
   steers: boolean
   label: string
   hint: string
 } {
-  if (card.hold === 'paused' || card.hold === 'returned' || card.command) {
+  if (!queuedMessageCardSteers(card)) {
     return {
       steers: false,
       label: translate('components.native-chat.queuedMessages.send', 'Send'),

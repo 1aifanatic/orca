@@ -2,7 +2,6 @@
 // carry a failure or a crash cut short.
 
 import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
-import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
@@ -66,7 +65,7 @@ export function clearCarryOwed(
  *   - sent before the clear (an immediate /clear over a paused queue): a message card carries
  *     over paused ('cleared', lifted like a Stop's), since it was written for the context the
  *     clear discarded; a command card, kept or not, is withdrawn without a copy.
- * A kept send (`QUEUED_MESSAGE_PAUSED_KEPT`) keeps that hold wherever it lands.
+ * A card whose conversion failed keeps that hold wherever it lands.
  * Runs after the clear commits, opening the replacement only when there is something to carry;
  * the source rows, the /clear card included, are tombstoned last, so a cut-short carry still
  * finds the card that orders it. Bookkeeping around the clear: a failure is reported, never gates
@@ -109,11 +108,7 @@ export async function carryQueuedMessagesToClearReplacement(
           // Its own: a card a process that has since died wrote keeps that restart's pause.
           hostInstance: row.hostInstance,
           ...(row.position > behind ? {} : { carriedFrom: ctx.sessionId }),
-          // A kept send stays held there too, before or behind the clear: only its person's Send
-          // sends it, never the queue.
-          ...(row.holdReason === QUEUED_MESSAGE_PAUSED_KEPT
-            ? { holdReason: QUEUED_MESSAGE_PAUSED_KEPT }
-            : {})
+          ...(row.holdReason ? { holdReason: row.holdReason } : {})
         })
       }
     }

@@ -13,30 +13,21 @@ import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import {
   agentSessionFailureStatedByStartRow,
-  structuredAgentSessionDeliveryNotices,
   structuredAgentSessionStartFailureFacts
 } from './structured-agent-session-delivery-notices'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import type { StructuredPromptItem } from './structured-agent-session-message-projection'
-import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
-import {
-  structuredAgentSessionEntryRejectedByHost,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../../shared/structured-agent-session-outbox'
-import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 import { structuredAgentSessionCommandHostRefusalCause } from '../../../../shared/structured-agent-session-command-refusal-cause'
 import type {
   StructuredAgentSessionCommandOutcome,
   StructuredAgentSessionCommandRefusalCause
 } from '../../../../shared/structured-agent-session-composer'
-import type {
-  StructuredAgentSessionWrite,
-  StructuredAgentSessionWriteOutcome
-} from './use-structured-agent-session-mutate'
+import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
 
 /** Why this client does not send the command yet. `ahead`: a message this window sent is not
  *  the host's yet; the command is not taken, and its text stays in the composer while Send is
@@ -46,33 +37,27 @@ export type StructuredConversationCommandHold =
   | 'working'
   | 'prompt'
   | 'background'
-  | 'retry'
   | 'sending'
 
 /** A command that waits in line is held only by a message the host doesn't have yet, which must
  *  stay ahead of it; any other command, by anything the agent still has in flight. */
 export function structuredConversationCommandHold(input: {
-  /** A /compact or /clear the host can hold as a card behind the turn or prompt. */
+  /** A /compact the host can hold as a card behind the turn or prompt. */
   waitsInLine: boolean
   /** A turn runs, or the chat shows the agent working on a message it has not answered. */
   agentWorking: boolean
   promptPending: boolean
   backgroundTasksRunning: boolean
-  /** A /clear the host holds: it waits background tasks out instead of refusing. */
+  /** This chat's one message request has not settled yet. */
+  sendPending: boolean
+  /** A queued /clear waits for background tasks on its host. */
   waitsOutBackgroundTasks?: boolean
-  /** A message this window sent shows its Retry on its row. */
-  outboxRetry: boolean
-  /** A message this window sent is still on its way with no Retry on its row (one a Stop kept). */
-  outboxSending: boolean
-  /** A message this window sent that the host doesn't have yet. */
-  outboxUnsent: boolean
 }): StructuredConversationCommandHold | null {
-  // A /clear the host holds waits background tasks out there; anything else is refused here.
   if (input.backgroundTasksRunning && !input.waitsOutBackgroundTasks) {
     return 'background'
   }
   if (input.waitsInLine) {
-    return input.outboxUnsent ? 'ahead' : null
+    return input.sendPending ? 'ahead' : null
   }
   if (input.promptPending) {
     return 'prompt'
@@ -81,14 +66,10 @@ export function structuredConversationCommandHold(input: {
     return 'working'
   }
   // The agent is idle and this window's own message hasn't reached the host: that is the wait.
-  if (input.outboxUnsent) {
+  if (input.sendPending) {
     return 'sending'
   }
-  // The agent is not working: what is left is said as its row says it.
-  if (input.outboxRetry) {
-    return 'retry'
-  }
-  return input.outboxSending ? 'sending' : null
+  return null
 }
 
 type CommandOutcome = Omit<StructuredAgentSessionCommandOutcome, 'handled'>
@@ -112,8 +93,6 @@ function heldCommandText(
         'agentStillWorking',
         clear ? 'runClearWhenDone' : 'runCompactWhenDone'
       ])
-    case 'retry':
-      return agentSessionWriteNoticeText([clear ? 'clearAfterRetry' : 'compactAfterRetry'])
     case 'sending':
       return agentSessionWriteNoticeText([clear ? 'clearAfterSending' : 'compactAfterSending'])
     case 'background':
@@ -199,13 +178,13 @@ export function structuredConversationCommandRunner(args: {
   pending: { current: boolean }
   /** The host holds a /compact as a card, and this client renders the queue. */
   commandsWait: boolean
-  /** The same for a /clear, which the host runs itself when its card's turn comes. An older host
-   *  refuses it while the agent works (temporary, until those hosts age out). */
-  clearWaits?: boolean
+  clearWaits: boolean
   /** What the chat shows: a turn, the Working rule, its background work, its sends. */
   chat: {
     turnId: string | null
     isWorking: boolean
+    /** The queue's send is the host's next update: the pane reads working. */
+    queueSendsNext: boolean
     backgroundTasks: { isMonitoring: boolean; show: boolean }
     submissions: readonly AgentJournalSubmission[]
   }
@@ -213,33 +192,31 @@ export function structuredConversationCommandRunner(args: {
   prompts: readonly StructuredPromptItem[]
   /** A rewind this pane started is on its way; read at the press. */
   rewindInFlight: { readonly current: boolean }
-  outbox: readonly StructuredAgentSessionOutboxEntry[]
+  sends: readonly StructuredAgentSessionPendingSend[]
   /** The loaded rows, read when the reply lands, for the start failures they state. */
   items: () => readonly AgentJournalRenderItem[]
-  write: StructuredAgentSessionWrite
+  send: (
+    command: AgentSessionConversationCommand,
+    delivery?: 'queue-if-active'
+  ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
 }): {
   runConversationCommand: (command: AgentSessionConversationCommand) => Promise<CommandOutcome>
   /** What a refusal's line stands on, as the chat shows it now. */
   commandRefusalCauses: StructuredConversationCommandCauses
 } {
   const promptPending = args.prompts.length > 0
-  const agentWorking = args.chat.turnId !== null || args.chat.isWorking
-  const rows = outboxRows(args.outbox, args.chat.submissions, args.agentName)
-  const outboxUnsent = hasUnsentStructuredAgentSessionOutboxEntry(
-    args.outbox,
-    args.chat.submissions
-  )
+  const agentWorking = args.chat.turnId !== null || args.chat.isWorking || args.chat.queueSendsNext
+  const sendPending = args.sends.some((entry) => entry.phase === 'sending')
   const causes: StructuredConversationCommandCauses = {
     working: agentWorking,
     prompt: promptPending,
     // The strip, mid-turn included: what a host refusing on background tasks points at.
     background: args.chat.backgroundTasks.show || args.chat.backgroundTasks.isMonitoring,
-    // Apart: a send that fails stops being sent, and a resend stops offering Retry.
-    sending: rows.outboxSending || outboxUnsent,
-    retry: rows.outboxRetry
+    sending: sendPending,
+    retry: false
   }
   const run = (command: AgentSessionConversationCommand) => {
-    const hostHoldsIt = command === 'compact' ? args.commandsWait : args.clearWaits === true
+    const hostHoldsIt = command === 'clear' ? args.clearWaits : args.commandsWait
     const waitsInLine =
       hostHoldsIt && !(promptPending && pendingPromptsAllUnanswerableHere(args.prompts))
     return sendStructuredConversationCommand({
@@ -248,55 +225,20 @@ export function structuredConversationCommandRunner(args: {
       pending: args.pending,
       hold: structuredConversationCommandHold({
         waitsInLine,
-        // A /clear the host holds waits background tasks out; a rewind on its way still holds it.
-        waitsOutBackgroundTasks: command === 'clear' && hostHoldsIt && !args.rewindInFlight.current,
         agentWorking,
         promptPending,
         // A rewind on its way holds a command as background work does, in the same words.
         backgroundTasksRunning:
           args.chat.backgroundTasks.isMonitoring || args.rewindInFlight.current,
-        ...rows,
-        outboxUnsent
+        sendPending,
+        waitsOutBackgroundTasks: command === 'clear' && waitsInLine
       }),
       causes,
       startFailures: () => structuredAgentSessionStartFailureFacts(args.items()),
-      send: (command) =>
-        args.write<AgentSessionConversationCommandResult>(
-          'agentSession.conversationCommand',
-          'agentSession.conversationCommand',
-          hostHoldsIt ? { command, delivery: 'queue-if-active' } : { command }
-        )
+      send: (command) => args.send(command, hostHoldsIt ? 'queue-if-active' : undefined)
     })
   }
   return { runConversationCommand: run, commandRefusalCauses: causes }
-}
-
-/** What this window's own messages offer on their rows: a Retry, or nothing while still on
- *  their way. One the host already refused is the host's row, and holds nothing up. */
-function outboxRows(
-  outbox: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[],
-  agentName: string
-): { outboxRetry: boolean; outboxSending: boolean } {
-  if (outbox.length === 0) {
-    return { outboxRetry: false, outboxSending: false }
-  }
-  const notices = structuredAgentSessionDeliveryNotices(
-    outbox,
-    agentName,
-    () => {},
-    submissions,
-    [],
-    new Set()
-  )
-  const offersRetry = (entry: StructuredAgentSessionOutboxEntry) =>
-    notices.get(agentJournalSubmissionKey(entry.clientMessageId))?.onRetry !== undefined
-  return {
-    outboxRetry: outbox.some(offersRetry),
-    outboxSending: outbox.some(
-      (entry) => !offersRetry(entry) && !structuredAgentSessionEntryRejectedByHost(entry)
-    )
-  }
 }
 
 /** The host's sentence in the reader's language, from the fact beside it; with no fact (an older

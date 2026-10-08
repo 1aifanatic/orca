@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { ConversationCommandParams } from '../../../shared/rpc-contract/structured-agent-session-params'
 import {
@@ -16,8 +15,13 @@ import {
 } from './structured-agent-session-queued-message-rig.test-fixture'
 import {
   HOST_TEST_SESSION as SESSION,
+  hostTestMessage,
   hostTestOperationId
 } from './structured-agent-session-host-test-data'
+import {
+  QUEUED_MESSAGES_PERSON_RESERVE_BYTES,
+  QUEUED_MESSAGES_PUBLISHED_MAX_BYTES
+} from './structured-agent-session-queued-published-bytes'
 
 let rig: QueuedMessageTestRig
 
@@ -27,13 +31,18 @@ beforeEach(async () => {
 
 afterEach(() => rig.dispose())
 
-function compact(delivery?: 'queue-if-active', clientOperationId = hostTestOperationId()) {
+function compact(
+  delivery?: 'queue-if-active',
+  clientOperationId = hostTestOperationId(),
+  options?: { internal?: true }
+) {
   const fields = { command: 'compact' as const, ...(delivery ? { delivery } : {}) }
   return {
     id: clientOperationId,
     result: rig.host.conversationCommand(CALLER, {
       envelope: rig.envelope(fields, 'agentSession.conversationCommand', clientOperationId),
-      ...fields
+      ...fields,
+      ...(options?.internal ? {} : { userSend: true as const })
     })
   }
 }
@@ -89,6 +98,32 @@ const BACKGROUND_TASK: AgentChildWorkView = {
 const settleMs = () => new Promise((resolve) => setTimeout(resolve, 150))
 
 describe('a /compact that waits in line', () => {
+  it("uses the person's reserve when background cards fill their bound", async () => {
+    await rig.workingSend()
+    const backgroundRoom =
+      QUEUED_MESSAGES_PUBLISHED_MAX_BYTES - QUEUED_MESSAGES_PERSON_RESERVE_BYTES
+    const overhead = Buffer.byteLength(JSON.stringify(hostTestMessage('')), 'utf8')
+    const background = rig.send('x'.repeat(backgroundRoom - overhead), 'queue-if-active', {
+      internal: true
+    })
+    expect(await background.result).toMatchObject({
+      ok: true,
+      value: { queued: { messageId: background.id, state: 'waiting' } }
+    })
+    expect(
+      await compact('queue-if-active', hostTestOperationId(), { internal: true }).result
+    ).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'queueTooLarge' } }
+    })
+    const compactId = await queuedCompact()
+    expect(await rig.drafts()).toEqual([
+      { messageId: background.id, state: 'waiting' },
+      { messageId: compactId, state: 'waiting' }
+    ])
+    expect(rig.compact).not.toHaveBeenCalled()
+  })
+
   it('behind an unanswered message: a card at once, run once that message is answered', async () => {
     const working = await rig.workingSend()
     const compactId = await queuedCompact()
@@ -335,7 +370,7 @@ describe('a /compact that waits in line', () => {
     await rig.settleAccepted(working, 'a')
     // The chat's agent went away; the next start fails.
     await rig.restartHostProcess()
-    rig.awaitStarted.mockRejectedValue(new Error('the agent could not start'))
+    rig.failNextStart(new Error('the agent could not start'))
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     expect(await rig.resume()).toMatchObject({ ok: true })
     await eventually(async () =>
@@ -364,40 +399,84 @@ describe('a /compact that waits in line', () => {
     const compactId = await queuedCompact()
     await rig.stop()
     await rig.settleAccepted(working, 'a')
-    // No child now, and the next start never finishes: the hand-off stays queued.
+    // No child now, and the next start stays in its spawn: the hand-off stays queued.
     await rig.host.close(SESSION, 'evict')
-    rig.awaitStarted.mockImplementation(() => new Promise<undefined>(() => undefined))
-    const startsBefore = rig.awaitStarted.mock.calls.length
+    const release = rig.holdNextStart()
+    const startsBefore = rig.starts.mock.calls.length
     if (send === 'drain') {
       expect(await rig.resume()).toMatchObject({ ok: true })
     } else {
       expect(await rig.sendNow(compactId)).toMatchObject({ ok: true })
     }
-    await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBeGreaterThan(startsBefore))
+    await eventually(() => expect(rig.starts.mock.calls.length).toBeGreaterThan(startsBefore))
     rig.crashRestartHostProcess()
+    release()
     return compactId
   }
 
   it('cut short by a restart after the queue sent it: waits again under the restart, never spent', async () => {
     const compactId = await consumedThenCrashed('drain')
-    // The queue's own hand-off is not the person's, so it waits as any queued card does.
-    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
-    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    // The queue's own hand-off is not the person's, so it waits as any queued card does after a
+    // restart: held unshown, never sent by itself.
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
+    )
+    expect(await rig.queuePause()).toBeNull()
     expect(rig.compact).not.toHaveBeenCalled()
   })
 
-  it('cut short by a restart after the person sent it: kept, never spent', async () => {
+  it('cut short by a restart after the person sent it: waits again, never spent', async () => {
     const compactId = await consumedThenCrashed('sendNow')
-    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting', paused: true }])
+    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
+    expect(await rig.queuePause()).toBeNull()
     const card = rig.host
       .collaboratorsForTests()
       .sessions.get(SESSION)
       ?.journal.queuedMessages.get(compactId)
     expect(card).toMatchObject({
-      holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
+      holdReason: null,
       body: { command: { name: 'compact' } }
     })
     expect(rig.compact).not.toHaveBeenCalled()
+  })
+
+  it('a kept message stays ahead of a waiting /compact after the next turn releases both', async () => {
+    await rig.dispose()
+    rig = await createQueuedMessageTestRig({ restartable: true })
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    await rig.stop()
+    await rig.settleAccepted(working, 'a')
+    await rig.host.close(SESSION, 'evict')
+    const release = rig.holdNextStart()
+    const startsBefore = rig.starts.mock.calls.length
+    const kept = rig.send('kept message')
+    await kept.result
+    await eventually(() => expect(rig.starts.mock.calls.length).toBeGreaterThan(startsBefore))
+    // Finish the old host before reopening so its delayed start cannot keep writing.
+    const restarted = rig.quitRestartHostProcess()
+    release()
+    await restarted
+
+    expect(await rig.drafts()).toEqual([
+      { messageId: kept.id, state: 'waiting' },
+      { messageId: compactId, state: 'waiting' }
+    ])
+    expect(rig.compact).not.toHaveBeenCalled()
+    const next = rig.send('next turn', 'queue-if-active')
+    expect(await next.result).toMatchObject({ ok: true, value: { submission: expect.anything() } })
+    await eventually(async () =>
+      expect((await rig.submission(next.id))?.handedOverAt).toBeDefined()
+    )
+    await rig.settleAccepted(next.id, 'next')
+    await eventually(async () => expect((await rig.handoff(kept.id))?.handedOverAt).toBeDefined())
+    expect(rig.dispatch.mock.calls.at(-1)?.[0].body.blocks).toEqual([
+      { type: 'text', text: 'kept message' }
+    ])
+    expect(rig.compact).not.toHaveBeenCalled()
+    await rig.settleAccepted(await rig.handoffId(kept.id), 'kept')
+    await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
+    expect(await rig.drafts()).toEqual([])
   })
 
   it('a direct /compact (no opt-in, as on a host without the queue) cut short by a restart is never a card', async () => {
@@ -405,11 +484,12 @@ describe('a /compact that waits in line', () => {
     rig = await createQueuedMessageTestRig({ restartable: true })
     await rig.workingSend()
     await rig.host.close(SESSION, 'evict')
-    rig.awaitStarted.mockImplementation(() => new Promise<undefined>(() => undefined))
-    const startsBefore = rig.awaitStarted.mock.calls.length
+    const release = rig.holdNextStart()
+    const startsBefore = rig.starts.mock.calls.length
     const { id } = compact()
-    await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBeGreaterThan(startsBefore))
+    await eventually(() => expect(rig.starts.mock.calls.length).toBeGreaterThan(startsBefore))
     rig.crashRestartHostProcess()
+    release()
     // A command in flight is not resumed: the person runs it again. No card, kept or otherwise.
     expect(await rig.drafts()).toEqual([])
     expect(await rig.submission(id)).toMatchObject({ dispatchState: 'rejected' })

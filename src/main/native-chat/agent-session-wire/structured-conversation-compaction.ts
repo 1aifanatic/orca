@@ -10,10 +10,7 @@ import {
 import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
-import type {
-  AgentSessionMutationEnvelope,
-  AgentSessionMutationResult
-} from '../../../shared/agent-session-wire'
+import type { AgentSessionMutationResult } from '../../../shared/agent-session-wire'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   mutateStructuredAgentSession,
@@ -133,7 +130,7 @@ function compactionReply(
 function acceptStructuredConversationCommand(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
-  params: { envelope: AgentSessionMutationEnvelope; delivery?: 'queue-if-active' },
+  params: ConversationCommandParams,
   priorRecord: () => AgentSessionConversationCommandResult | null
 ): Promise<AgentSessionMutationResult<ConversationCommandAcceptance>> {
   const plan = conversationCommandPlan({
@@ -153,6 +150,7 @@ function acceptStructuredConversationCommand(
         const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, {
           envelope: params.envelope,
           body: structuredAgentSessionCompactBody(),
+          ...(params.userSend ? { userSend: params.userSend } : {}),
           ...(params.delivery ? { delivery: params.delivery } : {})
         })
         if (queued && !queued.ok) {

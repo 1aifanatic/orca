@@ -101,13 +101,13 @@ describe('the line under the composer after a conversation command failed', () =
       (await sent(hostResult('compact', { kind: 'restartFailed' }, 'codex'), 'codex')).error
     ).toBe("Codex couldn't restart. Run /compact again.")
     expect((await sent(hostResult('compact', { kind: 'notSignedIn' }), 'claude')).error).toBe(
-      'Claude is not signed in for the selected account. Sign in, then run /compact again.'
+      "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings. Run /compact again."
     )
     expect((await sent(hostResult('clear', START_FACTS[2], 'codex'), 'codex')).error).toBe(
       "Codex couldn't start. Start a new chat to continue."
     )
     expect((await sent(hostResult('clear', { kind: 'notSignedIn' }, 'codex'), 'codex')).error).toBe(
-      'Codex is not signed in for the selected account. Sign in, then run /clear again.'
+      "Codex isn't signed in. Run `codex login`. Run /clear again."
     )
   })
 
@@ -130,7 +130,7 @@ describe('the line under the composer after a conversation command failed', () =
       'Claude を起動できませんでした。/clear をもう一度実行してください。'
     )
     expect((await sent(hostResult('compact', { kind: 'notSignedIn' }))).error).toBe(
-      'Claude は選択したアカウントでサインインしていません。サインインしてから、/compact をもう一度実行してください。'
+      'Claude にサインインしていません。`claude` を実行して /login でサインインするか、設定の Claude アカウントでアカウントを選択してください。/compact をもう一度実行してください。'
     )
   })
 
@@ -207,9 +207,7 @@ describe('a /compact the host holds in line', () => {
     agentWorking: false,
     promptPending: false,
     backgroundTasksRunning: false,
-    outboxRetry: false,
-    outboxSending: false,
-    outboxUnsent: false
+    sendPending: false
   }
 
   it('is held here only by a message the host does not have yet, or background work', () => {
@@ -218,11 +216,10 @@ describe('a /compact the host holds in line', () => {
       structuredConversationCommandHold({
         ...inLine,
         agentWorking: true,
-        promptPending: true,
-        outboxRetry: true
+        promptPending: true
       })
     ).toBeNull()
-    expect(structuredConversationCommandHold({ ...inLine, outboxUnsent: true })).toBe('ahead')
+    expect(structuredConversationCommandHold({ ...inLine, sendPending: true })).toBe('ahead')
     expect(structuredConversationCommandHold({ ...inLine, backgroundTasksRunning: true })).toBe(
       'background'
     )
@@ -252,15 +249,11 @@ describe('a /compact the host holds in line', () => {
     expect(structuredConversationCommandHold(idle)).toBeNull()
     expect(structuredConversationCommandHold({ ...idle, agentWorking: true })).toBe('working')
     // The agent idle, only this window's own message still on its way: it is still being sent.
-    expect(structuredConversationCommandHold({ ...idle, outboxUnsent: true })).toBe('sending')
+    expect(structuredConversationCommandHold({ ...idle, sendPending: true })).toBe('sending')
     expect(
-      structuredConversationCommandHold({ ...idle, agentWorking: true, outboxUnsent: true })
+      structuredConversationCommandHold({ ...idle, agentWorking: true, sendPending: true })
     ).toBe('working')
     expect(structuredConversationCommandHold({ ...idle, promptPending: true })).toBe('prompt')
-    // Only a failed message waits for its Retry: the agent is not working.
-    expect(structuredConversationCommandHold({ ...idle, outboxRetry: true })).toBe('retry')
-    // One a Stop kept on its way shows no Retry: it reads as still sending.
-    expect(structuredConversationCommandHold({ ...idle, outboxSending: true })).toBe('sending')
   })
 })
 
@@ -308,13 +301,6 @@ describe('a command held here', () => {
     expect(await held('clear', 'sending').result).toEqual({
       accepted: false,
       error: 'Your earlier message is still being sent. Run /clear once it has gone.'
-    })
-  })
-
-  it('behind only a failed message, names the step that clears the way', async () => {
-    expect(await held('clear', 'retry').result).toEqual({
-      accepted: false,
-      error: 'Retry your earlier message, then run /clear.'
     })
   })
 
@@ -378,9 +364,9 @@ describe('a refusal names what it waits on only while the chat shows it', () => 
     expect(
       (await held('compact', 'background', pending, shown('background')).result).refusedWhile
     ).toBe('background')
-    for (const hold of ['retry', 'sending'] as const) {
-      expect((await held('clear', hold, pending, shown(hold)).result).refusedWhile).toBe(hold)
-    }
+    expect((await held('clear', 'sending', pending, shown('sending')).result).refusedWhile).toBe(
+      'sending'
+    )
   })
 
   it('names none the chat does not show, so the line cannot go before it is read', async () => {

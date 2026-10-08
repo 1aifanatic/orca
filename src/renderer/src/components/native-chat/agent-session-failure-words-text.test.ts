@@ -21,7 +21,7 @@ import {
 import { AGENT_SESSION_WRITE_NOTICE_COPY } from '../../../../shared/agent-session-write-notice-copy'
 import { agentSessionWriteNoticeParts } from '../../../../shared/agent-session-refusal-notice'
 import { agentSessionRefusalFailure } from '../../../../shared/agent-session-write-failure'
-import { structuredAgentSessionRejectionParts } from '../../../../shared/structured-agent-session-send-disposition'
+import { structuredAgentSessionRejectionParts } from '../../../../shared/structured-agent-session-rejection-words'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
@@ -146,7 +146,7 @@ describe('desktop words for a failure fact', () => {
         agentSessionWriteNoticeParts(refused, 'send', { agentName: 'Claude' })
       )
     ).toBe(
-      "Votre message n'a pas été envoyé. Claude n'est pas connecté avec le compte sélectionné. Connectez-vous, puis renvoyez votre message."
+      "Votre message n'a pas été envoyé. Claude n’est pas connecté. Exécutez `claude` et connectez-vous avec /login, ou choisissez un compte dans les paramètres des Comptes Claude."
     )
     const detail = 'Uses {{agent}} $t(components.native-chat.failureWords.theAgent) <b>&</b>'
     const rejected = structuredAgentSessionRejectionParts(
@@ -179,7 +179,7 @@ describe('desktop words for a failure fact', () => {
       "Codex n'a pas pu redémarrer. Relancez /compact."
     )
     expect(sentence('notSignedIn', 'clear')).toBe(
-      "Codex n'est pas connecté avec le compte sélectionné. Connectez-vous, puis relancez /clear."
+      'Codex n’est pas connecté. Exécutez `codex login`. Relancez /clear.'
     )
     await i18n.changeLanguage('ja')
     expect(sentence('providerStartFailed', 'compact')).toBe(

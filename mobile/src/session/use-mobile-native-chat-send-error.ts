@@ -7,8 +7,7 @@ export type MobileNativeChatSendErrorReporter = (
   refusedWhile?: StructuredAgentSessionCommandRefusalCause
 ) => void
 
-/** What the phone's chat shows a refused command waiting on. It has no background-task state, so a
- *  refusal naming those stays as any other failure. */
+/** What the phone's chat shows a refused command waiting on. */
 export type MobileNativeChatCommandRefusalCauses = Readonly<
   Partial<Record<StructuredAgentSessionCommandRefusalCause, boolean>>
 >

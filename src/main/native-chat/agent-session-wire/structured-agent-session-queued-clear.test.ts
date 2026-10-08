@@ -3,9 +3,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
+import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../shared/agent-session-queued-message-wire'
 import { agentSessionWriteNoticeEnglish } from '../../../shared/agent-session-refusal-notice'
-import { structuredAgentSessionReturnedCardParts } from '../../../shared/structured-agent-session-send-disposition'
+import { structuredAgentSessionReturnedCardParts } from '../../../shared/structured-agent-session-rejection-words'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
 import {
   createQueuedMessageTestRig,
@@ -15,9 +15,14 @@ import {
 } from './structured-agent-session-queued-message-rig.test-fixture'
 import {
   HOST_TEST_SESSION as SESSION,
-  hostTestOperationId
+  hostTestOperationId,
+  hostTestMessage
 } from './structured-agent-session-host-test-data'
 import { QUEUED_CLEAR_CALLER_KEY } from './structured-conversation-clear'
+import {
+  QUEUED_MESSAGES_PERSON_RESERVE_BYTES,
+  QUEUED_MESSAGES_PUBLISHED_MAX_BYTES
+} from './structured-agent-session-queued-published-bytes'
 
 let rig: QueuedMessageTestRig
 let replaced: ReturnType<typeof vi.fn>
@@ -30,13 +35,18 @@ beforeEach(async () => {
 
 afterEach(() => rig.dispose())
 
-function clear(delivery?: 'queue-if-active', clientOperationId = hostTestOperationId()) {
+function clear(
+  delivery?: 'queue-if-active',
+  clientOperationId = hostTestOperationId(),
+  options?: { internal?: true }
+) {
   const fields = { command: 'clear' as const, ...(delivery ? { delivery } : {}) }
   return {
     id: clientOperationId,
     result: rig.host.conversationCommand(CALLER, {
       envelope: rig.envelope(fields, 'agentSession.conversationCommand', clientOperationId),
-      ...fields
+      ...fields,
+      ...(options?.internal ? {} : { userSend: true as const })
     })
   }
 }
@@ -118,6 +128,29 @@ const BACKGROUND_TASK: AgentChildWorkView = {
 }
 
 describe('a /clear that waits in line', () => {
+  it("uses the person's reserve when background cards fill their bound", async () => {
+    await rig.workingSend()
+    const backgroundRoom =
+      QUEUED_MESSAGES_PUBLISHED_MAX_BYTES - QUEUED_MESSAGES_PERSON_RESERVE_BYTES
+    const overhead = Buffer.byteLength(JSON.stringify(hostTestMessage('')), 'utf8')
+    const background = rig.send('x'.repeat(backgroundRoom - overhead), 'queue-if-active', {
+      internal: true
+    })
+    expect(await background.result).toMatchObject({
+      ok: true,
+      value: { queued: { messageId: background.id, state: 'waiting' } }
+    })
+    expect(
+      await clear('queue-if-active', hostTestOperationId(), { internal: true }).result
+    ).toMatchObject({ ok: false, refusal: { details: { reason: 'queueTooLarge' } } })
+    const clearId = await queuedClear()
+    expect(await rig.drafts()).toEqual([
+      { messageId: background.id, state: 'waiting' },
+      { messageId: clearId, state: 'waiting' }
+    ])
+    expect(replaced).not.toHaveBeenCalled()
+  })
+
   it('behind an unanswered message: a card at once; nothing is stopped or cleared yet', async () => {
     await rig.workingSend()
     const clearId = await queuedClear()
@@ -168,14 +201,14 @@ describe('a /clear that waits in line', () => {
     expect(await rig.drafts()).toEqual([])
   })
 
-  it('a kept card, ahead of it or behind it, is carried still kept: only its own Send sends it', async () => {
+  it('a held card, ahead of it or behind it, is carried still kept: only its own Send sends it', async () => {
     const working = await rig.workingSend()
     const ahead = await queuedSend('kept ahead of the clear')
     await queuedClear()
     const behind = await queuedSend('kept behind the clear')
     const free = await queuedSend('free behind the clear')
     const queued = rig.host.collaboratorsForTests().sessions.get(SESSION)!.journal.queuedMessages
-    await queued.hold({ messageIds: [ahead, behind], reason: QUEUED_MESSAGE_PAUSED_KEPT })
+    await queued.hold({ messageIds: [ahead, behind], reason: QUEUED_MESSAGE_PAUSED_SEND_FAILED })
     await rig.settleAccepted(working, 'a')
     const replacementId = await clearedReplacement()
     await eventually(async () => expect(await carriedOrder(replacementId)).toContain(free))
@@ -183,7 +216,7 @@ describe('a /clear that waits in line', () => {
     for (const id of [ahead, behind]) {
       expect(carried.queuedMessages.get(id)).toMatchObject({
         state: 'waiting',
-        holdReason: QUEUED_MESSAGE_PAUSED_KEPT
+        holdReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED
       })
     }
     const sent = (await rig.host.journalSnapshot(replacementId)).submissions

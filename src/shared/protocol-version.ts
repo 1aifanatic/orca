@@ -1,3 +1,18 @@
+import { WORKSPACE_ATTACHMENT_RUNTIME_CAPABILITIES } from './workspace-attachment-capabilities'
+import { STRUCTURED_AGENT_SESSION_SURFACE_RUNTIME_CAPABILITIES } from './structured-agent-session-surface-capabilities'
+export {
+  STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
+  PI_STRUCTURED_DIALOGS_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY
+} from './structured-agent-session-surface-capabilities'
+import { AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES } from './agent-session-attention-capabilities'
+export {
+  AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,
+  AGENT_SESSION_TURN_COMPLETION_RUNTIME_CAPABILITY,
+  AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY
+} from './agent-session-attention-capabilities'
 import { ORCHESTRATION_RUNTIME_CAPABILITIES } from './orchestration-runtime-capabilities'
 export {
   ORCHESTRATION_FEDERATION_RUNTIME_CAPABILITY,
@@ -15,6 +30,8 @@ export {
 } from './orchestration-runtime-capabilities'
 import { AGENT_SESSION_RESUME_RUNTIME_CAPABILITIES } from './agent-session-resume-runtime-capabilities'
 import { QODER_OWNED_TERMINAL_CREATE_CAPABILITY } from './qoder-terminal-create-capability'
+import { AGENT_SESSION_CONTINUE_INTERRUPTED_RUNTIME_CAPABILITY } from './agent-session-continue-interrupted-capability'
+import { ORCAD_RUNTIME_CAPABILITIES } from './orcad-runtime-capabilities'
 export {
   AGENT_SESSION_CURSOR_RESUME_RUNTIME_CAPABILITY,
   AGENT_SESSION_KIMI_RESUME_RUNTIME_CAPABILITY,
@@ -30,18 +47,7 @@ export {
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
 import { AGENT_SESSION_STOP_RUNTIME_CAPABILITIES } from './agent-session-stop-capabilities'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
-import {
-  SKILL_BUNDLE_INSTALL_CAPABILITY,
-  SKILL_DELETE_CAPABILITY,
-  SKILL_INSTALL_CAPABILITY,
-  SKILL_INSTALL_CANCEL_CAPABILITY,
-  SKILL_INSTALL_PROGRESS_CAPABILITY,
-  SKILL_INSTALL_PROVIDERS_CAPABILITY,
-  SKILL_INSTALL_RESULT_V2_CAPABILITY,
-  SKILL_MANAGEMENT_CAPABILITY,
-  SKILL_UPLOAD_CAPABILITY
-} from './skill-install-capability'
-export { SKILL_INSTALL_RESULT_V2_CAPABILITY } from './skill-install-capability'
+import { SKILL_RUNTIME_CAPABILITIES } from './skill-install-capability'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITIES,
   AGENT_LAUNCH_RUNTIME_CAPABILITY
@@ -99,6 +105,8 @@ export const AI_VAULT_SESSION_TITLES_RUNTIME_CAPABILITY = 'aiVault.session-title
 // clients never fall back to a local desktop browser tab for a remote-owned page.
 export const BROWSER_HEADLESS_RUNTIME_CAPABILITY = 'browser.headless.v1' as const
 export const BROWSER_IDENTITY_RUNTIME_CAPABILITY = 'browser.identity.v1' as const
+// Why conditional: only a desktop runtime holds the SSH registry managed servers are run from.
+export const MANAGED_SERVER_RUNTIME_CAPABILITY = 'managedServer.v1' as const
 export const BROWSER_SCREENCAST_RUNTIME_CAPABILITY = 'browser.screencast.v1' as const
 export const BROWSER_CERTIFICATE_TRUST_RUNTIME_CAPABILITY = 'browser.certificate-trust.v1' as const
 // Why: older hosts discard browser.tabCreate's page field, so clients may only
@@ -222,9 +230,12 @@ export const AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY =
 // advertising still requires the integrated Codex steer matrix (#21062) in the shipped host.
 // v1 includes `submission.queuedMessageId` on every draft hand-off: a client reads that link and
 // never compares a draft id with a submission id. It also publishes the queue's pause once, as
-// `queuePause` beside the list, lifted by `agentSession.queuedMessagesResume` or the user's next
-// turn; a card carries a hold of its own when its conversion failed (`send_failed`) or the host
-// kept it unsent (`kept`). The host mechanism lands first; the constant gates the rollout.
+// `queuePause` beside the list, lifted by `agentSession.queuedMessagesResume` or any turn sent
+// after it starting; while it is set every waiting card waits. `nextQueuedMessageId` beside the list
+// names the card the queue sends next once nothing runs, null while anything holds it; absent (an
+// older host) reads as null. A card carries a hold of its own when its conversion failed
+// (`send_failed`) or the host kept it unsent (`kept`). The host mechanism lands first; the constant
+// gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
 // Why: `agentSession.conversationCommand`'s params are strict, so an older host rejects
@@ -242,38 +253,6 @@ export const AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY =
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
   'agent-session.structured.claude.v1' as const
-// Why: a host's structured agents are the ones it registered, not a list every build ships. A host
-// advertising this accepts any agent it lists through `agentSession.agents` (with each agent's
-// capability record) in `agentSession.*` params, and refuses one it did not register; a client
-// offers an agent beyond Claude and Codex only to such a host. A client advertising it renders an
-// `agent-session` tab of any agent its host lists; the host withholds every other agent's tabs from
-// a client that does not (an older client would list them with an empty pane).
-export const STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY =
-  'agent-session.structured.registered-agents.v1' as const
-// Why: paired structured clients explicitly hold every visible session surface, allowing the host
-// to stop provider children after the last surface closes without tying lifetime to a transport.
-export const STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY =
-  'agent-session.structured.hold.v1' as const
-// Why: a client holding only a session id — an Agent Session History row — asks the host to
-// republish that chat's tab. An older host has no such method, and a client must learn that during
-// negotiation rather than by calling and reading a refusal it cannot distinguish from a real one.
-export const STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY =
-  'agent-session.structured.reveal.v1' as const
-// Why: `agentSession.create` gains an optional `resumeFrom`, and its params are a STRICT union — an
-// older host rejects the unknown key as a schema error, which a client cannot tell from a real
-// refusal. Worse, without probing, a client cannot know whether a host that accepted the call
-// adopted the conversation or quietly started a blank one. Negotiate before offering the action.
-export const STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY =
-  'agent-session.structured.resume-history.v1' as const
-// Why: agentSession.subscribeStatus is additive to a surface that already shipped, so a host
-// advertising agent-session.structured.v1 may still answer it with method_not_found. Clients must
-// probe before subscribing or they reconnect forever and never show any status at all.
-export const AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY = 'agent-session.status-feed.v1' as const
-// Why separate from the status feed: a host can carry the status feed and not this stream, and a
-// decoder drops an unknown stream opcode in silence. A client that subscribed without probing
-// would wait forever for completions the host never sends and report nothing wrong.
-export const AGENT_SESSION_TURN_COMPLETION_RUNTIME_CAPABILITY =
-  'agent-session.turn-completion.v1' as const
 // Why: agentSession.conversationOutline is additive; a client probes this before calling so an
 // older host leaves the message rail on loaded messages instead of answering method_not_found.
 export const AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY =
@@ -294,6 +273,10 @@ export const AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY =
 // `answers` to an older host; they fall back to the answer packed into `optionId`.
 export const AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY =
   'agent-session.question-answers.v1' as const
+// Why: a structured chat on a paired server stores attached files on that server
+// (agentSessionAttachment.*); an older server has no store, so clients must refuse
+// the attach rather than hand the agent a path from this machine.
+export const AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY = 'agent-session.attachments.v1' as const
 // Why: the host now publishes rows for work that is live inside a turn, and such
 // a row carries `stoppable: false` because no targeted stop can reach it. A
 // reader that predates the field draws a per-row Stop on every row it is given,
@@ -358,6 +341,7 @@ export const AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY =
   'agentSession.create.tab-id.v1' as const
 
 export const RUNTIME_CAPABILITIES = [
+  ...ORCAD_RUNTIME_CAPABILITIES,
   QODER_OWNED_TERMINAL_CREATE_CAPABILITY,
   ...AGENT_SESSION_STOP_RUNTIME_CAPABILITIES,
   AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY,
@@ -383,6 +367,7 @@ export const RUNTIME_CAPABILITIES = [
   TASK_SOURCE_CONTEXT_RUNTIME_CAPABILITY,
   WORKSPACE_RUN_CONTEXT_RUNTIME_CAPABILITY,
   WORKTREE_LINKED_WORK_ITEM_CONTEXT_RUNTIME_CAPABILITY,
+  ...WORKSPACE_ATTACHMENT_RUNTIME_CAPABILITIES,
   WORKTREE_GITHUB_PR_SUPPRESSION_RUNTIME_CAPABILITY,
   REPO_SEARCH_QUALIFIED_REFS_RUNTIME_CAPABILITY,
   FOLDER_WORKSPACE_PATH_STATUS_RUNTIME_CAPABILITY,
@@ -415,17 +400,15 @@ export const RUNTIME_CAPABILITIES = [
   AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,
-  AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,
-  AGENT_SESSION_TURN_COMPLETION_RUNTIME_CAPABILITY,
+  AGENT_SESSION_CONTINUE_INTERRUPTED_RUNTIME_CAPABILITY,
+  ...STRUCTURED_AGENT_SESSION_SURFACE_RUNTIME_CAPABILITIES,
+  ...AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RECOVERY_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
+  AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY,
   AGENT_SESSION_TURN_ITEM_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_ROW_STOP_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY,
@@ -439,15 +422,7 @@ export const RUNTIME_CAPABILITIES = [
   ANTIGRAVITY_ACCOUNTS_RUNTIME_CAPABILITY,
   DATA_ACCOUNT_RUNTIME_CAPABILITY,
   CODEX_RESET_CREDIT_RUNTIME_CAPABILITY,
-  SKILL_INSTALL_CAPABILITY,
-  SKILL_BUNDLE_INSTALL_CAPABILITY,
-  SKILL_INSTALL_CANCEL_CAPABILITY,
-  SKILL_INSTALL_PROGRESS_CAPABILITY,
-  SKILL_INSTALL_RESULT_V2_CAPABILITY,
-  SKILL_UPLOAD_CAPABILITY,
-  SKILL_MANAGEMENT_CAPABILITY,
-  SKILL_INSTALL_PROVIDERS_CAPABILITY,
-  SKILL_DELETE_CAPABILITY,
+  ...SKILL_RUNTIME_CAPABILITIES,
   AUTOMATION_LIST_HOST_SCOPE_RUNTIME_CAPABILITY,
   AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY,
   AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
