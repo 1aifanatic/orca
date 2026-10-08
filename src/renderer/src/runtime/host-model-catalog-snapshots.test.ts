@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  capabilities: [] as string[] | null,
+  capabilities: new Array<string>(),
   agents: new Map<string, { runtimeId: string | null; agents: { agent: string }[] }>(),
   agentListeners: new Set<() => void>()
 }))
