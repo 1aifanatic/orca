@@ -192,8 +192,8 @@ export class AgentSessionJournal {
 
   snapshot = (): AgentJournalSnapshot => renderJournalState(this.state)
 
-  isReopenedLiveWorkItem = (itemId: string): boolean =>
-    this.reopenedLiveWork.hasUnpersistedItem(itemId)
+  /** A reopen verdict the fold shows but disk does not yet hold. */
+  hasUnpersistedReopenedLiveWork = (): boolean => this.reopenedLiveWork.hasUnpersisted()
 
   /** Visits reduced items without allocating and sorting a full snapshot. */
   visitItems = (
@@ -268,14 +268,7 @@ export class AgentSessionJournal {
 
   readSince(cursor: AgentJournalCursor, limit?: number): JournalReadSince {
     const { sessionId } = this.identity
-    const rawRowsAfter = journalRowsAfterReader(
-      this.database.db,
-      sessionId,
-      this.state.epoch,
-      limit
-    )
-    const rowsAfter = (sequence: number) =>
-      rawRowsAfter(sequence).map((row) => this.reopenedLiveWork.readRow(row))
+    const rowsAfter = journalRowsAfterReader(this.database.db, sessionId, this.state.epoch, limit)
     return readJournalSince({ state: this.state, rowsAfter }, cursor, () => this.cursor())
   }
 

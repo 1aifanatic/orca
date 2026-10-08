@@ -2,9 +2,17 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalCursor
+} from '../../../shared/agent-session-journal-types'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
-import { isSubagentGroupBlock } from '../../../shared/native-chat-types'
+import { backgroundTaskFallbackText } from '../../../shared/native-chat-background-task-row'
+import {
+  isBackgroundTaskBlock,
+  isSubagentGroupBlock,
+  type NativeChatBackgroundTaskBlock
+} from '../../../shared/native-chat-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 import { AgentSessionSubscribers } from '../agent-session-wire/structured-agent-session-subscribers'
 import {
@@ -16,6 +24,7 @@ import {
   loadTestJournal,
   openTestJournalHostDatabase
 } from './journal-host-database-test-support'
+import type { AgentSessionJournal } from './journal-store'
 
 const identity = {
   sessionId: 'session-1',
@@ -44,6 +53,29 @@ function failCleanup(): void {
 
 function restoreCleanup(): void {
   openTestJournalHostDatabase(root).db.exec('DROP TRIGGER fail_roster_cleanup')
+}
+
+function persistedRoster() {
+  return loadTestJournal(root, identity.sessionId)?.state.items.values().next().value
+}
+
+/** What a client resuming from `cursor` is sent when it subscribes. */
+function subscribeFrom(
+  journal: AgentSessionJournal,
+  cursor: AgentJournalCursor
+): AgentSessionSubscribeEvent[] {
+  const events: AgentSessionSubscribeEvent[] = []
+  new AgentSessionSubscribers().open({
+    id: 'reconnecting-client',
+    sessionId: identity.sessionId,
+    journal,
+    cursor,
+    fence: 0,
+    emit: (event) => {
+      events.push(event)
+    }
+  })()
+  return events
 }
 
 beforeEach(async () => {
@@ -75,25 +107,10 @@ describe('journal open cleanup', () => {
       ])
     })
     expect(reopened.cursor()).toEqual(before)
-    const events: AgentSessionSubscribeEvent[] = []
-    const closeSubscriber = new AgentSessionSubscribers().open({
-      id: 'reconnecting-client',
-      sessionId: identity.sessionId,
-      journal: reopened,
-      cursor: before,
-      fence: 0,
-      emit: (event) => {
-        events.push(event)
-      }
-    })
-    const refreshed = events.flatMap((event) => (event.type === 'batch' ? event.batch.items : []))
-    expect(refreshed).toContainEqual(roster)
-    closeSubscriber()
-    expect(warn).toHaveBeenCalled()
-    expect(
-      loadTestJournal(root, identity.sessionId)?.state.items.values().next().value?.body
-    ).toEqual(working)
+    expect(warn).toHaveBeenCalledOnce()
+    expect(persistedRoster()?.body).toEqual(working)
 
+    const attempts = vi.spyOn(reopened, 'appendResolvedItem')
     await reopened.appendSubmission({
       clientMessageId: 'new-message',
       payloadFingerprint: 'new-message-fingerprint',
@@ -105,12 +122,12 @@ describe('journal open cleanup', () => {
       clientMessageId: 'new-message',
       handoverRecorded: true
     })
-
-    const replay = reopened.readSince({ epoch: before.epoch, sequence: 0 })
-    expect(replay.ok).toBe(true)
-    if (replay.ok) {
-      expect(JSON.stringify(replay.rows)).not.toContain('"state":"working"')
-    }
+    // The commit retried the cleanup; it failed again without another log line.
+    await vi.waitFor(() => expect(attempts).toHaveBeenCalled())
+    await Promise.allSettled(attempts.mock.results.map((result) => result.value))
+    await reopened.readInOrder(() => undefined)
+    expect(warn).toHaveBeenCalledOnce()
+    expect(reopened.hasUnpersistedReopenedLiveWork()).toBe(true)
 
     restoreCleanup()
     await reopened.appendItem(
@@ -119,13 +136,71 @@ describe('journal open cleanup', () => {
       options
     )
     await vi.waitFor(() => {
-      expect(
-        loadTestJournal(root, identity.sessionId)?.state.items.values().next().value?.revision
-      ).toBe(2)
+      expect(persistedRoster()?.revision).toBe(2)
     })
-    const persisted = loadTestJournal(root, identity.sessionId)?.state.items.values().next().value
-    expect(persisted?.revision).toBe(2)
-    expect(persisted?.body).toEqual(roster?.body)
+    expect(persistedRoster()?.body).toEqual(roster?.body)
+    expect(reopened.hasUnpersistedReopenedLiveWork()).toBe(false)
+  })
+
+  it('settles a live background task in the fold when its cleanup write fails', async () => {
+    const task: NativeChatBackgroundTaskBlock = {
+      type: 'background-task',
+      taskId: 'task-1',
+      kind: 'command',
+      label: 'sleep 20',
+      state: 'working',
+      startedAt: 10
+    }
+    const live = await open()
+    await live.appendItem(
+      { provider: 'orca', clientMessageId: `claude-background-task:${task.taskId}` },
+      {
+        kind: 'message',
+        role: 'system',
+        blocks: [{ type: 'text', text: backgroundTaskFallbackText(task) }, task]
+      },
+      options
+    )
+    await live.close()
+    failCleanup()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const reopened = await open()
+    const body = reopened.snapshot().items[0]?.body
+    expect(body?.kind === 'message' && body.blocks.find(isBackgroundTaskBlock)).toMatchObject({
+      state: 'unverifiable'
+    })
+    expect(reopened.hasUnpersistedReopenedLiveWork()).toBe(true)
+  })
+
+  it('sends a resuming client a snapshot only while the cleanup is unwritten', async () => {
+    const live = await open()
+    await live.appendItem(rosterIdentity, working, options)
+    const before = live.cursor()
+    await live.close()
+    failCleanup()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const reopened = await open()
+    const settled = reopened.snapshot().items[0]
+    const [unwritten] = subscribeFrom(reopened, before)
+    expect(unwritten?.type).toBe('snapshot')
+    expect(unwritten?.type === 'snapshot' && unwritten.page.items).toContainEqual(settled)
+
+    restoreCleanup()
+    await reopened.appendItem(
+      { provider: 'orca', clientMessageId: 'activity' },
+      { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'Still working' }] },
+      options
+    )
+    await vi.waitFor(() => expect(reopened.hasUnpersistedReopenedLiveWork()).toBe(false))
+    const written = subscribeFrom(reopened, before)
+    expect(written.map((event) => event.type)).not.toContain('snapshot')
+    expect(
+      written.flatMap((event) => (event.type === 'batch' ? event.batch.items : []))
+    ).toContainEqual(
+      expect.objectContaining({ itemId: settled?.itemId, revision: 2, body: settled?.body })
+    )
   })
 
   it('re-derives failed cleanup on a later open without a durable retry flag', async () => {
@@ -161,5 +236,6 @@ describe('journal open cleanup', () => {
     expect(
       latest?.body.kind === 'message' && latest.body.blocks.find(isSubagentGroupBlock)?.agents
     ).toMatchObject([{ id: 'child-1', state: 'working' }])
+    expect(reopened.hasUnpersistedReopenedLiveWork()).toBe(false)
   })
 })

@@ -1,17 +1,23 @@
-import {
-  AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalRenderItem
-} from '../../../shared/agent-session-journal-types'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { JournalLoad } from './journal-open'
 import type { JournalReducerState } from './journal-reducer'
-import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
-import { lostLiveWorkJournalBody, staleSubagentRosterRevisions } from './journal-subagent-liveness'
+import {
+  staleSubagentRosterRevisions,
+  type JournalSubagentLivenessRevision
+} from './journal-subagent-liveness'
+
+type ReopenedItem = {
+  /** The fold revision the verdict was derived from; any other revision supersedes it. */
+  revision: number
+  correction: JournalSubagentLivenessRevision
+  warned: boolean
+}
 
 /** Readable reopen facts survive a failed cleanup write; a new revision supersedes them. */
 export class JournalReopenedLiveWork {
-  private readonly reopened = new Map<string, AgentJournalRenderItem>()
-  private boundary = { epoch: '', sequence: 0 }
+  private readonly reopened = new Map<string, ReopenedItem>()
+  private epoch = ''
   private pending: Promise<void> | null = null
 
   constructor(
@@ -24,13 +30,15 @@ export class JournalReopenedLiveWork {
 
   adopt(loaded: JournalLoad): void {
     this.reopened.clear()
-    this.boundary = { epoch: loaded.state.epoch, sequence: loaded.state.lastSequence }
+    this.epoch = loaded.state.epoch
     for (const [itemId, item] of loaded.state.items) {
-      if (!lostLiveWorkJournalBody(item.body)) {
+      // Same predicate as the write, so the fold never shows a verdict disk can't receive.
+      const [correction] = staleSubagentRosterRevisions([item])
+      if (!correction) {
         continue
       }
-      this.reopened.set(itemId, item)
-      loaded.state.items.set(itemId, { ...item, body: this.readBody(item.body) })
+      this.reopened.set(itemId, { revision: item.revision, correction, warned: false })
+      loaded.state.items.set(itemId, { ...item, body: correction.body })
     }
   }
 
@@ -45,14 +53,18 @@ export class JournalReopenedLiveWork {
     return this.pending
   }
 
-  hasUnpersistedItem(itemId: string): boolean {
-    const original = this.reopened.get(itemId)
-    return original !== undefined && this.matchesReopenedItem(itemId, original)
+  hasUnpersisted(): boolean {
+    for (const [itemId, entry] of this.reopened) {
+      if (this.matchesReopenedItem(itemId, entry)) {
+        return true
+      }
+    }
+    return false
   }
 
   afterCommit(): void {
-    for (const [itemId, original] of this.reopened) {
-      if (!this.matchesReopenedItem(itemId, original)) {
+    for (const [itemId, entry] of this.reopened) {
+      if (!this.matchesReopenedItem(itemId, entry)) {
         this.reopened.delete(itemId)
       }
     }
@@ -61,55 +73,31 @@ export class JournalReopenedLiveWork {
     }
   }
 
-  readRow(row: JournalRow): JournalRow {
-    if (row.epoch !== this.boundary.epoch || row.seq > this.boundary.sequence) {
-      return row
-    }
-    if (row.kind === 'item') {
-      return { ...row, body: this.readBody(row.body) }
-    }
-    if (row.kind === 'lifecycle-batch') {
-      return {
-        ...row,
-        mutations: row.mutations.map((mutation) =>
-          mutation.kind === 'item' ? { ...mutation, body: this.readBody(mutation.body) } : mutation
-        )
-      }
-    }
-    return row
-  }
-
-  private readBody(body: AgentJournalRenderItem['body']): AgentJournalRenderItem['body'] {
-    return lostLiveWorkJournalBody(body) ?? body
-  }
-
-  private matchesReopenedItem(itemId: string, original: AgentJournalRenderItem): boolean {
+  private matchesReopenedItem(itemId: string, entry: ReopenedItem): boolean {
     const state = this.deps.state()
-    return (
-      state.epoch === this.boundary.epoch && state.items.get(itemId)?.revision === original.revision
-    )
+    return state.epoch === this.epoch && state.items.get(itemId)?.revision === entry.revision
   }
 
   private async persist(): Promise<void> {
-    for (const [itemId, original] of this.reopened) {
-      const revision = staleSubagentRosterRevisions([original])[0]
-      if (!revision) {
-        this.reopened.delete(itemId)
-        continue
-      }
+    for (const [itemId, entry] of this.reopened) {
       try {
         await this.deps.journal().appendResolvedItem(
           () => {
-            if (!this.matchesReopenedItem(itemId, original)) {
+            if (!this.matchesReopenedItem(itemId, entry)) {
               this.reopened.delete(itemId)
               return null
             }
-            return revision
+            return entry.correction
           },
           { fence: this.deps.state().highestFence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
         )
         this.reopened.delete(itemId)
       } catch (error) {
+        // Retries ride every later commit; only the first failure is worth a log line.
+        if (entry.warned) {
+          continue
+        }
+        entry.warned = true
         console.warn('[journal-open] stale live-work cleanup skipped:', {
           sessionId: this.deps.sessionId,
           itemId,

@@ -21,7 +21,7 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import { emptyAgentSessionBatch } from './agent-session-empty-batch'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
 import { rememberSessionActivity } from './structured-agent-session-activity-retention'
-import { refreshDerivedJournalItems } from './agent-session-derived-item-refresh'
+import { refreshDerivedStopNotes } from './agent-session-stop-note-refresh'
 
 export type AgentSessionSubscriberEmit = (event: AgentSessionSubscribeEvent) => void
 export type AgentSessionSubscribeInput = {
@@ -91,9 +91,10 @@ export class AgentSessionSubscribers {
     this.bySession.set(input.sessionId, session)
 
     const hostNow = this.now()
-    if (input.cursor) {
+    // A reopen verdict not yet on disk has no row past the client's cursor; a snapshot carries it.
+    if (input.cursor && !input.journal.hasUnpersistedReopenedLiveWork()) {
       this.deliver(subscriber, input.journal, hostNow, true)
-      refreshDerivedJournalItems(
+      refreshDerivedStopNotes(
         {
           emit: (target, event) => this.emit(target, event),
           isActive: (target) => this.isActive(target)
