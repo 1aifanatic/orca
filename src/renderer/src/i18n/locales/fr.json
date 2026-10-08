@@ -17919,6 +17919,8 @@
         "hostStopped": "{{agent}} n'a jamais fini de démarrer, Orca l'a donc arrêté.",
         "providerRateLimited": "{{agent}} a atteint une limite de requêtes et réessaie.",
         "providerRetrying": "{{agent}} a rencontré un problème temporaire et réessaie.",
+        "providerError": "{{agent}} a rencontré un problème. Vérifiez le chat avant de réessayer.",
+        "providerErrorQuoted": "{{agent}} a rencontré un problème : {{detail}}. Vérifiez le chat avant de réessayer.",
         "providerRetryingQuoted": "{{agent}} réessaie : {{detail}}.",
         "providerRetryNumber": "Nouvelle tentative {{attempt}}.",
         "providerRetryNumberOf": "Nouvelle tentative {{attempt}} sur {{maxRetries}}.",

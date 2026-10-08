@@ -1,6 +1,4 @@
-// The row a Codex stream error it is about to retry writes: Codex's own progress sentence, what
-// failed on the line under it, and a `providerRetrying` fact. Every attempt is its own row; the
-// transcript draws only the latest of a run.
+// Codex error notifications keep diagnostics in Details and state whether another attempt follows.
 
 import {
   agentSessionFailureFact,
@@ -31,12 +29,25 @@ export function isCodexProviderRetryFrame(event: CodexStructuredSessionEvent): b
 }
 
 export function codexProviderRetryRowBody(payload: unknown): AgentJournalStatusItem {
+  return codexProviderErrorRowBody(payload, 'providerRetrying')
+}
+
+export function codexProviderFinalErrorRowBody(payload: unknown): AgentJournalStatusItem {
+  return codexProviderErrorRowBody(payload, 'providerError')
+}
+
+function codexProviderErrorRowBody(
+  payload: unknown,
+  kind: 'providerRetrying' | 'providerError'
+): AgentJournalStatusItem {
   const message = readCodexErrorMessage(payload)
-  const detail = message ? providerDiagnostic(message, 'log') : undefined
-  // Transport details remain in providerFrame; neither error field is a person-facing explanation.
-  const retry = readProviderRetry(readCodexErrorInfo(payload))
+  const info = readCodexErrorInfo(payload)
+  // A final capacity refusal explains how to continue; transport and retry details stay in Details.
+  const audience = kind === 'providerError' && info?.error === 'serverOverloaded' ? 'person' : 'log'
+  const detail = message ? providerDiagnostic(message, audience) : undefined
+  const retry = kind === 'providerRetrying' ? readProviderRetry(info) : undefined
   const words = agentSessionFailureWords(
-    agentSessionFailureFact('providerRetrying', {
+    agentSessionFailureFact(kind, {
       ...(detail ? { detail } : {}),
       ...(retry ? { retry } : {})
     }),
@@ -44,7 +55,7 @@ export function codexProviderRetryRowBody(payload: unknown): AgentJournalStatusI
   )
   return {
     kind: 'status',
-    tone: 'warning',
+    tone: kind === 'providerRetrying' ? 'warning' : 'error',
     ...words,
     providerFrame: {
       provider: 'codex',

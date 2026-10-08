@@ -17818,6 +17818,8 @@
         "hostStopped": "{{agent}} no terminó de iniciarse, así que Orca lo detuvo.",
         "providerRateLimited": "{{agent}} alcanzó un límite de solicitudes y está reintentándolo.",
         "providerRetrying": "{{agent}} tuvo un problema temporal y está reintentando.",
+        "providerError": "{{agent}} tuvo un problema. Revisa el chat antes de volver a intentarlo.",
+        "providerErrorQuoted": "{{agent}} tuvo un problema: {{detail}}. Revisa el chat antes de volver a intentarlo.",
         "providerRetryingQuoted": "{{agent}} está reintentando: {{detail}}.",
         "providerRetryNumber": "Reintento {{attempt}}.",
         "providerRetryNumberOf": "Reintento {{attempt}} de {{maxRetries}}.",

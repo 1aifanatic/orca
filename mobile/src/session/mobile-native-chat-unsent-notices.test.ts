@@ -27,6 +27,19 @@ function rejected(patch: Partial<AgentJournalSubmission> = {}): AgentJournalSubm
 }
 
 describe('the line under a message the host recorded and did not deliver', () => {
+  it.each([
+    'The provider did not accept this message: provider_write_failed: stand-in rejected the turn.',
+    'The provider stopped before it finished starting.',
+    'The provider did not accept this message.'
+  ])('normalizes legacy host wording with the chat’s agent: %s', (reason) => {
+    const notices = mobileNativeChatUnsentNotices(
+      { items: [], submissions: [rejected({ reason })] },
+      'codex'
+    )
+    expect(notices.get(agentJournalSubmissionKey('sent-elsewhere'))).toBe(
+      "Codex didn't accept this message."
+    )
+  })
   it('names the agent with a resend step after the host classifies an unwritten send', () => {
     const rejection: AgentSessionFailureFact = {
       kind: 'writeFailed',

@@ -82,6 +82,7 @@ describe('the words written beside a failure fact', () => {
 
   it.each([
     'provider_write_failed: stand-in rejected the turn.',
+    'The provider did not accept this message: provider_write_failed: stand-in rejected the turn.',
     '{"type":"error","message":"failed"}',
     'API Error: Request was aborted.',
     'stream disconnected before completion: error sending request for url (http://127.0.0.1:9/v1/responses)',

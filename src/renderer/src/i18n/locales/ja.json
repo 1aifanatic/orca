@@ -17853,6 +17853,8 @@
         "hostStopped": "{{agent}} の起動が完了しなかったため、Orca が停止しました。",
         "providerRateLimited": "{{agent}} はリクエストの上限に達したため、再試行しています。",
         "providerRetrying": "{{agent}} で一時的な問題が発生したため、再試行しています。",
+        "providerError": "{{agent}} で問題が発生しました。再試行する前にチャットを確認してください。",
+        "providerErrorQuoted": "{{agent}} で問題が発生しました：{{detail}}。再試行する前にチャットを確認してください。",
         "providerRetryingQuoted": "{{agent}} は再試行しています: {{detail}}。",
         "providerRetryNumber": "{{attempt}} 回目の再試行です。",
         "providerRetryNumberOf": "{{maxRetries}} 回中 {{attempt}} 回目の再試行です。",

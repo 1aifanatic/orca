@@ -15,6 +15,9 @@ describe('provider explanations a person can read', () => {
 
   it.each([
     'provider_write_failed: stand-in rejected the turn.',
+    'The provider did not accept this message: provider_write_failed: stand-in rejected the turn.',
+    'The send failed. new_transport_marker: a future failure',
+    'The send failed:\nnew_transport_marker: a future failure',
     'new_transport_marker: a future failure',
     '{"jsonrpc":"2.0","error":{"code":-32603,"message":"failed"}}',
     'The request failed: {"code":-32603}',

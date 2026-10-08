@@ -266,6 +266,14 @@ const FAILURE_SENTENCES = {
   hostFault: ({ retryControl }, _fact, _surface, say) =>
     say(retryControl ? 'hostFault' : 'hostFaultTryAgain'),
   hostStopped: (context, _fact, _surface, say) => say('hostStopped', agent(say, context)),
+  providerError: (context, fact, _surface, say) =>
+    quotingPersonDetail(
+      say,
+      'providerError',
+      'providerErrorQuoted',
+      fact.detail,
+      agent(say, context)
+    ),
   // A provider that says how its retry is going, for a person, is quoted: that is the progress.
   providerRetrying: (context, { retry, detail }, _surface, say) =>
     detail?.audience === 'person' && isProviderDiagnosticPersonText(detail.text)

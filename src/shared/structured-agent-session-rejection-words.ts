@@ -57,11 +57,17 @@ export function structuredAgentSessionRejectionParts(
   if (rejection.kind === 'writeFailed') {
     return rejectionFactParts(write, { kind: 'writeFailed' }, context)
   }
-  // A legacy marker is an internal cause with no user-facing meaning; any other reason is a
-  // sentence written to be read — the provider's, or the host's own.
-  return rejection.kind || !isProviderDiagnosticPersonText(reason)
-    ? agentSessionWriteNotDoneParts(write)
-    : [{ text: reason }]
+  if (rejection.kind) {
+    return agentSessionWriteNotDoneParts(write)
+  }
+  // A reason-only row cannot identify its author or recover its cause; use a named neutral lead.
+  const parts = rejectionFactParts(write, { kind: 'providerRejected' }, context)
+  if (!isProviderDiagnosticPersonText(reason) || /\bprovider\b/i.test(reason)) {
+    return parts
+  }
+  const alreadyNamed =
+    !context.agentName || reason.toLowerCase().includes(context.agentName.toLowerCase())
+  return alreadyNamed ? [{ text: reason }] : [...parts, { text: reason }]
 }
 
 function rejectionFactParts(

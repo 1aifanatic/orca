@@ -59,6 +59,8 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'hostStopped',
   /** The provider is retrying a request its API refused; not a failure yet. */
   'providerRetrying',
+  /** A final provider error notification; it does not prove whether a message was delivered. */
+  'providerError',
   /** A child a Stop could not prove gone: its exit is unverifiable. Kept for rows hosts wrote. */
   'previousExitUnverifiable',
   /** The agent could not reopen the chat's saved session, so a fresh one without its memory continues it. */
@@ -78,6 +80,7 @@ const STATUS_ROW_ONLY_FAILURE_KINDS = [
   'stopRefused',
   'answerUnconfirmed',
   'providerRetrying',
+  'providerError',
   'previousExitUnverifiable',
   'sessionNotRestored'
 ] as const satisfies readonly AgentSessionFailureKind[]

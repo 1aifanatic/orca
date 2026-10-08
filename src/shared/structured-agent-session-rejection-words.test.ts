@@ -33,10 +33,20 @@ describe('what a rejection shows the reader', () => {
     )
   })
 
-  it('shows the sentence a host wrote for the person reading it', () => {
-    const reason = 'The provider stopped before it finished starting.'
-    expect(notice(reason)).toBe(reason)
-  })
+  it.each([
+    'The provider stopped before it finished starting.',
+    'The provider did not accept this message.',
+    'The provider did not accept this message: provider_write_failed: stand-in rejected the turn.'
+  ])(
+    'uses the known agent for a legacy host sentence without exposing its internals: %s',
+    (reason) => {
+      expect(
+        agentSessionWriteNoticeEnglish(
+          structuredAgentSessionRejectionParts(reason, 'send', undefined, { agentName: 'Codex' })
+        )
+      ).toBe("Codex didn't accept this message.")
+    }
+  )
 
   it('never puts a legacy or local-capacity marker on screen', () => {
     expect(notice('not_delivered')).toBe('Your message was not sent.')

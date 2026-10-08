@@ -112,6 +112,9 @@ export const AGENT_SESSION_FAILURE_COPY = {
   hostStopped: '{{agent}} never finished starting, so Orca stopped it.',
   providerRateLimited: '{{agent}} reached a request limit and is retrying.',
   providerRetrying: '{{agent}} hit a temporary problem and is retrying.',
+  providerError: '{{agent}} ran into a problem. Check the chat before trying again.',
+  providerErrorQuoted:
+    '{{agent}} ran into a problem: {{detail}}. Check the chat before trying again.',
   providerRetryingQuoted: '{{agent}} is retrying: {{detail}}.',
   providerRetryNumber: 'Retry {{attempt}}.',
   providerRetryNumberOf: 'Retry {{attempt}} of {{maxRetries}}.',

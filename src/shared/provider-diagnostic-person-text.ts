@@ -1,6 +1,7 @@
 // An audience label cannot make protocol records, error codes or stack traces readable copy.
 const TECHNICAL_TEXT = [
-  /^\s*[a-zA-Z][a-zA-Z0-9]*_[a-zA-Z0-9_]+(?:\s*:|\s*$)/,
+  /(?:^|:\s+|[.!?]\s+|\n)\s*[a-zA-Z][a-zA-Z0-9]*_[a-zA-Z0-9_]+\s*:/,
+  /^\s*[a-zA-Z][a-zA-Z0-9]*_[a-zA-Z0-9_]+\s*$/,
   /\b(?:[A-Za-z]*Error|Exception)\s*:/,
   /\bE[A-Z][A-Z0-9]{2,}\b/,
   /\b(?:HTTP\/\d|(?:HTTP|RPC|JSON-RPC)\s+(?:[-+]?\d+|error|response))/i,

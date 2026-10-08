@@ -2886,6 +2886,8 @@
         "providerRetryNumber": "Retry {{attempt}}.",
         "providerRetryNumberOf": "Retry {{attempt}} of {{maxRetries}}.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
+        "providerError": "{{agent}} ran into a problem. Check the chat before trying again.",
+        "providerErrorQuoted": "{{agent}} ran into a problem: {{detail}}. Check the chat before trying again.",
         "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
         "providerStartFailed": "{{agent}} stopped before it finished starting.",
         "queueFull": "Too many messages were waiting for the agent, so this one was not sent.",

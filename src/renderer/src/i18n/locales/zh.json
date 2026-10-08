@@ -17818,6 +17818,8 @@
         "hostStopped": "{{agent}} 始终未完成启动，因此 Orca 已将其停止。",
         "providerRateLimited": "{{agent}} 已达到请求限制，正在重试。",
         "providerRetrying": "{{agent}} 遇到临时问题，正在重试。",
+        "providerError": "{{agent}} 遇到了问题。请先检查聊天，再重试。",
+        "providerErrorQuoted": "{{agent}} 遇到了问题：{{detail}}。请先检查聊天，再重试。",
         "providerRetryingQuoted": "{{agent}} 正在重试：{{detail}}。",
         "providerRetryNumber": "第 {{attempt}} 次重试。",
         "providerRetryNumberOf": "第 {{attempt}} 次重试，共 {{maxRetries}} 次。",

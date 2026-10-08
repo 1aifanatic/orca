@@ -30,6 +30,18 @@ function draft(overrides: Partial<AgentSessionQueuedMessage> & { messageId: stri
 }
 
 describe('mobileQueuedMessageCards', () => {
+  it.each([
+    'The provider did not accept this message: provider_write_failed: stand-in rejected the turn.',
+    'The provider stopped before it finished starting.',
+    'The provider did not accept this message.'
+  ])('names the agent on a reason-only legacy card: %s', (returnedReason) => {
+    const [card] = mobileQueuedMessageCards(
+      [draft({ messageId: 'a', state: 'returned', returnedReason })],
+      [],
+      { pendingPrompt: false, agentName: 'Codex' }
+    )
+    expect(card?.caption).toBe("Codex didn't accept this message.")
+  })
   it.each(['Codex', 'Claude'])(
     'names %s on a returned write failure without duplicating Send',
     (agentName) => {

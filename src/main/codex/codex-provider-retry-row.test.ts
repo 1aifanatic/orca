@@ -224,8 +224,18 @@ describe('a Codex stream error it is about to retry', () => {
     expect(errorFrameRows).toEqual([
       { tone: 'warning', text: 'Codex hit a temporary problem and is retrying.' },
       { tone: 'warning', text: 'Codex hit a temporary problem and is retrying.' },
-      { tone: 'error', text: cause }
+      {
+        tone: 'error',
+        text: 'Codex ran into a problem. Check the chat before trying again.'
+      }
     ])
+    const finalError = reduced(rows).find(
+      (row) => row.body.kind === 'status' && row.body.failure?.kind === 'providerError'
+    )
+    expect(finalError?.body).toMatchObject({
+      failure: { kind: 'providerError', detail: { text: cause, audience: 'log' } },
+      providerFrame: { payload: { head: expect.stringContaining(cause) } }
+    })
     expect(reduced(rows).map((row) => row.body)).toContainEqual(
       expect.objectContaining({ kind: 'turn', state: 'completed', outcome: 'failure' })
     )

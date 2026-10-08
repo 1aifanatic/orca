@@ -268,7 +268,12 @@ describe('a Codex turn a conversation command claims', () => {
     // Codex's own error row, in the command's turn; the completion adds none.
     expect(resultRows(writes)).toEqual([
       expect.objectContaining({
-        body: expect.objectContaining({ kind: 'status', text: 'Unavailable', tone: 'error' }),
+        body: expect.objectContaining({
+          kind: 'status',
+          text: 'Codex ran into a problem. Check the chat before trying again.',
+          tone: 'error',
+          failure: { kind: 'providerError', detail: { text: 'Unavailable', audience: 'log' } }
+        }),
         turnScope: { kind: 'turn', turnItemId: COMMAND_TURN_KEY }
       })
     ])

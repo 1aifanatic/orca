@@ -248,6 +248,14 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         COPY.providerRetrying,
         values
       ),
+    providerError: (values) =>
+      translate('components.native-chat.failureWords.providerError', COPY.providerError, values),
+    providerErrorQuoted: (values) =>
+      translate(
+        'components.native-chat.failureWords.providerErrorQuoted',
+        COPY.providerErrorQuoted,
+        values
+      ),
     providerRetryingQuoted: (values) =>
       translate(
         'components.native-chat.failureWords.providerRetryingQuoted',
