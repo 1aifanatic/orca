@@ -1,0 +1,154 @@
+{
+  "classification": "Infrastructure pickup observation only; no product/full-CI correctness or speed qualification",
+  "sourceHead": "0bd619df290c01cd66eae3a868e645e5b6391c90",
+  "diagnosticOnlyNeverMerge": true,
+  "maximumJobs": 7,
+  "evaluatorJobs": 6,
+  "pairs": 3,
+  "pairOrder": "Sequential waves; both members share max completion of actual preceding dependencies; declaration order slim/latest,latest/slim,slim/latest",
+  "jobs": {
+    "pair_1_slim": {
+      "pair": 1,
+      "runner": "ubuntu-slim",
+      "needs": [
+        "anchor"
+      ],
+      "scriptSha256": "a3df321598712cbcf551dd469b0fc1b21481ab8033d95537c581ad0f8a8dbb89",
+      "fixedEnvBlockSha256": "995c05d115d21196f1281f14ab55607926cbe2692054232f66acf88081e4864a"
+    },
+    "pair_1_latest": {
+      "pair": 1,
+      "runner": "ubuntu-latest",
+      "needs": [
+        "anchor"
+      ],
+      "scriptSha256": "a3df321598712cbcf551dd469b0fc1b21481ab8033d95537c581ad0f8a8dbb89",
+      "fixedEnvBlockSha256": "995c05d115d21196f1281f14ab55607926cbe2692054232f66acf88081e4864a"
+    },
+    "pair_2_latest": {
+      "pair": 2,
+      "runner": "ubuntu-latest",
+      "needs": [
+        "anchor",
+        "pair_1_slim",
+        "pair_1_latest"
+      ],
+      "scriptSha256": "a3df321598712cbcf551dd469b0fc1b21481ab8033d95537c581ad0f8a8dbb89",
+      "fixedEnvBlockSha256": "995c05d115d21196f1281f14ab55607926cbe2692054232f66acf88081e4864a"
+    },
+    "pair_2_slim": {
+      "pair": 2,
+      "runner": "ubuntu-slim",
+      "needs": [
+        "anchor",
+        "pair_1_slim",
+        "pair_1_latest"
+      ],
+      "scriptSha256": "a3df321598712cbcf551dd469b0fc1b21481ab8033d95537c581ad0f8a8dbb89",
+      "fixedEnvBlockSha256": "995c05d115d21196f1281f14ab55607926cbe2692054232f66acf88081e4864a"
+    },
+    "pair_3_slim": {
+      "pair": 3,
+      "runner": "ubuntu-slim",
+      "needs": [
+        "anchor",
+        "pair_2_slim",
+        "pair_2_latest"
+      ],
+      "scriptSha256": "a3df321598712cbcf551dd469b0fc1b21481ab8033d95537c581ad0f8a8dbb89",
+      "fixedEnvBlockSha256": "995c05d115d21196f1281f14ab55607926cbe2692054232f66acf88081e4864a"
+    },
+    "pair_3_latest": {
+      "pair": 3,
+      "runner": "ubuntu-latest",
+      "needs": [
+        "anchor",
+        "pair_2_slim",
+        "pair_2_latest"
+      ],
+      "scriptSha256": "a3df321598712cbcf551dd469b0fc1b21481ab8033d95537c581ad0f8a8dbb89",
+      "fixedEnvBlockSha256": "995c05d115d21196f1281f14ab55607926cbe2692054232f66acf88081e4864a"
+    }
+  },
+  "originalVerify": {
+    "sourcePath": ".github/workflows/pr.yml",
+    "workflowSha256": "94f92bfd10c1ae402b58dec1eac43ebb7eb9f05e6e23ff84d2a82783950fed0c",
+    "verbatimEnvExpressions": "          CODE_PATHS: ${{ needs.code_paths.result }}\n          SHOULD_RUN: ${{ needs.code_paths.outputs.should_run }}\n          PREFLIGHT: ${{ needs.preflight.result }}\n          PREFLIGHT_SHOULD_RUN: ${{ needs.code_paths.outputs.static_analysis == 'true' || needs.code_paths.outputs.typecheck == 'true' }}\n          GIT_COMPATIBILITY: ${{ needs.git_compatibility.result }}\n          GIT_COMPATIBILITY_SHOULD_RUN: ${{ needs.code_paths.outputs.git_compatibility }}\n          CODEX_INDEX_HEAL_CONTRACT: ${{ needs.codex_index_heal_contract.result }}\n          CODEX_INDEX_HEAL_CONTRACT_SHOULD_RUN: ${{ needs.code_paths.outputs.codex_index_heal_contract }}\n          XTERM_PATCH_SYNC: ${{ needs.xterm_patch_sync.result }}\n          XTERM_PATCH_SYNC_SHOULD_RUN: ${{ needs.code_paths.outputs.xterm_patch_sync }}\n          SHELL_CONTRACTS: ${{ needs.shell_contracts.result }}\n          SHELL_CONTRACTS_SHOULD_RUN: ${{ needs.code_paths.outputs.shell_contracts }}\n          TEST: ${{ needs.test.result }}\n          TEST_SHOULD_RUN: ${{ needs.code_paths.outputs.test }}\n          ORCAD_BROWSER: ${{ needs.orcad_browser.result }}\n          ORCAD_BROWSER_SHOULD_RUN: ${{ needs.code_paths.outputs.orcad_browser }}\n          MOBILE_WEB_APP: ${{ needs.mobile_web_app.result }}\n          MOBILE_WEB_APP_SHOULD_RUN: ${{ needs.code_paths.outputs.mobile_web_app }}\n          CROSS_VERSION_WIRE: ${{ needs.cross-version-wire.result }}\n          CROSS_VERSION_WIRE_SHOULD_RUN: ${{ needs.code_paths.outputs.cross-version-wire }}\n          MANAGED_HOOK_NODE18: ${{ needs.managed_hook_node18.result }}\n          MANAGED_HOOK_NODE18_SHOULD_RUN: ${{ needs.code_paths.outputs.managed_hook_node18 }}\n          PACKAGE: ${{ needs.package.result }}\n          PACKAGE_SHOULD_RUN: ${{ needs.code_paths.outputs.package }}\n          PACKAGE_WINDOWS: ${{ needs.package_windows.result }}\n          PACKAGE_WINDOWS_SHOULD_RUN: ${{ needs.code_paths.outputs.package_windows }}\n",
+    "verbatimScript": "if [ \"$CODE_PATHS\" != \"success\" ]; then\n  exit 1\nfi\nif [ \"$SHOULD_RUN\" != \"true\" ]; then\n  echo \"Docs-only change; expensive PR checks skipped.\"\nfi\nfailed=0\ncheck_job() {\n  local name=\"$1\" result=\"$2\" should=\"$3\"\n  if [ \"$should\" = \"true\" ]; then\n    if [ \"$result\" != \"success\" ]; then\n      echo \"$name: expected success, got $result\"\n      failed=1\n    fi\n  else\n    if [ \"$result\" != \"skipped\" ]; then\n      echo \"$name: expected skipped, got $result\"\n      failed=1\n    fi\n  fi\n}\n# Require success when the PR has code-relevant changes\ncheck_job preflight \"$PREFLIGHT\" \"$PREFLIGHT_SHOULD_RUN\"\ncheck_job git_compatibility \"$GIT_COMPATIBILITY\" \"$GIT_COMPATIBILITY_SHOULD_RUN\"\ncheck_job codex_index_heal_contract \"$CODEX_INDEX_HEAL_CONTRACT\" \"$CODEX_INDEX_HEAL_CONTRACT_SHOULD_RUN\"\ncheck_job xterm_patch_sync \"$XTERM_PATCH_SYNC\" \"$XTERM_PATCH_SYNC_SHOULD_RUN\"\ncheck_job shell_contracts \"$SHELL_CONTRACTS\" \"$SHELL_CONTRACTS_SHOULD_RUN\"\ncheck_job test \"$TEST\" \"$TEST_SHOULD_RUN\"\ncheck_job orcad_browser \"$ORCAD_BROWSER\" \"$ORCAD_BROWSER_SHOULD_RUN\"\ncheck_job mobile_web_app \"$MOBILE_WEB_APP\" \"$MOBILE_WEB_APP_SHOULD_RUN\"\ncheck_job cross-version-wire \"$CROSS_VERSION_WIRE\" \"$CROSS_VERSION_WIRE_SHOULD_RUN\"\ncheck_job managed_hook_node18 \"$MANAGED_HOOK_NODE18\" \"$MANAGED_HOOK_NODE18_SHOULD_RUN\"\ncheck_job package \"$PACKAGE\" \"$PACKAGE_SHOULD_RUN\"\ncheck_job package_windows \"$PACKAGE_WINDOWS\" \"$PACKAGE_WINDOWS_SHOULD_RUN\"\nexit \"$failed\"\n",
+    "scriptSha256": "a3df321598712cbcf551dd469b0fc1b21481ab8033d95537c581ad0f8a8dbb89",
+    "allTwentySixKeysPreserved": true,
+    "ordinaryNeedsUnchanged": "Original13 actual dependencies remain in product workflow; this separate manual diagnostic uses captured values, not fabricated full checks."
+  },
+  "capturedEnvironment": {
+    "CODE_PATHS": "success",
+    "SHOULD_RUN": "true",
+    "PREFLIGHT": "success",
+    "PREFLIGHT_SHOULD_RUN": "true",
+    "GIT_COMPATIBILITY": "skipped",
+    "GIT_COMPATIBILITY_SHOULD_RUN": "false",
+    "CODEX_INDEX_HEAL_CONTRACT": "skipped",
+    "CODEX_INDEX_HEAL_CONTRACT_SHOULD_RUN": "false",
+    "XTERM_PATCH_SYNC": "skipped",
+    "XTERM_PATCH_SYNC_SHOULD_RUN": "false",
+    "SHELL_CONTRACTS": "skipped",
+    "SHELL_CONTRACTS_SHOULD_RUN": "false",
+    "TEST": "success",
+    "TEST_SHOULD_RUN": "true",
+    "ORCAD_BROWSER": "skipped",
+    "ORCAD_BROWSER_SHOULD_RUN": "false",
+    "MOBILE_WEB_APP": "skipped",
+    "MOBILE_WEB_APP_SHOULD_RUN": "false",
+    "CROSS_VERSION_WIRE": "skipped",
+    "CROSS_VERSION_WIRE_SHOULD_RUN": "false",
+    "MANAGED_HOOK_NODE18": "skipped",
+    "MANAGED_HOOK_NODE18_SHOULD_RUN": "false",
+    "PACKAGE": "success",
+    "PACKAGE_SHOULD_RUN": "true",
+    "PACKAGE_WINDOWS": "success",
+    "PACKAGE_WINDOWS_SHOULD_RUN": "true"
+  },
+  "capturedEnvironmentSource": {
+    "runId": 37727635399,
+    "zipPath": "notes/bun-migration/performance/root-github-leaf-imports-catalog-repaired-whole-ci-monitor-20261008/complete-run-37727635399-logs.zip",
+    "zipSha256": "200a3d908d5fa5545e0c2f41c5594c2d4ce4c14d82f6edabea6073a8f5181960",
+    "member": "verify/2_Require successful checks.txt",
+    "memberSha256": "a9aed42e7dd6e35dd727d3bb76305e7b1df71fc7d532bc0b6bf1182219d087be",
+    "scriptInOfficialLogEqualsSource": true,
+    "redaction": "Only26 exact declared result/boolean keys copied; values strictly allowlisted. No general environment or secret values copied."
+  },
+  "measurement": {
+    "requiredRows": [
+      "pair_1_slim",
+      "pair_1_latest",
+      "pair_2_latest",
+      "pair_2_slim",
+      "pair_3_slim",
+      "pair_3_latest"
+    ],
+    "allFirstSixSamplesRetained": true,
+    "noRetryOrDiscard": true,
+    "readinessTimestamp": "max completed_at of all actual needs rows, independently obtained from existing root API job metadata",
+    "timestamps": [
+      "job created_at",
+      "derived dependency-ready timestamp",
+      "job started_at",
+      "Require successful checks step started_at/completed_at",
+      "job completed_at"
+    ],
+    "failures": "Retain failed/cancelled/unlaunched jobs, all outcomes and raw logs; do not classify partial6 as accepted observation. Later waves run after earlier failures when anchor succeeded and run is not cancelled.",
+    "arithmetic": "Readiness-to-creation,creation-to-start,readiness-to-start,setup/body/close,held runner seconds separately for each sample and pair. No new collector; root existing cached metadata orchestration derives these."
+  },
+  "launchAdmission": {
+    "rootAfterArmQualificationTerminalRequired": true,
+    "sourcePeersRequired": true,
+    "publicationOwner": "root",
+    "noRuntimeWorkInEvaluators": true,
+    "holdUntilQueueConfoundRemoved": true
+  },
+  "limitations": [
+    "Static captured success/skipped inputs are diagnostic only, not proof of real required fullCI results.",
+    "No quota/pool-cause inference or automatic ordinary runner adoption; standard hosted labels share account concurrency.",
+    "Same-window jobs can contend; threepairs not fleetp95; retain earlier3secondslim counterexample.",
+    "Manifest is source/tree/publisher-bound before launch; evaluator does not checkout/load it."
+  ]
+}
