@@ -40,6 +40,31 @@ describe('native chat locale copy', () => {
     }
   )
 
+  it.each(Object.entries({ en, es, fr, ja, ko, zh }))(
+    '%s covers the Chat UI rows and search keywords that moved to the Chat page',
+    (_code, catalog) => {
+      const settings = catalog.auto.components.settings
+      const search = settings.chat.search
+      for (const value of [
+        settings.ChatPane.resumeTitle,
+        settings.ChatPane.resumeCopy,
+        settings.ChatPane.resumeToggleLabel,
+        search.native,
+        search.chat,
+        search.terminal,
+        search.agent,
+        search.queue,
+        search.variables
+      ]) {
+        expect(value.trim()).not.toBe('')
+      }
+      // Agent names are brands: every locale must still find them by name.
+      for (const brand of ['claude', 'codex', 'grok', 'omp', 'opencode'] as const) {
+        expect(search[brand]).toBe(brand)
+      }
+    }
+  )
+
   it('covers every Codex effort choice', () => {
     expect([...codexEffortValues].sort()).toEqual([...localizedEffortValues].sort())
   })
@@ -77,6 +102,24 @@ describe('native chat locale copy', () => {
       for (const key of ['fast', ...localizedEffortValues] as const) {
         expect(composer.optionValue[key].trim()).not.toBe('')
         expect(composer.optionValue[key]).not.toBe(englishComposer.optionValue[key])
+      }
+    }
+  )
+})
+
+describe('account-aware Send fixes', () => {
+  it.each(Object.entries({ en, es, fr, ja, ko, zh }))(
+    '%s includes the same fixes for Send and post-send failures',
+    (_locale, catalog) => {
+      const words = catalog.components['native-chat'].failureWords
+      expect(words.claudeSystemNotSignedIn).toContain('`claude`')
+      expect(words.claudeSystemNotSignedIn).toContain('/login')
+      expect(words.codexSystemNotSignedIn).toContain('`codex login`')
+      expect(words.claudeManagedNotSignedIn).not.toContain('/login')
+      expect(words.codexManagedNotSignedIn).not.toContain('`codex login`')
+      expect(words.cliMissing).toContain('{{agent}}')
+      for (const key of ['claudeManagedNotSignedIn', 'codexManagedNotSignedIn'] as const) {
+        expect(words[key].trim()).not.toBe('')
       }
     }
   )

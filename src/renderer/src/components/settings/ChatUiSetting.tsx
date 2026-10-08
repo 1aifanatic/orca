@@ -1,29 +1,32 @@
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { translate } from '@/i18n/i18n'
-import { useLocalStructuredAgentSessionsHeld } from '@/runtime/local-structured-chats'
 import { Label } from '../ui/label'
 import { NativeChatShellEnvironmentSetting } from './NativeChatShellEnvironmentSetting'
 import { NativeChatQueueFollowUpsSetting } from './NativeChatQueueFollowUpsSetting'
 import { SearchableSetting } from './SearchableSetting'
 import { SettingsSwitch } from './SettingsFormControls'
-import { getChatSearchEntry } from './chat-search'
+import { getChatSearchEntry, type ChatSettingRowId } from './chat-search'
 
 type ChatUiSettingProps = {
   settings: GlobalSettings
   updateSettings: (updates: Partial<GlobalSettings>) => void
-  showHostOwnedRows: boolean
+  /** The rows Settings indexes: `getChatUiSearchEntries` owns which exist. */
+  rows: ReadonlySet<ChatSettingRowId>
   forceVisibleRows?: boolean
 }
 
 export function ChatUiSetting({
   settings,
   updateSettings,
-  showHostOwnedRows,
+  rows,
   forceVisibleRows = false
 }: ChatUiSettingProps): React.JSX.Element {
   const nativeChatEnabled = settings.experimentalNativeChat === true
   const resumeOnRestartEnabled = settings.nativeChatResumeWorkOnRestart === true
-  const holdsStructuredChats = useLocalStructuredAgentSessionsHeld()
+  const hasNestedRows =
+    rows.has('chat-queue-follow-ups') ||
+    rows.has('chat-resume-on-restart') ||
+    rows.has('chat-shell-environment')
 
   return (
     <div className="w-full max-w-3xl space-y-3">
@@ -46,9 +49,9 @@ export function ChatUiSetting({
         </div>
       </SearchableSetting>
 
-      {nativeChatEnabled || holdsStructuredChats ? (
+      {hasNestedRows ? (
         <div className="ml-4 space-y-4 border-l border-border pl-4">
-          {showHostOwnedRows ? (
+          {rows.has('chat-queue-follow-ups') ? (
             <SearchableSetting
               {...getChatSearchEntry('chat-queue-follow-ups')}
               forceVisible={forceVisibleRows}
@@ -59,7 +62,7 @@ export function ChatUiSetting({
               />
             </SearchableSetting>
           ) : null}
-          {showHostOwnedRows ? (
+          {rows.has('chat-resume-on-restart') ? (
             <SearchableSetting
               {...getChatSearchEntry('chat-resume-on-restart')}
               forceVisible={forceVisibleRows}
@@ -93,7 +96,7 @@ export function ChatUiSetting({
             </SearchableSetting>
           ) : null}
 
-          {showHostOwnedRows ? (
+          {rows.has('chat-shell-environment') ? (
             <SearchableSetting
               {...getChatSearchEntry('chat-shell-environment')}
               forceVisible={forceVisibleRows}

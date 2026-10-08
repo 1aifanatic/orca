@@ -25,7 +25,6 @@ export type AgentLaunchRoutingInput = {
   launchText?: string
   nativeChatTranscriptIsLocalReadable?: boolean
   startsOutsideWorkspaceRoot?: boolean
-  initialSessionOptions?: Readonly<Record<string, unknown>>
   /** The agents the target host listed as structured; absent until it has. */
   hostStructuredAgents?: readonly string[]
 }
@@ -36,7 +35,7 @@ export function resolveAgentLaunchRoute(input: AgentLaunchRoutingInput): AgentLa
     : 'terminal-tui'
 }
 
-// Explicit chat requests do not depend on the default view mode for new tabs.
+// Explicit chat requests (resume history in a new chat) do not depend on the Chat UI switch.
 export function structuredAgentLaunchSupported(
   input: Omit<AgentLaunchRoutingInput, 'launchText'>
 ): boolean {

@@ -7160,7 +7160,7 @@
           "shellEnvNamesEmpty": "尚未添加任何变量。",
           "shellEnvNamesAlwaysPassed": "PATH、区域设置和 SSH_AUTH_SOCK 始终会传递。在下次聊天开始或恢复时生效。",
           "shellEnvTitle": "使用 shell 环境",
-          "shellEnvCopy": "Codex 和 Claude 聊天启动时会带上登录 shell 导出的所有变量，与终端一致。关闭后可选择传递哪些变量。",
+          "shellEnvCopy": "聊天启动时会带上登录 shell 导出的所有变量，与终端一致。关闭后可选择传递哪些变量。",
           "shellEnvToggleLabel": "切换使用 shell 环境"
         },
         "chat": {
@@ -7169,6 +7169,9 @@
             "chat": "聊天",
             "claude": "claude",
             "codex": "codex",
+            "grok": "grok",
+            "omp": "omp",
+            "opencode": "opencode",
             "terminal": "终端",
             "agent": "代理",
             "queue": "队列",
@@ -12189,9 +12192,6 @@
           "stopping": "停止…",
           "confirm": "停止清理"
         },
-        "NativeChatSupportedAgents": {
-          "label": "支持智能体："
-        },
         "contrast": {
           "title": "色彩对比",
           "description": "提高文本可读性或保留终端程序选择的颜色。",
@@ -13642,7 +13642,9 @@
             "sessionDeleteFailed": "无法删除会话",
             "resumeInChatConflict": "另一个聊天室已经在进行此对话。",
             "resumeInChatTranscriptMissing": "无法加载此对话的历史记录，因此无法在聊天中恢复。",
-            "resumeInChatFailed": "无法在新聊天中恢复此会话。"
+            "resumeInChatFailed": "无法在新聊天中恢复此会话。",
+            "resumeInNewCliUnavailable": "无法在 CLI 中打开此会话。",
+            "resumeInNewCliHostTooOld": "请更新运行此聊天的主机上的 Orca，才能在新的 CLI 中恢复它。"
           },
           "AiVaultPanelControls": {
             "scanningSessions": "正在扫描会话",
@@ -13778,7 +13780,10 @@
             "deleteReasonNonLocalHost": "只能删除此设备上的会话。",
             "deleteReasonSyntheticPath": "此会话无法在 Orca 中删除。",
             "deleteReasonUnsupportedAgent": "{{value0}} 会话无法在 Orca 中删除。",
-            "resumeInNewChat": "在新聊天中继续"
+            "resumeInNewNativeChat": "在新的本机聊天中恢复",
+            "resumeInNewCli": "在新的 CLI 中恢复",
+            "resumeInNewCliTooltipFork": "将此对话派生到新的 CLI 会话中。",
+            "resumeInNewCliTooltipChat": "本机聊天保持不变。"
           },
           "AiVaultSessionDeleteDialog": {
             "title": "要删除此会话吗？",
@@ -17759,6 +17764,11 @@
         "editSavedArguments": "请在设置 > 智能体 > 参数中编辑。",
         "couldNotRestart": "{{agent}} 无法重新启动。",
         "notSignedIn": "{{agent}} 未使用所选账户登录。",
+        "claudeSystemNotSignedIn": "Claude 尚未登录。运行 `claude` 并使用 /login 登录，或在 Claude 账户设置中选择一个账户。",
+        "claudeManagedNotSignedIn": "此 Claude 账户尚未登录。请在 Claude 账户设置中重新登录。",
+        "codexSystemNotSignedIn": "Codex 尚未登录。请运行 `codex login`。",
+        "codexManagedNotSignedIn": "此 Codex 账户尚未登录。请在 Codex 账户设置中重新登录。",
+        "cliMissing": "在运行此聊天的计算机上找不到 {{agent}}。请安装它，或检查设置 → 智能体中的命令。",
         "signInFirst": "请先登录。",
         "signInThenRunCommand": "请登录，然后重新运行 /{{command}}。",
         "signInThenSend": "请登录，然后重新发送您的消息。",

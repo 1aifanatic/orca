@@ -7165,6 +7165,9 @@
           "description": "Abre nuevos agentes compatibles en el chat.",
           "copy": "Los agentes nuevos compatibles se abren en el chat. Los lanzamientos no compatibles usan la terminal. Desactiva esta opción para abrir los agentes nuevos en la terminal; los chats existentes siguen disponibles.",
           "toggleLabel": "Alternar Chat UI",
+          "resumeTitle": "Reanudar los chats de trabajo automáticamente después de reiniciar",
+          "resumeCopy": "Cuando Orca se cierra o instala una actualización, los chats que estaban trabajando se reanudan automáticamente al volver a abrir Orca.",
+          "resumeToggleLabel": "Alternar reanudación automática después de un reinicio",
           "shellEnvNamesLabel": "Variables que se pasan desde tu shell",
           "shellEnvNamePlaceholder": "Nombre de la variable",
           "shellEnvNameAdd": "Agregar",
@@ -7172,11 +7175,20 @@
           "shellEnvNamesEmpty": "Aún no se han agregado variables.",
           "shellEnvNamesAlwaysPassed": "PATH, la configuración regional y SSH_AUTH_SOCK se pasan siempre. Se aplica la próxima vez que un chat se inicie o se reanude.",
           "shellEnvTitle": "Usar el entorno de tu shell",
-          "shellEnvCopy": "Los chats de Codex y Claude empiezan con todas las variables que exporta tu shell de inicio de sesión, igual que un terminal. Desactívalo para elegir cuáles reciben.",
+          "shellEnvCopy": "Los chats empiezan con todas las variables que exporta tu shell de inicio de sesión, igual que un terminal. Desactívalo para elegir cuáles reciben.",
           "shellEnvToggleLabel": "Alternar el uso del entorno de tu shell"
         },
         "chat": {
           "search": {
+            "native": "nativo",
+            "chat": "chat",
+            "claude": "claude",
+            "codex": "codex",
+            "grok": "grok",
+            "omp": "omp",
+            "opencode": "opencode",
+            "terminal": "Terminal",
+            "agent": "agente",
             "queue": "cola",
             "variables": "variables"
           }
@@ -12266,9 +12278,6 @@
           "downloadInstaller": "Descargar instalador",
           "manualInstallHint": "Las compilaciones {{value0}} no están firmadas en Windows, por lo que el actualizador en la aplicación no puede instalar una sobre una compilación firmada. Ejecute el instalador descargado una vez (Windows le advertirá sobre un editor desconocido) y cada cambio posterior, incluido el regreso a Estable, funcionará desde aquí."
         },
-        "NativeChatSupportedAgents": {
-          "label": "Agentes apoyados:"
-        },
         "TerminalRenderingSection": {
           "6d4c55bacc": "Imágenes en línea",
           "fffab5890b": "Muestre imágenes directamente en el terminal utilizando los protocolos gráficos SIXEL, iTerm2 (IIP) y Kitty."
@@ -13633,7 +13642,9 @@
             "sessionDeleteFailed": "No se pudo eliminar la sesión",
             "resumeInChatConflict": "Otro chat ya está manteniendo esta conversación.",
             "resumeInChatTranscriptMissing": "El historial de esta conversación no se pudo cargar, por lo que no se puede reanudar en el chat.",
-            "resumeInChatFailed": "No se pudo reanudar esta sesión en un chat nuevo."
+            "resumeInChatFailed": "No se pudo reanudar esta sesión en un chat nuevo.",
+            "resumeInNewCliUnavailable": "Esta sesión no se puede abrir en la CLI.",
+            "resumeInNewCliHostTooOld": "Actualiza Orca en el host que ejecuta este chat para reanudarlo en una nueva CLI."
           },
           "AiVaultPanelControls": {
             "scanningSessions": "Buscando sesiones",
@@ -13769,7 +13780,10 @@
             "deleteReasonNonLocalHost": "Solo se pueden eliminar las sesiones de este dispositivo.",
             "deleteReasonSyntheticPath": "Esta sesión no se puede eliminar desde Orca.",
             "deleteReasonUnsupportedAgent": "Las sesiones de {{value0}} no se pueden eliminar desde Orca.",
-            "resumeInNewChat": "Reanudar en nuevo chat"
+            "resumeInNewNativeChat": "Reanudar en un nuevo chat nativo",
+            "resumeInNewCli": "Reanudar en una nueva CLI",
+            "resumeInNewCliTooltipFork": "Hace un fork de esta conversación en una nueva sesión de CLI.",
+            "resumeInNewCliTooltipChat": "El chat nativo queda como está."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "¿Eliminar esta sesión?",
@@ -17750,6 +17764,11 @@
         "editSavedArguments": "Edítalos en Ajustes > Agentes > Argumentos.",
         "couldNotRestart": "{{agent}} no pudo reiniciarse.",
         "notSignedIn": "{{agent}} no tiene la sesión iniciada con la cuenta seleccionada.",
+        "claudeSystemNotSignedIn": "Claude no ha iniciado sesión. Ejecuta `claude` e inicia sesión con /login, o elige una cuenta en la configuración de Cuentas de Claude.",
+        "claudeManagedNotSignedIn": "Esta cuenta de Claude no ha iniciado sesión. Vuelve a iniciar sesión en la configuración de Cuentas de Claude.",
+        "codexSystemNotSignedIn": "Codex no ha iniciado sesión. Ejecuta `codex login`.",
+        "codexManagedNotSignedIn": "Esta cuenta de Codex no ha iniciado sesión. Vuelve a iniciar sesión en la configuración de Cuentas de Codex.",
+        "cliMissing": "No se encontró {{agent}} en el equipo que ejecuta este chat. Instálelo o revise su Comando en Ajustes → Agentes.",
         "signInFirst": "Inicie sesión primero.",
         "signInThenRunCommand": "Inicie sesión y vuelva a ejecutar /{{command}}.",
         "signInThenSend": "Inicie sesión y vuelva a enviar su mensaje.",

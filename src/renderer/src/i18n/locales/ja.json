@@ -7160,7 +7160,7 @@
           "shellEnvNamesEmpty": "まだ変数は追加されていません。",
           "shellEnvNamesAlwaysPassed": "PATH、ロケール、SSH_AUTH_SOCK は常に渡されます。次にチャットを開始または再開したときに適用されます。",
           "shellEnvTitle": "シェル環境を使用する",
-          "shellEnvCopy": "Codex と Claude のチャットは、ターミナルと同じく、ログインシェルがエクスポートするすべての変数を引き継いで開始します。オフにすると、渡す変数を選択できます。",
+          "shellEnvCopy": "チャットは、ターミナルと同じく、ログインシェルがエクスポートするすべての変数を引き継いで開始します。オフにすると、渡す変数を選択できます。",
           "shellEnvToggleLabel": "シェル環境の使用の切り替え"
         },
         "chat": {
@@ -7169,6 +7169,9 @@
             "chat": "チャット",
             "claude": "claude",
             "codex": "codex",
+            "grok": "grok",
+            "omp": "omp",
+            "opencode": "opencode",
             "terminal": "ターミナル",
             "agent": "Agent",
             "queue": "キュー",
@@ -12189,9 +12192,6 @@
           "stopping": "停止中…",
           "confirm": "クリーンアップを停止する"
         },
-        "NativeChatSupportedAgents": {
-          "label": "サポートされている Agent:"
-        },
         "contrast": {
           "title": "色のコントラスト",
           "description": "テキストの読みやすさを向上させるか、ターミナルプログラムによって選択された色を保持します。",
@@ -13642,7 +13642,9 @@
             "sessionDeleteFailed": "セッションを削除できませんでした",
             "resumeInChatConflict": "別のチャットですでにこの会話が行われています。",
             "resumeInChatTranscriptMissing": "この会話の履歴を読み込めなかったため、チャットで再開できません。",
-            "resumeInChatFailed": "新規チャットでこのセッションを再開できませんでした。"
+            "resumeInChatFailed": "新規チャットでこのセッションを再開できませんでした。",
+            "resumeInNewCliUnavailable": "このセッションは CLI で開けません。",
+            "resumeInNewCliHostTooOld": "このチャットを新しい CLI で再開するには、チャットを実行しているホストの Orca を更新してください。"
           },
           "AiVaultPanelControls": {
             "scanningSessions": "セッションをスキャンしています",
@@ -13778,7 +13780,10 @@
             "deleteReasonNonLocalHost": "このデバイス上のセッションのみ削除できます。",
             "deleteReasonSyntheticPath": "このセッションは Orca では削除できません。",
             "deleteReasonUnsupportedAgent": "{{value0}} のセッションは Orca では削除できません。",
-            "resumeInNewChat": "新規チャットで再開"
+            "resumeInNewNativeChat": "新規ネイティブチャットで再開",
+            "resumeInNewCli": "新規 CLI で再開",
+            "resumeInNewCliTooltipFork": "この会話を新しい CLI セッションにフォークします。",
+            "resumeInNewCliTooltipChat": "ネイティブチャットはそのまま残ります。"
           },
           "AiVaultSessionDeleteDialog": {
             "title": "このセッションを削除しますか?",
@@ -17794,6 +17799,11 @@
         "editSavedArguments": "設定 > Agent > 引数で編集してください。",
         "couldNotRestart": "{{agent}} を再起動できませんでした。",
         "notSignedIn": "{{agent}} は選択したアカウントでサインインしていません。",
+        "claudeSystemNotSignedIn": "Claude にサインインしていません。`claude` を実行して /login でサインインするか、設定の Claude アカウントでアカウントを選択してください。",
+        "claudeManagedNotSignedIn": "この Claude アカウントにサインインしていません。設定の Claude アカウントで再度サインインしてください。",
+        "codexSystemNotSignedIn": "Codex にサインインしていません。`codex login` を実行してください。",
+        "codexManagedNotSignedIn": "この Codex アカウントにサインインしていません。設定の Codex アカウントで再度サインインしてください。",
+        "cliMissing": "このチャットを実行しているコンピューターで {{agent}} が見つかりませんでした。インストールするか、[設定] → [Agent] の [コマンド] を確認してください。",
         "signInFirst": "先にサインインしてください。",
         "signInThenRunCommand": "サインインしてから、/{{command}} をもう一度実行してください。",
         "signInThenSend": "サインインしてから、メッセージをもう一度送信してください。",
