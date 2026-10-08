@@ -9,7 +9,6 @@
  * was not re-adopted, the only one in which re-deriving the handle from the pane key changes it.
  */
 
-import { resetUnrecordedLaunchPromptWritesForTests } from '../../agent-launch-owed-prompt-record'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,7 +20,10 @@ import {
 import { isAgentLaunchResult, type AgentLaunchResult } from '../../../../shared/agent-launch-intent'
 import type { AgentSessionOperationRow } from '../../../../shared/agent-session-operation-ledger'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
-import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
+import {
+  editPersistedTestAgentSessionStore,
+  openTestAgentSessionRecordStore
+} from '../../agent-session-record-store-test-harness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import type { RpcContext } from '../core'
 import { RpcDispatcher } from '../dispatcher'
@@ -37,15 +39,10 @@ import {
 
 const deliverTerminalPrompt = vi.hoisted(() =>
   vi.fn(
-    async (_args: {
-      handle: string
-      freshLaunch?: boolean
-      text?: string
-      beginPromptWrite?: () => Promise<unknown>
-    }): Promise<boolean> => true
+    async (_args: { handle: string; freshLaunch?: boolean; text?: string }): Promise<boolean> =>
+      true
   )
 )
-type PasteArgs = Parameters<typeof deliverTerminalPrompt>[0]
 vi.mock('./agent-launch-terminal-prompt', () => ({
   deliverTerminalAgentLaunchPrompt: deliverTerminalPrompt
 }))
@@ -164,9 +161,7 @@ async function launchUntilPasteStarts(runtime: AgentLaunchRuntimeStub): Promise<
   const pasteStarted = new Promise<void>((resolve) => {
     pasting = resolve
   })
-  deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
-    // Mid-paste: the write began, so the record says it may have landed.
-    await args.beginPromptWrite?.()
+  deliverTerminalPrompt.mockImplementationOnce(async () => {
     pasting()
     return new Promise<boolean>(() => {})
   })
@@ -227,13 +222,8 @@ function dispatcherFor(runtime: AgentLaunchRuntimeStub): RpcDispatcher {
 }
 
 beforeEach(async () => {
-  resetUnrecordedLaunchPromptWritesForTests()
   deliverTerminalPrompt.mockReset()
-  // A paste records that its write began (W2) before its first byte, as the real one does.
-  deliverTerminalPrompt.mockImplementation(async (args: PasteArgs) => {
-    await args.beginPromptWrite?.()
-    return true
-  })
+  deliverTerminalPrompt.mockResolvedValue(true)
   directory = await mkdtemp(join(tmpdir(), 'orca-agent-launch-restart-'))
   store = await openTestAgentSessionRecordStore(directory)
   setAgentLaunchRecordStore(store)
@@ -261,73 +251,82 @@ describe('a host restart mid-launch', () => {
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 
-  it('pastes the desktop’s prompt once into the surviving agent when the host died before the paste began', async () => {
+  it('replays an interrupted desktop paste as unconfirmed without any later paste', async () => {
     await launchUntilAgentReadinessWait(hostRuntime())
 
     await restartHost()
     const restarted = restartedHostRuntime()
 
-    await expect(launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toEqual({
-      ...UNCONFIRMED_AGENT,
-      prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
-    })
-    expect(restarted.createTerminal).not.toHaveBeenCalled()
-    expect(deliverTerminalPrompt).toHaveBeenCalledTimes(2)
-    expect(deliverTerminalPrompt).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        handle: ADOPTED_HANDLE,
-        freshLaunch: false,
-        text: 'fix the failing test',
-        resumed: true
-      })
+    await expect(launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toEqual(
+      UNCONFIRMED_AGENT
     )
-    // Settled: a later replay answers from the record, with nothing left to write.
-    await launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)
-    expect(deliverTerminalPrompt).toHaveBeenCalledTimes(2)
+    await expect(launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toEqual(
+      UNCONFIRMED_AGENT
+    )
+    expect(restarted.createTerminal).not.toHaveBeenCalled()
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+    expect(JSON.stringify(row('trusted-local:desktop'))).not.toContain(PROMPTED_LAUNCH.prompt.text)
   })
 
-  it('keeps the desktop’s prompt owed while the agent’s terminal is not found yet', async () => {
-    await launchUntilAgentReadinessWait(hostRuntime())
+  it.each(['owed', 'writing'])(
+    'ignores an old saved %s prompt record on restart',
+    async (state) => {
+      await launchUntilAgentReadinessWait(hostRuntime())
+      await editPersistedTestAgentSessionStore(directory, (persisted) => {
+        const saved = Object.values(persisted.operations ?? {}).find(
+          (operation) => operation.callerKey === 'trusted-local:desktop'
+        )
+        if (!saved) {
+          throw new Error('the original launch was not recorded')
+        }
+        Object.assign(saved, {
+          promptDelivery:
+            state === 'owed'
+              ? {
+                  state,
+                  text: PROMPTED_LAUNCH.prompt.text,
+                  agent: 'claude',
+                  deadline: Date.now() + 5 * 60_000,
+                  terminal: { ptyId: 'pty-1', incarnationId: null }
+                }
+              : { state, since: Date.now() }
+        })
+      })
 
+      await restartHost()
+      const restarted = restartedHostRuntime()
+      await expect(launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toEqual(
+        UNCONFIRMED_AGENT
+      )
+      expect(restarted.createTerminal).not.toHaveBeenCalled()
+      expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('keeps the interrupted prompt unconfirmed when the terminal has not reattached', async () => {
+    await launchUntilAgentReadinessWait(hostRuntime())
     await restartHost()
 
-    // Not found is not gone: an SSH relay reports its terminals later; the deadline settles it.
     await expect(launch(hostRuntime(), PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toMatchObject({
       prompt: { delivery: 'submit', outcome: 'unconfirmed' }
     })
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 
-  it('records the desktop’s prompt with a 5-minute deadline and the PTY its agent runs in', async () => {
-    const before = Date.now()
+  it('does not paste into a replacement process after restart', async () => {
     await launchUntilAgentReadinessWait(hostRuntime())
-    const owed = row('trusted-local:desktop')?.promptDelivery
-    expect(owed).toMatchObject({
-      state: 'owed',
-      terminal: { ptyId: 'pty-1', incarnationId: null }
-    })
-    const deadline = owed?.state === 'owed' ? owed.deadline : 0
-    expect(deadline - before).toBeGreaterThanOrEqual(5 * 60_000)
-    expect(deadline - Date.now()).toBeLessThanOrEqual(5 * 60_000)
-  })
-
-  it('never pastes the desktop’s prompt into another process its pane holds after a restart', async () => {
-    await launchUntilAgentReadinessWait(hostRuntime())
-
     await restartHost()
-    // The daemon lost the agent; the window respawned a shell in the same pane.
-    const restarted = Object.assign(restartedHostRuntime(), {})
+    const restarted = restartedHostRuntime()
     restarted.getTerminalPtyIdentity.mockReturnValue({ ptyId: 'pty-2', incarnationId: null })
 
     await expect(launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toMatchObject({
-      prompt: { delivery: 'submit', outcome: 'not-delivered' }
+      prompt: { delivery: 'submit', outcome: 'unconfirmed' }
     })
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 
-  it('owes nothing for a phone’s launch: after a restart it answers as main did, with no paste', async () => {
+  it('keeps phone restart behavior unchanged with no paste', async () => {
     await launchUntilAgentReadinessWait(hostRuntime(), UPGRADED_PHONE)
-
     await restartHost()
 
     await expect(launch(restartedHostRuntime(), PROMPTED_LAUNCH, UPGRADED_PHONE)).resolves.toEqual(
@@ -356,8 +355,7 @@ describe('a host restart mid-launch', () => {
     const pasteReturned = new Promise<void>((resolve) => {
       pasted = resolve
     })
-    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
-      await args.beginPromptWrite?.()
+    deliverTerminalPrompt.mockImplementationOnce(async () => {
       pasted()
       return true
     })
@@ -427,8 +425,7 @@ describe('a host restart mid-launch', () => {
 
   it('lets the final write replace the first, never the other way round', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
-    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
-      await args.beginPromptWrite?.()
+    deliverTerminalPrompt.mockImplementationOnce(async () => {
       return new Promise<boolean>((resolve) => {
         releasePaste = resolve
       })
@@ -461,35 +458,6 @@ describe('a final write that fails', () => {
       prompt: { delivery: 'submit', outcome: 'unconfirmed' }
     })
     expect(host.createTerminal).toHaveBeenCalledOnce()
-    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
-  })
-})
-
-describe('a desktop launch whose record missed both its write mark and its answer', () => {
-  it('is never pasted again by a later look in this process, though its row still says owed', async () => {
-    const host = hostRuntime()
-    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
-      vi.spyOn(store, 'transactOperations').mockRejectedValueOnce(new Error('SQLITE_FULL'))
-      // The live write goes ahead without its mark: bookkeeping never gates it.
-      await args.beginPromptWrite?.().catch(() => undefined)
-      return true
-    })
-    const recordOperationOutcome = store.recordOperationOutcome.bind(store)
-    let desktopWrites = 0
-    vi.spyOn(store, 'recordOperationOutcome').mockImplementation((input) => {
-      desktopWrites += input.operationId === OPERATION_ID ? 1 : 0
-      return desktopWrites === 2 && input.operationId === OPERATION_ID
-        ? Promise.reject(new Error('SQLITE_FULL'))
-        : recordOperationOutcome(input)
-    })
-
-    await launch(host, PROMPTED_LAUNCH, DESKTOP_IPC)
-    vi.mocked(store.recordOperationOutcome).mockImplementation(recordOperationOutcome)
-
-    // A window reload asks again once the store recovered: it answers, and writes nothing.
-    await expect(launch(host, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toMatchObject({
-      prompt: { delivery: 'submit', outcome: 'unconfirmed' }
-    })
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 })
@@ -538,8 +506,7 @@ describe('a reply lost three times', () => {
 
   it('starts one agent when three retries arrive while the first is still running', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
-    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
-      await args.beginPromptWrite?.()
+    deliverTerminalPrompt.mockImplementationOnce(async () => {
       return new Promise<boolean>((resolve) => {
         releasePaste = resolve
       })
@@ -552,6 +519,7 @@ describe('a reply lost three times', () => {
 
     expect(retries).toEqual([first, first])
     expect(host.createTerminal).toHaveBeenCalledOnce()
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 })
 
@@ -581,8 +549,7 @@ describe('the desktop launches replay-safely', () => {
       method: 'agent.launchReplay',
       params: PROMPTED_LAUNCH
     }
-    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
-      await args.beginPromptWrite?.()
+    deliverTerminalPrompt.mockImplementationOnce(async () => {
       return new Promise<boolean>(() => {})
     })
     void dispatcherFor(hostRuntime()).dispatch(request, DESKTOP_IPC)
@@ -661,8 +628,7 @@ describe('a caller cannot claim an identity', () => {
 describe('the ledger stays bounded', () => {
   it('keeps one row per launch, retained from admission, across both writes', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
-    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
-      await args.beginPromptWrite?.()
+    deliverTerminalPrompt.mockImplementationOnce(async () => {
       return new Promise<boolean>((resolve) => {
         releasePaste = resolve
       })

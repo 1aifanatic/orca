@@ -26,7 +26,6 @@ import {
   isAgentSessionConversationCommandResult,
   type AgentSessionConversationCommandResult
 } from './agent-session-conversation-command'
-import type { TuiAgent } from './tui-agent'
 
 export const AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT = 512
 export const AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT = 4_096
@@ -87,28 +86,7 @@ export type AgentSessionOperationRow = {
    * malformed value costs that pane its verdict, never the row.
    */
   ownedPane?: AgentSessionOperationOwnedPane
-  /**
-   * A launch's first prompt while the host still owes it to the agent's terminal. Gone once the
-   * launch settles, and with the row at its expiry, so the text lives no longer than the obligation.
-   * Not checked by `isAgentSessionOperationRow`, like `ownedPane`.
-   */
-  promptDelivery?: AgentLaunchOwedPrompt
 }
-
-/**
- * `owed`: no byte of the prompt has been written, so a host that restarts may still deliver it.
- * `writing`: the write may have begun, so nothing may write it again.
- */
-export type AgentLaunchOwedPrompt =
-  | {
-      state: 'owed'
-      text: string
-      agent: TuiAgent
-      deadline: number
-      /** The PTY the launch started its agent in: a resume pastes into that one only. */
-      terminal: { ptyId: string; incarnationId: string | null } | null
-    }
-  | { state: 'writing'; since: number }
 
 /** Unexpired rows naming this pane as theirs. */
 export function listAgentSessionOperationRowsOwningPane(

@@ -112,7 +112,6 @@ export async function deliverTerminalLaunchPrompt(
     agent: intent.agent,
     freshLaunch,
     prompt: intent.prompt,
-    ...(execution.beginPromptWrite ? { beginPromptWrite: execution.beginPromptWrite } : {}),
     onComposerUnobserved: () => {
       composerUnobserved = true
     }

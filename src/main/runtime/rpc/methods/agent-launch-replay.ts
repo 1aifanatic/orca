@@ -31,18 +31,6 @@ import { resolveAgentSessionReplayOutcome } from '../../../native-chat/agent-ses
 import type { RpcContext } from '../core'
 import { rpcCallerOperationKey } from '../rpc-caller-identity'
 import type { AgentLaunchParams } from './agent-launch-schemas'
-import { isDesktopLaunchCaller } from './agent-launch-desktop-caller'
-import {
-  OWED_LAUNCH_PROMPT_DEADLINE_MS,
-  type OwedLaunchPrompt,
-  beginOwedLaunchPromptWrite,
-  rememberUnrecordedLaunchPromptWrite,
-  recordLaunchOutcome,
-  type OwedLaunchPromptWriteStart
-} from '../../agent-launch-owed-prompt-record'
-
-/** The PTY a launch started its agent in, as the runtime names it (`getTerminalPtyIdentity`). */
-export type LaunchedTerminal = { ptyId: string; incarnationId: string | null }
 
 /**
  * The ledger namespace of whoever the transport says is calling. A transport that could not name its
@@ -69,11 +57,9 @@ export type AgentLaunchAdmission =
       decision: 'execute'
       /** The surface exists: records the launch as it stands, so a restart before `settle` replays
        *  the running agent instead of refusing an unknown outcome. */
-      record: (provisional: AgentLaunchResult, terminal?: LaunchedTerminal) => Promise<void>
+      record: (provisional: AgentLaunchResult) => Promise<void>
       settle: (result: AgentLaunchResult) => Promise<void>
       fail: (code: string) => Promise<void>
-      /** W2 of `agent-launch-owed-prompt-record`: immediately before the prompt's first byte. */
-      beginPromptWrite: () => Promise<OwedLaunchPromptWriteStart>
       /** Distinct from the launch id: the inner attach reserves in this same ledger. */
       attachOperationId: string
       callerKey: string
@@ -255,8 +241,8 @@ export async function admitAgentLaunchOperation(
       ? presentRecordedAnswer(context, operationId, answer)
       : refusal(operationId, 'agent_session_operation_unknown', 'is claimed but unsettled')
   }
-  const succeeded = (result: AgentLaunchResult, owedPrompt?: OwedLaunchPrompt) =>
-    recordLaunchOutcome(store, {
+  const succeeded = (result: AgentLaunchResult) =>
+    store.recordOperationOutcome({
       callerKey,
       operationId,
       outcome: {
@@ -264,57 +250,18 @@ export async function admitAgentLaunchOperation(
         // A terminal surface has a handle, not a session id; `launch` carries whichever it is.
         sessionId: result.outcome.kind === 'structured' ? result.outcome.sessionId : '',
         launch: result
-      },
-      ...(owedPrompt ? { owedPrompt } : {})
+      }
     })
   return {
     decision: 'execute',
     attachOperationId,
     callerKey,
     // The same row shape twice: a build that predates the first write reads either one.
-    record: (provisional, terminal) =>
-      succeeded(
-        provisional,
-        owedTerminalPrompt(params, provisional, callerKey, Date.now(), terminal ?? null)
-      ),
-    settle: (result) => succeeded(result),
+    record: succeeded,
+    settle: succeeded,
     fail: (code) =>
-      recordLaunchOutcome(store, { callerKey, operationId, outcome: { status: 'failed', code } }),
-    beginPromptWrite: () => {
-      const now = Date.now()
-      return beginOwedLaunchPromptWrite(store, { callerKey, operationId }, now).catch(
-        (error: unknown) => {
-          // The live write still goes ahead: a resume in this process must not write it again.
-          rememberUnrecordedLaunchPromptWrite({ callerKey, operationId }, now)
-          throw error
-        }
-      )
-    }
+      store.recordOperationOutcome({ callerKey, operationId, outcome: { status: 'failed', code } })
   }
-}
-
-/** The text a terminal's first write still owes: a submit nothing has delivered yet, which the
- *  provisional answer marks `unconfirmed` (`settledAtCreation`). */
-function owedTerminalPrompt(
-  params: AgentLaunchParams,
-  provisional: AgentLaunchResult,
-  callerKey: string,
-  now: number,
-  terminal: LaunchedTerminal | null
-): OwedLaunchPrompt | undefined {
-  // Temporary, desktop only: the phone and the CLI keep main's answer, which owes nothing.
-  return isDesktopLaunchCaller(callerKey) &&
-    provisional.outcome.kind === 'terminal' &&
-    provisional.prompt?.outcome === 'unconfirmed' &&
-    params.prompt?.delivery === 'submit' &&
-    params.prompt.text
-    ? {
-        text: params.prompt.text,
-        agent: params.agent,
-        deadline: now + OWED_LAUNCH_PROMPT_DEADLINE_MS,
-        terminal
-      }
-    : undefined
 }
 
 function refusal(

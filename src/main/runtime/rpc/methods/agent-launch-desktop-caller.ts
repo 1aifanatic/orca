@@ -4,7 +4,7 @@ import { DESKTOP_RPC_CALLER, rpcCallerOperationKey } from '../rpc-caller-identit
  * Temporary, until one rule serves every caller: the one signal for what only the desktop's own
  * launches do, because its window pasted them on main. The host-assigned caller identity, never a
  * request field: the desktop's write rule (`launchPromptGuardOnUnprovableHost`), its readiness
- * budget, and an owed prompt the host finishes after a restart. The phone and the CLI keep main's.
+ * budget. The phone and the CLI keep main's.
  */
 export function isDesktopLaunchCaller(callerKey: string | undefined): boolean {
   return callerKey === rpcCallerOperationKey(DESKTOP_RPC_CALLER)

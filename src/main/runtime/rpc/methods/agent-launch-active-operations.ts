@@ -1,6 +1,6 @@
 /**
  * The `agent.launch` operations this process is running, by ledger key: a retry under the same id
- * joins the running one, and a resume of an owed prompt leaves a running launch to deliver its own.
+ * joins the running one across window reloads.
  */
 
 import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
