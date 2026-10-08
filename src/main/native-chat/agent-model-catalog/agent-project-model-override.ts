@@ -92,14 +92,19 @@ async function directoryMayOverride(
   return found.some(Boolean)
 }
 
+/** Whether the agent's CLI may read its model from a project's own config. Grok reads its default
+ *  model from user, managed and env config only. */
+export function agentReadsProjectModelConfig(agent: string): boolean {
+  return agent !== 'grok'
+}
+
 /** True when a new chat in `workspacePath` could run a model other than the listed default. */
 export async function workspaceMayOverrideDefaultModel(input: {
   agent: string
   workspacePath: string
   accountHomePath: string
 }): Promise<boolean> {
-  // Grok reads its default model from user, managed and env config only, never a project's.
-  if (input.agent === 'grok') {
+  if (!agentReadsProjectModelConfig(input.agent)) {
     return false
   }
   // Every other agent's own settings may pick another model; Codex's and Claude's project layers are checked.

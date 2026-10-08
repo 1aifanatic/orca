@@ -34,6 +34,8 @@ export type AgentModelCatalogServiceDeps = {
   listingNamesConfiguredModel?: ReadonlySet<string>
   /** Where a session's provider runs, for deciding whether its own config scope is the account's. */
   recordWorkspacePath?: (record: AgentSessionRecord) => Promise<string | null>
+  /** False for an agent whose model no project config can pick; its default holds everywhere. */
+  agentReadsProjectModelConfig?: (agent: string) => boolean
   /** Whether the workspace's own config could pick a model other than the listed default. */
   workspaceMayOverrideDefaultModel?: (input: {
     agent: string
@@ -53,6 +55,8 @@ export type AgentModelCatalogService = {
     /** With no entry yet, answer from the listing this read starts or joins instead of `unknown`;
      *  with a held reason past its TTL, from the probe re-checking it. */
     waitForListing?: boolean
+    /** Answer only from the saved entry and held reason; start, join or re-check no listing. */
+    savedOnly?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
   /** Saves what a running session listed as its account's catalog, so the next chat starts warm. */
   recordLiveListing: (sessionId: string, listing: AgentModelCatalogLiveListing) => void
@@ -75,7 +79,7 @@ function resultFromEntry(
   entry: AgentModelCatalogEntry,
   namesDefault: boolean,
   listingNamesConfiguredModel: boolean
-): AgentSessionModelCatalogResult {
+): Exclude<AgentSessionModelCatalogResult, { origin: 'unknown' }> {
   // A CLI-resolved default names the configured model even where the listing names none.
   const namesConfigured = listingNamesConfiguredModel || entry.configured !== null
   return {
@@ -233,22 +237,30 @@ export function createAgentModelCatalogService(
         extra: { listingInProgress?: true } = {}
       ): Promise<AgentSessionModelCatalogResult> => {
         const unavailable = deps.store.failure(fingerprint)?.unavailable
+        const result = listed
+          ? resultFromEntry(
+              listed,
+              await workspaceKeepsListedDefault(
+                deps,
+                params.agent,
+                params.workspacePath,
+                accountHomePath
+              ),
+              deps.listingNamesConfiguredModel?.has(params.agent) === true
+            )
+          : null
+        const holdsEverywhere =
+          result?.listingNamesConfiguredModel === true &&
+          deps.agentReadsProjectModelConfig?.(params.agent) === false
         return {
-          ...(listed
-            ? resultFromEntry(
-                listed,
-                await workspaceKeepsListedDefault(
-                  deps,
-                  params.agent,
-                  params.workspacePath,
-                  accountHomePath
-                ),
-                deps.listingNamesConfiguredModel?.has(params.agent) === true
-              )
-            : { origin: 'unknown' }),
+          ...(result ?? { origin: 'unknown' }),
+          ...(holdsEverywhere ? { defaultHoldsInEveryWorkspace: true as const } : {}),
           ...extra,
           ...(unavailable ? { unavailable } : {})
         }
+      }
+      if (params.savedOnly) {
+        return answer(entry)
       }
       // Past its TTL, only the probe re-derives a held reason. The reason is served meanwhile;
       // only a read that asks waits for the probe's answer.

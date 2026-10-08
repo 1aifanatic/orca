@@ -176,8 +176,12 @@ const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   installDirectories: () => [],
   // Stable releases from 17.0.5, the release verified to serve `omp acp`.
   supportsVersion: (version) => isStableCliVersionFrom(version, '17.0.5'),
-  // No session-free listing is verified yet; its chats' own listings still fill the catalog.
-  modelDiscovery: { kind: 'unavailable', reason: 'omp has no verified listing without a session' },
+  // `omp models --json` lists every model without the `enabledModels` filter a chat applies, so it
+  // could offer models a chat refuses; its chats' own listings fill the catalog instead.
+  modelDiscovery: {
+    kind: 'unavailable',
+    reason: 'omp has no session-free listing that matches what its chats offer'
+  },
   visualsSkill: loadOmpVisualsSkill
 }
 

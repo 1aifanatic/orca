@@ -5,7 +5,10 @@ import {
   type AgentModelCatalogService,
   type AgentModelCatalogServiceDeps
 } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
-import { workspaceMayOverrideDefaultModel } from '../native-chat/agent-model-catalog/agent-project-model-override'
+import {
+  agentReadsProjectModelConfig,
+  workspaceMayOverrideDefaultModel
+} from '../native-chat/agent-model-catalog/agent-project-model-override'
 import type { AgentModelCatalogProbe } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import type {
@@ -86,6 +89,7 @@ export async function modelCatalogHostDeps(input: {
     recordWorkspacePath: async (record) =>
       record.launchDirectory ??
       (await deps.resolveWorkspacePath(record.location.workspaceId).catch(() => null)),
+    agentReadsProjectModelConfig,
     workspaceMayOverrideDefaultModel,
     hasChatRecords: (agent) =>
       input.store.listRecords().some((record) => record.provider === agent),
