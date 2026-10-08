@@ -59,17 +59,7 @@ export {
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
 import { AGENT_SESSION_STOP_RUNTIME_CAPABILITIES } from './agent-session-stop-capabilities'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
-import {
-  SKILL_BUNDLE_INSTALL_CAPABILITY,
-  SKILL_DELETE_CAPABILITY,
-  SKILL_INSTALL_CAPABILITY,
-  SKILL_INSTALL_CANCEL_CAPABILITY,
-  SKILL_INSTALL_PROGRESS_CAPABILITY,
-  SKILL_INSTALL_PROVIDERS_CAPABILITY,
-  SKILL_INSTALL_RESULT_V2_CAPABILITY,
-  SKILL_MANAGEMENT_CAPABILITY,
-  SKILL_UPLOAD_CAPABILITY
-} from './skill-install-capability'
+import { SKILL_RUNTIME_CAPABILITIES } from './skill-install-capability'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITIES,
   AGENT_LAUNCH_RUNTIME_CAPABILITY
@@ -177,8 +167,6 @@ export const WORKTREE_ARCHIVE_FAILURE_BLOCKING_RUNTIME_CAPABILITY =
   'worktree.archive-failure-blocking.v1' as const
 export const CODEX_RESET_CREDIT_RUNTIME_CAPABILITY = 'accounts.codex-reset-credit.v1' as const
 export const ACCOUNT_IMPORT_RUNTIME_CAPABILITY = 'accounts.import-host-credentials.v1' as const
-// Why: `orca account add claude` signs in to an account folder the host creates first.
-export const CLAUDE_SIGN_IN_RUNTIME_CAPABILITY = 'accounts.claude-sign-in.v1' as const
 export const ANTIGRAVITY_ACCOUNTS_RUNTIME_CAPABILITY = 'accounts.antigravity-native.v1' as const
 export const DATA_ACCOUNT_RUNTIME_CAPABILITY = 'accounts.managed-data-profiles.v1' as const
 // Why: older hosts cannot reconcile terminal.create's mutation after losing the reply, so clients may only retry unknown outcomes when advertised.
@@ -262,6 +250,12 @@ export const AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY =
 // gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
+// Why: `agentSession.conversationCommand`'s params are strict, so an older host rejects
+// `delivery`. A host advertising this holds a /compact sent while the agent works as a queued
+// card instead of refusing it. Clients ask only when queued-messages.v1 is advertised too:
+// the card is the only place the waiting command shows.
+export const AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY =
+  'agent-session.queued-commands.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
@@ -399,6 +393,7 @@ export const RUNTIME_CAPABILITIES = [
   // turn starts, so a client may gate on either.
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
   AGENT_SESSION_CONTINUE_INTERRUPTED_RUNTIME_CAPABILITY,
   ...STRUCTURED_AGENT_SESSION_SURFACE_RUNTIME_CAPABILITIES,
   ...AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES,
@@ -418,19 +413,10 @@ export const RUNTIME_CAPABILITIES = [
   WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY,
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY,
   ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
-  CLAUDE_SIGN_IN_RUNTIME_CAPABILITY,
   ANTIGRAVITY_ACCOUNTS_RUNTIME_CAPABILITY,
   DATA_ACCOUNT_RUNTIME_CAPABILITY,
   CODEX_RESET_CREDIT_RUNTIME_CAPABILITY,
-  SKILL_INSTALL_CAPABILITY,
-  SKILL_BUNDLE_INSTALL_CAPABILITY,
-  SKILL_INSTALL_CANCEL_CAPABILITY,
-  SKILL_INSTALL_PROGRESS_CAPABILITY,
-  SKILL_INSTALL_RESULT_V2_CAPABILITY,
-  SKILL_UPLOAD_CAPABILITY,
-  SKILL_MANAGEMENT_CAPABILITY,
-  SKILL_INSTALL_PROVIDERS_CAPABILITY,
-  SKILL_DELETE_CAPABILITY,
+  ...SKILL_RUNTIME_CAPABILITIES,
   ...AUTOMATION_RUNTIME_CAPABILITIES,
   NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY,
   ...AGENT_LAUNCH_RUNTIME_CAPABILITIES
