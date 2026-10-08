@@ -287,7 +287,7 @@ export async function attachStablePaneOwner(
     if (worktreeId) {
       // The first pane to bind takes the row, as after the window's hydration.
       const hostId = connectionId ? toSshExecutionHostId(connectionId) : undefined
-      await store?.retirePtyBinding?.({ ...owner, worktreeId }, hostId, releaseTabRowPty)
+      await store?.retirePtyBinding({ ...owner, worktreeId }, hostId, releaseTabRowPty)
     }
     return null
   }
