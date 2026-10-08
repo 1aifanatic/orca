@@ -9,6 +9,7 @@ import {
   syncNativeChatResumeOfferActivity
 } from './native-chat-resume-offer-activity-watch'
 import { useAppStore } from '../store'
+import { markNativeChatLaunchResumeDecided } from './native-chat-launch-resume-decision'
 import {
   announceRestartResults,
   type RestartContinuationOutcome
@@ -207,6 +208,8 @@ export async function continueNativeChatRestartOffer(
   let outcome: Parameters<typeof announceRestartResults>
   resumeBatches.add(batch)
   syncResuming()
+  // `resuming` now names the chats, so the launch's one resume decision is made.
+  markNativeChatLaunchResumeDecided()
   try {
     const result = await callStructuredAgentSession<
       HostOfferPayload & { continued?: RestartContinuationOutcome[] }
@@ -325,7 +328,9 @@ export function useNativeChatRestartOffer(
   }, [ownsStartupDiscovery])
   useDialogDisposal('native-chat-resume-discovery', abandonDiscovery)
   useEffect(() => {
-    const launchRead = enabled ? (launch ??= loadLaunchOffer()) : null
+    const launchRead = enabled
+      ? (launch ??= loadLaunchOffer().finally(markNativeChatLaunchResumeDecided))
+      : null
     if (!ownsStartupDiscovery) {
       return
     }
