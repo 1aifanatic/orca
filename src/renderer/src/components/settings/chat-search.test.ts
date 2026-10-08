@@ -18,9 +18,12 @@ function rowIds(conditions: Partial<ChatUiRowConditions>): string[] {
 }
 
 describe('Chat UI settings search', () => {
-  it.each(['claude', 'codex'])('matches the structured-chat agent keyword %s', (query) => {
-    expect(matchesSettingsSearch(query, getChatSearchEntry('chat-ui'))).toBe(true)
-  })
+  it.each(['claude', 'codex', 'grok', 'omp', 'opencode'])(
+    'matches the structured-chat agent keyword %s',
+    (query) => {
+      expect(matchesSettingsSearch(query, getChatSearchEntry('chat-ui'))).toBe(true)
+    }
+  )
 
   it('does not suggest the retired terminal chat parser for openclaude', () => {
     expect(matchesSettingsSearch('openclaude', getChatSearchEntry('chat-ui'))).toBe(false)

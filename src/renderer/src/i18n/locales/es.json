@@ -7165,6 +7165,9 @@
           "description": "Abre nuevos agentes compatibles en el chat.",
           "copy": "Los agentes nuevos compatibles se abren en el chat. Los lanzamientos no compatibles usan la terminal. Desactiva esta opción para abrir los agentes nuevos en la terminal; los chats existentes siguen disponibles.",
           "toggleLabel": "Alternar Chat UI",
+          "resumeTitle": "Reanudar los chats de trabajo automáticamente después de reiniciar",
+          "resumeCopy": "Cuando Orca se cierra o instala una actualización, los chats que estaban trabajando se reanudan automáticamente al volver a abrir Orca.",
+          "resumeToggleLabel": "Alternar reanudación automática después de un reinicio",
           "shellEnvNamesLabel": "Variables que se pasan desde tu shell",
           "shellEnvNamePlaceholder": "Nombre de la variable",
           "shellEnvNameAdd": "Agregar",
@@ -7177,6 +7180,15 @@
         },
         "chat": {
           "search": {
+            "native": "nativo",
+            "chat": "chat",
+            "claude": "claude",
+            "codex": "codex",
+            "grok": "grok",
+            "omp": "omp",
+            "opencode": "opencode",
+            "terminal": "Terminal",
+            "agent": "agente",
             "queue": "cola",
             "variables": "variables"
           }

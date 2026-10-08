@@ -38,6 +38,9 @@ const getAllChatUiSearchEntries = createLocalizedCatalog((): ChatSearchEntry[] =
       ...translateSearchKeyword('auto.components.settings.chat.search.chat', 'chat'),
       ...translateSearchKeyword('auto.components.settings.chat.search.claude', 'claude'),
       ...translateSearchKeyword('auto.components.settings.chat.search.codex', 'codex'),
+      ...translateSearchKeyword('auto.components.settings.chat.search.grok', 'grok'),
+      ...translateSearchKeyword('auto.components.settings.chat.search.omp', 'omp'),
+      ...translateSearchKeyword('auto.components.settings.chat.search.opencode', 'opencode'),
       ...translateSearchKeyword('auto.components.settings.chat.search.terminal', 'terminal'),
       ...translateSearchKeyword('auto.components.settings.chat.search.agent', 'agent')
     ]
