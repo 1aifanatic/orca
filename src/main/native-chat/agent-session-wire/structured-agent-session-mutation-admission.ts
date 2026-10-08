@@ -112,6 +112,7 @@ export async function admitAndRunAgentSessionMutation<TValue>(
       envelope,
       hostFingerprint,
       now: request.now(),
+      ...(plan.receiptPolicy ? { receiptPolicy: plan.receiptPolicy } : {}),
       ...(plan.operationIdScope ? { operationIdScope: plan.operationIdScope } : {})
     })
     if (!ledger) {
@@ -148,13 +149,17 @@ export async function admitAndRunAgentSessionMutation<TValue>(
     envelope,
     hostFingerprint,
     now: request.now(),
+    ...(plan.receiptPolicy ? { receiptPolicy: plan.receiptPolicy } : {}),
     ...(plan.operationIdScope ? { operationIdScope: plan.operationIdScope } : {}),
     ...(plan.conversationWrite ? { conversationWrite: true } : {})
   }
   let admitted: AgentSessionMutationOperationDecision
   let ledgerRowWritten = true
   try {
-    admitted = await request.store.admitMutationOperation(operation)
+    admitted =
+      plan.receiptPolicy === 'none'
+        ? admitWithoutLedgerRow(request, operation)
+        : await request.store.admitMutationOperation(operation)
   } catch (error) {
     if (plan.runsWithoutLedgerRow) {
       admitted = admitWithoutLedgerRow(request, operation, error)
@@ -173,6 +178,7 @@ export async function admitAndRunAgentSessionMutation<TValue>(
     return refuseAgentSessionMutation(AGENT_SESSION_NOT_ATTACHED)
   }
   const { admission, record } = admitted
+  ledgerRowWritten = ledgerRowWritten && admitted.receiptRecorded !== false
   if (admission.decision === 'refused') {
     return refuseAgentSessionMutation(admission.refusal)
   }
@@ -300,13 +306,15 @@ function replayRecordedOperation<TValue>(
 function admitWithoutLedgerRow(
   { store, logger }: Pick<AgentSessionMutationRequest<unknown>, 'store' | 'logger'>,
   operation: AgentSessionMutationOperationAdmission,
-  error: unknown
+  error?: unknown
 ): AgentSessionMutationOperationDecision {
-  logger.warn("writing Stop's ledger row failed; Stop runs without it", {
-    scope: 'stop-ledger-row',
-    sessionId: operation.envelope.sessionId,
-    error
-  })
+  if (error !== undefined) {
+    logger.warn("writing Stop's ledger row failed; Stop runs without it", {
+      scope: 'stop-ledger-row',
+      sessionId: operation.envelope.sessionId,
+      error
+    })
+  }
   const evaluated = store.evaluateMutationOperation(operation)
   if (!evaluated) {
     return null
@@ -318,5 +326,5 @@ function admitWithoutLedgerRow(
     lease: evaluated.record.lease,
     ...(operation.conversationWrite ? { conversationWrite: true } : {})
   })
-  return { admission, record: evaluated.record }
+  return { admission, record: evaluated.record, receiptRecorded: false }
 }

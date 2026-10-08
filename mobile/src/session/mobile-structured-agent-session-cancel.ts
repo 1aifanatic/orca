@@ -30,6 +30,7 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   prompt?: PromptIdentity
   /** Whether the host answers a repeated Stop of a turn quietly; null until the status probe answers. */
   hostAnswersRepeatedStops: boolean | null
+  targetedStopSupported?: boolean
   /** Stops still on their way, by what they stop; against a host that does not answer a repeat
    *  quietly, a press for the same one joins it here. */
   inFlight: Map<string, Promise<boolean>>
@@ -45,6 +46,7 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   // Check the capability before fields enter the fingerprint.
   const fields = {
     turnId,
+    ...(args.targetedStopSupported ? { stopTarget: { kind: 'turn', turnId } } : {}),
     ...(args.prompt && args.promptCancelSupported === true ? { prompt: args.prompt } : {})
   }
   // Every press is its own Stop: a kept id would be answered from the last one and stop nothing.

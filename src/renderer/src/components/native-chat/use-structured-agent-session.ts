@@ -9,10 +9,7 @@ import type { AgentType } from '../../../../shared/agent-status-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { takeBackStructuredLaunchPrompts } from '@/lib/structured-agent-session-launch-prompt'
-import {
-  supportsStructuredAgentSessionPromptCancel,
-  supportsStructuredAgentSessionQuestionAnswers
-} from '@/runtime/structured-agent-session-client'
+import { supportsStructuredAgentSessionQuestionAnswers } from '@/runtime/structured-agent-session-client'
 import { useStructuredAgentSessionHostQueuesMessagesState } from '@/runtime/structured-agent-session-host-capability'
 import { structuredAgentSessionStopControl } from './structured-agent-session-stop-control'
 import {
@@ -25,6 +22,7 @@ import {
 } from './structured-agent-session-message-projection'
 import { useStructuredAgentSessionMessages } from './use-structured-agent-session-messages'
 import { useStructuredAgentSessionTransportState } from './use-structured-agent-session-transport-state'
+import { useStructuredAgentSessionCancel } from './use-structured-agent-session-cancel'
 import { useStructuredAgentSessionStop } from './use-structured-agent-session-stop'
 import { useStructuredAgentSessionTransport } from './use-structured-agent-session-transport'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
@@ -42,8 +40,6 @@ import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
 import type { NativeChatRewindHost } from './use-native-chat-rewind'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
-
-type StructuredPromptCancelTarget = { itemId: string; expectedRevision: number }
 
 export function useStructuredAgentSession(args: {
   sessionId: string
@@ -121,6 +117,7 @@ export function useStructuredAgentSession(args: {
     () => (transportState.queuedMessages ?? []).map((message) => message.messageId),
     [transportState.queuedMessages]
   )
+  const cancelActions = useStructuredAgentSessionCancel({ target, transportState, mutate })
   const stopControl = useStructuredAgentSessionStop({
     sessionId,
     target,
@@ -279,22 +276,7 @@ export function useStructuredAgentSession(args: {
     /** A send made now while the agent works is held as a queued card: the host queues, and this
      *  send asks it to (the setting is on and no pending prompt blocks the queue). */
     sendsQueue: structuredAgentSessionNewSendsQueue(queue),
-    cancel: async (turnId: string | undefined, prompt?: StructuredPromptCancelTarget) => {
-      // Capability negotiation must complete before mutate fingerprints the payload:
-      // older hosts reject the strict prompt field.
-      const promptSupported =
-        prompt !== undefined && (await supportsStructuredAgentSessionPromptCancel(target))
-      return mutate('agentSession.cancel', 'agentSession.cancel', {
-        ...(turnId ? { turnId } : {}),
-        ...(promptSupported ? { prompt } : {})
-      })
-    },
-    stopBackgroundTask: (taskId?: string) =>
-      mutate('agentSession.cancel', 'agentSession.cancel', {
-        turnId: 'background-tasks',
-        scope: 'background-tasks',
-        ...(taskId ? { taskId } : {})
-      }),
+    ...cancelActions,
     respond: async (item: StructuredPromptItem, response: AgentSessionPromptResponse) => {
       const promptTarget = { itemId: item.itemId, expectedRevision: item.revision }
       let fields: Record<string, unknown>

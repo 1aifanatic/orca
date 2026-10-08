@@ -1,4 +1,8 @@
 import { agentChildWorkStopTargets } from '../../../shared/agent-child-work-stop-targets'
+import {
+  targetedAgentSessionBackgroundTaskIds,
+  type AgentSessionBackgroundStopTarget
+} from '../../../shared/agent-session-background-stop-target'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
@@ -128,6 +132,7 @@ type PerformCancelInput = {
   turnId?: string
   scope?: 'background-tasks'
   taskId?: string
+  backgroundStopTarget?: AgentSessionBackgroundStopTarget
   prompt?: { itemId: string; expectedRevision: number }
   /** Ends the provider child, for a running command the provider did not take the Stop on, or a
    *  turn whose interrupt failed. */
@@ -203,7 +208,13 @@ async function cancelAndNote(
                 await ctx.adapter.stopBackgroundTasks?.({
                   sessionId: ctx.sessionId,
                   fence: ctx.fence,
-                  taskIds: agentChildWorkStopTargets(input.childWork?.(), input.taskId)
+                  taskIds: input.backgroundStopTarget
+                    ? targetedAgentSessionBackgroundTaskIds(
+                        input.childWork?.(),
+                        input.backgroundStopTarget,
+                        input.taskId
+                      )
+                    : agentChildWorkStopTargets(input.childWork?.(), input.taskId)
                 })
               )?.cancelled === true
           }

@@ -200,6 +200,7 @@ export function useMobileStructuredAgentSession(args: {
   const thinking = isStructuredAgentSessionThinking(state)
   const isWorking = isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence)
   const backgroundTasks = useMobileStructuredBackgroundTasks({
+    targetedStopSupported: hostSupport?.targetedStop === true,
     sessionKey,
     state,
     turnId,
@@ -264,6 +265,7 @@ export function useMobileStructuredAgentSession(args: {
         client,
         enabled,
         hostAnswersRepeatedStops,
+        targetedStopSupported: hostSupport?.targetedStop === true,
         inFlight: inFlightStopsRef.current,
         onSendError,
         prompt,
@@ -275,6 +277,7 @@ export function useMobileStructuredAgentSession(args: {
       client,
       enabled,
       hostAnswersRepeatedStops,
+      hostSupport?.targetedStop,
       onSendError,
       promptCancelSupported,
       sessionId,

@@ -15,6 +15,7 @@ import {
 } from '../../../shared/agent-session-message-source'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
+import type { AgentSessionStopTarget } from '../../../shared/agent-session-stop-target'
 import type {
   AgentSessionCancelResult,
   AgentSessionMutationEnvelope,
@@ -51,6 +52,7 @@ export type MutationPlan<TValue> = {
   conversationWrite?: true
   /** Still runs, decided from the committed ledger, when its ledger row cannot be written. */
   runsWithoutLedgerRow?: true
+  receiptPolicy?: 'control' | 'none'
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
   replay: (ctx: AgentSessionTurnContext, outcome: AgentSessionOperationOutcome) => TValue | null
   rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
@@ -212,6 +214,7 @@ export function cancelPlan(params: {
   turnId?: string
   scope?: 'background-tasks'
   taskId?: string
+  stopTarget?: AgentSessionStopTarget
   prompt?: { itemId: string; expectedRevision: number }
   /** The session's child records, which name the tasks a background Stop reaches. */
   childWork?: () => readonly AgentChildWorkView[] | undefined
@@ -222,10 +225,12 @@ export function cancelPlan(params: {
     ...(params.scope || params.prompt ? {} : { conversationWrite: true as const }),
     // A Stop must reach the agent even when storage refuses the row recording it.
     runsWithoutLedgerRow: true,
+    receiptPolicy: params.stopTarget ? 'none' : 'control',
     fields: {
       ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
       ...(params.scope ? { scope: params.scope } : {}),
       ...(params.taskId ? { taskId: params.taskId } : {}),
+      ...(params.stopTarget ? { stopTarget: params.stopTarget } : {}),
       ...(params.prompt ? { prompt: params.prompt } : {})
     },
     run: (ctx) =>
@@ -234,6 +239,9 @@ export function cancelPlan(params: {
         ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
         ...(params.scope ? { scope: params.scope } : {}),
         ...(params.taskId ? { taskId: params.taskId } : {}),
+        ...(params.stopTarget?.kind === 'background-tasks'
+          ? { backgroundStopTarget: params.stopTarget }
+          : {}),
         ...(params.prompt ? { prompt: params.prompt } : {}),
         ...(params.childWork ? { childWork: params.childWork } : {})
       }),

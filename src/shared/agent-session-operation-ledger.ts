@@ -13,8 +13,7 @@ import {
  * `terminal.ensureAgentSession` / `terminal.createAgentSession` already enforce timestamped
  * operation ids with fingerprint conflict detection and age expiry, but in memory. Durable
  * receipts survive restart and expire only after their ids can no longer be admitted as new.
- * Their count never gates a user action; the store writes a receipt in the same atomic
- * transaction as the lease reservation.
+ * Delivery receipts stay through their retry window; cleanup has its own bounded history.
  */
 
 import {
@@ -27,8 +26,8 @@ import {
   type AgentSessionConversationCommandResult
 } from './agent-session-conversation-command'
 
-/** Legacy phone uncertainty-journal limit; host receipts expire by age without a count limit. */
-export const AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT = 4_096
+import { agentSessionWorkOperationAtCapacity } from './agent-session-operation-capacity'
+export { AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT } from './agent-session-operation-capacity'
 
 export type AgentSessionOperationOutcome =
   | { status: 'pending' }
@@ -72,6 +71,8 @@ export type AgentSessionOperationOutcome =
 export type AgentSessionOperationOwnedPane = { worktreeId: string; paneKey: string }
 
 export type AgentSessionOperationRow = {
+  /** Cleanup history can be evicted; delivery protection cannot. Older builds ignore this. */
+  control?: true
   callerKey: string
   operationId: string
   fingerprint: string
@@ -271,6 +272,7 @@ export function evaluateAgentSessionOperation(args: {
   operationId: string
   fingerprint: string
   now: number
+  control?: true
 }): AgentSessionOperationDecision {
   const { rows, callerKey, operationId, fingerprint, now } = args
   const operationTimestamp = parseAgentSessionOperationTimestamp(operationId)
@@ -305,10 +307,19 @@ export function evaluateAgentSessionOperation(args: {
       details: { reason: 'operationExpired' }
     }
   }
-  // Expiry bounds history; evicting a still-admissible id would let its retry run twice.
+  if (!args.control && agentSessionWorkOperationAtCapacity(rows, callerKey)) {
+    return {
+      decision: 'refused',
+      code: 'agent_session_operation_capacity',
+      details: { reason: 'operationCapacity' }
+    }
+  }
   return {
     decision: 'admit',
-    row: pendingAgentSessionOperationRow({ callerKey, operationId, fingerprint, now })
+    row: {
+      ...pendingAgentSessionOperationRow({ callerKey, operationId, fingerprint, now }),
+      ...(args.control ? { control: true as const } : {})
+    }
   }
 }
 

@@ -21,12 +21,15 @@ import {
 import type { AgentSessionMutationEnvelope } from '../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStoreState } from './agent-session-store-state'
+import { makeAgentSessionControlOperationRoom } from '../../shared/agent-session-operation-capacity'
 
 export type AgentSessionOperationAdmission = {
   callerKey: string
   operationId: string
   fingerprint: string
   now: number
+  control?: true
+  skipReceipt?: true
 }
 
 type OperationRows = Map<string, AgentSessionOperationRow>
@@ -38,11 +41,13 @@ export type AgentSessionMutationOperationAdmission = {
   now: number
   operationIdScope?: 'global'
   conversationWrite?: true
+  receiptPolicy?: 'control' | 'none'
 }
 
 export type AgentSessionMutationOperationDecision = {
   admission: AgentSessionMutationAdmission
   record: AgentSessionRecord
+  receiptRecorded?: false
 } | null
 
 type EvaluatedOperationRows = { rows: OperationRows; decision: AgentSessionOperationDecision }
@@ -52,6 +57,9 @@ export function evaluateAgentSessionOperationRow(
   rows: OperationRows,
   args: AgentSessionOperationAdmission
 ): EvaluatedOperationRows {
+  if (args.skipReceipt) {
+    return { rows, decision: evaluateAgentSessionOperation({ ...args, rows: new Map() }) }
+  }
   const pruned = pruneAgentSessionOperationRows(rows, args.now)
   return { rows: pruned, decision: evaluateAgentSessionOperation({ rows: pruned, ...args }) }
 }
@@ -80,7 +88,11 @@ function placeAdmittedAgentSessionOperationRow(
   evaluated: EvaluatedOperationRows,
   args: AgentSessionOperationAdmission
 ): EvaluatedOperationRows {
-  if (evaluated.decision.decision === 'admit') {
+  if (
+    evaluated.decision.decision === 'admit' &&
+    !args.skipReceipt &&
+    (!args.control || makeAgentSessionControlOperationRoom(evaluated.rows, args.callerKey))
+  ) {
     evaluated.rows.set(
       agentSessionOperationKey(args.callerKey, args.operationId),
       evaluated.decision.row
@@ -130,7 +142,9 @@ function mutationOperation(
     callerKey: args.callerKey,
     operationId: args.envelope.clientOperationId,
     fingerprint: args.hostFingerprint,
-    now: args.now
+    now: args.now,
+    ...(args.receiptPolicy ? { control: true as const } : {}),
+    ...(args.receiptPolicy === 'none' ? { skipReceipt: true as const } : {})
   }
 }
 
@@ -158,7 +172,13 @@ export function admitAgentSessionMutationOperation(
     ledger.rows.delete(agentSessionOperationKey(operation.callerKey, operation.operationId))
   }
   state.operations = ledger.rows
-  return { admission, record }
+  return {
+    admission,
+    record,
+    ...(!ledger.rows.has(agentSessionOperationKey(operation.callerKey, operation.operationId))
+      ? { receiptRecorded: false as const }
+      : {})
+  }
 }
 
 /**

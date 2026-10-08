@@ -42,6 +42,10 @@ import { runQueueableStructuredAgentSessionSend } from './structured-agent-sessi
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
 import { performSetOption } from './structured-agent-session-turns-options'
+import {
+  agentSessionStopTargetIsLive,
+  type AgentSessionStopTarget
+} from '../../../shared/agent-session-stop-target'
 export type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
@@ -99,6 +103,7 @@ export function cancelStructuredAgentSessionTurn(
     turnId?: string
     scope?: 'background-tasks'
     taskId?: string
+    stopTarget?: AgentSessionStopTarget
     prompt?: { itemId: string; expectedRevision: number }
   }
 ): Promise<AgentSessionMutationResult<AgentSessionCancelResult>> {
@@ -114,19 +119,41 @@ export function cancelStructuredAgentSessionTurn(
   const plan = cancelPlan(params)
   const { prompt } = params
   if (!prompt && params.turnId === undefined) {
-    abortAcquireForStop(context, caller, params.envelope, plan)
+    const journal = context.sessions.get(params.envelope.sessionId)?.journal
+    if (
+      !params.stopTarget ||
+      (journal &&
+        agentSessionStopTargetIsLive(
+          params.stopTarget,
+          journal.activeTurnId(),
+          journal.submissions(),
+          context.deps.store.getRecord(params.envelope.sessionId)?.lease.runtimeFence ?? 0,
+          journal.newestTurn()?.userItemId
+        ))
+    ) {
+      abortAcquireForStop(context, caller, params.envelope, plan)
+    }
   }
   // A card's Cancel stops whatever the chat has in flight, as the Stop button does; it reaches the
   // Stop only for a card the live turn raised (`cancelStructuredAgentSessionPrompt`).
   const stopped = prompt ? { envelope: params.envelope } : params
   return mutateWithChatStop(context, caller, stopped, plan, (ctx, stop) =>
-    prompt
-      ? cancelStructuredAgentSessionPrompt(
-          ctx,
-          { ...(params.turnId !== undefined ? { turnId: params.turnId } : {}), prompt },
-          { stop, interrupt: () => plan.run(ctx) }
-        )
-      : stop().then(({ outcome }) => outcome)
+    params.stopTarget &&
+    !agentSessionStopTargetIsLive(
+      params.stopTarget,
+      ctx.journal.activeTurnId(),
+      ctx.journal.submissions(),
+      ctx.fence,
+      ctx.journal.newestTurn()?.userItemId
+    )
+      ? Promise.resolve({ ok: true, value: { cancelled: false } })
+      : prompt
+        ? cancelStructuredAgentSessionPrompt(
+            ctx,
+            { ...(params.turnId !== undefined ? { turnId: params.turnId } : {}), prompt },
+            { stop, interrupt: () => plan.run(ctx) }
+          )
+        : stop().then(({ outcome }) => outcome)
   )
 }
 

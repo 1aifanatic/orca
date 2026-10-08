@@ -89,3 +89,72 @@ it('Stop still runs when its receipt cannot be written above the former quota', 
   expect(await rig.stop()).toMatchObject({ ok: true })
   expect(rig.cancelTurn).toHaveBeenCalledOnce()
 })
+
+it.each(['caller', 'global'] as const)(
+  'bounds idle Stop receipts under %s pressure without evicting send protection',
+  async (limit) => {
+    rig = await createQueuedMessageTestRig()
+    const workCount = limit === 'caller' ? 512 : 4_096
+    const controlCount = limit === 'caller' ? 64 : 512
+    await rig.store['transactions'].transact(({ operations: rows }) => {
+      for (let index = 0; index < workCount + controlCount; index += 1) {
+        const control = index >= workCount
+        const callerKey = limit === 'caller' ? QUEUED_RIG_CALLER.callerKey : `other-${index}`
+        const operationId = `${NOW}-1${index.toString(16).padStart(31, '0')}`
+        const row = pendingAgentSessionOperationRow({
+          callerKey,
+          operationId,
+          fingerprint: 'retained-fixture',
+          now: NOW
+        })
+        rows.set(agentSessionOperationKey(callerKey, operationId), {
+          ...row,
+          ...(control ? { control: true as const } : {}),
+          outcome: { status: 'succeeded', sessionId: SESSION }
+        })
+      }
+    })
+    const protectedRows = rig.store.listOperationRows().filter((row) => !row.control)
+    const before = rig.store.listOperationRows().length
+    for (let index = 0; index < 4; index += 1) {
+      expect(await rig.stop(`${NOW}-f${index.toString(16).padStart(31, '0')}`)).toMatchObject({
+        ok: true
+      })
+    }
+    expect(rig.store.listOperationRows()).toHaveLength(before)
+    expect(rig.store.listOperationRows().filter((row) => !row.control)).toEqual(protectedRows)
+    expect(rig.cancelTurn).not.toHaveBeenCalled()
+    expect(await rig.send('new send under capacity pressure').result).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_operation_capacity' }
+    })
+    expect(rig.store.listOperationRows()).toHaveLength(before)
+  }
+)
+
+it.each(['pending', 'unknown'] as const)(
+  'Stop runs without growing the ledger when every cleanup slot is %s',
+  async (status) => {
+    rig = await createQueuedMessageTestRig()
+    await rig.workingSend()
+    await rig.store['transactions'].transact(({ operations: rows }) => {
+      for (let index = 0; index < 64; index += 1) {
+        const row = pendingAgentSessionOperationRow({
+          callerKey: QUEUED_RIG_CALLER.callerKey,
+          operationId: `${NOW}-1${index.toString(16).padStart(31, '0')}`,
+          fingerprint: 'in-flight',
+          now: NOW
+        })
+        rows.set(agentSessionOperationKey(row.callerKey, row.operationId), {
+          ...row,
+          control: true,
+          outcome: { status }
+        })
+      }
+    })
+    const before = rig.store.listOperationRows()
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    expect(rig.cancelTurn).toHaveBeenCalledOnce()
+    expect(rig.store.listOperationRows()).toEqual(before)
+  }
+)

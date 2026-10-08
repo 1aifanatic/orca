@@ -113,16 +113,28 @@ describe('operation admission', () => {
     ).toBe('admit')
   })
 
-  it('admits new ids beyond the former quotas without evicting replayable receipts', () => {
-    const rows = new Map<string, AgentSessionOperationRow>()
-    const original = admit(rows)
-    for (let index = 0; index < 4_096; index += 1) {
-      admit(rows, { operationId: operationId(NOW, index.toString(16).padStart(32, '0')) })
+  it.each(['caller', 'global'] as const)(
+    'bounds new work at the %s quota without evicting replayable receipts',
+    (limit) => {
+      const rows = new Map<string, AgentSessionOperationRow>()
+      const original = admit(rows)
+      const count = limit === 'caller' ? 512 : 4_096
+      for (let index = 1; index < count; index += 1) {
+        const row = pendingAgentSessionOperationRow({
+          callerKey: limit === 'caller' ? 'client-1' : `other-${index}`,
+          operationId: operationId(NOW, index.toString(16).padStart(32, '0')),
+          fingerprint: 'fp',
+          now: NOW
+        })
+        rows.set(agentSessionOperationKey(row.callerKey, row.operationId), row)
+      }
+      expect(evaluate(rows, { operationId: operationId(NOW, 'f'.repeat(32)) })).toMatchObject({
+        decision: 'refused',
+        code: 'agent_session_operation_capacity'
+      })
+      expect(evaluate(rows)).toEqual({ decision: 'replay', row: original })
     }
-    expect(rows.size).toBe(4_097)
-    expect(evaluate(rows)).toEqual({ decision: 'replay', row: original })
-    expect(evaluate(rows, { callerKey: 'client-2' }).decision).toBe('admit')
-  })
+  )
 })
 
 describe('the pane a launch laid out', () => {
