@@ -71,10 +71,21 @@ let job: unknown
 let jobMode: number
 const nativePlatform = process.platform
 const originalGetuid = Object.getOwnPropertyDescriptor(process, 'getuid')
+const originalGetSystemVersion = Object.getOwnPropertyDescriptor(process, 'getSystemVersion')
+const helperContents = (): string =>
+  join(state.root, 'runtime', 'Orca Terminal Host.app', 'Contents')
+const helperExec = (): string => join(helperContents(), 'MacOS', 'orca-terminal-host')
+const helperEntry = (): string =>
+  join(helperContents(), 'Resources', 'daemon', 'out', 'main', 'daemon-entry.js')
+
+function stubSystemVersion(version: string): void {
+  Object.defineProperty(process, 'getSystemVersion', { configurable: true, value: () => version })
+}
 
 beforeEach(async () => {
   vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
   Object.defineProperty(process, 'getuid', { configurable: true, value: () => 501 })
+  stubSystemVersion('15.4.1')
   state.root = await mkdtemp(join(tmpdir(), 'orca-mac-launch-job-'))
   state.packaged = true
   state.identity = { pid: 12345, startedAtMs: 1000, launchNonce: 'owned-launch' }
@@ -91,9 +102,9 @@ beforeEach(async () => {
   await mkdir(join(state.root, 'runtime'))
   materializeMock.mockReset().mockResolvedValue({
     directory: join(state.root, 'runtime'),
-    bundlePath: join(state.root, 'runtime', 'Orca.app'),
-    execPath: join(state.root, 'runtime', 'Orca.app', 'Contents', 'MacOS', 'Orca'),
-    entryPath: join(state.root, 'runtime', 'Orca.app', 'Contents', 'Resources', 'daemon-entry.js')
+    bundlePath: join(state.root, 'runtime', 'Orca Terminal Host.app'),
+    execPath: helperExec(),
+    entryPath: helperEntry()
   })
   ensureWithinMock.mockReset().mockResolvedValue(undefined)
   disconnectMock.mockReset()
@@ -117,33 +128,44 @@ afterEach(async () => {
   } else {
     Reflect.deleteProperty(process, 'getuid')
   }
+  if (originalGetSystemVersion) {
+    Object.defineProperty(process, 'getSystemVersion', originalGetSystemVersion)
+  } else {
+    Reflect.deleteProperty(process, 'getSystemVersion')
+  }
   vi.unstubAllEnvs()
   await rm(state.root, { recursive: true, force: true })
 })
 
-it('launches the stable main executable and leaves no inherited credentials on disk', async () => {
+it('launches the copied helper on plain Node and leaves no inherited credentials on disk', async () => {
   vi.stubEnv('ORCA_TEST_SECRET', 'test-value')
   vi.stubEnv('NODE_CHANNEL_FD', '3')
+  vi.stubEnv('ELECTRON_RUN_AS_NODE', '1')
   const handle = await launchMacDaemonFromStableBundle(options, roomyDeadline())
   if (nativePlatform !== 'win32') {
     expect(jobMode).toBe(0o600)
   }
   expect(job).toMatchObject({
     Label: 'com.stablyai.orca.terminal.owned-launch',
-    ProgramArguments: expect.arrayContaining([
-      join(state.root, 'runtime', 'Orca.app', 'Contents', 'MacOS', 'Orca'),
-      join(state.root, 'runtime', 'Orca.app', 'Contents', 'Resources', 'daemon-entry.js')
-    ]),
     KeepAlive: false,
     // Local Network access for a plist-launched job resolves through its associated app.
     AssociatedBundleIdentifiers: ['com.stablyai.orca'],
-    EnvironmentVariables: { ELECTRON_RUN_AS_NODE: '1', ORCA_TEST_SECRET: 'test-value' }
+    EnvironmentVariables: { ORCA_TEST_SECRET: 'test-value' }
   })
   expect(JSON.stringify(job)).not.toContain('NODE_CHANNEL_FD')
-  expect(job).toHaveProperty(
-    'ProgramArguments.0',
-    join(state.root, 'runtime', 'Orca.app', 'Contents', 'MacOS', 'Orca')
-  )
+  // Plain Node ignores Electron's Node-mode switch, so the job never carries it.
+  expect(job).not.toHaveProperty('EnvironmentVariables.ELECTRON_RUN_AS_NODE')
+  const args =
+    job &&
+    typeof job === 'object' &&
+    'ProgramArguments' in job &&
+    Array.isArray(job.ProgramArguments)
+      ? job.ProgramArguments.map(String)
+      : []
+  expect(args.slice(0, 4)).toEqual([helperExec(), helperEntry(), '--socket', options.socketPath])
+  // The replacement preflight compares the installed entry, never the private copy's.
+  expect(args[args.indexOf('--entry-path') + 1]).toBe(options.entryPath)
+  expect(args[args.indexOf('--spawner-exec-path') + 1]).toBe(helperExec())
   await expect(access(join(state.root, 'runtime', 'launch.plist'))).rejects.toThrow()
   expect(handle?.releaseAdoptionLease).toBeTypeOf('function')
   await handle?.shutdown()
@@ -153,6 +175,22 @@ it('launches the stable main executable and leaves no inherited credentials on d
       args: ['bootout', `gui/${process.getuid?.()}/com.stablyai.orca.terminal.owned-launch`]
     })
   )
+})
+
+it.each(['13.4.1', '12.7.6'])(
+  'keeps macOS %s below the helper floor on the fork without copying',
+  async (version) => {
+    stubSystemVersion(version)
+    await expect(launchMacDaemonFromStableBundle(options, roomyDeadline())).resolves.toBeNull()
+    expect(materializeMock).not.toHaveBeenCalled()
+    expect(runProcessMock).not.toHaveBeenCalled()
+  }
+)
+
+it('runs the helper from the floor itself', async () => {
+  stubSystemVersion('13.5')
+  await expect(launchMacDaemonFromStableBundle(options, roomyDeadline())).resolves.not.toBeNull()
+  expect(materializeMock).toHaveBeenCalledOnce()
 })
 
 const ok = { code: 0, signal: null, stdout: '', stderr: '', timedOut: false }
@@ -234,7 +272,7 @@ it('does not submit a job whose own readiness wait would overrun the deadline', 
   expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
   expect(error).toHaveProperty('cause.message', expect.stringContaining('deadline expired'))
   expect(runProcessMock.mock.calls.some(([spec]) => spec.args?.includes('bootstrap'))).toBe(false)
-  expect(materializeMock.mock.calls[0]?.[3]).toHaveProperty('aborted', true)
+  expect(materializeMock.mock.calls[0]?.[2]).toHaveProperty('aborted', true)
   await expect(access(join(state.root, 'runtime'))).rejects.toThrow()
 })
 
@@ -248,12 +286,8 @@ it('names the deadline when it cut the runtime copy short', async () => {
 
 it('shares one preparation deadline across the copy and the plist conversion', async () => {
   await launchMacDaemonFromStableBundle(options, Date.now() + 25_000)
-  const [userData, entry, label, signal] = materializeMock.mock.calls[0] ?? []
-  expect([userData, entry, label]).toEqual([
-    state.root,
-    options.entryPath,
-    'com.stablyai.orca.terminal.owned-launch'
-  ])
+  const [userData, label, signal] = materializeMock.mock.calls[0] ?? []
+  expect([userData, label]).toEqual([state.root, 'com.stablyai.orca.terminal.owned-launch'])
   expect(signal).toHaveProperty('aborted', false)
   const plutil = runProcessMock.mock.calls.find(([spec]) => spec.program === '/usr/bin/plutil')
   expect(plutil?.[0].signal).toBe(signal)

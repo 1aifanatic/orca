@@ -241,3 +241,41 @@ it('keeps scanning past copies it cannot retire', async () => {
   await expect(access(second)).resolves.toBeUndefined()
   expect(run.mock.calls.filter(([spec]) => spec.args?.[0] === 'bootout')).toHaveLength(2)
 })
+
+it('retires full-app, noindex full-app and helper copies alike, keeping any still in use', async () => {
+  const layouts = [
+    ['Orca.app'],
+    ['app.noindex', 'Orca.app'],
+    ['app.noindex', 'Orca Terminal Host.app']
+  ]
+  const directories: string[] = []
+  for (const bundle of layouts) {
+    const directory = await mkdtemp(join(root, 'runtime-'))
+    await mkdir(join(directory, ...bundle), { recursive: true })
+    await writeMacDaemonJobRecord(directory, 'com.stablyai.orca.terminal.owned', true)
+    directories.push(directory)
+  }
+  const inUse = await mkdtemp(join(root, 'runtime-'))
+  await mkdir(join(inUse, 'app.noindex', 'Orca Terminal Host.app'), { recursive: true })
+  await writeMacDaemonJobRecord(inUse, 'com.stablyai.orca.terminal.owned', true)
+  run.mockImplementation(async (spec) => {
+    if (spec.args?.[0] === 'print') {
+      return { ...result, code: 113, stderr: 'Could not find service "owned"' }
+    }
+    if (spec.program === '/usr/sbin/lsof' && spec.args?.at(-1) === inUse) {
+      return { ...result, code: 0, stdout: 'p123' }
+    }
+    return spec.program === LSREGISTER ? { ...result, code: 0 } : result
+  })
+  await retireAbandonedMacDaemonBundles(root)
+  for (const directory of directories) {
+    await expect(access(directory)).rejects.toThrow()
+  }
+  await expect(access(inUse)).resolves.toBeUndefined()
+  expect(launchServicesCalls()).toEqual(
+    expect.arrayContaining(
+      layouts.map((bundle, index) => ['-u', join(directories[index] ?? '', ...bundle)])
+    )
+  )
+  expect(launchServicesCalls()).toHaveLength(3)
+})

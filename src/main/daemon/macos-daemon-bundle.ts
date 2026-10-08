@@ -1,10 +1,14 @@
-import { mkdir, mkdtemp, realpath } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { mkdir, mkdtemp, realpath, stat } from 'node:fs/promises'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
 import { rm } from '../asar-transparent-fs'
 import { ensurePrivateDir } from './daemon-private-file-modes'
 import { inspectMacProcessCodeIdentity } from './daemon-mac-code-identity'
 import { MAC_DAEMON_BUNDLE_FOLDER, writeMacDaemonJobRecord } from './macos-daemon-bundle-retirement'
+
+/** Packaged by config/scripts/macos-terminal-host-bundle.cjs; its main executable is plain Node. */
+const TERMINAL_HOST_BUNDLE = 'Orca Terminal Host.app'
+const TERMINAL_HOST_EXECUTABLE = 'orca-terminal-host'
 
 export type MacDaemonBundle = {
   directory: string
@@ -50,7 +54,6 @@ export function getMacDaemonBundleRoot(userDataPath: string): string {
 /** Keep signed bytes and their bundle layout outside the updater's rename/delete window. */
 export async function materializeMacDaemonBundle(
   userDataPath: string,
-  entryPath: string,
   label: string,
   signal: AbortSignal
 ): Promise<MacDaemonBundle> {
@@ -58,17 +61,14 @@ export async function materializeMacDaemonBundle(
   if (!running.executablePath) {
     throw new Error('Could not resolve the running macOS app bundle')
   }
-  const sourceBundle = await realpath(appBundleForMainExecutable(running.executablePath))
-  const installedBundle = appBundleForMainExecutable(process.execPath)
-  const entryRelativePath = relative(installedBundle, entryPath)
-  if (
-    isAbsolute(entryRelativePath) ||
-    entryRelativePath === '..' ||
-    entryRelativePath.startsWith(`..${sep}`)
-  ) {
-    throw new Error('The terminal daemon entry is outside the app bundle')
+  const runningBundle = await realpath(appBundleForMainExecutable(running.executablePath))
+  // Copying only the helper keeps each retained runtime ~124 MiB instead of the whole app.
+  const sourceBundle = join(runningBundle, 'Contents', 'Helpers', TERMINAL_HOST_BUNDLE)
+  if (!(await stat(sourceBundle).catch(() => null))?.isDirectory()) {
+    throw new Error('The running app has no macOS terminal host helper')
   }
-  const requirement = await codesignRequirement(sourceBundle, signal)
+  // The helper must carry the running app's designated requirement to inherit Orca's grants.
+  const requirement = await codesignRequirement(runningBundle, signal)
   const root = getMacDaemonBundleRoot(userDataPath)
   ensurePrivateDir(root)
   const directory = await mkdtemp(join(root, 'runtime-'))
@@ -111,8 +111,16 @@ export async function materializeMacDaemonBundle(
     return {
       directory,
       bundlePath,
-      execPath: join(bundlePath, 'Contents', 'MacOS', basename(running.executablePath)),
-      entryPath: join(bundlePath, entryRelativePath)
+      execPath: join(bundlePath, 'Contents', 'MacOS', TERMINAL_HOST_EXECUTABLE),
+      entryPath: join(
+        bundlePath,
+        'Contents',
+        'Resources',
+        'daemon',
+        'out',
+        'main',
+        'daemon-entry.js'
+      )
     }
   } catch (error) {
     // No process has been launched from this private copy yet.

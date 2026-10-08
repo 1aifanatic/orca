@@ -2,11 +2,13 @@ import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { getAppEnvironment } from '../../shared/app-environment'
+import { NODE_RUNTIME_DARWIN_MINIMUM_OS } from '../../shared/node-runtime-pin'
 import { runProcess } from '../../shared/child-process/run-process'
 import { DaemonClient } from './client'
 import { DaemonEndpointOwnershipError, holdDaemonAdoptionLease } from './daemon-endpoint-adoption'
 import { buildDaemonScriptArgs, type DaemonChildSpawnOptions } from './daemon-launched-child-spawn'
 import { materializeMacDaemonBundle } from './macos-daemon-bundle'
+import { compareDottedVersions } from '../orcad/native-host-abi'
 import { rm as removeBundle } from '../asar-transparent-fs'
 import {
   retireUnusedMacDaemonBundle,
@@ -37,11 +39,9 @@ function buildMacDaemonLaunchJob(
   entryPath: string,
   label: string
 ): Record<string, unknown> {
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ELECTRON_RUN_AS_NODE: '1',
-    ORCA_USER_DATA_PATH: options.userDataPath
-  }
+  const env: NodeJS.ProcessEnv = { ...process.env, ORCA_USER_DATA_PATH: options.userDataPath }
+  // The helper's executable is plain Node, which has no use for Electron's Node-mode switch.
+  delete env.ELECTRON_RUN_AS_NODE
   delete env.NODE_CHANNEL_FD
   delete env.NODE_CHANNEL_SERIALIZATION_MODE
   delete env.NODE_UNIQUE_ID
@@ -73,6 +73,11 @@ export async function launchMacDaemonFromStableBundle(
   if (!environment.isPackaged() || !environment.getAppPath().includes('app.asar')) {
     return null
   }
+  // The helper's Node cannot load below its floor; those Macs keep the fork and make no copy.
+  const systemVersion = process.getSystemVersion?.()
+  if (!systemVersion || compareDottedVersions(systemVersion, NODE_RUNTIME_DARWIN_MINIMUM_OS) < 0) {
+    return null
+  }
   const uid = process.getuid?.()
   if (uid === undefined) {
     throw new MacDaemonStableLaunchUnavailableError('Could not resolve the macOS login user')
@@ -84,19 +89,16 @@ export async function launchMacDaemonFromStableBundle(
   const prepareDeadlineMs = deadlineMs - BOOTSTRAP_TIMEOUT_MS - STARTUP_TIMEOUT_MS
   const remainingMs = prepareDeadlineMs - Date.now()
   const prepareSignal = remainingMs > 0 ? AbortSignal.timeout(remainingMs) : AbortSignal.abort()
-  const bundle = await materializeMacDaemonBundle(
-    options.userDataPath,
-    options.entryPath,
-    label,
-    prepareSignal
-  ).catch((error: unknown) => {
-    throw new MacDaemonStableLaunchUnavailableError(
-      prepareSignal.aborted
-        ? 'The macOS terminal service startup deadline expired'
-        : 'Could not prepare the macOS terminal runtime',
-      { cause: error }
-    )
-  })
+  const bundle = await materializeMacDaemonBundle(options.userDataPath, label, prepareSignal).catch(
+    (error: unknown) => {
+      throw new MacDaemonStableLaunchUnavailableError(
+        prepareSignal.aborted
+          ? 'The macOS terminal service startup deadline expired'
+          : 'Could not prepare the macOS terminal runtime',
+        { cause: error }
+      )
+    }
+  )
   const jobPath = join(bundle.directory, 'launch.plist')
   const shutdown = async (): Promise<void> => {
     await stopMacDaemonJob(service)

@@ -7,7 +7,10 @@ import { DAEMON_CHILD_STARTUP_TIMEOUT_MS } from './daemon-launched-child'
 const {
   stableLaunch,
   retireMock,
+  materializeMock,
   forkMock,
+  isPackagedMock,
+  getAppPathMock,
   checkDaemonHealthMock,
   spawnerInstances,
   importFresh,
@@ -16,7 +19,7 @@ const {
 } = await vi.hoisted(async () => {
   const stableLaunch: {
     /** `disabled` is the rollback: the stable launcher returns null and never copies. */
-    failure: 'unavailable' | 'fatal' | 'disabled'
+    failure: 'unavailable' | 'fatal' | 'disabled' | 'real'
     deadlinesMs: number[]
     /** Where the clock stands, relative to the handoff deadline, when the attempt fails. */
     failAtDeadlineOffsetMs: number | null
@@ -24,6 +27,7 @@ const {
   return {
     stableLaunch,
     retireMock: vi.fn(async (_root: string) => {}),
+    materializeMock: vi.fn(),
     ...(await (await import('./daemon-init-test-harness')).createDaemonInitMocks())
   }
 })
@@ -49,8 +53,14 @@ vi.mock('./macos-daemon-launchd', async (importOriginal) => {
   const actual = await importOriginal<typeof MacDaemonLaunchd>()
   return {
     ...actual,
-    launchMacDaemonFromStableBundle: async (_options: unknown, deadlineMs: number) => {
+    launchMacDaemonFromStableBundle: async (
+      options: Parameters<typeof actual.launchMacDaemonFromStableBundle>[0],
+      deadlineMs: number
+    ) => {
       stableLaunch.deadlinesMs.push(deadlineMs)
+      if (stableLaunch.failure === 'real') {
+        return actual.launchMacDaemonFromStableBundle(options, deadlineMs)
+      }
       if (stableLaunch.failAtDeadlineOffsetMs !== null) {
         const failedAtMs = deadlineMs + stableLaunch.failAtDeadlineOffsetMs
         vi.spyOn(Date, 'now').mockReturnValue(failedAtMs)
@@ -64,6 +74,11 @@ vi.mock('./macos-daemon-launchd', async (importOriginal) => {
     }
   }
 })
+
+vi.mock('./macos-daemon-bundle', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  materializeMacDaemonBundle: materializeMock
+}))
 
 vi.mock('./macos-daemon-bundle-retirement', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -106,6 +121,11 @@ describe('daemon-init: macOS stable-bundle launch fallback', () => {
 
   async function launchOnce(): Promise<unknown> {
     const mod = await importFresh()
+    if (stableLaunch.failure === 'real') {
+      // The real launcher only runs from a packaged app.
+      isPackagedMock.mockReturnValue(true)
+      getAppPathMock.mockReturnValue('/Applications/Orca.app/Contents/Resources/app.asar')
+    }
     checkDaemonHealthMock.mockResolvedValue('unreachable')
     await mod.initDaemonPtyProvider(undefined, { macosLoginSessionWatch: true })
     const launcher = spawnerInstances.at(-1)?.launcher
@@ -153,6 +173,49 @@ describe('daemon-init: macOS stable-bundle launch fallback', () => {
     // Copies made while it was on are only ever deleted by this collection.
     expect(retireMock).toHaveBeenCalledOnce()
     expect(retireMock.mock.calls[0]?.[0]).toMatch(/daemon-host[\\/]macos$/)
+  })
+
+  describe('with the real stable launcher', () => {
+    const originalGetSystemVersion = Object.getOwnPropertyDescriptor(process, 'getSystemVersion')
+
+    function stubSystemVersion(version: string): void {
+      Object.defineProperty(process, 'getSystemVersion', {
+        configurable: true,
+        value: () => version
+      })
+    }
+
+    beforeEach(() => {
+      stableLaunch.failure = 'real'
+      vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+      materializeMock.mockReset()
+    })
+
+    afterEach(() => {
+      stableLaunch.failure = 'unavailable'
+      if (originalGetSystemVersion) {
+        Object.defineProperty(process, 'getSystemVersion', originalGetSystemVersion)
+      } else {
+        Reflect.deleteProperty(process, 'getSystemVersion')
+      }
+    })
+
+    it('forks when the running app ships no terminal host helper', async () => {
+      stubSystemVersion('15.4')
+      materializeMock.mockRejectedValue(
+        new Error('The running app has no macOS terminal host helper')
+      )
+      await expect(launchOnce()).resolves.toBeTruthy()
+      expect(materializeMock).toHaveBeenCalledOnce()
+      expect(forkMock).toHaveBeenCalledOnce()
+    })
+
+    it('forks without copying on macOS below the helper floor', async () => {
+      stubSystemVersion('13.4.1')
+      await expect(launchOnce()).resolves.toBeTruthy()
+      expect(materializeMock).not.toHaveBeenCalled()
+      expect(forkMock).toHaveBeenCalledOnce()
+    })
   })
 
   it('never forks beside a stable-bundle job whose fate is unknown', async () => {
