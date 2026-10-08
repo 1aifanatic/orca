@@ -1,65 +1,188 @@
-name: pnpm verification cache pilot
+name: Temporary Windows native observation and Linux X11 IME
 
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed original source
+        required: true
+        type: string
+        default: '0615679162a1249631cebf2cc0e2d2c989660b1d'
 
 permissions:
   contents: read
 
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: native-observation-ime-${{ github.run_id }}
+  cancel-in-progress: false
 
 env:
   ORCA_BACKGROUND_LAUNCH: '1'
+  SOURCE_SHA: ${{ inputs.source_sha }}
+  DEFINITION_SHA: ${{ github.sha }}
 
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  windows-native:
+    name: Windows native teardown observation
+    runs-on: windows-2022
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+      - name: Verify exact reviewed source and six-file definition
+        shell: bash
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          python - <<'PYTHON'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          source = '0615679162a1249631cebf2cc0e2d2c989660b1d'
+          expected = {'src/renderer/src/lib/ime-composition-keyboard-event.ts': 'c3f1c3bf5465d82f36077154d5d0da986321d7ddc66e8341f7368ae269d267b2', 'src/renderer/src/lib/ime-text-field.tsx': '7ab469999ad3818057537e576f65dd270082c450351f3c5c8ea505fc436ff73b', 'src/renderer/src/lib/ime-text-field.test.tsx': 'da2262982ef6960c9628a7a3cc8d01d9e9c6d249a43514e2e223350c28929e17', 'src/renderer/src/components/sidebar/WorktreeMetaDialog.test.tsx': 'b31cbddc02b194b0017349f2f9d11ab73d3fabc195a218cea71de84e69266aa1', 'config/scripts/windows-pty-pre-ready-teardown.cjs': 'c3221f102acd1b575559f2db40968baf34f3d23400d4f8277bfa320dfcf2803f'}
+          before = {'src/renderer/src/lib/ime-composition-keyboard-event.ts': '6ecd922b4e19610a6c5d00a9ca7e9c90fad5a96931677df12561c7338afeecd2', 'src/renderer/src/lib/ime-text-field.tsx': '507f4414b2ccf848b1dbc9e9ff5659236f2ffa2d63b766be1178d6a6722362b8', 'src/renderer/src/lib/ime-text-field.test.tsx': '1948c5a7d95a4740d73b60a8620fb09a88f23ef3d20e964c16ce27aab27c7909', 'src/renderer/src/components/sidebar/WorktreeMetaDialog.test.tsx': '3aa34884d8bfe30ddebc487cf59db7c5a10d22f3ff073cfa0fbd2f3dbca82e74', 'config/scripts/windows-pty-pre-ready-teardown.cjs': '2e0d53dfe7be57b279d163382037703cdd157598bf651719f5c151bb17ede5d4'}
+          assert os.environ['SOURCE_SHA'] == source
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert head == os.environ['DEFINITION_SHA']
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD^'], text=True).strip() == source
+          changed = subprocess.check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD^', 'HEAD'], text=True).splitlines()
+          assert set(changed) == set(expected) | {'.github/workflows/ci-pnpm-verification-pilot.yml'}
+          for path, digest in expected.items():
+              committed = subprocess.check_output(['git', 'show', 'HEAD:' + path])
+              assert hashlib.sha256(committed).hexdigest() == digest, path
+              checkout = Path(path).read_bytes()
+              if path.endswith('.cjs') and checkout == committed.replace(b'\n', b'\r\n'):
+                  Path(path).write_bytes(committed)
+              assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest, path
+              original = subprocess.check_output(['git', 'show', source + ':' + path])
+              assert hashlib.sha256(original).hexdigest() == before[path], path
+          output = Path('diagnostic-results')
+          output.mkdir(exist_ok=True)
+          (output / 'source-receipt.json').write_text(json.dumps({'source': source, 'definition': head, 'changedPaths': changed, 'sourceBeforeSha256': before, 'sourceAfterSha256': expected}, indent=2) + '\n')
+          PYTHON
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          persist-native-cache: 'false'
+      - name: Record actual Node executable
+        run: node -e "const fs=require('node:fs');const crypto=require('node:crypto');fs.writeFileSync('diagnostic-results/node.json',JSON.stringify({version:process.version,executable:process.execPath,sha256:crypto.createHash('sha256').update(fs.readFileSync(process.execPath)).digest('hex')}))"
+      - name: Run all nine native and six installer cases once
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          & node node_modules/vitest/vitest.mjs run --config config/vitest.config.ts --maxWorkers=4 src/main/windows/windows-pty-job.win32.test.ts config/scripts/node-pty-windows-pty-teardown-patch.test.mjs --reporter=default --reporter=json --outputFile=diagnostic-results/windows-report.json 2>&1 | Tee-Object -FilePath diagnostic-results/windows-console.log
+          $diagnosticExit = $LASTEXITCODE
+          @{ exitCode = $diagnosticExit } | ConvertTo-Json | Set-Content diagnostic-results/windows-command.json
+          exit $diagnosticExit
+      - name: Preserve Windows raw results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-native-observation-${{ github.run_attempt }}
+          path: diagnostic-results/
+          retention-days: 14
+          if-no-files-found: warn
+
+  linux-x11:
+    name: Linux X11 IME candidate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact reviewed source and six-file definition
+        id: candidate
+        shell: bash
+        run: |
+          python - <<'PYTHON'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          source = '0615679162a1249631cebf2cc0e2d2c989660b1d'
+          expected = {'src/renderer/src/lib/ime-composition-keyboard-event.ts': 'c3f1c3bf5465d82f36077154d5d0da986321d7ddc66e8341f7368ae269d267b2', 'src/renderer/src/lib/ime-text-field.tsx': '7ab469999ad3818057537e576f65dd270082c450351f3c5c8ea505fc436ff73b', 'src/renderer/src/lib/ime-text-field.test.tsx': 'da2262982ef6960c9628a7a3cc8d01d9e9c6d249a43514e2e223350c28929e17', 'src/renderer/src/components/sidebar/WorktreeMetaDialog.test.tsx': 'b31cbddc02b194b0017349f2f9d11ab73d3fabc195a218cea71de84e69266aa1', 'config/scripts/windows-pty-pre-ready-teardown.cjs': 'c3221f102acd1b575559f2db40968baf34f3d23400d4f8277bfa320dfcf2803f'}
+          before = {'src/renderer/src/lib/ime-composition-keyboard-event.ts': '6ecd922b4e19610a6c5d00a9ca7e9c90fad5a96931677df12561c7338afeecd2', 'src/renderer/src/lib/ime-text-field.tsx': '507f4414b2ccf848b1dbc9e9ff5659236f2ffa2d63b766be1178d6a6722362b8', 'src/renderer/src/lib/ime-text-field.test.tsx': '1948c5a7d95a4740d73b60a8620fb09a88f23ef3d20e964c16ce27aab27c7909', 'src/renderer/src/components/sidebar/WorktreeMetaDialog.test.tsx': '3aa34884d8bfe30ddebc487cf59db7c5a10d22f3ff073cfa0fbd2f3dbca82e74', 'config/scripts/windows-pty-pre-ready-teardown.cjs': '2e0d53dfe7be57b279d163382037703cdd157598bf651719f5c151bb17ede5d4'}
+          assert os.environ['SOURCE_SHA'] == source
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert head == os.environ['DEFINITION_SHA']
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD^'], text=True).strip() == source
+          changed = subprocess.check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD^', 'HEAD'], text=True).splitlines()
+          assert set(changed) == set(expected) | {'.github/workflows/ci-pnpm-verification-pilot.yml'}
+          for path, digest in expected.items():
+              committed = subprocess.check_output(['git', 'show', 'HEAD:' + path])
+              assert hashlib.sha256(committed).hexdigest() == digest, path
+              checkout = Path(path).read_bytes()
+              if path.endswith('.cjs') and checkout == committed.replace(b'\n', b'\r\n'):
+                  Path(path).write_bytes(committed)
+              assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest, path
+              original = subprocess.check_output(['git', 'show', source + ':' + path])
+              assert hashlib.sha256(original).hexdigest() == before[path], path
+          output = Path('diagnostic-results')
+          output.mkdir(exist_ok=True)
+          (output / 'source-receipt.json').write_text(json.dumps({'source': source, 'definition': head, 'changedPaths': changed, 'sourceBeforeSha256': before, 'sourceAfterSha256': expected}, indent=2) + '\n')
+          PYTHON
+      - name: Install native build and IME tools
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y
+          build-essential dbus-x11 dconf-gsettings-backend ibus ibus-hangul
+          libglib2.0-bin python3 xdotool xfwm4 xvfb
+      - uses: ./.github/actions/install-node-dependencies
+        id: install
+        with:
+          native-runtime: node
+          persist-native-cache: 'false'
+          cache-electron-package: 'true'
+      - name: Install Electron package binary for unit tests
+        run: node config/scripts/install-electron-package-binary.mjs
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: config/.bun-version
+      - name: Run changed fields and existing raw-hook guards once
+        run: |
+          set +e
+          node config/scripts/run-vitest.mjs run --config config/vitest.config.ts --maxWorkers=4 src/renderer/src/lib/ime-text-field.test.tsx src/renderer/src/components/sidebar/WorktreeMetaDialog.test.tsx src/renderer/src/lib/ime-composition-keyboard-event.test.ts --reporter=default --reporter=json --outputFile=diagnostic-results/ime-unit-report.json 2>&1 | tee diagnostic-results/ime-unit-console.log
+          diagnostic_exit=${PIPESTATUS[0]}
+          printf '{"exitCode":%s}\n' "$diagnostic_exit" > diagnostic-results/ime-unit-command.json
+          exit "$diagnostic_exit"
+      - name: Prepare original Electron runtime
+        id: electron
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.candidate.outcome == 'success' }}
+        uses: ./.github/actions/prepare-native-runtime
+        with:
+          native-runtime: electron
+          node-version: ${{ steps.install.outputs.node-version }}
+          persist-native-cache: 'false'
+      - name: Build Electron app for E2E
+        id: build
+        if: ${{ !cancelled() && steps.electron.outcome == 'success' }}
+        run: pnpm exec electron-vite build --mode e2e
+      - name: Run deterministic terminal IME boundary tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          set +e
+          xvfb-run --auto-servernum env SKIP_BUILD=1 ORCA_E2E_FORWARD_APP_LOGS=1 pnpm run test:e2e tests/e2e/terminal-ime-exact-byte.spec.ts --workers=1 2>&1 | tee diagnostic-results/deterministic-ime-console.log
+          diagnostic_exit=${PIPESTATUS[0]}
+          printf '{"exitCode":%s}\n' "$diagnostic_exit" > diagnostic-results/deterministic-ime-command.json
+          exit "$diagnostic_exit"
+      - name: Run native IBus Hangul exact-byte tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          SKIP_BUILD: '1'
+        run: |
+          set +e
+          pnpm run test:e2e:terminal-ime-native 2>&1 | tee diagnostic-results/native-ime-console.log
+          diagnostic_exit=${PIPESTATUS[0]}
+          printf '{"exitCode":%s}\n' "$diagnostic_exit" > diagnostic-results/native-ime-command.json
+          exit "$diagnostic_exit"
+      - name: Preserve X11 raw results and existing IME evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-x11-ime-candidate-${{ github.run_attempt }}
+          path: |
+            diagnostic-results/
+            test-results/
+          retention-days: 14
+          if-no-files-found: warn
