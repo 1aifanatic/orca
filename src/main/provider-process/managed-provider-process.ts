@@ -10,6 +10,8 @@ import {
   type ProviderProcessTeardownVerdict
 } from './provider-process-teardown'
 import type { DescendantTreeVerdict } from '../pty-descendant-exit-verification'
+import { isMissingProviderExecutable } from './provider-executable-missing'
+import { supervisedProviderSpawnFailure } from './provider-spawn-failure-report'
 import {
   acceptProviderRootExit,
   closeProviderProcess,
@@ -52,6 +54,9 @@ export type ManagedProviderProcess = {
   /** The last close that ran the ladder; the already-exited answer only when none did. */
   readonly lastCloseResult: ProviderProcessCloseResult | null
   readonly exitPromise: Promise<void>
+  /** The provider's own executable was not found: a direct spawn's ENOENT, or the one a
+   *  supervisor reported before exiting. */
+  readonly executableMissing: boolean
   /** The last 8 KiB of stderr, which the managed process drains so the child never blocks on it. */
   stderrTail(): string
   onExit(listener: (exit: ProviderProcessExit) => void): void
@@ -87,6 +92,7 @@ export function spawnManagedProviderProcess(
   const listeners = new Set<(exit: ProviderProcessExit) => void>()
   let observed: ProviderProcessExit | null = null
   let spawnFailed = false
+  let spawnError: unknown = null
   let lastCloseResult: ProviderProcessCloseResult | null = null
   const exitProof = new RetryableProcessExitProof(options.acceptClose ?? acceptProviderRootExit)
   let stderrTail = ''
@@ -114,8 +120,9 @@ export function spawnManagedProviderProcess(
     listeners.clear()
   }
   child.on('exit', (code, signal) => observeExit({ code, signal, processless: false }))
-  child.on('error', () => {
+  child.on('error', (error) => {
     spawnFailed ||= child.pid === undefined
+    spawnError ??= error
   })
   child.on('close', (code, signal) => {
     const processless = spawnFailed && child.pid === undefined
@@ -140,6 +147,12 @@ export function spawnManagedProviderProcess(
     },
     get rootExitObserved() {
       return observed !== null && !observed.processless
+    },
+    get executableMissing() {
+      const failure =
+        spawnError ??
+        (observed ? supervisedProviderSpawnFailure(observed.code, stderrTail)?.error : null)
+      return isMissingProviderExecutable(failure, launch.command)
     },
     stderrTail: () => stderrTail,
     get lastCloseResult() {

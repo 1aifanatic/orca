@@ -4,6 +4,7 @@
 // Every way the start can fail (exit, auth, a foreign session id) faults the published session
 // through its exit path; one that stops making progress is ended by the host's startup limit.
 
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import type {
   StructuredAgentSessionOptionsSkippedEvent,
   StructuredAgentSessionStartedEvent
@@ -78,6 +79,7 @@ export async function readClaudeStartupFacts(input: {
   providerSessionId: string
   startup: Pick<ClaudeSessionStartup, 'answered'>
   resumesTranscript: boolean
+  account?: AgentSessionAccountKind
   requestTimeoutMs: number | undefined
   emit: (event: ClaudeStructuredSessionEvent) => void
 }): Promise<ClaudeInitializeFacts> {
@@ -85,7 +87,7 @@ export async function readClaudeStartupFacts(input: {
   const initialization = await Promise.race([
     input.connection.initializationResult().then((result) => {
       input.startup.answered = true
-      const authError = claudeInitializationAuthError(result)
+      const authError = claudeInitializationAuthError(result, input.account)
       if (authError) {
         throw authError
       }

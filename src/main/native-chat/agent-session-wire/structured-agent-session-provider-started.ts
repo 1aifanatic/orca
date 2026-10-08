@@ -65,6 +65,7 @@ export async function settleStructuredAgentSessionProviderStarted(
     }
     context.runtimeState.startupAttempts.ready(event.sessionId, child)
     const delivered = context.wakeDelivery(event.sessionId)
+    noteStructuredAgentSessionProviderStarted(context.deps, event.sessionId)
     context.publishStatus?.(event.sessionId)
     return { delivered }
   })
@@ -73,6 +74,18 @@ export async function settleStructuredAgentSessionProviderStarted(
   }
   // Not awaited: the adapter's next event may be what the handover itself waits on.
   void started.delivered.then(() => persistReportedOptions(context, event, admitted))
+}
+
+/** A proven start shows the agent's program exists and may mean a sign-in was fixed, so the
+ *  catalog's held reason is re-checked by the next read's probe sooner; the probe decides. */
+export function noteStructuredAgentSessionProviderStarted(
+  deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'modelCatalog'>,
+  sessionId: string
+): void {
+  const record = deps.store.getRecord(sessionId)
+  if (record) {
+    deps.modelCatalog?.providerStarted(record)
+  }
 }
 
 /** What a ready child reports later, such as a read that came after its start: persisted as the
