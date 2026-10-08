@@ -96,10 +96,11 @@ async function runVerifyAdminPost(respond) {
       { env: { ...process.env, RUNNER_TEMP: runnerTemp, ORCA_RELAY_ADMIN_ID_TOKEN: 't' } }
     )
     let stdout = ''
+    let stderr = ''
     child.stdout.on('data', (chunk) => { stdout += chunk })
-    child.stderr.resume()
+    child.stderr.on('data', (chunk) => { stderr += chunk })
     const code = await new Promise((resolve) => child.on('close', resolve))
-    return { code, stdout, calls, elapsedMs: Date.now() - startedAt }
+    return { code, stdout, stderr, calls, elapsedMs: Date.now() - startedAt }
   } finally {
     server.close()
     rmSync(runnerTemp, { recursive: true, force: true })
@@ -112,7 +113,7 @@ test('the verify read recovers when the cell comes back inside the retry window'
   const result = await runVerifyAdminPost((elapsedMs) =>
     elapsedMs < 2_500 ? UNHEALTHY : { status: 200, body: '{"ok":true}' }
   )
-  assert.equal(result.code, 0)
+  assert.equal(result.code, 0, result.stderr)
   assert.equal(result.stdout, '{"ok":true}')
   // The old three-retry budget would have given up here.
   assert.ok(result.calls > 3, `calls ${result.calls}`)
@@ -121,7 +122,7 @@ test('the verify read recovers when the cell comes back inside the retry window'
 test('the verify read still fails a cell that stays down past the window', async () => {
   const result = await runVerifyAdminPost(() => UNHEALTHY)
   assert.notEqual(result.code, 0)
-  assert.ok(result.elapsedMs >= 4_000, `gave up after ${result.elapsedMs} ms`)
+  assert.ok(result.elapsedMs >= 4_000, `gave up after ${result.elapsedMs} ms: ${result.stderr}`)
   assert.ok(result.elapsedMs < 8_000, `bounded at ${result.elapsedMs} ms`)
 })
 
