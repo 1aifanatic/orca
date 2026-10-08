@@ -799,6 +799,15 @@ describe('the view the tab opens in', () => {
     expect(runtime.published[0]?.viewMode).toBe('terminal')
     expect(terminalOptions(runtime)).toMatchObject({ viewMode: 'terminal' })
   })
+
+  it('publishes a terminal fallback in terminal view while Chat UI is on', async () => {
+    const runtime = hostWithWindow({ settings: { experimentalNativeChat: true } })
+
+    await replayLaunch(runtime, { agent: 'gemini' }, CLI)
+
+    expect(runtime.published[0]?.viewMode).toBe('terminal')
+    expect(terminalOptions(runtime)).toMatchObject({ viewMode: 'terminal' })
+  })
 })
 
 it('hands the window the prompt, so a pane whose agent did not start can offer to copy it', async () => {

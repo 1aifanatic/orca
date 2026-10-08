@@ -20,8 +20,6 @@ import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import type { LaunchSource } from '../../../shared/telemetry-events'
 import { resolveAgentLaunchExecutionContext } from '@/lib/launch-agent-execution-context'
-import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat/native-chat-launch-session-options'
-import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
 import { launchStructuredAgentFromNewTab } from '@/lib/launch-agent-in-new-tab-structured-route'
 import type { StructuredAgentLaunchSettlement } from '@/lib/structured-agent-launch-settlement'
 import type { StructuredLaunchTerminal } from '@/lib/structured-agent-session-launch-admission'
@@ -149,8 +147,8 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
   const hasPrompt = trimmedPrompt.length > 0
   const isFollowupPath = TUI_AGENT_CONFIG[agent].promptInjectionMode === 'stdin-after-start'
   const workspaceKind = workspaceKindForWorktreeId(worktreeId)
-  // Why: the remote host can't infer this client's draft/default view choice, so decide it here for paired tabs too.
-  const viewModePromptDelivery =
+  // Why: a followup-path agent gets its prompt pasted unsubmitted after start, so route it as a draft.
+  const routePromptDelivery =
     hasPrompt && isFollowupPath && promptDelivery === 'auto-submit' ? 'draft' : promptDelivery
   const startupPlanBase = {
     agent,
@@ -159,8 +157,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     shell: queuedShell,
     isRemote,
     agentArgs: effectiveAgentArgs,
-    agentEnv,
-    sessionOptions: resolveInitialNativeChatSessionOptions(store.settings, { agent })
+    agentEnv
   }
   const { startupPlan, pasteDraftAfterLaunch, submitPastedPrompt } = planLaunchAgentStartupPrompt({
     base: startupPlanBase,
@@ -180,9 +177,8 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     agent,
     workspace: { kind: workspaceKind, worktreeId },
     prompt: trimmedPrompt,
-    promptDelivery: viewModePromptDelivery,
+    promptDelivery: routePromptDelivery,
     tuiCustomization: { cwd: initialCwd },
-    initialSessionOptions: startupPlan.sessionOptions,
     onPromptDelivered,
     ...(args.promptKeptByCaller ? { promptKeptByCaller: true as const } : {})
   })
@@ -255,7 +251,6 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       prompt: trimmedPrompt,
       ...(agentArgs !== undefined ? { agentArgs } : {}),
       ...(initialCwd?.trim() ? { cwd: initialCwd } : {}),
-      ...(startupPlan.sessionOptions ? { sessionOptions: startupPlan.sessionOptions } : {}),
       // The same source main's window stamps on its own launches.
       launchSource: launchSource ?? 'tab_bar_quick_launch',
       quickCommandLabel,
@@ -273,14 +268,12 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     }
   }
   // Why: queue startup BEFORE TerminalPane mounts — it snapshots pendingStartupByTabId in useState on first render.
-  // Why: followup path pastes an unsubmitted draft, so gate the initial chat view like a draft launch, not auto-submit.
   const tab = store.createTab(worktreeId, groupId, undefined, {
     launchAgent: agent,
     quickCommandLabel,
     ...(pendingActivationSpawn ? { pendingActivationSpawn: true } : {}),
     ...(activate === false ? { activate: false } : {})
   })
-  seedNativeChatAppliedSessionOptions(tab.id, agent, startupPlan.sessionOptions)
   if (initialCwd?.trim()) {
     // Why: queue before mount so local, WSL, and SSH continuations preserve their subdirectory.
     store.queueTabInitialCwd(tab.id, initialCwd)
@@ -291,7 +284,6 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     launchConfig: startupPlan.launchConfig,
     launchAgent: agent,
     ...(agentArgs !== undefined ? { agentArgsOverride: agentArgs } : {}),
-    ...(startupPlan.sessionOptions ? { sessionOptions: startupPlan.sessionOptions } : {}),
     ...(startupPlan.startupCommandDelivery
       ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
       : {}),

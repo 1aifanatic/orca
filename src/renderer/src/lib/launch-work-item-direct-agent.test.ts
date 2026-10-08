@@ -76,35 +76,18 @@ const settings = {
 }
 
 describe('buildDirectWorkItemAgentStartupPlan', () => {
-  it('omits native-chat preferences when the new workspace opens in terminal mode', () => {
+  it('keeps Chat UI model preferences out of the terminal startup', () => {
     const result = buildDirectWorkItemAgentStartupPlan({
       agent: 'codex',
       draftContent: 'Review issue 42',
       promptDelivery: 'draft',
-      settings: { ...settings, experimentalNativeChat: false },
-      launchPlatform: 'darwin',
-      nativeChatTranscriptIsLocalReadable: true
+      settings,
+      launchPlatform: 'darwin'
     })
 
     expect(result.startupPlan?.launchCommand).not.toContain("'-m'")
+    expect(result.startupPlan?.launchCommand).not.toContain('model_reasoning_effort=')
     expect(result.startupPlan?.sessionOptions).toBeUndefined()
-  })
-
-  it('applies native-chat preferences when the new workspace opens in chat', () => {
-    const result = buildDirectWorkItemAgentStartupPlan({
-      agent: 'codex',
-      draftContent: 'Review issue 42',
-      promptDelivery: 'draft',
-      settings: { ...settings, experimentalNativeChat: true },
-      launchPlatform: 'darwin',
-      nativeChatTranscriptIsLocalReadable: true
-    })
-
-    expect(result.startupPlan?.launchCommand).toContain("'-m' 'gpt-5.2-codex'")
-    expect(result.startupPlan?.sessionOptions).toEqual({
-      model: 'gpt-5.2-codex',
-      effort: 'medium'
-    })
   })
 })
 
@@ -143,8 +126,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
       draftContent: 'Fix the broken checks',
       promptDelivery: 'draft',
       settings: withGlobalArgs,
-      launchPlatform: 'darwin',
-      nativeChatTranscriptIsLocalReadable: true
+      launchPlatform: 'darwin'
     })
 
     expect(result.startupPlan?.launchCommand).toContain("'--sandbox' 'danger-full-access'")
@@ -157,8 +139,7 @@ describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => 
       draftContent: 'Fix the broken checks',
       promptDelivery: 'draft',
       settings: withGlobalArgs,
-      launchPlatform: 'darwin',
-      nativeChatTranscriptIsLocalReadable: true
+      launchPlatform: 'darwin'
     })
 
     expect(result.startupPlan?.launchCommand).toContain("'--model' 'gpt-5'")
