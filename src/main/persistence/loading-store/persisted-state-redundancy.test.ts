@@ -248,4 +248,15 @@ describe('persisted-state redundancy', () => {
       )
     }
   })
+
+  it("a host partition write does not keep a copy of local's browser history", () => {
+    const store = openStore(tempDataFile())
+    const history = browserHistory()
+    store.setWorkspaceSession(session({ browserUrlHistory: history }))
+
+    store.setWorkspaceSession(session({ browserUrlHistory: history }), 'runtime:env-0')
+
+    expect(store.getWorkspaceSession('runtime:env-0')).not.toHaveProperty('browserUrlHistory')
+    expect(store.getWorkspaceSession().browserUrlHistory).toEqual(history)
+  })
 })
