@@ -198,7 +198,8 @@ function parseObservationFacts(
 }
 
 /** A sparse observation never erases what the record knows (a roster omission knows only "it is
- *  gone"). `run` is the stored record only when this observation continues its invocation. */
+ *  gone"), except that a changed agent type clears the prior model. `run` is the stored record
+ *  only when this observation continues its invocation. */
 function mergeObservationFacts(
   said: AgentChildWorkFacts,
   prior: AgentChildWorkRecord | undefined,

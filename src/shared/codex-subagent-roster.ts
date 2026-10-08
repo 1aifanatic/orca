@@ -44,10 +44,8 @@ export function upsertCodexSubagent(
   const model = normalizeOptionalField(fields.model, AGENT_MODEL_MAX_LENGTH)
   const existing = roster.get(normalizedId)
   if (existing) {
-    const identity = mergeAgentChildIdentity(existing, { agentType, model })
-    existing.agentType = identity.agentType
+    Object.assign(existing, mergeAgentChildIdentity(existing, { agentType, model }))
     existing.description = description ?? existing.description
-    existing.model = identity.model
     existing.state = fields.state
     return
   }
