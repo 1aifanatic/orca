@@ -235,6 +235,11 @@ it.each([
   async (_name, observedAt, lastProvenAliveAt) => {
     const long = 'x'.repeat(1025)
     const running = { turnId: 'old', state: 'running' }
+    const laterContextUsage = {
+      window: { tokens: 100, capturedAt: 1, laterWindowField: true },
+      used: { kind: 'unknown', capturedAt: 1, laterUsedField: true },
+      laterUsageField: { kept: true }
+    }
     const extensionBodies = [
       { ...running, kind: 'tool-call' },
       { ...running, providerTurnId: '' },
@@ -245,7 +250,7 @@ it.each([
       {
         ...running,
         providerTurnId: 'provider',
-        contextUsage: { window: { tokens: 100, capturedAt: 1, extra: true } }
+        contextUsage: laterContextUsage
       },
       { ...running, laterField: { kind: 'tool-call' } }
     ]
@@ -323,6 +328,7 @@ it.each([
       }
     }
     expect(journal.itemBody('orca:extension-7')).toHaveProperty('laterField', { kind: 'tool-call' })
+    expect(journal.itemBody('orca:extension-6')).toHaveProperty('contextUsage', laterContextUsage)
     expect(journal.activeTurnId()).toBeNull()
     expect(journal.snapshot().items).toHaveLength(inputs.length + 1)
     const ended = journal.snapshot()

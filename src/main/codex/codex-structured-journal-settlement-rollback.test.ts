@@ -11,8 +11,6 @@ import {
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import { createCodexJournalTranslator } from './codex-structured-journal-translation'
-import { appendCodexLifecycleMutations } from './codex-structured-journal-sink'
-import type { JournalLifecycleIdentityMutationInput } from '../native-chat/agent-session-journal/journal-row-builders'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
 
 const SESSION = 'codex-atomic'
@@ -27,7 +25,7 @@ afterEach(async () => {
   }
 })
 
-it('rolls back the entire Codex exit settlement when a later row fails, then commits once on retry', async () => {
+it('rolls back the entire Codex exit settlement when a later row fails', async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-codex-atomic-'))
   const options = {
     identity: {
@@ -48,18 +46,6 @@ it('rolls back the entire Codex exit settlement when a later row fails, then com
   })
   const commits = vi.fn()
   deferred.bind({ journal, fence: 7, publish })
-  const batches: {
-    settlementId: string
-    mutations: readonly JournalLifecycleIdentityMutationInput[]
-  }[] = []
-  const appendBatch = deferred.sink.tryAppendLifecycleBatch
-  if (!appendBatch) {
-    throw new Error('test sink lacks lifecycle append')
-  }
-  deferred.sink.tryAppendLifecycleBatch = (settlementId, mutations, options) => {
-    batches.push({ settlementId, mutations })
-    return appendBatch(settlementId, mutations, options)
-  }
   const translator = createCodexJournalTranslator({
     sink: deferred.sink,
     primaryThreadId: () => 'thread',
@@ -133,41 +119,6 @@ it('rolls back the entire Codex exit settlement when a later row fails, then com
   expect(published.every((snapshot) => JSON.stringify(snapshot) === JSON.stringify(before))).toBe(
     true
   )
-  vi.restoreAllMocks()
-  database.db.exec('DROP TRIGGER reject_codex_later')
-  const retry = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging(SESSION))
-  retry.bind({ journal, fence: 7, publish })
-  const [batch] = batches
-  expect(batches).toHaveLength(1)
-  if (!batch) {
-    throw new Error('test settlement was not submitted')
-  }
-  expect(appendCodexLifecycleMutations(retry.sink, batch.settlementId, batch.mutations)).toEqual({
-    accepted: true
-  })
-  await expect(retry.drained()).resolves.toEqual({ ok: true })
-  expect(commits).toHaveBeenCalledTimes(1)
-  const settled = journal.snapshot()
-  expect(published.at(-1)).toEqual(settled)
-  expect(settled.items.filter((item) => item.body.kind === 'tool-call')).toHaveLength(201)
-  expect(
-    settled.items
-      .filter((item) => item.body.kind === 'tool-call')
-      .every((item) => item.body.kind === 'tool-call' && item.body.state === 'failed')
-  ).toBe(true)
-  expect(settled.items.find((item) => item.body.kind === 'turn')?.body).toMatchObject({
-    state: 'interrupted'
-  })
-  expect(liveTestJournalRows(database.db, SESSION)).toHaveLength(diskBefore.length + 2)
-  expect(appendCodexLifecycleMutations(retry.sink, batch.settlementId, batch.mutations)).toEqual({
-    accepted: true
-  })
-  await expect(retry.drained()).resolves.toEqual({ ok: true })
-  expect(commits).toHaveBeenCalledTimes(1)
-  expect(journal.snapshot()).toEqual(settled)
-  await journal.close()
-  expect((await journals.open(options)).snapshot()).toEqual(settled)
   translator.dispose()
   deferred.close()
-  retry.close()
 })

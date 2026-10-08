@@ -72,14 +72,18 @@ describe('agentJournalTurnBody', () => {
       kind: 'tool-call',
       laterField: { kept: true },
       providerTurnId: '',
-      contextUsage: { window: { tokens: 10, capturedAt: 1 }, unexpected: true }
+      contextUsage: {
+        window: { tokens: 10, capturedAt: 1, laterWindowField: true },
+        used: { kind: 'unknown' as const, capturedAt: 1, laterUsedField: true },
+        laterUsageField: { kept: true }
+      }
     }
     const before = structuredClone(saved)
     expect(agentJournalTurnBody(saved)).toEqual({
       kind: 'turn',
       ...turn,
       laterField: { kept: true },
-      contextUsage: { window: { tokens: 10, capturedAt: 1 } }
+      contextUsage: saved.contextUsage
     })
     expect(saved).toEqual(before)
   })
