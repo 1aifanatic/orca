@@ -17648,6 +17648,7 @@
       "BrowserPane": {
         "streamConnectionLost": "Lost connection to the remote server.",
         "streamConnectionUnreachable": "Cannot reach the remote server.",
+        "streamBrowserUnavailable": "The remote browser is unavailable. Check its setup on the server.",
         "streamRestartFailed": "Failed to restart remote browser stream.",
         "streamCapabilityUnsupported": "The selected runtime does not support remote browser streaming."
       },

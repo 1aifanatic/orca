@@ -53,6 +53,8 @@ export const LAYOUT_ORACLE_HEADLESS_E2E_SPEC = 'tests/e2e/workspace-layout-oracl
 export const ORCAD_IDLE_EXIT_E2E_SPEC = 'tests/e2e/ssh-orcad-idle-exit.spec.ts'
 export const ORCAD_BROWSER_CAPABILITIES_E2E_SPEC =
   'tests/e2e/ssh-orcad-browser-capabilities.spec.ts'
+export const ORCAD_BROWSER_SERVICE_STATUS_E2E_SPEC =
+  'tests/e2e/ssh-orcad-browser-service-status.spec.ts'
 export const DEDICATED_E2E_SPECS = [
   ...DOCKER_SSH_E2E_SPECS,
   NODE_NETWORK_E2E_SPEC,
@@ -63,7 +65,8 @@ export const DEDICATED_E2E_SPECS = [
   ORCAD_AUTO_CONVERT_E2E_SPEC,
   WINDOWS_MISSING_APPDATA_E2E_SPEC,
   ORCAD_IDLE_EXIT_E2E_SPEC,
-  ORCAD_BROWSER_CAPABILITIES_E2E_SPEC
+  ORCAD_BROWSER_CAPABILITIES_E2E_SPEC,
+  ORCAD_BROWSER_SERVICE_STATUS_E2E_SPEC
 ]
 const dedicatedSpecs = new Set(DEDICATED_E2E_SPECS)
 const dockerSpecs = new Set(DOCKER_SSH_E2E_SPECS)
@@ -106,7 +109,8 @@ export function classifyE2eJobs(input, sshSourceChanged = 'false') {
           spec === LAYOUT_ORACLE_HEADLESS_E2E_SPEC ||
           spec === ORCAD_AUTO_CONVERT_E2E_SPEC ||
           spec === ORCAD_IDLE_EXIT_E2E_SPEC ||
-          spec === ORCAD_BROWSER_CAPABILITIES_E2E_SPEC
+          spec === ORCAD_BROWSER_CAPABILITIES_E2E_SPEC ||
+          spec === ORCAD_BROWSER_SERVICE_STATUS_E2E_SPEC
       )
   }
 }
