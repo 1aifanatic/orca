@@ -5,12 +5,13 @@
  */
 import { isSshCommandExitError } from './ssh-relay-exec-command'
 import { isSshSessionLimitError } from './ssh-session-limit-error'
-import { SystemSshCommandExitError } from './system-ssh-operation-lifecycle'
+import {
+  SYSTEM_SSH_TRANSPORT_EXIT_CODE,
+  SystemSshCommandExitError
+} from './system-ssh-operation-lifecycle'
 
 /** SFTP statuses the server sent about the request itself; NO_CONNECTION/CONNECTION_LOST are transport. */
 const ANSWERED_SFTP_STATUSES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 8])
-/** OpenSSH's own exit status for a connection-level failure. */
-const SYSTEM_SSH_TRANSPORT_EXIT = 255
 
 /** A host-side step that answered with something other than success, carrying what it said. */
 export class RelayHostAnsweredError extends Error {
@@ -34,7 +35,7 @@ export function isAnsweredHostFailure(err: unknown): boolean {
     return false
   }
   if (err instanceof SystemSshCommandExitError) {
-    return err.exitCode !== null && err.exitCode !== SYSTEM_SSH_TRANSPORT_EXIT
+    return err.exitCode !== null && err.exitCode !== SYSTEM_SSH_TRANSPORT_EXIT_CODE
   }
   return (
     err instanceof RelayHostAnsweredError || isSshCommandExitError(err) || isSftpStatusError(err)

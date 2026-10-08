@@ -1,5 +1,5 @@
 import { DirectoryTransferBudget } from './ssh-directory-transfer-budget'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { lstat, opendir } from 'node:fs/promises'
 import { join as pathJoin } from 'node:path'
 import { pipeline } from 'node:stream/promises'
@@ -20,6 +20,8 @@ import {
   throwIfAborted,
   waitForChannelClose,
   waitForProcess,
+  SYSTEM_SSH_TRANSPORT_EXIT_CODE,
+  SystemSshCommandExitError,
   type ProcessResult
 } from './system-ssh-operation-lifecycle'
 import {
@@ -80,11 +82,12 @@ export async function uploadDirectoryViaSystemSsh(
         killProcess(tarCreate)
         killProcess(sshExtract)
       },
-      Promise.all([
+      settleUploadPipeline(
+        tarCreate,
         waitForProcess(tarCreate, 'local tar relay upload'),
-        waitForProcess(sshExtract, 'system ssh relay upload'),
+        waitForProcess(sshExtract, 'system ssh relay upload', 'remote'),
         pipeline(tarCreate.stdout!, sshExtract.stdin!)
-      ]).then(([tar, ssh]) => [tar, ssh] as const)
+      )
     )
   } catch (err) {
     killProcess(tarCreate)
@@ -98,6 +101,41 @@ export async function uploadDirectoryViaSystemSsh(
   if (sshResult?.stderr.trim()) {
     console.warn(`[ssh-system] ${sshResult.label} stderr: ${sshResult.stderr.trim()}`)
   }
+}
+
+/**
+ * Waits for all three, then names the cause. A remote exit the host answered wins when local tar
+ * finished or only died of the broken pipe; otherwise a local tar failure is the cause, since the
+ * remote tar only saw its truncated stream. A broken pipe alone is a symptom of either.
+ */
+async function settleUploadPipeline(
+  tarProcess: ChildProcess,
+  local: Promise<ProcessResult>,
+  remote: Promise<ProcessResult>,
+  pipe: Promise<void>
+): Promise<readonly [ProcessResult, ProcessResult]> {
+  const [tar, ssh, piped] = await Promise.allSettled([local, remote, pipe])
+  const remoteAnswered =
+    ssh.status === 'rejected' &&
+    ssh.reason instanceof SystemSshCommandExitError &&
+    ssh.reason.exitCode !== null &&
+    ssh.reason.exitCode !== SYSTEM_SSH_TRANSPORT_EXIT_CODE
+  if (
+    ssh.status === 'rejected' &&
+    (tar.status === 'fulfilled' || (remoteAnswered && tarProcess.signalCode !== null))
+  ) {
+    throw ssh.reason
+  }
+  if (tar.status === 'rejected') {
+    throw tar.reason
+  }
+  if (ssh.status === 'rejected') {
+    throw ssh.reason
+  }
+  if (piped.status === 'rejected') {
+    throw piped.reason
+  }
+  return [tar.value, ssh.value]
 }
 
 export async function writeFileViaSystemSsh(

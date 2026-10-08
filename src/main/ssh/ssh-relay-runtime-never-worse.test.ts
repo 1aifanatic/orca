@@ -171,6 +171,40 @@ const NAMED: readonly HostCase[] = [
     hostNode: 'install_fails'
   },
   {
+    // The warm check runs the cached runtime, so this is a refusal before launch, not a hung relay.
+    id: 'cached runtime lost a library between connects',
+    os: 'linux',
+    a: 'missing_lib',
+    b: 'runtime_unavailable',
+    c: 'host_node_missing',
+    hostNode: 'launch'
+  },
+  {
+    id: 'cached runtime now denied by exec policy',
+    os: 'linux',
+    a: 'noexec',
+    b: 'runtime_unavailable',
+    c: 'noexec',
+    hostNode: 'launch'
+  },
+  {
+    // System-ssh upload: the remote tar's exit 2 is typed evidence, so it steps down.
+    id: 'system-ssh upload hits ENOSPC',
+    os: 'linux',
+    a: 'install_failed',
+    b: 'runtime_unavailable',
+    c: 'install_failed',
+    hostNode: 'launch'
+  },
+  {
+    id: 'Windows system sftp refuses the runtime upload',
+    os: 'win32',
+    a: 'install_failed',
+    b: 'runtime_unavailable',
+    c: 'windows_host_unsupported',
+    hostNode: 'launch'
+  },
+  {
     id: 'unidentified libc',
     os: 'linux',
     a: 'target_unresolved',

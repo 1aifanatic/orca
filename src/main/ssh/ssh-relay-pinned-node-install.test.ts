@@ -8,6 +8,10 @@ import {
   RemoteNodeRuntimeSecurityModifiedError,
   RemoteNodeRuntimeSelfTestError
 } from './orcad-remote-node-runtime'
+import {
+  REMOTE_NODE_RUNTIME_EXIT_PREFIX,
+  REMOTE_NODE_RUNTIME_SELFTEST_FAILED
+} from './orcad-remote-node-runtime-report'
 import { ensurePinnedRelayRuntime, verifyPinnedRelayInstall } from './ssh-relay-pinned-node-install'
 import {
   PinnedRelayFallbackError,
@@ -72,6 +76,27 @@ describe('ensurePinnedRelayRuntime', () => {
     await ensurePinnedRelayRuntime(context, true)
     expect(ensureRemoteOrcadNodeRuntime).not.toHaveBeenCalled()
   })
+
+  it.each([
+    [
+      'a library removed since the install',
+      127,
+      'libatomic.so.1: cannot open shared object file',
+      'missing_lib'
+    ],
+    ['an exec policy that now denies it', 126, 'sh: node: Permission denied', 'noexec']
+  ] as const)(
+    'refuses a cached runtime that no longer runs (%s) before any launch',
+    async (_label, status, output, reason) => {
+      vi.mocked(execCommand).mockResolvedValueOnce(
+        `${REMOTE_NODE_RUNTIME_SELFTEST_FAILED}\n${REMOTE_NODE_RUNTIME_EXIT_PREFIX}${status}\n${output}\n`
+      )
+      const failure = await ensurePinnedRelayRuntime(context, true).catch((e: unknown) => e)
+      expect(failure).toMatchObject({ reason })
+      expect(String(vi.mocked(execCommand).mock.calls[0]?.[1])).toContain('--version')
+      expect(ensureRemoteOrcadNodeRuntime).not.toHaveBeenCalled()
+    }
+  )
 
   it('reinstalls a runtime that disappeared from under an installed relay', async () => {
     vi.mocked(execCommand).mockResolvedValueOnce(REMOTE_NODE_RUNTIME_MISSING)
