@@ -37,8 +37,7 @@ import { AccountRuntimeToggle } from './StatusBarAccountControls'
 import {
   InlineUsageBars,
   InlineUsageSignInAction,
-  InlineUsageSkeleton,
-  isUnavailableInactiveUsage
+  InlineUsageSkeleton
 } from './InlineProviderUsage'
 import { ProviderDetailsMenu } from './ProviderDetailsMenu'
 import { getClaudeAccountSyncKey } from './provider-account-sync-key'
@@ -353,9 +352,7 @@ export function ClaudeSwitcherMenu({
                     ) : null}
                     {inactiveUsage?.isFetching && !inactiveUsage.rateLimits ? (
                       <InlineUsageSkeleton />
-                    ) : inactiveUsage?.rateLimits &&
-                      // Why: the sign-in note above already says this; skip the repeat.
-                      !(signInId && isUnavailableInactiveUsage(inactiveUsage.rateLimits)) ? (
+                    ) : inactiveUsage?.rateLimits ? (
                       <InlineUsageBars
                         limits={inactiveUsage.rateLimits}
                         isFetching={inactiveUsage.isFetching}
