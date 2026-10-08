@@ -699,7 +699,7 @@ describe('restart', () => {
     expect(host.handoffStatus(SESSION)).toMatchObject({ owner: 'native' })
   })
 
-  it('releases a session whose owner can never be probed, signalling nothing, and starts over', async () => {
+  it('retains an unverifiable owner until exit is proven, signalling nothing', async () => {
     await attach()
     const held = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     const stopOwnerProcess = vi.fn()
@@ -710,6 +710,17 @@ describe('restart', () => {
     )
     acquire.mockClear()
 
+    expect(await host.attach(CALLER, ensureParams(held))).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_ownership_unknown' }
+    })
+    expect(acquire).not.toHaveBeenCalled()
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      runtimeFence: held,
+      ownerProcess: { pid: 4242 },
+      deathEvidence: null
+    })
+    host.deps.probeOwner = async () => ({ outcome: 'pid-absent' })
     expect(await host.attach(CALLER, ensureParams(await staleFenceFrom(held)))).toMatchObject({
       ok: true
     })

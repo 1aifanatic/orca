@@ -62,7 +62,9 @@ export async function resolveStructuredSessionRecovery(
       probe = await stopOwnerAndReprobe(deps, record, owner.pid)
     }
   }
-  if (owner ? !isProvenDeadProbe(probe) : probe.outcome !== 'reservation-unused') {
+  const alreadyFree =
+    record.lease.claimStatus === 'released' && record.lease.reservedSpawnToken === null
+  if (owner ? !isProvenDeadProbe(probe) : !alreadyFree && probe.outcome !== 'reservation-unused') {
     return 'unresolved'
   }
   try {

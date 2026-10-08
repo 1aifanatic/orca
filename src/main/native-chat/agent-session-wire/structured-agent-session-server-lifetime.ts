@@ -13,6 +13,8 @@ import {
   isOwnerlessAgentSessionReservation
 } from '../../runtime/agent-session-lease-transitions'
 import { ownerlessReservationPastRetirementDeadline } from './structured-agent-session-reservation-retirement'
+import { restoreRetiredStructuredAgentSessionConversation } from './structured-agent-session-retired-conversation'
+import type { StructuredAgentSessionConversationOpenContext } from './structured-agent-session-conversation-open'
 
 export const STRUCTURED_AGENT_SESSION_UNANSWERED_PROMPT_MAX_AGE_MS = 24 * 60 * 60_000
 
@@ -22,7 +24,7 @@ export function createStructuredAgentSessionServerLifetime(input: {
   deliveryActive: (id: string) => boolean
   childWork: (id: string) => readonly AgentChildWorkView[] | undefined
   stopDelivery: () => void
-  restoreRetiredConversation: (sessionId: string) => Promise<void>
+  adoptOpened: StructuredAgentSessionConversationOpenContext['adoptOpened']
 }) {
   const read = (): number | null => {
     const deps = input.context().deps
@@ -134,7 +136,10 @@ export function createStructuredAgentSessionServerLifetime(input: {
                   })
                 }
               }
-              await input.restoreRetiredConversation(sessionId)
+              await restoreRetiredStructuredAgentSessionConversation(
+                { deps: current.deps, sessions: current.sessions, adoptOpened: input.adoptOpened },
+                sessionId
+              )
             })
           }
         }

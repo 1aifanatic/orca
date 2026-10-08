@@ -23,11 +23,7 @@ import {
 } from './orcad-lifecycle'
 import { parseArgs } from './orcad-command-arguments'
 import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
-import {
-  admitOrcadAutomaticStop,
-  prepareOrcadUserStop,
-  prepareOrcadStructuredWorkBoundary
-} from './orcad-structured-work-boundary'
+import * as structuredWork from './orcad-structured-work-boundary'
 import { installOrcadStopRequestListeners } from './orcad-stop-request-listener'
 import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
 import type { OrcadManagedStopContext } from '../../shared/orcad-stop-request'
@@ -342,7 +338,7 @@ async function startOrcadRuntime(
   const { publishHeadlessRuntimeGraph } = await import('../runtime/headless-runtime-graph')
   publishHeadlessRuntimeGraph(runtime)
 
-  await prepareOrcadStructuredWorkBoundary(runtime)
+  await structuredWork.prepareOrcadStructuredWorkBoundary(runtime)
 
   const bindHost = resolveOrcadBindHost(options.bind)
   const rpc = new OrcaRuntimeRpcServer({
@@ -424,8 +420,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   installOrcadStopRequestListeners(() => requestShutdown('stop request'), {
     installRoot: resolveOrcadInstallRoot(),
     managedStop: handle.managedStop,
-    admitAutomaticStop: admitOrcadAutomaticStop,
-    beforeUserStop: prepareOrcadUserStop,
+    admitAutomaticStop: structuredWork.admitOrcadAutomaticStop,
+    beforeUserStop: structuredWork.prepareOrcadUserStop,
     beforeManagedStop: prepareOrcadManagedStop
   })
   bindOrcadIdleShutdown(requestShutdown)
