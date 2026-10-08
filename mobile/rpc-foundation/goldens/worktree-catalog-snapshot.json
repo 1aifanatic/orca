@@ -4,7 +4,15 @@
   "family": "worktree.catalog-snapshot",
   "namedDeltas": [],
   "values": {
-    "15e735ce792a": {
+    "253b98015b8d": {
+      "admitted": "unadmitted",
+      "fetched": "unfetched"
+    },
+    "9270aeb7d9c6": {
+      "status": "pending",
+      "startedAt": 0
+    },
+    "9948855e8b8d": {
       "status": "fulfilled",
       "startedAt": 0,
       "settledAt": 0,
@@ -23,46 +31,9 @@
             ]
           },
           "client": "logical-client",
-          "clientGeneration": 1,
           "hostId": "host-1"
         }
       }
-    },
-    "253b98015b8d": {
-      "admitted": "unadmitted",
-      "fetched": "unfetched"
-    },
-    "91714d58a2e8": {
-      "admitted": [
-        {
-          "displayName": "One",
-          "repo": "Repo",
-          "worktreeId": "w-1"
-        }
-      ],
-      "fetched": {
-        "kind": "response",
-        "pending": {
-          "admission": {
-            "kind": "full",
-            "snapshotId": "snapshot-1",
-            "worktrees": [
-              {
-                "displayName": "One",
-                "repo": "Repo",
-                "worktreeId": "w-1"
-              }
-            ]
-          },
-          "client": "logical-client",
-          "clientGeneration": 1,
-          "hostId": "host-1"
-        }
-      }
-    },
-    "9270aeb7d9c6": {
-      "status": "pending",
-      "startedAt": 0
     },
     "9c5a8d7d6c68": {
       "name": "worktree.ps#1",
@@ -91,6 +62,33 @@
       "settlement": {
         "status": "pending",
         "startedAt": 0
+      }
+    },
+    "ab1a9ba6301c": {
+      "admitted": [
+        {
+          "displayName": "One",
+          "repo": "Repo",
+          "worktreeId": "w-1"
+        }
+      ],
+      "fetched": {
+        "kind": "response",
+        "pending": {
+          "admission": {
+            "kind": "full",
+            "snapshotId": "snapshot-1",
+            "worktrees": [
+              {
+                "displayName": "One",
+                "repo": "Repo",
+                "worktreeId": "w-1"
+              }
+            ]
+          },
+          "client": "logical-client",
+          "hostId": "host-1"
+        }
       }
     },
     "b63e233c7e15": {
@@ -164,9 +162,9 @@
           "sender": ["f47f57400b0a"],
           "payloads": ["b63e233c7e15"],
           "settlements": {
-            "fetch": "15e735ce792a"
+            "fetch": "9948855e8b8d"
           },
-          "state": "91714d58a2e8",
+          "state": "ab1a9ba6301c",
           "effects": []
         }
       }

@@ -11,12 +11,14 @@ export type WorktreeCatalogAdmission<T> =
   | { kind: 'unchanged'; snapshotId: string }
   | { kind: 'invalid' }
 
+const CATALOG_CLIENT_GENERATION = Symbol('catalog-client-generation')
+
 export type PendingWorktreeCatalog = {
   admission: WorktreeCatalogAdmission<Worktree>
   client: RpcClient
   hostId: string
   hostClockOffsetMs?: number
-  clientGeneration?: number
+  [CATALOG_CLIENT_GENERATION]?: number
 }
 
 // Why (STA-3123): a failed worktree.ps must stay distinguishable from an empty
@@ -107,7 +109,9 @@ export class WorktreeCatalogSnapshotClient {
         admission: admitWorktreeCatalogResponse<Worktree>(catalog.value, requestedSnapshotId),
         client,
         hostId,
-        ...(clientGeneration !== undefined ? { clientGeneration } : {}),
+        ...(clientGeneration !== undefined
+          ? { [CATALOG_CLIENT_GENERATION]: clientGeneration }
+          : {}),
         ...(catalog.value?.observedAt !== undefined
           ? {
               hostClockOffsetMs: Math.round((receivedAt - catalog.value.observedAt) / 1_000) * 1_000
@@ -127,7 +131,7 @@ export class WorktreeCatalogSnapshotClient {
     if (
       pending.client !== this.client ||
       pending.hostId !== this.hostId ||
-      pending.clientGeneration !== pending.client.getGeneration?.()
+      pending[CATALOG_CLIENT_GENERATION] !== pending.client.getGeneration?.()
     ) {
       return null
     }
@@ -138,7 +142,7 @@ export class WorktreeCatalogSnapshotClient {
 
     this.snapshotId = pending.admission.snapshotId
     this.hostClockOffsetMs = pending.hostClockOffsetMs
-    this.clockGeneration = pending.clientGeneration
+    this.clockGeneration = pending[CATALOG_CLIENT_GENERATION]
     if (pending.admission.kind === 'full') {
       this.confirmedWorktrees = pending.admission.worktrees
     }
