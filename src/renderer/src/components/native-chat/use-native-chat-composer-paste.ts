@@ -169,11 +169,10 @@ export function useNativeChatComposerPaste({
       // Why: snapshot the caret before the async temp-file round-trip — `caret`
       // state can move (further typing/selection) while the await is in flight.
       const caretAtPaste = caret
-      // Beside pasted text, a server too old to store the image drops it quietly, so its chip stays
-      // out of sight until the server answers; Send waits for it from the start all the same.
+      // Wait for server acceptance before minting a preview; the operation is visible from the start.
       const awaitServer = Boolean(text) && owner.kind === 'runtime-session'
       const { id: pendingId, reveal } = startImageChip(owner, imageFile, {
-        hidden: awaitServer,
+        deferPreview: awaitServer,
         canShow: () => ownerAcceptsClipboardImage(owner) && canPaste()
       })
       void (async () => {
@@ -257,8 +256,8 @@ export function useNativeChatComposerPaste({
         }
         return
       }
-      // Ownership starts before saving; a thumbnail only makes the pending chip visible.
-      const pendingId = beginPendingImageAttachment(undefined, undefined, { hidden: true })
+      // Ownership starts before saving; a thumbnail only supplies its preview.
+      const pendingId = beginPendingImageAttachment()
       if (pendingId) {
         track(pendingId, '', owner)
       }

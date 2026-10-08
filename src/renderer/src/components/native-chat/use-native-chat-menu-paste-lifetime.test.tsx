@@ -6,6 +6,7 @@ import { useNativeChatComposerPaste } from './use-native-chat-composer-paste'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
+import { nativeChatImageSendBlock } from './native-chat-image-reattach'
 import {
   clearNativeChatComposerDraftsForTests,
   hydrateNativeChatComposerDrafts,
@@ -34,6 +35,7 @@ beforeEach(async () => {
   setNativeChatComposerDraftOwnerResolver(() => draftOwner)
 })
 afterEach(async () => {
+  vi.useRealTimers()
   cleanup()
   await nativeChatComposerDraftWritesSettled()
   clearNativeChatPendingAttachmentsForTests()
@@ -139,6 +141,47 @@ const referencePastes = [
   { kind: 'local', source: 'event' },
   { kind: 'ssh', source: 'event' }
 ] as const
+
+it.each(
+  referencePastes.flatMap((paste) =>
+    [true, false].map((acceptsImages) => ({ ...paste, acceptsImages }))
+  )
+)(
+  'can abandon stalled $kind $source operations after reopen with acceptsImages=$acceptsImages',
+  async ({ kind, source, acceptsImages }) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const { view, save, thumbnail, path } = await fixture(kind, acceptsImages, source)
+    view.unmount()
+    const reopened = renderHook(() =>
+      useNativeChatComposerAttachments({
+        attachmentScopeKey: scope('menu'),
+        acceptsImages,
+        allowWithoutTarget: true,
+        caret: 0,
+        disabled: false,
+        isComposing: () => false,
+        resolveTarget: () => null,
+        textareaRef: createRef<NativeChatComposerInput>(),
+        setCaret: () => {},
+        setDraft: () => {},
+        setNotice: () => {}
+      })
+    )
+    await act(async () => vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000))
+    expect(reopened.result.current.imageAttachments).toHaveLength(1)
+    expect(nativeChatImageSendBlock(reopened.result.current.imageAttachments).holdsSend).toBe(true)
+    const id = reopened.result.current.imageAttachments[0].id
+    await act(async () => reopened.result.current.removeImageAttachment(id))
+    expect(nativeChatImageSendBlock(reopened.result.current.imageAttachments).holdsSend).toBe(false)
+    await act(async () => save.resolve(path))
+    await act(async () =>
+      thumbnail.resolve({ dataUrl: 'data:image/png;base64,AA', width: 1, height: 1 })
+    )
+    expect(nativeChatPendingAttachmentSnapshot(scope('menu'))).toEqual([])
+    expect(readNativeChatComposerDraft(scope('menu')).images).toEqual([])
+    expect(readNativeChatComposerDraft(scope('menu')).text).toBe('')
+  }
+)
 it.each(referencePastes)(
   'keeps a $kind $source paste as a reference after close',
   async ({ kind, source }) => {
@@ -146,7 +189,7 @@ it.each(referencePastes)(
     await act(async () =>
       thumbnail.resolve({ dataUrl: 'data:image/png;base64,AA', width: 1, height: 1 })
     )
-    expect(view.result.current.attachments.imageAttachments.every((chip) => chip.hidden)).toBe(true)
+    expect(view.result.current.attachments.imageAttachments).toHaveLength(1)
     view.unmount()
     await act(async () => save.resolve(path))
     expect(nativeChatPendingAttachmentSnapshot(scope('menu'))).toEqual([])
@@ -207,7 +250,7 @@ it.each(['local', 'ssh'] as const)(
 )
 
 it.each([true, false])(
-  'ends hidden operations for acceptsImages=%s on removal, deletion or failure',
+  'ends pending operations for acceptsImages=%s on removal, deletion or failure',
   async (acceptsImages) => {
     for (const end of ['remove', 'workspace', 'failure'] as const) {
       const { view, save, thumbnail, path } = await fixture('local', acceptsImages)

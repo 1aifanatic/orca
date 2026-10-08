@@ -8,11 +8,7 @@ import { nativeChatPendingAttachmentSnapshot } from './native-chat-pending-attac
 export function useNativeChatPasteLifetime(args: {
   targetKey?: string
   attachmentScopeKey?: string
-  beginPendingImageAttachment: (
-    previewUrl?: string,
-    pendingName?: string,
-    options?: { hidden?: true }
-  ) => string | null
+  beginPendingImageAttachment: (previewUrl?: string, pendingName?: string) => string | null
   /** Files the result into the composer's scope even once this instance is unmounted. */
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
   revealPendingImageAttachment?: (id: string, previewUrl?: string) => void
@@ -20,12 +16,11 @@ export function useNativeChatPasteLifetime(args: {
 }): {
   lifetime: { active: boolean; pending: Map<string, string> }
   track: (pendingId: string, preview: string, owner: NativeChatAttachmentOwner) => void
-  /** A paste's chip, shown at once with the clipboard's own thumbnail, or held out of sight
-   *  (`hidden`) until `reveal`; `id` is null when the composer refused it. */
+  /** Register the visible operation; `reveal` supplies its preview once the host accepts it. */
   startImageChip: (
     owner: NativeChatAttachmentOwner,
     imageFile: Blob,
-    options: { hidden: boolean; canShow: () => boolean }
+    options: { deferPreview: boolean; canShow: () => boolean }
   ) => { id: string | null; reveal: () => void }
   keepStoreUploadAfterUnmount: (
     pendingId: string | null,
@@ -85,10 +80,10 @@ export function useNativeChatPasteLifetime(args: {
     (
       owner: NativeChatAttachmentOwner,
       imageFile: Blob,
-      options: { hidden: boolean; canShow: () => boolean }
+      options: { deferPreview: boolean; canShow: () => boolean }
     ): { id: string | null; reveal: () => void } => {
-      if (options.hidden) {
-        const id = beginPendingImageAttachment(undefined, undefined, { hidden: true })
+      if (options.deferPreview) {
+        const id = beginPendingImageAttachment()
         if (id) {
           track(id, '', owner)
         }

@@ -131,20 +131,6 @@ export function settleNativeChatPendingAttachmentReferences(
   }
 }
 
-/** Shows a pending chip that was held out of sight, such as while a server was asked first. */
-export function revealNativeChatPendingAttachment(scopeKey: string, id: string): void {
-  const current = nativeChatPendingAttachmentSnapshot(scopeKey)
-  if (current.some((attachment) => attachment.id === id && attachment.hidden)) {
-    writePending(
-      scopeKey,
-      current.map((attachment) => {
-        const { hidden: _hidden, ...shown } = attachment
-        return attachment.id === id ? shown : attachment
-      })
-    )
-  }
-}
-
 export function clearNativeChatPendingAttachments(scopeKey: string): void {
   if (pendingCache.has(scopeKey)) {
     writePending(scopeKey, [])

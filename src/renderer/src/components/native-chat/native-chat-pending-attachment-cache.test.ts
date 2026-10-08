@@ -1,14 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   addNativeChatPendingAttachment,
   clearNativeChatPendingAttachmentsForTests,
   dropNativeChatPendingAttachmentsForTab,
   dropNativeChatPendingAttachmentsOwnedBy,
   nativeChatPendingAttachmentSnapshot,
-  revealNativeChatPendingAttachment,
   settleNativeChatPendingAttachment,
   settleNativeChatPendingAttachmentReferences,
-  subscribeToNativeChatPendingAttachments,
   takeNativeChatPendingAttachment
 } from './native-chat-pending-attachment-cache'
 import {
@@ -57,22 +55,6 @@ describe('the pane pending attachment cache', () => {
     takeNativeChatPendingAttachment('pane-b', 'b1')
 
     expect(takeNativeChatPendingAttachment('pane-b', 'b1')).toBeUndefined()
-  })
-
-  it('shows a hidden chip and tells every subscriber, with a new snapshot only on change', () => {
-    const listener = vi.fn()
-    const unsubscribe = subscribeToNativeChatPendingAttachments('pane-c', listener)
-    addNativeChatPendingAttachment('pane-c', { id: 'c1', path: '', pending: true, hidden: true })
-    const hidden = nativeChatPendingAttachmentSnapshot('pane-c')
-
-    expect(nativeChatPendingAttachmentSnapshot('pane-c')).toBe(hidden)
-    revealNativeChatPendingAttachment('pane-c', 'c1')
-
-    expect(nativeChatPendingAttachmentSnapshot('pane-c')).toEqual([
-      { id: 'c1', path: '', pending: true }
-    ])
-    expect(listener).toHaveBeenCalledTimes(2)
-    unsubscribe()
   })
 
   it('settles into a draft owned by the workspace it began in, after its chat stopped naming one', () => {

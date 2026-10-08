@@ -4,15 +4,20 @@
 // replaces the composer. The real composer, attachment and paste hooks keep the upload, and Send
 // waits for it, whenever the composer comes back; a rich-text paste's image is owed from the start.
 
-import { act, cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ClipboardEventHandler } from 'react'
 import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
-import type { ClipboardEventLike } from './native-chat-clipboard-payload'
+import type {
+  NativeChatComposerField as NativeChatComposerFieldComponent,
+  NativeChatComposerFieldProps,
+  NativeChatComposerImageAttachment
+} from './NativeChatComposerField'
 
 type FieldProps = {
-  onPaste?: (event: ClipboardEventLike) => void
-  imageAttachments?: { path: string; pending?: boolean }[]
+  imageAttachments?: readonly NativeChatComposerImageAttachment[]
   sendButtonDisabled?: boolean
+  onRemoveImageAttachment: (id: string) => void
 }
 
 const mocks = vi.hoisted(() => {
@@ -52,12 +57,23 @@ vi.mock('@/lib/native-chat-telemetry', () => ({
   emitNativeChatPickerOpened: vi.fn(),
   emitNativeChatSendClassified: vi.fn()
 }))
-vi.mock('./NativeChatComposerField', () => ({
-  NativeChatComposerField: (props: FieldProps) => {
-    mocks.state.fieldProps = props
-    return <div data-testid="native-chat-composer-field" />
+vi.mock('./NativeChatComposerField', async (importOriginal) => {
+  const original = await importOriginal<{
+    NativeChatComposerField: typeof NativeChatComposerFieldComponent
+  }>()
+  return {
+    NativeChatComposerField: (props: NativeChatComposerFieldProps) => {
+      mocks.state.fieldProps = props
+      return <original.NativeChatComposerField {...props} />
+    }
   }
+})
+vi.mock('./NativeChatPromptEditor', () => ({
+  NativeChatPromptEditor: (props: { onPasteCapture: ClipboardEventHandler<HTMLElement> }) => (
+    <div data-testid="paste-target" onPasteCapture={props.onPasteCapture} />
+  )
 }))
+vi.mock('./NativeChatComposerActions', () => ({ NativeChatComposerActions: () => null }))
 vi.mock('./use-native-chat-skills', () => ({
   useNativeChatSkills: () => ({ status: 'ready', skills: [], error: null, retry: () => {} })
 }))
@@ -75,6 +91,7 @@ vi.mock('./native-chat-attachment-upload', async (importOriginal) => ({
 import { NativeChatComposer } from './NativeChatComposer'
 import {
   clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache,
   writeNativeChatDraftCache
 } from './native-chat-draft-cache'
 import {
@@ -85,7 +102,7 @@ import {
 const PANE = 'tab-1::session-1'
 const STORED = '/srv/agent-session-attachments/0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8c01/orca-paste.png'
 
-function composer(): React.JSX.Element {
+function composer(acceptsImages = true): React.JSX.Element {
   return (
     <NativeChatComposer
       terminalTabId="tab-1"
@@ -104,6 +121,7 @@ function composer(): React.JSX.Element {
         optionSnapshot: [],
         onError: vi.fn(),
         runtime: 'remote',
+        acceptsImages,
         sessionId: 'session-1',
         runtimeEnvironmentId: 'env-1'
       }}
@@ -127,7 +145,7 @@ function installPreloadApi(ui: Record<string, unknown>): void {
   })
 }
 
-function imagePaste(text?: string): ClipboardEventLike {
+function imagePaste(text?: string): ClipboardEvent {
   const data = new DataTransfer()
   data.items.add(new File(['image'], 'image.png', { type: 'image/png' }))
   if (text) {
@@ -173,6 +191,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   vi.unstubAllGlobals()
 })
@@ -187,7 +206,7 @@ describe('a paste into a chat on a paired server', () => {
     )
     installPreloadApi({ saveClipboardImageAsTempFile: mocks.save })
     const view = render(composer())
-    await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste()))
+    await act(async () => fireEvent(screen.getByTestId('paste-target'), imagePaste()))
     expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ pending: true }])
 
     // The agent asks a question: its card takes the composer's place while the image uploads.
@@ -206,7 +225,7 @@ describe('a paste into a chat on a paired server', () => {
     // Something typed, so only the pending image can hold Send.
     writeNativeChatDraftCache(PANE, 'look at this')
     const first = render(composer())
-    await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste()))
+    await act(async () => fireEvent(screen.getByTestId('paste-target'), imagePaste()))
     first.unmount()
 
     // Back from the prompt card while the image is still on its way to the server.
@@ -227,7 +246,7 @@ describe('a paste into a chat on a paired server', () => {
     writeNativeChatDraftCache(PANE, 'look at this caption')
     render(composer())
     expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(false)
-    await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste('caption')))
+    await act(async () => fireEvent(screen.getByTestId('paste-target'), imagePaste('caption')))
 
     // The text is in; the image is not yet anywhere, but it is owed to this message.
     expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(true)
@@ -239,7 +258,7 @@ describe('a paste into a chat on a paired server', () => {
     const finishUpload = holdUpload()
     writeNativeChatDraftCache(PANE, 'look at this caption')
     const first = render(composer())
-    await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste('caption')))
+    await act(async () => fireEvent(screen.getByTestId('paste-target'), imagePaste('caption')))
     // A prompt card replaces the composer while the server is still being asked.
     first.unmount()
     render(composer())
@@ -270,7 +289,7 @@ it('keeps a local image paste after the real composer closes and reopens', async
   mocks.save.mockClear()
   const finishUpload = holdUpload()
   const first = render(composer())
-  await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste()))
+  await act(async () => fireEvent(screen.getByTestId('paste-target'), imagePaste()))
   await waitFor(() => expect(mocks.save).toHaveBeenCalled())
   expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ pending: true }])
   first.unmount()
@@ -281,3 +300,50 @@ it('keeps a local image paste after the real composer closes and reopens', async
   ])
   await waitFor(() => expect(mocks.state.fieldProps?.imageAttachments?.[0]?.pending).toBeFalsy())
 })
+
+it.each([
+  { kind: 'local', acceptsImages: false },
+  { kind: 'ssh', acceptsImages: false },
+  { kind: 'local', acceptsImages: true },
+  { kind: 'ssh', acceptsImages: true }
+] as const)(
+  'can remove a stalled $kind paste after reopen with acceptsImages=$acceptsImages',
+  async ({ kind, acceptsImages }) => {
+    mocks.state.owner =
+      kind === 'local'
+        ? { kind: 'local' }
+        : {
+            kind: 'ssh',
+            connectionId: 'ssh-1',
+            worktreePath: '/remote/folder',
+            expectedExecutionHostId: 'ssh:ssh-1',
+            expectedSshTargetId: 'ssh-1',
+            expectedSshConnectionGeneration: 1
+          }
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const finishUpload = holdUpload()
+    writeNativeChatDraftCache(PANE, 'look at this')
+    const first = render(composer(acceptsImages))
+    expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(false)
+    await act(async () => fireEvent(screen.getByTestId('paste-target'), imagePaste()))
+    first.unmount()
+    render(composer(acceptsImages))
+    await act(async () => vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000))
+    expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Saving pasted image…' })).toBeTruthy()
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Remove attachment' }))
+    )
+    expect(mocks.state.fieldProps?.sendButtonDisabled).toBe(false)
+    await act(async () =>
+      finishUpload(
+        kind === 'local'
+          ? '/local/native-chat-pastes/orca-paste-1-image.png'
+          : '/tmp/orca-paste-1-image.png'
+      )
+    )
+    expect(readNativeChatAttachmentCache(PANE)).toEqual([])
+    expect(readNativeChatDraftCache(PANE)).toBe('look at this')
+    expect(mocks.state.fieldProps?.imageAttachments).toEqual([])
+  }
+)

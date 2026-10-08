@@ -49,7 +49,7 @@ vi.stubGlobal('URL', {
 import { useNativeChatComposerPaste } from './use-native-chat-composer-paste'
 
 type HookApi = ReturnType<typeof useNativeChatComposerPaste>
-type Chip = { id: string; path: string; pending: boolean; hidden?: true }
+type Chip = { id: string; path: string; pending: boolean }
 
 const sessionOwner: NativeChatAttachmentOwner = {
   kind: 'runtime-session',
@@ -87,27 +87,24 @@ async function renderPaste(args: {
       setCaret: () => {},
       resolveAttachmentOwner: () => sessionOwner,
       attachResolvedPaths: args.attachResolvedPaths ?? (() => {}),
-      beginPendingImageAttachment: (_preview, _name, options) => {
+      beginPendingImageAttachment: () => {
         counter += 1
         chips.push({
           id: `chip-${counter}`,
           path: '',
-          pending: true,
-          ...(options?.hidden ? { hidden: true } : {})
+          pending: true
         })
         return `chip-${counter}`
       },
       revealPendingImageAttachment: (id) => {
         const chip = chips.find((candidate) => candidate.id === id)
         if (chip) {
-          delete chip.hidden
           revealed += 1
         }
       },
       resolvePendingImageAttachment: (id, path) => {
         const chip = chips.find((candidate) => candidate.id === id)
         if (chip) {
-          delete chip.hidden
           Object.assign(chip, { path, pending: false })
         }
       },
@@ -238,7 +235,7 @@ describe('pasting into a structured chat on a paired server', () => {
     await act(async () => probe.api().handlePaste(imagePasteEvent('caption')))
     expect(insertTypedText).toHaveBeenCalledWith('caption')
     expect(setNotice).not.toHaveBeenCalledWith('needs newer server')
-    // The image was owed to the message only out of sight: no chip showed, so none flashed.
+    // The operation ends quietly when this server cannot store its image.
     expect(probe.begun()).toBe(1)
     expect(probe.revealed()).toBe(0)
     expect(probe.chips).toEqual([])

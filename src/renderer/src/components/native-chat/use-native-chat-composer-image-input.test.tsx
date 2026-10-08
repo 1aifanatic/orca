@@ -67,9 +67,7 @@ async function attach(acceptsImages: boolean, path: string) {
   const pendingChip = latest().beginPendingImageAttachment('blob:preview')
   await act(async () => latest().attachResolvedPaths([path]))
   const result = {
-    chips: latest()
-      .imageAttachments.filter((attachment) => !attachment.hidden)
-      .map((attachment) => attachment.path),
+    chips: latest().imageAttachments.map((attachment) => attachment.path),
     pendingChip,
     draft: container.querySelector('[data-draft]')?.textContent ?? ''
   }
@@ -89,9 +87,9 @@ describe('structured composer image input', () => {
     expect(result.pendingChip).not.toBeNull()
   })
 
-  it('references an image by path, with no chip, when the agent takes none', async () => {
+  it('references an image by path, with a removable pending operation, when the agent takes none', async () => {
     const result = await attach(false, '/tmp/shot.png')
-    expect(result.chips).toEqual([])
+    expect(result.chips).toEqual([''])
     expect(result.pendingChip).not.toBeNull()
     expect(result.draft).toContain('/tmp/shot.png')
   })

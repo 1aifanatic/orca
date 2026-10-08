@@ -19,9 +19,9 @@ import type { NativeChatPendingAttachmentChips } from './native-chat-session-att
 import {
   addNativeChatPendingAttachment,
   clearNativeChatPendingAttachments,
-  revealNativeChatPendingAttachment,
   settleNativeChatPendingAttachment,
   settleNativeChatPendingAttachmentReferences,
+  nativeChatPendingAttachmentSnapshot,
   takeNativeChatPendingAttachment,
   useNativeChatPendingAttachments
 } from './native-chat-pending-attachment-cache'
@@ -66,11 +66,7 @@ export function useNativeChatComposerAttachments({
   clearImageAttachments: () => void
   flushPendingAttachments: () => void
   removeImageAttachment: (id: string) => void
-  beginPendingImageAttachment: (
-    previewUrl?: string,
-    pendingName?: string,
-    options?: { hidden?: true }
-  ) => string | null
+  beginPendingImageAttachment: (previewUrl?: string, pendingName?: string) => string | null
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
   revealPendingImageAttachment: (id: string, previewUrl?: string) => void
   dropPendingImageAttachment: (id: string) => boolean
@@ -171,7 +167,7 @@ export function useNativeChatComposerAttachments({
   // Placeholder chip shown the instant a paste starts, so a clipboard image that
   // takes a beat to save (or upload over SSH) never reads as a dropped paste.
   const beginPendingImageAttachment = useCallback(
-    (previewUrl?: string, pendingName?: string, options?: { hidden?: true }): string | null => {
+    (previewUrl?: string, pendingName?: string): string | null => {
       if (disabledRef.current) {
         return null
       }
@@ -184,16 +180,12 @@ export function useNativeChatComposerAttachments({
         id,
         path: '',
         pending: true,
-        ...(pendingName ? { pendingName } : {}),
-        ...(options?.hidden || (!acceptsImages && pendingName === undefined)
-          ? { hidden: true }
-          : {})
+        ...(pendingName ? { pendingName } : {})
       })
       setPreview(id, previewUrl)
       return id
     },
     [
-      acceptsImages,
       attachmentScopeKey,
       attachmentTargetBlocked,
       disabledRef,
@@ -229,13 +221,11 @@ export function useNativeChatComposerAttachments({
 
   const revealPendingImageAttachment = useCallback(
     (id: string, previewUrl?: string) => {
-      if (!acceptsImages) {
-        return
+      if (nativeChatPendingAttachmentSnapshot(attachmentScopeKey).some((chip) => chip.id === id)) {
+        setPreview(id, previewUrl)
       }
-      setPreview(id, previewUrl)
-      revealNativeChatPendingAttachment(attachmentScopeKey, id)
     },
-    [acceptsImages, attachmentScopeKey, setPreview]
+    [attachmentScopeKey, setPreview]
   )
 
   // A pending chip was never saved, so dropping one, even late from a replaced composer, leaves

@@ -12,13 +12,9 @@ export type UseNativeChatComposerPasteArgs = {
    *  remote host, or the attached path names a file the agent cannot read. */
   resolveAttachmentOwner: () => NativeChatAttachmentOwner
   attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
-  beginPendingImageAttachment: (
-    previewUrl?: string,
-    pendingName?: string,
-    options?: { hidden?: true }
-  ) => string | null
+  beginPendingImageAttachment: (previewUrl?: string, pendingName?: string) => string | null
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
-  /** Shows a chip begun hidden, with its thumbnail. */
+  /** Supplies a pending chip's thumbnail. */
   revealPendingImageAttachment?: (id: string, previewUrl?: string) => void
   dropPendingImageAttachment: (id: string) => void
   insertTypedText: (text: string) => boolean
