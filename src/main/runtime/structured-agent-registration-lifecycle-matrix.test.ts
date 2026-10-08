@@ -30,7 +30,8 @@ import type {
 import { STRUCTURED_AGENT_RUNTIME_REGISTRATIONS } from './structured-agent-runtime-registrations'
 import {
   ensureStructuredAgentSessionHost,
-  stopStructuredAgentSessionRuntime
+  stopStructuredAgentSessionRuntime,
+  type StructuredAgentSessionRuntimeDeps
 } from './structured-agent-session-runtime'
 
 // Every ACP agent runs the one ACP adapter, so each gets the ACP child; any other kind needs its own.
@@ -78,7 +79,10 @@ type Chat = {
 }
 
 /** A new chat of `definition`'s agent, attached while its first handshake is held. */
-async function openChat(definition: StructuredAgentDefinition): Promise<Chat> {
+async function openChat(
+  definition: StructuredAgentDefinition,
+  runtime: Partial<StructuredAgentSessionRuntimeDeps> = {}
+): Promise<Chat> {
   const factory = SCRIPTED_CHILDREN[definition.agent]
   if (!factory) {
     throw new Error(`${definition.agent} is registered but has no scripted child for this matrix`)
@@ -95,7 +99,8 @@ async function openChat(definition: StructuredAgentDefinition): Promise<Chat> {
     resolveLaunchArgs: () => [],
     resolveClaudeAuthPolicy: () => ({ stripAuthEnv: false }),
     resolveEnvironment: async () => ({ PATH: process.env.PATH }),
-    ...child.deps
+    ...child.deps,
+    ...runtime
   })
   const fence = (): number => host.deps.store.getRecord(SESSION)?.lease.runtimeFence ?? 0
   const attachParams = hostTestAttachParams(null, {
@@ -230,25 +235,39 @@ describe.each(
     expect(chat.child.resumes()).toBe(1)
   })
 
+  it('stops a start that goes silent past its limit, failing what it held, and starts again on the next', async () => {
+    const chat = await openChat(definition, { startupLimits: { silenceMs: 200 } })
+    const held = await chat.send('held through a silent start')
+
+    await eventually(async () =>
+      expect((await chat.submission(held))?.dispatchState).toBe('rejected')
+    )
+    await eventually(() => expect(chat.child.closes()).toBe(1))
+    expect(chat.child.prompts()).toEqual([])
+
+    chat.child.holdHandshakes = false
+    await chat.send('after the silent start')
+    await eventually(() => expect(chat.child.prompts()).toEqual(['after the silent start']))
+  })
+
+  it("answers a worker's preamble pending once the caller's budget runs out, and delivers it when the agent starts", async () => {
+    const chat = await openChat(definition)
+    const preamble = await sendStructuredWorkerPreamble({
+      ...workerPreamble(chat),
+      budgetMs: 50
+    })
+    expect(preamble).toBe('pending')
+    expect(chat.child.prompts()).toEqual([])
+
+    chat.child.releaseHandshake()
+
+    await eventually(() => expect(chat.child.prompts()).toEqual(['worker preamble']))
+  })
+
   it("holds an orchestration worker's preamble until the agent has started", async () => {
     const chat = await openChat(definition)
     let settled = false
-    const preamble = sendStructuredWorkerPreamble({
-      host: chat.host,
-      sessionId: SESSION,
-      dispatchId: 'ctx_matrix',
-      preamble: 'worker preamble',
-      from: {
-        kind: 'agent',
-        senders: [
-          {
-            party: { address: 'term_coord', terminalHandle: 'term_coord', orcaSessionId: null },
-            name: 'Coordinator'
-          }
-        ],
-        orchestration: { message: 'task', runId: 'r1', taskId: 't1', dispatchId: 'ctx_matrix' }
-      }
-    }).finally(() => {
+    const preamble = sendStructuredWorkerPreamble(workerPreamble(chat)).finally(() => {
       settled = true
     })
     await new Promise((resolve) => setTimeout(resolve, 50))
@@ -261,3 +280,22 @@ describe.each(
     expect(chat.child.prompts()).toEqual(['worker preamble'])
   })
 })
+
+function workerPreamble(chat: Chat): Parameters<typeof sendStructuredWorkerPreamble>[0] {
+  return {
+    host: chat.host,
+    sessionId: SESSION,
+    dispatchId: 'ctx_matrix',
+    preamble: 'worker preamble',
+    from: {
+      kind: 'agent',
+      senders: [
+        {
+          party: { address: 'term_coord', terminalHandle: 'term_coord', orcaSessionId: null },
+          name: 'Coordinator'
+        }
+      ],
+      orchestration: { message: 'task', runId: 'r1', taskId: 't1', dispatchId: 'ctx_matrix' }
+    }
+  }
+}

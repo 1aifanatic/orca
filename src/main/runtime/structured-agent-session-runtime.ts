@@ -11,6 +11,8 @@
 // structured request with the refusal that says why.
 
 import type { AcpStructuredSessionAdapterDeps } from '../acp/acp-structured-session-adapter-deps'
+import type { AcpStructuredLaunchResolverDeps } from '../acp/acp-structured-launch-resolution'
+import type { StructuredAgentSessionStartupLimits } from '../native-chat/agent-session-wire/structured-agent-session-startup-attempt-contract'
 import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import type { PiRpcSessionDeps } from '../pi/rpc-session'
 import type { PiRpcSessionAdapterDeps } from '../pi/rpc-session-adapter'
@@ -119,9 +121,14 @@ export type StructuredAgentSessionRuntimeDeps = {
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   /** Overrides the ACP transport with a scripted child in runtime tests. */
   openAcpConnection?: AcpStructuredSessionAdapterDeps['connect']
+  /** Answers an ACP launch's command lookup and version probe for a scripted child; every launch
+   *  still resolves and checks through them. Unset, the real binary is found and probed. */
+  acpLaunchCommand?: Pick<AcpStructuredLaunchResolverDeps, 'resolveCommand' | 'probeVersion'>
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
   /** Scripted app-servers carry fake pids the real start-time read cannot answer for. */
   readProcessStartTime?: CodexStructuredSessionAdapterDeps['readProcessStartTime']
+  /** The shipped startup limits unless a test shortens them. */
+  startupLimits?: Partial<StructuredAgentSessionStartupLimits>
   /** Required, and asserted at install time — saved Arguments must never be silently omitted. */
   resolveLaunchArgs: (provider: AgentSessionRecord['provider']) => Promise<string[]> | string[]
   resolveLaunchEnv?: () => Promise<NodeJS.ProcessEnv>
@@ -328,6 +335,7 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
+    ...(deps.startupLimits ? { startupLimits: deps.startupLimits } : {}),
     ...(deps.onSessionTabHidden ? { onSessionTabHidden: deps.onSessionTabHidden } : {}),
     ...(await modelCatalogHostDeps({ store, agents, deps, envResolvers }))
   })

@@ -20,8 +20,6 @@ import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { structuredAgentSessionMessageSendMutation } from '../../../shared/structured-agent-session-send-mutation'
 import type { StructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-host'
-import type { SendSettlementWaitOptions } from '../../native-chat/agent-session-wire/structured-agent-session-send-settlement'
-import { STRUCTURED_AGENT_SESSION_STARTUP_CEILING_MS } from '../../native-chat/agent-session-wire/structured-agent-session-startup-attempt-contract'
 import { dispatchPreambleSendOptions, type DispatchPreambleSendOptions } from './preamble'
 
 /**
@@ -34,8 +32,7 @@ export type AgentTurnDelivery = 'queue' | 'now'
 export type StructuredAgentTurnHost = Pick<
   StructuredAgentSessionHost,
   'send' | 'waitForSendSettlement'
-> &
-  Partial<Pick<StructuredAgentSessionHost, 'readStatusSummary'>>
+>
 
 export type StructuredSessionTurn = {
   /** Carries its sender as `from`, which the chat shows and no fingerprint covers. */
@@ -53,6 +50,9 @@ export type StructuredSessionTurnSend = {
   /** Scopes the host's operation ledger, so one sender's sends cannot exhaust another's budget. */
   callerKey: string
   turn: StructuredSessionTurn
+  /** The caller's own readiness budget for the agent to take the message, its start included;
+   *  the orchestration readiness timeout by default. */
+  budgetMs?: number
 }
 
 /**
@@ -142,24 +142,20 @@ async function sendStructuredSessionTurn(
   if ('queued' in result.value) {
     return { kind: 'queued', clientMessageId, queued: result.value.queued }
   }
-  // Accepted is not delivered: the agent may still be starting, so wait the start out. A wait
-  // that fails or runs out leaves the first answer standing.
+  // Accepted is not delivered: the agent may still be starting. One budget, the caller's, covers
+  // the start and the answer; a start that outlasts it leaves the message held for the agent, and
+  // the answer `pending`, which the caller reports as a turn start nobody observed yet.
   const answered = agentSessionSendSubmission(result.value)
   if (answered?.dispatchState !== 'pending') {
     return { kind: 'sent', clientMessageId, submission: answered }
   }
   // The submission's own id: a replayed `queue` turn whose draft went out answers with the
   // hand-off, which the queue sent under a fresh id.
-  const wait = (options: SendSettlementWaitOptions) =>
-    send.host
-      .waitForSendSettlement(send.sessionId, answered.clientMessageId, options)
-      .catch(() => undefined)
-  // The host holds what it takes for an agent still starting until that start ends, which its
-  // startup limit always brings about; the wait for the agent's answer begins only then.
-  if (send.host.readStatusSummary?.(send.sessionId)?.hostExecutionPhase === 'starting') {
-    await wait({ until: 'handed-over', budgetMs: STRUCTURED_AGENT_SESSION_STARTUP_CEILING_MS })
-  }
-  const settled = await wait({ budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS })
+  const settled = await send.host
+    .waitForSendSettlement(send.sessionId, answered.clientMessageId, {
+      budgetMs: send.budgetMs ?? ORCHESTRATION_READINESS_TIMEOUT_MS
+    })
+    .catch(() => undefined)
   return {
     kind: 'sent',
     clientMessageId,
