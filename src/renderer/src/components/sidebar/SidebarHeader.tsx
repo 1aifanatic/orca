@@ -94,7 +94,7 @@ const SidebarHeader = React.memo(function SidebarHeader({
                     <Bell className="size-3.5" strokeWidth={2.25} />
                     {activityCount > 0 ? (
                       <span
-                        className="pointer-events-none absolute -right-1 -top-1 inline-flex h-4 items-center gap-0.5 rounded-full border border-sidebar px-0.5 text-[10px] font-medium tabular-nums bg-sidebar text-sidebar-foreground"
+                        className="pointer-events-none absolute -right-2 -top-2 inline-flex h-3 items-center gap-0.5 rounded-full border border-sidebar px-0.5 text-[9px] font-medium leading-none tabular-nums bg-sidebar text-sidebar-foreground"
                         id={activityBadgeId}
                         aria-label={`${activityStatusLabel}: ${activityCount}`}
                       >
