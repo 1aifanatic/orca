@@ -45,8 +45,7 @@ describe('buildOnboardingFolderAgentStartup', () => {
     const startup = buildOnboardingFolderAgentStartup({
       ...getDefaultSettings('/tmp/orca-workspaces'),
       defaultTuiAgent: 'codex',
-      experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: false,
+      experimentalNativeChat: false,
       nativeChatSessionOptions: {
         codex: {
           model: 'gpt-5.2-codex',
@@ -64,7 +63,6 @@ describe('buildOnboardingFolderAgentStartup', () => {
       ...getDefaultSettings('/tmp/orca-workspaces'),
       defaultTuiAgent: 'codex',
       experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: true,
       nativeChatSessionOptions: {
         codex: {
           model: 'gpt-5.2-codex',

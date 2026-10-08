@@ -9,8 +9,6 @@ import {
   launchNewTabPromptThroughHost,
   newTabPromptLaunchesThroughHost
 } from '@/lib/launch-agent-new-tab-host-route'
-import { initialAgentTabViewModeProps } from '@/lib/native-chat-initial-view-mode'
-import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { isWebRuntimeSessionActive } from '@/runtime/web-runtime-session'
 import { launchAgentInWebHostTab } from '@/lib/launch-agent-web-host-tab'
@@ -134,11 +132,13 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     activate
   } = args
   const store = useAppStore.getState()
-  const { worktreeSshConnectionId, resolvedLaunchPlatform, isRemote, queuedShell } =
-    resolveAgentLaunchExecutionContext(store, {
+  const { resolvedLaunchPlatform, isRemote, queuedShell } = resolveAgentLaunchExecutionContext(
+    store,
+    {
       worktreeId,
       ...(launchPlatform ? { launchPlatform } : {})
-    })
+    }
+  )
   const cmdOverrides = store.settings?.agentCmdOverrides ?? {}
   const effectiveAgentArgs =
     agentArgs !== undefined
@@ -152,14 +152,6 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
   // Why: the remote host can't infer this client's draft/default view choice, so decide it here for paired tabs too.
   const viewModePromptDelivery =
     hasPrompt && isFollowupPath && promptDelivery === 'auto-submit' ? 'draft' : promptDelivery
-  const initialViewModeOptions = {
-    agent,
-    promptDelivery: viewModePromptDelivery,
-    launchDraftText: trimmedPrompt,
-    nativeChatTranscriptIsLocalReadable:
-      isNativeChatTranscriptLocalReadable(worktreeSshConnectionId)
-  }
-  const initialViewModeProps = initialAgentTabViewModeProps(store.settings, initialViewModeOptions)
   const startupPlanBase = {
     agent,
     cmdOverrides,
@@ -168,7 +160,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     isRemote,
     agentArgs: effectiveAgentArgs,
     agentEnv,
-    sessionOptions: resolveInitialNativeChatSessionOptions(store.settings, initialViewModeOptions)
+    sessionOptions: resolveInitialNativeChatSessionOptions(store.settings, { agent })
   }
   const { startupPlan, pasteDraftAfterLaunch, submitPastedPrompt } = planLaunchAgentStartupPrompt({
     base: startupPlanBase,
@@ -236,7 +228,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       agentArgs,
       // Why: omission means terminal locally, but would let a paired host apply
       // its own default; send the client's resolved terminal choice explicitly.
-      viewMode: initialViewModeProps.viewMode ?? 'terminal',
+      viewMode: 'terminal',
       onPromptDelivered
     })
     return {
@@ -268,7 +260,6 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       launchSource: launchSource ?? 'tab_bar_quick_launch',
       quickCommandLabel,
       ...(pendingActivationSpawn ? { pendingActivationSpawn: true } : {}),
-      ...(initialViewModeProps.viewMode ? { viewMode: initialViewModeProps.viewMode } : {}),
       pasteContent: pasteDraftAfterLaunch,
       submit: submitPastedPrompt,
       ...(onPromptDelivered ? { onPromptDelivered } : {}),
@@ -287,8 +278,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     launchAgent: agent,
     quickCommandLabel,
     ...(pendingActivationSpawn ? { pendingActivationSpawn: true } : {}),
-    ...(activate === false ? { activate: false } : {}),
-    ...initialViewModeProps
+    ...(activate === false ? { activate: false } : {})
   })
   seedNativeChatAppliedSessionOptions(tab.id, agent, startupPlan.sessionOptions)
   if (initialCwd?.trim()) {

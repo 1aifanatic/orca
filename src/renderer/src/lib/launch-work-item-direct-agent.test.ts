@@ -46,9 +46,7 @@ describe('buildDirectWorkItemStartupOpts', () => {
     })
   })
 
-  it('carries launchDraftText for a natively-prefilled draft launch', () => {
-    // Why: the draft is already inside launchCommand, so draftPrompt stays unset
-    // and launchDraftText is the only signal the view-mode gate can read.
+  it('keeps a natively-prefilled draft in the terminal command', () => {
     const plan: AgentStartupPlan = {
       agent: 'claude',
       launchCommand: "claude --prefill 'https://github.com/o/r/issues/12'",
@@ -57,15 +55,10 @@ describe('buildDirectWorkItemStartupOpts', () => {
       launchConfig: { agentArgs: '', agentEnv: {} }
     }
 
-    const opts = buildDirectWorkItemStartupOpts(
-      'claude',
-      plan,
-      'task_page',
-      'https://github.com/o/r/issues/12'
-    )
+    const opts = buildDirectWorkItemStartupOpts('claude', plan, 'task_page')
 
     expect(opts.startup?.draftPrompt).toBeUndefined()
-    expect(opts.startup?.launchDraftText).toBe('https://github.com/o/r/issues/12')
+    expect(opts.startup?.command).toContain('https://github.com/o/r/issues/12')
   })
 })
 
@@ -88,7 +81,7 @@ describe('buildDirectWorkItemAgentStartupPlan', () => {
       agent: 'codex',
       draftContent: 'Review issue 42',
       promptDelivery: 'draft',
-      settings: { ...settings, openAgentTabsInChatByDefault: false },
+      settings: { ...settings, experimentalNativeChat: false },
       launchPlatform: 'darwin',
       nativeChatTranscriptIsLocalReadable: true
     })
@@ -102,7 +95,7 @@ describe('buildDirectWorkItemAgentStartupPlan', () => {
       agent: 'codex',
       draftContent: 'Review issue 42',
       promptDelivery: 'draft',
-      settings: { ...settings, openAgentTabsInChatByDefault: true },
+      settings: { ...settings, experimentalNativeChat: true },
       launchPlatform: 'darwin',
       nativeChatTranscriptIsLocalReadable: true
     })
@@ -141,7 +134,6 @@ describe('notifyDirectWorkItemAgentStartTimeout', () => {
 describe('buildDirectWorkItemAgentStartupPlan global arguments fallback', () => {
   const withGlobalArgs = {
     ...settings,
-    openAgentTabsInChatByDefault: false,
     agentDefaultArgs: { codex: '--sandbox danger-full-access' }
   }
 

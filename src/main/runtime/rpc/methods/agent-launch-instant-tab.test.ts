@@ -780,19 +780,19 @@ describe('whose view moves', () => {
 })
 
 describe('the view the tab opens in', () => {
-  const CHAT_VIEW = { experimentalNativeChat: true, openAgentTabsInChatByDefault: true }
+  const TERMINAL_VIEW = { experimentalNativeChat: false }
 
-  it('is derived on the host, the same for the shown tab and the spawn', async () => {
-    const runtime = hostWithWindow({ settings: CHAT_VIEW })
+  it('keeps a terminal launch in the same view for the shown tab and spawn', async () => {
+    const runtime = hostWithWindow({ settings: TERMINAL_VIEW })
 
     await replayLaunch(runtime, {}, CLI)
 
-    expect(runtime.published[0]?.viewMode).toBe('chat')
-    expect(terminalOptions(runtime)).toMatchObject({ viewMode: 'chat' })
+    expect(runtime.published[0]?.viewMode).toBe('terminal')
+    expect(terminalOptions(runtime)).toMatchObject({ viewMode: 'terminal' })
   })
 
-  it('stays the terminal for a draft the chat view cannot mirror', async () => {
-    const runtime = hostWithWindow({ settings: CHAT_VIEW })
+  it('keeps a terminal draft in terminal view regardless of mirrorability', async () => {
+    const runtime = hostWithWindow({ settings: TERMINAL_VIEW })
 
     await replayLaunch(runtime, { prompt: { text: '   ', delivery: 'draft' } }, CLI)
 

@@ -247,7 +247,6 @@ describe('agent launch caller arguments and permission bypass', () => {
     store.settings = {
       ...store.settings,
       experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: true,
       nativeChatSessionOptions: {
         codex: { model: 'gpt-5.2-codex', valuesByModel: { 'gpt-5.2-codex': { effort: 'medium' } } }
       }

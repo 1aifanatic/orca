@@ -185,9 +185,6 @@ export async function submitFolderWorkspaceCreate({
           launchAgent: quickAgent,
           ...(startupPlan.sessionOptions ? { sessionOptions: startupPlan.sessionOptions } : {}),
           ...(startupPlan.draftPrompt ? { draftPrompt: startupPlan.draftPrompt } : {}),
-          // Why: view-mode only. The argv-prefill plan sets no draftPrompt, so
-          // without this the tab opens in chat with nothing mirrored into it.
-          ...(launchDraftPrompt ? { launchDraftText: launchDraftPrompt } : {}),
           ...(startupPlan.startupCommandDelivery
             ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
             : {}),

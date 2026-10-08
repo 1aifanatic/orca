@@ -16,8 +16,6 @@ type PlacementSettings = {
   agentDefaultEnv: Record<string, Record<string, string>>
   activeRuntimeEnvironmentId: string | null
   experimentalNativeChat?: boolean
-  experimentalStructuredNativeChat?: boolean
-  openAgentTabsInChatByDefault?: boolean
   nativeChatSessionOptions?: Record<
     string,
     { model?: string; valuesByModel?: Record<string, Record<string, string>> }
@@ -111,8 +109,6 @@ describe('launchAgentInNewTab terminal tab activation', () => {
   it('honours the chat default in a floating launch and scopes its surface to the floating workspace', async () => {
     store.settings = placementSettings({
       experimentalNativeChat: true,
-      experimentalStructuredNativeChat: true,
-      openAgentTabsInChatByDefault: true,
       nativeChatSessionOptions: {
         codex: {
           model: 'gpt-5.2-codex',
@@ -134,7 +130,7 @@ describe('launchAgentInNewTab terminal tab activation', () => {
       undefined,
       {
         launchAgent: 'codex',
-        viewMode: 'chat'
+        quickCommandLabel: undefined
       }
     )
     expect(mockSetActiveTabType).toHaveBeenCalledExactlyOnceWith(
