@@ -12,22 +12,9 @@ import {
   findSshBridgeOrchestrationViolation,
   isHostTerminal,
   parseSshBridgeSelectors,
-  SSH_BRIDGE_ORCHESTRATION_METHODS
+  SSH_BRIDGE_ORCHESTRATION_METHODS,
+  type SshBridgeSelectors
 } from './ssh-bridge-orchestration-binding'
-
-const TERMINAL_HANDLE_METHODS: ReadonlySet<string> = new Set([
-  'terminal.show',
-  'terminal.read',
-  'terminal.send',
-  'terminal.wait'
-])
-
-export const SSH_BRIDGE_HOST_BOUND_METHODS: ReadonlySet<string> = new Set([
-  'status.get',
-  'terminal.list',
-  ...TERMINAL_HANDLE_METHODS,
-  ...SSH_BRIDGE_ORCHESTRATION_METHODS
-])
 
 export const SSH_BRIDGE_REMOTE_CONTROL_HINT =
   'To let that host\'s CLI control this Orca, enable "Allow this host\'s orca CLI to control Orca" in Settings > SSH for that host.'
@@ -40,39 +27,69 @@ export type SshBridgeCallBinding =
   | { kind: 'denied'; message: string }
   | { kind: 'allowed'; filterResult?: SshBridgeResultFilter }
 
-export async function bindSshBridgeCall(
+type SshBridgeBinder = (
+  runtime: OrcaRuntimeService,
+  targetId: string,
+  methodName: string,
+  selectors: SshBridgeSelectors
+) => Promise<SshBridgeCallBinding>
+
+const bindTerminalHandle: SshBridgeBinder = async (runtime, targetId, _methodName, selectors) => {
+  const handle = selectors.terminal
+  return handle && (await isHostTerminal(runtime, toSshExecutionHostId(targetId), handle))
+    ? { kind: 'allowed' }
+    : { kind: 'denied', message: outsideHostMessage(targetId, `terminal '${handle ?? ''}'`) }
+}
+
+const bindOrchestration: SshBridgeBinder = async (runtime, targetId, methodName, selectors) => {
+  const violation = await findSshBridgeOrchestrationViolation(
+    runtime,
+    toSshExecutionHostId(targetId),
+    methodName,
+    selectors
+  )
+  return violation
+    ? { kind: 'denied', message: outsideHostMessage(targetId, violation) }
+    : { kind: 'allowed' }
+}
+
+/** Every method an unopted bridge may reach, each with how its selectors are bound to the host. */
+export const SSH_BRIDGE_HOST_BINDERS: ReadonlyMap<string, SshBridgeBinder> = new Map<
+  string,
+  SshBridgeBinder
+>([
+  ['status.get', async () => ({ kind: 'allowed' })],
+  [
+    'terminal.list',
+    async (_runtime, targetId, _methodName, { worktree }) => ({
+      kind: 'allowed',
+      filterResult: (result) => filterTerminalListToHost(result, targetId, worktree)
+    })
+  ],
+  ['terminal.show', bindTerminalHandle],
+  ['terminal.read', bindTerminalHandle],
+  ['terminal.send', bindTerminalHandle],
+  ['terminal.wait', bindTerminalHandle],
+  ...SSH_BRIDGE_ORCHESTRATION_METHODS.map((method): [string, SshBridgeBinder] => [
+    method,
+    bindOrchestration
+  ])
+])
+
+export function bindSshBridgeCall(
   runtime: OrcaRuntimeService,
   targetId: string,
   methodName: string,
   params: unknown
 ): Promise<SshBridgeCallBinding> {
-  const hostId = toSshExecutionHostId(targetId)
-  const selectors = parseSshBridgeSelectors(params)
-  if (TERMINAL_HANDLE_METHODS.has(methodName)) {
-    const handle = selectors.terminal
-    return handle && (await isHostTerminal(runtime, hostId, handle))
-      ? { kind: 'allowed' }
-      : { kind: 'denied', message: outsideHostMessage(targetId, `terminal '${handle ?? ''}'`) }
-  }
-  if (SSH_BRIDGE_ORCHESTRATION_METHODS.has(methodName)) {
-    const violation = await findSshBridgeOrchestrationViolation(
-      runtime,
-      hostId,
-      methodName,
-      selectors
-    )
-    return violation
-      ? { kind: 'denied', message: outsideHostMessage(targetId, violation) }
-      : { kind: 'allowed' }
-  }
-  if (methodName === 'terminal.list') {
-    const worktree = selectors.worktree
-    return {
-      kind: 'allowed',
-      filterResult: (result) => filterTerminalListToHost(result, targetId, worktree)
-    }
-  }
-  return { kind: 'allowed' }
+  const bind = SSH_BRIDGE_HOST_BINDERS.get(methodName)
+  // Why: the dispatcher admits only table methods, so a miss is unreachable and must fail closed.
+  return bind
+    ? bind(runtime, targetId, methodName, parseSshBridgeSelectors(params))
+    : Promise.resolve({
+        kind: 'denied',
+        message: outsideHostMessage(targetId, `method '${methodName}'`)
+      })
 }
 
 function filterTerminalListToHost(

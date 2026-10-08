@@ -6,6 +6,7 @@ import { RpcDispatcher } from './dispatcher'
 import { ALL_RPC_METHODS } from './methods'
 import type { RpcCallerScope } from './rpc-caller-scope'
 import { RPC_METHOD_PERMISSIONS } from './rpc-method-permission'
+import { SSH_BRIDGE_HOST_BINDERS } from './ssh-bridge-host-binding'
 import {
   CONTROL_GRANTED_SSH_BRIDGE_SCOPE as CONTROL_GRANTED,
   HOST_BOUND_SSH_BRIDGE_SCOPE as HOST_BOUND
@@ -92,6 +93,13 @@ describe('every RPC method declares a known permission', () => {
 })
 
 describe('SSH bridge without the per-host opt-in', () => {
+  it('binds only registered workspace methods', () => {
+    const permissionOf = (name: string) => ALL_RPC_METHODS.find((m) => m.name === name)?.permission
+    for (const method of SSH_BRIDGE_HOST_BINDERS.keys()) {
+      expect(permissionOf(method), method).toBe('workspace')
+    }
+  })
+
   it.each([
     ['computer.click', { app: 'Finder' }],
     ['accounts.selectClaude', {}],

@@ -21,12 +21,12 @@ const TERMINAL_CALLER_METHODS: ReadonlySet<string> = new Set([
   'orchestration.inbox'
 ])
 
-export const SSH_BRIDGE_ORCHESTRATION_METHODS: ReadonlySet<string> = new Set([
+export const SSH_BRIDGE_ORCHESTRATION_METHODS: readonly string[] = [
   ...TERMINAL_CALLER_METHODS,
   'orchestration.send',
   'orchestration.ask',
   'orchestration.reply'
-])
+]
 
 /** The refused subject, or null when the call stays inside the caller's own orchestration. */
 export async function findSshBridgeOrchestrationViolation(
