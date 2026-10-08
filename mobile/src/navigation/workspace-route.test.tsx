@@ -7,15 +7,13 @@ import { describe, expect, it, vi } from 'vitest'
 const route = vi.hoisted(() => {
   const state: {
     params: Record<string, string>
-    hostCapabilities: string[]
-    statusPending: boolean
+    client: unknown
     seen: (string | undefined)[]
     shellRoutes: { params?: Record<string, string> }[]
     redirects: { params: Record<string, string | undefined> }[]
   } = {
     params: {},
-    hostCapabilities: [],
-    statusPending: false,
+    client: null,
     seen: [],
     shellRoutes: [],
     redirects: []
@@ -38,13 +36,12 @@ vi.mock('react-native', () => ({
   Pressable: 'Pressable'
 }))
 vi.mock('../transport/client-context', () => ({
-  useHostClient: () => ({ client: {}, state: 'connected' })
+  useHostClient: () => ({ client: route.client, state: 'connected' })
 }))
-vi.mock('../components/host-protocol-gates-context', () => ({
-  useOptionalHostProtocolGates: () => ({
-    hostCapabilities: route.hostCapabilities,
-    statusPending: route.statusPending
-  })
+// The server's status is read for real; only the desktop's persisted records are stubbed.
+vi.mock('../transport/host-app-version-store', () => ({ recordHostAppVersion: async () => {} }))
+vi.mock('../transport/host-descriptor-recorder', () => ({
+  recordHostDescriptorFromStatus: () => {}
 }))
 vi.mock('./route-handoff', () => ({ useRouteHandoff: () => ({ replace: () => {} }) }))
 // The native switch always hands the page its route, so the census reads what the page is told.
@@ -72,12 +69,56 @@ vi.mock('../agent-history/MobileAgentSessionHistoryPanel', () => ({
 }))
 
 import { MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY } from '../../../src/shared/mobile-desktop-relay-contract'
+import {
+  HostStatusGatesContext,
+  useOptionalHostProtocolGates
+} from '../components/host-protocol-gates-context'
+import type { HostStatusGates } from '../transport/host-status-gates'
+import { FakeSession } from '../transport/mobile-endpoint-supervisor-test-fakes'
+import type { RpcClient } from '../transport/rpc-client'
+import { useWorkspaceClient } from '../transport/use-workspace-client'
 import { useWorkspaceExecutionHost } from './workspace-execution-host'
 import { WorkspaceRoute } from './workspace-route'
 
+const RELAYS = [MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY]
+const VAULT = 'aiVault.v1'
+
+/** What a screen under the route sees: its server, its client and its feature gates. */
+const below: { client: RpcClient | null; capabilities: readonly string[] | null } = {
+  client: null,
+  capabilities: null
+}
+
 function Probe(): null {
   route.seen.push(useWorkspaceExecutionHost())
+  below.client = useWorkspaceClient('host-1').client
+  below.capabilities = useOptionalHostProtocolGates()?.hostCapabilities ?? null
   return null
+}
+
+function desktopGates(hostCapabilities: string[], statusPending = false): HostStatusGates {
+  return {
+    hostCapabilities,
+    floatingWorkspaceEnabled: false,
+    desktopAppVersion: null,
+    compatVerdict: { kind: 'ok' },
+    hostProtocolWindow: { protocolVersion: undefined, minCompatibleMobileVersion: undefined },
+    statusPending,
+    statusReadable: true
+  }
+}
+
+/** A desktop whose own status is settled as given; a status it is asked for is the server's. */
+function desktop(serverCapabilities: string[] = []): FakeSession {
+  const session = new FakeSession('connected')
+  session.sendRequest.mockImplementation(async (method: string) => ({
+    id: 'reply',
+    ok: true,
+    result: method === 'status.get' ? { capabilities: serverCapabilities } : {},
+    _meta: { runtimeId: 'runtime-1' }
+  }))
+  route.client = session
+  return session
 }
 
 const HOST_ROUTES = fileURLToPath(new URL('../../app/h/[hostId]/', import.meta.url))
@@ -87,13 +128,15 @@ const WORKSPACE_ROUTE_FILES = readdirSync(HOST_ROUTES, { recursive: true, encodi
   .filter((entry) => /(^|\/)\[worktreeId\](\.web)?\.tsx$/.test(entry))
   .sort()
 
-async function render(element: ReactElement): Promise<ReactTestRenderer> {
+async function render(element: ReactElement, gates: HostStatusGates): Promise<ReactTestRenderer> {
   route.seen.length = 0
   route.shellRoutes.length = 0
   route.redirects.length = 0
+  below.client = null
+  below.capabilities = null
   let renderer: ReactTestRenderer | null = null
   await act(async () => {
-    renderer = create(element)
+    renderer = create(createElement(HostStatusGatesContext.Provider, { value: gates }, element))
   })
   if (!renderer) {
     throw new Error('did not render')
@@ -120,54 +163,78 @@ describe('every workspace route', () => {
       // Spelled loosely, so a screen reading the raw param instead of its route is caught.
       executionHost: ' runtime:vm '
     }
-    route.hostCapabilities = [MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY]
-    route.statusPending = false
+    desktop()
     const Screen = (await import(/* @vite-ignore */ `${HOST_ROUTES}${file}`)).default
-    await render(createElement(Screen))
+    await render(createElement(Screen), desktopGates(RELAYS))
     if (route.redirects.length > 0) {
       expect(route.redirects.map((href) => href.params.executionHost?.trim())).toEqual([
         'runtime:vm'
       ])
       return
     }
-    expect(route.seen).toEqual(['runtime:vm'])
+    expect([...new Set(route.seen)]).toEqual(['runtime:vm'])
     for (const shellRoute of route.shellRoutes) {
       expect(shellRoute.params?.executionHost).toBe('runtime:vm')
     }
   })
 })
 
-describe('a server workspace the phone cannot reach', () => {
-  const child = createElement(Probe)
+describe('a server workspace', () => {
+  const screen = createElement(WorkspaceRoute, null, createElement(Probe))
 
-  it('says so once the desktop has answered, instead of waiting forever', async () => {
+  it('runs every call on that server', async () => {
     route.params = { hostId: 'host-1', executionHost: 'runtime:vm' }
-    route.hostCapabilities = []
-    route.statusPending = false
-    const renderer = await render(createElement(WorkspaceRoute, null, child))
+    const session = desktop()
+    await render(screen, desktopGates(RELAYS))
+    await below.client?.sendRequest('files.readDir', { worktree: 'id:wt' })
+    expect(session.sendRequest).toHaveBeenCalledWith(
+      'files.readDir',
+      { worktree: 'id:wt' },
+      { executionHost: 'runtime:vm' }
+    )
+  })
+
+  it('gates its features on that server’s own status, not the desktop’s', async () => {
+    route.params = { hostId: 'host-1', executionHost: 'runtime:vm' }
+    const session = desktop([])
+    await render(screen, desktopGates([...RELAYS, VAULT]))
+    await vi.waitFor(() => expect(below.capabilities).toEqual([]))
+    expect(session.sendRequest).toHaveBeenCalledWith('status.get', undefined, {
+      executionHost: 'runtime:vm'
+    })
+  })
+
+  it('says so once the desktop has answered that it cannot reach the server', async () => {
+    route.params = { hostId: 'host-1', executionHost: 'runtime:vm' }
+    const session = desktop()
+    const renderer = await render(screen, desktopGates([]))
     expect(route.seen).toEqual([])
     expect(texts(renderer)).toContain(
       "Your phone can't reach this workspace's server through this desktop."
     )
+    expect(session.sendRequest).not.toHaveBeenCalled()
   })
 
-  it('waits while the desktop has not answered, and opens a reachable one', async () => {
+  it('waits, never on the desktop, while the desktop has not answered', async () => {
     route.params = { hostId: 'host-1', executionHost: 'runtime:vm' }
-    route.hostCapabilities = []
-    route.statusPending = true
-    await render(createElement(WorkspaceRoute, null, child))
-    expect(route.seen).toEqual(['runtime:vm'])
-    route.hostCapabilities = [MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY]
-    route.statusPending = false
-    await render(createElement(WorkspaceRoute, null, child))
-    expect(route.seen).toEqual(['runtime:vm'])
+    const session = desktop()
+    await render(screen, desktopGates([], true))
+    expect([...new Set(route.seen)]).toEqual(['runtime:vm'])
+    expect(below.client).toBeNull()
+    expect(session.sendRequest).not.toHaveBeenCalled()
   })
+})
 
-  it('never stands in for the desktop’s own workspaces', async () => {
+describe('the desktop’s own workspace', () => {
+  it('keeps the desktop’s client and gates', async () => {
     route.params = { hostId: 'host-1' }
-    route.hostCapabilities = []
-    route.statusPending = false
-    await render(createElement(WorkspaceRoute, null, child))
-    expect(route.seen).toEqual([undefined])
+    const session = desktop()
+    await render(
+      createElement(WorkspaceRoute, null, createElement(Probe)),
+      desktopGates([...RELAYS, VAULT])
+    )
+    expect([...new Set(route.seen)]).toEqual([undefined])
+    expect(below.client).toBe(session)
+    expect(below.capabilities).toEqual([...RELAYS, VAULT])
   })
 })

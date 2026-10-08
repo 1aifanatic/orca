@@ -41,6 +41,9 @@ vi.mock('react-native', () => ({
 vi.mock('../transport/client-context', () => ({
   useHostClient: () => ({ client: null, state: 'disconnected' })
 }))
+vi.mock('../transport/workspace-server', () => ({
+  useWorkspaceServer: () => ({ routeHost: undefined, server: null })
+}))
 vi.mock('expo-router', () => ({ useLocalSearchParams: () => dependencies.params }))
 
 vi.mock('../files/MobileFileExplorerPanel', () => ({

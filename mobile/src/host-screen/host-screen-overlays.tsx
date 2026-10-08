@@ -2,7 +2,7 @@ import { openExternalLink } from '../platform/external-link'
 import { Pressable, Text, View } from 'react-native'
 import { Check, Moon } from 'lucide-react-native'
 import { buildWorktreeNavigationActions } from '../agent-history/worktree-navigation-actions'
-import { workspaceRouteExecutionHost } from '../transport/execution-host-scoped-rpc-client'
+import { useWorkspaceServer } from '../transport/workspace-server'
 import { ActionSheetContent } from '../components/ActionSheetModal'
 import { BottomDrawer } from '../components/BottomDrawer'
 import { ConfirmModal } from '../components/ConfirmModal'
@@ -25,6 +25,7 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
     actions,
     catalog,
     client,
+    connState,
     existingWorktreePaths,
     hostCapabilities,
     hostId,
@@ -33,6 +34,13 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
     state
   } = controller
   const actionTarget = state.actionTarget
+  // A server row's screens are offered by what that server supports, not the desktop.
+  const actionServer = useWorkspaceServer({
+    client,
+    connState,
+    desktopCapabilities: hostCapabilities,
+    executionHost: actionTarget?.hostId
+  })
 
   return (
     <>
@@ -165,12 +173,9 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
                       hostId,
                       worktreeId: actionTarget.worktreeId,
                       worktreeName: actionTarget.displayName || actionTarget.repo,
-                      executionHost: workspaceRouteExecutionHost(
-                        client,
-                        hostCapabilities,
-                        actionTarget.hostId
-                      ),
-                      hostCapabilities,
+                      executionHost: actionServer.routeHost,
+                      hostCapabilities:
+                        actionServer.server?.gates.hostCapabilities ?? hostCapabilities,
                       navigate: actions.navigateFromHostList,
                       onDone: () => state.setActionTarget(null)
                     }),
