@@ -1,5 +1,5 @@
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
-import type { ExecutionHostId } from '../../../shared/execution-host'
+import { toSshExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import { structuralValuesEqual } from '../../../shared/structural-value-equality'
@@ -12,7 +12,10 @@ import type {
   TerminalLayoutSetResult
 } from '../../../shared/terminal-layout-set'
 import type { TerminalLeafBindRequest } from '../../../shared/terminal-leaf-bind'
-import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
+import type {
+  WorkspaceSessionPatch,
+  WorkspaceSessionState
+} from '../../../shared/workspace-session-state-types'
 import type { PtyBindingPersistenceOperations } from '../loading-store/pty-binding-persistence'
 import { startSpan } from '../../observability/tracer'
 import {
@@ -20,6 +23,7 @@ import {
   type TerminalSurfaceCloseCommit
 } from '../../runtime/terminal-surface-close'
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
+import type { Store } from '../loading-store/store'
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
 import { planTerminalLayoutSet } from './terminal-layout-set'
 import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
@@ -29,7 +33,12 @@ import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
 // move here later.
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
-type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab' | 'move_leaf' | 'set_layout'
+type TerminalTopologyCommitKind =
+  | 'close_leaf'
+  | 'close_tab'
+  | 'move_leaf'
+  | 'set_layout'
+  | 'import_peer_topology'
 
 export function closeLeafOrTab(
   commit: TerminalSurfaceCloseCommit
@@ -89,6 +98,25 @@ export function setLayout(
     },
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
+}
+
+/** A window's pull from an SSH host, written only to that host's partition, its worktrees' home. */
+export function importPeerTopology(
+  store: Pick<Store, 'patchWorkspaceSession'>,
+  targetId: string,
+  session: WorkspaceSessionPatch
+): void {
+  traced(
+    'import_peer_topology',
+    () => {
+      if (Object.keys(session).length === 0) {
+        return { value: undefined, persist: false }
+      }
+      store.patchWorkspaceSession(session, toSshExecutionHostId(targetId))
+      return { value: undefined }
+    },
+    () => undefined
+  )()
 }
 
 /** A sleeping agent's record lands beside its tab, in its worktree's home partition. */

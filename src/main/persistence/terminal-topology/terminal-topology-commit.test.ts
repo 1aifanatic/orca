@@ -4,7 +4,7 @@ import type { TerminalSurfaceCloseTarget } from '../../../shared/terminal-surfac
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { _resetTracerForTests, setActiveSink } from '../../observability/tracer'
 import type { TerminalSurfaceCloseCommit } from '../../runtime/terminal-surface-close'
-import { closeLeafOrTab } from './terminal-topology-commit'
+import { closeLeafOrTab, importPeerTopology } from './terminal-topology-commit'
 
 // An ssh: partition, so a leaked host id or worktree path would show in the span.
 const HOST_ID: ExecutionHostId = 'ssh:target-1'
@@ -148,5 +148,21 @@ describe('persistence.terminal-topology span', () => {
     expect(records).toHaveLength(1)
     expect(records[0].attributes).toMatchObject({ 'topology.outcome': 'threw' })
     expect(records[0].exit).toMatchObject({ _tag: 'Failure' })
+  })
+
+  it("commits an SSH import into that target's partition alone", () => {
+    const patchWorkspaceSession = vi.fn()
+    importPeerTopology({ patchWorkspaceSession }, 'target-1', { tabsByWorktree: {} })
+    importPeerTopology({ patchWorkspaceSession }, 'target-1', {})
+
+    expect(patchWorkspaceSession.mock.calls).toEqual([[{ tabsByWorktree: {} }, HOST_ID]])
+    expect(records.map((record) => record.attributes)).toEqual([
+      {
+        kind: 'persistence',
+        'topology.kind': 'import_peer_topology',
+        'topology.outcome': 'committed'
+      },
+      { kind: 'persistence', 'topology.kind': 'import_peer_topology', 'topology.outcome': 'noop' }
+    ])
   })
 })

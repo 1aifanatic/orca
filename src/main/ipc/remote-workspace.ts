@@ -9,7 +9,9 @@ import {
   type RemoteWorkspacePeerImport,
   type RemoteWorkspacePushStatusEvent
 } from '../../shared/remote-workspace-types'
+import { toSshExecutionHostId } from '../../shared/execution-host'
 import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
+import { importPeerTopology } from '../persistence/terminal-topology/terminal-topology-commit'
 import { createRemoteWorkspaceExports } from './remote-workspace-export'
 import { getRemoteWorkspaceNamespace } from './remote-workspace-namespace'
 import { registerRemoteWorkspaceNotificationHandler } from './remote-workspace-events'
@@ -63,7 +65,9 @@ function isValidPeerImport(pull: RemoteWorkspacePeerImport): boolean {
     pull.hostObservationToken.length > 0 &&
     pull.hostObservationToken.length <= 128 &&
     ['synced', 'kept-local', 'conflict'].includes(pull.outcome) &&
-    Array.isArray(pull.patches)
+    typeof pull.session === 'object' &&
+    pull.session !== null &&
+    !Array.isArray(pull.session)
   )
 }
 
@@ -152,18 +156,16 @@ export function registerRemoteWorkspaceHandlers(
     return getRemoteSnapshot(target)
   })
 
-  // The window imports a host's snapshot through main, so the import's writes are main's commit
-  // and the agreement they set keeps them from exporting back.
+  // The window imports a host's snapshot through main: only that host's partition is written, and
+  // the agreement it sets keeps the import from exporting back.
   ipcMain.handle(
     'remoteWorkspace:importPeerTopology',
     (_event, pull: RemoteWorkspacePeerImport | undefined) => {
       if (!pull || !isValidPeerImport(pull)) {
         return
       }
-      for (const { hostId, patch } of pull.patches) {
-        if (!isFrozenOrcadSourceSessionPartition(store, hostId)) {
-          store.patchWorkspaceSession(patch, hostId)
-        }
+      if (!isFrozenOrcadSourceSessionPartition(store, toSshExecutionHostId(pull.targetId))) {
+        importPeerTopology(store, pull.targetId, pull.session)
       }
       exports.recordPull(pull)
     }

@@ -339,14 +339,14 @@ describe('main exports a session write to the hosts it agrees with', () => {
       revision: -1,
       hostObservationToken: 'token',
       outcome: 'synced',
-      patches: []
+      session: {}
     })
     driver.importPeer({
       targetId: 'target-1',
       revision: 7,
       hostObservationToken: '',
       outcome: 'synced',
-      patches: []
+      session: {}
     })
 
     driver.write(sessionWithTab)
@@ -414,7 +414,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
       ...observed,
       targetId: 'target-1',
       outcome: 'synced',
-      patches: [{ patch: sessionWithTab }]
+      session: sessionWithTab
     })
     // The window saves back what it applied from the import.
     driver.write(sessionWithTab)
@@ -472,7 +472,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
 
     driver.write(sessionWithTab)
     await vi.waitFor(() => expect(patchRequests('target-1')).toHaveLength(1))
-    driver.importPeer({ ...observed, targetId: 'target-1', outcome: 'synced', patches: [] })
+    driver.importPeer({ ...observed, targetId: 'target-1', outcome: 'synced', session: {} })
     finishPatch({ ok: false, reason: 'stale-revision', snapshot: snapshot(emptyRemoteSession, 9) })
     await new Promise((resolve) => setTimeout(resolve, 0))
 

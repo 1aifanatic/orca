@@ -200,7 +200,7 @@ async function bootDesktop(): Promise<Desktop> {
           revision: event.snapshot.revision,
           hostObservationToken: event.snapshot.hostObservationToken,
           outcome: desktop.conflicted ? 'conflict' : keptTabs.length > 0 ? 'kept-local' : 'synced',
-          patches: [{ hostId: `ssh:${TARGET.id}`, patch }]
+          session: patch
         })
         desktop.driver.write(patch)
       }

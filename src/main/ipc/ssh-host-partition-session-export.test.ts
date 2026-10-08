@@ -202,7 +202,7 @@ async function publishRuntimeWrite(store: InstanceType<typeof Store>): Promise<v
     targetId: TARGET_ID,
     ...observed,
     outcome: 'synced',
-    patches: []
+    session: {}
   })
   const revisionBefore = hostSnapshot.revision
   store.setWorkspaceSession(
@@ -234,5 +234,38 @@ describe('main export reads the target ssh partition', () => {
     await publishRuntimeWrite(store)
 
     expect(hostSnapshot.session.tabsByWorktreePath[WORKTREE_PATH]).not.toEqual([])
+  })
+})
+
+describe('a window import writes only its target partition', () => {
+  it('cannot change local or other-host rows, nor roll back a main write not yet mirrored', async () => {
+    const store = createStrandedStore()
+    registerRemoteWorkspaceHandlers(store, () => null, { readMachineName: () => 'Build server' })
+    // Main's own local write, which the window has not received yet.
+    const localWorktreeId = 'repo-local::/home/me/proj'
+    const localTab = { ...runtimeAuthoredTab(), id: 'tab-main', worktreeId: localWorktreeId }
+    store.setWorkspaceSession({
+      ...store.getWorkspaceSession(),
+      tabsByWorktree: {
+        ...store.getWorkspaceSession().tabsByWorktree,
+        [localWorktreeId]: [localTab]
+      }
+    })
+    const localBefore = store.getWorkspaceSession()
+    const otherBefore = store.getWorkspaceSession(OTHER_SSH_HOST_ID)
+
+    await ipcHandlers.get('remoteWorkspace:importPeerTopology')?.(null, {
+      targetId: TARGET_ID,
+      revision: 4,
+      hostObservationToken: 'observation-4',
+      outcome: 'synced',
+      session: { tabsByWorktree: { [WORKTREE_ID]: [runtimeAuthoredTab()] } }
+    })
+
+    expect(store.getWorkspaceSession()).toEqual(localBefore)
+    expect(store.getWorkspaceSession(OTHER_SSH_HOST_ID)).toEqual(otherBefore)
+    expect(
+      store.getWorkspaceSession(SSH_HOST_ID).tabsByWorktree[WORKTREE_ID]?.map((tab) => tab.id)
+    ).toEqual(['tab-runtime'])
   })
 })
