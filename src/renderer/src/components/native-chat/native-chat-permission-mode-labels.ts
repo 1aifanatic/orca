@@ -6,6 +6,7 @@ import type { SessionOptionsSurface } from '../../../../shared/native-chat-sessi
 
 /** The composer's permission pill: present only where the host offers a picker for this chat. */
 export type NativeChatPermissionModePickerState = {
+  provider?: string | null
   current: AgentChatPermissionMode
   supported: readonly AgentChatPermissionMode[]
   /** This pick is in flight. */
@@ -40,9 +41,24 @@ export function nativeChatPermissionModeLabel(mode: AgentChatPermissionMode): st
   }
 }
 
-export function nativeChatPermissionModeDescription(mode: AgentChatPermissionMode): string {
+export function nativeChatPermissionModeDescription(
+  mode: AgentChatPermissionMode,
+  provider?: string | null
+): string {
   switch (mode) {
     case 'ask':
+      if (provider === 'codex') {
+        return translate(
+          'components.native-chat.composer.permissionAskCodexDescription',
+          'Works inside the workspace sandbox; asks before going beyond it'
+        )
+      }
+      if (provider !== 'claude') {
+        return translate(
+          'components.native-chat.composer.permissionAskSharedDescription',
+          'Claude asks before edits and commands; Codex asks beyond the workspace sandbox'
+        )
+      }
       return translate(
         'components.native-chat.composer.permissionAskDescription',
         'Always asks before edits and commands'
@@ -50,17 +66,17 @@ export function nativeChatPermissionModeDescription(mode: AgentChatPermissionMod
     case 'accept-edits':
       return translate(
         'components.native-chat.composer.permissionAcceptEditsDescription',
-        'Edits files without asking; asks before commands'
+        'Claude edits files without asking'
       )
     case 'auto':
       return translate(
         'components.native-chat.composer.permissionAutoDescription',
-        'Only asks for actions detected as potentially unsafe'
+        'Reviews approval requests for you'
       )
     case 'bypass':
       return translate(
         'components.native-chat.composer.permissionBypassDescription',
-        'Never asks; unrestricted access to your computer'
+        'Runs edits and commands without asking'
       )
   }
 }

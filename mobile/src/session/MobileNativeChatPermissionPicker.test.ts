@@ -43,6 +43,7 @@ function mount(
   disabled = false
 ): MobileNativeChatPermissionPickerState {
   const picker: MobileNativeChatPermissionPickerState = {
+    provider: 'claude',
     current: 'ask',
     supported: ['ask', 'accept-edits', 'auto', 'bypass'],
     pending: false,
@@ -126,9 +127,25 @@ describe('MobileNativeChatPermissionPicker', () => {
     act(() => pill().props.onPress())
 
     expect(textNode('Ask for approval')).toBeTruthy()
-    expect(textNode('Only asks for actions detected as potentially unsafe')).toBeTruthy()
+    expect(textNode('Reviews approval requests for you')).toBeTruthy()
+    expect(textNode('Always asks before edits and commands')).toBeTruthy()
     expect(() => textNode('Accept edits')).toThrow()
     expect(row('Ask for approval').props.accessibilityState).toMatchObject({ checked: true })
+  })
+
+  it('describes Codex approval at the workspace sandbox boundary', () => {
+    mount({ provider: 'codex', supported: ['ask', 'auto', 'bypass'] })
+    act(() => pill().props.onPress())
+    expect(textNode('Works inside the workspace sandbox; asks before going beyond it')).toBeTruthy()
+    expect(() => textNode('Always asks before edits and commands')).toThrow()
+  })
+
+  it('keeps the drawer open when the write is unconfirmed', async () => {
+    mount({ current: 'bypass', setMode: vi.fn(async () => false) })
+    act(() => pill().props.onPress())
+    await act(async () => row('Ask for approval').props.onPress())
+    expect(row('Ask for approval').props.accessibilityState).toMatchObject({ checked: false })
+    expect(row('Full access').props.accessibilityState).toMatchObject({ checked: true })
   })
 
   it('shows Full access in the warning colour on the pill and in the drawer', () => {

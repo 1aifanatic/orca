@@ -3,6 +3,11 @@
 // session's error channel.
 
 import { useCallback } from 'react'
+import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../src/shared/agent-chat-permission-mode'
+import {
+  agentSessionWriteNoticeEnglish,
+  agentSessionWriteNoticeParts
+} from '../../../src/shared/agent-session-refusal-notice'
 import type { StructuredAgentSessionState } from '../../../src/shared/structured-agent-session-reducer'
 import type { RpcClient } from '../transport/rpc-client'
 import {
@@ -51,6 +56,16 @@ export function useMobileStructuredAgentMutate(args: {
         }
       }
       if (result.status === 'unknown') {
+        if (
+          method === 'agentSession.setOption' &&
+          fields.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID
+        ) {
+          onSendError(
+            agentSessionWriteNoticeEnglish(
+              agentSessionWriteNoticeParts({ kind: 'unconfirmed' }, 'option')
+            )
+          )
+        }
         return result
       }
       onSendError(result.message)

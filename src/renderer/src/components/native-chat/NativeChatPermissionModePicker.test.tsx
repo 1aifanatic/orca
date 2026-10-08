@@ -98,6 +98,7 @@ function picker(
   overrides: Partial<NativeChatPermissionModePickerState> = {}
 ): NativeChatPermissionModePickerState {
   return {
+    provider: 'claude',
     current: 'ask',
     supported: ['ask', 'accept-edits', 'auto', 'bypass'],
     pending: false,
@@ -133,18 +134,29 @@ describe('NativeChatPermissionModePicker', () => {
     ).toEqual(['ask', 'accept-edits', 'auto', 'bypass'])
     expect(within(menu).getByText('Ask for approval')).toBeTruthy()
     expect(within(menu).getByText('Always asks before edits and commands')).toBeTruthy()
-    expect(within(menu).getByText('Edits files without asking; asks before commands')).toBeTruthy()
-    expect(
-      within(menu).getByText('Only asks for actions detected as potentially unsafe')
-    ).toBeTruthy()
-    expect(within(menu).getByText('Never asks; unrestricted access to your computer')).toBeTruthy()
+    expect(within(menu).getByText('Claude edits files without asking')).toBeTruthy()
+    expect(within(menu).getByText('Reviews approval requests for you')).toBeTruthy()
+    expect(within(menu).getByText('Runs edits and commands without asking')).toBeTruthy()
   })
 
   it('offers Codex no edits-only mode', () => {
     render(
-      <NativeChatPermissionModePicker picker={picker({ supported: ['ask', 'auto', 'bypass'] })} />
+      <NativeChatPermissionModePicker
+        picker={picker({ provider: 'codex', supported: ['ask', 'auto', 'bypass'] })}
+      />
     )
     expect(screen.queryByText('Accept edits')).toBeNull()
+    expect(option('ask').textContent).toContain(
+      'Works inside the workspace sandbox; asks before going beyond it'
+    )
+    expect(screen.queryByText('Always asks before edits and commands')).toBeNull()
+  })
+
+  it('describes both providers in the new-chat setting', () => {
+    render(<NativeChatPermissionModePicker picker={picker({ provider: null })} />)
+    expect(option('ask').textContent).toContain(
+      'Claude asks before edits and commands; Codex asks beyond the workspace sandbox'
+    )
   })
 
   it('names the current mode on the pill, by category for assistive tech', () => {

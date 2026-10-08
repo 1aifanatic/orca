@@ -18,7 +18,7 @@ type Refresh = {
 it('refreshes idle host permission changes, turn and provider changes, and reconnects without reading on ordinary renders', async () => {
   let mode: AgentChatPermissionMode = 'ask'
   const reads = vi.fn(async (): Promise<AgentSessionOptionsResult> => ({
-    models: [{ id: 'm', label: 'M', efforts: [] }],
+    models: [{ id: 'm', label: 'M', isDefault: true, efforts: [] }],
     current: { model: 'm' },
     permissionModes: { current: mode, supported: ['ask', 'auto', 'bypass'] }
   }))

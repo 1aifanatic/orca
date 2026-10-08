@@ -8,6 +8,7 @@ import { ChoiceRow, Pill } from './MobileNativeChatSessionOptionRows'
 
 /** The chat's permission pill: present only where the host offers a picker for this chat. */
 export type MobileNativeChatPermissionPickerState = {
+  provider?: string | null
   current: AgentChatPermissionMode
   supported: readonly AgentChatPermissionMode[]
   /** A pick is in flight. */
@@ -19,13 +20,23 @@ const MODE_COPY: Record<AgentChatPermissionMode, { label: string; description: s
   ask: { label: 'Ask for approval', description: 'Always asks before edits and commands' },
   'accept-edits': {
     label: 'Accept edits',
-    description: 'Edits files without asking; asks before commands'
+    description: 'Claude edits files without asking'
   },
   auto: {
     label: 'Approve for me',
-    description: 'Only asks for actions detected as potentially unsafe'
+    description: 'Reviews approval requests for you'
   },
-  bypass: { label: 'Full access', description: 'Never asks; unrestricted access to your computer' }
+  bypass: { label: 'Full access', description: 'Runs edits and commands without asking' }
+}
+
+function modeDescription(mode: AgentChatPermissionMode, provider?: string | null): string {
+  if (mode === 'ask' && provider === 'codex') {
+    return 'Works inside the workspace sandbox; asks before going beyond it'
+  }
+  if (mode === 'ask' && provider !== 'claude') {
+    return 'Claude asks before edits and commands; Codex asks beyond the workspace sandbox'
+  }
+  return MODE_COPY[mode].description
 }
 
 /** Full access reads in the warning colour wherever it is shown. */
@@ -95,7 +106,7 @@ export function MobileNativeChatPermissionPicker({
                 <ChoiceRow
                   key={mode}
                   label={MODE_COPY[mode].label}
-                  description={MODE_COPY[mode].description}
+                  description={modeDescription(mode, picker.provider)}
                   selected={mode === picker.current}
                   disabled={disabled || picker.pending}
                   grouped

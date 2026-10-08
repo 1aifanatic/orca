@@ -167,6 +167,23 @@ export function useMobileStructuredAgentOptions(args: {
       }
       const targetRecord = currentState.record
       const mutationGeneration = ++optionMutationGeneration.current
+      const isCurrent = (): boolean =>
+        activeOptionRecordRef.current === targetRecord &&
+        optionMutationGeneration.current === mutationGeneration
+      const refreshOptions = (): void => {
+        const readSequence = ++optionReadGeneration.current
+        void callAgentSession<AgentSessionOptionsResult>(client, 'agentSession.options', {
+          sessionId
+        })
+          .then((refreshed) => {
+            if (isCurrent() && optionReadGeneration.current === readSequence) {
+              updateOptionState((latest) =>
+                applyStructuredAgentSessionOptions(latest, optionCatalog, refreshed)
+              )
+            }
+          })
+          .catch(() => undefined)
+      }
       pendingOptionRef.current = id
       updateOptionState((current) => ({ ...current, pendingId: id }))
       try {
@@ -175,11 +192,11 @@ export function useMobileStructuredAgentOptions(args: {
           'agentSession.setOption',
           { key: id, value: encoded }
         )
-        if (
-          activeOptionRecordRef.current !== targetRecord ||
-          optionMutationGeneration.current !== mutationGeneration
-        ) {
-          return result.status !== 'rejected'
+        if (!isCurrent()) {
+          return (
+            result.status === 'accepted' ||
+            (result.status === 'unknown' && id !== AGENT_CHAT_PERMISSION_MODE_OPTION_ID)
+          )
         }
         if (result.status === 'accepted') {
           const committed = result.value.options ?? { [id]: encoded }
@@ -188,10 +205,7 @@ export function useMobileStructuredAgentOptions(args: {
               ? commitStructuredAgentSessionOptionValues(current, committed)
               : current
           )
-          // Only an accepted pick: an `unknown` outcome commits optimistically to the
-          // visible record, and remembering one the provider refused would seed a
-          // launch the user never chose.
-          // The chat's permission mode is its own and never becomes the next chat's default.
+          // Only accepted per-model picks become the next chat's default.
           if (
             (agent === 'claude' || agent === 'codex') &&
             id !== AGENT_CHAT_PERMISSION_MODE_OPTION_ID
@@ -203,28 +217,16 @@ export function useMobileStructuredAgentOptions(args: {
             })
           }
           if (result.sameFence) {
-            const readSequence = ++optionReadGeneration.current
-            void callAgentSession<AgentSessionOptionsResult>(client, 'agentSession.options', {
-              sessionId
-            })
-              .then((refreshed) => {
-                if (
-                  activeOptionRecordRef.current === targetRecord &&
-                  optionReadGeneration.current === readSequence &&
-                  optionMutationGeneration.current === mutationGeneration
-                ) {
-                  updateOptionState((latest) =>
-                    latest.record === targetRecord
-                      ? applyStructuredAgentSessionOptions(latest, optionCatalog, refreshed)
-                      : latest
-                  )
-                }
-              })
-              .catch(() => undefined)
+            refreshOptions()
           }
           return true
         }
         if (result.status === 'unknown') {
+          if (id === AGENT_CHAT_PERMISSION_MODE_OPTION_ID) {
+            // A read confirms current host intent, not the fate of a write still in transit.
+            refreshOptions()
+            return false
+          }
           updateOptionState((current) =>
             current.record === targetRecord
               ? commitStructuredAgentSessionOption(current, id, encoded)
@@ -234,10 +236,7 @@ export function useMobileStructuredAgentOptions(args: {
         }
         return false
       } finally {
-        if (
-          activeOptionRecordRef.current === targetRecord &&
-          optionMutationGeneration.current === mutationGeneration
-        ) {
+        if (isCurrent()) {
           pendingOptionRef.current = null
           updateOptionState((current) =>
             current.record === targetRecord && current.pendingId === id
@@ -283,13 +282,14 @@ export function useMobileStructuredAgentOptions(args: {
     () =>
       optionState.permission
         ? {
+            provider: agent,
             current: optionState.permission.current,
             supported: optionState.permission.supported,
             pending: optionState.pendingId !== null,
             setMode: (mode) => setStructuredOption(AGENT_CHAT_PERMISSION_MODE_OPTION_ID, mode)
           }
         : null,
-    [optionState.pendingId, optionState.permission, setStructuredOption]
+    [agent, optionState.pendingId, optionState.permission, setStructuredOption]
   )
 
   return {

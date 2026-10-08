@@ -1,4 +1,5 @@
 import type { StructuredMobileSession } from './mobile-structured-session-controller'
+import type { MobileNativeChatVisualSource } from './mobile-native-chat-visual-read'
 import { useCallback, useMemo, useRef } from 'react'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'

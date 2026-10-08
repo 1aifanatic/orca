@@ -262,6 +262,7 @@ export function useStructuredAgentSessionOptions(args: {
     () =>
       permissionModes
         ? {
+            provider: agent,
             current: permissionModes.current,
             supported: permissionModes.supported,
             pending: optionState.pendingId === AGENT_CHAT_PERMISSION_MODE_OPTION_ID,
@@ -270,7 +271,7 @@ export function useStructuredAgentSessionOptions(args: {
             setMode: (mode) => setStructuredOption(AGENT_CHAT_PERMISSION_MODE_OPTION_ID, mode)
           }
         : null,
-    [acceptsPicks, optionState.pendingId, permissionModes, setStructuredOption]
+    [acceptsPicks, agent, optionState.pendingId, permissionModes, setStructuredOption]
   )
   const optionSurface = useMemo<StructuredSessionOptionsSurface>(
     () => ({

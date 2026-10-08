@@ -85,7 +85,7 @@ function NativeChatPermissionModePickerInner({
               <div className="min-w-0 py-0.5">
                 <ModeName mode={mode} />
                 <div className="text-xs font-normal text-muted-foreground">
-                  {nativeChatPermissionModeDescription(mode)}
+                  {nativeChatPermissionModeDescription(mode, picker.provider)}
                 </div>
               </div>
             </DropdownMenuRadioItem>

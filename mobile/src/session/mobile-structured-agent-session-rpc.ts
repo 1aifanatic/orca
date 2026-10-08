@@ -2,6 +2,7 @@ import type {
   AgentSessionMutationResult,
   AgentSessionWireRefusalCode
 } from '../../../src/shared/agent-session-wire'
+import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../src/shared/agent-chat-permission-mode'
 import { structuredAgentSessionPayloadFingerprint } from '../../../src/shared/structured-agent-session-mutation'
 import {
   agentSessionRefusalNotice,
@@ -162,7 +163,10 @@ export async function requestStructuredAgentSessionMutation<TValue>(args: {
     )
     if (
       !result.ok &&
-      (method === 'agentSession.cancel' || method === 'agentSession.conversationCommand') &&
+      (method === 'agentSession.cancel' ||
+        method === 'agentSession.conversationCommand' ||
+        (method === 'agentSession.setOption' &&
+          fields.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID)) &&
       result.refusal.code === 'agent_session_operation_unknown'
     ) {
       return { status: 'unknown' }

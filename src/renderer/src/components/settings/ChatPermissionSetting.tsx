@@ -31,6 +31,7 @@ export function ChatPermissionSetting({
         action={
           <NativeChatPermissionModePicker
             picker={{
+              provider: null,
               current: agentChatPermissionModeFromSetting(settings.nativeChatPermissionMode),
               supported: AGENT_CHAT_PERMISSION_MODES,
               pending: false,
