@@ -2,7 +2,6 @@
  * A remote browser stream keeps the desktop window drawing for exactly as long as it lives: guest
  * frames come from the embedder's compositor, which a throttled hidden window stops running.
  */
-import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserScreencastOptions } from '../browser/browser-screencast-stream-types'
 import { createScreencastHarness } from './browser-screencast-subscriber-test-harness'
@@ -25,13 +24,13 @@ type PageStream = { options: BrowserScreencastOptions; close: () => void }
 function createRig() {
   const { runtime } = createScreencastHarness()
   const setBackgroundThrottling = vi.fn()
-  const window = Object.assign(new EventEmitter(), {
+  const window = {
     webContents: {
       isDestroyed: () => false,
       setBackgroundThrottling,
       capturePage: vi.fn(async () => null)
     }
-  })
+  }
   // The streamed guest, recording its throttle and capture calls in order.
   const guestCalls: unknown[] = []
   const guest = {
@@ -92,7 +91,6 @@ function createRig() {
     pageStreams,
     stopControl,
     throttleCalls: () => setBackgroundThrottling.mock.calls.map(([allowed]) => allowed),
-    window,
     guest,
     guestCalls
   }
@@ -224,52 +222,33 @@ describe('remote browser screencast guest painting', () => {
     expect(guestCallsAtStart).toEqual([false])
   })
 
-  it('unthrottles the guest again when the window hides or minimizes mid-stream', async () => {
+  it('re-throttles and re-hides the guest when the stream ends', async () => {
     const rig = createRig()
     const phone = rig.subscribe('conn-phone')
-    await phone.ready()
-
-    rig.window.emit('hide')
-    rig.window.emit('minimize')
-
-    expect(rig.guestCalls).toEqual([false, false, false])
-  })
-
-  it('applies once per page stream, not once per viewer', async () => {
-    const rig = createRig()
-    await rig.subscribe('conn-phone').ready()
-    await rig.subscribe('conn-tablet').ready()
-
-    rig.window.emit('hide')
-
-    expect(rig.guestCalls).toEqual([false, false])
-  })
-
-  it('leaves the guest alone while no stream is live', async () => {
-    const rig = createRig()
-    rig.window.emit('hide')
-    rig.window.emit('minimize')
-
-    expect(rig.guestCalls).toEqual([])
-  })
-
-  it('re-throttles and re-hides the guest at stream end, and drops its window listeners', async () => {
-    const rig = createRig()
-    const phone = rig.subscribe('conn-phone')
-    const subscriptionId = await phone.ready()
-
-    rig.runtime.cleanupSubscription(subscriptionId)
+    rig.runtime.cleanupSubscription(await phone.ready())
     await phone.done
-    await vi.waitFor(() => expect(rig.guestCalls).toEqual([false, true, GUEST_REHIDE]))
-    expect(rig.window.listenerCount('hide')).toBe(0)
-    expect(rig.window.listenerCount('minimize')).toBe(0)
 
-    rig.window.emit('hide')
-    rig.window.emit('minimize')
-    expect(rig.guestCalls).toEqual([false, true, GUEST_REHIDE])
+    await vi.waitFor(() => expect(rig.guestCalls).toEqual([false, true, GUEST_REHIDE]))
   })
 
-  it('re-applies for a later stream', async () => {
+  it('holds one guest lease for two viewers of the same page', async () => {
+    const rig = createRig()
+    const phone = rig.subscribe('conn-phone')
+    const tablet = rig.subscribe('conn-tablet')
+    const phoneSubscription = await phone.ready()
+    const tabletSubscription = await tablet.ready()
+    expect(rig.guestCalls).toEqual([false])
+
+    rig.runtime.cleanupSubscription(phoneSubscription)
+    await phone.done
+    expect(rig.guestCalls).toEqual([false])
+
+    rig.runtime.cleanupSubscription(tabletSubscription)
+    await tablet.done
+    await vi.waitFor(() => expect(rig.guestCalls).toEqual([false, true, GUEST_REHIDE]))
+  })
+
+  it('unthrottles the guest again for a later stream', async () => {
     const rig = createRig()
     const phone = rig.subscribe('conn-phone')
     rig.runtime.cleanupSubscription(await phone.ready())
@@ -277,9 +256,8 @@ describe('remote browser screencast guest painting', () => {
     await vi.waitFor(() => expect(rig.guestCalls).toEqual([false, true, GUEST_REHIDE]))
 
     await rig.subscribe('conn-tablet').ready()
-    rig.window.emit('minimize')
 
-    expect(rig.guestCalls).toEqual([false, true, GUEST_REHIDE, false, false])
+    expect(rig.guestCalls).toEqual([false, true, GUEST_REHIDE, false])
   })
 
   it('makes no guest call at stream end once the guest is destroyed', async () => {
