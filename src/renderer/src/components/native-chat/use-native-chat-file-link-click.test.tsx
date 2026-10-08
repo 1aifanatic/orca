@@ -59,7 +59,8 @@ function Transcript(props: {
       variant="document"
       onLinkClick={onLinkClick}
       allowFileUriLinks
-      linkifyFilePaths
+      // The click path is under test; which paths get underlined is covered elsewhere.
+      fileLinkExists={() => true}
     />
   )
 }
@@ -263,11 +264,17 @@ describe('tool and edit-card file activation', () => {
 })
 
 describe('useNativeChatFileLinkClick', () => {
-  it('does not underline a bare file name the click could not open', () => {
-    render(<Transcript markdown="I updated `deck.md` and 'notes.md'." />)
+  it('opens a bare file name from the chat folder', () => {
+    render(<Transcript markdown="I updated `deck.md`." />)
 
-    expect(screen.queryByRole('link')).toBeNull()
-    expect(screen.getByText('deck.md').tagName).toBe('CODE')
+    clickLink('deck.md')
+
+    expect(mocks.openDetectedFilePath).toHaveBeenCalledWith(
+      '/repo/deck.md',
+      null,
+      null,
+      expect.objectContaining({ worktreeId: 'wt-1' })
+    )
   })
 
   it('reports a missing relative path instead of doing nothing', () => {
