@@ -188,6 +188,12 @@ export class PostgresPoolPressure {
     }
   }
 
+  // Instantaneous, unlike peekCounts, which holds the last interval's maxima.
+  oldestWaitMs(): number {
+    if (this.waiters.size === 0) return 0
+    return Math.max(0, this.now() - Math.min(...this.waiters.values()))
+  }
+
   private readCounts(): PostgresPoolPressureCounts {
     const now = this.now()
     const oldestWaitMs =

@@ -47,6 +47,24 @@ describe('PostgreSQL pool pressure', () => {
       databasePoolWaitMsMax: 0
     })
   })
+
+  it('reads the oldest wait as it is now, not the interval maximum', async () => {
+    let now = 1_000
+    const pool = {
+      totalCount: 1,
+      idleCount: 0,
+      waitingCount: 0,
+      connect: vi.fn(() => {
+        pool.waitingCount++
+        return new Promise(() => {})
+      })
+    }
+    const pressure = new PostgresPoolPressure(pool as never, () => now)
+    expect(pressure.oldestWaitMs()).toBe(0)
+    void pressure.connect()
+    now = 2_600
+    expect(pressure.oldestWaitMs()).toBe(1_600)
+  })
 })
 
 describe('PostgreSQL pool priority lane', () => {

@@ -1,9 +1,14 @@
+import { createHash } from 'node:crypto'
+import { createServer, type Server } from 'node:http'
 import { createServer as createNetServer } from 'node:net'
+import { exportJWK, generateKeyPair, SignJWT } from 'jose'
+import nacl from 'tweetnacl'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
 import type { RelayConfig } from './config.js'
 import { PostgresDatabase } from './database.js'
-import { createRelayServer, HOST_HELLO_POOL_WAITING_LIMIT } from './relay-server.js'
+import { HostSessionRegistry } from './host-session-registry.js'
+import { createRelayServer, HOST_HELLO_SHED_OLDEST_WAIT_MS } from './relay-server.js'
 
 async function unusedPort(): Promise<number> {
   const server = createNetServer()
@@ -30,15 +35,15 @@ function stalledPool() {
   return pool
 }
 
-function cellConfig(port: number): RelayConfig {
+function cellConfig(port: number, issuer: string): RelayConfig {
   const relayUrl = `http://127.0.0.1:${port}`
   return {
     port,
     publicUrl: relayUrl,
     cellUrl: relayUrl,
-    authIssuer: relayUrl,
+    authIssuer: issuer,
     authAudience: 'orca-relay',
-    jwksUrl: relayUrl,
+    jwksUrl: issuer,
     assignmentSigningKey: new Uint8Array(32),
     role: 'cell',
     cellId: 'production-gce-c3',
@@ -48,7 +53,7 @@ function cellConfig(port: number): RelayConfig {
     runtimeServiceAccount: 'runtime@example.com',
     connectionHardCap: 600,
     connectionUnobservedBound: 60,
-    adminJwksUrl: `${relayUrl}/admin-jwks`,
+    adminJwksUrl: `${issuer}/admin-jwks`,
     databasePoolMax: 2,
     publicAssignmentsEnabled: true,
     publicAssignmentConcurrency: 1,
@@ -61,21 +66,6 @@ function cellConfig(port: number): RelayConfig {
   }
 }
 
-async function controlUpgradeResponse(
-  url: string
-): Promise<{ status: number; retryAfter: string | undefined }> {
-  const socket = new WebSocket(`${url.replace('http:', 'ws:')}/v1/host/control`, {
-    perMessageDeflate: false
-  })
-  return await new Promise((resolve, reject) => {
-    socket.once('unexpected-response', (request, response) => {
-      resolve({ status: response.statusCode ?? 0, retryAfter: response.headers['retry-after'] })
-      request.destroy()
-    })
-    socket.once('open', () => reject(new Error('control upgrade was accepted')))
-  })
-}
-
 describe('host hello shedding under database pool pressure', () => {
   const cleanup: Array<() => Promise<void> | void> = []
 
@@ -84,34 +74,109 @@ describe('host hello shedding under database pool pressure', () => {
     vi.restoreAllMocks()
   })
 
-  async function startCell(waiters: number): Promise<string> {
+  // A cell whose pool holds `waiters` stuck queries, and a clock the test moves.
+  async function startCell(waiters: number) {
     vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const keys = await generateKeyPair('ES256')
+    const publicJwk = await exportJWK(keys.publicKey)
+    const jwksServer: Server = createServer((_request, response) => {
+      response.setHeader('content-type', 'application/json')
+      response.end(
+        JSON.stringify({ keys: [{ ...publicJwk, kid: 'test-key', alg: 'ES256', use: 'sig' }] })
+      )
+    })
+    await new Promise<void>((resolve) => jwksServer.listen(0, '127.0.0.1', resolve))
+    cleanup.push(() => new Promise<void>((resolve) => jwksServer.close(() => resolve())))
+    const jwksAddress = jwksServer.address()
+    if (!jwksAddress || typeof jwksAddress === 'string') throw new Error('missing JWKS address')
+    const issuer = `http://127.0.0.1:${jwksAddress.port}`
+
+    const realNow = Date.now()
+    let elapsedMs = 0
+    // Before the database exists, so the pool's wait clock reads it too.
+    vi.spyOn(Date, 'now').mockImplementation(() => realNow + elapsedMs)
     const database = new PostgresDatabase(stalledPool() as never)
-    // Every query either stalls inside the pool or queues behind those that did.
     for (let index = 0; index < waiters; index++) void database.query('SELECT 1').catch(() => {})
     const port = await unusedPort()
-    const relay = createRelayServer(cellConfig(port), database)
+    const relay = createRelayServer(cellConfig(port, issuer), database)
     relay.server.listen(port, '127.0.0.1')
     await new Promise<void>((resolve) => relay.server.once('listening', resolve))
     cleanup.push(() => new Promise<void>((resolve) => relay.server.close(() => resolve())))
-    return `http://127.0.0.1:${port}`
+
+    const hostId = createHash('sha256')
+      .update(nacl.box.keyPair().publicKey)
+      .digest('base64url')
+      .slice(0, 16)
+    const token = await new SignJWT({
+      prof: 'profile-1',
+      org: 'org-1',
+      purpose: 'host-control',
+      relayHostId: hostId
+    })
+      .setProtectedHeader({ alg: 'ES256', kid: 'test-key' })
+      .setIssuer(issuer)
+      .setAudience('orca-relay')
+      .setSubject('user-1')
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(keys.privateKey)
+    return {
+      url: `ws://127.0.0.1:${port}/v1/host/control`,
+      token,
+      advance: (ms: number) => {
+        elapsedMs += ms
+      }
+    }
   }
 
-  it('refuses a host control upgrade with a retryable 503 once the pool queue is full', async () => {
-    const url = await startCell(HOST_HELLO_POOL_WAITING_LIMIT)
+  // Resolves with the refusal's status, or 101 once the upgrade is accepted.
+  async function dial(
+    cell: Awaited<ReturnType<typeof startCell>>
+  ): Promise<{ status: number; retryAfter?: string }> {
+    const socket = new WebSocket(cell.url, {
+      headers: { authorization: `Bearer ${cell.token}` },
+      perMessageDeflate: false
+    })
+    return await new Promise((resolve, reject) => {
+      socket.once('unexpected-response', (request, response) => {
+        resolve({ status: response.statusCode ?? 0, retryAfter: response.headers['retry-after'] })
+        request.destroy()
+      })
+      socket.once('open', () => {
+        resolve({ status: 101 })
+        socket.terminate()
+      })
+      socket.once('error', reject)
+    })
+  }
 
-    expect(await controlUpgradeResponse(url)).toEqual({ status: 503, retryAfter: '2' })
+  it('admits hellos behind a deep queue that is still moving', async () => {
+    // Asia cells routinely queue 50-196; what matters is that nobody has waited long.
+    const cell = await startCell(120)
+    cell.advance(HOST_HELLO_SHED_OLDEST_WAIT_MS - 300)
+
+    expect(await dial(cell)).toEqual({ status: 101 })
+  })
+
+  it('refuses a hello with a retryable 503 once the oldest waiter nears the acquire timeout', async () => {
+    const cell = await startCell(1)
+    cell.advance(HOST_HELLO_SHED_OLDEST_WAIT_MS)
+
+    expect(await dial(cell)).toEqual({ status: 503, retryAfter: '2' })
     // Shipped desktops dial with no unexpected-response listener, so the refusal
     // reaches them as the ordinary connect error their retry backoff handles.
-    const desktop = new WebSocket(`${url.replace('http:', 'ws:')}/v1/host/control`)
+    const desktop = new WebSocket(cell.url, {
+      headers: { authorization: `Bearer ${cell.token}` }
+    })
     const error = await new Promise<Error>((resolve) => desktop.once('error', resolve))
     expect(error.message).toBe('Unexpected server response: 503')
   })
 
-  it('admits a host control upgrade while the pool queue is below the limit', async () => {
-    const url = await startCell(HOST_HELLO_POOL_WAITING_LIMIT - 1)
+  it('never refuses a rebind over a live control', async () => {
+    vi.spyOn(HostSessionRegistry.prototype, 'hasActiveControl').mockReturnValue(true)
+    const cell = await startCell(1)
+    cell.advance(HOST_HELLO_SHED_OLDEST_WAIT_MS * 2)
 
-    // Past the shed check, the missing bearer is what refuses it.
-    expect(await controlUpgradeResponse(url)).toEqual({ status: 401, retryAfter: undefined })
+    expect(await dial(cell)).toEqual({ status: 101 })
   })
 })

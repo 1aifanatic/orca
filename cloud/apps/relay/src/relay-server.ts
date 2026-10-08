@@ -20,7 +20,11 @@ import { createRelayApp } from './app.js'
 import { RelayAssignmentStore } from './assignment-store.js'
 import type { RelayConfig } from './config.js'
 import { RelayCredentialStore } from './credential-store.js'
-import { readRelayDatabasePoolPressure, type RelayDatabase } from './database.js'
+import {
+  readRelayDatabasePoolOldestWaitMs,
+  readRelayDatabasePoolPressure,
+  type RelayDatabase
+} from './database.js'
 import { HostSessionRegistry } from './host-session-registry.js'
 import { observeRelayDatabase } from './observed-relay-database.js'
 import { RelayObservability } from './relay-observability.js'
@@ -41,10 +45,11 @@ function decodePathSegment(value: string): string | null {
   }
 }
 
-// At asia-east2's ~350 ms per pooled query, 32 waiters behind 16 connections
-// clear in ~0.7 s of the 2 s acquire timeout. The healthy peak is 2; the
-// 2026-10-06 reconnect herd reached 124-527 and timed out 17,912 queries.
-export const HOST_HELLO_POOL_WAITING_LIMIT = 32
+// Three quarters of the 2 s acquire timeout: a queue whose head has waited this
+// long is timing hellos out, while a deep queue that moves never gets here.
+// asia-east2 queues of 50-196 are routine; at 1.5 s, 2026-10-06/07 samples
+// outside the herds crossed it only alongside SQL timeouts.
+export const HOST_HELLO_SHED_OLDEST_WAIT_MS = 1_500
 const HOST_HELLO_SHED_RETRY_AFTER_SECONDS = 2
 
 function rejectUpgrade(
@@ -503,16 +508,6 @@ export function createRelayServer(
       rejectUpgrade(socket, 404, 'Not Found')
       return
     }
-    // A hello costs several pooled queries; queued behind a saturated pool it
-    // times out after 2 s anyway and the desktop redials into the same queue.
-    // Refused here, it backs off instead (shipped desktops ignore Retry-After
-    // and use their own jittered exponential retry). Renewals skip this queue.
-    const poolWaiting = readRelayDatabasePoolPressure(database).databasePoolWaiting
-    if (poolWaiting >= HOST_HELLO_POOL_WAITING_LIMIT) {
-      observability.recordHostHelloShed()
-      rejectUpgrade(socket, 503, 'Service Unavailable', HOST_HELLO_SHED_RETRY_AFTER_SECONDS)
-      return
-    }
     const bearer = readBearer(request.headers.authorization)
     if (!bearer) {
       observability.recordAuth(false)
@@ -530,6 +525,19 @@ export function createRelayServer(
         userId: identity.sub,
         relayHostId: identity.relayHostId
       })
+      // A hello costs several pooled queries, each failing after a 2 s wait. Shed
+      // only while the pool is already timing them out: the refused desktop gets
+      // the same connect error and backoff a timed-out hello gives it today, 2 s
+      // sooner (shipped desktops ignore Retry-After). A rebind over a live control
+      // is a lease rotation, not a reconnect, so it is never refused here.
+      if (
+        !isRebind &&
+        readRelayDatabasePoolOldestWaitMs(database) >= HOST_HELLO_SHED_OLDEST_WAIT_MS
+      ) {
+        observability.recordHostHelloShed()
+        rejectUpgrade(socket, 503, 'Service Unavailable', HOST_HELLO_SHED_RETRY_AFTER_SECONDS)
+        return
+      }
       const controlUpgrade = connectionLedger?.tryReserveControl(isRebind) ?? null
       if (
         (connectionLedger && !controlUpgrade) ||

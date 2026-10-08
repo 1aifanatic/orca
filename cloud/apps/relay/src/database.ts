@@ -1189,6 +1189,10 @@ export class PostgresDatabase implements RelayDatabase {
   peekPoolPressure(): PostgresPoolPressureCounts {
     return this.pressure.peekCounts()
   }
+
+  poolOldestWaitMs(): number {
+    return this.pressure.oldestWaitMs()
+  }
 }
 
 export function consumeRelayDatabasePoolPressure(
@@ -1212,6 +1216,11 @@ export function readRelayDatabasePoolPressure(
   return database instanceof PostgresDatabase
     ? database.peekPoolPressure()
     : emptyPostgresPoolPressureCounts()
+}
+
+// How long the longest-waiting pooled query has queued so far; 0 when none waits.
+export function readRelayDatabasePoolOldestWaitMs(database: RelayDatabase): number {
+  return database instanceof PostgresDatabase ? database.poolOldestWaitMs() : 0
 }
 
 export function absorbPostgresIdleClientErrors(pool: Pick<pg.Pool, 'on'>): void {
