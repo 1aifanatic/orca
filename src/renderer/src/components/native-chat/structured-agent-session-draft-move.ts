@@ -68,39 +68,24 @@ export async function moveStructuredAgentSessionDraft(
   }
 }
 
-/** Each chat whose tab now shows another conversation: a /clear's, whichever client ran it. */
+/** Each chat whose tab now shows another conversation, whichever client ran the clear. */
 export function structuredAgentSessionConversationMoves(
   previous: Readonly<Record<string, readonly Tab[]>>,
   next: Readonly<Record<string, readonly Tab[]>>
 ): { from: string; to: string }[] {
   const moves: { from: string; to: string }[] = []
   for (const [worktreeId, tabs] of Object.entries(next)) {
-    const before = previous[worktreeId] ?? []
-    if (before === tabs) {
+    const before = previous[worktreeId]
+    if (!before || before === tabs) {
       continue
     }
     const shown = new Map(
-      before.flatMap((tab) => (tab.contentType === 'agent-session' ? [[tab.id, tab]] : []))
-    )
-    const shownSessions = new Set(
-      tabs.filter((tab) => tab.contentType === 'agent-session').map((tab) => tab.entityId)
+      before.flatMap((tab) => (tab.contentType === 'agent-session' ? [[tab.id, tab.entityId]] : []))
     )
     for (const tab of tabs) {
-      const prior = shown.get(tab.id)
-      const was = tab.contentType === 'agent-session' ? prior?.entityId : undefined
+      const was = tab.contentType === 'agent-session' ? shown.get(tab.id) : undefined
       if (was !== undefined && was !== tab.entityId) {
         moves.push({ from: was, to: tab.entityId })
-      }
-      const source = tab.agentSessionReplacesSessionId
-      if (
-        tab.contentType === 'agent-session' &&
-        source &&
-        source !== was &&
-        source !== tab.entityId &&
-        !shownSessions.has(source) &&
-        (prior?.entityId !== tab.entityId || prior?.agentSessionReplacesSessionId !== source)
-      ) {
-        moves.push({ from: source, to: tab.entityId })
       }
     }
   }

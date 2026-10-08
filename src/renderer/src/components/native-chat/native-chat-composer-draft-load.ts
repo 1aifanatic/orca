@@ -115,6 +115,7 @@ function retryLater(error: unknown): void {
     load.editedBeforeLoad.clear()
     load.appendsBeforeLoad.clear()
     load.deletionsBeforeLoad.length = 0
+    loadedListeners.forEach((listener) => listener())
     return
   }
   retryTimer = setTimeout(() => {

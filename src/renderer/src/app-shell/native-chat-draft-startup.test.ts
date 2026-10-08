@@ -2,7 +2,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { startNativeChatDraftLoad } from './native-chat-draft-startup'
-import { applyWebSessionTabsSnapshot } from '@/runtime/web-session-tabs-sync'
+import {
+  applyWebSessionTabsSnapshot,
+  shouldApplyWebSessionTabsSnapshot
+} from '@/runtime/web-session-tabs-sync'
 import {
   ENV,
   NOW,
@@ -57,10 +60,11 @@ it('re-derives a saved draft move after the first storage load fails and a retry
   setNativeChatComposerDraftStorageForTests(storage)
   useAppStore.setState({
     unifiedTabsByWorktree: {
-      [WT]: [{ ...chatTab('new-session'), agentSessionReplacesSessionId: 'old-session' }]
+      [WT]: [chatTab('new-session')]
     }
   })
   stop = startNativeChatDraftLoad()
+  publishReplacement()
   await waitForNativeChatComposerDrafts(1_000)
   expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
     ''
@@ -162,10 +166,11 @@ it('restores a saved source into an already switched tab when startup reads its 
   setNativeChatComposerDraftStorageForTests(storage)
   useAppStore.setState({
     unifiedTabsByWorktree: {
-      [WT]: [{ ...chatTab('new-session'), agentSessionReplacesSessionId: 'old-session' }]
+      [WT]: [chatTab('new-session')]
     }
   })
   stop = startNativeChatDraftLoad()
+  publishReplacement()
   await waitForNativeChatComposerDrafts(1_000)
   await nativeChatComposerDraftWritesSettled()
   await Promise.resolve()
@@ -173,6 +178,93 @@ it('restores a saved source into an already switched tab when startup reads its 
     'saved before the switch'
   )
   expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
+    ''
+  )
+})
+
+function publishReplacement(version = 1, sourceVisible = false): void {
+  const snapshot = makeSnapshot(
+    [
+      {
+        type: 'agent-session',
+        id: 'agent-session:new-session',
+        sessionId: 'new-session',
+        replacesSessionId: 'old-session',
+        agent: 'codex',
+        title: 'Codex Chat',
+        isActive: true
+      },
+      ...(sourceVisible
+        ? [
+            {
+              type: 'agent-session' as const,
+              id: 'history',
+              sessionId: 'old-session',
+              agent: 'codex' as const,
+              title: 'History',
+              isActive: false
+            }
+          ]
+        : [])
+    ],
+    { snapshotVersion: version }
+  )
+  if (shouldApplyWebSessionTabsSnapshot(snapshot, ENV)) {
+    useAppStore.setState((state) =>
+      applyWebSessionTabsSnapshot(state, snapshot, ENV, NOW, {
+        contentScope: 'agent-session',
+        preserveLocalLayout: true,
+        terminalPtyMode: 'local'
+      })
+    )
+  }
+}
+
+it('does not move a later source-history draft when the host repeats the replacement', async () => {
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chatTab('new-session')] } })
+  updateNativeChatComposerDraft(
+    structuredAgentSessionDraftScopeKey('old-session'),
+    { text: 'initial draft' },
+    'immediate'
+  )
+  publishReplacement()
+  await Promise.resolve()
+  await nativeChatComposerDraftWritesSettled()
+  await Promise.resolve()
+  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
+    'initial draft'
+  )
+  updateNativeChatComposerDraft(
+    structuredAgentSessionDraftScopeKey('old-session'),
+    { text: 'later history draft' },
+    'immediate'
+  )
+  publishReplacement(2)
+  await Promise.resolve()
+  await nativeChatComposerDraftWritesSettled()
+  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
+    'later history draft'
+  )
+})
+
+it('leaves an explicitly reopened source history draft in that conversation on first publication', async () => {
+  useAppStore.setState({
+    unifiedTabsByWorktree: {
+      [WT]: [chatTab('new-session'), { ...chatTab('old-session'), id: 'history' }]
+    }
+  })
+  updateNativeChatComposerDraft(
+    structuredAgentSessionDraftScopeKey('old-session'),
+    { text: 'history draft' },
+    'immediate'
+  )
+  publishReplacement(1, true)
+  await Promise.resolve()
+  await nativeChatComposerDraftWritesSettled()
+  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
+    'history draft'
+  )
+  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
     ''
   )
 })

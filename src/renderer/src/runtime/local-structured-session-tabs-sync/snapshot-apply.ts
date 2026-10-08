@@ -36,6 +36,7 @@ import {
 import { suppressCancelledStructuredSessionTabs } from '../structured-agent-session-tab-retirement'
 import { LOCAL_STRUCTURED_SESSION_OWNER } from '../local-structured-session-owner'
 import { closeStructuredAgentSession } from '../structured-agent-session-close'
+import { queueInitialHostSessionTabs } from '../initial-host-session-tabs-events'
 
 /** The host saying it no longer publishes this worktree at all, rather than publishing an empty one. */
 function isWorktreeRetraction(
@@ -158,6 +159,9 @@ export function applyLocalStructuredSessionTabSnapshots<
       }
     )
     next = patch === next ? next : ({ ...next, ...patch } as State)
+    if (!prior && !isWorktreeRetraction(effectiveSnapshot)) {
+      queueInitialHostSessionTabs(effectiveSnapshot, owner)
+    }
     if (isWorktreeRetraction(effectiveSnapshot)) {
       // A retraction was applied above — the mirrored rows must go — but it is not a publication
       // to fence later frames against. Recording it would retire the renderer's own epoch, which

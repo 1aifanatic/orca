@@ -126,7 +126,6 @@ export function buildMirroredAgentTabs(
         executionHostId,
         contentType: 'agent-session',
         agentSessionAgent: tab.agent,
-        agentSessionReplacesSessionId: tab.replacesSessionId,
         // Why: `title` is wire data typed `string`; a host that violates that must
         // degrade to the placeholder, not throw inside the snapshot patch.
         label: tab.title?.trim() || defaultAgentChatLabel(tab.agent),

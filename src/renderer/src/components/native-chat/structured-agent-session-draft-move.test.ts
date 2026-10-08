@@ -176,20 +176,3 @@ describe('which chats moved conversation', () => {
     ])
   })
 })
-
-it('derives a move from a first host replacement and ignores repeated publication', () => {
-  const target = { ...chat('new-tab', 'b'), agentSessionReplacesSessionId: 'a' }
-  expect(structuredAgentSessionConversationMoves({}, { wt: [target] })).toEqual([
-    { from: 'a', to: 'b' }
-  ])
-  expect(
-    structuredAgentSessionConversationMoves({ wt: [target] }, { wt: [{ ...target }] })
-  ).toEqual([])
-})
-
-it('keeps a draft in a source explicitly reopened from history after restart', () => {
-  const target = { ...chat('new-tab', 'b'), agentSessionReplacesSessionId: 'a' }
-  expect(
-    structuredAgentSessionConversationMoves({}, { wt: [target, chat('history', 'a')] })
-  ).toEqual([])
-})
