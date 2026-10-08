@@ -8,6 +8,8 @@ const EXPIRY_INTERVAL_MS = 60_000
 /** The cursor is disposable: expiry is re-derived from receipts after every host restart. */
 export class AgentSessionOperationMaintenance {
   private cursor = { expiry: Number.MIN_SAFE_INTEGER, rowid: 0 }
+  // Why: a lasting failure would log every tick into an unrotated remote orcad log.
+  private failing = false
 
   constructor(private readonly host: JournalHostDatabase) {}
 
@@ -38,7 +40,15 @@ export class AgentSessionOperationMaintenance {
           : { expiry: Number.MIN_SAFE_INTEGER, rowid: 0 }
       })
     } catch (error) {
-      console.warn('[agent-session-journal] expired operation receipt cleanup failed', error)
+      if (!this.failing) {
+        console.warn('[agent-session-journal] expired operation receipt cleanup failed', error)
+      }
+      this.failing = true
+      return
+    }
+    if (this.failing) {
+      this.failing = false
+      console.info('[agent-session-journal] expired operation receipt cleanup recovered')
     }
   }
 }

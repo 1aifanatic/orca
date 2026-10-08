@@ -103,6 +103,43 @@ describe('disk-backed operation receipts', () => {
     expect(host.db.prepare('SELECT count(*) AS n FROM agent_session_operations').get()?.n).toBe(2)
   })
 
+  it('warns once per failing streak of receipt cleanup, and once when it recovers', () => {
+    const host = openTestJournalHostDatabase(root)
+    const refuseCleanup = () =>
+      host.db.exec(`CREATE TRIGGER refuse_receipt_cleanup BEFORE DELETE ON agent_session_operations
+        BEGIN SELECT RAISE(ABORT, 'cleanup unavailable'); END`)
+    const insertExpired = (index: number) =>
+      host.transaction((db) => {
+        const expired = pendingAgentSessionOperationRow(operation(index, NOW - 100_000_000))
+        db.prepare('INSERT INTO agent_session_operations VALUES (?, ?)').run(
+          agentSessionOperationKey(expired.callerKey, expired.operationId),
+          JSON.stringify(expired)
+        )
+      })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const maintenance = new AgentSessionOperationMaintenance(host)
+
+    refuseCleanup()
+    insertExpired(1)
+    maintenance.run(NOW)
+    maintenance.run(NOW)
+    maintenance.run(NOW)
+    expect(warn).toHaveBeenCalledTimes(1)
+
+    host.db.exec('DROP TRIGGER refuse_receipt_cleanup')
+    maintenance.run(NOW)
+    maintenance.run(NOW)
+    expect(info).toHaveBeenCalledTimes(1)
+    expect(host.db.prepare('SELECT count(*) AS n FROM agent_session_operations').get()?.n).toBe(0)
+
+    // A new streak warns again.
+    refuseCleanup()
+    insertExpired(2)
+    maintenance.run(NOW)
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
+
   it('serializes global identities, preserves the original caller, and permits caller-scoped collisions', async () => {
     const store = openStore()
     const first = operation(10)
