@@ -1,0 +1,300 @@
+{
+  "classification": "Bounded native-compatible existing preload source proposal; no runtime or executable trial admission",
+  "sourceHead": "e3639ef8d69209b8278b41c0e722811960ea7ec0",
+  "pinnedBun": "1.4.2",
+  "pinnedVitest": "5.0.3",
+  "qualified": false,
+  "dispatchReady": false,
+  "runtimeExecuted": false,
+  "configEvaluated": false,
+  "trackedChanges": false,
+  "authorization": "User has already authorized native migration research and necessary compatibility preparation; no separate permission requirement. Parent retains review/publication/execution ownership.",
+  "priorResearchImmutable": {
+    "path": "notes/bun-migration/performance/bun-native-test-1.4.2-six-setup-compatibility-source-research-0bd619.json",
+    "sha256": "fff3a74d448ba26902b443327ee4b8c57267850c3e1601c0cc52b488d3589bb6",
+    "correction": "Previous futureMinimalGate separately-authorize wording is a research-sequencing suggestion, not an approval hold"
+  },
+  "patch": {
+    "path": "notes/bun-migration/performance/bun-native-node-builtins-preload-0bd619-source-proposal/shipping.patch",
+    "sha256": "bf2b5edab4698c0200f22fa4e2558623ce45d5aaf7bb719a02d54132e9602e61",
+    "targets": [
+      {
+        "file": "config/scripts/vitest-bun-node-builtins.ts",
+        "beforeSha256": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+        "afterSha256": "82889d97f9ca66e6a2678ecbf75e15fee620e1b824ed3943ea8d05452756ae7c"
+      },
+      {
+        "file": "config/scripts/vitest-real-agent-home-write-guard.ts",
+        "beforeSha256": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+        "afterSha256": "2c924363b432a35442a9522178d2a44b445cc4e919aafcf9b7a2a15ce3cfb4eb"
+      },
+      {
+        "file": "config/scripts/vitest-host-ports-setup.ts",
+        "beforeSha256": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+        "afterSha256": "6beca0f3b28812dd196d4db9aab2e37904f9ea87329c021438791f7e5eaf95ed"
+      }
+    ]
+  },
+  "sourceGuards": {
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "src/shared/terminal-escape-introducer.test.ts": "8f7421f0ddec6cf2491501b7012c130ceddd80531688b708a6bf3dcaf25babf4",
+    "src/shared/terminal-escape-introducer.ts": "399406e19ea928d9905fe08a7aaa81807c436cda7f55e459293e94e868b43fc5",
+    "src/shared/credit-count-format.test.ts": "cc3b8751ff8c9253832962df42cf41307bd94c266e83f57aafa16aed010a2525",
+    "src/shared/credit-count-format.ts": "c80078bd8de15826ff8c70dba0a6f270dd4d382f84154c31aa510ce744cefa57",
+    "src/shared/currency-format.test.ts": "7e8570a770f4d82463694f407ec0d5c68bcb3252fcffa32bfd0636490ed3d6e5",
+    "src/shared/currency-format.ts": "6de9978d1230a0702f58192416b5a00f9340e159de0c22f4b02502de9b6dace6",
+    "src/shared/file-name-sort.test.ts": "7b8d37c80671b7aa874a5caedbb5eeba62c42375911a0c01d85aa2969c7ec731",
+    "src/shared/file-name-sort.ts": "5aafddf218c453276dcf1afdccf9cd7f82c50160f5df2dd6d1b2779ce0c0cc4a",
+    "src/shared/keybindings-parse-cache.test.ts": "2c93a9b41716a38ec8aba90b2464af4cf66a65dc8aa53d0d03d6fd4fa096d880",
+    "src/shared/keybindings/parser.ts": "fc142122ea4cc2cda9ec83b4218e0a0b207eff470916de4fc4186d090ab7a99c",
+    "src/shared/keybindings/types.ts": "50507a9221a3a1bb4dd4e5ac2065446c1130fc0d8849cc24fb4705260371f738",
+    "node_modules/vitest/dist/index.js": "dfb65f4da94a86d6e2d0c38b63e4e76f14f4fb46cd37d654c59fc8365ab47031",
+    "node_modules/vitest/dist/chunks/index.C4tKZ0yW.js": "82c2b55e5dd5245c0c5e9eccd73fa6d7ade2694644175967e27a28b67932cb9d",
+    "node_modules/vitest/dist/chunks/utils.DYj33du9.js": "42e0f0589160e9f394c0038b60f5d5ccfe606e816da59a5aad5a6b33e2015cc6",
+    "config/patches/ws@8.22.0.patch": "9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14"
+  },
+  "taggedSourceReceipts": [
+    {
+      "url": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.2/src/runtime/test_runner/jest.rs",
+      "file": "notes/bun-migration/performance/bun-native-node-builtins-preload-0bd619-source-proposal/tagged-bun-source/src__runtime__test_runner__jest.rs",
+      "sha256": "5558a977c56339839544d0488d6f8406d983fcde198116f5cec9fee254edda32",
+      "bytes": 34293
+    },
+    {
+      "url": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.2/src/runtime/test_runner/ScopeFunctions.rs",
+      "file": "notes/bun-migration/performance/bun-native-node-builtins-preload-0bd619-source-proposal/tagged-bun-source/src__runtime__test_runner__ScopeFunctions.rs",
+      "sha256": "21240ab19dac46325d40a00e68ce7024561594dbe3c2e4b05662b0661485ed10",
+      "bytes": 32766
+    },
+    {
+      "url": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.2/src/runtime/test_runner/bun_test.rs",
+      "file": "notes/bun-migration/performance/bun-native-node-builtins-preload-0bd619-source-proposal/tagged-bun-source/src__runtime__test_runner__bun_test.rs",
+      "sha256": "e3ef63d378648de2e2393eb6a07c38f1bdc33d49f7e1a9e3403005f0d4711176",
+      "bytes": 83449
+    },
+    {
+      "url": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.2/packages/bun-types/test.d.ts",
+      "file": "notes/bun-migration/performance/bun-native-node-builtins-preload-0bd619-source-proposal/tagged-bun-source/packages__bun-types__test.d.ts",
+      "sha256": "66cdd559b95aa1df7ba823b45b9a0a028c49430a829c5da495865dd49c54a782",
+      "bytes": 75361
+    }
+  ],
+  "installedAdditionalOwners": {
+    "node_modules/@vitest/mocker/dist/chunk-hoistMocks.js": "4444bcff9669ad55e08332b4370058958ba0573781f5dc3361f3828a9b0e1fbc",
+    "node_modules/vitest/dist/chunks/index.C4tKZ0yW.js": "82c2b55e5dd5245c0c5e9eccd73fa6d7ade2694644175967e27a28b67932cb9d"
+  },
+  "supportedNativeApi": {
+    "runtimeSource": "src/runtime/test_runner/jest.rs385-419",
+    "exactResult": "Native vi.mock is directly JSMock__jsModuleMock. Native vi.mock.module is absent; .module belongs to the top-level mock / vi.fn mock-function object. Tagged vi.mock types agree.",
+    "branch": "If typeof vi.doMock is function, execute the original three unchanged calls. Otherwise alias vi.mock as mockNodeBuiltin and invoke the same three builtin owners. Fail if neither supported API exists.",
+    "hoistingBoundary": "No direct vi.mock CallExpression is added. Installed Vitest5 only hoists member-call syntax named mock/unmock on vi/jest. const mockNodeBuiltin = vi.mock is not a call. Original three vi.doMock calls and factories remain exact inside the existing-runtime arm; actual transformed parity still requires qualification.",
+    "nativeHomedirBoundary": "Native mocking updates loaded ESM bindings. Capture original os.homedir before mocking node:os, then use that function if HOME/USERPROFILE is absent. This avoids recursion. Dynamic platform environment choice remains unchanged; the original Vitest homedir and factories remain exact."
+  },
+  "deadlineBoundary": {
+    "sameDefaultSource": "Tagged ScopeFunctions.rs650-658 parses tests and hooks through one runner default. Explicit per-call timeout takes priority. Tagged bun_test.rs159-175 passes the parsed timeout to hooks.",
+    "testDefault": "Future native CLI --timeout 30000 is supported by retained exact1.4.2 Arguments.rs567/1719-1732. No command executed.",
+    "hookDefault": "The four existing shared preload hooks receive explicit60000 arguments, matching current Vitest hookTimeout60000. No separate native global hookTimeout found. The five pure candidates have no file hooks. Future implicit file hooks remain excluded until their60s contract is preserved.",
+    "futureNativeFlagTemplateOnly": [
+      "--parallel=4",
+      "--isolate",
+      "--timeout30000",
+      "--randomize",
+      "--seed104729or130363",
+      "--reporter=junit",
+      "--reporter-outfile=<ownedfile>"
+    ],
+    "sourceReceipt": {
+      "url": "https://raw.githubusercontent.com/oven-sh/bun/744846f844374847c902b5e7fd59b4342a51ef99/src/runtime/cli/Arguments.rs",
+      "localPath": "notes/bun-migration/performance/serialize-grid-cpu-attribution-run-37699821409/tagged-upstream-source/Arguments.rs",
+      "sha256": "db2a77942f0f10fb0beddbde59e32969ffd92223d0552294c293b2e138a9c01c"
+    },
+    "receiptOwner": {
+      "path": "notes/bun-migration/performance/serialize-grid-cpu-attribution-run-37699821409/catalog-preserved-workload-and-cpu-capture-rejection-proof.json",
+      "sha256": "fbbda958faa4f1db74b01102e274e9e70fb28f1c798f4a38cd45d03068c14d6b"
+    }
+  },
+  "mechanicalProof": {
+    "wholeBuiltinsOriginalRecovered": "Replace added branches with the dedented exact original three-call Vitest arm; the complete original source is recovered byte for byte.",
+    "wholeWriteGuardRecovered": "Remove two explicit60000 arguments to recover the complete original.",
+    "wholeHostPortsRecovered": "Remove two explicit60000 arguments to recover the complete original.",
+    "originalImports": true,
+    "allExistingGuardBodiesCallbacksAndPolicies": true,
+    "sixPreloadOrder": [
+      {
+        "path": "config/scripts/vitest-real-agent-home-write-guard.ts",
+        "retain": "Install real-home fs guard before inherited path env removal; fail swallowed violations in afterEach and afterAll; native alias must register these exact hooks."
+      },
+      {
+        "path": "config/scripts/vitest-bun-node-builtins.ts",
+        "retain": "Normalize access to undefined, route child execution to pinned Node, dynamic HOME/USERPROFILE homedir, propagate guarded fs exports."
+      },
+      {
+        "path": "config/scripts/happy-dom-offscreen-canvas.ts",
+        "retain": "Existing OffscreenCanvas adapter patch, no-op without relevant globals."
+      },
+      {
+        "path": "config/scripts/happy-dom-mutation-observer-retention.ts",
+        "retain": "Existing MutationObserver callback retention patch, no-op without relevant globals."
+      },
+      {
+        "path": "config/scripts/vitest-host-ports-setup.ts",
+        "retain": "Per-file fresh temporary userdata directory; beforeEach AppEnvironment and sealed secret-store defaults; afterAll owned cleanup; real process.getBuiltinModule(fs) ownership."
+      },
+      {
+        "path": "config/scripts/vitest-caller-identity-env-setup.ts",
+        "retain": "Clear inherited orchestration caller identity before test imports."
+      }
+    ],
+    "noClockChange": true,
+    "noDefineAliasRoutingProjectChange": true
+  },
+  "existingWriteGuardSelfTest": {
+    "file": "config/scripts/vitest-real-agent-home-write-guard.test.ts",
+    "sha256": "8c97120b5e3bc97310cbccbf51e38e1e46ffeffc1e5b56fdb6d9760211bf75e0",
+    "unchanged": true,
+    "reuse": "Keep and run the unchanged stock Vitest self-test: named synchronous writes, promise writes, swallowed violations, real userInfo home, temporary HOME, read/temporary write permission, sibling prefix, opt-in switch, and five Claude environment variants. Native lacks vi.stubEnv/unstubAllEnvs; do not claim the existing self-test runs unchanged natively.",
+    "nativeEquivalentSentinelsRequired": "Reuse the canonical guard functions, never-created paths, and existing safety assertions in targeted native sentinels. Restore owned process.env changes in finally with supported direct assignments; do not add a mocking framework or weaken the stock self-test."
+  },
+  "smallCohort": [
+    {
+      "file": "src/shared/terminal-escape-introducer.test.ts",
+      "owner": "src/shared/terminal-escape-introducer.ts",
+      "surface": "describe/it/expect only; independent byte classifier assertions; no mocks/timers/snapshot/type matcher",
+      "testSha256": "8f7421f0ddec6cf2491501b7012c130ceddd80531688b708a6bf3dcaf25babf4",
+      "ownerSha256": "399406e19ea928d9905fe08a7aaa81807c436cda7f55e459293e94e868b43fc5",
+      "callbackAndAssertionsChanged": false,
+      "runtimeCaseMap": null,
+      "deadline": "Future native --timeout30000, stockVitest30000; no file hooks in these5"
+    },
+    {
+      "file": "src/shared/credit-count-format.test.ts",
+      "owner": "src/shared/credit-count-format.ts",
+      "surface": "describe/it/expect only; pure Intl formatter; native locale must match stock",
+      "testSha256": "cc3b8751ff8c9253832962df42cf41307bd94c266e83f57aafa16aed010a2525",
+      "ownerSha256": "c80078bd8de15826ff8c70dba0a6f270dd4d382f84154c31aa510ce744cefa57",
+      "callbackAndAssertionsChanged": false,
+      "runtimeCaseMap": null,
+      "deadline": "Future native --timeout30000, stockVitest30000; no file hooks in these5"
+    },
+    {
+      "file": "src/shared/currency-format.test.ts",
+      "owner": "src/shared/currency-format.ts",
+      "surface": "describe/it/expect only; pure Intl formatter/error fallback",
+      "testSha256": "7e8570a770f4d82463694f407ec0d5c68bcb3252fcffa32bfd0636490ed3d6e5",
+      "ownerSha256": "6de9978d1230a0702f58192416b5a00f9340e159de0c22f4b02502de9b6dace6",
+      "callbackAndAssertionsChanged": false,
+      "runtimeCaseMap": null,
+      "deadline": "Future native --timeout30000, stockVitest30000; no file hooks in these5"
+    },
+    {
+      "file": "src/shared/file-name-sort.test.ts",
+      "owner": "src/shared/file-name-sort.ts",
+      "surface": "describe/it/expect only; canonical collator and directory-order comparator",
+      "testSha256": "7b8d37c80671b7aa874a5caedbb5eeba62c42375911a0c01d85aa2969c7ec731",
+      "ownerSha256": "5aafddf218c453276dcf1afdccf9cd7f82c50160f5df2dd6d1b2779ce0c0cc4a",
+      "callbackAndAssertionsChanged": false,
+      "runtimeCaseMap": null,
+      "deadline": "Future native --timeout30000, stockVitest30000; no file hooks in these5"
+    },
+    {
+      "file": "src/shared/keybindings-parse-cache.test.ts",
+      "owner": "src/shared/keybindings/parser.ts",
+      "surface": "describe/it/expect only; type-only local dependencies and module map/cache behavior",
+      "testSha256": "2c93a9b41716a38ec8aba90b2464af4cf66a65dc8aa53d0d03d6fd4fa096d880",
+      "ownerSha256": "fc142122ea4cc2cda9ec83b4218e0a0b207eff470916de4fc4186d090ab7a99c",
+      "callbackAndAssertionsChanged": false,
+      "runtimeCaseMap": null,
+      "deadline": "Future native --timeout30000, stockVitest30000; no file hooks in these5"
+    }
+  ],
+  "mandatoryUntimedQualification": [
+    {
+      "gate": "Original Vitest behavior",
+      "requirements": [
+        "Keep all six preloads in their original order and leave ordinary/protected project settings intact.",
+        "Run the original write-guard self-test and all five pure files under stock Vitest before/after, requiring complete passed identity/status multisets.",
+        "Confirm three doMock factories and canonical import owners, guarded references, and HOME fallback semantics; the native arm must not run under current Vitest."
+      ]
+    },
+    {
+      "gate": "Native FS guard publication",
+      "requirements": [
+        "Named/default node:fs, node:fs/promises, and supported bare aliases expose canonical guarded functions after preload.",
+        "Retain every mutating-operation target position; use never-created protected paths and no-op removals for refusals. Preserve read, temporary write, and sibling-prefix allowances.",
+        "A separate owned swallowed-violation sentinel must fail the afterEach/afterAll hook and exit nonzero; caught assertions alone cannot prove enforcement.",
+        "Real userInfo home stays protected after changing HOME/USERPROFILE. Exercise absent HOME fallback without recursion; restore every environment entry in finally.",
+        "fs.promises.access resolves undefined and retains ENOENT rejection; process.execPath equals the canonical Node24.21 pin while the coordinator is Bun.",
+        "Install guards before clearing inherited CODEX/CLAUDE/ORCA paths and retain explicit real-agent opt-in semantics."
+      ]
+    },
+    {
+      "gate": "Six-preload isolation and host ports",
+      "requirements": [
+        "Two targeted sentinel files record fresh realm nonce, canonical symbol slots, guard state, and owned userdata. Begin with one-worker reuse, then qualify parallel4.",
+        "AppEnvironment defaults install before each case; userdata is unique per file and removed afterAll. SecretStore seals and round-trips canonical bytes and rejects plaintext. Per-case overrides yield to defaults next case.",
+        "Clear caller identity and inherited live CLI values; retain six ordered preload receipts. Canvas and MutationObserver preloads remain Node-environment no-ops.",
+        "Prove environment/file/global state does not leak to the next file. PID equality alone is insufficient to prove isolation. No numeric PID cleanup or native windows."
+      ]
+    },
+    {
+      "gate": "Native reporter and failure semantics",
+      "requirements": [
+        "Bind JUnit physical filenames, titles, ancestors, statuses, and duplicate multiplicity to stock accepted raw identities; prove its actual classname/title encoding. No uniqueness assumption or post-run normalization.",
+        "Missing/empty modules, import/preload/hook/unhandled errors reject qualification. Counts derive from actual stock/native reports.",
+        "Owned hook-error, unhandled-rejection, and swallowed-guard sentinels must return nonzero with raw evidence; intentional rejection probes stay outside green performance samples.",
+        "Preserve test30000 and shared hook60000 deadlines. Tagged execution uses real time for timeout accounting; runtime error/timeout enforcement must be qualified without weakening original limits.",
+        "The original five files remain byte-identical. Future aliases/feature defines must resolve canonical owners exactly; these five do not depend on aliases or feature-wall code."
+      ]
+    }
+  ],
+  "deferredNativeContracts": [
+    "Selective fake clocks, hoisted/importActual/resetModules/poll, snapshots, and type assertions remain excluded.",
+    "Qualify native guards on supported platforms before broad shipping enrollment.",
+    "Keep protected Node contracts and complete original coverage in stock Vitest; no fabricated worker globals or framework shim.",
+    "No large pure cohort, performance claim, or whole-CI forecast before actual compatibility and counted timings."
+  ],
+  "nextAuthorizedWork": "Peer and root review this bounded three-file source proposal, then prepare strict CI-only qualification of the five original pure files and preload guard sentinels. No new runner orchestration or framework is implemented.",
+  "unreviewedMetadataRevision": {
+    "priorPath": "notes/bun-migration/performance/bun-native-node-builtins-preload-0bd619-source-proposal/initial-unreviewed-source-proof.json",
+    "priorSha256": "b9d04e7c79093c613c342b2add06e02c6ec53520bba342deab5b387efa784521",
+    "reason": "Expand compressed prose for readable review; all candidate and patch bytes remain unchanged."
+  },
+  "currentRetargetSourceOnly": {
+    "sealedOriginalSource": "0bd619df290c01cd66eae3a868e645e5b6391c90",
+    "sealedFinalSha256": "83eccb19041a5abff151e249e3898be6bc62afcc56b6642aea9c79c750362c5d",
+    "currentSource": "e3639ef8d69209b8278b41c0e722811960ea7ec0",
+    "sourceOnlyDeltas": [
+      {
+        "file": "config/scripts/vitest-node-runtime-files.mjs",
+        "beforeSha256": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+        "currentSha256": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+        "diff": "--- 0bd619df290c01cd66eae3a868e645e5b6391c90/config/scripts/vitest-node-runtime-files.mjs\n+++ e3639ef8d69209b8278b41c0e722811960ea7ec0/config/scripts/vitest-node-runtime-files.mjs\n@@ -35,6 +35,8 @@\n   'src/**/*expiry*.test.ts',\n   'src/renderer/src/lib/flatten-retained-slice.test.ts',\n   'src/shared/own-retained-string.test.ts',\n+  // Times V8 string flattening, which is what Electron main runs.\n+  'src/main/runtime/terminal-tail-redraw-wall-time.test.ts',\n   'src/main/agent-hooks/server-transport-interference.test.ts',\n   'src/main/plugins/plugin-worker-supervision.integration.test.ts',\n   'src/main/usage/usage-scan-worker-event-loop.test.ts',\n@@ -71,6 +73,8 @@\n   'src/main/runtime/agent-session-conversation-name-store.test.ts',\n   'src/main/runtime/structured-session-mail-redrive-wiring.test.ts',\n   'src/main/runtime/rpc/ws-transport.test.ts',\n+  // Bun resolves 'ws' to its built-in client, which bypasses the patched package.\n+  'src/main/runtime/rpc/ws-empty-payload-frame-write.test.ts',\n   'src/shared/remote-runtime-client.test.ts',\n   'src/shared/remote-runtime-connect-bound.test.ts',\n   'src/shared/remote-runtime-subscription-connect-bound.test.ts',\n"
+      },
+      {
+        "file": "config/scripts/vitest-sqlite-runtime-files.mjs",
+        "beforeSha256": "2ec999d585da35017fd799f12bef021601a14acae0eb561135544d6c585f593c",
+        "currentSha256": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+        "diff": "--- 0bd619df290c01cd66eae3a868e645e5b6391c90/config/scripts/vitest-sqlite-runtime-files.mjs\n+++ e3639ef8d69209b8278b41c0e722811960ea7ec0/config/scripts/vitest-sqlite-runtime-files.mjs\n@@ -32,6 +32,7 @@\n   'src/main/codex/codex-structured-journal-turn-settles-once-journal.test.ts',\n   'src/main/codex/codex-structured-question-order.test.ts',\n   'src/main/ipc/pty/ipc/spawn-commit-ssh-lease-cardinality.test.ts',\n+  'src/main/ipc/repos/folder-workspace-attachment-handlers.test.ts',\n   'src/main/ipc/ssh-host-partition-session-export.test.ts',\n   'src/main/ipc/ssh-host-server-on-connect-wiring.test.ts',\n   'src/main/ipc/ssh-managed-server-move-conversion.test.ts',\n@@ -97,6 +98,7 @@\n   'src/main/native-chat/agent-session-wire/structured-agent-session-prompt-cancel.test.ts',\n   'src/main/native-chat/agent-session-wire/structured-agent-session-provider-child-record.test.ts',\n   'src/main/native-chat/agent-session-wire/structured-agent-session-provider-restore.test.ts',\n+  'src/main/native-chat/agent-session-wire/structured-agent-session-provider-started-catalog.test.ts',\n   'src/main/native-chat/agent-session-wire/structured-agent-session-provider-started.test.ts',\n   'src/main/native-chat/agent-session-wire/structured-agent-session-queued-newer-orca.test.ts',\n   'src/main/native-chat/agent-session-wire/structured-agent-session-read-restore.test.ts',\n@@ -149,7 +151,10 @@\n   'src/main/native-chat/agent-session-wire/structured-agent-session-wedged-profile-migration.test.ts',\n   'src/main/native-chat/agent-session-wire/structured-agent-session-wire-admission.test.ts',\n   'src/main/native-chat/agent-session-wire/structured-conversation-command.test.ts',\n+  'src/main/opencode/opencode-acp-stored-messages.test.ts',\n   'src/main/orcad/orcad-automations.test.ts',\n+  'src/main/orcad/orcad-local-serve-selection.test.ts',\n+  'src/main/orcad/serve-profile-ssh-targets.test.ts',\n   'src/main/pi/rpc-launch-resolution.test.ts',\n   'src/main/runtime/agent-session-conversation-clear-commit.test.ts',\n   'src/main/runtime/agent-session-conversation-name-store.test.ts',\n"
+      },
+      {
+        "file": "pnpm-lock.yaml",
+        "beforeSha256": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+        "currentSha256": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+        "diff": "--- 0bd619df290c01cd66eae3a868e645e5b6391c90/pnpm-lock.yaml\n+++ e3639ef8d69209b8278b41c0e722811960ea7ec0/pnpm-lock.yaml\n@@ -176,6 +176,7 @@\n   i18next-cli@1.74.2: 7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207\n   lint-staged@16.4.0: 7333b3837f80a7fbd045964db6d76ba4fc118e49134bdbabb00585b6b7b60673\n   node-pty@1.1.0: 92c95cffab383d86b3b13a460c75a08074468ebf1f3911db8e874e083201f192\n+  ws@8.22.0: 9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14\n \n importers:\n \n@@ -255,7 +256,7 @@\n         version: 1.0.3\n       ws:\n         specifier: ^8.22.0\n-        version: 8.22.0\n+        version: 8.22.0(patch_hash=9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14)\n       yaml:\n         specifier: ^2.9.1\n         version: 2.9.1\n@@ -14757,7 +14758,7 @@\n     dependencies:\n       inspect-webkit: 0.0.5(typescript@7.0.2)\n       sonner: 2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)\n-      ws: 8.22.0\n+      ws: 8.22.0(patch_hash=9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14)\n     transitivePeerDependencies:\n       - '@types/react'\n       - bufferutil\n@@ -15406,7 +15407,7 @@\n \n   ws@8.21.3: {}\n \n-  ws@8.22.0: {}\n+  ws@8.22.0(patch_hash=9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14): {}\n \n   wsl-utils@0.3.1:\n     dependencies:\n"
+      }
+    ],
+    "allOriginalCasesAndFixtureBytesUnchanged": true,
+    "currentProtectedListCount": 507,
+    "wsPatchGuardAdded": "config/patches/ws@8.22.0.patch",
+    "legacyNamespaceNotSourceIdentity": true,
+    "runtimeAdmission": false
+  }
+}

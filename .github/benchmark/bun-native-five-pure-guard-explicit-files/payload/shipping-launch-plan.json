@@ -1,0 +1,252 @@
+{
+  "sourceHead": "e3639ef8d69209b8278b41c0e722811960ea7ec0",
+  "controllerSha256": "269599bf9ada70ccae13fb5d71a8b6d37a7d7d0d135d713dc8b3de5aeeeee2d6",
+  "reporterSha256": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+  "patch": "notes/bun-migration/performance/bun-native-five-pure-guard-ci-0bd619-explicit-files/shipping.patch",
+  "patchSha256": "bf2b5edab4698c0200f22fa4e2558623ce45d5aaf7bb719a02d54132e9602e61",
+  "caseCount": null,
+  "runtimeManifestPending": true,
+  "expectedCiPins": {
+    "node": "24.21.0",
+    "bun": "1.4.2",
+    "vitest": "5.0.3"
+  },
+  "shuffleSeeds": [
+    104729,
+    130363
+  ],
+  "isolatedDirectory": "notes/bun-migration/performance/bun-native-five-pure-guard-ci-0bd619-explicit-files",
+  "sourceHashes": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8",
+    ".github/actions/restore-pnpm-verification/action.yml": "4cda84b74eb8063262fb463d9289d2c9e19d00c2a89ccd4d559bcbeaad96085e",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/ensure-native-runtime.mjs": "ba33bac7159cc8cd9375f20617d662a7ab5ef85120f94ea3b4f0877569f97365",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "config/scripts/msbuild-file-tracking.mjs": "c44c4e03e140aac9e95b70f9103180c451f4ca02ce2afdb80f763aad14d625b5",
+    "config/scripts/node-pty-job-ownership.cjs": "3c8d0b9de689ff5fdbf2a1bac33cd423c3d128f9e581a10d4513e2f8e2115037",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-real-agent-home-write-guard.test.ts": "8c97120b5e3bc97310cbccbf51e38e1e46ffeffc1e5b56fdb6d9760211bf75e0",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+    "config/scripts/windows-process-tree-creation-time.cjs": "ec19475647e1ba70a3df65085c395cbe8262b23c5599ce4f252cb9b96f56427f",
+    "config/scripts/windows-process-tree-gyp-rebuild.mjs": "6b15a16b0ec64c04e9c81243454cc271c5e24d24c4322bd3c10e42501939142b",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+    "src/shared/app-environment.ts": "91bd2a883048a56f8c3966057a062bac75f48f9e1b5670d8d7958f8c7fe21140",
+    "src/shared/credit-count-format.test.ts": "cc3b8751ff8c9253832962df42cf41307bd94c266e83f57aafa16aed010a2525",
+    "src/shared/credit-count-format.ts": "c80078bd8de15826ff8c70dba0a6f270dd4d382f84154c31aa510ce744cefa57",
+    "src/shared/currency-format.test.ts": "7e8570a770f4d82463694f407ec0d5c68bcb3252fcffa32bfd0636490ed3d6e5",
+    "src/shared/currency-format.ts": "6de9978d1230a0702f58192416b5a00f9340e159de0c22f4b02502de9b6dace6",
+    "src/shared/file-name-sort.test.ts": "7b8d37c80671b7aa874a5caedbb5eeba62c42375911a0c01d85aa2969c7ec731",
+    "src/shared/file-name-sort.ts": "5aafddf218c453276dcf1afdccf9cd7f82c50160f5df2dd6d1b2779ce0c0cc4a",
+    "src/shared/keybindings-parse-cache.test.ts": "2c93a9b41716a38ec8aba90b2464af4cf66a65dc8aa53d0d03d6fd4fa096d880",
+    "src/shared/keybindings/parser.ts": "fc142122ea4cc2cda9ec83b4218e0a0b207eff470916de4fc4186d090ab7a99c",
+    "src/shared/keybindings/types.ts": "50507a9221a3a1bb4dd4e5ac2065446c1130fc0d8849cc24fb4705260371f738",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "src/shared/secret-store.ts": "d65622ccc49b128dace24f76a54bc18a4ca3f03424e70842a875be9d1ea09134",
+    "src/shared/terminal-escape-introducer.test.ts": "8f7421f0ddec6cf2491501b7012c130ceddd80531688b708a6bf3dcaf25babf4",
+    "src/shared/terminal-escape-introducer.ts": "399406e19ea928d9905fe08a7aaa81807c436cda7f55e459293e94e868b43fc5",
+    "notes/bun-migration/performance/qualify-fixture-reuse.py": "269599bf9ada70ccae13fb5d71a8b6d37a7d7d0d135d713dc8b3de5aeeeee2d6",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "config/patches/ws@8.22.0.patch": "9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14"
+  },
+  "sourceBeforeSha256": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8",
+    ".github/actions/restore-pnpm-verification/action.yml": "4cda84b74eb8063262fb463d9289d2c9e19d00c2a89ccd4d559bcbeaad96085e",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/ensure-native-runtime.mjs": "ba33bac7159cc8cd9375f20617d662a7ab5ef85120f94ea3b4f0877569f97365",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "config/scripts/msbuild-file-tracking.mjs": "c44c4e03e140aac9e95b70f9103180c451f4ca02ce2afdb80f763aad14d625b5",
+    "config/scripts/node-pty-job-ownership.cjs": "3c8d0b9de689ff5fdbf2a1bac33cd423c3d128f9e581a10d4513e2f8e2115037",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-real-agent-home-write-guard.test.ts": "8c97120b5e3bc97310cbccbf51e38e1e46ffeffc1e5b56fdb6d9760211bf75e0",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+    "config/scripts/windows-process-tree-creation-time.cjs": "ec19475647e1ba70a3df65085c395cbe8262b23c5599ce4f252cb9b96f56427f",
+    "config/scripts/windows-process-tree-gyp-rebuild.mjs": "6b15a16b0ec64c04e9c81243454cc271c5e24d24c4322bd3c10e42501939142b",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+    "src/shared/app-environment.ts": "91bd2a883048a56f8c3966057a062bac75f48f9e1b5670d8d7958f8c7fe21140",
+    "src/shared/credit-count-format.test.ts": "cc3b8751ff8c9253832962df42cf41307bd94c266e83f57aafa16aed010a2525",
+    "src/shared/credit-count-format.ts": "c80078bd8de15826ff8c70dba0a6f270dd4d382f84154c31aa510ce744cefa57",
+    "src/shared/currency-format.test.ts": "7e8570a770f4d82463694f407ec0d5c68bcb3252fcffa32bfd0636490ed3d6e5",
+    "src/shared/currency-format.ts": "6de9978d1230a0702f58192416b5a00f9340e159de0c22f4b02502de9b6dace6",
+    "src/shared/file-name-sort.test.ts": "7b8d37c80671b7aa874a5caedbb5eeba62c42375911a0c01d85aa2969c7ec731",
+    "src/shared/file-name-sort.ts": "5aafddf218c453276dcf1afdccf9cd7f82c50160f5df2dd6d1b2779ce0c0cc4a",
+    "src/shared/keybindings-parse-cache.test.ts": "2c93a9b41716a38ec8aba90b2464af4cf66a65dc8aa53d0d03d6fd4fa096d880",
+    "src/shared/keybindings/parser.ts": "fc142122ea4cc2cda9ec83b4218e0a0b207eff470916de4fc4186d090ab7a99c",
+    "src/shared/keybindings/types.ts": "50507a9221a3a1bb4dd4e5ac2065446c1130fc0d8849cc24fb4705260371f738",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "src/shared/secret-store.ts": "d65622ccc49b128dace24f76a54bc18a4ca3f03424e70842a875be9d1ea09134",
+    "src/shared/terminal-escape-introducer.test.ts": "8f7421f0ddec6cf2491501b7012c130ceddd80531688b708a6bf3dcaf25babf4",
+    "src/shared/terminal-escape-introducer.ts": "399406e19ea928d9905fe08a7aaa81807c436cda7f55e459293e94e868b43fc5",
+    "config/patches/ws@8.22.0.patch": "9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14"
+  },
+  "patchTargets": {
+    "config/scripts/vitest-bun-node-builtins.ts": {
+      "beforeSha256": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+      "afterSha256": "82889d97f9ca66e6a2678ecbf75e15fee620e1b824ed3943ea8d05452756ae7c"
+    },
+    "config/scripts/vitest-real-agent-home-write-guard.ts": {
+      "beforeSha256": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+      "afterSha256": "2c924363b432a35442a9522178d2a44b445cc4e919aafcf9b7a2a15ce3cfb4eb"
+    },
+    "config/scripts/vitest-host-ports-setup.ts": {
+      "beforeSha256": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+      "afterSha256": "6beca0f3b28812dd196d4db9aab2e37904f9ea87329c021438791f7e5eaf95ed"
+    }
+  },
+  "files": [
+    "src/shared/terminal-escape-introducer.test.ts",
+    "src/shared/credit-count-format.test.ts",
+    "src/shared/currency-format.test.ts",
+    "src/shared/file-name-sort.test.ts",
+    "src/shared/keybindings-parse-cache.test.ts",
+    "config/scripts/vitest-real-agent-home-write-guard.test.ts"
+  ],
+  "timedFiles": [],
+  "expectedRoutes": {
+    "bun": [
+      {
+        "file": "src/shared/terminal-escape-introducer.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/credit-count-format.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/currency-format.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/file-name-sort.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/keybindings-parse-cache.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "config/scripts/vitest-real-agent-home-write-guard.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      }
+    ],
+    "node": [
+      {
+        "file": "src/shared/terminal-escape-introducer.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/credit-count-format.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/currency-format.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/file-name-sort.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/keybindings-parse-cache.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "config/scripts/vitest-real-agent-home-write-guard.test.ts",
+        "project": "node",
+        "pool": "forks"
+      }
+    ]
+  },
+  "scope": "Eight stock compatibility attempts; current fsTRUE, six unchanged setup paths, no original test/callback/body edits. Native guard evidence is separate and performance is not admitted. Current e363 source retarget only; legacy output namespace is an immutable artifact address, not source identity. No runtime admission.",
+  "sourceAfterSha256": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8",
+    ".github/actions/restore-pnpm-verification/action.yml": "4cda84b74eb8063262fb463d9289d2c9e19d00c2a89ccd4d559bcbeaad96085e",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/ensure-native-runtime.mjs": "ba33bac7159cc8cd9375f20617d662a7ab5ef85120f94ea3b4f0877569f97365",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "config/scripts/msbuild-file-tracking.mjs": "c44c4e03e140aac9e95b70f9103180c451f4ca02ce2afdb80f763aad14d625b5",
+    "config/scripts/node-pty-job-ownership.cjs": "3c8d0b9de689ff5fdbf2a1bac33cd423c3d128f9e581a10d4513e2f8e2115037",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "config/scripts/vitest-bun-node-builtins.ts": "82889d97f9ca66e6a2678ecbf75e15fee620e1b824ed3943ea8d05452756ae7c",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "6beca0f3b28812dd196d4db9aab2e37904f9ea87329c021438791f7e5eaf95ed",
+    "config/scripts/vitest-node-runtime-files.mjs": "bc929f0aacad8f91515e7ca2d499c2a9f212bd893bba36f384ec61cdde604ec3",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-real-agent-home-write-guard.test.ts": "8c97120b5e3bc97310cbccbf51e38e1e46ffeffc1e5b56fdb6d9760211bf75e0",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "2c924363b432a35442a9522178d2a44b445cc4e919aafcf9b7a2a15ce3cfb4eb",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "1b265dd1851b58eeb0549d3eba5f3134830f641af170f78226fcc81db7e28620",
+    "config/scripts/windows-process-tree-creation-time.cjs": "ec19475647e1ba70a3df65085c395cbe8262b23c5599ce4f252cb9b96f56427f",
+    "config/scripts/windows-process-tree-gyp-rebuild.mjs": "6b15a16b0ec64c04e9c81243454cc271c5e24d24c4322bd3c10e42501939142b",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "6bff43083a4b7f08f3158a61957a6719b569cc58d87d677c2524cd9f560d4da3",
+    "src/shared/app-environment.ts": "91bd2a883048a56f8c3966057a062bac75f48f9e1b5670d8d7958f8c7fe21140",
+    "src/shared/credit-count-format.test.ts": "cc3b8751ff8c9253832962df42cf41307bd94c266e83f57aafa16aed010a2525",
+    "src/shared/credit-count-format.ts": "c80078bd8de15826ff8c70dba0a6f270dd4d382f84154c31aa510ce744cefa57",
+    "src/shared/currency-format.test.ts": "7e8570a770f4d82463694f407ec0d5c68bcb3252fcffa32bfd0636490ed3d6e5",
+    "src/shared/currency-format.ts": "6de9978d1230a0702f58192416b5a00f9340e159de0c22f4b02502de9b6dace6",
+    "src/shared/file-name-sort.test.ts": "7b8d37c80671b7aa874a5caedbb5eeba62c42375911a0c01d85aa2969c7ec731",
+    "src/shared/file-name-sort.ts": "5aafddf218c453276dcf1afdccf9cd7f82c50160f5df2dd6d1b2779ce0c0cc4a",
+    "src/shared/keybindings-parse-cache.test.ts": "2c93a9b41716a38ec8aba90b2464af4cf66a65dc8aa53d0d03d6fd4fa096d880",
+    "src/shared/keybindings/parser.ts": "fc142122ea4cc2cda9ec83b4218e0a0b207eff470916de4fc4186d090ab7a99c",
+    "src/shared/keybindings/types.ts": "50507a9221a3a1bb4dd4e5ac2065446c1130fc0d8849cc24fb4705260371f738",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "src/shared/secret-store.ts": "d65622ccc49b128dace24f76a54bc18a4ca3f03424e70842a875be9d1ea09134",
+    "src/shared/terminal-escape-introducer.test.ts": "8f7421f0ddec6cf2491501b7012c130ceddd80531688b708a6bf3dcaf25babf4",
+    "src/shared/terminal-escape-introducer.ts": "399406e19ea928d9905fe08a7aaa81807c436cda7f55e459293e94e868b43fc5",
+    "config/patches/ws@8.22.0.patch": "9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14"
+  }
+}

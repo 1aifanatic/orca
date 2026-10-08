@@ -1,0 +1,60 @@
+diff --git a/config/scripts/vitest-bun-node-builtins.ts b/config/scripts/vitest-bun-node-builtins.ts
+--- a/config/scripts/vitest-bun-node-builtins.ts
++++ b/config/scripts/vitest-bun-node-builtins.ts
+@@ -26,7 +26,24 @@
+   const homedir = () =>
+     (process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME) ?? os.homedir()
+ 
+-  vi.doMock('node:os', () => ({ ...os, homedir, default: { ...os, homedir } }))
+-  vi.doMock('node:fs', () => ({ ...fs, default: fs }))
+-  vi.doMock('node:fs/promises', () => ({ ...fs.promises, default: fs.promises }))
++  if (typeof vi.doMock === 'function') {
++    vi.doMock('node:os', () => ({ ...os, homedir, default: { ...os, homedir } }))
++    vi.doMock('node:fs', () => ({ ...fs, default: fs }))
++    vi.doMock('node:fs/promises', () => ({ ...fs.promises, default: fs.promises }))
++  } else if (typeof vi.mock === 'function') {
++    const mockNodeBuiltin = vi.mock
++    const originalHomedir = os.homedir
++    const nativeHomedir = () =>
++      (process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME) ?? originalHomedir()
++
++    mockNodeBuiltin('node:os', () => ({
++      ...os,
++      homedir: nativeHomedir,
++      default: { ...os, homedir: nativeHomedir }
++    }))
++    mockNodeBuiltin('node:fs', () => ({ ...fs, default: fs }))
++    mockNodeBuiltin('node:fs/promises', () => ({ ...fs.promises, default: fs.promises }))
++  } else {
++    throw new Error('Bun test module mocks are unavailable; the Node builtin guards cannot be published')
++  }
+ }
+diff --git a/config/scripts/vitest-real-agent-home-write-guard.ts b/config/scripts/vitest-real-agent-home-write-guard.ts
+--- a/config/scripts/vitest-real-agent-home-write-guard.ts
++++ b/config/scripts/vitest-real-agent-home-write-guard.ts
+@@ -214,5 +214,5 @@
+   }
+ }
+ 
+-afterEach(failOnViolations)
+-afterAll(failOnViolations)
++afterEach(failOnViolations, 60_000)
++afterAll(failOnViolations, 60_000)
+diff --git a/config/scripts/vitest-host-ports-setup.ts b/config/scripts/vitest-host-ports-setup.ts
+--- a/config/scripts/vitest-host-ports-setup.ts
++++ b/config/scripts/vitest-host-ports-setup.ts
+@@ -23,7 +23,7 @@
+ 
+ afterAll(() => {
+   rmSync(userData, { recursive: true, force: true })
+-})
++}, 60_000)
+ 
+ // Deliberately not a plaintext passthrough: encryptString must return something a
+ // test can tell apart from its input, or a test that forgot to seal would pass.
+@@ -67,4 +67,4 @@
+     },
+     describeProtectionGap: () => null
+   })
+-})
++}, 60_000)
