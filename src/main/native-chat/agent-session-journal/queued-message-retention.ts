@@ -3,7 +3,34 @@
 
 import type Database from '../../sqlite/sync-database'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
+  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+} from '../../../shared/agent-session-host-authority'
 import { expiredDispatchedQueuedMessageHeaders } from './queued-message-headers'
+import type { JournalReducerState } from './journal-reducer'
+import { settleOwedQueuedMessages } from './queued-message-settlement'
+
+/** Tombstones must outlive the window in which their operation id could still be admitted as new. */
+export const QUEUED_MESSAGE_REPLAY_WINDOW_MS =
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+
+/** Open-time repair: owed settlements apply as the live hook would have, then retention runs. */
+export function repairAndPruneQueuedMessages(
+  db: Database.Database,
+  input: { sessionId: string; state: JournalReducerState; now: number }
+): number {
+  const { sessionId, state, now } = input
+  return (
+    settleOwedQueuedMessages(db, input) +
+    pruneQueuedMessages(db, {
+      sessionId,
+      now,
+      replayWindowMs: QUEUED_MESSAGE_REPLAY_WINDOW_MS,
+      submissionVerdict: retainedSubmissionVerdict(state.submissions)
+    })
+  )
+}
 
 /** What the loaded journal says about a dispatched draft's consumed submission. */
 export type QueuedMessageSubmissionVerdict =

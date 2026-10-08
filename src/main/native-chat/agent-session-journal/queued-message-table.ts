@@ -21,16 +21,6 @@ import { READABLE_UNSETTLED_QUEUED_MESSAGE } from './queued-message-readability'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
-export class QueuedMessageNotConsumableError extends Error {
-  constructor(
-    readonly messageId: string,
-    readonly expected: 'waiting' | 'returned'
-  ) {
-    super(`queued message ${messageId} is no longer ${expected}`)
-    this.name = 'QueuedMessageNotConsumableError'
-  }
-}
-
 /** Why ONE waiting draft is held from auto-sending: its conversion failed (`send_failed`). Stored
  *  on the row, so it survives handle eviction and restart; a wire marker (it publishes as
  *  `pausedReason`). A Stop, a /clear or a reopen pauses the queue instead. A reader treats an
@@ -65,8 +55,7 @@ export type QueuedMessageHeader = {
    *  card, cleared when a withdrawal sends it back to waiting. Host-only; the published link is
    *  the submission's `queuedMessageId`. */
   consumedAs: string | null
-  /** The conversation /clear carried this card from; null for a card written here. What the
-   *  replacement's 'cleared' pause is derived from. */
+  /** Inert historical column; current inserts write null. */
   carriedFrom: string | null
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */
@@ -89,7 +78,6 @@ export function insertQueuedMessage(
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
-    carriedFrom?: string
     queuedAt: AgentJournalCursor
     now: number
     /** Absent: after every other card. */
@@ -114,7 +102,7 @@ export function insertQueuedMessage(
     input.now,
     input.hostInstance,
     input.holdReason ?? null,
-    input.carriedFrom ?? null,
+    null,
     input.queuedAt.epoch,
     input.queuedAt.sequence
   )
@@ -133,7 +121,7 @@ export function insertQueuedMessage(
     settledAt: null,
     settledByOp: null,
     consumedAs: null,
-    carriedFrom: input.carriedFrom ?? null,
+    carriedFrom: null,
     queuedAt: input.queuedAt
   }
 }
