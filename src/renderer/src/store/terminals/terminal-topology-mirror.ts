@@ -49,31 +49,24 @@ function newTabRow(
   }
 }
 
+/** Pane titles are presentation: main's seed a layout new to the window, as a new tab's title does. */
 function mirrorLayout(
   current: TerminalLayoutSnapshot | undefined,
   layout: TerminalTopologyLayout
 ): TerminalLayoutSnapshot {
+  if (!current) {
+    const activeLeafId = resolvePtyBoundActiveLeafId({ ...layout, activeLeafId: null })
+    return { ...emptyLayoutSnapshot(), ...layout, activeLeafId }
+  }
   if (
-    current &&
     terminalLayoutNodeEqual(current.root, layout.root) &&
-    sameStringRecord(current.ptyIdsByLeafId, layout.ptyIdsByLeafId) &&
-    sameStringRecord(current.titlesByLeafId, layout.titlesByLeafId)
+    sameStringRecord(current.ptyIdsByLeafId, layout.ptyIdsByLeafId)
   ) {
     return current
   }
-  const {
-    ptyIdsByLeafId: _ptyIds,
-    titlesByLeafId: _titles,
-    ...presentation
-  } = current ?? emptyLayoutSnapshot()
-  const activeLeafId = current
-    ? presentation.activeLeafId
-    : resolvePtyBoundActiveLeafId({
-        root: layout.root,
-        activeLeafId: null,
-        ptyIdsByLeafId: layout.ptyIdsByLeafId
-      })
-  return { ...presentation, ...layout, activeLeafId }
+  const { ptyIdsByLeafId: _ptyIds, ...presentation } = current
+  const { titlesByLeafId: _mainTitles, ...topology } = layout
+  return { ...presentation, ...topology }
 }
 
 function mirrorSleepingRecords(

@@ -164,10 +164,41 @@ describe('applyTerminalTopologySlice', () => {
       activeLeafId: LEAF_A,
       expandedLeafId: null,
       ptyIdsByLeafId: { [LEAF_A]: 'pty-a', [LEAF_C]: 'pty-c' },
-      titlesByLeafId: { [LEAF_C]: 'logs' },
+      // Pane titles are the window's presentation, like its buffers.
       buffersByLeafId: { [LEAF_A]: 'scrollback' }
     })
     expect(state().ptyIdsByTabId).toBe(ptyIdsByTabId)
+  })
+
+  it("keeps a pane title the window set before main's push lands, and saves it", () => {
+    vi.useFakeTimers()
+    useAppStore.setState({ workspaceSessionReady: true, hydrationSucceeded: true })
+    const persist = vi.fn()
+    const dispose = createSessionWriteSubscriber({ store: useAppStore, persist })
+    vi.advanceTimersByTime(1_000)
+    persist.mockClear()
+
+    state().setTabLayout('a', {
+      ...leafLayout(LEAF_A, 'pty-a'),
+      titlesByLeafId: { [LEAF_A]: 'build' }
+    })
+    // A push inside the save debounce, carrying the title main last saved.
+    apply(
+      slice(2, {
+        layouts: {
+          ...slice(2).layouts,
+          a: { ...slice(2).layouts.a, titlesByLeafId: { [LEAF_A]: 'old' } }
+        }
+      })
+    )
+    vi.advanceTimersByTime(1_000)
+
+    expect(state().terminalLayoutsByTabId.a.titlesByLeafId).toEqual({ [LEAF_A]: 'build' })
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(persist.mock.calls[0][0].patch.terminalLayoutsByTabId.a.titlesByLeafId).toEqual({
+      [LEAF_A]: 'build'
+    })
+    dispose()
   })
 
   it('clears an optional row field main dropped', () => {
@@ -275,7 +306,11 @@ describe('applyTerminalTopologySlice', () => {
         tabs: [...slice(2).tabs, row('c', { defaultTitle: 'Terminal 3', launchAgent: 'claude' })],
         layouts: {
           ...slice(2).layouts,
-          c: { root: { type: 'leaf', leafId: LEAF_C }, ptyIdsByLeafId: { [LEAF_C]: 'pty-c' } }
+          c: {
+            root: { type: 'leaf', leafId: LEAF_C },
+            ptyIdsByLeafId: { [LEAF_C]: 'pty-c' },
+            titlesByLeafId: { [LEAF_C]: 'logs' }
+          }
         }
       })
     )
@@ -294,7 +329,8 @@ describe('applyTerminalTopologySlice', () => {
     })
     expect(state().terminalLayoutsByTabId.c).toMatchObject({
       root: { type: 'leaf', leafId: LEAF_C },
-      activeLeafId: LEAF_C
+      activeLeafId: LEAF_C,
+      titlesByLeafId: { [LEAF_C]: 'logs' }
     })
     expect(state().unifiedTabsByWorktree[WT].at(-1)).toMatchObject({
       id: 'c',
