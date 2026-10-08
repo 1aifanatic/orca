@@ -116,7 +116,8 @@ function nativeChatVisualsFor(deps: StructuredAgentSessionRuntimeDeps): {
     ? {
         prepareVisuals: createNativeChatVisualsDelivery({
           stateDirectory: deps.stateDirectory,
-          logger: deps.logger
+          logger: deps.logger,
+          isEnabled: deps.nativeChatVisuals.isEnabled
         })
       }
     : {}

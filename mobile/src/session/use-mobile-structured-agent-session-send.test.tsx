@@ -5,9 +5,9 @@ import type { AgentJournalDispatchState } from '../../../src/shared/agent-sessio
 import { DISPATCH_REJECTED_CANCELLED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
 import type { RpcClient } from '../transport/rpc-client'
+import { fieldsOf, ok } from './use-mobile-structured-agent-session-queued.test-fixture'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
-import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
 import { structuredSendResultFixture } from './structured-agent-send-result.test-fixture'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
 
@@ -19,10 +19,6 @@ const asyncStorage = vi.hoisted(() => ({
 
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: asyncStorage }))
 
-function ok(result: unknown) {
-  return { ok: true, result, _meta: { runtimeId: 'runtime-1' } }
-}
-
 function sendResult(dispatchState: AgentJournalDispatchState, reason: string | null = null) {
   return ok({
     ok: true,
@@ -33,7 +29,7 @@ function sendResult(dispatchState: AgentJournalDispatchState, reason: string | n
   })
 }
 
-function snapshotEvent(): AgentSessionSubscribeEvent {
+function snapshotEvent(): Extract<AgentSessionSubscribeEvent, { type: 'snapshot' }> {
   return {
     type: 'snapshot',
     sessionId: 'session-1',
@@ -58,18 +54,28 @@ function snapshotEvent(): AgentSessionSubscribeEvent {
   }
 }
 
-describe('mobile structured send retries', () => {
+describe('mobile structured send actions', () => {
   let renderer: ReactTestRenderer | null = null
   let hook: ReturnType<typeof useMobileStructuredAgentSession> | null = null
   let listener: ((value: unknown) => void) | null = null
   let storedOperations: Map<string, string>
   const onSendError = vi.fn()
-  const sendRequest = vi.fn()
-  const subscribe = vi.fn((_method: string, _params: unknown, onData: (value: unknown) => void) => {
+  const sendRequest = vi.fn<RpcClient['sendRequest']>()
+  const subscribe = vi.fn<RpcClient['subscribe']>((_method, _params, onData) => {
     listener = onData
     return vi.fn()
   })
-  const client = { sendRequest, subscribe } as unknown as RpcClient
+  const client: RpcClient = {
+    sendRequest,
+    subscribe,
+    updateTerminalSubscriptionViewport: () => {},
+    getState: () => 'connected',
+    getReconnectAttempt: () => 0,
+    getLastConnectedAt: () => null,
+    onStateChange: () => () => {},
+    notifyForeground: () => {},
+    close: () => {}
+  }
 
   function Harness(): null {
     hook = useMobileStructuredAgentSession({
@@ -79,8 +85,9 @@ describe('mobile structured send retries', () => {
       enabled: true,
       connected: true,
       agent: 'codex',
+      hostSupport: null,
       onSendError
-    } as never)
+    })
     return null
   }
 
@@ -97,15 +104,14 @@ describe('mobile structured send retries', () => {
   }
 
   function sentIds(): string[] {
-    return calls().map(
-      ([, params]) =>
-        (params as { envelope: { clientOperationId: string } }).envelope.clientOperationId
+    return calls().map(([, params]) =>
+      String(fieldsOf(fieldsOf(params).envelope).clientOperationId)
     )
   }
 
   beforeEach(() => {
     vi.clearAllMocks()
-    resetMobileStructuredSendOperationJournalForTests()
+
     storedOperations = new Map()
     asyncStorage.getItem.mockImplementation(
       async (key: string) => storedOperations.get(key) ?? null
@@ -126,83 +132,6 @@ describe('mobile structured send retries', () => {
     renderer = null
     hook = null
     listener = null
-  })
-
-  it('keeps one id across acknowledgement loss and host unknown replays', async () => {
-    let attempts = 0
-    sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
-      }
-      attempts += 1
-      if (attempts === 1) {
-        throw markRpcDeliveryUnknown(new Error('Connection closed'))
-      }
-      return sendResult('unknown')
-    })
-    await mountSession()
-
-    await act(async () => {
-      expect((await hook!.sendWithOutcome('retry me')).outcome).toBe('unknown')
-      expect((await hook!.sendWithOutcome('retry me')).outcome).toBe('unknown')
-      expect((await hook!.sendWithOutcome('retry me')).outcome).toBe('unknown')
-    })
-
-    expect(calls()).toHaveLength(3)
-    expect(new Set(sentIds()).size).toBe(1)
-    expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
-  })
-
-  // A replay of a retained id cannot be told from a new send of the same text, and a Stop took the
-  // first one back before the agent started it, so this press goes out as a new message.
-  it('sends a replay a Stop took back once more, under a fresh id, saying nothing', async () => {
-    let attempts = 0
-    sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
-      }
-      attempts += 1
-      if (attempts === 1) {
-        throw markRpcDeliveryUnknown(new Error('Connection closed'))
-      }
-      return attempts === 2
-        ? sendResult('rejected', DISPATCH_REJECTED_CANCELLED)
-        : sendResult('pending')
-    })
-    await mountSession()
-
-    await act(async () => {
-      expect((await hook!.sendWithOutcome('stopped one')).outcome).toBe('unknown')
-      expect((await hook!.sendWithOutcome('stopped one')).outcome).toBe('accepted')
-    })
-
-    expect(onSendError).not.toHaveBeenCalled()
-    // The lost first send, its replay, and exactly one resend under a new id.
-    const ids = sentIds()
-    expect(ids).toHaveLength(3)
-    expect(ids[1]).toBe(ids[0])
-    expect(ids[2]).not.toBe(ids[0])
-  })
-
-  it('reads a first answer a Stop took back as sent, saying nothing, and spends its id', async () => {
-    sendRequest.mockImplementation(async (method) =>
-      method === 'agentSession.send'
-        ? sendResult('rejected', DISPATCH_REJECTED_CANCELLED)
-        : method === 'agentSession.options'
-          ? ok({ models: [], current: {} })
-          : ok({})
-    )
-    await mountSession()
-
-    await act(async () => {
-      expect((await hook!.sendWithOutcome('stopped first')).outcome).toBe('accepted')
-      expect((await hook!.sendWithOutcome('stopped first')).outcome).toBe('accepted')
-    })
-
-    expect(onSendError).not.toHaveBeenCalled()
-    const ids = sentIds()
-    expect(ids).toHaveLength(2)
-    expect(ids[1]).not.toBe(ids[0])
   })
 
   // The host's row is where a recorded, rejected message lives on the phone, as on the desktop.
@@ -264,60 +193,59 @@ describe('mobile structured send retries', () => {
     expect(onSendError).not.toHaveBeenCalled()
   })
 
-  it('releases an ack-lost id after the journal accepts it for a later identical intent', async () => {
-    let attempts = 0
-    sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
-      }
-      attempts += 1
-      return attempts === 1
-        ? Promise.reject(markRpcDeliveryUnknown(new Error('Connection closed')))
-        : sendResult('accepted')
-    })
-    await mountSession()
-    await act(async () => {
-      expect((await hook!.sendWithOutcome('same text, later intent')).outcome).toBe('unknown')
-    })
-    const firstRequest = calls()[0]![1] as {
-      envelope: { clientOperationId: string; payloadFingerprint: string }
+  it.each(['unknown', 'pending', 'accepted'] as const)(
+    'a later Send owns a new id even when the earlier host answer was %s',
+    async (state) => {
+      sendRequest.mockImplementation(async (method) =>
+        method === 'agentSession.send' ? sendResult(state) : ok({ models: [], current: {} })
+      )
+      await mountSession()
+      await act(async () => {
+        const outcome = state === 'unknown' ? 'unknown' : 'accepted'
+        expect((await hook!.sendWithOutcome('same text')).outcome).toBe(outcome)
+        expect((await hook!.sendWithOutcome('same text')).outcome).toBe(outcome)
+      })
+      expect(new Set(sentIds()).size).toBe(2)
+    }
+  )
+
+  it('keeps the original unknown host row while allowing another Send', async () => {
+    const original = structuredSendResultFixture('unknown')
+    if (!('submission' in original)) {
+      throw new Error('expected a submission answer')
     }
     const event = snapshotEvent()
-    act(() =>
-      listener?.({
-        ...event,
-        page: {
-          ...event.page,
-          submissions: [
-            {
-              ...structuredSendResultFixture('accepted').submission,
-              clientMessageId: firstRequest.envelope.clientOperationId,
-              payloadFingerprint: firstRequest.envelope.payloadFingerprint
-            }
-          ]
-        }
-      })
+    event.page.submissions = [original.submission]
+    event.page.items = [
+      {
+        itemId: 'original-message',
+        revision: 1,
+        sequence: 1,
+        observedAt: 10,
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'same text' }] }
+      }
+    ]
+    sendRequest.mockImplementation(async (method) =>
+      method === 'agentSession.send' ? sendResult('accepted') : ok({ models: [], current: {} })
     )
-    await vi.waitFor(() => expect(storedOperations.size).toBe(0))
-
+    await mountSession()
+    act(() => listener?.(event))
+    const messages = hook!.session.messages
+    expect(messages).toHaveLength(1)
     await act(async () => {
-      expect((await hook!.sendWithOutcome('same text, later intent')).outcome).toBe('accepted')
+      expect((await hook!.sendWithOutcome('same text')).outcome).toBe('accepted')
     })
-
-    expect(sentIds()).toHaveLength(2)
-    expect(new Set(sentIds()).size).toBe(2)
+    expect(hook!.session.messages).toEqual(messages)
+    expect(event.page.submissions[0]?.dispatchState).toBe('unknown')
+    expect(calls()).toHaveLength(1)
   })
 
-  it('reuses an ambiguous id after the session hook remounts', async () => {
-    let attempts = 0
+  it('does not replay an old action after remount', async () => {
     sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      if (method === 'agentSession.send') {
+        throw markRpcDeliveryUnknown(new Error('Connection closed'))
       }
-      attempts += 1
-      return attempts === 1
-        ? Promise.reject(markRpcDeliveryUnknown(new Error('Connection closed')))
-        : sendResult('unknown')
+      return ok({ models: [], current: {} })
     })
     await mountSession()
     await act(async () => {
@@ -325,135 +253,89 @@ describe('mobile structured send retries', () => {
     })
     act(() => renderer?.unmount())
     renderer = null
-    hook = null
     listener = null
-
     await mountSession()
     await act(async () => {
       expect((await hook!.sendWithOutcome('survive remount')).outcome).toBe('unknown')
     })
+    expect(new Set(sentIds()).size).toBe(2)
+  })
 
-    expect(new Set(sentIds()).size).toBe(1)
-    expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
-    expect(asyncStorage.setItem.mock.invocationCallOrder[0]).toBeLessThan(
-      sendRequest.mock.invocationCallOrder.find(
-        (_, index) => sendRequest.mock.calls[index]?.[0] === 'agentSession.send'
-      )!
+  it('uses newly uploaded attachment paths for a new action with the same image', async () => {
+    sendRequest.mockImplementation(async (method) =>
+      method === 'agentSession.send' ? sendResult('unknown') : ok({ models: [], current: {} })
     )
-  })
-
-  it('keeps the id when the host fails after provider dispatch', async () => {
-    let attempts = 0
-    sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
-      }
-      attempts += 1
-      return attempts === 1
-        ? {
-            id: 'request-1',
-            ok: false as const,
-            error: { code: 'runtime_error', message: 'journal resolve failed' },
-            _meta: { runtimeId: 'runtime-1' }
-          }
-        : sendResult('unknown')
-    })
     await mountSession()
-
     await act(async () => {
-      expect((await hook!.sendWithOutcome('possibly delivered')).outcome).toBe('unknown')
-      expect((await hook!.sendWithOutcome('possibly delivered')).outcome).toBe('unknown')
-    })
-
-    expect(calls()).toHaveLength(2)
-    expect(new Set(sentIds()).size).toBe(1)
-    expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
-  })
-
-  it('reuses the original uploaded attachment identity after acknowledgement loss', async () => {
-    let attempts = 0
-    sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+      for (const path of ['/tmp/original.png', '/tmp/reuploaded.png']) {
+        expect(
+          (
+            await hook!.sendWithOutcome('describe', undefined, undefined, [
+              {
+                path,
+                previewUri: 'file:///photo.jpg'
+              }
+            ])
+          ).outcome
+        ).toBe('unknown')
       }
-      attempts += 1
-      return attempts === 1
-        ? Promise.reject(markRpcDeliveryUnknown(new Error('Connection closed')))
-        : sendResult('unknown')
     })
-    await mountSession()
-    const contentFingerprint = 'f'.repeat(64)
-
-    await act(async () => {
-      expect(
-        (
-          await hook!.sendWithOutcome('describe', undefined, undefined, [
-            {
-              path: '/tmp/original.png',
-              previewUri: 'file:///photo.jpg',
-              contentFingerprint
-            }
-          ])
-        ).outcome
-      ).toBe('unknown')
-      expect(
-        (
-          await hook!.sendWithOutcome('describe', undefined, undefined, [
-            {
-              path: '/tmp/reuploaded.png',
-              previewUri: 'file:///photo.jpg',
-              contentFingerprint
-            }
-          ])
-        ).outcome
-      ).toBe('unknown')
-    })
-
-    expect(new Set(sentIds()).size).toBe(1)
+    expect(new Set(sentIds()).size).toBe(2)
     expect(calls()[1]?.[1]).toMatchObject({
       body: {
-        blocks: expect.arrayContaining([{ type: 'image-ref', path: '/tmp/original.png' }])
+        blocks: expect.arrayContaining([{ type: 'image-ref', path: '/tmp/reuploaded.png' }])
       }
     })
+  })
+
+  it('reports a send stopped before the agent started it without sending it twice', async () => {
+    sendRequest.mockImplementation(async (method) =>
+      method === 'agentSession.send'
+        ? sendResult('rejected', DISPATCH_REJECTED_CANCELLED)
+        : ok({ models: [], current: {} })
+    )
+    await mountSession()
+    await act(async () => {
+      expect((await hook!.sendWithOutcome('stopped')).outcome).toBe('accepted')
+      expect((await hook!.sendWithOutcome('stopped')).outcome).toBe('accepted')
+    })
+    expect(calls()).toHaveLength(2)
+    expect(new Set(sentIds()).size).toBe(2)
+    expect(onSendError).not.toHaveBeenCalled()
   })
 
   it.each(['invalid_argument', 'unauthorized'])(
-    'rotates after a %s pre-handler RPC refusal that proves the send did not run',
+    'a later Send is independent after a %s refusal',
     async (code) => {
       let attempts = 0
       sendRequest.mockImplementation(async (method) => {
         if (method !== 'agentSession.send') {
-          return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+          return ok({ models: [], current: {} })
         }
-        attempts += 1
-        return attempts === 1
+        return ++attempts === 1
           ? {
+              id: 'request-1',
               ok: false as const,
-              error: { code, message: 'Message is not authorized' },
-              _meta: { runtimeId: 'runtime-1' }
+              error: { code, message: 'Message is not authorized' }
             }
           : sendResult('accepted')
       })
       await mountSession()
-
       await act(async () => {
-        expect((await hook!.sendWithOutcome('never reached the handler')).outcome).toBe('rejected')
-        expect((await hook!.sendWithOutcome('never reached the handler')).outcome).toBe('accepted')
+        expect((await hook!.sendWithOutcome('again')).outcome).toBe('rejected')
+        expect((await hook!.sendWithOutcome('again')).outcome).toBe('accepted')
       })
-
-      expect(sentIds()).toHaveLength(2)
       expect(new Set(sentIds()).size).toBe(2)
     }
   )
 
-  it('keeps the send id after a pending-admission refusal', async () => {
+  it('a new Send goes through after a stale-fence refusal', async () => {
     let attempts = 0
     sendRequest.mockImplementation(async (method) => {
       if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
+        return ok({ models: [], current: {} })
       }
-      attempts += 1
-      return attempts === 1
+      return ++attempts === 1
         ? ok({
             ok: false,
             refusal: {
@@ -465,116 +347,35 @@ describe('mobile structured send retries', () => {
         : sendResult('accepted')
     })
     await mountSession()
-
     await act(async () => {
-      expect((await hook!.sendWithOutcome('retry at the current fence')).outcome).toBe('rejected')
-      expect((await hook!.sendWithOutcome('retry at the current fence')).outcome).toBe('unknown')
+      expect((await hook!.sendWithOutcome('again')).outcome).toBe('rejected')
+      expect((await hook!.sendWithOutcome('again')).outcome).toBe('accepted')
     })
-
-    expect(sentIds()).toHaveLength(2)
-    expect(new Set(sentIds()).size).toBe(1)
+    expect(new Set(sentIds()).size).toBe(2)
   })
 
-  it('keeps the id when an older host refuses an unknown replay', async () => {
-    let attempts = 0
-    sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
-      }
-      attempts += 1
-      if (attempts === 1) {
-        throw markRpcDeliveryUnknown(new Error('Connection closed'))
-      }
-      return attempts === 2
-        ? ok({
-            ok: false,
-            refusal: {
-              code: 'agent_session_operation_unknown',
-              message: 'The outcome is unknown.'
-            }
-          })
-        : sendResult('unknown')
-    })
-    await mountSession()
-
-    await act(async () => {
-      expect((await hook!.sendWithOutcome('old host replay')).outcome).toBe('unknown')
-      expect((await hook!.sendWithOutcome('old host replay')).outcome).toBe('unknown')
-      expect((await hook!.sendWithOutcome('old host replay')).outcome).toBe('unknown')
-    })
-
-    expect(new Set(sentIds()).size).toBe(1)
-    expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
-  })
-
-  it('sends under a new id once the host has expired an ambiguous one', async () => {
-    let attempts = 0
-    sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
-      }
-      attempts += 1
-      if (attempts === 1) {
-        throw markRpcDeliveryUnknown(new Error('Connection closed'))
-      }
-      if (attempts === 3) {
-        return sendResult('accepted')
-      }
-      return ok({
-        ok: false,
-        refusal: {
-          code: 'agent_session_operation_expired',
-          message: 'Operation expired.'
-        }
-      })
-    })
-    await mountSession()
-
-    await act(async () => {
-      expect((await hook!.sendWithOutcome('old ambiguity')).outcome).toBe('unknown')
-      expect((await hook!.sendWithOutcome('old ambiguity')).outcome).toBe('rejected')
-      expect((await hook!.sendWithOutcome('old ambiguity')).outcome).toBe('accepted')
-    })
-
-    expect(calls()).toHaveLength(3)
-    const [first, replay, fresh] = sentIds()
-    expect(replay).toBe(first)
-    expect(fresh).not.toBe(first)
-    expect(onSendError).toHaveBeenCalledWith(
-      "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
+  it('never reads an old phone journal, even when storage is full or unreadable', async () => {
+    asyncStorage.getItem.mockRejectedValue(new Error('unreadable old journal'))
+    asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
+    sendRequest.mockImplementation(async (method) =>
+      method === 'agentSession.send' ? sendResult('accepted') : ok({ models: [], current: {} })
     )
+    await mountSession()
+    await act(async () => {
+      expect((await hook!.sendWithOutcome('new action')).outcome).toBe('accepted')
+    })
+    expect(asyncStorage.getItem).not.toHaveBeenCalled()
+    expect(asyncStorage.setItem).not.toHaveBeenCalled()
+    expect(onSendError).not.toHaveBeenCalled()
   })
 
-  it('does not retain an id when the action budget expires before dispatch', async () => {
+  it('sends nothing once the action budget expires', async () => {
     await mountSession()
-
     await act(async () => {
       expect((await hook!.sendWithOutcome('never attempted', undefined, 0)).outcome).toBe(
         'rejected'
       )
     })
-
-    expect(calls()).toHaveLength(0)
-    expect(asyncStorage.setItem).not.toHaveBeenCalled()
-  })
-
-  it('puts a store that would not take the journal on screen, and sends nothing', async () => {
-    // Inside the page the store is the app's, reached over the `storage` grant, and it rejects a
-    // journal past `PAGE_STORAGE_MAX_VALUE_CHARS` — 48 unsettled sends, measured. A refusal that
-    // resolved instead would put a mutation on the wire carrying an operation id nothing holds,
-    // and a retry after a crash would send this message twice (rulings-ota-c7.md ruling 7).
-    asyncStorage.setItem.mockImplementation(async () => {
-      throw new Error('Orca could not save orca:mobileStructuredSendOperations:v1')
-    })
-    await mountSession()
-
-    await act(async () => {
-      expect((await hook!.sendWithOutcome('the journal will not take this')).outcome).toBe(
-        'rejected'
-      )
-    })
-
-    expect(onSendError).toHaveBeenCalledWith('Message not sent')
     expect(calls()).toHaveLength(0)
   })
 })

@@ -36,15 +36,12 @@ export function mobileStructuredSendQueues(
 
 export type StructuredMobileSendAttachment = StructuredAgentSessionAttachment & {
   id?: string
-  contentFingerprint?: string
 }
 
 export function useMobileStructuredSendWithOutcome(args: {
   agent: string | null
-  callerIdentity: string
   client: RpcClient | null
   sessionId: string | null
-  sessionKey: string
   enabled: boolean
   queueCapable: boolean
   stateRef: { readonly current: StructuredAgentSessionState }
@@ -62,7 +59,6 @@ export function useMobileStructuredSendWithOutcome(args: {
 ) => Promise<MobileStructuredSendResult> {
   const {
     agent,
-    callerIdentity,
     client,
     commandPending,
     controller,
@@ -70,7 +66,6 @@ export function useMobileStructuredSendWithOutcome(args: {
     onSendError,
     queueCapable,
     sessionId,
-    sessionKey,
     stateRef
   } = args
   return useCallback(
@@ -124,8 +119,6 @@ export function useMobileStructuredSendWithOutcome(args: {
       return sendMobileStructuredAgentSessionMessage({
         client,
         sessionId,
-        sessionKey,
-        callerIdentity,
         expectedRuntimeFence: currentFence,
         text,
         attachments: sendAttachments,
@@ -138,7 +131,6 @@ export function useMobileStructuredSendWithOutcome(args: {
     },
     [
       agent,
-      callerIdentity,
       client,
       commandPending,
       controller,
@@ -146,7 +138,6 @@ export function useMobileStructuredSendWithOutcome(args: {
       onSendError,
       queueCapable,
       sessionId,
-      sessionKey,
       stateRef
     ]
   )

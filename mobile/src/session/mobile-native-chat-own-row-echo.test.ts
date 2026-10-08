@@ -23,10 +23,7 @@ import {
   type MobileNativeChatPendingMessage
 } from './mobile-native-chat-pending-echo'
 import { retireLandedMobileNativeChatPending } from './mobile-native-chat-pending-retirement'
-import {
-  mobileStructuredSendInJournal,
-  mobileStructuredSendsInJournal
-} from './mobile-structured-send-operation-journal'
+import { mobileStructuredSendReceipts } from './mobile-structured-send-receipts'
 
 const TEXT = 'fix the test'
 
@@ -92,12 +89,12 @@ type Chat = { messages: NativeChatMessage[]; reachedHost: MobileStructuredSendRe
 /** What the phone holds: the journal drawn with a recorded, rejected send in place as not sent,
  *  and what that journal says reached the host. */
 function phone(items: AgentJournalRenderItem[], submissions: AgentJournalSubmission[]): Chat {
-  const sends = mobileStructuredSendsInJournal(submissions, false)
+  const sends = mobileStructuredSendReceipts(submissions)
   return {
     messages: projectStructuredAgentSessionMessages(items, [], submissions, {
       rejectedInPlace: true
     }),
-    reachedHost: (clientMessageId) => mobileStructuredSendInJournal(sends, clientMessageId)
+    reachedHost: (clientMessageId) => sends.has(clientMessageId)
   }
 }
 
