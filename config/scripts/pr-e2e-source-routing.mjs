@@ -58,6 +58,18 @@ export const PR_E2E_SOURCE_ROUTES = [
         ))
   },
   {
+    id: 'ssh.orcad-discard-owner',
+    specs: ['tests/e2e/ssh-orcad-discard-owner.spec.ts'],
+    matches: (file) =>
+      /^tests\/e2e\/helpers\/(?:editor-save-ipc-barrier|orcad-convert-(?:flow|host)|orcad-upgrade-profile|docker-ssh-relay-target)\.ts$/.test(
+        file
+      ) ||
+      (isProductSource(file) &&
+        /^src\/renderer\/src\/(?:components\/(?:right-sidebar\/source-control\/commit\/(?:use-entry-mutations|use-discard-confirmation)|editor\/(?:editor-autosave|editor-autosave-controller|editor-save-queue))|runtime\/runtime-file-mutation-client)\.ts$/.test(
+          file
+        ))
+  },
+  {
     id: 'ssh.orcad-idle-exit',
     specs: ['tests/e2e/ssh-orcad-idle-exit.spec.ts'],
     matches: (file) =>

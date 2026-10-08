@@ -5,6 +5,7 @@ import { parse } from 'yaml'
 import {
   classifyE2eJobs,
   ORCAD_AUTO_CONVERT_E2E_SPEC,
+  ORCAD_DISCARD_OWNER_E2E_SPEC,
   ORCAD_IDLE_EXIT_E2E_SPEC,
   ORCAD_OPEN_IN_OWNER_E2E_SPEC,
   ORCAD_SERVE_MODE_SWITCH_E2E_SPEC,
@@ -134,4 +135,37 @@ it('routes managed target-owner guards and menus to the real launch regression',
       step.run?.includes(ORCAD_OPEN_IN_OWNER_E2E_SPEC)
     )
   ).toBe(true)
+})
+
+it('routes discard/save coordination to the Docker lane that builds its template', () => {
+  expectRouted(
+    [
+      'src/renderer/src/components/right-sidebar/source-control/commit/use-entry-mutations.ts',
+      'src/renderer/src/components/right-sidebar/source-control/commit/use-discard-confirmation.ts',
+      'src/renderer/src/components/editor/editor-autosave.ts',
+      'src/renderer/src/components/editor/editor-autosave-controller.ts',
+      'src/renderer/src/components/editor/editor-save-queue.ts',
+      'src/renderer/src/runtime/runtime-file-mutation-client.ts',
+      'tests/e2e/helpers/editor-save-ipc-barrier.ts',
+      'tests/e2e/helpers/orcad-convert-flow.ts'
+    ],
+    ORCAD_DISCARD_OWNER_E2E_SPEC
+  )
+  expect(classifyE2eJobs(JSON.stringify([ORCAD_DISCARD_OWNER_E2E_SPEC]))).toEqual({
+    e2e_run_changed: false,
+    e2e_needs_build: true
+  })
+  const job = jobs['orcad-auto-convert-docker']
+  expect(job.if).toContain(`contains(inputs.test_files, '${ORCAD_DISCARD_OWNER_E2E_SPEC}')`)
+  expect(
+    job.steps.some(
+      (step) =>
+        step.env?.ORCA_E2E_SSH_DOCKER === '1' && step.run?.includes(ORCAD_DISCARD_OWNER_E2E_SPEC)
+    )
+  ).toBe(true)
+  expect(
+    selectPrE2eSpecs([
+      'src/renderer/src/components/right-sidebar/source-control/commit/source-control-discard-editor-owner.test.tsx'
+    ])
+  ).not.toContain(ORCAD_DISCARD_OWNER_E2E_SPEC)
 })
