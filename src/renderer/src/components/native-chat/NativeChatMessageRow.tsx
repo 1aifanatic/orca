@@ -83,6 +83,7 @@ function UserMessageMeta({
 
 type MessageRowProps = {
   message: NativeChatMessage
+  agentName?: string
   previousTodoWrite?: NativeChatToolCallBlock
   previousUpdatePlan?: NativeChatToolCallBlock
   revealedDiff?: NativeChatDiffReveal
@@ -117,6 +118,7 @@ type MessageRowProps = {
  *  keep their block identity, so only the changed row re-renders. */
 export const MessageRow = memo(function MessageRow({
   message,
+  agentName,
   previousTodoWrite,
   previousUpdatePlan,
   revealedDiff,
@@ -191,6 +193,7 @@ export const MessageRow = memo(function MessageRow({
       <div ref={rowRef}>
         <NativeChatNoticeRow
           block={notice}
+          agentName={agentName}
           onLinkClick={onLinkClick}
           allowFileUriLinks={allowFileUriLinks}
         />

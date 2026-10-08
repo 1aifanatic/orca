@@ -1,6 +1,8 @@
 import { useContext } from 'react'
 import { AlertCircle, AlertTriangle, Info, Loader2 } from 'lucide-react'
 import { NativeChatCodexMaintenanceContext } from '@/hooks/useCodexMaintenance'
+import { Button } from '@/components/ui/button'
+import { useTranslation } from 'react-i18next'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { NativeChatMarkdown } from './NativeChatMarkdown'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
@@ -17,12 +19,9 @@ import { useNativeChatOrcaStopView } from './native-chat-orca-stop-context'
 import { nativeChatOrcaStopRowText } from './native-chat-orca-stop-words'
 import { AGENT_SESSION_ORCA_STOP_PRESENTATION } from '../../../../shared/agent-session-orca-stop'
 import { ProviderFrameRow } from './NativeChatTranscriptChrome'
-import { Button } from '@/components/ui/button'
-import {
-  isClaudeSignInFailureKind,
-  nativeChatClaudeSignInLabel,
-  useNativeChatClaudeSignInView
-} from './native-chat-claude-sign-in'
+import { readWholeAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
+import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 
 const HOST_STATUS_WORDS: Record<AgentSessionHostStatusPresentation, () => string> = {
   'history-repaired': () =>
@@ -39,16 +38,18 @@ const HOST_STATUS_WORDS: Record<AgentSessionHostStatusPresentation, () => string
 
 export function NativeChatNoticeRow({
   block,
+  agentName,
   onLinkClick,
   allowFileUriLinks = false
 }: {
   block: NativeChatTextBlock
+  agentName?: string
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
 }): React.JSX.Element {
-  const orcaStopView = useNativeChatOrcaStopView()
-  const claudeSignIn = useNativeChatClaudeSignInView()
+  useTranslation()
   const codexMaintenance = useContext(NativeChatCodexMaintenanceContext)
+  const orcaStopView = useNativeChatOrcaStopView()
   if (block.presentation === 'compaction') {
     const label = translate('components.native-chat.notices.compaction', 'Context compacted')
     return (
@@ -106,16 +107,31 @@ export function NativeChatNoticeRow({
   const { orcaStop } = block
   const { hostLabel, continueAvailable } = orcaStopView
   const named = orcaStop !== undefined && hostLabel !== null
+  const failure = readWholeAgentSessionFailureFact(block.failure)
   const codexRefusal =
-    block.failure?.refusal?.code === 'agent_session_operation_invalid' &&
-    block.failure.refusal.details?.codexInstallation
+    failure?.refusal?.code === 'agent_session_operation_invalid' &&
+    failure.refusal.details?.codexInstallation
   const repairNotice = codexRefusal ? codexMaintenance : null
   const repairAction = repairNotice?.action
+  // Only reword auth text fully described by its fact; host text may also carry command advice.
+  const authSurface =
+    failure?.kind === 'notSignedIn'
+      ? (['row', 'rejection'] as const).find(
+          (surface) => block.text === agentSessionFailureSentence(failure, surface, { agentName })
+        )
+      : undefined
   const text =
     repairNotice?.text ??
     (named
       ? nativeChatOrcaStopRowText(orcaStop.cause, hostLabel, { continueAvailable })
-      : block.text)
+      : failure && authSurface
+        ? agentSessionFailureSentence(
+            failure,
+            authSurface,
+            { agentName },
+            sayAgentSessionFailureTranslated
+          )
+        : block.text)
   const tone =
     named || block.presentation === AGENT_SESSION_ORCA_STOP_PRESENTATION ? 'notice' : block.tone
   const Icon =
@@ -148,17 +164,6 @@ export function NativeChatNoticeRow({
           ) : null}
         </p>
       </div>
-      {claudeSignIn && isClaudeSignInFailureKind(block.failure?.kind) ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          disabled={claudeSignIn.signingIn}
-          onClick={claudeSignIn.signIn}
-        >
-          {nativeChatClaudeSignInLabel(claudeSignIn)}
-        </Button>
-      ) : null}
       {repairAction ? (
         <Button
           type="button"

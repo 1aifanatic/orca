@@ -1,53 +1,19 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { projectStructuredItemsToNativeChat } from '../../../../shared/structured-agent-session-projection'
 import type { AgentJournalStatusItem } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
-import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
+import { isAdmissibleAgentJournalItemBody } from '../../../../shared/agent-session-journal-schemas'
 import { MessageRow } from './NativeChatMessageRow'
-import { NativeChatCodexMaintenanceContext } from '@/hooks/useCodexMaintenance'
-import type { NativeChatComposerNotice } from './native-chat-composer-notice'
-import {
-  NativeChatOrcaStopContext,
-  type NativeChatOrcaStopView
-} from './native-chat-orca-stop-context'
+import { NativeChatNoticeRow } from './NativeChatNoticeRow'
+import { i18n } from '@/i18n/i18n'
+import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
+import { renderStatus } from './native-chat-notice-row.test-fixture'
 
-afterEach(cleanup)
-
-function orcaStopView(
-  hostLabel: string | null,
-  continueAvailable: boolean
-): NativeChatOrcaStopView {
-  return { hostLabel, continueAvailable }
-}
-
-function renderStatus(
-  body: AgentJournalStatusItem,
-  hostLabel: string | null = null,
-  continueAvailable = false,
-  maintenanceNotice?: NativeChatComposerNotice
-) {
-  const [message] = projectStructuredItemsToNativeChat([
-    {
-      itemId: 'notice',
-      sequence: 1,
-      revision: 1,
-      observedAt: 1,
-      body,
-      turnScope: { kind: 'turn', turnItemId: 'cut-turn' }
-    }
-  ])
-  const view = orcaStopView(hostLabel, continueAvailable)
-  return render(
-    <NativeChatOrcaStopContext.Provider value={view}>
-      <NativeChatCodexMaintenanceContext.Provider value={maintenanceNotice ?? null}>
-        <MessageRow message={message!} expandSignal={false} onScrollMessageToTop={vi.fn()} />
-      </NativeChatCodexMaintenanceContext.Provider>
-    </NativeChatOrcaStopContext.Provider>
-  )
-}
+afterEach(async () => {
+  cleanup()
+  await i18n.changeLanguage('en')
+})
 
 const LEGACY_TEXT =
   'Codex stopped while this response was in progress. You can continue in this conversation.'
@@ -129,44 +95,137 @@ describe('the row an Orca stop leaves', () => {
 })
 
 describe('notice rows', () => {
-  it.each([null, '0.135.0'])(
-    'offers the shared host action on a resumed Codex failure: %s',
-    (installedVersion) => {
-      const onClick = vi.fn()
-      const label = installedVersion ? 'Update Codex' : 'Install Codex'
-      const failure: AgentSessionFailureFact = {
-        kind: 'startFailed',
-        refusal: {
-          code: 'agent_session_operation_invalid',
-          details: {
-            reason: 'attachFailed',
-            codexInstallation: { installedVersion, minimumVersion: '0.136.0' }
-          }
-        }
-      }
+  it('keeps unmatched host auth wording and its next step', async () => {
+    await i18n.changeLanguage('fr')
+    const text = 'Use the host-specific sign-in page, then run /compact again.'
+    render(
+      <NativeChatNoticeRow
+        block={{ type: 'text', tone: 'error', text, failure: { kind: 'notSignedIn' } }}
+        agentName="Grok"
+      />
+    )
+    expect(screen.getByText(text)).toBeInTheDocument()
+  })
+
+  it.each(['providerStartFailed', 'notSignedIn'] as const)(
+    'keeps the host /compact retry instruction for %s',
+    (kind) => {
+      const words = agentSessionFailureWords(
+        { kind },
+        { agentName: 'Grok', command: 'compact', surface: 'row' }
+      )
+      renderStatus({ kind: 'status', tone: 'error', ...words }, null, false, 'Grok')
+      expect(screen.getByText(words.text)).toBeInTheDocument()
+      expect(screen.getByText(/Run \/compact again\./)).toBeInTheDocument()
+      expect(screen.queryByText(/send your message again/i)).toBeNull()
+    }
+  )
+  it('updates a mounted auth row when the reader changes language', async () => {
+    renderStatus(
+      {
+        kind: 'status',
+        tone: 'error',
+        ...agentSessionFailureWords({ kind: 'notSignedIn' }, { agentName: 'Grok', surface: 'row' })
+      },
+      null,
+      false,
+      'Grok'
+    )
+    expect(
+      screen.getByText('Sign in to Grok with `grok login` on the computer running this chat.')
+    ).toBeInTheDocument()
+    await act(() => i18n.changeLanguage('fr'))
+    expect(
+      screen.getByText(
+        'Connectez-vous à Grok avec `grok login` sur l’ordinateur qui exécute ce chat.'
+      )
+    ).toBeInTheDocument()
+  })
+  it.each([
+    ['fr', 'Grok', 'Connectez-vous à Grok avec `grok login` sur l’ordinateur qui exécute ce chat.'],
+    [
+      'fr',
+      'Pi',
+      'Connectez-vous à Pi en exécutant `pi` puis en utilisant `/login` sur l’ordinateur qui exécute ce chat.'
+    ],
+    ['fr', 'OMP', 'Connectez-vous à OMP.'],
+    [
+      'ja',
+      'Grok',
+      'このチャットを実行しているコンピューターで `grok login` を使って Grok にサインインしてください。'
+    ],
+    [
+      'ja',
+      'Pi',
+      'このチャットを実行しているコンピューターで `pi` を起動し、`/login` を使って Pi にサインインしてください。'
+    ],
+    ['ja', 'OMP', 'OMP にサインインしてください。']
+  ])(
+    'rewords known %s auth facts for %s and keeps literal diagnostics',
+    async (locale, agentName, guidance) => {
+      await i18n.changeLanguage(locale)
+      const detail = 'Provider diagnostic: {{agent}} must remain literal.'
+      const words = agentSessionFailureWords(
+        { kind: 'notSignedIn', detail: { text: detail, audience: 'person' } },
+        { agentName, surface: 'row' }
+      )
       renderStatus(
         {
           kind: 'status',
-          tone: 'error',
-          ...agentSessionFailureWords(failure, { agentName: 'Codex', surface: 'row' })
+          ...words,
+          tone: 'error'
         },
         null,
         false,
-        {
-          key: 'codex',
-          kind: 'error',
-          text: installedVersion
-            ? 'Codex 0.135.0 is too old for chats. Update to 0.136.0 or newer.'
-            : "Codex isn't installed.",
-          action: { label, onClick }
-        }
+        agentName
       )
-      expect(onClick).not.toHaveBeenCalled()
-      fireEvent.click(screen.getByRole('button', { name: label }))
-      expect(onClick).toHaveBeenCalledOnce()
+      expect(
+        screen.getByText(`${guidance}${locale === 'ja' ? '' : ' '}${detail}`)
+      ).toBeInTheDocument()
+      expect(screen.queryByText(words.text)).toBeNull()
     }
   )
 
+  it('rewords managed-account facts without leaking system login instructions', async () => {
+    await i18n.changeLanguage('fr')
+    renderStatus(
+      {
+        kind: 'status',
+        tone: 'error',
+        ...agentSessionFailureWords(
+          { kind: 'notSignedIn', account: 'managed' },
+          { agentName: 'Claude', surface: 'row' }
+        )
+      },
+      null,
+      false,
+      'Claude'
+    )
+    expect(
+      screen.getByText(
+        'Ce compte Claude n’est pas connecté. Reconnectez-vous dans les paramètres des Comptes Claude.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/claude auth login/)).toBeNull()
+  })
+
+  it.each([{ kind: 'futureFailure' }, { kind: 'notSignedIn', account: 'futureAccount' }])(
+    'keeps the host fallback for facts this client cannot fully understand (%j)',
+    async (failure) => {
+      await i18n.changeLanguage('ja')
+      const row = {
+        kind: 'status',
+        tone: 'error',
+        text: 'Future host guidance',
+        failure
+      }
+      if (!isAdmissibleAgentJournalItemBody(row) || row.kind !== 'status') {
+        throw new Error('Future host row is not an admissible status')
+      }
+      renderStatus(row, null, false, 'Grok')
+      expect(screen.getByText('Future host guidance')).toBeInTheDocument()
+    }
+  )
   it('renders compaction as a centered separator', () => {
     renderStatus({ kind: 'status', text: 'Context compacted', presentation: 'compaction' })
     expect(screen.getByRole('separator', { name: 'Context compacted' })).toHaveClass(

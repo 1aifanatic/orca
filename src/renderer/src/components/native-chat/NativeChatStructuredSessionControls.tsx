@@ -1,4 +1,5 @@
 import type { RefObject } from 'react'
+import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
 import { NativeChatStructuredQuestionCard } from './NativeChatStructuredQuestionCard'
@@ -16,9 +17,9 @@ import type { useNativeChatInterruptedContinuation } from './NativeChatInterrupt
 import type { useStructuredNativeChatSubmitReveal } from './use-structured-native-chat-submit-reveal'
 import type { useNativeChatRewindHost } from './use-native-chat-rewind-host'
 import type { nativeChatStructuredStopControls } from './native-chat-structured-stop-controls'
-import type { chatApprovalFromJournal } from './native-chat-interactive-prompt'
+import { chatApprovalFromJournal } from './native-chat-interactive-prompt'
 import type { useStructuredPromptResponseHold } from './use-structured-prompt-response-hold'
-import type { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
+import { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
 import type { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-adoption'
 import type { useStructuredChatLiveSession } from './use-structured-chat-live-session'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
@@ -27,6 +28,8 @@ type Controller = ReturnType<typeof useStructuredAgentSession>
 
 export function NativeChatStructuredSessionControls({
   props,
+  agentLabel,
+  startFailures,
   composerRef,
   questionAnswerInputRef,
   continuation,
@@ -38,17 +41,16 @@ export function NativeChatStructuredSessionControls({
   composerShown,
   notices,
   prompt,
-  approval,
   promptResponse,
-  questions,
   structuredTransport,
   launchDraftSignal,
   session,
   promptsUnanswerable,
-  onLinkClick,
-  questionsShown
+  onLinkClick
 }: {
   props: Omit<NativeChatStructuredViewProps, 'mode'>
+  agentLabel: string
+  startFailures: readonly AgentSessionFailureFact[]
   composerRef: RefObject<NativeChatComposerHandle | null>
   questionAnswerInputRef: RefObject<HTMLInputElement | null>
   continuation: ReturnType<typeof useNativeChatInterruptedContinuation>
@@ -60,16 +62,16 @@ export function NativeChatStructuredSessionControls({
   composerShown: boolean
   notices: NativeChatComposerNotice[]
   prompt: Controller['prompts'][number] | null
-  approval: ReturnType<typeof chatApprovalFromJournal> | null
   promptResponse: ReturnType<typeof useStructuredPromptResponseHold>
-  questions: ReturnType<typeof agentSessionPromptQuestions>
   structuredTransport: NativeChatStructuredComposerTransport
   launchDraftSignal: ReturnType<typeof useNativeChatLaunchDraftSignal>
   session: ReturnType<typeof useStructuredChatLiveSession>
   promptsUnanswerable: boolean
   onLinkClick?: CommentMarkdownLinkClickHandler
-  questionsShown: boolean
 }): React.JSX.Element {
+  const approval = prompt?.body.kind === 'approval' ? chatApprovalFromJournal(prompt.body) : null
+  const questionBody = prompt?.body.kind === 'question' ? prompt.body : null
+  const questions = questionBody ? agentSessionPromptQuestions(questionBody) : []
   const cancelPrompt = () => {
     if (prompt && (controller.turnId || props.agent === 'pi')) {
       void controller.cancel(controller.turnId ?? undefined, {
@@ -84,6 +86,8 @@ export function NativeChatStructuredSessionControls({
       {/* Host-held drafts, never transcript rows. Above the status area, so running shells and agents sit next to the composer. */}
       <NativeChatQueuedMessageList
         controller={submits.queuedMessages}
+        agentName={agentLabel}
+        statedFailures={startFailures}
         steerHeld={stopControls.stopping}
         focusComposer={focusComposer}
       />
@@ -120,7 +124,7 @@ export function NativeChatStructuredSessionControls({
           allowFileUriLinks={onLinkClick !== undefined}
         />
       ) : null}
-      {prompt && questionsShown ? (
+      {prompt && questionBody ? (
         <NativeChatStructuredQuestionCard
           key={`${prompt.itemId}:${prompt.revision}`}
           questions={questions}

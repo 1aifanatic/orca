@@ -2,7 +2,6 @@ import { cn } from '@/lib/utils'
 import { NATIVE_CHAT_APPEARANCE_ROOT_CLASS } from './native-chat-appearance-style'
 import { useNativeChatStoreAppearanceStyle } from './use-native-chat-store-appearance-style'
 import { useMemo, useRef, useState } from 'react'
-import { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 import { useStructuredChatLiveSession } from './use-structured-chat-live-session'
 import type { NativeChatComposerHandle } from './NativeChatComposer'
@@ -34,7 +33,6 @@ import { useStructuredAgentSessionHostExecution } from './StructuredAgentSession
 import { useNativeChatRewindHost } from './use-native-chat-rewind-host'
 import { NativeChatRewindContext } from './native-chat-rewind-context'
 import { nativeChatStructuredStopControls } from './native-chat-structured-stop-controls'
-import { chatApprovalFromJournal } from './native-chat-interactive-prompt'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { useNativeChatStructuredComposerTransport } from './use-native-chat-structured-composer-transport'
@@ -47,11 +45,8 @@ import { useStructuredAgentSessionStartFailureFacts } from './use-structured-age
 import { NativeChatCodexMaintenanceContext } from '@/hooks/useCodexMaintenance'
 import { useNativeChatCodexMaintenance } from './use-native-chat-codex-maintenance'
 import { NativeChatStructuredSessionControls } from './NativeChatStructuredSessionControls'
-import {
-  isClaudeSignInFailureKind,
-  NativeChatClaudeSignInContext,
-  useNativeChatClaudeSignIn
-} from './native-chat-claude-sign-in'
+import { useNativeChatAvailabilityNotice } from './use-native-chat-availability-notice'
+import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -92,7 +87,9 @@ export function NativeChatStructuredSession(
     // phases, that empty list must not become the draft's turn baseline.
     transcriptLoading: controller.status === 'idle' || controller.status === 'loading'
   })
-  const { composerError, reportComposerError } = useNativeChatComposerError()
+  const { composerError, reportComposerError } = useNativeChatComposerError(
+    controller.commandRefusalCauses
+  )
   const [optionPickerRequest, setOptionPickerRequest] =
     useState<NativeChatOptionPickerRequest | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -129,9 +126,15 @@ export function NativeChatStructuredSession(
     isWorking: controller.isWorking,
     composer: { clearError: () => reportComposerError(null) }
   })
+  const needsFailureFacts =
+    submits.queuedMessages.cards.some((card) => card.state === 'returned') ||
+    controller.submissions.some(
+      (submission) => submission.dispatchState === 'rejected' && !dispatchWasWithdrawn(submission)
+    )
   const startFailures = useStructuredAgentSessionStartFailureFacts(
     controller.journalItems,
-    props.agent === 'claude' || props.agent === 'codex'
+    needsFailureFacts,
+    props.agent === 'codex'
   )
   const codexMaintenance = useNativeChatCodexMaintenance({
     agent: props.agent,
@@ -148,6 +151,7 @@ export function NativeChatStructuredSession(
     pending: controller.pending,
     submissions: controller.submissions,
     journalItems: controller.journalItems,
+    startFailures,
     agentName: agentLabel
   })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
@@ -177,7 +181,6 @@ export function NativeChatStructuredSession(
   // cancel then works.
   const promptsUnanswerable = pendingPromptsAllUnanswerableHere(controller.prompts)
   const composerShown = (prompt === null || promptsUnanswerable) && !readFailedFinally
-  const approval = prompt?.body.kind === 'approval' ? chatApprovalFromJournal(prompt.body) : null
   useNativeChatComposerRevealFocus({
     rootRef,
     composerRef,
@@ -185,8 +188,6 @@ export function NativeChatStructuredSession(
     isFocusedGroup: props.isFocusedGroup,
     composerReady: composerShown
   })
-  const questionBody = prompt?.body.kind === 'question' ? prompt.body : null
-  const questions = questionBody ? agentSessionPromptQuestions(questionBody) : []
   const structuredTransport = useNativeChatStructuredComposerTransport({
     props,
     controller,
@@ -204,18 +205,19 @@ export function NativeChatStructuredSession(
   const sessionError =
     viewState.kind === 'error' || !readFailure ? controller.error : readFailure.text
   const launch = { ...provisionalLaunch, retry: submits.retryLaunch }
-  const claudeSignIn = useNativeChatClaudeSignIn({
+  const availability = useNativeChatAvailabilityNotice({
+    unavailable: controller.unavailable,
     agent: props.agent,
-    target: props.target,
-    failure: provisionalLaunch.failure,
-    failureRows: startFailures.filter((fact) => isClaudeSignInFailureKind(fact.kind)).length
+    agentLabel,
+    launchFailure: provisionalLaunch.lifecycle === 'failed' ? provisionalLaunch.failure : null,
+    journalItems: controller.journalItems
   })
   const notices = structuredSessionNotices({
     launch,
     agentLabel,
     sessionError,
     composerError: composerError ?? continuation.continueError,
-    claudeSignIn,
+    availability,
     codexMaintenanceNotice: codexMaintenance.notice
   })
   if (hostNotice) {
@@ -251,33 +253,31 @@ export function NativeChatStructuredSession(
         ) : (
           <NativeChatRewindContext.Provider value={controller.rewind.surface}>
             <NativeChatOrcaStopContext.Provider value={continuation.view}>
-              <NativeChatClaudeSignInContext.Provider value={claudeSignIn}>
-                <NativeChatCodexMaintenanceContext.Provider value={codexMaintenance.notice}>
-                  <NativeChatMessageList
-                    // A rewind replaces the conversation; nothing the old transcript held carries over.
-                    key={controller.epoch ?? undefined}
-                    ref={submits.messageListRef}
-                    session={session}
-                    journalItems={controller.journalItems}
-                    journalSubmissions={controller.submissions}
-                    journalLatestTurn={controller.latestTurn}
-                    subagentRoster={controller.subagentRoster}
-                    railOutline={controller.railOutline}
-                    isVisible={props.isVisible}
-                    isWorking={controller.isWorking}
-                    expandSignal={false}
-                    workingStartedAt={controller.workingStartedAt}
-                    settledTurns={controller.settledTurns}
-                    awaitingInput={prompt === null ? null : 'shown'}
-                    turnActivity={controller.turnActivity}
-                    stopping={stopControls.stopping}
-                    onLinkClick={onLinkClick}
-                    allowFileUriLinks={onLinkClick !== undefined}
-                    runtimeContext={imageRuntimeContext}
-                    deliveryNotices={deliveryNotices}
-                  />
-                </NativeChatCodexMaintenanceContext.Provider>
-              </NativeChatClaudeSignInContext.Provider>
+              <NativeChatCodexMaintenanceContext.Provider value={codexMaintenance.notice}>
+                <NativeChatMessageList
+                  // A rewind replaces the conversation; nothing the old transcript held carries over.
+                  key={controller.epoch ?? undefined}
+                  ref={submits.messageListRef}
+                  session={session}
+                  journalItems={controller.journalItems}
+                  journalSubmissions={controller.submissions}
+                  journalLatestTurn={controller.latestTurn}
+                  subagentRoster={controller.subagentRoster}
+                  railOutline={controller.railOutline}
+                  isVisible={props.isVisible}
+                  isWorking={controller.isWorking}
+                  expandSignal={false}
+                  workingStartedAt={controller.workingStartedAt}
+                  settledTurns={controller.settledTurns}
+                  awaitingInput={prompt === null ? null : 'shown'}
+                  turnActivity={controller.turnActivity}
+                  stopping={stopControls.stopping}
+                  onLinkClick={onLinkClick}
+                  allowFileUriLinks={onLinkClick !== undefined}
+                  runtimeContext={imageRuntimeContext}
+                  deliveryNotices={deliveryNotices}
+                />
+              </NativeChatCodexMaintenanceContext.Provider>
             </NativeChatOrcaStopContext.Provider>
           </NativeChatRewindContext.Provider>
         )}
@@ -285,6 +285,8 @@ export function NativeChatStructuredSession(
       {readFailedFinally ? null : (
         <NativeChatStructuredSessionControls
           props={props}
+          agentLabel={agentLabel}
+          startFailures={startFailures}
           composerRef={composerRef}
           questionAnswerInputRef={questionAnswerInputRef}
           continuation={continuation}
@@ -296,15 +298,12 @@ export function NativeChatStructuredSession(
           composerShown={composerShown}
           notices={notices}
           prompt={prompt}
-          approval={approval}
           promptResponse={promptResponse}
-          questions={questions}
           structuredTransport={structuredTransport}
           launchDraftSignal={launchDraftSignal}
           session={session}
           promptsUnanswerable={promptsUnanswerable}
           onLinkClick={onLinkClick}
-          questionsShown={questionBody !== null}
         />
       )}
       {paneCommands.menu}
