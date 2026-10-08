@@ -55,6 +55,7 @@ function fakeHosts(
     name: string
     snapshot: RuntimeHostStatusSnapshot
     orcadDeployment?: { sshTargetId: string }
+    runtimeId?: string | null
   }[]
 ) {
   const state = {
@@ -67,12 +68,12 @@ function fakeHosts(
   const call = vi.fn<MobileDesktopRelayHosts['call']>()
   const hosts: MobileDesktopRelayHosts = {
     list: () => ({
-      environments: state.environments.map(({ id, name, orcadDeployment }) => ({
+      environments: state.environments.map(({ id, name, orcadDeployment, runtimeId }) => ({
         id,
         name,
         orcadDeployment,
         pairingRevision: state.pairingRevision,
-        runtimeId: 'runtime-a'
+        runtimeId: runtimeId === undefined ? 'runtime-a' : runtimeId
       })),
       sshTargetLabels: state.sshTargetLabels,
       sshConnectionStates: state.sshConnectionStates,
@@ -301,7 +302,30 @@ describe('mobile relay host catalog', () => {
     await expect(hostCatalog.worktrees('runtime:env')).resolves.toEqual({ worktrees: null })
   })
 
-  it('has no rows when the server is re-paired while its fetch is in flight', async () => {
+  it('has no rows when re-paired mid-fetch, and the next poll fetches the new server afresh', async () => {
+    const { hosts, call, state } = fakeHosts([
+      { id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }
+    ])
+    let answerOldFetch: (response: RuntimeRpcResponse<unknown>) => void = () => {}
+    call.mockReturnValueOnce(new Promise((resolve) => (answerOldFetch = resolve)))
+    const { catalog: hostCatalog } = catalog(hosts)
+    const rows = hostCatalog.worktrees('runtime:env')
+    await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(1))
+    state.pairingRevision = 2
+    call.mockResolvedValueOnce(psReply([{ worktreeId: 'new-server-row', hostId: 'local' }]))
+    // Never joins the old server's fetch, still pending here.
+    const next = hostCatalog.worktrees('runtime:env')
+    await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(2))
+    expect(call).toHaveBeenLastCalledWith(expect.anything(), 'worktree.ps', expect.anything(), {
+      timeoutMs: 5_000,
+      expected: { pairingRevision: 2, runtimeId: 'runtime-a' }
+    })
+    await expect(next).resolves.toMatchObject({ worktrees: [{ worktreeId: 'new-server-row' }] })
+    answerOldFetch(psReply([{ worktreeId: 'old-server-row', hostId: 'local' }]))
+    await expect(rows).resolves.toEqual({ worktrees: null })
+  })
+
+  it("forgets a removed server's rows, even ones its last fetch delivers after removal", async () => {
     const { hosts, call, state } = fakeHosts([
       { id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }
     ])
@@ -310,25 +334,53 @@ describe('mobile relay host catalog', () => {
     const { catalog: hostCatalog } = catalog(hosts)
     const rows = hostCatalog.worktrees('runtime:env')
     await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(1))
-    state.pairingRevision = 2
+    const removed = state.environments
+    state.environments = []
     state.retire('env')
-    answerFetch(psReply([{ worktreeId: 'old-server-row', hostId: 'local' }]))
+    answerFetch(psReply([{ worktreeId: 'w', hostId: 'local' }]))
     await expect(rows).resolves.toEqual({ worktrees: null })
+    expect(hostCatalog.list().hosts).toEqual([])
+    // Added back under the same id and identity: the late rows were pruned, not kept.
+    state.environments = [{ ...removed[0]!, snapshot: snapshot('env', 'unreachable') }]
+    await expect(hostCatalog.worktrees('runtime:env')).resolves.toEqual({ worktrees: null })
   })
 
-  it("drops a removed server's rows, so a server added back under the same id starts empty", async () => {
+  it('keeps the last rows, stale, for a server manually disconnected but still configured', async () => {
     const { hosts, call, state } = fakeHosts([
       { id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }
     ])
     call.mockResolvedValue(psReply([{ worktreeId: 'w', hostId: 'local' }]))
     const { catalog: hostCatalog } = catalog(hosts)
     await hostCatalog.worktrees('runtime:env')
-    const removed = state.environments
-    state.environments = []
+    // A manual disconnect retires the desktop's transport and its status owner.
+    state.environments = [
+      {
+        id: 'env',
+        name: 'Box',
+        snapshot: { ...snapshot('env', 'unreachable'), retired: true, verification: 'blocked' }
+      }
+    ]
     state.retire('env')
-    await expect(hostCatalog.worktrees('runtime:env')).resolves.toEqual({ worktrees: null })
-    state.environments = [{ ...removed[0]!, snapshot: snapshot('env', 'unreachable') }]
-    await expect(hostCatalog.worktrees('runtime:env')).resolves.toEqual({ worktrees: null })
+    await expect(hostCatalog.worktrees('runtime:env')).resolves.toMatchObject({
+      worktrees: [{ worktreeId: 'w', hostId: 'runtime:env' }],
+      stale: true
+    })
+    expect(call).toHaveBeenCalledTimes(1)
+  })
+
+  it('lists a server whose runtime id the desktop has not recorded yet', async () => {
+    const { hosts, call } = fakeHosts([
+      { id: 'env', name: 'Box', snapshot: snapshot('env', 'live'), runtimeId: null }
+    ])
+    call.mockResolvedValue(psReply([{ worktreeId: 'w', hostId: 'local' }]))
+    await expect(catalog(hosts).catalog.worktrees('runtime:env')).resolves.toMatchObject({
+      worktrees: [{ worktreeId: 'w' }],
+      stale: false
+    })
+    expect(call).toHaveBeenCalledWith(expect.anything(), 'worktree.ps', expect.anything(), {
+      timeoutMs: 5_000,
+      expected: { pairingRevision: 1, runtimeId: null }
+    })
   })
 
   it('answers with the last rows, marked stale, when the server never answers the fetch', async () => {
