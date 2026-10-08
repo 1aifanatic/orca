@@ -25,7 +25,7 @@ import {
 } from '../../../shared/agent-launch-intent'
 import { AGENT_LAUNCH_TAB_CLOSED_CODE } from '../../../shared/agent-launch-tab-closed'
 import { makePaneKey } from '../../../shared/stable-pane-id'
-import { prefersStructuredNativeChatByDefault } from '../../../shared/structured-native-chat-launch-route'
+import { isNativeChatEnabled } from '../../../shared/structured-native-chat-launch-route'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import type { LaunchSource } from '../../../shared/telemetry-events'
 import type { Tab } from '../../../shared/tab-types'
@@ -59,9 +59,8 @@ export type HostAgentLaunchArgs = {
 /** What became of the launch, as this window must tell it. */
 export type HostAgentLaunchOutcome =
   /** The agent was started in this tab's pane, which is attached to it; `prompt` is what the host
-   *  says became of the text it was given. `unrecorded`: launched past the record's cap, so the
-   *  host keeps no follow-up for it and the click runs its own. */
-  | { kind: 'started'; prompt?: AgentLaunchPromptReceipt; unrecorded?: true }
+   *  says became of the text it was given. */
+  | { kind: 'started'; prompt?: AgentLaunchPromptReceipt }
   /** The pane shows how the launch ended: couldn't start, or couldn't confirm it started. */
   | { kind: 'pane-says' }
   /** The user closed the tab while it started, and with it the launch: nothing more to say. */
@@ -127,35 +126,6 @@ function launchParams(args: HostAgentLaunchArgs) {
   }
 }
 
-/**
- * The ledger is bookkeeping: a desktop past its per-caller row cap still gets its agent, through the
- * host's unrecorded launch into the same pane. The refused launch already took back the tab it was
- * shown, so the tab closes and returns at spawn (rare: 512 launches a day); the host's reveal at
- * spawn hands the pane over (`terminal-presentation-ipc-bridge`).
- */
-async function launchWithoutRecord(
-  args: HostAgentLaunchArgs,
-  pane: { tabId: string; leafId: string }
-): Promise<HostAgentLaunchOutcome> {
-  try {
-    const { followUp: _unrecorded, ...unrecordedArgs } = args
-    const outcome = outcomeFromResult(
-      await callRuntimeRpc<unknown>({ kind: 'local' }, 'agent.launch', {
-        ...launchParams(unrecordedArgs),
-        paneKey: makePaneKey(pane.tabId, pane.leafId)
-      })
-    )
-    return outcome.kind === 'started' ? { ...outcome, unrecorded: true } : outcome
-  } catch (error) {
-    const code = error instanceof RuntimeRpcCallError ? error.code : undefined
-    // A pane the host never revealed would open as a shell; one it did holds the agent's terminal.
-    if (isAgentLaunchPaneSpawnHeld(pane.tabId, pane.leafId)) {
-      closeLaunchTab(args.worktreeId, pane.tabId)
-    }
-    return { kind: 'not-started', unconfirmed: false, ...(code ? { code } : {}) }
-  }
-}
-
 async function settleLaunch(
   args: HostAgentLaunchArgs,
   pane: { tabId: string; leafId: string },
@@ -168,10 +138,6 @@ async function settleLaunch(
     const code = error instanceof RuntimeRpcCallError ? error.code : undefined
     if (code === AGENT_LAUNCH_TAB_CLOSED_CODE) {
       return { kind: 'closed-by-user' }
-    }
-    if (code === 'agent_session_operation_capacity') {
-      // Awaited: the pane stays held until the unrecorded launch has its answer.
-      return await launchWithoutRecord(args, pane)
     }
     // The host took the pane once it showed the tab; a pane it never took would open as a shell,
     // and a refused one is the host's to take back.
@@ -193,7 +159,7 @@ async function settleLaunch(
 /** Where the host could turn a launch into a chat (chat is the default), this window's paste has no
  *  terminal to go to, so such a launch keeps main's own path. */
 export function windowMakesHostLaunchTab(): boolean {
-  return !prefersStructuredNativeChatByDefault(useAppStore.getState().settings)
+  return !isNativeChatEnabled(useAppStore.getState().settings)
 }
 
 export function launchAgentThroughHost(args: HostAgentLaunchArgs): {

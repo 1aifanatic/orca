@@ -252,22 +252,6 @@ describe('a click whose follow-up is recorded on its launch', () => {
     }
   })
 
-  it('runs it live, taking nothing, when the launch went past the record’s cap unrecorded', async () => {
-    deferredOutcome()({
-      kind: 'started',
-      unrecorded: true,
-      prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
-    })
-    const onPromptDelivered = vi.fn()
-    await expect(launchWithFollowUp(onPromptDelivered)).resolves.toEqual({
-      delivered: true,
-      failureNotified: false
-    })
-    expect(onPromptDelivered).toHaveBeenCalledOnce()
-    expect(followUps.takeLaunchFollowUps).not.toHaveBeenCalled()
-    expect(followUps.wait).not.toHaveBeenCalled()
-  })
-
   it('on a host that does not record follow-ups, runs it live and records nothing, as before', async () => {
     followUps.hostRecords = false
     deferredOutcome()({
