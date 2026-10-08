@@ -249,15 +249,15 @@ describe('what a pointer attempt does with its operation row', () => {
     )
   })
 
-  it('retries a proven rejection after another turn, while preserving an uncertain send', () => {
-    expect(decide([sent('unknown'), userTurn('accepted')])).toBe('reuse')
+  it('mints once the agent ran a turn after the row was minted, recorded send or not', () => {
+    expect(decide([sent('unknown'), userTurn('accepted')])).toBe('mint')
     expect(decide([sent('rejected'), userTurn('accepted')])).toBe('mint')
     // A rewind dropped the row's own send from the journal.
     expect(decide([userTurn('accepted')])).toBe('mint')
   })
 
-  it('keeps an uncertain send across restart, and replaces an unaccepted attempt', () => {
-    expect(decide([sent('unknown')], { mintedByThisProcess: false })).toBe('reuse')
+  it('mints a row an earlier process left behind, recorded send or not', () => {
+    expect(decide([sent('unknown')], { mintedByThisProcess: false })).toBe('mint')
     expect(decide([], { mintedByThisProcess: false })).toBe('mint')
   })
 
@@ -265,45 +265,4 @@ describe('what a pointer attempt does with its operation row', () => {
     expect(decide([], { now: 2_000 + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS })).toBe('reuse')
     expect(decide([], { now: 2_000 + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + 1 })).toBe('mint')
   })
-})
-
-it('parks pending and uncertain sends before considering a changed batch', () => {
-  for (const dispatchState of ['pending', 'unknown'] as const) {
-    expect(
-      decideStructuredPointerAttempt({
-        row: {
-          mailbox_handle: 'm',
-          session_id: 's',
-          operation_id: 'op',
-          batch_fingerprint: 'old',
-          minted_at_ms: 1
-        },
-        sessionId: 's',
-        batchFingerprint: 'new',
-        submissions: [{ clientMessageId: 'op', dispatchState, submittedAt: 1 }],
-        mintedByThisProcess: false,
-        now: 2
-      })
-    ).toBe('park')
-  }
-})
-
-it('preserves accepted send identity after its submission disappears and the batch grows', () => {
-  expect(
-    decideStructuredPointerAttempt({
-      row: {
-        mailbox_handle: 'm',
-        session_id: 's',
-        operation_id: 'op',
-        batch_fingerprint: 'old',
-        minted_at_ms: 1
-      },
-      sessionId: 's',
-      batchFingerprint: 'new',
-      submissions: [],
-      operationOutcome: { status: 'succeeded', sessionId: 's' },
-      mintedByThisProcess: false,
-      now: 2
-    })
-  ).toBe('park')
 })

@@ -19,13 +19,14 @@ import {
 } from './structured-session-pointer-delivery'
 import { sendAgentTurn } from './send-agent-turn'
 
-/** Stable receipt ownership: changing this key would orphan sends already in flight. */
+/** Per-dispatch so one worker's nudges cannot exhaust the shared runtime operation-ledger budget. */
 export function structuredPointerCallerKey(dispatchId: string): string {
   return `trusted-local:orchestration:${dispatchId}`
 }
 
 /**
- * Direct peer mail has no dispatch; its stable receipt owner is the session.
+ * The same budget for direct peer mail, which is addressed to the worker's own handle and has no
+ * dispatch to scope to.
  *
  * A separate key rather than a reshaped one: the ledger is keyed on (callerKey, operationId), so
  * changing the dispatch key's shape would orphan every nudge already in flight under the old one.
@@ -51,22 +52,10 @@ export async function readStructuredSessionGateFacts(
 
 /** What each recorded send settled as. */
 async function readPointerSessionFacts(
-  sessionId: string,
-  operation?: { dispatchId: string | null; operationId: string }
+  sessionId: string
 ): Promise<StructuredPointerSessionFacts | null> {
   const snapshot = await readSessionJournal(sessionId)
-  if (!snapshot) {
-    return null
-  }
-  const outcome =
-    operation &&
-    getStructuredAgentSessionHost()?.deps.store.getOperationRow(
-      operation.dispatchId
-        ? structuredPointerCallerKey(operation.dispatchId)
-        : structuredSessionPointerCallerKey(sessionId),
-      operation.operationId
-    )?.outcome
-  return { submissions: snapshot.submissions, ...(outcome ? { operationOutcome: outcome } : {}) }
+  return snapshot ? { submissions: snapshot.submissions } : null
 }
 
 async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapshot | null> {
@@ -79,7 +68,7 @@ async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapsh
     return await host.journalSnapshot(sessionId)
   } catch (error) {
     // Not attached is a retain reason, not a failure; anything else is still unreadable.
-    if (!(error instanceof Error && error.message === AGENT_SESSION_NOT_ATTACHED.code)) {
+    if ((error as Error)?.message !== AGENT_SESSION_NOT_ATTACHED.code) {
       console.warn('[orchestration] structured journal unreadable', sessionId, error)
     }
     return null
@@ -88,8 +77,8 @@ async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapsh
 
 export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHost {
   return {
-    readSessionFacts(sessionId, operation) {
-      return readPointerSessionFacts(sessionId, operation)
+    readSessionFacts(sessionId) {
+      return readPointerSessionFacts(sessionId)
     },
 
     currentFence(sessionId) {
@@ -112,21 +101,14 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           : structuredSessionPointerCallerKey(input.sessionId),
         turn: {
           body: input.body,
-          delivery: 'idle',
+          // As a person's message is: a busy chat queues it as a card, sent when the turn ends.
+          delivery: 'queue',
           operationId: input.operationId,
           expectedRuntimeFence: input.expectedRuntimeFence
         }
       })
       switch (outcome.kind) {
         case 'refused':
-          if (
-            outcome.refusal.code === 'agent_session_operation_invalid' &&
-            (outcome.refusal.details?.reason === 'turnActive' ||
-              outcome.refusal.details?.reason === 'promptPending' ||
-              outcome.refusal.details?.reason === 'messagesUnsettled')
-          ) {
-            return { kind: 'deferred' }
-          }
           return outcome.refusal.code === AGENT_SESSION_NOT_ATTACHED.code
             ? { kind: 'unattached' }
             : { kind: 'sent', state: 'rejected' }

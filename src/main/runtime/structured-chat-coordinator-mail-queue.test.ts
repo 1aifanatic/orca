@@ -1,10 +1,11 @@
 import './rpc/unused-default-rpc-methods.test-fixture'
-// Busy-chat mail remains in the durable mailbox and becomes one nudge once idle.
+// A busy structured chat holds the orchestration pointer as a card in its own queue, sent when the
+// turn ends, as it holds a message the person sends then; the queue does nothing else with it. End
+// to end on the coordinator-mail rig.
 
 import { describe, expect, it, vi } from 'vitest'
 import { structuredAgentSessionMessageSendMutation } from '../../shared/structured-agent-session-send-mutation'
-import { operationId } from './structured-chat-coordinator-fake-codex-fixture'
-import type { FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
+import { operationId, type FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
 import { idOf } from './rpc/orchestration-session-caller-test-fixture'
 import {
   COORDINATOR,
@@ -65,8 +66,8 @@ async function secondTask(): Promise<string> {
   )
 }
 
-describe("a busy chat's orchestration mail waits in its mailbox", () => {
-  it('defers the pointer, with who it is from, and sends it once when the turn ends', async () => {
+describe("a busy chat's orchestration pointer waits in its queue", () => {
+  it('queues the pointer as a card, with who it is from, and sends it once when the turn ends', async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const endTurn = await runningUserTurn(chat)
@@ -74,11 +75,11 @@ describe("a busy chat's orchestration mail waits in its mailbox", () => {
     // The report was accepted, so its dispatch settled before its mail was named.
     expect(db.getDispatchContextById(dispatchId)?.status).toBe('completed')
     await vi.waitFor(
-      () => expect(db.getStructuredPointerOperation(`run:${runId}`)).toBeDefined(),
+      async () => expect(await queuedCardTexts()).toEqual([ptyPointer(`run:${runId}`)]),
       WAIT
     )
     expect(chat.turns).toHaveLength(1)
-    expect(queuedRows()).toEqual([])
+    const [card] = queuedRows()
     const [mail] = db.getAllMessages(`run:${runId}`)
     const from = {
       kind: 'agent',
@@ -96,7 +97,8 @@ describe("a busy chat's orchestration mail waits in its mailbox", () => {
         messages: [{ messageId: mail!.id, runId, from: 'term_worker' }]
       }
     }
-    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
+    // On the card's body: the turn the queue sends carries it, and the provider never sees it.
+    expect(card?.body.from).toEqual(from)
 
     await endTurn()
     await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
@@ -112,68 +114,60 @@ describe("a busy chat's orchestration mail waits in its mailbox", () => {
     expect(chat.turns).toHaveLength(2)
   })
 
-  it('coalesces mail that arrives while busy into one nudge', async () => {
+  it('queues a second card for mail that arrives while the first waits, each counting its own mail', async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const second = await secondTask()
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(
-      () => expect(db.getStructuredPointerOperation(`run:${runId}`)).toBeDefined(),
-      WAIT
-    )
+    await vi.waitFor(async () => expect(await queuedCardTexts()).toHaveLength(1), WAIT)
     await finishWorker(second, { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
-    expect(await queuedCardTexts()).toEqual([])
-    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(2)
+    const pointer = ptyPointer(`run:${runId}`)
+    await vi.waitFor(async () => expect(await queuedCardTexts()).toEqual([pointer, pointer]), WAIT)
 
     await endTurn()
     await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
     await settleTurn(COORDINATOR, 1)
-    expect(turnText(chat.turns[1]!)).toContain('2 orchestration messages')
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(3), WAIT)
+    expect(turnText(chat.turns[2]!)).toBe(pointer)
+    await settleTurn(COORDINATOR, 2)
     await idleEdgesSettled()
-    expect(chat.turns).toHaveLength(2)
+    expect(chat.turns).toHaveLength(3)
     expect(await queuedCardTexts()).toEqual([])
   })
 
-  it("lets the chat's own check consume deferred mail without sending a stale nudge", async () => {
+  it("leaves the chat's own `check` as it is: the mail stays readable, and the card stays", async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const endTurn = await runningUserTurn(chat)
     await finishWorker(taskId)
-    await vi.waitFor(
-      () => expect(db.getStructuredPointerOperation(`run:${runId}`)).toBeDefined(),
-      WAIT
-    )
+    await vi.waitFor(async () => expect(await queuedCardTexts()).toHaveLength(1), WAIT)
     const [mail] = db.getAllMessages(`run:${runId}`)
     expect(await call('orchestration.check', {}, { sessionId: COORDINATOR })).toMatchObject({
       count: 1,
       messages: [{ id: mail!.id }]
     })
-    expect(await queuedCardTexts()).toEqual([])
+    expect(await queuedCardTexts()).toEqual([ptyPointer(`run:${runId}`)])
     await endTurn()
-    await idleEdgesSettled()
-    expect(chat.turns).toHaveLength(1)
   })
-})
 
-it('twenty-five automatic nudges do not consume the next human queued message', async () => {
-  const chat = await openChat(COORDINATOR)
-  const { runId, taskId } = await coordinatorRunAndTask()
-  await runningUserTurn(chat)
-  const sends = vi.spyOn(host, 'send')
-  await finishWorker(taskId)
-  await vi.waitFor(() => expect(sends).toHaveBeenCalledTimes(1), WAIT)
-  for (let index = 0; index < 25; index += 1) {
-    await call('orchestration.send', {
-      from: 'term_worker',
-      to: `run:${runId}`,
-      subject: `mail ${index}`
-    })
-    await vi.waitFor(() => expect(sends).toHaveBeenCalledTimes(index + 2), WAIT)
-  }
-  expect(await queuedCardTexts()).toEqual([])
-  expect(
-    await host.send(
+  // The queue once refused every send past twenty cards, so a busy coordinator's mail locked the
+  // person out of their own chat.
+  it("still queues the person's message behind more than twenty mail cards", async () => {
+    const chat = await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    await runningUserTurn(chat)
+    await finishWorker(taskId)
+    await vi.waitFor(async () => expect(await queuedCardTexts()).toHaveLength(1), WAIT)
+    for (let index = 1; index <= 24; index += 1) {
+      await call('orchestration.send', {
+        from: 'term_worker',
+        to: `run:${runId}`,
+        subject: `mail ${index}`
+      })
+      await vi.waitFor(async () => expect(await queuedCardTexts()).toHaveLength(index + 1), WAIT)
+    }
+    const sent = await host.send(
       { callerKey: 'test-surface' },
       {
         ...structuredAgentSessionMessageSendMutation({
@@ -190,6 +184,7 @@ it('twenty-five automatic nudges do not consume the next human queued message', 
         userSend: true
       }
     )
-  ).toMatchObject({ ok: true, value: { queued: { state: 'waiting' } } })
-  expect(await queuedCardTexts()).toEqual(['human message'])
+    expect(sent).toMatchObject({ ok: true, value: { queued: { position: 26, state: 'waiting' } } })
+    expect((await queuedCardTexts()).at(-1)).toBe('human message')
+  })
 })

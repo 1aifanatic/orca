@@ -17968,6 +17968,8 @@
         "waitForBackgroundTasks": "Attendez la fin des tâches en arrière-plan.",
         "messagesUnsettled": "Un message que vous avez envoyé plus tôt n'est pas encore confirmé.",
         "settleEarlierMessage": "Attendez que votre message précédent soit transmis, ou renvoyez-le.",
+        "queueTooLarge": "Trop de texte est en attente dans la file.",
+        "shrinkQueue": "Envoyez ou supprimez un message de la file, puis réessayez.",
         "optionRejected": "L'agent n'a pas accepté ce réglage.",
         "goalsUnsupported": "Cet agent ne prend pas en charge les objectifs.",
         "agentRefused": "L'agent l'a refusé.",

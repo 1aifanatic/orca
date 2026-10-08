@@ -39,7 +39,6 @@ import {
 } from './structured-agent-session-mutation-plans'
 import { agentSessionMutationAdmitsNow } from './structured-agent-session-mutation-admits-now'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import { idleSendPreparation } from './structured-agent-session-idle-send'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
 import { performSetOption } from './structured-agent-session-turns-options'
@@ -67,8 +66,6 @@ export function sendStructuredAgentSessionTurn(
     /** Host-local, never on the wire: a person's message the host sends for them, such as a
      *  launch's first prompt. `userSend` is always one; another agent's message carries `from`. */
     personsMessage?: true
-    /** Host-local mail policy, checked inside session serialization before admission. */
-    deferWhenActive?: true
     beforeRun?: () => void
   },
   arrival?: Parameters<typeof sendPreparation>[2]
@@ -90,9 +87,7 @@ export function sendStructuredAgentSessionTurn(
             (await plan.run(ctx))
         )
     },
-    params.deferWhenActive
-      ? idleSendPreparation(context, params.envelope, arrival)
-      : sendPreparation(context, params.envelope, arrival)
+    sendPreparation(context, params.envelope, arrival)
   )
 }
 

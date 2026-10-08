@@ -24,9 +24,9 @@ import { dispatchPreambleSendOptions, type DispatchPreambleSendOptions } from '.
 
 /**
  * `now` hands the message over at once, joining a running turn as a steer. `queue` asks a busy chat
- * to hold it as a draft its queue sends when the turn ends. `idle` defers before admission.
+ * to hold it as a draft its queue sends when the turn ends, as the composer does with queueing on.
  */
-export type AgentTurnDelivery = 'queue' | 'now' | 'idle'
+export type AgentTurnDelivery = 'queue' | 'now'
 
 /** What a structured send reads of the host. */
 export type StructuredAgentTurnHost = Pick<
@@ -47,7 +47,7 @@ export type StructuredSessionTurnSend = {
   kind: 'structured-session'
   host: StructuredAgentTurnHost
   sessionId: string
-  /** Stable ownership of this sender's retry receipt. */
+  /** Scopes the host's operation ledger, so one sender's sends cannot exhaust another's budget. */
   callerKey: string
   turn: StructuredSessionTurn
 }
@@ -129,15 +129,9 @@ async function sendStructuredSessionTurn(
     clientOperationId: turn.operationId,
     expectedRuntimeFence: turn.expectedRuntimeFence,
     body: turn.body,
-    delivery: turn.delivery === 'now' ? undefined : 'queue-if-active'
+    delivery: turn.delivery === 'queue' ? 'queue-if-active' : undefined
   })
-  const result = await send.host.send(
-    { callerKey: send.callerKey },
-    {
-      ...message,
-      ...(turn.delivery === 'idle' ? { deferWhenActive: true as const } : {})
-    }
-  )
+  const result = await send.host.send({ callerKey: send.callerKey }, message)
   if (!result.ok) {
     return { kind: 'refused', refusal: result.refusal }
   }

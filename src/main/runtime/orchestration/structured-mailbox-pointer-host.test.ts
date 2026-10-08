@@ -114,12 +114,12 @@ describe('structured mailbox pointer host', () => {
         body: { kind: 'message', role: 'user', blocks: [] }
       } as never)
     ).resolves.toEqual({ kind: 'sent', state: expected })
-    // Existing caller keys keep retry ownership stable.
+    // Per-dispatch, so one worker's nudges cannot exhaust the shared operation-ledger budget.
     expect(send.mock.calls[0]![0]).toEqual({ callerKey: structuredPointerCallerKey('d1') })
     expect(send.mock.calls[0]![1]!.retryUnknown).toBeUndefined()
   })
 
-  it('asks the host to defer before acceptance when busy, with who it is from', async () => {
+  it('asks a busy chat to queue the pointer as a card, with who it is from', async () => {
     const send = vi.fn(
       async (_caller: unknown, _payload: { delivery?: string; body?: unknown }) => ({
         ok: true,
@@ -140,7 +140,7 @@ describe('structured mailbox pointer host', () => {
       })
     ).resolves.toEqual({ kind: 'queued' })
     expect(send.mock.calls[0]![1]).toMatchObject({
-      deferWhenActive: true,
+      delivery: 'queue-if-active',
       body: { from: NOTICE_SOURCE }
     })
   })
@@ -216,28 +216,3 @@ describe('structured mailbox pointer host', () => {
     expect(createStructuredMailboxPointerHost().currentFence('s1')).toBeNull()
   })
 })
-
-it.each(['turnActive', 'promptPending', 'messagesUnsettled'] as const)(
-  'reports %s as deferred, rather than rejected delivery',
-  async (reason) => {
-    hostRef.current = {
-      send: async () => ({
-        ok: false,
-        refusal: {
-          code: 'agent_session_operation_invalid',
-          message: 'waiting',
-          details: { reason }
-        }
-      })
-    }
-    expect(
-      await createStructuredMailboxPointerHost().send({
-        sessionId: 's1',
-        dispatchId: 'd1',
-        operationId: 'op1',
-        expectedRuntimeFence: 1,
-        body: { kind: 'message', role: 'user', blocks: [] }
-      })
-    ).toEqual({ kind: 'deferred' })
-  }
-)

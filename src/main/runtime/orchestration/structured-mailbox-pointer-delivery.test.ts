@@ -24,8 +24,8 @@ function harness(options: {
   /** False: the session cannot be read (not attached). */
   attached?: boolean
   dispatchState?: 'accepted' | 'rejected' | 'unknown'
-  /** The host deferred the nudge before accepting a send. */
-  deferred?: true
+  /** The chat was busy: its queue holds the pointer as a card. */
+  queued?: true
   /** The coordinator of this worker's Run is mid-batch: it checked and has not acked yet. */
   outstandingRunDelivery?: boolean
   outstandingOwnDelivery?: boolean
@@ -48,12 +48,9 @@ function harness(options: {
       pointed.add(id)
     }
   })
-  let waiting = false
-  let deferred = options.deferred ?? false
-  const read = new Set<string>()
   const send: StructuredMailboxPointerHost['send'] = vi.fn(async () =>
-    deferred
-      ? { kind: 'deferred' as const }
+    options.queued
+      ? { kind: 'queued' as const }
       : { kind: 'sent' as const, state: options.dispatchState ?? ('accepted' as const) }
   )
   const sendMock = vi.mocked(send)
@@ -63,10 +60,7 @@ function harness(options: {
     hasOutstandingMailboxDelivery: (handle: string) =>
       ((options.outstandingRunDelivery ?? false) && handle.startsWith('run:')) ||
       ((options.outstandingOwnDelivery ?? false) && !handle.startsWith('run:')),
-    getUndeliveredUnreadMessages: () =>
-      mail.filter((message) => !pointed.has(message.id) && !read.has(message.id)),
-    areUnreadMessages: (_handle: string, ids: string[]) =>
-      ids.every((id) => mail.some((message) => message.id === id) && !read.has(id)),
+    getUndeliveredUnreadMessages: () => mail.filter((message) => !pointed.has(message.id)),
     markAsDelivered,
     getStructuredPointerOperation: (key: string) => stored.get(key),
     putStructuredPointerOperation: (row: StructuredPointerOperationRow) =>
@@ -75,7 +69,7 @@ function harness(options: {
   }
   const delivery = new OrchestrationStructuredMailboxPointerDelivery({
     getDb: () => db as never,
-    getMessageWaiters: () => (waiting ? new Set([{ typeFilter: undefined }]) : undefined),
+    getMessageWaiters: () => undefined,
     resolveStructuredTarget: (mailboxHandle) =>
       mailboxHandle === mailbox ? { sessionId: IDENTITY.sessionId, dispatchId } : null,
     getCliCommand: () => 'orca-dev',
@@ -91,15 +85,6 @@ function harness(options: {
     markAsDelivered,
     send: sendMock,
     stored,
-    setWaiting: (next: boolean) => {
-      waiting = next
-    },
-    setDeferred: (next: boolean) => {
-      deferred = next
-    },
-    read: (id: string) => {
-      read.add(id)
-    },
     setAttached: (next: boolean) => {
       attached = next
     },
@@ -178,10 +163,8 @@ describe('structured mailbox pointer delivery', () => {
     expect(markAsDelivered).toHaveBeenCalledWith(['m1'])
   })
 
-  it('keeps busy mail unread and coalesces it into one nudge on the idle edge', async () => {
-    const { delivery, send, markAsDelivered, stored, setDeferred, receive } = harness({
-      deferred: true
-    })
+  it('sends the pointer through the chat, with who it is from, and counts it pointed once queued', async () => {
+    const { delivery, send, markAsDelivered, stored } = harness({ queued: true })
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
@@ -197,16 +180,8 @@ describe('structured mailbox pointer delivery', () => {
         messages: [{ messageId: 'm1', runId: 'run_1', from: 'term_coord' }]
       }
     })
-    expect(markAsDelivered).not.toHaveBeenCalled()
-    receive('m2', 4)
-    setDeferred(false)
-    delivery.onJournalActivity('session-1')
-    await flush()
-    expect(send).toHaveBeenCalledTimes(2)
-    expect(send.mock.calls[1]![0].body.blocks[0]).toMatchObject({
-      text: expect.stringContaining('2 orchestration messages')
-    })
-    expect(markAsDelivered).toHaveBeenCalledWith(['m1', 'm2'])
+    // The chat's queue holds it now, as it holds the person's: the same mail is not pointed again.
+    expect(markAsDelivered).toHaveBeenCalledWith(['m1'])
     expect(stored.has('dispatch:d1')).toBe(false)
   })
 
@@ -268,7 +243,7 @@ describe('structured mailbox pointer delivery', () => {
     expect(send.mock.calls[1]![0].operationId).toBe(first)
   })
 
-  it('keeps an uncertain send under its id even after another turn ran', async () => {
+  it('points again under a new id once a later send ran', async () => {
     const { delivery, send, setSubmissions } = harness({
       dispatchState: 'unknown'
     })
@@ -282,10 +257,10 @@ describe('structured mailbox pointer delivery', () => {
     delivery.onJournalActivity('session-1')
     await flush()
     expect(send).toHaveBeenCalledTimes(2)
-    expect(send.mock.calls[1]![0].operationId).toBe(first)
+    expect(send.mock.calls[1]![0].operationId).not.toBe(first)
   })
 
-  it('keeps the id of an uncertain send across process restart', async () => {
+  it('points once more under a new id for a send an earlier process left in doubt', async () => {
     const { delivery, send, stored, setSubmissions } = harness({
       dispatchState: 'unknown'
     })
@@ -302,14 +277,16 @@ describe('structured mailbox pointer delivery', () => {
     delivery.deliverForHandle('dispatch:d1')
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
-    const resumed = send.mock.calls[0]![0].operationId
-    expect(resumed).toBe('earlier-process-op')
+    const reminted = send.mock.calls[0]![0].operationId
+    expect(reminted).not.toBe('earlier-process-op')
+    // Minted by this process, the new id replays from here on.
     setSubmissions([
-      { clientMessageId: resumed, dispatchState: 'unknown', submittedAt: Date.now() }
+      { clientMessageId: 'earlier-process-op', dispatchState: 'unknown', submittedAt: Date.now() },
+      { clientMessageId: reminted, dispatchState: 'unknown', submittedAt: Date.now() }
     ])
     delivery.onJournalActivity('session-1')
     await flush()
-    expect(send.mock.calls[1]![0].operationId).toBe(resumed)
+    expect(send.mock.calls[1]![0].operationId).toBe(reminted)
   })
 
   it('keeps replaying its own send across a clock step, and re-mints only for a rewind that ran a turn', async () => {
@@ -519,8 +496,6 @@ describe('a mailbox a /clear moves while its nudge is in flight', () => {
       getDispatchContextById: () => ({ run_id: 'run_1' }),
       hasOutstandingMailboxDelivery: () => false,
       getUndeliveredUnreadMessages: () => mail.filter((message) => !pointed.has(message.id)),
-      areUnreadMessages: (_handle: string, ids: string[]) =>
-        ids.every((id) => mail.some((message) => message.id === id)),
       markAsDelivered: (ids: string[]) => ids.forEach((id) => pointed.add(id)),
       getStructuredPointerOperation: (key: string) => stored.get(key),
       putStructuredPointerOperation: (row: StructuredPointerOperationRow) =>
@@ -595,69 +570,4 @@ describe('a mailbox a /clear moves while its nudge is in flight', () => {
     await flush()
     expect(send).toHaveBeenCalledTimes(1)
   })
-})
-
-it('does not replace a pending nudge when more mail arrives, and stamps only its accepted batch', async () => {
-  const { delivery, send, stored, setSubmissions, receive, markAsDelivered } = harness({
-    dispatchState: 'unknown'
-  })
-  delivery.deliverForHandle('dispatch:d1')
-  await flush()
-  const operationId = send.mock.calls[0]![0].operationId
-  receive('m2', 4)
-  setSubmissions([
-    { clientMessageId: operationId, dispatchState: 'pending', submittedAt: Date.now() }
-  ])
-  delivery.onJournalActivity('session-1')
-  await flush()
-  expect(send).toHaveBeenCalledTimes(1)
-  expect(stored.get('dispatch:d1')?.operation_id).toBe(operationId)
-  setSubmissions([
-    { clientMessageId: operationId, dispatchState: 'accepted', submittedAt: Date.now() }
-  ])
-  delivery.onJournalActivity('session-1')
-  await flush()
-  expect(markAsDelivered).toHaveBeenCalledWith(['m1'])
-  expect(markAsDelivered).not.toHaveBeenCalledWith(['m1', 'm2'])
-  expect(send).toHaveBeenCalledTimes(2)
-  expect(send.mock.calls[1]![0].body.blocks[0]).toMatchObject({
-    text: expect.stringContaining('1 orchestration message')
-  })
-})
-
-it('forgets an uncertain obligation once its mail was read, and delivers new mail', async () => {
-  const { delivery, send, setSubmissions, receive, read } = harness({ dispatchState: 'unknown' })
-  delivery.deliverForHandle('dispatch:d1')
-  await flush()
-  const operationId = send.mock.calls[0]![0].operationId
-  setSubmissions([
-    { clientMessageId: operationId, dispatchState: 'unknown', submittedAt: Date.now() }
-  ])
-  read('m1')
-  receive('m2', 4)
-  delivery.onJournalActivity('session-1')
-  await flush()
-  expect(send).toHaveBeenCalledTimes(2)
-  expect(send.mock.calls[1]![0].operationId).not.toBe(operationId)
-})
-
-it('keeps send identity when a mailbox waiter temporarily excludes its unread batch', async () => {
-  const { delivery, send, setSubmissions, setWaiting, receive, stored } = harness({
-    dispatchState: 'unknown'
-  })
-  delivery.deliverForHandle('dispatch:d1')
-  await flush()
-  const operationId = send.mock.calls[0]![0].operationId
-  setSubmissions([
-    { clientMessageId: operationId, dispatchState: 'pending', submittedAt: Date.now() }
-  ])
-  setWaiting(true)
-  delivery.deliverForHandle('dispatch:d1')
-  await flush()
-  expect(stored.get('dispatch:d1')?.operation_id).toBe(operationId)
-  setWaiting(false)
-  receive('m2', 4)
-  delivery.deliverForHandle('dispatch:d1')
-  await flush()
-  expect(send).toHaveBeenCalledTimes(1)
 })

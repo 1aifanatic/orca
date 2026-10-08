@@ -12,6 +12,8 @@ import {
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../shared/agent-session-host-authority'
 import { refuse } from '../../shared/agent-session-wire-refusals'
+import { localOrchestrationCliCommand } from './orchestration/cli-command'
+import { formatMessagePointer } from './orchestration/formatter'
 import { currentRunCoordinatorOrcaSessionId } from './orchestration/db/runs/run-coordinator-orca-session'
 import { idOf } from './rpc/orchestration-session-caller-test-fixture'
 import { operationId, providerFaults } from './structured-chat-coordinator-fake-codex-fixture'
@@ -103,8 +105,9 @@ describe('a worker result reaches the structured chat that coordinates it', () =
       .map((submission) => submission.clientMessageId)
   }
 
-  it('keeps an uncertain pointer identity while a human resumes work and can check its mail', async () => {
-    // No echo leaves delivery uncertain, so a later turn cannot authorize another copy.
+  it('keeps a pointer whose provider died before the echo, and points it after the next turn that runs', async () => {
+    // A provider that dies before echoing never ran the pointer: the mail stays unpointed, and
+    // neither the death's own edge nor an idle one starts the provider again for it.
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     await finishWorker(taskId)
@@ -117,19 +120,20 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(codex.connections.length).toBe(before)
     expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
 
-    // A human can start a new turn while the mailbox keeps the uncertain nudge.
+    // The user's next message starts the agent; once its turn runs, the pointer follows it.
     expect(await sendUserMessage(COORDINATOR, 'again')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(codex.connections.length).toBe(before + 1), WAIT)
     const revived = connectionFor(COORDINATOR)
     await vi.waitFor(() => expect(revived.turns).toHaveLength(1), WAIT)
     expect(revived.turns[0]!.text).toContain('again')
     await settleTurn(COORDINATOR, 0)
-    await edgesAnswered()
-    expect(revived.turns).toHaveLength(1)
-    expect(await pointerSends()).toHaveLength(1)
-    expect(await call('orchestration.check', {}, { sessionId: COORDINATOR })).toMatchObject({
-      count: 1
-    })
+    await vi.waitFor(() => expect(revived.turns).toHaveLength(2), WAIT)
+    expect(revived.turns[1]!.text).toMatch(POINTER)
+    await settleTurn(COORDINATOR, 1)
+    await vi.waitFor(
+      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
+      WAIT
+    )
   })
 
   it('does not restart a provider that dies before every echo, however many edges follow', async () => {
@@ -171,7 +175,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     }
   )
 
-  it('keeps uncertain mail across batch growth, then delivers new mail after an explicit check', async () => {
+  it('points the next result once after a transient death, then holds nothing', async () => {
     await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const second = await call(
@@ -183,30 +187,22 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     await finishWorker(taskId)
     await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(1), WAIT)
     await edgesAnswered()
-    // New mail cannot erase an uncertain send's original batch identity.
+    // The death was transient. A new result is new mail: one pointer for both, one start.
     providerFaults.dieBeforeEveryEcho = false
     const before = providerFaults.starts
     await finishWorker(idOf(second.task), { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
-    await edgesAnswered()
-    expect(providerFaults.turnStarts).toBe(1)
-    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(2)
-    expect(await sendUserMessage(COORDINATOR, 'check mail')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(2), WAIT)
     const revived = connectionFor(COORDINATOR)
-    await settleTurn(COORDINATOR, 0)
-    await edgesAnswered()
-    const checked = await call('orchestration.check', {}, { sessionId: COORDINATOR })
-    expect(checked).toMatchObject({ count: 2 })
-    await call('orchestration.check', { ack: checked.deliveryId }, { sessionId: COORDINATOR })
-    await call('orchestration.send', {
-      from: 'term_worker',
-      to: `run:${runId}`,
-      subject: 'new mail'
-    })
-    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(3), WAIT)
-    expect(turnText(revived.turns.at(-1)!)).toBe(ptyPointer(`run:${runId}`))
+    expect(turnText(revived.turns.at(-1)!)).toBe(
+      formatMessagePointer(2, `run:${runId}`, localOrchestrationCliCommand()).trim()
+    )
     await settleTurn(COORDINATOR, revived.turns.length - 1)
+    await vi.waitFor(
+      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
+      WAIT
+    )
     expect(providerFaults.starts - before).toBe(1)
+    expect(providerFaults.turnStarts).toBe(2)
   })
 
   it('leaves a pointer the person stopped while its agent was starting stopped', async () => {
@@ -246,7 +242,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
   })
 
-  it('preserves an uncertain pointer across restart without starting another provider', async () => {
+  it('points a held pointer once more after Orca restarts, under a new id', async () => {
     observationClock.start()
     await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
@@ -256,13 +252,18 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     await edgesAnswered()
     const [held] = await pointerSends()
 
+    // The next process: a fresh runtime over the same database redrives restored mail. The
+    // provider still dies, so exactly one start proves it is pointed once, not in a loop.
     restartRuntime()
     const before = providerFaults.starts
+    await vi.waitFor(() => expect(providerFaults.turnStarts).toBe(2), WAIT)
     await observationClock.observe(1_500)
     await edgesAnswered()
-    expect(providerFaults.starts).toBe(before)
-    expect(providerFaults.turnStarts).toBe(1)
-    expect(await pointerSends()).toEqual([held])
+    expect(providerFaults.starts - before).toBe(1)
+    expect(providerFaults.turnStarts).toBe(2)
+    const sends = await pointerSends()
+    expect(sends).toHaveLength(2)
+    expect(sends[0]).toBe(held)
     expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
   })
 
@@ -328,7 +329,7 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     }
   )
 
-  it('keeps the accepted-send receipt when a rewind drops its submission', async () => {
+  it('points held mail after the next turn that runs, even once a rewind dropped its send', async () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     providerFaults.crashOnTurnStart = 'exit-then-throw'
@@ -349,12 +350,12 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     const revived = connectionFor(COORDINATOR)
     expect(revived).not.toBe(chat)
     await settleTurn(COORDINATOR, revived.turns.length - 1)
-    await edgesAnswered()
-    expect(turnText(revived.turns.at(-1)!)).toBe('again')
-    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(1)
-    expect(await call('orchestration.check', {}, { sessionId: COORDINATOR })).toMatchObject({
-      count: 1
-    })
+    await vi.waitFor(() => expect(turnText(revived.turns.at(-1)!)).toMatch(POINTER), WAIT)
+    await settleTurn(COORDINATOR, revived.turns.length - 1)
+    await vi.waitFor(
+      () => expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toEqual([]),
+      WAIT
+    )
   })
 
   it('points again under a new id once a send the host never recorded is too old to admit', async () => {
@@ -388,8 +389,10 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     }
   })
 
-  it('holds mail a refused turn left in doubt without adding cards for later mail', async () => {
-    // A failed start cannot prove non-delivery; later mail must wait without entering the queue.
+  it("holds mail a refused turn left in doubt, then queues the next pointer behind it as the person's message would wait", async () => {
+    // A failed turn/start cannot prove the turn never started, so the host records it `unknown`
+    // and a resend under its id replays that. A live doubt counts as work still owed, so the next
+    // result's pointer waits in the chat's queue, as a message the person sent then would.
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const second = await call(
@@ -405,9 +408,13 @@ describe('a worker result reaches the structured chat that coordinates it', () =
     expect(chat.turns).toHaveLength(0)
 
     await finishWorker(idOf(second.task), { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
-    await edgesAnswered()
-    expect(await queuedCardTexts()).toEqual([])
-    expect(db.getUndeliveredUnreadMessages(`run:${runId}`, undefined, {})).toHaveLength(2)
+    await vi.waitFor(
+      async () =>
+        expect(await queuedCardTexts()).toEqual([
+          formatMessagePointer(2, `run:${runId}`, localOrchestrationCliCommand()).trim()
+        ]),
+      WAIT
+    )
     expect(chat.turns).toHaveLength(0)
     expect(codex.connections.length).toBe(before)
   })

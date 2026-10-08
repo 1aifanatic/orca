@@ -1,5 +1,7 @@
 import './rpc/unused-default-rpc-methods.test-fixture'
-// Worker mail preserves uncertain send identity across restart; /clear addresses a new conversation.
+// A chat worker's coordinator mail lands in its Dispatch's mailbox. When the pointer to it was held
+// (the provider died before taking it), the chat's next idle edge points it again, after a restart
+// or in the session a /clear continued the chat in, as it does for a chat's own mail.
 
 import { describe, expect, it, vi } from 'vitest'
 import { formatOrcaSessionAddress } from '../../shared/orca-session-address'
@@ -67,17 +69,14 @@ async function nextTurn(sessionId: string): Promise<{ turns: { text: string }[] 
 
 describe("a chat worker's held Dispatch mail is pointed again", () => {
   // Also covered by the restored-mail repoint a restart schedules; this pins the end result.
-  it('keeps uncertain delivery across restart while the user can work and check the mail', async () => {
-    const mailbox = await heldDispatchMail()
+  it('after a restart', async () => {
+    await heldDispatchMail()
     restartRuntime()
 
     const revived = await nextTurn(PEER_CHAT)
 
-    expect(revived.turns).toHaveLength(1)
-    expect(db.getUndeliveredUnreadMessages(mailbox, undefined, {})).toHaveLength(1)
-    expect(await call('orchestration.check', {}, { sessionId: PEER_CHAT })).toMatchObject({
-      count: 1
-    })
+    await vi.waitFor(() => expect(revived.turns).toHaveLength(2), WAIT)
+    expect(turnText(revived.turns[1]!)).toMatch(POINTER)
   })
 
   it('in the session a /clear continued the chat in', async () => {

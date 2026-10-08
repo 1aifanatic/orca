@@ -17867,6 +17867,8 @@
         "waitForBackgroundTasks": "请等待后台任务完成。",
         "messagesUnsettled": "您之前发送的一条消息尚未确认。",
         "settleEarlierMessage": "请等待之前的消息送达，或重试该消息。",
+        "queueTooLarge": "队列中等待的文本过多。",
+        "shrinkQueue": "请发送或删除一条排队的消息，然后重试。",
         "optionRejected": "智能体未接受此设置。",
         "goalsUnsupported": "此智能体不支持目标。",
         "agentRefused": "智能体拒绝了此请求。",

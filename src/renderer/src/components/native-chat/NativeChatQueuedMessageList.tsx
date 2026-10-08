@@ -58,7 +58,8 @@ export function NativeChatQueuedMessageList({
                 'components.native-chat.queuedMessages.listLabel',
                 'Queued messages'
               )}
-              className="divide-y divide-border"
+              // Scrolls on its own so a long queue never squeezes the transcript or the composer.
+              className="scrollbar-sleek max-h-40 divide-y divide-border overflow-y-auto"
             >
               {cards.map((card) => (
                 <NativeChatQueuedMessageCard
