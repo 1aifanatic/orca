@@ -136,8 +136,7 @@ describe('direct SSH snapshot import commit', () => {
       hostObservationToken: 'observation-6',
       outcome: 'synced'
     })
-    const sshPatch = pull.patches.find(({ hostId }) => hostId === `ssh:${TARGET_ID}`)?.patch
-    expect(sshPatch?.tabsByWorktree?.[WORKTREE_ID]?.map((tab) => tab.id)).toEqual(['host-tab'])
+    expect(pull.session.tabsByWorktree?.[WORKTREE_ID]?.map((tab) => tab.id)).toEqual(['host-tab'])
     // Only what the merge rewrote; editor and browser state stay the window's own writes.
     const mergedFields = new Set([
       'activeRepoId',
@@ -152,9 +151,35 @@ describe('direct SSH snapshot import commit', () => {
       'lastVisitedAtByWorktreeId',
       'defaultTerminalTabsAppliedByWorktreeId'
     ])
-    for (const { patch } of pull.patches) {
-      expect(Object.keys(patch).filter((field) => !mergedFields.has(field))).toEqual([])
+    expect(Object.keys(pull.session).filter((field) => !mergedFields.has(field))).toEqual([])
+  })
+
+  it("sends none of the window's rows for other partitions", async () => {
+    const store = createTestStore()
+    seedCatalog(store)
+    // The window's copy of a local worktree; main may already hold a newer one.
+    const localWorktreeId = 'repoL::/home/me/proj'
+    const localTab = {
+      id: 'local-tab',
+      ptyId: 'pty-local',
+      worktreeId: localWorktreeId,
+      title: 'local',
+      customTitle: null,
+      color: null,
+      sortOrder: 0,
+      createdAt: 1
     }
+    store.setState({
+      tabsByWorktree: { [localWorktreeId]: [localTab] },
+      terminalLayoutsByTabId: {
+        [localTab.id]: { root: null, activeLeafId: null, expandedLeafId: null }
+      }
+    })
+
+    const pull = await importOf(store, snapshot(6, ['host-tab']))
+
+    expect(Object.keys(pull.session.tabsByWorktree ?? {})).toEqual([WORKTREE_ID])
+    expect(pull.session.terminalLayoutsByTabId ?? {}).not.toHaveProperty(localTab.id)
   })
 
   it('reports kept-local when the merge keeps a tab the host has not seen', async () => {

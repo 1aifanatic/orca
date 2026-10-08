@@ -261,7 +261,11 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
         : mergeKeptLocalState(merged, remoteSession, worktreeIds, localLayoutTabIds)
           ? 'kept-local'
           : 'synced',
-      patches: buildWorkspaceSessionHostPatches(mergedFields(merged, current), currentStore)
+      // Only the target's partition: the merge carries the window's copy of every other host's rows.
+      session:
+        buildWorkspaceSessionHostPatches(mergedFields(merged, current), currentStore).find(
+          ({ hostId }) => hostId === toSshExecutionHostId(authority.targetId)
+        )?.patch ?? {}
     }).catch((error: unknown) => console.warn('[remote-workspace] import commit failed:', error))
     currentStore.hydrateWorkspaceSession(merged, {
       directSshAuthority: authority,

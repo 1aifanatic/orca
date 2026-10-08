@@ -198,7 +198,7 @@ export function createRemoteWorkspaceTargetSync(
       revision: snapshot.revision,
       hostObservationToken: snapshot.hostObservationToken,
       outcome: 'kept-local',
-      patches: []
+      session: {}
     })
   }
 

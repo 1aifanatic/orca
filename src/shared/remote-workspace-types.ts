@@ -1,4 +1,3 @@
-import type { ExecutionHostId } from './execution-host'
 import type { TerminalLayoutSnapshot, TerminalTab } from './terminal-tab-types'
 import type { WorkspaceSessionPatch } from './workspace-session-state-types'
 
@@ -82,8 +81,8 @@ export type RemoteWorkspacePeerImport = RemoteWorkspaceExportAuthority & {
    * not place every host tab, so this desktop must not export.
    */
   outcome: 'synced' | 'kept-local' | 'conflict'
-  /** The import's session patch per owning partition; empty when the host had nothing to import. */
-  patches: { hostId?: ExecutionHostId; patch: WorkspaceSessionPatch }[]
+  /** The import's patch to the target's own `ssh:<targetId>` partition; empty when the host had nothing. */
+  session: WorkspaceSessionPatch
 }
 
 /** Main's report of one export it ran, for the window's sync status. */

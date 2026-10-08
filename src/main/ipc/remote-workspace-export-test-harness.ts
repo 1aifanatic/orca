@@ -101,7 +101,7 @@ export function createRemoteWorkspaceExportDriver(
     handlers,
     pushes,
     agree: (targetId, authority, outcome = 'synced') =>
-      importPeer({ targetId, ...authority, outcome, patches: [] }),
+      importPeer({ targetId, ...authority, outcome, session: {} }),
     importPeer,
     write: (patch) => fakeStore.patchWorkspaceSession(patch),
     readSession: () => session,

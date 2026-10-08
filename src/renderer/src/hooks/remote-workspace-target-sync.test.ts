@@ -34,7 +34,7 @@ describe('createRemoteWorkspaceTargetSync', () => {
       revision: 0,
       hostObservationToken: snapshot(0).hostObservationToken,
       outcome: 'kept-local',
-      patches: []
+      session: {}
     })
   })
 
