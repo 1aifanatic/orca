@@ -206,7 +206,8 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
     getLifecycleStatus: (ptyId) => this.agentPromptLifecycleByPtyId.get(ptyId),
     isRunning: (handle) => this.isTerminalRunningAgent(handle),
     getTitleDisplayClear: (ptyId) => this.getPtyTitleDisplayClear(ptyId),
-    readScreenBlockedEvidence: (ptyId) => this.readCurrentScreenBlockedEvidence(ptyId)
+    readScreenBlockedEvidence: (ptyId) => this.readCurrentScreenBlockedEvidence(ptyId),
+    flushPendingBlockedStamp: (ptyId) => this.flushPendingWaitBlockedCheck(ptyId)
   })
 
   protected _orchestrationDb: OrchestrationDb | null = null

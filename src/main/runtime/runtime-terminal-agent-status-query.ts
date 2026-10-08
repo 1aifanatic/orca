@@ -50,6 +50,8 @@ type Dependencies = {
   getTitleDisplayClear(ptyId: string): TitleDisplayClear | null
   /** What the current whole-screen model shows; undefined when there is none. */
   readScreenBlockedEvidence?(ptyId: string): LiveScreenBlockedEvidence | undefined
+  /** Stamps blocked text the PTY's throttled scan has not yet judged. */
+  flushPendingBlockedStamp(ptyId: string): void
 }
 
 export class RuntimeTerminalAgentStatusQuery {
@@ -186,6 +188,7 @@ export class RuntimeTerminalAgentStatusQuery {
     expectedPtyId: string,
     displayClear: TitleDisplayClear | null = null
   ): RuntimeTerminalAgentStatusSnapshot {
+    this.deps.flushPendingBlockedStamp(expectedPtyId)
     const live = this.deps.getLivePty(handle)
     if (live) {
       if (!live.pty.connected || live.pty.ptyId !== expectedPtyId) {
