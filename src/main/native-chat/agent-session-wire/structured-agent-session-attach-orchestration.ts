@@ -14,7 +14,11 @@ import type {
   AgentSessionTurnActivity
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
-import { performAttach, type AttachFlowInput } from './structured-agent-session-attach-flow'
+import {
+  performAttach,
+  type AttachedOwner,
+  type AttachFlowInput
+} from './structured-agent-session-attach-flow'
 import { endStructuredAgentSessionReleasedChild } from './structured-agent-session-attach-failure'
 import { stampFailedCreateOwnerVerdict } from './structured-agent-session-failed-create-refusal'
 import {
@@ -245,18 +249,23 @@ async function runAttachUnderAbort(
               fence,
               // Every acquired child starts unproven; a re-attach keeps what its child already proved.
               phase: owner === 'acquired' ? 'starting' : (current?.phase ?? 'ready'),
-              ...(startedFor === undefined ? {} : { startedFor })
+              ...(startedFor === undefined ? {} : { startedFor }),
+              ...launchedOptionsOf(owner, attempt.startup, current)
             }
           }
         }
-        await recoverStructuredRewind(
-          context.deps,
-          sessionId,
-          attached.journal,
-          fence,
-          context.deps.adapter,
-          context.now
-        )
+        // Only a proven child has the protocol session recovery asks; a starting one recovers in
+        // its `started` step, before it is handed anything.
+        if (attempt.candidate?.child.phase === 'ready') {
+          await recoverStructuredRewind(
+            context.deps,
+            sessionId,
+            attached.journal,
+            fence,
+            context.deps.adapter,
+            context.now
+          )
+        }
         if (fenceBefore !== null && fence !== fenceBefore) {
           context.subscribers.snapshot(sessionId, attached.journal, fence)
         } else {
@@ -284,6 +293,15 @@ async function runAttachUnderAbort(
       }
     }
   }
+}
+
+function launchedOptionsOf(
+  owner: AttachedOwner,
+  startup: StructuredAgentSessionStartupAttempt | null,
+  current: StructuredAgentSessionProviderChild | null
+): Pick<StructuredAgentSessionProviderChild, 'launchedOptions'> {
+  const launchedOptions = owner === 'acquired' ? (startup?.options ?? {}) : current?.launchedOptions
+  return launchedOptions ? { launchedOptions } : {}
 }
 
 type AttachCandidate = {

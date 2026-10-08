@@ -27,6 +27,7 @@ import {
 import {
   openForProviderWrite,
   openWithAgent,
+  runSendAfterRewindRecovery,
   sendPreparation,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
@@ -41,6 +42,7 @@ import { agentSessionMutationAdmitsNow } from './structured-agent-session-mutati
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
+import { runAfterProviderStart } from './structured-agent-session-provider-start-hold'
 import { performSetOption } from './structured-agent-session-turns-options'
 export type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
@@ -71,23 +73,25 @@ export function sendStructuredAgentSessionTurn(
   arrival?: Parameters<typeof sendPreparation>[2]
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
   const plan = sendPlan(params)
-  return mutateStructuredAgentSession(
-    context,
-    caller,
-    params.envelope,
-    {
-      ...plan,
-      run: (ctx) =>
-        runQueueableStructuredAgentSessionSend(
-          context,
-          ctx,
-          params,
-          async () =>
-            structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId)) ??
-            (await plan.run(ctx))
-        )
-    },
-    sendPreparation(context, params.envelope, arrival)
+  return runSendAfterRewindRecovery(context, params.envelope.sessionId, () =>
+    mutateStructuredAgentSession(
+      context,
+      caller,
+      params.envelope,
+      {
+        ...plan,
+        run: (ctx) =>
+          runQueueableStructuredAgentSessionSend(
+            context,
+            ctx,
+            params,
+            async () =>
+              structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId)) ??
+              (await plan.run(ctx))
+          )
+      },
+      sendPreparation(context, params.envelope, arrival)
+    )
   )
 }
 
@@ -217,12 +221,14 @@ export function changeStructuredAgentSessionThreadGoal(
   caller: StructuredAgentSessionCaller,
   params: { envelope: AgentSessionMutationEnvelope; change: AgentSessionThreadGoalChange }
 ): Promise<AgentSessionMutationResult<AgentSessionThreadGoalResult>> {
-  return mutateStructuredAgentSession(
-    context,
-    caller,
-    params.envelope,
-    threadGoalPlan(params),
-    openWithAgent(context, params.envelope)
+  return runAfterProviderStart(context, params.envelope.sessionId, () =>
+    mutateStructuredAgentSession(
+      context,
+      caller,
+      params.envelope,
+      threadGoalPlan(params),
+      openWithAgent(context, params.envelope)
+    )
   )
 }
 

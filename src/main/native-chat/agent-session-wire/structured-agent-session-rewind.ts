@@ -23,8 +23,22 @@ import { conversationCommandBlocked } from './structured-conversation-command-ad
 import { rewindRefusal } from './structured-rewind-refusal'
 import { persistRewindRecord, recoverStructuredRewind } from './structured-rewind-recovery'
 import { mergeRetainedHostLifecycleRows } from './structured-rewind-retained-host-rows'
+import { runAfterProviderStart } from './structured-agent-session-provider-start-hold'
 
-export async function rewindStructuredAgentSession(
+export function rewindStructuredAgentSession(
+  context: StructuredAgentSessionMutationContext,
+  attachContext: StructuredAgentSessionAttachContext,
+  caller: StructuredAgentSessionCaller,
+  params: AgentSessionRewindParams
+): Promise<AgentSessionMutationResult<AgentSessionRewindResult>> {
+  const { sessionId } = params.envelope
+  // Only a proven child has the protocol session a rewind reads and changes.
+  return runAfterProviderStart(context, sessionId, () =>
+    rewindUnderSerialize(context, attachContext, caller, params)
+  )
+}
+
+function rewindUnderSerialize(
   context: StructuredAgentSessionMutationContext,
   attachContext: StructuredAgentSessionAttachContext,
   caller: StructuredAgentSessionCaller,

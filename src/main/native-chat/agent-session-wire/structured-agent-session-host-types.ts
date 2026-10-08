@@ -73,6 +73,9 @@ export type StructuredAgentSessionProviderChild = StructuredAgentSessionProvider
   /** The queued message whose delivery started this child, fixed when the start is made; absent
    *  for any other start. In memory only: it tells a restart offer its own start from another. */
   readonly startedFor?: string
+  /** The saved options its start launched with: a pick made while it started that differs is
+   *  applied before it is accepted as ready. */
+  readonly launchedOptions?: Readonly<Record<string, string>>
   close?: StructuredAgentSessionChildClose
 }
 

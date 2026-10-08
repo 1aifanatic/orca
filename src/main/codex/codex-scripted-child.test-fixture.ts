@@ -1,4 +1,4 @@
-import type { ScriptedAgentChildFactory } from '../runtime/structured-agent-scripted-child.test-fixture'
+import type { ScriptedAgentChild } from '../runtime/structured-agent-scripted-child.test-fixture'
 import type {
   CodexAppServerConnection,
   openCodexAppServerConnection
@@ -6,15 +6,27 @@ import type {
 import { CodexAppServerRequestError } from './codex-app-server-connection'
 import { codexTurnLifecycleFake } from './codex-turn-lifecycle-fake'
 
-const THREAD = 'scripted-codex-thread'
+export const CODEX_SCRIPTED_THREAD = 'scripted-codex-thread'
+const THREAD = CODEX_SCRIPTED_THREAD
 
-export const codexScriptedChild: ScriptedAgentChildFactory = () => {
+type ScriptedCodexRoute = (params: Record<string, unknown> | undefined) => unknown
+
+export type ScriptedCodexChild = ScriptedAgentChild & {
+  /** Every request any spawn received, in order. */
+  requests(): readonly { method: string; params?: Record<string, unknown> }[]
+}
+
+/** `routes` answers methods the script does not, such as the history reads a rewind makes. */
+export const codexScriptedChild = (
+  routes: Readonly<Record<string, ScriptedCodexRoute>> = {}
+): ScriptedCodexChild => {
   let holdHandshakes = true
   let completeTurns = true
   let spawned = 0
   let resumed = 0
   let closed = 0
   const prompts: string[] = []
+  const requests: { method: string; params?: Record<string, unknown> }[] = []
   let newest: ReturnType<typeof Promise.withResolvers<unknown>> | undefined
   const open: typeof openCodexAppServerConnection = async (_launch, handlers = {}) => {
     spawned += 1
@@ -35,18 +47,29 @@ export const codexScriptedChild: ScriptedAgentChildFactory = () => {
         if (ended) {
           throw new Error('scripted Codex child closed')
         }
+        requests.push({ method, ...(params ? { params } : {}) })
         if (method === 'initialize') {
           return holdHandshakes ? gate.promise : {}
         }
+        const route = routes[method]
+        if (method === 'thread/resume') {
+          resumed += 1
+        }
+        if (route) {
+          return route(params)
+        }
         if (method === 'thread/start' || method === 'thread/resume') {
-          if (method === 'thread/resume') {
-            resumed += 1
-          }
           return { thread: { id: THREAD }, model: 'scripted-model' }
         }
         if (method === 'model/list') {
           return {
-            data: [{ model: 'scripted-model', isDefault: true, supportedReasoningEfforts: [] }],
+            data: [
+              { model: 'scripted-model', isDefault: true, supportedReasoningEfforts: [] },
+              {
+                model: 'scripted-alt-model',
+                supportedReasoningEfforts: [{ reasoningEffort: 'high' }]
+              }
+            ],
             nextCursor: null
           }
         }
@@ -125,6 +148,7 @@ export const codexScriptedChild: ScriptedAgentChildFactory = () => {
     failHandshake: (message) =>
       newest?.reject(new CodexAppServerRequestError('initialize', -32603, message, message)),
     prompts: () => prompts,
+    requests: () => requests,
     spawns: () => spawned,
     resumes: () => resumed,
     closes: () => closed

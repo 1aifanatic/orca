@@ -9,7 +9,10 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
-import { sendPreparation } from './structured-agent-session-send-preparation'
+import {
+  runSendAfterRewindRecovery,
+  sendPreparation
+} from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
   committedClearOfCaller,
@@ -85,6 +88,17 @@ async function answerFromCommittedClear(
  * The new conversation's first send starts its agent.
  */
 export function runStructuredConversationCommand(
+  context: StructuredAgentSessionMutationContext,
+  caller: StructuredAgentSessionCaller,
+  params: ConversationCommandParams
+): Promise<AgentSessionMutationResult<AgentSessionConversationCommandResult>> {
+  // A rewind in doubt is recovered by a proven start, which the clear waits out.
+  return runSendAfterRewindRecovery(context, params.envelope.sessionId, () =>
+    clearUnderSerialize(context, caller, params)
+  )
+}
+
+function clearUnderSerialize(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,
   params: ConversationCommandParams

@@ -24,6 +24,7 @@ import {
   type ConversationCommandAcceptance
 } from './structured-agent-session-mutation-plans'
 import {
+  runSendAfterRewindRecovery,
   sendPreparation,
   structuredAgentSessionFailureWordsContext,
   structuredAgentSessionSendBlock
@@ -127,6 +128,17 @@ function acceptStructuredConversationCommand(
   priorRecord: () => AgentSessionConversationCommandResult | null
 ): Promise<AgentSessionMutationResult<ConversationCommandAcceptance>> {
   const plan = conversationCommandPlan({ envelope: params.envelope, priorRecord })
+  return runSendAfterRewindRecovery(context, params.envelope.sessionId, () =>
+    acceptUnderSerialize(context, caller, params, plan)
+  )
+}
+
+function acceptUnderSerialize(
+  context: StructuredAgentSessionMutationContext,
+  caller: StructuredAgentSessionCaller,
+  params: { envelope: AgentSessionMutationEnvelope },
+  plan: ReturnType<typeof conversationCommandPlan>
+): Promise<AgentSessionMutationResult<ConversationCommandAcceptance>> {
   return mutateStructuredAgentSession(
     context,
     caller,

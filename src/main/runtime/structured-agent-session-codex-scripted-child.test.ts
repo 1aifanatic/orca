@@ -126,3 +126,33 @@ it('can Stop the scripted child during initialization and settle a held send as 
     submissions.find((entry) => entry.clientMessageId === sent.value.clientMessageId)?.dispatchState
   ).toBe('rejected')
 })
+
+it('hands Codex a model and effort picked while it started before the first message', async () => {
+  const child = codexScriptedChild()
+  const { host, fence } = await attachedHost(child)
+  for (const [key, value] of [
+    ['model', 'scripted-alt-model'],
+    ['effort', 'high']
+  ] as const) {
+    const fields = { key, value }
+    expect(
+      await host.setOption(caller, {
+        envelope: envelope('agentSession.setOption', fence, fields),
+        ...fields
+      })
+    ).toMatchObject({ ok: true })
+  }
+  const body = hostTestMessage('first message')
+  expect(
+    (await host.send(caller, { envelope: envelope('agentSession.send', fence, { body }), body })).ok
+  ).toBe(true)
+  child.releaseHandshake()
+
+  await vi.waitFor(() => expect(child.prompts()).toEqual(['first message']))
+  const turn = child.requests().find(({ method }) => method === 'turn/start')
+  expect(turn?.params).toMatchObject({ model: 'scripted-alt-model', effort: 'high' })
+  expect(host.deps.store.getRecord(HOST_TEST_SESSION)?.options).toMatchObject({
+    model: 'scripted-alt-model',
+    effort: 'high'
+  })
+})

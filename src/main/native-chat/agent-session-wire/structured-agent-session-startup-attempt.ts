@@ -177,15 +177,16 @@ export class StructuredAgentSessionStartupAttempts {
     }
   }
 
-  /** The saved options this child's start launched with; undefined for a child it did not start. */
-  launchedOptions(
-    sessionId: string,
-    child: StructuredAgentSessionProviderChildIdentity
-  ): Readonly<Record<string, string>> | undefined {
+  /** Whether `child`'s start is still on its clock: false once its limit passed, so a `started`
+   *  that lost the race to the limit is never accepted. */
+  onClock(sessionId: string, child: StructuredAgentSessionProviderChildIdentity): boolean {
     const tracked = this.open.get(sessionId)
-    return tracked?.child && sameProviderChild(tracked.child, child)
-      ? (tracked.attempt.options ?? {})
-      : undefined
+    return (
+      !this.disposed &&
+      !!tracked?.child &&
+      !tracked.expired &&
+      sameProviderChild(tracked.child, child)
+    )
   }
 
   /** The child proved its start: its attempt is over. A stale child's proof ends nothing. */

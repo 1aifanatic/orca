@@ -1,8 +1,11 @@
 // Picks made while a child started are the conversation's intent, recorded at once and never a
 // provider write the pick waits on. The child launched with the options saved when its start
-// began; whatever the record holds now that differs is applied before the child is handed anything,
-// model before effort, since an effort is only valid for the model it is set on.
+// began; whatever the record holds now that differs is applied before the start is accepted, model
+// before effort, since an effort is only valid for the model it is set on. A pick the child refuses
+// is shown as what it runs; one cut short leaves the start unproven, so the child never runs it.
 
+import type { AgentSessionOptionsResult } from '../../../shared/agent-session-wire'
+import { nativeSessionOptionsFromReport } from './structured-agent-session-option-restoration'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionProviderChildIdentity
@@ -27,8 +30,15 @@ export function structuredAgentSessionStartupIntentWrites(
     .sort(([a], [b]) => applyRank(a) - applyRank(b))
 }
 
-/** Applies the intent; a write that fails is reported and leaves the record's pick for the next
- *  start, never blocking the start. A close, Stop or quit ends the writes. */
+/** What applying the intent came to: `aborted` when a close, Stop, quit or the startup limit cut
+ *  it short, which leaves the start unproven; otherwise the keys the child refused. */
+export type StructuredAgentSessionStartupIntentOutcome = {
+  aborted: boolean
+  failed: string[]
+}
+
+/** Applies the intent, each write under the start's own abort (the startup limit included). A write
+ *  that fails is reported and its key returned, never blocking the start. */
 export async function applyStructuredAgentSessionStartupIntent(
   context: {
     deps: Pick<StructuredAgentSessionHostDeps, 'adapter' | 'store' | 'logger'>
@@ -38,19 +48,20 @@ export async function applyStructuredAgentSessionStartupIntent(
   sessionId: string,
   child: StructuredAgentSessionProviderChildIdentity,
   launched: Readonly<Record<string, string>>
-): Promise<void> {
+): Promise<StructuredAgentSessionStartupIntentOutcome> {
   const writes = structuredAgentSessionStartupIntentWrites(
     launched,
     context.deps.store.getRecord(sessionId)?.options
   )
+  const failed: string[] = []
   if (writes.length === 0) {
-    return
+    return { aborted: false, failed }
   }
   const wait = context.acquireAborts.begin(sessionId)
   try {
     for (const [key, value] of writes) {
       if (wait.signal.aborted) {
-        return
+        break
       }
       try {
         await context.deps.adapter.setOption({
@@ -61,6 +72,7 @@ export async function applyStructuredAgentSessionStartupIntent(
           signal: wait.signal
         })
       } catch (error) {
+        failed.push(key)
         context.deps.logger.warn('applying a pick made while the agent started failed', {
           scope: 'startup-intent',
           sessionId,
@@ -72,7 +84,54 @@ export async function applyStructuredAgentSessionStartupIntent(
         context.optionRevisions.advance(sessionId)
       }
     }
+    return { aborted: wait.signal.aborted, failed }
   } finally {
     wait.end()
+  }
+}
+
+/** A pick the child refused is shown as what the child runs, never left showing a value it does
+ *  not: what it reported, else what it launched with. Bookkeeping: a failed write is reported. */
+export async function revertRefusedStartupIntent(
+  context: {
+    deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'logger'>
+    now: () => number
+  },
+  input: {
+    sessionId: string
+    fence: number
+    refused: readonly string[]
+    launched: Readonly<Record<string, string>>
+    reported: AgentSessionOptionsResult['current']
+  }
+): Promise<void> {
+  const { store, logger } = context.deps
+  const record = store.getRecord(input.sessionId)
+  if (input.refused.length === 0 || !record) {
+    return
+  }
+  const running = nativeSessionOptionsFromReport({ reported: input.reported, restoreSkipped: [] })
+  const options: Record<string, string> = { ...record.options }
+  for (const key of input.refused) {
+    const value = running[key] ?? input.launched[key]
+    if (value === undefined) {
+      delete options[key]
+    } else {
+      options[key] = value
+    }
+  }
+  try {
+    await store.replaceSessionOptions({
+      sessionId: input.sessionId,
+      fence: input.fence,
+      options,
+      now: context.now()
+    })
+  } catch (error) {
+    logger.warn('showing what the agent runs after it refused a pick failed', {
+      scope: 'startup-intent',
+      sessionId: input.sessionId,
+      error
+    })
   }
 }
