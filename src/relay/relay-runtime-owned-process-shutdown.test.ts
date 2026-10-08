@@ -13,6 +13,7 @@ function fixture() {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the shutdown paths only read the owners stubbed here.
   const runtime = Object.assign(Object.create(RelayRuntimeServices.prototype), {
     agentExecHandler: { dispose: agents },
+    workspaceSessionHandler: { close: vi.fn() },
     skillInstallHandler: { dispose: skill },
     aiVaultService: { dispose: vault },
     responseStreams: { disposeAllAndWait: responses },

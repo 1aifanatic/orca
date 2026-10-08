@@ -35,6 +35,7 @@ describe('WorkspaceSessionHandler', () => {
   let baseDir: string
   let dispatcher: RelayDispatcher
   let written: Buffer[]
+  let handler: WorkspaceSessionHandler
 
   beforeEach(() => {
     baseDir = mkdtempSync(join(tmpdir(), 'orca-workspace-session-'))
@@ -42,12 +43,41 @@ describe('WorkspaceSessionHandler', () => {
     dispatcher = new RelayDispatcher((data) => {
       written.push(Buffer.from(data))
     })
-    new WorkspaceSessionHandler(dispatcher, baseDir)
+    handler = new WorkspaceSessionHandler(dispatcher, baseDir)
   })
 
   afterEach(() => {
     dispatcher.dispose()
     rmSync(baseDir, { recursive: true, force: true })
+  })
+
+  it('records no patch while the relay shuts down, and records again once it reopens', async () => {
+    // A shutting-down relay kills its PTYs; the clients' retirement of those panes must not erase
+    // the tabs they restore from this snapshot on reconnect.
+    const patch = (id: number): Promise<void> =>
+      sendRequest(
+        dispatcher,
+        'workspace.patch',
+        {
+          namespace: 'ns',
+          baseRevision: 0,
+          clientId: 'client-a',
+          patch: { kind: 'replace-session', session: { tabsByWorktreePath: {} } }
+        },
+        id
+      )
+    const response = (id: number): unknown =>
+      decodeJsonFrames(written).find(
+        (frame) => typeof frame === 'object' && frame !== null && 'id' in frame && frame.id === id
+      )
+
+    handler.close()
+    await patch(1)
+    expect(response(1)).toMatchObject({ result: { ok: false, reason: 'unavailable' } })
+
+    handler.reopen()
+    await patch(2)
+    expect(response(2)).toMatchObject({ result: { ok: true, snapshot: { revision: 1 } } })
   })
 
   it('stores snapshots atomically and rejects stale revisions', async () => {
