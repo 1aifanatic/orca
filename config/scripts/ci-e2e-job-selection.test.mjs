@@ -13,6 +13,14 @@ import {
 } from './ci-e2e-job-selection.mjs'
 import { selectPrE2eSpecs } from './pr-e2e-source-routing.mjs'
 
+it.each([
+  'src/renderer/src/lib/ssh-workspace-browser-route-eligibility.ts',
+  'src/renderer/src/components/browser-pane/use-ssh-workspace-browser-route.ts',
+  'src/main/browser/local-ssh-browser-route.ts'
+])('routes the managed browser routing oracle from %s', (path) => {
+  expect(selectPrE2eSpecs([path])).toContain('tests/e2e/ssh-orcad-browser-routing.spec.ts')
+})
+
 const workflow = parse(readFileSync('.github/workflows/e2e.yml', 'utf8'))
 const prWorkflow = parse(readFileSync('.github/workflows/pr.yml', 'utf8'))
 const classify = (specs, ssh = 'false') => classifyE2eJobs(JSON.stringify(specs), ssh)
