@@ -145,3 +145,18 @@ it('runs remaining SSH tests after real failures and stops them when a run is ca
     expect(step.if).toContain('always()')
   }
 })
+
+it.each([
+  'src/renderer/src/components/editor/useMarkdownDocuments.ts',
+  'src/renderer/src/components/editor/restored-editor-workspace-runtime-owner.ts',
+  'src/renderer/src/components/editor/migrate-restored-editor-file-owner.ts'
+])('routes %s to the template-building Markdown conversion lane', (file) => {
+  const spec = 'tests/e2e/ssh-orcad-markdown-conversion.spec.ts'
+  expect(selectPrE2eSpecs([file])).toContain(spec)
+  expect(classify([spec])).toEqual({ e2e_run_changed: false, e2e_needs_build: true })
+  const job = workflow.jobs['orcad-auto-convert-docker']
+  expect(job.if).toContain(spec)
+  expect(job.steps.find((step) => step.name === 'Convert a relay-era Docker host').run).toContain(
+    spec
+  )
+})
