@@ -246,7 +246,7 @@ async function cancelAndNote(
       note = stopRefusedNote(ctx, refusal)
     }
   } catch (error) {
-    if (input.prompt) {
+    if (input.prompt || input.scope) {
       throw error
     }
     interruptFailed = true
