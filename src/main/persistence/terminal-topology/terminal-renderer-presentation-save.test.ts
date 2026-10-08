@@ -329,4 +329,18 @@ describe('mergeRendererPresentationSave', () => {
     const fenced = mergeRendererPresentationSave(window, mainSession(), RUNTIME_HOST)
     expect(fenced.tabsByWorktree).toEqual(mainSession().tabsByWorktree)
   })
+
+  it('a save drops local residue of a workspace the catalog homes on SSH, as before the core', () => {
+    const prior = mainSession()
+    const window: WorkspaceSessionState = { ...getDefaultWorkspaceSession(), tabsByWorktree: {} }
+
+    const saved = mergeRendererPresentationSave(window, prior, 'local', () => 'ssh:target')
+    expect(saved.tabsByWorktree).toEqual({})
+    expect(saved.terminalLayoutsByTabId).toEqual({})
+    // The workspace's own partition, or an unknown home, keeps main's rows.
+    for (const home of ['local', null] as const) {
+      const kept = mergeRendererPresentationSave(window, prior, 'local', () => home)
+      expect(kept.tabsByWorktree).toEqual(prior.tabsByWorktree)
+    }
+  })
 })

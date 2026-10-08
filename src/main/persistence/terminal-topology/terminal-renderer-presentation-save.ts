@@ -1,4 +1,4 @@
-import type { ExecutionHostId } from '../../../shared/execution-host'
+import { getRepoExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import type { Tab, TabGroup } from '../../../shared/tab-types'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../shared/terminal-tab-types'
 import type {
@@ -6,6 +6,9 @@ import type {
   WorkspaceSessionState
 } from '../../../shared/workspace-session-state-types'
 import { withTopologyRow } from '../../../shared/terminal-topology-tab-row'
+import { workspaceSessionPartitionHostId } from '../../../shared/workspace-session-partition-owner'
+import { parseWorkspaceKey } from '../../../shared/workspace-scope'
+import { getRepoIdFromWorktreeId } from '../../../shared/worktree/id'
 import { pruneTabGroupLayoutAfterRetirement } from '../../runtime/mobile-session-terminal-retirement'
 import { projectTabRow } from '../../runtime/terminal-topology-projection'
 import type { Store } from '../loading-store/store'
@@ -22,7 +25,8 @@ type RendererSaveStore = Pick<
   | 'setWorkspaceSession'
   | 'patchWorkspaceSession'
   | 'stageWorkspaceSessionBeforeUnload'
->
+> &
+  Partial<Pick<Store, 'getRepo' | 'getFolderWorkspaces'>>
 
 // The window's session writes: `session:set`, `session:set-sync`, `session:patch` and the quit stage.
 export function setRendererSession(
@@ -62,8 +66,26 @@ function overMainTopology<T extends WorkspaceSessionPatch>(
   return mergeRendererPresentationSave(
     incoming,
     store.getWorkspaceSession(hostId),
-    resolveHostId(hostId)
+    resolveHostId(hostId),
+    (worktreeId) => catalogHomeHostId(store, worktreeId)
   )
+}
+
+/** The partition the repo catalog places a workspace on; null when the catalog can't say. */
+function catalogHomeHostId(store: RendererSaveStore, worktreeId: string): ExecutionHostId | null {
+  const scope = parseWorkspaceKey(worktreeId)
+  if (scope?.type === 'folder') {
+    const workspace = store
+      .getFolderWorkspaces?.()
+      .find((entry) => entry.id === scope.folderWorkspaceId)
+    return workspace?.executionHostId
+      ? workspaceSessionPartitionHostId(workspace.executionHostId)
+      : null
+  }
+  const repo = store.getRepo?.(
+    getRepoIdFromWorktreeId(scope?.type === 'worktree' ? scope.worktreeId : worktreeId)
+  )
+  return repo ? workspaceSessionPartitionHostId(getRepoExecutionHostId(repo)) : null
 }
 
 /**
@@ -74,13 +96,16 @@ function overMainTopology<T extends WorkspaceSessionPatch>(
 export function mergeRendererPresentationSave<T extends WorkspaceSessionPatch>(
   incoming: T,
   prior: WorkspaceSessionState,
-  hostId: ExecutionHostId
+  hostId: ExecutionHostId,
+  homeHostIdOf: (worktreeId: string) => ExecutionHostId | null = () => null
 ): T {
   const ownerPartition = isTerminalOwnerPartition(hostId)
   // Another server feeds a `runtime:` partition's rows; main's stand there only for a repo it fenced.
+  // Rows homed on another partition are residue main never writes; the window's save decides them (#26098).
   const mainHolds = (worktreeId: string | undefined): boolean =>
-    ownerPartition ||
-    (worktreeId !== undefined && hasHostAuthoritativeTerminalMembership(prior, worktreeId))
+    ownerPartition
+      ? worktreeId === undefined || (homeHostIdOf(worktreeId) ?? hostId) === hostId
+      : worktreeId !== undefined && hasHostAuthoritativeTerminalMembership(prior, worktreeId)
   return {
     ...incoming,
     clientHostedBrowserPagesByWorktree: prior.clientHostedBrowserPagesByWorktree,
