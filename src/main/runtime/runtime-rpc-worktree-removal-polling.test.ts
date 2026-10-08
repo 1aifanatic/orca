@@ -5,22 +5,64 @@ import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
 import { readRuntimeMetadata } from './runtime-metadata'
 import { OrcaRuntimeRpcServer } from './runtime-rpc'
-import { openFramedSession, sendRequest, sleep, waitFor } from './runtime-rpc-test-harness'
+import { createConnection } from 'node:net'
+import { openFramedSession, sleep, waitFor } from './runtime-rpc-test-harness'
 
 const REMOVALS = 50
 
+type Call = (method: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>
+
+// One request per connection, as the CLI sends them; a dropped connection rejects instead of hanging.
+function request(
+  endpoint: string,
+  body: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const socket = createConnection(endpoint)
+    let buffer = ''
+    socket.setEncoding('utf8')
+    socket.on('error', reject)
+    socket.on('close', () => reject(new Error('closed before replying')))
+    socket.on('data', (chunk: string) => {
+      buffer += chunk
+      const newline = buffer.indexOf('\n')
+      if (newline !== -1) {
+        resolve(JSON.parse(buffer.slice(0, newline)))
+        socket.end()
+      }
+    })
+    socket.on('connect', () => socket.write(`${JSON.stringify(body)}\n`))
+  })
+}
+
+async function poll(call: Call, worktreeId: string): Promise<Record<string, unknown>> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await call('worktree.removalState', { worktreeId, hostId: 'local' })
+    } catch (error) {
+      if (attempt === 3) {
+        throw error
+      }
+    }
+  }
+}
+
 // The CLI's protocol (src/cli/handlers/worktree-removal-outcome.ts, which this project cannot
-// import): a plain `worktree.rm`, then `worktree.removalState` polls until the delete settles.
+// import): a plain `worktree.rm`, then `worktree.removalState` polls until the delete settles,
+// riding out a dropped connection on a poll as the CLI does.
 async function removeAndPoll(
-  call: (method: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  call: Call,
   worktreeId: string,
-  pollMs: number
+  timing: { startMs: number; pollMs: number }
 ): Promise<object> {
+  // Why staggered: separate CLI processes never connect in the same instant, and the socket's
+  // 32-connection limit (unchanged, and the same for a plain `worktree.rm` on main) drops the rest.
+  await sleep(timing.startMs)
   const accepted = await call('worktree.rm', { worktree: `id:${worktreeId}`, hostId: 'local' })
   expect(accepted).toMatchObject({ ok: true, result: { removing: true } })
   for (;;) {
-    await sleep(pollMs)
-    const reply = await call('worktree.removalState', { worktreeId, hostId: 'local' })
+    await sleep(timing.pollMs)
+    const reply = await poll(call, worktreeId)
     expect(reply).toMatchObject({ ok: true })
     const state = reply.result
     if (!(typeof state === 'object' && state !== null && 'state' in state)) {
@@ -47,27 +89,29 @@ describe('many CLI deletes waiting on their outcomes at once', () => {
     try {
       const metadata = readRuntimeMetadata(userDataPath)!
       const endpoint = metadata.transports[0]!.endpoint
-      // One request per connection, as the CLI sends them.
-      const call = (method: string, params: Record<string, unknown>) =>
-        sendRequest(endpoint, {
-          id: `req_${method}`,
-          authToken: metadata.authToken,
-          method,
-          params
-        })
+      const call: Call = (method, params) =>
+        request(endpoint, { id: `req_${method}`, authToken: metadata.authToken, method, params })
       const settled: string[] = []
       const removals = Array.from({ length: REMOVALS }, (_, index) => {
         const worktreeId = `repo-1::/tmp/wt-${index}`
-        return removeAndPoll(call, worktreeId, 5 + (index % 7)).then((state) => {
+        return removeAndPoll(call, worktreeId, {
+          startMs: index * 3,
+          pollMs: 20 + (index % 7) * 5
+        }).then((state) => {
           settled.push(worktreeId)
           return state
         })
       })
       await waitFor(
-        () => vi.mocked(runtime.readWorktreeRemovalState).mock.calls.length >= REMOVALS * 2,
+        () => vi.mocked(runtime.removeManagedWorktree).mock.calls.length === REMOVALS,
         10_000
       )
-      expect(runtime.removeManagedWorktree).toHaveBeenCalledTimes(REMOVALS)
+      const readsBefore = vi.mocked(runtime.readWorktreeRemovalState).mock.calls.length
+      await waitFor(
+        () =>
+          vi.mocked(runtime.readWorktreeRemovalState).mock.calls.length >= readsBefore + REMOVALS,
+        10_000
+      )
 
       // Another client's long poll is admitted while all of them wait.
       const wait = openFramedSession(endpoint, {
