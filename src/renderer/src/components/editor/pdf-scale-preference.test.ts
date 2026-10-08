@@ -5,6 +5,7 @@ import {
   stepPdfScalePreference,
   zoomPdfViewerWithWheel
 } from './pdf-scale-preference'
+import { getPinchZoomFactor } from './image-viewer-zoom'
 
 const BOUNDS = { min: 0.25, max: 5, step: 1.25 }
 
@@ -88,7 +89,7 @@ describe('zoomPdfViewerWithWheel', () => {
     for (let i = 0; i < 30; i++) {
       zoomPdfViewerWithWheel(viewer, wheel(-1), BOUNDS)
     }
-    expect(viewer.currentScale).toBeCloseTo(0.5 * Math.exp(30 / 300))
+    expect(viewer.currentScale).toBeCloseTo(0.5 * getPinchZoomFactor(-1, 0) ** 30)
   })
 
   it('claims the gesture but stops at the scale bounds', () => {
