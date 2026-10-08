@@ -101,7 +101,13 @@ export function eraseRetainedRow(row: RetainedTerminalRow, mode: number, column:
     if (keep >= text.length) {
       return
     }
-    row.text = keep === 0 ? '' : text.slice(0, keep)
+    // Why own a short keep: the slice would otherwise pin the erased row's whole backing string.
+    row.text =
+      keep === 0
+        ? ''
+        : keep * 2 < text.length
+          ? ownRetainedString(text.slice(0, keep))
+          : text.slice(0, keep)
     row.snapshot = null
     row.blankPrefix = Math.min(row.blankPrefix, keep)
     if (row.contentEnd > keep) {
