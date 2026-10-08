@@ -4,7 +4,7 @@
 
 import { defineMethod } from '../core'
 import {
-  requireStructuredHost as requireHost,
+  requireStructuredSessionHost as requireSessionHost,
   structuredCallerFor as callerFor
 } from './structured-agent-session-gate'
 import {
@@ -17,18 +17,24 @@ export const STRUCTURED_AGENT_SESSION_QUEUED_METHODS = [
     name: 'agentSession.queuedMessageSend',
     permission: 'workspace',
     params: QueuedMessageActionParams,
-    handler: async (params, ctx) => requireHost(ctx).queuedMessageSend(callerFor(ctx), params)
+    handler: async (params, ctx) =>
+      requireSessionHost(ctx, params.envelope.sessionId).queuedMessageSend(callerFor(ctx), params)
   }),
   defineMethod({
     name: 'agentSession.queuedMessageDelete',
     permission: 'workspace',
     params: QueuedMessageActionParams,
-    handler: async (params, ctx) => requireHost(ctx).queuedMessageDelete(callerFor(ctx), params)
+    handler: async (params, ctx) =>
+      requireSessionHost(ctx, params.envelope.sessionId).queuedMessageDelete(callerFor(ctx), params)
   }),
   defineMethod({
     name: 'agentSession.queuedMessagesResume',
     permission: 'workspace',
     params: QueuedMessagesResumeParams,
-    handler: async (params, ctx) => requireHost(ctx).queuedMessagesResume(callerFor(ctx), params)
+    handler: async (params, ctx) =>
+      requireSessionHost(ctx, params.envelope.sessionId).queuedMessagesResume(
+        callerFor(ctx),
+        params
+      )
   })
 ]

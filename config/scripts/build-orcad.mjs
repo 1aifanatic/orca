@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Package orcad for the pinned Node; keep module loading compatible with legacy Node launchers.
+// Package the server separately from its compatibility launcher.
 import { fork, spawnSync } from 'node:child_process'
 import { build } from 'esbuild'
 import {
   buildOrcadEntry,
+  buildOrcadLauncher,
   externalNativeAddons,
   ORCAD_EXTERNAL_MODULES,
   ORCAD_CHILD_ENTRY_POINTS,
@@ -30,6 +31,8 @@ import { materializeWatcherPackage } from './orcad-watcher-package.mjs'
 import { stageOrcadWindowsProcessTree } from './orcad-windows-process-tree.mjs'
 import {
   ORCAD_EMOJI_SHORTCODE_DATASET,
+  ORCAD_LAUNCHER_FILENAME,
+  ORCAD_SERVER_ENTRY_FILENAME,
   ORCAD_NODE_PTY_DIR,
   ORCAD_NODE_PTY_JS_ARTIFACTS,
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
@@ -56,7 +59,8 @@ const childOutFile = (role) =>
   join(OUT_DIR, orcadChildOutputFilename(ORCAD_CHILD_ENTRY_POINTS[role]))
 const WATCHER_OUT_FILE = childOutFile('watcher')
 const DAEMON_OUT_FILE = childOutFile('daemon')
-const OUT_FILE = join(OUT_DIR, 'orcad.js')
+const OUT_FILE = join(OUT_DIR, ORCAD_LAUNCHER_FILENAME)
+const SERVER_OUT_FILE = join(OUT_DIR, ORCAD_SERVER_ENTRY_FILENAME)
 const BUILD_TARGET = process.env.ORCAD_BUILD_TARGET
 if (!BUILD_TARGET) {
   throw new Error('ORCAD_BUILD_TARGET is required; run `pnpm build:orcad`')
@@ -178,6 +182,9 @@ if (existsSync(AGENT_BROWSER_SOURCE) && process.env.ORCAD_OMIT_AGENT_BROWSER !==
 cpSync(join(ROOT, 'resources', 'licenses', 'ripgrep'), join(OUT_DIR, 'ripgrep', 'licenses'), {
   recursive: true
 })
+cpSync(join(ROOT, 'resources', 'native-chat-visuals'), join(OUT_DIR, 'native-chat-visuals'), {
+  recursive: true
+})
 
 /** Why one call per child and not one `outdir` build: esbuild mirrors each entry's source
  *  directory under `outdir`, and both children must land flat beside orcad.js — that is where
@@ -208,7 +215,8 @@ const childResults = await Promise.all(
   )
 )
 
-const result = await buildOrcadEntry(OUT_FILE)
+const result = await buildOrcadEntry(SERVER_OUT_FILE)
+const launcherResult = await buildOrcadLauncher(OUT_FILE)
 
 const output = Object.values(result.metafile.outputs).find(
   (o) => o.entryPoint === 'src/main/orcad/main.ts'
@@ -233,7 +241,11 @@ function collectImporters(metafiles, matches) {
   return importers
 }
 
-const metafiles = [result.metafile, ...childResults.map((child) => child.metafile)]
+const metafiles = [
+  launcherResult.metafile,
+  result.metafile,
+  ...childResults.map((child) => child.metafile)
+]
 const electronImporters = collectImporters(
   metafiles,
   (specifier) => specifier === 'electron' || specifier.startsWith('electron/')
@@ -273,7 +285,7 @@ if (graphErrors.length > 0) {
   // Node's uncaught-exception report echoes that whole line — which contains every string
   // literal in the bundle. A crash therefore "matches" any expected message, and a textual
   // assertion passes against a bundle that never loaded.
-  const smoke = spawnSync(process.execPath, [OUT_FILE, '--orcad-smoke-load-check'], {
+  const smoke = spawnSync(process.execPath, [SERVER_OUT_FILE, '--orcad-smoke-load-check'], {
     encoding: 'utf8',
     timeout: 60_000
   })

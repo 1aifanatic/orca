@@ -1,13 +1,10 @@
-// Answers to an agent's approvals and questions, its options, and read-only session facts.
+// Answers to an agent's approvals and questions, and its options.
 import { defineMethod } from '../core'
 import {
-  requireInstalledStructuredHost as requireInstalledHost,
-  requireStructuredHost as requireHost,
+  requireStructuredSessionHost as requireSessionHost,
   structuredCallerFor as callerFor
 } from './structured-agent-session-gate'
 import {
-  HandoffStatusParams,
-  OptionsParams,
   RespondParams,
   RespondToQuestionParams,
   SetOptionParams
@@ -19,32 +16,26 @@ export const STRUCTURED_AGENT_SESSION_PROMPT_RESPONSE_METHODS = [
     permission: 'workspace',
     params: RespondParams,
     handler: async (params, ctx) =>
-      requireHost(ctx).respondToPrompt(callerFor(ctx), { ...params, kind: 'approval' })
+      requireSessionHost(ctx, params.envelope.sessionId).respondToPrompt(callerFor(ctx), {
+        ...params,
+        kind: 'approval'
+      })
   }),
   defineMethod({
     name: 'agentSession.respondToQuestion',
     permission: 'workspace',
     params: RespondToQuestionParams,
     handler: async (params, ctx) =>
-      requireHost(ctx).respondToPrompt(callerFor(ctx), { ...params, kind: 'question' })
+      requireSessionHost(ctx, params.envelope.sessionId).respondToPrompt(callerFor(ctx), {
+        ...params,
+        kind: 'question'
+      })
   }),
   defineMethod({
     name: 'agentSession.setOption',
     permission: 'workspace',
     params: SetOptionParams,
-    handler: async (params, ctx) => requireHost(ctx).setOption(callerFor(ctx), params)
-  }),
-  defineMethod({
-    name: 'agentSession.handoffStatus',
-    permission: 'workspace',
-    params: HandoffStatusParams,
     handler: async (params, ctx) =>
-      (await requireInstalledHost(ctx)).handoffStatus(params.sessionId)
-  }),
-  defineMethod({
-    name: 'agentSession.commands',
-    permission: 'workspace',
-    params: OptionsParams,
-    handler: async (params, ctx) => (await requireInstalledHost(ctx)).readCommands(params.sessionId)
+      requireSessionHost(ctx, params.envelope.sessionId).setOption(callerFor(ctx), params)
   })
 ]

@@ -21,9 +21,11 @@ import {
   ensureStructuredHostInstalled as ensureHostInstalled,
   requireInstalledStructuredHost as requireInstalledHost,
   requireStructuredCapability,
+  requireStructuredAgentAudience,
   requireStructuredCleanupHost,
   requireStructuredCreateSupportAdmission,
   requireStructuredHost as requireHost,
+  requireStructuredSessionHost as requireSessionHost,
   structuredCallerFor as callerFor
 } from './structured-agent-session-gate'
 import type { AgentSessionAttachParams } from '../../../native-chat/agent-session-wire/structured-agent-session-attach'
@@ -72,8 +74,8 @@ import { sendStructuredAgentSessionForClient } from './structured-agent-session-
  * cannot forge that answer.
  */
 async function resolveClientSuppliedAttach(params: z.infer<typeof AttachParams>, ctx: RpcContext) {
-  await ensureHostInstalled(ctx)
-  const host = requireHost(ctx)
+  await ensureHostInstalled(ctx, params.agent)
+  const host = requireHost(ctx, params.agent)
   if (!host.supportsCreate(params.location, params.agent)) {
     throw agentSessionRefusalError('structured_agent_session_unsupported', {
       reason: 'hostUnsupported'
@@ -104,7 +106,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     handler: async (params, ctx) => {
       requireStructuredCapability(ctx)
       await ensureHostInstalled(ctx)
-      return requireHost(ctx).rewind(callerFor(ctx), params)
+      return requireSessionHost(ctx, params.envelope.sessionId).rewind(callerFor(ctx), params)
     }
   }),
   defineMethod({
@@ -114,7 +116,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     handler: async (params, ctx) => {
       requireStructuredCapability(ctx)
       await ensureHostInstalled(ctx)
-      const host = requireHost(ctx)
+      const host = requireSessionHost(ctx, params.envelope.sessionId)
       await host.revealSession(params.envelope.sessionId)
       const result = await host.conversationCommand(callerFor(ctx), params)
       if (result.ok && result.value.command === 'clear' && result.value.replacementSessionId) {
@@ -134,7 +136,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     permission: 'workspace',
     params: CreateSupportParams,
     handler: async (params, ctx) => {
-      requireStructuredCreateSupportAdmission(ctx)
+      requireStructuredCreateSupportAdmission(ctx, params.agent)
       const support = await ctx.runtime.getStructuredAgentSessionCreateSupport(
         params.worktree,
         params.agent
@@ -151,7 +153,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     permission: 'workspace',
     params: CreateParams,
     handler: async (params, ctx) => {
-      requireStructuredCapability(ctx)
+      requireStructuredAgentAudience(ctx, params.agent)
       if (params.envelope.expectedRuntimeFence !== null) {
         throw agentSessionRefusalError('agent_session_operation_invalid', {
           reason: 'requestMalformed'
@@ -238,7 +240,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     permission: 'workspace',
     params: HistoryParams,
     handler: async (params, ctx) => {
-      const host = await requireInstalledHost(ctx)
+      const host = await requireInstalledHost(ctx, params.sessionId)
       return projectTurnItemHistory(
         projectBackgroundTaskHistory(await host.history(params), ctx),
         ctx,
@@ -251,7 +253,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     permission: 'workspace',
     params: SubscribeParams,
     handler: async (params, ctx, emit) => {
-      const host = await requireInstalledHost(ctx)
+      const host = await requireInstalledHost(ctx, params.sessionId)
       const subscriptionId = subscriptionIdFor(ctx, params.sessionId)
       // A stream reads; it never keeps an agent alive or starts one.
       let dispose = (): void => {}
