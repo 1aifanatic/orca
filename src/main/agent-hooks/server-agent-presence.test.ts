@@ -104,20 +104,6 @@ describe('host-owned hook presence', () => {
     expect(visible(server)).toBe(false)
   })
 
-  it('keeps the pane owned by its agent while a nested agent in it starts and ends', async () => {
-    const server = await createServer()
-    await hook(server, 'SessionStart', 'outer')
-    await hook(server, 'UserPromptSubmit', 'outer')
-    await hook(server, 'SessionStart', 'nested', undefined, 4002)
-    await hook(server, 'UserPromptSubmit', 'nested', undefined, 4002)
-    await hook(server, 'SessionEnd', 'nested', 'other', 4002)
-    expect(visible(server)).toBe(true)
-    await hook(server, 'PostToolUse', 'outer')
-    expect(state(server)).toBe('working')
-    await hook(server, 'SessionEnd', 'outer', 'other')
-    expect(visible(server)).toBe(false)
-  })
-
   it('never ends a pane from a SessionEnd without a process identity', async () => {
     const server = await createServer()
     await hook(server, 'SessionStart', 'outer', undefined, null)

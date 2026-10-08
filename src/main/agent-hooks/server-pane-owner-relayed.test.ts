@@ -123,6 +123,20 @@ describe('pane owner rule (relayed panes)', () => {
     }
   })
 
+  it('keeps a working Codex pane when a Claude run inside it ends (#23947)', async () => {
+    const pane = await startSshPane()
+    await codex(pane, 'UserPromptSubmit', { prompt: 'codex task' })
+    await claude(pane, 'SessionStart', { source: 'startup' })
+    await claude(pane, 'UserPromptSubmit', { prompt: 'nested claude' })
+    await claude(pane, 'SessionEnd', { reason: 'prompt_input_exit' })
+    expect(row(pane.desktop)).toMatchObject({
+      state: 'working',
+      agentType: 'codex',
+      prompt: 'codex task'
+    })
+    expect(row(pane.desktop)?.providerSessionOnly).toBeUndefined()
+  })
+
   it('hands the pane to the guest once the relay proves the owner exited', async () => {
     const pane = await startSshPane()
     await claude(pane, 'UserPromptSubmit', { prompt: 'claude task' })

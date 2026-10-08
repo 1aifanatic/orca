@@ -5,6 +5,10 @@ import { terminalStatusPayloadMatchesHook } from '../../../shared/agent-terminal
 import type { ParsedAgentStatusPayload } from '../../../shared/agent-status-types'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import { isAgentStatusHeldOpenByChildWork } from '../../../shared/agent-lead-status-fold'
+import {
+  currentOwner,
+  terminalSignalYieldsToOwner
+} from '../../../shared/agent-hook-presence-transition'
 import { AgentHookServerIngestNormalization } from './server-ingest-normalization'
 
 export abstract class AgentHookServerIngestTerminal extends AgentHookServerIngestNormalization {
@@ -104,8 +108,15 @@ export abstract class AgentHookServerIngestTerminal extends AgentHookServerInges
       event.yieldsToHookSince !== undefined &&
       previous?.observation?.origin === 'hook' &&
       previous.receivedAt >= event.yieldsToHookSince
+    const yieldsToOwner = terminalSignalYieldsToOwner(previous, event.payload.agentType)
+    const doubtedOwner = yieldsToOwner && connectionId === null ? currentOwner(previous) : undefined
+    if (doubtedOwner?.process) {
+      // Why: main cannot check a remote owner; its relay does.
+      this.paneOwnerProbes.probe(paneKey, doubtedOwner.process)
+    }
     if (
       hookOwnsCommand ||
+      yieldsToOwner ||
       (previous?.payload.agentType === 'claude' &&
         event.payload.agentType === 'claude' &&
         isAgentStatusHeldOpenByChildWork(previous.payload) &&

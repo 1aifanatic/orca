@@ -34,17 +34,19 @@ describe('transitionHookPresence', () => {
     const own = event('codex', {
       nestedIn: [{ agent: 'codex', session: 'claude-a' }]
     })
-    expect(transitionHookPresence(own, owner, { now: NOW, rowUpdatedAt: NOW }).kind).toBe('write')
-    expect(
-      transitionHookPresence(own, undefined, { now: NOW, rowUpdatedAt: undefined })
-    ).toMatchObject({ kind: 'write', event: { agentPresence: { agent: 'codex' } } })
+    expect(transitionHookPresence(own, owner, NOW, NOW).kind).toBe('write')
+    expect(transitionHookPresence(own, undefined, undefined, NOW)).toMatchObject({
+      kind: 'write',
+      event: { agentPresence: { agent: 'codex' } }
+    })
   })
 
   it('never stores the nesting markers on the row', () => {
     const transition = transitionHookPresence(
       event('claude', { ...session('claude-a'), nestedIn: [{ agent: 'codex', session: 'x' }] }),
       owner,
-      { now: NOW, rowUpdatedAt: NOW }
+      NOW,
+      NOW
     )
     expect(transition.kind === 'write' && 'nestedIn' in transition.event).toBe(false)
   })
@@ -53,21 +55,42 @@ describe('transitionHookPresence', () => {
     const live = event('claude', {
       agentPresence: { agent: 'claude', process: OWNER_PROCESS, session: 'claude-a' }
     })
-    expect(
-      transitionHookPresence(event('codex', session('codex-x')), live, {
-        now: NOW,
-        rowUpdatedAt: NOW
-      })
-    ).toMatchObject({ kind: 'guest', holdable: true, probe: OWNER_PROCESS })
+    expect(transitionHookPresence(event('codex', session('codex-x')), live, NOW, NOW)).toEqual({
+      kind: 'skip',
+      probe: OWNER_PROCESS
+    })
+  })
+
+  it('holds and checks only a live unproven guest; proof and a guest exit need no check', () => {
+    const live = event('claude', {
+      agentPresence: { agent: 'claude', process: OWNER_PROCESS, session: 'claude-a' }
+    })
+    const nested = event('codex', { nestedIn: [{ agent: 'claude', session: 'claude-a' }] })
+    expect(transitionHookPresence(nested, live, NOW, NOW)).toEqual({ kind: 'skip' })
+    const guestExit = event('codex', {
+      agentPresence: { agent: 'codex', process: { ...OWNER_PROCESS, pid: 4002 }, ended: true }
+    })
+    expect(transitionHookPresence(guestExit, live, NOW, NOW)).toEqual({ kind: 'skip' })
+  })
+
+  it("never carries a restarted process's predecessor model or session", () => {
+    const previous = event('claude', {
+      ...session('claude-a'),
+      agentPresence: { agent: 'claude', process: OWNER_PROCESS, session: 'claude-a' },
+      payload: { state: 'done', prompt: '', agentType: 'claude', model: 'opus' }
+    })
+    const restarted = event('claude', {
+      agentPresence: { agent: 'claude', process: { ...OWNER_PROCESS, pid: 4002 } }
+    })
+    const transition = transitionHookPresence(restarted, previous, NOW, NOW)
+    expect(transition.kind === 'write' && transition.event.payload.model).toBeUndefined()
+    expect(transition.kind === 'write' && transition.event.providerSession).toBeUndefined()
   })
 
   it('bounds the sessions an owner remembers', () => {
     let row: AgentHookEventPayload = owner
     for (const id of ['b', 'c', 'd', 'e', 'f', 'g']) {
-      const transition = transitionHookPresence(event('claude', session(id)), row, {
-        now: NOW,
-        rowUpdatedAt: NOW
-      })
+      const transition = transitionHookPresence(event('claude', session(id)), row, NOW, NOW)
       if (transition.kind !== 'write') {
         throw new Error('owner event was not written')
       }
@@ -90,10 +113,7 @@ describe('transitionHookPresence', () => {
       payload: { state: 'working', prompt: '', agentType: 'codex', model: 'gpt-5.4' }
     })
     expect(
-      transitionHookPresence(event('codex', { toolAgentId: 'child' }), withModel, {
-        now: NOW,
-        rowUpdatedAt: NOW
-      })
+      transitionHookPresence(event('codex', { toolAgentId: 'child' }), withModel, NOW, NOW)
     ).toMatchObject({
       kind: 'write',
       event: { providerSession: { id: 'codex-x' }, payload: { model: 'gpt-5.4' } }

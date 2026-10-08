@@ -15,7 +15,9 @@ export type {
   RelayHookServerStartOptions
 } from './agent-hook-server-contract'
 import { handleRelayHookRequest } from './agent-hook-request'
+import { listenOnLoopback } from './agent-hook-loopback-listener'
 import { RelayAgentPresence } from './relay-agent-presence'
+import { PaneOwnerProbes } from '../shared/agent-pane-owner-probes'
 import type { AgentProcessVerdict } from '../shared/agent-process-presence'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
@@ -82,6 +84,9 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
       }
     }
   })
+  private readonly ownerProbes = new PaneOwnerProbes({
+    checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
+  })
   private retryScheduler: AgentHookResultRetryScheduler
   readonly claudeTerminalInterrupts = createRelayClaudeTerminalInterrupts(this.state, () =>
     this.relayInterruptHost()
@@ -112,7 +117,7 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
       env: this.env,
       isListening: () => this.server !== null,
       applyEvent: (event, source, env, version) => {
-        this.applyEvent(event, source, env, version, { checkPresence: false })
+        this.applyEvent(event, source, env, version)
       }
     })
   }
@@ -146,30 +151,15 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
     return this.portFallbackApplied
   }
 
-  private listenOn(port: number): Promise<void> {
+  private async listenOn(port: number): Promise<void> {
     this.server = createServer((req, res) => this.handleRequest(req, res))
-    return new Promise<void>((resolve, reject) => {
-      const onStartupError = (err: Error): void => {
-        this.server?.off('listening', onListening)
-        // Why: clear failed server refs so later start() calls can retry.
-        this.server = null
-        reject(err)
-      }
-      const onListening = (): void => {
-        this.server?.off('error', onStartupError)
-        this.server?.on('error', (err) => {
-          process.stderr.write(`[relay-hook-server] server error: ${err.message}\n`)
-        })
-        const address = this.server!.address()
-        if (address && typeof address === 'object') {
-          this.port = address.port
-        }
-        resolve()
-      }
-      this.server!.once('error', onStartupError)
-      // Why: loopback only — reachable by the in-box agent CLI (127.0.0.1), not from outside the box.
-      this.server!.listen(port, '127.0.0.1', onListening)
-    })
+    try {
+      this.port = (await listenOnLoopback(this.server, port)) ?? this.port
+    } catch (err) {
+      // Why: clear failed server refs so later start() calls can retry.
+      this.server = null
+      throw err
+    }
   }
 
   publishEndpointFile(): boolean {
@@ -232,8 +222,7 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
       getAgentLaunchToken: this.getAgentLaunchToken,
       isPaneBlocked: (paneKey) =>
         this.isCanonicalPane(paneKey) || this.isPaneSurfaceRetired(paneKey),
-      apply: (event, meta) =>
-        this.applyEvent(event, meta.source, meta.env, meta.version, { checkPresence: false }),
+      apply: (event, meta) => this.applyEvent(event, meta.source, meta.env, meta.version),
       armExpiry: (paneKey, meta) =>
         this.retryScheduler.armClaudeOwedNotificationExpiry(
           meta.source,
@@ -297,7 +286,7 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
     source: AgentHookSource,
     env?: string,
     version?: string,
-    options: { isReplay?: boolean; checkPresence?: boolean } = {}
+    options: { isReplay?: boolean } = {}
   ): AgentHookEventPayload | undefined {
     return applyRelayHookEvent(
       {
@@ -309,7 +298,7 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
         clearAssistantMessageRetry: (paneKey) =>
           this.retryScheduler.clearAssistantMessageRetry(paneKey),
         forward: this.forward,
-        ownerProbes: this.presenceChecks.owners
+        ownerProbes: this.ownerProbes
       },
       incoming,
       source,

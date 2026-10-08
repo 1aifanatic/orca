@@ -1,3 +1,8 @@
+import {
+  adoptRelayedRow,
+  terminalSignalOwner,
+  transitionHookPresence
+} from '../../../shared/agent-hook-presence-transition'
 import { PaneOwnerProbes } from '../../../shared/agent-pane-owner-probes'
 import {
   reconcileRemoteCodexState,
@@ -17,14 +22,13 @@ import {
 import { isStaleGrokTurnEnd } from './server-grok-status-rules'
 import { resolveCancelVerdictLatch } from './server-cancel-verdict-latch'
 import { AgentHookServerStatusApplication } from './server-status-application'
-import { decidePanePresence } from './server-pane-presence'
 
 export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusApplication {
   protected readonly claudeOwedNotificationExpiry = new ClaudeOwedNotificationExpiryTimers(
     this.state
   )
 
-  private readonly paneOwnerProbes = new PaneOwnerProbes({
+  protected readonly paneOwnerProbes = new PaneOwnerProbes({
     checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
   })
 
@@ -51,62 +55,45 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     observedAt?: number,
     mutationBefore?: EnrichedAgentHookEventPayload
   ): EnrichedAgentHookEventPayload | undefined {
-    const presence = decidePanePresence(
-      incoming,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
-      this.state.lastStatusByPaneKey.get(incoming.paneKey) as
-        | EnrichedAgentHookEventPayload
-        | undefined,
-      origin,
-      this.paneOwnerProbes,
-      () => {
-        if (this.server) {
-          this.applyNormalizedStatus(incoming, onAccepted)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
+    const previous = this.state.lastStatusByPaneKey.get(incoming.paneKey) as
+      | EnrichedAgentHookEventPayload
+      | undefined
+    const apply = (event: typeof incoming) =>
+      this.applyOwnedStatus(event, onAccepted, origin, observedAt, mutationBefore)
+    // Why: terminals never claim; a relayed row's owner was decided by its relay; main decides
+    // ownership only for local hook producers.
+    if (origin !== 'hook') {
+      return apply({
+        ...incoming,
+        agentPresence: terminalSignalOwner(previous, incoming.payload.agentType)
+      })
+    }
+    if (incoming.connectionId !== null) {
+      return apply(adoptRelayedRow(incoming, previous))
+    }
+    return this.paneOwnerProbes.admit(
+      incoming.paneKey,
+      transitionHookPresence(incoming, previous, previous?.receivedAt),
+      {
+        write: apply,
+        reapply: () => {
+          if (this.server) {
+            this.applyNormalizedStatus(incoming, onAccepted)
+          }
         }
       }
     )
-    if (!presence) {
-      return undefined
-    }
-    if ('keep' in presence) {
-      // Why: a terminal signal naming another agent never relabels a held owner's row.
-      if (mutationBefore) {
-        this.commitStatusRowMutation(mutationBefore, presence.keep)
-        this.emitEnrichedStatus(presence.keep)
-      }
-      return presence.keep
-    }
-    const {
-      authorityRestartId,
-      nestedIn: _nestedIn,
-      ...payload
-    } = {
-      ...incoming,
-      ...presence.event
-    }
-    const applied = this.applyOwnedStatus(
-      payload,
-      authorityRestartId,
-      onAccepted,
-      origin,
-      observedAt,
-      mutationBefore
-    )
-    // Why after the write: the check is bound to the row it reads, so it must read this one.
-    if (presence.probe) {
-      this.paneOwnerProbes.probe(payload.paneKey, presence.probe)
-    }
-    return applied
   }
 
   private applyOwnedStatus(
-    payload: AgentHookEventPayload,
-    authorityRestartId: string | undefined,
+    incoming: AgentHookEventPayload & { authorityRestartId?: string },
     onAccepted: (() => void) | undefined,
     origin: AgentStatusObservationOrigin,
     observedAt: number | undefined,
     mutationBefore: EnrichedAgentHookEventPayload | undefined
   ): EnrichedAgentHookEventPayload | undefined {
+    const { authorityRestartId, ...payload } = incoming
     if (!this.canWriteLegacyStatusRow(payload)) {
       return undefined
     }

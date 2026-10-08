@@ -171,11 +171,15 @@ describe('pane owner rule (local panes)', () => {
     })
   })
 
-  it('treats a same-type session without proof as the owner, as before', async () => {
+  it('treats a same-type session without proof as the owner, but only its own exit ends it', async () => {
     const server = await createServer()
     await claude(server, 'UserPromptSubmit', { prompt: 'outer' })
     await claude(server, 'UserPromptSubmit', { prompt: 'inner' }, 'claude-b', 4002)
     expect(row(server)).toMatchObject({ agentType: 'claude', prompt: 'inner' })
+    await claude(server, 'SessionEnd', { reason: 'other' }, 'claude-b', 4002)
+    expect(row(server)?.providerSessionOnly).toBeUndefined()
+    await claude(server, 'SessionEnd', { reason: 'other' })
+    expect(row(server)?.providerSessionOnly).toBe(true)
   })
 
   // Why no process: an owner the host cannot check yields to liveness, so only proof keeps it here.
@@ -229,6 +233,50 @@ describe('pane owner rule (local panes)', () => {
     osc(server, 'claude', 'done')
     expect(row(server)).toMatchObject({ state: 'done', agentType: 'claude' })
     expect(probe).not.toHaveBeenCalled()
+  })
+
+  it('hands the pane to a guest held while a terminal signal had already started the check', async () => {
+    const server = await createServer()
+    let finish: (verdict: 'exited') => void = () => {}
+    probe.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
+    osc(server, 'codex', 'working')
+    await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
+    expect(probe).toHaveBeenCalledOnce()
+    finish('exited')
+    await vi.waitFor(() =>
+      expect(row(server)).toMatchObject({ agentType: 'codex', prompt: 'codex task' })
+    )
+  })
+
+  it('leaves a released owner behind when a terminal signal names another agent', async () => {
+    const server = await createServer()
+    await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
+    await codex(server, 'Stop')
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId: null,
+      origin: 'process',
+      payload: { state: 'working', prompt: '', agentType: 'opencode' }
+    })
+    expect(row(server)).toMatchObject({ state: 'working', agentType: 'opencode' })
+    const response = await postHookEvent(
+      server,
+      buildBody({ hook_event_name: 'SessionBusy', sessionID: 'ses_1' }),
+      '/hook/opencode'
+    )
+    expect(response.status).toBe(204)
+    expect(row(server)).toMatchObject({ state: 'working', agentType: 'opencode' })
+    expect(row(server)?.observation?.origin).toBe('hook')
+    await codex(server, 'UserPromptSubmit', { prompt: 'late codex' })
+    expect(row(server)).toMatchObject({ agentType: 'opencode' })
   })
 
   it('never lets a terminal signal claim an ownerless pane', async () => {

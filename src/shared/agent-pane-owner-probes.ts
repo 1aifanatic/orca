@@ -1,85 +1,72 @@
+import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
+import type { HookPresenceTransition } from './agent-hook-presence-transition'
 import type { AgentProcessIdentity, AgentProcessVerdict } from './agent-process-presence'
 
 /** One probe per owner per window, however many guest events arrive. */
 export const OWNER_PROBE_COOLDOWN_MS = 10_000
-/** How long a guest's latest event may still take the pane once its probe finds the owner gone. */
+/** How long a held guest event may still take the pane once a probe finds the owner gone. */
 export const HELD_GUEST_WINDOW_MS = 30_000
 
-type OwnerProbe = { owner: string; startedAt: number; token: object }
-type HeldGuest = { producer: string; heldAt: number; apply: () => void; probe?: object }
+type OwnerProbe = { owner: string; startedAt: number }
+type HeldGuest = { heldAt: number; reapply: () => void }
 
 function ownerKey(owner: AgentProcessIdentity): string {
   return `${owner.platform}:${owner.pid}:${owner.startTime}`
 }
 
-/** Starts owner liveness checks for a host's panes and hands a pane to the guest that proved the
- *  owner gone. Ingest never waits on a check; the host injects its own probe. */
+/** Applies a host's presence transitions and checks doubted owners without making ingest wait.
+ *  The host injects its own check, which resolves `exited` only once it released the pane. */
 export class PaneOwnerProbes {
   private readonly probes = new Map<string, OwnerProbe>()
   private readonly held = new Map<string, HeldGuest>()
 
   constructor(
     private readonly deps: {
-      /** Checks the pane's current owner; resolves `exited` only once it released the pane. */
       checkOwner: (paneKey: string) => Promise<AgentProcessVerdict | null>
       now?: () => number
     }
   ) {}
 
-  /** A guest event: keep its latest live event (one slot per pane), and check the owner. */
-  guest(
+  admit<T>(
     paneKey: string,
-    guest: { producer: string; holdable: boolean; apply: () => void },
-    owner: AgentProcessIdentity | undefined
-  ): void {
-    const now = this.now()
-    this.sweep(now)
-    const current = this.held.get(paneKey)
-    if (guest.holdable && (!current || current.producer === guest.producer)) {
-      this.held.set(paneKey, {
-        producer: guest.producer,
-        heldAt: now,
-        apply: guest.apply,
-        ...(current?.probe ? { probe: current.probe } : {})
-      })
+    transition: HookPresenceTransition,
+    host: { write: (event: AgentHookEventPayload) => T; reapply: () => void }
+  ): T | undefined {
+    if (transition.kind === 'skip') {
+      if (transition.probe) {
+        // Why: one slot per pane; the latest guest event is what a released pane should show.
+        this.held.set(paneKey, { heldAt: this.now(), reapply: host.reapply })
+        this.probe(paneKey, transition.probe)
+      }
+      return undefined
     }
-    if (owner) {
-      this.probe(paneKey, owner, guest.holdable ? guest.producer : undefined)
+    const written = host.write(transition.event)
+    // Why after the write: the host's check is bound to the row it reads, so it must read this one.
+    if (transition.probe) {
+      this.probe(paneKey, transition.probe)
     }
+    return written
   }
 
-  /** A signal other than a guest (another process of the owner's type, a terminal) doubts the owner. */
-  probe(paneKey: string, owner: AgentProcessIdentity, startedBy?: string): void {
+  probe(paneKey: string, owner: AgentProcessIdentity): void {
     const now = this.now()
+    this.sweep(now)
     const key = ownerKey(owner)
-    const last = this.probes.get(paneKey)
-    if (last?.owner === key && now - last.startedAt < OWNER_PROBE_COOLDOWN_MS) {
+    if (this.probes.get(paneKey)?.owner === key) {
       return
     }
-    const token = {}
-    this.probes.set(paneKey, { owner: key, startedAt: now, token })
-    const held = this.held.get(paneKey)
-    if (held && startedBy !== undefined && held.producer === startedBy) {
-      held.probe = token
-    }
+    this.probes.set(paneKey, { owner: key, startedAt: now })
     void this.deps.checkOwner(paneKey).then((verdict) => {
-      if (verdict !== 'exited') {
-        return
-      }
-      const candidate = this.held.get(paneKey)
-      // Why: only the guest whose event started this probe takes over; an owner that ended on its
-      // own exit keeps its resume remnant, so nothing is replayed onto it.
-      if (candidate?.probe !== token || this.now() - candidate.heldAt > HELD_GUEST_WINDOW_MS) {
+      const held = this.held.get(paneKey)
+      if (verdict !== 'exited' || !held) {
         return
       }
       this.held.delete(paneKey)
-      candidate.apply()
+      // Why: replay re-classifies against the released row, so it only lands if it may claim it.
+      if (this.now() - held.heldAt <= HELD_GUEST_WINDOW_MS) {
+        held.reapply()
+      }
     })
-  }
-
-  clear(paneKey: string): void {
-    this.held.delete(paneKey)
-    this.probes.delete(paneKey)
   }
 
   private sweep(now: number): void {
