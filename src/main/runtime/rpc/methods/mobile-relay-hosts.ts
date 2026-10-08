@@ -1,4 +1,4 @@
-import { defineMethod } from '../core'
+import { defineMethod, type RpcContext } from '../core'
 import {
   MOBILE_RELAY_HOST_SLEEP_WORKTREE_METHOD,
   MOBILE_RELAY_HOST_WAKE_SLEEPING_AGENTS_METHOD,
@@ -7,6 +7,13 @@ import {
   MobileRelayHostWorktreeParamsSchema,
   MobileRelayHostWorktreesParamsSchema
 } from '../../../../shared/mobile-relay-hosts-contract'
+
+/** Refuses a server the desktop has not configured; read from its settings, not a fetched list. */
+function assertConfiguredServer(hosts: RpcContext['mobileRelayHosts'], hostId: string): void {
+  if (!hosts?.list().hosts.some((host) => host.hostId === hostId)) {
+    throw new Error('selector_not_found')
+  }
+}
 
 export const MOBILE_RELAY_HOSTS_METHODS = [
   defineMethod({
@@ -24,13 +31,19 @@ export const MOBILE_RELAY_HOSTS_METHODS = [
   defineMethod({
     name: MOBILE_RELAY_HOST_SLEEP_WORKTREE_METHOD,
     params: MobileRelayHostWorktreeParamsSchema,
-    handler: (params, { runtime }) => runtime.requestWorktreeSleep(params.worktreeId)
+    handler: (params, { runtime, mobileRelayHosts }) => {
+      assertConfiguredServer(mobileRelayHosts, params.hostId)
+      return runtime.requestWorktreeSleep(params.worktreeId)
+    }
   }),
   defineMethod({
     name: MOBILE_RELAY_HOST_WAKE_SLEEPING_AGENTS_METHOD,
     params: MobileRelayHostWorktreeParamsSchema,
-    handler: (params, { runtime }) => ({
-      sleepingAgentWake: runtime.requestSleepingAgentWake(params.worktreeId, params.hostId)
-    })
+    handler: (params, { runtime, mobileRelayHosts }) => {
+      assertConfiguredServer(mobileRelayHosts, params.hostId)
+      return {
+        sleepingAgentWake: runtime.requestSleepingAgentWake(params.worktreeId, params.hostId)
+      }
+    }
   })
 ]

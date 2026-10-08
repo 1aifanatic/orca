@@ -59,8 +59,23 @@ function desktop(options: { windowOpen: boolean; sleptOnHost?: string }) {
   runtime.attachWindow(TEST_WINDOW_ID)
   runtime.markGraphReady(TEST_WINDOW_ID)
   const dispatcher = new RpcDispatcher({ runtime, methods: MOBILE_RELAY_HOSTS_METHODS })
-  const call = (method: string, params: unknown) =>
-    dispatcher.dispatch({ id: 'request-1', authToken: 'token', method, params })
+  // The desktop's configured servers, as its settings list them.
+  const mobileRelayHosts = {
+    list: () => ({
+      hosts: [{ hostId: SERVER, label: 'VM', health: 'available', relay: 'ready' } as const]
+    }),
+    worktrees: async () => ({ worktrees: null })
+  }
+  // The phone's socket path, which is what hands the handlers the desktop's servers.
+  const call = async (method: string, params: unknown): Promise<unknown> => {
+    const replies: string[] = []
+    await dispatcher.dispatchStreaming(
+      { id: 'request-1', authToken: 'token', method, params },
+      (reply) => replies.push(reply),
+      { mobileRelayHosts }
+    )
+    return JSON.parse(replies[0] ?? 'null')
+  }
   return { call, sleepWorktree, resumeSleepingAgents }
 }
 
@@ -103,15 +118,17 @@ describe('a phone sleeping and waking a server workspace through its desktop', (
     expect(onServer.resumeSleepingAgents).not.toHaveBeenCalled()
   })
 
-  it("refuses a target that is not one of the desktop's servers", async () => {
-    const { call, sleepWorktree } = desktop({ windowOpen: true })
+  it("refuses a target that is not one of the desktop's configured servers", async () => {
+    const { call, sleepWorktree, resumeSleepingAgents } = desktop({ windowOpen: true })
 
-    const response = await call('mobileRelay.hosts.sleepWorktree', {
-      hostId: 'local',
-      worktreeId: SERVER_WORKTREE
-    })
-
-    expect(response).toMatchObject({ ok: false })
+    for (const hostId of ['local', 'runtime:removed']) {
+      const params = { hostId, worktreeId: SERVER_WORKTREE }
+      expect(await call('mobileRelay.hosts.sleepWorktree', params)).toMatchObject({ ok: false })
+      expect(await call('mobileRelay.hosts.wakeSleepingAgents', params)).toMatchObject({
+        ok: false
+      })
+    }
     expect(sleepWorktree).not.toHaveBeenCalled()
+    expect(resumeSleepingAgents).not.toHaveBeenCalled()
   })
 })
