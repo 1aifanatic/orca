@@ -47,6 +47,16 @@ function buildPreviewDecorations(state: EditorState, storage: DocLinkStorage): D
   const index = getDocIndex(storage)
   const cursor = state.selection.from
   state.doc.descendants((node, pos, parent) => {
+    if (node.type.name === 'markdownDocLink') {
+      const resolved = resolveAgainstIndex(getDocLinkTarget(node), index)
+      // A changed decoration refreshes the NodeView without editing the document.
+      decorations.push(
+        Decoration.node(pos, pos + node.nodeSize, {
+          'data-doc-link-resolved': String(resolved)
+        })
+      )
+      return
+    }
     if (!canHoldDocLink(node, parent)) {
       return
     }
@@ -193,9 +203,7 @@ export function createMarkdownDocLink(transport: RichMarkdownSourceTransport) {
 
         return {
           dom,
-          // Why: this fires on every transaction, including the no-op dispatched
-          // when the document list changes in storage. Re-checking resolution
-          // here keeps the blue/grey styling current without a full re-render.
+          // Resolution decorations also trigger this when the document list changes.
           update: (updatedNode: { type: { name: string }; attrs: Record<string, unknown> }) => {
             if (updatedNode.type.name !== 'markdownDocLink') {
               return false
