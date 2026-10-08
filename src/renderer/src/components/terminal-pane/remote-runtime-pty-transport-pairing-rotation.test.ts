@@ -65,31 +65,56 @@ function subscribeRevisions(): (number | undefined)[] {
   return runtimeSubscribe.mock.calls.map(([request]) => requestRevision(request))
 }
 
+/** A managed server's catalog row; its pairing handshake proves `hostKey`. */
+function managedServer(pairingRevision: number, hostKey: string) {
+  return {
+    id: 'env-1',
+    name: 'Box',
+    createdAt: 1,
+    updatedAt: pairingRevision,
+    pairingRevision,
+    hostKeyFingerprint: hostKey,
+    lastUsedAt: null,
+    runtimeId: null,
+    endpoints: [
+      { id: 'ws', kind: 'websocket' as const, label: 'Box', endpoint: 'ws://127.0.0.1:46768/' }
+    ],
+    preferredEndpointId: 'ws',
+    orcadDeployment: {
+      sshTargetId: 'box',
+      sshTargetGeneration: 1,
+      localPort: 46768,
+      remotePort: 6768
+    }
+  }
+}
+
 /**
- * Main's environment record. A forced managed-server update restarts the server and re-pairs it
- * under the same environment id, so main refuses every request that still carries the old
- * revision — before it reaches the host, whose terminals are untouched.
+ * Main's environment record, mirrored into the real catalog store. A managed-server update
+ * restarts the server and re-pairs it under the same environment id, so main refuses every request
+ * that still carries the old revision — before it reaches the host, whose terminals are untouched.
  */
 async function installRepairableMain(): Promise<{
-  repair: () => void
+  repair: (hostKey?: string) => void
+  publishCatalog: () => void
   setReachable: (reachable: boolean) => void
+  store: Awaited<ReturnType<typeof createCatalogStore>>
 }> {
   let mainRevision = 1
+  let mainHostKey = 'host-A'
   let reachable = true
   const unreachable = (): Error =>
     Object.assign(new Error('Could not connect to the remote Orca runtime.'), {
       code: 'remote_runtime_unavailable'
     })
-  const { replaceRuntimeEnvironmentRevisions } =
-    await import('@/runtime/runtime-environment-revision')
+  const store = await createCatalogStore()
+  const publishCatalog = (): void => {
+    store.getState().setRuntimeEnvironments([managedServer(mainRevision, mainHostKey)])
+  }
+  publishCatalog()
   const { setRuntimeEnvironmentCatalogRefresher } =
     await import('@/runtime/runtime-environment-pairing-refresh')
-  replaceRuntimeEnvironmentRevisions([{ id: 'env-1', createdAt: 1, pairingRevision: 1 }])
-  setRuntimeEnvironmentCatalogRefresher(async () => {
-    replaceRuntimeEnvironmentRevisions([
-      { id: 'env-1', createdAt: 1, pairingRevision: mainRevision }
-    ])
-  })
+  setRuntimeEnvironmentCatalogRefresher(async () => publishCatalog())
   const isStale = (request: RevisionedRequest): boolean =>
     request.expectedEnvironmentPairingRevision !== undefined &&
     request.expectedEnvironmentPairingRevision !== mainRevision
@@ -122,22 +147,37 @@ async function installRepairableMain(): Promise<{
     return hostSubscribe?.(request, callbacks)
   })
   return {
-    repair: () => {
+    repair: (hostKey = 'host-A') => {
       mainRevision = 2
+      mainHostKey = hostKey
     },
+    publishCatalog,
     setReachable: (next) => {
       reachable = next
-    }
+    },
+    store
   }
+}
+
+async function createCatalogStore() {
+  vi.doMock('sonner', () => ({
+    toast: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn(), dismiss: vi.fn() }
+  }))
+  const { createTestStore } = await import('@/store/slices/store-test-helpers')
+  const { resetDeferredPeerChecksForTests } =
+    await import('@/store/slices/runtime-environment-peer-replacement')
+  resetDeferredPeerChecksForTests()
+  return createTestStore()
 }
 
 async function restartServerUnderLivePane(tabId: string): Promise<{
   transport: PtyTransport
   onError: ReturnType<typeof vi.fn>
-  repair: () => void
+  repair: (hostKey?: string) => void
+  publishCatalog: () => void
   setReachable: (reachable: boolean) => void
 }> {
-  const { repair, setReachable } = await installRepairableMain()
+  const { repair, publishCatalog, setReachable } = await installRepairableMain()
   const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
   const onError = vi.fn()
   const transport = createRemoteRuntimePtyTransport('env-1', {
@@ -155,7 +195,7 @@ async function restartServerUnderLivePane(tabId: string): Promise<{
   await vi.waitFor(() => expect(latestSubscribePayload().terminal).toBe('terminal-1'))
   emitSnapshot(latestSubscribePayload().streamId, 'prompt$ ')
   await vi.waitFor(() => expect(transport.getRecoveryState?.().phase).toBe('connected'))
-  return { transport, onError, repair, setReachable }
+  return { transport, onError, repair, publishCatalog, setReachable }
 }
 
 // A forced managed-server update re-pairs the environment while its terminals keep running.
@@ -192,14 +232,12 @@ describe('remote runtime pane across a pairing rotation', () => {
   })
 
   it('rebinds a pane whose stream reopened before main re-paired, instead of dropping its keys', async () => {
-    const { transport, onError, repair } = await restartServerUnderLivePane('tab-1')
+    const { transport, onError, repair, publishCatalog } = await restartServerUnderLivePane('tab-1')
     const firstCallbacks = subscriptionCallbacks
-    const { replaceRuntimeEnvironmentRevisions } =
-      await import('@/runtime/runtime-environment-revision')
 
     // The server is back and the stream reopened on the old pairing; main re-pairs only afterwards.
     repair()
-    replaceRuntimeEnvironmentRevisions([{ id: 'env-1', createdAt: 1, pairingRevision: 2 }])
+    publishCatalog()
 
     await vi.waitFor(() => expect(subscribeRevisions().at(-1)).toBe(2))
     await vi.waitFor(() => expect(subscriptionCallbacks).not.toBe(firstCallbacks))
@@ -237,7 +275,7 @@ describe('remote runtime pane across a pairing rotation', () => {
   it('Reconnect rebinds a pane whose retries stopped while the server restarted re-paired', async () => {
     vi.useFakeTimers()
     try {
-      const { transport, onError, repair, setReachable } =
+      const { transport, onError, repair, publishCatalog, setReachable } =
         await restartServerUnderLivePane('web-terminal-host-tab-1')
       setReachable(false)
       subscriptionCallbacks?.onClose?.()
@@ -247,9 +285,7 @@ describe('remote runtime pane across a pairing rotation', () => {
       repair()
       setReachable(true)
       // Another subscriber's refusal already brought the renderer catalog to the new revision.
-      const { replaceRuntimeEnvironmentRevisions } =
-        await import('@/runtime/runtime-environment-revision')
-      replaceRuntimeEnvironmentRevisions([{ id: 'env-1', createdAt: 1, pairingRevision: 2 }])
+      publishCatalog()
       const subscribesBefore = runtimeSubscribe.mock.calls.length
       runtimeCall.mockClear()
       expect(transport.retryRecovery?.()).toBe(true)
@@ -266,6 +302,61 @@ describe('remote runtime pane across a pairing rotation', () => {
         expect(requestRevision(request)).toBe(2)
       }
       expect(onError).not.toHaveBeenCalled()
+      transport.destroy?.()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([
+    ['a host session pane', 'web-terminal-host-tab-1'],
+    ['a client-placed pane', 'tab-1']
+  ])(
+    'sends nothing from %s to a different machine re-paired under the same id',
+    async (_label, tabId) => {
+      vi.useFakeTimers()
+      try {
+        const { transport, repair, publishCatalog } = await restartServerUnderLivePane(tabId)
+        const callsBefore = runtimeCall.mock.calls.length
+        const subscribesBefore = runtimeSubscribe.mock.calls.length
+
+        // A reinstalled or replacement server: same registration, different host key.
+        repair('host-B')
+        publishCatalog()
+        transport.sendInput('typed after the swap\r', 'driving')
+        await vi.advanceTimersByTimeAsync(REMOTE_RUNTIME_AUTO_RECOVERY_TIMEOUT_MS * 2)
+
+        const reachedNewMachine = [
+          ...runtimeCall.mock.calls.slice(callsBefore),
+          ...runtimeSubscribe.mock.calls.slice(subscribesBefore)
+        ].filter(([request]) => requestRevision(request) === 2)
+        expect(reachedNewMachine).toEqual([])
+        expect(inputFrameTexts()).toEqual([])
+        transport.destroy?.()
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
+
+  it('holds a pane while the re-paired host identity is unresolved, then follows it once proven', async () => {
+    vi.useFakeTimers()
+    try {
+      const { transport, repair, publishCatalog } = await restartServerUnderLivePane('tab-1')
+      const firstCallbacks = subscriptionCallbacks
+      repair('')
+      publishCatalog()
+      firstCallbacks?.onClose?.()
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(subscribeRevisions().filter((revision) => revision === 2)).toEqual([])
+
+      repair('host-A')
+      publishCatalog()
+      await vi.advanceTimersByTimeAsync(30_000)
+      await vi.waitFor(() => expect(subscribeRevisions().at(-1)).toBe(2))
+      await vi.waitFor(() => expect(subscribeFrameCount()).toBe(2))
+      emitSnapshot(latestSubscribePayload().streamId, 'prompt$ ')
+      await vi.waitFor(() => expect(transport.getRecoveryState?.().phase).toBe('connected'))
       transport.destroy?.()
     } finally {
       vi.useRealTimers()

@@ -52,6 +52,10 @@ export abstract class RemoteRuntimeTerminalMultiplexerBase {
     this.handleClose('Runtime environment pairing changed.')
   }
 
+  closeForEnvironmentRetirement(): void {
+    this.handleClose('Runtime environment was removed or replaced by another machine.', false)
+  }
+
   protected allocateStreamId(): number {
     const start = this.nextStreamId
     do {

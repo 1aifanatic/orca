@@ -85,7 +85,10 @@ import {
   ptyReplayHandlers,
   ptyShutdownLifecycleHandlers
 } from './pty-shutdown-data-suspension'
-import { getRuntimeEnvironmentRevision } from '@/runtime/runtime-environment-revision'
+import {
+  getRuntimeEnvironmentRevision,
+  resolveContinuedRuntimeEnvironmentRevision
+} from '@/runtime/runtime-environment-revision'
 import {
   isRuntimeEnvironmentPairingChangedError,
   refreshRuntimeEnvironmentsAfterPairingChange
@@ -216,6 +219,20 @@ export function createRemoteRuntimePtyTransport(
   let authoritativeHostPlatform: NodeJS.Platform | null = null
   let authoritativePtyIncarnationId: string | null = null
   let currentRuntimeEnvironmentId = runtimeEnvironmentId
+  // Why: the pane belongs to the machine it was opened on; it may follow that machine's own
+  // re-pair (a server update) but never a same-id re-pair to another or unverified machine.
+  const pairingRevisionByEnvironmentId = new Map<string, number | undefined>()
+  function paneRuntimeEnvironmentRevision(environmentId: string): number | undefined {
+    const revision = resolveContinuedRuntimeEnvironmentRevision(
+      environmentId,
+      pairingRevisionByEnvironmentId.has(environmentId)
+        ? pairingRevisionByEnvironmentId.get(environmentId)
+        : getRuntimeEnvironmentRevision(environmentId)
+    )
+    pairingRevisionByEnvironmentId.set(environmentId, revision)
+    return revision
+  }
+  paneRuntimeEnvironmentRevision(runtimeEnvironmentId)
   let multiplexedStream: RemoteRuntimeMultiplexedTerminal | null = null
   let multiplexedStreamHandle: string | null = null
   let desiredOutputPaused = false
@@ -1066,13 +1083,12 @@ export function createRemoteRuntimePtyTransport(
     params?: unknown,
     timeoutMs = 15_000
   ): Promise<TResult> {
-    // Why per call: a pane outlives a re-pair, so a revision pinned at mount is refused forever.
     const response = await window.api.runtimeEnvironments.call({
       selector: environmentId,
       method,
       params,
       timeoutMs,
-      expectedEnvironmentPairingRevision: getRuntimeEnvironmentRevision(environmentId)
+      expectedEnvironmentPairingRevision: paneRuntimeEnvironmentRevision(environmentId)
     })
     try {
       return unwrapRuntimeRpcResult(response as RuntimeRpcResponse<TResult>)
@@ -2077,6 +2093,11 @@ export function createRemoteRuntimePtyTransport(
       generation === subscriptionGeneration &&
       (expectedRecoveryEpoch === undefined || recovery.ownsEpoch(expectedRecoveryEpoch)) &&
       isCurrentRemoteTerminal(subscribedHandle, subscribedPtyId)
+    const paneRevision = paneRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)
+    if (paneRevision !== getRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)) {
+      // Why local: the shared stream would subscribe on a pairing not proven to be this pane's machine.
+      throw new Error('Runtime environment pairing changed; refresh and try again')
+    }
     const nextStream = await getRemoteRuntimeTerminalMultiplexer(
       currentRuntimeEnvironmentId
     ).subscribeTerminal({
@@ -2621,7 +2642,7 @@ export function createRemoteRuntimePtyTransport(
           })
           // Snapshot parity must not delay attachment to a terminal the host already created.
           void refreshWebRuntimeSessionTabsSnapshot(createEnvironmentId, worktreeId, {
-            expectedEnvironmentPairingRevision: getRuntimeEnvironmentRevision(createEnvironmentId),
+            expectedEnvironmentPairingRevision: paneRuntimeEnvironmentRevision(createEnvironmentId),
             acceptCurrentSnapshot: true,
             confirmAgentSessionHandoff: {
               provisionalTabId: tabId,

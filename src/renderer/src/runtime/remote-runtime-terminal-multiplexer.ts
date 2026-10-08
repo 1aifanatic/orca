@@ -6,7 +6,8 @@ import type { RemoteRuntimeTerminalMultiplexerBase } from './remote-runtime-term
 import { RemoteRuntimeTerminalMultiplexer } from './remote-runtime-terminal-multiplexer-implementation'
 import {
   getRuntimeEnvironmentRevision,
-  onRuntimeEnvironmentRevisionsChanged
+  onRuntimeEnvironmentRevisionsChanged,
+  onRuntimeEnvironmentsRetired
 } from './runtime-environment-revision'
 
 export {
@@ -28,8 +29,16 @@ export type {
 
 const multiplexers = new Map<string, RemoteRuntimeTerminalMultiplexer>()
 
+// Why: a removed or replaced machine's streams end for good, before its new revision is published.
+onRuntimeEnvironmentsRetired((environmentIds) => {
+  for (const environmentId of environmentIds) {
+    multiplexers.get(environmentId)?.closeForEnvironmentRetirement()
+  }
+})
+
 // Why: a stream opened before main re-paired stays open but sendFrame refuses its stale revision,
-// so input would vanish silently; closing it as recoverable makes each pane rebind on the new pairing.
+// so input would vanish silently; a recoverable close lets each pane rebind, and the pane itself
+// only follows the new pairing once it is proven to be the same machine.
 onRuntimeEnvironmentRevisionsChanged((environmentIds) => {
   for (const environmentId of environmentIds) {
     const multiplexer = multiplexers.get(environmentId)
