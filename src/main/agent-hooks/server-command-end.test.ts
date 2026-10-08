@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from './server'
-import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
+import { buildBody, LEAF_2, PANE, postHookEvent } from './server.test-fixtures'
+import { makePaneKey } from '../../shared/stable-pane-id'
 import { wslHookRelayConnectionId } from '../../shared/wsl-hook-relay-contract'
 import type { CommandForeground } from '../../shared/command-foreground-tracker'
 
@@ -221,5 +222,30 @@ describe('the host ending the agent a finished command ran', () => {
     await post('UserPromptSubmit', { prompt: 'next task' })
     expect(row(server)).toMatchObject({ prompt: 'next task' })
     expect(attest()).toBeNull()
+  })
+
+  it("keeps an ended launch's token fenced when its pane moves to another tab", async () => {
+    const server = await createServer()
+    const movedPane = makePaneKey('tab-2', LEAF_2)
+    const tokenHash = createHash('sha256').update('launch-token').digest('hex')
+    const post = async (event: string, extra = {}) => {
+      const body = buildBody(
+        { hook_event_name: event, session_id: 'codex-x', ...extra },
+        { launchToken: 'launch-token' }
+      )
+      expect((await postHookEvent(server, body, '/hook/codex')).status).toBe(204)
+    }
+    await post('UserPromptSubmit', { prompt: 'codex task' })
+    server.endLaunchAuthority(PANE)
+    server.transferPaneAuthority(PANE, movedPane, 'pty-moved')
+    await post('UserPromptSubmit', { prompt: 'next task' })
+    expect(
+      server.attestCompatibilityAuthority({
+        paneKey: movedPane,
+        launchTokenHash: tokenHash,
+        connectionId: null,
+        terminalProvenance: 'current_runtime'
+      })
+    ).toBeNull()
   })
 })
