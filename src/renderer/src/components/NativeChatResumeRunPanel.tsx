@@ -7,7 +7,7 @@ import { resumeRunInFlight, type ResumeRun } from './native-chat-resume-run'
 import { resumeRunView, type ResumeRunFilter } from './native-chat-resume-run-view'
 import { ResumeRunStatusIcon } from './NativeChatResumeRunStatusIcon'
 import { ResumeRunSummary } from './NativeChatResumeRunSummary'
-import { useResumeRunStartPhases } from './use-resume-run-start-phases'
+import { useResumeRunStatusFeed } from './use-resume-run-status-feed'
 
 /**
  * The dialog's view of a run it is following: its title, the progress line and filters, the rows
@@ -26,6 +26,13 @@ export type ResumeRunPanel = {
 
 function runTitle(run: ResumeRun, total: number, resumed: number): React.ReactNode {
   if (!resumeRunInFlight(run)) {
+    if (total === 1) {
+      return translate(
+        'auto.components.NativeChatResumeRunPanel.resumedTitleOne',
+        'Resumed {{value0}} of 1 chat',
+        { value0: resumed }
+      )
+    }
     return translate(
       'auto.components.NativeChatResumeRunPanel.resumedTitle',
       'Resumed {{value0}} of {{value1}} chats',
@@ -68,13 +75,19 @@ export function useResumeRunPanel({
   const inFlight = run !== null && resumeRunInFlight(run)
   // Ticks only while a visible run is moving: the row timers and the running clock read it.
   const now = useNow(1000, open && inFlight)
-  const view = run ? resumeRunView(run, rows, failureFor, filter.value) : null
+  const hostStatusFor = useResumeRunStatusFeed(
+    inFlight && run ? run.entries.map((entry) => entry.candidate.sessionId) : []
+  )
+  const view = run ? resumeRunView(run, rows, failureFor, filter.value, hostStatusFor) : null
   const inFlightIds = view
     ? [...view.statusBySession].flatMap(([sessionId, status]) =>
         status.kind === 'in-flight' ? [sessionId] : []
       )
     : []
-  const phaseFor = useResumeRunStartPhases(inFlightIds)
+  const phaseFor = (sessionId: string) => {
+    const status = view?.statusBySession.get(sessionId)
+    return status?.kind === 'in-flight' ? status.phase : null
+  }
   if (!run || !view) {
     return null
   }

@@ -194,7 +194,7 @@ it('waits for a resume in flight instead of re-reading under it', async () => {
   await vi.advanceTimersByTimeAsync(500)
   expect(offerReads()).toBe(1)
 
-  // The resume's own read of what is left, once the chat answered, is the only one.
+  // The action reply carries the remaining list, so no extra read is needed.
   failed = []
   acting.resolve({
     sessions: [],
@@ -202,6 +202,6 @@ it('waits for a resume in flight instead of re-reading under it', async () => {
     continued: [{ sessionId: 'a', outcome: 'continued' }]
   })
   await retry
-  expect(offerReads()).toBe(2)
+  expect(offerReads()).toBe(1)
   expect(getNativeChatRestartOffer().failed).toEqual([])
 })

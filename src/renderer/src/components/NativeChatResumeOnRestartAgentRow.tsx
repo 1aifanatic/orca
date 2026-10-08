@@ -119,7 +119,7 @@ export function ResumeCandidateRow({
       {content}
     </label>
   )
-  if (!failure) {
+  if (!failure || status) {
     return <li>{row}</li>
   }
   const act = (action: ResumeFailureAction) => onFailureAction?.(action, candidate.sessionId)

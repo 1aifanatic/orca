@@ -17819,7 +17819,8 @@
         "resumedTitle": "Resumed {{value0}} of {{value1}} chats",
         "resumingTitleOne": "Resuming 1 chat",
         "resumingTitle": "Resuming {{value0}} chats",
-        "description": "Each chat is restored with its full context and asked to check where it stopped. You can close this; the status bar keeps track."
+        "description": "Each chat is restored with its full context and asked to check where it stopped. You can close this; the status bar keeps track.",
+        "resumedTitleOne": "Resumed {{value0}} of 1 chat"
       },
       "NativeChatResumeRunStatusIcon": {
         "waitingForReply": "Waiting for a reply",

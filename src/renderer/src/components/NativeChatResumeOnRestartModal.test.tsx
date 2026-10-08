@@ -1,186 +1,52 @@
 // @vitest-environment happy-dom
-
+import {
+  createResumeModalFixture,
+  offered,
+  failure,
+  type RestartRpc,
+  type ResumeStatusStream
+} from './native-chat-resume-modal.test-support'
 import { act, StrictMode } from 'react'
 import { toast } from 'sonner'
-import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { expect, it, vi, type Mock } from 'vitest'
 import { useAppStore } from '../store'
 import { getDefaultSettings } from '../../../shared/constants'
 import { NativeChatResumeOnRestartModal } from './NativeChatResumeOnRestartModal'
 import { NativeChatResumeStatusSegment } from './status-bar/NativeChatResumeStatusSegment'
-import { TooltipProvider } from './ui/tooltip'
 import { lastToastShow } from './native-chat-resume-toast.test-support'
-import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
 import {
-  consumeNativeChatResumeOnRestartDialogRequest,
   getNativeChatResumeOnRestartDialogRequest,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 import {
-  _resetNativeChatRestartOffer,
   getNativeChatRestartOffer,
   refreshNativeChatRestartOffer
 } from './native-chat-resume-on-restart-store'
 
-const rpc = vi.hoisted(() => vi.fn())
-const activate = vi.hoisted(() => vi.fn(async () => true))
+const rpc: Mock<RestartRpc> = vi.hoisted(() => vi.fn<RestartRpc>())
+const statusStream: ResumeStatusStream = vi.hoisted(() => ({
+  emit: (_event: Parameters<ResumeStatusStream['emit']>[0]) => {},
+  snapshot: new Map()
+}))
+const activate: Mock<() => Promise<boolean>> = vi.hoisted(() => vi.fn(async () => true))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: rpc,
-  // A failed row opens the status feed; these cases never drive it.
-  subscribeStructuredAgentSessionStatus: () => new Promise(() => {})
+  subscribeStructuredAgentSessionStatus: async (
+    _target: unknown,
+    emit: (event: Parameters<ResumeStatusStream['emit']>[0]) => void
+  ) => {
+    statusStream.emit = emit
+    emit({ type: 'snapshot', sessions: [...statusStream.snapshot.values()] })
+    return { unsubscribe: () => {} }
+  }
 }))
 vi.mock('@/lib/activate-ai-vault-structured-session', () => ({
   activateAiVaultStructuredSession: activate
 }))
 vi.mock('sonner', () => ({ toast: vi.fn() }))
 
-globalThis.IS_REACT_ACT_ENVIRONMENT = true
-let root: Root
-let container: HTMLDivElement
-const offered: ResumeCandidate[] = ['a', 'b'].map((sessionId) => ({
-  sessionId,
-  workspaceId: 'workspace',
-  agent: 'codex',
-  trigger: 'quit',
-  latestPrompt: `Prompt ${sessionId}`,
-  recordedAt: 1_800_000_000_000,
-  executionHostId: 'local',
-  workspaceKind: 'git-worktree'
-}))
-
-/** A chat the host acted on and could not carry on, as it reports it. */
-function failure(
-  sessionId: string,
-  reason = 'agent_session_restart_work_superseded'
-): ResumeFailure {
-  const candidate = offered.find((entry) => entry.sessionId === sessionId)!
-  return {
-    ...candidate,
-    failedAt: candidate.recordedAt + 60_000,
-    outcome: 'refused',
-    reason
-  }
-}
-
-/** Outcome rows carry tooltips, so every mount needs the provider the app shell supplies. */
-async function mount(node: React.ReactNode): Promise<void> {
-  await act(async () => root.render(<TooltipProvider>{node}</TooltipProvider>))
-}
-
-function button(text: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll('button')].find(
-    (entry) => entry.textContent?.trim() === text || entry.getAttribute('aria-label') === text
-  )
-  if (!found) {
-    throw new Error(`Missing button: ${text}`)
-  }
-  return found
-}
-
-function checkbox(index: number): HTMLElement {
-  const found = document.querySelectorAll<HTMLElement>('[role="checkbox"]')[index]
-  if (!found) {
-    throw new Error(`Missing checkbox: ${index}`)
-  }
-  return found
-}
-
-function offerIds(): string[] {
-  return getNativeChatRestartOffer().candidates.map((candidate) => candidate.sessionId)
-}
-
-/** What each toast said: its title, and its description when it has one. */
-function toasts(): unknown[][] {
-  return vi
-    .mocked(toast)
-    .mock.calls.map(([title, options]) =>
-      options?.description === undefined ? [title] : [title, options.description]
-    )
-}
-
-type Verdict = 'continued' | 'refused' | 'unknown' | 'skipped'
-
-/**
- * The host as these cases need it: what it lists, and what resuming ONE chat does to that list.
- * The client resumes each chat with its own request; `hold` keeps a chat's answer back.
- */
-function fakeHost(
-  init: { sessions?: ResumeCandidate[]; failed?: ResumeFailure[] } = {},
-  verdictFor: (sessionId: string) => Verdict = () => 'continued',
-  reason = 'agent_session_restart_work_superseded'
-) {
-  const state = { sessions: [...(init.sessions ?? offered)], failed: [...(init.failed ?? [])] }
-  const held = new Map<string, PromiseWithResolvers<void>>()
-  rpc.mockImplementation(async (_target, method, params: { sessionIds?: string[] } | undefined) => {
-    if (method === 'agentSession.restartResumable') {
-      return { sessions: state.sessions, failed: state.failed }
-    }
-    const [sessionId] = params?.sessionIds ?? []
-    await held.get(sessionId!)?.promise
-    const verdict = verdictFor(sessionId!)
-    if (verdict === 'skipped') {
-      return { resumed: [], continued: [], sessions: state.sessions, failed: state.failed }
-    }
-    state.sessions = state.sessions.filter((entry) => entry.sessionId !== sessionId)
-    state.failed = state.failed.filter((entry) => entry.sessionId !== sessionId)
-    if (verdict !== 'continued') {
-      const outcome = verdict === 'refused' ? 'refused' : 'unconfirmed'
-      state.failed.push({ ...failure(sessionId!, reason), outcome })
-    }
-    return {
-      resumed: [{ sessionId, outcome: 'resumed' }],
-      continued: [{ sessionId, outcome: verdict }],
-      sessions: state.sessions,
-      failed: state.failed
-    }
-  })
-  return {
-    state,
-    hold: (...sessionIds: string[]) =>
-      sessionIds.forEach((sessionId) => held.set(sessionId, Promise.withResolvers<void>())),
-    release: async (...sessionIds: string[]) =>
-      act(async () => sessionIds.forEach((sessionId) => held.get(sessionId)?.resolve()))
-  }
-}
-
-/** The status icon a run shows in a chat's checkbox slot, found by its chat and what it says. */
-function runStatus(prompt: string): string | null {
-  return (
-    document.querySelector(`[role="img"][aria-label^="${prompt}: "]`)?.getAttribute('aria-label') ??
-    null
-  )
-}
-
-function calls(): unknown[][] {
-  return rpc.mock.calls.map((call) => [call[1], call[2]])
-}
-
-beforeEach(() => {
-  rpc.mockReset()
-  _resetNativeChatRestartOffer()
-  consumeNativeChatResumeOnRestartDialogRequest()
-  vi.mocked(toast).mockClear()
-  useAppStore.setState(useAppStore.getInitialState(), true)
-  useAppStore.setState({
-    settings: { ...getDefaultSettings(''), experimentalStructuredNativeChat: true },
-    updateSettings: async (changes) => {
-      useAppStore.setState((state) => ({
-        settings: { ...getDefaultSettings(''), ...state.settings, ...changes }
-      }))
-    }
-  })
-  container = document.createElement('div')
-  document.body.append(container)
-  root = createRoot(container)
-})
-
-afterEach(() => {
-  act(() => root.unmount())
-  container.remove()
-  useAppStore.setState(useAppStore.getInitialState(), true)
-  _resetNativeChatRestartOffer()
-  consumeNativeChatResumeOnRestartDialogRequest()
-})
+const { mount, button, checkbox, offerIds, toasts, fakeHost, runStatus, calls } =
+  createResumeModalFixture(rpc, statusStream)
 
 it('keeps next-launch preference out of the current resume action', async () => {
   const host = fakeHost()
@@ -195,8 +61,8 @@ it('keeps next-launch preference out of the current resume action', async () => 
     ['agentSession.restartContinue', { sessionIds: ['a'] }]
   ])
   await host.release('a')
-  // One read of what is left once the chat answered; nothing else is sent.
-  expect(calls().slice(2)).toEqual([['agentSession.restartResumable', undefined]])
+  // The reply already carries the remaining list.
+  expect(calls().slice(2)).toEqual([])
 })
 
 // One primary action and one way out of it; the body copy carries the transparency.
@@ -457,12 +323,10 @@ it('resumes and continues once when the launch begins opted in', async () => {
   await act(async () =>
     useAppStore.getState().updateSettings({ experimentalStructuredNativeChat: true })
   )
-  // One request per chat, so each answers on its own; then one read of what is left.
+  // One bulk action, with its remaining list in the reply.
   expect(calls()).toEqual([
     ['agentSession.restartResumable', undefined],
-    ['agentSession.restartContinue', { sessionIds: ['a'] }],
-    ['agentSession.restartContinue', { sessionIds: ['b'] }],
-    ['agentSession.restartResumable', undefined]
+    ['agentSession.restartContinue', { sessionIds: ['a', 'b'] }]
   ])
   // Answered once, as a click is, however often the settings above re-render the surfaces.
   expect(toasts()).toEqual([['Resumed 2 chats']])
@@ -525,7 +389,7 @@ it('dispatches the selected action while a future preference save is still pendi
   await act(async () => button('Resume 1 chat').click())
   expect(calls()).toContainEqual(['agentSession.restartContinue', { sessionIds: ['a'] }])
   await act(async () => saved.reject(new Error('settings write failed')))
-  expect(rpc).toHaveBeenCalledTimes(3)
+  expect(rpc).toHaveBeenCalledTimes(2)
 })
 
 // The click gets one toast; the host's failure list stays in the status bar. Both keep an unconfirmed
@@ -546,8 +410,8 @@ it.each([
     await act(async () => button('Resume 2 chats').click())
     expect(button(label)).toBeTruthy()
     expect(toasts()).toEqual([[said]])
-    // A read, one request per chat, and one read of what is left.
-    expect(rpc).toHaveBeenCalledTimes(4)
+    // One offer read and one bulk action.
+    expect(rpc).toHaveBeenCalledTimes(2)
   }
 )
 
@@ -601,8 +465,7 @@ it('reports the chats a lost resume request named once, as failed, until it is r
   // A lost action response is followed by a read-only reconciliation, never a retry.
   expect(calls()).toEqual([
     ['agentSession.restartResumable', undefined],
-    ['agentSession.restartContinue', { sessionIds: ['a'] }],
-    ['agentSession.restartContinue', { sessionIds: ['b'] }],
+    ['agentSession.restartContinue', { sessionIds: ['a', 'b'] }],
     ['agentSession.restartResumable', undefined]
   ])
   expect(document.querySelector('[role="dialog"]')).toBeNull()
@@ -627,10 +490,7 @@ it('reports the chats a lost resume request named once, as failed, until it is r
     'Orca couldn’t resume this chat. Open it to continue manually.'
   )
   await act(async () => button('Retry').click())
-  expect(calls().slice(-2)).toEqual([
-    ['agentSession.restartContinue', { sessionIds: ['b'] }],
-    ['agentSession.restartResumable', undefined]
-  ])
+  expect(calls().at(-1)).toEqual(['agentSession.restartContinue', { sessionIds: ['b'] }])
   expect(getNativeChatRestartOffer()).toMatchObject({ candidates: [], failed: [] })
   expect(toasts().at(-1)).toEqual(['Resumed 1 chat'])
 })
@@ -749,7 +609,7 @@ it.each(['footer', 'row'] as const)(
     } else {
       // A row action leaves the dialog open, where the retried chat shows how it went.
       expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-        'Resumed 1 of 1 chats'
+        'Resumed 1 of 1 chat'
       )
       expect(runStatus('Prompt b')).toBe('Prompt b: Resumed')
     }

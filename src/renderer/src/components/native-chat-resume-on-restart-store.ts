@@ -13,11 +13,9 @@ import {
   type ResumeFailure
 } from './native-chat-resume-on-restart-grouping'
 import {
-  beginResumeRunEntries,
+  beginResumeRun,
   resumeRunInFlight,
   resumeRunPendingIds,
-  resumeRunResultOf,
-  settleResumeRunEntry,
   type ResumeRun
 } from './native-chat-resume-run'
 import {
@@ -205,51 +203,7 @@ export async function reopenNativeChatRestartOffer(): Promise<void> {
   }
 }
 
-/** One chat's own answer; a request lost before reaching the host is marked unsent. `listed`: the
- *  answer carried the host's failure list, without which "no longer failed" proves nothing. */
-type ChatAnswer = {
-  sessionId: string
-  continued: RestartContinuationOutcome[] | null
-  listed: boolean
-}
-
-async function continueOneChat(sessionId: string): Promise<ChatAnswer> {
-  try {
-    const result = await callStructuredAgentSession<
-      HostOfferPayload & { continued?: RestartContinuationOutcome[] }
-    >(LOCAL, 'agentSession.restartContinue', { sessionIds: [sessionId] })
-    const continued = Array.isArray(result.continued) ? result.continued : undefined
-    const failed = Array.isArray(result.failed) ? failedFrom(result) : undefined
-    setRun(settleResumeRunEntry(run, sessionId, resumeRunResultOf(sessionId, continued, failed)))
-    // An answer without outcomes may still have sent the message, so it counts as unconfirmed.
-    return {
-      sessionId,
-      continued: continued ?? [{ sessionId, outcome: 'unknown' }],
-      listed: failed !== undefined
-    }
-  } catch (error) {
-    // The row's reason is this side's own code, so the real error is kept in the log.
-    console.warn('[native-chat-resume] resume request failed before reaching the chat', error)
-    markUnsentResumes([sessionId], Date.now())
-    setRun(settleResumeRunEntry(run, sessionId, 'refused'))
-    return { sessionId, continued: null, listed: true }
-  }
-}
-
-/**
- * Reattach the named chats, ask each agent to carry on, then replace the offer with the host's
- * authoritative remaining list. This keeps the modal and status bar synchronized after every
- * action, even when the dialog's snapshot became stale while it was open.
- *
- * Each chat is its OWN request, so its row settles when its agent answers, not when the slowest in
- * the batch does. The host still staggers starts, with one limit across every request, and still
- * re-derives eligibility for each chat it is named.
- *
- * Ends in one toast saying what it did across those chats, whether a click or an opted-in launch
- * started it; each chat's note stays the record. Never rejects; a lost answer is followed by a
- * re-read, never a retry. A chat whose request was lost and the host still offers shows as failed,
- * with Retry.
- */
+/** One host action owns the selection; its status feed reports each chat before the reply. */
 export async function continueNativeChatRestartOffer(sessionIds: readonly string[]): Promise<void> {
   const requested = [...new Set(sessionIds)]
   if (requested.length === 0) {
@@ -258,33 +212,48 @@ export async function continueNativeChatRestartOffer(sessionIds: readonly string
   actionsBegun += 1
   forgetUnsentResumes(requested)
   const rows = new Map([...offer.candidates, ...offer.failed].map((row) => [row.sessionId, row]))
-  setRun(
-    beginResumeRunEntries(
-      run,
-      requested.flatMap((sessionId) => rows.get(sessionId) ?? []),
-      Date.now()
-    )
+  const actionRun = beginResumeRun(
+    requested.flatMap((sessionId) => rows.get(sessionId) ?? []),
+    Date.now()
   )
-  // `resuming` now names the chats, so the launch's one resume decision is made.
+  setRun(actionRun)
   markNativeChatLaunchResumeDecided()
-  let listed: readonly ResumeFailure[] | undefined
-  const answers = await Promise.all(requested.map(continueOneChat))
+  let outcome: Parameters<typeof announceRestartResults>
+  let continued: readonly RestartContinuationOutcome[] | undefined
   try {
+    const result = await callStructuredAgentSession<
+      HostOfferPayload & { continued?: RestartContinuationOutcome[] }
+    >(LOCAL, 'agentSession.restartContinue', { sessionIds: requested })
+    const listed = Array.isArray(result.failed) ? failedFrom(result) : undefined
+    if (Array.isArray(result.sessions)) {
+      publishAnswer({ candidates: result.sessions, failed: listed ?? [], listedAt: Date.now() })
+    } else {
+      await refreshNativeChatRestartOffer()
+    }
+    continued = result.continued
+    outcome = [requested, result.continued, listed, reopenNativeChatRestartOffer]
+  } catch (error) {
+    console.warn('[native-chat-resume] resume request failed before reaching the chats', error)
+    markUnsentResumes(requested, Date.now())
     const read = await readNativeChatRestartOffer()
-    listed = read.available && answers.every((answer) => answer.listed) ? offer.failed : undefined
+    outcome = [
+      requested,
+      [],
+      read.available ? offer.failed : undefined,
+      reopenNativeChatRestartOffer
+    ]
   } finally {
     actionsSettled += 1
-    // Nothing on screen can follow a finished run once the dialog is closed.
-    if (!resumeRunInFlight(run) && !getNativeChatResumeOnRestartDialogRequest()) {
-      setRun(null)
+    // Publish the offer first: reopening must never expose the old selection as actionable.
+    if (run === actionRun) {
+      setRun(
+        getNativeChatResumeOnRestartDialogRequest()
+          ? { ...actionRun, inFlight: false, continued }
+          : null
+      )
     }
   }
-  announceRestartResults(
-    requested,
-    answers.flatMap((answer) => answer.continued ?? []),
-    listed,
-    reopenNativeChatRestartOffer
-  )
+  announceRestartResults(...outcome)
 }
 
 /**
@@ -378,7 +347,7 @@ export function useNativeChatRestartResuming(): readonly string[] {
   return useSyncExternalStore(subscribe, getNativeChatRestartResuming, getNativeChatRestartResuming)
 }
 
-/** The run a reopened dialog follows: each chat it asked, and what each has answered so far. */
+/** The selection and reply history a reopened progress dialog follows. */
 export function useNativeChatRestartRun(): ResumeRun | null {
   return useSyncExternalStore(subscribe, getNativeChatRestartRun, getNativeChatRestartRun)
 }

@@ -17476,6 +17476,7 @@
       },
       "NativeChatResumeRunPanel": {
         "resumedTitle": "{{value1}} 件中 {{value0}} 件のチャットを再開しました",
+        "resumedTitleOne": "1 件中 {{value0}} 件のチャットを再開しました",
         "resumingTitleOne": "1 件のチャットを再開中",
         "resumingTitle": "{{value0}} 件のチャットを再開中",
         "description": "各チャットは全コンテキストとともに復元され、中断した箇所を確認するよう依頼されます。このダイアログは閉じても構いません。進行状況はステータスバーで確認できます。"

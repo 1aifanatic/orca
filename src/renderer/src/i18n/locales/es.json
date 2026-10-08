@@ -17475,6 +17475,7 @@
       },
       "NativeChatResumeRunPanel": {
         "resumedTitle": "Se reanudaron {{value0}} de {{value1}} chats",
+        "resumedTitleOne": "{{value0}} de 1 chat reanudado",
         "resumingTitleOne": "Reanudando 1 chat",
         "resumingTitle": "Reanudando {{value0}} chats",
         "description": "Cada chat se restaura con todo su contexto y se le pide que revise dónde se detuvo. Puedes cerrar esto; la barra de estado sigue el progreso."

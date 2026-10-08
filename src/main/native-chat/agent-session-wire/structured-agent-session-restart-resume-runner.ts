@@ -61,8 +61,7 @@ function resumeAdmissionOwner(error: unknown): string | null {
  * one row — and both would otherwise send the continuation twice, and leave the loser's
  * refusal looking like a real failure. The second caller is told who holds it instead.
  *
- * The start limit lives here rather than per request because a client resumes each chat with its
- * own request, so each chat's answer arrives as soon as it has one.
+ * The start limit spans callers, so simultaneous actions share the same host budget.
  */
 export class StructuredAgentSessionResumeAdmission {
   private readonly owners = new Map<string, string>()
@@ -76,7 +75,12 @@ export class StructuredAgentSessionResumeAdmission {
     return this.owners.get(sessionId) ?? null
   }
 
-  async run<T>(sessionId: string, owner: string, task: () => Promise<T>): Promise<T> {
+  async run<T>(
+    sessionId: string,
+    owner: string,
+    task: () => Promise<T>,
+    onPhase?: (phase: 'queued' | 'starting') => void
+  ): Promise<T> {
     const live = this.owners.get(sessionId)
     if (live !== undefined) {
       throw new StructuredAgentSessionResumeInProgressError(live)
@@ -84,8 +88,10 @@ export class StructuredAgentSessionResumeAdmission {
     // Owned while it waits for a slot, so a second caller is told it is already on its way.
     this.owners.set(sessionId, owner)
     try {
+      onPhase?.('queued')
       const release = await this.starts.acquire(0)
       try {
+        onPhase?.('starting')
         return await task()
       } finally {
         release()
@@ -98,6 +104,8 @@ export class StructuredAgentSessionResumeAdmission {
 
 export type StructuredAgentSessionResumeRunnerDeps = {
   admission: StructuredAgentSessionResumeAdmission
+  onPhase?: (sessionId: string, phase: 'queued' | 'starting') => void
+  onRefused?: (sessionId: string) => void
   /** Validates this action's durable reservation. False means the candidate is no longer eligible. */
   consumeMarker: (sessionId: string) => Promise<boolean>
   /** Continues the reserved session; resolves once its agent took the message or refused it. */
@@ -110,7 +118,15 @@ export async function resumeStructuredAgentSessionsFromRestart(
   owner: string
 ): Promise<StructuredAgentSessionResumeOutcome[]> {
   // The admission's start limit staggers these, shared with every other resume on this host.
-  return Promise.all(candidates.map((candidate) => resumeOne(deps, candidate.sessionId, owner)))
+  return Promise.all(
+    candidates.map(async (candidate) => {
+      const outcome = await resumeOne(deps, candidate.sessionId, owner)
+      if (outcome.outcome === 'refused') {
+        deps.onRefused?.(candidate.sessionId)
+      }
+      return outcome
+    })
+  )
 }
 
 async function resumeOne(
@@ -119,19 +135,24 @@ async function resumeOne(
   owner: string
 ): Promise<StructuredAgentSessionResumeOutcome> {
   try {
-    return await deps.admission.run(sessionId, owner, async () => {
-      // Validate BEFORE provider acquisition. The durable reservation is removed only after the
-      // action succeeds, and a failed acquisition reopens it for the next explicit attempt.
-      if (!(await deps.consumeMarker(sessionId))) {
-        return {
-          sessionId,
-          outcome: 'refused' as const,
-          reason: STRUCTURED_AGENT_SESSION_RESUME_NOT_ELIGIBLE
+    return await deps.admission.run(
+      sessionId,
+      owner,
+      async () => {
+        // Validate BEFORE provider acquisition. The durable reservation is removed only after the
+        // action succeeds, and a failed acquisition reopens it for the next explicit attempt.
+        if (!(await deps.consumeMarker(sessionId))) {
+          return {
+            sessionId,
+            outcome: 'refused' as const,
+            reason: STRUCTURED_AGENT_SESSION_RESUME_NOT_ELIGIBLE
+          }
         }
-      }
-      await deps.resume(sessionId)
-      return { sessionId, outcome: 'resumed' as const }
-    })
+        await deps.resume(sessionId)
+        return { sessionId, outcome: 'resumed' as const }
+      },
+      (phase) => deps.onPhase?.(sessionId, phase)
+    )
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     const owner = resumeAdmissionOwner(error)

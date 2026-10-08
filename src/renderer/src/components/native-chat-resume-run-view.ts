@@ -1,5 +1,6 @@
 import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
 import type { ResumeRun } from './native-chat-resume-run'
+import type { ResumeRunHostStatus } from './use-resume-run-status-feed'
 
 /**
  * What the dialog shows while it follows a run: one row per chat, each with where it stands.
@@ -10,7 +11,7 @@ import type { ResumeRun } from './native-chat-resume-run'
 
 /** Where one chat of the run stands, as the leading icon shows it in place of the checkbox. */
 export type ResumeRunRowStatus =
-  | { kind: 'in-flight'; startedAt: number }
+  | { kind: 'in-flight'; startedAt: number; phase: 'starting' | 'ready' | null }
   | { kind: 'resumed' }
   | { kind: 'refused' }
   | { kind: 'unconfirmed' }
@@ -42,31 +43,44 @@ export function resumeRunView(
   run: ResumeRun,
   listed: readonly ResumeCandidate[],
   failureFor: (sessionId: string) => ResumeFailure | undefined,
-  filter: ResumeRunFilter
+  filter: ResumeRunFilter,
+  hostStatusFor: (sessionId: string) => ResumeRunHostStatus | undefined = () => undefined
 ): ResumeRunView {
   const listedById = new Map(listed.map((row) => [row.sessionId, row]))
+  const continuedBySession = new Map(
+    run.continued?.map((entry) => [entry.sessionId, entry.outcome])
+  )
   const statusBySession = new Map<string, ResumeRunRowStatus>()
   const placed: { row: ResumeCandidate; category: Category; index: number }[] = []
   const inRun = new Set<string>()
   for (const entry of run.entries) {
     const { sessionId } = entry.candidate
     inRun.add(sessionId)
-    if (entry.result === 'gone') {
-      continue
-    }
     const row = listedById.get(sessionId) ?? entry.candidate
-    if (entry.result === undefined) {
-      statusBySession.set(sessionId, { kind: 'in-flight', startedAt: entry.startedAt })
+    const failure = failureFor(sessionId)
+    const hostStatus = run.inFlight ? hostStatusFor(sessionId) : undefined
+    const phase = hostStatus?.restartResume?.phase
+    if (run.inFlight && (phase === undefined || phase === 'queued' || phase === 'starting')) {
+      const hostPhase = hostStatus?.hostExecutionPhase
+      statusBySession.set(sessionId, {
+        kind: 'in-flight',
+        startedAt: run.startedAt,
+        phase: phase === 'starting' ? (hostPhase === 'ready' ? 'ready' : 'starting') : null
+      })
       placed.push({ row, category: 'in-progress', index: placed.length })
-    } else if (entry.result === 'resumed') {
+    } else if (
+      phase === 'continued' ||
+      (!run.inFlight && !failure && continuedBySession.get(sessionId) === 'continued')
+    ) {
       statusBySession.set(sessionId, { kind: 'resumed' })
       placed.push({ row, category: 'resumed', index: placed.length })
-    } else {
-      // Until the host lists it, the run's own answer is all there is to show.
-      if (!failureFor(sessionId)) {
-        statusBySession.set(sessionId, { kind: entry.result })
-      }
+    } else if (run.inFlight && (phase === 'refused' || phase === 'unconfirmed')) {
+      statusBySession.set(sessionId, { kind: phase })
       placed.push({ row, category: 'attention', index: placed.length })
+    } else if (failure) {
+      placed.push({ row, category: 'attention', index: placed.length })
+    } else if (listedById.has(sessionId)) {
+      placed.push({ row, category: 'other', index: placed.length })
     }
   }
   for (const row of listed) {
@@ -76,7 +90,7 @@ export function resumeRunView(
     }
   }
   const count = (category: Category) => placed.filter((entry) => entry.category === category).length
-  const inRunCount = placed.filter((entry) => inRun.has(entry.row.sessionId)).length
+  const inRunCount = run.entries.length
   const inProgress = count('in-progress')
   return {
     rows: placed
