@@ -1,4 +1,5 @@
 import type { AgentHookEventPayload } from './agent-hook-listener/listener-event'
+import { isNewTurnEvent } from './agent-hook-listener/provider-event-routing'
 import {
   isSameAgentProcess,
   MAX_OWNER_HELD_SESSIONS,
@@ -202,9 +203,14 @@ export function transitionHookPresence(
     }
   }
   const ended = previous?.agentPresence?.ended ? previous.agentPresence : undefined
+  // Why: an ended owner's late hooks never revive it; only a new turn proves a new run of its type.
+  const lateFromEnded =
+    sameProcess(ended?.process, producer.process) ||
+    (ended?.agent === producer.agent &&
+      (!incoming.source || !isNewTurnEvent(incoming.source, incoming.hookEventName)))
   // Why: a producer nested inside another agent's session never takes an ownerless pane, so a
   // restart that brings both back cannot hand the pane to the nested one.
-  if (exit || sameProcess(ended?.process, producer.process) || producer.nestedIn.length > 0) {
+  if (exit || lateFromEnded || producer.nestedIn.length > 0) {
     return { kind: 'skip' }
   }
   if (!producer.agent) {

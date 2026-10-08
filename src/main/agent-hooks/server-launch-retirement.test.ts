@@ -88,6 +88,24 @@ describe('ending a launched agent command', () => {
     }
   )
 
+  it.each([['Stop'], ['PostToolUse']])(
+    'drops a late %s from a launch with no process, and revives on a new prompt',
+    async (late) => {
+      const server = await createServer()
+      await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
+      server.endLaunchAuthority(PANE, 'codex')
+      expect(row(server)).toMatchObject({ providerSessionOnly: true, agentType: 'codex' })
+      await codex(server, late, late === 'PostToolUse' ? toolUse : {})
+      expect(row(server)).toMatchObject({ providerSessionOnly: true })
+      await codex(server, 'UserPromptSubmit', { prompt: 'next task' })
+      expect(row(server)).toMatchObject({
+        state: 'working',
+        agentType: 'codex',
+        prompt: 'next task'
+      })
+    }
+  )
+
   it('keeps the remnant of a launch that already exited, in place', async () => {
     const server = await createServer()
     await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
