@@ -4072,6 +4072,10 @@
             "checkAriaOne": "恢复后有 1 个待检查的聊天。点击查看详情。",
             "checkAria": "恢复后有 {{value0}} 个待检查的聊天。点击查看详情。",
             "checkTooltip": "重启后 Orca 未能恢复或未能确认已恢复的聊天。点击查看详情。",
+            "resumingLabelOne": "正在恢复 1 个聊天",
+            "resumingLabel": "正在恢复 {{value0}} 个聊天",
+            "resumingAriaOne": "正在恢复 1 个聊天。点击查看详情。",
+            "resumingAria": "正在恢复 {{value0}} 个聊天。点击查看详情。",
             "resumingTooltip": "正在恢复中断的聊天并请它们继续…",
             "resumingProgressLabel": "正在恢复聊天 {{value0}}/{{value1}}",
             "resumingProgressAria": "正在恢复聊天，已完成 {{value0}}/{{value1}}。点击查看详情。"
@@ -17537,6 +17541,16 @@
         "activitySubagentMany": "{{value0}} 个子智能体运行中",
         "activityMonitorOne": "正在监控：{{value0}}",
         "activityMonitorMany": "正在监控 {{value0}} 个后台任务",
+        "selectWorkspace": "选择 {{value0}} 中的全部聊天",
+        "workspaceSelectedCount": "{{value0}}/{{value1}}",
+        "selectAll": "选择全部聊天",
+        "selectAllLabel": "选择全部",
+        "selectedCount": "已选择 {{value0}}/{{value1}}",
+        "selectProject": "选择 {{value0}} 中的全部聊天",
+        "collapseNode": "折叠 {{value0}}",
+        "expandNode": "展开 {{value0}}",
+        "selectMachine": "选择 {{value0}} 上的全部聊天",
+        "sshHost": "SSH",
         "done": "完成"
       },
       "linear-issue-attribute-filter-coverage-notice": {

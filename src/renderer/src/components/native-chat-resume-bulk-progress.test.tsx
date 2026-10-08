@@ -9,6 +9,7 @@ import {
 import { act } from 'react'
 import { expect, it, vi, type Mock } from 'vitest'
 import { NativeChatResumeOnRestartModal } from './NativeChatResumeOnRestartModal'
+import { chatBox } from './native-chat-resume-on-restart-modal.test-support'
 import { NativeChatResumeStatusSegment } from './status-bar/NativeChatResumeStatusSegment'
 import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
@@ -40,7 +41,7 @@ vi.mock('@/lib/activate-ai-vault-structured-session', () => ({
 }))
 vi.mock('sonner', () => ({ toast: vi.fn() }))
 
-const { mount, button, checkbox, offerIds, toasts, fakeHost, runStatus } = createResumeModalFixture(
+const { mount, button, offerIds, toasts, fakeHost, runStatus } = createResumeModalFixture(
   rpc,
   statusStream
 )
@@ -132,7 +133,7 @@ it('publishes a refusal reply without needing a second host read', async () => {
     }
   })
   await mount(<NativeChatResumeOnRestartModal />)
-  await act(async () => checkbox(1).click())
+  await act(async () => chatBox('b').click())
   await act(async () => button('Resume 1 chat').click())
   expect(reads).toBe(1)
   expect(offerIds()).toEqual(['b'])

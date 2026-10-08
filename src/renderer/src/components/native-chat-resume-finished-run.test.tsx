@@ -20,6 +20,7 @@ import {
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 import { useAppStore } from '../store'
+import { chatBox, namedBox } from './native-chat-resume-on-restart-modal.test-support'
 
 const rpc: Mock<RestartRpc> = vi.hoisted(() => vi.fn<RestartRpc>())
 const statusStream: ResumeStatusStream = vi.hoisted(() => ({
@@ -133,6 +134,25 @@ it('replaces the finished summary when Retry starts a new run', async () => {
   expect(dialog()).not.toContain('Prompt a')
   await host.release('b')
   expect(dialog()).toContain('Resumed 0 of 1 chat')
+})
+
+it('selects only current offers from a workspace that also contains finished run history', async () => {
+  const host = fakeHost()
+  await mountSurfaces()
+  await act(async () => chatBox('b').click())
+  await act(async () => button('Resume 1 chat').click())
+  await act(async () => lastToastShow()?.())
+  const workspace = namedBox('Select all chats in workspace')
+  expect(workspace.closest('label')?.textContent).toContain('1 of 1')
+  expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
+  await act(async () => workspace.click())
+  expect(chatBox('b').getAttribute('aria-checked')).toBe('false')
+  await act(async () => workspace.click())
+  expect(button('Resume 1 chat').disabled).toBe(false)
+  host.hold('b')
+  await act(async () => button('Resume 1 chat').click())
+  expect(rpc.mock.calls.at(-1)?.[2]).toEqual({ sessionIds: ['b'] })
+  await host.release('b')
 })
 
 it('does not consume a finished run if its requested view never rendered', async () => {

@@ -15,6 +15,11 @@ import { NativeChatResumeOnRestartModal } from './NativeChatResumeOnRestartModal
 import { NativeChatResumeStatusSegment } from './status-bar/NativeChatResumeStatusSegment'
 import { lastToastShow } from './native-chat-resume-toast.test-support'
 import {
+  chatBox,
+  chatBoxes,
+  dontAskAgain
+} from './native-chat-resume-on-restart-modal.test-support'
+import {
   getNativeChatResumeOnRestartDialogRequest,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
@@ -45,15 +50,17 @@ vi.mock('@/lib/activate-ai-vault-structured-session', () => ({
 }))
 vi.mock('sonner', () => ({ toast: vi.fn() }))
 
-const { mount, button, checkbox, offerIds, toasts, fakeHost, runStatus, calls } =
-  createResumeModalFixture(rpc, statusStream)
+const { mount, button, offerIds, toasts, fakeHost, runStatus, calls } = createResumeModalFixture(
+  rpc,
+  statusStream
+)
 
 it('keeps next-launch preference out of the current resume action', async () => {
   const host = fakeHost()
   host.hold('a')
   await mount(<NativeChatResumeOnRestartModal />)
-  await act(async () => checkbox(1).click())
-  await act(async () => checkbox(2).click())
+  await act(async () => chatBox('b').click())
+  await act(async () => dontAskAgain().click())
   await act(async () => button('Resume 1 chat').click())
   expect(useAppStore.getState().settings?.nativeChatResumeWorkOnRestart).toBe(true)
   expect(calls()).toEqual([
@@ -69,8 +76,10 @@ it('keeps next-launch preference out of the current resume action', async () => 
 it('offers exactly Dismiss all and the resume action', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(<NativeChatResumeOnRestartModal />)
-  // Row and preference checkboxes are buttons too; the controls are what is left after them.
-  const controls = document.querySelectorAll('[role="dialog"] button:not([role="checkbox"])')
+  // Checkboxes and tree arrows are buttons too; the controls are what is left after them.
+  const controls = document.querySelectorAll(
+    '[role="dialog"] button:not([role="checkbox"]):not([aria-expanded])'
+  )
   expect([...controls].map((entry) => entry.textContent?.trim())).toEqual([
     'Dismiss all',
     'Resume 2 chats',
@@ -104,7 +113,7 @@ it('says under each chat what it was doing when Orca went away', async () => {
 it('snoozes to the status-bar offer when the dialog is closed', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(<NativeChatResumeOnRestartModal />)
-  await act(async () => checkbox(2).click())
+  await act(async () => dontAskAgain().click())
   await act(async () => button('Close').click())
   expect(useAppStore.getState().settings?.nativeChatResumeWorkOnRestart).toBe(true)
   expect(rpc.mock.calls.map((call) => call[1])).toEqual(['agentSession.restartResumable'])
@@ -149,7 +158,7 @@ it('saves Don’t ask again when the offer is dismissed outright', async () => {
     method === 'agentSession.restartResumable' ? { sessions: offered } : { dismissed: 2 }
   )
   await mount(<NativeChatResumeOnRestartModal />)
-  await act(async () => checkbox(2).click())
+  await act(async () => dontAskAgain().click())
   await act(async () => button('Dismiss all').click())
   expect(useAppStore.getState().settings?.nativeChatResumeWorkOnRestart).toBe(true)
 })
@@ -176,7 +185,7 @@ it('never re-offers a resumed chat when the status entry reopens the dialog', as
       <NativeChatResumeStatusSegment iconOnly={false} />
     </>
   )
-  await act(async () => checkbox(1).click())
+  await act(async () => chatBox('b').click())
   await act(async () => button('Resume 1 chat').click())
   expect(offerIds()).toEqual(['b'])
   // The action closes the dialog itself; the status entry is the way back to what is left.
@@ -186,7 +195,7 @@ it('never re-offers a resumed chat when the status entry reopens the dialog', as
   expect(document.querySelector('[role="dialog"]')).not.toBeNull()
   expect(offerIds()).toEqual(['b'])
   // The resumed chat is history, while only the offered chat remains selectable.
-  expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
+  expect(chatBoxes()).toHaveLength(1)
   expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
 })
 
@@ -214,10 +223,15 @@ it('closes on Resume and shows the resume in the status bar until the host answe
   expect(rpc.mock.calls.length).toBe(reads)
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Resuming 2 chats')
   expect(button('Resuming…').disabled).toBe(true)
-  // Each chat being resumed shows a spinner where its checkbox was; only the preference box is left.
+  // Each chat being resumed shows a spinner where its checkbox was; tree nodes stay disabled.
   expect(runStatus('Prompt a')).toMatch(/^Prompt a: Waiting to start · \d+s$/)
   expect(runStatus('Prompt b')).toMatch(/^Prompt b: Waiting to start · \d+s$/)
-  expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(1)
+  expect(chatBoxes()).toHaveLength(0)
+  const status = document.querySelector('[role="img"][aria-label^="Prompt a: "]')
+  expect(status?.parentElement?.classList.contains('w-7')).toBe(true)
+  expect(status?.parentElement?.parentElement?.firstElementChild?.contains(status)).toBe(true)
+  expect(status?.closest('[role="treeitem"]')?.getAttribute('aria-level')).toBe('2')
+  expect(status?.closest('label')).toBeNull()
 
   // Each chat settles on its own answer, not when the slowest one does.
   await host.release('a')
@@ -250,7 +264,7 @@ it('keeps a dialog reopened mid-resume open over the chats still offered', async
       <NativeChatResumeStatusSegment iconOnly={false} />
     </>
   )
-  await act(async () => checkbox(2).click())
+  await act(async () => chatBox('c').click())
   await act(async () => button('Resume 2 chats').click())
   expect(document.querySelector('[role="dialog"]')).toBeNull()
   await act(async () => button('1 chat to resume').click())
@@ -269,19 +283,20 @@ it('keeps a dialog reopened mid-resume open over the chats still offered', async
   expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
   // The run is over, so the chat left out is actionable again, and this opening ticks it afresh.
   expect(button('Dismiss all').disabled).toBe(false)
+  expect(chatBox('c').getAttribute('data-state')).toBe('checked')
   expect(button('Resume 1 chat').disabled).toBe(false)
 })
 
 it('starts each opening from the default ticks, not the ones left at the last close', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(<NativeChatResumeOnRestartModal />)
-  await act(async () => checkbox(1).click())
+  await act(async () => chatBox('b').click())
   expect(button('Resume 1 chat')).toBeTruthy()
   await act(async () => button('Close').click())
   expect(document.querySelector('[role="dialog"]')).toBeNull()
 
   await act(async () => requestNativeChatResumeOnRestartDialog())
-  expect(checkbox(1).getAttribute('data-state')).toBe('checked')
+  expect(chatBox('b').getAttribute('data-state')).toBe('checked')
   expect(button('Resume 2 chats').disabled).toBe(false)
 })
 
@@ -291,7 +306,7 @@ it('starts each opening from the default ticks, not the ones left at the last cl
 it('settles the offer for the chats a resume reattached', async () => {
   fakeHost()
   await mount(<NativeChatResumeOnRestartModal />)
-  await act(async () => checkbox(1).click())
+  await act(async () => chatBox('b').click())
   await act(async () => button('Resume 1 chat').click())
   expect(offerIds()).toEqual(['b'])
 })
@@ -385,8 +400,8 @@ it('dispatches the selected action while a future preference save is still pendi
   useAppStore.setState({ updateSettings: () => saved.promise })
   fakeHost()
   await mount(<NativeChatResumeOnRestartModal />)
-  await act(async () => checkbox(1).click())
-  await act(async () => checkbox(2).click())
+  await act(async () => chatBox('b').click())
+  await act(async () => dontAskAgain().click())
   await act(async () => button('Resume 1 chat').click())
   expect(calls()).toContainEqual(['agentSession.restartContinue', { sessionIds: ['a'] }])
   await act(async () => saved.reject(new Error('settings write failed')))
@@ -540,9 +555,11 @@ it('keeps a lost resume request marked failed when its Dismiss fails', async () 
 
 /** Every button in the dialog, in order; row checkboxes are buttons too, so they are left out. */
 function dialogControls(): (string | null)[] {
-  return [...document.querySelectorAll('[role="dialog"] button:not([role="checkbox"])')].map(
-    (entry) => entry.textContent?.trim() || entry.getAttribute('aria-label')
-  )
+  return [
+    ...document.querySelectorAll(
+      '[role="dialog"] button:not([role="checkbox"]):not([aria-expanded])'
+    )
+  ].map((entry) => entry.textContent?.trim() || entry.getAttribute('aria-label'))
 }
 
 // The finished summary keeps successful chats alongside current failures and their actions.
@@ -559,7 +576,7 @@ it('lists a chat the resume could not carry on when the dialog reopens, with wha
   expect(dialog?.textContent).toContain("Don't ask again (resume automatically)")
   expect(dialog?.textContent).not.toContain('Dismiss failed')
   expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
-  expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
+  expect(chatBoxes()).toHaveLength(1)
   expect(document.querySelector('[aria-label="Prompt b: Couldn’t resume"]')).not.toBeNull()
   expect(dialog?.textContent).toContain('To resume:')
   expect(dialog?.textContent).toContain('Open the chat and reply.')
@@ -575,7 +592,7 @@ it('lists a chat the resume could not carry on when the dialog reopens, with wha
     'Close'
   ])
   // A retry cannot fix newer work in the chat, so it is not pre-selected for one.
-  expect(checkbox(0).getAttribute('data-state')).toBe('unchecked')
+  expect(chatBox('b').getAttribute('data-state')).toBe('unchecked')
 
   await act(async () => button('Open chat').click())
   expect(activate).toHaveBeenCalledWith({
@@ -601,7 +618,7 @@ it.each(['footer', 'row'] as const)(
       'Close it there, then retry.'
     )
     // A retry can fix an ownership clash, so the row starts selected.
-    expect(checkbox(0).getAttribute('data-state')).toBe('checked')
+    expect(chatBox('b').getAttribute('data-state')).toBe('checked')
 
     await act(async () => button(from === 'footer' ? 'Resume 1 chat' : 'Retry').click())
     expect(calls()).toContainEqual(['agentSession.restartContinue', { sessionIds: ['b'] }])
@@ -668,13 +685,13 @@ it('keeps a failure the host marks unretryable out of Resume, even after a tick'
   await mount(<NativeChatResumeOnRestartModal />)
   await act(async () => requestNativeChatResumeOnRestartDialog())
   // An older host sends no flag, and the row stays selectable as it always was.
-  expect(checkbox(0).hasAttribute('disabled')).toBe(false)
-  await act(async () => checkbox(0).click())
+  expect(chatBox('b').hasAttribute('disabled')).toBe(false)
+  await act(async () => chatBox('b').click())
   expect(button('Resume 1 chat').disabled).toBe(false)
 
   failed = [{ ...failure('b'), retryable: false }]
   await act(async () => void (await refreshNativeChatRestartOffer()))
-  expect(checkbox(0).hasAttribute('disabled')).toBe(true)
+  expect(chatBox('b').hasAttribute('disabled')).toBe(true)
   expect(button('Resume 0 chats').disabled).toBe(true)
   expect(button('Open chat').disabled).toBe(false)
 })
@@ -695,14 +712,14 @@ it('dismisses one failed chat by name, and every record through Dismiss all', as
   )
   await mount(<NativeChatResumeOnRestartModal />)
   await act(async () => requestNativeChatResumeOnRestartDialog())
-  expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(3)
+  expect(chatBoxes()).toHaveLength(2)
   await act(async () => button('Dismiss "Prompt a" in workspace').click())
   expect(rpc.mock.calls.at(-1)?.slice(1)).toEqual([
     'agentSession.restartResumableDismiss',
     { sessionIds: ['a'] }
   ])
   expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain('Prompt a')
-  expect(document.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
+  expect(chatBoxes()).toHaveLength(1)
   await act(async () => button('Dismiss all').click())
   expect(rpc.mock.calls.at(-1)?.slice(1)).toEqual(['agentSession.restartResumableDismiss', {}])
   expect(document.querySelector('[role="dialog"]')).toBeNull()

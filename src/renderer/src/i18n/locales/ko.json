@@ -4072,6 +4072,10 @@
             "checkAriaOne": "재개한 후 확인할 채팅 1개. 자세히 보려면 클릭하세요.",
             "checkAria": "재개한 후 확인할 채팅 {{value0}}개. 자세히 보려면 클릭하세요.",
             "checkTooltip": "다시 시작한 후 Orca가 재개하지 못했거나 재개했는지 확인하지 못한 채팅. 자세히 보려면 클릭하세요.",
+            "resumingLabelOne": "채팅 1개 재개 중",
+            "resumingLabel": "채팅 {{value0}}개 재개 중",
+            "resumingAriaOne": "채팅 1개 재개 중. 자세히 보려면 클릭하세요.",
+            "resumingAria": "채팅 {{value0}}개 재개 중. 자세히 보려면 클릭하세요.",
             "resumingTooltip": "중단된 채팅을 복원하고 계속하도록 요청하는 중…",
             "resumingProgressLabel": "채팅 재개 중 {{value0}}/{{value1}}",
             "resumingProgressAria": "채팅 재개 중, {{value1}}개 중 {{value0}}개 완료. 자세히 보려면 클릭하세요."
@@ -17537,6 +17541,16 @@
         "activitySubagentMany": "하위 에이전트 {{value0}}개 실행 중",
         "activityMonitorOne": "모니터링 중: {{value0}}",
         "activityMonitorMany": "백그라운드 작업 {{value0}}개 모니터링 중",
+        "selectWorkspace": "{{value0}}의 채팅 모두 선택",
+        "workspaceSelectedCount": "{{value0}}/{{value1}}",
+        "selectAll": "모든 채팅 선택",
+        "selectAllLabel": "모두 선택",
+        "selectedCount": "{{value1}}개 중 {{value0}}개 선택됨",
+        "selectProject": "{{value0}}의 채팅 모두 선택",
+        "collapseNode": "{{value0}} 접기",
+        "expandNode": "{{value0}} 확장",
+        "selectMachine": "{{value0}}의 채팅 모두 선택",
+        "sshHost": "SSH",
         "done": "완료"
       },
       "linear-issue-attribute-filter-coverage-notice": {
