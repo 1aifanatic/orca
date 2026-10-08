@@ -5,20 +5,23 @@ import type { RpcClient } from './rpc-client'
 const scopedViews = new WeakMap<RpcClient, Map<ExecutionHostId, RpcClient>>()
 
 /**
- * Whether calls about a workspace on `executionHost` may name it. Local and SSH workspaces are the
- * desktop's own; a `runtime:` one is reached only through a desktop that relays, over a transport
- * that keeps the field (a shell older than it would strip it and run the call on the desktop).
+ * Whether this phone can reach the desktop's servers: the desktop relays, over a transport that
+ * keeps `executionHost` (a shell older than it would strip it and run the call on the desktop).
  */
+export function relaysToServers(client: RpcClient, hostCapabilities: readonly string[]): boolean {
+  return (
+    hostCapabilities.includes(MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY) &&
+    (client.carriesExecutionHost?.() ?? true)
+  )
+}
+
+/** Local and SSH workspaces are the desktop's own; only a server's are named, and only if reachable. */
 export function canTargetExecutionHost(
   client: RpcClient,
   hostCapabilities: readonly string[],
   executionHost: ExecutionHostId | undefined
 ): executionHost is `runtime:${string}` {
-  return (
-    executionHost?.startsWith('runtime:') === true &&
-    hostCapabilities.includes(MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY) &&
-    (client.carriesExecutionHost?.() ?? true)
-  )
+  return executionHost?.startsWith('runtime:') === true && relaysToServers(client, hostCapabilities)
 }
 
 /**

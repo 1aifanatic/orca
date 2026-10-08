@@ -19,6 +19,25 @@ const WorktreeListSchema = z.object({
 })
 const CreatedTerminalSchema = z.object({ tab: z.looseObject({ terminal: z.string().nullable() }) })
 const SubscribedSchema = z.looseObject({ type: z.literal('subscribed'), streamId: z.number() })
+const HostsSchema = z.object({
+  hosts: z.array(z.looseObject({ hostId: z.string(), relay: z.string() }))
+})
+const HostWorktreesSchema = z.looseObject({
+  worktrees: z.array(
+    z.looseObject({ worktreeId: z.string(), path: z.string(), hostId: z.string() })
+  ),
+  stale: z.boolean()
+})
+
+let pollId = 0
+/** The server's rows as the phone lists them: through the desktop's own fetch. */
+async function hostWorktrees(socket: PairedMobileSocket, hostId: string) {
+  pollId += 1
+  const id = `host-worktrees-${pollId}`
+  socket.send(id, 'mobileRelay.hosts.worktrees', { hostId })
+  const listed = HostWorktreesSchema.safeParse((await reply(socket, id)).result)
+  return listed.success ? listed.data : null
+}
 
 async function reply(socket: PairedMobileSocket, id: string, timeout = 30_000): Promise<Frame> {
   let found: Frame | undefined
@@ -142,20 +161,31 @@ test('phone paired with a desktop lists, opens and types into a workspace on its
       .toMatch(/^runtime:/)
 
     const socket = await phone.openSocket()
-    // Untargeted calls stay the desktop's own, exactly as an older page sees them.
+    const status = await call(
+      socket,
+      { id: 'status', method: 'status.get', params: {} },
+      z.looseObject({ capabilities: z.array(z.string()) })
+    )
+    expect(status.capabilities).toContain('mobile.desktop-relay.v1')
+    // The desktop's own list stays its own, exactly as an older page sees it.
     const list = { method: 'worktree.ps', params: { limit: 1_000 } }
     const local = await call(socket, { id: 'ps-local', ...list }, WorktreeListSchema)
     expect(local.worktrees.map((row) => row.path)).toContain(testRepoPath)
     expect(local.worktrees.map((row) => row.path)).not.toContain(serverFolder)
 
-    const remote = await call(
+    const { hosts } = await call(
       socket,
-      { id: 'ps-server', ...list, executionHost: serverHostId },
-      WorktreeListSchema
+      { id: 'hosts', method: 'mobileRelay.hosts.list', params: {} },
+      HostsSchema
     )
-    const serverRow = remote.worktrees.find((row) => row.path === serverFolder)
+    expect(hosts).toContainEqual(expect.objectContaining({ hostId: serverHostId, relay: 'ready' }))
+    let listed: Awaited<ReturnType<typeof hostWorktrees>> = null
+    await expect
+      .poll(async () => (listed = await hostWorktrees(socket, serverHostId))?.stale)
+      .toBe(false)
+    const serverRow = listed!.worktrees.find((row) => row.path === serverFolder)
     expect(serverRow, 'the phone lists the server workspace through the desktop').toBeDefined()
-    expect(remote.worktrees.map((row) => row.path)).not.toContain(testRepoPath)
+    expect(new Set(listed!.worktrees.map((row) => row.hostId))).toEqual(new Set([serverHostId]))
 
     const relayed = await openTerminal(socket, serverRow!.worktreeId, serverHostId)
     await relayed.runMarker('MIRROR')
@@ -181,27 +211,39 @@ test('phone paired with a desktop lists, opens and types into a workspace on its
     }
 
     await host.restartServeProcess({
-      // The server is down: a relayed call fails as unavailable, never runs on the desktop instead.
       betweenProcesses: async () => {
+        // The server is down: its workspace stays listed, marked stale, never synthesized away.
+        await expect
+          .poll(
+            async () => {
+              const stale = await hostWorktrees(socket, serverHostId)
+              return (
+                stale?.stale === true && stale.worktrees.some((row) => row.path === serverFolder)
+              )
+            },
+            { timeout: 60_000, intervals: [1_000] }
+          )
+          .toBe(true)
+        // A relayed call fails as unavailable, and never runs on the desktop instead.
         socket.send('ps-stopped', 'worktree.ps', { limit: 1_000 }, serverHostId)
         const stopped = await reply(socket, 'ps-stopped', 60_000)
         expect(stopped.ok).toBe(false)
         expect(stopped.error?.code).toBe('remote_runtime_unavailable')
       }
     })
-    // Back up: the same phone socket reaches the restarted server again.
+    // Back up: the listing is fresh again, and the same phone socket reaches the server.
     await expect
-      .poll(
-        async () => {
-          const id = `ps-restarted-${performance.now()}`
-          socket.send(id, 'worktree.ps', { limit: 1_000 }, serverHostId)
-          const frame = await reply(socket, id, 30_000)
-          const listed = WorktreeListSchema.safeParse(frame.result)
-          return listed.success && listed.data.worktrees.some((row) => row.path === serverFolder)
-        },
-        { timeout: 90_000, intervals: [2_000] }
-      )
-      .toBe(true)
+      .poll(async () => (await hostWorktrees(socket, serverHostId))?.stale, {
+        timeout: 90_000,
+        intervals: [2_000]
+      })
+      .toBe(false)
+    const reopened = await call(
+      socket,
+      { id: 'ps-restarted', ...list, executionHost: serverHostId },
+      WorktreeListSchema
+    )
+    expect(reopened.worktrees.map((row) => row.path)).toContain(serverFolder)
   } finally {
     await dispose()
   }

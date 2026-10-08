@@ -6,6 +6,11 @@ import type { useForgetHostClient } from '../transport/client-context'
 import { removeHostAndCloseClient } from '../transport/host-removal-lifecycle'
 import { isPageHostRemovalUnavailable } from '../transport/page-host-removal-refusal'
 import type { RpcClient } from '../transport/rpc-client'
+import {
+  canTargetExecutionHost,
+  rpcClientForExecutionHost
+} from '../transport/execution-host-scoped-rpc-client'
+import { serverUpdateNeededNotice } from '../host-route-notice'
 import type { ConnectionState } from '../transport/types'
 import { setHostRouteNewWorktreeVisible } from '../host-route-action-state'
 import { leaveHostRoute } from '../host-route-exit'
@@ -20,6 +25,7 @@ export function useHostWorktreeActions(args: {
   embedded: boolean
   fetchWorktrees: (options?: { allowDuringModal?: boolean }) => Promise<void>
   forgetHostClient: ReturnType<typeof useForgetHostClient>
+  hostCapabilities: readonly string[]
   hostId: string | undefined
   pathname: string
   router: ReturnType<typeof useRouter>
@@ -31,6 +37,7 @@ export function useHostWorktreeActions(args: {
     embedded,
     fetchWorktrees,
     forgetHostClient,
+    hostCapabilities,
     hostId,
     pathname,
     router,
@@ -45,10 +52,18 @@ export function useHostWorktreeActions(args: {
     setLastKnownWorktrees,
     setOptimisticActiveWorktreeIdentity,
     setPinnedIds,
+    serverWorkspaces,
     setRouteActionState,
+    setServerNotice,
     setWorktrees,
     worktrees
   } = state
+
+  // Why: a server's workspace is acted on where it runs, through the desktop.
+  const clientForRow = useCallback(
+    (item: Worktree) => client && rpcClientForExecutionHost(client, hostCapabilities, item.hostId),
+    [client, hostCapabilities]
+  )
 
   const leaveHost = useCallback(() => {
     leaveHostRoute(router)
@@ -116,7 +131,8 @@ export function useHostWorktreeActions(args: {
 
   const handleDeleteWorktree = useCallback(
     async (item: Worktree) => {
-      if (!client) {
+      const rowClient = clientForRow(item)
+      if (!rowClient) {
         return
       }
 
@@ -125,7 +141,7 @@ export function useHostWorktreeActions(args: {
       setLastKnownWorktrees(removeFromList)
 
       try {
-        const reply = await worktreeRemove.request(client, {
+        const reply = await worktreeRemove.request(rowClient, {
           worktree: `id:${item.worktreeId}`,
           force: true
         })
@@ -139,7 +155,7 @@ export function useHostWorktreeActions(args: {
         setLastKnownWorktrees((prev) => [...prev, item])
       }
     },
-    [client, fetchWorktrees]
+    [clientForRow, fetchWorktrees]
   )
 
   const handleRemoveHost = useCallback(async () => {
@@ -186,10 +202,16 @@ export function useHostWorktreeActions(args: {
 
   const openWorktreeSession = useCallback(
     (item: Worktree) => {
+      const server = serverWorkspaces.hosts.find((host) => host.hostId === item.hostId)
+      if (server?.relay === 'update-needed') {
+        setServerNotice(serverUpdateNeededNotice(server.label))
+        return
+      }
       setOptimisticActiveWorktreeIdentity(getWorktreeRowIdentity(item))
-      if (client && connState === 'connected') {
+      const rowClient = clientForRow(item)
+      if (rowClient && connState === 'connected') {
         void worktreeActivate
-          .request(client, {
+          .request(rowClient, {
             worktree: `id:${item.worktreeId}`,
             notifyClients: false,
             navigation: 'caller'
@@ -199,13 +221,22 @@ export function useHostWorktreeActions(args: {
       // `?? ''` and not a cast: the hook takes `hostId` optional and every other member guards it,
       // so an absent one builds `/h//session/...` — a pathname the shell's segment rule refuses —
       // rather than the string "undefined", which it would accept as a host named undefined.
-      const executionHost = item.hostId?.startsWith('runtime:')
-        ? `&executionHost=${encodeURIComponent(item.hostId)}`
-        : ''
+      const executionHost =
+        client && canTargetExecutionHost(client, hostCapabilities, item.hostId)
+          ? `&executionHost=${encodeURIComponent(item.hostId)}`
+          : ''
       const target = `/h/${encodeURIComponent(hostId ?? '')}/session/${encodeURIComponent(item.worktreeId)}?name=${encodeURIComponent(item.displayName || item.repo)}${executionHost}`
       navigateFromHostList(target)
     },
-    [client, connState, hostId, navigateFromHostList]
+    [
+      client,
+      clientForRow,
+      connState,
+      hostCapabilities,
+      hostId,
+      navigateFromHostList,
+      serverWorkspaces
+    ]
   )
 
   const openFloatingWorkspace = useCallback(() => {
