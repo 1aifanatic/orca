@@ -54,12 +54,12 @@ async function readJobRecord(directory: string): Promise<MacDaemonJobRecord | nu
   }
 }
 
-/** Copies made before the `.noindex` folder sit directly in the runtime directory. */
+/** Copies made before the `.noindex` folder sit directly in the runtime directory; SPIKE adds `.bundle`. */
 async function copiedAppBundles(directory: string): Promise<string[]> {
   const bundles: string[] = []
   for (const parent of [directory, join(directory, MAC_DAEMON_BUNDLE_FOLDER)]) {
     for (const name of await readdir(parent).catch(() => [])) {
-      if (name.endsWith('.app')) {
+      if (name.endsWith('.app') || name.endsWith('.bundle')) {
         bundles.push(join(parent, name))
       }
     }

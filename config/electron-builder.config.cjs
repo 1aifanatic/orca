@@ -40,6 +40,10 @@ const {
   orcadTemplateMacSignIgnore
 } = require('./scripts/packaged-orcad-template.cjs')
 const { verifySkillsCliRuntime } = require('./scripts/verify-skills-cli-runtime.cjs')
+const {
+  assembleMacTerminalHostBundles,
+  macTerminalHostSignIgnore
+} = require('./scripts/macos-terminal-host-bundle.cjs')
 const { verifyStaticAppImagePackage } = require('./scripts/static-appimage-package-contract.cjs')
 const { signWindowsUninstallerViaSignPath } = require('./scripts/windows-uninstaller-signing.cjs')
 
@@ -182,6 +186,26 @@ const windowsRuntimeResources = existsSync(
 )
   ? createPackagedRuntimeNodeModuleResources('win32')
   : []
+
+// Shared with the terminal-host helper so its purpose strings cannot drift from the app's.
+const macUsageDescriptions = {
+  NSAppleEventsUsageDescription:
+    'Orca allows terminal-launched developer tools to automate local apps when you request it.',
+  NSBluetoothAlwaysUsageDescription:
+    'Orca allows terminal-launched developer tools to access Bluetooth devices when you request it.',
+  NSBluetoothPeripheralUsageDescription:
+    'Orca allows terminal-launched developer tools to access Bluetooth devices when you request it.',
+  NSCameraUsageDescription: "Application requests access to the device's camera.",
+  NSLocationUsageDescription:
+    'Orca allows terminal-launched developer tools to access location when you request it.',
+  NSLocalNetworkUsageDescription:
+    'Orca allows terminal-launched developer tools to discover and connect to local development servers when you request it.',
+  NSMicrophoneUsageDescription: "Application requests access to the device's microphone.",
+  NSAudioCaptureUsageDescription:
+    'Orca allows terminal-launched developer tools to capture desktop audio when you request it.',
+  NSBonjourServices: ['_http._tcp', '_https._tcp'],
+  ...MACOS_FOLDER_USAGE_DESCRIPTIONS
+}
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
@@ -459,6 +483,16 @@ module.exports = {
         'orca-keyboard-layout',
         context.packager
       )
+      // After the node_modules prune, so the helper copies this slice's node-pty.
+      await assembleMacTerminalHostBundles({
+        appPath: join(resourcesDir, '..', '..'),
+        arch: { 1: 'x64', 3: 'arm64' }[context.arch],
+        iconPath: resolve(__dirname, '../resources/build/icon.icns'),
+        entitlementsPath: resolve(__dirname, '../resources/build/entitlements.mac.plist'),
+        usageDescriptions: macUsageDescriptions,
+        signCode: (path, { entitlements }) =>
+          signMacStandaloneHelper(path, 'terminal host', context.packager, entitlements)
+      })
     }
   },
   win: {
@@ -543,25 +577,12 @@ module.exports = {
     icon: 'resources/build/icon.icns',
     entitlements: 'resources/build/entitlements.mac.plist',
     entitlementsInherit: 'resources/build/entitlements.mac.plist',
-    signIgnore: [...bundledRipgrepMacSignIgnore, ...orcadTemplateMacSignIgnore],
-    extendInfo: {
-      NSAppleEventsUsageDescription:
-        'Orca allows terminal-launched developer tools to automate local apps when you request it.',
-      NSBluetoothAlwaysUsageDescription:
-        'Orca allows terminal-launched developer tools to access Bluetooth devices when you request it.',
-      NSBluetoothPeripheralUsageDescription:
-        'Orca allows terminal-launched developer tools to access Bluetooth devices when you request it.',
-      NSCameraUsageDescription: "Application requests access to the device's camera.",
-      NSLocationUsageDescription:
-        'Orca allows terminal-launched developer tools to access location when you request it.',
-      NSLocalNetworkUsageDescription:
-        'Orca allows terminal-launched developer tools to discover and connect to local development servers when you request it.',
-      NSMicrophoneUsageDescription: "Application requests access to the device's microphone.",
-      NSAudioCaptureUsageDescription:
-        'Orca allows terminal-launched developer tools to capture desktop audio when you request it.',
-      NSBonjourServices: ['_http._tcp', '_https._tcp'],
-      ...MACOS_FOLDER_USAGE_DESCRIPTIONS
-    },
+    signIgnore: [
+      ...bundledRipgrepMacSignIgnore,
+      ...orcadTemplateMacSignIgnore,
+      ...macTerminalHostSignIgnore
+    ],
+    extendInfo: macUsageDescriptions,
     // Why: local macOS validation builds should launch without Apple release
     // credentials. Hardened runtime + notarization stay enabled only on the
     // explicit release path so production artifacts remain strict while dev
@@ -781,7 +802,7 @@ async function signMacComputerUseHelper(helperAppPath, packager) {
   })
 }
 
-async function signMacStandaloneHelper(helperPath, helperName, packager) {
+async function signMacStandaloneHelper(helperPath, helperName, packager, entitlements) {
   if (!existsSync(helperPath)) {
     if (isMacRelease) {
       throw new Error(`Missing ${helperName} helper at ${helperPath}`)
@@ -803,6 +824,9 @@ async function signMacStandaloneHelper(helperPath, helperName, packager) {
   const args = ['--force', '--sign', identity]
   if (isMacRelease) {
     args.push('--options', 'runtime', '--timestamp')
+  }
+  if (entitlements) {
+    args.push('--entitlements', entitlements)
   }
   args.push(helperPath)
   execFileSync('codesign', args, { stdio: 'inherit' })

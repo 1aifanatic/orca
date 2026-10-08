@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, realpath } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { mkdir, mkdtemp, realpath, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
 import { rm } from '../asar-transparent-fs'
@@ -6,11 +7,31 @@ import { ensurePrivateDir } from './daemon-private-file-modes'
 import { inspectMacProcessCodeIdentity } from './daemon-mac-code-identity'
 import { MAC_DAEMON_BUNDLE_FOLDER, writeMacDaemonJobRecord } from './macos-daemon-bundle-retirement'
 
+/** SPIKE: `app`/`bundle` run the slim Node helper of that extension; `off` copies the whole app. */
+export type MacTerminalHostVariant = 'app' | 'bundle' | 'off'
+
 export type MacDaemonBundle = {
   directory: string
   bundlePath: string
   execPath: string
   entryPath: string
+  variant: MacTerminalHostVariant
+}
+
+const TERMINAL_HOST_NAME = 'Orca Terminal Host'
+const TERMINAL_HOST_EXECUTABLE = 'orca-terminal-host'
+
+/** SPIKE: `<userData>/spike-terminal-host` picks the variant; missing or unknown means `app`. */
+export function readMacTerminalHostVariant(userDataPath: string): MacTerminalHostVariant {
+  try {
+    const value = readFileSync(join(userDataPath, 'spike-terminal-host'), 'utf8').trim()
+    if (value === 'bundle' || value === 'off') {
+      return value
+    }
+  } catch {
+    // Missing switch file selects the default.
+  }
+  return 'app'
 }
 
 function appBundleForMainExecutable(executable: string): string {
@@ -58,7 +79,16 @@ export async function materializeMacDaemonBundle(
   if (!running.executablePath) {
     throw new Error('Could not resolve the running macOS app bundle')
   }
-  const sourceBundle = await realpath(appBundleForMainExecutable(running.executablePath))
+  const runningBundle = await realpath(appBundleForMainExecutable(running.executablePath))
+  const variant = readMacTerminalHostVariant(userDataPath)
+  console.warn(`[daemon] SPIKE macOS terminal host variant: ${variant}`)
+  const sourceBundle =
+    variant === 'off'
+      ? runningBundle
+      : join(runningBundle, 'Contents', 'Helpers', `${TERMINAL_HOST_NAME}.${variant}`)
+  if (variant !== 'off' && !(await stat(sourceBundle).catch(() => null))?.isDirectory()) {
+    throw new Error('The running app has no macOS terminal host helper')
+  }
   const installedBundle = appBundleForMainExecutable(process.execPath)
   const entryRelativePath = relative(installedBundle, entryPath)
   if (
@@ -68,7 +98,8 @@ export async function materializeMacDaemonBundle(
   ) {
     throw new Error('The terminal daemon entry is outside the app bundle')
   }
-  const requirement = await codesignRequirement(sourceBundle, signal)
+  // The helper must carry the running app's designated requirement, so it inherits Orca's grants.
+  const requirement = await codesignRequirement(runningBundle, signal)
   const root = getMacDaemonBundleRoot(userDataPath)
   ensurePrivateDir(root)
   const directory = await mkdtemp(join(root, 'runtime-'))
@@ -108,11 +139,29 @@ export async function materializeMacDaemonBundle(
     ) {
       throw new Error('The copied macOS terminal runtime did not preserve the app signature')
     }
+    if (variant !== 'off') {
+      return {
+        directory,
+        bundlePath,
+        execPath: join(bundlePath, 'Contents', 'MacOS', TERMINAL_HOST_EXECUTABLE),
+        entryPath: join(
+          bundlePath,
+          'Contents',
+          'Resources',
+          'daemon',
+          'out',
+          'main',
+          'daemon-entry.js'
+        ),
+        variant
+      }
+    }
     return {
       directory,
       bundlePath,
       execPath: join(bundlePath, 'Contents', 'MacOS', basename(running.executablePath)),
-      entryPath: join(bundlePath, entryRelativePath)
+      entryPath: join(bundlePath, entryRelativePath),
+      variant
     }
   } catch (error) {
     // No process has been launched from this private copy yet.

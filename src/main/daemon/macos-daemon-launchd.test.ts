@@ -93,7 +93,8 @@ beforeEach(async () => {
     directory: join(state.root, 'runtime'),
     bundlePath: join(state.root, 'runtime', 'Orca.app'),
     execPath: join(state.root, 'runtime', 'Orca.app', 'Contents', 'MacOS', 'Orca'),
-    entryPath: join(state.root, 'runtime', 'Orca.app', 'Contents', 'Resources', 'daemon-entry.js')
+    entryPath: join(state.root, 'runtime', 'Orca.app', 'Contents', 'Resources', 'daemon-entry.js'),
+    variant: 'off'
   })
   ensureWithinMock.mockReset().mockResolvedValue(undefined)
   disconnectMock.mockReset()
@@ -153,6 +154,28 @@ it('launches the stable main executable and leaves no inherited credentials on d
       args: ['bootout', `gui/${process.getuid?.()}/com.stablyai.orca.terminal.owned-launch`]
     })
   )
+})
+
+it('SPIKE: runs the slim helper on plain Node with the installed entry path', async () => {
+  vi.stubEnv('ELECTRON_RUN_AS_NODE', '1')
+  const helper = join(state.root, 'runtime', 'Orca Terminal Host.app', 'Contents')
+  materializeMock.mockResolvedValue({
+    directory: join(state.root, 'runtime'),
+    bundlePath: join(state.root, 'runtime', 'Orca Terminal Host.app'),
+    execPath: join(helper, 'MacOS', 'orca-terminal-host'),
+    entryPath: join(helper, 'Resources', 'daemon', 'out', 'main', 'daemon-entry.js'),
+    variant: 'app'
+  })
+  await launchMacDaemonFromStableBundle(options, roomyDeadline())
+  const args = (job as { ProgramArguments: string[] }).ProgramArguments
+  expect(args.slice(0, 2)).toEqual([
+    join(helper, 'MacOS', 'orca-terminal-host'),
+    join(helper, 'Resources', 'daemon', 'out', 'main', 'daemon-entry.js')
+  ])
+  expect(args[args.indexOf('--entry-path') + 1]).toBe(options.entryPath)
+  expect(args[args.indexOf('--spawner-exec-path') + 1]).toBe(args[0])
+  expect(job).toHaveProperty('AssociatedBundleIdentifiers', ['com.stablyai.orca'])
+  expect(job).not.toHaveProperty('EnvironmentVariables.ELECTRON_RUN_AS_NODE')
 })
 
 const ok = { code: 0, signal: null, stdout: '', stderr: '', timedOut: false }

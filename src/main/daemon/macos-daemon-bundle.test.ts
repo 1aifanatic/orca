@@ -44,6 +44,8 @@ beforeEach(async () => {
   await mkdir(join(source, 'Contents', 'Resources'))
   await writeFile(join(source, 'Contents', 'MacOS', 'Orca'), 'signed-executable')
   await writeFile(join(source, 'Contents', 'Resources', 'daemon-entry.js'), 'daemon-code')
+  await mkdir(userData)
+  await writeFile(join(userData, 'spike-terminal-host'), 'off')
   copyFailedOnce = verificationFails = requirementChanges = false
   inspectMock.mockReset()
   inspectMock.mockResolvedValue({
@@ -65,7 +67,7 @@ beforeEach(async () => {
         await writeFile(join(destination, 'partial'), 'partial-copy')
         code = 1
       } else {
-        await cp(source, destination, { recursive: true })
+        await cp(args[1] ?? source, destination, { recursive: true })
       }
     } else if (args.includes('--verify')) {
       code = verificationFails ? 1 : 0
@@ -184,5 +186,39 @@ it('rejects an entry outside the signed app bundle', async () => {
       new AbortController().signal
     )
   ).rejects.toThrow('outside the app bundle')
+  expect(runProcessMock).not.toHaveBeenCalled()
+})
+
+it.each(['app', 'bundle'])('SPIKE: copies and runs the slim %s helper', async (variant) => {
+  const helper = join(source, 'Contents', 'Helpers', `Orca Terminal Host.${variant}`)
+  await mkdir(join(helper, 'Contents', 'MacOS'), { recursive: true })
+  await mkdir(join(helper, 'Contents', 'Resources', 'daemon', 'out', 'main'), { recursive: true })
+  await writeFile(join(helper, 'Contents', 'MacOS', 'orca-terminal-host'), 'node')
+  await writeFile(
+    join(helper, 'Contents', 'Resources', 'daemon', 'out', 'main', 'daemon-entry.js'),
+    'helper-daemon-code'
+  )
+  await writeFile(join(userData, 'spike-terminal-host'), variant)
+  const runtime = await materializeMacDaemonBundle(
+    userData,
+    entry,
+    LABEL,
+    new AbortController().signal
+  )
+  expect(runtime.variant).toBe(variant)
+  expect(runtime.bundlePath).toBe(
+    join(runtime.directory, 'app.noindex', `Orca Terminal Host.${variant}`)
+  )
+  expect(await readFile(runtime.execPath, 'utf8')).toBe('node')
+  expect(await readFile(runtime.entryPath, 'utf8')).toBe('helper-daemon-code')
+  // The copy is checked against the running app's requirement, not the helper's own.
+  expect(runProcessMock.mock.calls[0]?.[0].args).toEqual(['--display', '-r-', source])
+})
+
+it('SPIKE: a missing helper fails before copying so the launcher falls back to the fork', async () => {
+  await rm(join(userData, 'spike-terminal-host'))
+  await expect(
+    materializeMacDaemonBundle(userData, entry, LABEL, new AbortController().signal)
+  ).rejects.toThrow('no macOS terminal host helper')
   expect(runProcessMock).not.toHaveBeenCalled()
 })

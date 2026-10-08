@@ -6,7 +6,7 @@ import { runProcess } from '../../shared/child-process/run-process'
 import { DaemonClient } from './client'
 import { DaemonEndpointOwnershipError, holdDaemonAdoptionLease } from './daemon-endpoint-adoption'
 import { buildDaemonScriptArgs, type DaemonChildSpawnOptions } from './daemon-launched-child-spawn'
-import { materializeMacDaemonBundle } from './macos-daemon-bundle'
+import { materializeMacDaemonBundle, type MacDaemonBundle } from './macos-daemon-bundle'
 import { rm as removeBundle } from '../asar-transparent-fs'
 import {
   retireUnusedMacDaemonBundle,
@@ -33,14 +33,19 @@ export class MacDaemonStableLaunchUnavailableError extends Error {
 
 function buildMacDaemonLaunchJob(
   options: MacDaemonLaunchOptions,
-  execPath: string,
-  entryPath: string,
+  bundle: MacDaemonBundle,
   label: string
 ): Record<string, unknown> {
+  const { execPath, entryPath } = bundle
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    ELECTRON_RUN_AS_NODE: '1',
     ORCA_USER_DATA_PATH: options.userDataPath
+  }
+  // The slim helper's executable is plain Node; only the full app copy needs Electron's Node mode.
+  if (bundle.variant === 'off') {
+    env.ELECTRON_RUN_AS_NODE = '1'
+  } else {
+    delete env.ELECTRON_RUN_AS_NODE
   }
   delete env.NODE_CHANNEL_FD
   delete env.NODE_CHANNEL_SERIALIZATION_MODE
@@ -119,11 +124,10 @@ export async function launchMacDaemonFromStableBundle(
   }
   try {
     // The inherited environment can contain credentials; never leave it on disk after bootstrap.
-    await writeFile(
-      jobPath,
-      JSON.stringify(buildMacDaemonLaunchJob(options, bundle.execPath, bundle.entryPath, label)),
-      { mode: 0o600, flag: 'wx' }
-    )
+    await writeFile(jobPath, JSON.stringify(buildMacDaemonLaunchJob(options, bundle, label)), {
+      mode: 0o600,
+      flag: 'wx'
+    })
     const converted = await runProcess({
       program: '/usr/bin/plutil',
       args: ['-convert', 'xml1', jobPath],
