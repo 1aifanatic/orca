@@ -35,8 +35,9 @@ export function createWebAppApi(): Partial<PreloadApi> {
       awaitFirstWindowStartupServices: () => Promise.resolve(),
       awaitGitEnvironmentStartupBarrier: () => Promise.resolve(),
       prepareTerminalStartupRestoration: () => Promise.resolve(),
-      // No local host behind the browser client; its structured mirror follows Chat UI alone.
-      hasLocalStructuredAgentSessions: () => Promise.resolve(false),
+      // The browser client has no runtime of its own.
+      holdsStructuredAgentSessions: () => Promise.resolve(false),
+      onStructuredAgentSessionsHeldChanged: () => () => undefined,
       recoverLegacyWorkerTerminalsForRendererStartup: () => Promise.resolve(),
       startupDiagnostic: () => Promise.resolve(),
       getKeyboardInputSourceId: () => Promise.resolve(null),

@@ -12,7 +12,11 @@ import {
 } from '@/runtime/runtime-rpc-client'
 import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
-import { applyStructuredSessionTabSnapshots } from '@/runtime/local-structured-session-tabs-sync'
+import {
+  applyStructuredSessionTabSnapshots,
+  isCurrentLocalStructuredSessionGeneration,
+  localStructuredSessionGeneration
+} from '@/runtime/local-structured-session-tabs-sync'
 import { STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import { isRuntimeCompatBlockError } from '@/runtime/runtime-protocol-compat'
 
@@ -40,10 +44,12 @@ type StructuredSessionActivationDeps = {
   hostCannotOpen: () => void
 }
 
-const defaultDeps: StructuredSessionActivationDeps = {
-  activate: activateStructuredAgentSessionById,
-  refresh: refreshStructuredSessionTabs,
-  reveal: revealStructuredSession,
+/** The feedback a click that opens a chat gives when it cannot, shared by every surface that
+ *  opens one. */
+export const structuredSessionOpenFeedback: Pick<
+  StructuredSessionActivationDeps,
+  'unavailable' | 'gone' | 'hostCannotOpen'
+> = {
   unavailable: () => {
     toast.error(
       translate(
@@ -75,6 +81,13 @@ const defaultDeps: StructuredSessionActivationDeps = {
       )
     )
   }
+}
+
+const defaultDeps: StructuredSessionActivationDeps = {
+  activate: activateStructuredAgentSessionById,
+  refresh: refreshStructuredSessionTabs,
+  reveal: revealStructuredSession,
+  ...structuredSessionOpenFeedback
 }
 
 /**
@@ -229,6 +242,10 @@ type AgentSessionRevealReply = { ok?: boolean; refusal?: { code?: string } }
 async function refreshStructuredSessionTabs(worktreeId: string): Promise<void> {
   const state = useAppStore.getState()
   const environmentId = getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+  // Every other caller that applies an inventory fences it on the sync generation. Structured chat
+  // can be switched off while this call is in flight, which wipes the mirror; without this the
+  // answer would land afterwards and re-seed a chat row into a renderer that just discarded them.
+  const generation = localStructuredSessionGeneration()
   const snapshot = await withStructuredSessionRestoreTimeout(
     callRuntimeRpc<RuntimeMobileSessionTabsResult>(
       getActiveRuntimeTarget({ activeRuntimeEnvironmentId: environmentId }),
@@ -237,6 +254,9 @@ async function refreshStructuredSessionTabs(worktreeId: string): Promise<void> {
       { timeoutMs: STRUCTURED_SESSION_RESTORE_TIMEOUT_MS }
     )
   )
+  if (!isCurrentLocalStructuredSessionGeneration(generation)) {
+    return
+  }
   // No owner scope: the apply discards any worktree whose execution host is not local before it
   // reads one, so a paired workspace is carried by the subscription, not by this call.
   applyStructuredSessionTabSnapshots([snapshot])

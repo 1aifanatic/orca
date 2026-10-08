@@ -14,6 +14,48 @@ const NATIVE_IME_HARNESS =
 
 export const PR_E2E_SOURCE_ROUTES = [
   {
+    id: 'serve.orcad-mode-switch',
+    specs: ['tests/e2e/orcad-serve-mode-switch.spec.ts'],
+    matches: (file) =>
+      /^tests\/e2e\/helpers\/(?:orca-serve-cli-host|headless-paired-runtime-host)\.ts$/.test(
+        file
+      ) ||
+      (isProductSource(file) &&
+        /^src\/(?:cli\/runtime\/(?:launch|serve-)|main\/orcad\/(?:main|orcad-entry|orcad-instance-lock|orcad-command-arguments|orcad-lifecycle)\.ts$|main\/startup\/desktop-profile-instance-lock\.ts$|main\/daemon\/daemon-(?:spawner|endpoint-adoption|init)|main\/server\/serve-)/.test(
+          file
+        ))
+  },
+  {
+    id: 'startup.windows-missing-appdata',
+    specs: ['tests/e2e/windows-missing-appdata-startup.spec.ts'],
+    matches: (file) =>
+      file === 'tests/e2e/helpers/orca-serve-cli-host.ts' ||
+      (isProductSource(file) &&
+        /^src\/main\/startup\/(?:windows-app-data-path|main-process-preflight)\.ts$/.test(file))
+  },
+  {
+    id: 'ssh.orcad-auto-convert',
+    specs: ['tests/e2e/ssh-orcad-auto-convert.spec.ts'],
+    matches: (file) =>
+      /^tests\/e2e\/helpers\/(?:orcad-convert-(?:flow|host)|orcad-template-variant|orcad-upgrade-profile)\.ts$/.test(
+        file
+      ) ||
+      (isProductSource(file) &&
+        /^src\/main\/(?:ipc\/ssh-host-server-|ssh\/(?:ssh-host-server-|orcad-runtime-conversion|orcad-migration-|orcad-retained-source|orcad-runtime-deployment))/.test(
+          file
+        ))
+  },
+  {
+    id: 'ssh.orcad-idle-exit',
+    specs: ['tests/e2e/ssh-orcad-idle-exit.spec.ts'],
+    matches: (file) =>
+      /^tests\/e2e\/helpers\/orcad-convert-(?:flow|host)\.ts$/.test(file) ||
+      (isProductSource(file) &&
+        /^src\/(?:main\/(?:orcad\/orcad-(?:idle-|managed-idle-)|ssh\/orcad-(?:managed-wake|managed-tunnel|recovery-slot|remote-launch))|shared\/orcad-idle-exit)/.test(
+          file
+        ))
+  },
+  {
     id: 'ssh.localhost-agent-hooks',
     specs: ['tests/e2e/ssh-localhost.spec.ts'],
     matches: (file) =>
@@ -32,6 +74,17 @@ export const PR_E2E_SOURCE_ROUTES = [
         /^src\/main\/(?:browser\/(?:ssh-browser-network-execution-route|browser-network-deferred-socket|browser-network-execution-route|system-ssh-socks-client-socket)|ssh\/system-ssh-dynamic-forward-process)\.ts$/.test(
           file
         ))
+  },
+  {
+    // Why the host-connection phase: the route gate waits on it, so a phase change can strand the
+    // SSH-unavailable card without touching a browser file.
+    id: 'browser.local-ssh-workspace-route',
+    specs: ['tests/e2e/local-ssh-browser-routing.spec.ts'],
+    matches: (file) =>
+      isProductSource(file) &&
+      /^src\/(?:main\/browser\/local-ssh-browser-(?:route|partitions)\.ts|renderer\/src\/(?:components\/browser-pane\/(?:use-ssh-workspace-browser-route\.ts|assemble-chrome\/ssh-routed-browser-page-gate\.tsx)|lib\/worktree-host-connection-phase\.ts))$/.test(
+        file
+      )
   },
   {
     id: 'terminal.windows-wsl-launch-and-paste',

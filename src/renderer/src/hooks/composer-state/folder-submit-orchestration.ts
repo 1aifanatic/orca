@@ -129,6 +129,7 @@ export function useFolderSubmitOrchestration(input: FolderSubmitOrchestrationInp
             ? resolveInitialNativeChatSessionOptions(
                 {
                   experimentalNativeChat: settings?.experimentalNativeChat,
+                  openAgentTabsInChatByDefault: settings?.openAgentTabsInChatByDefault,
                   nativeChatSessionOptions: settings?.nativeChatSessionOptions
                 },
                 {

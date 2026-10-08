@@ -1,7 +1,9 @@
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
+import { useLocalStructuredAgentSessionsHeld } from '@/runtime/local-structured-chats'
 import { translate } from '@/i18n/i18n'
 import { Label } from '../ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { NativeChatQueueFollowUpsSetting } from './NativeChatQueueFollowUpsSetting'
 import { NativeChatShellEnvironmentSetting } from './NativeChatShellEnvironmentSetting'
 import { NativeChatSupportedAgents } from './NativeChatSupportedAgents'
 import { SearchableSetting } from './SearchableSetting'
@@ -20,11 +22,15 @@ export function NativeChatExperimentalSetting({
   updateSettings
 }: NativeChatExperimentalSettingProps): React.JSX.Element {
   const nativeChatEnabled = settings.experimentalNativeChat === true
+  const structuredNativeChatEnabled = settings.experimentalStructuredNativeChat === true
   const resumeOnRestartEnabled = settings.nativeChatResumeWorkOnRestart === true
   const defaultView: NativeChatDefaultView =
     settings.openAgentTabsInChatByDefault === true ? 'native-chat' : 'terminal-chat'
-  // Structured-only settings; shown when new agent tabs open as structured chats.
-  const structuredChatActive = defaultView === 'native-chat'
+  // Structured-only settings; terminal-backed chat never reads them. They govern the chats this
+  // machine holds too, which keep running whatever the setting says.
+  const holdsStructuredChats = useLocalStructuredAgentSessionsHeld()
+  const structuredChatActive =
+    (defaultView === 'native-chat' && structuredNativeChatEnabled) || holdsStructuredChats
 
   return (
     <SearchableSetting
@@ -79,14 +85,6 @@ export function NativeChatExperimentalSetting({
                   'Choose how new supported agent terminal tabs open.'
                 )}
               </p>
-              {structuredChatActive ? (
-                <p className="text-xs text-muted-foreground">
-                  {translate(
-                    'auto.components.settings.ExperimentalPane.nativeChat.structuredScopeLocalOnly',
-                    'Local sessions only for now. WSL and remote execution hosts (including SSH) continue to use terminal chat.'
-                  )}
-                </p>
-              ) : null}
             </div>
             <Select
               value={defaultView}
@@ -123,6 +121,45 @@ export function NativeChatExperimentalSetting({
             </Select>
           </div>
 
+          {/* Structured chat rides the Chat UI default view; it has no entry path under Terminal
+              chat. Hidden only — the opt-in keeps its persisted value for when Chat UI returns. */}
+          {defaultView === 'native-chat' ? (
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 shrink space-y-0.5">
+                <Label>
+                  {translate(
+                    'auto.components.settings.ExperimentalPane.nativeChat.structuredTitle',
+                    'Use updated structured native chat'
+                  )}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {translate(
+                    'auto.components.settings.ExperimentalPane.nativeChat.structuredCopy',
+                    'Open new agents as structured chats where supported. Off opens them in the terminal-backed chat. Chats that already exist stay as they are.'
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {translate(
+                    'auto.components.settings.ExperimentalPane.nativeChat.structuredScope',
+                    'Runs on this machine and on paired Orca servers running a version that supports it; older servers keep terminal chat. WSL and SSH hosts continue to use terminal chat.'
+                  )}
+                </p>
+              </div>
+              <SettingsSwitch
+                checked={structuredNativeChatEnabled}
+                ariaLabel={translate(
+                  'auto.components.settings.ExperimentalPane.nativeChat.structuredToggleLabel',
+                  'Toggle updated structured native chat'
+                )}
+                onChange={() =>
+                  updateSettings({
+                    experimentalStructuredNativeChat: !structuredNativeChatEnabled
+                  })
+                }
+              />
+            </div>
+          ) : null}
+
           {/* Only structured sessions have a resume cursor to continue from. */}
           {structuredChatActive ? (
             <div className="flex items-start justify-between gap-4">
@@ -151,6 +188,10 @@ export function NativeChatExperimentalSetting({
                 }
               />
             </div>
+          ) : null}
+
+          {structuredChatActive ? (
+            <NativeChatQueueFollowUpsSetting settings={settings} updateSettings={updateSettings} />
           ) : null}
 
           {structuredChatActive ? (

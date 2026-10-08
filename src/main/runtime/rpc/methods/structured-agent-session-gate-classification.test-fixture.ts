@@ -1,5 +1,5 @@
-// The method-to-gate classification from `structured-agent-session-gate.ts`, as a table the
-// suites iterate. Adding an `agentSession.*` method means adding it to exactly one of these.
+// Every `agentSession.*` method with valid params, as tables the suites iterate. Adding a method
+// means adding it to exactly one of these.
 
 import {
   attachParams,
@@ -9,8 +9,7 @@ import {
 } from './structured-agent-session-rpc.test-fixture'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 
-/** Stops or retires a session that already exists. Asks only the capability, and never installs a
- *  host to answer: with none installed there is nothing to stop. */
+/** Stops or retires work the caller already owns; none of these builds a host. */
 export const CLEANUP_METHODS = [
   {
     method: 'agentSession.close',
@@ -22,20 +21,23 @@ export const CLEANUP_METHODS = [
     params: { envelope: envelope(), turnId: 'turn-1' },
     hostCall: 'cancel'
   },
+  // A no-op kept for older clients: it answers without reaching the host.
   {
     method: 'agentSession.release',
     params: { sessionId: SESSION, holderId: 'surface-1' },
-    hostCall: 'release'
+    hostCall: null,
+    result: { released: true }
   },
   {
     method: 'agentSession.unsubscribe',
     params: { sessionId: SESSION },
-    hostCall: 'unsubscribe'
+    hostCall: null,
+    result: { unsubscribed: true }
   }
 ] as const
 
-/** Brings a NEW session into being, so the host's Chat UI setting is asked on top of the capability. */
-export const CREATE_METHODS = [
+/** Starts, extends, retains or reads work. */
+export const WORK_METHODS = [
   { method: 'agentSession.createSupport', params: { worktree: 'id:workspace-1', agent: 'codex' } },
   {
     method: 'agentSession.create',
@@ -52,12 +54,17 @@ export const CREATE_METHODS = [
       agent: 'codex'
     }
   },
-  { method: 'agentSession.ensure', params: attachParams() }
-] as const
-
-/** Reads, drives or retains a session that already exists, so Chat UI being off never refuses it. */
-export const EXISTING_SESSION_METHODS = [
+  { method: 'agentSession.ensure', params: attachParams() },
   { method: 'agentSession.send', params: sendParams() },
+  {
+    method: 'agentSession.queuedMessageSend',
+    params: { envelope: envelope(), messageId: 'queued-1' }
+  },
+  {
+    method: 'agentSession.queuedMessageDelete',
+    params: { envelope: envelope(), messageId: 'queued-1' }
+  },
+  { method: 'agentSession.queuedMessagesResume', params: { envelope: envelope() } },
   {
     method: 'agentSession.rewind',
     params: { envelope: envelope(), itemId: 'chosen', expectedEpoch: 'epoch' }

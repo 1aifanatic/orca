@@ -5,6 +5,7 @@ import type { RpcContext } from '../core'
 import { projectSessionTabAgentStatus } from './session-tab-agent-status-projection'
 import { projectSessionTabBrowserPlacements } from './session-tab-browser-placement-projection'
 import { createSessionTabsRetirementProofDelta } from './session-tabs-retirement-proof-delta'
+import { restoreStructuredTabsIfSupported } from './structured-session-tab-restore'
 
 type SessionTabsInventory = {
   snapshots: RuntimeMobileSessionTabsResult[]
@@ -109,7 +110,7 @@ export async function subscribeSessionTabsInventory(
   let censusInvalidated = false
   const withProofDelta = createSessionTabsRetirementProofDelta(context.clientCapabilities)
   const projectChange = (snapshot: SessionTabsChange): SessionTabsChange =>
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: both projections return the input or spread it, so a `removed` marker survives.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: projection rewrites only tabs and groups; the change fields it was handed pass through.
     projectSessionTabsForClient(
       snapshot,
       context.clientKind,
@@ -229,6 +230,14 @@ export async function subscribeSessionTabsInventory(
   }
   let collected: Awaited<ReturnType<typeof collectSessionTabsInventory>> | undefined
   try {
+    // Why: restore after registering, so an unsubscribe or socket close while it runs still finds the stream.
+    const restoring = restoreStructuredTabsIfSupported(context)
+    if (restoring) {
+      await restoring
+      if (closed) {
+        return
+      }
+    }
     for (let attempt = 1; !collected; attempt += 1) {
       censusInvalidated = false
       const candidate = await collectSessionTabsInventory(

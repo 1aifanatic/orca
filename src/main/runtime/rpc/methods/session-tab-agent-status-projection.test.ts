@@ -88,7 +88,7 @@ describe('projectSessionTabAgentStatus', () => {
       ]
     }
     // A paired client that never negotiated the capability: mobile keeps an unrenderable row under
-    // a fallback title, so only a non-mobile old client loses them.
+    // a fallback title, so only a non-mobile old client still loses them.
     const oldClient = projectSessionTabAgentStatus(snapshot, 'runtime', [])
     expect(oldClient.tabs.map((tab) => tab.type)).toEqual(['terminal'])
     expect(oldClient.activeTabId).toBe('tab-1::leaf-1')
@@ -108,6 +108,7 @@ describe('projectSessionTabAgentStatus', () => {
     ])
     expect(capable).toBe(snapshot)
 
+    // The in-process caller is the host's own build and negotiates nothing.
     expect(projectSessionTabAgentStatus(snapshot, undefined, undefined)).toBe(snapshot)
   })
 
@@ -212,6 +213,7 @@ describe('projectSessionTabAgentStatus', () => {
     )
   })
 
+  // Why: updating cannot reveal a chat the desktop is not serving, so the prompt would lie.
   it('never emits an empty structured tab title', () => {
     for (const capabilities of [[], [STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY]]) {
       const projected = projectSessionTabAgentStatus(claudeSnapshot, 'mobile', capabilities)

@@ -1,3 +1,4 @@
+import '../unused-default-rpc-methods.test-fixture'
 import { describe, expect, it, vi } from 'vitest'
 import {
   CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
@@ -94,7 +95,10 @@ describe('session tab structured capability mutations', () => {
     const expectedToAllowPromptedRow = !DESTRUCTIVE_METHOD_NAMES.has(method.name)
 
     it(`${expectedToAllowPromptedRow ? 'allows' : 'rejects'} ${method.name} on a row an old mobile client was prompted to update`, async () => {
-      const { calls, dispatch } = createFixture([], { clientKind: 'mobile' })
+      const { calls, dispatch } = createFixture([], {
+        clientKind: 'mobile',
+        structuredNativeChatEnabled: true
+      })
 
       const response = await dispatch(method.name, method.params('codex-session'))
 
@@ -106,7 +110,8 @@ describe('session tab structured capability mutations', () => {
 
     it(`${expectedToAllowPromptedRow ? 'allows' : 'rejects'} ${method.name} on a prompted Claude row for a mobile client without the Claude capability`, async () => {
       const { calls, dispatch } = createFixture([STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY], {
-        clientKind: 'mobile'
+        clientKind: 'mobile',
+        structuredNativeChatEnabled: true
       })
 
       const response = await dispatch(method.name, method.params('claude-session'))
@@ -123,9 +128,9 @@ describe('session tab structured capability mutations', () => {
     async (method) => {
       const snapshot = agentSnapshot()
       const closeMobileSessionTab = vi.fn().mockResolvedValue({ closed: true })
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the close path reads only these members; any other would throw on call.
       const runtime = {
         getRuntimeId: () => 'test-runtime',
+        getClientSettings: vi.fn(() => ({ experimentalStructuredNativeChat: true })),
         listMobileSessionTabs: vi.fn().mockResolvedValue(snapshot),
         closeMobileSessionTab
       } as unknown as OrcaRuntimeService
@@ -163,7 +168,7 @@ describe('session tab structured capability mutations', () => {
 
 function createFixture(
   capabilities: RuntimeCapability[],
-  options: { clientKind?: 'mobile' | 'runtime' } = {}
+  options: { clientKind?: 'mobile' | 'runtime'; structuredNativeChatEnabled?: boolean } = {}
 ) {
   const snapshot = agentSnapshot()
   const calls = {
@@ -172,10 +177,14 @@ function createFixture(
     moveMobileSessionTab: vi.fn().mockResolvedValue({ moved: true }),
     setMobileSessionTabProps: vi.fn().mockResolvedValue({ updated: true })
   }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the tab mutation methods read only these members; any other would throw on call.
   const runtime = {
     getRuntimeId: () => 'test-runtime',
     listMobileSessionTabs: vi.fn().mockResolvedValue(snapshot),
+    getClientSettings: () => ({
+      // Why: defaults on, so a fixture that says nothing about the setting exercises capability
+      // gating alone; callers opt into the off case explicitly.
+      experimentalStructuredNativeChat: options.structuredNativeChatEnabled !== false
+    }),
     ...calls
   } as unknown as OrcaRuntimeService
   const dispatcher = new RpcDispatcher({ runtime, methods: SESSION_TAB_METHODS })

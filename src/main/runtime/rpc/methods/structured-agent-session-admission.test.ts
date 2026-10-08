@@ -1,26 +1,26 @@
-// Chat UI can be turned off with chats already open. It decides how NEW agent launches open, so the
-// methods that create a session refuse; every method on a session that already exists keeps working.
+// The host's own structured-chat setting is its user's launch preference, not admission control:
+// a paired client that can read structured sessions reaches every method whatever that setting says.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
-import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
-import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
+import {
+  CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../../../shared/protocol-version'
+import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import {
   CLEANUP_METHODS,
-  CREATE_METHODS,
-  EXISTING_SESSION_METHODS
+  WORK_METHODS
 } from './structured-agent-session-gate-classification.test-fixture'
 import {
   call,
   clearStructuredHostStub,
   envelope,
   hostCalls,
-  hostStub,
   installStructuredHostStub,
-  sendParams,
+  runtimeCalls,
   SESSION,
-  STRUCTURED_CLIENT,
-  STRUCTURED_MOBILE_CLIENT
+  STRUCTURED_CLIENT
 } from './structured-agent-session-rpc.test-fixture'
 
 beforeEach(() => {
@@ -31,175 +31,197 @@ afterEach(() => {
   clearStructuredHostStub()
 })
 
-const CHAT_UI_OFF = { getClientSettings: () => ({ experimentalNativeChat: false }) }
-const GATE_REFUSAL = 'structured_agent_session_unsupported'
+const SETTING_OFF = { getClientSettings: () => ({ experimentalStructuredNativeChat: false }) }
+const SETTING_ON = { getClientSettings: () => ({ experimentalStructuredNativeChat: true }) }
+// A client that picks each launch's mode itself, as the desktop does.
+const MODE_CHOOSING_CLIENT = {
+  ...STRUCTURED_CLIENT,
+  clientCapabilities: [
+    ...STRUCTURED_CLIENT.clientCapabilities,
+    STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY
+  ]
+}
+// Phones released before `agent.launch` picked their mode by asking createSupport.
+const RELEASED_PHONE = {
+  clientKind: 'mobile' as const,
+  clientCapabilities: [
+    STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+    CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+    AGENT_LAUNCH_RUNTIME_CAPABILITY
+  ]
+}
+const CREATE_SUPPORT = WORK_METHODS.find((entry) => entry.method === 'agentSession.createSupport')!
+const UNSUPPORTED = { message: expect.stringContaining('structured_agent_session_unsupported') }
 
-describe('Chat UI turned off with a session still open', () => {
-  it.each(CLEANUP_METHODS)('still serves $method', async ({ method, params, hostCall }) => {
-    const response = await call(method, params, STRUCTURED_CLIENT, CHAT_UI_OFF)
+describe('a host with structured chat turned off', () => {
+  it.each(WORK_METHODS)('still serves $method to a capable client', async ({ method, params }) => {
+    const response = await call(method, params, MODE_CHOOSING_CLIENT, SETTING_OFF).catch(
+      (error: Error) => {
+        // An admitted stream the stub never feeds answers nothing; a refused one replies at once.
+        expect(error.message).toBe(`no reply for ${method}`)
+        return null
+      }
+    )
+
+    // Other failures are the stub's business; the one this pins is the gate's own refusal.
+    expect(response).not.toMatchObject({ ok: false, error: UNSUPPORTED })
+  })
+
+  it.each(CLEANUP_METHODS)('still serves $method to a capable client', async (entry) => {
+    const response = await call(entry.method, entry.params, MODE_CHOOSING_CLIENT, SETTING_OFF)
 
     expect(response).toMatchObject({ ok: true })
-    // `unsubscribe` retires runtime-owned subscriptions rather than calling the host, so its
-    // result payload is the observable effect.
-    if (hostCall === 'unsubscribe') {
-      expect(response).toMatchObject({ result: { unsubscribed: true } })
+    // `unsubscribe` retires runtime-owned subscriptions and `release` is a no-op, so neither
+    // calls the host: the result payload is the observable effect.
+    if (entry.hostCall === null) {
+      expect(response).toMatchObject({ result: entry.result })
     } else {
-      expect(hostCalls[hostCall]).toHaveBeenCalled()
+      expect(hostCalls[entry.hostCall]).toHaveBeenCalled()
     }
   })
 
-  it.each(EXISTING_SESSION_METHODS)(
-    'is never refused by the gate for $method',
-    async ({ method, params }) => {
-      const response = await call(method, params, STRUCTURED_CLIENT, CHAT_UI_OFF)
+  it('creates a session for a paired client', async () => {
+    const create = WORK_METHODS.find((entry) => entry.method === 'agentSession.create')!
+    const response = await call(create.method, create.params, MODE_CHOOSING_CLIENT, SETTING_OFF)
 
-      // The stub host does not implement every method, so a non-gate error is allowed here; the
-      // gate's own code is what must be absent.
-      if (!response.ok) {
-        expect(response.error.message).not.toContain(GATE_REFUSAL)
-      }
-    }
-  )
-
-  it.each([STRUCTURED_CLIENT, STRUCTURED_MOBILE_CLIENT])(
-    'sends into an open chat from a $clientKind client',
-    async (client) => {
-      const response = await call('agentSession.send', sendParams(), client, CHAT_UI_OFF)
-
-      expect(response).toMatchObject({ ok: true })
-      expect(hostCalls.send).toHaveBeenCalledTimes(1)
-    }
-  )
-
-  it('reads history and answers a prompt in an open chat', async () => {
-    const history = await call(
-      'agentSession.history',
-      { sessionId: SESSION, direction: 'tail' },
-      STRUCTURED_CLIENT,
-      CHAT_UI_OFF
-    )
-    const answer = await call(
-      'agentSession.respondToApproval',
-      { envelope: envelope(), itemId: 'item-1', expectedRevision: 1, optionId: 'allow' },
-      STRUCTURED_CLIENT,
-      CHAT_UI_OFF
-    )
-
-    expect(history).toMatchObject({ ok: true })
-    expect(answer).toMatchObject({ ok: true })
-    expect(hostCalls.respondToPrompt).toHaveBeenCalledOnce()
+    expect(response).toMatchObject({ ok: true })
   })
 
-  it('still offers and resumes the chats that were working at the last quit', async () => {
-    const list = vi.fn(async () => [{ sessionId: SESSION }])
-    const continueAfterRestart = vi.fn(async () => ({ results: [] }))
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restart methods read only restartResume; every other member is the shared stub's.
-    const host = {
-      ...hostStub(),
-      restartResume: { list, listFailures: vi.fn(async () => []), continueAfterRestart }
-    } as unknown as StructuredAgentSessionHost
-    setStructuredAgentSessionHost(host)
-
-    const offered = await call('agentSession.restartResumable', {}, STRUCTURED_CLIENT, CHAT_UI_OFF)
-    const resumed = await call(
-      'agentSession.restartContinue',
-      { sessionIds: [SESSION] },
-      STRUCTURED_CLIENT,
-      CHAT_UI_OFF
-    )
-
-    expect(offered).toMatchObject({ ok: true, result: { sessions: [{ sessionId: SESSION }] } })
-    expect(resumed).toMatchObject({ ok: true })
-    expect(continueAfterRestart).toHaveBeenCalledWith([SESSION], expect.any(String))
-  })
-
-  it('stops the provider child and retires the tab when closing the chat', async () => {
+  it('stops the provider child and retires the tab when a chat is closed', async () => {
     const response = await call(
       'agentSession.close',
       { sessionId: SESSION },
       STRUCTURED_CLIENT,
-      CHAT_UI_OFF
+      SETTING_OFF
     )
 
     expect(response).toMatchObject({ ok: true, result: { ok: true } })
-    expect(hostCalls.close).toHaveBeenCalledWith(SESSION)
+    expect(hostCalls.close).toHaveBeenCalledWith(SESSION, 'user-close')
     // The durable tab has to be retired too, or the chat comes back on the next sync.
     expect(hostCalls.setSessionTabVisibility).toHaveBeenCalledWith(SESSION, false)
   })
 
+  it('cancels an in-flight turn', async () => {
+    const response = await call(
+      'agentSession.cancel',
+      { envelope: envelope(), turnId: 'turn-1' },
+      STRUCTURED_CLIENT,
+      SETTING_OFF
+    )
+
+    expect(response).toMatchObject({ ok: true })
+    expect(hostCalls.cancel).toHaveBeenCalledOnce()
+  })
+
+  it.each([...WORK_METHODS, ...CLEANUP_METHODS])(
+    'refuses $method to a client that never advertised the capability',
+    async ({ method, params }) => {
+      const response = await call(
+        method,
+        params,
+        { clientKind: 'runtime', clientCapabilities: [] },
+        SETTING_ON
+      )
+
+      // Asserting the gate's own code, not merely `ok: false`: a params-validation failure would
+      // pass a bare falsy check and hide a gate that had stopped refusing.
+      expect(response).toMatchObject({ ok: false, error: UNSUPPORTED })
+    }
+  )
+
   it.each(['runtime', 'mobile'] as const)(
-    'lets a %s client close an open chat',
+    'lets a %s client close a chat it already owns',
     async (clientKind) => {
       const response = await call(
         'agentSession.close',
         { sessionId: SESSION },
         { clientKind, clientCapabilities: [STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY] },
-        CHAT_UI_OFF
+        SETTING_OFF
       )
 
       expect(response).toMatchObject({ ok: true })
-      expect(hostCalls.close).toHaveBeenCalledWith(SESSION)
-    }
-  )
-
-  it('lets an in-process caller close, which is how terminal disposal retires a chat', async () => {
-    const response = await call(
-      'agentSession.close',
-      { sessionId: SESSION },
-      undefined,
-      CHAT_UI_OFF
-    )
-
-    expect(response).toMatchObject({ ok: true })
-    expect(hostCalls.close).toHaveBeenCalledWith(SESSION)
-  })
-
-  it.each(CREATE_METHODS)(
-    'refuses $method, which would start a new chat',
-    async ({ method, params }) => {
-      const response = await call(method, params, STRUCTURED_CLIENT, CHAT_UI_OFF)
-
-      // Asserting the gate's own code, not merely `ok: false`: a params-validation failure would
-      // pass a bare falsy check and hide a gate that had stopped refusing.
-      expect(response).toMatchObject({
-        ok: false,
-        error: { message: expect.stringContaining(GATE_REFUSAL) }
-      })
-      expect(hostCalls.attach).not.toHaveBeenCalled()
-    }
-  )
-
-  it.each(CREATE_METHODS)(
-    'refuses $method from an in-process caller too',
-    async ({ method, params }) => {
-      const response = await call(method, params, undefined, CHAT_UI_OFF)
-
-      expect(response).toMatchObject({
-        ok: false,
-        error: { message: expect.stringContaining(GATE_REFUSAL) }
-      })
+      expect(hostCalls.close).toHaveBeenCalledWith(SESSION, 'user-close')
     }
   )
 })
 
-describe('Chat UI on', () => {
-  it.each(CREATE_METHODS)('admits $method for a capable client', async ({ method, params }) => {
-    const response = await call(method, params, STRUCTURED_CLIENT)
+describe('a client that leaves the launch mode to the host', () => {
+  it('is told a chat is unsupported while the host setting is off, so it opens a terminal', async () => {
+    const response = await call(
+      CREATE_SUPPORT.method,
+      CREATE_SUPPORT.params,
+      RELEASED_PHONE,
+      SETTING_OFF
+    )
 
-    if (!response.ok) {
-      expect(response.error.message).not.toContain(GATE_REFUSAL)
-    }
+    expect(response).toMatchObject({ ok: false, error: UNSUPPORTED })
+    expect(runtimeCalls.getStructuredAgentSessionCreateSupport).not.toHaveBeenCalled()
   })
 
-  it.each(CREATE_METHODS)(
-    'still refuses $method to a client without the capability',
-    async ({ method, params }) => {
-      const response = await call(method, params, { clientKind: 'mobile', clientCapabilities: [] })
+  it('is answered by the workspace once the host setting is on', async () => {
+    const response = await call(
+      CREATE_SUPPORT.method,
+      CREATE_SUPPORT.params,
+      RELEASED_PHONE,
+      SETTING_ON
+    )
 
-      expect(response).toMatchObject({
-        ok: false,
-        error: { message: expect.stringContaining(GATE_REFUSAL) }
-      })
-    }
-  )
+    expect(response).toMatchObject({ ok: true })
+  })
+
+  it('reads an unreadable settings store as off', async () => {
+    const response = await call(CREATE_SUPPORT.method, CREATE_SUPPORT.params, RELEASED_PHONE, {
+      getClientSettings: () => {
+        throw new Error('store unavailable')
+      }
+    })
+
+    expect(response).toMatchObject({ ok: false, error: UNSUPPORTED })
+  })
+
+  it('keeps every other method on capability alone', async () => {
+    const create = WORK_METHODS.find((entry) => entry.method === 'agentSession.create')!
+    const response = await call(create.method, create.params, RELEASED_PHONE, SETTING_OFF)
+
+    expect(response).toMatchObject({ ok: true })
+  })
+})
+
+// A paired client's picker shows the saved selection create will start the chat with.
+describe("createSupport's launch seed", () => {
+  const SEED = { model: 'opus', effort: 'high' }
+
+  it('carries the seed create will use when the chat is supported', async () => {
+    const seedOptions = vi.fn(() => SEED)
+    const response = await call(
+      CREATE_SUPPORT.method,
+      CREATE_SUPPORT.params,
+      MODE_CHOOSING_CLIENT,
+      { ...SETTING_ON, structuredAgentSessionLaunchSeedOptions: seedOptions }
+    )
+
+    expect(response).toMatchObject({ ok: true, result: { supported: true, seedOptions: SEED } })
+    expect(seedOptions).toHaveBeenCalledWith('codex')
+  })
+
+  it('carries none when the chat is not supported', async () => {
+    const seedOptions = vi.fn(() => SEED)
+    const response = await call(
+      CREATE_SUPPORT.method,
+      CREATE_SUPPORT.params,
+      MODE_CHOOSING_CLIENT,
+      {
+        ...SETTING_ON,
+        getStructuredAgentSessionCreateSupport: vi.fn(async () => ({
+          supported: false,
+          reason: 'wsl'
+        })),
+        structuredAgentSessionLaunchSeedOptions: seedOptions
+      }
+    )
+
+    expect(response).toMatchObject({ ok: true, result: { supported: false, reason: 'wsl' } })
+    expect(response).not.toMatchObject({ result: { seedOptions: expect.anything() } })
+    expect(seedOptions).not.toHaveBeenCalled()
+  })
 })

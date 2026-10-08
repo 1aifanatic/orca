@@ -16,6 +16,7 @@ export function resolveBackendDraftStartup(
   const viewMode =
     decideInitialAgentTabViewMode({
       experimentalNativeChat: state.settings?.experimentalNativeChat,
+      openAgentTabsInChatByDefault: state.settings?.openAgentTabsInChatByDefault,
       agent: request.agent,
       promptDelivery: 'draft',
       launchDraftText: request.launchDraftPrompt,

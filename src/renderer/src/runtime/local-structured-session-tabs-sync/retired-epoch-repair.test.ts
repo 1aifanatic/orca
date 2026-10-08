@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { localStructuredSessionEpochHistoryByWorktree } from './inventory-publication-cursors'
+import { localStructuredSessionEpochHistoryByWorktree } from './inventory-generation-fence'
 import {
   forgetRetiredEpochRepairsOutside,
   resetRetiredEpochRepairsForTests,
@@ -15,7 +15,7 @@ import {
 const WORKTREE = 'folder:ws-1'
 const EPOCH = 'renderer:53c8f87d'
 
-const runRepair = vi.fn(async () => undefined)
+const runRepair = vi.fn(async (_generation: number) => undefined)
 
 function markRetired(): void {
   localStructuredSessionEpochHistoryByWorktree.set(WORKTREE, {

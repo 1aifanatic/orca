@@ -29,6 +29,7 @@ export function buildDirectWorkItemAgentStartupPlan(args: {
         agentDefaultArgs?: Partial<Record<TuiAgent, string>>
         agentDefaultEnv?: Partial<Record<TuiAgent, Record<string, string>>>
         experimentalNativeChat?: boolean
+        openAgentTabsInChatByDefault?: boolean
         nativeChatSessionOptions?: PersistedNativeChatSessionOptions
       }
     | null

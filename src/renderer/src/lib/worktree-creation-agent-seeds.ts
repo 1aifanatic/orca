@@ -60,6 +60,7 @@ function applyBackendSpawnedDraftViewMode(args: {
   const desiredViewMode =
     decideInitialAgentTabViewMode({
       experimentalNativeChat: state.settings?.experimentalNativeChat,
+      openAgentTabsInChatByDefault: state.settings?.openAgentTabsInChatByDefault,
       agent,
       promptDelivery: 'draft',
       launchDraftText: request.launchDraftPrompt,

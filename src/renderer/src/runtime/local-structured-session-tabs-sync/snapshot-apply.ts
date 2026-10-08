@@ -2,6 +2,7 @@ import type {
   RuntimeMobileSessionTabsRemovedResult,
   RuntimeMobileSessionTabsResult
 } from '../../../../shared/runtime-types'
+import { markStructuredAgentSessionLaunchesPublished } from '../../lib/structured-agent-session-launch-publication'
 import type { WorktreeRuntimeOwnerState } from '../../lib/worktree-runtime-owner'
 import { getExecutionHostIdForWorktree } from '../../lib/worktree-runtime-owner'
 import {
@@ -19,15 +20,15 @@ import { knownStructuredSessionWorktreeIds } from '../local-structured-session-t
 import {
   localStructuredSessionEpochHistoryByWorktree,
   localStructuredSessionVersionByWorktree
-} from './inventory-publication-cursors'
+} from './inventory-generation-fence'
 import { forgetRetiredEpochRepairsOutside } from './retired-epoch-repair'
 import { projectLocalStructuredSessionTabs } from './snapshot-projection'
-import { hostSnapshotAffirmsWorktreeContents } from '../host-session-snapshot-authority'
 import {
-  hasStructuredAgentSessionLaunchCancellationTombstone,
-  markStructuredAgentSessionLaunchPublished,
-  retireAbsentStructuredAgentSessionLaunchCancellationTombstones
-} from '../../lib/structured-agent-session-launch-registry'
+  hostSnapshotAffirmsAgentSessions,
+  hostSnapshotAffirmsWorktreeContents
+} from '../host-session-snapshot-authority'
+import { retireAbsentStructuredAgentSessionLaunchCancellationTombstones } from '../../lib/structured-agent-session-launch-registry'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import {
   beginStructuredAgentSessionAuthoritativeInventory,
   startStructuredAgentLaunchCancellationCleanup
@@ -64,35 +65,35 @@ export function applyStructuredSessionTabSnapshots(
   owner = LOCAL_STRUCTURED_SESSION_OWNER,
   options: StructuredSessionSnapshotApplyOptions = {}
 ): void {
-  const acceptedAgentSessions = new Map<string, string>()
+  const acceptedAgentSessions: { worktreeId: string; sessionId: string }[] = []
   const settleStructuredSessionMirror = applyWebSessionTabsStorePatch(
     (state) =>
       applyLocalStructuredSessionTabSnapshots(state, snapshots, owner, undefined, {
         ...options,
         onAcceptedAgentSession: (worktreeId, sessionId) => {
-          acceptedAgentSessions.set(sessionId, worktreeId)
+          acceptedAgentSessions.push({ worktreeId, sessionId })
           options.onAcceptedAgentSession?.(worktreeId, sessionId)
         }
       }),
     { frames: [] }
   )
   settleStructuredSessionMirror()
-  for (const [sessionId, worktreeId] of acceptedAgentSessions) {
-    if (!hasStructuredAgentSessionLaunchCancellationTombstone(worktreeId, sessionId)) {
-      markStructuredAgentSessionLaunchPublished(worktreeId, sessionId)
-    }
-  }
+  markStructuredAgentSessionLaunchesPublished(LOCAL_EXECUTION_HOST_ID, acceptedAgentSessions)
   if (options.authoritative) {
-    startStructuredAgentLaunchCancellationCleanup((sessionId) =>
+    startStructuredAgentLaunchCancellationCleanup(LOCAL_EXECUTION_HOST_ID, (sessionId) =>
       closeStructuredAgentSession({ kind: 'local' }, sessionId)
     )
+  }
+  // A chat missing from an inventory that cannot list chats is not proof the host dropped it.
+  if (options.authoritative && snapshots.every(hostSnapshotAffirmsAgentSessions)) {
     retireAbsentStructuredAgentSessionLaunchCancellationTombstones(
       new Set(
         snapshots.flatMap((snapshot) =>
           snapshot.tabs.filter((tab) => tab.type === 'agent-session').map((tab) => tab.sessionId)
         )
       ),
-      options.authoritativeInventory ?? beginStructuredAgentSessionAuthoritativeInventory()
+      options.authoritativeInventory ?? beginStructuredAgentSessionAuthoritativeInventory(),
+      LOCAL_EXECUTION_HOST_ID
     )
   }
 }
@@ -113,7 +114,7 @@ export function applyLocalStructuredSessionTabSnapshots<
       continue
     }
     // "Ask me later", not an answer: a worktree the host holds no entry for still answers a forced
-    // inventory, with `none` at version 0. Absence there proves nothing, so it neither applies nor
+    // inventory, with the `none` placeholder epoch. Absence there proves nothing, so it neither applies nor
     // records — recording it would retire the epoch below. Its cursor is left alone, so a genuinely
     // stale frame arriving late is still fenced.
     if (!hostSnapshotAffirmsWorktreeContents(snapshot)) {
