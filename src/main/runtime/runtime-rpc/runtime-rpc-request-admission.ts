@@ -137,9 +137,9 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
       return { request, callerScope: OWNER_RPC_CALLER_SCOPE }
     }
     // Why: a bridged SSH CLI holds only its invocation's credential, scoped to that SSH target.
-    const bridge = sshBridgeCredentials.resolve(request.authToken)
-    if (bridge) {
-      return { request, callerScope: bridge.scope }
+    const bridgeScope = sshBridgeCredentials.resolve(request.authToken)
+    if (bridgeScope) {
+      return { request, callerScope: bridgeScope }
     }
     return { error: this.buildError(request.id, 'unauthorized', 'Invalid auth token') }
   }
