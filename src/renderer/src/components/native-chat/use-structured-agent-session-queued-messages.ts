@@ -8,10 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
-import type {
-  AgentJournalItemBody,
-  AgentJournalSubmission
-} from '../../../../shared/agent-session-journal-types'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuedMessageDeleteResult,
@@ -20,7 +17,6 @@ import type {
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
-import { promptHoldingComposerSlot } from './native-chat-composer-slot'
 import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 import { nativeChatComposerDraftWriteSettled } from './native-chat-composer-draft-store'
 import {
@@ -52,8 +48,6 @@ export type StructuredAgentSessionQueuedMessagesController = {
   remove: (messageId: string) => Promise<void>
   /** Copy the card's shown text into the composer, then delete the draft. */
   edit: (messageId: string) => Promise<void>
-  /** The prompt card standing in the composer's slot; Edit waits until it is answered. */
-  editHeldBy: 'question' | 'approval' | null
   /** Cmd/Ctrl+Enter: Send-now the newest card. False when there is none to steer. */
   steerNewest: () => boolean
   /** Present while the header row shows and the queue could send now: the composer offers
@@ -84,8 +78,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuedMessages: readonly AgentSessionQueuedMessage[] | null
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
-  /** Pending prompts: any holds the cards; one this build can answer also hides the composer. */
-  prompts: readonly { body: AgentJournalItemBody }[]
+  hasPendingPrompt: boolean
   /** A turn is running, whoever started it, or the queue is about to send its next card. */
   isWorking: boolean
   /** This pane's sends without a host record yet show as sending cards. */
@@ -93,12 +86,9 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
-  const { composerScopeKey, enabled, mutate, prompts, queuedMessages, submissions } = args
+  const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
   const { isWorking, queuePause } = args
   const sending = args.sending ?? NO_SENDS
-  const hasPendingPrompt = prompts.length > 0
-  // A prompt card standing in the composer's slot leaves no composer to take Edit's text.
-  const promptInComposerSlot = promptHoldingComposerSlot(prompts)
 
   const cards = useMemo(
     () => [
@@ -183,10 +173,10 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     (messageId: string): Promise<void> =>
       actOnce(messageId, async () => {
         // The text is copied FIRST, from the card this pane already shows — a local move,
-        // never a wire payload. Without a composer to hold it, or with a prompt card hiding
-        // it, deleting would make the text vanish, so the draft then stays a card.
+        // never a wire payload. Without a composer to hold it, deleting would destroy it,
+        // so the draft then stays a card.
         const card = cardsRef.current.find((entry) => entry.messageId === messageId)
-        if (!card || card.command || !composerScopeKey || promptInComposerSlot) {
+        if (!card || card.command || !composerScopeKey) {
           return
         }
         appendNativeChatDraftCache(composerScopeKey, card.text)
@@ -209,7 +199,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         }
         // A failed Delete leaves the card: the text shows in both places, visibly, never lost.
       }),
-    [actOnce, composerScopeKey, mutate, promptInComposerSlot]
+    [actOnce, composerScopeKey, mutate]
   )
 
   const steerNewest = useCallback((): boolean => {
@@ -276,7 +266,6 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     steer,
     remove,
     edit,
-    editHeldBy: promptInComposerSlot,
     steerNewest,
     queueResume,
     queueHold

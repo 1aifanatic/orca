@@ -18466,8 +18466,6 @@
         "editMessage": "Modifier le message",
         "showFullMessage": "Afficher le message complet",
         "showLess": "Afficher moins",
-        "editHeldByQuestion": "Répondez à la question pour modifier",
-        "editHeldByApproval": "Répondez à la demande pour modifier",
         "turnOffQueueing": "Désactiver la file d'attente",
         "withdrawnHold": "Arrêté avant l'envoi",
         "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer.",

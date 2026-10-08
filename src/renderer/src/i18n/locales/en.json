@@ -18615,8 +18615,6 @@
         "editMessage": "Edit message",
         "showFullMessage": "Show full message",
         "showLess": "Show less",
-        "editHeldByQuestion": "Answer the question to edit",
-        "editHeldByApproval": "Answer the request to edit",
         "turnOffQueueing": "Turn off queueing",
         "listLabel": "Queued messages",
         "alreadySent": "This message was already sent.",

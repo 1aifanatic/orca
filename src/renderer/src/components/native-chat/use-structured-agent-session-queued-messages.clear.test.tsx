@@ -47,7 +47,7 @@ function renderController(
       queuedMessages,
       queuePause: options.queuePause === undefined ? STOPPED : options.queuePause,
       submissions: [],
-      prompts: [],
+      hasPendingPrompt: false,
       isWorking: options.isWorking === true,
       composerScopeKey: undefined,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the controller only awaits mutate; the stub answers Delete's shape.

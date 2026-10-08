@@ -212,7 +212,7 @@ export function useStructuredAgentSession(args: {
     // Its published list, pause and submissions; the rest is named below.
     ...transportState,
     enabled: queueCapability === 'supported' && transportState.fence !== null,
-    prompts,
+    hasPendingPrompt: prompts.length > 0,
     isWorking,
     // Hidden from the transcript, a queue send on its way reads as sending among the cards.
     sending: pending,

@@ -49,10 +49,12 @@ import { useNativeChatStructuredComposerTransport } from './use-native-chat-stru
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
-import { promptHoldingComposerSlot } from './native-chat-composer-slot'
+import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { useNativeChatHostOutage } from './use-native-chat-host-outage'
 import { useNativeChatHostOutageNotice } from './use-native-chat-host-outage-notice'
 import { useNativeChatAvailabilityNotice } from './use-native-chat-availability-notice'
+import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
+import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -132,10 +134,20 @@ export function NativeChatStructuredSession(
     isWorking: controller.isWorking,
     composer: { clearError: () => reportComposerError(null) }
   })
+  const needsFailureFacts =
+    submits.queuedMessages.cards.some((card) => card.state === 'returned') ||
+    controller.submissions.some(
+      (submission) => submission.dispatchState === 'rejected' && !dispatchWasWithdrawn(submission)
+    )
+  const startFailures = useStructuredAgentSessionStartFailureFacts(
+    controller.journalItems,
+    needsFailureFacts
+  )
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     pending: controller.pending,
     submissions: controller.submissions,
     journalItems: controller.journalItems,
+    startFailures,
     agentName: agentLabel
   })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
@@ -161,9 +173,10 @@ export function NativeChatStructuredSession(
     { sessionId: props.sessionId, isVisible: props.isVisible }
   )
   const prompt = controller.prompts[0] ?? null
-  // A prompt this build cannot answer holds no slot: the composer stays, and its card takes no focus.
-  const promptInSlot = promptHoldingComposerSlot(controller.prompts)
-  const composerShown = promptInSlot === null && !readFailedFinally
+  // Prompts this build cannot answer leave the composer open: a send starts a turn, whose card
+  // cancel then works.
+  const promptsUnanswerable = pendingPromptsAllUnanswerableHere(controller.prompts)
+  const composerShown = (prompt === null || promptsUnanswerable) && !readFailedFinally
   const approval = prompt?.body.kind === 'approval' ? chatApprovalFromJournal(prompt.body) : null
   const cancelPrompt = () => {
     if (prompt && (controller.turnId || props.agent === 'pi')) {
@@ -279,6 +292,8 @@ export function NativeChatStructuredSession(
           {/* Host-held drafts, never transcript rows. Above the status area, so running shells and agents sit next to the composer. */}
           <NativeChatQueuedMessageList
             controller={submits.queuedMessages}
+            agentName={agentLabel}
+            statedFailures={startFailures}
             steerHeld={stopControls.stopping}
             focusComposer={focusComposer}
           />
@@ -314,7 +329,7 @@ export function NativeChatStructuredSession(
               }
               isSubmitting={promptResponse.holds(prompt)}
               onCancel={cancelPrompt}
-              shouldFocus={promptInSlot !== null && props.isVisible && props.isFocusedGroup}
+              shouldFocus={!promptsUnanswerable && props.isVisible && props.isFocusedGroup}
               onLinkClick={onLinkClick}
               allowFileUriLinks={onLinkClick !== undefined}
             />
@@ -326,7 +341,7 @@ export function NativeChatStructuredSession(
               onAnswer={(response) => void promptResponse.respond(prompt, response)}
               isSubmitting={promptResponse.holds(prompt)}
               onCancel={cancelPrompt}
-              shouldFocus={promptInSlot !== null && props.isVisible && props.isFocusedGroup}
+              shouldFocus={!promptsUnanswerable && props.isVisible && props.isFocusedGroup}
               answerInputRef={questionAnswerInputRef}
             />
           ) : null}

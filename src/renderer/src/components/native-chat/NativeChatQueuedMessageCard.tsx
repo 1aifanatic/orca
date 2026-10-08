@@ -118,24 +118,6 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
   }
 }
 
-/** Why Edit waits: the prompt card standing in the composer's slot must be answered first. */
-function queuedMessageCardEditHold(editHeldBy: 'question' | 'approval' | null): string | null {
-  switch (editHeldBy) {
-    case 'question':
-      return translate(
-        'components.native-chat.queuedMessages.editHeldByQuestion',
-        'Answer the question to edit'
-      )
-    case 'approval':
-      return translate(
-        'components.native-chat.queuedMessages.editHeldByApproval',
-        'Answer the request to edit'
-      )
-    case null:
-      return null
-  }
-}
-
 export function NativeChatQueuedMessageCard({
   card,
   showsSteerShortcut,
@@ -143,7 +125,6 @@ export function NativeChatQueuedMessageCard({
   onSteer,
   onDelete,
   onEdit,
-  editHeldBy = null,
   onTurnOffQueueing
 }: {
   card: QueuedMessageCard
@@ -154,8 +135,6 @@ export function NativeChatQueuedMessageCard({
   onSteer: () => void
   onDelete: () => void
   onEdit: () => void
-  /** A prompt card stands where the composer would take Edit's text; Edit waits for the answer. */
-  editHeldBy?: 'question' | 'approval' | null
   /** Absent when the host does not queue sends, so there is nothing to turn off. */
   onTurnOffQueueing?: () => void
 }): React.JSX.Element {
@@ -168,7 +147,6 @@ export function NativeChatQueuedMessageCard({
   const [expanded, setExpanded] = useState(false)
   const [clipped, measureLine] = useNativeChatClippedLine(false)
   const textId = useId()
-  const editHold = queuedMessageCardEditHold(editHeldBy)
   return (
     <li
       data-queued-message-id={card.messageId}
@@ -276,15 +254,9 @@ export function NativeChatQueuedMessageCard({
               <DropdownMenuContent align="end">
                 {/* A command's text is not a draft: edited, it would become a message. */}
                 {card.command ? null : (
-                  <DropdownMenuItem onSelect={onEdit} disabled={editHold !== null}>
+                  <DropdownMenuItem onSelect={onEdit}>
                     <Pencil />
-                    <span className="flex flex-col">
-                      {translate(
-                        'components.native-chat.queuedMessages.editMessage',
-                        'Edit message'
-                      )}
-                      {editHold ? <span>{editHold}</span> : null}
-                    </span>
+                    {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
                   </DropdownMenuItem>
                 )}
                 {onTurnOffQueueing ? (

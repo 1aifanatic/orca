@@ -8,7 +8,6 @@
 import { useCallback, useRef } from 'react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalItemBody } from '../../../../shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuePause
@@ -38,16 +37,6 @@ const RESUMED = {
   fence: 1,
   cursor: { epoch: 'epoch-1', sequence: 1 },
   value: { resumed: true }
-}
-
-/** A question waiting on its answer, as the journal holds it. */
-const PENDING_QUESTION: { body: AgentJournalItemBody } = {
-  body: {
-    kind: 'question',
-    question: 'Which?',
-    options: [],
-    resolution: { state: 'pending', selectedOptionId: null, resolvedBy: null, resolvedAt: null }
-  }
 }
 
 function card(
@@ -80,7 +69,7 @@ function renderController(initialProps: ControllerInput = {}) {
         queuedMessages: input.queuedMessages ?? [card('held')],
         queuePause: input.queuePause === undefined ? { reason: 'stopped' } : input.queuePause,
         submissions: [],
-        prompts: input.hasPendingPrompt ? [PENDING_QUESTION] : [],
+        hasPendingPrompt: input.hasPendingPrompt ?? false,
         isWorking: input.isWorking ?? false,
         composerScopeKey: undefined,
         mutate
@@ -294,7 +283,7 @@ function useQueue(sessionId = 'session-1', fence: number | null = 1) {
     queuedMessages: [card('held')],
     queuePause: { reason: 'stopped' },
     submissions: [],
-    prompts: [],
+    hasPendingPrompt: false,
     isWorking: false,
     composerScopeKey: undefined,
     mutate

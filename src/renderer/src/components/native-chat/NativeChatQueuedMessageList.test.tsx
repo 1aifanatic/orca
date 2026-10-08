@@ -70,7 +70,6 @@ function controller(
     steer: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
     edit: vi.fn(async () => {}),
-    editHeldBy: null,
     steerNewest: vi.fn(() => false),
     queueResume: undefined,
     queueHold: undefined
@@ -656,26 +655,6 @@ describe('NativeChatQueuedMessageList', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Turn off queueing' }))
     expect(mocks.updateSettings).toHaveBeenCalledWith({ nativeChatQueueFollowUps: false })
   })
-
-  // The prompt card stands in the composer's slot: Edit would move the text out of sight.
-  it.each([
-    { editHeldBy: 'question' as const, reason: 'Answer the question to edit' },
-    { editHeldBy: 'approval' as const, reason: 'Answer the request to edit' }
-  ])(
-    'Edit waits, saying why, while the $editHeldBy card holds the composer slot',
-    async ({ editHeldBy, reason }) => {
-      const owner = { ...controller([card({ messageId: 'draft-1' })]), editHeldBy }
-      renderList(owner)
-      fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
-      const item = await screen.findByRole('menuitem', { name: /Edit message/ })
-      expect(item.getAttribute('aria-disabled')).toBe('true')
-      expect(item.textContent).toContain(reason)
-      fireEvent.click(item)
-      expect(owner.edit).not.toHaveBeenCalled()
-      // The card itself stays readable and actionable.
-      expect(screen.getByRole('button', { name: 'Steer' })).toBeTruthy()
-    }
-  )
 
   // A kept message shows as a card even where the host does not queue sends; there the setting
   // and the chord would do nothing, so neither is offered.

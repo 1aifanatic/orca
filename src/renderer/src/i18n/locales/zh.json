@@ -18365,8 +18365,6 @@
         "editMessage": "编辑消息",
         "showFullMessage": "显示完整消息",
         "showLess": "收起",
-        "editHeldByQuestion": "回答问题后即可编辑",
-        "editHeldByApproval": "回应请求后即可编辑",
         "turnOffQueueing": "关闭排队",
         "withdrawnHold": "在发送前已停止",
         "pausedSendFailed": "无法发送。点按发送以重试。",
