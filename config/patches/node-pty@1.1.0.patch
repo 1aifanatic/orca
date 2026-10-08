@@ -1329,10 +1329,10 @@ diff --git a/lib/windowsTerminal.js b/lib/windowsTerminal.js
          _this._fd = _this._agent.fd;
          _this._pty = _this._agent.pty;
 +        _this._agent.onProcessExit(function () {
-+            if (_this._preconnectCleanupRequested) _this._emitExit();
++            if (_this._killRequested) _this._emitExit();
 +        });
 +        _this._socket.once('close', function () {
-+            if (_this._isPipeReady && !_this._preconnectCleanupRequested) _this._emitExit();
++            if (_this._isPipeReady && !_this._preconnectCleanupRequested && (!_this._killRequested || !_this._agent.isConpty || _this._agent.exitCode !== undefined)) _this._emitExit();
 +            _this._close();
 +            if (_this._killRequested && !_this._isPipeReady) _this._killAfterOutputClosed();
 +        });
@@ -1400,7 +1400,7 @@ diff --git a/lib/windowsTerminal.js b/lib/windowsTerminal.js
          _this._forwardEvents();
          return _this;
      }
-@@ -139,22 +170,47 @@
+@@ -139,22 +170,49 @@
          });
      };
      WindowsTerminal.prototype.destroy = function () {
@@ -1449,7 +1449,9 @@ diff --git a/lib/windowsTerminal.js b/lib/windowsTerminal.js
 +            if (_this._agent.exitCode !== undefined) _this._emitExit();
 +        }, function (error) {
 +            _this._preconnectCleanup = undefined;
-+            _this.emit('error', error);
++            if (_this.listeners('error').length > 1) {
++                _this.emit('error', error);
++            }
 +        });
 +        if (this._agent.exitCode !== undefined) this._emitExit();
      };
@@ -1460,7 +1462,7 @@ diff --git a/lib/windowsTerminal.js b/lib/windowsTerminal.js
          var _this = this;
          // If the terminal is ready, execute.
          if (this._isReady) {
-@@ -167,6 +223,9 @@
+@@ -167,6 +225,9 @@
          });
      };
      WindowsTerminal.prototype._defer = function (deferredFn, arg) {
@@ -1470,7 +1472,7 @@ diff --git a/lib/windowsTerminal.js b/lib/windowsTerminal.js
          var _this = this;
          // If the terminal is ready, execute.
          if (this._isReady) {
-@@ -196,4 +255,4 @@
+@@ -196,4 +257,4 @@
      return WindowsTerminal;
  }(terminal_1.Terminal));
  exports.WindowsTerminal = WindowsTerminal;
@@ -1600,10 +1602,10 @@ diff --git a/src/windowsTerminal.ts b/src/windowsTerminal.ts
      this._pty = this._agent.pty;
  
 +    this._agent.onProcessExit(() => {
-+      if (this._preconnectCleanupRequested) this._emitExit();
++      if (this._killRequested) this._emitExit();
 +    });
 +    this._socket.once('close', () => {
-+      if (this._isPipeReady && !this._preconnectCleanupRequested) this._emitExit();
++      if (this._isPipeReady && !this._preconnectCleanupRequested && (!this._killRequested || !this._agent.isConpty || this._agent.exitCode !== undefined)) this._emitExit();
 +      this._close();
 +      if (this._killRequested && !this._isPipeReady) this._killAfterOutputClosed();
 +    });
@@ -1676,7 +1678,7 @@ diff --git a/src/windowsTerminal.ts b/src/windowsTerminal.ts
  
      this._forwardEvents();
    }
-@@ -156,22 +192,50 @@
+@@ -156,22 +192,52 @@
    }
  
    public destroy(): void {
@@ -1725,7 +1727,9 @@ diff --git a/src/windowsTerminal.ts b/src/windowsTerminal.ts
 +      if (this._agent.exitCode !== undefined) this._emitExit();
 +    }, error => {
 +      this._preconnectCleanup = undefined;
-+      this.emit('error', error);
++      if (this.listeners('error').length > 1) {
++        this.emit('error', error);
++      }
 +    });
 +    if (this._agent.exitCode !== undefined) this._emitExit();
    }
@@ -1737,7 +1741,7 @@ diff --git a/src/windowsTerminal.ts b/src/windowsTerminal.ts
      // If the terminal is ready, execute.
      if (this._isReady) {
        deferredFn.call(this);
-@@ -185,6 +249,9 @@
+@@ -185,6 +251,9 @@
    }
  
    private _defer<A>(deferredFn: (arg: A) => void, arg: A): void {

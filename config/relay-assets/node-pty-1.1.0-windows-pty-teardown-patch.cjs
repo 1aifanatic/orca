@@ -146,7 +146,7 @@ const PRECONNECT_TERMINAL_REPLACEMENTS = [
   ],
   [
     "        // A pre-output teardown must still publish the actual pipe close.\n        _this._socket.once('close', function () {\n            if (_this._isPipeReady) {\n                _this.emit('exit', _this._agent.exitCode);\n            }\n            _this._close();\n        });",
-    "        _this._agent.onProcessExit(function () {\n            if (_this._preconnectCleanupRequested) _this._emitExit();\n        });\n        _this._socket.once('close', function () {\n            if (_this._isPipeReady && !_this._preconnectCleanupRequested) _this._emitExit();\n            _this._close();\n            if (_this._killRequested && !_this._isPipeReady) _this._killAfterOutputClosed();\n        });"
+    "        _this._agent.onProcessExit(function () {\n            if (_this._killRequested) _this._emitExit();\n        });\n        _this._socket.once('close', function () {\n            if (_this._isPipeReady && !_this._preconnectCleanupRequested && (!_this._killRequested || !_this._agent.isConpty || _this._agent.exitCode !== undefined)) _this._emitExit();\n            _this._close();\n            if (_this._killRequested && !_this._isPipeReady) _this._killAfterOutputClosed();\n        });"
   ],
   [
     '        if (!this._isPipeReady || this._killComplete) {\n            return;\n        }',
@@ -154,7 +154,7 @@ const PRECONNECT_TERMINAL_REPLACEMENTS = [
   ],
   [
     '    WindowsTerminal.prototype._deferNoArgs =',
-    "    WindowsTerminal.prototype._emitExit = function () {\n        if (this._exitEmitted) return;\n        this._exitEmitted = true;\n        this.emit('exit', this._agent.exitCode);\n    };\n    WindowsTerminal.prototype._killAfterOutputClosed = function () {\n        var _this = this;\n        if (!this._agent.isConpty || this._killComplete || this._preconnectCleanup) return;\n        this._preconnectCleanupRequested = true;\n        this._preconnectCleanup = this._agent.killAfterOutputClosed().then(function () {\n            _this._killComplete = true;\n            if (_this._agent.exitCode !== undefined) _this._emitExit();\n        }, function (error) {\n            _this._preconnectCleanup = undefined;\n            _this.emit('error', error);\n        });\n        if (this._agent.exitCode !== undefined) this._emitExit();\n    };\n    WindowsTerminal.prototype._deferNoArgs ="
+    "    WindowsTerminal.prototype._emitExit = function () {\n        if (this._exitEmitted) return;\n        this._exitEmitted = true;\n        this.emit('exit', this._agent.exitCode);\n    };\n    WindowsTerminal.prototype._killAfterOutputClosed = function () {\n        var _this = this;\n        if (!this._agent.isConpty || this._killComplete || this._preconnectCleanup) return;\n        this._preconnectCleanupRequested = true;\n        this._preconnectCleanup = this._agent.killAfterOutputClosed().then(function () {\n            _this._killComplete = true;\n            if (_this._agent.exitCode !== undefined) _this._emitExit();\n        }, function (error) {\n            _this._preconnectCleanup = undefined;\n            if (_this.listeners('error').length > 1) {\n                _this.emit('error', error);\n            }\n        });\n        if (this._agent.exitCode !== undefined) this._emitExit();\n    };\n    WindowsTerminal.prototype._deferNoArgs ="
   ]
 ]
 
@@ -198,11 +198,28 @@ const PATCH_TARGETS = [
   {
     relativePath: ['lib', 'windowsTerminal.js'],
     originalSha256: 'c3a65716f53fed0135a8a633373d5f9c2ab092544d651f27ef0a67096dd3bcd9',
-    patchedSha256: '598755ee75307d041a72cd7c7c4e12ae4a4bbf35eee19da67b42b61fdae0d4d6',
+    patchedSha256: '5dfeb1dda46645e1d77964ad4d07072b34f0a897dfc7e785137cc39e755b4641',
     additionalPreviousVariants: [
       {
         sha256: '3060c6514a8e9e3285f91b9b549930e7d25d59d4cf7e1ed3a25b9a680dd1ded5',
         replacements: PRECONNECT_TERMINAL_REPLACEMENTS
+      },
+      {
+        sha256: '598755ee75307d041a72cd7c7c4e12ae4a4bbf35eee19da67b42b61fdae0d4d6',
+        replacements: [
+          [
+            "            _this._preconnectCleanup = undefined;\n            _this.emit('error', error);",
+            "            _this._preconnectCleanup = undefined;\n            if (_this.listeners('error').length > 1) {\n                _this.emit('error', error);\n            }"
+          ],
+          [
+            '            if (_this._preconnectCleanupRequested) _this._emitExit();',
+            '            if (_this._killRequested) _this._emitExit();'
+          ],
+          [
+            '            if (_this._isPipeReady && !_this._preconnectCleanupRequested) _this._emitExit();',
+            '            if (_this._isPipeReady && !_this._preconnectCleanupRequested && (!_this._killRequested || !_this._agent.isConpty || _this._agent.exitCode !== undefined)) _this._emitExit();'
+          ]
+        ]
       }
     ],
     previousPatchedSha256: '8247ecd69be8b18257050fb026b290024612c5ffc6d492ff1d46f81e613be2cf',

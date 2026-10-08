@@ -64,6 +64,7 @@ async function exercise() {
   )
   let dataCallbacks = 0
   let exitCallbacks = 0
+  const unexpectedExits = []
   let nativeExitCallbacks = 0
   const record = {
     proc: term,
@@ -81,7 +82,18 @@ async function exercise() {
   term.onData(() => {
     dataCallbacks += 1
   })
-  term.onExit(() => {
+  term.onExit((event) => {
+    if (
+      nativeExitCallbacks !== 1 ||
+      !Number.isInteger(event.exitCode) ||
+      event.exitCode !== term._agent.exitCode
+    ) {
+      unexpectedExits.push({
+        nativeExitCallbacks,
+        exitCode: event.exitCode ?? null,
+        nativeExitCode: term._agent.exitCode ?? null
+      })
+    }
     exitCallbacks += 1
     record.exited = true
   })
@@ -188,6 +200,7 @@ async function exercise() {
       nativeExitCallbacks,
       nativeExitCode: Number.isInteger(term._agent.exitCode) ? term._agent.exitCode : null,
       publicExitCallbacks: exitCallbacks,
+      unexpectedExits,
       dataCallbacks,
       inputDestroyed: term._agent.inSocket.destroyed,
       outputDestroyed: term._socket.destroyed,
@@ -199,6 +212,11 @@ async function exercise() {
   )
   assert.equal(alive(pid), false, 'Public teardown must kill the real child')
   assert.equal(exitCallbacks, 1, 'Actual public exit must arrive exactly once')
+  assert.deepEqual(
+    unexpectedExits,
+    [],
+    'Requested ConPTY teardown must publish the actual native acknowledgment and exit code'
+  )
   writeSync(1, `${JSON.stringify({ phase: 'complete', operation, fence, pid, exitCallbacks })}\n`)
 }
 

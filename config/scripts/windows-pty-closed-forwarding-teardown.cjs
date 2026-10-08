@@ -8,9 +8,11 @@ const pty = require('node-pty')
 const utilsPath = require.resolve('node-pty/lib/utils')
 const loaded = require(utilsPath).loadNativeModule('conpty')
 const native = loaded.module
-const [backend] = process.argv.slice(2)
+const [backend, faultMode] = process.argv.slice(2)
 assert.equal(process.platform, 'win32')
 assert.ok(backend === 'dll' || backend === 'inbox')
+assert.ok(faultMode === undefined || faultMode === 'retry')
+const retryFault = faultMode === 'retry'
 assert.equal(native.assignCurrentProcessToJob(), true, 'Host crash cleanup must own descendants')
 
 function alive(pid) {
@@ -64,10 +66,14 @@ async function exercise() {
   const pid = term.pid
   let dataCallbacks = 0
   let exitCallbacks = 0
+  const unexpectedExits = []
   let nativeExitCallbacks = 0
   let forwardingConnections = 0
   let faultApplied = false
   const errors = []
+  const unhandledRejections = []
+  let firstKillFault = false
+  let retried = false
   const record = {
     proc: term,
     exited: false,
@@ -78,14 +84,42 @@ async function exercise() {
   term.onData(() => {
     dataCallbacks += 1
   })
-  term.onExit(() => {
+  term.onExit((event) => {
+    if (
+      nativeExitCallbacks !== 1 ||
+      !Number.isInteger(event.exitCode) ||
+      event.exitCode !== term._agent.exitCode
+    ) {
+      unexpectedExits.push({
+        nativeExitCallbacks,
+        exitCode: event.exitCode ?? null,
+        nativeExitCode: term._agent.exitCode ?? null
+      })
+    }
     exitCallbacks += 1
     record.exited = true
   })
-  term.on('error', (error) => {
-    errors.push(String(error))
-    report('terminal-error', { error: String(error) })
-  })
+  if (retryFault) {
+    assert.equal(term.listeners('error').length, 1, 'Only the constructor error listener may exist')
+    process.on('unhandledRejection', (error) => {
+      unhandledRejections.push(String(error))
+      report('unhandled-cleanup-rejection', { error: String(error) })
+    })
+    const originalKill = term._agent.kill.bind(term._agent)
+    term._agent.kill = () => {
+      if (!firstKillFault) {
+        firstKillFault = true
+        report('injected-first-kill-failure', { pid })
+        throw new Error('ORCA_FIRST_PRECONNECT_KILL_FAILURE')
+      }
+      originalKill()
+    }
+  } else {
+    term.on('error', (error) => {
+      errors.push(String(error))
+      report('terminal-error', { error: String(error) })
+    })
+  }
   const observer = createStressObserver((phase, details) => {
     if (phase === 'native-exit-callback') {
       nativeExitCallbacks += 1
@@ -117,6 +151,17 @@ async function exercise() {
   })
   const deadline = Date.now() + 15_000
   while ((!faultApplied || alive(pid) || exitCallbacks === 0) && Date.now() < deadline) {
+    if (retryFault && firstKillFault && !retried) {
+      await new Promise((resolve) => setImmediate(resolve))
+      assert.equal(processTree.getProcessCreationTime(pid), originalCreationTimeMs)
+      assert.equal(alive(pid), true, 'The failed first kill must leave the actual child live')
+      assert.ok(native.listJobProcessIds(term._pty, pid)?.includes(pid))
+      assert.equal(nativeExitCallbacks, 0)
+      assert.equal(exitCallbacks, 0)
+      retried = true
+      report('retry-after-first-kill-failure', { pid, nativeExitCallbacks, exitCallbacks })
+      term.destroy()
+    }
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   const currentCreationTimeMs = processTree.getProcessCreationTime(pid) ?? null
@@ -137,6 +182,7 @@ async function exercise() {
     nativeExitCallbacks,
     nativeExitCode: Number.isInteger(term._agent.exitCode) ? term._agent.exitCode : null,
     publicExitCallbacks: exitCallbacks,
+    unexpectedExits,
     forwardingConnections,
     dataCallbacks,
     inputDestroyed: term._agent.inSocket.destroyed,
@@ -145,7 +191,11 @@ async function exercise() {
     firstDataReady: term._isReady === true,
     killRequested: term._killRequested === true,
     killReturned: term._killComplete === true,
-    errors
+    errors,
+    retryFault,
+    firstKillFault,
+    retried,
+    unhandledRejections
   })
   assert.equal(faultApplied, true, 'The actual worker-ready resource fault must be reached')
   assert.equal(forwardingConnections, 0, 'A retired forwarding connection must not reopen')
@@ -156,9 +206,23 @@ async function exercise() {
     'The actual native exit acknowledgment must arrive exactly once'
   )
   assert.equal(exitCallbacks, 1, 'Actual public exit must arrive exactly once')
+  assert.deepEqual(
+    unexpectedExits,
+    [],
+    'Requested ConPTY teardown must publish the actual native acknowledgment and exit code'
+  )
   assert.equal(term._agent.inSocket.destroyed, true)
   assert.deepEqual(errors, [])
-  report('complete', { backend, pid, nativeExitCallbacks, exitCallbacks })
+  if (retryFault) {
+    assert.equal(firstKillFault, true, 'The actual first kill failure must be reached')
+    assert.equal(retried, true, 'Public teardown must retry the failed native cleanup')
+    assert.deepEqual(
+      unhandledRejections,
+      [],
+      'Cleanup failure must not create an unhandled rejection'
+    )
+  }
+  report('complete', { backend, pid, nativeExitCallbacks, exitCallbacks, retryFault })
 }
 
 exercise().catch((error) => {

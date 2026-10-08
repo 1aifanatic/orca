@@ -139,47 +139,67 @@ describe('Windows SSH relay node-pty ConPTY teardown patch', () => {
     )
   })
 
-  it('upgrades the exact previous Windows terminal patch without changing relay agent ordering', () => {
-    const fixture = writeNodePtyFixture('1.1.0')
-    const asset = readFileSync(
-      join(projectDir, 'config', 'relay-assets', 'node-pty-1.1.0-windows-pty-teardown-patch.cjs'),
-      'utf8'
-    )
-    const { PATCH_TARGETS } = loadPatchTargets(asset)
-    const target = PATCH_TARGETS.find((entry) => entry.relativePath.at(-1) === 'windowsTerminal.js')
-    const publishedPath = join(fixture.libDir, 'windowsTerminal.js')
-    const publishedTerminal = readFileSync(publishedPath, 'utf8')
-    patchNodePtyWindowsTeardown(fixture.root)
-    const relayAgentPath = join(fixture.libDir, 'windowsPtyAgent.js')
-    const relayAgent = readFileSync(relayAgentPath, 'utf8')
-    expect(createHash('sha256').update(relayAgent).digest('hex')).toBe(
-      '3c14daf8d0ec2d1e2d66435caa5fb2b629b230e237873594e623e79e6a7d1223'
-    )
-    let legacy = publishedTerminal
-    const priorReplacements = target.replacements.slice(
-      0,
-      target.replacements.length - target.previousReplacements.length
-    )
-    for (const [from, to] of priorReplacements) {
-      expect(legacy.split(from).length - 1).toBe(1)
-      legacy = legacy.replace(from, to)
+  it.each([
+    '8247ecd69be8b18257050fb026b290024612c5ffc6d492ff1d46f81e613be2cf',
+    '598755ee75307d041a72cd7c7c4e12ae4a4bbf35eee19da67b42b61fdae0d4d6'
+  ])(
+    'upgrades the exact %s Windows terminal patch without changing relay agent ordering',
+    (legacySha256) => {
+      const fixture = writeNodePtyFixture('1.1.0')
+      const asset = readFileSync(
+        join(projectDir, 'config', 'relay-assets', 'node-pty-1.1.0-windows-pty-teardown-patch.cjs'),
+        'utf8'
+      )
+      const { PATCH_TARGETS } = loadPatchTargets(asset)
+      const target = PATCH_TARGETS.find(
+        (entry) => entry.relativePath.at(-1) === 'windowsTerminal.js'
+      )
+      const publishedPath = join(fixture.libDir, 'windowsTerminal.js')
+      const publishedTerminal = readFileSync(publishedPath, 'utf8')
+      patchNodePtyWindowsTeardown(fixture.root)
+      const relayAgentPath = join(fixture.libDir, 'windowsPtyAgent.js')
+      const relayAgent = readFileSync(relayAgentPath, 'utf8')
+      expect(createHash('sha256').update(relayAgent).digest('hex')).toBe(
+        '3c14daf8d0ec2d1e2d66435caa5fb2b629b230e237873594e623e79e6a7d1223'
+      )
+      let legacy = publishedTerminal
+      const variant = target.additionalPreviousVariants.find(
+        (entry) => entry.sha256 === legacySha256
+      )
+      const priorReplacements =
+        legacySha256 === target.previousPatchedSha256
+          ? target.replacements.slice(
+              0,
+              target.replacements.length - target.previousReplacements.length
+            )
+          : target.replacements
+      for (const [from, to] of priorReplacements) {
+        expect(legacy.split(from).length - 1).toBe(1)
+        legacy = legacy.replace(from, to)
+      }
+      if (variant) {
+        for (const [from, to] of variant.replacements.toReversed()) {
+          expect(legacy.split(to).length - 1).toBe(1)
+          legacy = legacy.replace(to, from)
+        }
+      }
+      expect(createHash('sha256').update(legacy).digest('hex')).toBe(legacySha256)
+      writeFileSync(publishedPath, legacy)
+      patchNodePtyWindowsTeardown(fixture.root)
+      expect(readFileSync(relayAgentPath, 'utf8')).toBe(relayAgent)
+      expect(() => assertPatchedNodePtyWindowsTeardown(fixture.root)).not.toThrow()
+      expect(readFileSync(publishedPath, 'utf8')).toBe(
+        readFileSync(desktopPath('windowsTerminal.js'), 'utf8')
+      )
+      const installed = PATCHED_FILES.map((file) =>
+        readFileSync(join(fixture.libDir, file), 'utf8')
+      )
+      patchNodePtyWindowsTeardown(fixture.root)
+      expect(PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))).toEqual(
+        installed
+      )
     }
-    expect(createHash('sha256').update(legacy).digest('hex')).toBe(
-      '8247ecd69be8b18257050fb026b290024612c5ffc6d492ff1d46f81e613be2cf'
-    )
-    writeFileSync(publishedPath, legacy)
-    patchNodePtyWindowsTeardown(fixture.root)
-    expect(readFileSync(relayAgentPath, 'utf8')).toBe(relayAgent)
-    expect(() => assertPatchedNodePtyWindowsTeardown(fixture.root)).not.toThrow()
-    expect(readFileSync(publishedPath, 'utf8')).toBe(
-      readFileSync(desktopPath('windowsTerminal.js'), 'utf8')
-    )
-    const installed = PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))
-    patchNodePtyWindowsTeardown(fixture.root)
-    expect(PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))).toEqual(
-      installed
-    )
-  })
+  )
 
   it('finishes interrupted previous relay upgrades in dependency order', () => {
     const fixture = writeNodePtyFixture('1.1.0')
