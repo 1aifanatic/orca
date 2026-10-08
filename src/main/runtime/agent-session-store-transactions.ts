@@ -27,7 +27,7 @@ import {
   type AgentSessionStoreRowWrites
 } from './agent-session-store-draft'
 
-// Why: rows are diffed by identity, so a row changed in place would never be written. Tests and
+// Why: records are diffed by identity, so a record changed in place would never be written. Tests and
 // development builds make that a TypeError; packaged builds skip the walk.
 const FREEZE_ROWS = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
 
@@ -51,10 +51,6 @@ function freezeRows(
   const records = writes ? writes.records.upsert.map(([key]) => key) : state.records.keys()
   for (const sessionId of records) {
     deepFreeze(state.records.get(sessionId))
-  }
-  const operations = writes ? writes.operations.upsert.map(([key]) => key) : state.operations.keys()
-  for (const key of operations) {
-    deepFreeze(state.operations.get(key))
   }
   if (!writes || writes.retiredClaimKeys) {
     state.retiredClaimKeys.forEach(deepFreeze)
@@ -152,11 +148,15 @@ export class AgentSessionStoreTransactions {
     if (readOnly && !inMemoryWhenReadOnly) {
       throw readOnlyStoreRefusal()
     }
-    const staged = this.stage(apply)
-    const writes = staged.writes
-    if (writes && !readOnly) {
-      this.journalDatabase.transaction((db) => writeAgentSessionStoreRows(db, writes))
-    }
+    const staged = readOnly
+      ? this.stage(apply)
+      : this.journalDatabase.transaction((db) => {
+          const staged = this.stage(apply)
+          if (staged.writes) {
+            writeAgentSessionStoreRows(db, staged.writes)
+          }
+          return staged
+        })
     staged.adopt()
     return staged.result
   }

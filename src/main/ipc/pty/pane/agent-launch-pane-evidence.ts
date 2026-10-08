@@ -32,8 +32,13 @@ export function agentLaunchPaneEvidence(
             null,
         false
       ),
-    openedRows: () =>
-      orElse(() => runtime?.openedAgentSessionRecordStore()?.listOperationRows() ?? null, null),
+    openedRows: (ownedPane, now) =>
+      orElse(
+        () =>
+          runtime?.openedAgentSessionRecordStore()?.listOperationRowsOwningPane(ownedPane, now) ??
+          null,
+        null
+      ),
     launchPaneOnTab: () =>
       orElse(() => {
         if (!store || typeof store.getWorkspaceSession !== 'function') {
@@ -47,11 +52,14 @@ export function agentLaunchPaneEvidence(
         )?.agentLaunchPane
         return launchPane?.leafId === pane.leafId ? launchPane : null
       }, null),
-    openRows: async () => {
+    openRows: async (ownedPane, now) => {
       if (!runtime) {
         throw new Error('runtime_unavailable')
       }
-      return (await runtime.openAgentSessionRecordStore()).listOperationRows()
+      return (await runtime.openAgentSessionRecordStore()).listOperationRowsOwningPane(
+        ownedPane,
+        now
+      )
     },
     now: () => Date.now()
   }

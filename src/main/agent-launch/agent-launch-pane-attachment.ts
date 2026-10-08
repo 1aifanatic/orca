@@ -145,11 +145,17 @@ export type AgentLaunchPaneEvidence = {
    *  record says. */
   isPaneLive(paneKey: string): boolean
   /** The record's rows when the store is already open; null when it is not. */
-  openedRows(): Iterable<AgentSessionOperationRow> | null
+  openedRows(
+    pane: AgentSessionOperationOwnedPane,
+    now: number
+  ): Iterable<AgentSessionOperationRow> | null
   /** What the pane's tab keeps about its launch: null when no launch laid it out, no outcome while
    *  the fate is open, the outcome once it is final. */
   launchPaneOnTab(): { outcome?: AgentLaunchPaneOutcome } | null
-  openRows(): Promise<Iterable<AgentSessionOperationRow>>
+  openRows(
+    pane: AgentSessionOperationOwnedPane,
+    now: number
+  ): Promise<Iterable<AgentSessionOperationRow>>
   now(): number
 }
 
@@ -184,7 +190,9 @@ async function settleVerdict(
     return final
   }
   // Bookkeeping never gates the user: a record that cannot be read leaves an ordinary terminal.
-  const rows = evidence.openedRows() ?? (await evidence.openRows().catch(() => null))
+  const rows =
+    evidence.openedRows(pane, evidence.now()) ??
+    (await evidence.openRows(pane, evidence.now()).catch(() => null))
   return rows
     ? agentLaunchPaneVerdictFromRecord(
         listAgentSessionOperationRowsOwningPane(rows, pane, evidence.now()),
@@ -203,7 +211,7 @@ export function resolveAgentLaunchPaneVerdict(
   evidence: AgentLaunchPaneEvidence
 ): Promise<AgentLaunchPaneVerdict> | null {
   if (!runningLaunchesByPane.has(paneKeyOf(pane)) && evidence.launchPaneOnTab() === null) {
-    const rows = evidence.openedRows()
+    const rows = evidence.openedRows(pane, evidence.now())
     if (!rows || listAgentSessionOperationRowsOwningPane(rows, pane, evidence.now()).length === 0) {
       return null
     }

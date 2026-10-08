@@ -1,3 +1,4 @@
+import { readTestAgentSessionOperationRows } from '../../runtime/agent-session-operation-test-rows'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -151,9 +152,9 @@ function invoke(harness: Harness, spec: CallSpec): Promise<AgentSessionMutationR
 }
 
 function operationState(harness: Harness, operation: string) {
-  return harness.store
-    .listOperationRows()
-    .find((row) => row.callerKey === CALLER.callerKey && row.operationId === operation)?.outcome
+  return readTestAgentSessionOperationRows(harness.store).find(
+    (row) => row.callerKey === CALLER.callerKey && row.operationId === operation
+  )?.outcome
 }
 
 async function assertHostAgreement(

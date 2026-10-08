@@ -14,6 +14,7 @@ import {
 } from './journal-database'
 import { journalOpenRefusalError } from './journal-open-failure'
 import { AgentSessionJournalError } from './journal-write-guards'
+import { startAgentSessionOperationMaintenance } from '../../runtime/agent-session-operation-maintenance'
 
 const JOURNAL_DATABASE_FILE = 'agent-session-journal.db'
 
@@ -27,6 +28,7 @@ export class JournalHostDatabase {
   readonly readOnly: boolean
   /** A failed transaction's ROLLBACK failed too, so the transaction may still be open. */
   private stranded = false
+  private readonly stopOperationMaintenance: () => void
 
   private constructor(
     opened: OpenJournalDatabase,
@@ -35,6 +37,7 @@ export class JournalHostDatabase {
   ) {
     this.connection = opened.db
     this.readOnly = opened.readOnly
+    this.stopOperationMaintenance = startAgentSessionOperationMaintenance(this)
   }
 
   static open(stateDirectory: string): JournalHostDatabase {
@@ -72,6 +75,7 @@ export class JournalHostDatabase {
   close(): void {
     this.connection?.close()
     this.connection = null
+    this.stopOperationMaintenance()
   }
 
   /**

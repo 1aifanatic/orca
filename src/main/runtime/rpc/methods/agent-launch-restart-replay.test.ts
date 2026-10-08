@@ -1,3 +1,4 @@
+import { readTestAgentSessionOperationRows } from '../../agent-session-operation-test-rows'
 /**
  * A launch's record across a host restart, against the real durable ledger.
  *
@@ -491,7 +492,9 @@ describe('a caller cannot claim an identity', () => {
     })
 
     expect(JSON.parse(response)).toMatchObject({ ok: true })
-    expect(store.listOperationRows().map((entry) => entry.callerKey)).toEqual(['device-1'])
+    expect(readTestAgentSessionOperationRows(store).map((entry) => entry.callerKey)).toEqual([
+      'device-1'
+    ])
   })
 
   it('refuses replay safety to a transport that cannot name its caller', async () => {
@@ -512,7 +515,7 @@ describe('a caller cannot claim an identity', () => {
       error: { code: 'agent_session_identity_required' }
     })
     expect(host.createTerminal).not.toHaveBeenCalled()
-    expect(store.listOperationRows()).toHaveLength(0)
+    expect(readTestAgentSessionOperationRows(store)).toHaveLength(0)
   })
 })
 
@@ -531,7 +534,7 @@ describe('the ledger stays bounded', () => {
     releasePaste(true)
     await running
 
-    expect(store.listOperationRows()).toHaveLength(1)
+    expect(readTestAgentSessionOperationRows(store)).toHaveLength(1)
     expect(row()?.expiresAt).toBe(afterFirstWrite?.expiresAt)
     expect(row()?.recordedAt).toBe(afterFirstWrite?.recordedAt)
   })

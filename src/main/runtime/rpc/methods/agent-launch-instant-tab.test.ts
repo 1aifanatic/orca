@@ -1,3 +1,4 @@
+import { readTestAgentSessionOperationRows } from '../../agent-session-operation-test-rows'
 /**
  * The tab of an `agent.launch` appears before the launch is admitted, at the requested place, and
  * the spawn lands in that tab's pane. Driven through the method's handler with the shared runtime
@@ -190,9 +191,9 @@ function paneEvidence(
 ): AgentLaunchPaneEvidence {
   return {
     isPaneLive: (paneKey) => runtime.hasLiveTerminalForPaneKey(paneKey),
-    openedRows: () => record.listOperationRows(),
+    openedRows: () => readTestAgentSessionOperationRows(record),
     launchPaneOnTab: () => ({}),
-    openRows: async () => record.listOperationRows(),
+    openRows: async () => readTestAgentSessionOperationRows(record),
     now: () => Date.now()
   }
 }
@@ -284,7 +285,7 @@ describe('the instant tab', () => {
 
     await replayLaunch(runtime, { paneKey: PANE_KEY }, CLI)
 
-    expect(store.listOperationRows()[0]?.ownedPane).toEqual({
+    expect(readTestAgentSessionOperationRows(store)[0]?.ownedPane).toEqual({
       worktreeId: 'wt-7',
       paneKey: PANE_KEY
     })
@@ -589,7 +590,7 @@ describe('the user closing the tab while it starts', () => {
       code: AGENT_LAUNCH_TAB_CLOSED_CODE
     })
     expect(runtime.createTerminal).not.toHaveBeenCalled()
-    expect(store.listOperationRows()[0]?.outcome).toEqual({
+    expect(readTestAgentSessionOperationRows(store)[0]?.outcome).toEqual({
       status: 'failed',
       code: AGENT_LAUNCH_TAB_CLOSED_CODE
     })

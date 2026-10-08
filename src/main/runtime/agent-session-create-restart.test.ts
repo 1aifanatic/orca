@@ -1,3 +1,4 @@
+import { readTestAgentSessionOperationRows } from './agent-session-operation-test-rows'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -308,7 +309,7 @@ describe('terminal agent creation across a runtime restart', () => {
       'agent_session_operation_unknown'
     )
     expect(create).not.toHaveBeenCalled()
-    expect(restarted.store.listOperationRows()).toHaveLength(1)
+    expect(readTestAgentSessionOperationRows(restarted.store)).toHaveLength(1)
   })
 
   it('never dispatches without a durable claim and permits a later retry', async () => {

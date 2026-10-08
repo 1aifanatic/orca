@@ -24,10 +24,7 @@ import type {
   AgentLaunchTabPublished,
   AgentLaunchTabViewerRule
 } from '../../../../shared/agent-launch-tab-publication'
-import {
-  listAgentSessionOperationRowsOwningPane,
-  type AgentSessionOperationOwnedPane
-} from '../../../../shared/agent-session-operation-ledger'
+import type { AgentSessionOperationOwnedPane } from '../../../../shared/agent-session-operation-ledger'
 import {
   navigationTargetsHost,
   resolveRuntimeNavigationTarget
@@ -236,11 +233,9 @@ export async function publishAgentLaunchTabEarly(
       runtime.hasLiveTerminalForPaneKey(paneKey)
         ? { kind: 'proceed' }
         : agentLaunchPaneVerdictFromRecord(
-            listAgentSessionOperationRowsOwningPane(
-              runtime.openedAgentSessionRecordStore()?.listOperationRows() ?? [],
-              ownedPane,
-              Date.now()
-            ),
+            runtime
+              .openedAgentSessionRecordStore()
+              ?.listOperationRowsOwningPane(ownedPane, Date.now()) ?? [],
             paneKey
           )
   })
