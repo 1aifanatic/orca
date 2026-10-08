@@ -53,3 +53,44 @@ describe('normalizeTerminalLayoutSnapshotForPersistence', () => {
     expect(collectLayoutLeafIdsInOrder(normalized.snapshot.root)).toEqual([STABLE_A, STABLE_B])
   })
 })
+
+describe('normalizeTerminalLayoutSnapshotForPersistence pane metadata', () => {
+  it('keeps a null focused pane and remaps the expanded and chat panes with their leaf', () => {
+    const normalized = normalizeTerminalLayoutSnapshotForPersistence(
+      {
+        ...splitOf('pane:1', 'pane:2'),
+        activeLeafId: null,
+        expandedLeafId: 'pane:2',
+        chatLeafId: 'pane:1'
+      },
+      splitOf(STABLE_A, STABLE_B)
+    )
+
+    expect(normalized.snapshot).toMatchObject({
+      activeLeafId: null,
+      expandedLeafId: STABLE_B,
+      chatLeafId: STABLE_A
+    })
+  })
+
+  it('drops an expanded or chat pane that names a leaf no longer in the tree', () => {
+    const normalized = normalizeTerminalLayoutSnapshotForPersistence({
+      ...splitOf(STABLE_A, STABLE_B),
+      expandedLeafId: 'pane:gone',
+      chatLeafId: 'pane:gone'
+    })
+
+    expect(normalized.snapshot.expandedLeafId).toBeNull()
+    expect(normalized.snapshot).not.toHaveProperty('chatLeafId')
+  })
+
+  it('gives a createTab-era empty layout the prior tree back', () => {
+    const normalized = normalizeTerminalLayoutSnapshotForPersistence(
+      { root: null, activeLeafId: null, expandedLeafId: null },
+      { ...splitOf(STABLE_A, STABLE_B), activeLeafId: STABLE_B }
+    )
+
+    expect(collectLayoutLeafIdsInOrder(normalized.snapshot.root)).toEqual([STABLE_A, STABLE_B])
+    expect(normalized.snapshot.activeLeafId).toBe(STABLE_B)
+  })
+})

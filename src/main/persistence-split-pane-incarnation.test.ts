@@ -380,4 +380,55 @@ describe('Store', () => {
       'inc-stale'
     )
   })
+
+  it('a fresh spawn into a retired pane clears its tombstone, so the next reattach is accepted', async () => {
+    const store = await createStore()
+    const paneKey = `tab1:${TEST_LEAF_1}`
+    store.setWorkspaceSession({
+      ...getDefaultWorkspaceSession(),
+      tabsByWorktree: {
+        wt1: [makeTerminalTab({ id: 'tab1', worktreeId: 'wt1', ptyId: 'pty-old' })]
+      },
+      terminalLayoutsByTabId: {
+        tab1: {
+          root: { type: 'leaf', leafId: TEST_LEAF_1 },
+          activeLeafId: TEST_LEAF_1,
+          expandedLeafId: null,
+          ptyIdsByLeafId: { [TEST_LEAF_1]: 'pty-old' }
+        }
+      },
+      terminalSurfaceTombstonesByPaneKey: {
+        [paneKey]: {
+          worktreeId: 'wt1',
+          parentTabId: 'tab1',
+          leafId: TEST_LEAF_1,
+          ptyId: 'pty-old',
+          incarnationId: 'inc-old',
+          retiredAt: 1
+        }
+      }
+    })
+    const reattach = {
+      worktreeId: 'wt1',
+      tabId: 'tab1',
+      leafId: TEST_LEAF_1,
+      ptyId: 'pty-new',
+      mayCreate: false,
+      mayReviveRetiredSurface: false
+    }
+    expect(await store.persistPtyBinding(reattach)).toBe(false)
+
+    expect(
+      await store.persistPtyBinding({
+        worktreeId: 'wt1',
+        tabId: 'tab1',
+        leafId: TEST_LEAF_1,
+        ptyId: 'pty-new',
+        incarnationId: 'inc-new'
+      })
+    ).toBe(true)
+
+    expect(store.getWorkspaceSession().terminalSurfaceTombstonesByPaneKey).toEqual({})
+    expect(await store.persistPtyBinding(reattach)).toBe(true)
+  })
 })
