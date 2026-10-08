@@ -23,7 +23,7 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     }
     const request = parsed.request
 
-    // Why: long-poll admission fence; short RPCs bypass the counter. See §7 risk #2.
+    // Only passive observers consume slots; mutations retain keepalive and cancellation.
     const longPoll = classifyRuntimeLongPoll(request)
     const rejection = this.admitLongPoll(longPoll)
     if (rejection) {
@@ -50,7 +50,7 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     longPoll: RuntimeLongPollClass | null,
     pairedDeviceId?: string
   ): string | null {
-    if (!longPoll) {
+    if (!longPoll || longPoll === 'mutation') {
       return null
     }
     if (this.activeLongPolls >= this.longPollCap) {
@@ -92,7 +92,7 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
   }
 
   protected releaseLongPoll(longPoll: RuntimeLongPollClass | null, pairedDeviceId?: string): void {
-    if (!longPoll) {
+    if (!longPoll || longPoll === 'mutation') {
       return
     }
     this.activeLongPolls = Math.max(0, this.activeLongPolls - 1)
