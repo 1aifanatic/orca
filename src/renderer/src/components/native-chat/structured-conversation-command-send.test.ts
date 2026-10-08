@@ -207,9 +207,7 @@ describe('a /compact the host holds in line', () => {
     agentWorking: false,
     promptPending: false,
     backgroundTasksRunning: false,
-    outboxRetry: false,
-    outboxSending: false,
-    outboxUnsent: false
+    sendPending: false
   }
 
   it('is held here only by a message the host does not have yet, or background work', () => {
@@ -218,11 +216,10 @@ describe('a /compact the host holds in line', () => {
       structuredConversationCommandHold({
         ...inLine,
         agentWorking: true,
-        promptPending: true,
-        outboxRetry: true
+        promptPending: true
       })
     ).toBeNull()
-    expect(structuredConversationCommandHold({ ...inLine, outboxUnsent: true })).toBe('ahead')
+    expect(structuredConversationCommandHold({ ...inLine, sendPending: true })).toBe('ahead')
     expect(structuredConversationCommandHold({ ...inLine, backgroundTasksRunning: true })).toBe(
       'background'
     )
@@ -232,15 +229,11 @@ describe('a /compact the host holds in line', () => {
     expect(structuredConversationCommandHold(idle)).toBeNull()
     expect(structuredConversationCommandHold({ ...idle, agentWorking: true })).toBe('working')
     // The agent idle, only this window's own message still on its way: it is still being sent.
-    expect(structuredConversationCommandHold({ ...idle, outboxUnsent: true })).toBe('sending')
+    expect(structuredConversationCommandHold({ ...idle, sendPending: true })).toBe('sending')
     expect(
-      structuredConversationCommandHold({ ...idle, agentWorking: true, outboxUnsent: true })
+      structuredConversationCommandHold({ ...idle, agentWorking: true, sendPending: true })
     ).toBe('working')
     expect(structuredConversationCommandHold({ ...idle, promptPending: true })).toBe('prompt')
-    // Only a failed message waits for its Retry: the agent is not working.
-    expect(structuredConversationCommandHold({ ...idle, outboxRetry: true })).toBe('retry')
-    // One a Stop kept on its way shows no Retry: it reads as still sending.
-    expect(structuredConversationCommandHold({ ...idle, outboxSending: true })).toBe('sending')
   })
 })
 
@@ -288,13 +281,6 @@ describe('a command held here', () => {
     expect(await held('clear', 'sending').result).toEqual({
       accepted: false,
       error: 'Your earlier message is still being sent. Run /clear once it has gone.'
-    })
-  })
-
-  it('behind only a failed message, names the step that clears the way', async () => {
-    expect(await held('clear', 'retry').result).toEqual({
-      accepted: false,
-      error: 'Retry your earlier message, then run /clear.'
     })
   })
 
@@ -358,9 +344,9 @@ describe('a refusal names what it waits on only while the chat shows it', () => 
     expect(
       (await held('compact', 'background', pending, shown('background')).result).refusedWhile
     ).toBe('background')
-    for (const hold of ['retry', 'sending'] as const) {
-      expect((await held('clear', hold, pending, shown(hold)).result).refusedWhile).toBe(hold)
-    }
+    expect((await held('clear', 'sending', pending, shown('sending')).result).refusedWhile).toBe(
+      'sending'
+    )
   })
 
   it('names none the chat does not show, so the line cannot go before it is read', async () => {
