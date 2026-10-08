@@ -137,7 +137,12 @@ async function wakeIfStopped(
     }
     // A live process that did not answer may still be starting; it is not restarted.
     if (wake.outcome === 'serving') {
-      return { state: 'serving' }
+      return (await input.probe(input.environment, PROBE_TIMEOUT_MS))
+        ? { state: 'serving' }
+        : {
+            state: 'unverifiable',
+            detail: 'The managed Orca server process is live but is not answering.'
+          }
     }
     const detail = wakeRefusal(wake.outcome)
     console.warn(`[ssh] The managed Orca server on ${label} is not answering: ${detail}`)
