@@ -291,7 +291,7 @@ export function buildPtyHostEnv(
     resourcesPath: opts.resourcesPath,
     launcherPath: hostLauncher
   })
-  if (!opts.isWsl && launcher) {
+  if (hostLauncher && launcher) {
     baseEnv.ORCA_CLI_COMMAND = launcher
     bindOrcaCliToExecutionHost(baseEnv, opts.userDataPath)
   }

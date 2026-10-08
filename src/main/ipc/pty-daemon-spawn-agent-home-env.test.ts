@@ -454,6 +454,7 @@ describe('registerPtyHandlers', () => {
           expect(entries.indexOf(shimDir)).toBeGreaterThanOrEqual(0)
           expect(entries.indexOf(shimDir)).toBeLessThan(entries.indexOf('/usr/bin'))
           expect(env.ORCA_CLI_COMMAND).toBeUndefined()
+          expect(env.ORCA_CLI_OWNING_HOST).toBeUndefined()
         } finally {
           Object.defineProperty(process, 'platform', {
             configurable: true,
