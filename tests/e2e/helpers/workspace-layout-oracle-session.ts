@@ -24,13 +24,19 @@ export type OracleRun = {
   oracle: LayoutOracle
   /** Worktrees the client checks compare; scenarios add the ones they create. */
   worktreeIds: string[]
+  /** Reloads the window's renderer (main keeps running) and re-arms the window checks. */
+  reloadWindow: () => Promise<void>
   /** Quit, optionally kill the PTY daemon, relaunch, and diff the layout against before. */
   relaunch: (options: {
     worktreeId: string
     paneCount: number
     coldDaemon?: boolean
     /** Panes per terminal tab the relaunched runtime must hold. */
-    panesPerTab?: number[]
+    panesPerTab: number[]
+    /** The relaunch restarts terminals (a slept agent woken on reopen). */
+    terminalsRestart?: true
+    /** Quit right after the last command, with no settle: the quit-time save must carry it. */
+    quitWithoutSettling?: true
     reopen?: (page: Page, worktreeId: string) => Promise<void>
   }) => Promise<void>
 }
@@ -82,9 +88,16 @@ export async function runOracleScenario(
       client,
       oracle: new LayoutOracle(target(first.page, client)),
       worktreeIds,
-      relaunch: async ({ worktreeId, paneCount, coldDaemon, panesPerTab, reopen }) => {
-        const before = await run.oracle.step('before relaunch')
-        run.oracle.rememberForRestart(before)
+      reloadWindow: async () => {
+        await run.page.reload()
+        await run.page.waitForFunction(() => Boolean(window.__store), null, { timeout: 30_000 })
+        await run.oracle.retarget(target(run.page, run.client))
+      },
+      relaunch: async (options) => {
+        const { worktreeId, paneCount, coldDaemon, panesPerTab, reopen } = options
+        if (!options.quitWithoutSettling) {
+          run.oracle.rememberForRestart(await run.oracle.step('before relaunch', null))
+        }
         await session.close(app!)
         app = null
         const daemonPid = coldDaemon ? readDaemonPid(session.userDataDir) : null
@@ -96,20 +109,29 @@ export async function runOracleScenario(
         app = next.app
         run.page = next.page
         run.client = new RuntimeClient(session.userDataDir, 30_000)
-        run.oracle.retarget(target(next.page, run.client))
+        await run.oracle.retarget(target(next.page, run.client))
         await (reopen ?? bootstrapRestoredLaunch)(next.page, worktreeId)
         await waitForPaneCount(next.page, paneCount, 30_000).catch(() => {})
+        const restartsTerminals = coldDaemon || options.terminalsRestart
         const after = await run.oracle.step(
           coldDaemon ? 'after cold relaunch' : 'after relaunch',
-          panesPerTab ? { worktreeId, panesPerTab } : undefined
+          { worktreeId, panesPerTab, ...(restartsTerminals ? { terminalsRestart: true } : {}) },
+          { allowRemount: true }
         )
-        run.oracle.compareRestart(coldDaemon ? 'cold relaunch' : 'relaunch', after, {
-          maskPtyIds: coldDaemon
-        })
+        if (!options.quitWithoutSettling) {
+          run.oracle.compareRestart(coldDaemon ? 'cold relaunch' : 'relaunch', after, {
+            maskPtyIds: coldDaemon
+          })
+        }
       }
     }
-    await body(run)
-    writeReport(testInfo, scenarioId, run.oracle.findings)
+    await run.oracle.start()
+    try {
+      await body(run)
+    } finally {
+      await run.oracle.stop()
+    }
+    writeReport(testInfo, scenarioId, run.oracle.findings, run.oracle.viewCreations.at(-1) ?? {})
     return run.oracle.findings
   } finally {
     if (app) {
@@ -119,9 +141,17 @@ export async function runOracleScenario(
   }
 }
 
-function writeReport(testInfo: TestInfo, scenarioId: string, findings: OracleFinding[]): void {
+function writeReport(
+  testInfo: TestInfo,
+  scenarioId: string,
+  findings: OracleFinding[],
+  viewCreations: Record<string, number>
+): void {
   const dir = process.env[ORACLE_REPORT_DIR_ENV] ?? testInfo.outputPath('layout-oracle')
   mkdirSync(dir, { recursive: true })
   const file = path.join(dir, `${scenarioId}-${Date.now()}.json`)
-  writeFileSync(file, `${JSON.stringify({ scenario: scenarioId, findings }, null, 2)}\n`)
+  writeFileSync(
+    file,
+    `${JSON.stringify({ scenario: scenarioId, findings, viewCreations }, null, 2)}\n`
+  )
 }

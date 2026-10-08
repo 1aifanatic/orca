@@ -8,6 +8,10 @@
  * - expected: the runtime's layout is not the one the scenario's commands should produce.
  * - restart: the layout after a relaunch (or PTY daemon restart) differs from before it.
  * - marker: text written to a pane's terminal never shows in that pane (a frozen or crossed pane).
+ * - remount: a pane's terminal view was created again in the same window outside a restart.
+ *
+ * Between checkpoints a sampler runs the rules every 100 ms; a breach that heals before the next
+ * step is recorded as transient.
  */
 
 import type { Page } from '@stablyai/playwright-test'
@@ -22,8 +26,22 @@ import {
 } from './workspace-layout-oracle-model'
 import { compareClientToRuntime, compareDrawnToRuntime } from './workspace-layout-oracle-compare'
 import { readClientView, readDrawnLayout, type ClientView } from './workspace-layout-oracle-views'
+import { expectedDifferences, type ExpectedLayout } from './workspace-layout-oracle-expected'
+import { checkPaneMarkers } from './workspace-layout-oracle-markers'
+import {
+  installRemountCounter,
+  LayoutRuleSampler,
+  readRemountCounts
+} from './workspace-layout-oracle-watch'
 
-export type OracleCheck = 'rules' | 'view' | 'client' | 'expected' | 'restart' | 'marker'
+export type OracleCheck =
+  | 'rules'
+  | 'view'
+  | 'client'
+  | 'expected'
+  | 'restart'
+  | 'marker'
+  | 'remount'
 export type OracleFinding = {
   check: OracleCheck
   step: string
@@ -41,8 +59,7 @@ export type OracleTarget = {
   worktreeIds: () => string[]
 }
 
-/** Panes per terminal tab, in tab order, for one worktree. */
-export type ExpectedLayout = { worktreeId: string; panesPerTab: number[] }
+export type { ExpectedLayout }
 
 const SETTLE_TIMEOUT_MS = Number(process.env.ORCA_LAYOUT_ORACLE_SETTLE_MS ?? 12_000)
 const POLL_MS = 300
@@ -71,25 +88,45 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function expectedDifferences(layout: OracleLayout, expected: ExpectedLayout): string[] {
-  const entry = Object.entries(layout).find(([key]) => key.endsWith(`|${expected.worktreeId}`))
-  const actual = entry?.[1].terminalTabs.map((tab) => tab.panes.length) ?? []
-  return JSON.stringify(actual) === JSON.stringify(expected.panesPerTab)
-    ? []
-    : [
-        `${expected.worktreeId}: panes per tab ${JSON.stringify(actual)}, expected ${JSON.stringify(expected.panesPerTab)}`
-      ]
+export type StepOptions = {
+  /** The step may recreate existing panes' terminal views (relaunch, daemon restart). */
+  allowRemount?: true
 }
 
 export class LayoutOracle {
   readonly findings: OracleFinding[] = []
   private previous: WorkspaceLayoutPartition[] | null = null
+  private previousLayout: OracleLayout | null = null
   private snapshot: OracleLayout | null = null
+  private remountBaseline: Record<string, number> = {}
+  /** Terminal views created per pane in the current window, for the report (and a precondition). */
+  readonly viewCreations: Record<string, number>[] = []
+  private readonly sampler: LayoutRuleSampler
 
-  constructor(private target: OracleTarget) {}
+  constructor(private target: OracleTarget) {
+    this.sampler = new LayoutRuleSampler(target.readPartitions)
+  }
 
-  retarget(target: OracleTarget): void {
+  /** Starts the between-steps sampler and, with a window, the remount counter. */
+  async start(): Promise<void> {
+    if (this.target.page) {
+      await installRemountCounter(this.target.page)
+    }
+    this.sampler.start()
+  }
+
+  async stop(): Promise<void> {
+    await this.sampler.stop()
+  }
+
+  /** After a relaunch: new window, new renderer, so remounts count from zero again. */
+  async retarget(target: OracleTarget): Promise<void> {
     this.target = target
+    this.sampler.retarget(target.readPartitions)
+    this.remountBaseline = {}
+    if (target.page) {
+      await installRemountCounter(target.page)
+    }
   }
 
   private record(check: OracleCheck, step: string, details: string[], evidence?: unknown): void {
@@ -108,8 +145,12 @@ export class LayoutOracle {
       clientViews.flatMap((view) => view.terminals.flatMap((terminal) => terminal.ptyId ?? []))
     )
     const drawn = page ? await readDrawnLayout(page) : null
+    const view = drawn ? compareDrawnToRuntime(partitions, drawn, live) : []
+    if (drawn && drawn.strips.length === 0) {
+      view.push('the window draws no tab strip')
+    }
     return {
-      view: drawn ? compareDrawnToRuntime(partitions, drawn, live) : [],
+      view,
       client: clientViews.flatMap((view) => compareClientToRuntime(partitions, view)),
       evidence: { drawn, clients: clientViews.map(summarizeClientView) }
     }
@@ -119,7 +160,11 @@ export class LayoutOracle {
    * Waits until the runtime's layout is stable and every view agrees with it, then records what
    * still differs. Views may lag the runtime; only a difference that outlives the wait counts.
    */
-  async step(label: string, expected?: ExpectedLayout): Promise<OracleLayout> {
+  async step(
+    label: string,
+    expected: ExpectedLayout | null,
+    options: StepOptions = {}
+  ): Promise<OracleLayout> {
     const transient = new Set<string>()
     const deadline = Date.now() + SETTLE_TIMEOUT_MS
     let last = ''
@@ -145,20 +190,52 @@ export class LayoutOracle {
       checkWorkspaceLayoutRules(partitions, this.previous ?? undefined)
     )
     this.record('rules', label, settled)
+    const between = this.sampler.take(this.sampler.label)
     this.record(
       'rules',
       `${label} (transient)`,
-      [...transient].filter((line) => !settled.includes(line))
+      [...new Set([...between, ...transient])].filter((line) => !settled.includes(line))
     )
+    this.sampler.label = label
     const layout = toOracleLayout(partitions)
     const evidence = { runtime: layout, ...differences.evidence }
     this.record('view', label, differences.view, evidence)
     this.record('client', label, differences.client, evidence)
     if (expected) {
-      this.record('expected', label, expectedDifferences(layout, expected), evidence)
+      this.record(
+        'expected',
+        label,
+        expectedDifferences(layout, expected, this.previousLayout),
+        evidence
+      )
     }
+    await this.checkRemounts(label, options)
     this.previous = partitions
+    this.previousLayout = layout
     return layout
+  }
+
+  private async checkRemounts(label: string, options: StepOptions): Promise<void> {
+    const { page } = this.target
+    if (!page) {
+      return
+    }
+    const counts = await readRemountCounts(page)
+    const remounted = Object.entries(counts).filter(
+      ([leafId, count]) =>
+        (this.remountBaseline[leafId] ?? 0) > 0 && count > this.remountBaseline[leafId]!
+    )
+    if (!options.allowRemount) {
+      this.record(
+        'remount',
+        label,
+        remounted.map(
+          ([leafId, count]) => `pane ${leafId}'s terminal view was created ${count} times`
+        )
+      )
+    }
+    this.remountBaseline = counts
+    this.viewCreations.push(counts)
   }
 
   /** Remember the settled layout so `compareRestart` can diff the relaunched runtime against it. */
@@ -174,6 +251,11 @@ export class LayoutOracle {
     if (!this.snapshot) {
       throw new Error('compareRestart called before rememberForRestart')
     }
+    // No empty passes: an empty layout before the restart proves nothing about the restart.
+    if (Object.keys(this.snapshot).length === 0) {
+      this.record('restart', label, ['the layout before the restart was empty'])
+      return
+    }
     this.record(
       'restart',
       label,
@@ -181,73 +263,10 @@ export class LayoutOracle {
     )
   }
 
-  /**
-   * Writes a unique marker into every bound pane the window shows and requires it to appear in
-   * that pane's terminal (read from the xterm accessibility tree in the DOM). No pane is a finding.
-   */
-  async checkMarkers(label: string, worktreeId: string): Promise<number> {
+  async checkMarkers(label: string, worktreeId: string): Promise<void> {
     const { page, client } = this.target
-    if (!page) {
-      return 0
+    if (page) {
+      this.record('marker', label, await checkPaneMarkers(page, client, worktreeId))
     }
-    const listed = await client.call<{
-      terminals: { handle: string; tabId: string; leafId: string }[]
-    }>('terminal.list', { worktree: `id:${worktreeId}` })
-    const mounted = new Set(
-      await page.evaluate(() =>
-        Array.from(document.querySelectorAll<HTMLElement>('.pane[data-leaf-id][data-pty-id]'))
-          .filter((pane) => pane.getBoundingClientRect().width > 0)
-          .map((pane) => pane.dataset.leafId ?? '')
-      )
-    )
-    const failures: string[] = []
-    let checked = 0
-    for (const [index, terminal] of listed.result.terminals.entries()) {
-      if (!mounted.has(terminal.leafId)) {
-        continue
-      }
-      const marker = `ORACLE_MARK_${Date.now().toString(36)}_${index}`
-      await client.call('terminal.send', {
-        terminal: terminal.handle,
-        text: `echo ${marker}`,
-        enter: true
-      })
-      checked += 1
-      const deadline = Date.now() + 10_000
-      let shown = false
-      while (!shown && Date.now() < deadline) {
-        shown = await page.evaluate(
-          ({ leafId, text }) => {
-            for (const manager of window.__paneManagers?.values() ?? []) {
-              for (const pane of manager.getPanes()) {
-                if (
-                  manager.getLeafId(pane.id) === leafId &&
-                  !pane.terminal.options.screenReaderMode
-                ) {
-                  pane.terminal.options.screenReaderMode = true
-                  pane.terminal.refresh(0, pane.terminal.rows - 1)
-                }
-              }
-            }
-            const node = document.querySelector(
-              `.pane[data-leaf-id="${CSS.escape(leafId)}"] .xterm-accessibility-tree`
-            )
-            return (node?.textContent ?? '').includes(text)
-          },
-          { leafId: terminal.leafId, text: marker }
-        )
-        if (!shown) {
-          await sleep(POLL_MS)
-        }
-      }
-      if (!shown) {
-        failures.push(`pane ${terminal.tabId}:${terminal.leafId} never showed ${marker}`)
-      }
-    }
-    if (checked === 0) {
-      failures.push(`no visible pane of ${worktreeId} to write a marker into`)
-    }
-    this.record('marker', label, failures)
-    return checked
   }
 }

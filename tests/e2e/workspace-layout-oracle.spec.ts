@@ -19,6 +19,7 @@ import {
 } from './helpers/terminal'
 import { bootstrapFirstLaunch, seededRepoPathOrSkip } from './helpers/terminal-restart-persistence'
 import { createTerminalTabFromMenu, SORTABLE_TAB } from './helpers/terminal-tab-menu'
+import { ensureTerminalVisible, waitForSessionReady } from './helpers/store'
 import {
   addFolderWorkspace,
   closeActivePaneFromKeyboard,
@@ -63,6 +64,13 @@ async function firstHandle(run: OracleRun, worktreeId: string): Promise<string> 
   return handle!
 }
 
+/** The relaunched window shows the worktree again, however many panes its tab restores. */
+async function reopenActiveWorktree(page: Page): Promise<void> {
+  await waitForSessionReady(page)
+  await ensureTerminalVisible(page)
+  await waitForActiveTerminalManager(page, 30_000)
+}
+
 async function splitTwice(page: Page): Promise<void> {
   await splitActiveTerminalPane(page, 'vertical')
   await waitForBoundPanes(page, 2)
@@ -101,7 +109,7 @@ const SCENARIOS: Scenario[] = [
       await splitTwice(run.page)
       await run.oracle.step('split twice', { worktreeId, panesPerTab: [3] })
       await closeActivePaneFromKeyboard(run.page, 3)
-      await run.oracle.step('close pane', { worktreeId, panesPerTab: [2] })
+      await run.oracle.step('close pane', { worktreeId, panesPerTab: [2], removed: 1 })
     }
   },
   {
@@ -112,7 +120,7 @@ const SCENARIOS: Scenario[] = [
       const firstTab = run.page.locator(SORTABLE_TAB).first()
       await firstTab.getByRole('button', { name: /^Close tab /i }).click()
       await expect(run.page.locator(SORTABLE_TAB)).toHaveCount(1)
-      await run.oracle.step('close first tab', { worktreeId, panesPerTab: [1] })
+      await run.oracle.step('close first tab', { worktreeId, panesPerTab: [1], removed: 1 })
     }
   },
   {
@@ -189,7 +197,11 @@ const SCENARIOS: Scenario[] = [
       })
       await run.oracle.step('CLI rename', { worktreeId, panesPerTab: [1, 1] })
       await run.client.call('terminal.close', { terminal: created.handle })
-      await run.oracle.step('CLI close', { worktreeId, panesPerTab: [1] })
+      await run.oracle.step('CLI close', {
+        worktreeId,
+        panesPerTab: [1],
+        removed: [created.leafId]
+      })
     }
   },
   {
@@ -215,7 +227,83 @@ const SCENARIOS: Scenario[] = [
       })
       await run.oracle.step('client moves tab to a new group', { worktreeId, panesPerTab: [1, 1] })
       await run.client.call('session.tabs.close', { worktree, tabId, reason: 'user' })
-      await run.oracle.step('client closes tab', { worktreeId, panesPerTab: [1] })
+      await run.oracle.step('client closes tab', { worktreeId, panesPerTab: [1], removed: 1 })
+    }
+  },
+  {
+    // The CLI and a phone move the host window ('host' navigation); the layout must not change.
+    id: 'host-navigation',
+    // It ends on an editor tab, so its markers are checked while a terminal is shown.
+    endMarkers: false,
+    journey: async (run, worktreeId) => {
+      await newTabFromMenu(run.page)
+      await run.oracle.step('new tab', { worktreeId, panesPerTab: [1, 1] })
+      const first = (await listTerminals(run, worktreeId))[0]!
+      await run.client.call('terminal.focus', { terminal: first.handle, navigation: 'host' })
+      await expect(
+        run.page.locator(`${SORTABLE_TAB}[data-tab-id="${first.tabId}"][data-active="true"]`)
+      ).toHaveCount(1)
+      await run.oracle.step('CLI focuses the first tab', { worktreeId, panesPerTab: [1, 1] })
+      await run.oracle.checkMarkers('first tab shown', worktreeId)
+      await run.client.call('files.open', {
+        worktree: `id:${worktreeId}`,
+        relativePath: 'README.md',
+        navigation: 'host'
+      })
+      await expect(
+        run.page.locator('[data-tab-group-strip-id]').getByText('README.md').first()
+      ).toBeVisible()
+      await run.oracle.step('CLI opens a file', { worktreeId, panesPerTab: [1, 1] })
+    }
+  },
+  {
+    // A reloaded window republishes its graph, which is what the phone's tab list is built from.
+    id: 'window-reload',
+    journey: async (run, worktreeId) => {
+      await splitActiveTerminalPane(run.page, 'vertical')
+      await waitForBoundPanes(run.page, 2)
+      await run.oracle.step('split', { worktreeId, panesPerTab: [2] })
+      await run.reloadWindow()
+      await waitForActiveTerminalManager(run.page)
+      await waitForBoundPanes(run.page, 2).catch(() => {})
+      await run.oracle.step(
+        'after window reload',
+        { worktreeId, panesPerTab: [2] },
+        { allowRemount: true }
+      )
+    }
+  },
+  {
+    // Quit straight after a gesture: only the quit-time save can carry it.
+    id: 'quit-right-after-change',
+    journey: async (run, worktreeId) => {
+      await splitActiveTerminalPane(run.page, 'vertical')
+      await run.relaunch({
+        worktreeId,
+        paneCount: 2,
+        panesPerTab: [2],
+        quitWithoutSettling: true,
+        reopen: reopenActiveWorktree
+      })
+    }
+  },
+  {
+    // An older phone build sends a whole pane tree; a stale one must not drop a live pane.
+    id: 'old-client-pane-tree',
+    journey: async (run, worktreeId) => {
+      const handle = await firstHandle(run, worktreeId)
+      await run.client.call('terminal.split', { terminal: handle, direction: 'vertical' })
+      await waitForBoundPanes(run.page, 2)
+      await run.oracle.step('split', { worktreeId, panesPerTab: [2] })
+      const [first] = await listTerminals(run, worktreeId)
+      await run.client
+        .call('session.tabs.updatePaneLayout', {
+          worktree: `id:${worktreeId}`,
+          tabId: first!.tabId,
+          root: { type: 'leaf', leafId: first!.leafId }
+        })
+        .catch(() => {})
+      await run.oracle.step('stale pane tree from an old client', { worktreeId, panesPerTab: [2] })
     }
   },
   {
@@ -250,7 +338,11 @@ const SCENARIOS: Scenario[] = [
       run.oracle.rememberForRestart(before)
       await run.page.evaluate(() => window.api.pty.management.restart())
       await waitForBoundPanes(run.page, 2).catch(() => {})
-      const after = await run.oracle.step('daemon restarted', { worktreeId, panesPerTab: [2] })
+      const after = await run.oracle.step(
+        'daemon restarted',
+        { worktreeId, panesPerTab: [2], terminalsRestart: true },
+        { allowRemount: true }
+      )
       run.oracle.compareRestart('daemon restart', after, { maskPtyIds: true })
       await run.oracle.checkMarkers('after daemon restart', worktreeId)
       // What the user gets back after the next relaunch is the layout that survived.
@@ -289,7 +381,13 @@ const SCENARIOS: Scenario[] = [
     journey: async (run, worktreeId) => {
       await sleepAgentPane(run.page, worktreeId)
       await run.oracle.step('sleep agent pane', { worktreeId, panesPerTab: [2] })
-      await run.relaunch({ worktreeId, paneCount: 2, panesPerTab: [2], reopen: wakeByClick })
+      await run.relaunch({
+        worktreeId,
+        paneCount: 2,
+        panesPerTab: [2],
+        terminalsRestart: true,
+        reopen: wakeByClick
+      })
     }
   }
 ]

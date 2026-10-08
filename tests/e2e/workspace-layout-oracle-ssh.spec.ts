@@ -140,7 +140,7 @@ test.describe('workspace layout oracle over SSH', () => {
             .getByRole('button', { name: /^Close tab /i })
             .click()
           await expect(tabs).toHaveCount(1)
-          await run.oracle.step('close first tab', { worktreeId, panesPerTab: [2] })
+          await run.oracle.step('close first tab', { worktreeId, panesPerTab: [2], removed: 1 })
 
           await waitForPersistedRemoteSession(run.page, remote.targetId, worktreeId)
           await run.relaunch({

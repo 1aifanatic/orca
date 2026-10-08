@@ -49,7 +49,12 @@ type Run = {
   cli: RuntimeClient
   oracle: LayoutOracle
   /** Settles and checks the layout once per view (paired client A, then the CLI by default). */
-  check: (label: string, panesPerTab: number[], views?: View[]) => Promise<OracleLayout>
+  check: (
+    label: string,
+    panesPerTab: number[],
+    views?: View[],
+    removed?: number
+  ) => Promise<OracleLayout>
   /** Checks, restarts serve (cold: PTY daemon killed too), checks, and diffs against before. */
   restart: (label: string, panesPerTab: number[], cold?: boolean) => Promise<void>
   /** Records an 'expected' finding when `details` is non-empty. */
@@ -169,7 +174,7 @@ const SCENARIOS: Scenario[] = [
       await attempt(run, 'close by handle', () =>
         run.a.call('terminal.close', { terminal: created.handle })
       )
-      await run.check('close by handle', [])
+      await run.check('close by handle', [], undefined, 1)
     }
   },
   {
@@ -183,12 +188,12 @@ const SCENARIOS: Scenario[] = [
       await attempt(run, 'client closes first', () =>
         run.a.call('session.tabs.close', { worktree: run.worktree, tabId: first, reason: 'user' })
       )
-      await run.check('client closes first', [1, 1])
+      await run.check('client closes first', [1, 1], undefined, 1)
       const handle = await handleForTab(run, second)
       await attempt(run, 'CLI closes second', () =>
         run.cli.call('terminal.close', { terminal: handle })
       )
-      await run.check('CLI closes second', [1])
+      await run.check('CLI closes second', [1], undefined, 1)
       await run.restart('warm restart', [1])
       const left = readHeadlessPartitions(run.host.userDataDir)
         .flatMap(({ session }) => session.tabsByWorktree?.[run.worktreeId] ?? [])
@@ -216,7 +221,7 @@ const SCENARIOS: Scenario[] = [
       await attempt(run, 'B closes one', () =>
         run.b.call('session.tabs.close', { worktree: run.worktree, tabId: first, reason: 'user' })
       )
-      await run.check('B closes one', [1], views)
+      await run.check('B closes one', [1], views, 1)
     }
   },
   {
@@ -232,7 +237,7 @@ const SCENARIOS: Scenario[] = [
       await attempt(run, 'close split pane', () =>
         run.a.call('terminal.close', { terminal: split.result.split.handle })
       )
-      await run.check('close split pane', [1])
+      await run.check('close split pane', [1], undefined, 1)
       await run.restart('warm restart', [1])
       await run.restart('cold restart', [1], true)
     }
@@ -258,18 +263,26 @@ async function runHeadlessScenario(
     })
     const oracle = new LayoutOracle(target(a))
     findings = oracle.findings
-    const check: Run['check'] = async (label, panesPerTab, views) => {
+    // A cold restart gives every pane a new terminal.
+    let restarting = false
+    const check: Run['check'] = async (label, panesPerTab, views, removed = 0) => {
       const list = views ?? [
         { name: 'client', client: a },
         { name: 'cli', client: cli }
       ]
       let layout: OracleLayout = {}
       for (const [index, view] of list.entries()) {
-        oracle.retarget(target(view.client))
+        await oracle.retarget(target(view.client))
         const step = index === 0 ? label : `${label} (${view.name} view)`
-        layout = await oracle.step(step, { worktreeId, panesPerTab })
+        // Later views re-read the same layout, so only the first sees the removal.
+        layout = await oracle.step(step, {
+          worktreeId,
+          panesPerTab,
+          ...(index === 0 ? { removed } : {}),
+          ...(index === 0 && restarting ? { terminalsRestart: true } : {})
+        })
       }
-      oracle.retarget(target(a))
+      await oracle.retarget(target(a))
       return layout
     }
     const run: Run = {
@@ -284,7 +297,9 @@ async function runHeadlessScenario(
       restart: async (label, panesPerTab, cold) => {
         oracle.rememberForRestart(await check(`before ${label}`, panesPerTab))
         await host.restart({ cold })
+        restarting = cold === true
         const after = await check(`after ${label}`, panesPerTab)
+        restarting = false
         oracle.compareRestart(label, after, { maskPtyIds: cold })
       },
       expectNone: (step, details) => {
@@ -293,8 +308,13 @@ async function runHeadlessScenario(
         }
       }
     }
-    await run.check('start', [])
-    await scenario.journey(run)
+    await oracle.start()
+    try {
+      await run.check('start', [])
+      await scenario.journey(run)
+    } finally {
+      await oracle.stop()
+    }
     return findings
   } finally {
     writeReport(testInfo, `${kind}-${scenario.id}`, findings, Date.now() - started)
