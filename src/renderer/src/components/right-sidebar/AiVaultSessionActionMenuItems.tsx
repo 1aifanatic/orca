@@ -64,7 +64,7 @@ export function SessionActionMenuItems({
   const Item = menuKind === 'context' ? ContextMenuItem : DropdownMenuItem
   const Separator = menuKind === 'context' ? ContextMenuSeparator : DropdownMenuSeparator
   const hasLocalPathActions = Boolean(onOpenLog || onRevealLog || onOpenCwd)
-  // Why: the Resume items carry this conversation; the hand-off starts a new one, so it sits apart.
+  // Why: Jump/Resume items act on this conversation; the hand-off starts a new one, so it sits apart.
   const hasItemsAboveHandOff = Boolean(
     onJumpToOriginalPane ||
     showJumpToWorktree ||
