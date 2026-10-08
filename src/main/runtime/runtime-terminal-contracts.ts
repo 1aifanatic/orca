@@ -101,8 +101,6 @@ export type TerminalCreateOptions = {
 export type AgentSessionCreateOperation = {
   fingerprint: string
   promise: Promise<RuntimeCreateAgentSessionResult>
-  /** No durable row holds the answer, so this entry replays it until the operation expires. */
-  fencedInMemory: boolean
 }
 
 export type PtyForegroundAgentRefresh = {

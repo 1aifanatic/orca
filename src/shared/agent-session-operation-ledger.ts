@@ -50,6 +50,7 @@ export type AgentSessionOperationOutcome =
        * the value is read instead, where a payload we cannot read costs one replay.
        */
       launch?: unknown
+      /** The `terminal.createAgentSession` answer; unvalidated here for the same reason as `launch`. */
       terminalCreate?: unknown
     }
   | {

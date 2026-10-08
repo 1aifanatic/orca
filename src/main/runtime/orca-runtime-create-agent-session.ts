@@ -6,7 +6,6 @@ import type {
   RuntimeCreateAgentSessionResult
 } from '../../shared/agent-session-host-authority'
 import {
-  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS,
   parseAgentSessionOperationTimestamp
 } from '../../shared/agent-session-host-authority'
@@ -16,6 +15,7 @@ import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-i
 import { buildExecutionHostAgentStartupPlan } from '../opencode/opencode-model-startup-plan'
 import { deterministicAgentSessionUuid } from './runtime-agent-launch-resolution'
 import {
+  createInMemoryAgentSessionCreateLedger,
   executeAgentSessionCreate,
   type PreparedAgentSessionCreate
 } from './agent-session-create-execution'
@@ -25,6 +25,9 @@ import { LOCAL_EXECUTION_HOST_ID, toSshExecutionHostId } from '../../shared/exec
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 
 export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSessionExecutionNamespace {
+  // Why: the create ledger's rows while the record store cannot be opened or written.
+  private readonly agentSessionCreateMemoryLedger = createInMemoryAgentSessionCreateLedger()
+
   async createAgentSession(
     request: RuntimeCreateAgentSessionRequest,
     caller: RuntimeAgentSessionRpcCaller = {}
@@ -70,22 +73,19 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
       }
       try {
         return { ...(await existing.promise), disposition: 'replayed' }
-      } catch (error) {
-        if (existing.fencedInMemory) {
-          throw error
-        }
+      } catch {
         // Why: the first caller's failure (even its own socket's abort) is not this retry's answer;
-        // the durable row is. Terminates: each pass owns an attempt or joins a newer one.
+        // the ledger row is. Terminates: each pass owns an attempt or joins a newer one.
         this.forgetAgentSessionCreateOperation(operationKey, existing)
         return this.createAgentSession(request, caller)
       }
     }
     const entry: AgentSessionCreateOperation = {
       fingerprint: requestFingerprint,
-      fencedInMemory: false,
       promise: Promise.resolve().then(() =>
         executeAgentSessionCreate({
           openStore: () => this.openAgentSessionRecordStore(),
+          memory: this.agentSessionCreateMemoryLedger,
           callerKey,
           operationId: request.clientOperationId,
           fingerprint: requestFingerprint,
@@ -96,10 +96,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
               target.worktreeId,
               target.terminalHandle,
               target.connectionId
-            ),
-          fenceInMemory: () => {
-            entry.fencedInMemory = true
-          }
+            )
         })
       )
     }
@@ -107,16 +104,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
     try {
       return await entry.promise
     } finally {
-      if (entry.fencedInMemory) {
-        const expiresAt = Math.max(now, operationTimestamp) + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS
-        const timer = setTimeout(
-          () => this.forgetAgentSessionCreateOperation(operationKey, entry),
-          Math.max(1, expiresAt - Date.now())
-        )
-        timer.unref?.()
-      } else {
-        this.forgetAgentSessionCreateOperation(operationKey, entry)
-      }
+      this.forgetAgentSessionCreateOperation(operationKey, entry)
     }
   }
 

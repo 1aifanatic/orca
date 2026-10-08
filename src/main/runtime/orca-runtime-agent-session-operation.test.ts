@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { closeTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { openTestAgentSessionRecordStore } from './agent-session-record-store-test-harness'
+import type { AgentSessionRecordStore } from './agent-session-record-store'
 import type {
   RuntimeCreateAgentSessionRequest,
   RuntimeCreateAgentSessionResult
@@ -15,8 +16,11 @@ import type {
 import { OrcaRuntimeService } from './orca-runtime'
 
 let stateDirectory: string
+// Why: one store per test, as the process holds one; reopening per create would read as a restart.
+let recordStore: AgentSessionRecordStore
 beforeEach(async () => {
   stateDirectory = await mkdtemp(join(tmpdir(), 'orca-create-operation-'))
+  recordStore = await openTestAgentSessionRecordStore(stateDirectory)
 })
 afterEach(async () => {
   closeTestJournalHostDatabase(stateDirectory)
@@ -78,9 +82,7 @@ function createRuntime(provider?: {
     path: '/tmp/worktree-1',
     connectionId: null
   }))
-  vi.spyOn(runtime, 'openAgentSessionRecordStore').mockImplementation(() =>
-    openTestAgentSessionRecordStore(stateDirectory)
-  )
+  vi.spyOn(runtime, 'openAgentSessionRecordStore').mockResolvedValue(recordStore)
   return runtime
 }
 

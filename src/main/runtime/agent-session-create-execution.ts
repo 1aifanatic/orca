@@ -3,17 +3,25 @@ import {
   parseAgentSessionOperationTimestamp,
   type RuntimeCreateAgentSessionResult
 } from '../../shared/agent-session-host-authority'
-import type {
-  AgentSessionOperationOutcome,
-  AgentSessionOperationRow
+import {
+  agentSessionOperationKey,
+  type AgentSessionOperationOutcome,
+  type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import {
-  readAgentSessionCreatedTerminal,
+  admitAndClaimAgentSessionOperationInto,
+  settleAgentSessionOperationInto
+} from './agent-session-operation-admission'
+import {
   readAgentSessionCreateTerminalTarget,
   type AgentSessionCreateTerminalTarget
 } from './agent-session-create-terminal-target'
+import {
+  readAgentSessionCreatedTerminal,
+  recordAgentSessionCreatedTerminal
+} from './agent-session-create-recorded-terminal'
 import { isAgentSessionOperationOutcomeUnknown } from './runtime-agent-launch-resolution'
 
 /** What one attempt launches; derived fresh by every attempt that may spawn. */
@@ -22,25 +30,47 @@ export type PreparedAgentSessionCreate = {
   launch: (dispatched: () => void) => Promise<RuntimeTerminalCreate>
 }
 
+/** The ledger calls a create makes: the record store's, or the same rules over rows in memory. */
+export type AgentSessionCreateLedger = Pick<
+  AgentSessionRecordStore,
+  'getOperationRow' | 'admitAndClaimOperation' | 'recordOperationOutcome'
+>
+
+/** The durable ledger's own functions over rows this process holds, for when the store is unusable. */
+export function createInMemoryAgentSessionCreateLedger(): AgentSessionCreateLedger {
+  const state = { operations: new Map<string, AgentSessionOperationRow>() }
+  return {
+    getOperationRow: (callerKey, operationId) =>
+      state.operations.get(agentSessionOperationKey(callerKey, operationId)) ?? null,
+    admitAndClaimOperation: async (args, claimAfter) =>
+      admitAndClaimAgentSessionOperationInto(state, args, claimAfter),
+    recordOperationOutcome: async (args) => settleAgentSessionOperationInto(state, args)
+  }
+}
+
 type CreateExecution = {
   openStore: () => Promise<AgentSessionRecordStore>
+  memory: AgentSessionCreateLedger
   callerKey: string
   operationId: string
   fingerprint: string
   now: number
   prepare: () => Promise<PreparedAgentSessionCreate>
   reconcile: (target: AgentSessionCreateTerminalTarget) => Promise<RuntimeTerminalCreate | null>
-  /** No durable row holds this create's answer, so the caller's in-memory entry must replay it. */
-  fenceInMemory: () => void
 }
 
 function warnUnrecorded(error: unknown): void {
-  console.warn('[agent-session-create] starting without a durable record', error)
+  console.warn('[agent-session-create] record store unusable; fencing this create in memory', error)
+}
+
+function succeeded(terminal: RuntimeTerminalCreate): AgentSessionOperationOutcome {
+  const recorded = recordAgentSessionCreatedTerminal(terminal)
+  return { status: 'succeeded', sessionId: '', ...(recorded ? { terminalCreate: recorded } : {}) }
 }
 
 async function replayCreate(
   args: CreateExecution,
-  store: AgentSessionRecordStore,
+  ledger: AgentSessionCreateLedger,
   row: AgentSessionOperationRow
 ): Promise<RuntimeCreateAgentSessionResult> {
   const { outcome } = row
@@ -62,11 +92,7 @@ async function replayCreate(
       tabId: target.tabId,
       paneKey: `${target.tabId}:${target.leafId}`
     }
-    await recordOutcome(args, store, {
-      status: 'succeeded',
-      sessionId: '',
-      terminalCreate: terminal
-    })
+    await recordOutcome(args, ledger, succeeded(terminal))
     return { terminal, disposition: 'replayed' }
   }
   throw new Error(
@@ -78,68 +104,52 @@ async function replayCreate(
   )
 }
 
-/** Best-effort: the claim already fences replay. False when nothing was written. */
+/** Best-effort: the claim already fences replay, and an unsettled claim replays through inventory. */
 async function recordOutcome(
   args: CreateExecution,
-  store: AgentSessionRecordStore,
+  ledger: AgentSessionCreateLedger,
   outcome: AgentSessionOperationOutcome
-): Promise<boolean> {
+): Promise<void> {
   try {
-    await store.recordOperationOutcome({
+    await ledger.recordOperationOutcome({
       callerKey: args.callerKey,
       operationId: args.operationId,
       outcome
     })
-    return true
   } catch (error) {
     console.warn('[agent-session-create] could not record outcome', error)
-    return false
   }
 }
 
-/** `claimed` before a durable spawn, `unrecorded` when the write failed, or the row to replay. */
-async function claimCreate(
+function admitAndClaim(
   args: CreateExecution,
-  store: AgentSessionRecordStore,
+  ledger: AgentSessionCreateLedger,
   terminalTarget: AgentSessionCreateTerminalTarget
-): Promise<'claimed' | 'unrecorded' | AgentSessionOperationRow> {
-  let admitted: Awaited<ReturnType<AgentSessionRecordStore['admitAndClaimOperation']>>
-  try {
-    admitted = await store.admitAndClaimOperation(
-      {
-        callerKey: args.callerKey,
-        operationId: args.operationId,
-        fingerprint: args.fingerprint,
-        now: args.now,
-        terminalTarget
-      },
-      (decision) =>
-        decision.decision === 'admit' ||
-        (decision.decision === 'replay' && decision.row.outcome.status === 'pending')
-    )
-  } catch (error) {
-    warnUnrecorded(error)
-    return 'unrecorded'
-  }
-  const { decision, claim } = admitted
-  if (decision.decision === 'refused') {
-    throw new Error(decision.code)
-  }
-  if (claim?.claim === 'won') {
-    return 'claimed'
-  }
-  if (claim?.claim === 'lost') {
-    return claim.row
-  }
-  if (decision.decision === 'replay') {
-    return decision.row
-  }
-  throw new Error('agent_session_operation_unknown')
+): ReturnType<AgentSessionCreateLedger['admitAndClaimOperation']> {
+  return ledger.admitAndClaimOperation(
+    {
+      callerKey: args.callerKey,
+      operationId: args.operationId,
+      fingerprint: args.fingerprint,
+      now: args.now,
+      terminalTarget
+    },
+    (decision) =>
+      decision.decision === 'admit' ||
+      (decision.decision === 'replay' && decision.row.outcome.status === 'pending')
+  )
+}
+
+function unexpired(
+  row: AgentSessionOperationRow | null | undefined,
+  now: number
+): AgentSessionOperationRow | null {
+  return row && row.expiresAt > now ? row : null
 }
 
 /**
- * Bookkeeping never gates the user's start: when the store cannot be opened or written, the create
- * still runs, fenced in this process only, and loses nothing but its replay across a restart.
+ * Bookkeeping never gates the user's start: when the store cannot be opened or written, the same
+ * ledger rules run over rows this process holds, so only replay across a restart is lost.
  */
 export async function executeAgentSessionCreate(
   args: CreateExecution
@@ -150,14 +160,20 @@ export async function executeAgentSessionCreate(
   } catch (error) {
     warnUnrecorded(error)
   }
-  const found = store?.getOperationRow(args.callerKey, args.operationId)
-  const existing = found && found.expiresAt > args.now ? found : null
-  if (existing && store) {
+  // Why: a row in memory exists only because the store refused it, so it is the newer answer.
+  const memoryRow = unexpired(
+    args.memory.getOperationRow(args.callerKey, args.operationId),
+    args.now
+  )
+  let ledger: AgentSessionCreateLedger = memoryRow || !store ? args.memory : store
+  const existing =
+    memoryRow ?? unexpired(store?.getOperationRow(args.callerKey, args.operationId), args.now)
+  if (existing) {
     if (existing.fingerprint !== args.fingerprint) {
       throw new Error('agent_session_operation_conflict')
     }
     if (existing.outcome.status !== 'pending') {
-      return replayCreate(args, store, existing)
+      return replayCreate(args, ledger, existing)
     }
   } else {
     const timestamp = parseAgentSessionOperationTimestamp(args.operationId)
@@ -170,35 +186,37 @@ export async function executeAgentSessionCreate(
   }
   // Why: a pending row proves nothing was dispatched, so its retry re-runs every check a first attempt does.
   const prepared = await args.prepare()
-  let durable: AgentSessionRecordStore | null = null
-  if (store) {
-    const claim = await claimCreate(args, store, prepared.target)
-    if (typeof claim === 'object') {
-      return replayCreate(args, store, claim)
-    }
-    durable = claim === 'claimed' ? store : null
+  let admitted: Awaited<ReturnType<AgentSessionCreateLedger['admitAndClaimOperation']>>
+  try {
+    admitted = await admitAndClaim(args, ledger, prepared.target)
+  } catch (error) {
+    // Only the store's write can throw; the in-memory ledger never does.
+    warnUnrecorded(error)
+    ledger = args.memory
+    admitted = await admitAndClaim(args, ledger, prepared.target)
   }
-  const settle = async (outcome: AgentSessionOperationOutcome): Promise<void> => {
-    if (!durable || !(await recordOutcome(args, durable, outcome))) {
-      args.fenceInMemory()
-    }
+  const { decision, claim } = admitted
+  if (decision.decision === 'refused') {
+    throw new Error(decision.code)
+  }
+  if (claim?.claim !== 'won') {
+    return replayCreate(args, ledger, claim?.claim === 'lost' ? claim.row : decision.row)
   }
   let dispatched = false
   try {
     const terminal = await prepared.launch(() => {
       dispatched = true
     })
-    await settle({ status: 'succeeded', sessionId: '', terminalCreate: terminal })
+    await recordOutcome(args, ledger, succeeded(terminal))
     return { terminal, disposition: 'created' }
   } catch (error) {
-    if (dispatched || isAgentSessionOperationOutcomeUnknown(error)) {
-      await settle({
-        status: 'unknown',
-        message: error instanceof Error ? error.message : String(error)
-      })
-    } else if (durable) {
-      await recordOutcome(args, durable, { status: 'pending' })
-    }
+    await recordOutcome(
+      args,
+      ledger,
+      dispatched || isAgentSessionOperationOutcomeUnknown(error)
+        ? { status: 'unknown', message: error instanceof Error ? error.message : String(error) }
+        : { status: 'pending' }
+    )
     throw error
   }
 }
