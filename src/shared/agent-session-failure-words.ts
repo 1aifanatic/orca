@@ -243,10 +243,10 @@ const FAILURE_SENTENCES = {
     say('compactionUnconfirmed', agent(say, context)),
   cancelUnconfirmed: (context, _fact, _surface, say) =>
     say('cancelUnconfirmed', agent(say, context)),
-  // The agent was reached and declined, so the sentence says that, not that the Stop was lost.
+  // Refusing the named response does not prove the agent has nothing else running.
   stopRefused: (context, fact, _surface, say) =>
     fact.turnNotRunning
-      ? say('noTurnToStop', agent(say, context))
+      ? say('stopRefused', agent(say, context))
       : quotingPersonDetail(
           say,
           'stopRefused',

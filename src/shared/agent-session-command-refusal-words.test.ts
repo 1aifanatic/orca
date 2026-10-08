@@ -81,11 +81,11 @@ describe('commands whose recorded refusal decides the next step', () => {
     expect(text).not.toMatch(/the agent/i)
   })
 
-  it('retains a positive no-running-turn verdict when reading a stored Stop fact', () => {
+  it('reads a stored requested-turn refusal without claiming the agent is idle', () => {
     const fact = { kind: 'stopRefused', turnNotRunning: true } as const
     expect(readWholeAgentSessionFailureFact(fact)).toEqual(fact)
     expect(agentSessionFailureSentence(fact, 'row', { agentName: 'Codex' })).toBe(
-      'Codex had no response in progress to stop.'
+      "Codex didn't stop. Check the chat before trying again."
     )
     expect(
       agentSessionFailureSentence({ kind: 'stopRefused' }, 'row', { agentName: 'Codex' })

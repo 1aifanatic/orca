@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { CodexAppServerRequestError } from '../../codex/codex-app-server-request-error'
+import { codexTurnLifecycleRig } from '../../codex/codex-structured-dispatch-test-support'
 import {
   acquired,
   fakeCodex,
@@ -24,11 +25,14 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-async function runningContext(cancelTurn: AgentSessionTurnContext['adapter']['cancelTurn']) {
+async function runningContext(
+  cancelTurn: AgentSessionTurnContext['adapter']['cancelTurn'],
+  turnId = 'turn-1'
+) {
   const journal = await journals.open({ identity: identityFor('session-1'), stateDirectory: root })
   await journal.appendItem(
-    { provider: 'codex', threadId: 'thread-abc', turnId: 'turn-1', ordinal: 0 },
-    { kind: 'turn', turnId: 'turn-1', state: 'running' },
+    { provider: 'codex', threadId: 'thread-abc', turnId, ordinal: 0 },
+    { kind: 'turn', turnId, state: 'running' },
     { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
   const ctx: AgentSessionTurnContext = {
@@ -86,7 +90,7 @@ describe('Stop wording follows the host verdict', () => {
     )
   })
 
-  it('records the positive no-running-turn distinction', async () => {
+  it('keeps the requested-turn verdict without claiming the whole agent is idle', async () => {
     const ctx = await runningContext(async () => ({
       cancelled: false,
       refusal: { turnNotRunning: true }
@@ -95,8 +99,30 @@ describe('Stop wording follows the host verdict', () => {
     expect(ctx.journal.snapshot().items.map((row) => row.body)).toContainEqual(
       expect.objectContaining({
         kind: 'status',
-        text: 'Codex had no response in progress to stop.',
+        text: "Codex didn't stop. Check the chat before trying again.",
         failure: { kind: 'stopRefused', turnNotRunning: true }
+      })
+    )
+  })
+
+  it('does not claim Codex is idle when it refuses a different turn', async () => {
+    const rig = await codexTurnLifecycleRig()
+    const sending = rig.send('client-1')
+    await vi.waitFor(() => expect(rig.turns.turnId).toBe('turn-1'))
+    rig.turns.start()
+    await sending
+    const ctx = await runningContext(rig.adapter.cancelTurn, 'turn-journal')
+
+    const result = await performCancel(ctx, { clientOperationId: 'stop-another-turn' })
+
+    expect(result).toMatchObject({ ok: true, value: { cancelled: false } })
+    expect(rig.turns.turnId).toBe('turn-1')
+    expect(ctx.journal.activeTurnId()).toBe('turn-journal')
+    expect(ctx.journal.snapshot().items.map((row) => row.body)).toContainEqual(
+      expect.objectContaining({
+        kind: 'status',
+        text: "Codex didn't stop. Check the chat before trying again.",
+        failure: expect.objectContaining({ kind: 'stopRefused', turnNotRunning: true })
       })
     )
   })
