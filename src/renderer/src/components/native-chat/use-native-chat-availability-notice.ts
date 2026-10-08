@@ -5,10 +5,20 @@ import type { AgentJournalRenderItem } from '../../../../shared/agent-session-jo
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { agentSessionRefusalReasonWords } from '../../../../shared/agent-session-refusal-reason-words'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
+import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
 import { isStructuredAgentSessionStartFailureRow } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import { notSignedInSentence } from '../../../../shared/agent-session-availability-sentences'
 import type { NativeChatComposerNotice } from './native-chat-composer-notice'
+
+function isMissingCodexInstallationRefusal(
+  refusal: AgentSessionRefusalReference | null | undefined
+): boolean {
+  return (
+    refusal?.code === 'agent_session_operation_invalid' &&
+    refusal.details?.codexInstallation?.installedVersion === null
+  )
+}
 
 /** Why the chat's latest start failed, unless a turn has run since. */
 function failedStartReason(items: readonly AgentJournalRenderItem[] | undefined): string | null {
@@ -19,7 +29,9 @@ function failedStartReason(items: readonly AgentJournalRenderItem[] | undefined)
     } else if (item.body.kind === 'status') {
       const failure = readAgentSessionFailureFact(item.body.failure)
       if (isStructuredAgentSessionStartFailureRow(item.itemId) || failure?.kind === 'notSignedIn') {
-        reason = failure?.kind ?? null
+        reason = isMissingCodexInstallationRefusal(failure?.refusal)
+          ? 'cliMissing'
+          : (failure?.kind ?? null)
       }
     }
   }
@@ -51,7 +63,11 @@ export function useNativeChatAvailabilityNotice(input: {
     return null
   }
   const launchWords = input.launchFailure && agentSessionRefusalReasonWords(input.launchFailure)
-  const launchReason = launchWords && 'fact' in launchWords ? launchWords.fact : null
+  const launchReason = isMissingCodexInstallationRefusal(input.launchFailure)
+    ? 'cliMissing'
+    : launchWords && 'fact' in launchWords
+      ? launchWords.fact
+      : null
   if (launchReason === unavailable.reason || rowReason === unavailable.reason) {
     return null
   }

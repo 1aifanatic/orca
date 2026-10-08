@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { useNativeChatAvailabilityNotice } from './use-native-chat-availability-notice'
 import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import { agentJournalItemKey } from '../../../../shared/agent-session-journal-item-key'
+import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import {
   structuredAgentSessionDeliveryNotices,
   structuredAgentSessionStartFailureFacts
@@ -81,3 +83,41 @@ it('keeps one auth explanation while an unechoed message still reads as unsent',
   })
   expect([...notices.values()].map((notice) => notice.text)).toEqual(['Your message was not sent.'])
 })
+
+it.each(['launch', 'history'] as const)(
+  'leaves a missing Codex explanation to its existing %s refusal',
+  (surface) => {
+    const refusal = {
+      kind: 'refused',
+      code: 'agent_session_operation_invalid',
+      details: {
+        reason: 'attachFailed',
+        codexInstallation: { installedVersion: null, minimumVersion: '0.136.0' }
+      }
+    } as const
+    const row: AgentJournalRenderItem = {
+      itemId: agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-1')),
+      revision: 1,
+      sequence: 1,
+      observedAt: 1,
+      body: {
+        kind: 'status',
+        tone: 'error',
+        ...agentSessionFailureWords(
+          { kind: 'startFailed', refusal },
+          { agentName: 'Codex', surface: 'row' }
+        )
+      }
+    }
+    const { result } = renderHook(() =>
+      useNativeChatAvailabilityNotice({
+        agent: 'codex',
+        agentLabel: 'Codex',
+        unavailable: { reason: 'cliMissing' },
+        launchFailure: surface === 'launch' ? refusal : null,
+        journalItems: surface === 'history' ? [row] : []
+      })
+    )
+    expect(result.current).toBeNull()
+  }
+)
