@@ -48,8 +48,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       agent,
       worktreeSelector,
       location: await this.resolveStructuredAgentSessionLocation(worktreeSelector),
-      runtime: this,
-      getSettings: () => this.requireStore().getSettings()
+      runtime: this
     })
   }
 
