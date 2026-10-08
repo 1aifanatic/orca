@@ -47,6 +47,7 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
       win32: `${getOrcaCliCommandNameForPlatform('win32')} claude-teams`
     },
     expectedProcess: 'claude',
+    hookAgent: 'claude',
     promptInjectionMode: 'stdin-after-start',
     pasteNeedsTypedRequest: true,
     preflightTrust: 'claude'
@@ -56,11 +57,9 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     detectCmdAliases: ['cbc'],
     promptInjectionMode: 'argv'
   },
-  openclaude: {
-    detectCmd: 'openclaude',
-    promptInjectionMode: 'argv',
-    draftPromptFlag: '--prefill'
-  },
+  // Why hookAgent: its managed hook script posts to the Claude route.
+  // prettier-ignore
+  openclaude: { detectCmd: 'openclaude', hookAgent: 'claude', promptInjectionMode: 'argv', draftPromptFlag: '--prefill' },
   codex: {
     detectCmd: 'codex',
     promptInjectionMode: 'argv',
