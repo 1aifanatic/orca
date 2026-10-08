@@ -14,6 +14,39 @@ import {
 } from './codex-structured-permission-mode'
 
 describe('Codex policy after a lost turn/start answer', () => {
+  it('keeps a newer Ask intent distinct from a held Full access turn reply', async () => {
+    const turns: Record<string, unknown>[] = []
+    let answer = () => {}
+    const request = vi.fn(async (_method: string, params?: Record<string, unknown>) => {
+      turns.push(params ?? {})
+      if (turns.length === 1) {
+        await new Promise<void>((resolve) => {
+          answer = resolve
+        })
+      }
+      return { turn: { id: `turn-${turns.length}` } }
+    })
+    const session = turnSession(request, 'ask')
+    await applyCodexStructuredSessionOption(session, 'permissionMode', 'bypass')
+    const first = sendTurn(session, 'held')
+    await vi.waitFor(() => expect(turns).toHaveLength(1))
+    await expect(
+      applyCodexStructuredSessionOption(session, 'permissionMode', 'ask')
+    ).resolves.toEqual({ permissionMode: 'ask' })
+    expect(turns).toHaveLength(1)
+    answer()
+    await first
+    expect(session.threadPermissionMode).toBe('bypass')
+    expect(codexPermissionModesFor(session).current).toBe('ask')
+    await sendTurn(session, 'next')
+    expect(turns[1]).toMatchObject({
+      approvalPolicy: 'on-request',
+      approvalsReviewer: 'user',
+      sandboxPolicy: { type: 'workspaceWrite' }
+    })
+    expect(session.threadPermissionMode).toBe('ask')
+  })
+
   it.each(['request timed out', 'transport closed'])(
     'restates Ask with retained roots after Full access applied and %s',
     async (failure) => {

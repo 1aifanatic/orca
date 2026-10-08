@@ -8,6 +8,37 @@ import {
 import type { ClaudeSession } from './claude-structured-session-state'
 import { isAgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
 
+type PermissionOwner = { settled: Promise<void>; sequence: number; pending: number }
+type PermissionApplication = (mode: PermissionMode, timeoutMs: number | undefined) => Promise<void>
+
+const permissionOwners = new WeakMap<ClaudeSession, PermissionOwner>()
+
+/** Intent and application settle together before another permission operation runs. */
+export function serializeClaudePermissionApplication<T>(
+  session: ClaudeSession,
+  operation: (apply: PermissionApplication) => Promise<T>
+): Promise<T> {
+  let owner = permissionOwners.get(session)
+  if (!owner) {
+    owner = { settled: Promise.resolve(), sequence: 0, pending: 0 }
+    permissionOwners.set(session, owner)
+  }
+  const current = owner
+  ++current.pending
+  const result = current.settled.then(() =>
+    operation((mode, timeoutMs) => applyClaudePermissionMode(session, current, mode, timeoutMs))
+  )
+  current.settled = result.then(
+    () => {
+      --current.pending
+    },
+    () => {
+      --current.pending
+    }
+  )
+  return result
+}
+
 function claudePermissionPreparation(
   session: Pick<ClaudeSession, 'options' | 'launchPermissionMode' | 'appliedPermissionMode'>
 ): { kind: 'applied' | 'relaunch' } | { kind: 'live'; mode: PermissionMode } {
@@ -27,17 +58,18 @@ export function claudePermissionNeedsPreparation(
 }
 
 /** A lost answer cannot vouch for the policy that still runs. */
-export async function applyClaudePermissionMode(
+async function applyClaudePermissionMode(
   session: ClaudeSession,
+  owner: PermissionOwner,
   mode: PermissionMode,
   timeoutMs: number | undefined
 ): Promise<void> {
   const previous = session.appliedPermissionMode
-  const mutation = session.optionMutationSequence
+  const control = ++owner.sequence
   delete session.appliedPermissionMode
   try {
     await session.connection.setPermissionMode(mode, { timeoutMs })
-    if (mutation === session.optionMutationSequence) {
+    if (control === owner.sequence) {
       const applied =
         mode === 'default'
           ? 'ask'
@@ -51,7 +83,7 @@ export async function applyClaudePermissionMode(
       }
     }
   } catch (error) {
-    if (error instanceof ClaudeControlRequestError && mutation === session.optionMutationSequence) {
+    if (error instanceof ClaudeControlRequestError && control === owner.sequence) {
       session.appliedPermissionMode = previous
     }
     throw error
@@ -63,7 +95,7 @@ export function prepareClaudePermissionMode(
   session: ClaudeSession,
   timeoutMs: number | undefined
 ): Promise<void> | undefined {
-  if (!claudePermissionNeedsPreparation(session)) {
+  if (!claudePermissionNeedsPreparation(session) && !permissionOwners.get(session)?.pending) {
     return undefined
   }
   const ready = session.startup.state === 'pending' ? session.startup.settled : Promise.resolve()
@@ -71,10 +103,15 @@ export function prepareClaudePermissionMode(
     if (session.startup.state !== 'proven') {
       throw session.startup.failure ?? new Error('claude startup did not complete')
     }
-    let preparation = claudePermissionPreparation(session)
-    while (preparation.kind === 'live') {
-      await applyClaudePermissionMode(session, preparation.mode, timeoutMs)
-      preparation = claudePermissionPreparation(session)
+    let preparing = true
+    while (preparing) {
+      preparing = await serializeClaudePermissionApplication(session, async (apply) => {
+        const preparation = claudePermissionPreparation(session)
+        if (preparation.kind === 'live') {
+          await apply(preparation.mode, timeoutMs)
+        }
+        return claudePermissionNeedsPreparation(session)
+      })
     }
   })
 }

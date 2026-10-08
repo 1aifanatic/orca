@@ -13,8 +13,7 @@ import {
 import type { ClaudeSession } from './claude-structured-session-state'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
 import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../shared/agent-chat-permission-mode'
-import { applyClaudePermissionMode } from './claude-structured-permission-application'
-import { claudePermissionModeWrite } from './claude-structured-permission-mode'
+import { setClaudePermissionModeOption } from './claude-structured-permission-option'
 
 const OPTION_ORDER = ['model', 'effort', 'fastMode', AGENT_CHAT_PERMISSION_MODE_OPTION_ID] as const
 
@@ -50,7 +49,7 @@ export function isClaudeStructuredOptionKey(key: string): boolean {
 /** A client's write to a live session. */
 export function setClaudeStructuredSessionOption(
   session: ClaudeSession,
-  input: { key: string; value: string },
+  input: { key: string; value: string; signal?: AbortSignal },
   timeoutMs: number | undefined
 ): Promise<Readonly<Record<string, string>>> {
   // Each write is a control request the CLI answers only after initialize.
@@ -67,40 +66,28 @@ export function setClaudeStructuredSessionOption(
 
 export async function setClaudeStructuredOption(
   session: ClaudeSession,
-  input: { key: string; value: string },
+  input: { key: string; value: string; signal?: AbortSignal },
   timeoutMs: number | undefined
 ): Promise<Readonly<Record<string, string>>> {
+  if (input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID) {
+    return setClaudePermissionModeOption(session, input.value, timeoutMs, input.signal)
+  }
   const fastMode =
     input.key === 'fastMode'
       ? decodeStructuredAgentSessionOptionValue('fastMode', input.value)
       : null
-  const permission =
-    input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID
-      ? claudePermissionModeWrite(session, input.value)
-      : null
-  if (input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID && !permission) {
-    throw new AgentSessionOptionRejectedError(`claude has no permission mode named ${input.value}`)
-  }
-  if (permission?.kind === 'relaunch') {
-    // No control request: the CLI refuses it; the host relaunches before the next send.
-    session.options.set(input.key, input.value)
-    session.confirmedOptions.delete(input.key)
-    return Object.fromEntries(session.options)
-  }
   const apply =
     input.key === 'model'
       ? () => session.connection.setModel(input.value, { timeoutMs })
-      : permission?.kind === 'live'
-        ? () => applyClaudePermissionMode(session, permission.mode, timeoutMs)
-        : input.key === 'effort'
-          ? () =>
-              session.connection.applyFlagSettings(
-                { effortLevel: input.value as EffortLevel },
-                { timeoutMs }
-              )
-          : input.key === 'fastMode' && typeof fastMode === 'boolean'
-            ? () => session.connection.applyFlagSettings({ fastMode }, { timeoutMs })
-            : null
+      : input.key === 'effort'
+        ? () =>
+            session.connection.applyFlagSettings(
+              { effortLevel: input.value as EffortLevel },
+              { timeoutMs }
+            )
+        : input.key === 'fastMode' && typeof fastMode === 'boolean'
+          ? () => session.connection.applyFlagSettings({ fastMode }, { timeoutMs })
+          : null
   if (!apply) {
     throw new AgentSessionOptionRejectedError(
       `claude stream-json has no session option named ${input.key}`

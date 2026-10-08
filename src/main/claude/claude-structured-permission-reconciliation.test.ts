@@ -129,8 +129,9 @@ it('re-derives a relaunch-only choice made while live preparation is outstanding
   Object.assign(session.connection, { setPermissionMode })
   const preparing = prepareClaudePermissionMode(session, 1)
   await vi.waitFor(() => expect(setPermissionMode).toHaveBeenCalledOnce())
-  await setClaudeStructuredOption(session, { key: 'permissionMode', value: 'bypass' }, 1)
+  const picked = setClaudeStructuredOption(session, { key: 'permissionMode', value: 'bypass' }, 1)
   finishApplication()
+  await picked
   await preparing
   expect(setPermissionMode.mock.calls).toEqual([['acceptEdits', { timeoutMs: 1 }]])
   expect(session.options.get('permissionMode')).toBe('bypass')
