@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { createSessionWriteSubscriber } from '@/lib/session-write-subscriber'
+import { clearDirectSshTerminalBindings } from '../slices/direct-ssh-terminal-recovery'
 import type { SleepingAgentSessionRecord } from '../../../../shared/agent-session-resume'
 import type { Tab, TabGroup } from '../../../../shared/tab-types'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
@@ -199,6 +200,16 @@ describe('applyTerminalTopologySlices', () => {
       [LEAF_A]: 'build'
     })
     dispose()
+  })
+
+  it('never puts back an SSH attachment the window cleared for a lost connection', () => {
+    const cleared = clearDirectSshTerminalBindings(state(), new Set([WT])).patch
+    useAppStore.setState(cleared ?? {})
+    // Main keeps the persisted binding; reattaching it is main's verdict, not the push's.
+    apply(slice(2, { tabs: [row('a', { ptyId: 'pty-a' }), row('b')] }))
+
+    expect(state().tabsByWorktree[WT].map((tab) => tab.ptyId)).toEqual([null, null])
+    expect(state().ptyIdsByTabId).toEqual({ a: [], b: [] })
   })
 
   it('clears an optional row field main dropped', () => {
