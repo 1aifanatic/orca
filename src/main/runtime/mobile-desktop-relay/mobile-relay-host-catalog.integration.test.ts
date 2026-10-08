@@ -121,6 +121,8 @@ describe('mobile relay hosts: phone -> desktop lists the servers it shows', () =
           pairingRevision: 1,
           runtimeId: id
         })),
+        sshTargetLabels: new Map(),
+        sshConnectionStates: new Map(),
         statusByEnvironmentId: new Map(
           [...servers].map(([id, { capable }]) => [
             id,

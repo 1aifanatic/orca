@@ -72,7 +72,7 @@ export class RuntimeRpcState {
   // transports under the SAME wiring (see ensureMobileSocketWiring) instead of orphaning relay sockets.
   protected detachWebSocketWiring: (() => void) | null = null
   protected mobileRelayPairingProvider: MobileRelayPairingProvider | null = null
-  // Why: only a desktop with configured servers relays; headless serve leaves this unset.
+  // Why nullable: launch sets both for every runtime process; in-process test servers may not.
   protected mobileDesktopRelay: MobileDesktopRelay | null = null
   protected mobileRelayHostCatalog: MobileRelayHostCatalog | null = null
   protected mobileRelayPairingOfferQueue: Promise<void> = Promise.resolve()

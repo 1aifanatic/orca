@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => {
   const environments: Record<string, unknown>[] = []
   const snapshots: Record<string, unknown>[] = []
-  return { environments, snapshots, resolveManaged: vi.fn(), call: vi.fn() }
+  const sshTargets: { id: string; label: string }[] = []
+  const sshStates = new Map<string, Record<string, unknown>>()
+  return { environments, snapshots, sshTargets, sshStates, resolveManaged: vi.fn(), call: vi.fn() }
 })
 
 vi.mock('electron', () => ({ app: { getPath: () => '/user-data' } }))
@@ -17,6 +19,10 @@ vi.mock('../../shared/runtime-environments', () => ({
 }))
 vi.mock('./runtime-environment-managed-tunnel', () => ({
   resolveManagedRuntimeEnvironment: mocks.resolveManaged
+}))
+vi.mock('../ssh/ssh-target-registry', () => ({
+  listRegisteredSshTargets: () => mocks.sshTargets,
+  getRegisteredSshState: (targetId: string) => mocks.sshStates.get(targetId)
 }))
 vi.mock('./runtime-environment-request-connections', () => ({
   getRuntimeEnvironmentStatusSnapshots: () => mocks.snapshots
@@ -76,7 +82,20 @@ describe('runtime environment mobile relay hosts', () => {
         transport: 'ready'
       }
     ]
+    mocks.sshTargets = [
+      { id: 'devbox', label: 'Dev Box' },
+      { id: 'never-connected', label: 'Pi' }
+    ]
+    const devboxState = { targetId: 'devbox', status: 'connected' }
+    mocks.sshStates.set('devbox', devboxState)
     const listing = createRuntimeEnvironmentMobileRelayHosts().list()
+    expect(listing.sshTargetLabels).toEqual(
+      new Map([
+        ['devbox', 'Dev Box'],
+        ['never-connected', 'Pi']
+      ])
+    )
+    expect(listing.sshConnectionStates).toEqual(new Map([['devbox', devboxState]]))
     expect(listing.environments).toEqual([
       {
         id: 'env-1',

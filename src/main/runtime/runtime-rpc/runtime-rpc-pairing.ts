@@ -95,7 +95,6 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
           allocateStreamId: allocateTerminalSubscriptionStreamId
         })
       : null
-    this.mobileRelayHostCatalog?.dispose()
     this.mobileRelayHostCatalog = hosts
       ? new MobileRelayHostCatalog({
           hosts,
