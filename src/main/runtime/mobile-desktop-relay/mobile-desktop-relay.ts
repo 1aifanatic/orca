@@ -6,7 +6,6 @@ import {
   openRemoteRuntimePassthroughSocket,
   type RemoteRuntimePassthroughSocket
 } from '../../../shared/remote-runtime-passthrough-socket'
-import { MOBILE_RPC_METHOD_ROUTES } from '../runtime-rpc/runtime-rpc-mobile-method-routing'
 import { syncDelegatedPhoneGrants, type DelegatedPhoneGrants } from './delegated-phone-grants'
 import type { MobileDesktopRelayHost, MobileDesktopRelayHosts } from './mobile-desktop-relay-hosts'
 import { RELAYED_STREAM_CARRIERS } from './relayed-stream-carriers'
@@ -53,7 +52,7 @@ class RelayLink {
  * `pairing.delegatedMobileDevice.sync`, tokens held in memory only). Contract:
  * - The desktop never interprets replies; it renumbers only host stream ids (RELAYED_STREAM_CARRIERS).
  * - Upstream, the phone's desktop token is swapped wherever it appears, not per field.
- * - Only `execution-host` methods relay (MOBILE_RPC_METHOD_ROUTES); both tables have census tests.
+ * - Only `execution-host` methods (MOBILE_RPC_METHOD_ROUTES) reach here; `paired-desktop` ones run locally.
  * - A server without the delegated-devices capability is `update-needed`; nothing relays to it.
  * - A server-side revoke of a phone is final until the next sync.
  * - Hidden until S2: MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY is not advertised yet.
@@ -89,12 +88,6 @@ export class MobileDesktopRelay {
     request: { id: string; method: string },
     frame: string
   ): void {
-    if (MOBILE_RPC_METHOD_ROUTES.get(request.method) !== 'execution-host') {
-      phone.reply(
-        failure(request.id, 'forbidden', `Method '${request.method}' runs on the paired desktop`)
-      )
-      return
-    }
     if (RELAYED_STREAM_CARRIERS.get(request.method) === 'phone-binary-frames') {
       phone.reply(
         failure(

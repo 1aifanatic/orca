@@ -422,12 +422,30 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     expect(isOk(await phone.next('after-sync'))).toBe(true)
   })
 
-  it('refuses desktop-owned methods and unknown servers without running anything on the desktop', async () => {
+  it('answers a targeted desktop-owned call on the desktop, exactly as the untargeted one', async () => {
+    const { desktop } = await startTopology()
+    const phone = await connectPhone(desktop.server, 'iPhone')
+    const opensBefore = passthroughOpens.count
+
+    for (const method of ['settings.get', 'status.get']) {
+      phone.send(`${method}:targeted`, method, {})
+      phone.send(`${method}:untargeted`, method, {}, null)
+      const targeted = await phone.next(`${method}:targeted`)
+      const untargeted = await phone.next(`${method}:untargeted`)
+      expect(isOk(targeted)).toBe(true)
+      expect(targeted.result).toEqual(untargeted.result)
+    }
+    expect(passthroughOpens.count).toBe(opensBefore)
+    // An execution-host method under the same target still relays.
+    phone.send('list', 'terminal.list', {})
+    expect(isOk(await phone.next('list'))).toBe(true)
+    expect(passthroughOpens.count).toBe(opensBefore + 1)
+  })
+
+  it('refuses binary-frame methods and unknown servers without running anything on the desktop', async () => {
     const { desktop, desktopSpawns } = await startTopology()
     const phone = await connectPhone(desktop.server, 'iPhone')
 
-    phone.send('settings', 'settings.get', {})
-    expect(errorCode(await phone.next('settings'))).toBe('forbidden')
     phone.send('multiplex', 'terminal.multiplex', {})
     expect(errorCode(await phone.next('multiplex'))).toBe('forbidden')
     const create = {
