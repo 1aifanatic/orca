@@ -36,7 +36,7 @@ describe('ACP agents in the runtime registrations', () => {
     expect(definition?.accountHomeVariable).toBeUndefined()
   })
 
-  it('leaves OpenCode 2 on its terminal-backed chat, by agent and by installed version', () => {
+  it('leaves the `opencode2` agent on its terminal-backed chat, and asks `opencode` its version', () => {
     expect(structuredAgentRuntimeRegistration('opencode2')).toBeNull()
     expect(structuredAgentRuntimeRegistration('opencode')?.supportsLaunch).toBeTypeOf('function')
     // Grok runs whatever is installed: its create asks nothing of the binary.

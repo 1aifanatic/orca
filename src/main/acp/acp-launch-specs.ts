@@ -70,9 +70,15 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : [])
 }
 
-// OpenCode 1.x serves ACP in-process through `opencode acp`. OpenCode 2 (`opencode2`, and any
-// `opencode` that is 2.x) is not: its `acp` runs inside the user's own background service, which a
-// chat's environment and account pin do not reach, so it keeps its terminal-backed chat.
+// `opencode acp` on 1.x serves in-process; on 2.x it starts a private `opencode serve --stdio` child
+// with this environment and ends it with stdin, so both lines run the chat's own account.
+const OPENCODE_ACP_RELEASE_LINES = [
+  // The release the recorded sessions capture.
+  { major: 1, floor: '1.18.31' },
+  // The 2.x release verified to start that private child.
+  { major: 2, floor: '2.0.14' }
+] as const
+
 const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   agent: 'opencode',
   command: 'opencode',
@@ -86,8 +92,8 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   loginCommand: ['opencode', 'auth', 'login'],
   account: openCodeAcpAccountBinding(),
   installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
-  // Stable 1.x from 1.18.31, the release the recorded sessions capture.
-  supportsVersion: (version) => isStableCliVersionOnLine(version, { major: 1, floor: '1.18.31' }),
+  supportsVersion: (version) =>
+    OPENCODE_ACP_RELEASE_LINES.some((line) => isStableCliVersionOnLine(version, line)),
   imagePrompts: true,
   readStoredUserMessages: openCodeStoredUserMessagesReader()
 }
