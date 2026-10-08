@@ -87,7 +87,11 @@ export async function activateInstalledOrcad(
   }
 
   try {
-    await preflightInstalledOrcad({ ...options, remoteInstallDir: remoteDir, fullVersion })
+    await preflightInstalledOrcad({
+      ...options,
+      remoteInstallDir: remoteDir,
+      fullVersion
+    })
   } catch (error) {
     options.signal?.throwIfAborted()
     return notActivated(
@@ -131,6 +135,7 @@ export async function activateInstalledOrcad(
   let transaction: OrcadActivateTransaction = createOrcadActivationTransaction({
     transactionId: randomUUID(),
     candidateVersion: fullVersion,
+    appVersion: options.appVersion,
     recordBefore: record,
     snapshotDirName: orcadSnapshotDirName(fullVersion, startedAt.getTime()),
     now: startedAt

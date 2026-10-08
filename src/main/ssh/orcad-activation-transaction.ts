@@ -27,7 +27,10 @@ import { errorMessage } from '../../shared/error-message'
 export const ORCAD_ACTIVATION_TRANSACTION_FILENAME = 'transaction.json'
 export const ORCAD_ACTIVATION_TRANSACTION_DIRNAME = '.orcad-activation-transaction'
 
-export type OrcadSnapshotVerdict = { dirName: string; state: 'pending' | 'captured' | 'empty' }
+export type OrcadSnapshotVerdict = {
+  dirName: string
+  state: 'pending' | 'captured' | 'empty'
+}
 
 export type OrcadActivateTransaction = {
   schemaVersion: typeof ORCAD_ACTIVATION_TRANSACTION_SCHEMA_VERSION
@@ -37,6 +40,8 @@ export type OrcadActivateTransaction = {
   startedAt: string
   updatedAt: string
   candidateVersion: string
+  /** The app that started this activation, which a resumed commit stamps as activeAppVersion. */
+  candidateAppVersion?: string | null
   recordBefore: OrcadActivationRecord
   recordAfter: OrcadActivationRecord | null
   snapshot: OrcadSnapshotVerdict
@@ -189,13 +194,19 @@ export function planOrcadTransactionRecovery(
     transaction.recordAfter &&
     sameOrcadActivationRecord(currentRecord, transaction.recordAfter)
   ) {
-    return { action: 'stabilize-committed', activeVersion: transaction.recordAfter.active }
+    return {
+      action: 'stabilize-committed',
+      activeVersion: transaction.recordAfter.active
+    }
   }
   if (!sameOrcadActivationRecord(currentRecord, transaction.recordBefore)) {
     return recordChangedRefusal(transaction)
   }
   if (transaction.phase === 'candidate-ready' || transaction.phase === 'target-ready') {
-    return { action: 'finish-commit', record: transaction.recordAfter ?? neverRecord() }
+    return {
+      action: 'finish-commit',
+      record: transaction.recordAfter ?? neverRecord()
+    }
   }
   if (transaction.operation === 'activate') {
     // The candidate launches only after the snapshot verdict is durable.

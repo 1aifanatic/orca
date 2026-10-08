@@ -28,6 +28,9 @@ export async function resumeInterruptedOrcadCandidate(
   const incumbent = transaction.recordBefore.active
   if (
     transaction.phase !== 'snapshot-captured' ||
+    // A journal from before the field cannot say which app started it; committing without that
+    // drops the host-newer guard and lets an older desktop downgrade over migrated state.
+    transaction.candidateAppVersion === undefined ||
     snapshotState === 'pending' ||
     // A serving incumbent holds the port and instance lock; undo keeps it.
     (incumbent !== null &&
@@ -62,7 +65,8 @@ export async function resumeInterruptedOrcadCandidate(
           takenAt: transaction.startedAt
         }
       : null,
-    now
+    now,
+    transaction.candidateAppVersion ?? undefined
   )
   await writeOrcadActivationTransaction(
     options,
