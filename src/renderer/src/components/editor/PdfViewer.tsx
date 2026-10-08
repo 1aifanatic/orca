@@ -1,5 +1,5 @@
 /* oxlint-disable react-doctor/no-adjust-state-on-prop-change -- Why: PDF loading drives pdf.js document/viewer instances and decode errors through an external worker lifecycle. */
-import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type JSX, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Image as ImageIcon, RotateCcw, Search, ZoomIn, ZoomOut } from 'lucide-react'
 import * as pdfjsLib from 'pdfjs-dist'
 import type {
@@ -12,6 +12,7 @@ import PdfFind from './PdfFind'
 import { useShortcutLabel } from '@/hooks/useShortcutLabel'
 import { useAppStore } from '@/store'
 import { usePdfViewerShortcuts } from './use-pdf-viewer-shortcuts'
+import { EditorShortcutOwnerContext } from './editor-shortcut-owner'
 
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { translate } from '@/i18n/i18n'
@@ -168,7 +169,16 @@ function PdfDocumentViewer({
   }, [preferenceKey])
 
   const openFind = useCallback(() => setFindOpen(true), [])
-  usePdfViewerShortcuts({ rootRef, keybindings, openFind, zoomIn, zoomOut, zoomReset })
+  const ownsShortcuts = useContext(EditorShortcutOwnerContext)
+  usePdfViewerShortcuts({
+    rootRef,
+    ownsShortcuts,
+    keybindings,
+    openFind,
+    zoomIn,
+    zoomOut,
+    zoomReset
+  })
 
   const zoomPercent = Math.round(scale * 100)
 

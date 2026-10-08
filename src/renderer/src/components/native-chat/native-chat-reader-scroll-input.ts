@@ -178,13 +178,20 @@ export function useNativeChatReaderScrollInput(
       if (geometry.inView(match, bar)) {
         return
       }
-      onReaderScroll()
-      onLeaveEnd()
-      transcript.scrollTop += nativeChatFindScrollDelta(
+      const delta = nativeChatFindScrollDelta(
         match.getBoundingClientRect(),
         transcript.getBoundingClientRect(),
         bar
       )
+      const maxScrollTop = transcript.scrollHeight - transcript.clientHeight
+      const target = Math.min(Math.max(transcript.scrollTop + delta, 0), maxScrollTop)
+      // A scroll that cannot move fires no scroll event, so nothing would re-arm following.
+      if (Math.abs(target - transcript.scrollTop) < 1) {
+        return
+      }
+      onReaderScroll()
+      onLeaveEnd()
+      transcript.scrollTop = target
     },
     [onLeaveEnd, onReaderScroll, scrollRef]
   )

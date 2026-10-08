@@ -17,7 +17,7 @@ const TRANSCRIPT_COLUMN_SELECTOR = '[data-native-chat-transcript-column]'
 const TRANSCRIPT_SCROLL_SELECTOR = '[data-native-chat-scroll]'
 /** Row chrome that only shows on hover (timestamps, copy): marked, so counts never follow the mouse. */
 const SKIPPED_TEXT_SELECTOR = '.sr-only, [hidden], [data-native-chat-find-skip]'
-/** Streamed text grows every frame; re-searching it this often is plenty and keeps frames free. */
+/** Streamed text with no match in it grows every frame; re-searching it this often is plenty. */
 const TEXT_GROWTH_SEARCH_DELAY_MS = 120
 
 function visibleTextScope(reuse: Range[]): DomTextSearchScope {
@@ -120,6 +120,8 @@ export function useNativeChatFindMatches({
   const activeIndexRef = useRef(-1)
   const anchorRef = useRef<MatchAnchor | null>(null)
   const searchedQueryRef = useRef<string | null>(null)
+  // Text nodes holding a match: React rewrites a growing node whole, which collapses its ranges.
+  const matchNodesRef = useRef<ReadonlySet<Node>>(new Set())
 
   const activate = useCallback(
     (matches: readonly Range[], index: number) => {
@@ -143,6 +145,9 @@ export function useNativeChatFindMatches({
     const newQuery = searchedQueryRef.current !== query
     searchedQueryRef.current = query
     matchesRef.current = matches
+    matchNodesRef.current = new Set(
+      matches.flatMap((match) => [match.startContainer, match.endContainer])
+    )
     chatFindHighlights.setMatches(instance, matches)
     setMatchCount(matches.length)
     const anchor = anchorRef.current
@@ -190,13 +195,26 @@ export function useNativeChatFindMatches({
       if (!replaced && changed.length === 0) {
         return
       }
-      // Rows mounting or opening change what is findable now; text growing in place can wait.
-      if (replaced || changed.some((record) => record.type !== 'characterData')) {
+      // Rows mounting or opening, and text that held a match (its ranges just collapsed), are
+      // re-searched before the next paint; other text growing in place can wait.
+      const now =
+        replaced ||
+        changed.some(
+          (record) => record.type !== 'characterData' || matchNodesRef.current.has(record.target)
+        )
+      if (now) {
         frame ??= requestAnimationFrame(runSearch)
       } else {
         timer ??= setTimeout(runSearch, TEXT_GROWTH_SEARCH_DELAY_MS)
       }
     })
+    // A disclosure opens with a height animation (not a mutation): what it cut off at first shows at its end.
+    const onAnimationEnd = (event: Event): void => {
+      if (event.target instanceof Node && column?.contains(event.target)) {
+        frame ??= requestAnimationFrame(runSearch)
+      }
+    }
+    root.addEventListener('animationend', onAnimationEnd)
     observer.observe(root, {
       subtree: true,
       childList: true,
@@ -207,6 +225,7 @@ export function useNativeChatFindMatches({
     })
     return () => {
       observer.disconnect()
+      root.removeEventListener('animationend', onAnimationEnd)
       if (frame !== null) {
         cancelAnimationFrame(frame)
       }

@@ -13,6 +13,7 @@ import { isWebClientLocation } from '@/lib/web-client-location'
 import { useAppStore } from '../../store'
 import type { NativeChatComposerHandle } from './native-chat-composer-types'
 import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
+import { focusNativeChatPromptCard } from './use-native-chat-prompt-card-focus'
 
 /** The chat's find: open state and query live with the chat, so a reopen keeps the last query. */
 export type NativeChatFind = {
@@ -68,12 +69,16 @@ export function useNativeChatFind(
     }
     const previous = focusBeforeOpenRef.current
     focusBeforeOpenRef.current = null
-    if (
-      previous?.isConnected &&
-      root.contains(previous) &&
-      !previous.closest('[hidden], [inert]')
-    ) {
-      previous.focus({ preventScroll: true })
+    const usable =
+      previous?.isConnected && root.contains(previous) && !previous.closest('[hidden], [inert]')
+        ? previous
+        : null
+    // A prompt card that arrived while the bar held focus takes it now, as it would have then.
+    if (focusNativeChatPromptCard(root, usable)) {
+      return
+    }
+    if (usable) {
+      usable.focus({ preventScroll: true })
       return
     }
     if (!composerRef.current?.focus()) {

@@ -107,7 +107,7 @@ type ChatProps = {
 function PromptCard(): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   useNativeChatPromptCardFocus(ref, true)
-  return <div ref={ref} data-testid="card" tabIndex={-1} />
+  return <div ref={ref} data-testid="card" tabIndex={-1} data-native-chat-prompt-card-focus />
 }
 
 /** Mirrors a chat root: pointer focus, root key routing, the find bar over the transcript. */
@@ -121,7 +121,8 @@ function Chat({
   card = false
 }: ChatProps): React.JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<NativeChatComposerHandle | null>(composer)
+  // As in ResolvedView: a card hides the composer and detaches its handle.
+  const composerRef = { current: card ? null : composer }
   const messageListRef = useRef({ revealFindMatch: reveal })
   const find = useNativeChatFind(enabled, rootRef, composerRef, messageListRef)
   useNativeChatPasteBridge({ rootRef, composerRef })
@@ -147,7 +148,13 @@ function Chat({
         </div>
       </div>
       {card ? <PromptCard /> : null}
-      <ComposerField composer={composer} interrupt={interrupt} suggestionsOpen={suggestionsOpen} />
+      <div hidden={card}>
+        <ComposerField
+          composer={composer}
+          interrupt={interrupt}
+          suggestionsOpen={suggestionsOpen}
+        />
+      </div>
     </div>
   )
 }
@@ -523,23 +530,92 @@ describe('native chat find', () => {
     expect(status()).toBe('1/6')
   })
 
-  it('re-searches text growing in place on a short timer, not every frame', async () => {
+  it('re-searches growing text that holds a match before the next paint, other text later', async () => {
     const composer = composerHandle()
-    render(<Chat composer={composer} transcript={<p data-testid="streaming">alpha</p>} />)
+    render(
+      <Chat
+        composer={composer}
+        transcript={
+          <>
+            <p data-testid="quiet">beta</p>
+            <p data-testid="streaming">alpha</p>
+          </>
+        }
+      />
+    )
     pressModF(composer.element)
     typeQuery('alpha')
     expect(status()).toBe('1/1')
-    const text = screen.getByTestId('streaming').firstChild
-    if (!(text instanceof Text)) {
-      throw new Error('no streaming text node')
+    const textOf = (id: string): Text => {
+      const text = screen.getByTestId(id).firstChild
+      if (!(text instanceof Text)) {
+        throw new Error(`no text node in ${id}`)
+      }
+      return text
     }
-    text.data = 'alpha alpha'
+    // React rewrites a growing node whole, collapsing its ranges: repaint them this frame.
+    textOf('streaming').data = 'alpha alpha'
     await nextFrame()
-    expect(status()).toBe('1/1')
+    expect(status()).toBe('1/2')
+    // Growth with no match in it waits for the short timer.
+    textOf('quiet').data = 'beta alpha'
+    await nextFrame()
+    expect(status()).toBe('1/2')
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 200))
     })
-    expect(status()).toBe('1/2')
+    // The new match sits above the active one, which stays active.
+    expect(status()).toBe('2/3')
+  })
+
+  it('counts an opening disclosure once its height animation ends', async () => {
+    const composer = composerHandle()
+    const { container } = render(
+      <Chat
+        composer={composer}
+        transcript={
+          <div data-testid="disclosure" style={{ overflow: 'hidden' }}>
+            <p>alpha in the output</p>
+          </div>
+        }
+      />
+    )
+    const place = (element: Element, y: number, height: number): void => {
+      Object.defineProperty(element, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => DOMRect.fromRect({ x: 0, y, width: 600, height })
+      })
+    }
+    place(container.querySelector('[data-native-chat-scroll]')!, 0, 600)
+    const disclosure = screen.getByTestId('disclosure')
+    place(disclosure, 0, 0)
+    Object.defineProperty(disclosure, 'scrollHeight', { configurable: true, value: 200 })
+    Object.defineProperty(disclosure, 'clientHeight', { configurable: true, value: 0 })
+    vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ x: 20, y: 10, width: 40, height: 18 })
+    )
+    pressModF(composer.element)
+    typeQuery('alpha')
+    // First frame of the animation: the box is still 0 px tall.
+    expect(status()).toBe('No results')
+
+    place(disclosure, 0, 200)
+    Object.defineProperty(disclosure, 'clientHeight', { configurable: true, value: 200 })
+    act(() => {
+      disclosure.dispatchEvent(new Event('animationend', { bubbles: true }))
+    })
+    await nextFrame()
+    expect(status()).toBe('1/1')
+  })
+
+  it('hands focus to a prompt card that arrived while find was open when find closes', () => {
+    const composer = composerHandle()
+    const view = render(<Chat composer={composer} transcript={TRANSCRIPT} />)
+    pressModF(composer.element)
+    view.rerender(<Chat composer={composer} transcript={TRANSCRIPT} card />)
+    expect(document.activeElement).toBe(findInput())
+    press(findInput()!, 'Escape')
+    expect(document.activeElement).toBe(screen.getByTestId('card'))
   })
 
   it('leaves Mod+F to the browser in the web client', () => {
