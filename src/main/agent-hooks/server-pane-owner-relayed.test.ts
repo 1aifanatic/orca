@@ -238,4 +238,46 @@ describe('pane owner rule (relayed panes)', () => {
       vi.useRealTimers()
     }
   })
+
+  it("persists a relayed row's owner and session, and restores it", async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-pane-owner-persist-'))
+    paths.push(userDataPath)
+    const owner = {
+      agent: 'claude',
+      process: { pid: 4001, platform: 'linux' as const, startTime: 'boot:1' },
+      session: 'claude-a'
+    }
+    const first = new AgentHookServer()
+    running.push(first)
+    await first.start({ env: 'production', userDataPath })
+    first.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        agentPresence: owner,
+        providerSession: { key: 'session_id', id: 'claude-a' },
+        payload: { state: 'working', prompt: 'claude task', agentType: 'claude' }
+      },
+      'ssh-1'
+    )
+    first.flushStatusPersistSync()
+    first.stop()
+    const restored = new AgentHookServer()
+    running.push(restored)
+    await restored.start({ env: 'production', userDataPath })
+    // Why: a relayed restatement with no owner keeps the restored one, so this reads it back.
+    const pushed: AgentHookEventPayload[] = []
+    restored.setListener((event) => pushed.push(event))
+    restored.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        payload: { state: 'working', prompt: 'claude task', agentType: 'claude' }
+      },
+      'ssh-1'
+    )
+    expect(pushed.at(-1)?.agentPresence).toEqual(owner)
+  })
 })
