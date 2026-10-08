@@ -1,4 +1,3 @@
-import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
   AgentSessionPreDispatchError,
@@ -6,6 +5,7 @@ import {
 } from './structured-agent-session-operation-settlement'
 import {
   adapter,
+  attach,
   envelope,
   hostTestState,
   journals
@@ -22,6 +22,7 @@ import { codexProviderHandle } from '../../../shared/agent-session-provider-hand
 import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
 
 async function context(): Promise<AgentSessionTurnContext> {
+  await attach()
   return {
     logger: createStructuredAgentSessionLogger(),
     sessionId: SESSION,
@@ -33,7 +34,7 @@ async function context(): Promise<AgentSessionTurnContext> {
         agent: 'codex',
         providerHandle: codexProviderHandle(THREAD)
       },
-      stateDirectory: join(hostTestState().root, 'settlement')
+      stateDirectory: hostTestState().root
     }),
     fence: 1,
     agents: NO_STRUCTURED_AGENTS,
@@ -79,7 +80,7 @@ it('rethrows a throw from a plan answered by its write, writing nothing and leav
 })
 
 it.each([
-  { plan: 'answered by its write', settlesWithWrite: true as const, failures: 1 },
+  { plan: 'answered by its write', settlesWithWrite: true as const, failures: 0 },
   { plan: 'settled after its run', settlesWithWrite: undefined, failures: 2 }
 ])(
   'preserves a proven refusal of a plan $plan through $failures failed bookkeeping writes',
@@ -165,7 +166,7 @@ it('refuses a superseded send at acceptance, recording and dispatching nothing',
   expect(vi.getTimerCount()).toBe(0)
 })
 
-it('keeps the original refusal reason and message in its settled receipt', async () => {
+it('returns the pre-acceptance refusal without recording a receipt', async () => {
   const ctx = await context()
   const { store } = hostTestState()
   const writes = vi.spyOn(store, 'recordOperationOutcome').mockResolvedValue()
@@ -188,9 +189,5 @@ it('keeps the original refusal reason and message in its settled receipt', async
       }
     })
   ).toMatchObject({ ok: false, refusal })
-  expect(writes).toHaveBeenCalledWith({
-    callerKey: 'test',
-    operationId: operation.clientOperationId,
-    outcome: { status: 'failed', ...refusal }
-  })
+  expect(writes).not.toHaveBeenCalled()
 })

@@ -216,3 +216,42 @@ describe('/clear', () => {
     })
   })
 })
+
+it('replays /compact per caller while acknowledging the same submission once', async () => {
+  const id = hostTestOperationId()
+  const fields = { command: 'compact' as const }
+  const params = {
+    ...fields,
+    envelope: rig.envelope(fields, 'agentSession.conversationCommand', id)
+  }
+  const admit = vi
+    .spyOn(rig.store, 'admitMutationOperation')
+    .mockRejectedValue(new Error('ledger unavailable'))
+  expect(await rig.host.conversationCommand(CALLER, params)).toMatchObject({
+    ok: true,
+    replayed: false
+  })
+  expect(await rig.host.conversationCommand(CALLER, params)).toMatchObject({
+    ok: true,
+    replayed: true
+  })
+  await eventually(() => expect(rig.compact).toHaveBeenCalledTimes(1))
+  rig.finishCompact()
+  await rig.host.flushStreamedEvents(params.envelope.sessionId)
+  expect(rig.store.readCommandReceipt({ kind: 'caller', callerKey: 'second-caller' }, id)).toEqual({
+    verdict: 'absent'
+  })
+  expect(await rig.host.conversationCommand({ callerKey: 'second-caller' }, params)).toMatchObject({
+    ok: true,
+    replayed: false
+  })
+  expect(await rig.host.conversationCommand({ callerKey: 'second-caller' }, params)).toMatchObject({
+    ok: true,
+    replayed: true
+  })
+  expect(
+    rig.store.readCommandReceipt({ kind: 'caller', callerKey: 'second-caller' }, id)
+  ).toMatchObject({ verdict: 'readable' })
+  expect(admit).not.toHaveBeenCalled()
+  await eventually(() => expect(rig.compact).toHaveBeenCalledTimes(1))
+})

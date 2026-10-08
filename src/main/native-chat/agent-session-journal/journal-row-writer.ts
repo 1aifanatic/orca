@@ -5,18 +5,28 @@ import type { AgentJournalCursor } from '../../../shared/agent-session-journal-t
 import type { JournalRow } from './journal-row-schema'
 import { assertJournalFence, assertJournalWritable } from './journal-write-guards'
 import type { JournalWriteBody } from './journal-write-queue'
+import { readJournalRowsAfterCursor } from './journal-open'
 
 /** Runs between BEGIN IMMEDIATE and COMMIT, on the SAME connection as the row
  *  insert; a throw rolls the whole append back. Synchronous by construction so
  *  nothing can interleave inside the transaction. */
 export type JournalRowTransactionHook = (db: Database.Database, row: JournalRow) => void
 
-/** An operation's ledger answer, committed with the journal write that makes it true: `write` runs
+/** An operation's receipt, committed with the journal write that makes it true: `write` runs
  *  inside that transaction on the same connection, `committed` synchronously right after its
  *  COMMIT and never after a rollback. */
 export type JournalOperationReceipt = {
-  write: (db: Database.Database) => void
+  write: (db: Database.Database, row?: JournalRow) => void
   committed: () => void
+}
+
+export function composeJournalOperationReceipts(
+  ...receipts: JournalOperationReceipt[]
+): JournalOperationReceipt {
+  return {
+    write: (db, row) => receipts.forEach((receipt) => receipt.write(db, row)),
+    committed: () => receipts.forEach((receipt) => receipt.committed())
+  }
 }
 
 export type JournalRowWriterDeps = {
@@ -41,6 +51,27 @@ const BOOKKEEPING_SAVEPOINT = 'journal_row_bookkeeping'
 export class JournalRowWriter {
   constructor(private readonly deps: JournalRowWriterDeps) {}
 
+  /** Another caller may acknowledge an existing submission without accepting it twice. */
+  commitReceipt(cursor: AgentJournalCursor, receipt: JournalOperationReceipt): Promise<void> {
+    return this.deps.serialize(() => {
+      assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
+      this.deps.database().transaction((db) => {
+        const row = readJournalRowsAfterCursor(
+          db,
+          this.deps.sessionId,
+          cursor.epoch,
+          cursor.sequence - 1,
+          1
+        )[0]
+        if (!row || row.seq !== cursor.sequence || row.kind !== 'submission') {
+          throw new Error('accepted submission is missing')
+        }
+        receipt.write(db, row)
+      })
+      receipt.committed()
+    })
+  }
+
   enqueue(
     build: (seq: number, ts: number) => JournalRow,
     hook?: JournalRowTransactionHook,
@@ -55,7 +86,7 @@ export class JournalRowWriter {
         this.deps.database().transaction((db) => {
           insertJournalRow(db, this.deps.sessionId, row)
           hook?.(db, row)
-          receipt?.write(db)
+          receipt?.write(db, row)
           this.runBookkeeping(db, row)
         })
       } catch (error) {

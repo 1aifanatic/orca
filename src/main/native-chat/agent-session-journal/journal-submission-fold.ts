@@ -16,26 +16,7 @@ export function applyJournalSubmission(
   state: JournalReducerState,
   row: Extract<JournalRow, { kind: 'submission' }>
 ): void {
-  state.submissions.set(row.clientMessageId, {
-    clientMessageId: row.clientMessageId,
-    fence: row.fence,
-    payloadFingerprint: row.payloadFingerprint,
-    dispatchState: 'pending',
-    providerItemId: null,
-    reason: null,
-    submittedAt: row.ts,
-    resolvedAt: null,
-    submittedSequence: row.seq,
-    ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {}),
-    // A malformed stored link is dropped, never the row.
-    ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
-      ? { queuedMessageId: row.queuedMessageId }
-      : {}),
-    ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {}),
-    // Kept as written, a newer build's kind too; an undecodable one as an empty kind, so neither
-    // reads as a row without one.
-    ...(row.source !== undefined ? { source: { kind: storedSourceKind(row.source) } } : {})
-  })
+  state.submissions.set(row.clientMessageId, journalSubmissionFromRow(row))
   const itemId = agentJournalSubmissionKey(row.clientMessageId)
   // A message handed over later belongs to no turn until its handover names one.
   const turnScope = row.handoverRecorded
@@ -146,4 +127,30 @@ function storedSourceKind(stored: unknown): string {
     typeof stored.kind === 'string'
     ? stored.kind
     : ''
+}
+
+/** The acceptance projection is shared by the fold and a reply after failed publication. */
+export function journalSubmissionFromRow(
+  row: Extract<JournalRow, { kind: 'submission' }>
+): AgentJournalSubmission {
+  return {
+    clientMessageId: row.clientMessageId,
+    fence: row.fence,
+    payloadFingerprint: row.payloadFingerprint,
+    dispatchState: 'pending',
+    providerItemId: null,
+    reason: null,
+    submittedAt: row.ts,
+    resolvedAt: null,
+    submittedSequence: row.seq,
+    ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {}),
+    // A malformed stored link is dropped, never the row.
+    ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
+      ? { queuedMessageId: row.queuedMessageId }
+      : {}),
+    ...(row.origin === 'client' || row.origin === 'host' ? { origin: row.origin } : {}),
+    // Kept as written, a newer build's kind too; an undecodable one as an empty kind, so neither
+    // reads as a row without one.
+    ...(row.source !== undefined ? { source: { kind: storedSourceKind(row.source) } } : {})
+  }
 }

@@ -1,9 +1,8 @@
-// The one route every mutating agent-session call takes: recompute the
-// fingerprint, admit through the durable operation ledger, check the lease, then
-// run the plan. It lives outside the host so that no method can quietly grow its
-// own admission rules by sitting next to the call site.
+// The one route every mutating agent-session call takes: recompute the fingerprint,
+// dispatch submission-accepting plans to their command receipt, otherwise admit
+// through the ledger and check the lease. Methods cannot grow their own admission rules.
 //
-// Admission is two-phase for a call that brings a `prepareSession`. The ledger's
+// Ledger-backed admission is two-phase when a call brings `prepareSession`. The ledger's
 // answer comes first and places nothing. An id it refuses is answered then, with
 // nothing opened; so is a recorded id that settled refused. Any other recorded id
 // is answered after the plan's own preparation for a replay (a send's only opens
@@ -52,6 +51,7 @@ import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import { mutationTurnContext } from './structured-agent-session-mutation-turn-context'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
+import { admitCommandReceiptMutation } from './structured-agent-session-command-admission'
 
 // The code is shared with the client so a read that refuses this way can be told apart from a
 // transcript that failed to load; the two must never drift apart.
@@ -105,6 +105,9 @@ export async function admitAndRunAgentSessionMutation<TValue>(
   const conflict = agentSessionFingerprintConflict(envelope, hostFingerprint)
   if (conflict) {
     return refuseAgentSessionMutation(conflict)
+  }
+  if (plan.settlesWithWrite) {
+    return admitCommandReceiptMutation(request, hostFingerprint)
   }
   if (request.prepareSession) {
     const ledger = request.store.evaluateMutationOperation({

@@ -1,11 +1,7 @@
 // One plan per mutating method: what it fingerprints, what it does, and how its
 // answer is rebuilt on a replay.
 //
-// The replay half matters more than it looks. The ledger records only that an
-// operation happened, so the durable answer usually comes back out of the
-// journal. Send is fail-closed: admission alone cannot prove non-delivery, so
-// its success commits with the row that accepts it, and a row still pending is
-// one that wrote nothing.
+// The receipt proves acceptance; the journal projects its current answer.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
@@ -52,14 +48,16 @@ export type MutationPlan<TValue> = {
   /** Still runs, decided from the committed ledger, when its ledger row cannot be written. */
   runsWithoutLedgerRow?: true
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
-  replay: (ctx: AgentSessionTurnContext, outcome: AgentSessionOperationOutcome) => TValue | null
+  replay: (
+    ctx: AgentSessionTurnContext,
+    outcome: AgentSessionOperationOutcome,
+    acceptedSend?: AgentSessionSendResult
+  ) => TValue | null
   rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
   recoverUnknownFromDurableState?: boolean
 } & (
   | {
-      /** Its success is the row its run writes, so it commits in that row's transaction
-       *  (`AgentSessionTurnContext.operationReceipt`): a row left pending wrote nothing. That
-       *  success is fixed before the value exists, so it records no `settledOutcome`. */
+      /** Accepts with a submission or draft; its receipt commits in that write's transaction. */
       settlesWithWrite: true
       settledOutcome?: never
     }
@@ -123,7 +121,10 @@ export function sendPlan(params: {
         body: params.body
       })
     },
-    replay: (ctx, outcome) => {
+    replay: (ctx, outcome, acceptedSend) => {
+      if (acceptedSend) {
+        return acceptedSend
+      }
       // A send this host queued answers from its draft, then its hand-off; a
       // withdrawn draft replays as spent — never as missing-submission doubt. Only a send that
       // asked to be queued may get that answer: a direct send the host kept as a card answers
@@ -194,7 +195,10 @@ export function conversationCommandPlan(params: {
       })
       return sent.ok ? { ok: true, value: { clientMessageId } } : sent
     },
-    replay: (ctx, outcome) => {
+    replay: (ctx, outcome, acceptedSend) => {
+      if (acceptedSend) {
+        return { clientMessageId }
+      }
       if (outcome.status === 'succeeded' && outcome.conversationCommand) {
         return { recorded: outcome.conversationCommand }
       }

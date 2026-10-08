@@ -8,6 +8,7 @@ import {
   findAgentSessionGlobalOperationRow,
   pruneAgentSessionOperationRows,
   settleAgentSessionOperation,
+  pendingAgentSessionOperationRow,
   type AgentSessionOperationClaim,
   type AgentSessionOperationDecision,
   type AgentSessionOperationOutcome,
@@ -16,17 +17,58 @@ import {
 } from '../../shared/agent-session-operation-ledger'
 import {
   admitAgentSessionMutation,
+  agentSessionLedgerRefusal,
   type AgentSessionMutationAdmission
 } from '../../shared/agent-session-mutation-envelope'
 import type { AgentSessionMutationEnvelope } from '../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStoreState } from './agent-session-store-state'
+import { AgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 
 export type AgentSessionOperationAdmission = {
   callerKey: string
   operationId: string
   fingerprint: string
   now: number
+}
+
+export type AgentSessionOperationAcceptance = AgentSessionOperationAdmission & {
+  operationIdScope?: 'global'
+}
+
+/** No admission policy: the acceptance transaction preserves only cross-family identity. */
+export function insertAcceptedAgentSessionOperationInto(
+  state: Pick<AgentSessionStoreState, 'operations'>,
+  args: AgentSessionOperationAcceptance & { outcome: AgentSessionOperationOutcome }
+): void {
+  const candidates = args.operationIdScope
+    ? state.operations.values()
+    : [state.operations.get(agentSessionOperationKey(args.callerKey, args.operationId))]
+  let exists = false
+  for (const row of candidates) {
+    if (!row || row.operationId !== args.operationId) {
+      continue
+    }
+    if (row.fingerprint !== args.fingerprint) {
+      throw new AgentSessionRefusalError(
+        agentSessionLedgerRefusal(
+          { clientOperationId: args.operationId },
+          {
+            decision: 'refused',
+            code: 'agent_session_operation_conflict',
+            details: { reason: 'operationIdReused' }
+          }
+        )
+      )
+    }
+    exists = true
+  }
+  if (!exists) {
+    state.operations.set(agentSessionOperationKey(args.callerKey, args.operationId), {
+      ...pendingAgentSessionOperationRow(args),
+      outcome: args.outcome
+    })
+  }
 }
 
 type OperationRows = Map<string, AgentSessionOperationRow>

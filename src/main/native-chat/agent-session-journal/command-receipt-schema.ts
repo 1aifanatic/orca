@@ -26,6 +26,10 @@ export const commandReceiptResultSchema = z.discriminatedUnion('kind', [
     sequence: z.int().positive()
   }),
   z.strictObject({
+    kind: z.literal('queued-draft'),
+    messageId: z.string().min(1)
+  }),
+  z.strictObject({
     kind: z.literal('no-op'),
     outcome: z.discriminatedUnion('kind', [
       z.strictObject({

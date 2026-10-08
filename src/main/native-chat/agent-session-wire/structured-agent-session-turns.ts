@@ -45,6 +45,7 @@ import {
 } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { isAgentSessionAttachmentExpiredError } from '../agent-session-attachments/agent-session-attachment-claims'
+import { CommandReceiptExistsError } from '../agent-session-journal/command-receipt-transaction'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 export { performSetOption } from './structured-agent-session-turns-options'
 export { performPrompt } from './structured-agent-session-turns-prompt'
@@ -159,6 +160,9 @@ export async function performSend(
     )
   }
   if (existing) {
+    if (ctx.operationReceipt) {
+      await ctx.journal.commitSubmissionReceipt(input.clientMessageId, ctx.operationReceipt)
+    }
     return {
       ok: true,
       value: { clientMessageId: input.clientMessageId, submission: existing }
@@ -171,6 +175,9 @@ export async function performSend(
       ctx.operationReceipt
     )
   } catch (error) {
+    if (error instanceof CommandReceiptExistsError) {
+      throw error
+    }
     if (isAgentSessionAttachmentExpiredError(error)) {
       return agentSessionAttachmentExpiredRefusal()
     }
