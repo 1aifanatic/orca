@@ -107,6 +107,7 @@ async function renderPaste(args: {
       resolvePendingImageAttachment: (id, path) => {
         const chip = chips.find((candidate) => candidate.id === id)
         if (chip) {
+          delete chip.hidden
           Object.assign(chip, { path, pending: false })
         }
       },
@@ -195,11 +196,12 @@ describe('pasting into a structured chat on a paired server', () => {
     expect(probe.chips).toEqual([{ id: 'chip-1', path: storedPath, pending: false }])
   })
 
-  it('attaches the server path when no placeholder chip was shown', async () => {
+  it('settles the server path when no thumbnail was shown', async () => {
     const attachResolvedPaths = vi.fn()
     const probe = await renderPaste({ attachResolvedPaths })
     await act(async () => probe.api().pasteFromClipboard())
-    expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith([storedPath], null)
+    expect(probe.chips).toEqual([{ id: 'chip-1', path: storedPath, pending: false }])
+    expect(attachResolvedPaths).not.toHaveBeenCalled()
   })
 
   it('refuses on a server without the attachment store and saves nothing', async () => {

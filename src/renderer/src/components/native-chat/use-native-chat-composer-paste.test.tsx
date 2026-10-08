@@ -53,6 +53,7 @@ function createChipStore(): {
   chips: FakeChip[]
   begin: (previewUrl?: string) => string | null
   resolve: (id: string, path: string, connectionId?: string | null) => void
+  reveal: (id: string, previewUrl?: string) => void
   drop: (id: string) => void
   connectionIds: (string | null | undefined)[]
 } {
@@ -62,6 +63,12 @@ function createChipStore(): {
   return {
     chips,
     connectionIds,
+    reveal: (id, previewUrl) => {
+      const chip = chips.find((candidate) => candidate.id === id)
+      if (chip) {
+        chip.previewUrl = previewUrl
+      }
+    },
     begin: (previewUrl) => {
       counter += 1
       const id = `chip-${counter}`
@@ -93,6 +100,7 @@ type ProbeArgs = {
   attachResolvedPaths: (paths: string[], connectionId?: string | null) => void
   beginPendingImageAttachment: (previewUrl?: string) => string | null
   resolvePendingImageAttachment: (id: string, path: string, connectionId?: string | null) => void
+  revealPendingImageAttachment: (id: string, previewUrl?: string) => void
   dropPendingImageAttachment: (id: string) => void
   insertTypedText: (text: string) => boolean
   setNotice: (notice: string | null) => void
@@ -134,8 +142,9 @@ async function renderProbe(args: {
           disabled,
           resolveAttachmentOwner: args.resolveAttachmentOwner,
           attachResolvedPaths: args.attachResolvedPaths ?? (() => {}),
-          beginPendingImageAttachment: store.begin,
+          beginPendingImageAttachment: args.agent === 'omp' ? () => null : store.begin,
           resolvePendingImageAttachment: store.resolve,
+          revealPendingImageAttachment: store.reveal,
           dropPendingImageAttachment: store.drop,
           insertTypedText: args.insertTypedText ?? (() => true),
           setNotice: args.setNotice ?? (() => {}),
@@ -260,11 +269,7 @@ describe('useNativeChatComposerPaste', () => {
         }
       })
       expect(mocks.saveClipboardImageAsTempFile).toHaveBeenCalledWith({ connectionId: 'conn-1' })
-      if (source === 'event') {
-        expect(store.chips[0]?.path).toBe('/remote/tmp/omp.png')
-      } else {
-        expect(attachResolvedPaths).toHaveBeenCalledWith(['/remote/tmp/omp.png'], 'conn-1')
-      }
+      expect(attachResolvedPaths).toHaveBeenCalledWith(['/remote/tmp/omp.png'], 'conn-1')
       expect(setNotice.mock.calls.every(([notice]) => notice === null)).toBe(true)
     }
   )
@@ -389,7 +394,7 @@ describe('useNativeChatComposerPaste', () => {
     expect(store.chips[0]).toMatchObject({ path: '/tmp/orca-paste-2.png', pending: false })
   })
 
-  it('attaches directly when no clipboard preview was available', async () => {
+  it('settles the owned operation when no clipboard preview was available', async () => {
     mocks.readClipboardImageThumbnail.mockResolvedValue(null)
     mocks.saveClipboardImageAsTempFile.mockResolvedValue('C:\\Temp\\orca-paste-3.png')
     const store = createChipStore()
@@ -402,8 +407,8 @@ describe('useNativeChatComposerPaste', () => {
     await act(async () => {
       probe.latest().pasteFromClipboard()
     })
-    expect(store.chips).toHaveLength(0)
-    expect(attachResolvedPaths).toHaveBeenCalledWith(['C:\\Temp\\orca-paste-3.png'], null)
+    expect(store.chips[0]).toMatchObject({ path: 'C:\\Temp\\orca-paste-3.png', pending: false })
+    expect(attachResolvedPaths).not.toHaveBeenCalled()
   })
 
   it('inserts text independently of a failed image save', async () => {
@@ -787,14 +792,17 @@ describe('file-manager copies', () => {
       mocks.saveClipboardImageAsTempFile.mockResolvedValue('/tmp/shot.png')
       const insertTypedText = vi.fn(() => true)
       const attachResolvedPaths = vi.fn()
+      const store = createChipStore()
       const probe = await renderProbe({
         resolveAttachmentOwner: () => ({ kind: 'local' }),
         insertTypedText,
-        attachResolvedPaths
+        attachResolvedPaths,
+        store
       })
       await act(async () => probe.latest().pasteFromClipboard())
       expect(insertTypedText).not.toHaveBeenCalled()
-      expect(attachResolvedPaths).toHaveBeenCalledExactlyOnceWith(['/tmp/shot.png'], null)
+      expect(store.chips[0]).toMatchObject({ path: '/tmp/shot.png', pending: false })
+      expect(attachResolvedPaths).not.toHaveBeenCalled()
     })
 
     it('types the label when no image came with the files', async () => {

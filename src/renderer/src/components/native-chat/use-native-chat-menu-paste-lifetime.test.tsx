@@ -1,0 +1,173 @@
+// @vitest-environment happy-dom
+import { createRef } from 'react'
+import { act, cleanup, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { useNativeChatComposerPaste } from './use-native-chat-composer-paste'
+import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
+import type { NativeChatComposerInput } from './native-chat-composer-input'
+import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
+import {
+  clearNativeChatComposerDraftsForTests,
+  hydrateNativeChatComposerDrafts,
+  nativeChatComposerDraftWritesSettled,
+  readNativeChatComposerDraft,
+  setNativeChatComposerDraftOwnerResolver,
+  structuredAgentSessionDraftScopeKey as scope
+} from './native-chat-composer-draft-store'
+import {
+  createMemoryNativeChatComposerDraftStorage,
+  setNativeChatComposerDraftStorageForTests
+} from './native-chat-composer-draft-storage'
+import {
+  clearNativeChatPendingAttachmentsForTests,
+  dropNativeChatPendingAttachmentsOwnedBy,
+  nativeChatPendingAttachmentSnapshot
+} from './native-chat-pending-attachment-cache'
+
+let previousApi: typeof window.api
+const draftOwner = { workspaceId: 'folder-1', executionHostId: 'local' as const }
+beforeEach(async () => {
+  previousApi = window.api
+  setNativeChatComposerDraftStorageForTests(createMemoryNativeChatComposerDraftStorage())
+  await hydrateNativeChatComposerDrafts()
+  setNativeChatComposerDraftOwnerResolver(() => draftOwner)
+})
+afterEach(async () => {
+  cleanup()
+  await nativeChatComposerDraftWritesSettled()
+  clearNativeChatPendingAttachmentsForTests()
+  clearNativeChatComposerDraftsForTests()
+  window.api = previousApi
+})
+
+async function fixture(kind: 'local' | 'ssh') {
+  const save = Promise.withResolvers<string | null>()
+  const thumbnail = Promise.withResolvers<{
+    dataUrl: string
+    width: number
+    height: number
+  } | null>()
+  const owner: NativeChatAttachmentOwner =
+    kind === 'ssh'
+      ? {
+          kind: 'ssh',
+          connectionId: 'ssh-1',
+          worktreePath: '/remote/folder',
+          expectedExecutionHostId: 'ssh:ssh-1',
+          expectedSshTargetId: 'ssh-1',
+          expectedSshConnectionGeneration: 1
+        }
+      : { kind: 'local' }
+  const path =
+    kind === 'ssh'
+      ? '/tmp/orca-paste-1-image.png'
+      : '/local/native-chat-pastes/orca-paste-1-image.png'
+  const saveCall = vi.fn(() => save.promise)
+  Object.defineProperty(window, 'api', {
+    configurable: true,
+    writable: true,
+    value: {
+      ui: {
+        readClipboardText: async () => '',
+        readClipboardFilePaths: async () => [],
+        readClipboardImageThumbnail: () => thumbnail.promise,
+        saveClipboardImageAsTempFile: saveCall
+      }
+    }
+  })
+  const input = createRef<NativeChatComposerInput>()
+  const view = renderHook(() => {
+    const attachments = useNativeChatComposerAttachments({
+      attachmentScopeKey: scope('menu'),
+      allowWithoutTarget: true,
+      caret: 0,
+      disabled: false,
+      isComposing: () => false,
+      resolveTarget: () => null,
+      textareaRef: input,
+      setCaret: () => {},
+      setDraft: () => {},
+      setNotice: () => {}
+    })
+    const paste = useNativeChatComposerPaste({
+      targetKey: 'menu',
+      attachmentScopeKey: scope('menu'),
+      agent: 'claude',
+      disabled: false,
+      caret: 0,
+      resolveAttachmentOwner: () => owner,
+      ...attachments,
+      insertTypedText: () => true,
+      setCaret: () => {},
+      setNotice: () => {}
+    })
+    return { paste, attachments }
+  })
+  await act(async () => view.result.current.paste.pasteFromClipboard())
+  await vi.waitFor(() =>
+    expect(saveCall).toHaveBeenCalledExactlyOnceWith(
+      kind === 'ssh' ? { connectionId: 'ssh-1' } : { forNativeChatDraft: true }
+    )
+  )
+  return { view, save, thumbnail, path }
+}
+
+it.each(['local', 'ssh'] as const)(
+  'preserves menu %s uploads closed before a delayed or absent thumbnail',
+  async (kind) => {
+    let completed = 0
+    for (const preview of ['delayed', 'missing', 'present'] as const) {
+      const { view, save, thumbnail, path } = await fixture(kind)
+      if (preview !== 'delayed') {
+        await act(async () =>
+          thumbnail.resolve(
+            preview === 'present'
+              ? { dataUrl: 'data:image/png;base64,AA', width: 1, height: 1 }
+              : null
+          )
+        )
+      }
+      view.unmount()
+      await act(async () => save.resolve(path))
+      expect(nativeChatPendingAttachmentSnapshot(scope('menu'))).toEqual([])
+      expect(readNativeChatComposerDraft(scope('menu')).images).toHaveLength(++completed)
+      expect(readNativeChatComposerDraft(scope('menu')).images.at(-1)).toMatchObject({
+        path,
+        ...(kind === 'ssh' ? { connectionId: 'ssh-1' } : {})
+      })
+      // The save also settles when a thumbnail has not answered at all.
+      if (preview === 'delayed') {
+        await act(async () => thumbnail.resolve(null))
+      }
+    }
+  }
+)
+
+it.each(['local', 'ssh'] as const)(
+  'settles menu %s images without a thumbnail while mounted',
+  async (kind) => {
+    const { save, thumbnail, path } = await fixture(kind)
+    await act(async () => thumbnail.resolve(null))
+    await act(async () => save.resolve(path))
+    expect(readNativeChatComposerDraft(scope('menu')).images[0]).toMatchObject({ path })
+  }
+)
+
+it.each(['remove', 'workspace', 'failure'] as const)(
+  'ends a hidden menu upload on %s before its thumbnail returns',
+  async (end) => {
+    const { view, save, thumbnail, path } = await fixture('local')
+    if (end === 'remove') {
+      await act(async () => view.result.current.attachments.clearImageAttachments())
+    } else if (end === 'workspace') {
+      dropNativeChatPendingAttachmentsOwnedBy(draftOwner)
+    }
+    view.unmount()
+    await act(async () => save.resolve(end === 'failure' ? null : path))
+    await act(async () =>
+      thumbnail.resolve({ dataUrl: 'data:image/png;base64,AA', width: 1, height: 1 })
+    )
+    expect(nativeChatPendingAttachmentSnapshot(scope('menu'))).toEqual([])
+    expect(readNativeChatComposerDraft(scope('menu')).images).toEqual([])
+  }
+)
