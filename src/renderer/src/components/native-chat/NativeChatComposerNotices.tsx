@@ -1,4 +1,4 @@
-import { AlertCircle, Paperclip, ServerOff, X } from 'lucide-react'
+import { AlertCircle, Loader2, Paperclip, ServerOff, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
@@ -79,6 +79,9 @@ function NoticeRow({ notice }: { notice: NativeChatComposerNotice }): React.JSX.
             isHostWarning && 'text-destructive'
           )}
         >
+          {notice.title ? (
+            <span className="block font-medium text-foreground">{notice.title}</span>
+          ) : null}
           {notice.text}
         </p>
         {notice.action ? (
@@ -89,6 +92,7 @@ function NoticeRow({ notice }: { notice: NativeChatComposerNotice }): React.JSX.
             disabled={notice.action.disabled}
             onClick={notice.action.onClick}
           >
+            {notice.action.busy ? <Loader2 className="size-3 animate-spin" /> : null}
             {notice.action.label}
           </Button>
         ) : null}

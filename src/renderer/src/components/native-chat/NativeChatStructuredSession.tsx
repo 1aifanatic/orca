@@ -53,6 +53,7 @@ import { useNativeChatHostOutage } from './use-native-chat-host-outage'
 import { useNativeChatHostOutageNotice } from './use-native-chat-host-outage-notice'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
+import { NativeChatCodexMaintenanceContext, useCodexMaintenance } from '@/hooks/useCodexMaintenance'
 import {
   isClaudeSignInFailureKind,
   NativeChatClaudeSignInContext,
@@ -137,7 +138,18 @@ export function NativeChatStructuredSession(
   })
   const startFailures = useStructuredAgentSessionStartFailureFacts(
     controller.journalItems,
-    props.agent === 'claude'
+    props.agent === 'claude' || props.agent === 'codex'
+  )
+  const codexMaintenance = useCodexMaintenance(
+    props.agent === 'codex' &&
+      (provisionalLaunch.lifecycle === 'failed' ||
+        startFailures.some(
+          (fact) =>
+            fact.refusal?.code === 'agent_session_operation_invalid' &&
+            fact.refusal.details?.codexInstallation
+        ))
+      ? props.target
+      : null
   )
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     pending: controller.pending,
@@ -194,7 +206,7 @@ export function NativeChatStructuredSession(
     props,
     controller,
     sendThroughLaunch,
-    starting: provisionalLaunch.starting,
+    starting: provisionalLaunch.starting || codexMaintenance.blocked,
     worktreeId: ownerWorktreeId ?? undefined,
     optionPickerRequest,
     setOptionPickerRequest,
@@ -218,7 +230,8 @@ export function NativeChatStructuredSession(
     agentLabel,
     sessionError,
     composerError: composerError ?? continuation.continueError,
-    claudeSignIn
+    claudeSignIn,
+    codexMaintenanceAction: codexMaintenance.action
   })
   if (hostNotice) {
     notices.push(hostNotice)
@@ -254,29 +267,31 @@ export function NativeChatStructuredSession(
           <NativeChatRewindContext.Provider value={controller.rewind.surface}>
             <NativeChatOrcaStopContext.Provider value={continuation.view}>
               <NativeChatClaudeSignInContext.Provider value={claudeSignIn}>
-                <NativeChatMessageList
-                  // A rewind replaces the conversation; nothing the old transcript held carries over.
-                  key={controller.epoch ?? undefined}
-                  ref={submits.messageListRef}
-                  session={session}
-                  journalItems={controller.journalItems}
-                  journalSubmissions={controller.submissions}
-                  journalLatestTurn={controller.latestTurn}
-                  subagentRoster={controller.subagentRoster}
-                  railOutline={controller.railOutline}
-                  isVisible={props.isVisible}
-                  isWorking={controller.isWorking}
-                  expandSignal={false}
-                  workingStartedAt={controller.workingStartedAt}
-                  settledTurns={controller.settledTurns}
-                  awaitingInput={prompt === null ? null : 'shown'}
-                  turnActivity={controller.turnActivity}
-                  stopping={stopControls.stopping}
-                  onLinkClick={onLinkClick}
-                  allowFileUriLinks={onLinkClick !== undefined}
-                  runtimeContext={imageRuntimeContext}
-                  deliveryNotices={deliveryNotices}
-                />
+                <NativeChatCodexMaintenanceContext.Provider value={codexMaintenance.action}>
+                  <NativeChatMessageList
+                    // A rewind replaces the conversation; nothing the old transcript held carries over.
+                    key={controller.epoch ?? undefined}
+                    ref={submits.messageListRef}
+                    session={session}
+                    journalItems={controller.journalItems}
+                    journalSubmissions={controller.submissions}
+                    journalLatestTurn={controller.latestTurn}
+                    subagentRoster={controller.subagentRoster}
+                    railOutline={controller.railOutline}
+                    isVisible={props.isVisible}
+                    isWorking={controller.isWorking}
+                    expandSignal={false}
+                    workingStartedAt={controller.workingStartedAt}
+                    settledTurns={controller.settledTurns}
+                    awaitingInput={prompt === null ? null : 'shown'}
+                    turnActivity={controller.turnActivity}
+                    stopping={stopControls.stopping}
+                    onLinkClick={onLinkClick}
+                    allowFileUriLinks={onLinkClick !== undefined}
+                    runtimeContext={imageRuntimeContext}
+                    deliveryNotices={deliveryNotices}
+                  />
+                </NativeChatCodexMaintenanceContext.Provider>
               </NativeChatClaudeSignInContext.Provider>
             </NativeChatOrcaStopContext.Provider>
           </NativeChatRewindContext.Provider>

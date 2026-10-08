@@ -1,10 +1,14 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { projectStructuredItemsToNativeChat } from '../../../../shared/structured-agent-session-projection'
 import type { AgentJournalStatusItem } from '../../../../shared/agent-session-journal-types'
+import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
 import { MessageRow } from './NativeChatMessageRow'
+import { NativeChatCodexMaintenanceContext } from '@/hooks/useCodexMaintenance'
+import type { NativeChatComposerNotice } from './native-chat-composer-notice'
 import {
   NativeChatOrcaStopContext,
   type NativeChatOrcaStopView
@@ -22,7 +26,8 @@ function orcaStopView(
 function renderStatus(
   body: AgentJournalStatusItem,
   hostLabel: string | null = null,
-  continueAvailable = false
+  continueAvailable = false,
+  maintenanceAction?: NativeChatComposerNotice['action']
 ) {
   const [message] = projectStructuredItemsToNativeChat([
     {
@@ -37,7 +42,9 @@ function renderStatus(
   const view = orcaStopView(hostLabel, continueAvailable)
   return render(
     <NativeChatOrcaStopContext.Provider value={view}>
-      <MessageRow message={message!} expandSignal={false} onScrollMessageToTop={vi.fn()} />
+      <NativeChatCodexMaintenanceContext.Provider value={maintenanceAction}>
+        <MessageRow message={message!} expandSignal={false} onScrollMessageToTop={vi.fn()} />
+      </NativeChatCodexMaintenanceContext.Provider>
     </NativeChatOrcaStopContext.Provider>
   )
 }
@@ -122,6 +129,37 @@ describe('the row an Orca stop leaves', () => {
 })
 
 describe('notice rows', () => {
+  it.each([null, '0.135.0'])(
+    'offers the shared host action on a resumed Codex failure: %s',
+    (installedVersion) => {
+      const onClick = vi.fn()
+      const label = installedVersion ? 'Update Codex' : 'Install Codex'
+      const failure: AgentSessionFailureFact = {
+        kind: 'startFailed',
+        refusal: {
+          code: 'agent_session_operation_invalid',
+          details: {
+            reason: 'attachFailed',
+            codexInstallation: { installedVersion, minimumVersion: '0.136.0' }
+          }
+        }
+      }
+      renderStatus(
+        {
+          kind: 'status',
+          tone: 'error',
+          ...agentSessionFailureWords(failure, { agentName: 'Codex', surface: 'row' })
+        },
+        null,
+        false,
+        { label, onClick }
+      )
+      expect(onClick).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: label }))
+      expect(onClick).toHaveBeenCalledOnce()
+    }
+  )
+
   it('renders compaction as a centered separator', () => {
     renderStatus({ kind: 'status', text: 'Context compacted', presentation: 'compaction' })
     expect(screen.getByRole('separator', { name: 'Context compacted' })).toHaveClass(

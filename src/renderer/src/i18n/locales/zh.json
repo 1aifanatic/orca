@@ -19465,5 +19465,22 @@
   },
   "projectField": {
     "updateFailed": "无法更新项目字段"
+  },
+  "codex": {
+    "maintenance": {
+      "updating": "正在更新…",
+      "installing": "正在安装…",
+      "update": "更新 Codex",
+      "install": "安装 Codex",
+      "missingTitle": "未安装 Codex",
+      "unsupportedTitle": "需要更新 Codex",
+      "missingReason": "开始聊天前请安装 Codex。",
+      "unsupportedReason": "已安装 {{installed}}；需要 {{minimum}} 或更新版本。",
+      "notInstalled": "未安装",
+      "settingsRequired": "需要更新（已安装 {{installed}}，需要 {{minimum}}）",
+      "exitCode": "命令已退出，退出代码为 {{code}}",
+      "logTitle": "Codex 安装日志",
+      "copyLog": "复制日志"
+    }
   }
 }

@@ -20,17 +20,29 @@ async function stamp(file: string): Promise<string> {
   }
 }
 
-async function binaryFingerprint(input: Pick<ProcessSpec, 'program' | 'env'>): Promise<string> {
+export function invalidateCodexCliInstallation(): void {
+  cache.clear()
+}
+
+export async function codexCliPackagePaths(
+  input: Pick<ProcessSpec, 'program' | 'env'>
+): Promise<string[]> {
   const resolved = resolveSpawn(input, process.platform)
   const target = await realpath(input.program).catch(() => input.program)
   const launchers = [target, ...resolved.args.filter(isAbsolute)]
+  return [...new Set(launchers.map((file) => join(dirname(dirname(file)), 'package.json')))]
+}
+
+async function binaryFingerprint(input: Pick<ProcessSpec, 'program' | 'env'>): Promise<string> {
+  const resolved = resolveSpawn(input, process.platform)
+  const target = await realpath(input.program).catch(() => input.program)
   const files = new Set([
     input.program,
     target,
     resolved.file,
-    ...launchers,
+    ...resolved.args.filter(isAbsolute),
     // npm can keep its launcher unchanged while replacing the package underneath it.
-    ...launchers.map((file) => join(dirname(dirname(file)), 'package.json'))
+    ...(await codexCliPackagePaths(input))
   ])
   return JSON.stringify(await Promise.all([...files].map(stamp)))
 }

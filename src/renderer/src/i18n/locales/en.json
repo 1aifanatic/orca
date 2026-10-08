@@ -19599,5 +19599,22 @@
       "updateRuntime": "Update the remote runtime to change workspace links",
       "updateRuntimeSafely": "Update the remote runtime to safely change workspace links"
     }
+  },
+  "codex": {
+    "maintenance": {
+      "updating": "Updating…",
+      "installing": "Installing…",
+      "update": "Update Codex",
+      "install": "Install Codex",
+      "missingTitle": "Codex not installed",
+      "unsupportedTitle": "Codex update required",
+      "missingReason": "Install Codex before starting a chat.",
+      "unsupportedReason": "Installed {{installed}}; version {{minimum}} or newer is required.",
+      "notInstalled": "Not installed",
+      "settingsRequired": "Update required (installed {{installed}}, needs {{minimum}})",
+      "exitCode": "Command exited with code {{code}}",
+      "logTitle": "Codex installation log",
+      "copyLog": "Copy log"
+    }
   }
 }

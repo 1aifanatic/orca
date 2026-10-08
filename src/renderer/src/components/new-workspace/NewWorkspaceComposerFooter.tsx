@@ -5,6 +5,8 @@ import { SwitchIndicator } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { NewWorkspaceComposerCardProps } from './new-workspace-composer-card-props'
+import type { NativeChatComposerNotice } from '../native-chat/native-chat-composer-notice'
+import { NativeChatComposerNotices } from '../native-chat/NativeChatComposerNotices'
 
 type NewWorkspaceComposerFooterProps = Pick<
   NewWorkspaceComposerCardProps,
@@ -18,6 +20,7 @@ type NewWorkspaceComposerFooterProps = Pick<
   | 'primaryActionLabel'
 > & {
   submitShortcutModifierLabel: string
+  maintenanceNotice?: NativeChatComposerNotice | null
 }
 
 export function NewWorkspaceComposerFooter({
@@ -29,10 +32,12 @@ export function NewWorkspaceComposerFooter({
   createDisabled,
   creating,
   primaryActionLabel,
-  submitShortcutModifierLabel
+  submitShortcutModifierLabel,
+  maintenanceNotice
 }: NewWorkspaceComposerFooterProps): React.JSX.Element {
   return (
     <>
+      <NativeChatComposerNotices notices={maintenanceNotice ? [maintenanceNotice] : []} />
       {createError ? (
         <div
           role="alert"

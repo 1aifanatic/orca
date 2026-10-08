@@ -19465,5 +19465,22 @@
   },
   "projectField": {
     "updateFailed": "プロジェクトフィールドを更新できませんでした"
+  },
+  "codex": {
+    "maintenance": {
+      "updating": "更新中…",
+      "installing": "インストール中…",
+      "update": "Codex を更新",
+      "install": "Codex をインストール",
+      "missingTitle": "Codex が未インストールです",
+      "unsupportedTitle": "Codex の更新が必要です",
+      "missingReason": "チャットを開始する前に Codex をインストールしてください。",
+      "unsupportedReason": "インストール済み: {{installed}}。バージョン {{minimum}} 以降が必要です。",
+      "notInstalled": "未インストール",
+      "settingsRequired": "更新が必要です（インストール済み: {{installed}}、必要: {{minimum}}）",
+      "exitCode": "コマンドが終了コード {{code}} で終了しました",
+      "logTitle": "Codex のインストールログ",
+      "copyLog": "ログをコピー"
+    }
   }
 }

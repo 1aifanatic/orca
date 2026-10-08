@@ -1,4 +1,6 @@
 import { ipcMain } from 'electron'
+import { CodexMaintenanceRequest } from '../../shared/codex-cli-maintenance'
+import { codexMaintenanceOnHost } from '../preflight/codex-maintenance-host'
 import {
   detectInstalledAgentsWithShellPathHydration,
   detectRemoteAgents,
@@ -19,6 +21,9 @@ export * from '../preflight/agent-detection'
 import { readZCodeInteractiveCapability } from '../zcode/interactive-capability'
 
 export function registerPreflightHandlers(): void {
+  ipcMain.handle('preflight:codexMaintenance', (_event, args: unknown) =>
+    codexMaintenanceOnHost(CodexMaintenanceRequest.parse(args))
+  )
   ipcMain.handle(
     'preflight:check',
     async (

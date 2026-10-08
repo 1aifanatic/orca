@@ -1,4 +1,6 @@
 import { defineMethod } from '../core'
+import { CodexMaintenanceRequest } from '../../../../shared/codex-cli-maintenance'
+import { codexMaintenanceOnHost } from '../../../preflight/codex-maintenance-host'
 import {
   detectRemoteAgents,
   detectRemoteWindowsTerminalCapabilities,
@@ -13,6 +15,11 @@ import {
 } from '../../../../shared/rpc-contract/preflight-params'
 
 export const PREFLIGHT_METHODS = [
+  defineMethod({
+    name: 'preflight.codexMaintenance',
+    params: CodexMaintenanceRequest,
+    handler: async (params) => codexMaintenanceOnHost(params)
+  }),
   defineMethod({
     name: 'preflight.check',
     params: PreflightCheck,

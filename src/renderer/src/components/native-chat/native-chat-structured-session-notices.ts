@@ -20,7 +20,8 @@ function nativeChatLaunchNotice({
   failure = null,
   agentLabel,
   onRetry,
-  claudeSignIn = null
+  claudeSignIn = null,
+  codexMaintenanceAction
 }: {
   lifecycle: StructuredAgentSessionLaunchLifecycle | null
   /** The host's refusal behind the failed start; its message is never shown. */
@@ -30,6 +31,7 @@ function nativeChatLaunchNotice({
   onRetry: () => void
   /** Offered instead of Retry until it signs in, when the start failed for want of a sign-in. */
   claudeSignIn?: NativeChatClaudeSignIn | null
+  codexMaintenanceAction?: NativeChatComposerNotice['action']
 }): NativeChatComposerNotice | null {
   if (lifecycle !== 'failed' && lifecycle !== 'visibility-unknown') {
     return null
@@ -58,16 +60,20 @@ function nativeChatLaunchNotice({
     kind: 'error',
     text: cause ? (saysStartFailure ? cause : joinSentences([message, cause])) : message,
     action:
-      claudeSignIn && isClaudeSignInFailureKind(failure?.details?.reason)
-        ? {
-            label: nativeChatClaudeSignInLabel(claudeSignIn),
-            onClick: claudeSignIn.signIn,
-            disabled: claudeSignIn.signingIn
-          }
-        : {
-            label: translate('auto.components.native.chat.NativeChatLaunchRetry.retry', 'Retry'),
-            onClick: onRetry
-          }
+      failure?.code === 'agent_session_operation_invalid' &&
+      failure.details?.codexInstallation &&
+      codexMaintenanceAction
+        ? codexMaintenanceAction
+        : claudeSignIn && isClaudeSignInFailureKind(failure?.details?.reason)
+          ? {
+              label: nativeChatClaudeSignInLabel(claudeSignIn),
+              onClick: claudeSignIn.signIn,
+              disabled: claudeSignIn.signingIn
+            }
+          : {
+              label: translate('auto.components.native.chat.NativeChatLaunchRetry.retry', 'Retry'),
+              onClick: onRetry
+            }
   }
 }
 
@@ -77,7 +83,8 @@ export function structuredSessionNotices({
   agentLabel,
   sessionError,
   composerError,
-  claudeSignIn = null
+  claudeSignIn = null,
+  codexMaintenanceAction
 }: {
   launch: {
     lifecycle: StructuredAgentSessionLaunchLifecycle | null
@@ -88,13 +95,15 @@ export function structuredSessionNotices({
   sessionError: string | null
   composerError: (NativeChatComposerNoticeContent & { onDismiss: () => void }) | null
   claudeSignIn?: NativeChatClaudeSignIn | null
+  codexMaintenanceAction?: NativeChatComposerNotice['action']
 }): NativeChatComposerNotice[] {
   const launchNotice = nativeChatLaunchNotice({
     lifecycle: launch.lifecycle,
     failure: launch.failure,
     agentLabel,
     onRetry: launch.retry,
-    claudeSignIn
+    claudeSignIn,
+    codexMaintenanceAction
   })
   return [
     ...(launchNotice ? [launchNotice] : []),

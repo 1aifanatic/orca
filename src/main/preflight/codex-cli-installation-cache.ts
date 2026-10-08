@@ -5,6 +5,10 @@ type CacheEntry = { fingerprint: string; expiresAt: number; result: Promise<Code
 export class CodexCliInstallationCache {
   private readonly entries = new Map<string, CacheEntry>()
 
+  clear(): void {
+    this.entries.clear()
+  }
+
   async read(
     host: string,
     fingerprint: string,

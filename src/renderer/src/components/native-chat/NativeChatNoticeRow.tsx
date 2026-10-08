@@ -1,4 +1,6 @@
-import { AlertCircle, AlertTriangle, Info } from 'lucide-react'
+import { useContext } from 'react'
+import { AlertCircle, AlertTriangle, Info, Loader2 } from 'lucide-react'
+import { NativeChatCodexMaintenanceContext } from '@/hooks/useCodexMaintenance'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { NativeChatMarkdown } from './NativeChatMarkdown'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
@@ -46,6 +48,7 @@ export function NativeChatNoticeRow({
 }): React.JSX.Element {
   const orcaStopView = useNativeChatOrcaStopView()
   const claudeSignIn = useNativeChatClaudeSignInView()
+  const codexMaintenance = useContext(NativeChatCodexMaintenanceContext)
   if (block.presentation === 'compaction') {
     const label = translate('components.native-chat.notices.compaction', 'Context compacted')
     return (
@@ -139,6 +142,20 @@ export function NativeChatNoticeRow({
           onClick={claudeSignIn.signIn}
         >
           {nativeChatClaudeSignInLabel(claudeSignIn)}
+        </Button>
+      ) : null}
+      {codexMaintenance &&
+      block.failure?.refusal?.code === 'agent_session_operation_invalid' &&
+      block.failure.refusal.details?.codexInstallation ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          disabled={codexMaintenance.disabled}
+          onClick={codexMaintenance.onClick}
+        >
+          {codexMaintenance.busy ? <Loader2 className="size-3 animate-spin" /> : null}
+          {codexMaintenance.label}
         </Button>
       ) : null}
       {block.providerFrame ? (

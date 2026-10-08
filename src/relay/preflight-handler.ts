@@ -8,8 +8,10 @@ import { isPwshAvailableAsync } from '../main/pwsh'
 import { isWslAvailableAsync, listWslDistrosAsync } from '../main/wsl'
 import { isGitBashAvailable } from '../main/git-bash'
 import { buildPosixCommandPathLookupScript } from '../shared/posix-command-path-lookup'
-import { runProcess } from '../shared/child-process/run-process'
+import { probeCommandVersion } from './preflight-command-version'
 import { readCodexCliInstallation } from '../main/preflight/codex-cli-installation'
+import { CodexMaintenanceRequest } from '../shared/codex-cli-maintenance'
+import { codexMaintenanceRunner } from '../main/preflight/codex-maintenance-runner'
 
 const execFileAsync = promisify(execFile)
 
@@ -45,6 +47,12 @@ export class PreflightHandler {
   }
 
   private registerHandlers(): void {
+    this.dispatcher.onRequest('preflight.codexMaintenance', (p) => {
+      const params = CodexMaintenanceRequest.parse(p)
+      return params.operation === 'start'
+        ? codexMaintenanceRunner.start()
+        : codexMaintenanceRunner.status(params.operation === 'read' ? params.jobId : undefined)
+    })
     this.dispatcher.onRequest('preflight.detectAgents', (p) => this.detectAgents(p))
     this.dispatcher.onRequest('preflight.detectWindowsTerminalCapabilities', () =>
       this.detectWindowsTerminalCapabilities()
@@ -55,6 +63,7 @@ export class PreflightHandler {
   private async detectAgents(params: Record<string, unknown>): Promise<{
     agents: string[]
     versions?: Record<string, string>
+    codexMaintenance?: true
   }> {
     const commands = params.commands as AgentDetectionCommand[]
     if (!Array.isArray(commands)) {
@@ -114,6 +123,7 @@ export class PreflightHandler {
 
     return {
       agents: [...new Set(detectedCommands.map(({ id }) => id))],
+      ...(params.reportCodexMaintenance === true ? { codexMaintenance: true as const } : {}),
       ...(Object.keys(versions).length > 0 ? { versions } : {})
     }
   }
@@ -144,34 +154,6 @@ export class PreflightHandler {
   // startup files sourced. Ask the user's configured shell so agent dirs added
   // by zsh/bash/fish startup hooks match the remote terminal experience.
   // Windows has no POSIX shell on native OpenSSH hosts, so use where.exe there.
-}
-
-async function probeCommandVersion(executablePath: string): Promise<string | null> {
-  try {
-    const env = buildRelayCommandEnv(process.env, process.platform)
-    const pathKey = process.platform === 'win32' && env.Path !== undefined ? 'Path' : 'PATH'
-    const executableDir = path.dirname(executablePath)
-    const inheritedPath = env[pathKey]
-    const result = await runProcess({
-      program: executablePath,
-      args: ['--version'],
-      env: {
-        ...env,
-        [pathKey]: inheritedPath
-          ? `${executableDir}${path.delimiter}${inheritedPath}`
-          : executableDir
-      },
-      timeoutMs: 5_000,
-      maxOutputBytes: 4_096
-    })
-    if (result.code !== 0) {
-      return null
-    }
-    const output = `${result.stdout}\n${result.stderr}`.trim()
-    return output.length > 0 ? output : null
-  } catch {
-    return null
-  }
 }
 
 function isDetectionUnsupportedInRuntime(

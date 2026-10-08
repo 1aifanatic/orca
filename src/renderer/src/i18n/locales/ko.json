@@ -19465,5 +19465,22 @@
   },
   "projectField": {
     "updateFailed": "프로젝트 필드를 업데이트하지 못했습니다"
+  },
+  "codex": {
+    "maintenance": {
+      "updating": "업데이트 중…",
+      "installing": "설치 중…",
+      "update": "Codex 업데이트",
+      "install": "Codex 설치",
+      "missingTitle": "Codex가 설치되지 않았습니다",
+      "unsupportedTitle": "Codex 업데이트가 필요합니다",
+      "missingReason": "채팅을 시작하기 전에 Codex를 설치하세요.",
+      "unsupportedReason": "설치된 버전: {{installed}}. 버전 {{minimum}} 이상이 필요합니다.",
+      "notInstalled": "설치되지 않음",
+      "settingsRequired": "업데이트 필요 (설치된 버전: {{installed}}, 필요한 버전: {{minimum}})",
+      "exitCode": "명령이 종료 코드 {{code}}로 종료되었습니다",
+      "logTitle": "Codex 설치 로그",
+      "copyLog": "로그 복사"
+    }
   }
 }

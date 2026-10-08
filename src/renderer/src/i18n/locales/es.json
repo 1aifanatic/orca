@@ -19465,5 +19465,22 @@
   },
   "projectField": {
     "updateFailed": "No se pudo actualizar el campo del proyecto"
+  },
+  "codex": {
+    "maintenance": {
+      "updating": "Actualizando…",
+      "installing": "Instalando…",
+      "update": "Actualizar Codex",
+      "install": "Instalar Codex",
+      "missingTitle": "Codex no está instalado",
+      "unsupportedTitle": "Codex requiere una actualización",
+      "missingReason": "Instala Codex antes de iniciar un chat.",
+      "unsupportedReason": "Instalado {{installed}}; se requiere la versión {{minimum}} o posterior.",
+      "notInstalled": "No instalado",
+      "settingsRequired": "Actualización requerida (instalado {{installed}}, requiere {{minimum}})",
+      "exitCode": "El comando terminó con el código {{code}}",
+      "logTitle": "Registro de instalación de Codex",
+      "copyLog": "Copiar registro"
+    }
   }
 }
