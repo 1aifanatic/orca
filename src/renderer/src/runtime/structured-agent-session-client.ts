@@ -15,9 +15,9 @@ import {
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY,
-  AGENT_SESSION_PAIRED_RESTART_OFFERS_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
+import { AGENT_SESSION_PAIRED_RESTART_OFFERS_RUNTIME_CAPABILITY } from '../../../shared/agent-session-restart-capabilities'
 import {
   callRuntimeRpc,
   runtimeEnvironmentSupportsCapability,

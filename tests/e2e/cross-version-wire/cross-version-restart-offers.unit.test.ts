@@ -5,7 +5,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest'
 import { RuntimeSubscriptionRegistry } from '../../../src/main/runtime/runtime-subscription-registry'
-import { AGENT_SESSION_PAIRED_RESTART_OFFERS_RUNTIME_CAPABILITY } from '../../../src/shared/protocol-version'
+import { AGENT_SESSION_PAIRED_RESTART_OFFERS_RUNTIME_CAPABILITY } from '../../../src/shared/agent-session-restart-capabilities'
 import { resolveBaselineReleaseRef } from './release-checkout'
 import { installableHost, structuredHostStub } from './structured-agent-session-host-fixture'
 import { SESSION, WORKSPACE } from './structured-agent-session-surface-manifest'

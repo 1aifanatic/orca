@@ -30,7 +30,7 @@ export {
 } from './orchestration-runtime-capabilities'
 import { AGENT_SESSION_RESUME_RUNTIME_CAPABILITIES } from './agent-session-resume-runtime-capabilities'
 import { QODER_OWNED_TERMINAL_CREATE_CAPABILITY } from './qoder-terminal-create-capability'
-import { AGENT_SESSION_CONTINUE_INTERRUPTED_RUNTIME_CAPABILITY } from './agent-session-continue-interrupted-capability'
+import { AGENT_SESSION_RESTART_RUNTIME_CAPABILITIES } from './agent-session-restart-capabilities'
 import { ORCAD_RUNTIME_CAPABILITIES } from './orcad-runtime-capabilities'
 export {
   AGENT_SESSION_CURSOR_RESUME_RUNTIME_CAPABILITY,
@@ -258,14 +258,6 @@ export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
 // older host leaves the message rail on loaded messages instead of answering method_not_found.
 export const AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY =
   'agent-session.conversation-outline.v1' as const
-// Why: a paired desktop may ask a host for its restart offers on every connection only when the
-// host answers that read without building its chat host (a server that never ran a chat stays
-// untouched), and may dismiss there only when the host takes named chats: an older host's dismiss
-// params were strict and empty, and its only dismissal deleted every device's offers. It also
-// promises `offers` witnesses on dismiss and a per-row `origin` for the asking device. A host
-// without this is never asked by a paired desktop.
-export const AGENT_SESSION_PAIRED_RESTART_OFFERS_RUNTIME_CAPABILITY =
-  'agent-session.paired-restart-offers.v1' as const
 // The RPC is registered unconditionally; per-session rewind support is a separate check.
 export const AGENT_SESSION_REWIND_RUNTIME_CAPABILITY = 'agent-session.rewind.v1' as const
 // Why: the rewind UI relies on the next send settling an in-doubt rewind, even with the agent up.
@@ -407,13 +399,12 @@ export const RUNTIME_CAPABILITIES = [
   // turn starts, so a client may gate on either.
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
-  AGENT_SESSION_CONTINUE_INTERRUPTED_RUNTIME_CAPABILITY,
+  ...AGENT_SESSION_RESTART_RUNTIME_CAPABILITIES,
   ...STRUCTURED_AGENT_SESSION_SURFACE_RUNTIME_CAPABILITIES,
   ...AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RECOVERY_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
-  AGENT_SESSION_PAIRED_RESTART_OFFERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY,
