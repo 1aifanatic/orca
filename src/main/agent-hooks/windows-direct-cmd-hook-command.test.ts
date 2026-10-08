@@ -43,7 +43,7 @@ describe('wrapWindowsDirectCmdHookCommand', () => {
       'C:\\Users\\a^b\\.orca\\agent-hooks\\claude-hook.cmd',
       'C:\\Users\\a&b\\.orca\\agent-hooks\\claude-hook.cmd',
       'C:\\Users\\a(b)\\.orca\\agent-hooks\\claude-hook.cmd',
-      'C:\\Users\\rené smith\\.orca\\agent-hooks\\claude-hook.cmd',
+      'C:\\Users\\rené\\.orca\\agent-hooks\\claude-hook.cmd',
       '/home/alice/.orca/agent-hooks/claude-hook.sh',
       // Why: WINDOWS_CMD_SAFE_PATH admits a UNC profile, but `//server/share/...` is not a
       // command cmd.exe reliably starts — keep those on the encoded launcher.
@@ -121,10 +121,9 @@ describe.skipIf(process.platform !== 'win32')(
     const canRunLive = tempIsCmdSafe
 
     async function withTempDir(
-      run: (dir: string, scriptPath: string, command: string) => Promise<void>,
-      profile = 'ascii'
+      run: (dir: string, scriptPath: string, command: string) => Promise<void>
     ): Promise<void> {
-      const dir = mkdtempSync(join(tmpdir(), `orca-direct-hook-${profile}-`))
+      const dir = mkdtempSync(join(tmpdir(), 'orca-direct-hook-'))
       try {
         const scriptPath = join(dir, 'claude-hook.cmd')
         const command = wrapWindowsDirectCmdHookCommand(scriptPath)
@@ -147,20 +146,6 @@ describe.skipIf(process.platform !== 'win32')(
             expect(result.status, result.label).toBe(0)
           }
         })
-      }
-    )
-
-    it.skipIf(!canRunLive).each(['홍길동', '测试用户', 'rené', 'rene\u0301'])(
-      'executes the direct Unicode command under available hosts: %s',
-      async (profile) => {
-        await withTempDir(async (dir, scriptPath, command) => {
-          expect(command).not.toMatch(/powershell|EncodedCommand/i)
-          writeFileSync(scriptPath, '@echo off\r\necho {}\r\nexit /b 0\r\n', 'utf8')
-          for (const result of await runInHosts(command, dir)) {
-            expect(result.stdout.trim(), result.label).toBe('{}')
-            expect(result.status, result.label).toBe(0)
-          }
-        }, profile)
       }
     )
 

@@ -31,11 +31,7 @@ describe('Codex Windows hook command', () => {
         `D:\\Windows\\System32\\cmd.exe --% /d /v:off /c @"${path.replaceAll('\\', '/')}"`
       )
       expect(createManagedCommandMatcher('codex-hook.cmd')(command)).toBe(true)
-      if (profile.includes(' ')) {
-        expect(wrapWindowsCmdHookCommand(path)).toContain('-EncodedCommand')
-      } else {
-        expect(wrapWindowsCmdHookCommand(path)).toBe(path)
-      }
+      expect(wrapWindowsCmdHookCommand(path)).toContain('-EncodedCommand')
     }
   )
 

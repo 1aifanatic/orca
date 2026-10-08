@@ -29,12 +29,33 @@ afterEach(() => vi.restoreAllMocks())
 
 const PROFILES = ['ascii', '홍길동', '测试用户', '日本語', 'rené', 'rene\u0301']
 
+function decodeCommand(command: string): string {
+  const encoded = command.match(/ -EncodedCommand (\S+)$/)?.[1]
+  if (!encoded) {
+    throw new Error('Missing encoded command')
+  }
+  return Buffer.from(encoded, 'base64').toString('utf16le')
+}
+
 describe('Windows Unicode managed hook commands', () => {
-  it.each(PROFILES)('keeps %s on the direct path', (profile) => {
-    const scriptPath = `C:\\Users\\${profile}\\.orca\\agent-hooks\\antigravity-pre-tool-use.cmd`
+  it('keeps the existing ASCII direct path', () => {
+    const scriptPath = 'C:\\Users\\ascii\\.orca\\agent-hooks\\antigravity-pre-tool-use.cmd'
     expect(wrapWindowsCmdHookCommand(scriptPath)).toBe(scriptPath)
     expect(wrapWindowsDirectCmdHookCommand(scriptPath)).toBe(scriptPath.replaceAll('\\', '/'))
   })
+
+  it.each(PROFILES.slice(1))(
+    'preserves the guarded launcher for %s without policy setup',
+    (profile) => {
+      const scriptPath = `C:\\Users\\${profile}\\.orca\\agent-hooks\\antigravity-pre-tool-use.cmd`
+      const decoded = decodeCommand(wrapWindowsCmdHookCommand(scriptPath))
+      expect(decoded).toContain(`Test-Path -LiteralPath '${scriptPath}' -PathType Leaf`)
+      expect(decoded).toContain('[Console]::In.ReadToEnd() | Out-Null; exit 0')
+      expect(decoded).not.toContain('Set-ExecutionPolicy')
+      expect(decoded).toContain("$env:PSExecutionPolicyPreference='Bypass'")
+      expect(wrapWindowsDirectCmdHookCommand(scriptPath)).toBeNull()
+    }
+  )
 
   it.each([
     '测试 用户',
@@ -130,8 +151,11 @@ describe.skipIf(
         }
         for (const event of ANTIGRAVITY_EVENTS) {
           const command = installedCommand(configPath, event.eventName)
-          expect(command).not.toMatch(/powershell|EncodedCommand/i)
-          expect(command).toBe(join(home, '.orca', 'agent-hooks', event.windowsWrapperFileName))
+          const scriptPath = join(home, '.orca', 'agent-hooks', event.windowsWrapperFileName)
+          expect(command).toBe(wrapWindowsCmdHookCommand(scriptPath))
+          if (!WINDOWS_CMD_SAFE_PATH.test(scriptPath)) {
+            expect(decodeCommand(command)).not.toContain('Set-ExecutionPolicy')
+          }
           const hosts = [
             {
               program: join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe'),
@@ -167,7 +191,8 @@ describe.skipIf(
           }
         }
         const staleCommand = installedCommand(configPath, 'PreToolUse')
-        rmSync(staleCommand)
+        const scriptPath = join(home, '.orca', 'agent-hooks', 'antigravity-pre-tool-use.cmd')
+        rmSync(scriptPath)
         const beforeMissing = posts.length
         const invoke = () =>
           runProcess({
@@ -180,9 +205,13 @@ describe.skipIf(
           })
         const missing = await invoke()
         expect(missing.timedOut).toBe(false)
-        expect(missing.code).not.toBe(0)
+        expect(missing.code).toBe(profile === 'ascii' ? 1 : 0)
         expect(missing.stdout).toBe('')
-        expect(missing.stderr).not.toBe('')
+        if (profile === 'ascii') {
+          expect(missing.stderr).not.toBe('')
+        } else {
+          expect(missing.stderr).toBe('')
+        }
         expect(posts).toHaveLength(beforeMissing)
         // Status reflects registered commands; install restores a deleted wrapper.
         expect(service.getStatus().state).toBe('installed')
