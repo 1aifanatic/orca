@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BROWSER_SCREENCAST_GHOST_SUBSCRIBER_REFUSAL_LIMIT } from './browser-screencast-ghost-subscriber-eviction'
 import { SCREENCAST_PENDING_FRAME_RETRY_MS } from './browser-screencast-subscriber-frame-delivery'
 import { createSinglePageBrowserCommandsHost } from './single-page-browser-commands-host-test-double'
+import type { RpcBinarySender } from './rpc/rpc-binary-sender'
 
 const { webContentsFromId, startBrowserScreencast } = vi.hoisted(() => ({
   webContentsFromId: vi.fn(),
@@ -14,7 +15,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../browser/browser-screencast-stream', () => ({ startBrowserScreencast }))
 
-async function subscribe(sendBinary: (bytes: Uint8Array<ArrayBufferLike>) => boolean) {
+async function subscribe(sendBinary: RpcBinarySender) {
   const { RuntimeBrowserCommands } = await import('./orca-runtime-browser')
   let resolveDone!: () => void
   const done = new Promise<void>((resolve) => {
@@ -71,6 +72,36 @@ describe('screencast frames a viewer refused', () => {
     expect(received).toEqual([last])
     await vi.advanceTimersByTimeAsync(SCREENCAST_PENDING_FRAME_RETRY_MS * 4)
     expect(received).toEqual([last])
+    subscription.session.stop()
+  })
+
+  it('retries the newest refused frame when a newer one is refused mid-retry', async () => {
+    let socketFull = true
+    const received: Uint8Array<ArrayBufferLike>[] = []
+    const { subscription, onFrame } = await subscribe((bytes) => {
+      if (socketFull) {
+        return false
+      }
+      received.push(bytes)
+      return true
+    })
+    const stale = new Uint8Array([1])
+    const newest = new Uint8Array([2])
+    onFrame(stale)
+    await vi.advanceTimersByTimeAsync(SCREENCAST_PENDING_FRAME_RETRY_MS * 2)
+    onFrame(newest)
+    socketFull = false
+    await vi.advanceTimersByTimeAsync(SCREENCAST_PENDING_FRAME_RETRY_MS * 4)
+    expect(received).toEqual([newest])
+    subscription.session.stop()
+  })
+
+  // Why: a lossy frame must not queue behind a backlog; the retry above delivers the newest instead.
+  it('asks the transport to drop frames while the socket is backlogged', async () => {
+    const sendBinary = vi.fn(() => true)
+    const { subscription, onFrame } = await subscribe(sendBinary)
+    onFrame(new Uint8Array([1]))
+    expect(sendBinary).toHaveBeenCalledWith(new Uint8Array([1]), { dropWhenBacklogged: true })
     subscription.session.stop()
   })
 

@@ -18,6 +18,7 @@ import type { RuntimeBrowserPageRegistry } from './runtime-browser-page-registry
 import type { BrowserWindow } from 'electron'
 import type { BrowserBackend } from '../browser/browser-backend'
 import type { BrowserSessionTabSelectionOptions } from './browser-tab-create-publication'
+import type { RpcBinarySender } from './rpc/rpc-binary-sender'
 
 export type BrowserCommandTargetParams = {
   worktree?: string
@@ -58,7 +59,7 @@ export type BrowserScreencastStartResult = {
 }
 
 export type ActiveBrowserScreencastSubscriber = {
-  sendBinary: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
+  sendBinary: RpcBinarySender
   emit?: (event: BrowserScreencastResult) => void
   done: Promise<void>
   resolveDone: () => void

@@ -12,29 +12,36 @@ export const SCREENCAST_PENDING_FRAME_RETRY_MS = 50
  */
 export function deliverScreencastSubscriberFrame(
   subscriber: ActiveBrowserScreencastSubscriber,
-  bytes: Uint8Array<ArrayBufferLike>,
-  isSubscribed: () => boolean
+  bytes: Uint8Array<ArrayBufferLike>
 ): boolean {
   const delivered = sendRemoteBrowserScreencastFrame(subscriber.sendBinary, bytes)
   subscriber.pendingFrame = delivered ? null : bytes
   subscriber.delivery = recordScreencastSubscriberSend(subscriber.delivery, delivered)
   if (!delivered) {
-    schedulePendingFrameRetry(subscriber, isSubscribed)
+    schedulePendingFrameRetry(subscriber)
   }
   return delivered
 }
 
-function schedulePendingFrameRetry(
-  subscriber: ActiveBrowserScreencastSubscriber,
-  isSubscribed: () => boolean
+/** Every path that removes a viewer calls this, so no retry outlives its subscription. */
+export function cancelScreencastSubscriberFrameRetry(
+  subscriber: ActiveBrowserScreencastSubscriber
 ): void {
+  if (subscriber.pendingFrameRetry) {
+    clearTimeout(subscriber.pendingFrameRetry)
+    subscriber.pendingFrameRetry = null
+  }
+  subscriber.pendingFrame = null
+}
+
+function schedulePendingFrameRetry(subscriber: ActiveBrowserScreencastSubscriber): void {
   if (subscriber.pendingFrameRetry) {
     return
   }
   subscriber.pendingFrameRetry = setTimeout(() => {
     subscriber.pendingFrameRetry = null
     const bytes = subscriber.pendingFrame
-    if (!bytes || !isSubscribed()) {
+    if (!bytes) {
       return
     }
     // Why a refused retry is not recorded: ghost eviction must advance only on produced frames.
@@ -42,7 +49,7 @@ function schedulePendingFrameRetry(
       subscriber.pendingFrame = null
       subscriber.delivery = recordScreencastSubscriberSend(subscriber.delivery, true)
     } else {
-      schedulePendingFrameRetry(subscriber, isSubscribed)
+      schedulePendingFrameRetry(subscriber)
     }
   }, SCREENCAST_PENDING_FRAME_RETRY_MS)
 }

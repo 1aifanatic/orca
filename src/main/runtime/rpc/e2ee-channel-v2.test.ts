@@ -276,4 +276,25 @@ describe('E2EEChannel v2', () => {
     )
     expect(ctx.ws.sent[3]!.options).toEqual({ binary: true })
   })
+
+  it('drops a backlogged lossy binary reply without spending a counter, then sends once drained', () => {
+    const ctx = setup()
+    const { schedule } = startV2(ctx)
+    authenticate(ctx, schedule)
+    ctx.ws.bufferedAmount = 9 * 1024 * 1024
+    const accepted: (boolean | void)[] = []
+    ctx.channel.onMessage((_request, _textReply, binaryReply) => {
+      accepted.push(binaryReply(new Uint8Array([1]), { dropWhenBacklogged: true }))
+    })
+    ctx.channel.handleRawMessage(clientText('{"method":"browser.screencast"}', schedule, 1n))
+    ctx.ws.bufferedAmount = 0
+    vi.runOnlyPendingTimers()
+    expect(ctx.ws.sent).toHaveLength(2)
+
+    ctx.channel.handleRawMessage(clientText('{"method":"browser.screencast"}', schedule, 2n))
+    expect(accepted).toEqual([false, true])
+    expect(openServerFrame(ctx.ws.sent[2]!.data, 'binary', schedule, 1n)).toEqual(
+      new Uint8Array([1])
+    )
+  })
 })
