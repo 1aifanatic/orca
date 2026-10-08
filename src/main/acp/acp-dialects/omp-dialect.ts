@@ -5,18 +5,19 @@ import type { AcpDialect } from './acp-dialect'
 // OMP sends a tool's result as `rawOutput: {content: [{type: 'text', text}], details}`, with a
 // command's non-zero exit at `details.exitCode`, and repeats the text as content behind a
 // `$ <command>` echo. The shared reader takes content text first, so that echo became the output.
-// A zero exit is left out, so a foreground command that completed without a timeout or signal
-// gets 0; a background one has not finished when its call completes.
+// A zero exit is left out; completed foreground results carry wall time, while service and
+// background launch results do not establish a process exit.
 const textBlockSchema = z.looseObject({ type: z.literal('text'), text: z.string() })
 const toolResultSchema = z.looseObject({
   content: z.array(z.unknown()),
   details: z
     .looseObject({
       exitCode: z.number().int().safe().optional(),
-      wallTimeMs: z.number().optional(),
+      wallTimeMs: z.number().nonnegative().optional(),
       timedOut: z.unknown().optional(),
       signal: z.unknown().optional(),
-      async: z.unknown().optional()
+      async: z.unknown().optional(),
+      service: z.unknown().optional()
     })
     .optional()
 })
@@ -42,6 +43,16 @@ function normalizeToolUpdate(update: ToolCallUpdate): ToolCallUpdate {
     return update
   }
   const parsed = toolResultSchema.safeParse(update.rawOutput)
+  if (
+    parsed.success &&
+    (['exitCode', 'exit_code', 'stdout', 'stderr', 'output_for_prompt'].some(
+      (key) => parsed.data[key] !== undefined
+    ) ||
+      parsed.data.signal != null ||
+      parsed.data.timed_out === true)
+  ) {
+    return update
+  }
   const texts = parsed.success
     ? parsed.data.content.flatMap((block) => textBlockSchema.safeParse(block).data?.text ?? [])
     : []
@@ -65,9 +76,11 @@ function normalizeToolUpdate(update: ToolCallUpdate): ToolCallUpdate {
   const exitCode =
     details?.exitCode ??
     (update.status === 'completed' &&
+    details?.wallTimeMs !== undefined &&
     details?.timedOut !== true &&
     (details?.signal === undefined || details.signal === null) &&
     details?.async === undefined &&
+    details?.service === undefined &&
     !asyncInputSchema.safeParse(update.rawInput).success
       ? 0
       : undefined)
