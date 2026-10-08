@@ -108,7 +108,6 @@ export type ClaudeStartupFacts = {
   initialization: unknown
   settings: unknown
   prepared: ReturnType<typeof prepareClaudeStructuredSessionAcquisitionOptions>
-  resumesTranscript: boolean
   requestTimeoutMs: number | undefined
 }
 
@@ -119,7 +118,6 @@ export async function readClaudeStartupFacts(input: {
   sessionId: string
   providerSessionId: string
   startup: Pick<ClaudeSessionStartup, 'answered'>
-  resumesTranscript: boolean
   requestTimeoutMs: number | undefined
   emit: (event: ClaudeStructuredSessionEvent) => void
 }): Promise<ClaudeStartupFacts> {
@@ -161,7 +159,6 @@ export async function readClaudeStartupFacts(input: {
     initialization,
     settings,
     prepared: prepareClaudeStructuredSessionAcquisitionOptions({ settings, initialization }),
-    resumesTranscript: input.resumesTranscript,
     requestTimeoutMs: input.requestTimeoutMs
   }
 }
@@ -270,8 +267,8 @@ export async function settleClaudeSessionStartup(input: {
       if (session.startup.state === 'pending') {
         session.startup.state = 'proven'
       }
-      if (startFastMode !== null) {
-        void applyClaudeStartFastMode(session, facts, startFastMode, (event) => {
+      if (startFastMode) {
+        void applyClaudeStartFastMode(session, facts, (event) => {
           if (input.isCurrent()) {
             input.report(event)
           }

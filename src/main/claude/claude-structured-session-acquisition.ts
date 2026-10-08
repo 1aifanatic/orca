@@ -271,7 +271,6 @@ export async function acquireClaudeSession({
           sessionId,
           providerSessionId: launch.providerSessionId,
           startup: session.startup,
-          resumesTranscript: launch.resumesTranscript,
           requestTimeoutMs: deps.requestTimeoutMs,
           emit
         }),

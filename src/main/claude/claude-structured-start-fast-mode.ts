@@ -10,18 +10,17 @@ import type { ClaudeSession } from './claude-structured-session-state'
 
 /** A saved Fast on that a new conversation's launch left out (`fastModeAtStart`), since its settings
  *  may opt in to it per session. Those settings now read: that opt-in drops it, as before, and so
- *  do the guards a live Fast write takes. The value still to be applied, or null. */
+ *  do the guards a live Fast write takes. Whether Fast on is still to be applied. */
 export function admitClaudeStartFastMode(
   session: ClaudeSession,
   facts: ClaudeStartupFacts
-): string | null {
-  const fastMode = session.options.get('fastMode')
-  if (!session.fastModeAtStart || fastMode === undefined) {
-    return null
+): boolean {
+  if (!session.fastModeAtStart || session.options.get('fastMode') === undefined) {
+    return false
   }
-  if (!facts.resumesTranscript && facts.prepared.fastModePerSessionOptIn === true) {
+  if (facts.prepared.fastModePerSessionOptIn === true) {
     session.options.delete('fastMode')
-    return null
+    return false
   }
   // Over the listing this start already holds.
   const listed = listedModels({ models: readClaudeModels(facts.initialization) })
@@ -34,24 +33,23 @@ export function admitClaudeStartFastMode(
   ) {
     session.options.delete('fastMode')
     session.restoreSkippedOptions.add('fastMode')
-    return null
+    return false
   }
-  return fastMode
+  return true
 }
 
-/** Applies a saved Fast the launch left out after `started`, so nothing waits on it. A refusal
+/** Applies the saved Fast on the launch left out after `started`, so nothing waits on it. A refusal
  *  drops it as main's refused restore did, from the record too; silence keeps it wanted and
  *  unconfirmed. A write the user made meanwhile owns the option. */
 export async function applyClaudeStartFastMode(
   session: ClaudeSession,
   facts: ClaudeStartupFacts,
-  fastMode: string,
   report: (event: ClaudeStartupReport) => void
 ): Promise<void> {
   const sequence = session.optionMutationSequence
   try {
     await session.connection.applyFlagSettings(
-      { fastMode: fastMode === 'true' },
+      { fastMode: true },
       { timeoutMs: facts.requestTimeoutMs }
     )
   } catch (error) {
@@ -62,7 +60,7 @@ export async function applyClaudeStartFastMode(
     if (error instanceof ClaudeControlRequestError) {
       session.options.delete('fastMode')
       session.restoreSkippedOptions.add('fastMode')
-      report({ type: 'options-skipped', options: { fastMode } })
+      report({ type: 'options-skipped', options: { fastMode: 'true' } })
     }
   }
 }
