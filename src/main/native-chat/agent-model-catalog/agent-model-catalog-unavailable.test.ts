@@ -55,7 +55,9 @@ function rig(initialProbe: AgentModelCatalogProbe = signedOut) {
   let now = 1_000
   let answer = initialProbe
   const store = new AgentModelCatalogStore({ now: () => now })
-  const probe = vi.fn((home: AgentSessionAccountHome) => answer(home))
+  const probe = vi.fn((home: AgentSessionAccountHome, options?: { signal?: AbortSignal }) =>
+    answer(home, options)
+  )
   const service = createAgentModelCatalogService({
     store,
     getRecord: () => undefined,
@@ -245,6 +247,25 @@ describe('a catalog read that finds a held reason', () => {
       listingInProgress: true,
       unavailable: SIGNED_OUT
     })
+  })
+})
+
+describe('a probe the host stops', () => {
+  it('leaves a held reason as it was', async () => {
+    const { store, service, probed, answerWith, pastTtl } = rig()
+    await probed()
+    pastTtl()
+    answerWith(
+      (_home, options) =>
+        new Promise((_resolve, reject) =>
+          options?.signal?.addEventListener('abort', () => reject(new Error('session stopped')))
+        )
+    )
+    await service.read({ agent: 'codex' })
+    service.stop()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(store.failure(FINGERPRINT)?.unavailable).toEqual(SIGNED_OUT)
+    expect(store.hasActiveFailure(FINGERPRINT)).toBe(false)
   })
 })
 

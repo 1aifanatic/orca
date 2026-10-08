@@ -22,6 +22,7 @@ export { withLiveCatalogListing } from './agent-model-catalog-entry'
 import {
   AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
   AgentModelCatalogFailures,
+  AgentModelCatalogListingStoppedError,
   type AgentModelCatalogFailure
 } from './agent-model-catalog-failures'
 import {
@@ -291,7 +292,9 @@ export class AgentModelCatalogStore {
         settle()
         // Probes are functions; a live session lists through its access object.
         if (typeof lister === 'function') {
-          this.failures.probeFailed(fingerprint, agent, error)
+          if (!(error instanceof AgentModelCatalogListingStoppedError)) {
+            this.failures.probeFailed(fingerprint, agent, error)
+          }
         } else {
           this.recordFailure(
             fingerprint,

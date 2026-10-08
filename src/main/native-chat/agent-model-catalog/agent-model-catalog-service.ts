@@ -16,6 +16,7 @@ import type {
   AgentModelCatalogStore,
   AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
+import { AgentModelCatalogListingStoppedError } from './agent-model-catalog-failures'
 
 export type AgentModelCatalogServiceDeps = {
   store: AgentModelCatalogStore
@@ -193,7 +194,11 @@ export function createAgentModelCatalogService(
   const listWith =
     (probe: AgentModelCatalogProbe, home: AgentSessionAccountHome) =>
     (): Promise<AgentModelCatalogSuccess> =>
-      probe(home, { signal: lifetime.signal })
+      probe(home, { signal: lifetime.signal }).catch((error: unknown) => {
+        throw lifetime.signal.aborted
+          ? new AgentModelCatalogListingStoppedError(String(error))
+          : error
+      })
   return {
     providerStarted(record) {
       deps.store.expireFailure(agentModelCatalogFingerprintForRecord(record))
@@ -296,6 +301,9 @@ export function createAgentModelCatalogService(
       }
     },
     async prewarm() {
+      if (lifetime.signal.aborted) {
+        return
+      }
       const probes = deps.probes ?? {}
       // An agent never used here waits for its first chat, which shows the quiet placeholder.
       const used = Object.keys(probes).filter(

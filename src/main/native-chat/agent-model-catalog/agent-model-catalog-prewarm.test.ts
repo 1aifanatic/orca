@@ -203,12 +203,13 @@ describe('model catalog prewarm', () => {
         )
       }
     const agents = ['codex', 'claude', 'grok', 'opencode']
+    const hasChatRecords = vi.fn(() => true)
     const service = createAgentModelCatalogService({
       store,
       getRecord: () => undefined,
       drivesRecord: () => true,
       resolveAccountHome: async (agent) => HOME('HOME', `/homes/${agent}`),
-      hasChatRecords: () => true,
+      hasChatRecords,
       probes: Object.fromEntries(agents.map((agent) => [agent, probeFor(agent)]))
     })
     const prewarmed = service.prewarm()
@@ -221,8 +222,11 @@ describe('model catalog prewarm', () => {
 
     // A read or another prewarm after stop spawns nothing.
     expect(await service.read({ agent: 'grok' })).toEqual({ origin: 'unknown' })
+    hasChatRecords.mockClear()
     await service.prewarm()
     expect(started).toEqual(['codex', 'claude'])
+    // Not even the chat records are read.
+    expect(hasChatRecords).not.toHaveBeenCalled()
   })
 
   it('runs at most two listings at once', async () => {
