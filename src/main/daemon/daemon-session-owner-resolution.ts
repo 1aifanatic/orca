@@ -50,8 +50,13 @@ export class DaemonSessionOwnerResolver<T extends IPtyProvider> {
   invalidateProvider(provider: T): void {
     this.epoch += 1
     this.inventoryInFlight = null
-    this.cachedInventory = null
     this.failedProviderCooldowns.clear()
+    this.forgetProvider(provider)
+  }
+
+  // Why no epoch bump (retirement): indexing already skips a provider retired mid-lookup.
+  forgetProvider(provider: T): void {
+    this.cachedInventory = null
     for (const [sessionId, routed] of this.routes) {
       if (routed === provider) {
         this.routes.delete(sessionId)
@@ -64,20 +69,6 @@ export class DaemonSessionOwnerResolver<T extends IPtyProvider> {
         this.routeIncarnations.delete(sessionId)
       }
     }
-  }
-
-  /**
-   * Drops a retired provider's routes. Unlike invalidateProvider it keeps the epoch: an inventory
-   * already in flight stays valid, since a retired provider contributes no sessions to it.
-   */
-  forgetProvider(provider: T): void {
-    for (const [sessionId, routed] of this.routes) {
-      if (routed === provider) {
-        this.routes.delete(sessionId)
-        this.routeIncarnations.delete(sessionId)
-      }
-    }
-    this.cachedInventory = null
   }
 
   async spawnAttachOnly(opts: PtySpawnOptions & { sessionId: string }): Promise<PtySpawnResult> {
@@ -139,6 +130,10 @@ export class DaemonSessionOwnerResolver<T extends IPtyProvider> {
       }
       return result
     } catch (error) {
+      // Why: the owner retired between lookup and spawn, so the session is gone, not unverified.
+      if (isRetiredProvider(resolution.provider)) {
+        throw new SessionNotFoundError(opts.sessionId)
+      }
       if (error instanceof SessionNotFoundError && this.providers.length > 1) {
         throw new TerminalSessionOwnerUnverifiedError(opts.sessionId)
       }
@@ -300,6 +295,10 @@ export class DaemonSessionOwnerResolver<T extends IPtyProvider> {
     const candidatesBySessionId = new Map<string, { provider: T; process: PtyProcessInfo }[]>()
     let complete = true
     for (const entry of entries) {
+      // Why: a provider that retired while this lookup was in flight owns nothing, whatever it answered.
+      if (isRetiredProvider(entry.provider)) {
+        continue
+      }
       if (!entry.processes) {
         complete = false
         continue
