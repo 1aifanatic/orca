@@ -14,7 +14,7 @@ import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdow
 import { ContextMenuItem, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
-import { aiVaultResumeInNewCliTooltip } from './ai-vault-session-cli-fork-copy'
+import { ResumeInNewCliTooltipText } from './ai-vault-session-cli-fork-copy'
 
 export function SessionActionMenuItems({
   menuKind = 'dropdown',
@@ -125,12 +125,8 @@ export function SessionActionMenuItems({
               )}
             </Item>
           </TooltipTrigger>
-          <TooltipContent
-            side={menuKind === 'context' ? 'right' : 'left'}
-            sideOffset={8}
-            className="max-w-72"
-          >
-            {aiVaultResumeInNewCliTooltip()}
+          <TooltipContent side={menuKind === 'context' ? 'right' : 'left'} sideOffset={8}>
+            <ResumeInNewCliTooltipText />
           </TooltipContent>
         </Tooltip>
       ) : null}

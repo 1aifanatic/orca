@@ -13633,7 +13633,8 @@
             "deleteReasonUnsupportedAgent": "Las sesiones de {{value0}} no se pueden eliminar desde Orca.",
             "resumeInNewNativeChat": "Reanudar en un nuevo chat nativo",
             "resumeInNewCli": "Reanudar en una nueva CLI",
-            "resumeInNewCliTooltip": "Hace un fork de esta conversación en una nueva sesión de CLI con todo su historial. El chat nativo queda como está."
+            "resumeInNewCliTooltipFork": "Hace un fork de esta conversación en una nueva sesión de CLI.",
+            "resumeInNewCliTooltipChat": "El chat nativo queda como está."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "¿Eliminar esta sesión?",

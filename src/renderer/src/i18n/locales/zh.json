@@ -13634,7 +13634,8 @@
             "deleteReasonUnsupportedAgent": "{{value0}} 会话无法在 Orca 中删除。",
             "resumeInNewNativeChat": "在新的本机聊天中恢复",
             "resumeInNewCli": "在新的 CLI 中恢复",
-            "resumeInNewCliTooltip": "将此对话连同完整历史派生到新的 CLI 会话中。本机聊天保持不变。"
+            "resumeInNewCliTooltipFork": "将此对话派生到新的 CLI 会话中。",
+            "resumeInNewCliTooltipChat": "本机聊天保持不变。"
           },
           "AiVaultSessionDeleteDialog": {
             "title": "要删除此会话吗？",

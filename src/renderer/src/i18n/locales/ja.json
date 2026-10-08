@@ -13634,7 +13634,8 @@
             "deleteReasonUnsupportedAgent": "{{value0}} のセッションは Orca では削除できません。",
             "resumeInNewNativeChat": "新規ネイティブチャットで再開",
             "resumeInNewCli": "新規 CLI で再開",
-            "resumeInNewCliTooltip": "この会話を全履歴ごと新しい CLI セッションにフォークします。ネイティブチャットはそのまま残ります。"
+            "resumeInNewCliTooltipFork": "この会話を新しい CLI セッションにフォークします。",
+            "resumeInNewCliTooltipChat": "ネイティブチャットはそのまま残ります。"
           },
           "AiVaultSessionDeleteDialog": {
             "title": "このセッションを削除しますか?",

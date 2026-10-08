@@ -13634,7 +13634,8 @@
             "deleteReasonUnsupportedAgent": "{{value0}} 세션은 Orca에서 삭제할 수 없습니다.",
             "resumeInNewNativeChat": "새 기본 채팅에서 재개",
             "resumeInNewCli": "새 CLI에서 재개",
-            "resumeInNewCliTooltip": "이 대화를 전체 기록과 함께 새 CLI 세션으로 포크합니다. 기본 채팅은 그대로 유지됩니다."
+            "resumeInNewCliTooltipFork": "이 대화를 새 CLI 세션으로 포크합니다.",
+            "resumeInNewCliTooltipChat": "기본 채팅은 그대로 유지됩니다."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "이 세션을 삭제할까요?",

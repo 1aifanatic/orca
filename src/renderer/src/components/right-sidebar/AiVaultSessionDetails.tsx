@@ -20,7 +20,7 @@ import {
 } from '../../../../shared/ai-vault-types'
 import { translate } from '@/i18n/i18n'
 import { FirstPromptCard } from './ai-vault-first-prompt-card'
-import { aiVaultResumeInNewCliTooltip } from './ai-vault-session-cli-fork-copy'
+import { ResumeInNewCliTooltipText } from './ai-vault-session-cli-fork-copy'
 import { sessionDetailConversationTurns, sessionPromptPreview } from './ai-vault-session-display'
 import { SessionSubagentsSection } from './AiVaultSessionSubagents'
 import { SessionUnsavedConversationNotice } from './AiVaultSessionUnsavedNotice'
@@ -177,8 +177,8 @@ export function SessionInlineDetails({
                   )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={4} className="max-w-72">
-                {aiVaultResumeInNewCliTooltip()}
+              <TooltipContent side="top" sideOffset={4}>
+                <ResumeInNewCliTooltipText />
               </TooltipContent>
             </Tooltip>
           ) : null}
