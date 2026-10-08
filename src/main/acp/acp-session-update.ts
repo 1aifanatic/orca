@@ -8,6 +8,7 @@ import type { AcpDialect } from './acp-dialects/acp-dialect'
 import type { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import type { SessionNotification } from './generated/acp-protocol.generated'
+import { acpNamedTextKey } from './acp-turn-messages'
 
 export function acpSessionUpdate(
   notification: SessionNotification,
@@ -24,7 +25,8 @@ export function acpSessionUpdate(
   const join = { join: { thread: notification.sessionId, ...(turn === undefined ? {} : { turn }) } }
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
-    case 'agent_thought_chunk':
+    case 'agent_thought_chunk': {
+      const channel = update.sessionUpdate === 'agent_thought_chunk' ? 'reasoning' : 'assistant'
       return update.content.type === 'text'
         ? [
             {
@@ -32,14 +34,15 @@ export function acpSessionUpdate(
               item: context.messageKey
                 ? { id: context.messageKey }
                 : update.messageId
-                  ? { id: `message:${update.messageId}` }
+                  ? { id: acpNamedTextKey(update.messageId, channel) }
                   : { stream: update.sessionUpdate },
-              channel: update.sessionUpdate === 'agent_thought_chunk' ? 'reasoning' : 'assistant',
+              channel,
               text: update.content.text,
               ...join
             }
           ]
         : [{ type: 'provider.frame', frameKind: update.sessionUpdate, payload: update, ...join }]
+    }
     case 'user_message_chunk':
       // A live echo of the send is the send's own row.
       return []
