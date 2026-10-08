@@ -249,6 +249,7 @@ export async function performAttach(
       params,
       adapter: input.adapter,
       openConversation: input.openConversation,
+      logger: input.logger,
       providerHistoryWindow
     })
     await importAdoptedTranscript(params, attached, record, preparedTranscript.items)

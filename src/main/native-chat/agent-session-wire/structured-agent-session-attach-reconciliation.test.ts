@@ -17,6 +17,8 @@ import {
 } from '../agent-session-journal/journal-host-database-test-support'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { openTestAttachConversation } from './structured-agent-session-attach-test-conversation'
+import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
+import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   attachJournal,
   journalIdentityFor,
@@ -86,6 +88,7 @@ async function attach(adapter: StructuredAgentSessionAdapter) {
     record: RECORD,
     params: PARAMS,
     openConversation: openTestAttachConversation(openTestJournalHostDatabase(root)),
+    logger: recordingStructuredAgentSessionLogger().logger,
     adapter
   })
   journals.track(attached.journal)
@@ -102,6 +105,56 @@ afterEach(async () => {
 })
 
 describe('attachJournal restart reconciliation', () => {
+  it('keeps committed settlements after a later write fails and re-derives the remainder', async () => {
+    await crashedJournal('cm_1', 'first')
+    await crashedJournal('cm_2', 'second')
+    const journal = journals.track(
+      await openTestAttachConversation(openTestJournalHostDatabase(root))(RECORD)
+    )
+    const { adapter, dispatch } = adapterWith(async () =>
+      window({
+        items: ['cm_1', 'cm_2'].map((clientMessageId, index) => ({
+          clientMessageId,
+          providerItemId: `item-${index}`,
+          payloadFingerprint: null,
+          identity: {
+            provider: 'claude',
+            sessionId: 'provider-session-alpha-1',
+            uuid: `item-${index}`
+          }
+        }))
+      })
+    )
+    const logging = recordingStructuredAgentSessionLogger()
+    const resolve = journal.resolveDispatch
+    const writes = vi.spyOn(journal, 'resolveDispatch')
+    writes.mockImplementation(function (this: AgentSessionJournal, input, hook) {
+      if (input.clientMessageId === 'cm_2' && input.state === 'accepted') {
+        return Promise.reject(new Error('disk full on second settlement'))
+      }
+      return resolve.call(this, input, hook)
+    })
+    const input = {
+      record: RECORD,
+      params: PARAMS,
+      adapter,
+      logger: logging.logger,
+      openConversation: async () => journal
+    }
+
+    expect((await attachJournal(input)).unconfirmedClientMessageIds).toEqual(['cm_2'])
+    expect(journal.submissions().map((send) => send.dispatchState)).toEqual(['accepted', 'unknown'])
+    expect(logging.scopes()).toEqual(['attach-send-reconcile'])
+    writes.mockRestore()
+
+    expect((await attachJournal(input)).unconfirmedClientMessageIds).toEqual([])
+    expect(journal.submissions().map((send) => send.dispatchState)).toEqual([
+      'accepted',
+      'accepted'
+    ])
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
   it('settles a provably undelivered submission and stops reporting it unconfirmed', async () => {
     await crashedJournal()
     const { adapter, dispatch } = adapterWith(async () => window())
@@ -181,6 +234,7 @@ describe('attachJournal restart reconciliation', () => {
       record: RECORD,
       params: PARAMS,
       adapter,
+      logger: recordingStructuredAgentSessionLogger().logger,
       openConversation: async () => journal
     })
 
