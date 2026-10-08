@@ -1,13 +1,9 @@
 import { toast } from 'sonner'
 import { useCallback, useMemo } from 'react'
-import type {
-  AgentSessionOptionResult,
-  AgentSessionOptionsResult
-} from '../../../../shared/agent-session-wire'
+import type { AgentSessionOptionResult } from '../../../../shared/agent-session-wire'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { structuredAgentSessionSeedCatalog } from './structured-agent-session-seed-catalog'
 import {
-  applyStructuredAgentSessionOptions,
   canSetStructuredAgentSessionOption,
   commitStructuredAgentSessionOptionValues,
   lockedStructuredAgentSessionOptionSnapshot,
@@ -18,7 +14,6 @@ import {
 } from '../../../../shared/structured-agent-session-options'
 import { structuredAgentSessionOptionPicks } from '../../../../shared/structured-agent-session-option-picks'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
-import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { enqueueSessionOptionSettingsWrite } from './native-chat-session-option-settings-write'
 import { encodeStructuredAgentSessionOptionValue } from '../../../../shared/structured-agent-session-option-codec'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
@@ -77,6 +72,7 @@ export function useStructuredAgentSessionOptions(args: {
     activeOptionRecordRef,
     pendingOptionRef,
     optionMutationGeneration,
+    refreshOptionsAfterWrite,
     updateOptionState,
     conversationSupport
   } = useStructuredAgentSessionOptionState({
@@ -153,21 +149,7 @@ export function useStructuredAgentSessionOptions(args: {
               committed
             )
           }
-          void callStructuredAgentSession<AgentSessionOptionsResult>(
-            target,
-            'agentSession.options',
-            { sessionId }
-          )
-            .then((refreshed) => {
-              if (isCurrent()) {
-                updateOptionState((latest) =>
-                  latest.record === targetRecord && optionCatalog
-                    ? applyStructuredAgentSessionOptions(latest, optionCatalog, refreshed)
-                    : latest
-                )
-              }
-            })
-            .catch(() => {})
+          refreshOptionsAfterWrite(targetRecord, isCurrent)
         }
         return Boolean(result)
       } finally {
@@ -185,13 +167,11 @@ export function useStructuredAgentSessionOptions(args: {
       activeOptionRecordRef,
       launchSeedOptions,
       mutate,
-      optionCatalog,
       optionMutationGeneration,
       optionStateRef,
       pendingOptionRef,
+      refreshOptionsAfterWrite,
       rememberOptionPicks,
-      sessionId,
-      target,
       updateOptionState
     ]
   )

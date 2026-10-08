@@ -205,3 +205,49 @@ it('rejects provisional Auto before the launch can hold an unsupported choice', 
   expect(mocks.hold).not.toHaveBeenCalled()
   unmount()
 })
+
+it('keeps a newer host mode when an older post-pick refresh answers last', async () => {
+  const report = (current: string) => ({
+    ...OPTIONS,
+    permissionModes: { current, supported: ['ask', 'bypass'] }
+  })
+  let hostMode = 'ask'
+  let answerHeld: (value: unknown) => void = () => {}
+  let holdNext = false
+  mocks.call.mockImplementation((_target: unknown, method: string) => {
+    if (method !== 'agentSession.options') {
+      return new Promise(() => {})
+    }
+    if (holdNext) {
+      holdNext = false
+      return new Promise((resolve) => {
+        answerHeld = resolve
+      })
+    }
+    return Promise.resolve(report(hostMode))
+  })
+  const { mutate: reply } = mutateReplying({ permissionMode: 'ask' })
+  const mutate: StructuredAgentSessionMutate = async (...args) => {
+    holdNext = true
+    return reply(...args)
+  }
+  const { result, rerender, unmount } = render(
+    { transportEnabled: true, fence: 1, permissionMode: 'ask' },
+    mutate
+  )
+  await waitFor(() => expect(result.current.optionSurface.permissionPicker?.current).toBe('ask'))
+  // An explicit Ask pick starts a post-write refresh that stays unanswered.
+  await act(async () => {
+    await result.current.optionSurface.permissionPicker?.setMode('ask')
+  })
+  // Another client moves the chat to Full access; the publication's read answers first.
+  hostMode = 'bypass'
+  rerender({ transportEnabled: true, fence: 1, permissionMode: 'bypass' })
+  await waitFor(() => expect(result.current.optionSurface.permissionPicker?.current).toBe('bypass'))
+  await act(async () => {
+    answerHeld(report('ask'))
+  })
+  rerender({ transportEnabled: true, fence: 1, permissionMode: 'bypass' })
+  expect(result.current.optionSurface.permissionPicker?.current).toBe('bypass')
+  unmount()
+})

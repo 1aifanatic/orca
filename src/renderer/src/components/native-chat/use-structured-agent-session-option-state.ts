@@ -64,6 +64,8 @@ export function useStructuredAgentSessionOptionState(args: {
   const activeOptionRecordRef = useRef(optionState.record)
   const pendingOptionRef = useRef<string | null>(null)
   const optionMutationGeneration = useRef(0)
+  // Turn reads and post-write reads both land here; only the newest started read may apply.
+  const optionReadGeneration = useRef(0)
   const updateOptionState = useCallback(
     (update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState) => {
       const next = update(optionStateRef.current)
@@ -103,6 +105,7 @@ export function useStructuredAgentSessionOptionState(args: {
     let stale = false
     const runner = createCoalescedPollRunner(async () => {
       const readGeneration = optionMutationGeneration.current
+      const read = ++optionReadGeneration.current
       const result = await callStructuredAgentSession<AgentSessionOptionsResult>(
         target,
         'agentSession.options',
@@ -119,7 +122,7 @@ export function useStructuredAgentSessionOptionState(args: {
           fence
         })
         updateOptionState((current) =>
-          current.record === activeOptionRecordRef.current
+          current.record === activeOptionRecordRef.current && optionReadGeneration.current === read
             ? applyStructuredAgentSessionOptions(current, optionCatalog, result)
             : current
         )
@@ -144,6 +147,27 @@ export function useStructuredAgentSessionOptionState(args: {
     updateOptionState
   ])
 
+  // A write's own read; `isCurrent` drops it once the picked record or mutation moved on.
+  const refreshOptionsAfterWrite = useCallback(
+    (targetRecord: StructuredAgentSessionOptionState['record'], isCurrent: () => boolean) => {
+      const read = ++optionReadGeneration.current
+      void callStructuredAgentSession<AgentSessionOptionsResult>(target, 'agentSession.options', {
+        sessionId
+      })
+        .then((refreshed) => {
+          if (isCurrent() && optionReadGeneration.current === read) {
+            updateOptionState((latest) =>
+              latest.record === targetRecord && optionCatalog
+                ? applyStructuredAgentSessionOptions(latest, optionCatalog, refreshed)
+                : latest
+            )
+          }
+        })
+        .catch(() => {})
+    },
+    [optionCatalog, sessionId, target, updateOptionState]
+  )
+
   // Reads share the session's host queue with sends and interrupts, so a burst of
   // missed revisions keeps one read in flight and at most one behind it.
   const seenContextRefresh = useRef(contextRefresh)
@@ -161,6 +185,7 @@ export function useStructuredAgentSessionOptionState(args: {
     activeOptionRecordRef,
     pendingOptionRef,
     optionMutationGeneration,
+    refreshOptionsAfterWrite,
     updateOptionState
   }
 }
