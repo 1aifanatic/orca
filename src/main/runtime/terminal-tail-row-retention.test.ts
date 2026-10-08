@@ -61,6 +61,20 @@ describe('retained terminal tail row storage', () => {
     expect(lines.at(-1)).toBe(`step ${chunkCount - 1} done`)
   })
 
+  it('does not pin a padded redraw row behind its trimmed text', () => {
+    let tail = appendNormalizedToTailBuffer([], '', 'warm\n')
+    const before = collectHeap()
+    for (let index = 0; index < 250; index += 1) {
+      const text = `\x1b[0Arow-${String(index).padStart(5, '0')}-completed${' '.repeat(64_000)}\n`
+      tail = appendNormalizedToTailBuffer(tail.lines, tail.partialLine, text, tail.redrawCursor)
+    }
+    const retained = collectHeap() - before
+
+    expect(tail.lines.at(-1)).toBe('row-00249-completed')
+    // Sliced from the padded row, 250 short lines pinned about 16 MB.
+    expect(retained).toBeLessThan(4 * 1024 * 1024)
+  })
+
   it('routes every retained row and partial line through ownRetainedString', () => {
     const own = vi.spyOn(ownership, 'ownRetainedString')
     try {
@@ -93,9 +107,8 @@ describe('retained terminal tail row storage', () => {
 
       expect(redrawn.lines).toEqual(['row one'])
       expect(redrawn.partialLine).toBe('rewritten two')
-      // One call for the partial only: redraw rows are built character by character.
-      expect(own).toHaveBeenCalledTimes(1)
-      expect(own).toHaveBeenLastCalledWith('rewritten two')
+      // Only the written run and the partial are owned; carried rows are never re-copied.
+      expect(own.mock.calls).toEqual([['rewritten two'], ['rewritten two']])
     } finally {
       own.mockRestore()
     }

@@ -1,19 +1,15 @@
+// Test-only: the redraw row model as it was before #11315 (one string rebuild per character),
+// vendored so wall-time and equivalence tests can measure the current model against it.
 import {
   hasCanonicalNumericCsiParams,
   parseAnsiControlSequence
 } from './terminal-ansi-normalization'
 import { ownRetainedString } from '../../shared/own-retained-string'
-import { clampTerminalPreviewCursor } from './terminal-tail-line-controls'
+import { clampTerminalPreviewCursor, trimTerminalLineRight } from './terminal-tail-line-controls'
 import { MAX_TAIL_CHARS, MAX_TAIL_LINES, MAX_TAIL_PARTIAL_CHARS } from './terminal-tail-limits'
-import {
-  eraseRetainedRow,
-  retainedRow,
-  retainedRowSnapshot,
-  writeRetainedRow,
-  type RetainedTerminalRow
-} from './terminal-tail-redraw-row'
+import type { RetainedTailRedrawCursor } from './terminal-tail-redraw-buffer'
 
-export function appendNormalizedToMultilineTailBufferUnwindowed(
+export function appendPerCharacterRedrawReference(
   previousLines: string[],
   boundedPreviousPartialLine: string,
   normalizedChunk: string,
@@ -28,8 +24,8 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
   newlyCompletedLines: string[]
 } {
   const rows: RetainedTerminalRow[] = [
-    ...previousLines.map((line) => retainedRow(line, true)),
-    retainedRow(boundedPreviousPartialLine, false)
+    ...previousLines.map((line) => ({ text: line, completed: true })),
+    { text: boundedPreviousPartialLine, completed: false }
   ]
   let cursorRow = previousRedrawCursor
     ? Math.max(0, rows.length - 1 - previousRedrawCursor.rowFromEnd)
@@ -60,54 +56,60 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
 
   const ensureCursorRow = (): void => {
     while (cursorRow >= rows.length) {
-      rows.push(retainedRow('', false))
+      rows.push({ text: '', completed: false })
     }
   }
-  // Rows before this index are already dropped by the line cap but not yet spliced out.
-  let trimmedRows = 0
   const trimRows = (): void => {
-    const excess = rows.length - trimmedRows - (MAX_TAIL_LINES + 1)
-    if (excess <= 0) {
+    const maxRows = MAX_TAIL_LINES + 1
+    if (rows.length <= maxRows) {
       return
     }
-    trimmedRows += excess
+    const removeCount = rows.length - maxRows
+    rows.splice(0, removeCount)
+    cursorRow = Math.max(0, cursorRow - removeCount)
     truncated = true
-    // Why batched: splicing one row off a full tail per newline made a long chunk, such as a TUI
-    // replaying its whole history, cost O(lines x MAX_TAIL_LINES).
-    if (trimmedRows >= MAX_TAIL_LINES) {
-      spliceTrimmedRows()
-    }
-  }
-  const spliceTrimmedRows = (): void => {
-    rows.splice(0, trimmedRows)
-    cursorRow -= trimmedRows
-    trimmedRows = 0
   }
   const moveCursorToColumn = (nextColumn: number): void => {
     cursorColumn = clampTerminalPreviewCursor(nextColumn)
   }
-  const cursorRowForEdit = (): RetainedTerminalRow => {
+  const markCursorRowRewritten = (): void => {
     ensureCursorRow()
-    const row = rows[cursorRow]!
-    row.completed = false
-    return row
+    rows[cursorRow]!.completed = false
   }
-  const writeText = (start: number, end: number): void => {
-    writeRetainedRow(cursorRowForEdit(), cursorColumn, normalizedChunk, start, end)
-    cursorColumn += end - start
+  const writeChar = (char: string): void => {
+    ensureCursorRow()
+    markCursorRowRewritten()
+    const row = rows[cursorRow]!
+    if (cursorColumn > row.text.length) {
+      row.text = `${row.text}${' '.repeat(cursorColumn - row.text.length)}`
+    }
+    row.text =
+      cursorColumn >= row.text.length
+        ? `${row.text}${char}`
+        : `${row.text.slice(0, cursorColumn)}${char}${row.text.slice(cursorColumn + 1)}`
+    cursorColumn += 1
   }
   const eraseLine = (mode: number): void => {
-    eraseRetainedRow(cursorRowForEdit(), mode, cursorColumn)
+    ensureCursorRow()
+    markCursorRowRewritten()
+    const row = rows[cursorRow]!
+    if (mode === 0) {
+      row.text = row.text.slice(0, cursorColumn)
+    } else if (mode === 1) {
+      const deleteCount = Math.min(cursorColumn + 1, row.text.length)
+      row.text = `${' '.repeat(deleteCount)}${row.text.slice(deleteCount)}`
+    } else if (mode === 2) {
+      row.text = ''
+    }
   }
 
   for (let index = 0; index < normalizedChunk.length; index += 1) {
     const char = normalizedChunk[index]
     if (char === '\n') {
       ensureCursorRow()
-      const row = rows[cursorRow]!
-      row.completed = true
+      rows[cursorRow]!.completed = true
       newCompleteLines += 1
-      retainNewlyCompletedLine(retainedRowSnapshot(row))
+      retainNewlyCompletedLine(trimTerminalLineRight(rows[cursorRow]!.text))
       cursorRow += 1
       cursorColumn = 0
       ensureCursorRow()
@@ -133,7 +135,7 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
       }
       const firstParam = parsed.firstParam ?? 1
       if (parsed.final === 'A') {
-        cursorRow = Math.max(trimmedRows, cursorRow - firstParam)
+        cursorRow = Math.max(0, cursorRow - firstParam)
         rows.splice(cursorRow + 1)
       } else if (parsed.final === 'K') {
         eraseLine(parsed.firstParam ?? 0)
@@ -146,18 +148,9 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
       }
       continue
     }
-    let textEnd = index + 1
-    while (
-      textEnd < normalizedChunk.length &&
-      !isRedrawControlCode(normalizedChunk.charCodeAt(textEnd))
-    ) {
-      textEnd += 1
-    }
-    writeText(index, textEnd)
-    index = textEnd - 1
+    writeChar(char)
   }
 
-  spliceTrimmedRows()
   return finalizeRetainedTerminalRows(
     rows,
     cursorRow,
@@ -170,13 +163,9 @@ export function appendNormalizedToMultilineTailBufferUnwindowed(
   )
 }
 
-function isRedrawControlCode(code: number): boolean {
-  return code === 0x0a || code === 0x0d || code === 0x08 || code === 0x1b
-}
-
-export type RetainedTailRedrawCursor = {
-  rowFromEnd: number
-  column: number
+type RetainedTerminalRow = {
+  text: string
+  completed: boolean
 }
 
 function finalizeRetainedTerminalRows(
@@ -195,10 +184,7 @@ function finalizeRetainedTerminalRows(
   newlyCompletedLines: string[]
 } {
   let truncated = initialTruncated
-  let retainedRows = rows.map((row) => ({
-    text: retainedRowSnapshot(row),
-    completed: row.completed
-  }))
+  let retainedRows = rows.map((row) => ({ ...row, text: trimTerminalLineRight(row.text) }))
 
   if (retainedRows.length > MAX_TAIL_LINES + 1) {
     const removeCount = retainedRows.length - (MAX_TAIL_LINES + 1)
@@ -254,8 +240,8 @@ function finalizeRetainedTerminalRows(
 
   return {
     lines,
-    // Why only the partial: redraw runs are owned as they are written, so rows never slice the
-    // chunk, but the partial is re-sliced from its own row on every chunk, so it alone can
+    // Why only the partial: redraw rows are built character by character and never sliced from
+    // the chunk, but the partial is re-sliced from its own row on every chunk, so it alone can
     // accumulate a backing string across frames. Owning the rows too costs 20-36% on TUI floods
     // for no measured retention.
     partialLine: ownRetainedString(partialLine),
