@@ -26,6 +26,7 @@ import { registerMacSymbolicHotkeysProbeHandler } from './macos-symbolic-hotkeys
 import { registerRendererShutdownCheckpointHandler } from './renderer-shutdown-checkpoint'
 import { readMacKeyboardLayoutSnapshot } from './macos-keyboard-layout-snapshot'
 import { registerMacKeyboardLayoutChangeNotifications } from './macos-keyboard-layout-change-notifications'
+import { isProfileStateSaveDelayed } from '../startup/profile-state-save-delay'
 
 const KEYBOARD_INPUT_SOURCE_TIMEOUT_MS = 500
 const MAC_HITOOLBOX_DOMAIN = 'com.apple.HIToolbox'
@@ -256,6 +257,7 @@ async function readKeyboardInputSourceId(): Promise<string | null> {
 export function registerAppHandlers(store: Store, options: RegisterAppHandlersOptions = {}): void {
   registerRendererShutdownCheckpointHandler(store)
   registerMacKeyboardLayoutChangeNotifications()
+  ipcMain.handle('app:isProfileStateSaveDelayed', isProfileStateSaveDelayed)
 
   ipcMain.handle('app:getFeatureWallAssetBaseUrl', (): string => getFeatureWallAssetBaseUrl())
 
