@@ -1,15 +1,30 @@
 import { getNativeChatAgentProfile } from '../../../src/shared/native-chat-agent-profiles'
-import type { NativeChatComposerCatalog } from '../../../src/shared/native-chat-composer-catalog'
+import {
+  nativeChatComposerCatalog,
+  type NativeChatComposerCatalog,
+  type NativeChatStructuredCatalogInputs
+} from '../../../src/shared/native-chat-composer-catalog'
 import {
   buildNativeChatPickerItems,
   type NativeChatPickerItem
 } from '../../../src/shared/native-chat-picker-items'
+import { getMobileNativeChatCommands } from './mobile-native-chat-send-classification'
 
 export type MobileNativeChatSlashMenu = {
   /** Whether non-empty groups carry Commands / Skills headings (the session reports skills). */
   grouped: boolean
   commands: NativeChatPickerItem[]
   skills: NativeChatPickerItem[]
+}
+
+/** The shared selection, except the terminal lane drops commands only desktop answers. */
+export function mobileNativeChatComposerCatalog(
+  agent: string,
+  structured: NativeChatStructuredCatalogInputs | undefined
+): NativeChatComposerCatalog {
+  return structured
+    ? nativeChatComposerCatalog(agent, structured)
+    : { agentCommands: getMobileNativeChatCommands(agent), sessionSkills: undefined }
 }
 
 const EMPTY_MENU: MobileNativeChatSlashMenu = { grouped: false, commands: [], skills: [] }
@@ -21,7 +36,7 @@ const EMPTY_MENU: MobileNativeChatSlashMenu = { grouped: false, commands: [], sk
  */
 export function mobileNativeChatSlashMenu(args: {
   agent: string | null | undefined
-  /** `nativeChatComposerCatalog`'s answer for this agent and lane. */
+  /** `mobileNativeChatComposerCatalog`'s answer for this agent and lane. */
   catalog: NativeChatComposerCatalog | null
   query: string
 }): MobileNativeChatSlashMenu {

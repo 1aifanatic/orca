@@ -132,10 +132,11 @@ describe('worktree RPC methods', () => {
       pushTarget: { remoteName: 'fork', branchName: 'feature' },
       runHooks: false,
       activate: false,
-      navigation: 'all',
+      navigation: 'host',
       setupDecision: 'skip',
       createdWithAgent: undefined,
       automationProvenance: undefined,
+      allowLocalBaseFallback: true,
       creatorProvenance: { kind: 'host' },
       startup: undefined,
       startupDraft: undefined,
@@ -253,6 +254,10 @@ describe('worktree RPC methods', () => {
           hostId: 'ssh:ssh-target-1'
         })
       })
+    )
+    // Why: an automation run has nobody to tell, so it keeps the network error offline.
+    expect(vi.mocked(runtime.createManagedWorktree).mock.calls[0]?.[0]).not.toHaveProperty(
+      'allowLocalBaseFallback'
     )
   })
 

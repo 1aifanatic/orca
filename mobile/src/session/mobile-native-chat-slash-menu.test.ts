@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
 import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
-import { getVerifiedNativeChatCommands } from '../../../src/shared/native-chat-agent-profiles'
-import { nativeChatComposerCatalog } from '../../../src/shared/native-chat-composer-catalog'
-import { mobileNativeChatSlashMenu } from './mobile-native-chat-slash-menu'
+import { getMobileNativeChatCommands } from './mobile-native-chat-send-classification'
+import {
+  mobileNativeChatComposerCatalog,
+  mobileNativeChatSlashMenu
+} from './mobile-native-chat-slash-menu'
 
 const names = (items: readonly { name: string }[]): string[] => items.map(({ name }) => name)
 
@@ -21,7 +23,7 @@ function menu({
   query?: string
 }): ReturnType<typeof mobileNativeChatSlashMenu> {
   const catalog = agent
-    ? nativeChatComposerCatalog(
+    ? mobileNativeChatComposerCatalog(
         agent,
         lane === 'structured' ? { sessionCommands, conversationCommands } : undefined
       )
@@ -113,7 +115,7 @@ describe('mobileNativeChatSlashMenu', () => {
 
   it('serves the terminal lane its curated catalog and never session skills', () => {
     const result = menu({ lane: 'terminal', sessionCommands: CLAUDE_REPORT })
-    expect(names(result.commands)).toEqual(names(getVerifiedNativeChatCommands('claude')))
+    expect(names(result.commands)).toEqual(names(getMobileNativeChatCommands('claude')))
     expect(result.skills).toEqual([])
   })
 

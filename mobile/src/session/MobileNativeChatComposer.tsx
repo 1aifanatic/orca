@@ -58,6 +58,8 @@ type Props = {
   onMicPressIn?: () => void
   onMicPressOut?: () => void
   disabled?: boolean
+  /** Only Send is unavailable; typing, dictation and attachments still edit the draft. */
+  sendDisabled?: boolean
   placeholder?: string
   filePaths?: string[]
   onNeedFiles?: (query: string) => void
@@ -84,6 +86,7 @@ export function MobileNativeChatComposer({
   onMicPressIn,
   onMicPressOut,
   disabled = false,
+  sendDisabled = false,
   placeholder = 'Message, @files, /commands',
   filePaths = NO_FILE_PATHS,
   onNeedFiles
@@ -113,6 +116,7 @@ export function MobileNativeChatComposer({
   const canSend =
     (trimmed.length > 0 || attachments.length > 0) &&
     !disabled &&
+    !sendDisabled &&
     !sending &&
     !isAttaching &&
     !sessionOptionDispatching
@@ -265,7 +269,7 @@ export function MobileNativeChatComposer({
                 onPressIn={dictationMode === 'hold' ? onMicPressIn : undefined}
                 onPressOut={dictationMode === 'hold' ? onMicPressOut : undefined}
                 onLongPress={dictationMode === 'hold' ? keepHeldPressThroughLongPress : undefined}
-                disabled={disabled}
+                disabled={disabled && !micActive}
               >
                 {/* The icon swaps on press; as the page's touch target, its removal would send
                     touchend to a detached node and lose the release. */}

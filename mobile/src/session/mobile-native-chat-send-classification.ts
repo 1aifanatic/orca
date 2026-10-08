@@ -5,15 +5,22 @@
 // the optimistic echo would never reconcile.
 
 import {
-  getNativeChatAgentProfile,
-  getVerifiedNativeChatCommands
+  getAgentAnsweredNativeChatCommands,
+  getNativeChatAgentProfile
 } from '../../../src/shared/native-chat-agent-profiles'
 import {
   classifyNativeChatSend,
-  type NativeChatSendClassification
+  type NativeChatSendClassification,
+  type SlashCommandSuggestion
 } from '../../../src/shared/native-chat-slash-commands'
 
 export type { NativeChatSendClassification }
+
+/** The curated catalog mobile offers over a terminal session. Why: mobile has
+ *  neither the desktop composer's answers nor its transcript reply rows. */
+export function getMobileNativeChatCommands(agent: string): readonly SlashCommandSuggestion[] {
+  return getAgentAnsweredNativeChatCommands(agent)
+}
 
 /** Classify a mobile terminal-lane chat send for the tab's agent. That lane has no
  *  skill picker, so no picker-origin token ever reclassifies a `/token` as chat. */
@@ -27,7 +34,7 @@ export function classifyMobileNativeChatSend(
   const profile = getNativeChatAgentProfile(agent)
   return classifyNativeChatSend(
     text,
-    getVerifiedNativeChatCommands(agent),
+    getMobileNativeChatCommands(agent),
     null,
     profile?.skillPrefix ?? null
   )

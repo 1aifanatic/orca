@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import {
-  nativeChatComposerCatalog,
-  type NativeChatStructuredCatalogInputs
-} from '../../../src/shared/native-chat-composer-catalog'
+import type { NativeChatStructuredCatalogInputs } from '../../../src/shared/native-chat-composer-catalog'
 import {
   applyAutocomplete,
   detectAutocompleteTrigger,
   rankSuggestions
 } from './mobile-native-chat-autocomplete'
 import {
+  mobileNativeChatComposerCatalog,
   mobileNativeChatSlashMenu,
   type MobileNativeChatSlashMenu
 } from './mobile-native-chat-slash-menu'
@@ -68,7 +66,7 @@ export function useMobileNativeChatComposerAutocomplete(args: {
   const catalog = useMemo(
     () =>
       agent
-        ? nativeChatComposerCatalog(
+        ? mobileNativeChatComposerCatalog(
             agent,
             structured ? { sessionCommands, conversationCommands } : undefined
           )

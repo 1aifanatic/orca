@@ -3,13 +3,13 @@ import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
 import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
-import { getVerifiedNativeChatCommands } from '../../../src/shared/native-chat-agent-profiles'
 import {
   nativeChatComposerCatalog,
   type NativeChatStructuredCatalogInputs
 } from '../../../src/shared/native-chat-composer-catalog'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
 import { mobileNativeChatSlashMenu } from './mobile-native-chat-slash-menu'
+import { getMobileNativeChatCommands } from './mobile-native-chat-send-classification'
 
 vi.mock('react-native', async () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -37,8 +37,11 @@ vi.mock('../components/BottomDrawer', () => ({ BottomDrawer: () => null }))
 
 // Pass-through spies, so a test can count how often the catalog and rows are rebuilt.
 vi.mock('./mobile-native-chat-slash-menu', async (importOriginal) => {
-  const actual: { mobileNativeChatSlashMenu: (args: never) => unknown } = await importOriginal()
-  return { mobileNativeChatSlashMenu: vi.fn(actual.mobileNativeChatSlashMenu) }
+  const actual: {
+    mobileNativeChatComposerCatalog: (...args: never[]) => unknown
+    mobileNativeChatSlashMenu: (args: never) => unknown
+  } = await importOriginal()
+  return { ...actual, mobileNativeChatSlashMenu: vi.fn(actual.mobileNativeChatSlashMenu) }
 })
 vi.mock('../../../src/shared/native-chat-composer-catalog', async (importOriginal) => {
   const actual: { nativeChatComposerCatalog: (...args: never[]) => unknown } =
@@ -173,7 +176,7 @@ describe('MobileNativeChatComposer `/` menu', () => {
   it('serves the terminal lane the curated catalog', async () => {
     await open({ slashCatalog: undefined })
     expect(texts().filter((text) => String(text).startsWith('/'))).toEqual(
-      getVerifiedNativeChatCommands('claude').map((command) => `/${command.name}`)
+      getMobileNativeChatCommands('claude').map((command) => `/${command.name}`)
     )
     expect(texts()).not.toContain('Commands')
   })

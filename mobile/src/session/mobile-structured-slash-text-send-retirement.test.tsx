@@ -17,7 +17,7 @@ import { projectStructuredAgentSessionMessages } from '../../../src/shared/struc
 import {
   structuredAgentSessionSendBody,
   type StructuredAgentSessionAttachment
-} from '../../../src/shared/structured-agent-session-outbox'
+} from '../../../src/shared/structured-agent-session-send-mutation'
 import {
   EMPTY_STRUCTURED_AGENT_SESSION,
   reduceStructuredAgentSession

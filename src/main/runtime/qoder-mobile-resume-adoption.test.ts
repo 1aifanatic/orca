@@ -1,3 +1,4 @@
+import './rpc/unused-default-rpc-methods.test-fixture'
 import { expect, it, vi } from 'vitest'
 import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resume'
 import { buildAgentResumeStartupPlan } from '../../shared/tui-agent-startup'
@@ -124,7 +125,12 @@ it.each([
       runtime.syncWindowGraph(1, { tabs: [], leaves: [] })
       electronMocks.BrowserWindow.fromId.mockReturnValue({
         isDestroyed: () => false,
-        webContents: { isDestroyed: () => false, send, setBackgroundThrottling: vi.fn() }
+        webContents: {
+          isDestroyed: () => false,
+          send,
+          setBackgroundThrottling: vi.fn(),
+          capturePage: vi.fn(async () => null)
+        }
       })
       const plan = buildAgentResumeStartupPlan({
         agent: 'qoder',
