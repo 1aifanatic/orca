@@ -15,7 +15,8 @@ describe('a live Grok listing', () => {
   it('is saved through the host catalog when the chat reads its options', async () => {
     const modelCatalog: AgentModelCatalogService = {
       read: vi.fn(async () => ({ origin: 'unknown' as const })),
-      recordLiveListing: vi.fn()
+      recordLiveListing: vi.fn(),
+      prewarm: vi.fn(async () => {})
     }
     const { host } = await openAttachedHostRig({}, modelCatalog)
 

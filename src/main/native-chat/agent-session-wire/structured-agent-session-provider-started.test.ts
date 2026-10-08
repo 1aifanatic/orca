@@ -91,7 +91,8 @@ beforeEach(async () => {
     mintSpawnToken: () => 'spawn-a',
     modelCatalog: {
       read: async () => ({ origin: 'unknown' }),
-      recordLiveListing: (sessionId, listing) => savedListings.push({ sessionId, listing })
+      recordLiveListing: (sessionId, listing) => savedListings.push({ sessionId, listing }),
+      prewarm: async () => {}
     },
     now: () => NOW
   })
