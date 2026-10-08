@@ -10,7 +10,7 @@ import {
   resolveResumeGroupHeader,
   resumeSelectionState,
   resumeWorkspaceKind,
-  resumeWorkspaceSessionIds,
+  resumeWorkspaceCandidates,
   toggleResumeSelection,
   type ResumeCandidate
 } from './native-chat-resume-on-restart-grouping'
@@ -195,7 +195,12 @@ describe('group checkboxes', () => {
       (id) => ({ child: ['parent'], grandchild: ['child', 'parent'] })[id] ?? []
     )
 
-    expect(resumeWorkspaceSessionIds(root!)).toEqual(['p1', 'c1', 'c2', 'g1'])
+    expect(resumeWorkspaceCandidates(root!).map((entry) => entry.sessionId)).toEqual([
+      'p1',
+      'c1',
+      'c2',
+      'g1'
+    ])
   })
 
   it.each([

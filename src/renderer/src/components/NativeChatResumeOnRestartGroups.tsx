@@ -22,7 +22,14 @@ import {
 } from './native-chat-resume-workspace-lookups'
 import { ResumeCandidateRow } from './NativeChatResumeOnRestartAgentRow'
 import { ResumeTreeCount, ResumeTreeRow } from './NativeChatResumeTreeRow'
-import { ResumeTreeDepthContext, useResumeTreeExpansion } from './native-chat-resume-tree-state'
+import {
+  chatState,
+  coveredKeys,
+  ResumeTreeDepthContext,
+  useResumeTreeExpansion,
+  type FailureProps,
+  type TreeProps
+} from './native-chat-resume-tree-state'
 import {
   groupResumeCandidates,
   groupResumeCandidatesByHost,
@@ -31,17 +38,12 @@ import {
   resolveResumeGroupHeader,
   resumeSelectionState,
   resumeWorkspaceKind,
-  resumeWorkspaceSessionIds,
+  resumeWorkspaceCandidates,
   toggleResumeSelection,
   type ResumeCandidate,
-  type ResumeFailure,
   type ResumeWorkspaceGroup,
   type ResumeWorkspaceNode
 } from './native-chat-resume-on-restart-grouping'
-import {
-  resumeFailureSelectable,
-  type ResumeFailureAction
-} from './native-chat-resume-failure-guidance'
 
 export type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
 
@@ -56,26 +58,6 @@ export type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
  *
  * A workspace the store does not know yet (host connecting, or deleted) is named by its id.
  */
-
-/** Lets a row that an earlier resume could not carry on show what went wrong and what to do. */
-type FailureProps = {
-  failureFor?: (sessionId: string) => ResumeFailure | undefined
-  onFailureAction?: (action: ResumeFailureAction, sessionId: string) => void
-}
-
-/** What every node needs from the tree as a whole. */
-type TreeProps = {
-  listedAt: number
-  busy: boolean
-  selected: ReadonlySet<string>
-  onToggle: (sessionId: string, checked: boolean) => void
-  /** Whether a group checkbox may tick this chat; a failure a retry cannot fix is left out. */
-  selectable: (sessionId: string) => boolean
-  isExpanded: (key: string) => boolean
-  setExpanded: (key: string, expanded: boolean) => void
-  repoIdOf: (group: ResumeWorkspaceGroup) => string | null
-  ancestorsOf: (group: ResumeWorkspaceGroup) => readonly string[]
-} & FailureProps
 
 /** A group node: its row, then (while open) what is under it. */
 function GroupNode({
@@ -150,7 +132,7 @@ function WorkspaceNode({
         'Select all chats in {{value0}}',
         { value0: name }
       )}
-      covered={resumeWorkspaceSessionIds(node).filter(tree.selectable)}
+      covered={coveredKeys(resumeWorkspaceCandidates(node), tree)}
       tree={tree}
       label={
         <>
@@ -165,19 +147,22 @@ function WorkspaceNode({
       }
     >
       <ResumeTreeDepthContext.Provider value={depth + 1}>
-        {group.candidates.map((candidate) => (
-          <ResumeCandidateRow
-            key={candidate.sessionId}
-            candidate={candidate}
-            workspaceName={name}
-            listedAt={tree.listedAt}
-            checked={tree.selected.has(candidate.sessionId)}
-            disabled={tree.busy}
-            onCheckedChange={(checked) => tree.onToggle(candidate.sessionId, checked)}
-            failure={tree.failureFor?.(candidate.sessionId)}
-            onFailureAction={tree.onFailureAction}
-          />
-        ))}
+        {group.candidates.map((candidate) => {
+          const chat = chatState(candidate, tree)
+          return (
+            <ResumeCandidateRow
+              key={chat.key}
+              candidate={candidate}
+              workspaceName={name}
+              listedAt={tree.listedAt}
+              checked={chat.checked}
+              disabled={tree.busy}
+              onCheckedChange={chat.onCheckedChange}
+              failure={chat.failure}
+              onFailureAction={tree.onFailureAction}
+            />
+          )
+        })}
       </ResumeTreeDepthContext.Provider>
       {node.children.map((child) => (
         <WorkspaceNode
@@ -226,7 +211,7 @@ function ProjectNode({
         'Select all chats in {{value0}}',
         { value0: header.name }
       )}
-      covered={workspaces.flatMap(resumeWorkspaceSessionIds).filter(tree.selectable)}
+      covered={coveredKeys(workspaces.flatMap(resumeWorkspaceCandidates), tree)}
       tree={tree}
       label={
         <>
@@ -332,7 +317,7 @@ function MachineNode({
         'Select all chats on {{value0}}',
         { value0: name }
       )}
-      covered={candidates.map((candidate) => candidate.sessionId).filter(tree.selectable)}
+      covered={coveredKeys(candidates, tree)}
       tree={tree}
       label={
         <>
@@ -388,10 +373,6 @@ export function ResumeOnRestartGroups({
     busy,
     selected,
     onToggle,
-    selectable: (sessionId) => {
-      const failure = failureFor?.(sessionId)
-      return !failure || resumeFailureSelectable(failure)
-    },
     ...expansion,
     repoIdOf,
     ancestorsOf,
