@@ -96,6 +96,14 @@ function modelChoices(snapshot: readonly SessionOptionDescriptor[]): string[] {
   return descriptor.kind.type === 'select' ? descriptor.kind.choices.map((c) => c.value) : []
 }
 
+/** The model pill is open for a pick: settable, not disabled, and offering `choice`. */
+function expectPickerUsable(snapshot: readonly SessionOptionDescriptor[], choice: string): void {
+  const model = snapshot.find((entry) => entry.id === 'model')
+  expect(model?.settable).toBe(true)
+  expect(model?.disabledReason).toBeUndefined()
+  expect(modelChoices(snapshot)).toContain(choice)
+}
+
 const focusWindow = (): Promise<void> =>
   act(async () => {
     window.dispatchEvent(new Event('focus'))
@@ -172,7 +180,7 @@ describe("a chat's sign-in verdict", () => {
     expect(reads.count()).toBe(2)
     expect(reads.params(1)).toEqual({ agent: 'codex', sessionId, waitForListing: true })
     // The catalog in hand is shown; only the notice waits on the answer.
-    expect(result.current.optionSnapshot.some((entry) => entry.id === 'model')).toBe(true)
+    expectPickerUsable(result.current.optionSnapshot, 'gpt-hosted')
     expect(result.current.unavailable).toBeNull()
     await reads.answer(1, HOST_CATALOG)
     expect(result.current.unavailable).toBeNull()
@@ -195,7 +203,7 @@ describe("a chat's sign-in verdict", () => {
     await reads.answer(1, { origin: 'unknown', unavailable: SIGNED_OUT, listingInProgress: true })
     expect(result.current.unavailable).toEqual(SIGNED_OUT)
     expect(reads.params(2)).toEqual({ agent: 'codex', sessionId, waitForListing: true })
-    expect(result.current.optionSnapshot.some((entry) => entry.id === 'model')).toBe(true)
+    expectPickerUsable(result.current.optionSnapshot, 'gpt-5.5')
     await reads.answer(2, { origin: 'unknown' })
     expect(result.current.unavailable).toBeNull()
   })
