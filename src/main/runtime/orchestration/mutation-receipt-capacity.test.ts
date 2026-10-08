@@ -4,11 +4,12 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import Database from '../../sqlite/sync-database'
 import { OrchestrationDb } from './db'
-import { MUTATION_RECEIPT_MAX_ROWS } from './mutation-receipt-capacity'
 import { SCHEMA_VERSION } from './db/contract-constants'
 
+const PREVIOUS_RECEIPT_LIMIT = 10_000
+
 function sqliteFor(db: OrchestrationDb): Database.Database {
-  return (db as unknown as { db: Database.Database }).db
+  return db.db
 }
 
 function insertReceipts(
@@ -124,10 +125,10 @@ describe('mutation receipt capacity schema', () => {
     })
   })
 
-  it('amortizes capacity pruning while retaining the newest replay records', () => {
+  it('retains replay records beyond the previous count limit', () => {
     db = new OrchestrationDb(':memory:')
     const sqlite = sqliteFor(db)
-    insertReceipts(sqlite, MUTATION_RECEIPT_MAX_ROWS, 'completed')
+    insertReceipts(sqlite, PREVIOUS_RECEIPT_LIMIT, 'completed')
 
     beginReceipt(db, 'first')
     const afterFirst = sqlite
@@ -138,20 +139,20 @@ describe('mutation receipt capacity schema', () => {
       .prepare('SELECT receipt_count FROM mutation_receipt_ledger')
       .get() as { receipt_count: number }
 
-    expect(afterFirst.receipt_count).toBe(MUTATION_RECEIPT_MAX_ROWS - 63)
+    expect(afterFirst.receipt_count).toBe(PREVIOUS_RECEIPT_LIMIT + 1)
     expect(afterSecond.receipt_count).toBe(afterFirst.receipt_count + 1)
-    expect(db.getMutationReceipt('caller', 'request_00064')).toBeUndefined()
+    expect(db.getMutationReceipt('caller', 'request_00064')).toMatchObject({ state: 'completed' })
     expect(db.getMutationReceipt('caller', 'request_00065')).toMatchObject({ state: 'completed' })
     expect(db.getMutationReceipt('caller', 'request_10000')).toMatchObject({ state: 'completed' })
   })
 
-  it('keeps the row limit exact across independent database connections', () => {
+  it('admits fresh receipts across independent connections past the previous limit', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'orca-mutation-receipt-concurrency-'))
     const dbPath = join(tempDir, 'orchestration.db')
     db = new OrchestrationDb(dbPath)
     secondDb = new OrchestrationDb(dbPath)
     const sqlite = sqliteFor(db)
-    insertReceipts(sqlite, MUTATION_RECEIPT_MAX_ROWS - 1, 'pending')
+    insertReceipts(sqlite, PREVIOUS_RECEIPT_LIMIT - 1, 'pending')
     sqlite.exec(`
       INSERT INTO mutation_receipts (
         caller_fingerprint, request_id, method, payload_hash, state
@@ -159,14 +160,10 @@ describe('mutation receipt capacity schema', () => {
     `)
 
     beginReceipt(db, 'first-connection')
-    expect(() => beginReceipt(secondDb!, 'second-connection')).toThrowError(
-      expect.objectContaining({ code: 'mutation_ledger_full' })
-    )
-    db.discardPendingMutationReceipt('new-caller', 'first-connection')
     beginReceipt(secondDb, 'second-connection')
 
     expect(sqlite.prepare('SELECT receipt_count FROM mutation_receipt_ledger').get()).toEqual({
-      receipt_count: MUTATION_RECEIPT_MAX_ROWS
+      receipt_count: PREVIOUS_RECEIPT_LIMIT + 2
     })
   })
 })
