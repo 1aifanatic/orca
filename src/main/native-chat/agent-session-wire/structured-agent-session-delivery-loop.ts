@@ -21,8 +21,6 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
-import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
-import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentSessionStartFailureCause } from './structured-agent-session-failure-text'
@@ -44,6 +42,7 @@ import { handOverSubmission } from './structured-agent-session-turns'
 import { structuredAgentSessionNextHandover } from './structured-agent-session-opening-send'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { holdRestartedStructuredAgentSessionSends } from './structured-agent-session-host-lifetime'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
@@ -193,11 +192,12 @@ export class StructuredAgentSessionDeliveryLoop {
     // The open already did, unless its write failed: a row an earlier handle wrote is never handed
     // over, whether it outlived a quit or a crash. A failure here throws before any message is
     // attempted, so none is handed over: the pass stops, and the next wake or open tries again.
-    await holdUnsentSends(session.journal, {
-      fence: this.deps.conversationFence(sessionId),
-      hostInstance: structuredAgentSessionHostInstance(),
-      hold: { cause: 'hostRestarted' }
-    })
+    await holdRestartedStructuredAgentSessionSends(
+      this.deps.logger,
+      sessionId,
+      session.journal,
+      this.deps.conversationFence(sessionId)
+    )
     if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)

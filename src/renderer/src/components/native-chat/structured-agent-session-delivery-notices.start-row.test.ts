@@ -1,6 +1,6 @@
 // A message rejected by a start whose row says why says only that it was not sent. A row keyed by
-// the message is its own start's and speaks for it alone; a chat an older host wrote has one row for
-// a batch, so a message with no row of its own takes any loaded row with the same failure.
+// the message is its own start's and speaks for it alone; a message with no row of its own, as in a
+// run or under an exit's row keyed by its start, takes any loaded row with the same failure.
 
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
@@ -14,8 +14,10 @@ import {
   agentJournalSubmissionKey
 } from '../../../../shared/agent-session-journal-item-key'
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
-import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
-import { entry, texts } from './structured-agent-session-delivery-notices.test-fixture'
+import {
+  structuredAgentSessionDeliveryNotices,
+  structuredAgentSessionStartFailureFacts
+} from './structured-agent-session-delivery-notices'
 
 const startFailed: AgentSessionFailureFact = {
   kind: 'startFailed',
@@ -28,15 +30,6 @@ const otherRefusal: AgentSessionFailureFact = {
 const NOT_SENT = 'Your message was not sent.'
 const START_FAILED_WORDS = "Claude couldn't start. Start a new chat to continue."
 
-const rejected = (id: string, fact: AgentSessionFailureFact) =>
-  entry(id, {
-    state: 'rejected',
-    lastFailure: {
-      kind: 'rejected',
-      reason: 'Written by the host.',
-      rejection: { kind: fact.kind }
-    }
-  })
 const recorded = (id: string, fact: AgentSessionFailureFact): AgentJournalSubmission => ({
   clientMessageId: id,
   fence: 1,
@@ -79,11 +72,13 @@ function noticesFor(
   ids: readonly [string, AgentSessionFailureFact][],
   items: readonly AgentJournalRenderItem[]
 ): Record<string, string> {
-  return texts(
-    ids.map(([id, fact]) => rejected(id, fact)),
-    ids.map(([id, fact]) => recorded(id, fact)),
-    structuredAgentSessionStartFailureFacts(items)
-  )
+  const notices = structuredAgentSessionDeliveryNotices({
+    pending: [],
+    submissions: ids.map(([id, fact]) => recorded(id, fact)),
+    agentName: 'Claude',
+    startFailures: structuredAgentSessionStartFailureFacts(items)
+  })
+  return Object.fromEntries([...notices].map(([id, notice]) => [id, notice.text ?? '']))
 }
 
 const key = agentJournalSubmissionKey
@@ -121,32 +116,8 @@ describe('a message rejected by a start whose row already says why', () => {
     })
   })
 
-  // v1.4.221: the row first, keyed by the oldest queued message, then every queued message rejected.
-  it("hushes a released host's batch, its row written before the rejections", () => {
-    expect(
-      noticesFor(
-        [
-          ['oldest', startFailed],
-          ['second', startFailed],
-          ['other', otherRefusal]
-        ],
-        [
-          row('oldest', startFailed, 1),
-          messageAt('oldest', 2),
-          messageAt('second', 3),
-          messageAt('other', 9)
-        ]
-      )
-    ).toEqual({
-      [key('oldest')]: NOT_SENT,
-      [key('second')]: NOT_SENT,
-      [key('other')]:
-        "Claude couldn't start. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
-    })
-  })
-
-  // Unreleased main: every queued message rejected, then the row keyed by the start's generation.
-  it('hushes a batch whose row was written after its rejections', () => {
+  // An exit: the messages it was handed rejected, then its row keyed by the start.
+  it('hushes the messages an exit rejected under its row keyed by the start', () => {
     expect(
       noticesFor(
         [
@@ -239,15 +210,5 @@ describe('a message rejected by a start whose row already says why', () => {
         [compactAt('compacted', 1), row('compacted', startFailed, 2), messageAt('later', 3)]
       )
     ).toEqual({ [key('compacted')]: NOT_SENT, [key('later')]: START_FAILED_WORDS })
-  })
-
-  it('keeps the full notice when the rejection is not loaded, or no start row states it', () => {
-    const stated = { itemId: rowKey('first'), fact: startFailed, ofCommand: false }
-    expect(texts([rejected('first', startFailed)], [], [stated])).toEqual({
-      [key('first')]: 'Written by the host.'
-    })
-    expect(texts([rejected('first', startFailed)], [recorded('first', startFailed)], [])).toEqual({
-      [key('first')]: START_FAILED_WORDS
-    })
   })
 })
