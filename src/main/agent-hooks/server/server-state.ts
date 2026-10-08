@@ -279,6 +279,8 @@ export abstract class AgentHookServerState {
     options?: { preserveResumeIdentity?: boolean; endedPresence?: AgentProcessPresence }
   ): number
 
+  protected abstract endPaneOwner(paneKey: string, owner: AgentProcessPresence): void
+
   protected abstract clearPaneState(
     paneKey: string,
     options?: {

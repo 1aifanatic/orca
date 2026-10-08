@@ -1,3 +1,4 @@
+import type { AgentHookSource } from './agent-hook-relay'
 export type AgentPromptInjectionMode =
   | 'argv'
   | 'flag-prompt'
@@ -32,6 +33,8 @@ export type TuiAgentConfig = {
   /** Platform-specific launch command when the public binary name differs. */
   launchCmdByPlatform?: Partial<Record<NodeJS.Platform, string>>
   expectedProcess: string
+  /** The agent this launch's hook events name, when not the launch itself (it runs another CLI's hooks). */
+  hookAgent?: AgentHookSource
   promptInjectionMode: AgentPromptInjectionMode
   /** Option terminator required before positional prompts that may look like CLI syntax. */
   argvPromptSeparator?: '--'
