@@ -8,7 +8,7 @@ import {
   parseJournalRow,
   type JournalRow
 } from './journal-row-schema'
-import { createJournalReducerState } from './journal-reducer'
+import { applyJournalRow, createJournalReducerState } from './journal-reducer'
 import {
   buildJournalItemRow,
   journalLifecycleBatchRowBuilder,
@@ -460,4 +460,77 @@ describe('producer linkage on the persisted row', () => {
     expect(parsed.ok && parsed.row.kind === 'item' && parsed.row.body).toEqual(smuggled.body)
     expect(parsed.ok && 'agentId' in parsed.row).toBe(false)
   })
+})
+
+describe('journal revision write admission', () => {
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, 1e100])(
+    'refuses revision %s in item and tombstone writes, including nested mutations',
+    (revision) => {
+      for (const kind of ['item', 'tombstone'] as const) {
+        const mutation = {
+          kind,
+          itemId: 'old',
+          revision,
+          ...(kind === 'item' ? { body: { kind: 'status', text: 'x' } } : {})
+        }
+        const row = { ...BASE, ...mutation }
+        expect(parseJournalRow(JSON.stringify(row), 'write').ok).toBe(false)
+        expect(
+          parseJournalRow(
+            JSON.stringify({
+              ...BASE,
+              kind: 'lifecycle-batch',
+              settlementId: 'end',
+              mutations: [mutation]
+            }),
+            'write'
+          ).ok
+        ).toBe(false)
+        expect(parseJournalRow(JSON.stringify(row)).ok).toBe(Number.isInteger(revision))
+      }
+    }
+  )
+
+  it('admits positive safe revisions through the last safe value', () => {
+    for (const revision of [1, Number.MAX_SAFE_INTEGER]) {
+      expect(
+        parseJournalRow(
+          JSON.stringify({ ...BASE, kind: 'tombstone', itemId: 'old', revision }),
+          'write'
+        ).ok
+      ).toBe(true)
+    }
+  })
+})
+
+it('preserves stored keys and reducer aliases across an item revision and a tombstone', () => {
+  const state = createJournalReducerState('session-1', 'epoch-1')
+  state.aliases.set('provider:opaque%ZZ', 'canonical')
+  state.tombstones.set('canonical', 7)
+  const row = buildJournalItemRow({
+    state,
+    itemId: 'provider:opaque%ZZ',
+    body: { kind: 'status', text: 'ended' },
+    seq: 1,
+    fence: 1,
+    ts: 1,
+    turnScope: AGENT_JOURNAL_THREAD_SCOPE
+  })
+  expect(row).toMatchObject({ itemId: 'provider:opaque%ZZ', revision: 8 })
+  expect(parseJournalRow(JSON.stringify(row), 'write').ok).toBe(true)
+  applyJournalRow(state, row)
+  expect([...state.items.keys()]).toEqual(['canonical'])
+  const removed = journalLifecycleBatchRowBuilder(
+    () => state,
+    'remove',
+    [{ kind: 'tombstone', itemId: 'provider:opaque%ZZ' }],
+    { fence: 1 }
+  )(2, 1)
+  expect(removed.mutations).toEqual([
+    { kind: 'tombstone', itemId: 'provider:opaque%ZZ', revision: 9 }
+  ])
+  expect(parseJournalRow(JSON.stringify(removed), 'write').ok).toBe(true)
+  applyJournalRow(state, removed)
+  expect(state.items.size).toBe(0)
+  expect(state.tombstones.get('canonical')).toBe(9)
 })

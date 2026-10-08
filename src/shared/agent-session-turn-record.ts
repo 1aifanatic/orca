@@ -10,6 +10,7 @@ import {
   type AgentJournalTurnLifecycle,
   type AgentJournalTurnOutcome
 } from './agent-session-journal-types'
+import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
 import { agentTurnLifecycleText } from './agent-turn-lifecycle-text'
 import { tuiAgentDisplayName } from './tui-agent-display-names'
 
@@ -57,7 +58,32 @@ export function readAgentJournalTurnOutcome(
 }
 
 export function agentJournalTurnBody(turn: AgentJournalTurnLifecycle): AgentJournalTurnItem {
-  return { kind: 'turn', ...turn }
+  const contextUsage = AgentSessionContextUsageSchema.safeParse(turn.contextUsage)
+  return {
+    kind: 'turn',
+    turnId: turn.turnId,
+    state: turn.state,
+    ...(nonemptyString(turn.outcome) ? { outcome: turn.outcome } : {}),
+    ...(nonemptyString(turn.userItemId) ? { userItemId: turn.userItemId } : {}),
+    ...(positiveTime(turn.startedAt) ? { startedAt: turn.startedAt } : {}),
+    ...(positiveTime(turn.requestedAt) ? { requestedAt: turn.requestedAt } : {}),
+    ...(positiveTime(turn.completedAt) ? { completedAt: turn.completedAt } : {}),
+    ...(typeof turn.durationMs === 'number' &&
+    Number.isFinite(turn.durationMs) &&
+    turn.durationMs >= 0
+      ? { durationMs: turn.durationMs }
+      : {}),
+    ...(contextUsage.success ? { contextUsage: contextUsage.data } : {}),
+    ...(nonemptyString(turn.providerTurnId) ? { providerTurnId: turn.providerTurnId } : {})
+  }
+}
+
+function nonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
+}
+
+function positiveTime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
 /** The pre-v3 carrier, for clients that predate the `turn` item. The agent name is the session's

@@ -228,11 +228,16 @@ export function serializeJournalRow(row: JournalRow): string {
   return JSON.stringify(row)
 }
 
+type JournalRowAdmission = 'read' | 'write'
+
 /**
  * Parse one persisted line. Older versions are upcast; newer versions and newer
  * kinds are reported as unreadable so the caller fails closed.
  */
-export function parseJournalRow(line: string): JournalRowParse {
+export function parseJournalRow(
+  line: string,
+  admission: JournalRowAdmission = 'read'
+): JournalRowParse {
   let parsed: unknown
   try {
     parsed = JSON.parse(line)
@@ -252,10 +257,10 @@ export function parseJournalRow(line: string): JournalRowParse {
   }
   const upcast = upcastRow(record, version)
   dropUnusableRowAnnotations(upcast)
-  if (isJournalRow(upcast)) {
+  if (isJournalRow(upcast, admission)) {
     return { ok: true, row: upcast }
   }
-  return { ok: false, unreadable: journalRowContent(upcast) === 'unreadable' }
+  return { ok: false, unreadable: journalRowContent(upcast, admission) === 'unreadable' }
 }
 
 /** Read-time upcast chain. Each step raises a row exactly one version. */
@@ -280,21 +285,27 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *  Render BODIES are the exception and validate against the canonical deep
  *  schema — their nested shapes are dereferenced unguarded all the way to the
  *  rendered surface, so a JSON-valid corruption must fail here, not there. */
-function journalRowContent(record: Record<string, unknown>): AgentJournalContentVerdict {
+function journalRowContent(
+  record: Record<string, unknown>,
+  admission: JournalRowAdmission
+): AgentJournalContentVerdict {
   if (!hasJournalRowEnvelope(record)) {
     return 'malformed'
   }
   const { kind } = record
   const contentCheck = typeof kind === 'string' ? KNOWN_ROW_KINDS.get(kind) : undefined
   if (contentCheck) {
-    return contentCheck(record)
+    return contentCheck(record, admission)
   }
   // A newer build's kind is placed by the envelope every row keeps.
   return isJournalTag(kind) ? 'unreadable' : 'malformed'
 }
 
-function isJournalRow(record: Record<string, unknown>): record is JournalRow {
-  return journalRowContent(record) === 'readable'
+function isJournalRow(
+  record: Record<string, unknown>,
+  admission: JournalRowAdmission
+): record is JournalRow {
+  return journalRowContent(record, admission) === 'readable'
 }
 
 /** A newer build's content anywhere wins over damage beside it: never delete what it wrote. */
@@ -313,17 +324,21 @@ function fieldsContent(hold: boolean): AgentJournalContentVerdict {
  *  to compile, never reads as a newer build's kind. */
 const ROW_CONTENT_CHECK_BY_KIND: Record<
   JournalRow['kind'],
-  (record: Record<string, unknown>) => AgentJournalContentVerdict
+  (record: Record<string, unknown>, admission: JournalRowAdmission) => AgentJournalContentVerdict
 > = {
   epoch: (record) =>
     fieldsContent(typeof record.reason === 'string' && isPlainObject(record.providerHandle)),
-  item: (record) =>
+  item: (record, admission) =>
     combinedContent(
-      fieldsContent(typeof record.itemId === 'string' && Number.isInteger(record.revision)),
+      fieldsContent(
+        typeof record.itemId === 'string' && isJournalRevision(record.revision, admission)
+      ),
       readAgentJournalItemBody(record.body)
     ),
-  tombstone: (record) =>
-    fieldsContent(typeof record.itemId === 'string' && Number.isInteger(record.revision)),
+  tombstone: (record, admission) =>
+    fieldsContent(
+      typeof record.itemId === 'string' && isJournalRevision(record.revision, admission)
+    ),
   submission: (record) =>
     combinedContent(
       fieldsContent(
@@ -343,7 +358,7 @@ const ROW_CONTENT_CHECK_BY_KIND: Record<
         (record.providerItemId === null || typeof record.providerItemId === 'string') &&
         (record.reason === null || typeof record.reason === 'string')
     ),
-  'lifecycle-batch': (record) => {
+  'lifecycle-batch': (record, admission) => {
     const mutations = Array.isArray(record.mutations) ? record.mutations : []
     return combinedContent(
       fieldsContent(
@@ -353,7 +368,7 @@ const ROW_CONTENT_CHECK_BY_KIND: Record<
           mutations.length <= MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS &&
           Buffer.byteLength(JSON.stringify(record), 'utf8') + 1 <= MAX_JOURNAL_LIFECYCLE_BATCH_BYTES
       ),
-      ...mutations.map(lifecycleMutationContent)
+      ...mutations.map((mutation) => lifecycleMutationContent(mutation, admission))
     )
   }
 }
@@ -374,29 +389,43 @@ function hasJournalRowEnvelope(record: Record<string, unknown>): boolean {
 /** Each mutation kind's own fields, keyed like the row kinds and for the same reason. */
 const MUTATION_CONTENT_CHECK_BY_KIND: Record<
   JournalLifecycleMutation['kind'],
-  (mutation: Record<string, unknown>) => AgentJournalContentVerdict
+  (mutation: Record<string, unknown>, admission: JournalRowAdmission) => AgentJournalContentVerdict
 > = {
-  item: (mutation) =>
+  item: (mutation, admission) =>
     combinedContent(
-      fieldsContent(typeof mutation.itemId === 'string' && Number.isInteger(mutation.revision)),
+      fieldsContent(
+        typeof mutation.itemId === 'string' && isJournalRevision(mutation.revision, admission)
+      ),
       readAgentJournalItemBody(mutation.body)
     ),
-  tombstone: (mutation) =>
-    fieldsContent(typeof mutation.itemId === 'string' && Number.isInteger(mutation.revision))
+  tombstone: (mutation, admission) =>
+    fieldsContent(
+      typeof mutation.itemId === 'string' && isJournalRevision(mutation.revision, admission)
+    )
 }
 export const KNOWN_MUTATION_KINDS = new Map(Object.entries(MUTATION_CONTENT_CHECK_BY_KIND))
 
 /** The kind first: a newer build's kind needs none of the fields this build's kinds have. */
-function lifecycleMutationContent(value: unknown): AgentJournalContentVerdict {
+function lifecycleMutationContent(
+  value: unknown,
+  admission: JournalRowAdmission
+): AgentJournalContentVerdict {
   if (!isPlainObject(value)) {
     return 'malformed'
   }
   const { kind } = value
   const contentCheck = typeof kind === 'string' ? KNOWN_MUTATION_KINDS.get(kind) : undefined
   if (contentCheck) {
-    return contentCheck(value)
+    return contentCheck(value, admission)
   }
   return isJournalTag(kind) ? 'unreadable' : 'malformed'
+}
+
+/** Legacy rows keep their read contract; new writes require positive safe integer revisions. */
+function isJournalRevision(value: unknown, admission: JournalRowAdmission): boolean {
+  return admission === 'write'
+    ? typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    : Number.isInteger(value)
 }
 
 /** Approximate on-disk cost of a row, used for the per-session size bound. */

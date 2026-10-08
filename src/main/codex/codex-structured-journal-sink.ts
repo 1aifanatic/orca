@@ -12,7 +12,7 @@ import type {
 import { partitionJournalLifecycleMutations } from '../native-chat/agent-session-journal/journal-lifecycle-batch-partition'
 import {
   journalLifecycleItemMutation,
-  type JournalLifecycleMutationInput
+  type JournalLifecycleIdentityMutationInput
 } from '../native-chat/agent-session-journal/journal-row-builders'
 import type { CodexPendingJournalPrompt } from './codex-structured-journal-settlement'
 import type { CodexJournalTranslationAdmission } from './codex-structured-journal-contracts'
@@ -23,7 +23,7 @@ const ADMITTED: StructuredAgentSessionSinkAdmission = { accepted: true }
 export function appendCodexLifecycleMutations(
   sink: StructuredAgentSessionEventSink,
   settlementId: string,
-  mutations: readonly JournalLifecycleMutationInput[]
+  mutations: readonly JournalLifecycleIdentityMutationInput[]
 ): StructuredAgentSessionSinkAdmission {
   const chunks = partitionJournalLifecycleMutations(settlementId, mutations)
   for (const { settlementId: id, mutations: chunk } of chunks) {

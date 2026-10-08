@@ -210,16 +210,14 @@ describe('provider-exit settlement', () => {
       }
     )
 
-    expect(session.journal.markPendingSubmissionsUnknown).toHaveBeenCalledWith(
-      7,
-      'provider_exited_before_acknowledgement'
-    )
+    expect(session.journal.markPendingSubmissionsUnknown).not.toHaveBeenCalled()
     expect(session.child).toBeNull()
     // The running row is revised to interrupted at exit receipt, never tombstoned.
     expect(appendLifecycleBatch).toHaveBeenCalledExactlyOnceWith({
       settlementId: `dead-generation:provider-exit:${SESSION}:7:${GENERATION}`,
       fence: 7,
       recovered: true,
+      dispatches: [],
       mutations: [
         {
           kind: 'item',
@@ -246,7 +244,7 @@ describe('provider-exit settlement', () => {
         },
         {
           kind: 'item',
-          identity: { provider: 'codex', threadId: 'thread-1', turnId: 'turn-2', ordinal: 0 },
+          itemId: 'codex:thread-1:turn-2:0',
           body: {
             kind: 'turn',
             turnId: 'turn-2',
@@ -379,12 +377,18 @@ describe('provider-exit settlement', () => {
       acquisitionGeneration: GENERATION
     })
 
-    expect(markPendingSubmissionsUnknown).toHaveBeenCalledWith(
-      7,
-      'provider_exited_before_acknowledgement'
-    )
+    expect(markPendingSubmissionsUnknown).not.toHaveBeenCalled()
     expect(session.journal.appendLifecycleBatch).toHaveBeenCalledWith(
       expect.objectContaining({
+        dispatches: [
+          {
+            clientMessageId: 'client-1',
+            state: 'unknown',
+            reason: 'provider_exited_before_acknowledgement',
+            fence: 7,
+            recovered: true
+          }
+        ],
         mutations: [
           expect.objectContaining({
             body: {

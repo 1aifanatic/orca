@@ -11,10 +11,7 @@ import type {
 import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { agentSessionJournalProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { journalRowSchemaVersion } from '../../../shared/agent-session-journal-types'
-import {
-  agentJournalLinkageFields,
-  namesAgentJournalProducer
-} from '../../../shared/agent-session-journal-producer'
+import { agentJournalLinkageFields } from '../../../shared/agent-session-journal-producer'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { JournalReducerState } from './journal-reducer'
 import type {
@@ -33,19 +30,32 @@ import { boundInlineText, DEFAULT_JOURNAL_PAYLOAD_LIMITS } from './journal-paylo
 import { assertSubmissionIdUnused } from './journal-write-guards'
 import { turnEndAfterStop } from './journal-stop-turn-end'
 import type { ResolveDispatchInput } from './journal-store-contracts'
+import {
+  journalLifecycleMutationItemId,
+  journalLifecycleMutationRow,
+  type JournalItemAddress,
+  type JournalLifecycleMutationInput
+} from './journal-lifecycle-mutation'
+export {
+  journalLifecycleItemMutation,
+  journalLifecycleMutationItemId,
+  journalLifecycleMutationRow,
+  type JournalLifecycleMutationInput,
+  type JournalLifecycleIdentityMutationInput
+} from './journal-lifecycle-mutation'
 
 type RowBuilder<T> = (seq: number, ts: number) => T
 
 export function journalItemRowBuilder(
   state: () => JournalReducerState,
-  identity: AgentJournalItemIdentity,
+  address: AgentJournalItemIdentity | string,
   body: AgentJournalItemBody,
   options: AgentJournalRowAttribution & { fence: number; observedAt?: number; recovered?: true }
 ): RowBuilder<JournalItemRow> {
   return (seq, ts) =>
     buildJournalItemRow({
       state: state(),
-      identity,
+      ...(typeof address === 'string' ? { itemId: address } : { identity: address }),
       body,
       seq,
       fence: options.fence,
@@ -144,53 +154,6 @@ function boundedDispatchReason(input: ResolveDispatchInput): string | null {
   return boundInlineText(input.reason, DEFAULT_JOURNAL_PAYLOAD_LIMITS).text
 }
 
-export type JournalLifecycleMutationInput =
-  | {
-      kind: 'item'
-      identity: AgentJournalItemIdentity
-      body: AgentJournalItemBody
-      /** Who wrote the row. Absent ⇒ the session's own agent on a first write,
-       *  and the row's existing producer on a revision. */
-      linkage?: AgentJournalProducerLinkage
-      /** Which turn the row belongs to. Kept from the write that creates the row. */
-      turnScope: AgentJournalTurnScope
-    }
-  | { kind: 'tombstone'; identity: AgentJournalItemIdentity }
-
-/** An item mutation from a writer that knows who produced the row. Needed
- *  because a batch can CREATE a row — a Codex child's prompt, or its item
- *  settled before any checkpoint landed — and one batch can mix producers.
- *  The session's own rows carry no key at all: absence is the claim. */
-export function journalLifecycleItemMutation(
-  attribution: AgentJournalRowAttribution,
-  identity: AgentJournalItemIdentity,
-  body: AgentJournalItemBody
-): JournalLifecycleMutationInput {
-  const { turnScope } = attribution
-  return namesAgentJournalProducer(attribution)
-    ? { kind: 'item', identity, body, turnScope, linkage: agentJournalLinkageFields(attribution) }
-    : { kind: 'item', identity, body, turnScope }
-}
-
-/** The persisted form of one mutation, shared with the partitioner's size probe
- *  so a chunk is measured with the linkage it will actually carry. */
-export function journalLifecycleMutationRow(
-  mutation: JournalLifecycleMutationInput,
-  itemId: string,
-  revision: number
-): JournalLifecycleMutation {
-  return mutation.kind === 'item'
-    ? {
-        kind: 'item',
-        itemId,
-        revision,
-        body: mutation.body,
-        turnScope: mutation.turnScope,
-        ...agentJournalLinkageFields(mutation.linkage)
-      }
-    : { kind: 'tombstone', itemId, revision }
-}
-
 export function journalLifecycleBatchRowBuilder(
   state: () => JournalReducerState,
   settlementId: string,
@@ -209,7 +172,7 @@ export function journalLifecycleBatchRowBuilder(
     const current = state()
     const revisions = new Map<string, number>()
     const built: JournalLifecycleMutation[] = mutations.map((mutation) => {
-      const itemId = agentJournalItemKey(mutation.identity)
+      const itemId = journalLifecycleMutationItemId(mutation)
       const resolved = current.aliases.get(itemId) ?? itemId
       const revision =
         (revisions.get(resolved) ??
@@ -256,18 +219,19 @@ export function journalRowBase(
   return { v: journalRowSchemaVersion(bodies), epoch, seq, fence, ts }
 }
 
-export function buildJournalItemRow(input: {
-  state: JournalReducerState
-  identity: AgentJournalItemIdentity
-  body: AgentJournalItemBody
-  seq: number
-  fence: number
-  ts: number
-  recovered?: true
-  linkage?: AgentJournalProducerLinkage
-  turnScope: AgentJournalTurnScope
-}): JournalItemRow {
-  const itemId = agentJournalItemKey(input.identity)
+export function buildJournalItemRow(
+  input: JournalItemAddress & {
+    state: JournalReducerState
+    body: AgentJournalItemBody
+    seq: number
+    fence: number
+    ts: number
+    recovered?: true
+    linkage?: AgentJournalProducerLinkage
+    turnScope: AgentJournalTurnScope
+  }
+): JournalItemRow {
+  const itemId = journalLifecycleMutationItemId(input)
   const resolved = input.state.aliases.get(itemId) ?? itemId
   // A tombstoned row keeps its revision in `tombstones`, and the reducer drops
   // any item at or below it — so a re-add has to outrank the tombstone too.
