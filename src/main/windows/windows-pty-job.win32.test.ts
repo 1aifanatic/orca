@@ -135,6 +135,35 @@ describeOnWindows('ConPTY job ownership', () => {
     30_000
   )
 
+  it.each(['dll', 'inbox'] as const)(
+    'retires a closed forwarding connection with the %s backend',
+    async (backend) => {
+      const result = await runProcess({
+        program: process.execPath,
+        args: [
+          join(process.cwd(), 'config', 'scripts', 'windows-pty-closed-forwarding-teardown.cjs'),
+          backend
+        ],
+        env: { ...process.env, ORCA_BACKGROUND_LAUNCH: '1' },
+        timeoutMs: 20_000
+      })
+      if (result.code === 0 && !result.timedOut) {
+        console.log(result.stdout)
+        if (result.stderr) {
+          console.error(result.stderr)
+        }
+      }
+      expect(result, `${result.stdout}\n${result.stderr}`).toMatchObject({
+        code: 0,
+        timedOut: false
+      })
+      expect(result.stdout).toContain('"phase":"complete"')
+      expect(result.stdout).toContain('"nativeExitCallbacks":1')
+      expect(result.stdout).toContain('"exitCallbacks":1')
+    },
+    30_000
+  )
+
   it('keeps the native table intact while shell cleanup overlaps new terminals', async () => {
     const result = await runProcess({
       program: process.execPath,

@@ -175,7 +175,7 @@ patchedDependencies:
   '@xterm/xterm@6.1.0-beta.303': dd0ccc59cd1ccf99f4d76e5aa2456da165fa0804dce19a833d7638bd07ffa393
   i18next-cli@1.74.2: 7955b89d3aa229f477408608d331f78c85148a85a85913729f89fac65ad8b207
   lint-staged@16.4.0: 7333b3837f80a7fbd045964db6d76ba4fc118e49134bdbabb00585b6b7b60673
-  node-pty@1.1.0: 0b1ed40ad9a9950b2a7b78f65950ed9450c85ae3f1e3a5560278a5af22ee188d
+  node-pty@1.1.0: 16c74b89ba1d82a59aa11d2c7682eda39dd422fac3a3a6762636575e7d4acd36
   vitest@5.0.3: 3d512e2cb30542921690d9fa925edf503d92dd7d58a4c4dd2aa2fa69e9a243f9
   ws@8.22.0: 9393e04dd9a90b01eb7aa35fcd5b1431b5038ce999fbbd82651136193ba51f14
 
@@ -218,7 +218,7 @@ importers:
         version: 3.3.1
       node-pty:
         specifier: ^1.1.0
-        version: 1.1.0(patch_hash=0b1ed40ad9a9950b2a7b78f65950ed9450c85ae3f1e3a5560278a5af22ee188d)
+        version: 1.1.0(patch_hash=16c74b89ba1d82a59aa11d2c7682eda39dd422fac3a3a6762636575e7d4acd36)
       posthog-node:
         specifier: ^5.52.5
         version: 5.52.5
@@ -13794,7 +13794,7 @@ snapshots:
 
   node-int64@0.4.0: {}
 
-  node-pty@1.1.0(patch_hash=0b1ed40ad9a9950b2a7b78f65950ed9450c85ae3f1e3a5560278a5af22ee188d):
+  node-pty@1.1.0(patch_hash=16c74b89ba1d82a59aa11d2c7682eda39dd422fac3a3a6762636575e7d4acd36):
     dependencies:
       node-addon-api: 7.1.1
 

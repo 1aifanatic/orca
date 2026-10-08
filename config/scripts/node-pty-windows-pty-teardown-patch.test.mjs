@@ -27,7 +27,7 @@ const {
 const projectDir = resolve(import.meta.dirname, '..', '..')
 const cleanupDirs = []
 
-const PATCHED_FILES = ['windowsPtyAgent.js', 'windowsTerminal.js']
+const PATCHED_FILES = ['windowsPtyAgent.js', 'windowsTerminal.js', 'windowsConoutConnection.js']
 
 /** The hunks config/patches/node-pty@1.1.0.patch adds to the installed desktop tree. */
 const DESKTOP_HUNKS = {
@@ -153,7 +153,7 @@ describe('Windows SSH relay node-pty ConPTY teardown patch', () => {
     const relayAgentPath = join(fixture.libDir, 'windowsPtyAgent.js')
     const relayAgent = readFileSync(relayAgentPath, 'utf8')
     expect(createHash('sha256').update(relayAgent).digest('hex')).toBe(
-      '1e23ef480569e73706e3ab4f5482c7e553c76f51414ae8e7b0bdcc2fd75f7280'
+      '3c14daf8d0ec2d1e2d66435caa5fb2b629b230e237873594e623e79e6a7d1223'
     )
     let legacy = publishedTerminal
     const priorReplacements = target.replacements.slice(
@@ -181,6 +181,64 @@ describe('Windows SSH relay node-pty ConPTY teardown patch', () => {
     )
   })
 
+  it('finishes interrupted previous relay upgrades in dependency order', () => {
+    const fixture = writeNodePtyFixture('1.1.0')
+    const originalConout = readFileSync(join(fixture.libDir, 'windowsConoutConnection.js'), 'utf8')
+    const asset = readFileSync(
+      join(projectDir, 'config', 'relay-assets', 'node-pty-1.1.0-windows-pty-teardown-patch.cjs'),
+      'utf8'
+    )
+    const { PATCH_TARGETS } = loadPatchTargets(asset)
+    patchNodePtyWindowsTeardown(fixture.root)
+    for (const file of ['windowsPtyAgent.js', 'windowsTerminal.js']) {
+      const target = PATCH_TARGETS.find((entry) => entry.relativePath.at(-1) === file)
+      const variant =
+        file === 'windowsPtyAgent.js'
+          ? { sha256: target.previousPatchedSha256, replacements: target.previousReplacements }
+          : target.additionalPreviousVariants[0]
+      let previous = readFileSync(join(fixture.libDir, file), 'utf8')
+      for (const [from, to] of variant.replacements.toReversed()) {
+        expect(previous.split(to).length - 1).toBe(1)
+        previous = previous.replace(to, from)
+      }
+      expect(createHash('sha256').update(previous).digest('hex')).toBe(
+        file === 'windowsPtyAgent.js'
+          ? '1e23ef480569e73706e3ab4f5482c7e553c76f51414ae8e7b0bdcc2fd75f7280'
+          : '3060c6514a8e9e3285f91b9b549930e7d25d59d4cf7e1ed3a25b9a680dd1ded5'
+      )
+      writeFileSync(join(fixture.libDir, file), previous)
+    }
+    writeFileSync(join(fixture.libDir, 'windowsConoutConnection.js'), originalConout)
+    const previous = PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))
+    const completed = []
+    const installOrder = ['windowsConoutConnection.js', 'windowsPtyAgent.js', 'windowsTerminal.js']
+    patchNodePtyWindowsTeardown(fixture.root)
+    for (const file of installOrder) {
+      completed.push(readFileSync(join(fixture.libDir, file), 'utf8'))
+    }
+    for (let prefix = 0; prefix < installOrder.length; prefix += 1) {
+      for (const [index, file] of PATCHED_FILES.entries()) {
+        writeFileSync(join(fixture.libDir, file), previous[index])
+      }
+      for (let index = 0; index < prefix; index += 1) {
+        writeFileSync(join(fixture.libDir, installOrder[index]), completed[index])
+      }
+      patchNodePtyWindowsTeardown(fixture.root)
+      expect(() => assertPatchedNodePtyWindowsTeardown(fixture.root)).not.toThrow()
+    }
+    expect(() => assertPatchedNodePtyWindowsTeardown(fixture.root)).not.toThrow()
+    for (const file of ['windowsTerminal.js', 'windowsConoutConnection.js']) {
+      expect(readFileSync(join(fixture.libDir, file), 'utf8')).toBe(
+        readFileSync(desktopPath(file), 'utf8')
+      )
+    }
+    const once = PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))
+    patchNodePtyWindowsTeardown(fixture.root)
+    expect(PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))).toEqual(
+      once
+    )
+  })
+
   it('refuses a different package version or unexpected source', () => {
     const wrongVersion = writeNodePtyFixture('1.2.0-beta.11')
     expect(() => patchNodePtyWindowsTeardown(wrongVersion.root)).toThrow('expected 1.1.0')
@@ -189,7 +247,11 @@ describe('Windows SSH relay node-pty ConPTY teardown patch', () => {
       const drifted = writeNodePtyFixture('1.1.0')
       const path = join(drifted.libDir, file)
       writeFileSync(path, `${readFileSync(path, 'utf8')}\n// drift`)
+      const before = PATCHED_FILES.map((entry) => readFileSync(join(drifted.libDir, entry), 'utf8'))
       expect(() => patchNodePtyWindowsTeardown(drifted.root)).toThrow('unexpected node-pty')
+      expect(
+        PATCHED_FILES.map((entry) => readFileSync(join(drifted.libDir, entry), 'utf8'))
+      ).toEqual(before)
     }
   })
 
@@ -213,7 +275,7 @@ function writeNodePtyFixture(version) {
   writeFileSync(join(root, 'node_modules', 'node-pty', 'package.json'), JSON.stringify({ version }))
   for (const file of PATCHED_FILES) {
     const desktop = readFileSync(desktopPath(file), 'utf8')
-    for (const [marker] of DESKTOP_HUNKS[file]) {
+    for (const [marker] of DESKTOP_HUNKS[file] || []) {
       expect(desktop).toContain(marker)
     }
     writeFileSync(join(libDir, file), unapplyDesktopHunks(file, desktop))
@@ -231,7 +293,17 @@ function writeNodePtyFixture(version) {
  */
 function unapplyDesktopHunks(file, desktop) {
   if (file === 'windowsPtyAgent.js') {
+    const asset = readFileSync(
+      join(projectDir, 'config', 'relay-assets', 'node-pty-1.1.0-windows-pty-teardown-patch.cjs'),
+      'utf8'
+    )
+    const { PATCH_TARGETS } = loadPatchTargets(asset)
+    const target = PATCH_TARGETS.find((entry) => entry.relativePath.at(-1) === file)
     let published = desktop
+    for (const [from, to] of target.replacements.slice(1).toReversed()) {
+      expect(published.split(to).length - 1).toBe(1)
+      published = published.replace(to, from)
+    }
     for (const [patched, original] of DESKTOP_HUNKS[file]) {
       expect(published.split(patched).length - 1).toBe(1)
       published = published.replace(patched, original)
