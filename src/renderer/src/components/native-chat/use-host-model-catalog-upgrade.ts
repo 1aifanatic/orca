@@ -107,12 +107,15 @@ export function useHostModelCatalogUpgrade(args: {
       )
     const apply = (catalog: AgentSessionModelCatalogResult | null): void => {
       const next = readAgentSessionUnavailable(catalog?.unavailable)
-      setVerdict((current) =>
-        JSON.stringify(current?.key === waitKey ? current.unavailable : null) ===
-        JSON.stringify(next)
+      setVerdict((current) => {
+        const shown = current?.key === waitKey ? current.unavailable : null
+        // A reason the host is still re-checking is kept where shown but never newly shown: the
+        // joined read's answer decides, so a fixed sign-in never flashes the old notice.
+        return JSON.stringify(shown) === JSON.stringify(next) ||
+          (catalog?.listingInProgress === true && next !== null)
           ? current
           : { key: waitKey, unavailable: next }
-      )
+      })
       if (!catalog) {
         return
       }

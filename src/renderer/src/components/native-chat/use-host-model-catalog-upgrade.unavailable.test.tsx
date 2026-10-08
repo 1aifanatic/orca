@@ -165,7 +165,7 @@ describe("a chat's sign-in verdict", () => {
     expect(result.current.unavailable).toBeNull()
   })
 
-  it('follows a probe the host is re-running beside a catalog with one waiting read', async () => {
+  it('never newly shows a reason the host is still re-checking: a fixed sign-in does not flash', async () => {
     const reads = catalogReads()
     const { result } = renderOptions()
     await reads.answer(0, { ...HOST_CATALOG, unavailable: SIGNED_OUT, listingInProgress: true })
@@ -174,17 +174,31 @@ describe("a chat's sign-in verdict", () => {
     // The catalog in hand is shown; only the notice waits on the answer.
     const model = result.current.optionSnapshot.find((entry) => entry.id === 'model')!
     expect(model.choicesPending).toBeUndefined()
-    expect(result.current.unavailable).toEqual(SIGNED_OUT)
+    expect(result.current.unavailable).toBeNull()
     await reads.answer(1, HOST_CATALOG)
     expect(result.current.unavailable).toBeNull()
   })
 
-  it('a past-TTL re-read of a verdict with no catalog does not set choicesPending', async () => {
+  it('shows a re-checked reason once the probe confirms it', async () => {
     const reads = catalogReads()
     const { result } = renderOptions()
     await reads.answer(0, { origin: 'unknown', unavailable: SIGNED_OUT, listingInProgress: true })
-    expect(reads.params(1)).toEqual({ agent: 'codex', sessionId, waitForListing: true })
+    expect(result.current.unavailable).toBeNull()
+    await reads.answer(1, { origin: 'unknown', unavailable: SIGNED_OUT })
+    expect(result.current.unavailable).toEqual(SIGNED_OUT)
+  })
+
+  it('keeps a shown reason, and the picker settled, while the host re-checks it', async () => {
+    const reads = catalogReads()
+    const { result } = renderOptions()
+    await reads.answer(0, { origin: 'unknown', unavailable: SIGNED_OUT })
+    await focusWindow()
+    await reads.answer(1, { origin: 'unknown', unavailable: SIGNED_OUT, listingInProgress: true })
+    expect(result.current.unavailable).toEqual(SIGNED_OUT)
+    expect(reads.params(2)).toEqual({ agent: 'codex', sessionId, waitForListing: true })
     const model = result.current.optionSnapshot.find((entry) => entry.id === 'model')!
     expect(model.choicesPending).toBeUndefined()
+    await reads.answer(2, { origin: 'unknown' })
+    expect(result.current.unavailable).toBeNull()
   })
 })
