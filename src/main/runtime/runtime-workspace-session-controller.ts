@@ -177,24 +177,23 @@ export class RuntimeWorkspaceSessionController {
     worktreeId: string,
     store: RuntimeStore
   ): ExecutionHostId | null {
-    const hostId = this.tryGetPreferredHostId(worktreeId, store)
     const repoId = catalogRepoId(worktreeId)
-    // A repo missing from the catalog defaults to local, which SSH rows for it contradict.
-    if (hostId === LOCAL_EXECUTION_HOST_ID && repoId && !store.getRepo?.(repoId)) {
-      const hasSshRows = (store.getWorkspaceSessionHostIds?.() ?? []).some(
-        (partition) =>
-          parseExecutionHostId(partition)?.kind === 'ssh' &&
-          (store.getWorkspaceSession?.(partition).tabsByWorktree[worktreeId]?.length ?? 0) > 0
-      )
-      return hasSshRows ? null : hostId
+    if (!repoId || store.getRepo?.(repoId)) {
+      return this.tryGetPreferredHostId(worktreeId, store)
     }
-    return hostId
+    // An uncatalogued repo's home is the one partition holding its rows; rows in two are ambiguous.
+    const holders = (store.getWorkspaceSessionHostIds?.() ?? []).filter(
+      (hostId) =>
+        isTerminalOwnerPartition(hostId) &&
+        (store.getWorkspaceSession?.(hostId).tabsByWorktree[worktreeId]?.length ?? 0) > 0
+    )
+    return holders.length > 1 ? null : (holders[0] ?? LOCAL_EXECUTION_HOST_ID)
   }
 
   /**
    * Worktrees with terminal rows in their home partition. `runtime:` homes are another server's;
-   * a home that can't be resolved (a missing or ambiguous folder, an uncatalogued repo with SSH
-   * rows) maps to null.
+   * a home that can't be resolved (a missing or ambiguous folder, an uncatalogued repo with rows in
+   * two partitions) maps to null.
    */
   getTerminalTopologyOwners(): TerminalTopologyOwners {
     const owners: TerminalTopologyOwners = new Map()

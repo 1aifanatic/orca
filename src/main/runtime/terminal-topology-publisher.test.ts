@@ -192,12 +192,14 @@ describe('TerminalTopologyPublisher', () => {
     ])
   })
 
-  it('names no push for an unresolved worktree, whose writes its last slice does not hold', () => {
+  it('names the last slice for an unresolved worktree, whose writes are refused', () => {
     const h = harness(sessionWith([WT]))
+    const seq = h.publisher.settle(WT)
     h.unresolve(WT)
     h.publisher.markDirty()
 
-    expect(h.publisher.settle(WT)).toBeUndefined()
+    expect(h.publisher.settle(WT)).toBe(seq)
+    expect(h.pushes).toEqual([])
   })
 
   it('keeps publishSeq monotonic across pushes', async () => {

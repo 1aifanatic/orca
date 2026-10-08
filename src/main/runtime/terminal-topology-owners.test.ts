@@ -116,17 +116,28 @@ describe('terminal topology owners', () => {
     )
   })
 
-  it('marks an uncatalogued repo with SSH rows unresolved, and keeps one with only local rows', () => {
+  it('homes an uncatalogued repo in the one partition holding its rows, and none when two do', () => {
     const ssh = sessionWith([UNCATALOGUED_WT])
     const controller = controllerFor(new Map([['ssh:c1', ssh]]))
-
-    expect(controller.getTerminalTopologyOwners()).toEqual(new Map([[UNCATALOGUED_WT, null]]))
-    expect(controller.getTerminalTopologyHomeHostId(UNCATALOGUED_WT)).toBeNull()
+    expect(controller.getTerminalTopologyOwners()).toEqual(
+      new Map([[UNCATALOGUED_WT, { hostId: 'ssh:c1', session: ssh }]])
+    )
+    expect(controller.getTerminalTopologyHomeHostId(UNCATALOGUED_WT)).toBe('ssh:c1')
 
     const local = sessionWith([UNCATALOGUED_WT])
     expect(ownersFor(new Map([['local', local]]))).toEqual(
       new Map([[UNCATALOGUED_WT, { hostId: 'local', session: local }]])
     )
+    expect(controllerFor(new Map()).getTerminalTopologyHomeHostId(UNCATALOGUED_WT)).toBe('local')
+
+    const both = controllerFor(
+      new Map([
+        ['local', sessionWith([UNCATALOGUED_WT])],
+        ['ssh:c1', sessionWith([UNCATALOGUED_WT])]
+      ])
+    )
+    expect(both.getTerminalTopologyOwners()).toEqual(new Map([[UNCATALOGUED_WT, null]]))
+    expect(both.getTerminalTopologyHomeHostId(UNCATALOGUED_WT)).toBeNull()
   })
 
   it('resolves one home for a layout write, and none for a runtime or ambiguous worktree', () => {

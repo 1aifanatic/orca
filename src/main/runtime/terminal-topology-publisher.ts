@@ -19,10 +19,8 @@ export type TerminalTopologySink = (slice: TerminalTopologySlice) => void
  * Compares by value because some persistence writers edit session objects in place.
  */
 export class TerminalTopologyPublisher {
+  /** A withdrawn worktree keeps its empty slice, so a reply can still name that push. */
   private readonly published = new Map<string, PublishedSlice>()
-  /** A withdrawn worktree's empty-slice seq, until it publishes again. */
-  private readonly withdrawn = new Map<string, number>()
-  private owners: TerminalTopologyOwners = new Map()
   private lastSeq = 0
   private dirty = false
   private failureLogged = false
@@ -59,17 +57,12 @@ export class TerminalTopologyPublisher {
 
   /**
    * A publishSeq whose push includes every write made before this call; none for a worktree main
-   * publishes no slice for, or whose owner is unresolved, since no push carries its writes.
+   * publishes no slice for, since no push will ever carry it. An unresolved owner's writes are
+   * refused, so its last slice stands.
    */
   settle(worktreeId?: string): number | undefined {
     this.flush()
-    if (worktreeId === undefined) {
-      return this.lastSeq
-    }
-    if (this.owners.get(worktreeId) === null) {
-      return undefined
-    }
-    return this.published.get(worktreeId)?.publishSeq ?? this.withdrawn.get(worktreeId)
+    return worktreeId === undefined ? this.lastSeq : this.published.get(worktreeId)?.publishSeq
   }
 
   /** Every current slice, for a window that loaded after pushes it never saw. */
@@ -82,34 +75,25 @@ export class TerminalTopologyPublisher {
 
   private reconcile(): void {
     const owners = this.readOwners()
-    this.owners = owners
-    const changed: UnsequencedTerminalTopologySlice[] = []
+    const next: UnsequencedTerminalTopologySlice[] = []
     for (const [worktreeId, owner] of owners) {
-      if (!owner) {
-        continue // The last slice stands until the owner resolves.
-      }
-      const next = projectTerminalTopologySlice(owner.session, owner.hostId, worktreeId)
-      if (!isDeepStrictEqual(this.published.get(worktreeId)?.snapshot, next)) {
-        changed.push(structuredClone(next))
+      // The last slice stands until the owner resolves.
+      if (owner) {
+        next.push(projectTerminalTopologySlice(owner.session, owner.hostId, worktreeId))
       }
     }
-    const removed: UnsequencedTerminalTopologySlice[] = []
+    const withdrawn: UnsequencedTerminalTopologySlice[] = []
     for (const [worktreeId, { snapshot }] of this.published) {
       if (!owners.has(worktreeId)) {
-        removed.push(emptyTerminalTopologySlice(snapshot.hostId, worktreeId, snapshot.revision))
+        withdrawn.push(emptyTerminalTopologySlice(snapshot.hostId, worktreeId, snapshot.revision))
       }
     }
-    for (const snapshot of removed) {
-      const publishSeq = ++this.lastSeq
-      this.published.delete(snapshot.worktreeId)
-      this.withdrawn.set(snapshot.worktreeId, publishSeq)
-      this.sink(sequenced({ publishSeq, snapshot }))
-    }
-    for (const snapshot of changed) {
-      const entry = { publishSeq: ++this.lastSeq, snapshot }
-      this.withdrawn.delete(snapshot.worktreeId)
-      this.published.set(snapshot.worktreeId, entry)
-      this.sink(sequenced(entry))
+    for (const snapshot of [...withdrawn, ...next]) {
+      if (!isDeepStrictEqual(this.published.get(snapshot.worktreeId)?.snapshot, snapshot)) {
+        const entry = { publishSeq: ++this.lastSeq, snapshot: structuredClone(snapshot) }
+        this.published.set(snapshot.worktreeId, entry)
+        this.sink(sequenced(entry))
+      }
     }
   }
 }
