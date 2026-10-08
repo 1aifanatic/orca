@@ -64,9 +64,7 @@ function readCommandReceiptCandidates(
         ? db
             .prepare(`${SELECT_RECEIPT} WHERE caller_key = ? AND operation_id = ?`)
             .all(scope.callerKey, operationId)
-        : db
-            .prepare(`${SELECT_RECEIPT} WHERE operation_id = ? ORDER BY accepted_at, caller_key`)
-            .all(operationId)
+        : db.prepare(`${SELECT_RECEIPT} WHERE operation_id = ? ORDER BY rowid`).all(operationId)
     const receipts: CommandReceipt[] = []
     for (const row of rows) {
       if (

@@ -88,10 +88,8 @@ CREATE TABLE IF NOT EXISTS agent_session_command_receipts (
   result_json   TEXT,
   rejection_json TEXT,
   accepted_at   INTEGER NOT NULL,
-  PRIMARY KEY (caller_key, operation_id)
+  PRIMARY KEY (operation_id, caller_key)
 );
-CREATE INDEX IF NOT EXISTS agent_session_command_receipts_operation
-  ON agent_session_command_receipts (operation_id);
 CREATE INDEX IF NOT EXISTS agent_session_command_receipts_session
   ON agent_session_command_receipts (session_id);
 `)

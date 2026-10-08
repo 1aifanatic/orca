@@ -143,12 +143,12 @@ describe('command receipt identity', () => {
   })
 
   it.each([500, 1000])(
-    'orders global candidates by time then caller and checks every fingerprint (%i)',
+    'orders global candidates by insertion and checks every fingerprint (%i)',
     (acceptedAt) => {
-      const later = cancelReceipt('caller-b', 'turn-b')
-      const first = { ...cancelReceipt('caller-a', 'turn-a'), acceptedAt }
-      expect(insert(later, commandReceiptScope(later.callerKey))).toEqual({ inserted: true })
+      const first = cancelReceipt('caller-b', 'turn-b')
+      const later = { ...cancelReceipt('caller-a', 'turn-a'), acceptedAt }
       expect(insert(first, commandReceiptScope(first.callerKey))).toEqual({ inserted: true })
+      expect(insert(later, commandReceiptScope(later.callerKey))).toEqual({ inserted: true })
       expect(read(later)).toEqual({ verdict: 'readable', receipt: first })
       expect(insert({ ...later, callerKey: 'caller-c' })).toEqual({
         inserted: false,

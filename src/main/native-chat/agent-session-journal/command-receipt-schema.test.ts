@@ -46,14 +46,14 @@ function hasReceiptTable(db: Database.Database): boolean {
 }
 
 describe('command receipt schema at writable open', () => {
-  it('creates the caller/id primary key and lookup indexes on a fresh host database', () => {
+  it('creates the operation/caller primary key and session index on a fresh host database', () => {
     const database = openTestJournalHostDatabase(root)
     expect(hasReceiptTable(database.db)).toBe(true)
     expect(journalPragmaNumber(database.db, 'user_version')).toBe(JOURNAL_DB_SCHEMA_VERSION)
     expect(database.db.prepare('PRAGMA table_info(agent_session_command_receipts)').all()).toEqual([
-      expect.objectContaining({ name: 'operation_id', pk: 2 }),
+      expect.objectContaining({ name: 'operation_id', pk: 1 }),
       expect.objectContaining({ name: 'session_id', pk: 0 }),
-      expect.objectContaining({ name: 'caller_key', pk: 1 }),
+      expect.objectContaining({ name: 'caller_key', pk: 2 }),
       expect.objectContaining({ name: 'method', pk: 0 }),
       expect.objectContaining({ name: 'fingerprint', pk: 0 }),
       expect.objectContaining({ name: 'status', pk: 0 }),
@@ -61,14 +61,20 @@ describe('command receipt schema at writable open', () => {
       expect.objectContaining({ name: 'rejection_json', pk: 0 }),
       expect.objectContaining({ name: 'accepted_at', pk: 0 })
     ])
-    for (const [index, column] of [
-      ['operation', 'operation_id'],
-      ['session', 'session_id']
-    ] as const) {
-      expect(
-        database.db.prepare(`PRAGMA index_info(agent_session_command_receipts_${index})`).all()
-      ).toEqual([expect.objectContaining({ name: column })])
-    }
+    const indexes = database.db.prepare('PRAGMA index_list(agent_session_command_receipts)').all()
+    expect(indexes).toHaveLength(2)
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'sqlite_autoindex_agent_session_command_receipts_1',
+          origin: 'pk'
+        }),
+        expect.objectContaining({ name: 'agent_session_command_receipts_session', origin: 'c' })
+      ])
+    )
+    expect(
+      database.db.prepare('PRAGMA index_info(agent_session_command_receipts_session)').all()
+    ).toEqual([expect.objectContaining({ name: 'session_id' })])
     expect(
       database.db.prepare('PRAGMA foreign_key_list(agent_session_command_receipts)').all()
     ).toEqual([
