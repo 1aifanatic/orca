@@ -196,7 +196,7 @@ it('holds the created first message until the child proves its start, then hands
   let generation = ''
   rig.adapter.acquire.mockImplementationOnce(async (input) => {
     const child = await spawn(input)
-    generation = child.acquisitionGeneration
+    generation = child.acquisitionGeneration ?? ''
     return { ...child, providerChildPhase: 'starting' as const }
   })
   expect(

@@ -8,8 +8,7 @@ import type { AgentSessionConversationCommand } from '../../../../shared/agent-s
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
-import { takeBackLegacyStructuredLaunchPrompts } from '@/lib/structured-agent-session-launch-prompt'
-import { useStructuredLaunchCreateSupport } from '@/lib/structured-agent-session-launch-create-support'
+import { useStructuredLegacyLaunchStop } from '@/lib/structured-agent-session-legacy-launch-stop'
 import {
   supportsStructuredAgentSessionPromptCancel,
   supportsStructuredAgentSessionQuestionAnswers
@@ -93,7 +92,7 @@ export function useStructuredAgentSession(args: {
     enabled: transportEnabled
   })
   const commandPending = useRef(false)
-  const createMessageSupport = useStructuredLaunchCreateSupport(sessionId)
+  const legacyLaunchStop = useStructuredLegacyLaunchStop(sessionId)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
     conversationCommands,
@@ -269,9 +268,7 @@ export function useStructuredAgentSession(args: {
     turnId: transportState.turnId,
     ...structuredAgentSessionStopControl({
       published: transportEnabled,
-      ...(createMessageSupport === false
-        ? { legacyLaunch: { takeBackText: () => takeBackLegacyStructuredLaunchPrompts(sessionId) } }
-        : {}),
+      ...legacyLaunchStop,
       host: stopControl,
       transportState,
       sends: {

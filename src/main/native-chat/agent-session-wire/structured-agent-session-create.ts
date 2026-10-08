@@ -25,6 +25,7 @@ import {
   hostCanStartRecord
 } from './structured-agent-session-provider-support'
 import { performSend } from './structured-agent-session-turns'
+import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
 
@@ -265,12 +266,20 @@ async function foundConversation(
   }
 }
 
-export function structuredAgentSessionCreateDelegate(
+/** Host entry points that open a chat: attach an existing one or create a new one. */
+export function structuredAgentSessionEntryDelegates(
   context: () => StructuredAgentSessionAttachContext
 ) {
-  return (
-    caller: StructuredAgentSessionCaller,
-    params: AgentSessionAttachParams,
-    options?: StructuredAgentSessionCreateOptions
-  ) => createStructuredAgentSession(context(), caller.callerKey, params, options)
+  return {
+    attach: (
+      caller: StructuredAgentSessionCaller,
+      params: AgentSessionAttachParams,
+      options?: Parameters<typeof attachStructuredAgentSession>[3]
+    ) => attachStructuredAgentSession(context(), caller.callerKey, params, options),
+    create: (
+      caller: StructuredAgentSessionCaller,
+      params: AgentSessionAttachParams,
+      options?: StructuredAgentSessionCreateOptions
+    ) => createStructuredAgentSession(context(), caller.callerKey, params, options)
+  }
 }
