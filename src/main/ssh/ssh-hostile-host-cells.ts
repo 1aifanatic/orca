@@ -285,9 +285,11 @@ export function hostileHostCellViolations(
       `refusals ${describeRefusals(observed.refusals)}, expected ${describeRefusals(expectedRefusals)}`
     )
   }
-  // Why every ladder outcome: no rung may reach for npm or a compiler.
-  if (expect.outcome !== 'legacy_opt_out' && observed.forbiddenToolCalls.length > 0) {
-    violations.push(`toolchain invoked: ${observed.forbiddenToolCalls.join('; ')}`)
+  // Why every ladder outcome: nothing may install or compile. A version probe is read-only; the
+  // host-Node fallback asks `npm --version` before it settles D on a host with no usable npm.
+  const toolchainActions = observed.forbiddenToolCalls.filter((call) => !isReadOnlyToolProbe(call))
+  if (expect.outcome !== 'legacy_opt_out' && toolchainActions.length > 0) {
+    violations.push(`toolchain invoked: ${toolchainActions.join('; ')}`)
   }
   switch (expect.outcome) {
     case 'launched':
@@ -319,6 +321,11 @@ export function hostileHostCellViolations(
       break
   }
   return violations
+}
+
+/** A shim call that only asks a tool its version, as `<tool> --version` or `<tool> -v`. */
+export function isReadOnlyToolProbe(call: string): boolean {
+  return /^\S+ (?:--version|-v)$/.test(call.trim())
 }
 
 export function parseForbiddenToolLog(contents: string): string[] {

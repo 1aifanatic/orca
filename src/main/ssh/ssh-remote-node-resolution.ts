@@ -46,8 +46,10 @@ export async function resolveRemoteNodePath(
   // This doesn't depend on shell startup-file semantics — bash -lc skips
   // .bashrc and zsh -lc skips .zshrc, but those are exactly the files where
   // nvm/mise/asdf hooks live. Probing directories directly is deterministic.
-  const npmCheck: CandidateCheck<true> = async (candidate) =>
-    (await nodeToolchainMeetsRequirements(conn, candidate, options)) || null
+  // Why memoized: the login shell often names the Node the path probe already rejected.
+  const npmCheck = memoizeCandidateCheck<true>(
+    async (candidate) => (await nodeToolchainMeetsRequirements(conn, candidate, options)) || null
+  )
   const probed = await tryResolveViaKnownPaths(conn, npmCheck, options)
   if (probed) {
     return probed.nodePath
@@ -64,6 +66,19 @@ export async function resolveRemoteNodePath(
 }
 
 export type CandidateCheck<T> = (candidate: string) => Promise<T | null>
+
+/** Probes each candidate path once per resolution, however many strategies name it. */
+export function memoizeCandidateCheck<T>(check: CandidateCheck<T>): CandidateCheck<T> {
+  const results = new Map<string, Promise<T | null>>()
+  return (candidate) => {
+    let result = results.get(candidate)
+    if (!result) {
+      result = check(candidate)
+      results.set(candidate, result)
+    }
+    return result
+  }
+}
 type ResolvedCandidate<T> = { nodePath: string; result: T }
 /** `strict` rethrows unanswered probes rather than reading them as "no Node here". */
 export type ProbeOptions = RemoteNodeResolutionOptions & { strict?: boolean }

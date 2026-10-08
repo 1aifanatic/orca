@@ -727,6 +727,23 @@ describe('resolveRemoteNodePath', () => {
       await expect(resolveRemoteNodePath(conn, undefined, { strict: true })).rejects.toBe(lost)
     })
 
+    it('probes a Node the login shell names again only once', async () => {
+      execCommandMock
+        .mockResolvedValueOnce('/usr/local/bin/node\n') // path probe
+        .mockResolvedValueOnce('__node__\nv20.0.0\n') // toolchain probe: npm missing
+        .mockResolvedValueOnce('/bin/bash') // $SHELL
+        .mockResolvedValueOnce('/usr/local/bin/node\n') // login shell: the same Node
+        .mockResolvedValueOnce('') // package manager hint probe
+
+      await expect(resolveRemoteNodePath(conn, undefined, { strict: true })).rejects.toBeInstanceOf(
+        RemoteNodeNotFoundError
+      )
+      const npmProbes = execCommandMock.mock.calls.filter(([, command]) =>
+        String(command).includes('npm --version')
+      )
+      expect(npmProbes).toHaveLength(1)
+    })
+
     it('proves a POSIX host has no Node when every probe answered', async () => {
       execCommandMock
         .mockResolvedValueOnce('') // path probe: nothing
