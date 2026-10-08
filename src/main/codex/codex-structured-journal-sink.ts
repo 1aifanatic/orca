@@ -1,3 +1,6 @@
+import type { CodexItemStreamState } from './codex-structured-item-stream-contracts'
+import { codexStreamingJournalItem } from './codex-structured-item-translation'
+import { withJournalReasoningLifecycle } from '../native-chat/agent-session-journal/journal-reasoning-row'
 import type {
   AgentJournalItemBody,
   AgentJournalItemIdentity,
@@ -163,4 +166,23 @@ export function admitCodexLifecycleItems(
     }
   }
   return publishCodexLifecycle(sink)
+}
+
+export function appendCodexStreamCheckpoint(
+  sink: StructuredAgentSessionEventSink,
+  attribution: AgentJournalRowAttribution,
+  state: CodexItemStreamState,
+  text: string
+): boolean {
+  const translated = codexStreamingJournalItem(state.item, text)
+  if (!translated.body) {
+    return true
+  }
+  // A stream only ever carries an item that has not completed yet.
+  const body = withJournalReasoningLifecycle(translated.body, { state: 'running' })
+  return appendCodexItemAndPublish(sink, state.identity, body, {
+    ...attribution,
+    providerObservedAt: state.providerObservedAt,
+    ...(state.startedAt === undefined ? {} : { observedAt: state.startedAt })
+  }).accepted
 }

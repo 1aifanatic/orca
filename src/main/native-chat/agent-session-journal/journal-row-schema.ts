@@ -55,6 +55,8 @@ type JournalRowBase = AgentJournalProducerLinkage & {
   fence: number
   /** Observed (provider or host) timestamp. Ordering is by `seq`, not by this. */
   ts: number
+  /** Receipt of live provider output, distinct from an item's pinned start timestamp. */
+  providerObservedAt?: number
   /** Set when crash reconciliation appended the row after the fact. */
   recovered?: true
   /** Which turn the item this row creates belongs to. Rides the base, and is not a `v` bump,

@@ -108,7 +108,10 @@ export function journalClaudeMessage(
     // output; a reader that scans back to the turn record and stops would
     // otherwise look straight past the row that opened it.
     ctx.turn.ensureOpen(message, source, observedAt)
-    ctx.sink.appendItem(identity, body, stamp(identity, body))
+    ctx.sink.appendItem(identity, body, {
+      ...stamp(identity, body),
+      providerObservedAt: observedAt
+    })
     changed = true
   }
   for (const tool of claudeToolUses(outputEnvelope)) {
@@ -125,7 +128,10 @@ export function journalClaudeMessage(
     }
     const toolIdentity = claudeToolIdentity(envelope.sessionId, tool.id)
     const toolBody = claudeToolBody({ tool })
-    ctx.sink.appendItem(toolIdentity, toolBody, stamp(toolIdentity, toolBody))
+    ctx.sink.appendItem(toolIdentity, toolBody, {
+      ...stamp(toolIdentity, toolBody),
+      providerObservedAt: observedAt
+    })
     changed = true
   }
   for (const result of results) {
@@ -136,7 +142,10 @@ export function journalClaudeMessage(
     }
     const resultIdentity = claudeToolIdentity(envelope.sessionId, result.toolUseId)
     const resultBody = claudeToolBody({ tool, result })
-    ctx.sink.appendItem(resultIdentity, resultBody, stamp(resultIdentity, resultBody))
+    ctx.sink.appendItem(resultIdentity, resultBody, {
+      ...stamp(resultIdentity, resultBody),
+      providerObservedAt: observedAt
+    })
     ctx.subagents.observeToolResult(result.toolUseId, result.failed)
     if (
       results.length === 1 &&
@@ -154,6 +163,7 @@ export function journalClaudeMessage(
     // The write that ends the row: shed under pressure, the row would read open for good.
     ctx.sink.appendItem(thinking.identity, thinking.body, {
       ...stamp(thinking.identity, thinking.body),
+      providerObservedAt: observedAt,
       ...(thinking.startedAt === undefined ? {} : { observedAt: thinking.startedAt }),
       lifecycle: true
     })

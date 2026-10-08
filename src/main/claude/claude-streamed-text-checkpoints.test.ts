@@ -142,7 +142,7 @@ describe('claude streamed text checkpoints', () => {
     runWindow()
 
     expect(rows).toEqual([{ uuid: 'block-1', text: 'hello' }])
-    expect(stamps).toEqual([CHILD_LINKAGE])
+    expect(stamps).toEqual([{ ...CHILD_LINKAGE, providerObservedAt: expect.any(Number) }])
   })
 
   it("writes no linkage keys for a block the session's own agent streamed", () => {
@@ -151,7 +151,7 @@ describe('claude streamed text checkpoints', () => {
     store.append(identityOf('block-1'), 'hello')
     runWindow()
 
-    expect(stamps).toEqual([{}])
+    expect(stamps).toEqual([{ providerObservedAt: expect.any(Number) }])
   })
 
   it('writes a checkpoint at once while the producing agent is provisional', () => {
@@ -176,7 +176,7 @@ describe('claude streamed text checkpoints', () => {
     store.reattribute()
 
     expect(rows.at(-1)).toEqual({ uuid: 'block-1', text: 'partial' })
-    expect(stamps.at(-1)).toEqual(CHILD_LINKAGE)
+    expect(stamps.at(-1)).toEqual({ ...CHILD_LINKAGE, providerObservedAt: expect.any(Number) })
   })
 
   it('writes a held block under the raw reference when no announcement comes', () => {
@@ -190,7 +190,12 @@ describe('claude streamed text checkpoints', () => {
 
     expect(rows).toEqual([{ uuid: 'block-1', text: 'never announced' }])
     expect(stamps).toEqual([
-      { agentId: 'toolu_1', providerParentRef: 'toolu_1', producerKind: 'agent' }
+      {
+        agentId: 'toolu_1',
+        providerParentRef: 'toolu_1',
+        producerKind: 'agent',
+        providerObservedAt: expect.any(Number)
+      }
     ])
 
     // Nothing ever names it, so re-attribution has nothing better to say and
@@ -213,7 +218,10 @@ describe('claude streamed text checkpoints', () => {
     store.append(identityOf('block-1'), 'first and more', 'toolu_1')
     store.flush()
 
-    expect(stamps).toEqual([CHILD_LINKAGE, { ...CHILD_LINKAGE, agentId: 'task-2' }])
+    expect(stamps).toEqual([
+      { ...CHILD_LINKAGE, providerObservedAt: expect.any(Number) },
+      { ...CHILD_LINKAGE, agentId: 'task-2', providerObservedAt: expect.any(Number) }
+    ])
   })
 
   it('stops persisting once disposed', () => {

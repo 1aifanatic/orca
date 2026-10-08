@@ -64,6 +64,7 @@ export class CodexJournalItems {
       coalesceMs: deps.coalesceMs,
       maxRetainedBytes: deps.maxRetainedBytes,
       schedule: deps.schedule,
+      now: deps.now,
       maxMetadataBytes: deps.maxMetadataBytes,
       turnIdFor: (threadId, params) => readCodexTurnId(params) ?? this.activeTurn(threadId),
       identityFor: (threadId, turnId, item) => this.identityFor(threadId, turnId, item),
@@ -151,6 +152,7 @@ export class CodexJournalItems {
     const startedAt = event.method === 'item/completed' ? active?.startedAt : receivedAt
     const admission = this.appendTranslated(event.method, identity, translated, {
       ...this.deps.attributionFor(event.threadId, turnId),
+      providerObservedAt: receivedAt,
       ...(startedAt === undefined ? {} : { observedAt: startedAt })
     })
     if (!admission.accepted) {
@@ -180,7 +182,10 @@ export class CodexJournalItems {
     method: string,
     identity: AgentJournalItemIdentity,
     translated: ReturnType<typeof codexJournalItem>,
-    attribution: AgentJournalRowAttribution & { observedAt?: number }
+    attribution: AgentJournalRowAttribution & {
+      observedAt?: number
+      providerObservedAt?: number
+    }
   ): CodexJournalTranslationAdmission {
     if (!translated.body) {
       return CODEX_JOURNAL_ADMITTED

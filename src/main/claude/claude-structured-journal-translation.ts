@@ -168,7 +168,7 @@ export function createClaudeJournalTranslator(
       delta || thinking ? claudeStreamTurnSource(message) : claudeStreamTurnStartSource(message)
     turn.ensureOpen(message, source, observedAt)
     if (delta) {
-      streamedText.append(delta.identity, delta.text, delta.parentToolUseId)
+      streamedText.append(delta.identity, delta.text, delta.parentToolUseId, observedAt)
     }
     return delta !== null || thinking
   }

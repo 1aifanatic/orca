@@ -22,6 +22,48 @@ function parse(row: Record<string, unknown>): boolean {
 }
 
 describe('journal row validation', () => {
+  it.each([null, 'later', -1, {}])(
+    'drops unusable provider receipt %j without dropping output',
+    (providerObservedAt) => {
+      const parsed = parseJournalRow(
+        JSON.stringify({
+          ...BASE,
+          kind: 'item',
+          itemId: 'i-1',
+          revision: 1,
+          providerObservedAt,
+          body: { kind: 'status', text: 'provider output' }
+        })
+      )
+      expect(parsed).toEqual({
+        ok: true,
+        row: {
+          ...BASE,
+          v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
+          kind: 'item',
+          itemId: 'i-1',
+          revision: 1,
+          body: { kind: 'status', text: 'provider output' }
+        }
+      })
+    }
+  )
+
+  it('keeps a valid optional receipt on a same-version row', () => {
+    const row = {
+      ...BASE,
+      kind: 'item',
+      itemId: 'i-1',
+      revision: 1,
+      providerObservedAt: 5_500,
+      body: { kind: 'status', text: 'provider output' }
+    }
+    expect(parseJournalRow(JSON.stringify(row))).toEqual({
+      ok: true,
+      row: { ...row, v: AGENT_SESSION_JOURNAL_SCHEMA_VERSION }
+    })
+  })
+
   it('upcasts v1 rows to the current schema without changing their body', () => {
     const parsed = parseJournalRow(
       JSON.stringify({

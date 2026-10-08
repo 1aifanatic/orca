@@ -21,7 +21,10 @@ import type {
   StructuredAgentSessionSinkAdmission
 } from './structured-agent-session-event-sink'
 import type { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
-import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
+import {
+  providerObservedAppendOptions,
+  structuredAgentSessionJournalAppendOptions
+} from './structured-agent-session-journal-append-options'
 
 /** What a transition step reads: rows by key, every row, and the turns they joined. */
 export type StructuredAgentSessionTransitionJournal = Pick<
@@ -84,8 +87,17 @@ export function createStructuredAgentSessionTransitionMembers(
 function transitionAppend(
   queue: StructuredAgentSessionSinkQueue
 ): (transition: StructuredAgentSessionTransition) => StructuredAgentSessionSinkAdmission {
-  return (transition) =>
-    queue.submit({
+  return (transition) => {
+    const providerObservedAt = Date.now()
+    const steps = transition.steps.map((step) =>
+      step.kind === 'item'
+        ? {
+            ...step,
+            options: providerObservedAppendOptions({ providerObservedAt, ...step.options })
+          }
+        : step
+    )
+    return queue.submit({
       bytes:
         transition.steps.reduce((total, step) => total + step.reservedBytes, 0) +
         (transition.publish ? 1 : 0),
@@ -94,7 +106,7 @@ function transitionAppend(
       run: async (bound) => {
         const { journal, fence } = bound
         const wrote = await journal.appendSteps(
-          transition.steps.map((step): JournalStep =>
+          steps.map((step): JournalStep =>
             step.kind === 'item'
               ? {
                   kind: 'item',
@@ -116,6 +128,7 @@ function transitionAppend(
                   batch: {
                     settlementId: step.settlementId,
                     fence,
+                    providerObservedAt,
                     resolve: () => step.resolve(journal)
                   }
                 }
@@ -126,4 +139,5 @@ function transitionAppend(
         }
       }
     })
+  }
 }

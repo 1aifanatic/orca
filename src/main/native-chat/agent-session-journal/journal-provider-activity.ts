@@ -15,18 +15,18 @@ export function observeJournalProviderActivity(
     return
   }
   const identity = parseAgentJournalItemKey(itemId)
-  if (!identity || identity.provider === 'orca') {
+  if (!identity || (identity.provider === 'orca' && row.providerObservedAt === undefined)) {
     return
   }
   state.providerActivityAt.set(
     row.fence,
-    Math.max(state.providerActivityAt.get(row.fence) ?? 0, row.ts)
+    Math.max(state.providerActivityAt.get(row.fence) ?? 0, row.providerObservedAt ?? row.ts)
   )
 }
 
 function isProviderActivity(body: AgentJournalItemBody): boolean {
   if (body.kind === 'message') {
-    return body.role === 'assistant'
+    return body.role !== 'user'
   }
   if (body.kind === 'tool-call') {
     return body.endedAs === undefined
@@ -34,5 +34,6 @@ function isProviderActivity(body: AgentJournalItemBody): boolean {
   if (body.kind === 'approval' || body.kind === 'question') {
     return body.resolution.state === 'pending'
   }
-  return readAgentJournalTurn(body)?.state === 'running'
+  const turn = readAgentJournalTurn(body)
+  return turn ? turn.state === 'running' : true
 }

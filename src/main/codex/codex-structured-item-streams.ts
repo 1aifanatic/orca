@@ -4,9 +4,11 @@ import {
 } from '../../shared/agent-session-journal-types'
 import { createAgentSessionDeltaCoalescer } from '../native-chat/agent-session-wire/agent-session-delta-coalescer'
 import { CodexItemStreamRetention } from './codex-item-stream-retention'
-import { appendCodexItemAndPublish } from './codex-structured-journal-sink'
-import { codexJournalItem, codexStreamingJournalItem } from './codex-structured-item-translation'
-import { withJournalReasoningLifecycle } from '../native-chat/agent-session-journal/journal-reasoning-row'
+import {
+  appendCodexItemAndPublish,
+  appendCodexStreamCheckpoint
+} from './codex-structured-journal-sink'
+import { codexJournalItem } from './codex-structured-item-translation'
 import {
   codexStructuredItemKey,
   MAX_CODEX_ITEM_STREAM_PENDING_PATCHES,
@@ -109,19 +111,6 @@ export function createCodexStructuredItemStreams(
     }
   }
 
-  const append = (key: string, state: CodexItemStreamState, text: string): boolean => {
-    const translated = codexStreamingJournalItem(state.item, text)
-    if (!translated.body) {
-      return true
-    }
-    // A stream only ever carries an item that has not completed yet.
-    const body = withJournalReasoningLifecycle(translated.body, { state: 'running' })
-    return appendCodexItemAndPublish(deps.sink, state.identity, body, {
-      ...attributionOf(key),
-      ...(state.startedAt === undefined ? {} : { observedAt: state.startedAt })
-    }).accepted
-  }
-
   const shouldPersist = (key: string, textLength: number): boolean => {
     const checkpointLength = checkpointLengths.get(key) ?? 0
     const nextLength = Math.max(checkpointLength + 32, Math.ceil(checkpointLength * 1.125))
@@ -133,7 +122,7 @@ export function createCodexStructuredItemStreams(
       return true
     }
     const state = states.get(key)
-    if (state && append(key, state, text)) {
+    if (state && appendCodexStreamCheckpoint(deps.sink, attributionOf(key), state, text)) {
       checkpointLengths.set(key, text.length)
       pendingCheckpoints.delete(key)
       return true
@@ -196,12 +185,10 @@ export function createCodexStructuredItemStreams(
     if (!pending) {
       return { accepted: true }
     }
-    const admission = appendCodexItemAndPublish(
-      deps.sink,
-      pending.identity,
-      pending.body,
-      attributionOf(key)
-    )
+    const admission = appendCodexItemAndPublish(deps.sink, pending.identity, pending.body, {
+      ...attributionOf(key),
+      providerObservedAt: pending.providerObservedAt
+    })
     if (!admission.accepted) {
       return admission
     }
@@ -221,14 +208,19 @@ export function createCodexStructuredItemStreams(
       ),
     track: (threadId, turnId, item, identity, startedAt) => {
       const key = codexStructuredItemKey(threadId, item.id)
-      if (!states.retain(key, codexItemStreamState(item, identity, startedAt))) {
+      if (
+        !states.retain(key, {
+          ...codexItemStreamState(item, identity, startedAt),
+          providerObservedAt: startedAt ?? Date.now()
+        })
+      ) {
         return false
       }
       producers.set(key, { threadId, turnId })
       trimStates()
       return true
     },
-    handle: (threadId, method, params) => {
+    handle: (threadId, method, params, observedAt) => {
       const paramsRecord = readCodexItemStreamRecord(params)
       const itemId = readCodexItemStreamString(paramsRecord, 'itemId')
       if (method === PATCH_UPDATED_METHOD) {
@@ -251,7 +243,8 @@ export function createCodexStructuredItemStreams(
         if (translated.body) {
           const nextPending: CodexPendingItemPatch = {
             identity: state.identity,
-            body: translated.body
+            body: translated.body,
+            providerObservedAt: observedAt ?? deps.now?.() ?? Date.now()
           }
           const previous = pendingPatches.get(key)
           const previousBytes = previous ? pendingPatchBytes(previous) : 0
@@ -291,6 +284,7 @@ export function createCodexStructuredItemStreams(
       const delta = method === REASONING_PART_METHOD ? '\n' : paramsRecord.delta
       if (typeof delta === 'string') {
         const key = codexStructuredItemKey(threadId, state.item.id)
+        state.providerObservedAt = observedAt ?? deps.now?.() ?? Date.now()
         pendingCheckpoints.add(key)
         const accepted = coalescer.append(key, delta)
         if (!accepted) {
