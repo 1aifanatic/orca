@@ -28,7 +28,10 @@ import {
   type AgentChildWorkView
 } from '../../../shared/agent-status-child-work-view'
 import { structuredStatusLegacyEvent } from './server-structured-status-row'
-import { agentChildWorkSummaryViews } from '../../../shared/agent-child-work-listing'
+import {
+  agentChildWorkSummaryViews,
+  AGENT_CHILD_SUMMARY_CLOCK_GRAIN_MS
+} from '../../../shared/agent-child-work-listing'
 
 // Why: the listing counter starts at 1, so an unassigned row must sort last — never above every ordered row.
 const UNORDERED_STATUS_ROW = Number.MAX_SAFE_INTEGER
@@ -89,7 +92,12 @@ export abstract class AgentHookServerListeners extends AgentHookServerState {
         entry: {
           ...structuredStatusLegacyEvent(parent.status),
           ...(includeChildren
-            ? { children: agentChildWorkSummaryViews(this.canonicalChildViews(parent.subject)) }
+            ? {
+                children: agentChildWorkSummaryViews(
+                  this.canonicalChildViews(parent.subject),
+                  AGENT_CHILD_SUMMARY_CLOCK_GRAIN_MS
+                )
+              }
             : {})
         },
         order:
@@ -257,7 +265,10 @@ export abstract class AgentHookServerListeners extends AgentHookServerState {
       if (status) {
         rows.push({
           ...status,
-          children: agentChildWorkSummaryViews(this.canonicalChildViews(subject))
+          children: agentChildWorkSummaryViews(
+            this.canonicalChildViews(subject),
+            AGENT_CHILD_SUMMARY_CLOCK_GRAIN_MS
+          )
         })
       }
     }

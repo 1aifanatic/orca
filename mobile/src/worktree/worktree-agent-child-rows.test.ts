@@ -39,6 +39,15 @@ function child(fields: Partial<AgentChildWorkView> = {}): AgentChildWorkView {
 }
 
 describe('phone worktree child presentation', () => {
+  it('withholds numeric ages and live claims until this host clock is calibrated', () => {
+    const row = parent({ children: [child()], structuredHostOwned: true })
+    const uncalibrated = worktreeAgentChildRows(row, 3_602_000, true, undefined)
+    expect(uncalibrated.rows[0]).toMatchObject({
+      displayState: 'unverifiable',
+      detail: { kind: 'reason', state: 'unverifiable' }
+    })
+    expect(uncalibrated.elapsedNow).toBeUndefined()
+  })
   it('has no child rows on old hosts and respects explicit empty native data', () => {
     expect(worktreeAgentChildRows(parent(), 2_000, true, 0).rows).toEqual([])
     expect(

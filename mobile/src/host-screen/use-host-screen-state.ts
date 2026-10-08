@@ -23,7 +23,6 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
   // Why: useRef, not useMemo — React may discard memoized values, which would silently
   // reset the snapshot token this object exists to own.
   const worktreeCatalogRef = useRef(new WorktreeCatalogSnapshotClient())
-  const [agentClockOffsetMs, setAgentClockOffsetMs] = useState<number | undefined>()
   const fetchRepoMetadataInFlightRef = useRef(new WeakSet<RpcClient>())
   const fetchRepoMetadataPendingRef = useRef(new WeakSet<RpcClient>())
   const repoMetadataFetchedAtRef = useRef(0)
@@ -100,8 +99,6 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
   })
 
   return {
-    agentClockOffsetMs,
-    setAgentClockOffsetMs,
     actionTarget,
     catalogError,
     clientRef,

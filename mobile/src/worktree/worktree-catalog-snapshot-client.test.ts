@@ -107,11 +107,38 @@ describe('WorktreeCatalogSnapshotClient', () => {
     const pending = await snapshots.fetch(client, 'host')
     clock.mockReturnValue(3_602_000)
     admitFetched(snapshots, pending)
-    expect(snapshots.hostClockOffsetMs).toBe(3_600_000)
+    expect(snapshots.clockOffsetFor(client, 'host')).toBe(3_600_000)
     admitFetched(snapshots, await snapshots.fetch(client, 'host'))
-    expect(snapshots.hostClockOffsetMs).toBe(600_000)
+    expect(snapshots.clockOffsetFor(client, 'host')).toBe(600_000)
     await snapshots.fetch(clientWithResults({ worktrees: [] }), 'other-host')
-    expect(snapshots.hostClockOffsetMs).toBeUndefined()
+    expect(snapshots.clockOffsetFor(client, 'host')).toBeUndefined()
+  })
+
+  it('withholds another host/client calibration before a delayed or failed first catalog', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(3_602_000)
+    const clientA = clientWithResults({ worktrees: [], snapshotId: 'a', observedAt: 2_000 })
+    const clientB = clientWithResults('bad-response')
+    const snapshots = new WorktreeCatalogSnapshotClient()
+    admitFetched(snapshots, await snapshots.fetch(clientA, 'host-a'))
+    expect(snapshots.clockOffsetFor(clientA, 'host-a')).toBe(3_600_000)
+    expect(snapshots.clockOffsetFor(clientA, 'host-b')).toBeUndefined()
+    expect(snapshots.clockOffsetFor(clientB, 'host-b')).toBeUndefined()
+    await expect(snapshots.fetch(clientB, 'host-b')).rejects.toBeInstanceOf(
+      RpcIncompatibleReplyError
+    )
+    expect(snapshots.clockOffsetFor(clientB, 'host-b')).toBeUndefined()
+  })
+
+  it('fences a logical-client migration before stale calibration can be admitted', async () => {
+    let generation = 1
+    const client = Object.assign(clientWithResults({ worktrees: [], observedAt: 1_000 }), {
+      getGeneration: () => generation
+    })
+    const snapshots = new WorktreeCatalogSnapshotClient()
+    const response = await snapshots.fetch(client, 'host')
+    generation = 2
+    expect(admitFetched(snapshots, response)).toBeNull()
+    expect(snapshots.clockOffsetFor(client, 'host')).toBeUndefined()
   })
   it('returns the confirmed rows on unchanged responses so callers can reassert them', async () => {
     const rows = [{ worktreeId: 'worktree-1' }]

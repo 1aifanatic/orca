@@ -42,5 +42,11 @@ export function worktreeAgentChildRows(
     hostClockOffsetMs !== undefined && elapsedOffset !== undefined
       ? now - offset - elapsedOffset
       : undefined
-  return { rows: buildRunningAgentChildRowModels(source, context), elapsedNow }
+  return {
+    rows: buildRunningAgentChildRowModels(source, {
+      ...context,
+      hostClockOffsetMs: hostClockOffsetMs ?? null
+    }),
+    elapsedNow
+  }
 }

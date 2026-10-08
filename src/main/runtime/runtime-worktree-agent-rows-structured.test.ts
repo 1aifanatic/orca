@@ -2,6 +2,7 @@ import { makeStructuredAgentStatusSubject } from '../../shared/agent-status-subj
 import { collectRuntimeWorktreeAgentSources } from './runtime-worktree-agent-sources'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { attachRuntimeWorktreeAgentRows } from './runtime-worktree-agent-rows'
+import { resolveWorktreeCatalogSnapshot } from './rpc/worktree-catalog-snapshot'
 import {
   structuredAgentSessionPaneKey,
   structuredAgentSessionTabId
@@ -47,9 +48,9 @@ function summary(over: Partial<AgentSessionStatusSummary> = {}): AgentSessionSta
 
 function attach(
   summaries: AgentSessionStatusSummary[],
-  beforeRead?: (store: AgentHookServer) => void
+  beforeRead?: (store: AgentHookServer) => void,
+  store = new AgentHookServer()
 ): RuntimeWorktreePsSummary {
-  const store = new AgentHookServer()
   for (const entry of summaries) {
     store.ingestStructuredStatus(entry, SUBJECT)
   }
@@ -86,6 +87,58 @@ beforeEach(() => {
 })
 
 describe('worktree ps reports structured sessions', () => {
+  it('keeps catalogs unchanged for usage-only ticks within a minute, but publishes row facts immediately', () => {
+    const server = new AgentHookServer()
+    server.ingestStructuredStatus(summary(), SUBJECT)
+    const live = {
+      type: 'live',
+      observedAt: 200,
+      child: {
+        handle: { idKind: 'task_id', id: 'agent-1', runId: 'spawn' },
+        kind: 'agent',
+        residency: 'background',
+        state: 'working',
+        description: 'Audit the build',
+        stoppable: false
+      }
+    } as const
+    const publish = (observedAt: number, totalTokens: number, lastMessage?: string) => {
+      server.ingestStructuredChildWork(
+        SUBJECT,
+        [
+          {
+            ...live,
+            observedAt,
+            child: { ...live.child, totalTokens, lastMessage }
+          }
+        ],
+        'claude'
+      )
+    }
+    const read = () => ({
+      worktrees: [attach([], undefined, server)],
+      totalCount: 1,
+      truncated: false
+    })
+    publish(60_100, 1)
+    const first = resolveWorktreeCatalogSnapshot(read(), null)
+    publish(60_900, 2)
+    expect(resolveWorktreeCatalogSnapshot(read(), first.snapshotId)).toEqual({
+      unchanged: true,
+      snapshotId: first.snapshotId
+    })
+    publish(61_000, 3, 'Checking navigation')
+    expect(resolveWorktreeCatalogSnapshot(read(), first.snapshotId)).not.toHaveProperty('unchanged')
+    const progress = resolveWorktreeCatalogSnapshot(read(), null)
+    publish(120_100, 4, 'Checking navigation')
+    expect(resolveWorktreeCatalogSnapshot(read(), progress.snapshotId)).not.toHaveProperty(
+      'unchanged'
+    )
+    expect(server.getStructuredChildWorkViews(SUBJECT)[0]).toMatchObject({
+      observedAt: 120_100,
+      totalTokens: 4
+    })
+  })
   it('projects native children from the same canonical store without creating extra parents', () => {
     const row = attach([summary()], (store) => {
       store.ingestStructuredChildWork(
