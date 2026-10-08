@@ -24,7 +24,15 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       this.retirePaneAuthority(paneKey)
       return
     }
-    // Why: the launch's token and restored authority end with it, so a later agent is not fenced.
+    // Why: the launch's authority ends with it, and its token, which every later process in the
+    // shell inherits, never attests again; nor does its restart fence block a later agent.
+    const endedHash =
+      this.currentAuthorityObservations.get(ownerPaneKey)?.launchTokenHash ??
+      this.hydratedLaunchTokenHashByPaneKey.get(ownerPaneKey)
+    if (endedHash) {
+      this.endedLaunchTokenHashByPaneKey.set(ownerPaneKey, endedHash)
+    }
+    this.currentAuthorityObservations.delete(ownerPaneKey)
     this.restartedStatusLaunchTokenHashByPaneKey.delete(ownerPaneKey)
     if (this.revokeHydratedAuthorityForPaneKeys(new Set([ownerPaneKey]))) {
       this.scheduleStatusPersist()
@@ -37,7 +45,8 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     }
     this.endPaneOwner(ownerPaneKey, ended)
     this.paneOwnerProbes.ownerEnded(ownerPaneKey, ended.process)
-    // Why: an owner with no session to resume leaves no ended record, so fence its late hooks as before.
+    // Why after ownerEnded: it replays a held guest synchronously, so only a pane left empty (an owner
+    // with no session to resume leaves no ended record) is fenced against late hooks, as before.
     if (!this.state.lastStatusByPaneKey.has(ownerPaneKey)) {
       this.retirePaneAuthority(paneKey)
     }
@@ -93,6 +102,7 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       this.activeHookTurnCompletedAtByPaneKey.delete(key)
       this.runtimeObservedStatusPaneKeys.delete(key)
       this.currentAuthorityObservations.delete(key)
+      this.endedLaunchTokenHashByPaneKey.delete(key)
       this.promptSentDedupeByPaneKey.delete(key)
       this.observations.forget(key)
     }

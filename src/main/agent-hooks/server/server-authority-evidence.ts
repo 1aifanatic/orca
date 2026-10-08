@@ -62,13 +62,23 @@ export abstract class AgentHookServerAuthorityEvidence extends AgentHookServerSt
     )
   }
 
-  protected recordCurrentAuthorityObservation(payload: AgentHookEventPayload): void {
+  /** Records the event's launch authority and returns the event to apply: without its token when
+   *  that token is the pane's ended launch's, which a later process in its shell inherited. */
+  protected recordCurrentAuthorityObservation<T extends AgentHookEventPayload>(payload: T): T {
     const evidence = this.toAuthorityEvidence(payload)
-    if (evidence) {
-      this.currentAuthorityObservations.set(evidence.paneKey, evidence)
-      this.persistedAuthorityCommitmentsByPaneKey.set(evidence.paneKey, evidence)
-      this.hydratedLaunchTokenHashByPaneKey.set(evidence.paneKey, evidence.launchTokenHash)
+    if (!evidence) {
+      return payload
     }
+    const endedHash = this.endedLaunchTokenHashByPaneKey.get(
+      this.resolvePaneKeyAlias(payload.paneKey)
+    )
+    if (endedHash === evidence.launchTokenHash) {
+      return { ...payload, launchToken: undefined }
+    }
+    this.currentAuthorityObservations.set(evidence.paneKey, evidence)
+    this.persistedAuthorityCommitmentsByPaneKey.set(evidence.paneKey, evidence)
+    this.hydratedLaunchTokenHashByPaneKey.set(evidence.paneKey, evidence.launchTokenHash)
+    return payload
   }
 
   protected toAuthorityEvidence(

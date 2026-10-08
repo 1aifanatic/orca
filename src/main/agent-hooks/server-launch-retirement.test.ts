@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from './server'
 import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
@@ -216,5 +217,33 @@ describe('ending a launched agent command', () => {
     expect(row(server)).toBeUndefined()
     await codex(server, 'UserPromptSubmit', { prompt: 'next task' })
     expect(row(server)).toMatchObject({ agentType: 'codex', prompt: 'next task' })
+  })
+
+  it("never lets the ended launch's inherited token attest again, late hook or new run", async () => {
+    const server = await createServer()
+    const tokenHash = createHash('sha256').update('launch-token').digest('hex')
+    const attest = () =>
+      server.attestCompatibilityAuthority({
+        paneKey: PANE,
+        launchTokenHash: tokenHash,
+        connectionId: null,
+        terminalProvenance: 'current_runtime'
+      })
+    const post = async (event: string, extra = {}) => {
+      const body = buildBody(
+        { hook_event_name: event, session_id: 'codex-x', ...extra },
+        { launchToken: 'launch-token' }
+      )
+      expect((await postHookEvent(server, body, '/hook/codex')).status).toBe(204)
+    }
+    await post('UserPromptSubmit', { prompt: 'codex task' })
+    expect(attest()).not.toBeNull()
+    server.endLaunchAuthority(PANE, 'codex')
+    expect(attest()).toBeNull()
+    await post('Stop')
+    expect(attest()).toBeNull()
+    await post('UserPromptSubmit', { prompt: 'next task' })
+    expect(row(server)).toMatchObject({ prompt: 'next task' })
+    expect(attest()).toBeNull()
   })
 })
