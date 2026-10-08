@@ -69,6 +69,7 @@ export class RelayedPhoneReplies {
       result.streamId = this.desktopStreamId(result.streamId, open.hostStreamIds)
       renumbered = true
     }
+    // Why bounded: a stream ended by its own unsubscribe sends no 'end'; it stays until the link closes.
     if (open && (parsed.streaming !== true || (isRecord(result) && result.type === 'end'))) {
       this.finish(parsed.id, open.hostStreamIds)
     }

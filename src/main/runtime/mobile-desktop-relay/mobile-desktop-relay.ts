@@ -24,6 +24,12 @@ export type RelayedPhone = {
   sendBinary: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
 }
 
+type GrantsEntry = {
+  promise: Promise<DelegatedPhoneGrants>
+  settled: boolean
+  result?: DelegatedPhoneGrants
+}
+
 type OpenedRelayLink = { socket: RemoteRuntimePassthroughSocket; hostToken: string }
 
 class RelayLink {
@@ -54,7 +60,7 @@ class RelayLink {
  */
 export class MobileDesktopRelay {
   private readonly links = new Map<string, RelayLink>()
-  private readonly grants = new Map<string, Promise<DelegatedPhoneGrants>>()
+  private readonly grants = new Map<string, GrantsEntry>()
   private readonly stopRetirementWatch: () => void
 
   constructor(
@@ -127,9 +133,14 @@ export class MobileDesktopRelay {
       const id = `relay-capabilities:${randomUUID()}`
       link.replies.noteForwarded(id, { swallowReplies: true })
       link.opened.then(
-        ({ socket, hostToken }) =>
-          this.isCurrent(link) &&
-          socket.send(rewriteRelayedPhoneRequest(frame, link.phone.deviceToken, hostToken, id)),
+        ({ socket, hostToken }) => {
+          if (
+            this.isCurrent(link) &&
+            !socket.send(rewriteRelayedPhoneRequest(frame, link.phone.deviceToken, hostToken, id))
+          ) {
+            this.endLink(link, unavailable('The server connection could not take the request.'))
+          }
+        },
         () => {}
       )
     }
@@ -251,28 +262,39 @@ export class MobileDesktopRelay {
     phoneKey: string | null
   ): Promise<DelegatedPhoneGrants> {
     const cached = this.grants.get(host.environmentId)
-    const sync = (): Promise<DelegatedPhoneGrants> => {
-      const pending = syncDelegatedPhoneGrants(this.options.hosts, host, this.options.listPhones())
-      this.grants.set(host.environmentId, pending)
-      pending.catch(() => {
+    if (cached && !cached.settled) {
+      // Why: phones racing to one server share its sync.
+      return cached.promise.then((grants) =>
+        grants.fence === host.fence ? grants : this.grantsFor(host, phoneKey)
+      )
+    }
+    const answered =
+      cached?.result?.kind === 'ready' &&
+      cached.result.fence === host.fence &&
+      (phoneKey === null || cached.result.asked.has(phoneKey))
+    // Why update-needed is never reused: a server upgraded in place must relay without a re-pair.
+    return answered && cached.result ? Promise.resolve(cached.result) : this.sync(host)
+  }
+
+  private sync(host: MobileDesktopRelayHost): Promise<DelegatedPhoneGrants> {
+    const entry: GrantsEntry = {
+      promise: syncDelegatedPhoneGrants(this.options.hosts, host, this.options.listPhones()),
+      settled: false
+    }
+    this.grants.set(host.environmentId, entry)
+    entry.promise.then(
+      (result) => {
+        entry.settled = true
+        entry.result = result
+      },
+      () => {
         // Why: an unreachable server is not an answer; the next request syncs again.
-        if (this.grants.get(host.environmentId) === pending) {
+        if (this.grants.get(host.environmentId) === entry) {
           this.grants.delete(host.environmentId)
         }
-      })
-      return pending
-    }
-    if (!cached) {
-      return sync()
-    }
-    return cached.then((grants) =>
-      grants.fence !== host.fence ||
-      (phoneKey !== null && grants.kind === 'ready' && !grants.grants.has(phoneKey))
-        ? this.grants.get(host.environmentId) === cached
-          ? sync()
-          : this.grantsFor(host, phoneKey)
-        : grants
+      }
     )
+    return entry.promise
   }
 
   private isCurrent(link: RelayLink): boolean {

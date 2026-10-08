@@ -11,6 +11,7 @@ type FakeSocket = {
   capabilities: readonly string[]
   callbacks: RemoteRuntimePassthroughCallbacks
   closed: boolean
+  accepts: boolean
 }
 const sockets = vi.hoisted(() => {
   const opened: FakeSocket[] = []
@@ -24,13 +25,13 @@ vi.mock('../../../shared/remote-runtime-passthrough-socket', () => ({
     capabilities: readonly string[],
     callbacks: RemoteRuntimePassthroughCallbacks
   ) => {
-    const socket: FakeSocket = { sent: [], capabilities, callbacks, closed: false }
+    const socket: FakeSocket = { sent: [], capabilities, callbacks, closed: false, accepts: true }
     sockets.push(socket)
     await openGate.wait
     return {
       send: (frame: string) => {
         socket.sent.push(frame)
-        return true
+        return socket.accepts
       },
       close: () => {
         socket.closed = true
@@ -53,6 +54,7 @@ function relayWithPhone(
     SYNCED
 ) {
   const syncCalls: unknown[] = []
+  const server = { capable: true }
   const hosts: MobileDesktopRelayHosts = {
     resolve: async (environmentId) => ({
       environmentId,
@@ -61,7 +63,9 @@ function relayWithPhone(
     }),
     call: async (_host, method, params) => {
       if (method === 'status.get') {
-        return ok({ capabilities: [DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY] })
+        return ok({
+          capabilities: server.capable ? [DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY] : []
+        })
       }
       syncCalls.push(params)
       return syncResponse()
@@ -91,6 +95,7 @@ function relayWithPhone(
     phone,
     replies,
     syncCalls,
+    server,
     setCapabilities: (next: string[]) => (capabilities = next)
   }
 }
@@ -231,5 +236,51 @@ describe('MobileDesktopRelay', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(sockets).toEqual([])
     expect(replies).toEqual([])
+  })
+
+  it('relays to a server upgraded in place without waiting for a re-pair', async () => {
+    sockets.length = 0
+    const { relay, phone, replies, server } = relayWithPhone()
+    server.capable = false
+    relay.forward(phone, 'env-1', { id: 'a', method: 'terminal.list' }, '{"id":"a"}')
+    await vi.waitFor(() => expect(replies).toHaveLength(1))
+    expect(JSON.parse(replies[0]!).error.message).toContain('update')
+    server.capable = true
+    relay.forward(phone, 'env-1', { id: 'b', method: 'terminal.list' }, '{"id":"b"}')
+    await vi.waitFor(() => expect(sockets[0]?.sent).toHaveLength(1))
+  })
+
+  it('does not sync again for a phone the server just declined to grant', async () => {
+    sockets.length = 0
+    const { relay, phone, replies, syncCalls } = relayWithPhone(() =>
+      ok({ devices: [{ phoneKey: 'phone-2', deviceId: 'child-2', token: 'host-token-2' }] })
+    )
+    relay.forward(phone, 'env-1', { id: 'a', method: 'terminal.list' }, '{"id":"a"}')
+    await vi.waitFor(() => expect(replies).toHaveLength(1))
+    relay.forward(phone, 'env-1', { id: 'b', method: 'terminal.list' }, '{"id":"b"}')
+    await vi.waitFor(() => expect(replies).toHaveLength(2))
+    expect(replies.map((frame) => JSON.parse(frame).error.code)).toEqual([
+      'remote_runtime_unavailable',
+      'remote_runtime_unavailable'
+    ])
+    expect(syncCalls).toHaveLength(1)
+    expect(sockets).toEqual([])
+  })
+
+  it('ends the link when a mirrored capability update cannot be queued', async () => {
+    sockets.length = 0
+    const { relay, phone, replies } = relayWithPhone()
+    relay.forward(phone, 'env-1', { id: 'a', method: 'terminal.list' }, '{"id":"a"}')
+    await vi.waitFor(() => expect(sockets[0]?.sent).toHaveLength(1))
+    sockets[0]!.accepts = false
+    relay.forwardClientCapabilities(
+      'conn-1',
+      '{"id":"caps","method":"runtime.clientCapabilities.update"}'
+    )
+    await vi.waitFor(() => expect(sockets[0]!.closed).toBe(true))
+    expect(JSON.parse(replies[0]!)).toMatchObject({
+      id: 'a',
+      error: { code: 'remote_runtime_unavailable' }
+    })
   })
 })
