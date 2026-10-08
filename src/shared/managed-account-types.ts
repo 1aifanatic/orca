@@ -124,8 +124,6 @@ export type ClaudeRateLimitAccountsState = {
   systemDefaultMayBeCopied?: boolean
   /** The user's own CLAUDE_CONFIG_DIR while an account is selected: it wins in their terminals. */
   userClaudeConfigDir?: string
-  /** Local only: terminals from before the update are open, and their `claude` ignores the selection. */
-  olderTerminalsRunning?: boolean
 }
 
 export type ClaudeManagedAccountRuntimeSelection = {

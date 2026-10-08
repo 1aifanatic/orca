@@ -19338,9 +19338,6 @@
       "oldTerminalDialogRisk": "サーバーを共有する Codex セッションが同時に終了する可能性があり、Agent のステータスが間違っている可能性があります。",
       "oldTerminalDialogCause": "古いターミナルは依然として Codex サーバーを共有しています。新規ターミナルを開いて、別のサーバーで Codex を実行します。",
       "fix": "修理",
-      "openNewTerminal": "新規ターミナルを開く",
-      "dontShowAgain": "二度と表示しないでください",
-      "dismiss": "閉じる",
       "dialogTitle": "各 Codex タブに独自のサーバーを与える",
       "dialogDescription": "ターミナルで直接開始された Codex セッションは、1 つのバックグラウンドサーバーを共有します。 Orca は、開始する Codex セッションを個別に保持します。セッションがサーバーを共有している場合、1 つを閉じると他のセッションも終了し、Agent のステータスが不正になる可能性があります。",
       "copy": "コピー",
@@ -19351,7 +19348,6 @@
       "step2Title": "稼働中の共有サーバーを停止します",
       "undo": "元に戻すには、codex features enable daemon_auto_start を実行します。",
       "step2Warning": "サーバーを共有している開いている Codex セッションをすべて閉じます。",
-      "learnMore": "詳しく見る",
       "turnOff": "消す",
       "turningOff": "オフにしています…",
       "turnedOff": "オフになっています",
@@ -19367,6 +19363,12 @@
     },
     "paneMove": {
       "failed": "ペインを新規タブに移動できませんでした。"
+    },
+    "paneTopBanner": {
+      "openNewTerminal": "新規ターミナルを開く",
+      "learnMore": "詳しく見る",
+      "dontShowAgain": "二度と表示しないでください",
+      "dismiss": "閉じる"
     }
   },
   "fileSearch": {

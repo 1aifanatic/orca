@@ -160,11 +160,4 @@ describe('Claude accounts section', () => {
       'Your shell sets CLAUDE_CONFIG_DIR to /home/me/.claude-work'
     )
   })
-
-  it('says what terminals from before the update do', () => {
-    expect(render()).not.toContain('before this Orca update')
-    expect(render({ olderTerminalsRunning: true })).toContain(
-      'Terminals opened before this Orca update don&#x27;t follow the selected account'
-    )
-  })
 })

@@ -19291,7 +19291,6 @@
     },
     "codexSharedServerBanner": {
       "fix": "Solucionar",
-      "dismiss": "Descartar",
       "copied": "Copiado",
       "done": "Hecho",
       "cancel": "Cancelar",
@@ -19302,8 +19301,6 @@
       "oldTerminalDialogTitle": "Por qué este Codex comparte un servidor",
       "oldTerminalDialogRisk": "Las sesiones de Codex que comparten un servidor pueden terminar juntas, y el estado del agente puede ser incorrecto.",
       "oldTerminalDialogCause": "Los terminales antiguos aún comparten un servidor de Codex. Abre un terminal nuevo para ejecutar Codex en un servidor aparte.",
-      "openNewTerminal": "Abrir terminal nuevo",
-      "dontShowAgain": "No volver a mostrar",
       "dialogTitle": "Dar a cada pestaña de Codex su propio servidor",
       "dialogDescription": "Las sesiones de Codex iniciadas directamente en un terminal comparten un servidor en segundo plano. Orca mantiene separadas las sesiones de Codex que inicia. Cuando las sesiones comparten un servidor, cerrar una puede terminar con las demás, y el estado del agente puede ser incorrecto.",
       "copy": "Copiar",
@@ -19312,7 +19309,6 @@
       "step2Title": "Detener el servidor compartido en ejecución",
       "undo": "Para deshacerlo, ejecuta codex features enable daemon_auto_start.",
       "step2Warning": "Cierra cualquier sesión de Codex abierta que comparta el servidor",
-      "learnMore": "Más información",
       "turnOff": "Desactivar",
       "turningOff": "Desactivando…",
       "turnedOff": "Desactivado",
@@ -19335,6 +19331,12 @@
     },
     "paneMove": {
       "failed": "No se pudo mover el panel a una pestaña nueva."
+    },
+    "paneTopBanner": {
+      "openNewTerminal": "Abrir terminal nuevo",
+      "learnMore": "Más información",
+      "dontShowAgain": "No volver a mostrar",
+      "dismiss": "Descartar"
     }
   },
   "quickOpen": {

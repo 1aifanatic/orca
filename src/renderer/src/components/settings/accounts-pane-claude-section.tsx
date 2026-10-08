@@ -57,14 +57,6 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
         </p>
       </div>
 
-      {claudeAccounts.olderTerminalsRunning ? (
-        <p role="status" className="text-xs text-muted-foreground">
-          {translate(
-            'accounts.claude.olderTerminals',
-            "Terminals opened before this Orca update don't follow the selected account: claude there uses System default's login. Open a new terminal to use the selected account."
-          )}
-        </p>
-      ) : null}
       {claudeAccounts.userClaudeConfigDir && accountRuntime.runtime === 'host' ? (
         <p role="status" className="text-xs text-muted-foreground">
           {translate(

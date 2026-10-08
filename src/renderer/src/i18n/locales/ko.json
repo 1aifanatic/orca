@@ -19338,9 +19338,6 @@
       "oldTerminalDialogRisk": "서버를 공유하는 Codex 세션은 함께 종료될 수 있으며 에이전트 상태가 잘못될 수 있습니다.",
       "oldTerminalDialogCause": "이전 터미널은 여전히 Codex 서버를 공유합니다. 새 터미널을 열어 별도의 서버에서 Codex를 실행합니다.",
       "fix": "자물쇠",
-      "openNewTerminal": "새 터미널 열기",
-      "dontShowAgain": "다시 보지 않기",
-      "dismiss": "닫기",
       "dialogTitle": "각 Codex 탭에 자체 서버를 제공합니다",
       "dialogDescription": "Codex 세션은 터미널 공유 백그라운드 서버에서 직접 시작되었습니다. ORCA는 시작되는 Codex 세션을 별도로 유지합니다. 세션이 서버를 공유할 때 서버를 닫으면 다른 세션이 종료될 수 있으며 에이전트 상태가 잘못될 수 있습니다.",
       "copy": "복사",
@@ -19351,7 +19348,6 @@
       "step2Title": "실행 중인 공유 서버 중지",
       "undo": "되돌리려면 codex features enable daemon_auto_start를 실행하세요.",
       "step2Warning": "서버를 공유하는 열려 있는 Codex 세션을 닫습니다.",
-      "learnMore": "자세히 알아보기",
       "turnOff": "끄기",
       "turningOff": "끄는 중...",
       "turnedOff": "껐어요",
@@ -19367,6 +19363,12 @@
     },
     "paneMove": {
       "failed": "분할 창을 새 탭으로 이동할 수 없습니다."
+    },
+    "paneTopBanner": {
+      "openNewTerminal": "새 터미널 열기",
+      "learnMore": "자세히 알아보기",
+      "dontShowAgain": "다시 보지 않기",
+      "dismiss": "닫기"
     }
   },
   "fileSearch": {

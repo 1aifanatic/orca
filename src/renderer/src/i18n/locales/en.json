@@ -19293,9 +19293,6 @@
       "oldTerminalDialogRisk": "Codex sessions that share a server can end together, and agent status can be wrong.",
       "oldTerminalDialogCause": "Older terminals still share a Codex server. Open a new terminal to run Codex on a separate server.",
       "fix": "Fix",
-      "openNewTerminal": "Open new terminal",
-      "dontShowAgain": "Don't show again",
-      "dismiss": "Dismiss",
       "dialogTitle": "Give each Codex tab its own server",
       "dialogDescription": "Codex sessions started directly in a terminal share one background server. Orca keeps the Codex sessions it starts separate. When sessions share a server, closing one can end the others, and agent status can be wrong.",
       "copy": "Copy",
@@ -19306,7 +19303,6 @@
       "step2Title": "Stop the running shared server",
       "undo": "To undo, run codex features enable daemon_auto_start.",
       "step2Warning": "Closes any open Codex sessions that share the server",
-      "learnMore": "Learn more",
       "turnOff": "Turn off",
       "turningOff": "Turning off…",
       "turnedOff": "Turned off",
@@ -19322,6 +19318,18 @@
     },
     "paneMove": {
       "failed": "Couldn't move the pane to a new tab."
+    },
+    "claudeOldTerminalBanner": {
+      "title": "This terminal was opened before Orca's Claude account update, so claude here uses System default's login.",
+      "dialogTitle": "Why claude here doesn't use the selected account",
+      "dialogDescription": "Orca now keeps each Claude account in its own folder, and claude in a new terminal follows the account you select.",
+      "dialogCause": "Terminals opened before this update don't, so claude here signs in with System default's login. Open a new terminal to use the selected account."
+    },
+    "paneTopBanner": {
+      "openNewTerminal": "Open new terminal",
+      "learnMore": "Learn more",
+      "dontShowAgain": "Don't show again",
+      "dismiss": "Dismiss"
     }
   },
   "fileExplorer": {
@@ -19415,7 +19423,6 @@
     "claude": {
       "added": "Account added. Select it to use it for the next Claude you start.",
       "nextLaunch": "{{value0}} → {{value1}}. The next Claude you start uses it. Running sessions keep their account.",
-      "olderTerminals": "Terminals opened before this Orca update don't follow the selected account: claude there uses System default's login. Open a new terminal to use the selected account.",
       "userConfigDirWins": "Your shell sets CLAUDE_CONFIG_DIR to {{value0}}, so Claude in your terminals uses that folder instead of the selected account.",
       "profileSwitching": "Switching applies to the next Claude you start in any tab. Running sessions keep their account.",
       "systemDefaultNamed": "System default: {{value0}}",

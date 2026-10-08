@@ -315,15 +315,10 @@ export function ClaudeSwitcherMenu({
             })}
           </div>
           <div className="px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
-            {accounts.olderTerminalsRunning
-              ? translate(
-                  'accounts.claude.olderTerminals',
-                  "Terminals opened before this Orca update don't follow the selected account: claude there uses System default's login. Open a new terminal to use the selected account."
-                )
-              : translate(
-                  'accounts.claude.profileSwitching',
-                  'Switching applies to the next Claude you start in any tab. Running sessions keep their account.'
-                )}
+            {translate(
+              'accounts.claude.profileSwitching',
+              'Switching applies to the next Claude you start in any tab. Running sessions keep their account.'
+            )}
           </div>
         </div>
       ) : null}

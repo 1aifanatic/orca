@@ -19338,9 +19338,6 @@
       "oldTerminalDialogRisk": "共享服务器的 Codex 会话可能会一起结束，并且智能体状态可能会错误。",
       "oldTerminalDialogCause": "较旧的终端仍然共享 Codex 服务器。打开一个新终端以在单独的服务器上运行 Codex。",
       "fix": "使固定",
-      "openNewTerminal": "打开新终端",
-      "dontShowAgain": "不再显示",
-      "dismiss": "关闭",
       "dialogTitle": "为每个 Codex 选项卡提供自己的服务器",
       "dialogDescription": "Codex 会话直接在共享一台后台服务器的终端中启动。 Orca 将其启动的 Codex 会话分开保存。当会话共享一台服务器时，关闭一个服务器可能会结束其他服务器，并且智能体状态可能会错误。",
       "copy": "复制",
@@ -19351,7 +19348,6 @@
       "step2Title": "停止正在运行的共享服务器",
       "undo": "要撤消，请运行 codex features enable daemon_auto_start。",
       "step2Warning": "关闭共享服务器的所有打开的 Codex 会话",
-      "learnMore": "了解更多",
       "turnOff": "关",
       "turningOff": "正在关闭…",
       "turnedOff": "已关闭",
@@ -19367,6 +19363,12 @@
     },
     "paneMove": {
       "failed": "无法将窗格移动到新选项卡。"
+    },
+    "paneTopBanner": {
+      "openNewTerminal": "打开新终端",
+      "learnMore": "了解更多",
+      "dontShowAgain": "不再显示",
+      "dismiss": "关闭"
     }
   },
   "fileSearch": {
