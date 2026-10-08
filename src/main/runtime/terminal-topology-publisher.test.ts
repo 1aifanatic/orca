@@ -177,6 +177,29 @@ describe('TerminalTopologyPublisher', () => {
     expect(h.publisher.settle('repo::/hosted-elsewhere')).toBeUndefined()
   })
 
+  it('names the empty slice for a withdrawn worktree, not a later push for another', () => {
+    const h = harness(sessionWith([WT, WT_B]))
+    const next = sessionWith([WT_B])
+    next.tabsByWorktree[WT_B]![0]!.ptyId = 'pty-b'
+    h.replace(next)
+    h.publisher.markDirty()
+
+    const seq = h.publisher.settle(WT)
+
+    expect(h.pushes.map(({ worktreeId, publishSeq }) => [worktreeId, publishSeq])).toEqual([
+      [WT, seq],
+      [WT_B, h.publisher.settle()]
+    ])
+  })
+
+  it('names no push for an unresolved worktree, whose writes its last slice does not hold', () => {
+    const h = harness(sessionWith([WT]))
+    h.unresolve(WT)
+    h.publisher.markDirty()
+
+    expect(h.publisher.settle(WT)).toBeUndefined()
+  })
+
   it('keeps publishSeq monotonic across pushes', async () => {
     const h = harness(sessionWith([WT]))
     const settle = (): number => h.publisher.settle(WT) ?? Number.NaN

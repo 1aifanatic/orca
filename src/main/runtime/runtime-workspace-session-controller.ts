@@ -16,6 +16,15 @@ import type { TerminalTopologyOwners } from './terminal-topology-publisher'
 
 const FOLDER_WORKSPACE_CONNECTION_AMBIGUOUS = 'folder_workspace_connection_ambiguous'
 
+/** The repo a workspace key belongs to in the catalog; null for a folder workspace. */
+function catalogRepoId(worktreeId: string): string | null {
+  const scope = parseWorkspaceKey(worktreeId)
+  if (scope?.type === 'folder') {
+    return null
+  }
+  return getRepoIdFromWorktreeId(scope?.type === 'worktree' ? scope.worktreeId : worktreeId)
+}
+
 type RuntimeWorkspaceSessionDependencies = {
   getStore: () => RuntimeStore | null
   resolveFolderConnectionId: (workspace: FolderWorkspace) => string | null
@@ -50,8 +59,8 @@ export class RuntimeWorkspaceSessionController {
       const connectionId = this.deps.resolveFolderConnectionId(workspace)
       return connectionId ? toSshExecutionHostId(connectionId) : LOCAL_EXECUTION_HOST_ID
     }
-    const resolvedWorktreeId = scope?.type === 'worktree' ? scope.worktreeId : worktreeId
-    const repo = store?.getRepo?.(getRepoIdFromWorktreeId(resolvedWorktreeId))
+    const repoId = catalogRepoId(worktreeId)
+    const repo = repoId ? store?.getRepo?.(repoId) : undefined
     return repo
       ? workspaceSessionPartitionHostId(getRepoExecutionHostId(repo))
       : LOCAL_EXECUTION_HOST_ID
@@ -159,13 +168,33 @@ export class RuntimeWorkspaceSessionController {
   /** The one `local`/`ssh:` partition a worktree's terminal rows live in; null when unresolved or another server's. */
   getTerminalTopologyHomeHostId(worktreeId: string): ExecutionHostId | null {
     const store = this.deps.getStore()
-    const hostId = store ? this.tryGetPreferredHostId(worktreeId, store) : null
+    const hostId = store ? this.resolveTerminalTopologyHome(worktreeId, store) : null
     return hostId && isTerminalOwnerPartition(hostId) ? hostId : null
+  }
+
+  /** The worktree's home partition; null when unverifiable rather than absent. */
+  private resolveTerminalTopologyHome(
+    worktreeId: string,
+    store: RuntimeStore
+  ): ExecutionHostId | null {
+    const hostId = this.tryGetPreferredHostId(worktreeId, store)
+    const repoId = catalogRepoId(worktreeId)
+    // A repo missing from the catalog defaults to local, which SSH rows for it contradict.
+    if (hostId === LOCAL_EXECUTION_HOST_ID && repoId && !store.getRepo?.(repoId)) {
+      const hasSshRows = (store.getWorkspaceSessionHostIds?.() ?? []).some(
+        (partition) =>
+          parseExecutionHostId(partition)?.kind === 'ssh' &&
+          (store.getWorkspaceSession?.(partition).tabsByWorktree[worktreeId]?.length ?? 0) > 0
+      )
+      return hasSshRows ? null : hostId
+    }
+    return hostId
   }
 
   /**
    * Worktrees with terminal rows in their home partition. `runtime:` homes are another server's;
-   * a home that can't be resolved (a missing or ambiguous folder) maps to null.
+   * a home that can't be resolved (a missing or ambiguous folder, an uncatalogued repo with SSH
+   * rows) maps to null.
    */
   getTerminalTopologyOwners(): TerminalTopologyOwners {
     const owners: TerminalTopologyOwners = new Map()
@@ -179,7 +208,7 @@ export class RuntimeWorkspaceSessionController {
       }
       const session = store.getWorkspaceSession(hostId)
       for (const worktreeId of Object.keys(session.tabsByWorktree ?? {})) {
-        const homeHostId = this.tryGetPreferredHostId(worktreeId, store)
+        const homeHostId = this.resolveTerminalTopologyHome(worktreeId, store)
         if (!homeHostId) {
           owners.set(worktreeId, null)
         } else if (homeHostId === hostId) {
