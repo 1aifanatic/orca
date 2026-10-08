@@ -8,7 +8,7 @@ import {
   type RemoteNodeResolutionOptions
 } from './ssh-remote-node-install-guidance'
 import { execCommand } from './ssh-relay-deploy-helpers'
-import { isSshExecTimeout } from './ssh-relay-exec-command'
+import { isSshCommandExitError } from './ssh-relay-exec-command'
 import {
   buildPosixNodeToolchainProbe,
   buildWindowsNodeToolchainProbe,
@@ -23,10 +23,19 @@ import { REMOTE_NODE_PATH_PROBE_SCRIPT } from './ssh-remote-node-probe-script'
 // hang a login shell, so keep this short.
 const LOGIN_SHELL_PROBE_TIMEOUT_MS = 8_000
 
+/** The probes answered and no usable Node.js + npm exists; only `strict` resolution proves it. */
+export class RemoteNodeNotFoundError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RemoteNodeNotFoundError'
+  }
+}
+
+/** `strict` rethrows probes the host never answered, so a not-found is proof, not a lost channel. */
 export async function resolveRemoteNodePath(
   conn: SshConnection,
   host?: RemoteHostPlatform,
-  options?: RemoteNodeResolutionOptions
+  options?: ProbeOptions
 ): Promise<string> {
   if (host && isWindowsRemoteHost(host)) {
     return resolveRemoteWindowsNodePath(conn, options)
@@ -37,8 +46,10 @@ export async function resolveRemoteNodePath(
   // This doesn't depend on shell startup-file semantics — bash -lc skips
   // .bashrc and zsh -lc skips .zshrc, but those are exactly the files where
   // nvm/mise/asdf hooks live. Probing directories directly is deterministic.
-  const npmCheck: CandidateCheck<true> = async (candidate) =>
-    (await nodeToolchainMeetsRequirements(conn, candidate, options)) || null
+  // Why memoized: the login shell often names the Node the path probe already rejected.
+  const npmCheck = memoizeCandidateCheck<true>(
+    async (candidate) => (await nodeToolchainMeetsRequirements(conn, candidate, options)) || null
+  )
   const probed = await tryResolveViaKnownPaths(conn, npmCheck, options)
   if (probed) {
     return probed.nodePath
@@ -55,12 +66,26 @@ export async function resolveRemoteNodePath(
 }
 
 export type CandidateCheck<T> = (candidate: string) => Promise<T | null>
+
+/** Probes each candidate path once per resolution, however many strategies name it. */
+export function memoizeCandidateCheck<T>(check: CandidateCheck<T>): CandidateCheck<T> {
+  const results = new Map<string, Promise<T | null>>()
+  return (candidate) => {
+    let result = results.get(candidate)
+    if (!result) {
+      result = check(candidate)
+      results.set(candidate, result)
+    }
+    return result
+  }
+}
 type ResolvedCandidate<T> = { nodePath: string; result: T }
 /** `strict` rethrows unanswered probes rather than reading them as "no Node here". */
 export type ProbeOptions = RemoteNodeResolutionOptions & { strict?: boolean }
 
+/** Only a command that ran and exited answered; a refused channel, session limit or timeout did not. */
 function isUnansweredExec(err: unknown): boolean {
-  return isSshExecTimeout(err) || (err instanceof Error && 'sshChannelCloseConfirmed' in err)
+  return !isSshCommandExitError(err)
 }
 
 // Probe the on-disk install directories of every common Node version manager
@@ -162,7 +187,7 @@ export async function tryResolveViaLoginShell<T>(
 async function nodeToolchainMeetsRequirements(
   conn: SshConnection,
   nodePath: string,
-  options?: RemoteNodeResolutionOptions
+  options?: ProbeOptions
 ): Promise<boolean> {
   try {
     const versionOutput = await execCommand(
@@ -178,6 +203,9 @@ async function nodeToolchainMeetsRequirements(
       throw err
     }
     throwIfAborted(options)
+    if (options?.strict && isUnansweredExec(err)) {
+      throw err
+    }
     // Binary missing or fails to run — not usable.
     return false
   }
@@ -185,7 +213,7 @@ async function nodeToolchainMeetsRequirements(
 
 async function resolveRemoteWindowsNodePath(
   conn: SshConnection,
-  options?: RemoteNodeResolutionOptions
+  options?: ProbeOptions
 ): Promise<string> {
   const script = [
     '$paths = @()',
@@ -228,6 +256,10 @@ async function resolveRemoteWindowsNodePath(
       throw err
     }
     throwIfAborted(options)
+    // Why: the script exits 1 when it finds nothing, so only an unanswered probe is unknown.
+    if (options?.strict && isUnansweredExec(err)) {
+      throw err
+    }
     // Fall through to the shared error below.
   }
 
@@ -237,7 +269,7 @@ async function resolveRemoteWindowsNodePath(
 async function windowsNodeToolchainMeetsRequirements(
   conn: SshConnection,
   nodePath: string,
-  options?: RemoteNodeResolutionOptions
+  options?: ProbeOptions
 ): Promise<boolean> {
   try {
     const versionOutput = await execCommand(
@@ -251,6 +283,9 @@ async function windowsNodeToolchainMeetsRequirements(
       throw err
     }
     throwIfAborted(options)
+    if (options?.strict && isUnansweredExec(err)) {
+      throw err
+    }
     return false
   }
 }
@@ -262,12 +297,12 @@ async function throwNodeNotFound(
   throwIfAborted(options)
   const guidance = await buildPosixNodeInstallGuidance(conn, options)
   throwIfAborted(options)
-  throw new Error(guidance)
+  throw new RemoteNodeNotFoundError(guidance)
 }
 
 function throwWindowsNodeNotFound(options?: RemoteNodeResolutionOptions): never {
   throwIfAborted(options)
-  throw new Error(
+  throw new RemoteNodeNotFoundError(
     [
       'Node.js not found on remote host. Orca relay requires Node.js 18+ and npm.',
       '',
