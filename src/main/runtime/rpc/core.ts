@@ -20,6 +20,8 @@ import type {
 import type { OrchestrationCompatibilityEvidence } from '../../../shared/orchestration-compatibility-evidence'
 import type { OrchestrationSessionCaller } from '../orchestration/orchestration-caller-identity'
 import type { RpcCallerIdentity } from './rpc-caller-identity'
+import type { ParsedExecutionHost } from '../../../shared/execution-host'
+import type { ServerWorkspaceFileTarget } from '../server-workspace-file-target'
 
 export type PairingRpcContext = {
   getEndpoints(params: PairingGetEndpointsParams): Promise<PairingGetEndpointsResult>
@@ -121,10 +123,18 @@ export type RpcContext = {
   // Why: federation pins the authenticated saved-environment caller without exposing its token to handlers or storage.
   authenticatedCallerFingerprint?: string
   pairing?: PairingRpcContext
+  // Why: a phone's target on a call this desktop answers itself (MOBILE_RPC_METHOD_ROUTES).
+  executionHost?: Extract<ParsedExecutionHost, { kind: 'runtime' }>
   // Why: set only on a desktop that relays; it lists the configured servers it shows.
   mobileRelayHosts?: {
     list(): MobileRelayHostsListResult
     worktrees(hostId: string): Promise<MobileRelayHostWorktreesResult>
+    resolveWorkspaceFile(
+      host: Extract<ParsedExecutionHost, { kind: 'runtime' }>,
+      worktreeId: string,
+      relativePath: string,
+      options: { requireFile: boolean }
+    ): Promise<ServerWorkspaceFileTarget>
   }
   // Why: set only for an authenticated runtime-scope device and bound to it, so it manages only its own phones.
   delegatedMobileDevices?: {

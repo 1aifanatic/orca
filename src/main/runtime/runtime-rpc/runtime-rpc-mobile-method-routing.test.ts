@@ -21,6 +21,12 @@ describe('mobile RPC method routing census', () => {
     expect(MOBILE_RPC_METHOD_ROUTES.get('status.get')).toBe('execution-host')
   })
 
+  it("answers editor-tab calls on the desktop, whose window holds a server workspace's editor tabs", () => {
+    for (const method of ['files.open', 'files.openDiff', 'markdown.readTab', 'markdown.saveTab']) {
+      expect(MOBILE_RPC_METHOD_ROUTES.get(method)).toBe('paired-desktop')
+    }
+  })
+
   it('tags nothing outside the allowlist', () => {
     const stale = [...MOBILE_RPC_METHOD_ROUTES.keys()].filter(
       (method) => !MOBILE_RPC_METHOD_ALLOWLIST.has(method)

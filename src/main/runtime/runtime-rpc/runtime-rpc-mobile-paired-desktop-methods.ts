@@ -96,6 +96,11 @@ export const PAIRED_DESKTOP_METHODS = [
   'settings.updateTerminalQuickCommands',
   'terminal.getAutoRestoreFit',
   'terminal.setAutoRestoreFit',
+  // Editor tabs live in the desktop's window, a server workspace's too; a target names the server.
+  'files.open',
+  'files.openDiff',
+  'markdown.readTab',
+  'markdown.saveTab',
   // SSH targets are configured on the Mac.
   'ssh.connect',
   'ssh.getState',
