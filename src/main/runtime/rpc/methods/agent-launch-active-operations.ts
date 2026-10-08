@@ -4,15 +4,18 @@
  */
 
 import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
+import type { OrcaRuntimeService } from '../../orca-runtime'
+
+type AgentLaunchOwner = Pick<OrcaRuntimeService, 'openedAgentSessionRecordStore'>
 
 type ActiveAgentLaunch = {
   fingerprint: string
   promise: Promise<AgentLaunchResult>
 }
 
-const activeAgentLaunchesByRuntime = new WeakMap<object, Map<string, ActiveAgentLaunch>>()
+const activeAgentLaunchesByRuntime = new WeakMap<AgentLaunchOwner, Map<string, ActiveAgentLaunch>>()
 
-export function activeAgentLaunchesFor(runtime: object): Map<string, ActiveAgentLaunch> {
+export function activeAgentLaunchesFor(runtime: AgentLaunchOwner): Map<string, ActiveAgentLaunch> {
   const existing = activeAgentLaunchesByRuntime.get(runtime)
   if (existing) {
     return existing

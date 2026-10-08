@@ -2,7 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { AgentLaunchFollowUpTake } from '../../../../shared/agent-launch-follow-up'
+import type { HostedReviewInfo } from '../../../../shared/hosted-review'
+import type { PRCommentGroup } from '../../../../shared/pr-comment-groups'
+import type {
+  AgentLaunchFollowUp,
+  AgentLaunchFollowUpTake
+} from '../../../../shared/agent-launch-follow-up'
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
@@ -90,10 +95,52 @@ vi.mock('@/components/right-sidebar/review-comments-resolution-follow-up', () =>
 const { AGENT_LAUNCH_METHODS } = await import('./agent-launch')
 const { AGENT_LAUNCH_FOLLOW_UP_METHODS, announceSettledLaunchFollowUps } =
   await import('./agent-launch-follow-ups')
-const { runRecordedLaunchFollowUps } =
-  await import('../../../../renderer/src/lib/agent-launch-follow-up-waiter')
-const { reviewNotesDeliveredFollowUp, reviewCommentsResolutionFollowUp } =
-  await import('../../../../renderer/src/lib/agent-launch-follow-ups')
+type RendererFollowUpWaiter = {
+  runRecordedLaunchFollowUps: (
+    clock: ReturnType<typeof createLaunchFollowUpWindow>['clock']
+  ) => Promise<void>
+}
+type RendererFollowUpBuilders = {
+  reviewNotesDeliveredFollowUp: (
+    worktreeId: string,
+    notes: readonly { id: string; body: string; filePath: string; lineNumber: number }[]
+  ) => AgentLaunchFollowUp
+  reviewCommentsResolutionFollowUp: (resolution: {
+    reviewContextKey: string
+    provider: HostedReviewInfo['provider']
+    selectedGroups: PRCommentGroup[]
+  }) => AgentLaunchFollowUp
+}
+function isRendererFollowUpWaiter(value: unknown): value is RendererFollowUpWaiter {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'runRecordedLaunchFollowUps' in value &&
+    typeof value.runRecordedLaunchFollowUps === 'function'
+  )
+}
+function isRendererFollowUpBuilders(value: unknown): value is RendererFollowUpBuilders {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'reviewNotesDeliveredFollowUp' in value &&
+    typeof value.reviewNotesDeliveredFollowUp === 'function' &&
+    'reviewCommentsResolutionFollowUp' in value &&
+    typeof value.reviewCommentsResolutionFollowUp === 'function'
+  )
+}
+// Load the real renderer through Vitest without pulling it into the node compiler project.
+const waiterModule = await vi.importActual<unknown>(
+  '../../../../renderer/src/lib/agent-launch-follow-up-waiter'
+)
+const buildersModule = await vi.importActual<unknown>(
+  '../../../../renderer/src/lib/agent-launch-follow-ups'
+)
+if (!isRendererFollowUpWaiter(waiterModule) || !isRendererFollowUpBuilders(buildersModule)) {
+  throw new Error('missing renderer launch follow-up exports')
+}
+const { runRecordedLaunchFollowUps } = waiterModule
+const { reviewNotesDeliveredFollowUp, reviewCommentsResolutionFollowUp } = buildersModule
 const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 const TAKE = methodNamed(AGENT_LAUNCH_FOLLOW_UP_METHODS, 'agent.takeLaunchFollowUps')
 const DESKTOP = {
@@ -253,7 +300,7 @@ it.each([
             provider: 'github',
             selectedGroups: [
               {
-                kind: 'comment',
+                kind: 'standalone',
                 comment: {
                   id: 7,
                   author: 'reviewer',
