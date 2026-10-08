@@ -11,6 +11,13 @@ export type RendererPublicationThrottleTarget = {
 // Why: an empty rect sets no capture-size hint, which could resize a hidden view (DCHECKed for stayHidden).
 const REHIDE_CAPTURE_RECT = { x: 0, y: 0, width: 0, height: 0 }
 
+// Why: re-throttling never replays a hide swallowed while unthrottled; a stayHidden capture's completion does.
+export function replaySwallowedHide(
+  target: Pick<RendererPublicationThrottleTarget, 'capturePage'>
+): void {
+  target.capturePage(REHIDE_CAPTURE_RECT, { stayHidden: true }).catch(() => {})
+}
+
 export class RendererPublicationThrottle {
   private readonly leasesByTarget = new Map<RendererPublicationThrottleTarget, number>()
 
@@ -34,9 +41,9 @@ export class RendererPublicationThrottle {
       this.leasesByTarget.delete(target)
       if (target.isDestroyed?.() !== true) {
         target.setBackgroundThrottling(true)
-        // Why: a stayHidden capture replays the hide swallowed while leased; a covered window loses focus, so skip focused ones.
+        // Why: a covered window loses focus, so a focused one has no swallowed hide to replay.
         if (target.isFocused?.() !== true) {
-          target.capturePage(REHIDE_CAPTURE_RECT, { stayHidden: true }).catch(() => {})
+          replaySwallowedHide(target)
         }
       }
     }

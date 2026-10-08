@@ -18,6 +18,7 @@ import { BrowserError } from '../browser/browser-error'
 import { randomUUID } from 'node:crypto'
 import { startBrowserScreencast } from '../browser/browser-screencast-stream'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
+import { keepScreencastGuestPainting } from '../browser/browser-screencast-guest-paint'
 import { sendRemoteBrowserScreencastFrame } from './remote-browser-screencast-frame-admission'
 import {
   INITIAL_SCREENCAST_SUBSCRIBER_DELIVERY,
@@ -73,6 +74,7 @@ export class RuntimeBrowserCommandsWithBrowserScreencast extends RuntimeBrowserC
       // Why: guest frames come from the window's compositor, which a throttled hidden window stops.
       const win = this.host.getAvailableAuthoritativeWindow()
       const releaseThrottle = win ? rendererPublicationThrottle.acquire(win.webContents) : () => {}
+      const stopKeepingGuestPainting = keepScreencastGuestPainting(guest, win)
       record.started = startBrowserScreencast(guest, {
         format: params.format,
         ...budget,
@@ -123,6 +125,7 @@ export class RuntimeBrowserCommandsWithBrowserScreencast extends RuntimeBrowserC
           return session.done
         })
         .finally(() => {
+          stopKeepingGuestPainting()
           releaseThrottle()
           if (this.activeScreencastsByPageId.get(browserPageId) === record) {
             this.activeScreencastsByPageId.delete(browserPageId)
