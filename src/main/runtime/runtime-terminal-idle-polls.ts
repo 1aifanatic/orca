@@ -1,4 +1,6 @@
 import { isShellProcess } from '../../shared/agent-detection'
+import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import type {
   RuntimeTerminalWait,
   RuntimeTerminalWaitBlockedReason
@@ -50,6 +52,8 @@ import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-term
 type RuntimeTerminalIdlePollDependencies = TuiIdleEvidenceSource & {
   intervalMs: number
   getForegroundProcess(ptyId: string): Promise<string | null> | null
+  /** Re-read which agent holds the pane's foreground, so the next evaluation ranks as it. */
+  refreshPaneAgent(ptyId: string): void
   /** Whether the pane's running command has painted anything of its own. */
   hasCommandPainted(ptyId: string): boolean
   /** The pane's rendered viewport, or null when the runtime holds no screen model for it. */
@@ -218,7 +222,14 @@ export class RuntimeTerminalIdlePolls {
         entry.foregroundPollInFlight = true
         startedForegroundPoll = true
         const foreground = await foregroundRead
-        if (foreground && !isShellProcess(foreground) && sample.isQuiet(lane)) {
+        if (!foreground || isShellProcess(foreground)) {
+          return
+        }
+        if (this.isUnnamedLaunchedAgent(ptyId, foreground)) {
+          this.deps.refreshPaneAgent(ptyId)
+          return
+        }
+        if (sample.isQuiet(lane)) {
           this.settle(entry, sample.ready())
         }
       }
@@ -229,6 +240,16 @@ export class RuntimeTerminalIdlePolls {
         entry.foregroundPollInFlight = false
       }
     }
+  }
+
+  /** Why: a launched wrapper that execs an agent is that agent booting, which argv cannot
+   *  name; its own lanes must decide. Panes Orca did not launch keep the uncorroborated settle. */
+  private isUnnamedLaunchedAgent(ptyId: string, foreground: string): boolean {
+    return (
+      this.deps.hasLaunchCommand?.(ptyId) === true &&
+      this.deps.getPaneAgent(ptyId) === null &&
+      isTuiAgent(recognizeAgentProcess(foreground)?.agent)
+    )
   }
 
   /** Why the screen too: a dialog that parks the cursor above its own options (Claude's

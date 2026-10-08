@@ -100,7 +100,7 @@ function launchArgv(command: string): string[] {
   return extractLeadingEnvAssignments(tokenizeCommandLine(command)).rest
 }
 
-/** An override's command words, without its flags: `npx pkg --x` must not claim every `npx`. */
+/** An override's command words, without its flags: `runner pkg --x` must not claim every `runner` command. */
 function overrideMatchesArgv(override: string, argv: readonly string[]): boolean {
   const words = launchArgv(override)
   const flagAt = words.findIndex((word) => word.startsWith('-'))

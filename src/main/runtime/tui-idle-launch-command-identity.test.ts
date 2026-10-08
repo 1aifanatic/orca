@@ -64,9 +64,9 @@ describe('tui-idle on a command Orca launched', () => {
     await expect(pane.wait).resolves.toMatchObject({ satisfied: true })
   })
 
-  it('settles vim once it has painted and gone quiet', async () => {
-    const pane = await launch('vim README.md', 'vim')
-    pane.write('\x1b]133;A\x07~/repo % vim README.md\r\n\x1b]133;C\x07')
+  it('settles a full-screen editor once it has painted and gone quiet', async () => {
+    const pane = await launch('notes-editor README.md', 'notes-editor')
+    pane.write('\x1b]133;A\x07~/repo % notes-editor README.md\r\n\x1b]133;C\x07')
     pane.write('\x1b[?1049h\x1b[H# README\r\n~\r\n~\r\n"README.md" 1L, 9B')
 
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3)
@@ -74,8 +74,23 @@ describe('tui-idle on a command Orca launched', () => {
     await expect(pane.wait).resolves.toMatchObject({ satisfied: true })
   })
 
+  it('reads a launched wrapper that execs an agent as that agent, not as a quiet unknown', async () => {
+    // argv names only the wrapper; the foreground process names the agent.
+    const pane = await launch('/opt/agents/dsh-wrapper .', 'dsh-tui')
+    pane.write('\x1b]133;A\x07~/repo % /opt/agents/dsh-wrapper .\r\n\x1b]133;C\x07')
+    pane.write('\x1b[?1049h\x1b[HDSH starting...')
+
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 5)
+    expect(pane.settled).not.toHaveBeenCalled()
+
+    // Its own first-party rest signal settles it once the pane is known to be DSH.
+    pane.write('\x1b]9999;{"state":"done","agentType":"dsh"}\x07')
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2)
+    await expect(pane.wait).resolves.toMatchObject({ satisfied: true })
+  })
+
   it('still settles an unidentified pane running a quiet non-agent process', async () => {
-    const pane = await launch(undefined, 'less')
+    const pane = await launch(undefined, 'log-pager')
 
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2)
 

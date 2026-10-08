@@ -362,6 +362,7 @@ export class OrcaRuntimeWithRuntimeId {
     ...this.tuiIdleEvidenceSource,
     intervalMs: TUI_IDLE_POLL_INTERVAL_MS,
     getForegroundProcess: (ptyId) => this.ptyController?.getForegroundProcess(ptyId) ?? null,
+    refreshPaneAgent: (ptyId) => void this.ptyForegroundAgent.refresh(ptyId),
     hasCommandPainted: (ptyId) => {
       const pty = this.ptysById.get(ptyId)
       return pty === undefined || hasTerminalCommandPainted(pty)

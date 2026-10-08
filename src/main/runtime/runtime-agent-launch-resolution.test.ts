@@ -24,9 +24,9 @@ describe('resolveAgentLaunchCommandIdentity', () => {
     ['omp --thinking high', 'omp'],
     ['codex -c model_reasoning_effort="high"', 'codex'],
     ['OMP_DEBUG=1 FOO=bar omp --thinking high', 'omp'],
-    ['/opt/homebrew/bin/omp --thinking high', 'omp'],
-    ['"C:\\Program Files\\OpenAI\\codex.exe" --full-auto', 'codex'],
-    ['C:\\Users\\me\\AppData\\Roaming\\npm\\codex.cmd -m gpt-5', 'codex'],
+    ['/usr/local/bin/omp --thinking high', 'omp'],
+    ['"C:\\Program Files\\Agents\\codex.exe" --full-auto', 'codex'],
+    ['C:\\Users\\me\\AppData\\Roaming\\agents\\codex.cmd -m gpt-5', 'codex'],
     ['claude --model opus', 'claude'],
     ['orca claude-teams --teammate-mode auto', 'claude-agent-teams']
   ])('names the agent in %s', (command, agent) => {
@@ -37,9 +37,9 @@ describe('resolveAgentLaunchCommandIdentity', () => {
     [undefined],
     [''],
     ['   '],
-    ['vim README.md'],
-    ['less -R log.txt'],
-    ['FOO=1 npm test'],
+    ['notes-editor README.md'],
+    ['log-pager -R log.txt'],
+    ['FOO=1 site-builder test'],
     // Headless one-shots never open a composer.
     ['claude -p "summarize"'],
     ['orca terminal list']
@@ -70,15 +70,15 @@ describe('resolveAgentLaunchCommandIdentity', () => {
   it('matches a user override by its command words, flags aside', () => {
     const settings: Settings = {
       agentCmdOverrides: {
-        claude: 'ccr code --dangerously-skip-permissions',
-        codex: 'npx codex-wrap'
+        claude: 'agent-router code --dangerously-skip-permissions',
+        codex: 'pkg-runner codex-wrap'
       }
     }
-    expect(identity('ccr code --resume', { settings })).toBe('claude')
-    expect(identity('npx codex-wrap -m gpt-5', { settings })).toBe('codex')
+    expect(identity('agent-router code --resume', { settings })).toBe('claude')
+    expect(identity('pkg-runner codex-wrap -m gpt-5', { settings })).toBe('codex')
     // An override's launcher alone must not claim every command run through it.
-    expect(identity('npx prettier --write .', { settings })).toBeNull()
-    expect(identity('ccr status', { settings })).toBeNull()
+    expect(identity('pkg-runner formatter --write .', { settings })).toBeNull()
+    expect(identity('agent-router status', { settings })).toBeNull()
   })
 
   it('names no disabled agent, through its default command or its override', () => {

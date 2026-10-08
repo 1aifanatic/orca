@@ -58,6 +58,7 @@ function createWait(options: {
   const polls = new RuntimeTerminalIdlePolls({
     ...shared,
     intervalMs: POLL_INTERVAL_MS,
+    refreshPaneAgent: () => {},
     getForegroundProcess: () => Promise.resolve(options.foreground ?? null),
     hasCommandPainted: () => true,
     getLiveLeaf: (leaf) => options.liveLeaf?.() ?? leaf,
