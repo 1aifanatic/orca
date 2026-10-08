@@ -7,8 +7,9 @@ import {
   ORCA_SCRUB_SAFE_PANE_ENV
 } from '../../shared/agent-hook-scrub-safe-env'
 import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../ipc/pty/host-env/spawn-env-keys'
-import { GENERIC_ACP_DIALECT, type AcpDialect } from './acp-dialects/acp-dialect'
+import type { AcpDialect } from './acp-dialects/acp-dialect'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
+import { OMP_ACP_DIALECT } from './acp-dialects/omp-dialect'
 import { OPENCODE_ACP_DIALECT } from './acp-dialects/opencode-dialect'
 import { directoryAccountBinding, type AcpAccountBinding } from './acp-account-binding'
 import { openCodeAcpAccountBinding } from '../opencode/opencode-structured-account-home'
@@ -99,7 +100,7 @@ const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   // `omp acp` takes no flags: full access answers each permission request yes.
   args: () => ['acp'],
   env: {},
-  dialect: GENERIC_ACP_DIALECT,
+  dialect: OMP_ACP_DIALECT,
   // OMP signs in from its own `/login`.
   loginCommand: ['omp'],
   // The directory OMP's terminal chats read too; its default is OMP's own.
