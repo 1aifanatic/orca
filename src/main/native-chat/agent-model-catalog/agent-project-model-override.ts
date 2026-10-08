@@ -1,9 +1,13 @@
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import {
+  claudeSettingsMayPickModel,
+  codexConfigMayPickModel
+} from './agent-project-model-config-keys'
 
 // A listing's default is the account's, but a chat runs in a workspace whose own
-// config can pick another model. These checks only look for such config; they
-// never read what it picks, so a hit means "name no default", not a model.
+// config can pick another model. These checks only ask whether such config sets a
+// model or effort key; they never use what it picks, so a hit means "name no default".
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -43,24 +47,48 @@ async function projectConfigDirectories(cwd: string): Promise<string[]> {
   }
 }
 
+type ProjectModelLayers = {
+  folder: string
+  files: string[]
+  mayPickModel: (text: string) => boolean
+}
+
 // The project files each agent's CLI reads a model from, under its per-directory config folder.
-const PROJECT_MODEL_LAYERS: Readonly<Record<string, { folder: string; files: string[] }>> = {
-  codex: { folder: '.codex', files: ['config.toml'] },
-  claude: { folder: '.claude', files: ['settings.json', 'settings.local.json'] }
+const PROJECT_MODEL_LAYERS: Readonly<Record<string, ProjectModelLayers>> = {
+  codex: { folder: '.codex', files: ['config.toml'], mayPickModel: codexConfigMayPickModel },
+  claude: {
+    folder: '.claude',
+    files: ['settings.json', 'settings.local.json'],
+    mayPickModel: claudeSettingsMayPickModel
+  }
+}
+
+/** A missing file is no layer; one that exists but can't be read might pick anything. */
+async function fileMayPickModel(path: string, layers: ProjectModelLayers): Promise<boolean> {
+  let text: string
+  try {
+    text = await readFile(path, 'utf8')
+  } catch (error) {
+    const code = error instanceof Error && 'code' in error ? error.code : null
+    return code !== 'ENOENT' && code !== 'ENOTDIR'
+  }
+  return layers.mayPickModel(text)
 }
 
 /** The folder that is the agent's own home is account config, not a layer; any other with a
- *  config file is one. */
+ *  config file setting a model or effort is one. */
 async function directoryMayOverride(
   dir: string,
-  layers: { folder: string; files: string[] },
+  layers: ProjectModelLayers,
   accountHomePath: string
 ): Promise<boolean> {
   const layer = join(dir, layers.folder)
   if (layer === resolve(accountHomePath)) {
     return false
   }
-  const found = await Promise.all(layers.files.map((file) => exists(join(layer, file))))
+  const found = await Promise.all(
+    layers.files.map((file) => fileMayPickModel(join(layer, file), layers))
+  )
   return found.some(Boolean)
 }
 
