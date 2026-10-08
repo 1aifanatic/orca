@@ -42,22 +42,18 @@ export function buildCodexStatusPayload(
   hookPayload: Record<string, unknown>,
   options: AgentLeadStatusResolution & { updateLead: boolean }
 ): ParsedAgentStatusPayload | null {
+  const cacheKey = producerCacheKey(paneKey, 'codex')
   const snapshot = options.updateLead
-    ? resolveToolState(
-        state,
-        producerCacheKey(paneKey, 'codex'),
-        extractToolFields('codex', eventName, hookPayload),
-        {
-          resetOnNewTurn: isNewTurnEvent('codex', eventName)
-        }
-      )
-    : (state.lastToolByPaneKey.get(producerCacheKey(paneKey, 'codex')) ?? {})
+    ? resolveToolState(state, cacheKey, extractToolFields('codex', eventName, hookPayload), {
+        resetOnNewTurn: isNewTurnEvent('codex', eventName)
+      })
+    : (state.lastToolByPaneKey.get(cacheKey) ?? {})
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
 
   return normalizeAgentStatusPayload({
     state: options.stateName,
     workingMode: options.workingMode,
-    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'codex'), promptText, {
+    prompt: resolvePrompt(state, cacheKey, promptText, {
       resetOnNewTurn: options.updateLead && isNewTurnEvent('codex', eventName)
     }),
     agentType: 'codex',
