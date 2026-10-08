@@ -246,15 +246,15 @@ it.each(['0.135.0', null])(
   }
 )
 
-it('replaces a journal-only refusal with the ready retry action without replaying rejected messages', async () => {
+it('gives a journal-only refusal send-again guidance without a dead Retry', async () => {
   retainRow()
   call.mockResolvedValue(state('0.136.0'))
   render(pane())
   await check()
   expect(screen.queryByText(/too old/)).toBeNull()
-  expect(screen.getByText('Codex is updated. Retry.')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-  expect(mocks.queuedResume).toHaveBeenCalledOnce()
+  expect(screen.getByText('Codex is updated. Send your message again.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  expect(mocks.queuedResume).not.toHaveBeenCalled()
   expect(mocks.retryLaunch).not.toHaveBeenCalled()
   expect(mocks.send).not.toHaveBeenCalled()
 })

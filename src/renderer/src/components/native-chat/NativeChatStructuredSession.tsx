@@ -142,7 +142,7 @@ export function NativeChatStructuredSession(
     },
     launch: provisionalLaunch,
     startFailures,
-    retryQueued: controller.queuedMessages.resume
+    queuedMessages: submits.queuedMessages
   })
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     pending: controller.pending,

@@ -19479,6 +19479,7 @@
       "copyLog": "Copier le journal",
       "manualUpdate": "Installez Codex {{minimum}} ou une version ultérieure dans {{path}}, puis réessayez.",
       "updatedRetry": "Codex est à jour. Réessayez.",
+      "updatedSendAgain": "Codex est à jour. Envoyez à nouveau votre message.",
       "installFailed": "Codex n’a pas pu être installé. Réessayez.",
       "updateFailed": "Codex n’a pas pu être mis à jour. Réessayez.",
       "runCommand": "Exécutez {{command}}."

@@ -19479,6 +19479,7 @@
       "copyLog": "复制日志",
       "manualUpdate": "在 {{path}} 安装 Codex {{minimum}} 或更高版本，然后重试。",
       "updatedRetry": "Codex 已更新。请重试。",
+      "updatedSendAgain": "Codex 已更新。请重新发送消息。",
       "installFailed": "无法安装 Codex。请重试。",
       "updateFailed": "无法更新 Codex。请重试。",
       "runCommand": "请运行 {{command}}。"

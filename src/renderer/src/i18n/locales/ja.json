@@ -19479,6 +19479,7 @@
       "copyLog": "ログをコピー",
       "manualUpdate": "{{path}} に Codex {{minimum}} 以降をインストールして、再試行してください。",
       "updatedRetry": "Codex は更新済みです。再試行してください。",
+      "updatedSendAgain": "Codex は更新済みです。メッセージをもう一度送信してください。",
       "installFailed": "Codex をインストールできませんでした。再試行してください。",
       "updateFailed": "Codex を更新できませんでした。再試行してください。",
       "runCommand": "{{command}} を実行してください。"

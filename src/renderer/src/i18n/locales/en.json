@@ -19613,6 +19613,7 @@
       "copyLog": "Copy log",
       "manualUpdate": "Install Codex {{minimum}} or newer at {{path}}, then retry.",
       "updatedRetry": "Codex is updated. Retry.",
+      "updatedSendAgain": "Codex is updated. Send your message again.",
       "installFailed": "Codex could not be installed. Try again.",
       "updateFailed": "Codex could not be updated. Try again.",
       "runCommand": "Run {{command}}."

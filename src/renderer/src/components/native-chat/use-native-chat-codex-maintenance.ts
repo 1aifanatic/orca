@@ -1,10 +1,10 @@
 import { useLayoutEffect, useRef } from 'react'
-import { translate } from '@/i18n/i18n'
 import { useCodexMaintenance } from '@/hooks/useCodexMaintenance'
 import type { CodexMaintenanceTarget } from '@/lib/codex-maintenance-client'
 import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
-import type { NativeChatComposerNotice } from './native-chat-composer-notice'
+import { codexMaintenanceRecoveryNotice } from './codex-maintenance-recovery-notice'
+import type { StructuredAgentSessionQueuedMessagesController } from './use-structured-agent-session-queued-messages'
 
 export function useNativeChatCodexMaintenance(input: {
   agent: string
@@ -12,9 +12,12 @@ export function useNativeChatCodexMaintenance(input: {
   target: CodexMaintenanceTarget
   launch: ReturnType<typeof useNativeChatProvisionalLaunch>
   startFailures: readonly AgentSessionFailureFact[]
-  retryQueued: () => Promise<boolean>
+  queuedMessages: Pick<
+    StructuredAgentSessionQueuedMessagesController,
+    'cards' | 'steer' | 'queueResume'
+  >
 }) {
-  const { launch, startFailures, sessionId, retryQueued } = input
+  const { launch, startFailures, sessionId, queuedMessages } = input
   const refused =
     launch.lifecycle === 'failed' &&
     launch.failure?.code === 'agent_session_operation_invalid' &&
@@ -54,20 +57,8 @@ export function useNativeChatCodexMaintenance(input: {
     attempted.current = recoveryKey
     retry()
   }, [recoveryKey, processless, retry, status])
-  const updated: NativeChatComposerNotice | null = ready
-    ? {
-        key: 'codex-installation',
-        kind: 'error',
-        text: translate('codex.maintenance.updatedRetry', 'Codex is updated. Retry.'),
-        action: {
-          label: translate('auto.components.native.chat.NativeChatLaunchRetry.retry', 'Retry'),
-          onClick: refused
-            ? retry
-            : () => {
-                void retryQueued()
-              }
-        }
-      }
+  const updated = ready
+    ? codexMaintenanceRecoveryNotice(refused ? retry : null, queuedMessages)
     : null
   return {
     ...maintenance,
