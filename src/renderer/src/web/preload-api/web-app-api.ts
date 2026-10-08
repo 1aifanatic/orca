@@ -54,7 +54,9 @@ export function createWebAppApi(): Partial<PreloadApi> {
       writeTerminalRenderDesyncEvidence: () =>
         Promise.reject(
           new Error('Terminal render evidence is unavailable in the browser fallback.')
-        )
+        ),
+      // The browser's own find covers the web client; chat leaves Mod+F to it there.
+      openWindowFind: () => undefined
     }
   }
 }

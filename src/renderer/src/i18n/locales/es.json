@@ -17728,6 +17728,12 @@
           "insertColumnRight": "Insertar columna a la derecha",
           "deleteColumn": "Eliminar columna",
           "deleteTable": "Eliminar tabla"
+        },
+        "findBar": {
+          "label": "Buscar en la ventana",
+          "previousMatch": "Coincidencia anterior",
+          "nextMatch": "Coincidencia siguiente",
+          "close": "Cerrar"
         }
       }
     }

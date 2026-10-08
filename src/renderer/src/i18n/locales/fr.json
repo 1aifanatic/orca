@@ -17829,6 +17829,12 @@
           "insertColumnRight": "Insérer une colonne à droite",
           "deleteColumn": "Supprimer la colonne",
           "deleteTable": "Supprimer le tableau"
+        },
+        "findBar": {
+          "label": "Rechercher dans la fenêtre",
+          "previousMatch": "Occurrence précédente",
+          "nextMatch": "Occurrence suivante",
+          "close": "Fermer"
         }
       }
     }

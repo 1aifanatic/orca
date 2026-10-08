@@ -17728,6 +17728,12 @@
           "insertColumnRight": "右に列を挿入",
           "deleteColumn": "列を削除",
           "deleteTable": "テーブルを削除"
+        },
+        "findBar": {
+          "label": "ウィンドウ内を検索",
+          "previousMatch": "前の一致",
+          "nextMatch": "次の一致",
+          "close": "閉じる"
         }
       }
     }

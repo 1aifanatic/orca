@@ -8,6 +8,10 @@ import {
   KEYBOARD_LAYOUT_CHANGED_CHANNEL,
   type KeyboardLayoutChangeEvent
 } from '../../shared/keyboard-layout-events'
+import {
+  WINDOW_FIND_OPEN_CHANNEL,
+  type WindowFindOpenRequest
+} from '../../shared/window-find-bar-contract'
 import { prepareAndInvokeAppRestart } from '../renderer-restart-wiring'
 import { awaitBeforeUnloadCheckpoint, startupDiagnosticsEnabled } from '../preload-runtime-support'
 import type { PreloadApi } from '../api-types'
@@ -83,5 +87,7 @@ export const appApi = {
   pickFloatingWorkspaceDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke('app:pickFloatingWorkspaceDirectory'),
   writeTerminalRenderDesyncEvidence: (args: WriteTerminalRenderDesyncEvidenceArgs) =>
-    ipcRenderer.invoke('terminal:writeRenderDesyncEvidence', args)
+    ipcRenderer.invoke('terminal:writeRenderDesyncEvidence', args),
+  openWindowFind: (request: WindowFindOpenRequest): void =>
+    ipcRenderer.send(WINDOW_FIND_OPEN_CHANNEL, request)
 } satisfies PreloadApi['app']

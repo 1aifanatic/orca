@@ -3,6 +3,14 @@ import { platformBindings } from './definitions-support'
 
 export const KEYBINDING_DEFINITION_CORE_4: readonly KeybindingDefinition[] = [
   {
+    id: 'chat.find',
+    title: 'Find in window',
+    group: 'Chat',
+    scope: 'chat',
+    searchKeywords: ['shortcut', 'chat', 'find', 'search', 'window'],
+    defaultBindings: platformBindings(['Mod+F'])
+  },
+  {
     id: 'sidebar.childWorkspaces.toggle',
     title: 'Toggle Child Workspaces',
     group: 'Global',

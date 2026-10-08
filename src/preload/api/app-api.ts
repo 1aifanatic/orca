@@ -1,3 +1,4 @@
+import type { WindowFindOpenRequest } from '../../shared/window-find-bar-contract'
 import type { AppIdentity } from '../../shared/app-identity'
 import type { E2EConfig } from '../../shared/e2e-config'
 import type { ExecutionHostId } from '../../shared/execution-host'
@@ -78,6 +79,8 @@ export type AppApi = {
   writeTerminalRenderDesyncEvidence: (
     args: WriteTerminalRenderDesyncEvidenceArgs
   ) => Promise<WriteTerminalRenderDesyncEvidenceResult>
+  /** Shows the find-in-window bar with its top-right corner at the given anchor. */
+  openWindowFind: (request: WindowFindOpenRequest) => void
 }
 
 /** Panel contribution as surfaced by the main-process plugin service. */

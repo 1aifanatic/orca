@@ -20,6 +20,7 @@ import { dispatchTerminalShortcutAction } from './terminal-keyboard-action-dispa
 import { getLayoutCharacterForCode } from '@/lib/keyboard-layout/layout-base-character'
 import { createTerminalKeyboardReleaseHandlers } from './terminal-keyboard-release-handlers'
 import { synchronizeTerminalKeyboardPane } from './terminal-keyboard-pane-resolution'
+import { isInsideNativeChatCover } from './native-chat-covered-pane'
 
 const MAX_OBSERVED_ENTER_KEYDOWNS_PER_CODE = 8
 
@@ -220,6 +221,10 @@ export function createTerminalKeyboardEventHandlers(context: EventContext) {
     }
     const action = resolveShortcutEvent(shortcutEvent)
     if (!action) {
+      return
+    }
+    // The chat covering this pane owns find; the hidden terminal buffer is not what the user sees.
+    if (action.type === 'toggleSearch' && isInsideNativeChatCover(e.target)) {
       return
     }
 

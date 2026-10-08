@@ -40,6 +40,7 @@ import { startFolderRepoGitUpgradeWatch } from '../ipc/folder-repo-git-upgrade'
 import { scheduleMainWindowAutoUpdaterSetup } from './main-window-updater'
 import { registerRuntimeWindowLifecycle } from './runtime-window-lifecycle'
 import { registerDroppedPathPreparation } from './dropped-path-preparation-ipc'
+import { registerWindowFindBar } from './window-find-bar'
 
 export { ensureAutoUpdaterConfigured, registerUpdaterHandlers } from './main-window-updater'
 
@@ -127,6 +128,7 @@ export function attachMainWindowServices(
   registerSshHandlers(store, () => mainWindow, runtime)
   registerRemoteWorkspaceHandlers(store, () => mainWindow, runtime)
   registerDroppedPathPreparation(mainWindow)
+  registerWindowFindBar(mainWindow)
   registerTccPromptNoticeHandlers(mainWindow)
   scheduleMainWindowAutoUpdaterSetup(mainWindow, store, options)
   registerRuntimeWindowLifecycle(mainWindow, runtime)
