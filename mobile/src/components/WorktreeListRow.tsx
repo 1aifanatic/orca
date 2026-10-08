@@ -167,7 +167,12 @@ function WorktreeListRowComponent<T extends WorktreeListRowItem>({
             </View>
           )}
           {item.hostContextLabel ? (
-            <View style={[styles.childBadge, styles.hostBadge]}>
+            <View
+              style={[styles.childBadge, styles.hostBadge]}
+              accessibilityLabel={[item.hostContextLabel, item.hostContextHealthLabel]
+                .filter(Boolean)
+                .join(', ')}
+            >
               {/* Rows from hosts that predate hostId stamping are local: a remote row always carries one. */}
               {(parseExecutionHostId(item.hostContextHostId ?? item.hostId)?.kind ?? 'local') ===
               'local' ? (

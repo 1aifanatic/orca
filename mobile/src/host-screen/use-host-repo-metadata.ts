@@ -147,6 +147,10 @@ export function useHostRepoMetadata(args: {
               })
             )
             setHostPlatform(acceptedMetadata(hostPlatform, hostPlatformRead.interpret) ?? null)
+          } else {
+            // Why: a host that left the catalog must not keep badging rows that still name it.
+            setHostHealthById(new Map())
+            setHostLabelById(new Map())
           }
         } while (fetchRepoMetadataPendingRef.current.has(requestClient))
       } catch {

@@ -266,6 +266,10 @@ describe('memoized worktree rows', () => {
       .findAllByType('Text' as never)
       .find((node) => node.props.children === '· Disconnected')
     expect([healthText?.props.style].flat()).toContainEqual({ flexShrink: 0 })
+    const announcedBadges = renderer!.root.findAll(
+      (node) => node.props.accessibilityLabel === 'openclaw, Disconnected'
+    )
+    expect(announcedBadges).toHaveLength(1)
     expect(renderer!.root.findAllByType('Monitor' as never)).toHaveLength(0)
 
     await act(async () =>

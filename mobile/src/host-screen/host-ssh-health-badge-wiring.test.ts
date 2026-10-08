@@ -42,12 +42,15 @@ async function displayedRows(args: {
   repos: { id: string; displayName: string; connectionId?: string }[]
   rows: Worktree[]
   sshTarget: Record<string, unknown>
+  /** The catalog a second refresh answers, once the first has applied. */
+  thenRepos?: { id: string; displayName: string; connectionId?: string }[]
 }): Promise<Worktree[]> {
+  let repos = args.repos
   const client = new FakeSession('connected')
   client.sendRequest.mockImplementation(async (method: string) => {
     switch (method) {
       case 'repo.list':
-        return reply({ repos: args.repos })
+        return reply({ repos })
       case 'ssh.listTargetSummaries':
         return reply({ targets: [{ id: 'devbox', label: 'devbox', ...args.sshTarget }] })
       case 'host.platform':
@@ -75,6 +78,12 @@ async function displayedRows(args: {
     setWorktrees?.(args.rows)
     await seen.refresh?.({ force: true })
   })
+  if (args.thenRepos) {
+    repos = args.thenRepos
+    await act(async () => {
+      await seen.refresh?.({ force: true })
+    })
+  }
   return seen.rows
 }
 
@@ -101,6 +110,17 @@ describe('SSH host health on the host list rows', () => {
       sshTarget: { connected: false, connectionStatus: 'reconnecting' }
     })
     expect(rows.map((r) => r.hostContextHealthLabel)).toEqual([undefined, 'Connecting'])
+  })
+
+  it('drops the badge once the SSH host leaves the catalog', async () => {
+    const rows = await displayedRows({
+      repos: [{ id: 'repo-ssh', displayName: 'api', connectionId: 'devbox' }],
+      rows: [{ ...row('a', 'repo-ssh'), hostId: 'ssh:devbox' }],
+      sshTarget: { connected: false, connectionStatus: 'disconnected' },
+      thenRepos: [{ id: 'repo-local', displayName: 'web' }]
+    })
+    expect(rows[0].hostContextLabel).toBeUndefined()
+    expect(rows[0].hostContextHealthLabel).toBeUndefined()
   })
 
   it('keeps a healthy single-host list bare', async () => {
