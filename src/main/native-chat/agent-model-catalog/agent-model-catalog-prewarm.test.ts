@@ -13,9 +13,10 @@ import {
   type AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
 
-const spans = vi.hoisted(() => ({
-  started: [] as { name: string; attributes: Record<string, unknown>; outcome: string }[]
-}))
+const spans = vi.hoisted(() => {
+  const started: { name: string; attributes: Record<string, unknown>; outcome: string }[] = []
+  return { started }
+})
 
 vi.mock('../../observability/tracer', () => ({
   startSpan: (name: string, options?: { attributes?: Record<string, unknown> }) => {
