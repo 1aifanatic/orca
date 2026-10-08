@@ -7,8 +7,52 @@ import {
   structuredAgentSessionTargetForHost
 } from './structured-agent-session-owner'
 import { getStructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
+import { isOrcaSessionId } from '../../../shared/orca-session-address'
 
 const noSubscription = (): (() => void) => () => {}
+
+/** Only the recipient host can say which conversation currently owns a sender's clear root. */
+export function useStructuredOrchestrationSessionId(
+  executionHostId: string | null | undefined,
+  root: string | null | undefined
+): string | null {
+  const feed = useMemo(() => {
+    const target = structuredAgentSessionTargetForHost(executionHostId)
+    return target && root ? getStructuredAgentSessionStatusFeed(target) : null
+  }, [executionHostId, root])
+  useEffect(() => feed?.activate(), [feed])
+  return useSyncExternalStore(
+    feed?.subscribe ?? noSubscription,
+    () => {
+      const snapshot = feed?.getSnapshot()
+      const legacyRoot = root ? snapshot?.get(root) : undefined
+      if (
+        legacyRoot &&
+        legacyRoot.orchestrationSessionId === undefined &&
+        feed?.getSessionObservation(legacyRoot.sessionId) === 'live'
+      ) {
+        return legacyRoot.sessionId
+      }
+      let current: string | null = null
+      for (const summary of snapshot?.values() ?? []) {
+        if (
+          summary.orchestrationSessionId !== root ||
+          !isOrcaSessionId(summary.sessionId) ||
+          feed?.getSessionObservation(summary.sessionId) !== 'live'
+        ) {
+          continue
+        }
+        // Conflicting or malformed publication is not a reason to choose a history tab.
+        if (current && current !== summary.sessionId) {
+          return null
+        }
+        current = summary.sessionId
+      }
+      return current
+    },
+    () => null
+  )
+}
 
 /**
  * The owning host's saved name for one native chat, read from that host's status feed. The feed

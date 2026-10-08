@@ -12,6 +12,7 @@ import { NativeChatAgentMessageSenders } from './NativeChatAgentMessageSenders'
 
 const conversationNames = vi.hoisted(() => new Map<string, string>())
 vi.mock('@/runtime/structured-conversation-name', () => ({
+  useStructuredOrchestrationSessionId: (_owner: string, root: string | null) => root,
   useStructuredChatTabConversationName: (tab: { entityId: string } | undefined) =>
     (tab && conversationNames.get(tab.entityId)) ?? null
 }))
@@ -100,6 +101,7 @@ function renderSenders(from: AgentMessageSource, queued = false) {
 
 beforeEach(() => {
   conversationNames.clear()
+  useAppStore.setState({ activeWorktreeId: 'wt-chat', activeWorkspaceExecutionHostId: 'local' })
 })
 
 afterEach(() => {
@@ -108,17 +110,17 @@ afterEach(() => {
 })
 
 describe('the name a sender is shown under', () => {
-  it("is the sender's agent row name while its terminal is open here, not the recorded one", () => {
+  it('keeps the host-recorded CLI name even while a different pane title is visible', () => {
     useAppStore.setState({
       tabsByWorktree: { [WORKTREE]: [terminalTab({ customTitle: 'Parser worker' })] },
       agentStatusByPaneKey: { [`${TAB}:${LEAF}`]: agentRow(HANDLE) }
     })
-    renderSenders(source({}))
-    expect(screen.getByRole('button', { name: 'Parser worker' })).toBeInTheDocument()
-    expect(screen.queryByText('Recorded name')).not.toBeInTheDocument()
+    renderSenders(source({}, 'Recorded name'))
+    expect(screen.getByRole('button', { name: 'Recorded name' })).toBeInTheDocument()
+    expect(screen.queryByText('Parser worker')).not.toBeInTheDocument()
   })
 
-  it('follows a rename of the sender after the message arrived', () => {
+  it('keeps the recorded CLI name after the terminal is renamed', () => {
     useAppStore.setState({
       tabsByWorktree: { [WORKTREE]: [terminalTab({ customTitle: 'Old name' })] },
       agentStatusByPaneKey: { [`${TAB}:${LEAF}`]: agentRow(HANDLE) }
@@ -129,7 +131,8 @@ describe('the name a sender is shown under', () => {
         tabsByWorktree: { [WORKTREE]: [terminalTab({ customTitle: 'New name' })] }
       })
     })
-    expect(screen.getByRole('button', { name: 'New name' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Recorded name' })).toBeInTheDocument()
+    expect(screen.queryByText('New name')).not.toBeInTheDocument()
   })
 
   it("is the chat's tab name for a chat sender open here, as its tab shows it", () => {

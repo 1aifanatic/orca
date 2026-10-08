@@ -16,7 +16,10 @@ export function createStructuredAgentSessionHostStatusFeed(args: {
   sessions: StructuredAgentSessionStatusFeedDeps['sessions']
   now: () => number
   deps: () => {
-    store: { getRecord: (sessionId: string) => AgentSessionRecord | null }
+    store: {
+      getRecord: (sessionId: string) => AgentSessionRecord | null
+      listRecords: () => AgentSessionRecord[]
+    }
     logger: StructuredAgentSessionLogger
     onSessionStatusChanged?: StructuredAgentSessionStatusFeedDeps['onStatusChanged']
     statusSink?: StructuredAgentSessionStatusSink
@@ -27,6 +30,7 @@ export function createStructuredAgentSessionHostStatusFeed(args: {
   return new StructuredAgentSessionStatusFeed({
     sessions: args.sessions,
     getRecord: (sessionId) => args.deps().store.getRecord(sessionId),
+    listRecords: () => args.deps().store.listRecords(),
     now: args.now,
     logger: deferredStructuredAgentSessionLogger(() => args.deps().logger),
     onStatusChanged: (summary, options) => args.deps().onSessionStatusChanged?.(summary, options),

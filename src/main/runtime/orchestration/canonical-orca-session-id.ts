@@ -17,6 +17,13 @@ export function canonicalOrcaSessionId(
   if (!store) {
     return orcaSessionId
   }
+  return createCanonicalOrcaSessionIdResolver(store)(orcaSessionId)
+}
+
+/** One record-derived index for a batch projection; never retained across host mutations. */
+export function createCanonicalOrcaSessionIdResolver(
+  store: AgentSessionRecordReader
+): (sessionId: OrcaSessionId) => OrcaSessionId {
   const clearedFrom = new Map<string, string>()
   for (const record of store.listRecords()) {
     const next = clearedInto(record)
@@ -24,15 +31,31 @@ export function canonicalOrcaSessionId(
       clearedFrom.set(next, record.sessionId)
     }
   }
-  // A clear chain is acyclic by construction; the visited set only bounds a corrupt store.
-  let root: string = orcaSessionId
-  const earlier = new Set([root])
-  let prior = clearedFrom.get(root)
-  while (prior && !earlier.has(prior)) {
-    earlier.add(prior)
-    root = prior
-    prior = clearedFrom.get(root)
+  const roots = new Map<string, OrcaSessionId>()
+  return (orcaSessionId) => {
+    let root: string = orcaSessionId
+    const earlier = new Set([root])
+    let prior = clearedFrom.get(root)
+    while (prior && !earlier.has(prior)) {
+      const known = roots.get(prior)
+      if (known) {
+        root = known
+        prior = undefined
+        break
+      }
+      earlier.add(prior)
+      root = prior
+      prior = clearedFrom.get(root)
+    }
+    if (!isOrcaSessionId(root)) {
+      return orcaSessionId
+    }
+    // Corrupt cycles keep the existing bounded answer, without caching it as an acyclic root.
+    if (!prior) {
+      for (const sessionId of earlier) {
+        roots.set(sessionId, root)
+      }
+    }
+    return root
   }
-  // Record ids are minted as Orca session ids; one that is not cannot name the conversation.
-  return isOrcaSessionId(root) ? root : orcaSessionId
 }

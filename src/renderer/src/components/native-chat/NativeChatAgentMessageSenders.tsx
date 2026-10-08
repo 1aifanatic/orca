@@ -59,7 +59,7 @@ function SenderName({
   sender: AgentMessageSender
   chatWorktreeId: string | null
 }): React.JSX.Element {
-  const label = useAgentMessageSenderLabel(sender)
+  const label = useAgentMessageSenderLabel(sender, chatWorktreeId)
   if (!chatWorktreeId || !opensFromHere(sender)) {
     return (
       <span className="max-w-48 truncate px-2" title={label}>
