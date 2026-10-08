@@ -10,7 +10,11 @@ import {
   type ClaudeSubagentRoster
 } from '../../claude-subagent-roster'
 import type { AgentHookEventPayload } from '../listener-event'
-import type { ClaudeLeadTurnState, HookListenerState } from '../listener-state'
+import {
+  producerCacheKey,
+  type ClaudeLeadTurnState,
+  type HookListenerState
+} from '../listener-state'
 import { readString } from '../tool-input-preview'
 import { resolveClaudePaneStatus } from './claude-pane-hold-evidence'
 export {
@@ -241,10 +245,10 @@ export function seedClaudeLeadTurnFromPersistedStatus(
         : {})
     })
     if (status.payload.prompt) {
-      state.lastPromptByPaneKey.set(paneKey, status.payload.prompt)
+      state.lastPromptByPaneKey.set(producerCacheKey(paneKey, 'claude'), status.payload.prompt)
     }
     if (status.payload.lastAssistantMessage) {
-      state.lastToolByPaneKey.set(paneKey, {
+      state.lastToolByPaneKey.set(producerCacheKey(paneKey, 'claude'), {
         lastAssistantMessage: status.payload.lastAssistantMessage,
         lastAssistantMessageIsToolOutput: status.payload.lastAssistantMessageIsToolOutput
       })
@@ -282,9 +286,10 @@ export function clearClaudePendingWaitForAgent(
     return
   }
   setClaudeMainAgentTurnState(state, paneKey, lead.stateBeforeWait ?? { state: 'working' })
-  const previousTool = state.lastToolByPaneKey.get(paneKey)
+  const toolCacheKey = producerCacheKey(paneKey, 'claude')
+  const previousTool = state.lastToolByPaneKey.get(toolCacheKey)
   state.lastToolByPaneKey.set(
-    paneKey,
+    toolCacheKey,
     previousTool?.lastAssistantMessage
       ? {
           lastAssistantMessage: previousTool.lastAssistantMessage,
@@ -314,9 +319,10 @@ export function clearClaudeAnsweredQuestionWait(
       : { state: 'working' as const }
   const restored = setClaudeMainAgentTurnState(state, paneKey, { ...stash })
   const publishedMainAgent = claudeMainAgentStatusForPayload(restored)
-  const previousTool = state.lastToolByPaneKey.get(paneKey)
+  const toolCacheKey = producerCacheKey(paneKey, 'claude')
+  const previousTool = state.lastToolByPaneKey.get(toolCacheKey)
   state.lastToolByPaneKey.set(
-    paneKey,
+    toolCacheKey,
     previousTool?.lastAssistantMessage
       ? {
           lastAssistantMessage: previousTool.lastAssistantMessage,

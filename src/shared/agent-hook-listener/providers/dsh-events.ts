@@ -3,7 +3,7 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import {
   resolvePrompt,
   resolveToolState,
@@ -64,14 +64,14 @@ export function normalizeDshEvent(
 
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'dsh'),
     extractToolFields('dsh', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('dsh', eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'dsh'), promptText, {
       resetOnNewTurn: isNewTurnEvent('dsh', eventName)
     }),
     agentType: 'dsh',

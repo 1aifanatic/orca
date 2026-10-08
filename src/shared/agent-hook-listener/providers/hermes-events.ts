@@ -2,7 +2,7 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 
@@ -40,14 +40,14 @@ export function normalizeHermesEvent(
 
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'hermes'),
     extractToolFields('hermes', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('hermes', eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'hermes'), promptText, {
       resetOnNewTurn: isNewTurnEvent('hermes', eventName)
     }),
     agentType: 'hermes',

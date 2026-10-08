@@ -3,7 +3,7 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import {
   resolvePrompt,
   resolveToolState,
@@ -82,14 +82,16 @@ export function normalizeZCodeEvent(
   const resetOnNewTurn = isNewTurnEvent('zcode', eventName)
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'zcode'),
     extractToolFields('zcode', eventName, hookPayload),
     { resetOnNewTurn }
   )
 
   return normalizeAgentStatusPayload({
     state: turn.stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, { resetOnNewTurn }),
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'zcode'), promptText, {
+      resetOnNewTurn
+    }),
     agentType: 'zcode',
     toolName: snapshot.toolName,
     toolInput: snapshot.toolInput,

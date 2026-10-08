@@ -7,7 +7,7 @@ import {
 import { claudeRosterToSnapshots } from '../../claude-subagent-roster'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import { mainAgentTurnInterrupted } from '../../agent-lead-status-fold'
 import { claudeMainAgentStatusForPayload } from './claude-roster-state'
 
@@ -27,10 +27,15 @@ export function buildClaudeStatusPayload(
 ): ParsedAgentStatusPayload | null {
   // Why: child-driven refreshes are roster bookkeeping, not lead tool activity; read the cached snapshot without merging so they can't clear a live AskUserQuestion card or clobber the tool preview.
   const snapshot = options.updateToolSnapshot
-    ? resolveToolState(state, paneKey, extractToolFields('claude', eventName, hookPayload), {
-        resetOnNewTurn: isNewTurnEvent('claude', eventName)
-      })
-    : (state.lastToolByPaneKey.get(paneKey) ?? {})
+    ? resolveToolState(
+        state,
+        producerCacheKey(paneKey, 'claude'),
+        extractToolFields('claude', eventName, hookPayload),
+        {
+          resetOnNewTurn: isNewTurnEvent('claude', eventName)
+        }
+      )
+    : (state.lastToolByPaneKey.get(producerCacheKey(paneKey, 'claude')) ?? {})
 
   // Why: every path writes the main agent record before building, so the row's `mainAgent`, its
   // `interrupted` flag and its turn stamp are all read off that one record rather than restated by
@@ -43,7 +48,7 @@ export function buildClaudeStatusPayload(
     workingMode: options.workingMode,
     claudeTaskWakeupPending: options.claudeTaskWakeupPending,
     // Why: only lead-origin events may reset the prompt cache; a child-driven refresh must not blank the lead's prompt label.
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'claude'), promptText, {
       resetOnNewTurn: options.updateToolSnapshot && isNewTurnEvent('claude', eventName)
     }),
     agentType: 'claude',

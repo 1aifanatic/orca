@@ -3,7 +3,12 @@ import {
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
 import { isAskUserQuestionTool } from '../../agent-question-answered-intent'
-import { clearPaneTurnCacheState, type HookListenerState } from '../listener-state'
+import {
+  clearProducerTurnCacheState,
+  producerCacheKey,
+  producerPreviousStatus,
+  type HookListenerState
+} from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import { readString } from '../tool-input-preview'
@@ -22,7 +27,7 @@ export function normalizePiCompatibleEvent(
 ): ParsedAgentStatusPayload | null {
   if (agentType !== 'omp' && eventName === 'session_start') {
     // Why: Pi's session_start fires on TUI open/resume; discard stale turn details, no working row before user activity.
-    clearPaneTurnCacheState(state, paneKey)
+    clearProducerTurnCacheState(state, producerCacheKey(paneKey, agentType))
     // Why: a custom modal can switch sessions before its promise resolves.
     if (agentType !== 'pi' || hookPayload.ui_prompt_active !== true) {
       return null
@@ -39,7 +44,7 @@ export function normalizePiCompatibleEvent(
     // Why: a model switch or a child ending happens between lead events, so it rides on the
     // pane's last visible row instead of inventing a state. Before any row exists there is
     // nothing to describe, and a providerSessionOnly placeholder is a hidden resume record.
-    const previous = state.lastStatusByPaneKey.get(paneKey)
+    const previous = producerPreviousStatus(state, paneKey, agentType)
     if (
       !previous ||
       previous.providerSessionOnly === true ||
@@ -102,14 +107,14 @@ export function normalizePiCompatibleEvent(
 
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, agentType),
     extractToolFields(agentType, eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent(agentType, eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, agentType), promptText, {
       resetOnNewTurn: isNewTurnEvent(agentType, eventName)
     }),
     agentType,
@@ -149,7 +154,7 @@ function holdsOmpApproval(
   if (agentType !== 'omp' || OMP_APPROVAL_RELEASE_EVENTS.has(eventName)) {
     return false
   }
-  const previous = state.lastStatusByPaneKey.get(paneKey)?.payload
+  const previous = producerPreviousStatus(state, paneKey, agentType)?.payload
   return (
     previous?.agentType === 'omp' && previous.state === 'blocked' && previous.toolName !== 'ask'
   )

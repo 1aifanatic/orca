@@ -3,7 +3,11 @@ import {
   type AgentStatusState,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import { clearPaneTurnCacheState, type HookListenerState } from '../listener-state'
+import {
+  clearProducerTurnCacheState,
+  type HookListenerState,
+  producerCacheKey
+} from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import { readString } from '../tool-input-preview'
@@ -29,7 +33,8 @@ export function normalizeJcodeEvent(
   if (eventName === 'session_start') {
     // Why: jcode fires session_start on idle TUI open/attach/resume; mapping it
     // to 'working' would show a spinner before the user typed (mirrors Devin).
-    clearPaneTurnCacheState(state, paneKey)
+    clearProducerTurnCacheState(state, producerCacheKey(paneKey, 'jcode'))
+    state.jcodeTurnPromptByPaneKey.delete(paneKey)
     return null
   }
 
@@ -46,7 +51,7 @@ export function normalizeJcodeEvent(
   const resetOnNewTurn = isNewTurnEvent('jcode', eventName)
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'jcode'),
     extractToolFields('jcode', eventName, hookPayload),
     { resetOnNewTurn }
   )
@@ -58,7 +63,9 @@ export function normalizeJcodeEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, { resetOnNewTurn }),
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'jcode'), promptText, {
+      resetOnNewTurn
+    }),
     agentType: 'jcode',
     // Why: jcode stamps the live model on session_start/turn_start/turn_end, so
     // the row keeps naming the right model after an in-session `/model` switch.

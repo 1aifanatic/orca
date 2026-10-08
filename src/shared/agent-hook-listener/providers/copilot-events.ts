@@ -3,7 +3,7 @@ import {
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
 import { readFirstString } from '../interactive-tool'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import {
@@ -53,7 +53,7 @@ export function normalizeCopilotEvent(
     return null
   }
 
-  const snapshot = resolveToolState(state, paneKey, toolSnapshot, {
+  const snapshot = resolveToolState(state, producerCacheKey(paneKey, 'copilot'), toolSnapshot, {
     resetOnNewTurn: isNewTurnEvent('copilot', normalizedEventName)
   })
 
@@ -61,7 +61,7 @@ export function normalizeCopilotEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, effectivePrompt, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'copilot'), effectivePrompt, {
       resetOnNewTurn: isNewTurnEvent('copilot', normalizedEventName)
     }),
     agentType: 'copilot',

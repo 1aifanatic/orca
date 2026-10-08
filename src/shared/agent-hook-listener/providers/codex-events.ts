@@ -20,7 +20,7 @@ import {
   reconcileCodexSubagentReviewer
 } from '../../codex-subagent-reviewer'
 import { readFirstString } from '../interactive-tool'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import { readString } from '../tool-input-preview'
@@ -43,16 +43,21 @@ export function buildCodexStatusPayload(
   options: AgentLeadStatusResolution & { updateLead: boolean }
 ): ParsedAgentStatusPayload | null {
   const snapshot = options.updateLead
-    ? resolveToolState(state, paneKey, extractToolFields('codex', eventName, hookPayload), {
-        resetOnNewTurn: isNewTurnEvent('codex', eventName)
-      })
-    : (state.lastToolByPaneKey.get(paneKey) ?? {})
+    ? resolveToolState(
+        state,
+        producerCacheKey(paneKey, 'codex'),
+        extractToolFields('codex', eventName, hookPayload),
+        {
+          resetOnNewTurn: isNewTurnEvent('codex', eventName)
+        }
+      )
+    : (state.lastToolByPaneKey.get(producerCacheKey(paneKey, 'codex')) ?? {})
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
 
   return normalizeAgentStatusPayload({
     state: options.stateName,
     workingMode: options.workingMode,
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'codex'), promptText, {
       resetOnNewTurn: options.updateLead && isNewTurnEvent('codex', eventName)
     }),
     agentType: 'codex',
@@ -151,7 +156,7 @@ export function normalizeCodexEvent(
   }
 
   const sessionId = readString(hookPayload, 'session_id')
-  const currentSessionId = state.lastStatusByPaneKey.get(paneKey)?.providerSession?.id
+  const currentSessionId = state.codexLeadStateByPaneKey.get(paneKey)?.sessionId
   // Ephemeral side chats share the pane but must not replace its recorded main turn.
   if (
     hookPayload.transcript_path === null &&
@@ -256,7 +261,8 @@ export function normalizeCodexEvent(
     ...codexLeadOutcomeForEvent(eventName, previousLead, ownedState),
     model:
       normalizeOptionalField(hookPayload['model'], AGENT_MODEL_MAX_LENGTH) ??
-      (eventName === 'SessionStart' ? undefined : previousLead?.model)
+      (eventName === 'SessionStart' ? undefined : previousLead?.model),
+    sessionId
   })
   return buildCodexStatusPayload(state, eventName, promptText, paneKey, hookPayload, {
     ...resolveCodexPaneStatus(state, paneKey, record),

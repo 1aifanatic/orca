@@ -2,7 +2,7 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 
@@ -31,14 +31,14 @@ export function normalizeGeminiEvent(
 
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'gemini'),
     extractToolFields('gemini', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('gemini', eventName) }
   )
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'gemini'), promptText, {
       resetOnNewTurn: isNewTurnEvent('gemini', eventName)
     }),
     agentType: 'gemini',

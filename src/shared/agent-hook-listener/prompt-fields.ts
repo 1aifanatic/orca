@@ -96,34 +96,34 @@ export function shouldIgnoreCompactContinuationUserPromptSubmit(
 
 export function resolvePrompt(
   state: HookListenerState,
-  paneKey: string,
+  cacheKey: string,
   promptText: string,
   options?: { resetOnNewTurn?: boolean }
 ): string {
   // Why: harness-injected turns fire UserPromptSubmit but aren't the user's ask — keep cached prompt; match only known tags so real <tags> still reset the turn.
   if (isKnownHarnessInjectedUserTurnText(promptText)) {
-    return state.lastPromptByPaneKey.get(paneKey) ?? ''
+    return state.lastPromptByPaneKey.get(cacheKey) ?? ''
   }
   if (options?.resetOnNewTurn) {
-    state.lastPromptByPaneKey.delete(paneKey)
+    state.lastPromptByPaneKey.delete(cacheKey)
   }
   if (promptText) {
-    state.lastPromptByPaneKey.set(paneKey, promptText)
+    state.lastPromptByPaneKey.set(cacheKey, promptText)
     return promptText
   }
-  return state.lastPromptByPaneKey.get(paneKey) ?? ''
+  return state.lastPromptByPaneKey.get(cacheKey) ?? ''
 }
 
 export function resolveToolState(
   state: HookListenerState,
-  paneKey: string,
+  cacheKey: string,
   update: ToolSnapshot,
   options: { resetOnNewTurn: boolean }
 ): ToolSnapshot {
   if (options.resetOnNewTurn) {
-    state.lastToolByPaneKey.delete(paneKey)
+    state.lastToolByPaneKey.delete(cacheKey)
   }
-  const previous = state.lastToolByPaneKey.get(paneKey) ?? {}
+  const previous = state.lastToolByPaneKey.get(cacheKey) ?? {}
   // Why: undefined means either "no update" or "input not previewable"; extractor metadata decides whether to inherit stale input.
   const clearsUnpreviewableInput =
     update.hasToolInputField === true && update.toolInput === undefined
@@ -156,6 +156,6 @@ export function resolveToolState(
         ? previous.lastAssistantMessageIsToolOutput
         : update.lastAssistantMessageIsToolOutput
   }
-  state.lastToolByPaneKey.set(paneKey, merged)
+  state.lastToolByPaneKey.set(cacheKey, merged)
   return merged
 }

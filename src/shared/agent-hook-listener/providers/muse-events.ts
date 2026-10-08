@@ -4,7 +4,7 @@ import {
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
 import { createMuseSessionLogState, readMusePendingUserInput } from '../../muse-session-log'
-import type { HookListenerState, MusePaneState } from '../listener-state'
+import { producerCacheKey, type HookListenerState, type MusePaneState } from '../listener-state'
 import {
   resolvePrompt,
   resolveToolState,
@@ -133,7 +133,7 @@ export function normalizeMuseEvent(
 
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'muse'),
     extractToolFields('muse', toolEventName, toolPayload),
     { resetOnNewTurn: isNewTurnEvent('muse', eventName) }
   )
@@ -144,9 +144,14 @@ export function normalizeMuseEvent(
   return normalizeAgentStatusPayload({
     state: stateName,
     // Why: Notification's `message` is status copy ("<dir> — waiting for approval"), not the user's prompt.
-    prompt: resolvePrompt(state, paneKey, eventName === 'Notification' ? '' : promptText, {
-      resetOnNewTurn: isNewTurnEvent('muse', eventName)
-    }),
+    prompt: resolvePrompt(
+      state,
+      producerCacheKey(paneKey, 'muse'),
+      eventName === 'Notification' ? '' : promptText,
+      {
+        resetOnNewTurn: isNewTurnEvent('muse', eventName)
+      }
+    ),
     agentType: 'muse',
     toolName: snapshot.toolName,
     toolInput: snapshot.toolInput,

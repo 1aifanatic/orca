@@ -3,7 +3,7 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import {
   resolvePrompt,
   resolveToolState,
@@ -79,13 +79,15 @@ export function normalizeCompatibleLifecycleEvent(
   ) {
     toolFields.toolName = 'AskUserQuestion'
   }
-  const snapshot = resolveToolState(state, paneKey, toolFields, { resetOnNewTurn })
+  const snapshot = resolveToolState(state, producerCacheKey(paneKey, source), toolFields, {
+    resetOnNewTurn
+  })
   return normalizeAgentStatusPayload({
     state: stateName,
     agentType: source,
     prompt: resolvePrompt(
       state,
-      paneKey,
+      producerCacheKey(paneKey, source),
       source === 'codebuddy' && eventName === 'Notification' ? '' : promptText,
       { resetOnNewTurn }
     ),

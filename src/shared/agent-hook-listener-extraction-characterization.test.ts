@@ -6,6 +6,7 @@ import {
   clearPaneCacheState,
   createHookListenerState,
   movePaneCacheState,
+  producerCacheKey,
   seedLegacyAgentStatusForTests
 } from './agent-hook-listener/listener-state'
 import { warnOnHookEnvOrVersionMismatch } from './agent-hook-listener/listener-limits'
@@ -238,8 +239,12 @@ describe('agent hook extraction boundaries', () => {
 
   it('preserves cache mutation from a provider reset that emits no row', () => {
     const state = createHookListenerState()
-    state.lastPromptByPaneKey.set(PANE, 'old prompt')
-    state.lastToolByPaneKey.set(PANE, { toolName: 'old tool' })
+    const droidKey = producerCacheKey(PANE, 'droid')
+    const claudeKey = producerCacheKey(PANE, 'claude')
+    state.lastPromptByPaneKey.set(droidKey, 'old prompt')
+    state.lastToolByPaneKey.set(droidKey, { toolName: 'old tool' })
+    state.lastPromptByPaneKey.set(claudeKey, 'claude prompt')
+    state.lastToolByPaneKey.set(claudeKey, { toolName: 'claude tool' })
     seedLegacyAgentStatusForTests(state, {
       paneKey: PANE,
       connectionId: null,
@@ -254,8 +259,11 @@ describe('agent hook extraction boundaries', () => {
     )
 
     expect(event).toBeNull()
-    expect(state.lastPromptByPaneKey.has(PANE)).toBe(false)
-    expect(state.lastToolByPaneKey.has(PANE)).toBe(false)
+    expect(state.lastPromptByPaneKey.has(droidKey)).toBe(false)
+    expect(state.lastToolByPaneKey.has(droidKey)).toBe(false)
+    // Another agent's turn on the same pane is not Droid's to reset.
+    expect(state.lastPromptByPaneKey.get(claudeKey)).toBe('claude prompt')
+    expect(state.lastToolByPaneKey.get(claudeKey)).toEqual({ toolName: 'claude tool' })
     expect(state.lastStatusByPaneKey.has(PANE)).toBe(true)
   })
 

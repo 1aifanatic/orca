@@ -2,7 +2,7 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import {
   resolvePrompt,
   resolveToolState,
@@ -51,7 +51,7 @@ export function normalizeKimiEvent(
 
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'kimi'),
     extractToolFields('kimi', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('kimi', eventName) }
   )
@@ -61,7 +61,7 @@ export function normalizeKimiEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'kimi'), promptText, {
       resetOnNewTurn: isNewTurnEvent('kimi', eventName)
     }),
     agentType: 'kimi',

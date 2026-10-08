@@ -2,7 +2,11 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import { clearPaneTurnCacheState, type HookListenerState } from '../listener-state'
+import {
+  clearProducerTurnCacheState,
+  type HookListenerState,
+  producerCacheKey
+} from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 
@@ -16,7 +20,7 @@ export function normalizeDevinEvent(
 ): ParsedAgentStatusPayload | null {
   if (eventName === 'SessionStart') {
     // Why: Devin emits SessionStart on idle TUI open/resume; mapping it to 'working' showed a spinner before the user typed, so only UserPromptSubmit/tool activity may create a row.
-    clearPaneTurnCacheState(state, paneKey)
+    clearProducerTurnCacheState(state, producerCacheKey(paneKey, 'devin'))
     return null
   }
 
@@ -38,7 +42,7 @@ export function normalizeDevinEvent(
 
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'devin'),
     extractToolFields('devin', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('devin', eventName) }
   )
@@ -48,7 +52,7 @@ export function normalizeDevinEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'devin'), promptText, {
       resetOnNewTurn: isNewTurnEvent('devin', eventName)
     }),
     agentType: 'devin',

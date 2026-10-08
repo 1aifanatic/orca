@@ -3,7 +3,7 @@ import {
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
 import { readFirstString } from '../interactive-tool'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, type HookListenerState } from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import { readLastUserPromptFromTranscript } from '../transcript-lines'
@@ -55,19 +55,21 @@ export function normalizeAntigravityEvent(
 
   const resetsTurn = isNewTurnEvent('antigravity', eventName)
   // Why: once the prompt is cached for this pane, avoid rescanning the (potentially large) Antigravity transcript per hook.
-  const cachedPrompt = resetsTurn ? undefined : state.lastPromptByPaneKey.get(paneKey)
+  const cachedPrompt = resetsTurn
+    ? undefined
+    : state.lastPromptByPaneKey.get(producerCacheKey(paneKey, 'antigravity'))
   const effectivePrompt =
     promptText || cachedPrompt || readLastUserPromptFromTranscript(transcriptPath) || ''
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'antigravity'),
     extractToolFields('antigravity', eventName, hookPayload),
     { resetOnNewTurn: resetsTurn }
   )
 
   const payload = normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, effectivePrompt, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'antigravity'), effectivePrompt, {
       resetOnNewTurn: resetsTurn
     }),
     agentType: 'antigravity',

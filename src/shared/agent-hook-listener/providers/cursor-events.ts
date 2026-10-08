@@ -2,7 +2,7 @@ import {
   normalizeAgentStatusPayload,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
-import type { HookListenerState } from '../listener-state'
+import { producerCacheKey, producerPreviousStatus, type HookListenerState } from '../listener-state'
 import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 
@@ -14,7 +14,7 @@ export function normalizeCursorEvent(
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
   // Why: Cursor can emit final response text after `stop`; enrich the completed row, don't resurrect the agent as working.
-  const previousStatus = state.lastStatusByPaneKey.get(paneKey)?.payload
+  const previousStatus = producerPreviousStatus(state, paneKey, 'cursor')?.payload
   const stateName =
     eventName === 'beforeSubmitPrompt' ||
     eventName === 'sessionStart' ||
@@ -26,7 +26,7 @@ export function normalizeCursorEvent(
     eventName === 'beforeMCPExecution'
       ? 'working'
       : eventName === 'afterAgentResponse'
-        ? previousStatus?.state === 'done' && previousStatus.agentType === 'cursor'
+        ? previousStatus?.state === 'done'
           ? 'done'
           : 'working'
         : eventName === 'stop' || eventName === 'sessionEnd'
@@ -39,7 +39,7 @@ export function normalizeCursorEvent(
 
   const snapshot = resolveToolState(
     state,
-    paneKey,
+    producerCacheKey(paneKey, 'cursor'),
     extractToolFields('cursor', eventName, hookPayload),
     { resetOnNewTurn: isNewTurnEvent('cursor', eventName) }
   )
@@ -53,7 +53,7 @@ export function normalizeCursorEvent(
 
   return normalizeAgentStatusPayload({
     state: stateName,
-    prompt: resolvePrompt(state, paneKey, promptText, {
+    prompt: resolvePrompt(state, producerCacheKey(paneKey, 'cursor'), promptText, {
       resetOnNewTurn: isNewTurnEvent('cursor', eventName)
     }),
     agentType: 'cursor',
