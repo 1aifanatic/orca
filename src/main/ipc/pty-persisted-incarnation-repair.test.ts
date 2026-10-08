@@ -350,7 +350,7 @@ describe('registerPtyHandlers', () => {
           sessionId: 'pty-dead-persisted-owner',
           command: undefined
         })
-        expect(store.setWorkspaceSession).toHaveBeenCalledOnce()
+        expect(store.setWorkspaceSession).not.toHaveBeenCalled()
         expect(runtime.onPtyExit).toHaveBeenCalledWith(
           'pty-dead-persisted-owner',
           -1,
@@ -374,8 +374,8 @@ describe('registerPtyHandlers', () => {
       expect(providerSpawn.mock.calls[1]?.[0]).toMatchObject({
         command: 'codex resume exact-dead-provider-session'
       })
-      expect(store.setWorkspaceSession).toHaveBeenCalledOnce()
-      expect(store.flushOrThrow).toHaveBeenCalledOnce()
+      // The pane and its binding stay for the fresh spawn's bind to swap.
+      expect(store.setWorkspaceSession).not.toHaveBeenCalled()
       expect(runtime.onPtyExit).toHaveBeenCalledWith(
         'pty-dead-persisted-owner',
         -1,
