@@ -102,7 +102,64 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
   return { root, userHome, dataRoot, settings, router, home, setup }
 }
 
+function signIn(stateDir: string, email: string): void {
+  mkdirSync(stateDir, { recursive: true })
+  writeFileSync(
+    join(stateDir, '.claude.json'),
+    JSON.stringify({ oauthAccount: { emailAddress: email } })
+  )
+}
+
 describe('ClaudeProfileRouter', () => {
+  it('runs an account with no login of its own on System default while that is signed in to it', async () => {
+    const f = fixture()
+    mkdirSync(f.home('a'), { recursive: true })
+    writeFileSync(join(f.home('a'), '..', 'profile.json'), '{}')
+    // ~/.claude's state file sits in the home folder; the email matches case-insensitively.
+    signIn(f.userHome, 'A@Example.test')
+    await expect(f.router.prepareLaunch()).resolves.toMatchObject({
+      configDir: join(f.userHome, '.claude'),
+      stripAuthEnv: false,
+      provenance: 'system'
+    })
+    expect(f.router.preparation().envPatch).not.toHaveProperty('CLAUDE_CONFIG_DIR')
+    expect(f.router.terminalEnv()).toEqual({ ORCA_CLAUDE_PROFILE_POINTER: f.router.pointerPath })
+    expect(f.router.routedHome()).toBeNull()
+    // The pointer names the folder actually chosen, so a typed claude agrees with Orca's launches.
+    expect(readFileSync(f.router.pointerPath, 'utf8')).toBe('')
+    expect(f.router.coveredBySystemDefault('a')).toBe(true)
+
+    // After the account signs in to its own folder, the next launch uses it.
+    signIn(f.home('a'), 'a@example.test')
+    await expect(f.router.prepareLaunch()).resolves.toMatchObject({
+      configDir: f.home('a'),
+      stripAuthEnv: true
+    })
+    expect(readFileSync(f.router.pointerPath, 'utf8')).toBe(f.home('a'))
+    expect(f.router.coveredBySystemDefault('a')).toBe(false)
+  })
+
+  it('keeps an account on its own folder when System default is signed in to another email, or out', async () => {
+    const f = fixture()
+    mkdirSync(f.home('a'), { recursive: true })
+    writeFileSync(join(f.home('a'), '..', 'profile.json'), '{}')
+    signIn(f.userHome, 'b@example.test')
+    await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
+    writeFileSync(join(f.userHome, '.claude.json'), '{}')
+    await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
+  })
+
+  it("compares against the user's own CLAUDE_CONFIG_DIR login when they set one", async () => {
+    const own = resolve(mkdtempSync(join(tmpdir(), 'claude-router-own-')))
+    roots.push(own)
+    const f = fixture({ CLAUDE_CONFIG_DIR: own })
+    signIn(f.userHome, 'b@example.test')
+    signIn(own, 'a@example.test')
+    await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: own })
+    // A covered account's folder need not exist yet; it is set up in the background.
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+  })
+
   it('prepares an account folder for sign-in only when setup succeeds', async () => {
     const f = fixture({ CLAUDE_CONFIG_DIR: resolve('/custom/claude') })
     expect(f.router.accountHome('b')).toBe(f.home('b'))
@@ -208,11 +265,12 @@ describe('ClaudeProfileRouter', () => {
     await expect(launch).resolves.toMatchObject({ configDir: f.home('a') })
   })
 
-  it("launches a set-up account without waiting for the login shell's env", async () => {
+  it("launches a set-up, signed-in account without waiting for the login shell's env", async () => {
     shell.hang = true
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })
     writeFileSync(join(f.home('a'), '..', 'profile.json'), '{}')
+    signIn(f.home('a'), 'a@example.test')
     const router = new ClaudeProfileRouter({
       getSettings: () => f.settings,
       dataRoot: f.dataRoot,

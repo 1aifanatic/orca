@@ -263,6 +263,38 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     expect(readFileSync(f.pointer, 'utf8')).toBe(f.profileHome)
   })
 
+  it("runs an account with no login of its own on the guest's ~/.claude while that is signed in to it", async () => {
+    const f = fixture()
+    mkdirSync(f.profileHome, { recursive: true })
+    writeFileSync(join(f.profileHome, '..', 'profile.json'), '{}')
+    const login = (dir: string, email: string) =>
+      writeFileSync(
+        join(dir, '.claude.json'),
+        JSON.stringify({ oauthAccount: { emailAddress: email } })
+      )
+    login(guest.home, 'A@example.test')
+    await expect(f.router.prepareLaunch('Ubuntu')).resolves.toMatchObject({
+      wslLinuxConfigDir: join(guest.home, '.claude'),
+      provenance: 'wsl:Ubuntu:system'
+    })
+    expect(readFileSync(f.pointer, 'utf8')).toBe('')
+    await f.router.publish('Ubuntu')
+    expect(readFileSync(f.pointer, 'utf8')).toBe('')
+
+    login(f.profileHome, 'a@example.test')
+    await expect(f.router.prepareLaunch('Ubuntu')).resolves.toMatchObject({
+      wslLinuxConfigDir: f.profileHome
+    })
+    expect(readFileSync(f.pointer, 'utf8')).toBe(f.profileHome)
+
+    // Another email in the guest's ~/.claude never stands in for the account.
+    rmSync(join(f.profileHome, '.claude.json'))
+    login(guest.home, 'b@example.test')
+    await expect(f.router.prepareLaunch('Ubuntu')).resolves.toMatchObject({
+      wslLinuxConfigDir: f.profileHome
+    })
+  })
+
   it('launches System default from the guest ~/.claude with no account env', async () => {
     const f = fixture()
     f.wsl.Ubuntu = null

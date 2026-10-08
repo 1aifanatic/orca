@@ -17,8 +17,10 @@ import { claudeProfileMarkerPath, type ClaudeProfileDescriptor } from './claude-
 import {
   claudeProfileMissing,
   claudeProfileSetupFailed,
+  sameClaudeEmail,
   type ClaudeProfileRouterSettings
 } from './claude-profile-router'
+import { claudeStateLogin } from './claude-account-folder'
 import { wslClaudeProfile, wslClaudeProfilePointer } from './claude-profile-wsl-paths'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 import { getClaudeWslSelectionKey, getSelectedClaudeAccountIdForTarget } from './runtime-selection'
@@ -63,7 +65,25 @@ export class ClaudeWslProfileRouter {
     if (!home?.startsWith('/')) {
       throw new Error(`Could not read the home folder of WSL distro ${distro}.`)
     }
-    return { home, profile: this.selectedProfile(home, distro) }
+    const selected = this.selectedProfile(home, distro)
+    return { home, selected, profile: await this.routed(distro, home, selected) }
+  }
+
+  /** The host router's fallback: an account with no login of its own runs on the guest's ~/.claude
+   *  while that is signed in to the same email. */
+  private async routed(
+    distro: string,
+    home: string,
+    selected: ClaudeProfileDescriptor | null
+  ): Promise<ClaudeProfileDescriptor | null> {
+    if (!selected || (await guestLogin(distro, posix.join(selected.home, '.claude.json')))) {
+      return selected
+    }
+    const email = this.args
+      .getSettings()
+      .claudeManagedAccounts.find((account) => account.id === selected.accountId)?.email
+    const systemDefault = await guestLogin(distro, posix.join(home, '.claude.json'))
+    return email && systemDefault && sameClaudeEmail(email, systemDefault) ? null : selected
   }
 
   private selectedProfile(home: string, distro: string): ClaudeProfileDescriptor | null {
@@ -80,7 +100,7 @@ export class ClaudeWslProfileRouter {
 
   /** Pointer first, then setup in the background, as on the host. No accounts here means no pointer. */
   async publish(distro: string): Promise<void> {
-    const { home, profile } = await this.resolve(distro)
+    const { home, selected, profile } = await this.resolve(distro)
     if (!this.accountIn(distro)) {
       await runGuest(distro, {
         script: 'rm -f -- "$1"',
@@ -90,17 +110,21 @@ export class ClaudeWslProfileRouter {
       return
     }
     await writePointer(distro, this.pointerIn(home), profile?.home ?? '')
-    // Why even a missing folder: setup creates it without a login, for Claude's own first run.
-    if (profile) {
-      this.setUp(distro, home, profile.accountId).catch((error: unknown) => {
-        console.warn('[claude-profile] WSL account setup failed:', error)
-      })
+    // Why even a missing or covered folder: setup creates it without a login, for a sign-in.
+    if (selected) {
+      this.setUpInBackground(distro, home, selected.accountId)
     }
+  }
+
+  private setUpInBackground(distro: string, home: string, accountId: string): void {
+    this.setUp(distro, home, accountId).catch((error: unknown) => {
+      console.warn('[claude-profile] WSL account setup failed:', error)
+    })
   }
 
   /** Waits for a first setup that never finished, running or not; otherwise launches at once. */
   async prepareLaunch(distro: string): Promise<ClaudeRuntimeAuthPreparation> {
-    const { home, profile } = await this.resolve(distro)
+    const { home, selected, profile } = await this.resolve(distro)
     // Why the marker: setup writes it last, so a missing folder is set up too. A re-run of a
     // set-up folder never blocks.
     if (profile && !(await hasMarker(distro, profile))) {
@@ -108,12 +132,14 @@ export class ClaudeWslProfileRouter {
         console.warn('[claude-profile] WSL account setup failed:', error)
         throw claudeProfileSetupFailed()
       })
+    } else if (selected && !profile) {
+      this.setUpInBackground(distro, home, selected.accountId)
     }
     // Why: a missing or stale guest pointer would run the pane's `claude` under another account.
     // Re-read the selection: one made during setup has already published its own pointer.
     if (this.accountIn(distro)) {
-      const selected = this.selectedProfile(home, distro)
-      await writePointer(distro, this.pointerIn(home), selected?.home ?? '')
+      const current = await this.routed(distro, home, this.selectedProfile(home, distro))
+      await writePointer(distro, this.pointerIn(home), current?.home ?? '')
     }
     return this.preparationFor(distro, home, profile)
   }
@@ -187,6 +213,18 @@ export class ClaudeWslProfileRouter {
     )
     this.setups.set(accountId, run)
     return run
+  }
+}
+
+/** The login a guest state file names, read over the share like the marker. */
+async function guestLogin(distro: string, stateFile: string): Promise<string | null> {
+  try {
+    const state: unknown = JSON.parse(await readFile(toWindowsWslPath(stateFile, distro), 'utf8'))
+    return state && typeof state === 'object' && !Array.isArray(state)
+      ? (claudeStateLogin(Object.fromEntries(Object.entries(state)))?.email ?? null)
+      : null
+  } catch {
+    return null
   }
 }
 
