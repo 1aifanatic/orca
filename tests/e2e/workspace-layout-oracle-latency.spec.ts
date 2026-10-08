@@ -26,6 +26,21 @@ const SAMPLES = Number(process.env.ORCA_LAYOUT_ORACLE_LATENCY_SAMPLES ?? 10)
 type Condition = 'idle' | 'flood'
 type Samples = Record<string, number[]>
 
+/** Reads can briefly fail while the window re-publishes its terminals; only reads are retried. */
+async function read<T>(client: RuntimeClient, method: string, params: unknown): Promise<T> {
+  const deadline = Date.now() + 10_000
+  for (;;) {
+    try {
+      return (await client.call<T>(method, params)).result
+    } catch (error) {
+      if (Date.now() > deadline || !String(error).includes('unavailable')) {
+        throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+  }
+}
+
 function percentile(values: number[], p: number): number {
   const sorted = values.toSorted((a, b) => a - b)
   return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] ?? Number.NaN
@@ -94,7 +109,7 @@ async function measureCondition(
         { polling: 'raf', timeout: 30_000 }
       )
     const handles = async (): Promise<RuntimeTerminalListResult['terminals']> =>
-      (await client.call<RuntimeTerminalListResult>('terminal.list', { worktree })).result.terminals
+      (await read<RuntimeTerminalListResult>(client, 'terminal.list', { worktree })).terminals
     const existing = new Set((await handles()).map((terminal) => terminal.handle))
     add(
       'new tab',
@@ -114,10 +129,10 @@ async function measureCondition(
         (p) => p.locator(`${SORTABLE_TAB}[data-tab-title="${title}"]`).waitFor({ timeout: 30_000 })
       )
     )
-    const tabs = await client.call<RuntimeMobileSessionTabsResult>('session.tabs.list', {
+    const tabs = await read<RuntimeMobileSessionTabsResult>(client, 'session.tabs.list', {
       worktree
     })
-    const group = tabs.result.tabGroups![0]!
+    const group = tabs.tabGroups![0]!
     const reversed = group.tabOrder.toReversed()
     add(
       'tab reorder',
@@ -169,8 +184,8 @@ test('layout oracle: command to drawn latency', async ({}, testInfo) => {
     await measureCondition(page, client, worktreeId, 'idle', samples)
 
     // A second tab floods output for the whole flood round; the measured tab stays active.
-    const list = await client.call<RuntimeTerminalListResult>('terminal.list', { worktree })
-    const measured = list.result.terminals[0]!
+    const list = await read<RuntimeTerminalListResult>(client, 'terminal.list', { worktree })
+    const measured = list.terminals[0]!
     await client.call('terminal.create', { worktree, command: 'yes orca-latency-flood' })
     await client.call('terminal.focus', { terminal: measured.handle, navigation: 'host' })
     await waitForActiveTerminalManager(page)
