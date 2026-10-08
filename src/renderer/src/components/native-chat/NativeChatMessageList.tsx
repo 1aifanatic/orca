@@ -35,6 +35,7 @@ import {
 import { useNativeChatTranscriptSlots } from './use-native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
 import { useNativeChatSubagentSections } from './use-native-chat-subagent-sections'
+import { nativeChatLoadedRowKeys } from './native-chat-transcript-row-inventory'
 import { toggleNativeChatExpandedKey } from './native-chat-expanded-keys'
 import { useNativeChatTurnMembership } from './use-native-chat-turn-membership'
 import { useNativeChatTranscriptScroll } from './use-native-chat-transcript-scroll'
@@ -157,6 +158,10 @@ export function NativeChatMessageList({
     subagentDisclosure,
     openSubagentSections
   } = useNativeChatSubagentSections(messages, subagentRows, subagentRoster)
+  const loadedRowKeys = useMemo(
+    () => nativeChatLoadedRowKeys(messages, subagentSections),
+    [messages, subagentSections]
+  )
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
   // Each row's turn, which turn is live, and the order the rows draw in, resolved once.
@@ -389,6 +394,7 @@ export function NativeChatMessageList({
               >
                 <NativeChatTranscriptItems
                   slots={slots}
+                  loadedRowKeys={loadedRowKeys}
                   context={rowContext}
                   window={transcriptWindow}
                 />

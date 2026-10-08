@@ -38,17 +38,32 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('native chat Mermaid fences', () => {
-  it('preserves the source block geometry while the completed diagram renders', async () => {
+  it('preserves the source node, horizontal scroll and focus while the completed diagram renders', async () => {
     const pending = Promise.withResolvers<{ svg: string }>()
     mermaid.render.mockReturnValueOnce(pending.promise)
-    const { container, rerender } = render(reply(complete, true))
+    const wide = `flowchart LR\n A["${'Wide diagram source '.repeat(30)}"] --> B`
+    const { container, rerender } = render(reply(wide, true))
     const source = container.querySelector('[data-code-language="mermaid"]')
     expect(source).not.toBeNull()
     const markup = source?.outerHTML
+    const pre = container.querySelector('pre')
+    if (!pre) {
+      throw new Error('Missing diagram source')
+    }
+    pre.scrollLeft = 90
+    const copy = screen.getByRole('button', { name: 'Copy code' })
+    copy.focus()
+    expect(mermaid.render).not.toHaveBeenCalled()
 
-    rerender(reply(complete, false))
+    rerender(reply(wide, false))
     await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(1))
     expect(container.querySelector('[data-code-language="mermaid"]')?.outerHTML).toBe(markup)
+    expect(container.querySelector('[data-code-language="mermaid"]')).toBe(source)
+    expect(container.querySelector('pre')).toBe(pre)
+    expect(pre.isConnected).toBe(true)
+    expect(pre.scrollLeft).toBe(90)
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBe(copy)
+    expect(copy).toHaveFocus()
     expect(container.querySelector('.mermaid-block')).toBeNull()
 
     await act(async () => pending.resolve({ svg: '<svg><text>Finished</text></svg>' }))
@@ -84,5 +99,38 @@ describe('native chat Mermaid fences', () => {
     await screen.findByText(/Diagram error: Invalid mermaid syntax/)
     expect(container.querySelector('pre')?.textContent).toBe(partial.trimEnd())
     expect(container.querySelector('svg')).toBeNull()
+  })
+
+  it('keeps the source mounted until a pending diagram fails', async () => {
+    const pending = Promise.withResolvers<{ svg: string }>()
+    mermaid.render.mockReturnValueOnce(pending.promise)
+    const view = render(reply(partial, true))
+    const source = view.container.querySelector('pre')
+    view.rerender(reply(partial, false))
+    await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(1))
+    expect(view.container.querySelector('pre')).toBe(source)
+    expect(screen.queryByText(/Diagram error:/)).toBeNull()
+    await act(async () => pending.reject(new Error('Invalid mermaid syntax')))
+    expect(screen.getByText(/Diagram error: Invalid mermaid syntax/)).toBeInTheDocument()
+    expect(view.container.querySelector('pre')?.textContent).toBe(partial.trimEnd())
+  })
+
+  it('waits for the updated diagram when a previously rendered fence grows again', async () => {
+    const view = render(reply(complete, false))
+    await waitFor(() =>
+      expect(view.container.querySelector('.mermaid-block svg')).toBeInTheDocument()
+    )
+    const next = `${complete}\n B["Next step"]`
+    view.rerender(reply(next, true))
+    const source = view.container.querySelector('pre')
+    expect(source).toHaveTextContent('Next step')
+    const pending = Promise.withResolvers<{ svg: string }>()
+    mermaid.render.mockReturnValueOnce(pending.promise)
+    view.rerender(reply(next, false))
+    await waitFor(() => expect(mermaid.render).toHaveBeenCalledTimes(2))
+    expect(view.container.querySelector('pre')).toBe(source)
+    expect(view.container.querySelector('.mermaid-block svg')).toBeNull()
+    await act(async () => pending.resolve({ svg: '<svg><text>Next step</text></svg>' }))
+    expect(view.container.querySelector('.mermaid-block svg')).toHaveTextContent('Next step')
   })
 })

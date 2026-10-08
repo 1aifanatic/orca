@@ -284,18 +284,7 @@ export function buildNativeChatTranscriptSlots(
   return drawn
 }
 
-/** Stable key for a slot: its message id, the agent whose section it heads, or its
- *  roster row and first entry. */
-export function nativeChatSlotKey(slot: NativeChatTranscriptSlot): string {
-  switch (slot.kind) {
-    case 'message':
-      return slot.message.id
-    case 'subagent':
-      return `subagent-section:${slot.agentId}`
-    case 'subagent-entries':
-      return `subagent-entries:${slot.rosterRowId}:${slot.agents[0]?.id}`
-  }
-}
+export { nativeChatSlotKey } from './native-chat-transcript-row-inventory'
 
 /** Slot index of a message id, or -1, counting a work run's members as its row. Reveal
  *  targets arrive as ids because the row that owns them may not be mounted to be pointed at. */
