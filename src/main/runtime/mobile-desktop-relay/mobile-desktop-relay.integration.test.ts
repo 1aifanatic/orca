@@ -151,7 +151,12 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
         retirementListeners.forEach((listener) => listener(environmentId))
     }
     const hosts: MobileDesktopRelayHosts = {
-      list: () => ({ environments: [], statusByEnvironmentId: new Map() }),
+      list: () => ({
+        environments: [],
+        statusByEnvironmentId: new Map(),
+        sshTargetLabels: new Map(),
+        sshConnectionStates: new Map()
+      }),
       resolve: async (environmentId) =>
         environmentId === 'env-1'
           ? { environmentId, fence: 'pairing-1', pairing: desktopOnHost }

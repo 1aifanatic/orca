@@ -7,6 +7,7 @@ import {
 } from '../../../shared/runtime-host-status'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
+import type { SshConnectionState } from '../../../shared/ssh-types'
 import type { MobileDesktopRelayHosts } from './mobile-desktop-relay-hosts'
 import { MobileRelayHostCatalog } from './mobile-relay-host-catalog'
 
@@ -49,18 +50,32 @@ function psReply(rows: Record<string, unknown>[]): RuntimeRpcResponse<unknown> {
 }
 
 function fakeHosts(
-  environments: { id: string; name: string; snapshot: RuntimeHostStatusSnapshot }[]
+  environments: {
+    id: string
+    name: string
+    snapshot: RuntimeHostStatusSnapshot
+    orcadDeployment?: { sshTargetId: string }
+  }[]
 ) {
-  const state = { environments, pairingRevision: 1, retire: (_environmentId: string) => {} }
+  const state = {
+    environments,
+    pairingRevision: 1,
+    retire: (_environmentId: string) => {},
+    sshTargetLabels: new Map<string, string>(),
+    sshConnectionStates: new Map<string, SshConnectionState>()
+  }
   const call = vi.fn<MobileDesktopRelayHosts['call']>()
   const hosts: MobileDesktopRelayHosts = {
     list: () => ({
-      environments: state.environments.map(({ id, name }) => ({
+      environments: state.environments.map(({ id, name, orcadDeployment }) => ({
         id,
         name,
+        orcadDeployment,
         pairingRevision: state.pairingRevision,
         runtimeId: 'runtime-a'
       })),
+      sshTargetLabels: state.sshTargetLabels,
+      sshConnectionStates: state.sshConnectionStates,
       statusByEnvironmentId: new Map(
         state.environments.map((entry) => [
           entry.id,
@@ -119,6 +134,49 @@ describe('mobile relay host catalog', () => {
     // Listing reads what the desktop already knows; it never contacts a server.
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(call).not.toHaveBeenCalled()
+  })
+
+  it("lists a managed server once, under its SSH host's name and rename, as the sidebar does", async () => {
+    const { hosts, state } = fakeHosts([
+      {
+        id: 'managed',
+        name: 'orcad on devbox',
+        snapshot: snapshot('managed', 'live'),
+        orcadDeployment: { sshTargetId: 'devbox' }
+      }
+    ])
+    state.sshTargetLabels.set('devbox', 'Dev Box')
+    expect(catalog(hosts).catalog.list().hosts).toEqual([
+      { hostId: 'runtime:managed', label: 'Dev Box', health: 'available', relay: 'ready' }
+    ])
+    const renamed = catalog(hosts, new Map([['ssh:devbox', 'Build box']])).catalog
+    expect(renamed.list().hosts.map((host) => host.label)).toEqual(['Build box'])
+  })
+
+  it('does not list a managed server while its SSH host is reached over the SSH relay', () => {
+    const { hosts, state } = fakeHosts([
+      {
+        id: 'managed',
+        name: 'orcad on devbox',
+        snapshot: snapshot('managed', 'live'),
+        orcadDeployment: { sshTargetId: 'devbox' }
+      },
+      { id: 'other', name: 'Box', snapshot: snapshot('other', 'live') }
+    ])
+    state.sshTargetLabels.set('devbox', 'Dev Box')
+    state.sshConnectionStates.set('devbox', {
+      targetId: 'devbox',
+      status: 'connected',
+      error: null,
+      reconnectAttempt: 0,
+      managedServer: { kind: 'relay', reason: 'relay_terminals_live' }
+    })
+    // Its workspaces are the SSH host's, which the desktop already lists to the phone itself.
+    expect(
+      catalog(hosts)
+        .catalog.list()
+        .hosts.map((host) => host.hostId)
+    ).toEqual(['runtime:other'])
   })
 
   it('encodes an environment id into the host id the desktop uses', () => {
@@ -188,6 +246,30 @@ describe('mobile relay host catalog', () => {
     await expect(hostCatalog.worktrees('runtime:env')).resolves.toMatchObject({
       fetchedAt: 1_000,
       stale: true
+    })
+  })
+
+  it('omits rows mid-delete, as a phone asking the server itself would never see them', async () => {
+    const { hosts, call } = fakeHosts([
+      { id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }
+    ])
+    call.mockResolvedValue({
+      id: 'ps',
+      ok: true,
+      result: {
+        worktrees: [
+          { worktreeId: 'kept', hostId: 'local' },
+          { worktreeId: 'deleting', hostId: 'local', removing: true }
+        ],
+        totalCount: 5,
+        truncated: true
+      },
+      _meta: { runtimeId: 'runtime-a' }
+    })
+    await expect(catalog(hosts).catalog.worktrees('runtime:env')).resolves.toMatchObject({
+      worktrees: [{ worktreeId: 'kept', hostId: 'runtime:env' }],
+      totalCount: 4,
+      truncated: true
     })
   })
 

@@ -6,6 +6,7 @@ import {
   type ExecutionHostId
 } from '../../../shared/execution-host'
 import { buildExecutionHostRegistry } from '../../../shared/execution-host-registry'
+import { pickerExecutionHosts } from '../../../shared/managed-orcad-execution-host'
 import type {
   MobileRelayHost,
   MobileRelayHostRelay,
@@ -101,21 +102,34 @@ export class MobileRelayHostCatalog {
     if (!cached || !current || cached.fence !== fenceOf(current)) {
       return { worktrees: null }
     }
-    const { fence: _fence, ...rows } = cached
-    return { ...rows, stale: !refreshed }
+    // Why: the desktop asks with background-removal support; a phone asking itself never sees these rows.
+    const worktrees = cached.worktrees.filter((row) => row.removing !== true)
+    return {
+      worktrees,
+      totalCount: cached.totalCount - (cached.worktrees.length - worktrees.length),
+      truncated: cached.truncated,
+      fetchedAt: cached.fetchedAt,
+      stale: !refreshed
+    }
   }
 
   private describe(): DescribedHost[] {
-    const { environments, statusByEnvironmentId } = this.options.hosts.list()
+    const { environments, statusByEnvironmentId, sshTargetLabels, sshConnectionStates } =
+      this.options.hosts.list()
     const identities = new Map(environments.map((environment) => [environment.id, environment]))
-    return buildExecutionHostRegistry({
-      repos: [],
-      settings: null,
-      hostSource: 'configured-only',
-      runtimeEnvironments: environments,
-      runtimeStatusByEnvironmentId: statusByEnvironmentId,
-      hostLabelOverrides: this.options.hostLabelOverrides()
-    }).flatMap((entry) => {
+    // Why the desktop's picker rows: a managed server folds into its SSH host as the sidebar shows it.
+    return pickerExecutionHosts(
+      buildExecutionHostRegistry({
+        repos: [],
+        settings: null,
+        hostSource: 'configured-only',
+        sshTargetLabels,
+        sshConnectionStates,
+        runtimeEnvironments: environments,
+        runtimeStatusByEnvironmentId: statusByEnvironmentId,
+        hostLabelOverrides: this.options.hostLabelOverrides()
+      })
+    ).flatMap((entry) => {
       const parsed = parseExecutionHostId(entry.id)
       const identity = parsed?.kind === 'runtime' ? identities.get(parsed.environmentId) : undefined
       if (parsed?.kind !== 'runtime' || !identity) {
@@ -153,6 +167,7 @@ export class MobileRelayHostCatalog {
         host,
         'worktree.ps',
         { limit: SERVER_WORKTREE_LIMIT, supportsWorktreeVisibilitySourceDefaults: true },
+        // Why the transport bound too: it ends the hung call, so the next poll fetches afresh instead of joining it.
         { timeoutMs: SERVER_FETCH_TIMEOUT_MS, expected: host.identity }
       )
       const reply = response.ok ? WorktreePsReplySchema.safeParse(response.result) : null

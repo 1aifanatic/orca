@@ -2,6 +2,7 @@ import type { PairingOffer } from '../../../shared/pairing'
 import type { RuntimeEnvironmentSource } from '../../../shared/runtime-environments'
 import type { RuntimeEnvironmentStatus } from '../../../shared/runtime-host-status'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
+import type { SshConnectionState } from '../../../shared/ssh-types'
 
 /** A configured server the desktop can relay to. */
 export type MobileDesktopRelayHost = {
@@ -30,10 +31,15 @@ export type MobileDesktopRelayCallOptions = {
 
 /** The desktop's configured servers, as the relay sees them. */
 export type MobileDesktopRelayHosts = {
-  /** Every configured server, with the desktop's own last status for those it has one for. */
+  /**
+   * Every configured server, with the desktop's own last status for those it has one for, and its
+   * SSH targets, which pair a managed server with the SSH host it runs on.
+   */
   list: () => {
     environments: MobileDesktopRelayHostListing[]
     statusByEnvironmentId: ReadonlyMap<string, RuntimeEnvironmentStatus>
+    sshTargetLabels: ReadonlyMap<string, string>
+    sshConnectionStates: ReadonlyMap<string, SshConnectionState>
   }
   /** Null when the id names no configured server; a phone-supplied endpoint is never used. */
   resolve: (environmentId: string) => Promise<MobileDesktopRelayHost | null>

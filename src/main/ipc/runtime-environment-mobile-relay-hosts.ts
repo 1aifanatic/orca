@@ -10,6 +10,8 @@ import {
 } from '../../shared/runtime-host-status'
 import type { MobileDesktopRelayHosts } from '../runtime/mobile-desktop-relay/mobile-desktop-relay-hosts'
 import { resolveManagedRuntimeEnvironment } from './runtime-environment-managed-tunnel'
+import type { SshConnectionState } from '../../shared/ssh-types'
+import { getRegisteredSshState, listRegisteredSshTargets } from '../ssh/ssh-target-registry'
 import { getRuntimeEnvironmentStatusSnapshots } from './runtime-environment-request-connections'
 import { callRuntimeEnvironment } from './runtime-environment-transport-routing'
 
@@ -37,7 +39,17 @@ export function createRuntimeEnvironmentMobileRelayHosts(): MobileDesktopRelayHo
           statusByEnvironmentId.set(environment.id, runtimeEnvironmentStatusFromSnapshot(snapshot))
         }
       }
+      const sshTargets = listRegisteredSshTargets()
+      const sshConnectionStates = new Map<string, SshConnectionState>()
+      for (const target of sshTargets) {
+        const state = getRegisteredSshState(target.id)
+        if (state) {
+          sshConnectionStates.set(target.id, state)
+        }
+      }
       return {
+        sshTargetLabels: new Map(sshTargets.map((target) => [target.id, target.label])),
+        sshConnectionStates,
         environments: environments.map((environment) => ({
           id: environment.id,
           name: environment.name,
