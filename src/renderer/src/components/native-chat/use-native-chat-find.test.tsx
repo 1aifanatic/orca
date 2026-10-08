@@ -568,6 +568,77 @@ describe('native chat find', () => {
     expect(status()).toBe('2/3')
   })
 
+  it('matches across the words of a reply that is still fading in', () => {
+    const composer = composerHandle()
+    render(
+      <Chat
+        composer={composer}
+        transcript={
+          <p>
+            <span data-word-group="">
+              The <span data-word="">quick</span> <span data-word="">brown</span>
+            </span>
+          </p>
+        }
+      />
+    )
+    pressModF(composer.element)
+    typeQuery('the quick brown')
+    expect(status()).toBe('1/1')
+  })
+
+  it('waits on words drawn into a reply; a settling word that held a match repaints at once', async () => {
+    const composer = composerHandle()
+    render(
+      <Chat
+        composer={composer}
+        transcript={
+          <>
+            <p>
+              <span data-word-group="" data-testid="streaming">
+                settled <span data-word="">alpha</span>
+              </span>
+            </p>
+            <p>
+              <span data-word-group="" data-testid="quiet">
+                beta
+              </span>
+            </p>
+          </>
+        }
+      />
+    )
+    pressModF(composer.element)
+    typeQuery('alpha')
+    expect(status()).toBe('1/1')
+    const searches = vi.spyOn(document, 'createTreeWalker')
+    // A word drawn each frame with no match near it waits for the short timer.
+    const word = document.createElement('span')
+    word.dataset.word = ''
+    word.textContent = 'alpha'
+    screen.getByTestId('quiet').append(' ', word)
+    await nextFrame()
+    expect(searches).not.toHaveBeenCalled()
+    expect(status()).toBe('1/1')
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    })
+    expect(status()).toBe('1/2')
+
+    // The word holding the active match settles into the plain text before it: its range is gone.
+    searches.mockClear()
+    const streaming = screen.getByTestId('streaming')
+    const prefix = streaming.firstChild
+    if (!(prefix instanceof Text)) {
+      throw new Error('no settled text')
+    }
+    streaming.querySelector('[data-word]')?.remove()
+    prefix.data = 'settled alpha'
+    await nextFrame()
+    expect(searches).toHaveBeenCalled()
+    expect(status()).toBe('1/2')
+  })
+
   it('counts an opening disclosure once its height animation ends', async () => {
     const composer = composerHandle()
     const { container } = render(

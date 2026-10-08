@@ -17,8 +17,27 @@ const TRANSCRIPT_COLUMN_SELECTOR = '[data-native-chat-transcript-column]'
 const TRANSCRIPT_SCROLL_SELECTOR = '[data-native-chat-scroll]'
 /** Row chrome that only shows on hover (timestamps, copy): marked, so counts never follow the mouse. */
 const SKIPPED_TEXT_SELECTOR = '.sr-only, [hidden], [data-native-chat-find-skip]'
+/** A streamed reply's text node while its words fade in: each new word is its own element. */
+const WORD_GROUP_SELECTOR = '[data-word-group]'
 /** Streamed text with no match in it grows every frame; re-searching it this often is plenty. */
 const TEXT_GROWTH_SEARCH_DELAY_MS = 120
+
+/** Text growing in place: a text node rewritten, or words drawn into or settled in a word group. */
+function isTextGrowth(record: MutationRecord): boolean {
+  return (
+    record.type === 'characterData' ||
+    (record.type === 'childList' &&
+      record.target instanceof Element &&
+      record.target.matches(WORD_GROUP_SELECTOR))
+  )
+}
+
+function holdsMatch(node: Node, matchNodes: ReadonlySet<Node>): boolean {
+  return (
+    matchNodes.has(node) ||
+    Array.from(node.childNodes).some((child) => holdsMatch(child, matchNodes))
+  )
+}
 
 function visibleTextScope(reuse: Range[]): DomTextSearchScope {
   const rejected = new Map<HTMLElement, boolean>()
@@ -34,8 +53,8 @@ function visibleTextScope(reuse: Range[]): DomTextSearchScope {
       }
       return reject
     },
-    // Highlighted code splits a line into token spans; match across them.
-    joinedTextSelector: 'code',
+    // Highlighted code and fading reply words split text into spans; match across them.
+    joinedTextSelector: `code, ${WORD_GROUP_SELECTOR}`,
     reuse
   }
 }
@@ -200,7 +219,10 @@ export function useNativeChatFindMatches({
       const now =
         replaced ||
         changed.some(
-          (record) => record.type !== 'characterData' || matchNodesRef.current.has(record.target)
+          (record) =>
+            !isTextGrowth(record) ||
+            matchNodesRef.current.has(record.target) ||
+            Array.from(record.removedNodes).some((node) => holdsMatch(node, matchNodesRef.current))
         )
       if (now) {
         frame ??= requestAnimationFrame(runSearch)
