@@ -21,6 +21,8 @@ type AgentSnapshots = {
 }
 
 const snapshots = new Map<string, AgentSnapshots>()
+// Bumped when a host's answers are dropped, so a preload sent before then records nothing.
+const generations = new Map<string, number>()
 
 function snapshotKey(hostKey: string, agent: string): string {
   return `${hostKey}\u0000${agent}`
@@ -37,8 +39,8 @@ function withoutNamedDefault(catalog: ListedCatalog): ListedCatalog {
 /**
  * What a chat's first frame may render from: undefined until the host has answered what that
  * frame would show. Whether a new chat runs the listed default depends on its workspace's own
- * config, so another workspace's answer serves only a chat that names its model or a list that
- * names no default.
+ * config, so another workspace's answer serves only a chat that names its model, a list that
+ * names no default, or a default the host says no workspace can replace.
  */
 export function readHostModelCatalogSnapshot(
   target: RuntimeClientTarget,
@@ -54,7 +56,12 @@ export function readHostModelCatalogSnapshot(
     return exact
   }
   const listed = entry.account ?? entry.byWorktree.values().next().value
-  if (!listed || !launch.newLaunch || listed.listingNamesConfiguredModel === false) {
+  if (
+    !listed ||
+    !launch.newLaunch ||
+    listed.listingNamesConfiguredModel === false ||
+    listed.defaultHoldsInEveryWorkspace === true
+  ) {
     return listed
   }
   return launch.seedsModel ? withoutNamedDefault(listed) : undefined
@@ -90,6 +97,7 @@ export function forgetHostModelCatalogSnapshots(
   agents?: readonly string[]
 ): void {
   const hostKey = structuredAgentSessionHostKey(target)
+  generations.set(hostKey, (generations.get(hostKey) ?? 0) + 1)
   for (const key of snapshots.keys()) {
     const [keyHost, keyAgent] = key.split('\u0000')
     if (keyHost === hostKey && (!agents || agents.includes(keyAgent ?? ''))) {
@@ -107,19 +115,27 @@ export function hostModelCatalogSnapshotAgents(target: RuntimeClientTarget): str
 }
 
 /** Reads the account-level list for each agent ahead of any chat. A failed read keeps nothing new:
- *  it is not evidence the host has no list. */
+ *  it is not evidence the host has no list. `savedOnly` asks the host to answer from what it saved
+ *  and start no listing; send it only to a host advertising the saved-only capability. */
 export async function preloadHostModelCatalogSnapshots(
   target: RuntimeClientTarget,
-  agents: readonly string[]
+  agents: readonly string[],
+  options: { savedOnly?: true } = {}
 ): Promise<void> {
+  const hostKey = structuredAgentSessionHostKey(target)
+  const generation = generations.get(hostKey) ?? 0
   await Promise.all(
     agents.map((agent) =>
       callStructuredAgentSession<AgentSessionModelCatalogResult>(
         target,
         'agentSession.modelCatalog',
-        { agent }
+        { agent, ...options }
       )
-        .then((catalog) => recordHostModelCatalogSnapshot(target, agent, null, catalog))
+        .then((catalog) => {
+          if ((generations.get(hostKey) ?? 0) === generation) {
+            recordHostModelCatalogSnapshot(target, agent, null, catalog)
+          }
+        })
         .catch(() => undefined)
     )
   )
@@ -127,4 +143,5 @@ export async function preloadHostModelCatalogSnapshots(
 
 export function resetHostModelCatalogSnapshotsForTests(): void {
   snapshots.clear()
+  generations.clear()
 }
