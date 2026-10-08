@@ -134,7 +134,7 @@ describe('SettingsSidebar', () => {
     document.body.innerHTML = ''
   })
 
-  it.each([false, true])('renders Chat navigation only with the opt-in enabled (%s)', (enabled) => {
+  it.each([false, true])('renders Chat navigation whether Chat UI is on or off (%s)', (enabled) => {
     const settings = { ...getDefaultSettings('/tmp'), experimentalNativeChat: enabled }
     const sections = buildSettingsNavigationMetadata({
       isMac: false,
@@ -158,7 +158,7 @@ describe('SettingsSidebar', () => {
       </TooltipProvider>
     )
     const buttons = Array.from(container.querySelectorAll('button'))
-    expect(buttons.some((button) => button.textContent === 'Chat')).toBe(enabled)
+    expect(buttons.some((button) => button.textContent === 'Chat')).toBe(true)
   })
 
   it('applies left sidebar appearance styles to the settings navigation', () => {
