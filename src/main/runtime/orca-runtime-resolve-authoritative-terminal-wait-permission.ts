@@ -17,9 +17,8 @@ import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { TerminalAgent } from '../../shared/terminal-agent'
 import type { AgentPromptActivity } from './agent-prompt-submission-verification'
-import { hasExplicitIdleTitle, judgeScreenBlockedText } from './tui-idle-evidence'
+import { evaluateTuiIdle, hasExplicitIdleTitle, judgeScreenBlockedText } from './tui-idle-evidence'
 import { readTuiIdleHookTurn, type TuiIdleHookTurn } from './tui-idle-hook-lane'
-import { evaluateTuiIdle } from './tui-idle-evidence'
 import {
   leafTuiIdleEvidence,
   ptyTuiIdleEvidence,
