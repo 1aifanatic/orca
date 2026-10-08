@@ -4,10 +4,7 @@ import { providerDiagnostic, withProviderDiagnostic } from '../../shared/agent-s
 import type { JsonlRpcAgentConnectionOptions } from '../jsonl-rpc/agent-connection'
 import { JsonlRpcResponseError, type JsonlRpcRecord } from '../jsonl-rpc/peer'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
-import type {
-  ScriptedAgentChild,
-  ScriptedAgentChildFactory
-} from '../runtime/structured-agent-scripted-child.test-fixture'
+import type { ScriptedAgentChild } from '../runtime/structured-agent-scripted-child.test-fixture'
 import type { PiRpcConnection } from './rpc-session'
 
 class ScriptedPiConnection implements PiRpcConnection {
@@ -29,6 +26,7 @@ class ScriptedPiConnection implements PiRpcConnection {
     private readonly handlers: JsonlRpcAgentConnectionOptions,
     private readonly script: ScriptedAgentChild,
     private readonly received: string[],
+    private readonly wire: string[],
     private readonly onClosed: () => void,
     number: number
   ) {
@@ -45,6 +43,7 @@ class ScriptedPiConnection implements PiRpcConnection {
     if (this.closed) {
       throw new Error('Scripted Pi connection closed')
     }
+    this.wire.push(command)
     if (command === 'get_state') {
       if (this.firstStateRead) {
         this.firstStateRead = false
@@ -85,6 +84,7 @@ class ScriptedPiConnection implements PiRpcConnection {
       throw new Error('Scripted Pi requires a live prompt')
     }
     this.received.push(frame.message)
+    this.wire.push(`prompt:${frame.message}`)
     if (!this.streaming) {
       this.streaming = true
       this.emit({ type: 'agent_start' })
@@ -181,12 +181,18 @@ class ScriptedPiConnection implements PiRpcConnection {
   }
 }
 
-export const piScriptedChild: ScriptedAgentChildFactory = () => {
+export type ScriptedPiChild = ScriptedAgentChild & {
+  /** Every request command and prompt any spawn received, in order. */
+  wire(): readonly string[]
+}
+
+export const piScriptedChild = (): ScriptedPiChild => {
   const children: ScriptedPiConnection[] = []
   const received: string[] = []
+  const wire: string[] = []
   let resumed = 0
   let closed = 0
-  const script: ScriptedAgentChild = {
+  const script: ScriptedPiChild = {
     holdHandshakes: true,
     completeTurns: true,
     deps: {
@@ -220,6 +226,7 @@ export const piScriptedChild: ScriptedAgentChildFactory = () => {
           handlers,
           script,
           received,
+          wire,
           () => {
             closed += 1
           },
@@ -235,7 +242,8 @@ export const piScriptedChild: ScriptedAgentChildFactory = () => {
     prompts: () => received,
     spawns: () => children.length,
     resumes: () => resumed,
-    closes: () => closed
+    closes: () => closed,
+    wire: () => wire
   }
   return script
 }

@@ -128,7 +128,18 @@ it('keeps a model picked during startup when the optional state read predates ap
     ...fields
   })
   expect(picked.ok).toBe(true)
+  const body = hostTestMessage('first message')
+  const sent = await host.send(caller, {
+    envelope: envelope('agentSession.send', { body }),
+    body
+  })
+  expect(sent.ok).toBe(true)
   script.releaseHandshake()
+  // The pick reaches Pi before the message held for its start.
+  await vi.waitFor(() => expect(script.prompts()).toEqual(['first message']))
+  const wire = script.wire()
+  expect(wire.indexOf('set_model')).toBeGreaterThan(-1)
+  expect(wire.indexOf('set_model')).toBeLessThan(wire.indexOf('prompt:first message'))
   const { runtimeState, sessions, serialize } = host.collaboratorsForTests()
   await vi.waitFor(() => expect(sessions.get(HOST_TEST_SESSION)?.child?.phase).toBe('ready'))
   await vi.waitFor(() =>
