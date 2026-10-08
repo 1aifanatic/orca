@@ -175,6 +175,8 @@ export type ClaudeSession = {
   options: Map<string, string>
   /** The chat mode this child was launched for; absent was launched without the bypass flag. */
   launchPermissionMode?: AgentChatPermissionMode
+  /** Unknown after a permission request loses its answer. */
+  appliedPermissionMode?: AgentChatPermissionMode
   reportedOptions: { model?: string; effort?: string; fastMode?: boolean }
   /** What `get_settings` says the next request will send, after Claude's own env and settings
    *  precedence: the lowest-ranked answer, unconfirmed until a turn reports it. */

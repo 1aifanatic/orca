@@ -47,7 +47,7 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** A start step, tracked from enqueue so quit waits for the child it may produce. */
   trackStart: <T>(start: Promise<T>) => Promise<T>
-  prepareDispatch?: (sessionId: string) => Promise<boolean>
+  prepareDispatch?: (sessionId: string) => Promise<boolean> | undefined
   /** Gives the session a provider child if it has none; for a caller inside `serialize`. */
   /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
   ensureProviderChild: (
@@ -71,7 +71,7 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   now: () => number
 }
 
-type Step = 'continue' | 'stop'
+type Step = 'continue' | 'stop' | { prepared: Promise<boolean> }
 
 type RefusedStart = Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
 
@@ -81,7 +81,6 @@ type Prepared =
   | {
       ok: true
       awaited: StructuredAgentSessionProviderChildIdentity | null
-      prepared: Promise<boolean>
     }
 
 /** A failed start before it is worded; `fail` words it once, through the one wording point. */
@@ -132,12 +131,13 @@ export class StructuredAgentSessionDeliveryLoop {
           )
           return
         }
-        if (!(await this.deps.trackStart(prepared.prepared))) {
-          continue
-        }
         const handed = await this.deps.serialize(sessionId, () =>
           this.handOver(sessionId, prepared.awaited)
         )
+        if (typeof handed === 'object') {
+          await this.deps.trackStart(handed.prepared)
+          continue
+        }
         if (handed === 'stop') {
           return
         }
@@ -206,8 +206,7 @@ export class StructuredAgentSessionDeliveryLoop {
     // The child this run waits on; handover checks it is still the one there.
     return {
       ok: true,
-      awaited: child ? { generation: child.generation, fence: child.fence } : null,
-      prepared: this.deps.prepareDispatch?.(sessionId) ?? Promise.resolve(true)
+      awaited: child ? { generation: child.generation, fence: child.fence } : null
     }
   }
 
@@ -253,6 +252,11 @@ export class StructuredAgentSessionDeliveryLoop {
     const next = structuredAgentSessionNextHandover(session, awaitedChild.fence)
     if (!next) {
       return this.stop(sessionId)
+    }
+    // Re-derived at handover: an option write may have superseded earlier preparation.
+    const prepared = this.deps.prepareDispatch?.(sessionId)
+    if (prepared) {
+      return { prepared }
     }
     await handOverSubmission(
       {

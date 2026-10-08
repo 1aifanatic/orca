@@ -121,24 +121,34 @@ describe('legacy approvals reviewer retirement', () => {
   })
 })
 
-it('migrates an older saved reviewer before the thread launch policy is built', async () => {
-  const saved = record({ chain: [] })
-  saved.options = { approvalsReviewer: 'auto_review' }
-  const launch = await createCodexStructuredLaunchResolver({
-    store: { getRecord: () => saved, pinLaunchDirectory: vi.fn() },
-    resolveCommand: () => 'codex',
-    resolveLaunchArgs: () => [],
-    resolveWorkspacePath: async () => process.cwd(),
-    resolveDefaultPermissionMode: () => 'ask'
-  })({
-    identity: {
-      sessionId: saved.sessionId,
-      workspaceId: saved.location.workspaceId,
-      hostId: 'local',
-      agent: 'codex',
-      providerHandle: null
-    }
-  })
-  expect(launch.permissionMode).toBe('auto')
-  expect(launch.permissionPolicy).toMatchObject({ approvalsReviewer: 'auto_review' })
-})
+it.each([
+  ['auto_review', 'ask', 'auto'],
+  ['user', 'auto', 'ask'],
+  ['user', 'bypass', 'ask']
+] as const)(
+  'migrates saved %s before launch with a %s default',
+  async (reviewer, defaultMode, expected) => {
+    const saved = record({ chain: [] })
+    saved.options = { approvalsReviewer: reviewer }
+    const launch = await createCodexStructuredLaunchResolver({
+      store: { getRecord: () => saved, pinLaunchDirectory: vi.fn() },
+      resolveCommand: () => 'codex',
+      resolveLaunchArgs: () => [],
+      resolveWorkspacePath: async () => process.cwd(),
+      resolveDefaultPermissionMode: () => defaultMode
+    })({
+      identity: {
+        sessionId: saved.sessionId,
+        workspaceId: saved.location.workspaceId,
+        hostId: 'local',
+        agent: 'codex',
+        providerHandle: null
+      }
+    })
+    expect(launch.permissionMode).toBe(expected)
+    expect(launch.permissionPolicy).toMatchObject({ approvalsReviewer: reviewer })
+    expect(Object.fromEntries(restoredCodexSessionOptions(saved.options))).toEqual({
+      permissionMode: expected
+    })
+  }
+)

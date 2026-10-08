@@ -258,6 +258,20 @@ describe('structured agent-session create intent', () => {
     })
     // createSupport reports this same seed, so a paired client's picker shows what create runs.
     expect(runtime.structuredAgentSessionLaunchSeedOptions('claude')).toEqual(intent.options)
+    const store = runtime['store']
+    if (!store) {
+      throw new Error('missing test store')
+    }
+    for (const mode of ['accept-edits', 'auto'] as const) {
+      const inheritedSettings = { ...store.getSettings(), nativeChatPermissionMode: mode }
+      vi.spyOn(store, 'getSettings').mockReturnValue(inheritedSettings)
+      const inherited = await runtime.resolveStructuredAgentSessionCreateIntent({
+        envelope: { sessionId: 'session-middle', clientOperationId: `create-${mode}` },
+        worktree: 'id:workspace-1',
+        agent: 'claude'
+      })
+      expect(inherited.options?.permissionMode).toBe(mode)
+    }
   })
 
   it('uses the managed Claude launch home before falling back to ~/.claude', async () => {

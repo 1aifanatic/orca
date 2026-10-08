@@ -72,6 +72,12 @@ describe('parseAgentSessionPermissionModes', () => {
     ).toEqual({ current: 'auto', supported: ['ask', 'auto', 'bypass'] })
   })
 
+  it('keeps current intent without treating it as permission to choose Auto', () => {
+    expect(
+      parseAgentSessionPermissionModes({ current: 'auto', supported: ['ask', 'bypass'] })
+    ).toEqual({ current: 'auto', supported: ['ask', 'bypass'] })
+  })
+
   // An older host sends nothing, and that is what hides the picker.
   it('is null for a host that predates the picker', () => {
     expect(parseAgentSessionPermissionModes(undefined)).toBeNull()

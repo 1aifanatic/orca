@@ -7,10 +7,10 @@ export function prepareStructuredAgentSessionDispatch(
   adapter: StructuredAgentSessionAdapter,
   aborts: StructuredAgentSessionAcquireAborts,
   sessionId: string
-): Promise<boolean> {
+): Promise<boolean> | undefined {
   const preparation = adapter.prepareDispatch?.(sessionId)
   if (!preparation) {
-    return Promise.resolve(true)
+    return undefined
   }
   const wait = aborts.begin(sessionId)
   return waitForPromiseWithSignal(preparation, wait.signal)

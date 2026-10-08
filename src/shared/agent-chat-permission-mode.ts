@@ -72,7 +72,7 @@ export function agentChatLaunchPermissionMode(
 
 /** What a host publishes about a chat's mode; absent from a host that predates the picker. */
 export type AgentSessionPermissionModes = {
-  /** The mode the chat's next turn runs under. */
+  /** Retained chat intent; capability confirmation may narrow it before a turn. */
   current: AgentChatPermissionMode
   supported: readonly AgentChatPermissionMode[]
 }
@@ -86,9 +86,7 @@ export function parseAgentSessionPermissionModes(
   }
   const { current, supported: listed } = value
   const supported = Array.isArray(listed) ? listed.filter(isAgentChatPermissionMode) : []
-  return isAgentChatPermissionMode(current) && supported.includes(current)
-    ? { current, supported }
-    : null
+  return isAgentChatPermissionMode(current) && supported.length > 0 ? { current, supported } : null
 }
 
 /** A host launch seed proves picker support until a live report replaces it. */
@@ -110,5 +108,5 @@ export function commitAgentSessionPermissionMode(
   if (!supported) {
     return null
   }
-  return { current: supported.includes(value) ? value : 'ask', supported }
+  return { current: value, supported }
 }

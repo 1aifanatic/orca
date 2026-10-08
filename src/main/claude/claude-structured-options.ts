@@ -13,6 +13,7 @@ import {
 import type { ClaudeSession } from './claude-structured-session-state'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
 import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../shared/agent-chat-permission-mode'
+import { applyClaudePermissionMode } from './claude-structured-permission-application'
 import { claudePermissionModeWrite } from './claude-structured-permission-mode'
 
 const OPTION_ORDER = ['model', 'effort', 'fastMode', AGENT_CHAT_PERMISSION_MODE_OPTION_ID] as const
@@ -90,7 +91,7 @@ export async function setClaudeStructuredOption(
     input.key === 'model'
       ? () => session.connection.setModel(input.value, { timeoutMs })
       : permission?.kind === 'live'
-        ? () => session.connection.setPermissionMode(permission.mode, { timeoutMs })
+        ? () => applyClaudePermissionMode(session, permission.mode, timeoutMs)
         : input.key === 'effort'
           ? () =>
               session.connection.applyFlagSettings(

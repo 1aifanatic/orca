@@ -151,8 +151,14 @@ export function codexChatPermissionOptions(
   options: Readonly<Record<string, string>> | undefined
 ): Record<string, string> {
   const { approvalsReviewer, ...restored } = options ?? {}
-  if (restored.permissionMode === undefined && approvalsReviewer === 'auto_review') {
-    return { ...restored, permissionMode: 'auto' }
+  if (
+    restored.permissionMode === undefined &&
+    (approvalsReviewer === 'auto_review' || approvalsReviewer === 'user')
+  ) {
+    return {
+      ...restored,
+      permissionMode: codexPermissionModeOption('approvalsReviewer', approvalsReviewer).value
+    }
   }
   return restored
 }

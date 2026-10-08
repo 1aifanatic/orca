@@ -97,12 +97,11 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   /** The saved selection a new chat here starts with. createSupport reports it too, so a client's
    *  picker shows what create will run; one resolver keeps the two from drifting. */
   structuredAgentSessionLaunchSeedOptions(
-    agent: StructuredAgentId,
-    forLaunch = false
+    agent: StructuredAgentId
   ): Record<string, string> | undefined {
     const settings = this.requireStore().getSettings()
     const seeded = resolveStructuredLaunchSeedOptions(settings.nativeChatSessionOptions, agent)
-    return withAgentChatPermissionSeed(agent, settings, seeded, forLaunch)
+    return withAgentChatPermissionSeed(agent, settings, seeded)
   }
 
   protected async resolveStructuredAgentSessionLocation(worktreeSelector: string) {
@@ -219,7 +218,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     }
     const settings = this.requireStore().getSettings()
     const launchEnv = resolveTuiAgentLaunchEnv(input.agent, settings.agentDefaultEnv)
-    const options = this.structuredAgentSessionLaunchSeedOptions(input.agent, true)
+    const options = this.structuredAgentSessionLaunchSeedOptions(input.agent)
     const location = await this.resolveStructuredAgentSessionLocation(input.worktree)
     const definition = this.requireRegisteredStructuredAgent(input.agent)
     const host = getStructuredAgentSessionHost()

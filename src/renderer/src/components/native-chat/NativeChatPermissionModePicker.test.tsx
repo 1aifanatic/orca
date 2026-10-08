@@ -61,6 +61,7 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
               value?: string
               disabled?: boolean
               children?: React.ReactNode
+              onSelect?: () => void
             }>(child)
           ) {
             return child
@@ -72,7 +73,12 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
               aria-checked={props.value === value}
               disabled={props.disabled}
               data-value={props.value}
-              onClick={() => props.value !== undefined && onValueChange?.(props.value)}
+              onClick={() => {
+                props.onSelect?.()
+                if (props.value !== undefined) {
+                  onValueChange?.(props.value)
+                }
+              }}
             >
               {props.children}
             </button>
@@ -148,6 +154,16 @@ describe('NativeChatPermissionModePicker', () => {
     expect(option('auto').getAttribute('aria-checked')).toBe('true')
   })
 
+  it('names retained Auto while withholding it as a new pick', () => {
+    render(
+      <NativeChatPermissionModePicker
+        picker={picker({ current: 'auto', supported: ['ask', 'bypass'] })}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Permissions Approve for me' })).toBeTruthy()
+    expect(screen.queryByRole('radio', { name: /Approve for me/ })).toBeNull()
+  })
+
   it('shows Full access in the warning colour on the pill and in the menu', () => {
     render(<NativeChatPermissionModePicker picker={picker({ current: 'bypass' })} />)
 
@@ -163,12 +179,12 @@ describe('NativeChatPermissionModePicker', () => {
     expect(trigger.querySelector('.text-status-warning')).toBeNull()
   })
 
-  it('sends a pick of another mode and nothing for the current one', () => {
+  it('establishes an explicitly selected mode even when it looks current', () => {
     const state = picker({ current: 'ask' })
     render(<NativeChatPermissionModePicker picker={state} />)
 
     fireEvent.click(option('ask'))
-    expect(state.setMode).not.toHaveBeenCalled()
+    expect(state.setMode).toHaveBeenCalledWith('ask')
     fireEvent.click(option('bypass'))
     expect(state.setMode).toHaveBeenCalledWith('bypass')
   })

@@ -9,6 +9,7 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
+import { ClaudeControlRequestTimeoutError } from '../../claude/claude-agent-sdk-control-requests'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
 import {
   fakeClaude,
@@ -274,4 +275,49 @@ it('close can settle inherited permission preparation without an initialize answ
   await close
   expect(claude.connections[0]!.sent).toEqual([])
   expect(claude.connections[0]!.closeCount).toBeGreaterThan(0)
+})
+
+it('rechecks policy after a lost permission reply between acquisition and handover', async () => {
+  answerInitialize()
+  const session = adapter['sessions'].get(SESSION)
+  if (!session) {
+    throw new Error('missing child')
+  }
+  await session.startup.settled
+  session.options.set('permissionMode', 'ask')
+  let providerMode: unknown = 'default'
+  claude.routes.set_permission_mode = (params) => {
+    providerMode = params?.mode
+    if (providerMode === 'acceptEdits') {
+      throw new ClaudeControlRequestTimeoutError('set_permission_mode')
+    }
+    return {}
+  }
+  const serialize = host['serialize']
+  let inject = true
+  host['serialize'] = async (sessionId, task) => {
+    const result = await serialize(sessionId, task)
+    if (inject && result && typeof result === 'object' && 'awaited' in result) {
+      inject = false
+      await expect(
+        adapter.setOption({
+          sessionId: SESSION,
+          fence: session.fence,
+          key: 'permissionMode',
+          value: 'accept-edits'
+        })
+      ).rejects.toThrow('timed out')
+    }
+    return result
+  }
+  const body = hostTestMessage('after uncertain policy')
+  await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+  await vi.waitFor(() => expect(claude.connections[0].sent).toHaveLength(1))
+  expect(providerMode).toBe('default')
+  expect(session.appliedPermissionMode).toBe('ask')
+  expect(
+    claude.connections[0].calls
+      .filter((call) => call.subtype === 'set_permission_mode')
+      .map((call) => call.params?.mode)
+  ).toEqual(['acceptEdits', 'default'])
 })

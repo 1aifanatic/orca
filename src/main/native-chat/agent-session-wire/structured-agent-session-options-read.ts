@@ -43,7 +43,7 @@ function restingPermissionModes(
   const fallback = defaultPermissionMode?.(record.provider)
   const current =
     record.options?.permissionMode !== undefined || fallback !== undefined
-      ? agentChatLaunchPermissionMode(record.provider, record.options, fallback, support)
+      ? agentChatLaunchPermissionMode(record.provider, record.options, fallback)
       : null
   return supported && current ? { current, supported } : null
 }
@@ -91,7 +91,10 @@ export async function readStructuredAgentSessionOptionsAtRest(
     (rules?.effortDefaultsToModel
       ? models.find((entry) => entry.id === model)?.defaultEffort
       : undefined)
-  const permissionModes = restingPermissionModes(record, deps.defaultPermissionMode)
+  const permissionModes = restingPermissionModes(
+    { ...record, options: rules?.normalizeOptions?.(record.options) ?? record.options },
+    deps.defaultPermissionMode
+  )
   return {
     models: listed ? structuredAgentSessionOptionModels(listed, model, (row) => row) : [],
     ...(permissionModes ? { permissionModes } : {}),

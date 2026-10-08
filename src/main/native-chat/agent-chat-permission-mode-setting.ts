@@ -13,25 +13,15 @@ export function agentChatPermissionModeForSettings(
   return agentChatLaunchPermissionMode(agent, null, settings?.nativeChatPermissionMode)
 }
 
-/** A new chat's seed options with the chat permission default; `forLaunch` leaves Claude's
- *  inherited middle modes out, since it settles them after discovering support, before its first
- *  message. */
+/** Persist a new chat's initial intent before any provider startup. */
 export function withAgentChatPermissionSeed(
   agent: TuiAgent,
   settings: Partial<Pick<GlobalSettings, 'nativeChatPermissionMode'>>,
-  seeded: Record<string, string> | undefined,
-  forLaunch: boolean
+  seeded: Record<string, string> | undefined
 ): Record<string, string> | undefined {
   if (agent !== 'claude' && agent !== 'codex') {
     return seeded
   }
   const permissionMode = agentChatPermissionModeForSettings(agent, settings)
-  if (
-    forLaunch &&
-    agent === 'claude' &&
-    (permissionMode === 'auto' || permissionMode === 'accept-edits')
-  ) {
-    return seeded
-  }
   return { ...seeded, [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: permissionMode }
 }

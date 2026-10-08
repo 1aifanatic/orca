@@ -1,6 +1,4 @@
-// A chat's saved options as the Claude child's launch options. The child starts already running
-// them, so its first message can be written at once instead of waiting for initialize to answer and
-// a control request to apply each one.
+// Saved model and effort ride the launch; middle permissions await capability evidence.
 
 import type { EffortLevel, PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
@@ -10,7 +8,10 @@ import type {
 } from './claude-structured-launch-resolution'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { restoredClaudeStructuredSessionOptions } from './claude-structured-options'
-import { isAgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
+import {
+  isAgentChatPermissionMode,
+  type AgentChatPermissionMode
+} from '../../shared/agent-chat-permission-mode'
 import { claudeSdkPermissionMode } from './claude-structured-permission-mode'
 
 const EFFORT_LEVELS: ReadonlySet<string> = new Set<EffortLevel>([
@@ -57,12 +58,13 @@ function isEffortLevel(value: string): value is EffortLevel {
 
 export type ClaudeStructuredSpawnOptions = {
   sdkOptions: ClaudeStructuredSdkOptions
-  /** The chat's options as the session holds them: what was launched, and a Fast the start applies. */
+  /** Chat intent, including modes and Fast the start still needs to apply. */
   options: Map<string, string>
   /** Saved options left out: the provider's own value wins and is re-persisted. */
   skipped: readonly string[]
   /** A saved Fast the launch does not carry, which the start applies. */
   fastModeAtStart: boolean
+  appliedPermissionMode: AgentChatPermissionMode
 }
 
 /**
@@ -123,20 +125,35 @@ export function claudeStructuredSpawnOptions(input: {
     options.set('permissionMode', mode)
     sdkOptions = claudeStructuredOptionsWithPermissionMode(
       sdkOptions,
-      claudeSdkPermissionMode(mode)
+      claudeSdkPermissionMode(mode === 'auto' || mode === 'accept-edits' ? 'ask' : mode)
     )
   }
-  return { sdkOptions, options, skipped, fastModeAtStart }
+  const appliedPermissionMode = claudeStructuredOptionsBypassPermissions(sdkOptions)
+    ? 'bypass'
+    : sdkOptions.permissionMode === 'acceptEdits'
+      ? 'accept-edits'
+      : sdkOptions.permissionMode === 'auto'
+        ? 'auto'
+        : 'ask'
+  return { sdkOptions, options, skipped, fastModeAtStart, appliedPermissionMode }
 }
 
 /** The published session takes on what its child was launched with. */
 export function adoptClaudeStructuredSpawnOptions(
   session: Pick<
     ClaudeSession,
-    'restoreSkippedOptions' | 'translator' | 'launchedModel' | 'fastModeAtStart'
+    | 'restoreSkippedOptions'
+    | 'translator'
+    | 'launchedModel'
+    | 'fastModeAtStart'
+    | 'appliedPermissionMode'
   >,
-  spawn: Pick<ClaudeStructuredSpawnOptions, 'options' | 'skipped' | 'fastModeAtStart'>
+  spawn: Pick<
+    ClaudeStructuredSpawnOptions,
+    'options' | 'skipped' | 'fastModeAtStart' | 'appliedPermissionMode'
+  >
 ): void {
+  session.appliedPermissionMode = spawn.appliedPermissionMode
   session.launchedModel = spawn.options.get('model') ?? null
   session.fastModeAtStart = spawn.fastModeAtStart
   for (const key of spawn.skipped) {

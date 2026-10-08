@@ -10,10 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translate } from '@/i18n/i18n'
-import {
-  isAgentChatPermissionMode,
-  type AgentChatPermissionMode
-} from '../../../../shared/agent-chat-permission-mode'
+import type { AgentChatPermissionMode } from '../../../../shared/agent-chat-permission-mode'
 import {
   NATIVE_CHAT_PERMISSION_MODE_ICONS,
   nativeChatPermissionModeDescription,
@@ -75,18 +72,16 @@ function NativeChatPermissionModePickerInner({
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" side="top" collisionPadding={8} className="w-72">
-        <DropdownMenuRadioGroup
-          aria-label={title}
-          value={picker.current}
-          onValueChange={(value) => {
-            // A change applies from the next message; re-picking the current mode sends nothing.
-            if (isAgentChatPermissionMode(value) && value !== picker.current) {
-              void picker.setMode(value)
-            }
-          }}
-        >
+        <DropdownMenuRadioGroup aria-label={title} value={picker.current}>
           {picker.supported.map((mode) => (
-            <DropdownMenuRadioItem key={mode} value={mode} disabled={picker.pending}>
+            <DropdownMenuRadioItem
+              key={mode}
+              value={mode}
+              disabled={picker.pending}
+              onSelect={() => {
+                void picker.setMode(mode)
+              }}
+            >
               <div className="min-w-0 py-0.5">
                 <ModeName mode={mode} />
                 <div className="text-xs font-normal text-muted-foreground">

@@ -109,6 +109,18 @@ describe('MobileNativeChatPermissionPicker', () => {
     expect(pill().props.accessibilityLabel).toBe('Permissions, Approve for me')
   })
 
+  it('names retained Auto while withholding it as a new pick', () => {
+    mount({ current: 'auto', supported: ['ask', 'bypass'] })
+    expect(pill().props.accessibilityLabel).toBe('Permissions, Approve for me')
+    act(() => pill().props.onPress())
+    expect(
+      renderer!.root.findAll(
+        (node) => isHost(node, 'Pressable') && node.props.accessibilityLabel === 'Approve for me'
+      )
+    ).toHaveLength(0)
+    expect(row('Ask for approval')).toBeTruthy()
+  })
+
   it('lists the modes the agent offers with what each does', () => {
     mount({ supported: ['ask', 'auto', 'bypass'] })
     act(() => pill().props.onPress())

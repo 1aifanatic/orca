@@ -109,6 +109,28 @@ describe('inherited Claude chat permissions before the first message', () => {
 })
 
 describe('saved Claude chat permissions', () => {
+  it.each([true, false])(
+    'prepares saved Auto and persists its supported mode (%s)',
+    async (supportsAutoMode) => {
+      const claude = fakeClaude({ initModels: [{ value: 'sonnet', supportsAutoMode }] })
+      const events: ClaudeStructuredSessionEvent[] = []
+      const adapter = adapterAtPublishFor(
+        claude,
+        { permissionMode: 'auto', options: { permissionMode: 'default' } },
+        events
+      )
+      await adapter.acquire({ ...ACQUIRE, options: { model: 'sonnet', permissionMode: 'auto' } })
+      await adapter.prepareDispatch('session-1')
+      expect(events.find((event) => event.type === 'started')).toMatchObject({
+        reportedOptions: { permissionMode: supportsAutoMode ? 'auto' : 'ask' }
+      })
+      expect(adapter['sessions'].get('session-1')?.options.get('permissionMode')).toBe(
+        supportsAutoMode ? 'auto' : 'ask'
+      )
+      await adapter.closeAll()
+    }
+  )
+
   it('persists Ask for an unknown saved permission mode', async () => {
     const claude = fakeClaude()
     const adapter = adapterFor(claude)

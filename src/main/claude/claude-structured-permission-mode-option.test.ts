@@ -74,17 +74,20 @@ describe('a Claude chat permission-mode write', () => {
 describe('a Claude chat permission mode across a restart', () => {
   it.each([
     ['ask', 'default'],
-    ['accept-edits', 'acceptEdits'],
-    ['auto', 'auto']
-  ] as const)('starts the stored %s chat mode as %s without a restore request', (mode, sdkMode) => {
-    const spawn = claudeStructuredSpawnOptions({
-      launch: { options: CLAUDE_STRUCTURED_BASE_OPTIONS, resumesTranscript: true },
-      saved: { model: 'sonnet', permissionMode: mode }
-    })
-    expect(spawn.sdkOptions.permissionMode).toBe(sdkMode)
-    expect(spawn.options.get('permissionMode')).toBe(mode)
-    expect(spawn.skipped).toEqual([])
-  })
+    ['accept-edits', 'default'],
+    ['auto', 'default']
+  ] as const)(
+    'starts the stored %s chat mode as %s with capability preparation when needed',
+    (mode, sdkMode) => {
+      const spawn = claudeStructuredSpawnOptions({
+        launch: { options: CLAUDE_STRUCTURED_BASE_OPTIONS, resumesTranscript: true },
+        saved: { model: 'sonnet', permissionMode: mode }
+      })
+      expect(spawn.sdkOptions.permissionMode).toBe(sdkMode)
+      expect(spawn.options.get('permissionMode')).toBe(mode)
+      expect(spawn.skipped).toEqual([])
+    }
+  )
 
   // The chat's mode is its own: switching models never touches it.
   it('keeps the chat mode through a model switch', async () => {

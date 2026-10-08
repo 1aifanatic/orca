@@ -123,6 +123,6 @@ it.each(['claude', 'codex'])(
     expect(canSetStructuredAgentSessionOption(view, 'permissionMode', 'auto')).toBe(false)
     expect(
       structuredAgentSessionOptionView(state, { permissionMode: 'auto' }, {}).permission?.current
-    ).toBe('ask')
+    ).toBe('auto')
   }
 )

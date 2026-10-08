@@ -6,7 +6,7 @@ import type {
   StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { stopCurrentClaudeBackgroundTasks } from './claude-structured-control-actions'
-import { claudeDefaultPermissionNeedsStartup } from './claude-structured-start-permission-mode'
+import { prepareClaudePermissionMode } from './claude-structured-permission-application'
 import { dispatchClaudeTurn } from './claude-structured-dispatch'
 import { claudeHoldsDispatch } from './claude-command-lifecycle'
 import { releaseClaudeAcquisition } from './claude-structured-acquisition-release'
@@ -242,9 +242,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
   prepareDispatch = (sessionId: string): Promise<void> | undefined => {
     const session = this.sessions.get(sessionId)
-    return session && claudeDefaultPermissionNeedsStartup(session)
-      ? session.startup.settled
-      : undefined
+    return session ? prepareClaudePermissionMode(session, this.deps.requestTimeoutMs) : undefined
   }
   startAnswered = (sessionId: string): boolean | undefined =>
     this.sessions.get(sessionId)?.startup.answered
