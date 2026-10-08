@@ -203,17 +203,17 @@ function mergeObservationFacts(
   prior: AgentChildWorkRecord | undefined,
   run: AgentChildWorkRecord | undefined
 ): AgentChildWorkFacts {
+  // Type and model are one fact: a newly named agent type never inherits the prior one's model.
+  const agentTypeChanged =
+    said.agentType !== undefined &&
+    prior?.agentType !== undefined &&
+    said.agentType !== prior.agentType
   return {
     ...mergedAgentChildWorkEnding(said, run),
     name: said.name ?? prior?.name,
     description: said.description ?? prior?.description,
     agentType: said.agentType ?? prior?.agentType,
-    // Type and model are one fact: a newly named agent type never inherits the prior one's model.
-    model:
-      said.model ??
-      (said.agentType !== undefined && said.agentType !== (prior?.agentType ?? said.agentType)
-        ? undefined
-        : prior?.model),
+    model: said.model ?? (agentTypeChanged ? undefined : prior?.model),
     residency: said.residency ?? prior?.residency,
     // Cumulative, so a late or duplicate frame never shrinks it.
     totalTokens:
