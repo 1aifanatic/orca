@@ -28,8 +28,7 @@ import {
 import type { JournalReplacementItem } from './journal-epoch-replacement'
 import { readJournalSince } from './journal-cursor'
 import type { JournalHostDatabase } from './journal-host-database'
-import { journalRowsAfterReader, replayJournal, type JournalLoad } from './journal-open'
-import { failLoadOnUnloadableJournal } from './journal-open-failure'
+import { journalRowsAfterReader, type JournalLoad } from './journal-open'
 import {
   markJournalPendingSubmissionsUnknown,
   rejectJournalPendingSubmissions,
@@ -261,18 +260,6 @@ export class AgentSessionJournal {
     return this.queue.readInOrder(read)
   }
 
-  /** Re-derive the fold after a committed append failed to publish; never writes or notifies. */
-  refreshCommittedState(): Promise<void> {
-    return this.readInOrder(() => {
-      const loaded = replayJournal(this.database.db, this.identity.sessionId)
-      if (!loaded) {
-        throw new Error('committed journal is missing')
-      }
-      failLoadOnUnloadableJournal(this.identity.sessionId, loaded)
-      this.adoptLoadedJournal(loaded)
-    })
-  }
-
   readSince(cursor: AgentJournalCursor, limit?: number): JournalReadSince {
     const { sessionId } = this.identity
     const rowsAfter = journalRowsAfterReader(this.database.db, sessionId, this.state.epoch, limit)
@@ -345,9 +332,6 @@ export class AgentSessionJournal {
   ): Promise<AgentJournalCursor> {
     return this.submissionWriter.append(input, consume, receipt)
   }
-
-  commitSubmissionReceipt: JournalSubmissionWriter['commitReceipt'] = (id, receipt) =>
-    this.submissionWriter.commitReceipt(id, receipt)
 
   /** A dispatch transition (`JournalSubmissionWriter.resolveDispatch`). */
   resolveDispatch(

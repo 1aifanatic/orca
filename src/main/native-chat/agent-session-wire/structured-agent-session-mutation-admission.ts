@@ -22,14 +22,12 @@ import type {
   AgentSessionOperationRow
 } from '../../../shared/agent-session-operation-ledger'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import {
-  refuse,
-  type AgentSessionMutationEnvelope,
-  type AgentSessionMutationResult,
-  type AgentSessionWireRefusal
+import type {
+  AgentSessionMutationEnvelope,
+  AgentSessionMutationResult,
+  AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import { isAgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
-import { AGENT_SESSION_UNATTACHED_REFUSAL_CODE } from '../../../shared/structured-agent-session-read-refusal'
 import type {
   AgentSessionMutationOperationAdmission,
   AgentSessionMutationOperationDecision
@@ -53,20 +51,14 @@ import type { StructuredAgentSessionLogger } from './structured-agent-session-lo
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 import { admitCommandReceiptMutation } from './structured-agent-session-command-admission'
 
-// The code is shared with the client so a read that refuses this way can be told apart from a
-// transcript that failed to load; the two must never drift apart.
-export const AGENT_SESSION_NOT_ATTACHED: AgentSessionWireRefusal = refuse(
-  AGENT_SESSION_UNATTACHED_REFUSAL_CODE,
-  { reason: 'sessionNotAttached' },
-  'This host holds no attached session by that id.'
-)
-
-export function refuseAgentSessionMutation(refusal: AgentSessionWireRefusal): {
-  ok: false
-  refusal: AgentSessionWireRefusal
-} {
-  return { ok: false, refusal }
-}
+import {
+  AGENT_SESSION_NOT_ATTACHED,
+  refuseAgentSessionMutation
+} from './structured-agent-session-mutation-refusals'
+export {
+  AGENT_SESSION_NOT_ATTACHED,
+  refuseAgentSessionMutation
+} from './structured-agent-session-mutation-refusals'
 
 export type AgentSessionMutationSessionPreparation =
   | { ok: true }
@@ -89,6 +81,7 @@ export type AgentSessionMutationRequest<TValue> = {
     record: AgentSessionRecord
   ) => Promise<AgentSessionMutationSessionPreparation>
   publish: (journal: AgentSessionJournal) => void
+  wakeDelivery?: (sessionId: string) => void
   providerChildPhase?: AgentSessionTurnContext['providerChildPhase']
   now: () => number
 }

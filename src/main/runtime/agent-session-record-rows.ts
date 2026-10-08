@@ -179,7 +179,7 @@ function writeTabIndex(
   }
 }
 
-/** Compatibility receipts may add a ledger row, never replace an existing operation. */
+// TEMPORARY: ledger co-write preserves cross-family identity until every mutation uses receipts.
 export function insertAgentSessionOperationRowsIfAbsent(
   db: Database.Database,
   rows: AgentSessionStoreRowWrites['operations']['upsert']

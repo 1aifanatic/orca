@@ -160,9 +160,6 @@ export async function performSend(
     )
   }
   if (existing) {
-    if (ctx.operationReceipt) {
-      await ctx.journal.commitSubmissionReceipt(input.clientMessageId, ctx.operationReceipt)
-    }
     return {
       ok: true,
       value: { clientMessageId: input.clientMessageId, submission: existing }
@@ -178,6 +175,11 @@ export async function performSend(
     if (error instanceof CommandReceiptExistsError) {
       throw error
     }
+    ctx.logger.warn('recording a message failed', {
+      scope: 'send-journal-write',
+      sessionId: ctx.sessionId,
+      error
+    })
     if (isAgentSessionAttachmentExpiredError(error)) {
       return agentSessionAttachmentExpiredRefusal()
     }

@@ -48,11 +48,7 @@ export type MutationPlan<TValue> = {
   /** Still runs, decided from the committed ledger, when its ledger row cannot be written. */
   runsWithoutLedgerRow?: true
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
-  replay: (
-    ctx: AgentSessionTurnContext,
-    outcome: AgentSessionOperationOutcome,
-    acceptedSend?: AgentSessionSendResult
-  ) => TValue | null
+  replay: (ctx: AgentSessionTurnContext, outcome: AgentSessionOperationOutcome) => TValue | null
   rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
   recoverUnknownFromDurableState?: boolean
 } & (
@@ -121,10 +117,7 @@ export function sendPlan(params: {
         body: params.body
       })
     },
-    replay: (ctx, outcome, acceptedSend) => {
-      if (acceptedSend) {
-        return acceptedSend
-      }
+    replay: (ctx, outcome) => {
       // A send this host queued answers from its draft, then its hand-off; a
       // withdrawn draft replays as spent — never as missing-submission doubt. Only a send that
       // asked to be queued may get that answer: a direct send the host kept as a card answers
@@ -180,6 +173,7 @@ export function conversationCommandPlan(params: {
   const clientMessageId = params.envelope.clientOperationId
   return {
     method: 'agentSession.conversationCommand',
+    operationIdScope: 'global',
     conversationWrite: true,
     settlesWithWrite: true,
     fields: { command: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND },
@@ -195,10 +189,7 @@ export function conversationCommandPlan(params: {
       })
       return sent.ok ? { ok: true, value: { clientMessageId } } : sent
     },
-    replay: (ctx, outcome, acceptedSend) => {
-      if (acceptedSend) {
-        return { clientMessageId }
-      }
+    replay: (ctx, outcome) => {
       if (outcome.status === 'succeeded' && outcome.conversationCommand) {
         return { recorded: outcome.conversationCommand }
       }

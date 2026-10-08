@@ -2,7 +2,6 @@ import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
-import { runCommandReceiptMutation } from './structured-agent-session-command-receipt'
 
 /** Only thrown while the provider dispatch is still unreachable. */
 export class AgentSessionPreDispatchError extends Error {
@@ -16,12 +15,9 @@ export async function runSettledAgentSessionMutation<TValue>(input: {
   store: AgentSessionRecordStore
   operationCallerKey: string
   envelope: AgentSessionMutationEnvelope
-  plan: MutationPlan<TValue>
+  plan: Extract<MutationPlan<TValue>, { settlesWithWrite?: never }>
   context: AgentSessionTurnContext
 }): Promise<TurnOutcome<TValue>> {
-  if (input.plan.settlesWithWrite) {
-    return runCommandReceiptMutation(input)
-  }
   const operation = {
     callerKey: input.operationCallerKey,
     operationId: input.envelope.clientOperationId

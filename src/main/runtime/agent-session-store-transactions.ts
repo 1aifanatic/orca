@@ -149,6 +149,7 @@ export class AgentSessionStoreTransactions {
         staged = this.stage(apply)
         const writes = staged.writes
         if (writes) {
+          // TEMPORARY: ledger co-write preserves cross-family identity until every mutation uses receipts.
           if (options.insertOperationsIfAbsent) {
             insertAgentSessionOperationRowsIfAbsent(db, writes.operations.upsert)
           } else {

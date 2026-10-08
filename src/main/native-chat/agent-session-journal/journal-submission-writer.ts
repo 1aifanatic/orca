@@ -31,15 +31,6 @@ export type JournalSubmissionWriterDeps = {
 export class JournalSubmissionWriter {
   constructor(private readonly deps: JournalSubmissionWriterDeps) {}
 
-  commitReceipt(clientMessageId: string, receipt: JournalOperationReceipt): Promise<void> {
-    const state = this.deps.state()
-    const sequence = state.submissions.get(clientMessageId)?.submittedSequence
-    if (sequence === undefined) {
-      throw new Error('accepted submission has no journal position')
-    }
-    return this.deps.rowWriter.commitReceipt({ epoch: state.epoch, sequence }, receipt)
-  }
-
   /**
    * Write-ahead submission row. It is durable before the caller dispatches
    * anything, and it doubles as the optimistic user bubble so an accepted echo

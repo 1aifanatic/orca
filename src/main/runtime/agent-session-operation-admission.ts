@@ -3,6 +3,7 @@
 
 import {
   agentSessionOperationKey,
+  agentSessionOperationExpiry,
   claimAgentSessionOperation,
   evaluateAgentSessionOperation,
   findAgentSessionGlobalOperationRow,
@@ -36,7 +37,7 @@ export type AgentSessionOperationAcceptance = AgentSessionOperationAdmission & {
   operationIdScope?: 'global'
 }
 
-/** No admission policy: the acceptance transaction preserves only cross-family identity. */
+// TEMPORARY: ledger co-write preserves cross-family identity until every mutation uses receipts.
 export function insertAcceptedAgentSessionOperationInto(
   state: Pick<AgentSessionStoreState, 'operations'>,
   args: AgentSessionOperationAcceptance & { outcome: AgentSessionOperationOutcome }
@@ -66,6 +67,7 @@ export function insertAcceptedAgentSessionOperationInto(
   if (!exists) {
     state.operations.set(agentSessionOperationKey(args.callerKey, args.operationId), {
       ...pendingAgentSessionOperationRow(args),
+      expiresAt: agentSessionOperationExpiry(args.now, args.now),
       outcome: args.outcome
     })
   }

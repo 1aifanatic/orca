@@ -163,7 +163,7 @@ it('returns a committed queued Send after its publication fails', async () => {
   try {
     expect(await rig.host.send(CALLER, params)).toMatchObject({
       ok: true,
-      replayed: false,
+      replayed: true,
       value: { queued: { messageId: id, position: 1, state: 'waiting' } }
     })
     expect(await rig.host.send(CALLER, params)).toMatchObject({ ok: true, replayed: true })

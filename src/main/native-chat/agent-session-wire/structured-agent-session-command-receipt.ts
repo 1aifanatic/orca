@@ -1,56 +1,36 @@
-import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
-import type {
-  AgentSessionSendResult,
-  AgentSessionMutationEnvelope
-} from '../../../shared/agent-session-wire'
+import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import { commandReceiptScope } from '../agent-session-journal/command-receipt-schema'
+import {
+  commandReceiptScope,
+  type CommandReceipt
+} from '../agent-session-journal/command-receipt-schema'
 import { buildCommandReceiptTransaction } from '../agent-session-journal/command-receipt-transaction'
-import { journalSubmissionFromRow } from '../agent-session-journal/journal-submission-fold'
 import { composeJournalOperationReceipts } from '../agent-session-journal/journal-row-writer'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
-import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
 
 /** Acceptance identity and compatibility bookkeeping share the submission or draft's commit. */
 export async function runCommandReceiptMutation<TValue>(input: {
   store: AgentSessionRecordStore
   operationCallerKey: string
+  fingerprint: string
   envelope: AgentSessionMutationEnvelope
   plan: MutationPlan<TValue>
   context: AgentSessionTurnContext
-}): Promise<TurnOutcome<TValue>> {
-  const { store, operationCallerKey, envelope, plan, context } = input
-  const fingerprint = computeAgentSessionPayloadFingerprint({
-    method: plan.method,
-    sessionId: envelope.sessionId,
-    fields: plan.fields
-  })
-  const outcome = { status: 'succeeded' as const, sessionId: envelope.sessionId }
-  let acceptedSend: AgentSessionSendResult | undefined
+  wakeDelivery?: (sessionId: string) => void
+}): Promise<TurnOutcome<TValue> | { committedReceipt: CommandReceipt }> {
+  const { store, operationCallerKey, fingerprint, envelope, plan, context, wakeDelivery } = input
+  let acceptedReceipt: CommandReceipt | undefined
+  let submissionWritten = false
   const receipt = composeJournalOperationReceipts(
     buildCommandReceiptTransaction(
       commandReceiptScope(operationCallerKey, plan.operationIdScope),
       (row) => {
-        if (row) {
-          if (row.kind !== 'submission') {
-            throw new Error('Send acceptance requires a submission')
-          }
-          acceptedSend = {
-            clientMessageId: envelope.clientOperationId,
-            submission: journalSubmissionFromRow(row)
-          }
-        } else {
-          const draft = context.journal.queuedMessages.get(envelope.clientOperationId)
-          if (!draft) {
-            throw new Error('queued Send acceptance requires a draft')
-          }
-          acceptedSend = {
-            clientMessageId: envelope.clientOperationId,
-            queued: { messageId: draft.messageId, position: draft.position, state: draft.state }
-          }
+        if (row && row.kind !== 'submission') {
+          throw new Error('Send acceptance requires a submission')
         }
-        return {
+        submissionWritten = row !== undefined
+        acceptedReceipt = {
           operationId: envelope.clientOperationId,
           sessionId: envelope.sessionId,
           callerKey: operationCallerKey,
@@ -62,15 +42,17 @@ export async function runCommandReceiptMutation<TValue>(input: {
             ? { kind: 'journal-row', epoch: row.epoch, sequence: row.seq }
             : { kind: 'queued-draft', messageId: envelope.clientOperationId }
         }
+        return acceptedReceipt
       }
     ),
+    // TEMPORARY: ledger co-write preserves cross-family identity until every mutation uses receipts.
     store.operationOutcomeReceipt({
       callerKey: operationCallerKey,
       operationId: envelope.clientOperationId,
       fingerprint,
       now: context.now(),
       ...(plan.operationIdScope ? { operationIdScope: plan.operationIdScope } : {}),
-      outcome
+      outcome: { status: 'succeeded', sessionId: envelope.sessionId }
     })
   )
   let committed = false
@@ -88,34 +70,37 @@ export async function runCommandReceiptMutation<TValue>(input: {
     if (!committed || ran.ok) {
       return ran
     }
+    context.logger.warn('publishing an accepted command failed; replaying its receipt', {
+      scope: 'command-receipt-publication',
+      sessionId: envelope.sessionId,
+      operationId: envelope.clientOperationId,
+      refusal: ran.refusal.code
+    })
   } catch (error) {
     if (!committed) {
       throw error
     }
-  }
-  context.logger.warn('publishing an accepted command failed; answering its committed result', {
-    scope: 'command-receipt-publication',
-    sessionId: envelope.sessionId,
-    operationId: envelope.clientOperationId
-  })
-  await context.journal.refreshCommittedState().catch((error: unknown) => {
-    context.logger.warn('reloading an accepted command failed', {
-      scope: 'command-receipt-reload',
+    context.logger.warn('publishing an accepted command failed; replaying its receipt', {
+      scope: 'command-receipt-publication',
       sessionId: envelope.sessionId,
+      operationId: envelope.clientOperationId,
       error
     })
-  })
-  const replay = resolveAgentSessionReplayOutcome({
-    operationId: envelope.clientOperationId,
-    outcome,
-    reconstruct: () => plan.replay(context, outcome, acceptedSend),
-    recoverUnknownFromDurableState: plan.recoverUnknownFromDurableState
-  })
-  return replay.decision === 'replay'
-    ? { ok: true, value: replay.value }
-    : { ok: false, refusal: replay.decision === 'refuse' ? replay.refusal : unreachableReplay() }
-}
-
-function unreachableReplay(): never {
-  throw new Error('an accepted command cannot run again')
+  } finally {
+    if (committed && submissionWritten) {
+      try {
+        wakeDelivery?.(envelope.sessionId)
+      } catch (error) {
+        context.logger.warn('waking delivery after acceptance failed', {
+          scope: 'command-receipt-delivery',
+          sessionId: envelope.sessionId,
+          error
+        })
+      }
+    }
+  }
+  if (!acceptedReceipt) {
+    throw new Error('an accepted command requires its committed receipt')
+  }
+  return { committedReceipt: acceptedReceipt }
 }

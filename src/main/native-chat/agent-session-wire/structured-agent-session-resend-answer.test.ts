@@ -389,33 +389,39 @@ describe('send receipt acceptance', () => {
     expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
-  it.each([false, true])(
-    'returns the committed send after publication fails, even if reload fails (%s)',
-    async (reloadFails) => {
-      await attach()
-      const params = sendParams('accepted before publication failed')
-      const journal = hostJournal()
-      const observe = vi.spyOn(journal, 'refreshCommittedState')
-      if (reloadFails) {
-        observe.mockRejectedValueOnce(new Error('reload unavailable'))
-      }
-      journal.observeCommits(
-        vi.fn().mockImplementationOnce(() => {
-          throw new Error('publication failed')
-        })
-      )
-      await expect(host.send(CALLER, params)).resolves.toMatchObject({
-        ok: true,
-        replayed: false,
-        value: { submission: { dispatchState: 'pending' } }
+  it('returns the committed send through receipt replay after publication fails', async () => {
+    await attach()
+    const params = sendParams('accepted before publication failed')
+    const journal = hostJournal()
+    const error = new Error('publication failed')
+    journal.observeCommits(
+      vi.fn().mockImplementationOnce(() => {
+        throw error
       })
-      expect(observe).toHaveBeenCalledOnce()
-      expect(journal.submissions()).toHaveLength(1)
-      await expect(host.send(CALLER, params)).resolves.toMatchObject({ ok: true, replayed: true })
-      journal.observeCommits(() => {})
-      await deliveredOnce()
-    }
-  )
+    )
+    await expect(host.send(CALLER, params)).resolves.toMatchObject({
+      ok: true,
+      replayed: true,
+      value: { submission: { dispatchState: 'pending' } }
+    })
+    expect(hostTestState().log.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fields: expect.objectContaining({ scope: 'send-journal-write', error })
+        }),
+        expect.objectContaining({
+          fields: expect.objectContaining({
+            scope: 'command-receipt-publication',
+            refusal: 'agent_session_operation_invalid'
+          })
+        })
+      ])
+    )
+    expect(journal.submissions()).toHaveLength(1)
+    await expect(host.send(CALLER, params)).resolves.toMatchObject({ ok: true, replayed: true })
+    journal.observeCommits(() => {})
+    await deliveredOnce()
+  })
 })
 
 it('keeps a same-fingerprint ledger row unchanged while writing the Send receipt', async () => {

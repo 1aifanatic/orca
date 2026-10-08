@@ -59,8 +59,8 @@ export function mutateStructuredAgentSession<TValue>(
   plan: MutationPlan<TValue>,
   prepareSession?: AgentSessionMutationRequest<TValue>['prepareSession']
 ): Promise<AgentSessionMutationResult<TValue>> {
-  return context.serialize(envelope.sessionId, async () => {
-    const result = await admitAndRunAgentSessionMutation({
+  return context.serialize(envelope.sessionId, () =>
+    admitAndRunAgentSessionMutation({
       store: context.deps.store,
       adapter: context.deps.adapter,
       agents: context.deps.agents,
@@ -71,25 +71,9 @@ export function mutateStructuredAgentSession<TValue>(
       journal: () => context.sessions.get(envelope.sessionId)?.journal,
       prepareSession,
       publish: (journal) => context.publish(envelope.sessionId, journal),
+      wakeDelivery: (sessionId) => context.wakeDelivery(sessionId),
       providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
       now: () => context.now()
     })
-    if (
-      result.ok &&
-      !result.replayed &&
-      plan.settlesWithWrite &&
-      !(typeof result.value === 'object' && result.value !== null && 'queued' in result.value)
-    ) {
-      try {
-        context.wakeDelivery(envelope.sessionId)
-      } catch (error) {
-        context.deps.logger.warn('waking delivery after acceptance failed', {
-          scope: 'command-receipt-delivery',
-          sessionId: envelope.sessionId,
-          error
-        })
-      }
-    }
-    return result
-  })
+  )
 }

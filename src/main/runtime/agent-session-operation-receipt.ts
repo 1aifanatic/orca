@@ -16,7 +16,7 @@ export function agentSessionOperationOutcomeReceipt(
   args: AgentSessionOperationReceiptInput
 ): JournalOperationReceipt {
   if ('fingerprint' in args) {
-    // TEMPORARY until native-chat writes stop using the ledger: preserve cross-family conflicts.
+    // TEMPORARY: ledger co-write preserves cross-family identity until every mutation uses receipts.
     return transactions.receipt((draft) => insertAcceptedAgentSessionOperationInto(draft, args), {
       insertOperationsIfAbsent: true
     })

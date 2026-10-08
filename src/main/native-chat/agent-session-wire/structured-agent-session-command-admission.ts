@@ -12,11 +12,11 @@ import type { ExistingCommandReceipt } from '../agent-session-journal/command-re
 import { CommandReceiptExistsError } from '../agent-session-journal/command-receipt-transaction'
 import {
   AGENT_SESSION_NOT_ATTACHED,
-  refuseAgentSessionMutation,
-  type AgentSessionMutationRequest
-} from './structured-agent-session-mutation-admission'
+  refuseAgentSessionMutation
+} from './structured-agent-session-mutation-refusals'
+import type { AgentSessionMutationRequest } from './structured-agent-session-mutation-admission'
 import { mutationTurnContext } from './structured-agent-session-mutation-turn-context'
-import { runSettledAgentSessionMutation } from './structured-agent-session-operation-settlement'
+import { runCommandReceiptMutation } from './structured-agent-session-command-receipt'
 import {
   agentSessionOperationOutcomeUnknown,
   resolveAgentSessionReplayOutcome
@@ -47,7 +47,13 @@ export async function admitCommandReceiptMutation<TValue>(
       commandReceiptScope(callerKey, plan.operationIdScope),
       envelope.clientOperationId
     )
-  } catch {
+  } catch (error) {
+    request.logger.warn('reading a command receipt failed', {
+      scope: 'command-receipt-read',
+      sessionId: envelope.sessionId,
+      operationId: envelope.clientOperationId,
+      error
+    })
     return unknown(request)
   }
   if (read.verdict !== 'absent') {
@@ -65,13 +71,21 @@ export async function admitCommandReceiptMutation<TValue>(
   // These plans write only to the conversation, whose journal enforces the execution-host fence.
   const context = mutationTurnContext(request, journal, current)
   try {
-    const outcome = await runSettledAgentSessionMutation({
+    const outcome = await runCommandReceiptMutation({
       store,
       operationCallerKey: callerKey,
+      fingerprint: hostFingerprint,
+      wakeDelivery: request.wakeDelivery,
       envelope,
       plan,
       context
     })
+    if ('committedReceipt' in outcome) {
+      return answerCommandReceipt(request, hostFingerprint, {
+        verdict: 'readable',
+        receipt: outcome.committedReceipt
+      })
+    }
     return outcome.ok
       ? {
           ok: true,
