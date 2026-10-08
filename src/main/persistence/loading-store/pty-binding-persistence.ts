@@ -79,7 +79,10 @@ export class PtyBindingPersistenceOperations {
     this[ptyBindingPersistenceOperationsContext] = { runtime, sessions }
   }
 
-  /** Clears a stopped process's binding, keeping the pane; fenced on the id, which is dead in any incarnation. */
+  /**
+   * Clears a stopped process's binding, keeping the pane; fenced on the id, which is dead in any
+   * incarnation. `retire` narrows the edit when a replacing spawn's bind will swap the binding.
+   */
   async retirePtyBinding(
     binding: Pick<PersistPtyBindingArgs, 'worktreeId' | 'tabId' | 'leafId' | 'ptyId'>,
     hostId?: string | null,

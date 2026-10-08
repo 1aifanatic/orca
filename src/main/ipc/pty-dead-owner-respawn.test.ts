@@ -3,6 +3,7 @@ import { withDurableRuntimeStore } from '../runtime/runtime-durable-store-fixtur
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
 import { SessionNotFoundError } from '../daemon/daemon-errors'
 import { makePaneKey } from '../../shared/stable-pane-id'
+import { releaseTabRowPty } from '../persistence/loading-store/replaced-pane-binding'
 import { registerPtyHandlers, setLocalPtyProvider } from './pty'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
@@ -109,6 +110,7 @@ describe('registerPtyHandlers', () => {
         session = next
       }),
       flushOrThrow: vi.fn(),
+      retirePtyBinding: vi.fn(async () => true),
       persistPtyBinding: vi.fn(),
       getFolderWorkspace: vi.fn(() => undefined),
       getFolderWorkspaces: vi.fn(() => []),
@@ -171,8 +173,13 @@ describe('registerPtyHandlers', () => {
       'inc-proven-absent-owner',
       { hostExitConfirmed: true }
     )
-    // The pane and its binding stay for the fresh spawn's bind to swap.
+    // The pane and its binding stay for the fresh spawn's bind to swap; only the row lets go.
     expect(store.setWorkspaceSession).not.toHaveBeenCalled()
+    expect(store.retirePtyBinding).toHaveBeenCalledWith(
+      expect.objectContaining({ worktreeId, tabId, leafId, ptyId: 'pty-proven-absent-owner' }),
+      undefined,
+      releaseTabRowPty
+    )
   })
   it('does not poll after the routed provider confirms absence', async () => {
     const worktreeId = 'repo-1::/tmp/probe-blip-owner'
@@ -233,6 +240,7 @@ describe('registerPtyHandlers', () => {
         session = next
       }),
       flushOrThrow: vi.fn(),
+      retirePtyBinding: vi.fn(async () => true),
       persistPtyBinding: vi.fn(),
       getFolderWorkspace: vi.fn(() => undefined),
       getFolderWorkspaces: vi.fn(() => []),
@@ -357,6 +365,7 @@ describe('registerPtyHandlers', () => {
         session = next
       }),
       flushOrThrow: vi.fn(),
+      retirePtyBinding: vi.fn(async () => true),
       persistPtyBinding: vi.fn(),
       getFolderWorkspace: vi.fn(() => undefined),
       getFolderWorkspaces: vi.fn(() => []),
