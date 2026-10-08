@@ -19102,11 +19102,15 @@
       "startSearching": "开始搜索"
     },
     "nativeChatUpgrade": {
-      "sessionHistoryIntro": "要在聊天和终端之间转移对话，请打开 worktree 侧边栏中的智能体会话历史：",
+      "eyebrow": "新功能",
+      "title": "本机聊天已升级",
+      "description": "聊天现在直接与智能体通信，而不是镜像终端。Chat UI 会为你保持开启。",
+      "cta": "知道了",
+      "sessionHistoryIntro": "在右侧边栏的智能体会话历史中：",
       "resumeInChatLabel": "在新的本机聊天中恢复",
-      "resumeInChatText": "会将 CLI 会话作为本机聊天继续。",
+      "resumeInChatText": "会将 CLI 会话移入聊天。",
       "resumeInCliLabel": "在新的 CLI 中恢复",
-      "resumeInCliText": "会从聊天的副本启动新的 CLI 会话。聊天保持不变，两者不会保持同步。",
+      "resumeInCliText": "会将 Claude 或 Codex 聊天复制到新的 CLI 会话中。聊天保持不变。",
       "settingsLead": "随时可在以下位置更改",
       "settingsLink": "设置 → 聊天"
     }

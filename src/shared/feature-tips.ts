@@ -55,7 +55,7 @@ export const FEATURE_TIPS = [
     eyebrow: 'New',
     title: 'Native chat got an upgrade',
     description:
-      'Chats now talk to the agent directly instead of mirroring a terminal. Chat UI is a regular setting now, and it stays on for you.',
+      'Chats now talk to the agent directly instead of mirroring a terminal. Chat UI stays on for you.',
     action: 'learn-native-chat-upgrade',
     ctaLabel: 'Got it',
     completedByFeatureInteractions: [],

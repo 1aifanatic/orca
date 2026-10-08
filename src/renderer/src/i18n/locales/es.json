@@ -19065,11 +19065,15 @@
       "settingsLink": "Ajustes → Voz"
     },
     "nativeChatUpgrade": {
-      "sessionHistoryIntro": "Para pasar una conversación entre un chat y una terminal, abre Historial de sesiones de agentes en la barra lateral del worktree:",
+      "eyebrow": "Nuevo",
+      "title": "El chat nativo se ha mejorado",
+      "description": "Ahora los chats se comunican directamente con el agente en lugar de reflejar una terminal. Chat UI sigue activado para ti.",
+      "cta": "Entiendo",
+      "sessionHistoryIntro": "En Historial de sesiones de agentes, en la barra lateral derecha:",
       "resumeInChatLabel": "Reanudar en un nuevo chat nativo",
-      "resumeInChatText": "continúa una sesión de CLI como chat nativo.",
+      "resumeInChatText": "pasa una sesión de CLI a un chat.",
       "resumeInCliLabel": "Reanudar en una nueva CLI",
-      "resumeInCliText": "inicia una nueva sesión de CLI a partir de una copia del chat. El chat queda como está y los dos no se mantienen sincronizados.",
+      "resumeInCliText": "copia un chat de Claude o Codex en una nueva sesión de CLI. El chat queda como está.",
       "settingsLead": "Cámbialo cuando quieras en",
       "settingsLink": "Ajustes → Chat"
     }

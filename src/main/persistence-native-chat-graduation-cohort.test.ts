@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { getDefaultPersistedState } from '../shared/constants'
+import type * as DefaultGlobalSettings from '../shared/default-global-settings'
 
 vi.mock('./ssh/ssh-config-parser', () => ({
   loadUserSshConfig: () => ({ hosts: [] }),
@@ -24,6 +25,17 @@ vi.mock('electron', () => ({
   }
 }))
 vi.mock('./telemetry/client', () => ({ track: vi.fn() }))
+const defaults = vi.hoisted(() => ({ experimentalNativeChatOn: false }))
+vi.mock('../shared/default-global-settings', async (importOriginal) => {
+  const actual = await importOriginal<typeof DefaultGlobalSettings>()
+  return {
+    ...actual,
+    buildDefaultSettings: (...args: Parameters<typeof actual.buildDefaultSettings>) => ({
+      ...actual.buildDefaultSettings(...args),
+      ...(defaults.experimentalNativeChatOn ? { experimentalNativeChat: true } : {})
+    })
+  }
+})
 vi.mock('./telemetry/cohort-classifier', () => ({
   getCohortAtEmit: () => ({ nth_repo_added: 2 })
 }))
@@ -64,6 +76,7 @@ describe('native chat graduation cohort persistence', () => {
   })
 
   afterEach(async () => {
+    defaults.experimentalNativeChatOn = false
     await closeTestStores()
     rmSync(testState.dir, { recursive: true, force: true })
   })
@@ -94,6 +107,15 @@ describe('native chat graduation cohort persistence', () => {
     expect(fresh.getSettings().nativeChatGraduationCohort).toBe('other')
     fresh.flush()
     expect(persistedCohort()).toBe('other')
+  })
+
+  it('classifies from the saved file, not from defaults filled in on load', async () => {
+    writeSavedSettingsWithoutNativeChatKey()
+    defaults.experimentalNativeChatOn = true
+    const store = createStore()
+
+    expect(store.getSettings().experimentalNativeChat).toBe(true)
+    expect(store.getSettings().nativeChatGraduationCohort).toBe('other')
   })
 
   it('never re-derives the cohort from the live toggle on a later launch', async () => {

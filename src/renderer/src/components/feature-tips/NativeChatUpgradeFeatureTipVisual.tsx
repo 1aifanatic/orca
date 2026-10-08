@@ -90,7 +90,7 @@ function DemoMenuItem({
   )
 }
 
-// Anchored under the row's ⋯ button, end-aligned like the real dropdown.
+// Anchored under the row's ⋯ button, end-aligned and content-sized like the real dropdown.
 function DemoMenu({
   open,
   testId,
@@ -108,7 +108,7 @@ function DemoMenu({
       data-testid={testId}
       className="pointer-events-none absolute inset-x-2 top-8 z-10 flex origin-top-right scale-[0.98] flex-col items-end gap-2 opacity-0 transition-[opacity,transform] duration-300 data-[open=true]:scale-100 data-[open=true]:opacity-100 motion-reduce:transition-none"
     >
-      <div className="w-44 rounded-lg border border-border/70 bg-popover p-1 text-popover-foreground shadow-floating">
+      <div className="w-max max-w-full rounded-lg border border-border/70 bg-popover p-1 text-popover-foreground shadow-floating">
         {children}
       </div>
       {footer}

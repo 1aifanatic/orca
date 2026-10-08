@@ -33,20 +33,27 @@ export function NativeChatUpgradeTipDialog({
       onOpenChange={onOpenChange}
       onOpenAutoFocus={(event) => {
         event.preventDefault()
-        primaryButtonRef.current?.focus()
+        // Why: the CTA sits below the fold in tall copy; scrolling to it would hide the title.
+        primaryButtonRef.current?.focus({ preventScroll: true })
       }}
       visual={<NativeChatUpgradeFeatureTipVisual />}
     >
       <DialogHeader className="text-left">
         <div>
-          <FeatureTipEyebrow label={tip.eyebrow} />
-          <DialogTitle variant="feature-tip">{tip.title}</DialogTitle>
+          <FeatureTipEyebrow
+            label={translate('featureTips.nativeChatUpgrade.eyebrow', tip.eyebrow)}
+          />
+          <DialogTitle variant="feature-tip">
+            {translate('featureTips.nativeChatUpgrade.title', tip.title)}
+          </DialogTitle>
           <DialogDescription variant="feature-tip" className="mt-3 max-w-2xl">
-            <span className="block">{tip.description}</span>
+            <span className="block">
+              {translate('featureTips.nativeChatUpgrade.description', tip.description)}
+            </span>
             <span className="mt-3 block">
               {translate(
                 'featureTips.nativeChatUpgrade.sessionHistoryIntro',
-                'To move a conversation between a chat and a terminal, open Agent Session History in the worktree sidebar:'
+                'In Agent Session History, in the right sidebar:'
               )}
             </span>
             <span className="mt-3 block">
@@ -58,7 +65,7 @@ export function NativeChatUpgradeTipDialog({
               </span>{' '}
               {translate(
                 'featureTips.nativeChatUpgrade.resumeInChatText',
-                'continues a CLI session as a native chat.'
+                'moves a CLI session into a chat.'
               )}
             </span>
             <span className="mt-3 block">
@@ -67,7 +74,7 @@ export function NativeChatUpgradeTipDialog({
               </span>{' '}
               {translate(
                 'featureTips.nativeChatUpgrade.resumeInCliText',
-                'starts a new CLI session from a copy of the chat. The chat stays as it is, and the two don’t stay in sync.'
+                'copies a Claude or Codex chat into a new CLI session. The chat stays as it is.'
               )}
             </span>
             <span className="mt-3 block">
@@ -84,7 +91,7 @@ export function NativeChatUpgradeTipDialog({
         </div>
       </DialogHeader>
 
-      <DialogFooter className="mt-8 flex sm:justify-stretch">
+      <DialogFooter className="mt-6 flex sm:justify-stretch">
         <FeatureTipActions
           currentTip={tip}
           primaryBusy={primaryBusy}
@@ -93,7 +100,7 @@ export function NativeChatUpgradeTipDialog({
           showSkip={false}
           fullWidth
           primaryButtonRef={primaryButtonRef}
-          label={tip.ctaLabel}
+          label={translate('featureTips.nativeChatUpgrade.cta', tip.ctaLabel)}
         />
       </DialogFooter>
     </FeatureTipDialogFrame>

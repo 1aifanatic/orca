@@ -19102,11 +19102,15 @@
       "startSearching": "検索を開始"
     },
     "nativeChatUpgrade": {
-      "sessionHistoryIntro": "会話をチャットとターミナルの間で移すには、worktree サイドバーの Agent セッション履歴を開きます:",
+      "eyebrow": "新機能",
+      "title": "ネイティブチャットがアップグレードされました",
+      "description": "チャットはターミナルを映すのではなく、Agent と直接やり取りするようになりました。Chat UI は引き続きオンのままです。",
+      "cta": "了解",
+      "sessionHistoryIntro": "右サイドバーの Agent セッション履歴で:",
       "resumeInChatLabel": "新規ネイティブチャットで再開",
-      "resumeInChatText": "は CLI セッションをネイティブチャットとして続けます。",
+      "resumeInChatText": "は CLI セッションをチャットに移します。",
       "resumeInCliLabel": "新規 CLI で再開",
-      "resumeInCliText": "はチャットのコピーから新しい CLI セッションを開始します。チャットはそのまま残り、両者は同期されません。",
+      "resumeInCliText": "は Claude または Codex のチャットを新しい CLI セッションにコピーします。チャットはそのまま残ります。",
       "settingsLead": "いつでも以下で変更できます:",
       "settingsLink": "設定 → チャット"
     }

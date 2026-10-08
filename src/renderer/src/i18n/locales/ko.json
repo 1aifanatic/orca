@@ -19102,11 +19102,15 @@
       "startSearching": "검색 시작하기"
     },
     "nativeChatUpgrade": {
-      "sessionHistoryIntro": "대화를 채팅과 터미널 사이에서 옮기려면 worktree 사이드바에서 Agent 세션 기록을 여세요:",
+      "eyebrow": "신규",
+      "title": "기본 채팅이 업그레이드되었습니다",
+      "description": "이제 채팅은 터미널을 그대로 비추는 대신 에이전트와 직접 대화합니다. Chat UI는 계속 켜져 있습니다.",
+      "cta": "확인",
+      "sessionHistoryIntro": "오른쪽 사이드바의 Agent 세션 기록에서:",
       "resumeInChatLabel": "새 기본 채팅에서 재개",
-      "resumeInChatText": "는 CLI 세션을 기본 채팅으로 이어갑니다.",
+      "resumeInChatText": "는 CLI 세션을 채팅으로 옮깁니다.",
       "resumeInCliLabel": "새 CLI에서 재개",
-      "resumeInCliText": "는 채팅의 사본으로 새 CLI 세션을 시작합니다. 채팅은 그대로 유지되며 둘은 동기화되지 않습니다.",
+      "resumeInCliText": "는 Claude 또는 Codex 채팅을 새 CLI 세션으로 복사합니다. 채팅은 그대로 유지됩니다.",
       "settingsLead": "언제든지 다음에서 변경",
       "settingsLink": "설정 → 채팅"
     }
