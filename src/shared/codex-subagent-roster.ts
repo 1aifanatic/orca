@@ -6,6 +6,7 @@ import {
   type AgentSubagentSnapshot
 } from './agent-status-types'
 import { normalizeOptionalField } from './agent-status-field-normalization'
+import { mergeAgentChildIdentity } from './agent-child-identity-merge'
 import {
   agentChildWorkLiveness,
   type AgentChildWorkLiveness
@@ -43,9 +44,10 @@ export function upsertCodexSubagent(
   const model = normalizeOptionalField(fields.model, AGENT_MODEL_MAX_LENGTH)
   const existing = roster.get(normalizedId)
   if (existing) {
-    existing.agentType = agentType ?? existing.agentType
+    const identity = mergeAgentChildIdentity(existing, { agentType, model })
+    existing.agentType = identity.agentType
     existing.description = description ?? existing.description
-    existing.model = model ?? existing.model
+    existing.model = identity.model
     existing.state = fields.state
     return
   }

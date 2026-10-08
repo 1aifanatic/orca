@@ -224,6 +224,14 @@ describe('child-work admission of sparse observations', () => {
     expect(child).not.toHaveProperty('parentChildWorkId')
   })
 
+  it('does not carry the model into a resumed invocation of a different agent type', () => {
+    const { store, resume } = settledFirstRun()
+    expect(resume({ agentType: 'Plan' })).toMatchObject({ accepted: true })
+    const child = store.getChild('child-1')
+    expect(child).toMatchObject({ membership: 'live', agentType: 'Plan', name: 'researcher' })
+    expect(child).not.toHaveProperty('model')
+  })
+
   it('nests a resumed invocation under the child that restarted it', () => {
     const { store, resume } = settledFirstRun()
     expect(resume({ parentChildWorkId: 'child-restarter' })).toMatchObject({ accepted: true })
