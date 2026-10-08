@@ -9,6 +9,7 @@ import { exportActiveMarkdownToPdf } from './export-active-markdown'
 import type { EditorToggleValue } from './EditorViewToggle'
 import { EditorPanelShell } from './EditorPanelShell'
 import { DiffNavigationProvider } from './diff-navigation-context'
+import { EditorCommandOwnerContext } from './editor-command-owner-context'
 import { canUseChangesModeForFile } from './editor-panel-file-mode'
 import { getEditorPanelRenderModel } from './editor-panel-render-model'
 import { useEditorCmdSaveRequest } from './useEditorCmdSaveRequest'
@@ -24,7 +25,6 @@ import {
 import { createEditorPanelDraftSelector } from './editor-panel-draft-selector'
 import { createCurrentMarkdownArtifactRequest } from './markdown-artifact-upload'
 import { useEditorPanelSave } from './useEditorPanelSave'
-import { EditorShortcutOwnerContext } from './editor-shortcut-owner'
 import { isMarkdownReviewNotesEnabled } from '@/lib/markdown-review-notes-setting'
 
 function EditorPanelInner({
@@ -318,9 +318,9 @@ function EditorPanelInner({
     )
 
   return (
-    // Why: each split pane needs an isolated bridge between its diff editor and header controls.
-    <DiffNavigationProvider>
-      <EditorShortcutOwnerContext.Provider value={isCmdSaveOwner}>
+    <EditorCommandOwnerContext value={isCmdSaveOwner}>
+      {/* Why: each split pane needs an isolated bridge between its diff editor and header controls. */}
+      <DiffNavigationProvider>
         <EditorPanelShell
           panelRef={setPanelRef}
           activeFile={activeFile}
@@ -376,8 +376,8 @@ function EditorPanelInner({
           onRenameConfirm={handleRenameConfirm}
           markdownAnnotationsEnabled={markdownAnnotationsEnabled && markdownReviewNotesEnabled}
         />
-      </EditorShortcutOwnerContext.Provider>
-    </DiffNavigationProvider>
+      </DiffNavigationProvider>
+    </EditorCommandOwnerContext>
   )
 }
 
