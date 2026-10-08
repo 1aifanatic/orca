@@ -7294,7 +7294,7 @@
       "src/renderer/src/components/terminal-pane/terminal-layout-leaf-detach.test.ts": 62,
       "src/renderer/src/components/terminal-pane/terminal-layout-leaf-ids.test.ts": 39,
       "src/renderer/src/components/terminal-pane/terminal-layout-overlay-focus.test.tsx": 328,
-      "src/renderer/src/components/terminal-pane/terminal-layout-pty-ownership-depth.test.ts": 103,
+      "src/shared/terminal-layout-pty-ownership-depth.test.ts": 103,
       "src/renderer/src/components/terminal-pane/terminal-layout-pty-ownership.test.ts": 111,
       "src/renderer/src/components/terminal-pane/terminal-link-action-routing.test.ts": 1448,
       "src/renderer/src/components/terminal-pane/terminal-link-activation.test.ts": 226,
