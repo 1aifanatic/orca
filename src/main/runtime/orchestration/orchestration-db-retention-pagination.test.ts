@@ -168,29 +168,58 @@ describe('OrchestrationDb mutation receipt admission', () => {
     expect(db.getMutationReceipt('caller', 'worker_overflow')).toMatchObject({ state: 'pending' })
   })
 
-  it('rolls back worker acceptance when its receipt cannot be written', () => {
+  function startWorker(store: OrchestrationDb, task: { taskId: string } | { taskSpec: string }) {
+    return store.createStartingWorkerDispatch({
+      creator: { kind: 'system' },
+      maxDepth: Number.MAX_SAFE_INTEGER,
+      ...task,
+      taskRunId: 'run_legacy_local',
+      startOptions: {},
+      mutationReceipt: {
+        callerFingerprint: 'caller',
+        requestId: 'worker_refused',
+        method: 'orchestration.workerStart',
+        payloadHash: 'hash_worker_refused'
+      }
+    })
+  }
+
+  function rowCount(store: OrchestrationDb, sql: string, ...params: string[]): number {
+    return Number(store.db.prepare(sql).get(...params)?.count)
+  }
+
+  it('rolls back the inline task and receipt when the acceptance checkpoint cannot be written', () => {
+    const store = new OrchestrationDb(':memory:')
+    db = store
+    // After the receipt insert and the inline task insert, inside the same transaction.
+    store.db.exec(`CREATE TRIGGER refuse_checkpoint BEFORE UPDATE ON mutation_receipts
+      BEGIN SELECT RAISE(ABORT, 'receipt unavailable'); END`)
+
+    expect(() => startWorker(store, { taskSpec: 'accept one worker' })).toThrow(
+      'receipt unavailable'
+    )
+    expect(
+      rowCount(store, 'SELECT COUNT(*) AS count FROM tasks WHERE spec = ?', 'accept one worker')
+    ).toBe(0)
+    expect(store.getMutationReceipt('caller', 'worker_refused')).toBeUndefined()
+  })
+
+  it('rolls back the receipt and dispatch rows when the last acceptance write fails', () => {
     const store = new OrchestrationDb(':memory:')
     db = store
     const task = store.createTask({ runId: 'run_legacy_local', spec: 'accept one worker' })
-    store.db.exec(`CREATE TRIGGER refuse_receipt BEFORE INSERT ON mutation_receipts
-      BEGIN SELECT RAISE(ABORT, 'receipt unavailable'); END`)
+    // The task transition is the final write, after the receipt and both dispatch rows.
+    store.db.exec(`CREATE TRIGGER refuse_dispatch BEFORE UPDATE OF status ON tasks
+      WHEN NEW.status = 'dispatched'
+      BEGIN SELECT RAISE(ABORT, 'acceptance unavailable'); END`)
 
-    expect(() =>
-      store.createStartingWorkerDispatch({
-        creator: { kind: 'system' },
-        maxDepth: Number.MAX_SAFE_INTEGER,
-        taskId: task.id,
-        startOptions: {},
-        mutationReceipt: {
-          callerFingerprint: 'caller',
-          requestId: 'worker_refused',
-          method: 'orchestration.workerStart',
-          payloadHash: 'hash_worker_refused'
-        }
-      })
-    ).toThrow('receipt unavailable')
+    expect(() => startWorker(store, { taskId: task.id })).toThrow('acceptance unavailable')
     expect(store.getTask(task.id)).toMatchObject({ status: 'ready' })
     expect(store.getMutationReceipt('caller', 'worker_refused')).toBeUndefined()
+    expect(
+      rowCount(store, 'SELECT COUNT(*) AS count FROM dispatch_contexts WHERE task_id = ?', task.id)
+    ).toBe(0)
+    expect(rowCount(store, 'SELECT COUNT(*) AS count FROM worker_dispatches')).toBe(0)
   })
 })
 
