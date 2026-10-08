@@ -1,9 +1,6 @@
 import {
   codexStartReport,
-  acquireReadyCodexForTest
-} from './codex-structured-session-adapter-fixture'
-import { describe, expect, it, vi, type Mock } from 'vitest'
-import {
+  acquireReadyCodexForTest,
   THREAD_ID,
   USER_MESSAGE,
   adapterFor,
@@ -12,6 +9,7 @@ import {
   identityFor,
   type Route
 } from './codex-structured-session-adapter-fixture'
+import { describe, expect, it, vi, type Mock } from 'vitest'
 import {
   AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
   AgentModelCatalogStore

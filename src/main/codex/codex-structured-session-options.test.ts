@@ -1,4 +1,11 @@
-import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
+import {
+  acquireReadyCodexForTest,
+  USER_MESSAGE,
+  adapterFor,
+  answerWithOpenedTurn,
+  fakeCodex,
+  identityFor
+} from './codex-structured-session-adapter-fixture'
 import { createCodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import { createCodexTurnOpenWaits } from './codex-structured-turn-open-wait'
 import { describe, expect, it, vi } from 'vitest'
@@ -14,13 +21,6 @@ import { reportedCodexThreadOptions } from './codex-structured-fast-mode'
 import { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import type { CodexSession } from './codex-structured-session-state'
 import { startCodexTurn } from './codex-structured-turn-start'
-import {
-  USER_MESSAGE,
-  adapterFor,
-  answerWithOpenedTurn,
-  fakeCodex,
-  identityFor
-} from './codex-structured-session-adapter-fixture'
 import {
   AGENT_MODEL_CATALOG_FRESH_MS,
   AgentModelCatalogStore

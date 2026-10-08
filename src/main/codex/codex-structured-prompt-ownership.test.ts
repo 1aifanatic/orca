@@ -1,4 +1,11 @@
-import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
+import {
+  acquireReadyCodexForTest,
+  THREAD_ID,
+  acquired,
+  adapterFor,
+  fakeCodex,
+  identityFor
+} from './codex-structured-session-adapter-fixture'
 import { describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import { AGENT_SESSION_ID_MAX_LENGTH } from '../../shared/agent-session-wire'
@@ -9,13 +16,6 @@ import type {
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { CodexAppServerRequestError } from './codex-app-server-connection'
-import {
-  THREAD_ID,
-  acquired,
-  adapterFor,
-  fakeCodex,
-  identityFor
-} from './codex-structured-session-adapter-fixture'
 import { CodexPromptRegistry } from './codex-structured-prompt-replies'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-state'
 

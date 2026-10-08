@@ -1,6 +1,10 @@
-import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
+import {
+  acquireReadyCodexForTest,
+  adapterFor,
+  fakeCodex,
+  identityFor
+} from './codex-structured-session-adapter-fixture'
 import { describe, expect, it } from 'vitest'
-import { adapterFor, fakeCodex, identityFor } from './codex-structured-session-adapter-fixture'
 
 describe('Codex adapter liveness for lease renewal', () => {
   it('holds its acquisition until the connection reports the root exit', async () => {

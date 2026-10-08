@@ -4,8 +4,10 @@ import {
   type CodexModelCatalogListing
 } from './codex-structured-model-catalog'
 import { reportedCodexSessionOptions } from './codex-structured-session-options'
-import type { CodexStructuredSessionAdapterDeps } from './codex-structured-session-state'
-import type { CodexSession } from './codex-structured-session-state'
+import type {
+  CodexStructuredSessionAdapterDeps,
+  CodexSession
+} from './codex-structured-session-state'
 import { reconcileCodexFastModeOption } from './codex-structured-fast-mode'
 
 type BackgroundCatalogInput = {

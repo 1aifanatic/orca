@@ -1,7 +1,14 @@
 import {
   codexStartReport,
   codexStartedLink,
-  acquireReadyCodexForTest
+  acquireReadyCodexForTest,
+  THREAD_ID,
+  USER_MESSAGE,
+  acquired,
+  adapterFor,
+  answerWithOpenedTurn,
+  fakeCodex,
+  identityFor
 } from './codex-structured-session-adapter-fixture'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -15,15 +22,6 @@ import {
   type CodexStructuredLaunch,
   type CodexStructuredSessionEvent
 } from './codex-structured-session-adapter'
-import {
-  THREAD_ID,
-  USER_MESSAGE,
-  acquired,
-  adapterFor,
-  answerWithOpenedTurn,
-  fakeCodex,
-  identityFor
-} from './codex-structured-session-adapter-fixture'
 import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 import { AgentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 

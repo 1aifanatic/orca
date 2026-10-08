@@ -21,7 +21,8 @@ import type {
 } from './structured-agent-session-adapter'
 import type {
   StructuredAgentSessionHostDeps,
-  StructuredAgentSessionHostSession
+  StructuredAgentSessionHostSession,
+  StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
 import { nativeSessionOptionsFromReport } from './structured-agent-session-option-restoration'
 import {
@@ -31,7 +32,6 @@ import {
 import type { StructuredAgentSessionOptionRevisions } from './structured-agent-session-option-revisions'
 import type { StructuredAgentSessionStartupAttempts } from './structured-agent-session-startup-attempt'
 import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
-import type { StructuredAgentSessionProviderChildIdentity } from './structured-agent-session-host-types'
 import { recordAgentSessionProviderHandle } from '../../runtime/agent-session-provider-handle-transition'
 import { applyStructuredAgentSessionStartupIntent } from './structured-agent-session-startup-intent'
 

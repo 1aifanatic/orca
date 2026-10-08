@@ -15,8 +15,7 @@ import {
   type ProviderTimelineRig
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { acpLaunchSpecFor, type AcpLaunchSpec } from './acp-launch-specs'
-import type { AcpScriptedAgent } from './acp-scripted-agent.test-support'
-import { tick, type FakeFrame } from './acp-scripted-agent.test-support'
+import { type AcpScriptedAgent, tick, type FakeFrame } from './acp-scripted-agent.test-support'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 import { AcpStructuredSessionAdapter } from './acp-structured-session-adapter'
 import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
