@@ -48,8 +48,8 @@ export type ProviderHistoryWindow = {
   turnInFlight: boolean
 }
 
-/** When the resume point the read started at last moved: only the owner at `fence` moves it, and
- *  `movedAt` is on that owner's clock, the one its journal rows are stamped with. */
+/** When the resume point the read started at last moved: the fence its link was written at, and a
+ *  host-clock stamp (the journal's clock) taken no earlier than the move itself. */
 export type ProviderHistoryWindowStart = { fence: number; movedAt: number }
 
 /** A window placed against the sends it is asked about. */
@@ -224,7 +224,7 @@ function resolveOne(
 }
 
 /** Absence proves non-delivery only past where the read starts. Moves at an earlier fence precede
- *  any handover at a later one; at the same fence, the owner's clock orders them, ties unproven. */
+ *  any handover at a later one; at the same fence, the host clock orders them, ties unproven. */
 function windowStartsBeforeHandover(
   submission: AgentJournalSubmission,
   history: PlacedProviderHistoryWindow
