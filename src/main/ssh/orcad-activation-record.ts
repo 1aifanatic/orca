@@ -201,7 +201,10 @@ export function withDeactivatedVersion(record: OrcadActivationRecord): OrcadActi
     previous: record.active,
     activatedAt: null,
     // No version is active, so there is nothing a pre-activation snapshot could roll back to.
-    snapshot: null
+    snapshot: null,
+    // Why: the stopped build may have migrated the host's state; a redeploy must not go older.
+    ...(record.activeAppVersion ? { previousAppVersion: record.activeAppVersion } : {}),
+    ...(record.rolledBackFrom ? { rolledBackFrom: record.rolledBackFrom } : {})
   }
 }
 

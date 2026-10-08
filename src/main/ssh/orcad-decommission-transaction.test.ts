@@ -36,6 +36,26 @@ describe('the decommission journal entry', () => {
     expect(prepared.recordAfter).toMatchObject({ active: null, previous: NEW, snapshot: null })
   })
 
+  it('keeps the stopped build app version, and reads a journal from a peer that drops it', () => {
+    const versioned = createOrcadDecommissionTransaction({
+      transactionId: ID,
+      recordBefore: { ...before, activeAppVersion: '1.5.0', rolledBackFrom: '0.9.0+ff01' },
+      now: T
+    })
+    expect(versioned.recordAfter).toMatchObject({
+      previousAppVersion: '1.5.0',
+      rolledBackFrom: '0.9.0+ff01'
+    })
+    const {
+      previousAppVersion: _app,
+      rolledBackFrom: _held,
+      ...olderPeerAfter
+    } = versioned.recordAfter
+    expect(
+      parseOrcadActivationTransaction(JSON.stringify({ ...versioned, recordAfter: olderPeerAfter }))
+    ).toMatchObject({ state: 'ok' })
+  })
+
   it('round-trips every phase', () => {
     for (const transaction of [prepared, dispatched, exited]) {
       expect(

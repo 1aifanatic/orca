@@ -23,6 +23,8 @@ export type ManagedOrcadAutoUpdateSkip =
   | 'rolled-back'
   | 'failed-before'
   | 'migrating'
+  /** Another desktop stopped a build whose Orca version the host does not name. */
+  | 'stopped-version-unknown'
 
 export type ManagedOrcadAutoUpdatePlan =
   | { action: 'update' }
@@ -54,6 +56,9 @@ export function planManagedOrcadAutoUpdate(input: {
   if (record.rolledBackFrom === candidateVersion) {
     return { action: 'skip', reason: 'rolled-back' }
   }
+  if (record.active === null && record.previous !== null) {
+    return planStoppedHostRedeploy(record, candidateVersion, input.appVersion)
+  }
   // Why absent counts as older: only builds that predate the field omit it.
   if (
     record.activeAppVersion &&
@@ -62,6 +67,28 @@ export function planManagedOrcadAutoUpdate(input: {
     return { action: 'skip', reason: 'host-newer' }
   }
   return input.failedBefore ? { action: 'skip', reason: 'failed-before' } : { action: 'update' }
+}
+
+/**
+ * A host another desktop stopped. Its state may already be migrated by the stopped build, so only
+ * that build or a build at least as new may start on it. No `failedBefore` skip: nothing serves, so
+ * a later connect retrying is the only way back short of a manual update.
+ */
+function planStoppedHostRedeploy(
+  record: OrcadActivationRecord,
+  candidateVersion: string,
+  appVersion: string
+): ManagedOrcadAutoUpdatePlan {
+  if (record.previous === candidateVersion) {
+    return { action: 'update' }
+  }
+  // Why absent is not older here: builds that wrote stops before the field existed omit it too.
+  if (!record.previousAppVersion) {
+    return { action: 'skip', reason: 'stopped-version-unknown' }
+  }
+  return compareAppVersions(record.previousAppVersion, appVersion) > 0
+    ? { action: 'skip', reason: 'host-newer' }
+    : { action: 'update' }
 }
 
 const WAITING_CODES: ReadonlySet<string> = new Set<

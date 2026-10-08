@@ -6,6 +6,7 @@
  * host), `process-exited` (exit proven by a completed-stop receipt). Only the last may commit.
  */
 import {
+  coreOrcadActivationRecord,
   serializeOrcadActivationRecord,
   withDeactivatedVersion,
   type OrcadActivationRecord
@@ -76,9 +77,12 @@ export function orcadDecommissionTransactionDefect(
   if (transaction.recordBefore.active !== transaction.activeVersion) {
     return 'decommission version does not match recordBefore'
   }
+  // Core fields only: a peer that predates the advisory app-version fields journals without them.
   if (
-    serializeOrcadActivationRecord(transaction.recordAfter) !==
-    serializeOrcadActivationRecord(withDeactivatedVersion(transaction.recordBefore))
+    serializeOrcadActivationRecord(coreOrcadActivationRecord(transaction.recordAfter)) !==
+    serializeOrcadActivationRecord(
+      coreOrcadActivationRecord(withDeactivatedVersion(transaction.recordBefore))
+    )
   ) {
     return 'recordAfter is not the deactivated recordBefore'
   }
