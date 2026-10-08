@@ -15,8 +15,13 @@ import {
 } from './structured-agent-session-queued-message-rig.test-fixture'
 import {
   HOST_TEST_SESSION as SESSION,
+  hostTestMessage,
   hostTestOperationId
 } from './structured-agent-session-host-test-data'
+import {
+  QUEUED_MESSAGES_PERSON_RESERVE_BYTES,
+  QUEUED_MESSAGES_PUBLISHED_MAX_BYTES
+} from './structured-agent-session-queued-published-bytes'
 
 let rig: QueuedMessageTestRig
 
@@ -26,13 +31,18 @@ beforeEach(async () => {
 
 afterEach(() => rig.dispose())
 
-function compact(delivery?: 'queue-if-active', clientOperationId = hostTestOperationId()) {
+function compact(
+  delivery?: 'queue-if-active',
+  clientOperationId = hostTestOperationId(),
+  options?: { internal?: true }
+) {
   const fields = { command: 'compact' as const, ...(delivery ? { delivery } : {}) }
   return {
     id: clientOperationId,
     result: rig.host.conversationCommand(CALLER, {
       envelope: rig.envelope(fields, 'agentSession.conversationCommand', clientOperationId),
-      ...fields
+      ...fields,
+      ...(options?.internal ? {} : { userSend: true as const })
     })
   }
 }
@@ -88,6 +98,32 @@ const BACKGROUND_TASK: AgentChildWorkView = {
 const settleMs = () => new Promise((resolve) => setTimeout(resolve, 150))
 
 describe('a /compact that waits in line', () => {
+  it("uses the person's reserve when background cards fill their bound", async () => {
+    await rig.workingSend()
+    const backgroundRoom =
+      QUEUED_MESSAGES_PUBLISHED_MAX_BYTES - QUEUED_MESSAGES_PERSON_RESERVE_BYTES
+    const overhead = Buffer.byteLength(JSON.stringify(hostTestMessage('')), 'utf8')
+    const background = rig.send('x'.repeat(backgroundRoom - overhead), 'queue-if-active', {
+      internal: true
+    })
+    expect(await background.result).toMatchObject({
+      ok: true,
+      value: { queued: { messageId: background.id, state: 'waiting' } }
+    })
+    expect(
+      await compact('queue-if-active', hostTestOperationId(), { internal: true }).result
+    ).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'queueTooLarge' } }
+    })
+    const compactId = await queuedCompact()
+    expect(await rig.drafts()).toEqual([
+      { messageId: background.id, state: 'waiting' },
+      { messageId: compactId, state: 'waiting' }
+    ])
+    expect(rig.compact).not.toHaveBeenCalled()
+  })
+
   it('behind an unanswered message: a card at once, run once that message is answered', async () => {
     const working = await rig.workingSend()
     const compactId = await queuedCompact()
