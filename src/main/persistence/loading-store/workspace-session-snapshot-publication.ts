@@ -1,5 +1,6 @@
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
+import { applyLegacyTerminalSurfaceTombstones } from '../../runtime/mobile-session-terminal-persistence-retirement'
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import { setMigrationUnsupportedPty } from '../../agent-hooks/migration-unsupported-pty-state'
 import { pruneLocalTerminalScrollbackBuffers } from '../../../shared/workspace-session-terminal-buffers'
@@ -33,7 +34,10 @@ export function setLocalWorkspaceSession(
   const context = getSessionSnapshotOperationsContext(owner)
   const prior = context.runtime.state.workspaceSession
   session = pruneWorkspaceSessionBrowserHistory(
-    pruneLocalTerminalScrollbackBuffers(session, context.runtime.state.repos)
+    pruneLocalTerminalScrollbackBuffers(
+      applyLegacyTerminalSurfaceTombstones(session),
+      context.runtime.state.repos
+    )
   )
 
   const normalized = normalizeWorkspaceSessionPaneIdentities(session, prior?.terminalLayoutsByTabId)

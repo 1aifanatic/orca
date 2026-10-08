@@ -378,9 +378,8 @@ describe('Store.migrateWorktreeIdentity', () => {
     expect(hostSession.tabsByWorktree[OLD]).toBeUndefined()
     expect(hostSession.tabsByWorktree[NEW]?.[0]?.worktreeId).toBe(NEW)
     expect(hostSession.activeWorkspaceKey).toBe(NEW_WORKSPACE_KEY)
-    expect(hostSession.terminalTopologyRevisionByRepoId?.repo1).toBe(8)
-    // A legacy close record stays a fence, now naming the renamed worktree.
-    expect(hostSession.terminalSurfaceTombstonesByPaneKey?.['host-tab:leaf']?.worktreeId).toBe(NEW)
+    expect(hostSession.terminalTopologyRevisionByRepoId?.repo1).toBe(9)
+    expect(hostSession.terminalSurfaceTombstonesByPaneKey).toEqual({})
   })
 
   it('rewrites parentWorktreeId back-references in other lineage entries', async () => {

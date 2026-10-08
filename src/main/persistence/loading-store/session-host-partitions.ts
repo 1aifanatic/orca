@@ -1,5 +1,6 @@
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
+import { applyLegacyTerminalSurfaceTombstones } from '../../runtime/mobile-session-terminal-persistence-retirement'
 import {
   LOCAL_EXECUTION_HOST_ID,
   normalizeExecutionHostId,
@@ -184,6 +185,7 @@ export function setHostWorkspaceSession(
   hostId: ExecutionHostId,
   session: WorkspaceSessionState
 ): void {
+  session = applyLegacyTerminalSurfaceTombstones(session)
   // Why here too: the load-side drop only survives until the next full snapshot write. A renderer
   // or runtime payload that still carries local's globals would re-inject them into this partition.
   const pruned = withoutRedundantGlobalFields(
