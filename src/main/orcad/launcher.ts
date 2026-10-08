@@ -7,6 +7,8 @@ import { assertOrcadServerRuntime, handoffToBundledOrcad } from './orcad-bundled
 
 declare const ORCAD_SERVER_SHA256: string
 
+let loadServer: (() => void) | undefined
+
 try {
   if (!handoffToBundledOrcad()) {
     assertOrcadServerRuntime()
@@ -15,9 +17,11 @@ try {
     if (createHash('sha256').update(readFileSync(server)).digest('hex') !== ORCAD_SERVER_SHA256) {
       throw new Error('The Orca server does not match its launcher')
     }
-    createRequire(entry)(server)
+    loadServer = () => createRequire(entry)(server)
   }
 } catch (error) {
   console.error('orcad: failed to launch:', error)
   process.exit(78)
 }
+
+loadServer?.()

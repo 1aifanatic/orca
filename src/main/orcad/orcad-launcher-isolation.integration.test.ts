@@ -97,6 +97,25 @@ it('runs an unpackaged server on the supported host runtime and preserves argume
   expect(JSON.parse(result.stdout)).toEqual({ node: version.stdout.trim(), args })
 })
 
+it('preserves the crash exit code when the server fails while loading', async () => {
+  const directory = join(root, 'server-crash')
+  await mkdir(directory)
+  const entry = join(directory, ORCAD_LAUNCHER_FILENAME)
+  await writeFile(
+    join(directory, ORCAD_SERVER_ENTRY_FILENAME),
+    'throw new Error("server evaluation failed")'
+  )
+  await buildLauncher(entry)
+  const result = await runProcess({
+    program: process.execPath,
+    args: [entry],
+    env: { ...process.env, ORCA_BACKGROUND_LAUNCH: '1' }
+  })
+  expect(result.code).toBe(1)
+  expect(result.stderr).toContain('server evaluation failed')
+  expect(result.stderr).not.toContain('orcad: failed to launch:')
+})
+
 const skip = skipForMissingInputs('artifact', pinnedNode ? [] : ['the pinned Node runtime'])
 
 describe.skipIf(skip)('split launcher with the real bundled runtime', () => {
