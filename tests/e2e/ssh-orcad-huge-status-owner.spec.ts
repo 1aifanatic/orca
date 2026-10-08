@@ -59,6 +59,8 @@ test('a large managed status cannot offer an ignore write to a same-path desktop
     const launched = await session.launch()
     app = launched.app
     const page = launched.page
+    await page.setViewportSize({ width: 1280, height: 1024 })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     page.on('console', (message) => {
       if (message.type() === 'error' || message.type() === 'warning') {
         console.log('[renderer]', message.text())
@@ -111,6 +113,7 @@ test('a large managed status cannot offer an ignore write to a same-path desktop
       () => false
     )
     if (offered) {
+      await addIgnore.hover()
       await expect(
         page
           .locator('[data-sonner-toast]')
@@ -156,6 +159,8 @@ test('a large desktop status still offers and applies its local ignore suggestio
     const launched = await session.launch()
     app = launched.app
     const page = launched.page
+    await page.setViewportSize({ width: 1280, height: 1024 })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     await waitForSessionReady(page)
     const repoId = await page.evaluate(async (repoPath) => {
       const result = await window.api.repos.add({ path: repoPath })
@@ -175,6 +180,7 @@ test('a large desktop status still offers and applies its local ignore suggestio
     await page.getByRole('button', { name: /Source Control/ }).click()
     const addIgnore = page.getByRole('button', { name: 'Add to .gitignore', exact: true })
     await expect(addIgnore).toBeVisible({ timeout: 15_000 })
+    await addIgnore.hover()
     await expect(
       page
         .locator('[data-sonner-toast]')
