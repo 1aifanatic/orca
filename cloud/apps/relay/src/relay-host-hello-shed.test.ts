@@ -151,15 +151,22 @@ describe('host hello shedding under database pool pressure', () => {
   }
 
   it('admits hellos behind a deep queue that is still moving', async () => {
-    // Asia cells routinely queue 50-196; what matters is that nobody has waited long.
     const cell = await startCell(120)
     cell.advance(HOST_HELLO_SHED_OLDEST_WAIT_MS - 300)
 
     expect(await dial(cell)).toEqual({ status: 101 })
   })
 
-  it('refuses a hello with a retryable 503 once the oldest waiter nears the acquire timeout', async () => {
+  it('admits hellos behind one slow waiter', async () => {
+    // The test pool holds 2 connections, so a lone aged waiter is under the count floor.
     const cell = await startCell(1)
+    cell.advance(HOST_HELLO_SHED_OLDEST_WAIT_MS * 2)
+
+    expect(await dial(cell)).toEqual({ status: 101 })
+  })
+
+  it('refuses a hello with a retryable 503 once a full queue has aged', async () => {
+    const cell = await startCell(2)
     cell.advance(HOST_HELLO_SHED_OLDEST_WAIT_MS)
 
     expect(await dial(cell)).toEqual({ status: 503, retryAfter: '2' })
@@ -174,7 +181,7 @@ describe('host hello shedding under database pool pressure', () => {
 
   it('never refuses a rebind over a live control', async () => {
     vi.spyOn(HostSessionRegistry.prototype, 'hasActiveControl').mockReturnValue(true)
-    const cell = await startCell(1)
+    const cell = await startCell(2)
     cell.advance(HOST_HELLO_SHED_OLDEST_WAIT_MS * 2)
 
     expect(await dial(cell)).toEqual({ status: 101 })

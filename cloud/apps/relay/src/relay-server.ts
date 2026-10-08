@@ -45,11 +45,11 @@ function decodePathSegment(value: string): string | null {
   }
 }
 
-// Three quarters of the 2 s acquire timeout: a queue whose head has waited this
-// long is timing hellos out, while a deep queue that moves never gets here.
-// asia-east2 queues of 50-196 are routine; at 1.5 s, 2026-10-06/07 samples
-// outside the herds crossed it only alongside SQL timeouts.
-export const HOST_HELLO_SHED_OLDEST_WAIT_MS = 1_500
+// Healthy cells peak at 2 waiters (p99, 2026-10-07). A head that has waited half
+// the 2 s acquire timeout with a whole pool's worth queued behind it means
+// hellos are already timing out; the count floor keeps one slow waiter from
+// tripping it. On 10-07 every window that met both also logged SQL failures.
+export const HOST_HELLO_SHED_OLDEST_WAIT_MS = 1_000
 const HOST_HELLO_SHED_RETRY_AFTER_SECONDS = 2
 
 function rejectUpgrade(
@@ -532,6 +532,7 @@ export function createRelayServer(
       // is a lease rotation, not a reconnect, so it is never refused here.
       if (
         !isRebind &&
+        readRelayDatabasePoolPressure(database).databasePoolWaiting >= config.databasePoolMax &&
         readRelayDatabasePoolOldestWaitMs(database) >= HOST_HELLO_SHED_OLDEST_WAIT_MS
       ) {
         observability.recordHostHelloShed()
