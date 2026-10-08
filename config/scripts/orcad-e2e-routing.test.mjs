@@ -61,6 +61,7 @@ it('routes the idle-exit spec from its idle sources and the shared convert harne
   expectRouted(
     [
       'src/shared/orcad-idle-exit.ts',
+      'src/main/ssh/orcad-remote-runtime-control.ts',
       'tests/e2e/helpers/orcad-convert-flow.ts',
       'tests/e2e/helpers/orcad-convert-host.ts'
     ],
