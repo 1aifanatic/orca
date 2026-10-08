@@ -58,7 +58,7 @@ export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
   wiring: Omit<
     ConstructorParameters<typeof StructuredAgentSessionReadableRestorer>[0],
-    'openDeps' | 'reconcile' | 'resolveRecovery'
+    'openDeps' | 'reconcileAll' | 'reconcile' | 'resolveRecovery'
   > & {
     reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
     reconcileRestartLeases: () => Promise<AgentSessionWireRefusal | null>
@@ -74,6 +74,7 @@ export function createStructuredAgentSessionHostRestore(
   const reconcileStartup = createReaderReconcile(reconcileRestartLeases, failures)
   const restorer = new StructuredAgentSessionReadableRestorer({
     openDeps: deps,
+    reconcileAll: reconcileStartup,
     reconcile,
     // The next attach or send resolves recovery again, strictly, before it acts.
     resolveRecovery: (sessionId) =>
