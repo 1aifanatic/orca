@@ -126,7 +126,6 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
   protected readonly endAgentHookCommandFn:
     | ((paneKey: string, command: FinishedCommand) => void)
     | null
-    | null
 
   protected readonly checkHookAgentPresenceFn:
     | ((paneKey: string) => Promise<'live' | 'unverifiable' | 'exited' | null>)

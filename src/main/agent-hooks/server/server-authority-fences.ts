@@ -32,8 +32,9 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     }
   }
 
-  /** A command finished in a pane this machine executes (local or WSL): end the agent it ran. SSH
-   *  panes are their relay's, which runs the same rule. */
+  /** A command finished in a pane: end the agent it ran. A hook row from an SSH pane is its relay's,
+   *  which runs the same rule; main decides every other row, including SSH rows painted only from
+   *  terminal output, which no relay holds. */
   endCommand(paneKey: string, command: FinishedCommand): void {
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
@@ -42,7 +43,7 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       | undefined
     if (
       !row ||
-      !isLocalHookConnectionId(row.connectionId ?? null) ||
+      (!isLocalHookConnectionId(row.connectionId ?? null) && row.agentPresence !== undefined) ||
       !commandEndEndsRow(row, row.receivedAt, command)
     ) {
       return

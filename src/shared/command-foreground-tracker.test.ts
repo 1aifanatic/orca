@@ -4,22 +4,32 @@ import { FOREGROUND_COMMAND_READS } from './foreground-command-settle'
 
 let foreground: string | null = 'zsh'
 let available = true
-const tracker = () =>
-  new CommandForegroundTracker({
-    read: async () => ({ available, process: foreground }),
-    now: () => Date.now()
-  })
+const read = vi.fn(async () => ({ available, process: foreground }))
+const tracker = (readsOnStart = false) =>
+  new CommandForegroundTracker({ read, now: () => Date.now(), readsOnStart: () => readsOnStart })
 
 beforeEach(() => {
   vi.useFakeTimers()
+  read.mockClear()
   foreground = 'zsh'
   available = true
 })
 afterEach(() => vi.useRealTimers())
 
 describe('CommandForegroundTracker', () => {
-  it('names the agent its command ran, read after the command starts', async () => {
+  it('reads only on reports, unless a consumer asks for the start ladder', async () => {
     const commands = tracker()
+    commands.started('pty')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(read).not.toHaveBeenCalled()
+    foreground = 'codex'
+    commands.observeActivity('pty')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(read).toHaveBeenCalledOnce()
+  })
+
+  it('names the agent its command ran, read on the start ladder', async () => {
+    const commands = tracker(true)
     commands.started('pty')
     foreground = 'codex'
     await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
@@ -43,7 +53,7 @@ describe('CommandForegroundTracker', () => {
   })
 
   it('lets an agent that becomes foreground later win over a program before it', async () => {
-    const commands = tracker()
+    const commands = tracker(true)
     commands.started('pty')
     foreground = 'sleep'
     await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
@@ -57,7 +67,7 @@ describe('CommandForegroundTracker', () => {
   })
 
   it('reports a program, or nothing when no read named the command', async () => {
-    const commands = tracker()
+    const commands = tracker(true)
     commands.started('a')
     foreground = 'ls'
     await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)

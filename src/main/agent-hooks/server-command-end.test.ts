@@ -176,6 +176,21 @@ describe('the host ending the agent a finished command ran', () => {
     expect(row(wsl)).toMatchObject({ providerSessionOnly: true })
   })
 
+  it('clears an SSH row painted only from terminal output, which no relay holds', async () => {
+    const server = await createServer()
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId: 'ssh-1',
+      payload: { state: 'working', prompt: '', agentType: 'codex' }
+    })
+    expect(row(server)).toMatchObject({ state: 'working', connectionId: 'ssh-1' })
+    // Main cannot read an SSH foreground: the row reported during the command, so it ends.
+    server.endCommand(PANE, finished({ kind: 'unknown' }))
+    expect(row(server)).toBeUndefined()
+  })
+
   it('fences a session-less agent, then admits its new run once its process shows', async () => {
     const server = await createServer()
     const commandCode = (event: string) =>

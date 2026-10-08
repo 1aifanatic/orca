@@ -21,15 +21,31 @@ export type FinishedCommand = {
 export type ForegroundRead = { available: boolean; process: string | null }
 
 type CommandState = {
+  id: number
   startedAt: number
   foreground: CommandForeground
   timer: ReturnType<typeof setTimeout> | null
   reading: boolean
 }
 
+// Launchers that can still exec an agent after the first read (`npx`/`bunx opencode-ai run`).
+const LAUNCHERS = new Set(['node', 'bun', 'bunx', 'npx', 'npm', 'pnpm', 'pnpx', 'yarn'])
+
+function processBase(processName: string): string {
+  return (processName.split(/[\\/]/).pop() ?? '').toLowerCase().replace(/\.(exe|cmd)$/, '')
+}
+
+/** A shell has not exec'd its command yet, and a launcher may still exec an agent. */
+export function mayStillExecAnAgent(processName: string): boolean {
+  return (
+    recognizeAgentProcess(processName) === null &&
+    (isShellProcess(processName) || LAUNCHERS.has(processBase(processName)))
+  )
+}
+
 function classify(read: ForegroundRead): CommandForeground {
   const process = read.available ? read.process : null
-  if (!process || isShellProcess(process) || isAgentForegroundWrapperProcess(process)) {
+  if (!process || isAgentForegroundWrapperProcess(process) || mayStillExecAnAgent(process)) {
     return { kind: 'unknown' }
   }
   const agent = recognizeAgentProcess(process)?.agent
@@ -37,30 +53,41 @@ function classify(read: ForegroundRead): CommandForeground {
 }
 
 /**
- * Names the agent each command ran in a pane's foreground, from the host's process table: a read
- * after the command starts, its retries, and one on each agent event while it runs. Because every
- * read names the real foreground, a background agent's events never make it look foreground.
+ * Names the agent each command ran in a pane's foreground, from the host's process table: one read
+ * on each agent report while the command runs, plus the shared start ladder where a consumer needs
+ * it. Every read names the real foreground, so a background agent's report never makes it look
+ * foreground.
  */
 export class CommandForegroundTracker {
   private readonly commands = new Map<string, CommandState>()
+  private nextId = 0
 
   constructor(
     private readonly deps: {
       read: (key: string) => Promise<ForegroundRead>
       now: () => number
+      /** Whether this command also gets the start ladder (a consumer that has no reports to wait for). */
+      readsOnStart?: (key: string) => boolean
+      /** Every named foreground read during a command. */
+      onSample?: (key: string, process: string, commandId: number) => void
     }
   ) {}
 
-  started(key: string): void {
+  /** Returns the command's id, which every sample of it carries. */
+  started(key: string): number {
     this.forget(key)
     const state: CommandState = {
+      id: ++this.nextId,
       startedAt: this.deps.now(),
       foreground: { kind: 'unknown' },
       timer: null,
       reading: false
     }
     this.commands.set(key, state)
-    this.schedule(key, state, 0)
+    if (this.deps.readsOnStart?.(key)) {
+      this.schedule(key, state, 0)
+    }
+    return state.id
   }
 
   /** An agent reported in this pane: read who holds its foreground while the command runs. */
@@ -76,10 +103,8 @@ export class CommandForegroundTracker {
     const state = this.commands.get(key)
     const finishedAt = this.deps.now()
     this.forget(key)
-    const now = classify(
-      await this.deps.read(key).catch(() => ({ available: false, process: null }))
-    )
-    if (now.kind !== 'unknown') {
+    const now = await this.deps.read(key).catch(() => ({ available: false, process: null }))
+    if (classify(now).kind !== 'unknown') {
       return null
     }
     return {
@@ -107,23 +132,31 @@ export class CommandForegroundTracker {
     }
     state.timer = setTimeout(() => {
       state.timer = null
-      void this.sample(key, state).then(() => {
-        if (this.commands.get(key) === state && state.foreground.kind !== 'agent') {
+      void this.sample(key, state).then((process) => {
+        if (this.commands.get(key) !== state) {
+          return
+        }
+        // Why: a report's read was in flight, so this rung read nothing; take it again.
+        if (process === undefined) {
+          this.schedule(key, state, retryIndex)
+        } else if (process && mayStillExecAnAgent(process)) {
           this.schedule(key, state, retryIndex + 1)
         }
       })
     }, delay)
   }
 
-  private async sample(key: string, state: CommandState): Promise<void> {
+  /** The process read, or undefined when another read was already in flight. */
+  private async sample(key: string, state: CommandState): Promise<string | null | undefined> {
+    // Why: a read already in flight names the same foreground, so a report during it adds nothing.
     if (state.reading) {
-      return
+      return undefined
     }
     state.reading = true
     try {
       const read = await this.deps.read(key).catch(() => ({ available: false, process: null }))
       if (this.commands.get(key) !== state) {
-        return
+        return null
       }
       const seen = classify(read)
       // Why an agent wins: a program before it (`sleep 1; codex`) never names the command's agent.
@@ -133,6 +166,11 @@ export class CommandForegroundTracker {
       ) {
         state.foreground = seen
       }
+      const process = read.available ? read.process : null
+      if (process) {
+        this.deps.onSample?.(key, process, state.id)
+      }
+      return process
     } finally {
       state.reading = false
     }

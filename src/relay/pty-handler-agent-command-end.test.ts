@@ -92,7 +92,9 @@ describe('PtyHandler: a command finishing', () => {
     await spawn({})
     emitData(COMMAND_START)
     foreground.current = 'codex'
-    await vi.advanceTimersByTimeAsync(400)
+    // Why: the relay reads on live reports only; an agent report during the command reads Codex.
+    handler.observeAgentActivity(paneKey)
+    await vi.advanceTimersByTimeAsync(0)
     foreground.current = 'zsh'
     emitData(COMMAND_DONE)
     await vi.advanceTimersByTimeAsync(0)

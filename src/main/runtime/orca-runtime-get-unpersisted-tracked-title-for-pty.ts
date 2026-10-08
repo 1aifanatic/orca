@@ -146,8 +146,7 @@ export class OrcaRuntimeWithGetUnpersistedTrackedTitleForPty extends OrcaRuntime
           this.confirmPtyAgentExit(ptyId)
         },
         onCommandStarted: () => {
-          this.commandForeground.started(ptyId)
-          this.openCodeRunLifetime.onCommandStarted(ptyId)
+          this.openCodeRunLifetime.onCommandStarted(ptyId, this.commandForeground.started(ptyId))
         },
         onCommandFinished: (exitCode: number | null) => {
           this.endPtyCommand(ptyId)

@@ -41,7 +41,10 @@ export class RelayAgentHookRuntime {
     this.hookServer = new RelayAgentHookServer({
       endpointDir: endpointDir ?? endpointDirForRelaySocket(sockPath),
       forward: (envelope) => {
-        ptyHandler.observeAgentActivity(envelope.paneKey)
+        // Why: a replay re-tells a cached row; only a live report says who holds the foreground now.
+        if (envelope.isReplay !== true) {
+          ptyHandler.observeAgentActivity(envelope.paneKey)
+        }
         publishAgentHookEnvelope(dispatcher, envelope)
       },
       forwardUnavailable: (envelope) => publishAgentHookEnvelope(dispatcher, envelope),
