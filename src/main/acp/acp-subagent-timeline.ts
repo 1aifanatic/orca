@@ -8,14 +8,17 @@ import {
   boundInlineText,
   DEFAULT_JOURNAL_PAYLOAD_LIMITS
 } from '../native-chat/agent-session-journal/journal-payload-bounds'
-import { subagentGroupJournalBody } from '../native-chat/agent-session-journal/journal-subagent-group-body'
+import {
+  boundSubagentField,
+  subagentGroupJournalBody
+} from '../native-chat/agent-session-journal/journal-subagent-group-body'
 import type {
   ProviderTimelineEvent,
   ProviderTimelineJoin
 } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpSubagentUpdate } from './acp-dialects/acp-dialect'
 
-/** The shared roster's bounds: the most groups a session keeps, and children per group. */
+/** Settled history budget; live ownership outlives it until an outcome or session close. */
 const MAX_GROUPS = 32
 const MAX_SUBAGENTS_PER_GROUP = 64
 const UNLABELLED = 'subagent'
@@ -26,23 +29,34 @@ type RosterGroup = {
   entries: Map<string, NativeChatSubagentEntry>
   labelCounts: Map<string, number>
   lastSerialized: string | null
+  results: Map<string, string>
 }
 
 /** One roster row per spawning turn, revised in place, plus each completed subagent's reply as its
  *  own row, filed under its id so it opens beneath its roster entry. Lives as long as the provider
  *  child: a subagent an earlier run spawned is not known here, and its row is that run's. */
 export class AcpSubagentTimeline {
-  private readonly groups = new BoundedMap<string, RosterGroup>({ maxEntries: MAX_GROUPS })
-  private readonly groupOf = new BoundedMap<string, string>({
+  private readonly groups = new Map<string, RosterGroup>()
+  private readonly groupOf = new Map<string, string>()
+  /** An eviction index, re-derived from the changed groups' entries after each batch. */
+  private readonly settledGroups = new Set<string>()
+  private readonly settledIds = new BoundedMap<string, true>({
     maxEntries: MAX_GROUPS * MAX_SUBAGENTS_PER_GROUP
   })
-  private readonly results = new BoundedMap<string, string>({
-    maxEntries: MAX_GROUPS * MAX_SUBAGENTS_PER_GROUP
-  })
+  private disposed = false
 
-  /** Whether `id` is a subagent this run saw spawn. */
+  /** Known children include recently evicted outcomes, so they cannot become background tasks. */
   has(id: string): boolean {
-    return this.groupOf.has(id) && this.groups.has(this.groupOf.peek(id) ?? '')
+    return this.groupOf.has(id) || this.settledIds.has(id)
+  }
+
+  /** The journal owns session-end settlement; no later frame may reacquire working ownership. */
+  dispose(): void {
+    this.disposed = true
+    this.groups.clear()
+    this.groupOf.clear()
+    this.settledGroups.clear()
+    this.settledIds.clear()
   }
 
   translate(
@@ -50,6 +64,9 @@ export class AcpSubagentTimeline {
     join: ProviderTimelineJoin,
     at: number
   ): ProviderTimelineEvent[] {
+    if (this.disposed) {
+      return []
+    }
     const changed = new Set<RosterGroup>()
     const replies: { id: string; group: RosterGroup; text: string }[] = []
     for (const update of updates) {
@@ -66,10 +83,10 @@ export class AcpSubagentTimeline {
     const events = [...changed].flatMap((group) => this.groupEvent(group, join))
     for (const { id, group, text } of replies) {
       const bounded = boundInlineText(text, DEFAULT_JOURNAL_PAYLOAD_LIMITS).text
-      if (this.results.get(id) === bounded) {
+      if (group.results.get(id) === bounded) {
         continue
       }
-      this.results.set(id, bounded)
+      group.results.set(id, bounded)
       events.push({
         type: 'item.update',
         item: `subagent-result:${id}`,
@@ -78,6 +95,7 @@ export class AcpSubagentTimeline {
         join: groupJoin(group, join)
       })
     }
+    this.trimSettledGroups(changed)
     return events
   }
 
@@ -86,6 +104,9 @@ export class AcpSubagentTimeline {
     join: ProviderTimelineJoin,
     at: number
   ): RosterGroup | undefined {
+    if (this.settledIds.has(update.id)) {
+      return undefined
+    }
     const known = this.groups.get(this.groupOf.get(update.id) ?? '')
     const current = known?.entries.get(update.id)
     if (known && current) {
@@ -132,7 +153,8 @@ export class AcpSubagentTimeline {
       ...(turn === undefined ? {} : { turn }),
       entries: new Map(),
       labelCounts: new Map(),
-      lastSerialized: null
+      lastSerialized: null,
+      results: new Map()
     }
     this.groups.set(groupId, group)
     return group
@@ -140,9 +162,38 @@ export class AcpSubagentTimeline {
 
   /** Two subagents with one description stay apart by ordinal, not by an invented name. */
   private claimLabel(group: RosterGroup, label: string): string {
-    const seen = group.labelCounts.get(label) ?? 0
-    group.labelCounts.set(label, seen + 1)
-    return seen === 0 ? label : `${label} ${seen + 1}`
+    const index = group.entries.size
+    const clipped = boundSubagentField(label, index)
+    // Copy clipped text so a slice cannot keep the full provider description alive.
+    const bounded = clipped === label ? label : [...clipped].join('')
+    const seen = group.labelCounts.get(bounded) ?? 0
+    group.labelCounts.set(bounded, seen + 1)
+    return boundSubagentField(seen === 0 ? bounded : `${bounded} ${seen + 1}`, index)
+  }
+
+  private trimSettledGroups(changed: Set<RosterGroup>): void {
+    for (const group of changed) {
+      if ([...group.entries.values()].every((entry) => isTerminalSubagentState(entry.state))) {
+        this.settledGroups.add(group.groupId)
+      } else {
+        this.settledGroups.delete(group.groupId)
+      }
+    }
+    // Emit the final roster and reply before releasing their cached ownership together.
+    for (const groupId of this.settledGroups) {
+      if (this.groups.size <= MAX_GROUPS) {
+        break
+      }
+      const group = this.groups.get(groupId)
+      if (group) {
+        for (const id of group.entries.keys()) {
+          this.groupOf.delete(id)
+          this.settledIds.set(id, true)
+        }
+      }
+      this.groups.delete(groupId)
+      this.settledGroups.delete(groupId)
+    }
   }
 
   private groupEvent(group: RosterGroup, join: ProviderTimelineJoin): ProviderTimelineEvent[] {

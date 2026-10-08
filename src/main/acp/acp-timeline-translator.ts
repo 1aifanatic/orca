@@ -59,6 +59,10 @@ export class AcpTimelineTranslator {
     )
   }
 
+  dispose(): void {
+    this.subagents.dispose()
+  }
+
   /** Whether the agent's dialect echoes an injected prompt identity on the turn's events. */
   get injectsPromptIdentity(): boolean {
     return this.dialect.injectedPromptIdentity === true

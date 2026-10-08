@@ -113,6 +113,7 @@ export class AcpStructuredLane {
 
   dispose(): void {
     this.disposed = true
+    this.translator.dispose()
     this.clearRetry()
     this.backlog.length = 0
     this.assembler.dispose()
