@@ -10,13 +10,14 @@ export type AutomationRunsDashboardRun = Pick<
 >
 
 export function projectAutomationRunsDashboardRun(run: AutomationRun): AutomationRunsDashboardRun {
+  const launchSnapshot = normalizeAgentLaunchSnapshot(run.launchSnapshot)
   return {
     id: run.id,
     title: run.title,
     scheduledFor: run.scheduledFor,
     status: run.status,
     trigger: run.trigger,
-    launchSnapshot: normalizeAgentLaunchSnapshot(run.launchSnapshot)
+    ...(launchSnapshot ? { launchSnapshot } : {})
   }
 }
 

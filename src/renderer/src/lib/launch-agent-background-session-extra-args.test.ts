@@ -97,9 +97,9 @@ describe('launchAgentBackgroundSession with automation extras', () => {
 
     expect(mockSpawn.mock.calls[0]?.[0]).toMatchObject({
       command:
-        "claude '--dangerously-skip-permissions' '--model' 'opus' '--add-dir' 'my docs' 'run the automation'",
+        "claude '--dangerously-skip-permissions' '--model' 'opus' '--add-dir=my docs' 'run the automation'",
       launchConfig: {
-        agentArgs: "'--dangerously-skip-permissions' '--model' 'opus' '--add-dir' 'my docs'"
+        agentArgs: "'--dangerously-skip-permissions' '--model' 'opus' '--add-dir=my docs'"
       }
     })
   })
