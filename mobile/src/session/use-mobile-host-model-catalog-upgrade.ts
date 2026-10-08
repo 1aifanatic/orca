@@ -14,8 +14,9 @@ const LISTING_WAIT_TIMEOUT_MS = 45_000
 
 /**
  * The desktop's host-catalog upgrade on the phone: the picker lists the account's models from the
- * host store while the session's own options read may still wait on its attach. An older host
- * refuses the method, and the seed stands until the options read lands.
+ * host store while the session's own options read may still wait on its attach. It never holds the
+ * picker: a first listing still running lands in place. An older host refuses the method, and the
+ * seed stands until the options read lands.
  */
 export function useMobileHostModelCatalogUpgrade(args: {
   agent: string | null
@@ -29,7 +30,6 @@ export function useMobileHostModelCatalogUpgrade(args: {
   fence: number | null
   optionCatalog: AgentSessionOptionCatalog | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
-  optionMutationGeneration: MutableRefObject<number>
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
   ) => void
@@ -42,7 +42,6 @@ export function useMobileHostModelCatalogUpgrade(args: {
     fence,
     newLaunch,
     optionCatalog,
-    optionMutationGeneration,
     sessionId,
     updateOptionState,
     worktree
@@ -52,7 +51,6 @@ export function useMobileHostModelCatalogUpgrade(args: {
       return
     }
     let stale = false
-    const readGeneration = optionMutationGeneration.current
     const params = { agent, sessionId, ...(newLaunch && worktree ? { worktree } : {}) }
     const read = (waitForListing: boolean): Promise<AgentSessionModelCatalogResult> =>
       waitForListing
@@ -63,8 +61,9 @@ export function useMobileHostModelCatalogUpgrade(args: {
             LISTING_WAIT_TIMEOUT_MS
           )
         : callAgentSession(client, 'agentSession.modelCatalog', params)
+    // A pick made meanwhile stays on the record; a listing only replaces the list it is picked from.
     const apply = (catalog: AgentSessionModelCatalogResult): void => {
-      if (stale || optionMutationGeneration.current !== readGeneration) {
+      if (stale) {
         return
       }
       updateOptionState((current) =>
@@ -91,7 +90,6 @@ export function useMobileHostModelCatalogUpgrade(args: {
     fence,
     newLaunch,
     optionCatalog,
-    optionMutationGeneration,
     sessionId,
     updateOptionState,
     worktree

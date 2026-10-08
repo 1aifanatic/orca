@@ -105,7 +105,6 @@ export function useMobileStructuredAgentOptions(args: {
     ...(createdHere ? { worktree: createdHere.worktree } : {}),
     optionCatalog,
     activeOptionRecordRef,
-    optionMutationGeneration,
     updateOptionState
   })
 

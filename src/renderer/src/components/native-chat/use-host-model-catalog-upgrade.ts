@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore, type MutableRefObject } from 'react'
+import { useEffect, type MutableRefObject } from 'react'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { AgentSessionOptionCatalog } from '../../../../shared/agent-session-option-catalog'
@@ -12,8 +12,7 @@ import { structuredAgentSessionHostKey } from '@/runtime/structured-agent-sessio
 import type { NativeChatSessionOptionRecord } from '../../../../shared/native-chat-session-option-state'
 import {
   isHostModelListingWaitInFlight,
-  joinHostModelListingWait,
-  subscribeHostModelListingWaits
+  joinHostModelListingWait
 } from './host-model-listing-waits'
 
 /**
@@ -24,8 +23,9 @@ import {
  * stands until the live read lands.
  *
  * When the host says its first listing for the account is running, one more
- * read waits for it — one per chat, joined by every later run and remount.
- * Returns true while that read is in flight.
+ * read waits for it — one per chat, joined by every later run and remount —
+ * so the list updates in place. The picker never waits on it: it stays usable
+ * on the seed meanwhile, and a pick made then stays an intent the session checks.
  */
 export function useHostModelCatalogUpgrade(args: {
   agent: AgentType
@@ -43,7 +43,7 @@ export function useHostModelCatalogUpgrade(args: {
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
   ) => void
-}): boolean {
+}): void {
   const {
     activeOptionRecordRef,
     agent,
@@ -57,9 +57,6 @@ export function useHostModelCatalogUpgrade(args: {
     worktree
   } = args
   const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}`
-  const awaitingListing = useSyncExternalStore(subscribeHostModelListingWaits, () =>
-    isHostModelListingWaitInFlight(waitKey)
-  )
   useEffect(() => {
     // Any agent the host registered: it answers `unknown` for one whose catalog it does not keep.
     if (!enabled || !optionCatalog) {
@@ -127,5 +124,4 @@ export function useHostModelCatalogUpgrade(args: {
     waitKey,
     worktree
   ])
-  return awaitingListing
 }
