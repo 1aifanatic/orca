@@ -48,6 +48,8 @@ export type AcpLaunchSpec = {
   installDirectories(input: { env: Readonly<Record<string, string>>; homePath: string }): string[]
   /** Images go to the agent when it also advertises them; off sends text prompts only. */
   imagePrompts?: true
+  /** The agent compacts its conversation when sent `/compact` as a prompt; off hides `/compact`. */
+  compaction?: true
   /** The agent's own store of a session's user messages, read for restart recovery only. */
   readStoredUserMessages?: AcpStoredUserMessagesReader
 }
@@ -68,7 +70,8 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
         ? 'cached_token'
         : undefined,
   account: directoryAccountBinding('GROK_HOME', (homePath) => join(homePath, '.grok')),
-  installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : [])
+  installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : []),
+  compaction: true
 }
 
 // `opencode acp` on 1.x serves in-process; on 2.x it starts a private `opencode serve --stdio` child
@@ -96,7 +99,8 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   supportsVersion: (version) =>
     OPENCODE_ACP_RELEASE_LINES.some((line) => isStableCliVersionOnLine(version, line)),
   imagePrompts: true,
-  readStoredUserMessages: openCodeStoredUserMessagesReader()
+  readStoredUserMessages: openCodeStoredUserMessagesReader(),
+  compaction: true
 }
 
 // OMP serves ACP through `omp acp`; its environment reaches it as the user set it.
@@ -116,7 +120,8 @@ const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   // OMP's installers use directories the shared resolver already searches after PATH.
   installDirectories: () => [],
   // Stable releases from 17.0.5, the release verified to serve `omp acp`.
-  supportsVersion: (version) => isStableCliVersionFrom(version, '17.0.5')
+  supportsVersion: (version) => isStableCliVersionFrom(version, '17.0.5'),
+  compaction: true
 }
 
 export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [

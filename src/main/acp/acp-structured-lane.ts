@@ -10,6 +10,7 @@ import {
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import { createLegacyProviderTimelineIdentityScheme } from '../native-chat/agent-session-timeline/provider-timeline-identity'
 import type { ProviderTimelineSink } from '../native-chat/agent-session-timeline/provider-timeline-plan'
+import type { StructuredAgentSessionCommandRun } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import { AcpTimelineTranslator } from './acp-timeline-translator'
 
@@ -62,6 +63,18 @@ export class AcpStructuredLane {
 
   get openTurnId(): string | null {
     return this.assembler.openTurnId
+  }
+
+  /** The host already opened this command's turn; the agent's frames and end join that turn. */
+  beginCommand(command: StructuredAgentSessionCommandRun): void {
+    if (this.failed || this.disposed || this.backlog.length > 0) {
+      throw new Error('ACP timeline has not drained for this command')
+    }
+    this.assembler.beginCommand(command)
+  }
+
+  forgetCommand(turnId: string): void {
+    this.assembler.forgetCommand(turnId)
   }
 
   apply(events: readonly ProviderTimelineEvent[]): void {

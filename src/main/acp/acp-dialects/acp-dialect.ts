@@ -38,6 +38,9 @@ export type AcpDialectNotification =
       backgroundTasks?: AcpBackgroundTaskUpdate[]
     }
 
+/** How a `/compact` the agent ended normally went, read from its reply; absent compacted. */
+export type AcpCompactionReply = { outcome: 'skipped' | 'failed'; detail: string }
+
 /** Hooks interpret extensions; lifecycle and row identity stay shared. */
 export type AcpDialect = {
   injectedPromptIdentity?: true
@@ -57,6 +60,8 @@ export type AcpDialect = {
   promptErrorDetail?(error: AcpAgentError): string | undefined
   /** The row for a failed turn the provider gave no words for. */
   failedTurnText?(stopReason: string): string
+  /** An agent that ends a `/compact` it did not do as a normal turn says so in its reply. */
+  compactionReply?(text: string): AcpCompactionReply | undefined
 }
 
 export const GENERIC_ACP_DIALECT: AcpDialect = {}

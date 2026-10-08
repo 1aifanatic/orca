@@ -2,10 +2,11 @@ import { z } from 'zod'
 import { BoundedMap } from '../../shared/bounded-map'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import { acpNotificationEnvelopeSchema, AcpContextTimeline } from './acp-context-usage'
+import { acpCompactionEnd, readAcpCompactionUpdate } from './acp-compaction-turn'
 import { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
 import { GENERIC_ACP_DIALECT, type AcpDialect } from './acp-dialects/acp-dialect'
 import { AcpAgentError } from './acp-errors'
-import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
+import { acpTurnEnd, AcpPromptTurns, type AcpPromptTurn } from './acp-prompt-turns'
 import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
 import { translateAcpRequest } from './acp-timeline-requests'
 import { acpSessionUpdate } from './acp-session-update'
@@ -73,6 +74,19 @@ export class AcpTimelineTranslator {
     return this.prompts.open(clientMessageId, at)
   }
 
+  /** A `/compact` run as the command turn `turn` the host opened: frames join it, and it ends from
+   *  the prompt's answer. Returns the identity to inject, as `openPrompt` does. */
+  openCompaction(clientMessageId: string, turn: string, at: number): { promptId: string } {
+    if (this.loading) {
+      throw new Error('ACP prompt overlaps a prompt or load')
+    }
+    this.prompts.openCompaction(clientMessageId, turn, at)
+    // Marked so a late frame for it neither reopens nor retargets it.
+    this.started.set(turn, true)
+    this.activeTurn = turn
+    return { promptId: turn }
+  }
+
   promptResult(
     clientMessageId: string,
     result: PromptResponse,
@@ -112,6 +126,22 @@ export class AcpTimelineTranslator {
     const prompt = this.prompts.current
     if (prompt?.clientMessageId !== clientMessageId) {
       return []
+    }
+    if (prompt.compaction) {
+      const events = acpCompactionEnd({
+        compaction: prompt.compaction,
+        turn: prompt.turn,
+        thread: this.options.sessionId,
+        stopReason,
+        at,
+        ...(prompt.durationMs === undefined ? {} : { durationMs: prompt.durationMs }),
+        ...(failureDetail === undefined ? {} : { failureDetail }),
+        dialect: this.dialect,
+        ...(this.options.agentName === undefined ? {} : { agentName: this.options.agentName })
+      })
+      this.end(prompt.turn)
+      this.prompts.finish()
+      return events
     }
     const events = this.start(prompt.turn, at)
     events.push(...this.endTurn(prompt.turn, stopReason, at, prompt.durationMs, failureDetail))
@@ -174,17 +204,34 @@ export class AcpTimelineTranslator {
     if (turn && opens) {
       events.push(...this.start(turn, extension?.at ?? at))
     }
-    const join = { thread: this.options.sessionId, ...(turn === undefined ? {} : { turn }) }
+    // A running compaction's words and end are read for its result, which its answer writes. Its
+    // turn is the host's, open in the assembler under no provider key, so its rows name none.
+    const compacting = turn === undefined ? undefined : this.compactingPrompt(turn)
+    const compaction = compacting?.compaction
+    const rowTurn = compacting ? undefined : turn
+    const join = {
+      thread: this.options.sessionId,
+      ...(rowTurn === undefined ? {} : { turn: rowTurn })
+    }
     if (extension?.backgroundTasks) {
       events.push(...this.backgroundTasks.translate(extension.backgroundTasks, join))
     }
     if (extension?.usage) {
       events.push(...this.context.update(extension.usage, join))
     }
-    if (extension?.failureDetail && turn) {
+    if (extension?.failureDetail && compaction) {
+      compaction.failureDetail = extension.failureDetail
+    } else if (extension?.failureDetail && turn) {
       events.push(...this.failures.row(turn, extension.failureDetail))
     }
     const end = extension?.end
+    if (end && compacting && compaction) {
+      compacting.durationMs = end.durationMs
+      if (end.failureDetail) {
+        compaction.failureDetail = end.failureDetail
+      }
+      return events
+    }
     if (end && turn) {
       if (
         this.prompts.current?.turn === turn &&
@@ -196,6 +243,9 @@ export class AcpTimelineTranslator {
       }
       return events
     }
+    if (standard && compaction && readAcpCompactionUpdate(compaction, standard.update)) {
+      return events
+    }
     if (standard) {
       const messageKey =
         turn && this.dialect.injectedPromptIdentity
@@ -203,7 +253,7 @@ export class AcpTimelineTranslator {
           : undefined
       return [
         ...events,
-        ...acpSessionUpdate(standard, turn, at, {
+        ...acpSessionUpdate(standard, rowTurn, at, {
           tools: this.tools,
           dialect: this.dialect,
           backgroundTasks: this.backgroundTasks,
@@ -244,6 +294,11 @@ export class AcpTimelineTranslator {
       this.prompts.finish()
     }
     return events
+  }
+
+  private compactingPrompt(turn: string): AcpPromptTurn | undefined {
+    const prompt = this.prompts.current
+    return prompt?.turn === turn && prompt.compaction ? prompt : undefined
   }
 
   private start(turn: string, at: number): ProviderTimelineEvent[] {

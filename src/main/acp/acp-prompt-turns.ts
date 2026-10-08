@@ -1,4 +1,5 @@
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
+import type { AcpCompaction } from './acp-compaction-turn'
 
 export type AcpPromptTurn = {
   clientMessageId: string
@@ -6,6 +7,8 @@ export type AcpPromptTurn = {
   requestedAt: number
   opened: boolean
   durationMs?: number
+  /** A `/compact` running as the turn the host opened for it. */
+  compaction?: AcpCompaction
 }
 
 /** An injected identity is known before any provider output arrives. */
@@ -26,6 +29,20 @@ export class AcpPromptTurns {
     const turn = `prompt:${clientMessageId}`
     this.current = { clientMessageId, turn, requestedAt: at, opened: false }
     return { promptId: turn, events: this.injected ? [] : this.start(turn, at) }
+  }
+
+  /** A `/compact` whose turn the host already opened, under the command's own turn id. */
+  openCompaction(clientMessageId: string, turn: string, at: number): void {
+    if (this.current) {
+      throw new Error('ACP prompt overlaps a prompt or load')
+    }
+    this.current = {
+      clientMessageId,
+      turn,
+      requestedAt: at,
+      opened: true,
+      compaction: { reply: '' }
+    }
   }
 
   finish(): void {

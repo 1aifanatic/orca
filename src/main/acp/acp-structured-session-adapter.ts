@@ -1,6 +1,6 @@
 // A structured chat over the Agent Client Protocol: one adapter per registered ACP agent, which
-// the router drives like the Claude and Codex lanes. Rewind, compaction and goals are absent, so
-// the chat hides them; everything else maps onto ACP methods.
+// the router drives like the Claude and Codex lanes. Rewind and goals are absent, so the chat hides
+// them; compaction is the agent's own `/compact` prompt, for an agent whose launch spec offers it.
 
 import { randomUUID } from 'node:crypto'
 import { agentSessionFailureFact } from '../../shared/agent-session-failure'
@@ -168,6 +168,12 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     })
     // The write is the admission; the agent's first event for the turn settles it.
     return { state: 'admitted' }
+  }
+
+  /** The prompt's write is the receipt; the agent's answer ends the command's turn. */
+  compact: NonNullable<StructuredAgentSessionAdapter['compact']> = async (input) => {
+    this.live(input.sessionId).turns.compact(input.command)
+    return { state: 'accepted', providerIdentity: null }
   }
 
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = async (input) => {

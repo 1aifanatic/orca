@@ -18,6 +18,8 @@ import {
   type AgentJournalDispatchRejection
 } from '../../shared/agent-session-failure-words'
 import type { AgentJournalItemIdentity } from '../../shared/agent-session-journal-types'
+import type { StructuredAgentSessionCommandRun } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import { ACP_COMPACT_PROMPT } from './acp-compaction-turn'
 import { AcpAgentError, AcpConnectionClosedError } from './acp-errors'
 import type { AcpStructuredConnection } from './acp-structured-connection'
 import type { AcpStructuredLane } from './acp-structured-lane'
@@ -109,6 +111,33 @@ export class AcpStructuredTurns {
     this.start(send)
   }
 
+  /** A `/compact` in the command turn the host opened. The host settles its message, so nothing
+   *  here does; the answer ends the turn, or the child's end does. */
+  compact(command: StructuredAgentSessionCommandRun): void {
+    if (this.active || this.ended) {
+      throw new Error(`${this.deps.agentName} is still working`)
+    }
+    const { lane } = this.deps
+    const send: Send = {
+      clientMessageId: command.clientMessageId,
+      prompt: [...ACP_COMPACT_PROMPT],
+      requestedAt: this.deps.now()
+    }
+    lane.beginCommand(command)
+    try {
+      const opened = lane.translator.openCompaction(
+        send.clientMessageId,
+        command.turnId,
+        send.requestedAt
+      )
+      this.active = send
+      this.run(send, opened.promptId)
+    } catch (error) {
+      lane.forgetCommand(command.turnId)
+      throw error
+    }
+  }
+
   /** The agent took the send: its turn's first event, or its answer, arrived. */
   accept(clientMessageId: string): void {
     if (this.unsettled.delete(clientMessageId)) {
@@ -147,10 +176,15 @@ export class AcpStructuredTurns {
     this.active = send
     const opened = lane.translator.openPrompt(send.clientMessageId, send.requestedAt)
     lane.apply(opened.events)
+    this.run(send, opened.promptId)
+  }
+
+  private run(send: Send, promptId: string): void {
+    const { lane } = this.deps
     // An agent whose dialect echoes this id on every event of the turn gets it, so its rows join the
     // turn Orca opened; no other agent is sent the extension.
     const meta = lane.translator.injectsPromptIdentity
-      ? { promptId: opened.promptId, requestId: opened.promptId }
+      ? { promptId, requestId: promptId }
       : undefined
     const answered = this.deps.connection.prompt(send.prompt, meta)
     if (this.steers.length > 0) {
