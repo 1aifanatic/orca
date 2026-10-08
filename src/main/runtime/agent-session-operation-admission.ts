@@ -21,14 +21,12 @@ import {
 import type { AgentSessionMutationEnvelope } from '../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStoreState } from './agent-session-store-state'
-import { makeAgentSessionControlOperationRoom } from '../../shared/agent-session-operation-capacity'
 
 export type AgentSessionOperationAdmission = {
   callerKey: string
   operationId: string
   fingerprint: string
   now: number
-  control?: true
   skipReceipt?: true
 }
 
@@ -41,7 +39,7 @@ export type AgentSessionMutationOperationAdmission = {
   now: number
   operationIdScope?: 'global'
   conversationWrite?: true
-  receiptPolicy?: 'control' | 'none'
+  receiptPolicy?: 'none'
 }
 
 export type AgentSessionMutationOperationDecision = {
@@ -88,11 +86,7 @@ function placeAdmittedAgentSessionOperationRow(
   evaluated: EvaluatedOperationRows,
   args: AgentSessionOperationAdmission
 ): EvaluatedOperationRows {
-  if (
-    evaluated.decision.decision === 'admit' &&
-    !args.skipReceipt &&
-    (!args.control || makeAgentSessionControlOperationRoom(evaluated.rows, args.callerKey))
-  ) {
+  if (evaluated.decision.decision === 'admit' && !args.skipReceipt) {
     evaluated.rows.set(
       agentSessionOperationKey(args.callerKey, args.operationId),
       evaluated.decision.row
@@ -143,7 +137,6 @@ function mutationOperation(
     operationId: args.envelope.clientOperationId,
     fingerprint: args.hostFingerprint,
     now: args.now,
-    ...(args.receiptPolicy ? { control: true as const } : {}),
     ...(args.receiptPolicy === 'none' ? { skipReceipt: true as const } : {})
   }
 }

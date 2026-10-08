@@ -11,24 +11,25 @@ import {
  * Durable client-operation ledger.
  *
  * `terminal.ensureAgentSession` / `terminal.createAgentSession` already enforce timestamped
- * operation ids with fingerprint conflict detection and age expiry, but in memory. Durable
- * receipts survive restart and expire only after their ids can no longer be admitted as new.
- * Delivery receipts stay through their retry window; cleanup has its own bounded history.
+ * operation ids with fingerprint conflict detection, age expiry, and tombstone retention — but in
+ * memory, so a host restart turns "replay this create" into "spawn another agent". These are the
+ * same rules over rows that survive a restart; the store writes a row in the same atomic
+ * transaction as the lease reservation.
+ *
+ * There is no count limit. Rows are bookkeeping for retries, and a full ledger refused every
+ * caller's next write, including the user's own send behind unrelated agent traffic. A row's only
+ * lifetime is the replay window it protects (`agentSessionOperationExpiry`).
  */
 
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS,
-  AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS,
   parseAgentSessionOperationTimestamp
 } from './agent-session-host-authority'
 import {
   isAgentSessionConversationCommandResult,
   type AgentSessionConversationCommandResult
 } from './agent-session-conversation-command'
-
-import { agentSessionWorkOperationAtCapacity } from './agent-session-operation-capacity'
-export { AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT } from './agent-session-operation-capacity'
 
 export type AgentSessionOperationOutcome =
   | { status: 'pending' }
@@ -72,8 +73,6 @@ export type AgentSessionOperationOutcome =
 export type AgentSessionOperationOwnedPane = { worktreeId: string; paneKey: string }
 
 export type AgentSessionOperationRow = {
-  /** Cleanup history can be evicted; delivery protection cannot. Older builds ignore this. */
-  control?: true
   callerKey: string
   operationId: string
   fingerprint: string
@@ -100,7 +99,7 @@ export function listAgentSessionOperationRowsOwningPane(
   for (const row of rows) {
     const owned: unknown = row.ownedPane
     if (
-      agentSessionOperationRowRetained(row, now) &&
+      row.expiresAt > now &&
       typeof owned === 'object' &&
       owned !== null &&
       'paneKey' in owned &&
@@ -118,7 +117,6 @@ export type AgentSessionOperationRefusalCode =
   | 'agent_session_operation_invalid'
   | 'agent_session_operation_conflict'
   | 'agent_session_operation_expired'
-  | 'agent_session_operation_capacity'
 
 export type AgentSessionOperationDecision =
   | { decision: 'replay'; row: AgentSessionOperationRow }
@@ -221,8 +219,9 @@ export function claimAgentSessionOperation(
 }
 
 /**
- * Pending or unknown effects keep their existing recovery expiry; settled rows use the shorter
- * retry boundary when pruned, after which an absent id can never run again.
+ * Retention floor. The tombstone must outlive the window in which its id could still be admitted
+ * as new, plus the accepted future skew — otherwise a retry arriving in the gap becomes a second
+ * spawn instead of a replay.
  */
 export function agentSessionOperationExpiry(
   operationTimestamp: number,
@@ -242,7 +241,7 @@ export function findAgentSessionGlobalOperationRow(
   now: number
 ): AgentSessionOperationRow | undefined {
   for (const row of rows.values()) {
-    if (agentSessionOperationRowRetained(row, now) && row.operationId === operationId) {
+    if (row.expiresAt > now && row.operationId === operationId) {
       return row
     }
   }
@@ -255,20 +254,11 @@ export function pruneAgentSessionOperationRows(
 ): Map<string, AgentSessionOperationRow> {
   const kept = new Map<string, AgentSessionOperationRow>()
   for (const [key, row] of rows) {
-    if (agentSessionOperationRowRetained(row, now)) {
+    if (row.expiresAt > now) {
       kept.set(key, row)
     }
   }
   return kept
-}
-
-function agentSessionOperationRowRetained(row: AgentSessionOperationRow, now: number): boolean {
-  return (
-    row.expiresAt > now &&
-    ((row.outcome.status !== 'succeeded' && row.outcome.status !== 'failed') ||
-      now - Math.max(row.recordedAt, row.operationTimestamp) <=
-        AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS)
-  )
 }
 
 /**
@@ -281,7 +271,6 @@ export function evaluateAgentSessionOperation(args: {
   operationId: string
   fingerprint: string
   now: number
-  control?: true
   /** Targeted cleanup re-derives its effect from host state instead of replaying a receipt. */
   skipReceipt?: true
 }): AgentSessionOperationDecision {
@@ -309,10 +298,7 @@ export function evaluateAgentSessionOperation(args: {
           details: { reason: 'operationIdReused' }
         }
   }
-  if (
-    !args.skipReceipt &&
-    now - operationTimestamp > AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS
-  ) {
+  if (!args.skipReceipt && now - operationTimestamp > AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS) {
     // Why: once a tombstone could have expired, an unseen replay must never be reinterpreted as
     // permission to start another fresh agent.
     return {
@@ -321,19 +307,9 @@ export function evaluateAgentSessionOperation(args: {
       details: { reason: 'operationExpired' }
     }
   }
-  if (!args.control && agentSessionWorkOperationAtCapacity(rows, callerKey)) {
-    return {
-      decision: 'refused',
-      code: 'agent_session_operation_capacity',
-      details: { reason: 'operationCapacity' }
-    }
-  }
   return {
     decision: 'admit',
-    row: {
-      ...pendingAgentSessionOperationRow({ callerKey, operationId, fingerprint, now }),
-      ...(args.control ? { control: true as const } : {})
-    }
+    row: pendingAgentSessionOperationRow({ callerKey, operationId, fingerprint, now })
   }
 }
 

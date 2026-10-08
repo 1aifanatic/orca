@@ -1,5 +1,8 @@
 import { afterEach, expect, it } from 'vitest'
-import { AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS } from '../../../shared/agent-session-host-authority'
+import {
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
+  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+} from '../../../shared/agent-session-host-authority'
 import {
   agentSessionOperationKey,
   pendingAgentSessionOperationRow
@@ -43,10 +46,10 @@ it('allows a fresh Send after 600 settled operations over a day', async () => {
   }
   expect(await rig.send('fresh work after a heavy day').result).toMatchObject({ ok: true })
   await eventually(() => expect(rig?.dispatch).toHaveBeenCalledOnce())
-  expect(rig.store.listOperationRows().length).toBeLessThan(512)
+  expect(rig.store.listOperationRows().length).toBeGreaterThan(600)
 })
 
-it('replays a lost Send reply inside one hour and rejects its expired retry without dispatch', async () => {
+it('replays a lost Send reply through its retained lifetime and rejects its expired retry without dispatch', async () => {
   let now = NOW
   rig = await createQueuedMessageTestRig({ now: () => now })
   const id = await rig.workingSend()
@@ -57,7 +60,7 @@ it('replays a lost Send reply inside one hour and rejects its expired retry with
     body,
     userSend: true as const
   }
-  now += AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS
+  now += AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS - 1
   expect(await rig.host.send(QUEUED_RIG_CALLER, args)).toMatchObject({
     ok: true,
     replayed: true
@@ -80,10 +83,9 @@ it('replays a lost Send reply inside one hour and rejects its expired retry with
 })
 
 it.each(['pending', 'unknown'] as const)(
-  'refuses new Send under 512 %s operations while Stop and Close still succeed',
+  'admits new Send with 512 %s receipts while Stop and Close still succeed',
   async (status) => {
     rig = await createQueuedMessageTestRig()
-    await rig.workingSend()
     await rig.store['transactions'].transact(({ operations: rows }) => {
       for (let index = 0; index < 512; index += 1) {
         const row = pendingAgentSessionOperationRow({
@@ -98,11 +100,8 @@ it.each(['pending', 'unknown'] as const)(
         })
       }
     })
-    expect(await rig.send('blocked fresh work').result).toMatchObject({
-      ok: false,
-      refusal: { code: 'agent_session_operation_capacity' }
-    })
-    expect(rig.dispatch).toHaveBeenCalledOnce()
+    expect(await rig.send('fresh work above the former limit').result).toMatchObject({ ok: true })
+    await eventually(() => expect(rig?.dispatch).toHaveBeenCalledOnce())
     expect(await rig.stop()).toMatchObject({ ok: true })
     expect(rig.cancelTurn).toHaveBeenCalledOnce()
     await rig.host.close(SESSION, 'user-close')

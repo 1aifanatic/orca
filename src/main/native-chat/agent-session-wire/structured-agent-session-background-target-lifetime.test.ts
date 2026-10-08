@@ -11,7 +11,10 @@ import {
   HOST_TEST_SESSION as SESSION,
   hostTestOperationId
 } from './structured-agent-session-host-test-data'
-import { AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS } from '../../../shared/agent-session-host-authority'
+import {
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
+  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+} from '../../../shared/agent-session-host-authority'
 
 const child: AgentChildWorkView = {
   id: 'child-1',
@@ -64,7 +67,7 @@ it.each([false, true])(
       expect.objectContaining({ taskIds: ['task-1'] })
     )
     await rig.host.close(SESSION, 'user-close')
-    now += AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS + 1
+    now += AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS + 1
     if (restart) {
       await rig.restartHostProcess()
     }

@@ -1,5 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS } from '../../../shared/agent-session-host-authority'
+import {
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
+  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+} from '../../../shared/agent-session-host-authority'
 import {
   createQueuedMessageTestRig,
   QUEUED_RIG_CALLER,
@@ -27,7 +30,7 @@ it('delivers a delayed Stop to its still-unanswered host target beyond the work 
     stopTarget,
     envelope: rig.envelope({ stopTarget }, 'agentSession.cancel', hostTestOperationId())
   }
-  now += AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS + 1
+  now += AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS + 1
   const result = await rig.host.cancel(QUEUED_RIG_CALLER, params)
   expect(result).toMatchObject({ ok: true, value: { cancelled: true } })
   expect(rig.cancelTurn).toHaveBeenCalledOnce()
@@ -52,7 +55,7 @@ it.each([false, true])(
       value: { cancelled: true }
     })
     await rig.host.close(SESSION, 'user-close')
-    now += AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS + 1
+    now += AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS + 1
     if (restart) {
       await rig.restartHostProcess()
     }
@@ -97,7 +100,7 @@ it('still validates an expired targeted Stop before any effect', async () => {
   const sentId = await rig.workingSend()
   const stopTarget = { kind: 'submission' as const, clientMessageId: sentId }
   const envelope = rig.envelope({ stopTarget }, 'agentSession.cancel', hostTestOperationId())
-  now += AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS + 1
+  now += AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS + 1
   expect(
     await rig.host.cancel(QUEUED_RIG_CALLER, {
       stopTarget,

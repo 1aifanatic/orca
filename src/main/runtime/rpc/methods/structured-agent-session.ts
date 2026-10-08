@@ -35,6 +35,7 @@ import {
   structuredAgentSessionCreateIntentFingerprint
 } from './structured-agent-session-create'
 import { STRUCTURED_AGENT_SESSION_HOLD_METHODS } from './structured-agent-session-hold'
+import { STRUCTURED_AGENT_SESSION_PROMPT_RESPONSE_METHODS } from './structured-agent-session-prompt-response'
 import { STRUCTURED_AGENT_SESSION_REVEAL_METHODS } from './structured-agent-session-reveal'
 import { STRUCTURED_AGENT_SESSION_QUEUED_METHODS } from './structured-agent-session-queued-methods'
 import { STRUCTURED_AGENT_SESSION_RESTART_RESUME_METHODS } from './structured-agent-session-restart-resume'
@@ -59,11 +60,8 @@ import {
   CreateSupportParams,
   HistoryParams,
   OptionsParams,
-  RespondParams,
-  RespondToQuestionParams,
   RewindParams,
   SendParams,
-  SetOptionParams,
   SubscribeParams,
   UnsubscribeParams
 } from './structured-agent-session-schemas'
@@ -104,6 +102,7 @@ async function attachClientSuppliedLocation(
 export const STRUCTURED_AGENT_SESSION_METHODS = [
   defineMethod({
     name: 'agentSession.rewind',
+    permission: 'workspace',
     params: RewindParams,
     handler: async (params, ctx) => {
       requireStructuredCapability(ctx)
@@ -113,6 +112,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
   }),
   defineMethod({
     name: 'agentSession.conversationCommand',
+    permission: 'workspace',
     params: ConversationCommandParams,
     handler: async (params, ctx) => {
       requireStructuredCapability(ctx)
@@ -134,6 +134,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
   }),
   defineMethod({
     name: 'agentSession.createSupport',
+    permission: 'workspace',
     params: CreateSupportParams,
     handler: async (params, ctx) => {
       requireStructuredCreateSupportAdmission(ctx, params.agent)
@@ -150,6 +151,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
   }),
   defineMethod({
     name: 'agentSession.create',
+    permission: 'workspace',
     params: CreateParams,
     handler: async (params, ctx) => {
       requireStructuredAgentAudience(ctx, params.agent)
@@ -199,16 +201,19 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
   }),
   defineMethod({
     name: 'agentSession.ensure',
+    permission: 'workspace',
     params: AttachParams,
     handler: async (params, ctx) => attachClientSuppliedLocation(params, ctx)
   }),
   defineMethod({
     name: 'agentSession.send',
+    permission: 'workspace',
     params: SendParams,
     handler: sendStructuredAgentSessionForClient
   }),
   defineMethod({
     name: 'agentSession.cancel',
+    permission: 'workspace',
     params: CancelParams,
     handler: async (params, ctx) => requireStructuredCleanupHost(ctx).cancel(callerFor(ctx), params)
   }),
@@ -217,36 +222,15 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     // Releasing a chat view, not ending a conversation: the record and journal stay on disk so the
     // same session can be attached again. Only the provider child and the in-memory entry go.
     name: 'agentSession.close',
+    permission: 'workspace',
     params: OptionsParams,
     handler: (params, ctx) =>
       closeStructuredAgentSessionForClient(requireStructuredCleanupHost(ctx), params.sessionId)
   }),
-  defineMethod({
-    name: 'agentSession.respondToApproval',
-    params: RespondParams,
-    handler: async (params, ctx) =>
-      requireSessionHost(ctx, params.envelope.sessionId).respondToPrompt(callerFor(ctx), {
-        ...params,
-        kind: 'approval'
-      })
-  }),
-  defineMethod({
-    name: 'agentSession.respondToQuestion',
-    params: RespondToQuestionParams,
-    handler: async (params, ctx) =>
-      requireSessionHost(ctx, params.envelope.sessionId).respondToPrompt(callerFor(ctx), {
-        ...params,
-        kind: 'question'
-      })
-  }),
-  defineMethod({
-    name: 'agentSession.setOption',
-    params: SetOptionParams,
-    handler: async (params, ctx) =>
-      requireSessionHost(ctx, params.envelope.sessionId).setOption(callerFor(ctx), params)
-  }),
+  ...STRUCTURED_AGENT_SESSION_PROMPT_RESPONSE_METHODS,
   defineMethod({
     name: 'agentSession.history',
+    permission: 'workspace',
     params: HistoryParams,
     handler: async (params, ctx) => {
       const host = await requireInstalledHost(ctx, params.sessionId)
@@ -259,6 +243,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
   }),
   defineStreamingMethod({
     name: 'agentSession.subscribe',
+    permission: 'workspace',
     params: SubscribeParams,
     handler: async (params, ctx, emit) => {
       const host = await requireInstalledHost(ctx, params.sessionId)
@@ -291,6 +276,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
   }),
   defineMethod({
     name: 'agentSession.unsubscribe',
+    permission: 'workspace',
     params: UnsubscribeParams,
     handler: async (params, ctx) => {
       requireStructuredCleanupHost(ctx)

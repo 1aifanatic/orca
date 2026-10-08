@@ -285,19 +285,15 @@ function turnStatesSent(events: readonly AgentSessionSubscribeEvent[]) {
     .flatMap((item) => readAgentJournalTurn(item.body) ?? [])
 }
 
-function attach(fence: number, now = RELAUNCHED_AT) {
+function attach(fence: number) {
   return host.attach(
     { callerKey: 'client-1' },
-    hostTestAttachParams(
-      fence,
-      {
-        provider: 'claude',
-        agent: 'claude',
-        accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
-        providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null }
-      },
-      now
-    )
+    hostTestAttachParams(fence, {
+      provider: 'claude',
+      agent: 'claude',
+      accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
+      providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION, leafUuid: null }
+    })
   )
 }
 
@@ -580,7 +576,7 @@ async function hostWithFailingFirstStart(failure: Error) {
   })
   await host.reconcileRestartLeases()
   return {
-    attach: (fence: number) => attach(fence, now),
+    attach,
     advance: (ms: number) => {
       now += ms
     }

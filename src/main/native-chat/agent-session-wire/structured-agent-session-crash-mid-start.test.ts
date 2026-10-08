@@ -160,7 +160,8 @@ describe('a host that dies while its Codex child is starting', () => {
   })
 })
 
-// A retained pending create continues under its original id; an expired id needs a fresh request.
+// The client keeps a create it never heard back from and retries it under the same operation id, so
+// that replay, not a fresh start, is what the user's Retry and first send go through.
 describe('a create replayed after the host that ran it died', () => {
   const PAST_OPERATION_EXPIRY =
     AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS + 60_000
@@ -215,17 +216,8 @@ describe('a create replayed after the host that ran it died', () => {
       runtimeFence: 2
     })
 
-    let resumedParams = params
-    if (elapsedMs === PAST_OPERATION_EXPIRY) {
-      await expect(relaunched.attach(CALLER, params)).resolves.toMatchObject({
-        ok: false,
-        refusal: { code: 'agent_session_operation_expired' }
-      })
-      expect(restarted.connections).toHaveLength(0)
-      expect(store.listOperationRows()).toHaveLength(0)
-      resumedParams = hostTestAttachParams(2, {}, NOW + elapsedMs)
-    }
-    const replayed = await relaunched.attach(CALLER, resumedParams)
+    const replayed = await relaunched.attach(CALLER, params)
+    // Before, `agent_session_ownership_unknown` while the row was pending, then `_operation_expired`.
     expect(replayed.ok ? null : replayed.refusal.code).toBeNull()
     expect(replayed).toMatchObject({ ok: true, value: { sessionId: SESSION, fence: 3 } })
     expect(restarted.connections).toHaveLength(1)
@@ -235,11 +227,11 @@ describe('a create replayed after the host that ran it died', () => {
       ownerProcess: { spawnToken: 'spawn-b' }
     })
     expect(
-      store.getOperationRow(CALLER.callerKey, resumedParams.envelope.clientOperationId)?.outcome
+      store.getOperationRow(CALLER.callerKey, params.envelope.clientOperationId)?.outcome
     ).toEqual({ status: 'succeeded', sessionId: SESSION })
 
     // Settled now: the same id replays that answer and never starts a second agent.
-    await expect(relaunched.attach(CALLER, resumedParams)).resolves.toMatchObject({
+    await expect(relaunched.attach(CALLER, params)).resolves.toMatchObject({
       ok: true,
       replayed: true
     })

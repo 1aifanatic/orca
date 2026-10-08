@@ -2,8 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS } from '../../shared/agent-session-host-authority'
-import { agentSessionOperationKey } from '../../shared/agent-session-operation-ledger'
+import {
+  agentSessionOperationExpiry,
+  agentSessionOperationKey
+} from '../../shared/agent-session-operation-ledger'
 import {
   openTestAgentSessionRecordStore,
   readPersistedTestAgentSessionStore
@@ -36,7 +38,7 @@ it('keeps a settled receipt through restart, then deletes it without readmitting
     outcome: { status: 'succeeded', sessionId: 'session-1' }
   })
   const reopened = await openTestAgentSessionRecordStore(root)
-  const expiresAt = NOW + AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS + 1
+  const expiresAt = agentSessionOperationExpiry(NOW, NOW)
   expect(
     await reopened.admitGlobalOperation({
       ...operation,

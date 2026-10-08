@@ -199,9 +199,6 @@ async function setLease(
 
 // sendPlan and setOptionPlan have no unsupported branch.
 const UNREACHABLE = new Set<Pair>([
-  // Older hosts can refuse by receipt quota; this host retains by age without a quota.
-  'agentSession.send:agent_session_operation_capacity',
-  'agentSession.setOption:agent_session_operation_capacity',
   'agentSession.send:structured_agent_session_unsupported',
   'agentSession.setOption:structured_agent_session_unsupported',
   // performPrompt is the sole producer of prompt revision and resolution refusals.
@@ -225,7 +222,10 @@ const UNREACHABLE = new Set<Pair>([
   // fails rejects the accepted message rather than refusing the call.
   'agentSession.send:agent_session_conflict',
   'agentSession.send:execution_owner_reconciling',
-  'agentSession.send:agent_session_owner_restart_failed'
+  'agentSession.send:agent_session_owner_restart_failed',
+  // The ledger has no count limit; only an older host still refuses with it.
+  'agentSession.setOption:agent_session_operation_capacity',
+  'agentSession.send:agent_session_operation_capacity'
 ])
 
 describe('agentSessionRefusalOperationState host oracle', () => {

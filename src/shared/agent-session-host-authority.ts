@@ -36,8 +36,6 @@ export const AGENT_SESSION_CREATE_OPERATION_PROTOCOL_VERSION = 1 as const
 
 export const AGENT_SESSION_OPERATION_FUTURE_SKEW_MS = 5 * 60 * 1000
 export const AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS = 24 * 60 * 60 * 1000
-/** Settled durable receipts and unseen ids share a boundary so eviction cannot repeat an effect. */
-export const AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS = 60 * 60 * 1000
 /** Oldest an operation can be when admitted, plus the host tombstone lifetime after admission. */
 export const AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS =
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS * 2 + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS

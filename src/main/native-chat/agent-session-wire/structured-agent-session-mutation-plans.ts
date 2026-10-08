@@ -54,7 +54,7 @@ export type MutationPlan<TValue> = {
   conversationWrite?: true
   /** Still runs, decided from the committed ledger, when its ledger row cannot be written. */
   runsWithoutLedgerRow?: true
-  receiptPolicy?: 'control' | 'none'
+  receiptPolicy?: 'none'
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
   replay: (ctx: AgentSessionTurnContext, outcome: AgentSessionOperationOutcome) => TValue | null
   rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
@@ -252,7 +252,7 @@ export function cancelPlan(params: {
     },
     // A Stop must reach the agent even when storage refuses the row recording it.
     runsWithoutLedgerRow: true,
-    receiptPolicy: params.stopTarget ? 'none' : 'control',
+    ...(params.stopTarget ? { receiptPolicy: 'none' as const } : {}),
     fields: {
       ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
       ...(params.scope ? { scope: params.scope } : {}),

@@ -13,6 +13,7 @@ import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusa
 import {
   agentSessionOperationKey,
   evaluateAgentSessionOperation,
+  pendingAgentSessionOperationRow,
   pruneAgentSessionOperationRows,
   type AgentSessionOperationDecision,
   type AgentSessionOperationRow
@@ -322,7 +323,12 @@ export function commitAgentSessionReservation(
       ? { ...request, expectedFence: existing.lease.runtimeFence }
       : null
   if (decision.decision === 'refused') {
-    throw agentSessionRefusalError(decision.code, decision.details)
+    // An aged-out row proves nothing more: a released reservation runs no effect.
+    if (decision.code !== 'agent_session_operation_expired' || !continued) {
+      throw agentSessionRefusalError(decision.code, decision.details)
+    }
+    const row = pendingAgentSessionOperationRow({ ...request.operation, now: request.now })
+    return reserveWithOperationRow(state, continued, row, leaseTtlMs)
   }
   if (decision.decision === 'replay') {
     const record = requireAgentSessionRecordForReplay(state, decision.row, request.sessionId)
