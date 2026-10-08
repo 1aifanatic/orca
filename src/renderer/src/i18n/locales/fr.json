@@ -19052,7 +19052,7 @@
     "nativeChatUpgrade": {
       "eyebrow": "Nouveau",
       "title": "Le chat natif a été amélioré",
-      "description": "Les chats communiquent désormais directement avec l’agent au lieu de refléter un terminal. Chat UI reste activé pour vous.",
+      "description": "Les chats communiquent désormais directement avec l’agent au lieu de refléter un terminal.",
       "cta": "Compris",
       "sessionHistoryIntro": "Dans Historique des sessions d'agent, dans la barre latérale droite :",
       "resumeInChatLabel": "Reprendre dans un nouveau chat natif",

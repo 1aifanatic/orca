@@ -19104,7 +19104,7 @@
     "nativeChatUpgrade": {
       "eyebrow": "新功能",
       "title": "本机聊天已升级",
-      "description": "聊天现在直接与智能体通信，而不是镜像终端。Chat UI 会为你保持开启。",
+      "description": "聊天现在直接与智能体通信，而不是镜像终端。",
       "cta": "知道了",
       "sessionHistoryIntro": "在右侧边栏的智能体会话历史中：",
       "resumeInChatLabel": "在新的本机聊天中恢复",

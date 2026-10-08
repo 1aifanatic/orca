@@ -3125,7 +3125,7 @@
   "featureTips": {
     "nativeChatUpgrade": {
       "cta": "Got it",
-      "description": "Chats now talk to the agent directly instead of mirroring a terminal. Chat UI stays on for you.",
+      "description": "Chats now talk to the agent directly instead of mirroring a terminal.",
       "eyebrow": "New",
       "title": "Native chat got an upgrade"
     }

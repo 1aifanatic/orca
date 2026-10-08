@@ -19067,7 +19067,7 @@
     "nativeChatUpgrade": {
       "eyebrow": "Nuevo",
       "title": "El chat nativo se ha mejorado",
-      "description": "Ahora los chats se comunican directamente con el agente en lugar de reflejar una terminal. Chat UI sigue activado para ti.",
+      "description": "Ahora los chats se comunican directamente con el agente en lugar de reflejar una terminal.",
       "cta": "Entiendo",
       "sessionHistoryIntro": "En Historial de sesiones de agentes, en la barra lateral derecha:",
       "resumeInChatLabel": "Reanudar en un nuevo chat nativo",
