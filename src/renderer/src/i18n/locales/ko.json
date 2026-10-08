@@ -18693,7 +18693,7 @@
       }
     },
     "agentSessionContinuation": {
-      "handOffToAnotherAgent": "다른 에이전트에게 인계…",
+      "handOffToAnotherAgent": "다른 에이전트에게 인계",
       "dialogTitle": "다른 에이전트에게 인계",
       "dialogDescription": "이 지점부터 새 에이전트 세션을 시작합니다. 원래 세션은 변경되지 않습니다.",
       "untitledSession": "현재 세션",

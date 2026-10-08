@@ -18658,7 +18658,7 @@
       }
     },
     "agentSessionContinuation": {
-      "handOffToAnotherAgent": "移交给另一个智能体…",
+      "handOffToAnotherAgent": "移交给另一个智能体",
       "dialogTitle": "移交给另一个智能体",
       "dialogDescription": "从当前进度启动一个新的智能体会话，原会话保持不变。",
       "untitledSession": "当前会话",

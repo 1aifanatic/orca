@@ -197,7 +197,7 @@ export function SessionInlineDetails({
               <MessageSquarePlus className="size-3.5" />
               {translate(
                 'components.agentSessionContinuation.handOffToAnotherAgent',
-                'Hand Off to Another Agent…'
+                'Hand Off to Another Agent'
               )}
             </Button>
           ) : null}

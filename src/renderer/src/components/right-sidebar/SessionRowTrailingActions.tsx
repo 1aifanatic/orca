@@ -181,7 +181,7 @@ export function SessionRowTrailingActions({
                 size="icon-xs"
                 aria-label={translate(
                   'components.agentSessionContinuation.handOffToAnotherAgent',
-                  'Hand Off to Another Agent…'
+                  'Hand Off to Another Agent'
                 )}
                 draggable={false}
                 onClick={(event) => {
@@ -197,7 +197,7 @@ export function SessionRowTrailingActions({
             <TooltipContent side="top" sideOffset={4}>
               {translate(
                 'components.agentSessionContinuation.handOffToAnotherAgent',
-                'Hand Off to Another Agent…'
+                'Hand Off to Another Agent'
               )}
             </TooltipContent>
           </Tooltip>

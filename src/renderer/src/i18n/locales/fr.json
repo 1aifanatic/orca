@@ -18759,7 +18759,7 @@
       }
     },
     "agentSessionContinuation": {
-      "handOffToAnotherAgent": "Transférer à un autre Agent…",
+      "handOffToAnotherAgent": "Transférer à un autre Agent",
       "dialogTitle": "Transférer à un autre Agent",
       "dialogDescription": "Démarrez une nouvelle session d'Agent depuis ce point d'arrêt. La session d'origine reste inchangée.",
       "untitledSession": "Session actuelle",

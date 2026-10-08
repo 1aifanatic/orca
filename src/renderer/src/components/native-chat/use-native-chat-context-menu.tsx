@@ -252,7 +252,7 @@ export function useNativeChatContextMenu({
                   <MessageSquarePlus />
                   {translate(
                     'components.agentSessionContinuation.handOffToAnotherAgent',
-                    'Hand Off to Another Agent…'
+                    'Hand Off to Another Agent'
                   )}
                 </DropdownMenuItem>
               ) : null}

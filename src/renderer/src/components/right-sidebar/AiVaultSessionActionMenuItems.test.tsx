@@ -12,7 +12,7 @@ import { SessionActionMenuItems } from './AiVaultSessionActionMenuItems'
 
 afterEach(cleanup)
 
-const HAND_OFF = 'Hand Off to Another Agent…'
+const HAND_OFF = 'Hand Off to Another Agent'
 const SEPARATOR = '---'
 
 function renderMenuOrder(

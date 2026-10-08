@@ -165,7 +165,7 @@ describe('TerminalContextMenu', () => {
     })
 
     const handoffItem = items.list.find(
-      (item) => childrenText(item.children) === 'Hand Off to Another Agent…'
+      (item) => childrenText(item.children) === 'Hand Off to Another Agent'
     )
     expect(handoffItem).toBeDefined()
 

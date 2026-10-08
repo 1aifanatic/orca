@@ -289,7 +289,7 @@ describe('TerminalPaneHeaderOverlay', () => {
       onContinueAgentSessionInNewSession
     })
     const handoff = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Hand Off to Another Agent…"]'
+      'button[aria-label="Hand Off to Another Agent"]'
     )
 
     expect(handoff).not.toBeNull()
