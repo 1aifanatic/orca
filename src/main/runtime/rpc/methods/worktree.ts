@@ -261,9 +261,11 @@ export const WORKTREE_METHODS = [
         allowUnverifiedPtyStop: params.allowUnverifiedPtyStop === true,
         allowFailedArchiveHook: params.allowFailedArchiveHook === true,
         ...(resolvedHostId ? { hostId: resolvedHostId } : {}),
-        // Why: only a client that shows the `removing` marker can wait out Git's delete; older
-        // clients get the acceptance and never see the row again.
-        ...(readsWorktreeRemovalMarker(context) ? { waitForBackgroundRemoval: true } : {})
+        // Why: only a client that shows the `removing` marker, or one that asks for the outcome,
+        // can wait out Git's delete; older clients get the acceptance and never see the row again.
+        ...(readsWorktreeRemovalMarker(context) || params.waitForRemoval === true
+          ? { waitForBackgroundRemoval: true }
+          : {})
       })
       return {
         removed: true,

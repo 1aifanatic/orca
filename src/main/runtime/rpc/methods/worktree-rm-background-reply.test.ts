@@ -19,7 +19,8 @@ function makeRuntime(): OrcaRuntimeService {
 
 async function dispatchRm(
   runtime: OrcaRuntimeService,
-  clientCapabilities: readonly RuntimeCapability[] | undefined
+  clientCapabilities: readonly RuntimeCapability[] | undefined,
+  extraParams: Record<string, unknown> = {}
 ): Promise<void> {
   const dispatcher = new RpcDispatcher({ runtime, methods: WORKTREE_METHODS })
   await dispatcher.dispatch(
@@ -27,7 +28,7 @@ async function dispatchRm(
       id: 'req-1',
       authToken: 'tok',
       method: 'worktree.rm',
-      params: { worktree: 'id:wt-1', hostId: 'local' }
+      params: { worktree: 'id:wt-1', hostId: 'local', ...extraParams }
     },
     { clientCapabilities }
   )
@@ -57,6 +58,19 @@ describe('worktree.rm waits for the delete only for clients that can show it', (
     expect(runtime.removeManagedWorktree).toHaveBeenCalledWith(
       'id:wt-1',
       expect.not.objectContaining({ waitForBackgroundRemoval: true })
+    )
+  })
+})
+
+// Why: the CLI acts on the reply, so it asks for the delete's outcome without opting into the
+// listing's `removing` marker, which it cannot show.
+describe('worktree.rm waits for the delete when the caller asks for the outcome', () => {
+  it('waits for a client without background removal that sends waitForRemoval', async () => {
+    const runtime = makeRuntime()
+    await dispatchRm(runtime, undefined, { waitForRemoval: true })
+    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith(
+      'id:wt-1',
+      expect.objectContaining({ waitForBackgroundRemoval: true })
     )
   })
 })
