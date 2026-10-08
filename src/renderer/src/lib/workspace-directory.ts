@@ -45,11 +45,8 @@ export function resolveWorkspaceDirectory(
       ? state.floatingWorkspacePath || null
       : null
   }
-  const known = hasKnownWorkspaceCatalog(state)
-    ? findKnownWorktreeById(state, worktreeId, executionHostId ?? undefined)
-    : undefined
-  if (known?.path) {
-    return known.path
+  if (hasKnownWorkspaceCatalog(state)) {
+    return findKnownWorktreeById(state, worktreeId, executionHostId ?? undefined)?.path ?? null
   }
   const workspaceScope = parseWorkspaceKey(worktreeId)
   if (workspaceScope?.type === 'folder') {

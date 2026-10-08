@@ -9,7 +9,7 @@ import {
   getCommitMessageModelDiscoveryHostKeyForScope,
   LOCAL_COMMIT_MESSAGE_HOST_KEY
 } from '../../../../shared/commit-message-host-key'
-import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
+import { getSettingsForWorktreeRuntimeOwner } from '@/lib/worktree-runtime-owner'
 import { hasExplicitTuiLaunchCommand } from '../../../../shared/tui-agent-launch-command-override'
 import { getConnectionIdFromState } from '@/lib/connection-context'
 import {
@@ -63,7 +63,9 @@ export function resolveNativeChatModelDiscoveryContext(
   if (worktreeId && connectionId === undefined) {
     return null
   }
-  const settings = getSettingsForAgentTabRuntimeOwner(terminalTabId)
+  const settings = worktreeId
+    ? getSettingsForWorktreeRuntimeOwner(state, worktreeId)
+    : state.settings
   const worktreePath = worktreeId ? (findKnownWorktreeById(state, worktreeId)?.path ?? '') : ''
   const scope = getRuntimeGitScope(settings, connectionId)
   return {

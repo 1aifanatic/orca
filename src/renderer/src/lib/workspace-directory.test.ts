@@ -60,4 +60,34 @@ describe('resolveWorkspaceDirectory', () => {
       )
     ).toBe('/workspace/platform')
   })
+
+  it('does not resolve a folder workspace on a different host', () => {
+    const folderId = 'folder-1'
+    expect(
+      resolveWorkspaceDirectory(
+        catalog({
+          folderWorkspaces: [
+            {
+              id: folderId,
+              projectGroupId: 'group-1',
+              name: 'Remote Platform',
+              folderPath: '/workspace/remote-platform',
+              connectionId: 'box-1',
+              linkedTask: null,
+              comment: '',
+              isArchived: false,
+              isUnread: false,
+              isPinned: false,
+              sortOrder: 0,
+              lastActivityAt: 0,
+              createdAt: 0,
+              updatedAt: 0
+            }
+          ]
+        }),
+        folderWorkspaceKey(folderId),
+        'local'
+      )
+    ).toBeNull()
+  })
 })
