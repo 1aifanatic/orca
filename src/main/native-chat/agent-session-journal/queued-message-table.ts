@@ -19,6 +19,16 @@ import { readStoredQueuedMessageRow } from './queued-message-stored-row'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
+export class QueuedMessageNotConsumableError extends Error {
+  constructor(
+    readonly messageId: string,
+    readonly expected: 'waiting' | 'returned'
+  ) {
+    super(`queued message ${messageId} is no longer ${expected}`)
+    this.name = 'QueuedMessageNotConsumableError'
+  }
+}
+
 /** Why ONE waiting draft is held from auto-sending: its conversion failed (`send_failed`). Stored
  *  on the row, so it survives handle eviction and restart; a wire marker (it publishes as
  *  `pausedReason`). A Stop, a /clear or a reopen pauses the queue instead. A reader treats an
@@ -33,11 +43,10 @@ export function isUnsettledQueuedMessage(row: Pick<QueuedMessageRow, 'state'>): 
   return row.state === 'waiting' || row.state === 'returned'
 }
 
-export type QueuedMessageRow = {
+export type QueuedMessageHeader = {
   sessionId: string
   messageId: string
   position: number
-  body: AgentJournalMessageItem
   fingerprint: string
   createdAt: number
   hostInstance: string
@@ -47,7 +56,6 @@ export type QueuedMessageRow = {
   holdReason: string | null
   /** A returned card's refusal, mirroring its submission's `reason` and `rejection` pair. */
   returnedReason: string | null
-  returnedRejection: UnreadAgentSessionFailureFact | null
   settledAt: number | null
   /** The operation ledger's caller-scoped key, making settled rows mutation receipts. */
   settledByOp: string | null
@@ -61,6 +69,11 @@ export type QueuedMessageRow = {
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */
   queuedAt: AgentJournalCursor | null
+}
+
+export type QueuedMessageRow = QueuedMessageHeader & {
+  body: AgentJournalMessageItem
+  returnedRejection: UnreadAgentSessionFailureFact | null
 }
 
 const COLUMNS =
@@ -125,7 +138,10 @@ export function insertQueuedMessage(
 
 export function listQueuedMessages(db: Database.Database, sessionId: string): QueuedMessageRow[] {
   return db
-    .prepare(`SELECT ${COLUMNS} FROM queued_messages WHERE session_id = ? ORDER BY position ASC`)
+    .prepare(
+      `SELECT ${COLUMNS} FROM queued_messages
+       WHERE session_id = ? AND state IN ('waiting', 'returned') ORDER BY position ASC`
+    )
     .all(sessionId)
     .flatMap((row) => readStoredQueuedMessageRow(row) ?? [])
 }
@@ -206,11 +222,7 @@ export function withdrawQueuedMessages(
     if (!row || !isUnsettledQueuedMessage(row)) {
       continue
     }
-    db.prepare(
-      `UPDATE queued_messages
-       SET state = 'withdrawn', hold_reason = NULL, settled_at = ?, settled_by_op = ?
-       WHERE session_id = ? AND message_id = ? AND state IN ('waiting', 'returned')`
-    ).run(input.now, input.settledByOp, input.sessionId, messageId)
+    withdrawQueuedMessageInTransaction(db, { ...input, messageId })
     withdrawn.push({
       ...row,
       state: 'withdrawn',
@@ -220,6 +232,23 @@ export function withdrawQueuedMessages(
     })
   }
   return withdrawn
+}
+
+/** Echo settlement needs only the transition count, never the draft's text. */
+export function withdrawQueuedMessageInTransaction(
+  db: Database.Database,
+  input: { sessionId: string; messageId: string; settledByOp: string | null; now: number }
+): number {
+  return Number(
+    db
+      .prepare(
+        `UPDATE queued_messages
+         SET state = 'withdrawn', hold_reason = NULL, settled_at = ?, settled_by_op = ?
+         WHERE session_id = ? AND message_id = ? AND state IN ('waiting', 'returned')
+           AND json_valid(body_json)`
+      )
+      .run(input.now, input.settledByOp, input.sessionId, input.messageId).changes
+  )
 }
 
 /**

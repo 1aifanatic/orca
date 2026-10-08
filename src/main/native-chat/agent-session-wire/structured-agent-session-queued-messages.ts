@@ -23,13 +23,12 @@ import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/struct
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
-import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
+import type {
+  QueuedMessageHeader,
+  QueuedMessageRow
+} from '../agent-session-journal/queued-message-table'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
-import {
-  structuredAgentSessionHostInstance,
-  structuredQueuePauses
-} from './structured-agent-session-queued-pause'
-import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
+import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { agentSessionAttachmentExpiredRefusal } from './structured-agent-session-turns'
 import { isAgentSessionAttachmentExpiredError } from '../agent-session-attachments/agent-session-attachment-claims'
@@ -60,13 +59,8 @@ export function pendingPromptExists(journal: Pick<AgentSessionJournal, 'visitIte
  *  (§accept) and the drain's selection both read it. */
 function oldestActionableQueuedMessage(
   journal: Pick<AgentSessionJournal, 'queuedMessages'>
-): QueuedMessageRow | null {
-  const rows = journal.queuedMessages.list()
-  // Nothing waiting costs no pause derivation: this runs on every journal publish.
-  if (!rows.some((row) => row.state === 'waiting')) {
-    return null
-  }
-  return nextSendableQueuedCard(structuredQueuePauses(journal), rows)
+): QueuedMessageHeader | null {
+  return journal.queuedMessages.nextSendable()
 }
 
 /**
@@ -124,7 +118,7 @@ export function nextStructuredQueuedMessage(input: {
   journal: AgentSessionJournal
   record: AgentSessionRecord | null
   fence: number
-}): QueuedMessageRow | null {
+}): QueuedMessageHeader | null {
   const next = oldestActionableQueuedMessage(input.journal)
   const { journal, fence } = input
   // The gate's cheap `working` first: publication asks on every streamed frame, and the gate's
@@ -340,8 +334,12 @@ export class StructuredAgentSessionQueuedMessageDrain {
     const fence = this.deps.conversationFence(sessionId)
     // Whatever clears a hold publishes or commits, which re-derives this step.
     const record = this.deps.getRecord(sessionId)
-    const next = nextStructuredQueuedMessage({ journal, record, fence })
-    if (this.disposed || !next) {
+    const header = nextStructuredQueuedMessage({ journal, record, fence })
+    if (this.disposed || !header) {
+      return
+    }
+    const next = journal.queuedMessages.get(header.messageId)
+    if (!next || next.state !== 'waiting') {
       return
     }
     // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.

@@ -3,7 +3,7 @@
 
 import type Database from '../../sqlite/sync-database'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import { listQueuedMessages } from './queued-message-table'
+import { expiredDispatchedQueuedMessageHeaders } from './queued-message-headers'
 
 /** What the loaded journal says about a dispatched draft's consumed submission. */
 export type QueuedMessageSubmissionVerdict =
@@ -39,10 +39,7 @@ export function pruneQueuedMessages(
     )
     .run(input.sessionId, cutoff)
   let pruned = Number(tombstones.changes ?? 0)
-  for (const row of listQueuedMessages(db, input.sessionId)) {
-    if (row.state !== 'dispatched' || row.settledAt === null || row.settledAt >= cutoff) {
-      continue
-    }
+  for (const row of expiredDispatchedQueuedMessageHeaders(db, input.sessionId, cutoff)) {
     // A dispatched row always names its hand-off; one that does not has nothing to wait for.
     const verdict = row.consumedAs === null ? 'absent' : input.submissionVerdict(row.consumedAs)
     if (verdict === 'terminal-not-refused' || verdict === 'absent') {

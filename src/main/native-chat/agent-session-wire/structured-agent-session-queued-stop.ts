@@ -8,10 +8,7 @@
 
 import type { JournalStopEvent } from '../agent-session-journal/journal-row-schema'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import {
-  isUnsettledQueuedMessage,
-  type QueuedMessageRow
-} from '../agent-session-journal/queued-message-table'
+import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import { isMainAgentWorking } from './structured-agent-session-turns-cancel'
 import {
@@ -19,10 +16,9 @@ import {
   structuredAgentSessionStoppedTurnId
 } from './structured-agent-session-turn-stop-notes'
 
-/** The one unsettled-card predicate /clear's carry and the published-bytes bound share:
- *  waiting or returned. Pending/unknown/accepted deliveries stay outside it. */
-export function unsettledQueuedMessages(journal: AgentSessionJournal): QueuedMessageRow[] {
-  return journal.queuedMessages.list().filter(isUnsettledQueuedMessage)
+/** /clear copies only waiting and returned bodies, filtered in the repository. */
+export function unsettledQueuedMessages(journal: AgentSessionJournal): readonly QueuedMessageRow[] {
+  return journal.queuedMessages.list()
 }
 
 /**

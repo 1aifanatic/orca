@@ -67,5 +67,11 @@ CREATE TABLE IF NOT EXISTS queued_messages (
   db.exec(`
 CREATE UNIQUE INDEX IF NOT EXISTS queued_messages_consumed_as
   ON queued_messages (session_id, consumed_as) WHERE consumed_as IS NOT NULL;
+CREATE INDEX IF NOT EXISTS queued_messages_position
+  ON queued_messages (session_id, position);
+CREATE INDEX IF NOT EXISTS queued_messages_unsettled_position
+  ON queued_messages (session_id, position) WHERE state IN ('waiting', 'returned');
+CREATE INDEX IF NOT EXISTS queued_messages_state_settled
+  ON queued_messages (session_id, state, settled_at, message_id);
 `)
 }

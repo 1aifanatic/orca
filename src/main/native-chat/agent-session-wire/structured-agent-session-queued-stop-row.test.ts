@@ -278,7 +278,7 @@ describe("a /clear's carried cards", () => {
       clientMessageId: sent.value.clientMessageId,
       providerIdentity: { provider: 'codex', threadId: 'thread-1', turnId: 'turn-hi', ordinal: 0 }
     })
-    expect(journal(replacementId).queuedMessages.list()[0]?.messageId).toBe(carried)
+    expect([...journal(replacementId).queuedMessages.headers()][0]?.messageId).toBe(carried)
     expect(structuredQueuePauses(journal(replacementId))).toEqual([])
   })
 })

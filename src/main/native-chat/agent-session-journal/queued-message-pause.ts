@@ -139,7 +139,7 @@ export function deriveQueuePauses(input: {
   epoch: string
   marks: JournalQueuePauseMarks
   latestAcceptedTurnSequence: number
-  cards: readonly QueueCard[]
+  cards: Iterable<QueueCard>
   /** Where the reopen's pause begins when this handle could not mark it; null otherwise. */
   reopenFloor: AgentJournalCursor | null
 }): DerivedQueuePause[] {
@@ -149,16 +149,25 @@ export function deriveQueuePauses(input: {
   if (stop) {
     pauses.push({ reason: 'stopped', since: { epoch, sequence: stop.sequence } })
   }
-  const waiting = input.cards.filter((card) => card.state === 'waiting')
-  const carried = waiting.filter((card) => card.carriedFrom !== null)
-  if (carried.length > 0 && latestAcceptedTurnSequence === 0 && marks.resumedSequence === 0) {
+  const needsCarried = latestAcceptedTurnSequence === 0 && marks.resumedSequence === 0
+  const reopened = reopenPause(input)
+  let carried = false
+  let beforeReopen = false
+  if (needsCarried || reopened) {
+    for (const card of input.cards) {
+      if (card.state === 'waiting') {
+        carried ||= card.carriedFrom !== null
+        beforeReopen ||= !!reopened && card.holdReason === null && queuedBefore(reopened, card)
+      }
+      if ((!needsCarried || carried) && (!reopened || beforeReopen)) {
+        break
+      }
+    }
+  }
+  if (needsCarried && carried) {
     pauses.push({ reason: 'cleared', since: null })
   }
-  const reopened = reopenPause(input)
-  if (
-    reopened &&
-    waiting.some((card) => card.holdReason === null && queuedBefore(reopened, card))
-  ) {
+  if (reopened && beforeReopen) {
     pauses.push(reopened)
   }
   return pauses
@@ -222,7 +231,7 @@ export function queuePauseHolding(
  *  consume both read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
-  cards: readonly T[]
+  cards: Iterable<T>
 ): T | null {
   for (const card of cards) {
     if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
@@ -240,7 +249,7 @@ export function nextSendableQueuedCard<T extends QueueCard>(
  *  never offers a Resume that sends nothing. */
 export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
-  cards: readonly QueueCard[]
+  cards: Iterable<QueueCard>
 ): DerivedQueuePause | null {
   for (const card of cards) {
     if (card.state === 'returned') {
