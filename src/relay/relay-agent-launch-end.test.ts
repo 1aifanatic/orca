@@ -86,6 +86,13 @@ describe('relay: a launched agent command finishing', () => {
     expect(forward.mock.calls.length).toBe(forwarded)
   })
 
+  it('ends a claude-agent-teams launch, whose hooks report claude', async () => {
+    const { server, post, last } = await startRelay()
+    await post('claude', { hook_event_name: 'UserPromptSubmit', session_id: 'claude-a' }, 4001)
+    server.endLaunch(paneKey, 'claude-agent-teams')
+    expect(last()).toMatchObject({ providerSessionOnly: true, agentPresence: { ended: true } })
+  })
+
   it('hands the pane to the guest held behind the launched owner', async () => {
     const { server, post, codex, last } = await startRelay()
     await post(

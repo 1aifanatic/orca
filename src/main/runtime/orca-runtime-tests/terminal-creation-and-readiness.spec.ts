@@ -230,7 +230,7 @@ describe('OrcaRuntimeService', () => {
     expect(spawn).not.toHaveBeenCalled()
   })
 
-  it('retires inherited launch authority when the agent command exits', async () => {
+  it('ends the launch with its agent when the launched command finishes', async () => {
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-authority', incarnationId: 'process-1' })
     const endLaunch = vi.fn()
     const runtime = new OrcaRuntimeService(store, undefined, {

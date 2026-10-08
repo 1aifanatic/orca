@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from './server'
 import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
+import { wslHookRelayConnectionId } from '../../shared/wsl-hook-relay-contract'
 
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: () => ({}) }))
@@ -93,16 +94,28 @@ describe('ending a launched agent command', () => {
     expect(row(server)?.providerSessionOnly).toBeFalsy()
   })
 
-  it('leaves the owner of a launch whose agent is unknown, revoking only its authority', async () => {
+  it.each([['claude-agent-teams'], ['openclaude']])(
+    'ends a %s launch, whose hooks report claude',
+    async (launchAgent) => {
+      const server = await createServer()
+      await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
+      server.endLaunchAuthority(PANE, launchAgent)
+      expect(row(server)).toMatchObject({ providerSessionOnly: true })
+    }
+  )
+
+  it('resets the pane as before when a restart forgot the launch agent', async () => {
     const server = await createServer()
-    await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
-    const before = row(server)
+    await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
     server.endLaunchAuthority(PANE, null)
-    expect(row(server)).toEqual(before)
+    expect(row(server)).toBeUndefined()
+    await codex(server, 'PreToolUse', toolUse)
+    expect(row(server)).toBeUndefined()
+    await codex(server, 'UserPromptSubmit', { prompt: 'next task' })
+    expect(row(server)).toMatchObject({ agentType: 'codex', prompt: 'next task' })
   })
 
-  it('leaves a relayed row to its relay', async () => {
-    const server = await createServer()
+  function relayed(server: AgentHookServer, connectionId: string): void {
     server.ingestRemote(
       {
         paneKey: PANE,
@@ -110,14 +123,31 @@ describe('ending a launched agent command', () => {
         worktreeId: 'wt-1',
         source: 'codex',
         hookEventName: 'UserPromptSubmit',
+        providerSession: { key: 'session_id', id: 'codex-x' },
         agentPresence: { agent: 'codex' },
-        payload: { state: 'working', prompt: 'remote task', agentType: 'codex' }
+        payload: { state: 'working', prompt: 'task', agentType: 'codex' }
       },
-      'ssh-1'
+      connectionId
     )
-    const before = row(server)
+  }
+
+  it.each([['codex'], [null]])(
+    'leaves an SSH row to its relay (launch agent %s)',
+    async (launchAgent) => {
+      const server = await createServer()
+      relayed(server, 'ssh-1')
+      const before = row(server)
+      server.endLaunchAuthority(PANE, launchAgent)
+      expect(row(server)).toEqual(before)
+    }
+  )
+
+  it('ends a WSL row, which this machine executes', async () => {
+    const server = await createServer()
+    relayed(server, wslHookRelayConnectionId('Ubuntu'))
+    expect(row(server)).toMatchObject({ state: 'working' })
     server.endLaunchAuthority(PANE, 'codex')
-    expect(row(server)).toEqual(before)
+    expect(row(server)).toMatchObject({ providerSessionOnly: true })
   })
 
   it('fences a session-less launch, then admits its new run once its process shows', async () => {

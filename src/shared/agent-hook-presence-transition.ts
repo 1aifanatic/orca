@@ -7,6 +7,7 @@ import {
   type AgentProcessPresence
 } from './agent-process-presence'
 import { isFreshNonDoneAgentStatus } from './agent-status-freshness'
+import { hookAgentForLaunch } from './tui-agent-hook-identity'
 
 /** `write` stores the event; `skip` leaves the row unchanged. `probe` is an owner process another
  *  producer cast doubt on; on `skip` it also means the event is held until that owner is gone. */
@@ -39,7 +40,7 @@ export function ownerEndedByLaunch(
   launchAgent: string | null | undefined
 ): AgentProcessPresence | undefined {
   const owner = currentOwner(row)
-  return owner && launchAgent && owner.agent === launchAgent ? owner : undefined
+  return owner && launchAgent && owner.agent === hookAgentForLaunch(launchAgent) ? owner : undefined
 }
 
 function readHookProducer(incoming: AgentHookEventPayload): HookProducer {

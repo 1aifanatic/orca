@@ -153,6 +153,7 @@ describe('transitionHookPresence', () => {
     it.each([
       ['mimo-code', 'MessagePart', { hasExplicitPrompt: true }],
       ['opencode', 'MessagePart', { hasExplicitPrompt: true }],
+      ['opencode2', 'MessagePart', { hasExplicitPrompt: true }],
       ['droid', 'UserPromptSubmit', {}],
       ['codex', 'SessionStart', {}]
     ])(

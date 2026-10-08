@@ -102,7 +102,7 @@ export function startsNewAgentRun(event: {
   // Why the OpenCode family: its mid-session boundary is an explicit-prompt MessagePart, which
   // isNewTurnEvent cannot name, and mimo-code has no SessionStart at all.
   if (
-    (event.source === 'opencode' || event.source === 'mimo-code') &&
+    (event.source === 'opencode' || event.source === 'opencode2' || event.source === 'mimo-code') &&
     event.hookEventName === 'MessagePart' &&
     event.hasExplicitPrompt === true
   ) {
