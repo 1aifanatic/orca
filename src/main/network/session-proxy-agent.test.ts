@@ -12,12 +12,7 @@ import {
   resetElectronProxyCredentialsForTests,
   setElectronProxyCredentialsForSession
 } from './electron-proxy-credentials'
-import { setMainHttpClient } from './http-client'
-import {
-  parseResolvedProxyRoutes,
-  SessionProxyAgent,
-  sessionProxyWebSocketAgent
-} from './session-proxy-agent'
+import { parseResolvedProxyRoutes, SessionProxyAgent } from './session-proxy-agent'
 
 function fakeSession(resolved: string): ProxySession & { resolveProxy: ReturnType<typeof vi.fn> } {
   return {
@@ -58,7 +53,6 @@ describe('SessionProxyAgent', () => {
   const sockets: WebSocket[] = []
 
   afterEach(async () => {
-    setMainHttpClient(null)
     resetElectronProxyCredentialsForTests()
     for (const socket of sockets.splice(0)) {
       socket.terminate()
@@ -186,14 +180,5 @@ describe('SessionProxyAgent', () => {
     await expect(roundTrip(port(relay), new SessionProxyAgent(session))).rejects.toThrow(
       'proxy_tunnel_rejected_407'
     )
-  })
-
-  it('is only offered for wss URLs on a host with a Chromium session', () => {
-    expect(sessionProxyWebSocketAgent('wss://relay.example/v1/host/control')).toBeUndefined()
-    setMainHttpClient({ fetch: vi.fn(), proxySession: () => fakeSession('DIRECT') })
-    expect(sessionProxyWebSocketAgent('wss://relay.example/v1/host/control')).toBeInstanceOf(
-      SessionProxyAgent
-    )
-    expect(sessionProxyWebSocketAgent('ws://127.0.0.1:9/v1/host/control')).toBeUndefined()
   })
 })

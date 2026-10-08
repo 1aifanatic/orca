@@ -7276,8 +7276,8 @@
           "d93c7cd531": "アプリレベルのネットワークルーティングを構成します。",
           "c46cdbbd4e": "ネットワーク",
           "configureProxy": "プロキシを設定",
-          "relayAndCloudSystemProxy": "Orca Relay と Orca Cloud にプロキシを使用",
-          "relayAndCloudSystemProxyDescription": "モバイルリレーと Orca アカウントの通信を上記のプロキシ（空の場合はシステムプロキシ）経由で送信します。プロキシがリレーをブロックする場合はオフにしてください。"
+          "relayAndCloudProxy": "Orca Relay と Orca Cloud にプロキシを使用",
+          "relayAndCloudProxyDescription": "Orca Relay と Orca アカウントの通信を HTTP プロキシ設定（空の場合はシステムプロキシ）経由で送信します。リレー接続は HTTP および HTTPS プロキシに対応しています。プロキシがリレーをブロックする場合はオフにしてください。"
         },
         "GeneralPane": {
           "d58fccfd84": "ナビゲーション",

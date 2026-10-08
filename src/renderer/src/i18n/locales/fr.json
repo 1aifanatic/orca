@@ -7396,8 +7396,8 @@
           "d93c7cd531": "Configure le routage réseau au niveau de l'application.",
           "c46cdbbd4e": "Réseau",
           "configureProxy": "Configurer le proxy",
-          "relayAndCloudSystemProxy": "Utiliser le proxy pour Orca Relay et Orca Cloud",
-          "relayAndCloudSystemProxyDescription": "Fait passer le trafic du relais mobile et du compte Orca par le proxy ci-dessus, ou par le proxy système s'il est vide. Désactivez-le si votre proxy bloque le relais."
+          "relayAndCloudProxy": "Utiliser le proxy pour Orca Relay et Orca Cloud",
+          "relayAndCloudProxyDescription": "Fait passer le trafic d'Orca Relay et du compte Orca par le proxy HTTP configuré, ou par le proxy système s'il est vide. La connexion du relais fonctionne avec les proxys HTTP et HTTPS. Désactivez-le si votre proxy bloque le relais."
         },
         "GeneralPane": {
           "d58fccfd84": "Navigation",

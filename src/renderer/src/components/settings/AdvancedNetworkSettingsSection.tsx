@@ -241,27 +241,27 @@ export function AdvancedNetworkSettingsSection({
 
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 space-y-0.5">
-          <Label id="settings-relay-cloud-system-proxy-label">
+          <Label id="settings-relay-cloud-proxy-label">
             {translate(
-              'auto.components.settings.AdvancedNetworkSettingsSection.relayAndCloudSystemProxy',
+              'auto.components.settings.AdvancedNetworkSettingsSection.relayAndCloudProxy',
               'Use proxy for Orca Relay and Orca Cloud'
             )}
           </Label>
           <p className="text-xs text-muted-foreground">
             {translate(
-              'auto.components.settings.AdvancedNetworkSettingsSection.relayAndCloudSystemProxyDescription',
-              'Send mobile relay and Orca account traffic through the proxy above, or the system proxy when it is empty. Turn off if your proxy blocks the relay.'
+              'auto.components.settings.AdvancedNetworkSettingsSection.relayAndCloudProxyDescription',
+              'Send Orca Relay and Orca account traffic through the HTTP proxy setting, or the system proxy when it is empty. The relay connection works with HTTP and HTTPS proxies. Turn off if your proxy blocks the relay.'
             )}
           </p>
         </div>
         <SettingsSwitch
-          checked={settings.relayAndCloudUseSystemProxy === true}
+          checked={settings.relayAndCloudUseProxy === true}
           onChange={() =>
             updateSettings({
-              relayAndCloudUseSystemProxy: settings.relayAndCloudUseSystemProxy !== true
+              relayAndCloudUseProxy: settings.relayAndCloudUseProxy !== true
             })
           }
-          ariaLabelledBy="settings-relay-cloud-system-proxy-label"
+          ariaLabelledBy="settings-relay-cloud-proxy-label"
         />
       </div>
 

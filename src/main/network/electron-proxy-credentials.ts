@@ -102,19 +102,14 @@ export function handleElectronProxyLogin(
   if (!proxySession) {
     return
   }
-  const credentials = proxyCredentialsBySession.get(proxySession)
-  if (
-    !credentials ||
-    credentials.host !== normalizeProxyHost(authInfo.host) ||
-    credentials.port !== authInfo.port
-  ) {
+  const credentials = electronProxyCredentialsFor(proxySession, authInfo.host, authInfo.port)
+  if (!credentials) {
     return
   }
   event.preventDefault()
   callback(credentials.username, credentials.password)
 }
 
-// Why: Chromium answers proxy auth through the app 'login' event; a Node socket must send it itself.
 export function electronProxyCredentialsFor(
   proxySession: ProxySession,
   host: string,

@@ -14,7 +14,7 @@ vi.mock('electron', () => ({
 }))
 
 // Why: existing installs must keep their working direct relay route; only new installs start proxied.
-describe('relayAndCloudUseSystemProxy cohort default', () => {
+describe('relayAndCloudUseProxy cohort default', () => {
   beforeEach(() => {
     testState.dir = mkdtempSync(join(tmpdir(), 'orca-test-'))
   })
@@ -26,21 +26,21 @@ describe('relayAndCloudUseSystemProxy cohort default', () => {
 
   it('turns the proxy route on for a fresh install and keeps it on after restart', async () => {
     const store = createStore()
-    expect(store.getSettings().relayAndCloudUseSystemProxy).toBe(true)
+    expect(store.getSettings().relayAndCloudUseProxy).toBe(true)
     store.flush()
 
-    expect(createStore().getSettings().relayAndCloudUseSystemProxy).toBe(true)
+    expect(createStore().getSettings().relayAndCloudUseProxy).toBe(true)
   })
 
   it('keeps an existing install on the direct route', () => {
     writeDataFile({ schemaVersion: 1, settings: { theme: 'dark' }, ui: {} })
 
-    expect(createStore().getSettings().relayAndCloudUseSystemProxy).toBe(false)
+    expect(createStore().getSettings().relayAndCloudUseProxy).toBe(false)
   })
 
   it('preserves an explicit choice', () => {
-    writeDataFile({ schemaVersion: 1, settings: { relayAndCloudUseSystemProxy: true }, ui: {} })
+    writeDataFile({ schemaVersion: 1, settings: { relayAndCloudUseProxy: true }, ui: {} })
 
-    expect(createStore().getSettings().relayAndCloudUseSystemProxy).toBe(true)
+    expect(createStore().getSettings().relayAndCloudUseProxy).toBe(true)
   })
 })

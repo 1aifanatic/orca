@@ -179,7 +179,7 @@ export function isAmbiguousCloudRequestFailure(error: unknown): boolean {
 }
 
 async function postJson<T>(url: string, body: unknown, options?: PostJsonOptions): Promise<T> {
-  const response = await relayAndCloudFetch()(url, {
+  const response = await relayAndCloudFetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

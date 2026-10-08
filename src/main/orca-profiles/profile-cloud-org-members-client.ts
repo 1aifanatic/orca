@@ -142,7 +142,7 @@ async function requestOrgMembers<T>(
   init: RequestInit,
   parse: (value: unknown) => T
 ): Promise<T> {
-  const response = await relayAndCloudFetch()(url, init)
+  const response = await relayAndCloudFetch(url, init)
   if (!response.ok) {
     throw new OrcaCloudRequestError(response.status, await extractErrorCode(response))
   }

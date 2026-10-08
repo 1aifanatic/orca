@@ -7290,8 +7290,8 @@
           "d93c7cd531": "Configura el enrutamiento de red a nivel de app.",
           "c46cdbbd4e": "Red",
           "configureProxy": "Configurar proxy",
-          "relayAndCloudSystemProxy": "Usar proxy para Orca Relay y Orca Cloud",
-          "relayAndCloudSystemProxyDescription": "Envía el tráfico del relay móvil y de la cuenta de Orca a través del proxy anterior, o del proxy del sistema si está vacío. Desactívalo si tu proxy bloquea el relay."
+          "relayAndCloudProxy": "Usar proxy para Orca Relay y Orca Cloud",
+          "relayAndCloudProxyDescription": "Envía el tráfico de Orca Relay y de la cuenta de Orca a través del proxy HTTP configurado, o del proxy del sistema si está vacío. La conexión del relay funciona con proxies HTTP y HTTPS. Desactívalo si tu proxy bloquea el relay."
         },
         "GeneralPane": {
           "d58fccfd84": "Navegación",

@@ -25,18 +25,15 @@ export class LoadedCohortMigrationOperations {
     }
   }
 
-  migrateRelayAndCloudSystemProxy(
-    state: PersistedState,
-    fileExistedOnLoad: boolean
-  ): PersistedState {
-    if (typeof state.settings?.relayAndCloudUseSystemProxy === 'boolean') {
+  migrateRelayAndCloudProxy(state: PersistedState, fileExistedOnLoad: boolean): PersistedState {
+    if (typeof state.settings?.relayAndCloudUseProxy === 'boolean') {
       return state
     }
     this.runtime.loadNeedsSave = true
     return {
       ...state,
       // Why: existing installs keep their working direct route; only new installs start proxied.
-      settings: { ...state.settings, relayAndCloudUseSystemProxy: !fileExistedOnLoad }
+      settings: { ...state.settings, relayAndCloudUseProxy: !fileExistedOnLoad }
     }
   }
 

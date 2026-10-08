@@ -83,7 +83,7 @@ export class RelayRegionPreferenceResolver {
     return measureRelayRegionDecision(window, {
       diagnosticOverride: Boolean(this.overrideRegion()),
       now: this.options.now ?? Date.now,
-      measure: () => this.probeCatalog(this.options.fetch ?? relayAndCloudFetch())
+      measure: () => this.probeCatalog(this.options.fetch ?? relayAndCloudFetch)
     })
   }
 
@@ -144,7 +144,7 @@ export class RelayRegionPreferenceResolver {
       reason: 'catalog-unavailable'
     }
     try {
-      const fetch = this.options.fetch ?? relayAndCloudFetch()
+      const fetch = this.options.fetch ?? relayAndCloudFetch
       const probe = this.createProbe(fetch)
       // A director that cannot list its regions is the one self-heal outcome a
       // support log would otherwise never see, so it is reported before the throw.
@@ -181,7 +181,7 @@ export class RelayRegionPreferenceResolver {
     previous: RelayRegionCache | null,
     now: number
   ): Promise<RelayRegion | undefined> {
-    const fetch = this.options.fetch ?? relayAndCloudFetch()
+    const fetch = this.options.fetch ?? relayAndCloudFetch
     // Only a refresh withholds a hint, so only a refresh reports the catalog
     // failure as a probe event; self-heal reports it as its own outcome.
     const reports = await this.probeCatalog(fetch, () =>

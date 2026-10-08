@@ -10,7 +10,8 @@ import {
   requestRelayAssignment
 } from '../runtime/relay/relay-http-client'
 import { setMainHttpClient, type MainHttpClient } from './http-client'
-import { setRelayAndCloudUseSystemProxy } from './relay-cloud-proxy-route'
+import { relayWebSocketAgent, setRelayAndCloudUseProxy } from './relay-cloud-proxy-route'
+import { SessionProxyAgent } from './session-proxy-agent'
 
 const config: OrcaCloudAuthConfig = {
   apiBaseUrl: 'https://orca-cloud.example',
@@ -46,11 +47,11 @@ describe('relay and Orca Cloud HTTP use the main HTTP client when the proxy sett
     globalFetch.mockClear()
     vi.stubGlobal('fetch', globalFetch)
     setMainHttpClient({ fetch: portFetch, proxySession: () => null })
-    setRelayAndCloudUseSystemProxy(true)
+    setRelayAndCloudUseProxy(true)
   })
 
   afterEach(() => {
-    setRelayAndCloudUseSystemProxy(false)
+    setRelayAndCloudUseProxy(false)
     setMainHttpClient(null)
     vi.unstubAllGlobals()
   })
@@ -108,12 +109,29 @@ describe('relay and Orca Cloud HTTP use the main HTTP client when the proxy sett
   })
 
   it('keeps the pre-setting Node fetch path when the setting is off', async () => {
-    setRelayAndCloudUseSystemProxy(false)
+    setRelayAndCloudUseProxy(false)
     globalFetch.mockImplementationOnce(async () => Response.json({ items: [] }))
 
     await artifactRequest('https://orca-cloud.example', 'access-token', '/mine')
 
     expect(globalFetch).toHaveBeenCalledTimes(1)
     expect(portFetch).not.toHaveBeenCalled()
+  })
+
+  it('gives wss relay sockets the session proxy agent only while the setting is on', () => {
+    const wss = 'wss://relay.example/v1/host/control'
+    setMainHttpClient({
+      fetch: portFetch,
+      proxySession: () => ({ resolveProxy: async () => 'DIRECT', setProxy: async () => {} })
+    })
+    expect(relayWebSocketAgent(wss)).toBeInstanceOf(SessionProxyAgent)
+    expect(relayWebSocketAgent('ws://127.0.0.1:9/v1/host/control')).toBeUndefined()
+
+    setRelayAndCloudUseProxy(false)
+    expect(relayWebSocketAgent(wss)).toBeUndefined()
+  })
+
+  it('leaves relay sockets direct on a host without a Chromium session', () => {
+    expect(relayWebSocketAgent('wss://relay.example/v1/host/control')).toBeUndefined()
   })
 })

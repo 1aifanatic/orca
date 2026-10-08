@@ -1,10 +1,9 @@
-import { request as httpRequest, type Agent as HttpAgent } from 'node:http'
+import { request as httpRequest } from 'node:http'
 import { Agent, request as httpsRequest, type RequestOptions } from 'node:https'
 import { isIP } from 'node:net'
 import type { Duplex } from 'node:stream'
 import type { ProxySession } from './electron-default-proxy-session'
 import { electronProxyCredentialsFor } from './electron-proxy-credentials'
-import { getMainHttpClient } from './http-client'
 import { awaitProxySessionApplication } from './proxy-settings'
 
 export type ResolvedProxyRoute =
@@ -68,7 +67,8 @@ function openProxyTunnel(
         ...(authorization ? { 'proxy-authorization': authorization } : {})
       },
       agent: false,
-      ...(route.secure && !isIP(route.host) ? { servername: route.host } : {})
+      // '' stops Node falling back to the Host header (the relay) for the proxy's own TLS name.
+      ...(route.secure ? { servername: isIP(route.host) ? '' : route.host } : {})
     })
     const deadline = setTimeout(
       () => request.destroy(new Error('proxy_tunnel_timeout')),
@@ -101,11 +101,8 @@ function openProxyTunnel(
  * sockets (ws) follow the same proxy as net.fetch.
  */
 export class SessionProxyAgent extends Agent {
-  private readonly proxySession: ProxySession
-
-  constructor(proxySession: ProxySession) {
-    super({ keepAlive: false })
-    this.proxySession = proxySession
+  constructor(private readonly proxySession: ProxySession) {
+    super()
   }
 
   override createConnection(
@@ -160,11 +157,4 @@ export class SessionProxyAgent extends Agent {
     }
     return stream
   }
-}
-
-/** A ws `agent` that follows the desktop's proxy; undefined where no Chromium session exists. */
-export function sessionProxyWebSocketAgent(url: string): HttpAgent | undefined {
-  const proxySession = getMainHttpClient().proxySession()
-  // ws:// relay origins are loopback-only test/dev endpoints.
-  return proxySession && url.startsWith('wss:') ? new SessionProxyAgent(proxySession) : undefined
 }

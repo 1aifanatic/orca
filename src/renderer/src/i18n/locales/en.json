@@ -7516,8 +7516,8 @@
           "d93c7cd531": "Configure app-level network routing.",
           "c46cdbbd4e": "Network",
           "configureProxy": "Configure proxy",
-          "relayAndCloudSystemProxy": "Use proxy for Orca Relay and Orca Cloud",
-          "relayAndCloudSystemProxyDescription": "Send mobile relay and Orca account traffic through the proxy above, or the system proxy when it is empty. Turn off if your proxy blocks the relay."
+          "relayAndCloudProxy": "Use proxy for Orca Relay and Orca Cloud",
+          "relayAndCloudProxyDescription": "Send Orca Relay and Orca account traffic through the HTTP proxy setting, or the system proxy when it is empty. The relay connection works with HTTP and HTTPS proxies. Turn off if your proxy blocks the relay."
         },
         "GeneralPane": {
           "editor_preview_tabs": "Reuse a preview tab when browsing files",

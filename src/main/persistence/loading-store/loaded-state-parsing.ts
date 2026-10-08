@@ -263,13 +263,9 @@ export class LoadedStateParsingOperations {
       this.runtime.loadNeedsSave = true
     }
 
-    const migrated = this.cohorts.migrateRelayAndCloudSystemProxy(
-      this.cohorts.migrateTabSwitchKeybindings(
-        this.cohorts.migrateTelemetry(result, fileExistedOnLoad),
-        fileExistedOnLoad
-      ),
-      fileExistedOnLoad
-    )
+    let migrated = this.cohorts.migrateTelemetry(result, fileExistedOnLoad)
+    migrated = this.cohorts.migrateTabSwitchKeybindings(migrated, fileExistedOnLoad)
+    migrated = this.cohorts.migrateRelayAndCloudProxy(migrated, fileExistedOnLoad)
 
     // githubCache is a sidecar file now (see getGithubCacheFile); legacy in-file caches seed the session, then get stripped.
     const legacyCache = migrated.githubCache
