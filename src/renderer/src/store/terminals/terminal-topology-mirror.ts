@@ -14,7 +14,7 @@ import type { TerminalSlice, TerminalStoreSet } from './terminal-state'
 import { mirrorTerminalUnifiedTabs } from './terminal-topology-mirror-unified-tabs'
 import {
   isPendingTerminalTab,
-  isRuntimeHostedTab,
+  isTerminalTabMirroredFromMain,
   pendingAfterTerminalTopologySlice
 } from './terminal-pending-panes'
 
@@ -113,7 +113,9 @@ export function mirrorTerminalTopologySlice(
     if (row) {
       return [mirrorTabRow(tab, row)]
     }
-    return isRuntimeHostedTab(state, worktreeId, tab.id) || isPending(tab.id, 'add') ? [tab] : []
+    return !isTerminalTabMirroredFromMain(state, worktreeId, tab.id) || isPending(tab.id, 'add')
+      ? [tab]
+      : []
   })
   const currentIds = new Set(currentTabs.map((tab) => tab.id))
   const added = slice.tabs
