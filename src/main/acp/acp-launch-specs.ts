@@ -7,7 +7,7 @@ import {
   ORCA_SCRUB_SAFE_PANE_ENV
 } from '../../shared/agent-hook-scrub-safe-env'
 import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../ipc/pty/host-env/spawn-env-keys'
-import type { AcpDialect } from './acp-dialects/acp-dialect'
+import { GENERIC_ACP_DIALECT, type AcpDialect } from './acp-dialects/acp-dialect'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
 import { OPENCODE_ACP_DIALECT } from './acp-dialects/opencode-dialect'
 import { directoryAccountBinding, type AcpAccountBinding } from './acp-account-binding'
@@ -15,7 +15,7 @@ import { openCodeAcpAccountBinding } from '../opencode/opencode-structured-accou
 import { scrubOpenCodeAcpEnvironment } from '../opencode/opencode-acp-environment'
 import { openCodeStoredUserMessagesReader } from '../opencode/opencode-acp-stored-messages'
 import type { AcpStoredUserMessagesReader } from './acp-recovery-history'
-import { isStableCliVersionOnLine } from '../agent-cli-version-probe'
+import { isStableCliVersionFrom, isStableCliVersionOnLine } from '../agent-cli-version-probe'
 import type { TuiAgent } from '../../shared/tui-agent'
 
 export type AcpLaunchSpec = {
@@ -92,7 +92,31 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   readStoredUserMessages: openCodeStoredUserMessagesReader()
 }
 
-export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [GROK_LAUNCH_SPEC, OPENCODE_LAUNCH_SPEC]
+// OMP serves ACP through `omp acp`; its environment reaches it as the user set it.
+const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
+  agent: 'omp',
+  command: 'omp',
+  // `omp acp` takes no flags: full access answers each permission request yes.
+  args: () => ['acp'],
+  env: {},
+  dialect: GENERIC_ACP_DIALECT,
+  // OMP signs in from its own `/login`.
+  loginCommand: ['omp'],
+  // The directory OMP's terminal chats read too; its default is OMP's own.
+  account: directoryAccountBinding('PI_CODING_AGENT_DIR', (homePath) =>
+    join(homePath, '.omp', 'agent')
+  ),
+  // OMP's installers use directories the shared resolver already searches after PATH.
+  installDirectories: () => [],
+  // Stable releases from 17.0.5, the release verified to serve `omp acp`.
+  supportsVersion: (version) => isStableCliVersionFrom(version, '17.0.5')
+}
+
+export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [
+  GROK_LAUNCH_SPEC,
+  OPENCODE_LAUNCH_SPEC,
+  OMP_LAUNCH_SPEC
+]
 
 export function acpLaunchSpecFor(agent: string): AcpLaunchSpec | null {
   return ACP_LAUNCH_SPECS.find((spec) => spec.agent === agent) ?? null
