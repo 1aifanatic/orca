@@ -23,8 +23,6 @@ const asyncStorage = vi.hoisted(() => ({
 
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: asyncStorage }))
 
-import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
-
 function listedModelIds(snapshot: readonly SessionOptionDescriptor[]): string[] {
   const model = snapshot.find((descriptor) => descriptor.id === 'model')
   return model?.kind.type === 'select' ? model.kind.choices.map((choice) => choice.value) : []
@@ -277,7 +275,7 @@ describe('useMobileStructuredAgentSession', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    resetMobileStructuredSendOperationJournalForTests()
+
     storedOperations = new Map()
     asyncStorage.getItem.mockImplementation(
       async (key: string) => storedOperations.get(key) ?? null
