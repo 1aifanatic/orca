@@ -34,7 +34,8 @@ process.once('disconnect', () => {
 `
 
 export function codexMaintenanceWindowsSpawnSpec(input: ProcessSpec): ProcessSpec {
-  const resolved = resolveSpawn(input, 'win32')
+  const cwd = input.cwd ?? process.cwd()
+  const resolved = resolveSpawn({ ...input, cwd }, 'win32')
   const env = { ...process.env, ...resolved.options.env }
   const taskkill = windowsSystem32Binary('taskkill.exe')
   const systemCwd = win32.dirname(taskkill)
@@ -52,7 +53,7 @@ export function codexMaintenanceWindowsSpawnSpec(input: ProcessSpec): ProcessSpe
           systemCwd,
           file: resolved.file,
           args: resolved.args,
-          cwd: input.cwd,
+          cwd,
           windowsVerbatimArguments: resolved.options.windowsVerbatimArguments,
           nodeOptions: env.NODE_OPTIONS
         })

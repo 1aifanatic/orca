@@ -28,6 +28,7 @@ export type ResolvedCodexMaintenanceCommand = {
 export async function resolveCodexMaintenanceCommand(
   context: CodexMaintenanceContext = {}
 ): Promise<ResolvedCodexMaintenanceCommand> {
+  const cwd = context.cwd ?? process.cwd()
   const settings = context.commandSettings ?? {}
   const sources = configuredCodexInvocationSources(() => settings)
   const environment = createStructuredAgentEnvironmentResolvers(sources)
@@ -35,12 +36,12 @@ export async function resolveCodexMaintenanceCommand(
     resolveCommand: sources.resolveCommand,
     resolveEnvironment: environment.resolveCodexEnvironment
   })
-  return resolveMaintenanceInvocation(invocation, context.cwd, settings)
+  return resolveMaintenanceInvocation(invocation, cwd, settings)
 }
 
 async function resolveMaintenanceInvocation(
   { command, environment }: Awaited<ReturnType<typeof resolveCodexStructuredInvocation>>,
-  cwd: string | undefined,
+  cwd: string,
   settings: CodexCommandSettings
 ): Promise<ResolvedCodexMaintenanceCommand> {
   const selected = await resolveLocalExecutionCommand(command, { env: environment, cwd })

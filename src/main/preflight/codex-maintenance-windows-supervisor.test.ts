@@ -6,6 +6,7 @@ import { codexMaintenanceWindowsSpawnSpec } from './codex-maintenance-windows-su
 const { resolve } = vi.hoisted(() => ({ resolve: vi.fn() }))
 vi.mock('../../shared/child-process/run-process', () => ({ resolveSpawn: resolve }))
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.clearAllMocks()
   vi.unstubAllEnvs()
 })
@@ -52,6 +53,49 @@ describe('Windows maintenance tree ownership', () => {
     expect(selected.nodeOptions).toBe('--require fake')
     expect(spec.env?.NODE_OPTIONS).toBeUndefined()
     expect(spec.env?.ELECTRON_RUN_AS_NODE).toBe('1')
+  })
+  it('pins the host directory for a directory-sensitive updater when cwd is omitted', () => {
+    vi.stubEnv('SystemRoot', 'C:\\Windows')
+    const hostCwd = 'C:\\host-project'
+    vi.spyOn(process, 'cwd').mockReturnValue(hostCwd)
+    resolve.mockReturnValue({
+      file: 'C:\\tools\\project-aware-codex.cmd',
+      args: ['update'],
+      options: { env: { PATH: 'C:\\tools' } }
+    })
+    const input = { program: 'C:\\tools\\project-aware-codex.cmd', args: ['update'] }
+    const spec = codexMaintenanceWindowsSpawnSpec(input)
+    expect(resolve).toHaveBeenCalledWith({ ...input, cwd: hostCwd }, 'win32')
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough()
+    })
+    const selections: string[] = []
+    const spawn = vi.fn((_file: string, _args: string[], options: { cwd: string }) => {
+      selections.push(options.cwd === hostCwd ? 'host installation' : 'other installation')
+      return child
+    })
+    const owner = Object.assign(new EventEmitter(), {
+      pid: 4242,
+      env: spec.env,
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough()
+    })
+    const script = spec.args?.[1]
+    if (!script) {
+      throw new Error('No supervisor script')
+    }
+    runInNewContext(script, { require: () => ({ spawn }), process: owner, Buffer })
+    expect(selections).toEqual(['host installation'])
+    expect(spec.cwd).toBe('C:\\Windows\\System32')
+    owner.emit('disconnect')
+    expect(spawn).toHaveBeenLastCalledWith(
+      'C:\\Windows\\System32\\taskkill.exe',
+      ['/pid', '4242', '/t', '/f'],
+      { cwd: 'C:\\Windows\\System32', windowsHide: true, stdio: 'ignore' }
+    )
   })
   it('uses the host system helper and safe cwd despite a project helper and redirected agent environment', () => {
     vi.stubEnv('SystemRoot', 'C:\\Windows')

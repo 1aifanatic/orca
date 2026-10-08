@@ -100,6 +100,24 @@ describe('Codex maintenance command choice', () => {
       expect((await resolveCodexMaintenanceCommand()).spec).toBeNull()
     }
   )
+  it('keeps a host-level directory-sensitive update and post-exit check in the captured directory', async () => {
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(root)
+    installation.mockImplementation(async (input: { cwd?: string }) =>
+      codexCliInstallation(true, input.cwd === root ? '0.135.0' : '0.136.0')
+    )
+    try {
+      const result = await resolveCodexMaintenanceCommand()
+      expect(result.installation.status).toBe('unsupported')
+      expect(result.spec?.cwd).toBe(root)
+      cwd.mockReturnValue(join(root, 'other-directory'))
+      const rechecked = await result.recheck?.()
+      expect(rechecked?.installation.status).toBe('unsupported')
+      expect(rechecked?.spec?.cwd).toBe(root)
+      expect(installation).toHaveBeenLastCalledWith(expect.objectContaining({ cwd: root }))
+    } finally {
+      cwd.mockRestore()
+    }
+  })
   it('resolves npm.cmd on Windows for the shared spawn runner', async () => {
     const original = process.platform
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
