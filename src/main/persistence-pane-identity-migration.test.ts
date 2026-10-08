@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os'
 import type { PersistedState } from '../shared/persisted-state-types'
 import { isTerminalLeafId, makePaneKey } from '../shared/stable-pane-id'
 import { agentHookServer } from './agent-hooks/server'
+import { getMigrationUnsupportedPtySnapshot } from './agent-hooks/migration-unsupported-pty-state'
+import { getDefaultWorkspaceSession } from '../shared/constants'
 
 import {
   TEST_LEAF_1,
@@ -644,5 +646,38 @@ describe('Store', () => {
         ])
       })
     )
+  })
+
+  it('a save of a legacy numeric pane layout flags no live PTY as needing a restart', async () => {
+    const store = await createStore()
+    store.setWorkspaceSession({
+      ...getDefaultWorkspaceSession(),
+      tabsByWorktree: {
+        wt1: [
+          {
+            id: 'tab1',
+            worktreeId: 'wt1',
+            title: 'Terminal',
+            customTitle: null,
+            color: null,
+            sortOrder: 0,
+            createdAt: 1,
+            ptyId: 'legacy-pty'
+          }
+        ]
+      },
+      terminalLayoutsByTabId: {
+        tab1: {
+          root: { type: 'leaf', leafId: 'pane:1' },
+          activeLeafId: 'pane:1',
+          expandedLeafId: null,
+          ptyIdsByLeafId: { 'pane:1': 'legacy-pty' }
+        }
+      }
+    })
+
+    const root = store.getWorkspaceSession().terminalLayoutsByTabId.tab1.root
+    expect(root?.type === 'leaf' && isTerminalLeafId(root.leafId)).toBe(true)
+    expect(getMigrationUnsupportedPtySnapshot()).toEqual([])
   })
 })

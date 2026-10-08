@@ -161,4 +161,33 @@ describe('terminal membership main holds survives a stale window save', () => {
 
     expect(persistedTabIds(store.getWorkspaceSession(), WORKTREE)).toEqual(['renderer-tab'])
   })
+
+  // Main's own writers read and write the store directly; nothing rebases their edit away.
+  it("writes a main writer's unfenced tab removal as is, in a repo main already fenced", async () => {
+    const store = await createStore()
+    store.setWorkspaceSession({
+      ...rendererSession(),
+      terminalTopologyRevisionByRepoId: { repo1: 1 }
+    })
+    await store.persistPtyBinding({
+      worktreeId: WORKTREE,
+      tabId: 'host-tab',
+      leafId: TEST_LEAF_2,
+      ptyId: 'host-pty'
+    })
+    const fenced = store.getWorkspaceSession()
+    expect(fenced.terminalTopologyRevisionByRepoId?.repo1).toBeGreaterThan(0)
+
+    const { 'host-tab': _removed, ...layouts } = fenced.terminalLayoutsByTabId
+    store.setWorkspaceSession({
+      ...fenced,
+      tabsByWorktree: {
+        [WORKTREE]: fenced.tabsByWorktree[WORKTREE].filter((tab) => tab.id !== 'host-tab')
+      },
+      terminalLayoutsByTabId: layouts
+    })
+
+    expect(persistedTabIds(store.getWorkspaceSession(), WORKTREE)).toEqual(['renderer-tab'])
+    expect(store.getWorkspaceSession().terminalLayoutsByTabId).not.toHaveProperty('host-tab')
+  })
 })

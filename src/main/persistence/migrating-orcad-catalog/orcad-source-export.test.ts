@@ -163,6 +163,24 @@ describe('exporting a relay-hosted SSH target from the profile store', () => {
     expect(readTerminalScrollbackStoredBytesSync(ref, storage)).toBeNull()
   })
 
+  it('a save that drops a tab keeps the scrollback file a pending migration still sends', () => {
+    const store = sourceStore()
+    const storage = { snapshotRoot: getProfileTerminalScrollbackSnapshotRoot(dataFiles.at(-1)!) }
+    store.setWorkspaceSession(getDefaultWorkspaceSession(), toSshExecutionHostId(TARGET.id))
+    // An older build left this SSH workspace's tab in the local partition.
+    store.setWorkspaceSession(dormantSession('legacy output\r\n'))
+    const manifest = createOrcadMigrationManifest(store, TARGET)
+    const ref = manifest.payload.dormantState?.terminalScrollbackSnapshots?.[0]?.ref ?? ''
+    expect(readTerminalScrollbackStoredBytesSync(ref, storage)).not.toBeNull()
+    store.syncOrcadMigrationScrollbackRetention([manifest])
+
+    store.setWorkspaceSession(getDefaultWorkspaceSession())
+
+    expect(readTerminalScrollbackStoredBytesSync(ref, storage)).not.toBeNull()
+    store.syncOrcadMigrationScrollbackRetention([])
+    expect(readTerminalScrollbackStoredBytesSync(ref, storage)).toBeNull()
+  })
+
   it('refuses a chunk for a manifest whose digest does not match its contents', () => {
     const store = sourceStore()
     const manifest = createOrcadMigrationManifest(store, TARGET)
