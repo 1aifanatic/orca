@@ -6856,6 +6856,13 @@
           "agentPermissions": "Permissions des agents",
           "agentPermissionsInfo": "Infos permissions des agents",
           "agentPermissionsTooltip": "Ne s'applique pas aux agents dont vous avez remplacé les arguments de lancement.",
+          "argumentsUse": {
+            "claude": "Utilisés au lancement de Claude CLI. Le chat natif ne les utilise pas ; mettez ses paramètres dans ~/.claude/settings.json.",
+            "codex": "Utilisés au lancement de Codex CLI. Le chat natif ne les utilise pas ; mettez ses paramètres dans ~/.codex/config.toml.",
+            "grok": "Utilisés au lancement de Grok CLI. Le chat natif ne les utilise pas ; mettez ses paramètres dans ~/.grok/config.toml.",
+            "opencode": "Utilisés au lancement d'OpenCode CLI. Le chat natif ne les utilise pas ; mettez ses paramètres dans ~/.config/opencode/opencode.json.",
+            "omp": "Utilisés au lancement d'OMP CLI. Le chat natif ne les utilise pas."
+          },
           "agentPermissionsDescription": "Choisissez si Orca lance les agents avec moins de demandes de permission ou avec des vérifications manuelles.",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "Manuel",

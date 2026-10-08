@@ -6732,6 +6732,13 @@
           "agentPermissions": "Agent 권한",
           "agentPermissionsInfo": "Agent 권한 정보",
           "agentPermissionsTooltip": "Custom agent arguments stay unchanged when switching modes.",
+          "argumentsUse": {
+            "claude": "Claude CLI를 실행할 때 사용됩니다. 네이티브 채팅은 이 인수를 사용하지 않습니다. 설정은 ~/.claude/settings.json에 넣으세요.",
+            "codex": "Codex CLI를 실행할 때 사용됩니다. 네이티브 채팅은 이 인수를 사용하지 않습니다. 설정은 ~/.codex/config.toml에 넣으세요.",
+            "grok": "Grok CLI를 실행할 때 사용됩니다. 네이티브 채팅은 이 인수를 사용하지 않습니다. 설정은 ~/.grok/config.toml에 넣으세요.",
+            "opencode": "OpenCode CLI를 실행할 때 사용됩니다. 네이티브 채팅은 이 인수를 사용하지 않습니다. 설정은 ~/.config/opencode/opencode.json에 넣으세요.",
+            "omp": "OMP CLI를 실행할 때 사용됩니다. 네이티브 채팅은 이 인수를 사용하지 않습니다."
+          },
           "agentPermissionsDescription": "Orca가 agents를 실행할 때 권한 프롬프트를 줄일지, 수동 확인을 유지할지 선택합니다.",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "수동",

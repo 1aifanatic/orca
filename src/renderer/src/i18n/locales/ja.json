@@ -6732,6 +6732,13 @@
           "agentPermissions": "Agent の権限",
           "agentPermissionsInfo": "Agent 権限情報",
           "agentPermissionsTooltip": "起動引数を上書きしている Agent には適用されません。",
+          "argumentsUse": {
+            "claude": "Claude CLI の起動時に使用されます。ネイティブチャットではこれらは使用されません。設定は ~/.claude/settings.json に記述してください。",
+            "codex": "Codex CLI の起動時に使用されます。ネイティブチャットではこれらは使用されません。設定は ~/.codex/config.toml に記述してください。",
+            "grok": "Grok CLI の起動時に使用されます。ネイティブチャットではこれらは使用されません。設定は ~/.grok/config.toml に記述してください。",
+            "opencode": "OpenCode CLI の起動時に使用されます。ネイティブチャットではこれらは使用されません。設定は ~/.config/opencode/opencode.json に記述してください。",
+            "omp": "OMP CLI の起動時に使用されます。ネイティブチャットではこれらは使用されません。"
+          },
           "agentPermissionsDescription": "Orca が権限プロンプトの少ない Agent を起動するか、手動チェックを含む Agent を起動するかを選択します。",
           "agentPermissionsYolo": "Yolo",
           "agentPermissionsManual": "手動",

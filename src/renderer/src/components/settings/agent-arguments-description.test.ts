@@ -3,23 +3,24 @@ import { agentArgumentsDescription } from './agent-arguments-description'
 
 describe('agentArgumentsDescription', () => {
   it.each([
-    ['claude', '~/.claude/settings.json'],
-    ['codex', '~/.codex/config.toml'],
-    ['grok', '~/.grok/config.toml'],
-    ['opencode', '~/.config/opencode/opencode.json']
-  ] as const)('tells %s users where chat settings go instead', (agent, configFile) => {
-    expect(agentArgumentsDescription(agent)).toContain("The updated native chat doesn't use these")
-    expect(agentArgumentsDescription(agent)).toContain(configFile)
+    ['claude', 'Claude', '~/.claude/settings.json'],
+    ['codex', 'Codex', '~/.codex/config.toml'],
+    ['grok', 'Grok', '~/.grok/config.toml'],
+    ['opencode', 'OpenCode', '~/.config/opencode/opencode.json']
+  ] as const)('tells %s users where native chat settings go instead', (agent, name, configFile) => {
+    expect(agentArgumentsDescription(agent)).toBe(
+      `Used when ${name} CLI is launched. Native chat does not use these; put its settings in ${configFile}.`
+    )
   })
 
   it('names no file for an agent whose config Orca has not verified', () => {
     expect(agentArgumentsDescription('omp')).toBe(
-      "Used in terminal tabs and terminal chats. The updated native chat doesn't use these."
+      'Used when OMP CLI is launched. Native chat does not use these.'
     )
   })
 
   // Agents with only terminal chats launch with these Arguments everywhere.
-  it('says nothing for an agent without the updated native chat', () => {
+  it('says nothing for an agent without a native chat', () => {
     expect(agentArgumentsDescription('gemini')).toBeUndefined()
   })
 })
