@@ -21,20 +21,24 @@ function runLoginctlLingerProbe(
   uid: number,
   timeoutMs: number
 ): Pick<ProcessResult, 'code' | 'timedOut' | 'stdout'> {
-  const { code, timedOut, stdout } = runProcessSync({
+  return runProcessSync({
     program: 'loginctl',
     args: ['show-user', String(uid), '-p', 'Linger', '--value'],
     stdio: ['ignore', 'pipe', 'ignore'],
     timeoutMs
   })
-  return { code, timedOut, stdout }
+}
+
+/** The path field of one `/proc/<pid>/cgroup` line (`id:controllers:path`); '' when absent. */
+export function cgroupPathFromProcLine(line: string): string {
+  return line.split(':').slice(2).join(':').trim()
 }
 
 /** True when any of this process's cgroup paths sits inside the uid's user manager. */
 export function cgroupIsInsideUserManager(contents: string, uid: number): boolean {
   const unit = `/user@${uid}.service`
   return contents.split('\n').some((line) => {
-    const path = line.split(':').slice(2).join(':').trim()
+    const path = cgroupPathFromProcLine(line)
     return path.endsWith(unit) || path.includes(`${unit}/`)
   })
 }
