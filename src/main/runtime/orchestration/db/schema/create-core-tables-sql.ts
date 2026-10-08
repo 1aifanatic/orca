@@ -214,7 +214,8 @@ CREATE TABLE IF NOT EXISTS structured_pointer_operations (
   session_id        TEXT NOT NULL,
   operation_id      TEXT NOT NULL,
   batch_fingerprint  TEXT NOT NULL,
-  minted_at_ms      INTEGER NOT NULL
+  minted_at_ms      INTEGER NOT NULL,
+  message_ids_json  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS worker_terminal_archives (

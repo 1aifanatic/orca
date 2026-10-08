@@ -1,24 +1,12 @@
-/**
- * The agent-session operation id one structured worker mailbox's pointer send runs under.
- *
- * Orchestration's own `msg_<hex>` ids do not match the host's `^\d{13}-[0-9a-f]{32}$` shape and are
- * refused before the first send, so the id is minted here instead. It is durable and reused across
- * retries, because the id IS the send's idempotency key: a fresh id for the same nudge would land
- * as a second turn, and the host replays a recorded id's verdict without reaching the provider, so
- * a retry after a failed send starts nothing. It is re-minted only when the send is genuinely a
- * different call: a different batch of mail or session, or one the journal shows is owed again
- * (see `decideStructuredPointerAttempt`). Age never re-mints a send the host recorded: its verdict
- * is the only evidence of whether the nudge landed.
- *
- * Reuse is keyed on the MESSAGE IDS in the batch, never on the pointer body: the body names only
- * how many messages are waiting, so two unrelated same-size batches share a fingerprint. Reusing a
- * live id across them makes the host answer from its operation ledger — `accepted`, with no turn
- * sent — and this lane then marks the new mail delivered. That is silent mail loss.
- */
+// A mailbox keeps its send identity until delivery is proven or its durable mail is consumed.
 
 import { createHash, randomBytes } from 'node:crypto'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../../shared/agent-session-host-authority'
+import {
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
+  AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS
+} from '../../../shared/agent-session-host-authority'
+import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
 import type { OrchestrationDb } from './db'
 import type { StructuredPointerOperationRow } from './db/messages/structured-pointer-operation-store'
 
@@ -28,18 +16,6 @@ export type StructuredPointerSubmission = Pick<
   'clientMessageId' | 'dispatchState' | 'submittedAt'
 >
 
-/**
- * What to do with a mailbox's pointer, given its operation row and the session's recorded sends.
- *
- * - `stamp`: the row's send ran; the batch is pointed.
- * - `park`: the row's send is still in flight; its settlement is the next edge.
- * - `mint`: a new send. The batch or session changed; the agent ran a turn after the row was
- *   minted; an earlier process minted it, so its attempt died with that process; or the host never
- *   recorded it and would now refuse it as too old to admit.
- * - `reuse`: resend under the row's id. Unrecorded, it is a first delivery; recorded as failed, the
- *   host replays that verdict and starts nothing, so a provider that dies on every turn is not
- *   restarted by every status edge, and a user's Stop stays stopped.
- */
 export type StructuredPointerAttempt = 'mint' | 'reuse' | 'stamp' | 'park'
 
 export function decideStructuredPointerAttempt(input: {
@@ -48,16 +24,13 @@ export function decideStructuredPointerAttempt(input: {
   batchFingerprint: string
   /** The session's recorded sends; a rewind may have dropped the row's. */
   submissions: readonly StructuredPointerSubmission[]
+  operationOutcome?: AgentSessionOperationOutcome
   /** Whether this process minted the row's id. */
   mintedByThisProcess: boolean
   now: number
 }): StructuredPointerAttempt {
   const { row, submissions } = input
-  if (
-    !row ||
-    row.session_id !== input.sessionId ||
-    row.batch_fingerprint !== input.batchFingerprint
-  ) {
+  if (!row || row.session_id !== input.sessionId) {
     return 'mint'
   }
   const sent = submissions.find((entry) => entry.clientMessageId === row.operation_id)
@@ -66,6 +39,24 @@ export function decideStructuredPointerAttempt(input: {
   }
   if (sent?.dispatchState === 'pending') {
     return 'park'
+  }
+  // New mail and a process restart cannot turn an uncertain accepted send into a second send.
+  if (
+    sent?.dispatchState === 'unknown' ||
+    (!sent && input.operationOutcome?.status === 'succeeded') ||
+    input.operationOutcome?.status === 'unknown'
+  ) {
+    return row.batch_fingerprint === input.batchFingerprint ? 'reuse' : 'park'
+  }
+  if (
+    !sent &&
+    !input.operationOutcome &&
+    input.now - row.minted_at_ms > AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS
+  ) {
+    return 'park'
+  }
+  if (row.batch_fingerprint !== input.batchFingerprint) {
+    return 'mint'
   }
   const ranSince = submissions.some(
     (entry) => entry.dispatchState === 'accepted' && entry.submittedAt > row.minted_at_ms
@@ -91,7 +82,7 @@ export function structuredPointerBatchFingerprint(
 
 export type StructuredPointerOperation =
   | { kind: 'send'; operationId: string }
-  | { kind: 'stamp' }
+  | { kind: 'stamp'; messageIds: string[] }
   | { kind: 'park' }
 
 export function resolveStructuredPointerOperation(args: {
@@ -101,6 +92,7 @@ export function resolveStructuredPointerOperation(args: {
   /** The rows this nudge stands for; batch identity, not the body, decides reuse. */
   messageIds: readonly string[]
   submissions: readonly StructuredPointerSubmission[]
+  operationOutcome?: AgentSessionOperationOutcome
   /** The operation id this process last sent for this mailbox, if any. */
   sentByThisProcess: string | undefined
   now?: number
@@ -113,11 +105,18 @@ export function resolveStructuredPointerOperation(args: {
     sessionId: args.sessionId,
     batchFingerprint,
     submissions: args.submissions,
+    operationOutcome: args.operationOutcome,
     mintedByThisProcess: stored?.operation_id === args.sentByThisProcess,
     now
   })
-  if (attempt === 'stamp' || attempt === 'park') {
-    return { kind: attempt }
+  if (attempt === 'stamp') {
+    const messageIds =
+      stored?.message_ids ??
+      (stored?.batch_fingerprint === batchFingerprint ? args.messageIds : null)
+    return messageIds ? { kind: 'stamp', messageIds: [...messageIds] } : { kind: 'park' }
+  }
+  if (attempt === 'park') {
+    return { kind: 'park' }
   }
   if (attempt === 'reuse' && stored) {
     return { kind: 'send', operationId: stored.operation_id }
@@ -128,6 +127,7 @@ export function resolveStructuredPointerOperation(args: {
     session_id: args.sessionId,
     operation_id: operationId,
     batch_fingerprint: batchFingerprint,
+    message_ids: [...args.messageIds],
     // On the journal's clock too, so a backward clock step cannot date an earlier turn after it.
     minted_at_ms: args.submissions.reduce(
       (latest, entry) => Math.max(latest, entry.submittedAt),

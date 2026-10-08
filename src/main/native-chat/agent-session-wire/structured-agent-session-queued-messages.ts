@@ -17,7 +17,6 @@ import { createStructuredAgentSessionOperationId } from '../../../shared/structu
 import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
 import { structuredAgentSessionSendBlock } from './structured-agent-session-send-preparation'
-import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-message-table'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -33,11 +32,6 @@ import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { agentSessionAttachmentExpiredRefusal } from './structured-agent-session-turns'
 import { isAgentSessionAttachmentExpiredError } from '../agent-session-attachments/agent-session-attachment-claims'
-
-/** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
- *  serialized blocks); refused readably rather than trimmed. */
-export const QUEUED_MESSAGES_MAX_COUNT = 20
-export const QUEUED_MESSAGES_MAX_TOTAL_BYTES = 1024 * 1024
 
 /** Text-only v1: any image block routes to the immediate path. */
 export function queuedMessageBodyIsTextOnly(body: AgentJournalMessageItem): boolean {
@@ -168,25 +162,6 @@ export function shouldQueueStructuredAgentSessionSend(input: {
   return oldestActionableQueuedMessage(input.journal) !== null
 }
 
-/** The accept-side budget refusal, or null when the draft fits. */
-export function queuedMessageBudgetRefusal(
-  journal: AgentSessionJournal,
-  body: AgentJournalMessageItem
-): AgentSessionWireRefusal | null {
-  const unsettled = journal.queuedMessages.list().filter(isUnsettledQueuedMessage)
-  const bytes = unsettled.reduce(
-    (sum, row) => sum + Buffer.byteLength(JSON.stringify(row.body.blocks), 'utf8'),
-    Buffer.byteLength(JSON.stringify(body.blocks), 'utf8')
-  )
-  if (unsettled.length >= QUEUED_MESSAGES_MAX_COUNT || bytes > QUEUED_MESSAGES_MAX_TOTAL_BYTES) {
-    return {
-      code: 'agent_session_operation_invalid',
-      message: 'The message queue is full. Send again after the current turn ends.'
-    }
-  }
-  return null
-}
-
 /**
  * The accept branch: a capable send while the session is working (or behind an
  * actionable backlog) becomes a draft instead of a submission. Returns null for
@@ -232,10 +207,6 @@ export async function maybeQueueStructuredAgentSessionSend(
     })
   ) {
     return null
-  }
-  const refusal = queuedMessageBudgetRefusal(ctx.journal, params.body)
-  if (refusal) {
-    return { ok: false, refusal }
   }
   // The insert notifies through the journal's commit listener: publication and
   // the drain re-derive with no call here to forget.

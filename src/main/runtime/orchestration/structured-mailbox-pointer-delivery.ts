@@ -1,18 +1,7 @@
-/**
- * The pointer-delivery lane for workers that ARE a structured agent session.
- *
- * The PTY lane types the nudge into a live pane and reads the idle edge off the terminal title.
- * Neither exists here, so this is a sibling of `OrchestrationMailboxPointerDelivery` rather than a
- * branch inside it: batch selection and the pointer text are literally shared, and everything
- * below it is different — the nudge goes through the chat's own send, as a person's message does,
- * and the retry edge is the journal.
- *
- * Coordinators are in scope here, unlike the PTY lane's reasoning: a PTY coordinator blocks in
- * `check --wait`, where a waiter preempts pointer delivery, but a structured coordinator is a chat
- * session whose turn ends — so nothing else would ever prompt it for its own `run:` mail.
- */
+// Structured mail uses the chat send path, but waits in its mailbox while the chat is busy.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
 import type { MessageRow, OrchestrationDb } from './db'
 import { formatMessagePointer } from './formatter'
 import type { OrchestrationCliCommand } from './cli-command'
@@ -37,8 +26,7 @@ export type StructuredPointerTarget = {
   sessionId: string
   /**
    * The dispatch whose mailbox this is, or null for direct peer mail addressed to the worker's own
-   * handle outside any dispatch. Nothing downstream needs a dispatch to deliver — it only scopes
-   * the operation-ledger budget — so a worker between dispatches is nudged, not dropped.
+   * handle outside any dispatch. The dispatch scopes receipt ownership, not delivery eligibility.
    */
   dispatchId: string | null
 }
@@ -50,18 +38,26 @@ type ParkedPointerDelivery = {
 
 export type StructuredPointerSendOutcome =
   | { kind: 'sent'; state: StructuredDispatchState }
-  /** The chat's queue took it, as it takes a person's message. */
+  | { kind: 'deferred' }
+  /** Replay of a pointer an earlier build already queued. */
   | { kind: 'queued' }
   | { kind: 'unattached' }
 
 export type StructuredPointerSessionFacts = {
   /** Every send the session recorded, oldest first: what the lane's own sends settled as. */
   submissions: readonly StructuredPointerSubmission[]
+  operationOutcome?: AgentSessionOperationOutcome
 }
 
 export type StructuredMailboxPointerHost = {
   /** `null` when the session cannot be read. */
-  readSessionFacts: (sessionId: string) => Promise<StructuredPointerSessionFacts | null>
+  readSessionFacts: (
+    sessionId: string,
+    operation?: {
+      dispatchId: string | null
+      operationId: string
+    }
+  ) => Promise<StructuredPointerSessionFacts | null>
   send: (input: {
     sessionId: string
     dispatchId: string | null
@@ -121,8 +117,12 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     if (!target) {
       return false
     }
-    void this.deliver(mailboxHandle, target, reservedTypes).catch(() => {
-      // Durable mail stays available to an explicit check or the next settle edge.
+    void this.deliver(mailboxHandle, target, reservedTypes).catch((error: unknown) => {
+      console.warn('[orchestration] structured mail delivery failed', {
+        mailboxHandle,
+        sessionId: target.sessionId,
+        error
+      })
     })
     return true
   }
@@ -141,7 +141,13 @@ export class OrchestrationStructuredMailboxPointerDelivery<
         // explicit check is what retries it, not this session's journal.
         continue
       }
-      void this.deliver(mailboxHandle, target, parked.reservedTypes).catch(() => undefined)
+      void this.deliver(mailboxHandle, target, parked.reservedTypes).catch((error: unknown) => {
+        console.warn('[orchestration] structured mail redrive failed', {
+          mailboxHandle,
+          sessionId,
+          error
+        })
+      })
     }
   }
 
@@ -185,17 +191,28 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       reservedTypes
     })
     if (unread.length === 0) {
+      if (db.getUndeliveredUnreadMessages(mailboxHandle, undefined, { limit: 1 }).length === 0) {
+        db.deleteStructuredPointerOperation(mailboxHandle)
+        this.sentOperationIds.delete(mailboxHandle)
+      }
       return
     }
     this.inFlight.add(mailboxHandle)
+    let redrive = false
     try {
-      await this.attempt(db, mailboxHandle, target, unread, reservedTypes)
+      redrive = await this.attempt(db, mailboxHandle, target, unread, reservedTypes)
     } finally {
       this.inFlight.delete(mailboxHandle)
       // A thrown attempt follows too; its own failure is what still propagates.
       await this.followMovedTarget(mailboxHandle, target, reservedTypes, attemptedSessions).catch(
         () => undefined
       )
+    }
+    if (
+      redrive &&
+      this.deps.resolveStructuredTarget(mailboxHandle)?.sessionId === target.sessionId
+    ) {
+      await this.deliver(mailboxHandle, target, reservedTypes, attemptedSessions)
     }
   }
 
@@ -228,17 +245,35 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     target: StructuredPointerTarget,
     unread: readonly MessageRow[],
     reservedTypes: ReadonlySet<string> | undefined
-  ): Promise<void> {
+  ): Promise<boolean> {
     const sessionId = target.sessionId
-    const session = await this.deps.host.readSessionFacts(sessionId)
+    let stored = db.getStructuredPointerOperation(mailboxHandle)
+    if (
+      stored?.message_ids &&
+      !stored.message_ids.some((id) => db.areUnreadMessages(mailboxHandle, [id]))
+    ) {
+      // A check or lifecycle supersession discharged this batch, regardless of its send's verdict.
+      db.deleteStructuredPointerOperation(mailboxHandle)
+      this.sentOperationIds.delete(mailboxHandle)
+      stored = undefined
+    }
+    const session = await this.deps.host.readSessionFacts(
+      sessionId,
+      stored?.session_id === sessionId
+        ? {
+            dispatchId: target.dispatchId,
+            operationId: stored.operation_id
+          }
+        : undefined
+    )
     if (!session) {
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
-      return
+      return false
     }
     const fence = this.deps.host.currentFence(sessionId)
     if (fence === null) {
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
-      return
+      return false
     }
     const body: AgentJournalMessageItem = {
       kind: 'message',
@@ -264,18 +299,19 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       sessionId,
       messageIds: staged,
       submissions: session.submissions,
+      operationOutcome: session.operationOutcome,
       sentByThisProcess: this.sentOperationIds.get(mailboxHandle)
     })
     if (operation.kind === 'stamp') {
       // A send this lane gave up waiting on ran after all.
-      db.markAsDelivered(staged)
+      db.markAsDelivered(operation.messageIds)
       db.deleteStructuredPointerOperation(mailboxHandle)
       this.sentOperationIds.delete(mailboxHandle)
-      return
+      return true
     }
     if (operation.kind === 'park') {
       this.retain(mailboxHandle, sessionId, 'turn-unsettled', reservedTypes)
-      return
+      return false
     }
     this.sentOperationIds.set(mailboxHandle, operation.operationId)
     const outcome = await this.deps.host.send({
@@ -285,21 +321,26 @@ export class OrchestrationStructuredMailboxPointerDelivery<
       expectedRuntimeFence: fence,
       body
     })
+    if (outcome.kind === 'deferred') {
+      this.retain(mailboxHandle, sessionId, 'turn-unsettled', reservedTypes)
+      return false
+    }
     if (outcome.kind === 'unattached') {
       this.retain(mailboxHandle, sessionId, 'session-not-attached', reservedTypes)
-      return
+      return false
     }
-    // A queued pointer is the chat's queue's to send, as a person's queued message is.
+    // A legacy queued pointer already belongs to the chat; a new pointer never queues.
     if (outcome.kind === 'sent' && !structuredDispatchDelivered(outcome.state)) {
       // The row stays: resending under its id replays this verdict and starts nothing.
       this.retain(mailboxHandle, sessionId, retainReasonForDispatch(outcome.state), reservedTypes)
-      return
+      return false
     }
     db.markAsDelivered(staged)
     // The nudge landed as its own turn, so the next settle edge is the natural retry point for
     // anything that arrives while it runs.
     db.deleteStructuredPointerOperation(mailboxHandle)
     this.sentOperationIds.delete(mailboxHandle)
+    return false
   }
 
   /**
