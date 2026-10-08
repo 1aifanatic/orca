@@ -473,6 +473,7 @@ export type AgentSessionOptionsResult = {
   /** Session/account/transport support. Absent means unknown, never unsupported. */
   fastModeSupport?: AgentSessionFastModeSupport
   current: {
+    /** Empty when neither a user selection nor the provider identifies this child's model. */
     model: string
     effort?: string
     /** Canonical preference for the next turn. Explicit false is meaningful. */

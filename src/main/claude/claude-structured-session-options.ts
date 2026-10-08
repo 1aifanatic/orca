@@ -10,6 +10,8 @@ import {
   record,
   savedOrSeedModels,
   text,
+  wireClaudeModel,
+  wireClaudeModels,
   type ListedModel
 } from './claude-structured-model-catalog'
 import type { ClaudeSession } from './claude-structured-session-state'
@@ -227,22 +229,6 @@ export function claudeCatalogAdmitsModel(models: readonly ListedModel[], modelId
 
 type WireClaudeModel = AgentSessionOptionsResult['models'][number]
 
-function wireClaudeModel(entry: ListedModel): WireClaudeModel {
-  return {
-    id: entry.id,
-    label: entry.label,
-    ...(entry.description ? { description: entry.description } : {}),
-    isDefault: entry.isDefault,
-    efforts: entry.efforts,
-    ...(entry.defaultEffort ? { defaultEffort: entry.defaultEffort } : {}),
-    ...(entry.supportsFastMode !== undefined ? { supportsFastMode: entry.supportsFastMode } : {})
-  }
-}
-
-function wireClaudeModels(models: readonly ListedModel[]): WireClaudeModel[] {
-  return models.map(wireClaudeModel)
-}
-
 /** The built-in models a running child lists when the CLI gives it none; a chat at rest with no
  *  catalog lists the same. */
 export function claudeFallbackModelOptions(): WireClaudeModel[] {
@@ -377,7 +363,9 @@ export function claudeStructuredSessionOptionsFrom(
       : [])
   ]
   return {
-    models: wireClaudeModels(models),
+    models: wireClaudeModels(
+      current.id === undefined ? models.map((row) => ({ ...row, isDefault: false })) : models
+    ),
     ...(support ? { fastModeSupport: support } : {}),
     current: {
       model,

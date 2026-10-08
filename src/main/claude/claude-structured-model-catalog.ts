@@ -3,7 +3,7 @@ import type {
   AgentSessionOptionChoice
 } from '../../shared/agent-session-wire'
 import { CLAUDE_SESSION_OPTION_CATALOG } from '../../shared/agent-session-option-catalog-claude-codex'
-import type { CatalogModel } from '../../shared/agent-session-option-catalog-types'
+import type { CatalogOption } from '../../shared/agent-session-option-catalog-types'
 import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 export type ListedModel = AgentSessionModelOption & { resolvedModel: string | null }
@@ -79,8 +79,8 @@ export function matchListedModel(
   )
 }
 
-function seedEfforts(model: CatalogModel): AgentSessionOptionChoice[] {
-  const effort = model.options.find((option) => option.id === 'effort')
+function seedEfforts(options: readonly CatalogOption[]): AgentSessionOptionChoice[] {
+  const effort = options.find((option) => option.id === 'effort')
   return effort?.kind.type === 'select' ? effort.kind.choices : []
 }
 
@@ -90,17 +90,26 @@ export function seedModels(): ListedModel[] {
     label: model.label,
     ...(model.description ? { description: model.description } : {}),
     isDefault: model.isDefault === true,
-    efforts: seedEfforts(model),
+    efforts: seedEfforts(model.options),
     resolvedModel: null
   }))
 }
 
-/** A missing listing keeps this child's pinned account catalog usable. */
+/** Saved names remain choices; only this child's listing can restrict capabilities. */
 export function savedOrSeedModels(
   access: AgentModelCatalogSessionAccess | undefined
 ): ListedModel[] {
   const saved = access?.store.get(access.fingerprint)
-  return saved?.models.map((model) => ({ ...model, resolvedModel: null })) ?? seedModels()
+  return (
+    saved?.models.map((model) => ({
+      id: model.id,
+      label: model.label,
+      ...(model.description ? { description: model.description } : {}),
+      isDefault: false,
+      efforts: seedEfforts(CLAUDE_SESSION_OPTION_CATALOG.unknownModelOptions ?? []),
+      resolvedModel: null
+    })) ?? seedModels()
+  )
 }
 
 export function currentModelId(models: ListedModel[], reportedModel: string | undefined): string {
@@ -112,7 +121,22 @@ export function currentModelId(models: ListedModel[], reportedModel: string | un
           (reportedModel === 'default' && model.isDefault)
       )
     : undefined
-  return (
-    matched?.id ?? reportedModel ?? models.find((model) => model.isDefault)?.id ?? models[0]!.id
-  )
+  // A catalog default cannot identify what environment or settings made this child run.
+  return matched?.id ?? reportedModel ?? ''
+}
+
+export function wireClaudeModel(entry: ListedModel): AgentSessionModelOption {
+  return {
+    id: entry.id,
+    label: entry.label,
+    ...(entry.description ? { description: entry.description } : {}),
+    isDefault: entry.isDefault,
+    efforts: entry.efforts,
+    ...(entry.defaultEffort ? { defaultEffort: entry.defaultEffort } : {}),
+    ...(entry.supportsFastMode !== undefined ? { supportsFastMode: entry.supportsFastMode } : {})
+  }
+}
+
+export function wireClaudeModels(models: readonly ListedModel[]): AgentSessionModelOption[] {
+  return models.map(wireClaudeModel)
 }
