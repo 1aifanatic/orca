@@ -97,18 +97,24 @@ for (const surface of [
       if (!environment) {
         throw new Error('Missing managed environment')
       }
-      const convertedFolderId = await page.evaluate(
-        (folderPath) =>
-          window.__store
-            ?.getState()
-            .folderWorkspaces.find((folder) => folder.folderPath === folderPath)?.id,
-        folderPath
-      )
-      if (!convertedFolderId) {
+      const readConvertedFolderId = () =>
+        page.evaluate(
+          (folderPath) =>
+            window.__store
+              ?.getState()
+              .folderWorkspaces.find((folder) => folder.folderPath === folderPath)?.id,
+          folderPath
+        )
+      if (surface === 'folder-menu') {
+        await expect.poll(readConvertedFolderId, { timeout: 30_000 }).toBeTruthy()
+      }
+      const convertedFolderId = surface === 'folder-menu' ? await readConvertedFolderId() : null
+      if (surface === 'folder-menu' && !convertedFolderId) {
         throw new Error('Missing converted folder')
       }
-      const workspaceId =
-        surface === 'folder-menu' ? folderWorkspaceKey(convertedFolderId) : seeded.worktreeId
+      const workspaceId = convertedFolderId
+        ? folderWorkspaceKey(convertedFolderId)
+        : seeded.worktreeId
       const content = await serverCall(page, environment.id, 'files.read', {
         worktree: `id:${workspaceId}`,
         relativePath: 'README.md'
