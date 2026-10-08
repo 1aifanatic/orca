@@ -1022,6 +1022,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'linear.testConnection': WorkspaceSelection,
   'linear.updateIssue': IssueUpdateOfLinearParams,
   'managedServer.cancelStop': ManagedServerSelector,
+  'managedServer.forget': ManagedServerSelector,
   'managedServer.recover': ManagedServerRecover,
   'managedServer.rollback': ManagedServerSelector,
   'managedServer.status': ManagedServerSelector,

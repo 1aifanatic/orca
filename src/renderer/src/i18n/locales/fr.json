@@ -12418,7 +12418,11 @@
             "confirmRestore": "Restaurer l'instantané et redémarrer",
             "keepState": "Conserver l'état",
             "statusUnknown": "Statut inconnu",
-            "checking": "Vérification…"
+            "checking": "Vérification…",
+            "forget": "Oublier…",
+            "confirmForget": "Oublier sur ce poste",
+            "keepLinked": "Garder lié",
+            "forgetDescription": "Dissocie ce serveur ici sans contacter son hôte. Si l'hôte revient, le serveur y tourne peut-être encore."
           },
           "title": "Serveurs gérés",
           "description": "Orca installe et exécute un serveur sur un hôte SSH vide, et le maintient à jour.",

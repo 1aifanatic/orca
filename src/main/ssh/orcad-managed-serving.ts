@@ -33,6 +33,10 @@ export type OrcadManagedServingInput = {
 export const MANAGED_ORCAD_FENCED_DETAIL =
   'An update, rollback or recovery holds this host; it was not started.'
 
+/** The host has no active version, e.g. another desktop stopped it; a connect redeploys it. */
+export const MANAGED_ORCAD_NOT_ACTIVATED_DETAIL =
+  'This host has no activated managed server to start.'
+
 const PROBE_TIMEOUT_MS = 5_000
 // Why: a connect checks right after its fresh tunnel did; one verdict serves both, on that
 // transport and port only, so a kill, reboot or rebind is never answered from cache.
@@ -153,7 +157,7 @@ function wakeRefusal(outcome: 'not-activated' | 'unverifiable' | 'fenced'): stri
     case 'fenced':
       return MANAGED_ORCAD_FENCED_DETAIL
     case 'not-activated':
-      return 'This host has no activated managed server to start.'
+      return MANAGED_ORCAD_NOT_ACTIVATED_DETAIL
     case 'unverifiable':
       return 'Whether the server process is still running could not be proven, so it was not started.'
   }
