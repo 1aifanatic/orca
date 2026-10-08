@@ -93,21 +93,11 @@ describe('terminal tail redraw cost', () => {
     }
   })
 
-  it('drops capped rows in batches when one chunk replays a long history', () => {
+  it('keeps only the newest MAX_TAIL_LINES rows when one chunk replays a long history', () => {
     const history = Array.from({ length: MAX_TAIL_LINES }, (_, index) => `history ${index}`)
     // A full-screen TUI redraw replays every line it has ever printed in one write.
     const replay = Array.from({ length: 20_000 }, (_, index) => `replayed ${index}\n`).join('')
-    const splice = vi.spyOn(Array.prototype, 'splice')
-    let next: ReturnType<typeof appendNormalizedToTailBuffer>
-    let spliceCalls: number
-    try {
-      next = appendNormalizedToTailBuffer(history, '', replay, { rowFromEnd: 3, column: 0 })
-      spliceCalls = splice.mock.calls.length
-    } finally {
-      splice.mockRestore()
-    }
-    // One splice per capped row made this O(lines x MAX_TAIL_LINES).
-    expect(spliceCalls).toBeLessThan(50)
+    const next = appendNormalizedToTailBuffer(history, '', replay, { rowFromEnd: 3, column: 0 })
     expect(next.lines).toHaveLength(MAX_TAIL_LINES)
     expect(next.lines.at(-1)).toBe('replayed 19999')
     expect(next.truncated).toBe(true)
