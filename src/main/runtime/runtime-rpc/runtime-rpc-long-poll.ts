@@ -53,16 +53,6 @@ export function classifyRuntimeLongPoll(request: RpcRequest): RuntimeLongPollCla
   ) {
     return 'wait'
   }
-  // A CLI delete that waits for Git's checkout removal can outlast the 30 s idle timer.
-  if (
-    request.method === 'worktree.rm' &&
-    typeof request.params === 'object' &&
-    request.params !== null &&
-    'waitForRemoval' in request.params &&
-    request.params.waitForRemoval === true
-  ) {
-    return 'wait'
-  }
   if (request.method === 'browser.clientHost.attach') {
     return 'browser-host'
   }

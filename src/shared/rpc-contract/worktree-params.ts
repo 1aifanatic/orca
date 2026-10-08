@@ -180,10 +180,17 @@ export const WorktreeRemove = WorktreeSelector.extend({
   runHooks: OptionalBoolean,
   // Why (#19334): a failed archive hook blocks removal. This waives that refusal and is recorded
   // in the result; it is NOT `force`, and it does not decide whether the hook runs.
-  allowFailedArchiveHook: OptionalBoolean,
-  // Why: a caller that acts on the reply (the CLI) needs the delete's real outcome, not its
-  // acceptance. Optional, so an older host ignores it and still answers `removing: true`.
-  waitForRemoval: OptionalBoolean
+  allowFailedArchiveHook: OptionalBoolean
+})
+
+// Why an id, not a selector: the removed workspace no longer resolves, so the caller names the id
+// it resolved before asking for the removal.
+export const WorktreeRemovalStateParams = z.object({
+  worktreeId: z
+    .unknown()
+    .transform((v) => (typeof v === 'string' ? v : ''))
+    .pipe(z.string().min(1, 'Missing worktree id')),
+  hostId: OptionalExecutionHostId
 })
 
 export const WorktreeForceDeleteBranch = WorktreeSelector.extend({

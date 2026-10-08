@@ -1,10 +1,10 @@
-import type { RuntimeWorktreeRemoveResult } from '../../shared/runtime-types'
-import { WORKTREE_REMOVAL_WAIT_LIMIT_MS } from '../../shared/worktree/removal'
+import { setTimeout as delay } from 'node:timers/promises'
+import type {
+  RuntimeWorktreeRemovalState,
+  RuntimeWorktreeRemoveResult
+} from '../../shared/runtime-types'
+import { isRecoverableRemoteRuntimeConnectionError } from '../../shared/remote-runtime-client-error-classification'
 import { RuntimeClientError, type RuntimeClient, type RuntimeRpcSuccess } from '../runtime-client'
-
-// Why: the host bounds the wait itself and answers `waitExpired`; this only catches a host that
-// stops answering altogether, so it must outlast the host's own limit.
-export const WORKTREE_REMOVAL_WAIT_TIMEOUT_MS = WORKTREE_REMOVAL_WAIT_LIMIT_MS + 60_000
 
 export type WorktreeRemovalRequest = {
   worktree: string
@@ -15,31 +15,69 @@ export type WorktreeRemovalRequest = {
   allowFailedArchiveHook: boolean
 }
 
+// Why short first: most deletes finish in well under a second; a long one settles to 1 s polls.
+const POLL_DELAYS_MS = [100, 250, 500, 1_000]
+const UNREACHABLE_POLLS_BEFORE_GIVING_UP = 3
+
 /**
- * Removes the worktree and answers with the delete's outcome: `removed: true` only once Git
- * has finished, a non-zero error if it failed or is still running past the wait. A host that
- * predates `waitForRemoval` still answers on acceptance with `removing: true`; that is reported
- * as not yet removed rather than as a removal.
+ * Removes the worktree and answers with the delete's outcome: `removed: true` only once Git has
+ * finished, a non-zero error if it failed. A background delete is followed by polling
+ * `worktree.removalState`, with no total limit, so a long delete is never cut off and the wait
+ * holds no connection on the host. A host that predates that read answers on acceptance; that is
+ * reported as not yet removed rather than as a removal.
  */
 export async function removeWorktreeAndWait(
   client: RuntimeClient,
-  request: WorktreeRemovalRequest
+  request: WorktreeRemovalRequest & { worktreeId: string }
 ): Promise<RuntimeRpcSuccess<RuntimeWorktreeRemoveResult>> {
-  const response = await client
-    .call<RuntimeWorktreeRemoveResult>(
-      'worktree.rm',
-      { ...request, waitForRemoval: true },
-      { timeoutMs: WORKTREE_REMOVAL_WAIT_TIMEOUT_MS }
-    )
-    .catch((error: unknown) => {
-      throw isRuntimeTimeout(error) ? unansweredRemovalError(request.worktree) : error
-    })
-  if (response.result.waitExpired) {
-    throw stillRunningError(request.worktree)
+  const { worktreeId, ...params } = request
+  const response = await client.call<RuntimeWorktreeRemoveResult>('worktree.rm', params)
+  if (!response.result.removing) {
+    return response
   }
-  return response.result.removing
-    ? { ...response, result: { ...response.result, removed: false } }
-    : response
+  let unreachable = 0
+  for (let attempt = 0; ; attempt += 1) {
+    await delay(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)])
+    const read = await readRemovalState(client, worktreeId, request.hostId).then(
+      (state) => ({ state }),
+      (error: unknown) => ({ error })
+    )
+    if ('error' in read) {
+      unreachable = isDroppedConnection(read.error) ? unreachable + 1 : 0
+      // Why retry: a socket at its connection limit, or a network blip on a paired connection, drops
+      // a connection the same way a gone app does.
+      if (unreachable > 0 && unreachable < UNREACHABLE_POLLS_BEFORE_GIVING_UP) {
+        continue
+      }
+      throw unconfirmedRemovalError(request.worktree, read.error)
+    }
+    unreachable = 0
+    const { state } = read
+    if (!state) {
+      return { ...response, result: { ...response.result, removed: false } }
+    }
+    if (state.state === 'removing') {
+      continue
+    }
+    if (state.state === 'failed') {
+      throw new RuntimeClientError('worktree_removal_failed', state.message)
+    }
+    if (state.state === 'present') {
+      throw new RuntimeClientError(
+        'worktree_removal_failed',
+        `Orca did not remove ${request.worktree}: the workspace is still there and nothing is deleting it. Check \`orca worktree show --worktree ${request.worktree}\` before trying again.`
+      )
+    }
+    const { removing: _removing, ...accepted } = response.result
+    return {
+      ...response,
+      result: {
+        ...accepted,
+        removed: true,
+        ...(state.preservedBranch ? { preservedBranch: state.preservedBranch } : {})
+      }
+    }
+  }
 }
 
 export function formatWorktreeRemoval(value: RuntimeWorktreeRemoveResult): string {
@@ -48,27 +86,44 @@ export function formatWorktreeRemoval(value: RuntimeWorktreeRemoveResult): strin
     : `removed: ${value.removed}`
 }
 
-/** A wait that ran out says the removal may still be running, not that it failed. */
-function stillRunningError(worktree: string): RuntimeClientError {
-  return new RuntimeClientError(
-    'worktree_removal_still_running',
-    `Orca is still removing ${worktree}; it did not finish within ${WORKTREE_REMOVAL_WAIT_LIMIT_MS / 60_000} minutes. Check \`orca worktree show --worktree ${worktree}\` before retrying.`
-  )
+/** Undefined from a host that predates the read. */
+async function readRemovalState(
+  client: RuntimeClient,
+  worktreeId: string,
+  hostId: string
+): Promise<RuntimeWorktreeRemovalState | undefined> {
+  try {
+    return (
+      await client.call<RuntimeWorktreeRemovalState>('worktree.removalState', {
+        worktreeId,
+        hostId
+      })
+    ).result
+  } catch (error) {
+    if (error instanceof RuntimeClientError && error.code === 'method_not_found') {
+      return undefined
+    }
+    throw error
+  }
 }
 
-// Why: only a host that stops answering reaches this; it may not have started the delete at all.
-function unansweredRemovalError(worktree: string): RuntimeClientError {
-  return new RuntimeClientError(
-    'worktree_removal_still_running',
-    `Orca stopped answering while removing ${worktree}; the removal may still be running. Check \`orca worktree show --worktree ${worktree}\` before retrying.`
-  )
-}
-
-function isRuntimeTimeout(error: unknown): boolean {
+// Why not timeouts: a request that waited out its whole timeout already says the app stopped.
+function isDroppedConnection(error: unknown): boolean {
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'runtime_timeout'
+    error instanceof RuntimeClientError &&
+    error.code !== 'runtime_timeout' &&
+    error.code !== 'timeout' &&
+    isRecoverableRemoteRuntimeConnectionError(error)
+  )
+}
+
+// Why not a failure: the host owns the delete and keeps it running whatever happens to this read.
+function unconfirmedRemovalError(worktree: string, error: unknown): RuntimeClientError {
+  const stopped =
+    error instanceof RuntimeClientError && isRecoverableRemoteRuntimeConnectionError(error)
+  return new RuntimeClientError(
+    'worktree_removal_unconfirmed',
+    `Orca accepted the removal of ${worktree}, but ${stopped ? 'the Orca app stopped responding' : 'could not report how it ended'}. The removal may still be running; once Orca responds, run \`orca worktree rm --worktree ${worktree}\` again to wait for it.`,
+    { cause: error instanceof Error ? error.message : String(error) }
   )
 }

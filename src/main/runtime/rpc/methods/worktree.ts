@@ -17,6 +17,7 @@ import { WorktreeCreate, WorktreePrefetchCreateBase } from './worktree-create-sc
 import {
   WorktreeActivate,
   WorktreeForceDeleteBranch,
+  WorktreeRemovalStateParams,
   WorktreeRemove,
   WorktreeResolveMrBase,
   WorktreeResolvePrBase,
@@ -27,7 +28,6 @@ import {
 } from './worktree-schemas'
 import { WORKTREE_CATALOG_METHODS } from './worktree-catalog-methods'
 import { readsWorktreeRemovalMarker } from '../worktree-removal-marker-projection'
-import { settleRemovalWithinWaitLimit } from './worktree-removal-wait'
 
 export const WORKTREE_METHODS = [
   ...WORKTREE_CATALOG_METHODS,
@@ -256,26 +256,38 @@ export const WORKTREE_METHODS = [
       // resolution costs a scan and throws for an id two hosts share. Other selectors stay unstamped.
       const explicitWorktreeId = getExplicitWorktreeIdSelector(params.worktree)
       const repoId = explicitWorktreeId ? splitWorktreeId(explicitWorktreeId)?.repoId : undefined
-      const removal = runtime.removeManagedWorktree(params.worktree, {
+      const result = await runtime.removeManagedWorktree(params.worktree, {
         force: params.force === true,
         runHooks: params.runHooks === true,
         allowUnverifiedPtyStop: params.allowUnverifiedPtyStop === true,
         allowFailedArchiveHook: params.allowFailedArchiveHook === true,
         ...(resolvedHostId ? { hostId: resolvedHostId } : {}),
-        // Why: only a client that shows the `removing` marker, or one that asks for the outcome,
-        // can wait out Git's delete; older clients get the acceptance and never see the row again.
-        ...(readsWorktreeRemovalMarker(context) || params.waitForRemoval === true
-          ? { waitForBackgroundRemoval: true }
-          : {})
+        // Why: only a client that shows the `removing` marker can wait out Git's delete; older
+        // clients get the acceptance and never see the row again.
+        ...(readsWorktreeRemovalMarker(context) ? { waitForBackgroundRemoval: true } : {})
       })
-      const result =
-        params.waitForRemoval === true ? await settleRemovalWithinWaitLimit(removal) : await removal
       return {
-        removed: !('waitExpired' in result),
+        removed: true,
         ...result,
         ...(repoId ? { catalogVersion: getLocalWorktreeCatalogVersion(repoId) } : {})
       }
     }
+  }),
+  // Why a read, not a held `worktree.rm`: a caller waiting out a long delete polls this, so it holds
+  // no connection or long-poll slot while Git works.
+  defineMethod({
+    name: 'worktree.removalState',
+    params: WorktreeRemovalStateParams,
+    handler: async (params, { runtime }) =>
+      runtime.readWorktreeRemovalState(
+        params.worktreeId,
+        // Same host spelling worktree.rm acted on, or a paired caller reads the wrong host.
+        resolvePairedCallerHostId(
+          () => runtime.listRepos(),
+          `id:${params.worktreeId}`,
+          params.hostId
+        )
+      )
   }),
   defineMethod({
     name: 'worktree.forceDeleteBranch',

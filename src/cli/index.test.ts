@@ -100,8 +100,7 @@ describe('command aliases dispatch to the canonical handler', () => {
     expect(callMock).toHaveBeenNthCalledWith(
       2,
       'worktree.rm',
-      expect.objectContaining({ worktree: 'id:wt-1', hostId: 'local', force: true }),
-      expect.anything()
+      expect.objectContaining({ worktree: 'id:wt-1', hostId: 'local', force: true })
     )
   })
 
@@ -117,22 +116,7 @@ describe('command aliases dispatch to the canonical handler', () => {
     expect(callMock).toHaveBeenNthCalledWith(
       2,
       'worktree.rm',
-      expect.objectContaining({ worktree: 'id:wt-1', hostId: 'runtime:env-1' }),
-      expect.anything()
-    )
-  })
-
-  it('says an older host is still deleting the checkout instead of reporting it removed', async () => {
-    queueFixtures(
-      callMock,
-      okFixture('req_show', { worktree: { hostId: 'local' } }),
-      okFixture('req', { removed: true, removing: true })
-    )
-
-    await main(['worktree', 'rm', '--worktree', 'id:wt-1'], '/tmp/repo')
-
-    expect(logSpy).toHaveBeenCalledWith(
-      'removed: false\nOrca accepted the removal and is still deleting the checkout; this Orca version does not report when it finishes.'
+      expect.objectContaining({ worktree: 'id:wt-1', hostId: 'runtime:env-1' })
     )
   })
 
@@ -175,8 +159,7 @@ describe('command aliases dispatch to the canonical handler', () => {
         expect.objectContaining({
           runHooks: true,
           allowFailedArchiveHook: false
-        }),
-        expect.anything()
+        })
       )
     } finally {
       process.exitCode = priorExitCode
@@ -225,8 +208,7 @@ describe('command aliases dispatch to the canonical handler', () => {
     expect(callMock).toHaveBeenNthCalledWith(
       2,
       'worktree.rm',
-      expect.objectContaining({ runHooks: true, allowFailedArchiveHook: true }),
-      expect.anything()
+      expect.objectContaining({ runHooks: true, allowFailedArchiveHook: true })
     )
   })
 

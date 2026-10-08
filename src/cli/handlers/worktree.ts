@@ -295,6 +295,7 @@ export const WORKTREE_HANDLERS: Record<string, CommandHandler> = {
     }
     const result = await removeWorktreeAndWait(client, {
       worktree,
+      worktreeId: resolved.result.worktree.id,
       hostId,
       force: flags.get('force') === true,
       // Why (#11960): --force is explicit here, so it may also waive PTY-stop proof.
