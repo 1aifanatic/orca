@@ -10,7 +10,7 @@ import type { QueuedMessageHeader, QueuedMessageRow } from './queued-message-tab
 /** A `queued_messages` row as this file's SELECTs return it; null when it cannot be read back. */
 export function readStoredQueuedMessageRow(row: SqliteRow): QueuedMessageRow | null {
   const header = readStoredQueuedMessageHeader(row)
-  if (!header || row.readable_body !== 1 || typeof row.body_json !== 'string') {
+  if (!header || typeof row.body_json !== 'string') {
     return null
   }
   let body: AgentJournalMessageItem

@@ -41,9 +41,8 @@ afterEach(() => db.close())
 it.each([
   { name: 'NUL suffix', stored: `${JSON.stringify(body)}\u0000garbage` },
   { name: 'BLOB JSON', stored: Buffer.from(JSON.stringify(body)) },
-  { name: 'invalid JSON', stored: '{' },
-  { name: 'SQLite nesting limit', stored: `${'['.repeat(1001)}0${']'.repeat(1001)}` }
-])('uses the same readable predicate for a $name body everywhere', ({ stored }) => {
+  { name: 'invalid JSON', stored: '{' }
+])('excludes a $name body from headers and body reads', ({ stored }) => {
   db.prepare(
     "UPDATE queued_messages SET body_json = ?, settled_by_op = 'op' WHERE message_id = 'a'"
   ).run(stored)
@@ -68,6 +67,21 @@ it.each([
   db.prepare("DELETE FROM queued_messages WHERE message_id = 'b'").run()
   expect(hasWaitingQueuedMessage(db, SESSION)).toBe(false)
   expect(hasReadableQueuedMessage(db, SESSION)).toBe(false)
+})
+
+it('filters bodies beyond the SQLite nesting limit from the unsettled list', () => {
+  db.prepare("UPDATE queued_messages SET body_json = ? WHERE message_id = 'a'").run(
+    `${'['.repeat(1001)}0${']'.repeat(1001)}`
+  )
+  expect(listQueuedMessages(db, SESSION).map((row) => row.messageId)).toEqual(['b'])
+})
+
+it('reads valid bodies and receipts without a computed readability column', () => {
+  db.prepare("UPDATE queued_messages SET settled_by_op = 'op' WHERE message_id = 'a'").run()
+  expect(getQueuedMessage(db, SESSION, 'a')?.body).toEqual(body)
+  expect(queuedMessagesSettledByOp(db, SESSION, 'op')).toEqual([
+    expect.objectContaining({ messageId: 'a', body })
+  ])
 })
 
 it('retains valid escaped NUL text in both header and body reads', () => {

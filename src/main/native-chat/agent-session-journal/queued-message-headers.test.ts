@@ -418,7 +418,7 @@ describe('indexed bookkeeping', () => {
     expect(queryPlan(queries[0], [SESSION])).toContain(
       'queued_messages_readable_unsettled_position'
     )
-    expect(queryPlan(queries[1], [SESSION, 'handoff'])).toContain('queued_messages_consume_state')
+    expect(queryPlan(queries[1], [SESSION, 'handoff'])).toContain('queued_messages_consumed_as')
     expect(queryPlan(queries[2], [SESSION, 900])).toContain('queued_messages_state_settled')
     expect(queryPlan(queries[3], [SESSION, 900, 1, 'dispatched'])).toContain(
       'queued_messages_state_settled'

@@ -60,10 +60,7 @@ function expectPlan(read: () => unknown, bindings: SqliteBindings, index: string
     .join('\n')
   expect(plan).toContain(index)
   expect(plan).not.toMatch(/SCAN queued_messages|USE TEMP B-TREE/)
-  if (
-    index.startsWith('queued_messages_readable_') &&
-    !sql.split('FROM')[0].includes('body_json')
-  ) {
+  if (index === 'queued_messages_readable_unsettled_position') {
     expect(
       db
         .prepare(`EXPLAIN ${sql}`)
@@ -74,13 +71,13 @@ function expectPlan(read: () => unknown, bindings: SqliteBindings, index: string
   }
 }
 
-it('keeps all ordered and existence header reads on readable partial indexes', () => {
+it('keeps unsettled reads on the readable index and rare all-state reads on the position index', () => {
   for (const selection of ['all', 'waiting', 'unsettled'] as const) {
     expectPlan(
       () => [...queuedMessageHeaders(db, SESSION, selection)],
       [SESSION],
       selection === 'all'
-        ? 'queued_messages_readable_position'
+        ? 'queued_messages_position'
         : 'queued_messages_readable_unsettled_position'
     )
   }
@@ -89,11 +86,7 @@ it('keeps all ordered and existence header reads on readable partial indexes', (
     [SESSION],
     'queued_messages_readable_unsettled_position'
   )
-  expectPlan(
-    () => hasReadableQueuedMessage(db, SESSION),
-    [SESSION],
-    'queued_messages_readable_position'
-  )
+  expectPlan(() => hasReadableQueuedMessage(db, SESSION), [SESSION], 'queued_messages_position')
   expectPlan(
     () => unsettledQueuedMessageBodyBytes(db, SESSION),
     [SESSION],
@@ -137,7 +130,7 @@ it('keeps point, consume, retention, withdrawal and receipt queries indexed', ()
   expectPlan(
     () => dispatchedQueuedMessageHeader(db, SESSION, 'handoff'),
     [SESSION, 'handoff'],
-    'queued_messages_consume_state'
+    'queued_messages_consumed_as'
   )
   expectPlan(
     () => [...expiredDispatchedQueuedMessageHeaders(db, SESSION, 3)],
