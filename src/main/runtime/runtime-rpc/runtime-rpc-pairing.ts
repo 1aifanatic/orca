@@ -1,18 +1,10 @@
 import type { DeviceEntry, DeviceRegistry, DeviceScope } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import type { MobileSocketWiring } from '../rpc/mobile-socket-wiring'
-import type {
-  RelayDeviceBinding,
-  RelayRevokeOutbox,
-  RelayRevokeOutboxItem
-} from '../relay/relay-revoke-outbox'
+import type { RelayDeviceBinding, RelayRevokeOutbox } from '../relay/relay-revoke-outbox'
 import type { PushUnregisterOutbox } from '../push/push-unregister-outbox'
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../../shared/pairing'
 import type { RuntimePairingReach } from '../../../shared/runtime-pairing-reach'
-import type {
-  DelegatedPhone,
-  DelegatedMobileDeviceSyncResult
-} from '../../../shared/delegated-mobile-device-contract'
 import { resolveAdvertisedPairingEndpoint } from '../pairing-endpoint'
 import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
 import {
@@ -25,8 +17,6 @@ import {
 } from './runtime-rpc-pairing-types'
 
 export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
-  private onPushUnregisterQueued?: () => void
-
   getDeviceRegistry(): DeviceRegistry | null {
     return this.deviceRegistry
   }
@@ -89,32 +79,6 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     this.mobileRelayPairingProvider = provider
   }
 
-  async revokeMobileDevice(deviceId: string): Promise<boolean> {
-    return this.revokeMobileDeviceNow(deviceId)
-  }
-
-  private revokeMobileDeviceNow(deviceId: string): boolean {
-    const device = this.deviceRegistry?.getDevice(deviceId)
-    if (device?.scope !== 'mobile') {
-      return false
-    }
-    if (device.relayBinding) {
-      if (!this.queueRelayDeviceRevoke(device.relayBinding)) {
-        return false
-      }
-    }
-    // Why: unpairing must delete the phone's push token at the gateway too, and the
-    // registration id is only readable while the device row still exists.
-    this.queuePushUnregister(deviceId, device.pushRegistration?.registrationId)
-    if (!this.deviceRegistry?.removeDevice(deviceId)) {
-      return false
-    }
-    this.mobileRelayPairingProvider?.onDemandStateChanged?.()
-    this.runtime.forgetClientNavigationState(deviceId)
-    this.mobileSocketWiring?.terminateDeviceConnections(device.token)
-    return true
-  }
-
   revokeRuntimeAccess(deviceId: string): boolean {
     const device = this.deviceRegistry?.getDevice(deviceId)
     if (device?.scope !== 'runtime') {
@@ -129,31 +93,6 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     this.runtime.forgetClientNavigationState(deviceId)
     this.mobileSocketWiring?.terminateDeviceConnections(device.token)
     return true
-  }
-
-  /** Make the runtime device `parentDeviceId`'s phones exactly `phones`; dropped ones are fully revoked. */
-  protected syncDelegatedMobileDevices(
-    parentDeviceId: string,
-    phones: readonly DelegatedPhone[]
-  ): DelegatedMobileDeviceSyncResult {
-    const registry = this.deviceRegistry
-    const parent = registry?.getDevice(parentDeviceId)
-    if (!registry || parent?.scope !== 'runtime') {
-      throw new Error('delegated_device_parent_unavailable')
-    }
-    const wanted = new Set(phones.map((phone) => phone.phoneKey))
-    for (const child of registry.listDelegatedMobileDevices(parentDeviceId)) {
-      if (!child.phoneKey || !wanted.has(child.phoneKey)) {
-        this.revokeMobileDeviceNow(child.deviceId)
-      }
-    }
-    return {
-      devices: registry.upsertDelegatedMobileDevices(parent, phones).map((device) => ({
-        phoneKey: device.phoneKey,
-        deviceId: device.deviceId,
-        token: device.token
-      }))
-    }
   }
 
   getWebSocketEndpoint(): string | null {
@@ -231,23 +170,6 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     }
   }
 
-  /** Best-effort: a failed enqueue must never block the revoke the user asked for. */
-  protected queuePushUnregister(deviceId: string, registrationId: string | undefined): void {
-    if (!registrationId) {
-      return
-    }
-    try {
-      this.pushUnregisterOutbox.enqueue({ registrationId, deviceId })
-      this.onPushUnregisterQueued?.()
-    } catch (error) {
-      console.error('[runtime] Failed to persist a push token cleanup:', error)
-    }
-  }
-
-  setOnPushUnregisterQueued(callback: (() => void) | null): void {
-    this.onPushUnregisterQueued = callback ?? undefined
-  }
-
   protected queueOrRetainRelayDeviceRevoke(deviceId: string, binding: RelayDeviceBinding): void {
     if (this.queueRelayDeviceRevoke(binding)) {
       return
@@ -257,21 +179,5 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     } catch (error) {
       console.error('[runtime] Failed to retain an unrevoked Relay binding:', error)
     }
-  }
-
-  protected queueRelayDeviceRevoke(binding: RelayDeviceBinding): boolean {
-    let item: RelayRevokeOutboxItem
-    try {
-      item = this.relayRevokeOutbox.enqueue(binding)
-    } catch (error) {
-      console.error('[runtime] Failed to persist Relay device cleanup:', error)
-      return false
-    }
-    try {
-      this.mobileRelayPairingProvider?.onDeviceRevokeQueued(item)
-    } catch (error) {
-      console.warn('[runtime] Failed to notify Relay cleanup worker:', error)
-    }
-    return true
   }
 }

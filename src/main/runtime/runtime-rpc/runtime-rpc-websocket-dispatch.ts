@@ -3,16 +3,12 @@ import type {
   PairingGetEndpointsParams,
   PairingProvisionRelayParams
 } from '../../../shared/mobile-relay-credential-contract'
-import type {
-  DelegatedPhone,
-  DelegatedMobileDeviceSyncResult
-} from '../../../shared/delegated-mobile-device-contract'
 import { fingerprintAuthenticatedPairingCredential } from '../rpc/orchestration-mutation-executor'
 import type { AuthenticatedMobileSocket } from '../rpc/mobile-socket-wiring'
 import type { RpcRequest, RpcResponse } from '../rpc/core'
 import type { WebSocketTransport } from '../rpc/ws-transport'
 import type { DeviceScope } from '../device-registry'
-import { RuntimeRpcRequestAdmission } from './runtime-rpc-request-admission'
+import { RuntimeRpcMobileDevices } from './runtime-rpc-mobile-devices'
 import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import { MOBILE_RPC_METHOD_ALLOWLIST } from './runtime-rpc-mobile-method-allowlist'
 
@@ -30,13 +26,7 @@ function injectDeviceScope(response: string, scope: DeviceScope): string {
   }
 }
 
-export abstract class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
-  // Why: the pairing layer owns device revocation; dispatch only binds the authenticated parent.
-  protected abstract syncDelegatedMobileDevices(
-    parentDeviceId: string,
-    phones: readonly DelegatedPhone[]
-  ): DelegatedMobileDeviceSyncResult
-
+export class RuntimeRpcWebSocketDispatch extends RuntimeRpcMobileDevices {
   // Why: WebSocket dispatch is streaming (multiple responses) and auths via per-device tokens, not the shared token.
   protected async handleWebSocketMessage(
     rawMessage: string,

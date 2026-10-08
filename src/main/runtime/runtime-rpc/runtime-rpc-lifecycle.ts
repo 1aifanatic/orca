@@ -20,7 +20,7 @@ import {
   sweepOrphanedRuntimeSockets
 } from './runtime-rpc-socket-metadata'
 
-export abstract class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
+export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
   async start(): Promise<void> {
     if (this.activeTransports.length > 0) {
       return
