@@ -1,4 +1,8 @@
 import Database from '../../../sqlite/sync-database'
+import {
+  startMutationReceiptMaintenance,
+  type MutationReceiptMaintenance
+} from '../mutation-receipt-maintenance'
 import { attachOrchestrationDbMethods } from './attach-orchestration-db-methods'
 import { hardenOrchestrationDatabaseFiles } from './database-file-permissions'
 import { backfillFederatedStubHomeRuns } from './federation/federated-stub-home-run-backfill'
@@ -15,6 +19,7 @@ import { reconcileSettledWorkerDispatches } from './worker-dispatch/worker-dispa
 
 class OrchestrationDbCore {
   db: Database.Database
+  private receiptMaintenance: MutationReceiptMaintenance | undefined
 
   // Why: the orchestration DB is created lazily for ALL users, but only the
   // small minority who dispatch work ever have dispatch_contexts rows. The
@@ -41,7 +46,22 @@ class OrchestrationDbCore {
     hardenOrchestrationDatabaseFiles(dbPath)
   }
 
+  startReceiptMaintenance(): void {
+    this.stopReceiptMaintenance()
+    this.receiptMaintenance = startMutationReceiptMaintenance(this.db, {
+      initialDelayMs: 60_000,
+      intervalMs: 60 * 60 * 1000,
+      onError: (error) => console.warn('[orchestration] mutation receipt retirement failed', error)
+    })
+  }
+
+  stopReceiptMaintenance(): void {
+    this.receiptMaintenance?.stop()
+    this.receiptMaintenance = undefined
+  }
+
   close(): void {
+    this.stopReceiptMaintenance()
     this.db.close()
   }
 }

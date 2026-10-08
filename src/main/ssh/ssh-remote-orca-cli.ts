@@ -2,6 +2,7 @@ import type { CliStatusResult, RuntimeStatus } from '../../shared/runtime-types'
 import { runtimeHostConnectionState } from '../../shared/runtime-host-connection-state'
 import { projectRemoteAppStatus } from '../../shared/cli-app-status-projection'
 import { randomUUID } from 'node:crypto'
+import { createOrchestrationRetryRequestId } from '../../shared/orchestration-retry-request-id'
 import type { RuntimeOrchestrationEnvelope } from '../../shared/runtime-rpc-envelope'
 import { readOrchestrationCompatibilityEvidence } from '../../shared/orchestration-compatibility-evidence'
 import { ORCHESTRATION_CONTRACT_VERSION } from '../../shared/protocol-version'
@@ -163,7 +164,7 @@ async function dispatchRemoteCli(
     orchestrationRequestId:
       readRemoteRetryRequestFlag(parsed.flags) ??
       (command === 'orchestration check' || command === 'orchestration ask'
-        ? randomUUID()
+        ? createOrchestrationRetryRequestId()
         : undefined),
     orchestrationCompatibilityEvidence
   }

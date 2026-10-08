@@ -1,6 +1,6 @@
 import type { DispatchContextRow, TaskRow, WorkerDispatchRow } from '../../types'
 import { OrchestrationError } from '../../orchestration-error'
-import { ensureMutationReceiptCapacity } from '../../mutation-receipt-capacity'
+import { insertMutationReceiptIfAbsent } from '../mutation-receipts/mutation-receipt-insert'
 import { CURRENT_CONTRACT_VERSION } from '../contract-constants'
 import { generateId } from '../generated-id'
 import type { OrchestrationDb } from '../orchestration-db'
@@ -47,9 +47,9 @@ export function createStartingWorkerDispatch(
   try {
     if (params.mutationReceipt) {
       const receipt = params.mutationReceipt
-      const existing = this.getMutationReceipt(receipt.callerFingerprint, receipt.requestId)
-      if (existing) {
-        if (existing.method !== receipt.method || existing.payload_hash !== receipt.payloadHash) {
+      const inserted = insertMutationReceiptIfAbsent(this, receipt)
+      if (!inserted.inserted) {
+        if (inserted.reason === 'conflict') {
           throw new OrchestrationError(
             'request_mismatch',
             `Mutation request ${receipt.requestId} was already used with different input.`
@@ -60,14 +60,6 @@ export function createStartingWorkerDispatch(
           `Mutation ${receipt.requestId} already has a durable acceptance record.`
         )
       }
-      ensureMutationReceiptCapacity(this.db)
-      this.db
-        .prepare(
-          `INSERT INTO mutation_receipts (
-             caller_fingerprint, request_id, method, payload_hash, state
-           ) VALUES (?, ?, ?, ?, 'pending')`
-        )
-        .run(receipt.callerFingerprint, receipt.requestId, receipt.method, receipt.payloadHash)
     }
     const task = params.taskId
       ? this.getTask(params.taskId)

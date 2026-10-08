@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto'
+import {
+  createOrchestrationRetryRequestId,
+  ORCHESTRATION_RETRY_WINDOW_MS
+} from '../../../shared/orchestration-retry-request-id'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from '../orca-runtime'
 import { OrchestrationDb } from '../orchestration/db'
@@ -61,6 +65,22 @@ describe('terminal prompt mutation receipt retry boundary', () => {
       db.close()
     }
     vi.restoreAllMocks()
+  })
+
+  it('refuses an expired absent prompt before invoking its external effect', async () => {
+    const { db, executor } = createHarness()
+    databases.push(db)
+    const requestId = createOrchestrationRetryRequestId(
+      Date.now() - ORCHESTRATION_RETRY_WINDOW_MS - 1000
+    )
+    const invoke = vi.fn()
+    await expect(
+      executor.run(promptRequest(requestId), promptParams, invoke)
+    ).rejects.toMatchObject({ code: 'operation_unknown', data: { requestId } })
+    expect(invoke).not.toHaveBeenCalled()
+    expect(
+      db.getMutationReceipt(db.getOrCreateLocalMutationCallerFingerprint(), requestId)
+    ).toBeUndefined()
   })
 
   it.each(['terminal_not_writable', 'terminal_handle_stale', 'request_aborted'])(

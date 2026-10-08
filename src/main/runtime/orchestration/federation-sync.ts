@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { createOrchestrationRetryRequestId } from '../../../shared/orchestration-retry-request-id'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import type { FederatedLifecycleSettlement } from './federation-lifecycle-settlement'
 import { ORCHESTRATION_FEDERATION_LIFECYCLE_SETTLEMENT_PROTOCOL_VERSION } from '../../../shared/protocol-version'
@@ -194,18 +195,20 @@ async function syncFederatedDispatchPages(
     acknowledgmentCursor >
       Math.max(getFederationAckedThrough(ackLease, ackIdentity), durableAcknowledgedThrough)
   ) {
-    const delivered = (await runtime.callOrchestrationWorkerServer(
-      federated.environment_id,
-      'orchestration.federationAck',
-      {
-        dispatchId,
-        throughSequence: acknowledgmentCursor,
-        ...(settlements.length > 0 ? { settlements } : {})
-      },
-      15_000,
-      { orchestrationRequestId: `relay_ack_${dispatchId}_${cursor}` },
-      { expectedEnvironmentPairingRevision: currentServer.pairingRevision }
-    )) as { acknowledgedThrough: number }
+    const delivered = z.object({ acknowledgedThrough: z.number().int().nonnegative() }).parse(
+      await runtime.callOrchestrationWorkerServer(
+        federated.environment_id,
+        'orchestration.federationAck',
+        {
+          dispatchId,
+          throughSequence: acknowledgmentCursor,
+          ...(settlements.length > 0 ? { settlements } : {})
+        },
+        15_000,
+        { orchestrationRequestId: createOrchestrationRetryRequestId() },
+        { expectedEnvironmentPairingRevision: currentServer.pairingRevision }
+      )
+    )
     const keepRelayEligible =
       pulled.items.length === FEDERATION_PULL_PAGE_SIZE && remainingPages === 1
     const locallyAcknowledgedThrough = keepRelayEligible
@@ -231,16 +234,18 @@ async function syncFederatedDispatchPages(
       ? db.listPendingFederationRelay(dispatchId, 'to_worker')
       : []
   if (toWorker.length > 0) {
-    const delivered = (await runtime.callOrchestrationWorkerServer(
-      federated.environment_id,
-      'orchestration.federationImport',
-      { dispatchId, items: toWorker },
-      15_000,
-      {
-        orchestrationRequestId: `relay_import_${dispatchId}_${toWorker.at(-1)?.sequence ?? 0}`
-      },
-      { expectedEnvironmentPairingRevision: currentServer.pairingRevision }
-    )) as { acknowledgedThrough: number }
+    const delivered = z.object({ acknowledgedThrough: z.number().int().nonnegative() }).parse(
+      await runtime.callOrchestrationWorkerServer(
+        federated.environment_id,
+        'orchestration.federationImport',
+        { dispatchId, items: toWorker },
+        15_000,
+        {
+          orchestrationRequestId: createOrchestrationRetryRequestId()
+        },
+        { expectedEnvironmentPairingRevision: currentServer.pairingRevision }
+      )
+    )
     db.acknowledgeFederationRelay({
       dispatchId,
       direction: 'to_worker',
