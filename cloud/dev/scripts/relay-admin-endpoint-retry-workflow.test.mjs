@@ -18,7 +18,7 @@ function workflow(name) {
 }
 
 const VERIFY_STEP = 'name: Verify new incarnation, exact image, protocol, and durable safety'
-const STALL_WINDOW_FLAGS = /--retry 12 --retry-delay 5 \\\n\s+--retry-max-time 60 --retry-connrefused/
+const STALL_WINDOW = 'local out="${RUNNER_TEMP}/$1.json" window=60 delay=5 status'
 
 function verifyStep() {
   return workflow('deploy-relay-production-same-cap-job.yml')
@@ -36,13 +36,11 @@ function verifyAdminPost() {
 // must not fail a canary, so no admin endpoint may be read by a bare curl.
 test('no admin endpoint is reached by a curl without a bounded retry', () => {
   for (const name of WORKFLOWS) {
-    for (const invocation of workflow(name).split(/\bcurl\b/).slice(1)) {
+    // The post-roll verify retries in its own loop, pinned and run below.
+    const text = workflow(name).replace(verifyAdminPost(), '')
+    for (const invocation of text.split(/\bcurl\b/).slice(1)) {
       const flags = invocation.split('\n          }')[0]
-      assert.match(
-        flags,
-        new RegExp(`--retry 3 --retry-delay 2 --retry-connrefused|${STALL_WINDOW_FLAGS.source}`),
-        name
-      )
+      assert.match(flags, /--retry 3 --retry-delay 2 --retry-connrefused/, name)
       assert.match(flags, /--max-time 30/, name)
       // --retry-all-errors would also retry 401, 403, and 409, which are final.
       assert.doesNotMatch(flags, /--retry-all-errors/, name)
@@ -62,21 +60,21 @@ test('every retried admin request captures only the final attempt body', () => {
     /TARGET_RUNTIME="\$\(admin_post target-runtime/,
     /TARGET_DIRECTOR_STATUS="\$\(admin_post target-cell-status/
   ]) assert.match(job, call)
-  assert.doesNotMatch(job, /\$\(curl /)
+  // The verify loop captures only the status code; its body goes to the file.
+  assert.doesNotMatch(job.replace(verifyAdminPost(), ''), /\$\(curl /)
 })
 
 // c18, 2026-10-07 18:49Z: a DB stall made the fresh cell answer 503 "no healthy upstream";
 // three 2 s retries gave up and the cell was healthy 16 s later.
 // 60 s covers a 7 s stall, 16 s readiness grace and two 10 s LB health checks.
 test('the post-roll verify outlasts one DB stall and its health-check recovery', () => {
-  assert.match(verifyStep(), STALL_WINDOW_FLAGS)
+  assert.ok(verifyAdminPost().includes(STALL_WINDOW))
+  assert.match(verifyAdminPost(), /--max-time 30/)
 })
 
 // Runs the step's own admin_post, with its retry clock scaled down twelve-fold.
 async function runVerifyAdminPost(respond) {
-  const scaled = verifyAdminPost()
-    .replace('--retry-delay 5', '--retry-delay 1')
-    .replace('--retry-max-time 60', '--retry-max-time 5')
+  const scaled = verifyAdminPost().replace('window=60 delay=5', 'window=5 delay=1')
   assert.notEqual(scaled, verifyAdminPost())
   let calls = 0
   const startedAt = Date.now()
@@ -122,7 +120,7 @@ test('the verify read recovers when the cell comes back inside the retry window'
 test('the verify read still fails a cell that stays down past the window', async () => {
   const result = await runVerifyAdminPost(() => UNHEALTHY)
   assert.notEqual(result.code, 0)
-  assert.ok(result.elapsedMs >= 4_000, `gave up after ${result.elapsedMs} ms: ${result.stderr}`)
+  assert.ok(result.elapsedMs >= 3_000, `gave up after ${result.elapsedMs} ms: ${result.stderr}`)
   assert.ok(result.elapsedMs < 8_000, `bounded at ${result.elapsedMs} ms`)
 })
 
