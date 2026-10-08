@@ -58,6 +58,18 @@ export const PR_E2E_SOURCE_ROUTES = [
         ))
   },
   {
+    id: 'ssh.orcad-huge-status-owner',
+    specs: ['tests/e2e/ssh-orcad-huge-status-owner.spec.ts'],
+    matches: (file) =>
+      /^tests\/e2e\/helpers\/(?:orcad-convert-(?:flow|host)|orcad-upgrade-profile|docker-ssh-relay-target)\.ts$/.test(
+        file
+      ) ||
+      (isProductSource(file) &&
+        /^(?:src\/renderer\/src\/(?:components\/right-sidebar\/source-control\/sync\/use-status-refresh|lib\/local-path-open-guard)\.ts|src\/main\/(?:git\/huge-folder-ignore|ipc\/filesystem\/filesystem-git-status-handlers)\.ts)$/.test(
+          file
+        ))
+  },
+  {
     id: 'ssh.orcad-idle-exit',
     specs: ['tests/e2e/ssh-orcad-idle-exit.spec.ts'],
     matches: (file) =>

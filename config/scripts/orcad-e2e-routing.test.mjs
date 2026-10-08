@@ -6,6 +6,7 @@ import {
   classifyE2eJobs,
   ORCAD_AUTO_CONVERT_E2E_SPEC,
   ORCAD_IDLE_EXIT_E2E_SPEC,
+  ORCAD_HUGE_STATUS_OWNER_E2E_SPEC,
   ORCAD_OPEN_IN_OWNER_E2E_SPEC,
   ORCAD_SERVE_MODE_SWITCH_E2E_SPEC,
   WINDOWS_MISSING_APPDATA_E2E_SPEC
@@ -75,7 +76,8 @@ it('builds the e2e app when only a build-dependent orcad spec is requested', () 
     ORCAD_SERVE_MODE_SWITCH_E2E_SPEC,
     ORCAD_AUTO_CONVERT_E2E_SPEC,
     ORCAD_IDLE_EXIT_E2E_SPEC,
-    ORCAD_OPEN_IN_OWNER_E2E_SPEC
+    ORCAD_OPEN_IN_OWNER_E2E_SPEC,
+    ORCAD_HUGE_STATUS_OWNER_E2E_SPEC
   ]) {
     expect(classifyE2eJobs(JSON.stringify([spec])), spec).toEqual({
       e2e_run_changed: false,
@@ -90,7 +92,8 @@ it('runs the auto-convert lane only when routed, not on every SSH source change'
   for (const spec of [
     ORCAD_AUTO_CONVERT_E2E_SPEC,
     ORCAD_IDLE_EXIT_E2E_SPEC,
-    ORCAD_OPEN_IN_OWNER_E2E_SPEC
+    ORCAD_OPEN_IN_OWNER_E2E_SPEC,
+    ORCAD_HUGE_STATUS_OWNER_E2E_SPEC
   ]) {
     expect(condition).toContain(`contains(inputs.test_files, '${spec}')`)
   }
@@ -134,4 +137,27 @@ it('routes managed target-owner guards and menus to the real launch regression',
       step.run?.includes(ORCAD_OPEN_IN_OWNER_E2E_SPEC)
     )
   ).toBe(true)
+})
+
+it('routes the local-only ignore guard and real desktop write helpers to the owner regression', () => {
+  expectRouted(
+    [
+      'src/renderer/src/components/right-sidebar/source-control/sync/use-status-refresh.ts',
+      'src/renderer/src/lib/local-path-open-guard.ts',
+      'src/main/git/huge-folder-ignore.ts',
+      'src/main/ipc/filesystem/filesystem-git-status-handlers.ts',
+      'tests/e2e/helpers/orcad-convert-flow.ts',
+      'tests/e2e/helpers/orcad-convert-host.ts',
+      'tests/e2e/helpers/orcad-upgrade-profile.ts',
+      'tests/e2e/helpers/docker-ssh-relay-target.ts'
+    ],
+    ORCAD_HUGE_STATUS_OWNER_E2E_SPEC
+  )
+  expect(selectPrE2eSpecs(['src/main/git/huge-folder-ignore.test.ts'])).not.toContain(
+    ORCAD_HUGE_STATUS_OWNER_E2E_SPEC
+  )
+  const job = jobs['orcad-auto-convert-docker']
+  expect(job.if).toContain(`contains(inputs.test_files, '${ORCAD_HUGE_STATUS_OWNER_E2E_SPEC}')`)
+  const step = job.steps.find((step) => step.run?.includes(ORCAD_HUGE_STATUS_OWNER_E2E_SPEC))
+  expect(step.env.ORCA_E2E_SSH_DOCKER).toBe('1')
 })
