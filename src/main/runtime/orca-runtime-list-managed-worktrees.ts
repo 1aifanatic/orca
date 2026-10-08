@@ -176,34 +176,12 @@ export class OrcaRuntimeWithListManagedWorktrees extends OrcaRuntimeWithRestoreS
     // Why: sleep is renderer-initiated on desktop (it tears down tab state
     // before killing PTYs). The notifier tells the renderer to run its own
     // sleep flow so all cleanup happens in the correct order.
-    this.notifier?.sleepWorktree(worktree.id)
-    return { worktreeId: worktree.id }
+    return this.requestWorktreeSleep(worktree.id)
   }
 
-  /** Sleeps a worktree the renderer shows from another host, through its own sleep flow. */
+  /** Asks the renderer to sleep a worktree it shows, from any host, through its own sleep flow. */
   requestWorktreeSleep(worktreeId: string): { worktreeId: string } {
     this.notifier?.sleepWorktree(worktreeId)
     return { worktreeId }
-  }
-
-  /**
-   * Wakes a worktree's slept agents for a phone. Only the host renderer holds the sleeping records
-   * and wake authority, so this asks it; with no renderer (headless serve, or the window closed)
-   * a worktree that has a persisted record reports that nothing could wake it.
-   */
-  requestSleepingAgentWake(
-    worktreeId: string,
-    executionHostId: string
-  ): 'requested' | 'unsupported-headless' | 'not-applicable' {
-    if (this.getAvailableAuthoritativeWindow()) {
-      this.notifier?.resumeSleepingAgents?.(worktreeId)
-      return 'requested'
-    }
-    // Why the host's partition: sleeping records are partitioned by execution host.
-    const records =
-      this.store?.getWorkspaceSession?.(executionHostId).sleepingAgentSessionsByPaneKey ?? {}
-    return Object.values(records).some((record) => record.worktreeId === worktreeId)
-      ? 'unsupported-headless'
-      : 'not-applicable'
   }
 }

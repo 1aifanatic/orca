@@ -82,8 +82,11 @@ async function openSession(options: {
 }
 
 describe('opening a session wakes its slept agents where the desktop holds them', () => {
-  it("asks the desktop to wake a server workspace's agents, and says when nothing could", async () => {
-    const server = fakeClient(() => ({ activated: true, sleepingAgentWake: 'not-applicable' }))
+  it("asks the desktop to wake a server workspace's agents, and says once when nothing could", async () => {
+    const server = fakeClient(() => ({
+      activated: true,
+      sleepingAgentWake: 'unsupported-headless'
+    }))
     const desktop = fakeClient(() => ({ sleepingAgentWake: 'unsupported-headless' }))
 
     const { showToast } = await openSession({
@@ -96,7 +99,7 @@ describe('opening a session wakes its slept agents where the desktop holds them'
     expect(desktop.sendRequest.mock.calls.map(([method, params]) => [method, params])).toEqual([
       ['mobileRelay.hosts.wakeSleepingAgents', { hostId: 'runtime:env-1', worktreeId: WORKTREE_ID }]
     ])
-    expect(showToast).toHaveBeenCalledWith('Open Orca on the host to wake sleeping agents.', 3000)
+    expect(showToast.mock.calls).toEqual([['Open Orca on the host to wake sleeping agents.', 3000]])
   })
 
   it("leaves the desktop's own workspace to its activation", async () => {

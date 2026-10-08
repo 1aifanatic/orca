@@ -112,6 +112,27 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     return { repoId: repo.id, worktreeId: worktree.id, activated: true, sleepingAgentWake }
   }
 
+  /**
+   * Wakes a worktree's slept agents for a phone. Only the host renderer holds the sleeping records
+   * and wake authority, so this asks it; with no renderer (headless serve, or the window closed)
+   * a worktree that has a persisted record reports that nothing could wake it.
+   */
+  requestSleepingAgentWake(
+    worktreeId: string,
+    executionHostId: string
+  ): 'requested' | 'unsupported-headless' | 'not-applicable' {
+    if (this.getAvailableAuthoritativeWindow()) {
+      this.notifier?.resumeSleepingAgents?.(worktreeId)
+      return 'requested'
+    }
+    // Why the host's partition: sleeping records are partitioned by execution host.
+    const records =
+      this.store?.getWorkspaceSession?.(executionHostId).sleepingAgentSessionsByPaneKey ?? {}
+    return Object.values(records).some((record) => record.worktreeId === worktreeId)
+      ? 'unsupported-headless'
+      : 'not-applicable'
+  }
+
   protected async buildStartupForDraft(
     repo: Repo,
     draft: string,

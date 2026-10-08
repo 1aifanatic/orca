@@ -118,8 +118,11 @@ export function useMobileSessionStartup(scope: MobileSessionKeyboardStateModel) 
       timers.push(setTimeout(fn, ms))
     }
     void (async () => {
+      // Once per open: a server workspace hears from its server and from the desktop.
+      let headlessWakeShown = false
       const reportHeadlessWake = (result: unknown): void => {
-        if (!disposed && headlessActivationNeedsHostRenderer(result)) {
+        if (!disposed && !headlessWakeShown && headlessActivationNeedsHostRenderer(result)) {
+          headlessWakeShown = true
           showToast('Open Orca on the host to wake sleeping agents.', 3000)
         }
       }

@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Keyboard } from 'react-native'
 import { getComposerRepoWorktreeBranches } from '../../../src/shared/composer-branch-selection'
-import { getRepoExecutionHostId } from '../../../src/shared/execution-host'
+import { getRepoExecutionHostId, parseExecutionHostId } from '../../../src/shared/execution-host'
 import { getProjectIdentityKey } from '../../../src/shared/project-host-setup-projection'
 import { shouldPreserveWorkspaceSourceOnRepoChange } from '../../../src/shared/new-workspace/workspace-source'
 import type { SmartModeAvailabilityInput } from '../tasks/mobile-smart-source-modes'
 import { deriveRepoSlug, type PasteRepoCandidate } from '../tasks/smart-source-paste-intent'
 import { useMobileComposerSource } from '../tasks/use-mobile-composer-source'
 import { useNewWorktreeRuntimeCapabilities } from '../tasks/worktree-create-capability'
+import { useHostDescriptor } from '../transport/host-descriptor-store'
+import { isSameMobileWorkspaceRepo } from '../worktree/new-workspace-dialog-repo-selection'
 import {
   buildRetiredWorktreeNamesRefreshKey,
   useRetiredWorktreeNames
@@ -32,6 +34,12 @@ import { useNewWorkspaceRepositories } from './use-new-workspace-repositories'
 import { useNewWorkspaceRuntimeContext } from './use-new-workspace-runtime-context'
 import { useNewWorkspaceSetupScript } from './use-new-workspace-setup-script'
 import { useNewWorktreeDrawerNavigation } from './use-new-worktree-drawer-navigation'
+
+/** The server a repo runs on; undefined for the desktop's own (local, SSH, folder). */
+function serverOf(repo: MobileWorkspaceRepo): `runtime:${string}` | undefined {
+  const host = parseExecutionHostId(getRepoExecutionHostId(repo))
+  return host?.kind === 'runtime' ? host.id : undefined
+}
 
 export function NewWorktreeModal(props: NewWorktreeModalProps) {
   // Why: each drawer opening is a fresh form session; remounting resets local
@@ -75,8 +83,7 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
   })
   // Why: everything about the picked repo runs where it does; the routing table keeps the
   // desktop's own concerns (settings, accounts) on the desktop.
-  const repoHost = selectedRepo ? getRepoExecutionHostId(selectedRepo) : null
-  const repoServer = repoHost?.startsWith('runtime:') ? repoHost : undefined
+  const repoServer = selectedRepo ? serverOf(selectedRepo) : undefined
   const client = repoServer ? (serverClients?.get(repoServer) ?? null) : desktopClient
   const navigation = useNewWorktreeDrawerNavigation(visible)
   const [note, setNote] = useState('')
@@ -85,8 +92,8 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
   const repoRuntime = useNewWorktreeRuntimeCapabilities(client, visible)
   const { tasksSupported, getWorktreeCreateCutoverSupport, getAgentLaunchSupport } = repoRuntime
   // The desktop's own run target is named for the desktop, whichever host the picked repo is on.
-  const desktopRuntime = useNewWorktreeRuntimeCapabilities(desktopClient, visible && !!repoServer)
-  const hostPlatform = repoServer ? desktopRuntime.hostPlatform : repoRuntime.hostPlatform
+  const desktopPlatform = useHostDescriptor(hostId)?.platform ?? null
+  const hostPlatform = repoServer ? desktopPlatform : repoRuntime.hostPlatform
   const selectedRepoConnectionId = selectedRepo?.connectionId ?? null
   const executionTarget = useNewWorkspaceExecutionTarget({
     client,
@@ -156,14 +163,19 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
     gitlabAvailable: runtime.availableProviders.includes('gitlab'),
     linearAvailable: runtime.availableProviders.includes('linear')
   }
+  // Why one client's: a source's repo switch is looked up through the picked repo's client.
+  const hostRepos = useMemo(
+    () => repos.filter((repo) => serverOf(repo) === repoServer),
+    [repoServer, repos]
+  )
   const pasteRepos = useMemo<PasteRepoCandidate[]>(
     () =>
-      repos.map((repo) => ({
+      hostRepos.map((repo) => ({
         id: repo.id,
         displayName: repo.displayName,
         slug: deriveRepoSlug(repo)
       })),
-    [repos]
+    [hostRepos]
   )
   const projectPickerItems = useMemo(() => buildNewWorkspaceProjectOptions(repos), [repos])
   const selectedProjectId = selectedRepo ? getProjectIdentityKey(selectedRepo) : null
@@ -189,7 +201,7 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
   }
 
   function selectRepo(repo: MobileWorkspaceRepo, clearRepoScopedSource: boolean): void {
-    const repoChanged = repo.id !== selectedRepo?.id
+    const repoChanged = !selectedRepo || !isSameMobileWorkspaceRepo(repo, selectedRepo)
     setSelectedRepo(repo)
     if (
       clearRepoScopedSource &&
@@ -258,7 +270,7 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
         composer={composer}
         sourceAvailability={sourceAvailability}
         selectedRepo={selectedRepo}
-        repos={repos}
+        repos={hostRepos}
         pasteRepos={pasteRepos}
         sshReady={!executionTarget.sshGate.requiresConnection}
         projectPickerItems={projectPickerItems}

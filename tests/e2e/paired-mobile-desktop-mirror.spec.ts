@@ -428,7 +428,8 @@ test('phone tab, workspace and sleep actions on a server show on the server and 
       .poll(() => desktopTerminalHandles(desktop, worktreeId), { timeout: 30_000 })
       .toEqual([kept.terminal])
 
-    // Waking and sleeping are the desktop renderer's, which holds a server workspace's agents.
+    // Waking and sleeping are the desktop renderer's. The wake check proves delivery to it, not an
+    // agent resuming (none is slept here).
     await desktop.page.evaluate(() => {
       const woken: string[] = []
       Object.assign(window, { __wokenWorktrees: woken })
