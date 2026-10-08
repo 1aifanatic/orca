@@ -28,6 +28,7 @@ import { RuntimeClient } from '../../src/cli/runtime-client'
 import { makePaneKey } from '../../src/shared/stable-pane-id'
 import { expect, test } from './helpers/orca-app'
 import { waitForSessionReady } from './helpers/store'
+import { splitActiveTerminalPane } from './helpers/terminal'
 import {
   createHostCliTerminal,
   createHostRendererTerminalTab,
@@ -176,36 +177,70 @@ test('keeps a locally created CLI terminal, and never resumes it as a ghost', as
     await proveSameLivePty(call, unrelated, 'unrelated-alive')
 
     const cliPaneKey = makePaneKey(cli.tabId, cli.leafId)
-    // The control: a record whose pane is gone, i.e. what the pruned CLI tab
-    // would leave behind. Its replay is the proof the sweep ran at all.
-    const absentPaneKey = makePaneKey(randomUUID(), randomUUID())
+    // The control: a record whose pane is gone, so its replay is the proof the
+    // sweep ran at all. Main keeps a record only beside a tab it holds, so its
+    // tab stays; split, so neither of its live PTYs is taken for the gone pane.
+    await splitActiveTerminalPane(orcaPage, 'vertical')
+    await expect
+      .poll(
+        () =>
+          orcaPage.evaluate(
+            (tabId) => window.__store?.getState().ptyIdsByTabId[tabId]?.length ?? 0,
+            secondRendererTabId
+          ),
+        { timeout: 30_000, message: 'the control tab never split into two live panes' }
+      )
+      .toBe(2)
+    const absentPaneKey = makePaneKey(secondRendererTabId, randomUUID())
 
     // Why: a real agent reports its provider session over the hook server;
     // writing the same store entry keeps this hermetic on the identical path.
     await orcaPage.evaluate(
-      ({ panes, worktreeId }) => {
-        for (const { paneKey, sessionId } of panes) {
-          window.__store?.getState().setAgentStatus(
-            paneKey,
-            {
-              state: 'working',
-              prompt: 'local cli retention',
-              agentType: 'claude'
-            },
-            'Claude',
-            undefined,
-            { worktreeId },
-            { providerSession: { key: 'session_id', id: sessionId } }
-          )
-        }
+      ({ paneKey, sessionId, worktreeId }) => {
+        window.__store?.getState().setAgentStatus(
+          paneKey,
+          {
+            state: 'working',
+            prompt: 'local cli retention',
+            agentType: 'claude'
+          },
+          'Claude',
+          undefined,
+          { worktreeId },
+          { providerSession: { key: 'session_id', id: sessionId } }
+        )
       },
-      {
-        panes: [
-          { paneKey: cliPaneKey, sessionId: CLI_PANE_SESSION_ID },
-          { paneKey: absentPaneKey, sessionId: ABSENT_PANE_SESSION_ID }
-        ],
-        worktreeId
-      }
+      { paneKey: cliPaneKey, sessionId: CLI_PANE_SESSION_ID, worktreeId }
+    )
+    await expect
+      .poll(
+        () =>
+          orcaPage.evaluate(
+            (paneKey) =>
+              window.__store?.getState().sleepingAgentSessionsByPaneKey[paneKey] !== undefined,
+            cliPaneKey
+          ),
+        { timeout: 30_000, message: 'the seeded provider session never became a sleeping record' }
+      )
+      .toBe(true)
+    // Why committed directly: a closed pane reports no status, so its record is
+    // all that is left of it; a live status would claim the session instead.
+    await orcaPage.evaluate(
+      ({ cliPaneKey, absentPaneKey, tabId, sessionId }) => {
+        const template = window.__store!.getState().sleepingAgentSessionsByPaneKey[cliPaneKey]!
+        return window.api.session.commitTerminalSleepingRecords({
+          sleep: {
+            [absentPaneKey]: {
+              ...template,
+              paneKey: absentPaneKey,
+              tabId,
+              providerSession: { key: 'session_id', id: sessionId }
+            }
+          },
+          wake: []
+        })
+      },
+      { cliPaneKey, absentPaneKey, tabId: secondRendererTabId, sessionId: ABSENT_PANE_SESSION_ID }
     )
     await expect
       .poll(
