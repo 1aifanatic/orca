@@ -144,7 +144,7 @@ describe('codex structured launch resolution', () => {
   it('launches the app server in the workspace and account home the record pinned', async () => {
     const launch = await resolverFor(record())({ identity: IDENTITY })
 
-    expect(launch).toEqual({
+    expect(launch).toMatchObject({
       command: '/usr/local/bin/codex',
       args: ['app-server'],
       cwd: '/repos/workspace-1',

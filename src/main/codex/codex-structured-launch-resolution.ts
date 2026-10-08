@@ -6,6 +6,8 @@
 // must name the thread this session actually proved — never one a caller asks
 // for, which is how a resume becomes a fork wearing a resume's name.
 
+import { structuredSessionCliEnvironment } from '../runtime/structured-session-child-identity-env'
+import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
@@ -42,7 +44,7 @@ export type CodexStructuredLaunchResolverDeps = {
 
 export type CodexStructuredInvocation = {
   command: string
-  environment: NodeJS.ProcessEnv | undefined
+  environment: NodeJS.ProcessEnv
 }
 
 /**
@@ -62,7 +64,12 @@ export async function resolveCodexStructuredInvocation(
     pathEnv,
     ...(homePath ? { homePath } : {})
   })
-  return { command, environment }
+  return {
+    command,
+    environment: structuredSessionCliEnvironment(
+      withCliRuntimeOnPath(command, { ...process.env, ...environment })
+    )
+  }
 }
 
 export function createCodexStructuredLaunchResolver(

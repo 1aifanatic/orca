@@ -11,7 +11,7 @@ import {
   codexMaintenanceAction,
   codexMaintenanceManualAction
 } from '../../shared/codex-cli-maintenance'
-import { resolveCliCommand, withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
+import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
 import type { ProcessSpec } from '../../shared/child-process/run-process'
 import { resolveCodexStructuredInvocation } from '../codex/codex-structured-launch-resolution'
 import { listLocalCommandPaths } from '../ipc/command-path-resolver'
@@ -50,7 +50,7 @@ async function resolveMaintenanceInvocation(
   const launch = {
     program,
     cwd,
-    env: withCliRuntimeOnPath(program, { ...process.env, ...environment })
+    env: environment
   }
   const installation = await readCodexCliInstallation(launch)
   const packagePaths = await codexCliPackagePaths(launch)

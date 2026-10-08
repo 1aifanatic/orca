@@ -93,17 +93,12 @@ describe('Codex structured launch version admission', () => {
       })
       vi.mocked(readCodexCliInstallation).mockResolvedValue(codexCliInstallation(true, '0.135.0'))
       await expect(resolve({ identity: identityFor(value.sessionId) })).rejects.toThrow('0.135.0')
-      expect(readCodexCliInstallation).toHaveBeenCalledWith(
-        expect.objectContaining({
-          program: '/host/bin/codex',
-          cwd: '/folder',
-          env: expect.objectContaining({
-            PATH: '/host/bin',
-            HOME: '/host/home',
-            CODEX_HOME: '/account'
-          })
-        })
-      )
+      const probe = vi.mocked(readCodexCliInstallation).mock.calls.at(-1)?.[0]
+      expect(probe?.program).toBe('/host/bin/codex')
+      expect(probe?.cwd).toBe('/folder')
+      expect(probe?.env?.PATH).toContain('/host/bin')
+      expect(probe?.env?.HOME).toBe('/host/home')
+      expect(probe?.env?.CODEX_HOME).toBe('/account')
       vi.mocked(readCodexCliInstallation).mockResolvedValue(codexCliInstallation(true, '0.136.0'))
       await expect(resolve({ identity: identityFor(value.sessionId) })).resolves.toMatchObject({
         command: '/host/bin/codex',
