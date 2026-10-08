@@ -15,6 +15,7 @@ import {
 import { JournalUnreleasedSchemaError } from './journal-open-failure'
 import { ensureQueuedMessagesTable } from './queued-message-schema'
 import { ensureAgentSessionAttachmentClaimTables } from '../agent-session-attachments/agent-session-attachment-claims'
+import { migrateAgentSessionClosedOwnerRows } from '../../runtime/agent-session-closed-owner-rows'
 
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 /** Bounds the WAL a checkpoint leaves behind; SQLite truncates it back to this after a reset. */
@@ -123,6 +124,7 @@ function migrateJournalSchema(db: Database.Database, stored: number): void {
       db.exec(createJournalTablesSql())
     }
     db.exec(createAgentSessionRecordTablesSql())
+    migrateAgentSessionClosedOwnerRows(db)
     db.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION}`)
   })
 }

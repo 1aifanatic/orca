@@ -287,7 +287,7 @@ function isAgentSessionJournalCheckpoint(value: unknown): value is AgentSessionJ
   )
 }
 
-function isAgentSessionDeathEvidence(value: unknown): value is AgentSessionDeathEvidence {
+export function isAgentSessionDeathEvidence(value: unknown): value is AgentSessionDeathEvidence {
   if (typeof value !== 'object' || value === null) {
     return false
   }

@@ -8,6 +8,7 @@
 // the async boundary every awaiting caller was written against.
 
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
+import type Database from '../sqlite/sync-database'
 import type { JournalOperationReceipt } from '../native-chat/agent-session-journal/journal-row-writer'
 import { journalOpenRefusalError } from '../native-chat/agent-session-journal/journal-open-failure'
 import { AgentSessionJournalError } from '../native-chat/agent-session-journal/journal-write-guards'
@@ -26,6 +27,7 @@ import {
   draftAgentSessionStoreState,
   type AgentSessionStoreRowWrites
 } from './agent-session-store-draft'
+import { captureAgentSessionClosedOwners } from './agent-session-closed-owner-history'
 
 // Why: rows are diffed by identity, so a row changed in place would never be written. Tests and
 // development builds make that a TypeError; packaged builds skip the walk.
@@ -55,6 +57,12 @@ function freezeRows(
   const operations = writes ? writes.operations.upsert.map(([key]) => key) : state.operations.keys()
   for (const key of operations) {
     deepFreeze(state.operations.get(key))
+  }
+  const closedOwners = writes
+    ? writes.closedOwners.upsert.map(([key]) => key)
+    : state.closedOwners.keys()
+  for (const key of closedOwners) {
+    deepFreeze(state.closedOwners.get(key))
   }
   if (!writes || writes.retiredClaimKeys) {
     state.retiredClaimKeys.forEach(deepFreeze)
@@ -134,7 +142,7 @@ export class AgentSessionStoreTransactions {
         if (this.journalDatabase.readOnly) {
           throw readOnlyStoreRefusal()
         }
-        staged = this.stage(apply)
+        staged = this.stage(apply, db)
         const writes = staged.writes
         if (writes) {
           writeAgentSessionStoreRows(db, writes)
@@ -152,20 +160,30 @@ export class AgentSessionStoreTransactions {
     if (readOnly && !inMemoryWhenReadOnly) {
       throw readOnlyStoreRefusal()
     }
-    const staged = this.stage(apply)
-    const writes = staged.writes
-    if (writes && !readOnly) {
-      this.journalDatabase.transaction((db) => writeAgentSessionStoreRows(db, writes))
-    }
+    const staged = readOnly
+      ? this.stage(apply)
+      : this.journalDatabase.transaction((db) => {
+          const transaction = this.stage(apply, db)
+          if (transaction.writes) {
+            writeAgentSessionStoreRows(db, transaction.writes)
+          }
+          return transaction
+        })
     staged.adopt()
     return staged.result
   }
 
-  private stage<T>(apply: (draft: AgentSessionStoreState) => T): StagedStoreTransaction<T> {
+  private stage<T>(
+    apply: (draft: AgentSessionStoreState) => T,
+    db?: Database.Database
+  ): StagedStoreTransaction<T> {
     const published = this.published
     const draft = draftAgentSessionStoreState(published)
     const result = apply(draft)
     attributeAgentSessionRuntime(published, draft)
+    if (db) {
+      captureAgentSessionClosedOwners(published, draft, db)
+    }
     const writes = agentSessionStoreDraftRowWrites(published, draft)
     return {
       result,

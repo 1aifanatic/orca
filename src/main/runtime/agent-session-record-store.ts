@@ -36,6 +36,7 @@ import {
   agentSessionScopeKey,
   type AgentSessionExecutionLocation,
   type AgentSessionOptionsReplacement,
+  type AgentSessionProcessIdentity,
   type AgentSessionRecord
 } from '../../shared/agent-session-record'
 import {
@@ -81,6 +82,12 @@ import {
   type CompareAndSetConversationName,
   setAgentSessionRecordConversationName
 } from './agent-session-record-conversation-name'
+import {
+  agentSessionClosedOwnerKey,
+  type AgentSessionClosedOwner
+} from './agent-session-closed-owner'
+import { AgentSessionStoreNotifications } from './agent-session-store-notifications'
+import { assertAgentSessionProbedOwner } from './agent-session-reconciliation-target'
 
 type AgentSessionOperationSettlement = Parameters<typeof settleAgentSessionOperationInto>[1]
 
@@ -88,8 +95,7 @@ export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
   AGENT_SESSION_LEASE_RENEW_INTERVAL_MS = 10_000
 
 export class AgentSessionRecordStore {
-  private readonly deathEvidenceListeners = new Set<(sessionId: string) => void>()
-  private readonly firstRecordListeners = new Set<() => void>()
+  private readonly notifications = new AgentSessionStoreNotifications()
 
   private constructor(
     private readonly transactions: AgentSessionStoreTransactions,
@@ -119,6 +125,11 @@ export class AgentSessionRecordStore {
     this.state.records.get(sessionId) ?? null
 
   listRecords = (): AgentSessionRecord[] => [...this.state.records.values()]
+
+  closedOwners = (sessionId: string): AgentSessionClosedOwner[] =>
+    [...this.state.closedOwners.values()]
+      .filter((fact) => fact.sessionId === sessionId)
+      .sort((left, right) => left.deadOwnerFence - right.deadOwnerFence)
 
   /** Every chat this host holds a row for, readable or not. */
   listHeldSessionIds = (): string[] => heldAgentSessionIds(this.state)
@@ -251,9 +262,13 @@ export class AgentSessionRecordStore {
     sessionId: string
     expectedFence: number
     probe: AgentSessionOwnerProbe
+    probedOwner?: AgentSessionProcessIdentity | null
     now: number
   }): Promise<AgentSessionRecord> {
-    return this.mutate(args.sessionId, (record) => evictAgentSessionOwner({ ...args, record }))
+    return this.mutate(args.sessionId, (record) => {
+      assertAgentSessionProbedOwner(record, args.probedOwner)
+      return evictAgentSessionOwner({ ...args, record })
+    })
   }
 
   async transitionHandoff(
@@ -318,6 +333,12 @@ export class AgentSessionRecordStore {
   operationOutcomeReceipt = (args: AgentSessionOperationSettlement): JournalOperationReceipt =>
     this.transactions.receipt((draft) => settleAgentSessionOperationInto(draft, args))
 
+  /** Retires a past ownership fact in the same transaction as the journal result it describes. */
+  closedOwnerReceipt = (fact: AgentSessionClosedOwner): JournalOperationReceipt =>
+    this.transactions.receipt((draft) => {
+      draft.closedOwners.delete(agentSessionClosedOwnerKey(fact))
+    })
+
   replaceSessionOptions = (args: AgentSessionOptionsReplacement): Promise<AgentSessionRecord> =>
     this.mutate(args.sessionId, (record) => replaceAgentSessionRecordOptions(record, args))
 
@@ -342,47 +363,25 @@ export class AgentSessionRecordStore {
     })
   }
 
-  /** Told, once committed, of each session a transaction wrote a proof of death for — whichever
-   *  transition wrote it, since every one lands here. Must not throw. */
-  onDeathEvidence(listener: (sessionId: string) => void): () => void {
-    this.deathEvidenceListeners.add(listener)
-    return () => this.deathEvidenceListeners.delete(listener)
-  }
+  /** Existing proof notifications carry the committed fact without changing their timing. */
+  onDeathEvidence = this.notifications.onDeathEvidence
 
-  /** Told, once committed, when the store records its first chat. Must not throw. */
-  onFirstRecord(listener: () => void): () => void {
-    this.firstRecordListeners.add(listener)
-    return () => this.firstRecordListeners.delete(listener)
-  }
+  /** Includes fresh reservation proofs as well as every other committed closure. */
+  onClosedOwner = this.notifications.onClosedOwner
 
-  /** Serializes every mutation. `apply` changes only the draft it is given; readers see the change
-   *  once its rows have committed. */
+  onFirstRecord = this.notifications.onFirstRecord
+
   private transact = async <T>(
     apply: (draft: AgentSessionStoreState) => T,
     options?: { inMemoryWhenReadOnly?: boolean }
   ): Promise<T> => {
-    let proven: string[] = []
-    let heldBefore = true
+    let publish: (durable: boolean) => void = () => {}
     const result = await this.transactions.transact((draft) => {
-      heldBefore = this.holdsRecords()
-      if (this.deathEvidenceListeners.size === 0) {
-        return apply(draft)
-      }
-      const before = new Map(
-        [...draft.records].map(([id, record]) => [id, record.lease.deathEvidence])
-      )
-      const applied = apply(draft)
-      proven = [...draft.records]
-        .filter(([id, { lease }]) => lease.deathEvidence && lease.deathEvidence !== before.get(id))
-        .map(([id]) => id)
-      return applied
+      const staged = this.notifications.stage(draft, apply)
+      publish = staged.publish
+      return staged.result
     }, options)
-    for (const sessionId of proven) {
-      this.deathEvidenceListeners.forEach((listener) => listener(sessionId))
-    }
-    if (!heldBefore && this.holdsRecords()) {
-      this.firstRecordListeners.forEach((listener) => listener())
-    }
+    publish(!this.readOnly)
     return result
   }
 }

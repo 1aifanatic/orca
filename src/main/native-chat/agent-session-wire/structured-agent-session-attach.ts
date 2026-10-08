@@ -92,6 +92,7 @@ export type AgentSessionAttachAuthority = {
   claimKeyId: string
   handoffOperationId: string | null
   probe: AgentSessionOwnerProbe
+  probedOwner?: AgentSessionRecord['lease']['ownerProcess']
   launchArgs?: AgentSessionLaunchArgs
   launchEnv?: AgentSessionLaunchEnv
 }
@@ -293,6 +294,7 @@ export function reserveRequestFor(input: {
     claimKeyId: authority.claimKeyId,
     handoffOperationId: authority.handoffOperationId,
     probe: authority.probe,
+    ...(authority.probedOwner === undefined ? {} : { probedOwner: authority.probedOwner }),
     operation: {
       callerKey: input.callerKey,
       operationId: params.envelope.clientOperationId,
