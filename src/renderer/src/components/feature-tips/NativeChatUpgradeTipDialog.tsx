@@ -1,6 +1,7 @@
 import { useRef, type JSX } from 'react'
 import type { FeatureTip } from '../../../../shared/feature-tips'
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { translate } from '@/i18n/i18n'
 import { FeatureTipActions } from './FeatureTipActions'
 import {
@@ -40,12 +41,15 @@ export function NativeChatUpgradeTipDialog({
     >
       {/* Why: only the copy scrolls, so the focused Got it button stays visible with long copy. */}
       <div className="flex min-h-0 flex-1 flex-col">
-        <div
+        {/* Why: "always" shows the thumb whenever longer translations overflow, with no hover needed;
+            the gutter puts it in the frame padding so it never covers text. */}
+        <ScrollArea
+          type="always"
           data-testid="native-chat-upgrade-tip-copy"
-          className="scrollbar-sleek min-h-0 flex-1 overflow-y-auto"
+          className="-mr-4 min-h-0 flex-1"
         >
           <DialogHeader className="text-left">
-            <div>
+            <div className="pr-4">
               <FeatureTipEyebrow
                 label={translate('featureTips.nativeChatUpgrade.eyebrow', tip.eyebrow)}
               />
@@ -56,13 +60,13 @@ export function NativeChatUpgradeTipDialog({
                 <span className="block">
                   {translate('featureTips.nativeChatUpgrade.description', tip.description)}
                 </span>
-                <span className="mt-3 block">
+                <span className="mt-2 block">
                   {translate(
                     'featureTips.nativeChatUpgrade.sessionHistoryIntro',
                     'In Agent Session History, in the right sidebar:'
                   )}
                 </span>
-                <span className="mt-3 block">
+                <span className="mt-2 block">
                   <span className="font-medium text-foreground">
                     {translate(
                       'featureTips.nativeChatUpgrade.resumeInChatLabel',
@@ -74,7 +78,7 @@ export function NativeChatUpgradeTipDialog({
                     'moves a CLI session into a chat.'
                   )}
                 </span>
-                <span className="mt-3 block">
+                <span className="mt-2 block">
                   <span className="font-medium text-foreground">
                     {translate(
                       'featureTips.nativeChatUpgrade.resumeInCliLabel',
@@ -86,7 +90,7 @@ export function NativeChatUpgradeTipDialog({
                     'copies a Claude or Codex chat into a new CLI session. The chat stays as it is.'
                   )}
                 </span>
-                <span className="mt-3 block">
+                <span className="mt-2 block">
                   <FeatureTipSettingsLine
                     lead={translate(
                       'featureTips.nativeChatUpgrade.settingsLead',
@@ -102,9 +106,9 @@ export function NativeChatUpgradeTipDialog({
               </DialogDescription>
             </div>
           </DialogHeader>
-        </div>
+        </ScrollArea>
 
-        <DialogFooter className="mt-6 flex shrink-0 sm:justify-stretch">
+        <DialogFooter className="mt-4 flex shrink-0 sm:justify-stretch">
           <FeatureTipActions
             currentTip={tip}
             primaryBusy={primaryBusy}

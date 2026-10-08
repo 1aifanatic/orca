@@ -105,7 +105,7 @@ describe('NativeChatUpgradeTipDialog', () => {
     expect(event.defaultPrevented).toBe(true)
     expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true })
     expect(document.activeElement).toBe(button)
-    expect(copy.scrollTop).toBe(0)
+    expect(copy.querySelector('[data-slot="scroll-area-viewport"]')?.scrollTop).toBe(0)
     expect(copy.contains(container.querySelector('h1'))).toBe(true)
     expect(copy.contains(container.querySelector('footer'))).toBe(false)
     expect(container.querySelector('footer')?.contains(button)).toBe(true)
