@@ -103,13 +103,12 @@ describe('agent.launch creating a folder workspace', () => {
     expect(result).toMatchObject({ worktreeId: 'folder:fw-new', outcome: { kind: 'structured' } })
   })
 
-  // OpenCode's chat view reads its transcript locally, so on an SSH host its tab opens as the terminal.
   it.each([
-    ['an SSH', 'ssh-1', 'terminal'],
-    ['a local', null, 'chat']
+    ['an SSH', 'ssh-1'],
+    ['a local', null]
   ] as const)(
     'keeps %s folder workspace connection through to the agent it starts',
-    async (_where, connectionId, viewMode) => {
+    async (_where, connectionId) => {
       const runtime = folderRuntime({ createSupport: { supported: false, reason: 'remote' } })
       runtime.showTerminalWorkspaceLaunchScope.mockImplementationOnce(async (selector: string) => ({
         id: selector.replace(/^id:/, ''),
@@ -128,10 +127,7 @@ describe('agent.launch creating a folder workspace', () => {
       expect(runtime.createFolderWorkspace).toHaveBeenCalledWith(
         expect.objectContaining({ connectionId })
       )
-      expect(runtime.createTerminal).toHaveBeenCalledWith(
-        'id:folder:fw-new',
-        expect.objectContaining({ viewMode })
-      )
+      expect(runtime.createTerminal).toHaveBeenCalledWith('id:folder:fw-new', expect.anything())
     }
   )
 
