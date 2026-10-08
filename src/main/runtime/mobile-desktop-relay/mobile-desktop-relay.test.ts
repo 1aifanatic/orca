@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DELEGATED_MOBILE_DEVICE_SYNC_RUNTIME_CAPABILITY } from '../../../shared/delegated-mobile-device-contract'
+import { DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY } from '../../../shared/delegated-mobile-device-contract'
 import { RemoteRuntimeClientError } from '../../../shared/remote-runtime-client-error'
 import type { RemoteRuntimePassthroughCallbacks } from '../../../shared/remote-runtime-passthrough-socket'
 import { MobileDesktopRelay, type RelayedPhone } from './mobile-desktop-relay'
@@ -46,7 +46,7 @@ function relayWithPhone() {
     }),
     call: async (_host, method) =>
       method === 'status.get'
-        ? ok({ capabilities: [DELEGATED_MOBILE_DEVICE_SYNC_RUNTIME_CAPABILITY] })
+        ? ok({ capabilities: [DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY] })
         : ok({ devices: [{ phoneKey: 'phone-1', deviceId: 'child', token: 'host-token' }] }),
     onEnvironmentRetired: () => () => {}
   }

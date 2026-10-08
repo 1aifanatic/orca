@@ -8,7 +8,7 @@ import type { AuthenticatedMobileSocket } from '../rpc/mobile-socket-wiring'
 import type { RpcRequest, RpcResponse } from '../rpc/core'
 import type { WebSocketTransport } from '../rpc/ws-transport'
 import type { DeviceScope } from '../device-registry'
-import { RuntimeRpcRequestAdmission } from './runtime-rpc-request-admission'
+import { RuntimeRpcMobileDevices } from './runtime-rpc-mobile-devices'
 import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import { MOBILE_RPC_METHOD_ALLOWLIST } from './runtime-rpc-mobile-method-allowlist'
 import { parseExecutionHostId } from '../../../shared/execution-host'
@@ -27,7 +27,7 @@ function injectDeviceScope(response: string, scope: DeviceScope): string {
   }
 }
 
-export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
+export class RuntimeRpcWebSocketDispatch extends RuntimeRpcMobileDevices {
   // Why: a phone names a server's workspace with `executionHost`; only configured servers are reached,
   // and a target the desktop cannot reach is an error, never a silent local run.
   private relayMobileRequest(
@@ -209,6 +209,10 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
               }
             : undefined,
         pairing: pairingContext,
+        delegatedMobileDevices:
+          device.scope === 'runtime'
+            ? { sync: (phones) => this.syncDelegatedMobileDevices(device.deviceId, phones) }
+            : undefined,
         signal: abortRegistration?.signal,
         sendBinary,
         registerBinaryStreamHandler: (streamId, handler) =>

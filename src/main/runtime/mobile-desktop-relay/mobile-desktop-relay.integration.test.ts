@@ -15,11 +15,11 @@ import {
 } from '../../../shared/e2ee-crypto'
 import { parsePairingCode, type PairingOffer } from '../../../shared/pairing'
 import {
-  DELEGATED_MOBILE_DEVICE_SYNC_RUNTIME_CAPABILITY,
+  DELEGATED_MOBILE_DEVICE_SYNC_METHOD,
   DelegatedMobileDeviceSyncParamsSchema
 } from '../../../shared/delegated-mobile-device-contract'
 import { decodeTerminalStreamFrame } from '../../../shared/terminal-stream-protocol'
-import type { DeviceEntry } from '../device-registry'
+import { sendRemoteRuntimeRequest } from '../../../shared/remote-runtime-client'
 import { OrcaRuntimeService } from '../orca-runtime'
 import { readRuntimeMetadata } from '../runtime-metadata'
 import { OrcaRuntimeRpcServer } from '../runtime-rpc'
@@ -142,43 +142,27 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     const desktop = await startRuntime(desktopSpawns)
     const desktopOnHost = pair(host.server, 'runtime', 'MacBook')
     const registry = host.server.getDeviceRegistry()!
-    const children = new Map<string, DeviceEntry>()
+    const children = () => registry.listDelegatedMobileDevices(desktopOnHost.pairedDeviceId!)
     const syncedNames: string[][] = []
     const state = { capable: true, retire: (_id: string) => {} }
-    const ok = (result: unknown) => ({
-      id: 'x',
-      ok: true as const,
-      result,
-      _meta: { runtimeId: 'h' }
-    })
     const hosts: MobileDesktopRelayHosts = {
       resolve: async (environmentId) =>
         environmentId === 'env-1'
           ? { environmentId, fence: 'pairing-1', pairing: desktopOnHost }
           : null,
       call: async (_host, method, params) => {
-        if (method === 'status.get') {
-          return ok({
-            capabilities: state.capable ? [DELEGATED_MOBILE_DEVICE_SYNC_RUNTIME_CAPABILITY] : []
-          })
+        if (method === DELEGATED_MOBILE_DEVICE_SYNC_METHOD) {
+          const { phones } = DelegatedMobileDeviceSyncParamsSchema.parse(params)
+          syncedNames.push(phones.map((phone) => phone.name))
         }
-        // Stand-in for the server's sync (lane S1a): mint or return ordinary phone devices on the host.
-        const { phones } = DelegatedMobileDeviceSyncParamsSchema.parse(params)
-        syncedNames.push(phones.map((phone) => phone.name))
-        for (const phone of phones) {
-          const existing = children.get(phone.phoneKey)
-          if (!existing || !registry.getDevice(existing.deviceId)) {
-            const device = registry.addDevice(phone.name, 'mobile')
-            registry.updateLastSeen(device.deviceId)
-            children.set(phone.phoneKey, device)
-          }
-        }
-        return ok({
-          devices: phones.map((phone) => {
-            const device = children.get(phone.phoneKey)!
-            return { phoneKey: phone.phoneKey, deviceId: device.deviceId, token: device.token }
-          })
-        })
+        const response = await sendRemoteRuntimeRequest(desktopOnHost, method, params, 5_000)
+        // An older server: the same status without the delegated-devices capability.
+        return method === 'status.get' && !state.capable && response.ok
+          ? {
+              ...response,
+              result: { ...z.object({}).passthrough().parse(response.result), capabilities: [] }
+            }
+          : response
       },
       onEnvironmentRetired: (listener) => {
         state.retire = listener
@@ -247,6 +231,7 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     const token = pairing.deviceToken
     return {
       token,
+      deviceId: pairing.pairedDeviceId!,
       frames,
       binaries,
       close: () => ws.close(),
@@ -309,7 +294,7 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
       ).toBe(true)
     )
     expect(syncedNames).toEqual([[`iPhone via ${desktop.runtime.readMachineName()}`]])
-    const delegated = [...children.values()][0]!
+    const delegated = children()[0]!
     // The host seats the phone's delegated device, never the desktop's token for it.
     expect(host.runtime.seatClientIds('pty-shared')).toEqual([delegated.token])
 
@@ -339,7 +324,7 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     const streamA = await subscribe(phoneA, handle)
     const streamB = await subscribe(phoneB, handle)
     expect(streamA).not.toBe(streamB)
-    const tokens = [...children.values()].map((device) => device.token)
+    const tokens = children().map((device) => device.token)
     expect(new Set(tokens).size).toBe(2)
     expect(host.runtime.seatClientIds('pty-shared').sort()).toEqual([...tokens].sort())
 
@@ -376,11 +361,25 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     ).toHaveLength(1)
   })
 
+  it('drops a phone from the server as soon as the desktop unpairs it', async () => {
+    const { host, desktop, children, handle } = await startTopology()
+    const kept = await connectPhone(desktop.server, 'Kept')
+    const unpaired = await connectPhone(desktop.server, 'Unpaired')
+    await subscribe(kept, handle)
+    expect(children().map((device) => device.phoneKey)).toEqual([kept.deviceId, unpaired.deviceId])
+
+    await desktop.server.revokeMobileDevice(unpaired.deviceId)
+    await vi.waitFor(() =>
+      expect(children().map((device) => device.phoneKey)).toEqual([kept.deviceId])
+    )
+    expect(host.runtime.seatClientIds('pty-shared')).toEqual([children()[0]!.token])
+  })
+
   it('stops relaying a phone the server revoked until the next sync', async () => {
     const { host, desktop, children, state, handle } = await startTopology()
     const phone = await connectPhone(desktop.server, 'iPhone')
     await subscribe(phone, handle)
-    const revoked = [...children.values()][0]!
+    const revoked = children()[0]!
 
     await host.server.revokeMobileDevice(revoked.deviceId)
     // The open stream ends as unavailable, never as an unpaired phone.

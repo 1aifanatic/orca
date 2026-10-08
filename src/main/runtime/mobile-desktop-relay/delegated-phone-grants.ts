@@ -2,7 +2,7 @@ import { z } from 'zod'
 import {
   DELEGATED_MOBILE_DEVICE_SYNC_METHOD,
   DELEGATED_MOBILE_DEVICE_SYNC_MAX_PHONES,
-  DELEGATED_MOBILE_DEVICE_SYNC_RUNTIME_CAPABILITY,
+  DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY,
   type DelegatedMobileDeviceSyncParams
 } from '../../../shared/delegated-mobile-device-contract'
 import { RemoteRuntimeClientError } from '../../../shared/remote-runtime-client-error'
@@ -36,7 +36,7 @@ export async function syncDelegatedPhoneGrants(
     throw new RemoteRuntimeClientError('remote_runtime_unavailable', status.error.message)
   }
   const capabilities = StatusCapabilitiesSchema.safeParse(status.result).data?.capabilities ?? []
-  if (!capabilities.includes(DELEGATED_MOBILE_DEVICE_SYNC_RUNTIME_CAPABILITY)) {
+  if (!capabilities.includes(DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY)) {
     return { kind: 'update-needed', fence: host.fence }
   }
   const response = await hosts.call(host, DELEGATED_MOBILE_DEVICE_SYNC_METHOD, {

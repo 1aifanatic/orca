@@ -1,7 +1,11 @@
 import { z } from 'zod'
+import type { RUNTIME_CAPABILITIES } from './protocol-version'
 
 // Why: a paired desktop relays each of its phones to this host as an ordinary phone device it owns.
 export const DELEGATED_MOBILE_DEVICE_SYNC_METHOD = 'pairing.delegatedMobileDevice.sync'
+// Why: a desktop relays phones only to a host advertising this; `satisfies` ties it to RUNTIME_CAPABILITIES.
+export const DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY =
+  'pairing.delegated-mobile-devices.v1' satisfies (typeof RUNTIME_CAPABILITIES)[number]
 export const DELEGATED_MOBILE_DEVICE_SYNC_MAX_PHONES = 32
 
 const DelegatedPhoneSchema = z
@@ -22,12 +26,9 @@ export const DelegatedMobileDeviceSyncParamsSchema = z
   })
   .strict()
 
+export type DelegatedPhone = z.infer<typeof DelegatedPhoneSchema>
 export type DelegatedMobileDeviceSyncParams = z.infer<typeof DelegatedMobileDeviceSyncParamsSchema>
 
 export type DelegatedMobileDeviceSyncResult = {
   devices: { phoneKey: string; deviceId: string; token: string }[]
 }
-
-// Why: the paired desktop relays a phone to this host only when the host can mint its delegated device.
-export const DELEGATED_MOBILE_DEVICE_SYNC_RUNTIME_CAPABILITY =
-  'pairing.delegated-mobile-device.v1' as const
