@@ -32,7 +32,7 @@ import {
 } from './structured-agent-session-queued-pause'
 import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { clearCarryOwed, isQueuedClearCard } from './structured-conversation-clear-carry'
+import { isQueuedClearCard } from './structured-conversation-clear-carry'
 import type { QueuedClearDrainDeps } from './structured-conversation-clear-carry'
 
 import { agentSessionAttachmentExpiredRefusal } from './structured-agent-session-turns'
@@ -297,7 +297,6 @@ export class StructuredAgentSessionQueuedMessageDrain {
     try {
       if (
         !journal.queuedMessages.settlementOwed() &&
-        !clearCarryOwed(this.deps.getRecord(sessionId), journal) &&
         (oldestActionableQueuedMessage(journal) === null ||
           isStructuredAgentSessionMainAgentWorking(
             journal.activeTurnId(),
@@ -349,10 +348,6 @@ export class StructuredAgentSessionQueuedMessageDrain {
       })
     }
     const record = this.deps.getRecord(sessionId)
-    if (clearCarryOwed(record, journal)) {
-      await this.deps.clear.carry(sessionId)
-      return false
-    }
     const fence = this.deps.conversationFence(sessionId)
     const next = nextStructuredQueuedMessage({ journal, record, fence })
     if (this.disposed || !next) {

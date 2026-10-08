@@ -14,6 +14,7 @@
 // A card held on its own (`hold_reason`, a failed conversion) is outside every pause: only an
 // action on it releases it.
 
+import { nextActionableQueuedMessage } from '../../../shared/structured-agent-session-queue-selection'
 import type {
   AgentJournalCursor,
   AgentJournalSubmission
@@ -224,15 +225,11 @@ export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]
 ): T | null {
-  for (const card of cards) {
-    if (card.state === 'returned' || queuePauseHolding(pauses, card)) {
-      return null
-    }
-    if (card.state === 'waiting' && card.holdReason === null) {
-      return card
-    }
-  }
-  return null
+  return nextActionableQueuedMessage(
+    cards,
+    (card) => card.holdReason !== null,
+    (card) => queuePauseHolding(pauses, card) !== undefined
+  )
 }
 
 /** The pause to PUBLISH: the one holding the first card Resume would send, not behind a returned

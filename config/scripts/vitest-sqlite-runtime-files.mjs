@@ -102,6 +102,7 @@ export const SQLITE_RUNTIME_INCLUDE = [
   'src/main/native-chat/agent-session-wire/structured-agent-session-provider-started.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-queued-card-holds.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-queued-clear.test.ts',
+  'src/main/native-chat/agent-session-wire/structured-agent-session-queued-clear-atomic.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-queued-command.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-queued-compact.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-queued-gate.test.ts',

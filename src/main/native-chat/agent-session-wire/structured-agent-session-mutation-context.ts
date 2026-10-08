@@ -13,6 +13,7 @@ import {
 } from './structured-agent-session-mutation-admission'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-lifetime'
+import type { StructuredAgentSessionConversationDelivery } from './structured-agent-session-host-delivery'
 import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
 import type { StructuredAgentSessionOptionRevisions } from './structured-agent-session-option-revisions'
 import type {
@@ -31,7 +32,7 @@ export type StructuredAgentSessionMutationContext = {
   readChildWork: (sessionId: string) => AgentChildWorkView[] | undefined
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** The session's conversation, opened when closed; inside the caller's serialize. */
-  openConversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
+  openConversation: StructuredAgentSessionConversationDelivery['open']
   /** Gives the session a provider child; inside the caller's serialize. */
   ensureAgent: (sessionId: string) => Promise<AgentSessionMutationSessionPreparation>
   /** Joins a close a stop began on the session's child, for an operation that starts no child;

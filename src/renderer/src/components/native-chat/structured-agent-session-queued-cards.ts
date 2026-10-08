@@ -1,6 +1,7 @@
 // What the queued-message cards above the composer show, derived per publish —
 // the wire carries no hold label (§ labels are client policy, not host state).
 
+import { nextActionableQueuedMessage } from '../../../../shared/structured-agent-session-queue-selection'
 import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type {
@@ -80,11 +81,16 @@ export function projectQueuedMessageCards(
   const ordered = [...(queuedMessages ?? [])]
     .sort((left, right) => left.position - right.position)
     .filter((message) => message.state === 'returned' || !handedOff.has(message.messageId))
+  const next = nextActionableQueuedMessage(
+    ordered,
+    (message) => message.paused === true,
+    () => session.queuePaused === true
+  )
   let behindReturned = false
-  return ordered.map((message, index) => {
+  return ordered.map((message) => {
     // Said only while it is what holds the card: nothing ahead of it, and the agent idle.
     const waitsOnTasks =
-      index === 0 &&
+      message === next &&
       session.backgroundTasksRunning === true &&
       session.agentWorking !== true &&
       message.body.command?.name === 'clear'
@@ -104,7 +110,7 @@ export function projectQueuedMessageCards(
                   : 'turn'
     behindReturned = behindReturned || message.state === 'returned'
     const runsOnItsOwn =
-      index === 0 &&
+      message === next &&
       message.body.command?.name === 'clear' &&
       (hold === 'turn' || hold === 'background-tasks')
     const from = readAgentMessageSource(message.body.from)

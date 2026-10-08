@@ -61,6 +61,8 @@ import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-cap
 import { ConversationCommandParams } from '../../../../shared/rpc-contract/structured-agent-session-params'
 import { structuredAgentSessionPayloadFingerprint } from '../../../../shared/structured-agent-session-mutation'
 import { clearNativeChatDraftCacheForTests } from './native-chat-draft-cache'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 const RUNNING_TURN: AgentJournalRenderItem = {
@@ -217,6 +219,14 @@ describe('a /clear against a host that runs it from the queue', () => {
       expect(JSON.stringify(result.current.messages).split('message asked about')).toHaveLength(2)
       expect(result.current.queuedMessages.cards).toEqual([])
       expect(result.current.canStop).toBe(turn)
+      expect(
+        structuredAgentSessionDeliveryNotices({
+          pending: result.current.pending,
+          submissions: [],
+          agentName: 'Claude',
+          startFailures: []
+        }).get(agentJournalSubmissionKey('asked'))
+      ).toEqual({ sending: true })
     }
   )
 

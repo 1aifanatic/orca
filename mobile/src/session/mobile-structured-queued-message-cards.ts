@@ -2,6 +2,7 @@
 // The wire carries no hold copy on purpose: the caption is derived here from the
 // draft's own state plus the live facts the client already holds.
 
+import { nextActionableQueuedMessage } from '../../../src/shared/structured-agent-session-queue-selection'
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
@@ -113,12 +114,17 @@ export function mobileQueuedMessageCards(
         : []
     )
   )
+  const ordered = [...queuedMessages]
+    .sort((a, b) => a.position - b.position)
+    .filter((draft) => draft.state === 'returned' || !handedOff.has(draft.messageId))
+  const next = nextActionableQueuedMessage(
+    ordered,
+    (draft) => draft.paused === true,
+    () => facts.queuePaused === true
+  )
   let behindReturned = false
   const cards: MobileQueuedMessageCard[] = []
-  for (const draft of queuedMessages) {
-    if (draft.state !== 'returned' && handedOff.has(draft.messageId)) {
-      continue
-    }
+  for (const draft of ordered) {
     const paused = draft.paused === true
     const caption =
       draft.state === 'returned'
@@ -137,7 +143,7 @@ export function mobileQueuedMessageCards(
                 ? 'Waiting for your answer'
                 : null
     const runsOnItsOwn =
-      cards.length === 0 &&
+      draft === next &&
       draft.body.command?.name === 'clear' &&
       draft.state === 'waiting' &&
       !paused &&

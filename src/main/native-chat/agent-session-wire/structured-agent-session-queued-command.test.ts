@@ -98,18 +98,18 @@ describe('a /compact in flight', () => {
 
 describe('/clear', () => {
   it('in flight, refuses a capable send as today: no card lands on the source it supersedes', async () => {
-    const commit = rig.store.commitConversationClear
+    const stop = rig.closeSession
     let release: (() => void) | undefined
     const released = new Promise<void>((resolve) => {
       release = resolve
     })
     const committing = vi.fn()
     const spy = vi
-      .spyOn(rig.store, 'commitConversationClear')
-      .mockImplementationOnce(async (clear) => {
+      .spyOn(rig.host.deps.adapter, 'closeSession')
+      .mockImplementationOnce(async (...args) => {
         committing()
         await released
-        return commit(clear)
+        return stop(...args)
       })
     try {
       const cleared = command('clear')

@@ -261,7 +261,8 @@ export function useStructuredAgentSession(args: {
     olderHistoryGeneration,
     loadOlder,
     prompts,
-    pending,
+    // Presentation includes carried sends; admission and Stop still use this sender above.
+    pending: transcriptPending,
     /** A send is out, or a /clear holds sends; the chat takes none until it settles. */
     sendOut: sending || sends.held,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */

@@ -2,6 +2,7 @@
 // at-rest one and moves its tab there. The command RPC runs it at once, and the queue runs it when
 // a /clear card's turn comes; neither ever hands it to the agent.
 
+import { foundAgentSessionRecord } from '../../runtime/agent-session-record-founding'
 import { randomBytes } from 'node:crypto'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
@@ -17,7 +18,7 @@ import type { StructuredAgentSessionMutationContext } from './structured-agent-s
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 import {
-  carryQueuedMessagesToClearReplacement,
+  commitClearWithQueuedMessages,
   STRUCTURED_AGENT_SESSION_CLEAR_COMMAND
 } from './structured-conversation-clear-carry'
 
@@ -42,7 +43,7 @@ type ClearContext = Pick<
 
 /**
  * The clear itself: refused while anything it would cut off is in flight, else the agent is
- * stopped, the clear is committed, and the drafts are carried. `operationId` is what the marker
+ * stopped, the clear and carried drafts commit together. `operationId` is what the marker
  * records — for a /clear card, the card's id, which is how a reopen finds the card it ran from.
  */
 export async function clearConversationUnderSerialize(
@@ -80,20 +81,38 @@ export async function clearConversationUnderSerialize(
     phase: 'committed' as const,
     state: 'completed' as const
   }
-  await store.commitConversationClear({
+  const clearRecord = {
     sessionId,
     fence,
     command: completed,
     claimKeyId: context.deps.claimKeyId,
     now: context.now()
-  })
-  await carryQueuedMessagesToClearReplacement(ctx, {
-    replacementSessionId: completed.replacementSessionId,
-    // Opened under its own lock, as every open is.
-    openReplacementJournal: async () =>
-      (await context.conversation(completed.replacementSessionId)).journal,
-    callerKey: clear.callerKey,
-    operationId: clear.operationId
+  }
+  // The fresh destination cannot be observed until all its carried work is committed.
+  await context.serialize(completed.replacementSessionId, async () => {
+    const carried = await commitClearWithQueuedMessages(ctx, {
+      replacement: foundAgentSessionRecord(
+        { ...record, sessionId: completed.replacementSessionId },
+        clearRecord
+      ),
+      stateDirectory: context.deps.journalDatabase.stateDirectory,
+      callerKey: clear.callerKey,
+      operationId: clear.operationId,
+      now: clearRecord.now,
+      receipt: store.commitConversationClearReceipt(clearRecord)
+    })
+    if (!carried) {
+      return
+    }
+    try {
+      await context.openConversation(completed.replacementSessionId, { freshClear: true })
+    } catch (error) {
+      ctx.logger.warn('opening a cleared conversation failed', {
+        scope: 'clear-open',
+        sessionId: completed.replacementSessionId,
+        error
+      })
+    }
   })
   return { ok: true, value: completed }
 }

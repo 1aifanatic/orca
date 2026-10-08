@@ -92,6 +92,36 @@ describe('mobileQueuedMessageCards', () => {
     }
   })
 
+  it('skips a failed card ahead of clear, respecting returned and queue-pause barriers', () => {
+    const clear = draft({
+      messageId: 'clear',
+      position: 2,
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/clear' }],
+        command: { name: 'clear' }
+      }
+    })
+    const held = draft({
+      messageId: 'held',
+      paused: true,
+      pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED
+    })
+    expect(
+      mobileQueuedMessageCards([held, clear], [], { pendingPrompt: false })[1]?.runsOnItsOwn
+    ).toBe(true)
+    expect(
+      mobileQueuedMessageCards([{ ...held, state: 'returned' }, clear], [], {
+        pendingPrompt: false
+      })[1]?.runsOnItsOwn
+    ).toBeUndefined()
+    expect(
+      mobileQueuedMessageCards([held, clear], [], { pendingPrompt: false, queuePaused: true })[1]
+        ?.runsOnItsOwn
+    ).toBeUndefined()
+  })
+
   it("a send-failed command card's caption names Send only when Send is there", () => {
     const failed = draft({
       messageId: 'c',

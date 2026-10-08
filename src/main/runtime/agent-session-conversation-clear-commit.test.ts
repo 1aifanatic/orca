@@ -7,6 +7,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../shared/agent-session-lease-adjudication'
 import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
+import type { AgentSessionConversationClear } from './agent-session-conversation-command-record'
+import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { openTestAgentSessionRecordStore } from './agent-session-record-store-test-harness'
 
@@ -69,11 +71,20 @@ function marker(fence: number, replacementSessionId = REPLACEMENT) {
   }
 }
 
+async function commitClear(
+  store: AgentSessionRecordStore,
+  clear: AgentSessionConversationClear
+): Promise<void> {
+  const receipt = store.commitConversationClearReceipt(clear)
+  openTestJournalHostDatabase(directory).transaction(receipt.write)
+  receipt.committed()
+}
+
 describe("a /clear's commit", () => {
   it('founds the replacement at rest and points the cleared record at it, on disk', async () => {
     const store = await storeWithSource()
     const fence = store.getRecord(SOURCE)!.lease.runtimeFence
-    await store.commitConversationClear({
+    await commitClear(store, {
       sessionId: SOURCE,
       fence,
       command: marker(fence),
@@ -122,15 +133,13 @@ describe("a /clear's commit", () => {
     const store = await storeWithSource()
     const fence = store.getRecord(SOURCE)!.lease.runtimeFence
     // The source's lease moved after the clear read it: the marker's fenced write refuses.
-    const refused = await store
-      .commitConversationClear({
-        sessionId: SOURCE,
-        fence: fence + 1,
-        command: marker(fence + 1),
-        claimKeyId: 'key-1',
-        now: NOW
-      })
-      .catch((error: unknown) => error)
+    const refused = await commitClear(store, {
+      sessionId: SOURCE,
+      fence: fence + 1,
+      command: marker(fence + 1),
+      claimKeyId: 'key-1',
+      now: NOW
+    }).catch((error: unknown) => error)
     expect(isAgentSessionRefusalError(refused)).toBe(true)
 
     for (const each of [store, await open()]) {
@@ -145,15 +154,13 @@ describe("a /clear's commit", () => {
     const store = await storeWithSource()
     const fence = store.getRecord(SOURCE)!.lease.runtimeFence
     const before = store.getRecord(SOURCE)!
-    const refused = await store
-      .commitConversationClear({
-        sessionId: SOURCE,
-        fence,
-        command: marker(fence, SOURCE),
-        claimKeyId: 'key-1',
-        now: NOW
-      })
-      .catch((error: unknown) => error)
+    const refused = await commitClear(store, {
+      sessionId: SOURCE,
+      fence,
+      command: marker(fence, SOURCE),
+      claimKeyId: 'key-1',
+      now: NOW
+    }).catch((error: unknown) => error)
     expect(refused).toMatchObject({
       refusal: { code: 'agent_session_conflict', details: { reason: 'sessionExists' } }
     })

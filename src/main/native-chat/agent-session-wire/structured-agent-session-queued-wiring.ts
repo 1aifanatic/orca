@@ -15,18 +15,10 @@ import {
   sendQueuedStructuredAgentMessage
 } from './structured-agent-session-queued-mutations'
 import { deferredStructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { markStructuredQueueReopen } from './structured-agent-session-queued-pause'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import {
-  isUnsettledQueuedMessage,
-  listQueuedMessages
-} from '../agent-session-journal/queued-message-table'
 import { runQueuedConversationClear } from './structured-conversation-clear'
-import {
-  carryQueuedMessagesToClearReplacement,
-  committedClearOf
-} from './structured-conversation-clear-carry'
+import { committedClearOf } from './structured-conversation-clear-carry'
 
 /** `sessions` are the live conversations (their `touch` is the idle sweep's activity renewal,
  *  which the drain's schedule rides); everything else comes from the host's mutation context,
@@ -65,63 +57,9 @@ export function wireStructuredAgentSessionQueuedMessages(
             card
           )
         ).kind === 'cleared',
-      carry: async (sessionId) => {
-        const marker = committedClearOf(context().deps.store.getRecord(sessionId))
-        const journal = sessions.get(sessionId)?.journal
-        if (!marker || !journal) {
-          return
-        }
-        await carryQueuedMessagesToClearReplacement(clearContext(sessionId, journal), {
-          replacementSessionId: marker.replacementSessionId,
-          openReplacementJournal: async () =>
-            (await context().conversation(marker.replacementSessionId)).journal,
-          callerKey: marker.callerKey,
-          operationId: marker.operationId
-        })
-      },
       after: afterClear
     }
   })
-  /** A replacement opening is where its cards are looked for: a source whose carry a crash cut
-   *  short is opened, and its drain finishes the carry. Read from the shared table, so a source
-   *  with nothing owed is never opened. */
-  const finishCarriesInto = (replacementSessionId: string): void => {
-    const { store, journalDatabase } = context().deps
-    const sources = store.listRecords().filter((record) => {
-      const marker = committedClearOf(record)
-      return (
-        marker?.replacementSessionId === replacementSessionId &&
-        listQueuedMessages(journalDatabase.db, record.sessionId).some(isUnsettledQueuedMessage)
-      )
-    })
-    const journal = sessions.get(replacementSessionId)?.journal
-    if (sources.length === 0 || !journal) {
-      return
-    }
-    // The destination can open empty while a crashed source still owes its cards.
-    void markStructuredQueueReopen(
-      replacementSessionId,
-      journal,
-      structuredAgentSessionConversationFence(store, replacementSessionId),
-      context().deps.logger,
-      undefined,
-      true
-    ).then(() => {
-      for (const record of sources) {
-        void context()
-          .conversation(record.sessionId)
-          .then(() => drain.schedule(record.sessionId))
-          .catch((error: unknown) => {
-            context().deps.logger.warn("finishing a /clear's carry failed", {
-              scope: 'clear-queued-carry',
-              sessionId: record.sessionId,
-              error
-            })
-          })
-      }
-    })
-  }
-
   /** A card's Send that ran its /clear: the same follow-up as the drain's. */
   const clearedByCard = (sessionId: string, messageId: string): boolean =>
     committedClearOf(context().deps.store.getRecord(sessionId))?.operationId === messageId
@@ -135,19 +73,8 @@ export function wireStructuredAgentSessionQueuedMessages(
     /** A /clear card waits on a handoff, which ends in the record store, not the journal. */
     wakeOnHandoffEnded: (store: Pick<AgentSessionRecordStore, 'onHandoffEnded'>) =>
       store.onHandoffEnded((sessionId) => drain.schedule(sessionId)),
-    /** A conversation opened: its drain re-derives, and any carry owed into it is finished. */
-    onConversationOpened: (sessionId: string) => {
-      drain.schedule(sessionId)
-      try {
-        finishCarriesInto(sessionId)
-      } catch (error) {
-        context().deps.logger.warn("finding a /clear's owed carry failed", {
-          scope: 'clear-queued-carry',
-          sessionId,
-          error
-        })
-      }
-    },
+    /** A conversation opened: its drain re-derives the queue gates. */
+    onConversationOpened: (sessionId: string) => drain.schedule(sessionId),
     /** Every journal publish: turn, submission, prompt, command and Stop
      *  settlements are all commits, and each re-derives the drain's gates. */
     onJournalActivity: (sessionId: string) => {

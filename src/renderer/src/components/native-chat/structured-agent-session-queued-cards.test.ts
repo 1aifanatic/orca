@@ -70,6 +70,24 @@ describe('a /clear card waiting on background tasks', () => {
     })
   const tasks = { hasPendingPrompt: false, backgroundTasksRunning: true }
 
+  it('skips an individually held card when clear is next to act, respecting barriers', () => {
+    const held = draft('held', 1, { paused: true, pausedReason: 'send_failed' })
+    for (const facts of [tasks, IDLE]) {
+      expect(projectQueuedMessageCards([held, clearCard('clear', 2)], [], facts)[1]).toMatchObject({
+        runsOnItsOwn: true,
+        hold: facts === tasks ? 'background-tasks' : 'turn'
+      })
+    }
+    for (const barrier of [draft('returned', 1, { state: 'returned' }), draft('paused', 1)]) {
+      expect(
+        projectQueuedMessageCards([barrier, clearCard('clear', 2)], [], {
+          ...tasks,
+          queuePaused: barrier.messageId === 'paused'
+        })[1]?.runsOnItsOwn
+      ).toBeUndefined()
+    }
+  })
+
   it('says so, next in line with the agent idle, and only then', () => {
     const [first, second] = projectQueuedMessageCards([clearCard('c', 1), draft('m', 2)], [], tasks)
     expect(first?.hold).toBe('background-tasks')

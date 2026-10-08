@@ -22,7 +22,6 @@ import {
   subscribeToStructuredAgentSessionPendingSends
 } from './structured-agent-session-pending-sends'
 import { settleStructuredAgentSessionSendsFromJournal } from './structured-agent-session-message-sender'
-import { recoverLegacyStructuredAgentSessionOutbox } from './structured-agent-session-legacy-outbox'
 
 const NO_SUBSCRIPTION = (): void => {}
 
@@ -52,15 +51,8 @@ export function useStructuredAgentSessionReplacementCarry(args: {
   submissions: readonly AgentJournalSubmission[]
   queuedMessageIds: readonly string[]
 }) {
-  const {
-    composerScopeKey,
-    fence,
-    queuedMessageIds,
-    replacesSessionId,
-    sessionId,
-    submissions,
-    target
-  } = args
+  const { composerScopeKey, fence, queuedMessageIds, replacesSessionId, sessionId, submissions } =
+    args
   const fromSessionId = replacesSessionId ?? ''
   const subscribe = useCallback(
     (listener: () => void) =>
@@ -120,20 +112,6 @@ export function useStructuredAgentSessionReplacementCarry(args: {
       settleStructuredAgentSessionSendsFromJournal(fromSessionId, submissions, queuedMessageIds)
     }
   }, [fence, fromSessionId, pending, queuedMessageIds, submissions])
-
-  const loaded = fromSessionId !== '' && fence !== null
-  useEffect(() => {
-    if (loaded) {
-      void recoverLegacyStructuredAgentSessionOutbox({
-        sessionId: fromSessionId,
-        target,
-        submissions,
-        queuedMessageIds
-      })
-    }
-    // Why: the first loaded replacement state is enough; the recovery reads the whole outline.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromSessionId, loaded, target])
 
   return useMemo(() => pending.filter((entry) => entry.phase === 'sending'), [pending])
 }

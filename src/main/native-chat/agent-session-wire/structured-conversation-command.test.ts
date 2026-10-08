@@ -337,9 +337,9 @@ describe('/clear starts nothing', () => {
   })
 
   it("stops a running source's agent before it writes the marker", async () => {
-    const commit = store.commitConversationClear
+    const commit = store.commitConversationClearReceipt
     let atCommit: { child: unknown; claim: string | undefined } | undefined
-    vi.spyOn(store, 'commitConversationClear').mockImplementationOnce(async (clear) => {
+    vi.spyOn(store, 'commitConversationClearReceipt').mockImplementationOnce((clear) => {
       atCommit = {
         child: host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.child ?? null,
         claim: store.getRecord(HOST_TEST_SESSION)?.lease.claimStatus
@@ -357,9 +357,9 @@ describe('/clear starts nothing', () => {
       { reason: 'host-stop' },
       store.getRecord(HOST_TEST_SESSION)!.lease.runtimeFence
     )
-    const commit = store.commitConversationClear
+    const commit = store.commitConversationClearReceipt
     let endedAs: string | undefined
-    vi.spyOn(store, 'commitConversationClear').mockImplementationOnce(async (clear) => {
+    vi.spyOn(store, 'commitConversationClearReceipt').mockImplementationOnce((clear) => {
       endedAs = session.lastEndedChild?.cause
       return commit(clear)
     })
@@ -401,7 +401,9 @@ describe('/clear starts nothing', () => {
 
   it('writes nothing when its one write fails, leaving the source usable', async () => {
     adapter.rewindSupport = () => ({ supported: true })
-    vi.spyOn(store, 'commitConversationClear').mockRejectedValueOnce(new Error('disk full'))
+    vi.spyOn(store, 'commitConversationClearReceipt').mockImplementationOnce(() => {
+      throw new Error('disk full')
+    })
     await expect(host.conversationCommand(caller, commandParams('clear'))).rejects.toThrow(
       'disk full'
     )
@@ -426,7 +428,9 @@ describe('/clear starts nothing', () => {
   })
 
   it('reruns under the same operation id after its write failed, and commits once', async () => {
-    vi.spyOn(store, 'commitConversationClear').mockRejectedValueOnce(new Error('disk full'))
+    vi.spyOn(store, 'commitConversationClearReceipt').mockImplementationOnce(() => {
+      throw new Error('disk full')
+    })
     const params = commandParams('clear')
     await expect(host.conversationCommand(caller, params)).rejects.toThrow('disk full')
     const replacement = await clearCommits(params)

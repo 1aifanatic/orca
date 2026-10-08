@@ -1,19 +1,27 @@
-// /clear's carry of the source's drafts to its replacement, and the re-derivation that finishes a
-// carry a failure or a crash cut short.
+// The clear record, destination journal, carried cards and source withdrawal share one commit.
 
+import { randomUUID } from 'node:crypto'
 import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../shared/agent-session-wire'
 import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { AgentSessionTurnContext } from './structured-agent-session-turns'
+import type { JournalOperationReceipt } from '../agent-session-journal/journal-row-writer'
 import {
-  isUnsettledQueuedMessage,
+  insertQueuedMessage,
+  withdrawQueuedMessages,
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
 import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { unsettledQueuedMessages } from './structured-agent-session-queued-stop'
 import { queuePauseHolding } from '../agent-session-journal/queued-message-pause'
 import { structuredQueuePauses } from './structured-agent-session-queued-pause'
-import type { AgentSessionTurnContext } from './structured-agent-session-turns'
+import { writeNewJournalEpoch } from '../agent-session-journal/journal-epoch-rollover'
+import { buildJournalQueueReopenRow } from '../agent-session-journal/journal-stop-and-resume-rows'
+import { insertJournalRow } from '../agent-session-journal/journal-row-table'
+import { applyJournalRow } from '../agent-session-journal/journal-reducer'
+import { journalIdentityFor } from './structured-agent-session-attach'
+import { attachParamsForRecord } from './structured-agent-session-conversation-open'
+import { claimAgentSessionAttachmentsInTransaction } from '../agent-session-attachments/agent-session-attachment-claims'
 
 export const STRUCTURED_AGENT_SESSION_CLEAR_COMMAND = 'clear'
 
@@ -22,8 +30,6 @@ export type QueuedClearDrainDeps = {
   /** The card's turn, inside the drain's step; true once the clear committed. A card waiting on
    *  background tasks or a handoff stays waiting; their ending wakes the drain. */
   run: (sessionId: string, card: QueuedMessageRow) => Promise<boolean>
-  /** Finishes the carry a committed clear owes its replacement, inside the step. */
-  carry: (sessionId: string) => Promise<void>
   /** What follows a committed clear, outside the step: it closes the source, which serializes. */
   after: (sessionId: string) => Promise<void>
 }
@@ -47,93 +53,86 @@ export function committedClearOf(
     : null
 }
 
-/** The clear committed with drafts still on its source: the carry it owes, re-derived. */
-export function clearCarryOwed(
-  record: AgentSessionRecord | null,
-  journal: Pick<AgentSessionJournal, 'queuedMessages'>
-): boolean {
-  return (
-    committedClearOf(record) !== null &&
-    journal.queuedMessages.list().some(isUnsettledQueuedMessage)
-  )
-}
-
-/**
- * The source's unsettled drafts become rows on the replacement — the SAME for every client
- * version, with no text on the wire — so the cards stay visible where the user now is. Which rule
- * a card follows is derived from the /clear card the clear ran from, if any (its id is the clear's
- * `operationId`):
- *   - sent after that card: carried in order and unpaused, commands too. They were written for
- *     the fresh chat, so they run there as they would have here unless a reopen holds them.
- *   - sent before the clear (an immediate /clear over a paused queue): a message card carries
- *     over paused ('cleared', lifted like a Stop's), since it was written for the context the
- *     clear discarded; a command card is withdrawn without a copy.
- * A card whose conversion failed keeps that hold wherever it lands. A reopen
- * still holding a source card carries it paused until the replacement accepts a turn or Resume.
- * Runs after the clear commits, opening the replacement only when there is something to carry;
- * the source rows, the /clear card included, are tombstoned last, so a cut-short carry still
- * finds the card that orders it. Bookkeeping around the clear: a failure is reported, never gates
- * the clear, and is finished by `clearCarryOwed` when either conversation next opens. A crash
- * between the copy and the tombstone leaves both, which the supersession fence makes harmless:
- * the copy is keyed by the card's id, so the next carry finds it and adds nothing.
- */
-export async function carryQueuedMessagesToClearReplacement(
-  ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'journal' | 'logger'>,
+/** Cards after the clear keep running in order; earlier message cards stay paused, and earlier
+ *  commands disappear. A copy failure rolls back the clear too, leaving its card available to retry. */
+export function commitClearWithQueuedMessages(
+  ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'journal'>,
   input: {
-    replacementSessionId: string
-    openReplacementJournal: () => Promise<AgentSessionJournal | undefined>
+    replacement: AgentSessionRecord
+    stateDirectory: string
     callerKey: string
     operationId: string
+    now: number
+    receipt: JournalOperationReceipt
   }
-): Promise<void> {
-  try {
-    const rows = unsettledQueuedMessages(ctx.journal)
-    if (rows.length === 0) {
-      return
-    }
-    const reopened = structuredQueuePauses(ctx.journal).filter(
-      (pause) => pause.reason === 'restarted'
-    )
-    const clearCard = ctx.journal.queuedMessages.get(input.operationId)
-    const behind = clearCard && isQueuedClearCard(clearCard) ? clearCard.position : Infinity
-    const carried = rows.filter(
-      (row) => row.messageId !== input.operationId && (row.position > behind || !row.body.command)
-    )
-    if (carried.length > 0) {
-      const replacement = await input.openReplacementJournal()
-      if (!replacement) {
-        throw new Error('the replacement journal is not open')
+): Promise<boolean> {
+  return ctx.journal.queuedMessages.transact(
+    (db) => {
+      const rows = unsettledQueuedMessages(ctx.journal)
+      const clearCard = ctx.journal.queuedMessages.get(input.operationId)
+      const behind = clearCard && isQueuedClearCard(clearCard) ? clearCard.position : Infinity
+      const carried = rows.filter(
+        (row) => row.messageId !== input.operationId && (row.position > behind || !row.body.command)
+      )
+      const reopened = structuredQueuePauses(ctx.journal).filter(
+        (pause) => pause.reason === 'restarted'
+      )
+      const replacementId = input.replacement.sessionId
+      const params = attachParamsForRecord(input.replacement, {
+        clientOperationId: input.operationId,
+        expectedRuntimeFence: input.replacement.lease.runtimeFence
+      })
+      const { state } = writeNewJournalEpoch(db, {
+        identity: journalIdentityFor(input.replacement, params),
+        epoch: randomUUID(),
+        reason: 'session_created',
+        fence: 0,
+        now: input.now
+      })
+      if (carried.some((row) => queuePauseHolding(reopened, row))) {
+        const mark = buildJournalQueueReopenRow({
+          state,
+          seq: state.lastSequence + 1,
+          fence: input.replacement.lease.runtimeFence,
+          ts: input.now
+        })
+        insertJournalRow(db, replacementId, mark)
+        applyJournalRow(state, mark)
       }
       for (const row of carried) {
-        // A returned card carries over as a plain waiting draft — its refusal
-        // belonged to the source's submissions. The fingerprint is re-scoped to the
-        // replacement, or its echo could never alias the sent bubble.
-        await replacement.queuedMessages.insert({
+        claimAgentSessionAttachmentsInTransaction(db, {
+          stateDirectory: input.stateDirectory,
+          sessionId: replacementId,
+          body: row.body,
+          required: false,
+          now: input.now
+        })
+        insertQueuedMessage(db, {
+          sessionId: replacementId,
           messageId: row.messageId,
           body: row.body,
-          fingerprint: agentSessionSendBodyFingerprint(input.replacementSessionId, row.body),
-          // Kept for older hosts that still derive their reopen hold from the instance stamp.
+          fingerprint: agentSessionSendBodyFingerprint(replacementId, row.body),
           hostInstance: row.hostInstance,
+          now: input.now,
+          queuedAt: queuePauseHolding(reopened, row)
+            ? (row.queuedAt ?? ctx.journal.cursor())
+            : { epoch: state.epoch, sequence: state.lastSequence },
           ...(row.position > behind ? {} : { carriedFrom: ctx.sessionId }),
-          ...(queuePauseHolding(reopened, row)
-            ? { queuedAt: row.queuedAt ?? ctx.journal.cursor() }
-            : {}),
           ...(row.holdReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
             ? { holdReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED }
             : {})
         })
       }
-    }
-    await ctx.journal.queuedMessages.withdraw({
-      messageIds: rows.map((row) => row.messageId),
-      settledByOp: agentSessionOperationKey(input.callerKey, input.operationId)
-    })
-  } catch (error) {
-    ctx.logger.warn("carrying queued drafts to /clear's replacement failed", {
-      scope: 'clear-queued-carry',
-      sessionId: ctx.sessionId,
-      replacementSessionId: input.replacementSessionId,
-      error
-    })
-  }
+      withdrawQueuedMessages(db, {
+        sessionId: ctx.sessionId,
+        messageIds: rows.map((row) => row.messageId),
+        settledByOp: agentSessionOperationKey(input.callerKey, input.operationId),
+        now: input.now
+      })
+      input.receipt.write(db)
+      return carried.length > 0
+    },
+    () => true,
+    input.receipt.committed
+  )
 }

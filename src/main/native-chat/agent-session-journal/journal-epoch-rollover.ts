@@ -4,6 +4,7 @@
 // epoch row at sequence 1, and move the session projection onto it. Superseded
 // rows are DELETED rather than retained — nothing would ever shed them.
 
+import type Database from '../../sqlite/sync-database'
 import { journalRowSchemaVersion } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-journal-types'
 import { agentSessionJournalProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
@@ -28,6 +29,25 @@ export function publishNewEpoch(input: {
   /** Called the instant the transaction commits, before any fallible follow-up. */
   onPublished: (loaded: JournalLoad) => void
 }): void {
+  const loaded = input.database.transaction((db) => writeNewJournalEpoch(db, input))
+
+  // COMMIT landed: on disk the superseded prefix is gone and this epoch is the
+  // live one. The caller adopts that immediately, or a later failure leaves the
+  // store writing into an epoch that no longer exists.
+  input.onPublished(loaded)
+}
+
+/** Initializes an epoch inside the host transaction that founds its conversation. */
+export function writeNewJournalEpoch(
+  db: Database.Database,
+  input: {
+    identity: AgentSessionJournalIdentity
+    epoch: string
+    reason: AgentJournalEpochReason
+    fence: number
+    now: number
+  }
+): JournalLoad {
   const row: JournalRow = {
     kind: 'epoch',
     reason: input.reason,
@@ -41,20 +61,15 @@ export function publishNewEpoch(input: {
   }
 
   const { sessionId } = input.identity
-  input.database.transaction((db) => {
-    const retired = readJournalSessionEpoch(db, sessionId)
-    if (retired !== null) {
-      deleteJournalEpochRows(db, sessionId, retired)
-    }
-    insertJournalRow(db, sessionId, row)
-    publishJournalSessionEpoch(db, input.identity, input.epoch)
-  })
+  const retired = readJournalSessionEpoch(db, sessionId)
+  if (retired !== null) {
+    deleteJournalEpochRows(db, sessionId, retired)
+  }
+  insertJournalRow(db, sessionId, row)
+  publishJournalSessionEpoch(db, input.identity, input.epoch)
 
-  // COMMIT landed: on disk the superseded prefix is gone and this epoch is the
-  // live one. The caller adopts that immediately, or a later failure leaves the
-  // store writing into an epoch that no longer exists.
-  const state = createJournalReducerState(sessionId, input.epoch)
+  const state = createJournalReducerState(input.identity.sessionId, input.epoch)
   applyJournalRow(state, row)
   state.oldestSequence = 1
-  input.onPublished({ state, newer: null, damage: null })
+  return { state, newer: null, damage: null }
 }

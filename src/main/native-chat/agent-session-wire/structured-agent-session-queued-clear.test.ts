@@ -6,7 +6,6 @@ import type { AgentChildWorkView } from '../../../shared/agent-status-child-work
 import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../shared/agent-session-queued-message-wire'
 import { agentSessionWriteNoticeEnglish } from '../../../shared/agent-session-refusal-notice'
 import { structuredAgentSessionReturnedCardParts } from '../../../shared/structured-agent-session-rejection-words'
-import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -16,11 +15,9 @@ import {
 import {
   HOST_TEST_SESSION as SESSION,
   hostTestOperationId,
-  hostTestMessage,
-  HOST_TEST_THREAD as THREAD
+  hostTestMessage
 } from './structured-agent-session-host-test-data'
 import { QUEUED_CLEAR_CALLER_KEY } from './structured-conversation-clear'
-import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 import {
   QUEUED_MESSAGES_PERSON_RESERVE_BYTES,
   QUEUED_MESSAGES_PUBLISHED_MAX_BYTES
@@ -472,8 +469,10 @@ describe('a /clear card that cannot run', () => {
     const clearId = await queuedClear()
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const commit = vi
-      .spyOn(rig.store, 'commitConversationClear')
-      .mockRejectedValueOnce(new Error('disk full'))
+      .spyOn(rig.store, 'commitConversationClearReceipt')
+      .mockImplementationOnce(() => {
+        throw new Error('disk full')
+      })
     await rig.settleAccepted(working, 'a')
     await eventually(async () =>
       expect(await rig.drafts()).toEqual([{ messageId: clearId, state: 'returned' }])
@@ -495,140 +494,6 @@ describe('a /clear card that cannot run', () => {
     commit.mockRestore()
     expect(await rig.sendNow(clearId)).toMatchObject({ ok: true })
     await clearedReplacement()
-    expect(committedClears()).toBe(1)
-  })
-})
-
-describe('a crash between the clear and its carry', () => {
-  it('repairs a failed immediate-clear carry without starting its paused messages', async () => {
-    const working = await rig.workingSend()
-    const first = await queuedSend('first before the clear')
-    const second = await queuedSend('second before the clear')
-    await rig.stop()
-    await rig.settleAccepted(working, 'stopped')
-    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const insert = vi
-      .spyOn(JournalQueuedMessages.prototype, 'insert')
-      .mockRejectedValueOnce(new Error('disk full'))
-    let replacementId: string | undefined
-    try {
-      const cleared = await clear().result
-      replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
-    } finally {
-      insert.mockRestore()
-      warned.mockRestore()
-    }
-    if (!replacementId) {
-      throw new Error('expected a replacement session')
-    }
-    const replacement = replacementId
-    await eventually(async () => expect(await rig.drafts(replacement)).toHaveLength(2))
-    expect(await rig.drafts()).toEqual([])
-    expect(await rig.queuePause(replacement)).toBeNull()
-    const journal = rig.host.collaboratorsForTests().sessions.get(replacement)?.journal
-    if (!journal) {
-      throw new Error('expected the replacement open')
-    }
-    expect(structuredQueuePauses(journal).map((pause) => pause.reason)).toContain('cleared')
-    await settleMs()
-    expect((await rig.drafts(replacement)).map((card) => card.messageId)).toEqual([first, second])
-    expect((await rig.host.journalSnapshot(replacement)).submissions).toEqual([])
-  })
-
-  it('after part of a carry ran before a crash, the remaining card waits for Resume', async () => {
-    await rig.dispose()
-    rig = await createQueuedMessageTestRig({ restartable: true })
-    const working = await rig.workingSend()
-    await queuedClear()
-    const first = await queuedSend('delivered before the crash')
-    const second = await queuedSend('left on the source')
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const write = JournalQueuedMessages.prototype.insert
-    const insert = vi.spyOn(JournalQueuedMessages.prototype, 'insert').mockImplementation(function (
-      this: JournalQueuedMessages,
-      ...args: Parameters<JournalQueuedMessages['insert']>
-    ) {
-      return args[0].messageId === second
-        ? Promise.reject(new Error('crashed during the carry'))
-        : write.apply(this, args)
-    })
-    await rig.settleAccepted(working, 'before-clear')
-    const replacement = await clearedReplacement()
-    let sentId = ''
-    await eventually(async () => {
-      const sent = (await rig.host.journalSnapshot(replacement)).submissions.find(
-        (entry) => entry.queuedMessageId === first
-      )
-      expect(sent?.handedOverAt).toBeDefined()
-      sentId = sent?.clientMessageId ?? ''
-    })
-    await rig.host.settleLateDispatch({
-      sessionId: replacement,
-      clientMessageId: sentId,
-      providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'first-turn', ordinal: 0 }
-    })
-    await settleMs()
-    rig.crashRestartHostProcess()
-    insert.mockRestore()
-    await eventually(async () =>
-      expect(await rig.drafts(replacement)).toContainEqual({
-        messageId: second,
-        state: 'waiting'
-      })
-    )
-    await settleMs()
-    expect(
-      (await rig.host.journalSnapshot(replacement)).submissions.map(
-        (entry) => entry.queuedMessageId
-      )
-    ).toEqual([first])
-    const resumed = await rig.host.queuedMessagesResume(CALLER, {
-      envelope: {
-        ...rig.envelope(
-          {},
-          'agentSession.queuedMessagesResume',
-          hostTestOperationId(),
-          replacement
-        ),
-        expectedRuntimeFence: rig.store.getRecord(replacement)!.lease.runtimeFence
-      }
-    })
-    expect(resumed).toMatchObject({ ok: true, value: { resumed: true } })
-    await eventually(async () =>
-      expect(
-        (await rig.host.journalSnapshot(replacement)).submissions.map(
-          (entry) => entry.queuedMessageId
-        )
-      ).toEqual([first, second])
-    )
-  })
-
-  it('reopening the new chat finishes the carry: the cards arrive in order, the card is settled', async () => {
-    const working = await rig.workingSend()
-    const clearId = await queuedClear()
-    const first = await queuedSend('first after the clear')
-    const second = await queuedSend('second after the clear')
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    // Every copy fails, as a process that dies right after the commit would leave it.
-    const insert = vi
-      .spyOn(JournalQueuedMessages.prototype, 'insert')
-      .mockRejectedValue(new Error('crashed'))
-    await rig.settleAccepted(working, 'a')
-    const replacementId = await clearedReplacement()
-    await settleMs()
-    insert.mockRestore()
-    rig.crashRestartHostProcess()
-    Object.assign(rig.host.deps, { onConversationReplaced: replaced })
-    // Opening the new chat re-derives the carry from the clear's record and the card it names.
-    await eventually(async () => expect(await carriedOrder(replacementId)).toEqual([first, second]))
-    // Written by the process that died: they wait for the user, as that restart's cards do anywhere.
-    expect(await rig.queuePause(replacementId)).toBeNull()
-    await settleMs()
-    expect((await rig.host.journalSnapshot(replacementId)).submissions).toEqual([])
-    expect((await rig.drafts(replacementId)).map((card) => card.messageId)).toEqual([first, second])
-    const source = rig.store.listRecords().find((record) => record.sessionId === SESSION)
-    expect(source?.conversationCommand?.operationId).toBe(clearId)
-    expect(await rig.drafts()).toEqual([])
     expect(committedClears()).toBe(1)
   })
 })

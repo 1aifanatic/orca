@@ -230,7 +230,7 @@ describe('a cleared chat follows its replacement without another send', () => {
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
   })
 
-  it('recovers a legacy copy using the existing outline reader and never resends it', async () => {
+  it('never infers a saved source send failed from an empty source outline after clear', async () => {
     localStorage.setItem(
       'orca:desktopStructuredAgentSessionOutbox:v1:old',
       JSON.stringify([
@@ -242,9 +242,12 @@ describe('a cleared chat follows its replacement without another send', () => {
       ])
     )
     pane()
-    await waitFor(() => expect(readNativeChatDraftCache(scope('new'))).toBe('legacy text'))
-    expect(mocks.outline).toHaveBeenCalledWith(target, 'old')
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(readNativeChatDraftCache(scope('new'))).toBe('')
+    expect(mocks.outline).not.toHaveBeenCalled()
     expect(mocks.call).not.toHaveBeenCalled()
-    expect(localStorage.getItem('orca:desktopStructuredAgentSessionOutbox:v1:old')).toBeNull()
+    expect(localStorage.getItem('orca:desktopStructuredAgentSessionOutbox:v1:old')).not.toBeNull()
   })
 })

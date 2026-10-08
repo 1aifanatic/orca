@@ -165,9 +165,10 @@ export class AgentSessionRecordStore {
     )
   }
 
-  /** A committed /clear and the at-rest conversation it continues in, in one write. */
-  commitConversationClear = (clear: AgentSessionConversationClear): Promise<void> =>
-    this.transact((draft) => commitConversationClearRecord(draft, clear))
+  commitConversationClearReceipt = (
+    clear: AgentSessionConversationClear
+  ): JournalOperationReceipt =>
+    this.transactions.receipt((draft) => commitConversationClearRecord(draft, clear))
 
   /** Unfenced on purpose: the name is a durable note, so writing it never contends with the
    *  writer lease. `null` clears it. */
