@@ -198,7 +198,7 @@ describe('Windows CLI launcher', () => {
       writeFileSync(join(slot, '.runtime-node'), `${'a'.repeat(64)}\n`)
       writeFileSync(
         join(slot, 'orca-cli.js'),
-        'console.log(JSON.stringify({argv:process.argv.slice(2),profile:process.env.ORCA_USER_DATA_PATH,launcher:process.env.ORCA_CLI_COMMAND}))'
+        'console.log(JSON.stringify({argv:process.argv.slice(2),profile:process.env.ORCA_USER_DATA_PATH,launcher:process.env.ORCA_CLI_COMMAND,owningHost:process.env.ORCA_CLI_OWNING_HOST,desktopMarker:process.env.ORCA_WINDOWS_PACKAGED_CLI_LAUNCHER??null}))'
       )
       const build = spawnSync(
         process.execPath,
@@ -209,13 +209,15 @@ describe('Windows CLI launcher', () => {
       const body = 'line one\n\nline two'
       const child = spawnSync(launcher, ['orchestration', 'send', '--body', body], {
         encoding: 'utf8',
-        env: { ...process.env, ORCA_USER_DATA_PATH: root }
+        env: { ...process.env, ORCA_USER_DATA_PATH: root, ORCA_WINDOWS_PACKAGED_CLI_LAUNCHER: '1' }
       })
       expect(child.status, child.stderr).toBe(0)
       expect(JSON.parse(child.stdout)).toEqual({
         argv: ['orchestration', 'send', '--body', body],
         profile: root,
-        launcher
+        launcher,
+        owningHost: '1',
+        desktopMarker: null
       })
     } finally {
       removeFixtureTree(root)

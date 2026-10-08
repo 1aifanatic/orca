@@ -93,8 +93,11 @@ fn main() {
     );
     if !headless {
         env::set_var("ELECTRON_RUN_AS_NODE", "1");
+        env::set_var("ORCA_WINDOWS_PACKAGED_CLI_LAUNCHER", "1");
+    } else {
+        env::remove_var("ORCA_WINDOWS_PACKAGED_CLI_LAUNCHER");
+        env::set_var("ORCA_CLI_OWNING_HOST", "1");
     }
-    env::set_var("ORCA_WINDOWS_PACKAGED_CLI_LAUNCHER", "1");
     let requested_command = env::var("ORCA_CLI_COMMAND").unwrap_or_default();
     env::set_var(
         "ORCA_CLI_COMMAND",

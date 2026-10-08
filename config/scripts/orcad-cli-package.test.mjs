@@ -21,7 +21,7 @@ it.skipIf(process.platform === 'win32')(
       chmodSync(launcher, 0o755)
       writeFileSync(
         join(slot, 'orca-cli.js'),
-        `console.log(JSON.stringify({argv: process.argv.slice(2), runtime: process.execPath, profile: process.env.ORCA_USER_DATA_PATH, options: process.env.NODE_OPTIONS ?? null}))`
+        `console.log(JSON.stringify({argv: process.argv.slice(2), runtime: process.execPath, profile: process.env.ORCA_USER_DATA_PATH, options: process.env.NODE_OPTIONS ?? null, owningHost: process.env.ORCA_CLI_OWNING_HOST}))`
       )
       const body = 'paragraph one\n\nparagraph two "$variable" `literal`'
       const env = {
@@ -38,7 +38,8 @@ it.skipIf(process.platform === 'win32')(
         argv: ['orchestration', 'send', '--body', body],
         runtime: process.execPath,
         profile: root,
-        options: null
+        options: null,
+        owningHost: '1'
       })
       const unbound = spawnSync(launcher, ['status', '--json'], {
         env: { PATH: env.PATH },

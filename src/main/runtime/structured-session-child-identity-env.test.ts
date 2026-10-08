@@ -94,6 +94,7 @@ describe('structuredSessionChildIdentityEnv', () => {
       ORCA_STRUCTURED_SESSION: '1',
       ORCA_CLI_COMMAND: join(SHIM_DIR, 'orca'),
       ORCA_CLI_BIN_DIR: SHIM_DIR,
+      ORCA_CLI_OWNING_HOST: '1',
       // The instance that minted the id, so any current CLI dials it rather than the default.
       ORCA_USER_DATA_PATH: USER_DATA
     })

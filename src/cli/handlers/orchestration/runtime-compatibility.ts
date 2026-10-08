@@ -1,4 +1,6 @@
 import { RuntimeClientError } from '../../runtime-client'
+import { win32 } from 'node:path'
+import { ORCA_CLI_OWNING_HOST_ENV } from '../../../shared/cli-execution-host-env'
 
 export function resolveCompatibilityCliCommand(): 'orca' | 'orca-ide' | 'orca-dev' {
   const configured = process.env.ORCA_CLI_COMMAND
@@ -15,6 +17,9 @@ export function resolvePackagedWindowsCompatibilityCommand(): 'orca' | 'orca-ide
   const command = process.env.ORCA_CLI_COMMAND
   if (command === 'orca' || command === 'orca-ide') {
     return command
+  }
+  if (process.env[ORCA_CLI_OWNING_HOST_ENV] === '1' && command && win32.isAbsolute(command)) {
+    return undefined
   }
   throw new RuntimeClientError(
     'invalid_argument',

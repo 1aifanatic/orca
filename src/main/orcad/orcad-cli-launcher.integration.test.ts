@@ -95,7 +95,10 @@ it.skipIf(skip)(
         getCliLauncherPath: () => launcher
       })
       const childEnv = structuredSessionChildIdentityEnv('claude_test-session', {
-        PATH: env.PATH ?? ''
+        PATH: env.PATH ?? '',
+        ORCA_ENVIRONMENT: 'stale-shell-selection',
+        ORCA_PAIRING_CODE: 'stale-pairing',
+        ORCA_REMOTE_PAIRING: 'stale-remote-pairing'
       })
       const result = await runProcess({
         program: childEnv.ORCA_CLI_COMMAND!,
@@ -120,6 +123,14 @@ it.skipIf(skip)(
       })
       expect(skill.code, skill.stderr).toBe(0)
       expect(skill.stdout).toContain('Worker obligations')
+      const version = await runProcess({
+        program: childEnv.ORCA_CLI_COMMAND!,
+        args: ['--version'],
+        env: { ...env, ...childEnv },
+        timeoutMs: 15_000
+      })
+      expect(version.code, version.stderr).toBe(0)
+      expect(version.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/u)
     } finally {
       await killChildAndWait(child)
       await killProfileDaemons(userData)

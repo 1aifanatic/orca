@@ -1,5 +1,5 @@
 import { build } from 'esbuild'
-import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
   ORCAD_CLI_ENTRY_FILENAME,
@@ -7,11 +7,13 @@ import {
 } from '../../src/shared/orcad-artifacts.ts'
 import { externalNativeAddons } from './orcad-entry-build.mjs'
 import { runProcessSync } from './script-child-process.mjs'
+import { ORCA_CLI_OWNING_HOST_ENV } from '../../src/shared/cli-execution-host-env.ts'
 
 export function orcadPosixCliLauncher() {
   return `#!/bin/sh
 set -eu
 : "\${ORCA_USER_DATA_PATH:?The Orca server data path is required}"
+export ${ORCA_CLI_OWNING_HOST_ENV}=1
 slot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 runtime_sha=$(cat "$slot/.runtime-node")
 case "$runtime_sha" in
@@ -24,6 +26,10 @@ exec "$slot/../runtimes/node-$runtime_sha/bin/node" "$slot/${ORCAD_CLI_ENTRY_FIL
 }
 
 export async function buildOrcadCli(root, outputDir, target) {
+  const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
+  if (typeof version !== 'string' || version.length === 0) {
+    throw new Error('The Orca server CLI build version is missing')
+  }
   const result = await build({
     entryPoints: [join(root, 'src/cli/index.ts')],
     bundle: true,
@@ -35,7 +41,10 @@ export async function buildOrcadCli(root, outputDir, target) {
     metafile: true,
     minify: true,
     sourcemap: false,
-    define: { 'process.env.NODE_ENV': '"production"' },
+    define: {
+      'process.env.NODE_ENV': '"production"',
+      __ORCA_CLI_BUILD_VERSION__: JSON.stringify(version)
+    },
     logLevel: 'error'
   })
   const [platform, arch] = target.split('-')

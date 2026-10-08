@@ -5,6 +5,10 @@ import {
 } from '../../../../shared/pi-agent-kind'
 import { applyTerminalGitCredentialPromptGuard } from '../../terminal-git-credential-guard'
 import { getAppEnvironment } from '../../../../shared/app-environment'
+import {
+  bindOrcaCliToExecutionHost,
+  ORCA_CLI_OWNING_HOST_ENV
+} from '../../../../shared/cli-execution-host-env'
 import { ensureOpenCodeStartupPromptForLaunch } from '../../../opencode/opencode-startup-prompt-installer'
 import { mimoCodeHookService } from '../../../mimo/hook-service'
 import { agentHookServer } from '../../../agent-hooks/server'
@@ -264,6 +268,7 @@ export function buildPtyHostEnv(
 
   // Why: an inherited copy (e.g. Orca launched from a WSL pane) names another launch's CLI.
   delete baseEnv.ORCA_WSL_CLI_DIR
+  delete baseEnv[ORCA_CLI_OWNING_HOST_ENV]
   // Why: WSL shells need the managed userData root for shell-ready wrappers; dev-mode terminals need the same export so `orca` targets the live dev instance.
   if (opts.isWsl) {
     baseEnv.ORCA_USER_DATA_PATH = opts.userDataPath
@@ -286,9 +291,9 @@ export function buildPtyHostEnv(
     resourcesPath: opts.resourcesPath,
     launcherPath: hostLauncher
   })
-  if (hostLauncher && launcher) {
+  if (!opts.isWsl && launcher) {
     baseEnv.ORCA_CLI_COMMAND = launcher
-    baseEnv.ORCA_USER_DATA_PATH = opts.userDataPath
+    bindOrcaCliToExecutionHost(baseEnv, opts.userDataPath)
   }
 
   if (

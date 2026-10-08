@@ -156,6 +156,17 @@ describe('runtime-selector flags on locally pinned CLI commands', () => {
     expect(runtimeClientConstructorMock).toHaveBeenCalledWith(undefined, 'm4air')
   })
 
+  it('preserves explicit routing for an owning-host invocation with a stale ambient selector', async () => {
+    process.env.ORCA_CLI_OWNING_HOST = '1'
+    process.env.ORCA_ENVIRONMENT = 'stale-shell-selection'
+    pairRuntimeEnvironment(listEnvironmentsMock, 'env-m4air', 'm4air')
+    fakeMachineNameRuntime('M4 Air')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await main(['host', 'name', '--environment', 'm4air', '--json'], '/tmp/repo')
+    expect(JSON.parse(String(log.mock.calls[0]?.[0])).result.machineName).toBe('M4 Air')
+    expect(runtimeClientConstructorMock).toHaveBeenCalledWith(undefined, 'm4air')
+  })
+
   it('routes `host name` through an ambient ORCA_ENVIRONMENT, unlike the pinned `host list`', async () => {
     // Why: the pin used to cover the whole `host` family, which silently answered for this machine
     // when the shell was pointed at another one. `host name` describes one runtime, so it routes.

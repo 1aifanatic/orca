@@ -238,6 +238,7 @@ let dispatcher: RpcDispatcher
 let bootEnvironmentReads: number
 let codexOverrideReads: number
 let configuredCodexProfile: string
+let shellExportedToken: string
 let shellEnvironmentPolicy: NativeChatShellEnvironmentPolicy
 
 /** Runs a one-shot method and returns its decoded reply. */
@@ -324,6 +325,7 @@ beforeEach(async () => {
   bootEnvironmentReads = 0
   codexOverrideReads = 0
   configuredCodexProfile = 'configured'
+  shellExportedToken = 'shell-exported'
   shellEnvironmentPolicy = { inheritAll: true, names: [] }
   const runtime = {
     getRuntimeId: () => 'runtime-1',
@@ -352,7 +354,7 @@ beforeEach(async () => {
           bootEnvironmentReads += 1
           return {
             PATH: '/shell/bin:/usr/bin',
-            EXAMPLE_GATEWAY_TOKEN: 'shell-exported',
+            EXAMPLE_GATEWAY_TOKEN: shellExportedToken,
             CODEX_HOME: '/shell/home'
           }
         },
@@ -740,7 +742,7 @@ describe('a structured codex session over agentSession.*', () => {
     ])
   })
 
-  it('caches shell exports but re-reads configured overrides for a resume', async () => {
+  it('refreshes shell exports and configured overrides for a resume', async () => {
     shellEnvironmentPolicy = { inheritAll: false, names: [] }
     const created = await ok<{ fence: number }>('agentSession.create', createIntentParams())
     expect(codex.live().launch.env?.EXAMPLE_GATEWAY_TOKEN).toBeUndefined()
@@ -750,6 +752,7 @@ describe('a structured codex session over agentSession.*', () => {
     })
 
     configuredCodexProfile = 'updated'
+    shellExportedToken = 'repaired-shell-export'
     shellEnvironmentPolicy = { inheritAll: false, names: ['EXAMPLE_GATEWAY_TOKEN'] }
     const resumed = await ok<{ fence: number }>('agentSession.ensure', attachParams(created.fence))
 
@@ -757,10 +760,10 @@ describe('a structured codex session over agentSession.*', () => {
     expect(codex.live().resumedThreadId).toBe(THREAD)
     expect(codex.live().launch.env).toMatchObject({
       CODEX_PROFILE: 'updated',
-      EXAMPLE_GATEWAY_TOKEN: 'shell-exported'
+      EXAMPLE_GATEWAY_TOKEN: 'repaired-shell-export'
     })
     expect({ bootEnvironmentReads, codexOverrideReads }).toEqual({
-      bootEnvironmentReads: 1,
+      bootEnvironmentReads: 2,
       codexOverrideReads: 2
     })
   })
