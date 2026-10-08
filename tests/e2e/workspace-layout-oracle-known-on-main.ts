@@ -14,6 +14,8 @@ type KnownOnMain = {
   transient?: true
   /** Rules only: the rule name each detail line starts with. */
   rule?: string
+  /** Pattern the detail line must match. */
+  detail?: RegExp
   cause: string
 }
 
@@ -96,9 +98,36 @@ export const LAYOUT_ORACLE_KNOWN_ON_MAIN: readonly KnownOnMain[] = [
     rule: 'tab_lists_disagree',
     cause: 'headless close saves a partial tab bar'
   },
-  // orcad lists a renamed terminal's title as null after a serve restart (session tabs keep it).
+  // After a relaunch main holds the tab rows but no tab bar for the worktree until the window
+  // saves again; slow enough on Linux CI to outlast the settle wait.
+  ...(['tab_lists_disagree', 'tab_bar_missing'] as const).flatMap((rule) =>
+    ['after relaunch', 'after cold relaunch'].map((step) => ({
+      scenario: '*',
+      check: 'rules' as const,
+      step,
+      rule,
+      cause: 'tab bar not saved after relaunch'
+    }))
+  ),
+  ...['after relaunch', 'after cold relaunch'].map((step) => ({
+    scenario: '*',
+    check: 'view' as const,
+    step,
+    detail: /^drawn group \S+ is not in the runtime/,
+    cause: 'tab bar not saved after relaunch'
+  })),
+  ...['relaunch', 'cold relaunch'].map((step) => ({
+    scenario: '*',
+    check: 'restart' as const,
+    step,
+    // Only the groups going missing; lost tabs or panes still fail.
+    detail: /: groups \[.*\] vs after restart \[\]$/,
+    cause: 'tab bar not saved after relaunch'
+  })),
+  // A renamed terminal's title lists as null after a serve restart (session tabs keep it): orcad
+  // everywhere, Electron serve on Linux.
   {
-    scenario: 'headless-orcad-rename-terminal',
+    scenario: 'headless-*',
     check: 'expected',
     step: 'rename after restart',
     cause: 'orcad title after restart'
@@ -124,6 +153,9 @@ function covers(
     return false
   }
   if (known.step !== undefined && !finding.step.startsWith(known.step)) {
+    return false
+  }
+  if (known.detail !== undefined && !known.detail.test(detail)) {
     return false
   }
   return known.rule === undefined || detail.startsWith(`${known.rule}:`)
