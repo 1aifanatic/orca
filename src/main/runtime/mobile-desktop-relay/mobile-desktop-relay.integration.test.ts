@@ -146,6 +146,7 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     const syncedNames: string[][] = []
     const state = { capable: true, retire: (_id: string) => {} }
     const hosts: MobileDesktopRelayHosts = {
+      list: () => ({ environments: [], statusByEnvironmentId: new Map() }),
       resolve: async (environmentId) =>
         environmentId === 'env-1'
           ? { environmentId, fence: 'pairing-1', pairing: desktopOnHost }

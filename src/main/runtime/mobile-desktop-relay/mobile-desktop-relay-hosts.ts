@@ -1,4 +1,6 @@
 import type { PairingOffer } from '../../../shared/pairing'
+import type { RuntimeEnvironmentSource } from '../../../shared/runtime-environments'
+import type { RuntimeEnvironmentStatus } from '../../../shared/runtime-host-status'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 
 /** A configured server the desktop can relay to. */
@@ -10,8 +12,22 @@ export type MobileDesktopRelayHost = {
   pairing: PairingOffer
 }
 
+/** A configured server as the desktop's sidebar sees it, without contacting it. */
+export type MobileDesktopRelayHostListing = {
+  id: string
+  name: string
+  source?: RuntimeEnvironmentSource
+  orcadDeployment?: { sshTargetId: string } | null
+  fence: string
+}
+
 /** The desktop's configured servers, as the relay sees them. */
 export type MobileDesktopRelayHosts = {
+  /** Every configured server, with the desktop's own last status for those it has one for. */
+  list: () => {
+    environments: MobileDesktopRelayHostListing[]
+    statusByEnvironmentId: ReadonlyMap<string, RuntimeEnvironmentStatus>
+  }
   /** Null when the id names no configured server; a phone-supplied endpoint is never used. */
   resolve: (environmentId: string) => Promise<MobileDesktopRelayHost | null>
   /** A call as the desktop itself, over its own connection to the server. */
