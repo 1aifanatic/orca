@@ -14,7 +14,8 @@ vi.mock('../preflight/agent-detection', () => ({
 
 import {
   buildWorktreeStartupForAgent,
-  buildWorktreeStartupForDraft
+  buildWorktreeStartupForDraft,
+  resolveWorktreeCreateAgentStartup
 } from './runtime-worktree-agent-startup'
 
 function makeRepo(fields: Partial<Repo>): Repo {
@@ -155,7 +156,9 @@ describe('buildWorktreeStartupForDraft agent detection', () => {
       getLaunchPlatform: () => 'linux'
     })
 
-    expect(mocks.detectRemoteAgents).toHaveBeenCalledWith({ connectionId: 'openclaw' })
+    expect(mocks.detectRemoteAgents).toHaveBeenCalledWith({
+      connectionId: 'openclaw'
+    })
     expect(mocks.detectInstalledAgentsWithShellPathHydration).not.toHaveBeenCalled()
     expect(result?.agent).toBe('claude')
   })
@@ -202,4 +205,66 @@ describe('buildWorktreeStartupForDraft agent detection', () => {
       })
     }
   )
+})
+
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the startup build reads only these settings fields.
+const settingsWithDefaultArgs = {
+  agentCmdOverrides: {},
+  agentDefaultArgs: { claude: '--dangerously-skip-permissions --model sonnet' },
+  agentDefaultEnv: {},
+  disabledTuiAgents: [],
+  terminalWindowsShell: null
+} as never
+
+describe('buildWorktreeStartupForAgent extra agent args', () => {
+  it("merges an automation's extras over the host defaults", () => {
+    const result = buildWorktreeStartupForAgent({
+      repo: makeRepo({}),
+      settings: settingsWithDefaultArgs,
+      agent: 'claude',
+      prompt: 'go',
+      extraAgentArgs: '--model opus',
+      getLaunchPlatform: () => 'linux',
+      toSessionOptions: () => undefined
+    })
+
+    expect(result.startup.command).toBe(
+      "claude '--dangerously-skip-permissions' '--model' 'opus' 'go'"
+    )
+  })
+
+  it('refuses invalid extras before any terminal exists', () => {
+    expect(() =>
+      buildWorktreeStartupForAgent({
+        repo: makeRepo({}),
+        settings,
+        agent: 'claude',
+        prompt: 'go',
+        extraAgentArgs: '--settings evil.json',
+        getLaunchPlatform: () => 'linux',
+        toSessionOptions: () => undefined
+      })
+    ).toThrow('"--settings"')
+  })
+
+  it('threads worktree-create extras into the startup build', () => {
+    const build = vi.fn(() => ({
+      agent: 'claude' as const,
+      startup: { command: 'claude' }
+    }))
+    const createArgs = {
+      startupAgent: 'claude',
+      startupPrompt: 'go',
+      startupExtraAgentArgs: '--effort high'
+    }
+    resolveWorktreeCreateAgentStartup(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: resolution reads only the startup fields.
+      createArgs as never,
+      build
+    )
+
+    expect(build).toHaveBeenCalledWith('claude', 'go', undefined, {
+      extraAgentArgs: '--effort high'
+    })
+  })
 })

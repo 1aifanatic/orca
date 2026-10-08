@@ -20,6 +20,8 @@ import { AutomationSessionField } from './AutomationSessionField'
 import { AutomationSetupDecisionField } from './AutomationSetupDecisionField'
 import { AutomationWorkspaceField } from './AutomationWorkspaceField'
 import { AutomationDestinationField } from './AutomationDestinationField'
+import { AutomationExtraAgentArgsField } from './AutomationExtraAgentArgsField'
+import { getDraftExtraAgentArgsShell } from './automation-draft-model'
 import type { AutomationCreateDestinationControl } from './use-automation-create-destination'
 import type { AutomationDraft } from './AutomationEditorDialog'
 
@@ -109,6 +111,11 @@ export function AutomationEditorSettingsSidebar({
                   allowNarrowTrigger
                 />
               </Field>
+              <AutomationExtraAgentArgsField
+                draft={draft}
+                shell={getDraftExtraAgentArgsShell(repoMap.get(draft.projectId), settings)}
+                onDraftChange={onDraftChange}
+              />
             </div>
           </div>
         </div>

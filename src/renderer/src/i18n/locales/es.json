@@ -16854,6 +16854,15 @@
         "runHistory": {
           "occurrencesWithLatest": "{{times}} veces, la más reciente {{date}}",
           "occurrences": "{{times}} veces"
+        },
+        "extraAgentArgs": {
+          "advanced": "Avanzado",
+          "configured": "Configurado",
+          "label": "Argumentos adicionales del agente",
+          "needsFreshSession": "Los argumentos adicionales requieren una sesión nueva en cada ejecución.",
+          "useFreshSessions": "Usar sesiones nuevas",
+          "helper": "Se añaden a los argumentos predeterminados de este host en cada sesión nueva.",
+          "detailLabel": "Argumentos adicionales"
         }
       },
       "agent": {

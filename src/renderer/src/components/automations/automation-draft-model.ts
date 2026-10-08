@@ -2,6 +2,15 @@ import { getAgentCatalog } from '@/lib/agent-catalog'
 import type { AutomationPrecheck } from '../../../../shared/automations-types'
 import { buildAutomationCronSchedule } from '../../../../shared/automation-schedule-occurrences'
 import type { Worktree } from '../../../../shared/worktree/types'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
+import type { Repo } from '../../../../shared/repo-types'
+import type { AgentStartupShell } from '../../../../shared/tui-agent-startup-shell'
+import {
+  hasExtraAgentArgs,
+  parseExtraAgentArgs
+} from '../../../../shared/automation-extra-agent-args'
+import { automationSaveStartupShell } from '../../../../shared/automation-extra-agent-args-record'
+import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
 import type { AutomationDraft } from './AutomationEditorDialog'
 
 export const AUTOMATION_DEFAULT_TIME = '09:00'
@@ -49,4 +58,43 @@ export function buildHermesCronSchedule(draft: AutomationDraft): string {
 
 export function getAgentLabel(agentId: string): string {
   return getAgentCatalog().find((agent) => agent.id === agentId)?.label ?? agentId
+}
+
+/** The shell the editor validates extras against; the host re-validates against its own. */
+export function getDraftExtraAgentArgsShell(
+  repo: Pick<Repo, 'connectionId'> | null | undefined,
+  settings: Pick<GlobalSettings, 'terminalWindowsShell'> | null | undefined
+): AgentStartupShell {
+  return automationSaveStartupShell({
+    platform: getRendererAppPlatform(),
+    executionTargetType: repo?.connectionId ? 'ssh' : 'local',
+    terminalWindowsShell: settings?.terminalWindowsShell
+  })
+}
+
+/** The field's error, or null when the draft's extras can be saved. */
+export function getDraftExtraAgentArgsError(
+  draft: Pick<AutomationDraft, 'agentId' | 'extraAgentArgs' | 'extraAgentArgsHostError'>,
+  shell: AgentStartupShell
+): string | null {
+  if (!hasExtraAgentArgs(draft.extraAgentArgs)) {
+    return null
+  }
+  const parsed = parseExtraAgentArgs({
+    agent: draft.agentId,
+    extraAgentArgs: draft.extraAgentArgs,
+    shell
+  })
+  return parsed.ok ? (draft.extraAgentArgsHostError ?? null) : parsed.error
+}
+
+/** Reuse can't carry extras; the field offers a switch instead of flipping it silently. */
+export function draftExtraAgentArgsNeedFreshSession(
+  draft: Pick<AutomationDraft, 'extraAgentArgs' | 'reuseSession' | 'workspaceMode'>
+): boolean {
+  return (
+    hasExtraAgentArgs(draft.extraAgentArgs) &&
+    draft.workspaceMode === 'existing' &&
+    draft.reuseSession
+  )
 }

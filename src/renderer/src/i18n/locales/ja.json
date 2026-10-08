@@ -16854,6 +16854,15 @@
         "runHistory": {
           "occurrencesWithLatest": "{{times}} 回、最近では {{date}}",
           "occurrences": "{{times}}回"
+        },
+        "extraAgentArgs": {
+          "advanced": "詳細設定",
+          "configured": "設定済み",
+          "label": "追加のエージェント引数",
+          "needsFreshSession": "追加の引数を使うには、実行ごとに新しいセッションが必要です。",
+          "useFreshSessions": "新しいセッションを使用",
+          "helper": "新しいセッションごとに、このホストのデフォルト引数に追加されます。",
+          "detailLabel": "追加の引数"
         }
       },
       "agent": {

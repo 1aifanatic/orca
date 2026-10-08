@@ -89,6 +89,9 @@ function isMigratedAutomation(value: unknown): value is Automation {
   if (!isTuiAgent(record.agentId)) {
     throw new Error('orcad_migration_dormant_automation_agent_invalid')
   }
+  if (record.extraAgentArgs !== undefined && typeof record.extraAgentArgs !== 'string') {
+    throw new Error('orcad_migration_dormant_automation_extra_agent_args_invalid')
+  }
   parseContext(record.runContext, 'workspace-run')
   parseContext(record.sourceContext, 'task-source')
   requiredString(record.projectId, 'orcad_migration_dormant_automation_project_invalid')
