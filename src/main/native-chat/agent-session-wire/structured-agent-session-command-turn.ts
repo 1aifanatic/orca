@@ -38,11 +38,9 @@ import type { JournalLifecycleMutationInput } from '../agent-session-journal/jou
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type {
   AgentSessionCommandAdmission,
-  StructuredAgentSessionAdapter,
-  StructuredAgentSessionProviderChildPhase
+  StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
-import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 import { structuredAgentSessionCommandTurn } from '../../../shared/structured-agent-session-command-turn-identity'
 import { refuseQueuedCommand } from './structured-agent-session-queued-command-refusal'
@@ -140,7 +138,6 @@ export type StructuredAgentSessionCommandHandoverContext = {
   fence: number
   adapter: StructuredAgentSessionAdapter
   agents: StructuredAgentRegistry
-  providerChildPhase?: () => StructuredAgentSessionProviderChildPhase | undefined
   /** Who a failure the handover meets names, as the start's own row does. */
   failureTextContext?: AgentSessionFailureWordsContext
   record: () => AgentSessionRecord | null
@@ -191,19 +188,11 @@ export async function handOverStructuredAgentSessionCommand(
       command: { clientMessageId, ...turn, running }
     })
   } catch (error) {
-    // A child still starting throws only for a start that failed before the write, so the command
-    // provably did not run. Any other throw is a lost reply: the command may have run.
-    const unsent =
-      ctx.providerChildPhase?.() === 'starting'
-        ? {
-            state: 'rejected' as const,
-            ...structuredAgentSessionStartFailure({ error }, ctx.failureTextContext)
-          }
-        : {
-            state: 'unknown' as const,
-            reason: error instanceof Error ? error.message : String(error)
-          }
-    await settleUnsentCommand(ctx, clientMessageId, unsent)
+    // Handed over only to a child that proved its start, so a throw is a lost reply: it may have run.
+    await settleUnsentCommand(ctx, clientMessageId, {
+      state: 'unknown',
+      reason: error instanceof Error ? error.message : String(error)
+    })
     return
   }
   if (admission.state === 'rejected') {
