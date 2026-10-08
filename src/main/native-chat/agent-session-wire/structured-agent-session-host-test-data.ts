@@ -27,9 +27,9 @@ export function resetHostTestOperationIds(): void {
   operations = 0
 }
 
-export function hostTestOperationId(): string {
+export function hostTestOperationId(now = HOST_TEST_NOW): string {
   operations += 1
-  return `${HOST_TEST_NOW}-${operations.toString(16).padStart(32, '0')}`
+  return `${now}-${operations.toString(16).padStart(32, '0')}`
 }
 
 export function hostTestMessage(text: string): AgentJournalMessageItem {
@@ -38,12 +38,13 @@ export function hostTestMessage(text: string): AgentJournalMessageItem {
 
 export function hostTestAttachParams(
   expectedRuntimeFence: number | null,
-  overrides: Partial<AgentSessionAttachParams> = {}
+  overrides: Partial<AgentSessionAttachParams> = {},
+  now = HOST_TEST_NOW
 ): AgentSessionAttachParams {
   const params: AgentSessionAttachParams = {
     envelope: {
       sessionId: HOST_TEST_SESSION,
-      clientOperationId: hostTestOperationId(),
+      clientOperationId: hostTestOperationId(now),
       expectedRuntimeFence,
       payloadFingerprint: '0'.repeat(64)
     },

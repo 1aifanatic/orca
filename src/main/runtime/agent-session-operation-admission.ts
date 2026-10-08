@@ -172,12 +172,15 @@ export function admitAgentSessionMutationOperation(
     ledger.rows.delete(agentSessionOperationKey(operation.callerKey, operation.operationId))
   }
   state.operations = ledger.rows
+  const receiptRecorded =
+    ledger.decision.decision !== 'refused' &&
+    ledger.rows.has(
+      agentSessionOperationKey(ledger.decision.row.callerKey, ledger.decision.row.operationId)
+    )
   return {
     admission,
     record,
-    ...(!ledger.rows.has(agentSessionOperationKey(operation.callerKey, operation.operationId))
-      ? { receiptRecorded: false as const }
-      : {})
+    ...(!receiptRecorded ? { receiptRecorded: false as const } : {})
   }
 }
 

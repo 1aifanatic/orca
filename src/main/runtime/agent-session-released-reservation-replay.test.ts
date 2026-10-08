@@ -8,7 +8,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
-  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS,
+  AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS
 } from '../../shared/agent-session-host-authority'
 import type { AgentSessionOwnerProbe } from '../../shared/agent-session-lease-adjudication'
 import type { AgentSessionLease } from '../../shared/agent-session-record'
@@ -79,7 +80,10 @@ async function releasedByRestart(now: number): Promise<AgentSessionRecordStore> 
 describe('a create retried after recovery released its reservation', () => {
   it.each([
     ['its operation row is still pending', 1_000],
-    ['its operation row has expired', PAST_EXPIRY]
+    [
+      'its pending row outlives the settled retry window',
+      AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS + 1
+    ]
   ])('continues when %s, and the old reservation can never commit', async (_case, elapsed) => {
     const now = NOW + elapsed
     const store = await releasedByRestart(now)
@@ -112,6 +116,36 @@ describe('a create retried after recovery released its reservation', () => {
     expect(retried.disposition).toBe('replayed')
     expect(retried.record.lease).toMatchObject({ runtimeFence: 3, reservedSpawnToken: 'spawn-b' })
     expect(mint).not.toHaveBeenCalled()
+  })
+
+  it('refuses an aged-out operation after release, then admits a fresh request at the current fence', async () => {
+    const now = NOW + PAST_EXPIRY
+    const store = await releasedByRestart(now)
+    const mint = vi.fn(() => 'spawn-b')
+
+    await expect(store.reserveOwner(createRequest({ spawnToken: mint, now }))).rejects.toThrow(
+      'agent_session_operation_expired'
+    )
+    expect(mint).not.toHaveBeenCalled()
+    expect(store.listOperationRows()).toEqual([])
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'released',
+      runtimeFence: 2
+    })
+
+    const operationId = `${now}-${'2'.padStart(32, '0')}`
+    const fresh = await store.reserveOwner(
+      createRequest({
+        expectedFence: 2,
+        spawnToken: mint,
+        handoffOperationId: operationId,
+        operation: { callerKey: 'client-1', operationId, fingerprint: 'fp-2' },
+        now
+      })
+    )
+    expect(fresh.record.lease).toMatchObject({ runtimeFence: 3, reservedSpawnToken: 'spawn-b' })
+    expect(store.listOperationRows()).toHaveLength(1)
+    expect(mint).toHaveBeenCalledOnce()
   })
 
   it('refuses an expired retry of a session that has no record', async () => {
