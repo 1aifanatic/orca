@@ -30,10 +30,7 @@ export function HostAgentLaunchSettings({
     () => ({ environmentId, pairingRevision }),
     [environmentId, pairingRevision]
   )
-  const detectionTarget = useMemo(
-    () => ({ kind: 'runtime' as const, environmentId }),
-    [environmentId]
-  )
+  const detectionTarget = useMemo(() => ({ kind: 'runtime' as const, ...owner }), [owner])
   const controllerRef = useRef<AbortController | null>(null)
   const [read, setRead] = useState<ReadState>({ kind: 'loading' })
   const [saveFailed, setSaveFailed] = useState(false)

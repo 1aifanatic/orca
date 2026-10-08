@@ -104,6 +104,11 @@ describe('host launch settings form', () => {
       </TooltipProvider>
     )
     const args = await screen.findByDisplayValue('--host-marker')
+    expect(
+      screen.getByText(
+        'Choose whether Orca launches agents with fewer permission prompts or with manual checks.'
+      )
+    ).toBeTruthy()
     expect(screen.queryByDisplayValue('--desktop-marker')).toBeNull()
     fireEvent.change(args, { target: { value: '--r10-marker' } })
     fireEvent.blur(args)
@@ -116,12 +121,25 @@ describe('host launch settings form', () => {
     )
     expect(updateDesktop).not.toHaveBeenCalled()
     expect(desktop.agentDefaultEnv?.claude?.DESKTOP_KEY).toBe('desktop-secret')
+    fireEvent.click(screen.getByRole('radio', { name: 'Manual' }))
+    await waitFor(() =>
+      expect(transport.mutate).toHaveBeenCalledWith(
+        { environmentId: 'ssh-host', pairingRevision: 17 },
+        { type: 'permissions', mode: 'manual' },
+        expect.any(AbortSignal)
+      )
+    )
+    expect(updateDesktop).not.toHaveBeenCalled()
   })
 
   it('renders host arguments and masked values, then writes the selected host', async () => {
     const { container } = render(pane(17))
     await screen.findByDisplayValue('--host-marker')
-    expect(transport.detection).toHaveBeenCalledWith({ kind: 'runtime', environmentId: 'ssh-host' })
+    expect(transport.detection).toHaveBeenCalledWith({
+      kind: 'runtime',
+      environmentId: 'ssh-host',
+      pairingRevision: 17
+    })
     expect(screen.getByRole('textbox', { name: 'Environment variable name' })).toBeTruthy()
     const secret = container.querySelector<HTMLInputElement>('[aria-label="Value for API_KEY"]')
     expect(secret?.type).toBe('password')

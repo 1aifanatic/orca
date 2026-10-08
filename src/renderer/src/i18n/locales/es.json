@@ -19476,6 +19476,5 @@
   "settings.agents.hostDefaults": "Valores predeterminados para nuevos agentes en el host seleccionado.",
   "settings.agents.launchHost": "Configuración de inicio en",
   "settings.agents.hostUnavailable": "Conecta este host para editar su configuración de inicio de agentes.",
-  "settings.agents.save": "Guardar",
-  "settings.agents.permissionsScope": "Se aplica a los agentes que abres en una terminal. Los chats tienen su propio ajuste en Configuración → Chat."
+  "settings.agents.save": "Guardar"
 }

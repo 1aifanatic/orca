@@ -19476,6 +19476,5 @@
   "settings.agents.hostDefaults": "選択したホストで起動する新しいAgentの既定値。",
   "settings.agents.launchHost": "起動設定の対象",
   "settings.agents.hostUnavailable": "Agentの起動設定を編集するには、このホストに接続してください。",
-  "settings.agents.save": "保存",
-  "settings.agents.permissionsScope": "ターミナルで開くAgentに適用されます。チャットには、設定 → チャットに独自の設定があります。"
+  "settings.agents.save": "保存"
 }

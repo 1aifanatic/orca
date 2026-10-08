@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useAppStore } from '@/store'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import {
+  captureRuntimeAgentDetectionOwner,
+  runtimeAgentDetectionCacheMatchesOwner,
+  runtimeAgentDetectionOwnerKey
+} from '@/runtime/runtime-agent-detection-owner'
 
 export type UseDetectedAgentsResult = {
   /** Null while detection is in flight on first load. */
@@ -19,7 +24,7 @@ export type UseDetectedAgentsResult = {
 export type AgentDetectionTarget =
   | { kind: 'local'; worktreeId?: string | null; contextKey?: string }
   | { kind: 'ssh'; connectionId: string }
-  | { kind: 'runtime'; environmentId: string }
+  | { kind: 'runtime'; environmentId: string; pairingRevision?: number }
 
 function normalizeAgentDetectionTarget(
   target: AgentDetectionTarget | string | null | undefined
@@ -57,7 +62,6 @@ export function useDetectedAgents(
   // Why: undefined means "store not yet hydrated" — we don't know if the
   // worktree is local or remote yet. This prevents flashing local agents for
   // remote worktrees during hydration.
-  const isUnknown = target === undefined
   const targetKind = target?.kind
   const targetId =
     target?.kind === 'ssh'
@@ -67,11 +71,23 @@ export function useDetectedAgents(
         : null
   const localWorktreeId = target?.kind === 'local' ? target.worktreeId : undefined
   const localContextKey = target?.kind === 'local' ? target.contextKey : undefined
+  const expectedPairingRevision = target?.kind === 'runtime' ? target.pairingRevision : undefined
+  const currentPairingRevision = useAppStore((s) =>
+    targetKind === 'runtime' && targetId
+      ? captureRuntimeAgentDetectionOwner(s.runtimeEnvironments, targetId).pairingRevision
+      : undefined
+  )
+  const pairingRevision = expectedPairingRevision ?? currentPairingRevision
+  const runtimeOwner =
+    targetKind === 'runtime' && targetId ? { environmentId: targetId, pairingRevision } : undefined
+  const isUnknown =
+    target === undefined ||
+    (expectedPairingRevision !== undefined && expectedPairingRevision !== currentPairingRevision)
   const remoteTargetKey =
     targetKind === 'ssh' && targetId
       ? `ssh:${targetId}`
-      : targetKind === 'runtime' && targetId
-        ? `runtime:${targetId}`
+      : runtimeOwner
+        ? runtimeAgentDetectionOwnerKey(runtimeOwner)
         : null
 
   const detectedIds = useAppStore((s) => {
@@ -82,7 +98,10 @@ export function useDetectedAgents(
       return s.remoteDetectedAgentIds[targetId] ?? null
     }
     if (targetKind === 'runtime' && targetId) {
-      return s.runtimeDetectedAgentIds[targetId] ?? null
+      return runtimeOwner &&
+        runtimeAgentDetectionCacheMatchesOwner(s.runtimeDetectedAgentOwnerKeys, runtimeOwner)
+        ? (s.runtimeDetectedAgentIds[targetId] ?? null)
+        : null
     }
     return localContextKey
       ? (s.localDetectedAgentIdsByContext[localContextKey] ?? null)
@@ -96,15 +115,24 @@ export function useDetectedAgents(
       return s.isDetectingRemoteAgents[targetId] ?? false
     }
     if (targetKind === 'runtime' && targetId) {
-      return s.isDetectingRuntimeAgents[targetId] ?? false
+      return runtimeOwner &&
+        runtimeAgentDetectionCacheMatchesOwner(s.runtimeDetectedAgentOwnerKeys, runtimeOwner)
+        ? (s.isDetectingRuntimeAgents[targetId] ?? false)
+        : false
     }
     return localContextKey
       ? (s.isDetectingLocalAgentsByContext[localContextKey] ?? false)
       : s.isDetectingAgents
   })
   const isRefreshing = useAppStore((s) => {
+    if (isUnknown) {
+      return false
+    }
     if (targetKind === 'runtime' && targetId) {
-      return s.isRefreshingRuntimeAgents[targetId] ?? false
+      return runtimeOwner &&
+        runtimeAgentDetectionCacheMatchesOwner(s.runtimeDetectedAgentOwnerKeys, runtimeOwner)
+        ? (s.isRefreshingRuntimeAgents[targetId] ?? false)
+        : false
     }
     if (targetKind === 'ssh' && targetId) {
       return s.isDetectingRemoteAgents[targetId] ?? false
@@ -132,13 +160,13 @@ export function useDetectedAgents(
     // no-op Zustand subscriptions per hook during unrelated store churn.
     const state = useAppStore.getState()
     if (targetKind === 'runtime' && targetId) {
-      return state.refreshRuntimeDetectedAgents(targetId)
+      return state.refreshRuntimeDetectedAgents(targetId, pairingRevision)
     }
     if (targetKind === 'ssh' && targetId) {
       return state.refreshRemoteDetectedAgents(targetId)
     }
     return state.refreshDetectedAgents(localWorktreeId)
-  }, [isUnknown, localWorktreeId, targetKind, targetId])
+  }, [isUnknown, localWorktreeId, targetKind, targetId, pairingRevision])
 
   useEffect(() => {
     if (isUnknown) {
@@ -165,14 +193,14 @@ export function useDetectedAgents(
       }
     } else if (targetKind === 'runtime' && targetId) {
       if (detectedIds === null) {
-        void state.ensureRuntimeDetectedAgents(targetId)
+        void state.ensureRuntimeDetectedAgents(targetId, pairingRevision)
       } else if (isNewRemoteTarget && detectedIds.length > 0) {
         // Why: a host can install an agent after its cached list was populated;
         // refresh once when a new launch surface first observes that host.
-        void state.refreshRuntimeDetectedAgents(targetId)
+        void state.refreshRuntimeDetectedAgents(targetId, pairingRevision)
       } else if (isNewRemoteTarget) {
         // Empty results are intentionally retryable through the normal probe.
-        void state.ensureRuntimeDetectedAgents(targetId)
+        void state.ensureRuntimeDetectedAgents(targetId, pairingRevision)
       }
     } else {
       if (detectedIds === null) {
@@ -183,6 +211,7 @@ export function useDetectedAgents(
     isUnknown,
     targetKind,
     targetId,
+    pairingRevision,
     remoteTargetKey,
     detectedIds,
     localWorktreeId,

@@ -19476,6 +19476,5 @@
   "settings.agents.hostDefaults": "선택한 호스트의 새 에이전트 기본값입니다.",
   "settings.agents.launchHost": "실행 설정 대상",
   "settings.agents.hostUnavailable": "에이전트 실행 설정을 편집하려면 이 호스트에 연결하세요.",
-  "settings.agents.save": "저장",
-  "settings.agents.permissionsScope": "터미널에서 여는 에이전트에 적용됩니다. 채팅은 설정 → 채팅에 별도의 설정이 있습니다."
+  "settings.agents.save": "저장"
 }

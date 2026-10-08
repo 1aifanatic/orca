@@ -19476,6 +19476,5 @@
   "settings.agents.hostDefaults": "所选主机上新代理的默认设置。",
   "settings.agents.launchHost": "启动设置所在主机",
   "settings.agents.hostUnavailable": "请连接此主机以编辑其代理启动设置。",
-  "settings.agents.save": "保存",
-  "settings.agents.permissionsScope": "适用于在终端中打开的智能体。聊天在设置 → 聊天中有独立的设置。"
+  "settings.agents.save": "保存"
 }

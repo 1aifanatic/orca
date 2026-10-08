@@ -19476,6 +19476,5 @@
   "settings.agents.hostDefaults": "Paramètres par défaut des nouveaux agents sur l’hôte sélectionné.",
   "settings.agents.launchHost": "Paramètres de lancement sur",
   "settings.agents.hostUnavailable": "Connectez cet hôte pour modifier ses paramètres de lancement des agents.",
-  "settings.agents.save": "Enregistrer",
-  "settings.agents.permissionsScope": "S’applique aux agents ouverts dans un terminal. Les chats ont leur propre réglage dans Paramètres → Chat."
+  "settings.agents.save": "Enregistrer"
 }

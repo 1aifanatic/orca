@@ -19604,6 +19604,5 @@
   "settings.agents.hostDefaults": "Defaults for new agents on the selected host.",
   "settings.agents.launchHost": "Launch settings on",
   "settings.agents.hostUnavailable": "Connect this host to edit its agent launch settings.",
-  "settings.agents.save": "Save",
-  "settings.agents.permissionsScope": "Applies to agents you open in a terminal. Chats have their own setting in Settings → Chat."
+  "settings.agents.save": "Save"
 }
