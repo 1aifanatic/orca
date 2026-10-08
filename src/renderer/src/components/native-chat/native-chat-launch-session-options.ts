@@ -9,7 +9,7 @@ import { resolveNativeChatLaunchSessionOptions } from './native-chat-session-opt
 
 type NativeChatLaunchSettings = Pick<
   GlobalSettings,
-  'experimentalNativeChat' | 'openAgentTabsInChatByDefault' | 'nativeChatSessionOptions'
+  'experimentalNativeChat' | 'nativeChatSessionOptions'
 >
 
 export type InitialNativeChatSessionOptionsArgs = {
@@ -25,7 +25,6 @@ export function resolveInitialNativeChatSessionOptions(
 ): Record<string, SessionOptionValue> | undefined {
   const viewMode = decideInitialAgentTabViewMode({
     experimentalNativeChat: settings?.experimentalNativeChat,
-    openAgentTabsInChatByDefault: settings?.openAgentTabsInChatByDefault,
     ...args
   })
   return viewMode === 'chat'

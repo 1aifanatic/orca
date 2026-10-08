@@ -61,6 +61,7 @@ type RetiredGlobalSettings = {
   enableGitHubAttribution?: unknown
   showAgentsSidebar?: unknown
   experimentalStructuredNativeChat?: unknown
+  openAgentTabsInChatByDefault?: unknown
 }
 
 export function stripRetiredGlobalSettings(
@@ -71,12 +72,14 @@ export function stripRetiredGlobalSettings(
     enableGitHubAttribution: _legacyGitHubAttribution,
     showAgentsSidebar: _legacyShowAgentsSidebar,
     experimentalStructuredNativeChat: _legacyStructuredNativeChat,
+    openAgentTabsInChatByDefault: _legacyChatDefaultView,
     ...rest
   } = (settings ?? {}) as Partial<GlobalSettings> & RetiredGlobalSettings
   void _legacyScrollbackBytes
   void _legacyGitHubAttribution
   void _legacyShowAgentsSidebar
   void _legacyStructuredNativeChat
+  void _legacyChatDefaultView
   return rest
 }
 

@@ -36,7 +36,6 @@ export type RuntimeClientSettings = Pick<
   | 'githubProjects'
   | 'experimentalNewWorktreeCardStyle'
   | 'experimentalNativeChat'
-  | 'openAgentTabsInChatByDefault'
   | 'compactWorktreeCards'
   | 'minimaxGroupId'
   | 'minimaxUsageModels'
@@ -47,6 +46,8 @@ export type RuntimeClientSettings = Pick<
   | 'agentSkillSharingEnabled'
   | 'machineName'
 > & {
+  /** Compatibility projection for older clients; derived from the single Chat UI switch. */
+  openAgentTabsInChatByDefault?: boolean
   hostSettingOverrides: RuntimeHostDisplayLabelOverrides
 }
 
@@ -109,10 +110,8 @@ export class RuntimeClientSettingsController {
       defaultLinearTeamSelection: settings.defaultLinearTeamSelection ?? null,
       githubProjects: settings.githubProjects,
       experimentalNewWorktreeCardStyle: settings.experimentalNewWorktreeCardStyle === true,
-      // The two that decide whether a new agent tab -- and so an orchestration worker -- is a
-      // structured chat session rather than a terminal agent.
       experimentalNativeChat: settings.experimentalNativeChat === true,
-      openAgentTabsInChatByDefault: settings.openAgentTabsInChatByDefault === true,
+      openAgentTabsInChatByDefault: settings.experimentalNativeChat === true,
       compactWorktreeCards: settings.compactWorktreeCards === true,
       minimaxGroupId: settings.minimaxGroupId ?? '',
       minimaxUsageModels: settings.minimaxUsageModels ?? 'general',

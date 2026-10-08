@@ -2,7 +2,7 @@
  * The one place that answers "should this launch be a structured native chat session?".
  *
  * Structured chat is the only Chat UI runtime: a launch that routes to Chat UI is structured
- * wherever it is supported, and falls back to terminal-backed chat where it is not.
+ * wherever it is supported, and falls back to the terminal where it is not.
  *
  * Both launch surfaces call it. The renderer asks when a user opens an agent tab
  * (`resolveAgentLaunchRoute`); orchestration asks when it dispatches a worker, because the mode is
@@ -18,10 +18,7 @@ import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from './protocol-version'
 import type { TuiAgent } from './tui-agent'
 import type { WorkspaceLaunchKind } from './workspace-launch-kind'
 
-export type NativeChatDefaultSettings = Pick<
-  GlobalSettings,
-  'experimentalNativeChat' | 'openAgentTabsInChatByDefault'
->
+export type NativeChatDefaultSettings = Pick<GlobalSettings, 'experimentalNativeChat'>
 
 /** Why a launch that the user's default asked to be structured cannot be. */
 export type StructuredNativeChatBlocker =
@@ -61,13 +58,6 @@ export function isNativeChatEnabled(
   settings: Partial<Pick<NativeChatDefaultSettings, 'experimentalNativeChat'>> | null | undefined
 ): boolean {
   return settings?.experimentalNativeChat === true
-}
-
-/** The user's default for a new agent tab: native chat rather than the raw TUI. */
-export function agentTabsDefaultToNativeChat(
-  settings: Partial<NativeChatDefaultSettings> | null | undefined
-): boolean {
-  return isNativeChatEnabled(settings) && settings?.openAgentTabsInChatByDefault === true
 }
 
 export function resolveStructuredNativeChatSupport(
