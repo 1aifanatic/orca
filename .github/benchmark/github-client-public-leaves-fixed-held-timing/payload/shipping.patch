@@ -1,0 +1,367 @@
+--- a/src/main/github/client-create-pr.test.ts
++++ b/src/main/github/client-create-pr.test.ts
+@@ -61,7 +61,7 @@
+   isGitHubHostAuthenticated: vi.fn().mockResolvedValue(true)
+ }))
+ 
+-import { createGitHubPullRequest } from './client'
++import { createGitHubPullRequest } from './client/create/create-github-pull-request'
+ 
+ import { _resetOriginGitHubApiRepositoryCache } from './github-api-repository'
+ 
+--- a/src/main/github/client-file-viewed.test.ts
++++ b/src/main/github/client-file-viewed.test.ts
+@@ -53,7 +53,7 @@
+   isGitHubHostAuthenticated: vi.fn().mockResolvedValue(true)
+ }))
+ 
+-import { setPRFileViewed } from './client'
++import { setPRFileViewed } from './client/update/pr-file-viewed'
+ 
+ import { _resetOriginGitHubApiRepositoryCache } from './github-api-repository'
+ 
+--- a/src/main/github/client-issue-origin-preference.test.ts
++++ b/src/main/github/client-issue-origin-preference.test.ts
+@@ -85,7 +85,8 @@
+   }
+ })
+ 
+-import { getWorkItem, _resetOwnerRepoCache } from './client'
++import { getWorkItem } from './client/fetch/get-work-item'
++import { _resetOwnerRepoCache } from './gh-utils'
+ 
+ describe('GitHub issue open-by-number origin preference', () => {
+   beforeEach(() => {
+--- a/src/main/github/client-issue-source.test.ts
++++ b/src/main/github/client-issue-source.test.ts
+@@ -92,7 +92,10 @@
+   }
+ })
+ 
+-import { countWorkItems, getWorkItem, listWorkItems, _resetOwnerRepoCache } from './client'
++import { countWorkItems } from './client/list/count-work-items'
++import { getWorkItem } from './client/fetch/get-work-item'
++import { listWorkItems } from './client/list/list-work-items'
++import { _resetOwnerRepoCache } from './gh-utils'
+ 
+ const PR_LIST_FIELDS =
+   'number,title,state,url,labels,updatedAt,author,isDraft,headRefName,baseRefName,headRefOid,headRepositoryOwner,reviewRequests'
+--- a/src/main/github/client-merge-queue-auto-merge.test.ts
++++ b/src/main/github/client-merge-queue-auto-merge.test.ts
+@@ -26,15 +26,13 @@
+   )
+ )
+ 
+-import {
+-  getPRForBranch,
+-  getWorkItemByOwnerRepo,
+-  mergePR,
+-  resolveReviewThread,
+-  setPRAutoMerge,
+-  updatePRTitle,
+-  _getMergeQueueCacheSizeForTests
+-} from './client'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
++import { getWorkItemByOwnerRepo } from './client/fetch/get-work-item'
++import { mergePR } from './client/merge/merge-pr'
++import { resolveReviewThread } from './client/update/resolve-review-thread'
++import { setPRAutoMerge } from './client/merge/pr-auto-merge'
++import { updatePRTitle } from './client/update/pr-details'
++import { _getMergeQueueCacheSizeForTests } from './client/detect/repository-merge-metadata-cache'
+ import { resetGraphQLRateLimitGuardMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-merged-pr-visibility.test.ts
++++ b/src/main/github/client-merged-pr-visibility.test.ts
+@@ -26,7 +26,8 @@
+   )
+ )
+ 
+-import { getPRForBranchOutcome, getPRForBranch } from './client'
++import { getPRForBranchOutcome } from './client/lookup/pr-for-branch-outcome'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-pr-branch-discovery.test.ts
++++ b/src/main/github/client-pr-branch-discovery.test.ts
+@@ -26,7 +26,7 @@
+   )
+ )
+ 
+-import { getPRForBranch } from './client'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-pr-check-details.test.ts
++++ b/src/main/github/client-pr-check-details.test.ts
+@@ -50,7 +50,8 @@
+   spendsSharedGitHubComQuota: vi.fn(() => true)
+ }))
+ 
+-import { getPRCheckDetails, _resetOwnerRepoCache } from './client'
++import { getPRCheckDetails } from './client/check/get-pr-check-details'
++import { _resetOwnerRepoCache } from './gh-utils'
+ 
+ describe('getPRCheckDetails', () => {
+   beforeEach(() => {
+--- a/src/main/github/client-pr-checks.test.ts
++++ b/src/main/github/client-pr-checks.test.ts
+@@ -84,7 +84,9 @@
+   spendsSharedGitHubComQuota: spendsSharedGitHubComQuotaMock
+ }))
+ 
+-import { getPRChecks, rerunPRChecks, _resetOwnerRepoCache } from './client'
++import { getPRChecks } from './client/check/get-pr-checks'
++import { rerunPRChecks } from './client/check/rerun-pr-checks'
++import { _resetOwnerRepoCache } from './gh-utils'
+ 
+ import { _resetOriginGitHubApiRepositoryCache } from './github-api-repository'
+ 
+--- a/src/main/github/client-pr-comment-reactions.test.ts
++++ b/src/main/github/client-pr-comment-reactions.test.ts
+@@ -26,7 +26,8 @@
+   )
+ )
+ 
+-import { getPRComments, setPRCommentReaction } from './client'
++import { getPRComments } from './client/fetch/get-pr-comments'
++import { setPRCommentReaction } from './client/update/pr-comment-reaction'
+ import { resetGraphQLRateLimitGuardMocks } from './client-test-harness'
+ import type { RateLimitGuardResult } from './client-test-mocks'
+ 
+--- a/src/main/github/client-pr-conflict-summary.test.ts
++++ b/src/main/github/client-pr-conflict-summary.test.ts
+@@ -26,7 +26,7 @@
+   )
+ )
+ 
+-import { getPRForBranch } from './client'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-pr-fallback-number.test.ts
++++ b/src/main/github/client-pr-fallback-number.test.ts
+@@ -26,7 +26,8 @@
+   )
+ )
+ 
+-import { getPRForBranchOutcome, getPRForBranch } from './client'
++import { getPRForBranchOutcome } from './client/lookup/pr-for-branch-outcome'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-pr-linked-lookup.test.ts
++++ b/src/main/github/client-pr-linked-lookup.test.ts
+@@ -26,7 +26,7 @@
+   )
+ )
+ 
+-import { getPRForBranch } from './client'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-pr-push-target.test.ts
++++ b/src/main/github/client-pr-push-target.test.ts
+@@ -26,7 +26,9 @@
+   )
+ )
+ 
+-import { getRepoSlug, getRepoUpstream, getWorkItem, getPullRequestPushTarget } from './client'
++import { getRepoSlug, getRepoUpstream } from './client/fetch/repo-slug-upstream'
++import { getWorkItem } from './client/fetch/get-work-item'
++import { getPullRequestPushTarget } from './client/lookup/pull-request-push-target'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-pr-state.test.ts
++++ b/src/main/github/client-pr-state.test.ts
+@@ -26,7 +26,9 @@
+   )
+ )
+ 
+-import { markPRReadyForReview, updatePRState, _resetOwnerRepoCache } from './client'
++import { markPRReadyForReview } from './client/update/pr-ready'
++import { updatePRState } from './client/update/pr-state'
++import { _resetOwnerRepoCache } from './gh-utils'
+ import { resetOriginRepositoryCache } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-rate-limit-block.test.ts
++++ b/src/main/github/client-rate-limit-block.test.ts
+@@ -26,7 +26,8 @@
+   )
+ )
+ 
+-import { getGitHubPRLookupRateLimitBlock, _resetOwnerRepoCache } from './client'
++import { getGitHubPRLookupRateLimitBlock } from './client/lookup/pr-lookup-rate-limit'
++import { _resetOwnerRepoCache } from './gh-utils'
+ import { resetOriginRepositoryCache } from './client-test-harness'
+ import type { RateLimitGuardResult } from './client-test-mocks'
+ 
+--- a/src/main/github/client-ssh-provider-execution-boundary.test.ts
++++ b/src/main/github/client-ssh-provider-execution-boundary.test.ts
+@@ -26,7 +26,8 @@
+   )
+ )
+ 
+-import { getPRForBranch, getPRForBranchOutcome } from './client'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
++import { getPRForBranchOutcome } from './client/lookup/pr-for-branch-outcome'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-stack-merge-guard.test.ts
++++ b/src/main/github/client-stack-merge-guard.test.ts
+@@ -26,7 +26,8 @@
+   )
+ )
+ 
+-import { getPRForBranch, mergePR } from './client'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
++import { mergePR } from './client/merge/merge-pr'
+ import { resetGraphQLRateLimitGuardMocks } from './client-test-harness'
+ 
+ const { ghExecFileAsyncMock, getOwnerRepoMock, acquireMock, releaseMock } = clientMocks
+--- a/src/main/github/client-starred.test.ts
++++ b/src/main/github/client-starred.test.ts
+@@ -26,7 +26,7 @@
+   )
+ )
+ 
+-import { __resetOrcaStarCheckForTests, checkOrcaStarred, starOrca } from './client'
++import { __resetOrcaStarCheckForTests, checkOrcaStarred, starOrca } from './client/fetch/orca-star'
+ import { resetOriginRepositoryCache } from './client-test-harness'
+ 
+ const { execFileAsyncMock, ghExecFileAsyncMock, acquireMock, releaseMock } = clientMocks
+--- a/src/main/github/client-tracked-upstream-fork-owner.test.ts
++++ b/src/main/github/client-tracked-upstream-fork-owner.test.ts
+@@ -26,7 +26,7 @@
+   )
+ )
+ 
+-import { getPRForBranch } from './client'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-tracked-upstream-snapshot.test.ts
++++ b/src/main/github/client-tracked-upstream-snapshot.test.ts
+@@ -26,11 +26,11 @@
+   )
+ )
+ 
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
+ import {
+-  getPRForBranch,
+   _getTrackedUpstreamBranchCacheSizesForTests,
+   __resetTrackedUpstreamBranchCacheForTests
+-} from './client'
++} from './client/lookup/tracked-upstream-cache'
+ import { resetPRForBranchMocks } from './client-test-harness'
+ 
+ const {
+--- a/src/main/github/client-work-item-check-summary.test.ts
++++ b/src/main/github/client-work-item-check-summary.test.ts
+@@ -47,7 +47,9 @@
+   spendsSharedGitHubComQuota: vi.fn(() => true)
+ }))
+ 
+-import { getWorkItem, _resetMergeQueueCacheForTests, _resetOwnerRepoCache } from './client'
++import { getWorkItem } from './client/fetch/get-work-item'
++import { _resetMergeQueueCacheForTests } from './client/detect/repository-merge-metadata-cache'
++import { _resetOwnerRepoCache } from './gh-utils'
+ import { _resetOriginGitHubApiRepositoryCache } from './github-api-repository'
+ 
+ // Why: only `pr view` is fixtured; the merge-metadata fan-out is best-effort and must not mask the summary.
+--- a/src/main/github/client-work-items-query-paging.test.ts
++++ b/src/main/github/client-work-items-query-paging.test.ts
+@@ -115,12 +115,10 @@
+   }
+ })
+ 
+-import {
+-  countWorkItems,
+-  listWorkItems,
+-  _resetMergeQueueCacheForTests,
+-  _resetOwnerRepoCache
+-} from './client'
++import { countWorkItems } from './client/list/count-work-items'
++import { listWorkItems } from './client/list/list-work-items'
++import { _resetMergeQueueCacheForTests } from './client/detect/repository-merge-metadata-cache'
++import { _resetOwnerRepoCache } from './gh-utils'
+ import { GITHUB_WORK_ITEMS_QUERY_MAX_BYTES } from '../../shared/github/work-items-query-bounds'
+ 
+ import { _resetOriginGitHubApiRepositoryCache } from './github-api-repository'
+--- a/src/main/github/client-work-items.test.ts
++++ b/src/main/github/client-work-items.test.ts
+@@ -109,12 +109,10 @@
+   }
+ })
+ 
+-import {
+-  countWorkItems,
+-  listWorkItems,
+-  _resetMergeQueueCacheForTests,
+-  _resetOwnerRepoCache
+-} from './client'
++import { countWorkItems } from './client/list/count-work-items'
++import { listWorkItems } from './client/list/list-work-items'
++import { _resetMergeQueueCacheForTests } from './client/detect/repository-merge-metadata-cache'
++import { _resetOwnerRepoCache } from './gh-utils'
+ import { GITHUB_WORK_ITEMS_QUERY_MAX_BYTES } from '../../shared/github/work-items-query-bounds'
+ import { _resetRemoteNameListingCache } from '../git/remote-name-listing'
+ 
+--- a/src/main/github/default-branch-stale-pr.test.ts
++++ b/src/main/github/default-branch-stale-pr.test.ts
+@@ -122,13 +122,11 @@
+   noteRepositoryRateLimitSpend: noteRepositoryRateLimitSpendMock
+ }))
+ 
+-import {
+-  getPRForBranch,
+-  getPRForBranchOutcome,
+-  _resetOwnerRepoCache,
+-  _resetMergeQueueCacheForTests,
+-  __resetTrackedUpstreamBranchCacheForTests
+-} from './client'
++import { getPRForBranch } from './client/lookup/get-pr-for-branch'
++import { getPRForBranchOutcome } from './client/lookup/pr-for-branch-outcome'
++import { _resetOwnerRepoCache } from './gh-utils'
++import { _resetMergeQueueCacheForTests } from './client/detect/repository-merge-metadata-cache'
++import { __resetTrackedUpstreamBranchCacheForTests } from './client/lookup/tracked-upstream-cache'
+ import { __resetPRConflictSummaryCachesForTests } from './conflict-summary'
+ import { resetMergedPRCommitMembershipCacheForTest } from './merged-pr-commit-membership'
+ import { __resetRepoDefaultBranchCacheForTests } from '../source-control/repo-default-branch'
+--- a/src/main/github/github-repository-identity.fork-owner-repo.test.ts
++++ b/src/main/github/github-repository-identity.fork-owner-repo.test.ts
+@@ -31,7 +31,7 @@
+ import { _resetRemoteNameListingCache } from '../git/remote-name-listing'
+ import { getOwnerRepoForRemote, _resetOwnerRepoCache } from './github-repository-identity'
+ import { getOwnerRepo } from './github-owner-repo-selection'
+-import { getRepoUpstream } from './client'
++import { getRepoUpstream } from './client/fetch/repo-slug-upstream'
+ 
+ const FORK_PATH = '/tmp/fork-checkout'
+ const NON_FORK_PATH = '/tmp/plain-checkout'
+--- a/src/main/github/client-test-harness.ts
++++ b/src/main/github/client-test-harness.ts
+@@ -1,10 +1,8 @@
+ import type { GitHubClientMocks } from './client-test-mocks'
+-import {
+-  _resetOwnerRepoCache,
+-  _resetMergeQueueCacheForTests,
+-  _resetPRStackSummaryCacheForTests,
+-  __resetTrackedUpstreamBranchCacheForTests
+-} from './client'
++import { _resetOwnerRepoCache } from './gh-utils'
++import { _resetMergeQueueCacheForTests } from './client/detect/repository-merge-metadata-cache'
++import { _resetPRStackSummaryCacheForTests } from './client/lookup/pr-stack-summary-cache'
++import { __resetTrackedUpstreamBranchCacheForTests } from './client/lookup/tracked-upstream-cache'
+ import { __resetPRConflictSummaryCachesForTests } from './conflict-summary'
+ import { resetMergedPRCommitMembershipCacheForTest } from './merged-pr-commit-membership'
+ import { __resetRepoDefaultBranchCacheForTests } from '../source-control/repo-default-branch'

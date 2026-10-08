@@ -1,0 +1,20 @@
+{
+  "runId": 37707262849,
+  "definitionHead": "4d878ece996411e2f74c71a06e890c4f70596aeb",
+  "sourceHead": "1f790332303926ef8bbec86006dc12ee8654865d",
+  "terminalConclusion": "success",
+  "allFiveJobsSuccess": true,
+  "runtimeCorrectnessQualified": true,
+  "eachCommandOriginalCasesPassed": 292,
+  "eachCommandOriginalCasesSkipped": 0,
+  "actualCiCollectorSha256": "133b9a26599bf0faba05fee6e046bbc2263a1bbb03d27b0d4e81662af615a216",
+  "runMetadata": {
+    "path": "notes/bun-migration/performance/github-client-public-leaves-fixed-run-37707262849/run-002743.json",
+    "sha256": "f8b9bb849aace5296908b68513bd1a31d23d6053a7b650e6b69030cad3f94271"
+  },
+  "jobsMetadata": {
+    "path": "notes/bun-migration/performance/github-client-public-leaves-fixed-run-37707262849/jobs-002743.json",
+    "sha256": "01e7085be98fc0206fe440a9e576a307eba02447030af6427c8703002ff595b3"
+  },
+  "scope": "All5 CI jobs terminalSUCCESS and all8 raw maps independently passed292 originals. Numeric qualification run retained; future context runId remains environment string."
+}
