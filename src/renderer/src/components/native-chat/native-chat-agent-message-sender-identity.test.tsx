@@ -33,6 +33,7 @@ vi.mock('@/runtime/structured-agent-session-status-feed', () => ({
         }
       },
       getSnapshot: () => feed.snapshot,
+      getCapability: () => 'supported',
       getSessionObservation: () => (feed.live ? 'live' : 'unverifiable'),
       subscribe: (listener: () => void) => {
         feed.listeners.add(listener)

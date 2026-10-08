@@ -25,6 +25,9 @@ export function useStructuredOrchestrationSessionId(
     feed?.subscribe ?? noSubscription,
     () => {
       const snapshot = feed?.getSnapshot()
+      if (root && feed?.getCapability() === 'unsupported') {
+        return root
+      }
       const legacyRoot = root ? snapshot?.get(root) : undefined
       if (
         legacyRoot &&

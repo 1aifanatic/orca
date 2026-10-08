@@ -17,6 +17,8 @@ import {
   type RuntimeClientTarget
 } from './runtime-rpc-client'
 import { subscribeStructuredAgentSessionStatus } from './structured-agent-session-client'
+import type { StructuredAgentSessionHostCapabilityState } from './structured-agent-session-host-capability'
+import { subscribeRuntimeHostContactRegained } from './runtime-host-contact-regained'
 
 export type StructuredAgentSessionStatusSnapshot = AgentSessionStatusSnapshot
 
@@ -24,6 +26,7 @@ export type StructuredAgentSessionStatusFeedOwner = {
   activate: () => () => void
   getSnapshot: () => StructuredAgentSessionStatusSnapshot
   getSessionObservation: (sessionId: string) => 'live' | 'unverifiable'
+  getCapability: () => StructuredAgentSessionHostCapabilityState
   subscribe: (listener: () => void) => () => void
 }
 
@@ -47,10 +50,18 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
   let handle: { unsubscribe: () => void } | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let reconnectAttempt = 0
+  let capability: StructuredAgentSessionHostCapabilityState = 'unknown'
+  let stopContact: (() => void) | null = null
 
   const emit = (): void => {
     for (const listener of listeners) {
       listener()
+    }
+  }
+  const setCapability = (next: StructuredAgentSessionHostCapabilityState): void => {
+    if (capability !== next) {
+      capability = next
+      emit()
     }
   }
   const setSnapshot = (next: StructuredAgentSessionStatusSnapshot): void => {
@@ -104,13 +115,15 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
   // Losing contact is never exit: the sessions go unverifiable and this client stops
   // claiming host-owned execution, but nothing here settles them.
   const loseConnection = (candidate: number): void => {
-    if (candidate !== generation) {
+    if (!active(candidate)) {
       return
     }
     generation += 1
+    capability = 'unknown'
     confirmedSessions.clear()
     revokeSnapshotOwnership()
     emit()
+    clearReconnect()
     dropHandle()
     scheduleReconnect(generation)
   }
@@ -149,9 +162,11 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
   }
   open = (): void => {
     const candidate = ++generation
+    setCapability('unknown')
     dropHandle()
     if (target.kind !== 'environment') {
       // A local host is this build; only a remote one can predate the method.
+      setCapability('supported')
       subscribeToHost(candidate)
       return
     }
@@ -167,15 +182,20 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
         // A host without the method is terminal, not a fault: retrying would relay-probe
         // forever. A failed probe is not an answer, so that path still reconnects.
         if (supported) {
+          setCapability('supported')
           subscribeToHost(candidate)
           return
         }
+        setCapability('unsupported')
         console.warn('[structured-session-status] host too old for the status feed', environmentId)
       })
       .catch(() => loseConnection(candidate))
   }
   const stop = (): void => {
     generation += 1
+    capability = 'unknown'
+    stopContact?.()
+    stopContact = null
     clearReconnect()
     dropHandle()
     revokeSnapshotOwnership()
@@ -190,6 +210,11 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
       const token = Symbol('status-feed')
       activations.add(token)
       if (activations.size === 1) {
+        if (target.kind === 'environment') {
+          stopContact = subscribeRuntimeHostContactRegained(target.environmentId, () =>
+            loseConnection(generation)
+          )
+        }
         open()
       }
       return () => {
@@ -202,6 +227,7 @@ function createOwner(target: RuntimeClientTarget): OwnedStatusFeed {
     getSnapshot: () => snapshot,
     getSessionObservation: (sessionId) =>
       confirmedSessions.has(sessionId) ? 'live' : 'unverifiable',
+    getCapability: () => capability,
     subscribe: (listener) => {
       listeners.add(listener)
       return () => listeners.delete(listener)

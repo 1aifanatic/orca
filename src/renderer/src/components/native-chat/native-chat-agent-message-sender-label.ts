@@ -8,10 +8,13 @@ import {
 } from '@/runtime/structured-conversation-name'
 import {
   structuredAgentSessionOwnerForTab,
-  resolveStructuredAgentSessionOwner
+  resolveStructuredAgentSessionOwner,
+  executionHostIdForStructuredTarget
 } from '@/runtime/structured-agent-session-owner'
+import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { AgentMessageSender } from '../../../../shared/agent-session-message-source'
 import type { Tab } from '../../../../shared/tab-types'
+import { getKnownExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 
 export function unnamedSenderLabel(): string {
   return translate('components.native-chat.agentMessage.unnamedSender', 'an agent')
@@ -52,12 +55,17 @@ function findChatTab(
 /** Live chat names follow the host's current clear lineage; CLI names stay as recorded. */
 export function useAgentMessageSenderLabel(
   sender: AgentMessageSender,
-  chatWorktreeId: string | null
+  chatWorktreeId: string | null,
+  target?: RuntimeClientTarget
 ): string {
   const { address, orcaSessionId } = sender.party
   const local = !address.startsWith('dispatch:')
   const owner = useAppStore((state) =>
-    chatWorktreeId ? resolveStructuredAgentSessionOwner(state, chatWorktreeId) : null
+    target
+      ? executionHostIdForStructuredTarget(target)
+      : chatWorktreeId && getKnownExecutionHostIdForWorktree(state, chatWorktreeId)
+        ? resolveStructuredAgentSessionOwner(state, chatWorktreeId)
+        : null
   )
   const sessionId = useStructuredOrchestrationSessionId(owner, local ? orcaSessionId : null)
   const chatTab = useAppStore((state) =>
