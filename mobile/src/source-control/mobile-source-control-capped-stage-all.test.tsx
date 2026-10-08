@@ -1,6 +1,6 @@
 import { createElement, useRef } from 'react'
 import { act, create } from 'react-test-renderer'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, type Mock } from 'vitest'
 // Why: react-native is Flow source vitest will not parse; haptics reaches expo-haptics through it.
 vi.mock('react-native', () => ({
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options.ios },
@@ -43,11 +43,22 @@ function cappedStatus(): MobileGitStatusResult {
 }
 
 type SendGitRequest = <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+type SendGitCall = (method: string, params?: Record<string, unknown>) => Promise<unknown>
+
+/** Adapts a non-generic recorder to the hook's generic request signature. */
+function asSendGitRequest(recorder: Mock<SendGitCall>): SendGitRequest {
+  return async <T,>(method: string, params?: Record<string, unknown>): Promise<T> => {
+    const reply = await recorder(method, params)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each test resolves the recorder with the git.bulkStage reply shape the stage-all runner reads.
+    return reply as T
+  }
+}
 
 async function runStageAll(
   status: MobileGitStatusResult,
-  sendGitRequest: SendGitRequest
+  recorder: Mock<SendGitCall>
 ): Promise<{ setActionError: ReturnType<typeof vi.fn> }> {
+  const sendGitRequest = asSendGitRequest(recorder)
   const setActionError = vi.fn()
   const captured: { stageAll: (() => Promise<void>) | null } = { stageAll: null }
   function Probe(): null {
@@ -104,9 +115,7 @@ describe('mobile Stage All on a capped git.status', () => {
   })
 
   it('asks the host to stage every change instead of the capped rows', async () => {
-    const sendGitRequest = vi
-      .fn<SendGitRequest>()
-      .mockResolvedValue({ ok: true, stagedScope: 'all' })
+    const sendGitRequest = vi.fn<SendGitCall>().mockResolvedValue({ ok: true, stagedScope: 'all' })
 
     const { setActionError } = await runStageAll(cappedStatus(), sendGitRequest)
 
@@ -116,7 +125,7 @@ describe('mobile Stage All on a capped git.status', () => {
 
   it('reports an older host that answered without a receipt', async () => {
     // An older host strips `scope`, stages the empty list, and replies `{ ok: true }`.
-    const sendGitRequest = vi.fn<SendGitRequest>().mockResolvedValue({ ok: true })
+    const sendGitRequest = vi.fn<SendGitCall>().mockResolvedValue({ ok: true })
 
     const { setActionError } = await runStageAll(cappedStatus(), sendGitRequest)
 
@@ -124,7 +133,7 @@ describe('mobile Stage All on a capped git.status', () => {
   })
 
   it('still stages the listed rows when the listing is complete', async () => {
-    const sendGitRequest = vi.fn<SendGitRequest>().mockResolvedValue({ ok: true })
+    const sendGitRequest = vi.fn<SendGitCall>().mockResolvedValue({ ok: true })
     const complete = gitStatusHostPayloadSchema.parse({
       entries: LISTED.map((path) => ({ path, status: 'modified', area: 'unstaged' }))
     })

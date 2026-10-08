@@ -49,7 +49,14 @@ async function createSharedLinkWorktree(): Promise<string> {
   return repo
 }
 
-function dispatcherFor(target: object): RpcDispatcher {
+// The members of a resolved git target that bulk staging reads.
+type StagingTargetStub = {
+  worktree: { path: string }
+  repo?: { path: string; symlinkPaths: string[] }
+  executionHostId: string
+}
+
+function dispatcherFor(target: StagingTargetStub): RpcDispatcher {
   const host = { resolveRuntimeGitTarget: async () => target }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: bulkStageRuntimeGitPaths reads only resolveRuntimeGitTarget, and the targets below carry every member it reads.
   const commands = new RuntimeGitStagingCommands(host as unknown as RuntimeGitCommandHost)
@@ -58,10 +65,8 @@ function dispatcherFor(target: object): RpcDispatcher {
     bulkStageRuntimeGitPaths: commands.bulkStageRuntimeGitPaths.bind(commands)
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: git.bulkStage dispatch reads only the two members stubbed here.
-  return new RpcDispatcher({
-    runtime: runtime as unknown as OrcaRuntimeService,
-    methods: GIT_METHODS
-  })
+  const runtimeService = runtime as unknown as OrcaRuntimeService
+  return new RpcDispatcher({ runtime: runtimeService, methods: GIT_METHODS })
 }
 
 afterEach(async () => {
