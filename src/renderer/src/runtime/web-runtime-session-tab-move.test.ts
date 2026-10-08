@@ -289,6 +289,52 @@ describe('moveWebRuntimeSessionTab', () => {
     )
   })
 
+  it('falls back to the desktop id while a just-split group still records its old server group', async () => {
+    mocks.getState.mockReturnValue({
+      settings: {
+        activeRuntimeEnvironmentId: ENVIRONMENT_ID
+      },
+      setActiveWorktree: mocks.setActiveWorktree,
+      groupsByWorktree: {
+        [WORKTREE_ID]: [
+          { id: 'desktop-source', activeTabId: 'local-third', tabOrder: ['local-third'] },
+          {
+            id: 'desktop-split-group',
+            activeTabId: 'local-moved',
+            tabOrder: ['local-split-off', 'local-moved']
+          }
+        ]
+      }
+    })
+    mocks.resolveHostSessionTabIdForWebSessionTab.mockImplementation(
+      (_state, args: { tabId: string }) => `host-${args.tabId}`
+    )
+    // No server list since the split: every tab still records the source group.
+    mocks.resolveHostSessionGroupIdForWebSessionTab.mockReturnValue('host-source')
+    const runtimeCall = vi.fn().mockResolvedValueOnce({
+      id: 'move',
+      ok: true,
+      result: { moved: true }
+    })
+    vi.stubGlobal('window', { api: { runtimeEnvironments: { call: runtimeCall } } })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'local-moved',
+        targetGroupId: 'desktop-split-group',
+        kind: 'move-to-group',
+        index: 1
+      })
+    ).resolves.toBe(true)
+
+    expect(runtimeCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({ targetGroupId: 'desktop-split-group' })
+      })
+    )
+  })
+
   it('does not mirror a reorder when the dragged tab is local-only', async () => {
     mocks.resolveHostSessionTabIdForWebSessionTab.mockImplementation(
       (_state, args: { tabId: string }) =>

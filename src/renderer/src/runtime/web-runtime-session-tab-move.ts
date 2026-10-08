@@ -48,21 +48,30 @@ export async function moveWebRuntimeSessionTab(
     const { resolveHostSessionGroupIdForWebSessionTab, resolveHostSessionTabIdForWebSessionTab } =
       await import('./web-session-tabs-sync')
     const state = useAppStore.getState()
-    const targetTabOrder =
-      state.groupsByWorktree?.[args.worktreeId]?.find((group) => group.id === args.targetGroupId)
-        ?.tabOrder ?? []
+    const groups = state.groupsByWorktree?.[args.worktreeId] ?? []
+    const targetGroup = groups.find((group) => group.id === args.targetGroupId)
+    const recordedHostGroupId = (tabId: string): string | null =>
+      resolveHostSessionGroupIdForWebSessionTab({
+        environmentId,
+        worktreeId: args.worktreeId,
+        tabId
+      })
+    // Why: until the next server list, a split-off tab still records its source group, as tabs outside do.
+    const hostGroupIdsOutsideTarget = new Set(
+      groups
+        .filter((group) => group.id !== args.targetGroupId)
+        .flatMap((group) => group.tabOrder)
+        .filter((tabId) => tabId !== args.tabId)
+        .map(recordedHostGroupId)
+    )
     // Why: a group this desktop split off has another id on the host, so name it by a tab it holds.
     const targetHostGroupId =
-      targetTabOrder
+      (targetGroup?.tabOrder ?? [])
         .filter((tabId) => tabId !== args.tabId)
-        .map((tabId) =>
-          resolveHostSessionGroupIdForWebSessionTab({
-            environmentId,
-            worktreeId: args.worktreeId,
-            tabId
-          })
-        )
-        .find((groupId) => groupId !== null) ?? args.targetGroupId
+        .map(recordedHostGroupId)
+        .find((groupId) => groupId !== null && !hostGroupIdsOutsideTarget.has(groupId)) ??
+      // No server-known tab in the target group: the desktop id, unknown to the server, as before.
+      args.targetGroupId
     const resolveHostBackedTabId = (tabId: string): string | null =>
       resolveHostSessionTabIdForWebSessionTab(state, {
         environmentId,
@@ -88,9 +97,8 @@ export async function moveWebRuntimeSessionTab(
     }
     const targetHostIndex =
       args.kind === 'move-to-group' && typeof args.index === 'number'
-        ? (state.groupsByWorktree?.[args.worktreeId]
-            ?.find((group) => group.id === args.targetGroupId)
-            ?.tabOrder.slice(0, args.index)
+        ? (targetGroup?.tabOrder
+            .slice(0, args.index)
             .map(resolveHostBackedTabId)
             .filter((tabId): tabId is string => Boolean(tabId)).length ?? args.index)
         : args.kind === 'move-to-group'

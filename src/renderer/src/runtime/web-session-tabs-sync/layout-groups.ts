@@ -11,7 +11,7 @@ import { toWebTerminalSurfaceTabId } from '../web-runtime-session'
 import { clearHostSessionTabIdMappings, setHostSessionTabIdMapping } from './tracking-mappings'
 import { isWebSessionBrowserPlacementGroupReserved } from '../web-session-browser-placement'
 import { resolveWebSessionReorderedOrder } from '../web-session-reorder-intent'
-import { buildHostGroupIdByTabId, mapHostRecentTabIds } from './tab-group-layout-tree'
+import { mapHostRecentTabIds } from './tab-group-layout-tree'
 import { pushRecentTabId, sanitizeRecentTabIds } from './state-equality-core'
 
 export function buildHostToLocalTabIdMap({
@@ -57,12 +57,15 @@ export function updateHostSessionTabIdMappings(args: {
   browserTabs: readonly MirroredBrowserTab[]
   editorTabs: readonly MirroredEditorTab[]
   agentTabs: readonly MirroredAgentTab[]
-  hostGroups: readonly RuntimeMobileSessionTabGroup[] | undefined
+  hostGroupIdByTabId: ReadonlyMap<string, string>
 }): void {
   clearHostSessionTabIdMappings(args.environmentId, args.worktreeId)
-  const hostGroupIdByTabId = buildHostGroupIdByTabId(args.hostGroups)
   const map = (tabId: string, hostTabId: string): void =>
-    setHostSessionTabIdMapping({ ...args, tabId }, hostTabId, hostGroupIdByTabId.get(hostTabId))
+    setHostSessionTabIdMapping(
+      { ...args, tabId },
+      hostTabId,
+      args.hostGroupIdByTabId.get(hostTabId)
+    )
 
   const mirroredTerminalIds = new Set(args.terminalTabs.map((tab) => tab.id))
   for (const surface of args.terminalSurfaces) {

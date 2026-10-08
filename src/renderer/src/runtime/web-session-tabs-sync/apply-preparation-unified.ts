@@ -231,7 +231,7 @@ export function prepareWebSessionTabsSnapshotUnified(
     browserTabs: mirroredBrowserTabs,
     editorTabs: mirroredEditorTabs,
     agentTabs: mirroredAgentTabs,
-    hostGroups: snapshot.tabGroups
+    hostGroupIdByTabId
   })
 
   return {
