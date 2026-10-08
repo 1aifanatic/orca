@@ -61,15 +61,17 @@ export function createStructuredAgentSessionHostRestore(
     'openDeps' | 'reconcile' | 'resolveRecovery'
   > & {
     reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
+    reconcileRestartLeases: () => Promise<AgentSessionWireRefusal | null>
     resolveRecovery: (sessionId: string) => Promise<unknown>
   }
 ): {
   reconcileRestartLeases: () => Promise<void>
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
 } {
-  const { reconcileLeases, resolveRecovery, ...rest } = wiring
+  const { reconcileLeases, reconcileRestartLeases, resolveRecovery, ...rest } = wiring
   const failures = reportEachFailureOnce(deps.logger)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
+  const reconcileStartup = createReaderReconcile(reconcileRestartLeases, failures)
   const restorer = new StructuredAgentSessionReadableRestorer({
     openDeps: deps,
     reconcile,
@@ -87,7 +89,7 @@ export function createStructuredAgentSessionHostRestore(
   const gate = new StructuredAgentSessionRestartRestoreGate()
   return {
     reconcileRestartLeases: async () => {
-      await reconcile('startup')
+      await reconcileStartup('startup')
     },
     restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds))
   }
