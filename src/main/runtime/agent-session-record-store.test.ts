@@ -743,6 +743,18 @@ describe('claim keys and unreadable rows', () => {
     expect((await open()).isSessionUnreadable('session-alpha')).toBe(true)
   })
 
+  // Builds before #20944 stored the chat's launch arguments; no current build reads them.
+  it('loads a record an older build stored with launchArgs', async () => {
+    const first = await open()
+    await establishOwner(first)
+    await editPersistedTestAgentSessionStore(directory, (persisted) => {
+      Object.assign(persisted.records['session-alpha'], { launchArgs: ['--model', 'opus'] })
+    })
+    const reopened = await open()
+    expect(reopened.isSessionUnreadable('session-alpha')).toBe(false)
+    expect(reopened.getRecord('session-alpha')?.sessionId).toBe('session-alpha')
+  })
+
   it('sets aside a row whose handle is in both stored forms and never rewrites it', async () => {
     const first = await open()
     await establishOwner(first)

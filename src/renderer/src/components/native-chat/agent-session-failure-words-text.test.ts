@@ -6,6 +6,7 @@ import zh from '@/i18n/locales/zh.json'
 import {
   AGENT_SESSION_ATTACHMENT_PROBLEM_REASONS,
   AGENT_SESSION_FAILURE_KINDS,
+  readAgentSessionFailureFact,
   readWholeAgentSessionFailureFact,
   type AgentSessionFailureFact
 } from '../../../../shared/agent-session-failure'
@@ -220,6 +221,27 @@ describe('desktop words for a failure fact', () => {
     )
     expect(sentence('totalTooLarge', 20)).toBe(
       "Les images de ce message dépassent 20 Mo au total, le message n'a donc pas été envoyé."
+    )
+  })
+
+  // Current hosts never refuse saved Arguments; a row an older host stored must still read.
+  it("says an older host's saved Arguments restart failure on its row", () => {
+    const fact = readAgentSessionFailureFact({
+      kind: 'restartFailed',
+      argumentProblem: { agent: 'Claude', option: '--model', problem: 'missingValue' }
+    })
+    if (!fact) {
+      throw new Error('stored fact was not read')
+    }
+    expect(
+      agentSessionFailureSentence(
+        fact,
+        'row',
+        { agentName: 'Claude' },
+        sayAgentSessionFailureTranslated
+      )
+    ).toBe(
+      "Claude couldn't restart. Saved Arguments need a value for --model. Edit them in Settings > Agents > Arguments. Send your message to try again."
     )
   })
 

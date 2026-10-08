@@ -152,7 +152,7 @@ export function agentLaunchSurfaceFactory(
           : {}),
         ...(agentArgs !== undefined ? { agentArgs } : {}),
         ...(cwd ? { cwd } : {}),
-        // The model the user picked outranks configured args here too, as it does on a chat.
+        // The model the user picked outranks configured args.
         ...(launchPreferences ? { launchPreferences } : {}),
         // A live reserved pane would be attached, not launched into, so the runtime refuses it.
         ...(paneKey ? { ...paneIdentity(paneKey), requireFreshPane: true } : {}),

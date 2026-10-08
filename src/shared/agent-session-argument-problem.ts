@@ -1,4 +1,5 @@
-/** Orca's validated saved Arguments refusal. The option has no value or user-authored operand. */
+/** An older host's saved Arguments refusal; current hosts never send one. The option has no value or
+ *  user-authored operand. */
 export type AgentSessionArgumentProblem = {
   agent: 'Codex' | 'Claude'
   option: string

@@ -152,7 +152,7 @@ export type AgentSessionFailureFact = {
   attachment?: AgentSessionAttachmentProblem
   /** On `providerRetrying`: why the provider is retrying. */
   retry?: AgentSessionProviderRetry
-  /** A safe option name from Orca's saved Arguments parser, never an error message. */
+  /** From older hosts only, which refused saved Arguments: a safe option name, never an error message. */
   argumentProblem?: AgentSessionArgumentProblem
 }
 

@@ -630,7 +630,9 @@ describe('caller-supplied launch inputs', () => {
     const result = await h.run({ agent: 'claude', target: EXISTING, agentArgs: '--model opus' })
 
     expect(result.outcome.kind).toBe('structured')
-    expect(result.warning).toContain('per-launch argument override was ignored')
+    expect(result.warning).toBe(
+      "Started a structured chat session, which doesn't use launch arguments; the per-launch override was ignored."
+    )
   })
 
   it('warns when a structured session ignored an explicit "no arguments" too', async () => {
@@ -640,7 +642,9 @@ describe('caller-supplied launch inputs', () => {
     // The structured path reads the bypass-permissions bit from the user's SETTINGS default, so a
     // caller that asked for no arguments can still get a session with more permission than it asked
     // for. Staying silent about that is the failure mode worth a test.
-    expect(result.warning).toContain('per-launch argument override was ignored')
+    expect(result.warning).toBe(
+      "Started a structured chat session, which doesn't use launch arguments; the per-launch override was ignored."
+    )
   })
 
   it('leaves a structured launch unwarned when it carried no arguments at all', async () => {

@@ -71,8 +71,8 @@ export type AgentLaunchIntent = {
    * caller explicitly wants none, and collapsing the two would make a recipe that clears its args
    * silently inherit whatever the settings happen to hold.
    *
-   * Deliberately NOT a route input. Structured chat reads the execution host's saved Arguments;
-   * per-call overrides remain terminal-only and the host reports that in `warning`.
+   * Deliberately NOT a route input. Structured chat uses no launch arguments, saved or per-call;
+   * overrides remain terminal-only and the host reports that in `warning`.
    */
   agentArgs?: string | null
   /**

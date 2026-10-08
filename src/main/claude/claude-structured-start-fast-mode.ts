@@ -8,10 +8,9 @@ import { claudeModelFastModeSupport } from './claude-structured-session-options'
 import type { ClaudeStartupFacts, ClaudeStartupReport } from './claude-structured-session-startup'
 import type { ClaudeSession } from './claude-structured-session-state'
 
-/** A saved Fast the launch left out (`fastModeAtStart`): on for a new conversation, whose settings
- *  may opt in to it per session, or either value beside the agent Arguments' own `--settings`.
- *  Those settings now read: a new conversation's opt-in drops it, as before, and so do the guards a
- *  live Fast write takes. The value still to be applied, or null. */
+/** A saved Fast on that a new conversation's launch left out (`fastModeAtStart`), since its settings
+ *  may opt in to it per session. Those settings now read: that opt-in drops it, as before, and so
+ *  do the guards a live Fast write takes. The value still to be applied, or null. */
 export function admitClaudeStartFastMode(
   session: ClaudeSession,
   facts: ClaudeStartupFacts
@@ -19,9 +18,6 @@ export function admitClaudeStartFastMode(
   const fastMode = session.options.get('fastMode')
   if (!session.fastModeAtStart || fastMode === undefined) {
     return null
-  }
-  if (fastMode !== 'true') {
-    return fastMode
   }
   if (!facts.resumesTranscript && facts.prepared.fastModePerSessionOptIn === true) {
     session.options.delete('fastMode')

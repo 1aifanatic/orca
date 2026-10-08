@@ -311,9 +311,7 @@ async function createSurface(
   return createTerminalSurface(execution, workspace)
 }
 
-/**
- * Structured chat uses saved Arguments, so a per-call override still needs a truthful warning.
- */
+/** A structured chat takes no launch arguments, saved or per-call, so an override gets a warning. */
 function ignoredStructuredAgentArgsWarning(
   intent: AgentLaunchIntent
 ): { warning: string } | undefined {
@@ -321,7 +319,7 @@ function ignoredStructuredAgentArgsWarning(
     ? undefined
     : {
         warning:
-          'Started a structured chat session using saved agent Arguments; the per-launch argument override was ignored.'
+          "Started a structured chat session, which doesn't use launch arguments; the per-launch override was ignored."
       }
 }
 
