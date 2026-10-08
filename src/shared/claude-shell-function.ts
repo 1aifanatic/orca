@@ -32,7 +32,8 @@ if [[ -n "\${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "\${__orca_claude_binary:-}" 
       ( unset CLAUDE_CONFIG_DIR ORCA_CLAUDE_INJECTED_CONFIG_DIR; command claude "$@" ); return
     fi
     case "$__orca_claude_home" in /*|[A-Za-z]:*) ;; *) return 1 ;; esac
-    [ -d "$__orca_claude_home" ] || mkdir -p -- "$__orca_claude_home" 2>/dev/null
+    # Why -m 700: matches the folder Orca's setup creates; a credentials folder stays private.
+    [ -d "$__orca_claude_home" ] || mkdir -p -m 700 -- "$__orca_claude_home" 2>/dev/null
     ( unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN AWS_BEARER_TOKEN_BEDROCK; case "\${ANTHROPIC_CUSTOM_HEADERS:-}" in ${posixAuthHeaderPattern}) unset ANTHROPIC_CUSTOM_HEADERS ;; esac; export CLAUDE_CONFIG_DIR="$__orca_claude_home" ORCA_CLAUDE_INJECTED_CONFIG_DIR="$__orca_claude_home"; command claude "$@" )
   }
 fi
@@ -64,7 +65,7 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
     if not string match -qr '^(/|[A-Za-z]:)' -- "$profile"
       return 1
     end
-    test -d "$profile"; or mkdir -p -- "$profile" 2>/dev/null
+    test -d "$profile"; or mkdir -p -m 700 -- "$profile" 2>/dev/null
     set -l headers
     if string match -irq '${authHeaderWords}' -- "$ANTHROPIC_CUSTOM_HEADERS"
       set headers -u ANTHROPIC_CUSTOM_HEADERS
@@ -111,7 +112,7 @@ function Global:claude {
         $binary = Get-Command claude -CommandType Application,ExternalScript -ErrorAction Stop | Select-Object -First 1
         if ($MyInvocation.ExpectingInput) { $input | & $binary.Source @args } else { & $binary.Source @args }
         $global:LASTEXITCODE = $LASTEXITCODE
-    } catch { $global:LASTEXITCODE = 1 }
+    } catch { $global:LASTEXITCODE = 1; Write-Error $_ -ErrorAction Continue }
     finally {
         # Why Remove-Item: on .NET 9+ a $null value (passed as "") creates the variable empty instead of deleting it.
         foreach ($name in $names) {

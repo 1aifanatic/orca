@@ -48,6 +48,19 @@ const logins = new Map<
   { mtimeMs: number; size: number; readAt: number; login: ClaudeFolderLogin | null }
 >()
 
+/** The login parsed Claude state names; null before Claude finishes a sign-in. */
+export function claudeStateLogin(state: Record<string, unknown>): ClaudeFolderLogin | null {
+  const parsed = oauthAccount.safeParse(state.oauthAccount)
+  const email = parsed.success ? parsed.data.emailAddress : null
+  return parsed.success && email
+    ? {
+        email,
+        organizationUuid: parsed.data.organizationUuid ?? null,
+        organizationName: parsed.data.organizationName ?? null
+      }
+    : null
+}
+
 /**
  * The login a Claude state file names; null when signed out (superset U/profiles.ts:121-137).
  * `maxAgeMs` reuses a recent answer without a stat, for a file Claude rewrites constantly.
@@ -69,16 +82,7 @@ export function readClaudeFolderLogin(stateFile: string, maxAgeMs = 0): ClaudeFo
     return recent.login
   }
   const read = readClaudeProfileObject(stateFile)
-  const parsed = read.kind === 'present' ? oauthAccount.safeParse(read.value.oauthAccount) : null
-  const email = parsed?.success ? parsed.data.emailAddress : null
-  const login =
-    parsed?.success && email
-      ? {
-          email,
-          organizationUuid: parsed.data.organizationUuid ?? null,
-          organizationName: parsed.data.organizationName ?? null
-        }
-      : null
+  const login = read.kind === 'present' ? claudeStateLogin(read.value) : null
   logins.set(stateFile, { mtimeMs: stat.mtimeMs, size: stat.size, readAt: Date.now(), login })
   return login
 }

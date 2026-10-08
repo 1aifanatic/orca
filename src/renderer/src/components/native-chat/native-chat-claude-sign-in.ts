@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import { signInToClaudeAccount } from '@/lib/claude-account-sign-in'
@@ -46,12 +46,15 @@ export function useNativeChatClaudeSignIn(input: {
       : null
   )
   const [signingIn, setSigningIn] = useState(false)
+  // Why a ref: the notice and a transcript row both sign in, and state lags a double press.
+  const signingInRef = useRef(false)
   const [signedInFor, setSignedInFor] = useState<{ failure: unknown; rows: number } | null>(null)
   const { failure, failureRows } = input
   const signIn = useCallback(() => {
-    if (!accountId || signingIn) {
+    if (!accountId || signingInRef.current) {
       return
     }
+    signingInRef.current = true
     setSigningIn(true)
     void signInToClaudeAccount(accountId)
       .then((signedIn) => {
@@ -59,8 +62,11 @@ export function useNativeChatClaudeSignIn(input: {
           setSignedInFor({ failure, rows: failureRows })
         }
       })
-      .finally(() => setSigningIn(false))
-  }, [accountId, signingIn, failure, failureRows])
+      .finally(() => {
+        signingInRef.current = false
+        setSigningIn(false)
+      })
+  }, [accountId, failure, failureRows])
   const signedInSinceFailure =
     signedInFor !== null && signedInFor.failure === failure && signedInFor.rows === failureRows
   // Why memoized: rows read it through context, and a chat re-renders on every streamed token.

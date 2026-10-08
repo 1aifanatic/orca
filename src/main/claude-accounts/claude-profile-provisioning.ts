@@ -5,6 +5,7 @@ import {
   resolveClaudeGlobalConfigFile,
   updateClaudeGlobalConfig
 } from '../claude/claude-folder-trust-file'
+import { claudeStateLogin } from './claude-account-folder'
 import { readClaudeProfileObject, resolveClaudeDefaultHome } from './claude-profile-paths'
 import { lstatIfPresent } from './claude-profile-prompt-history'
 import {
@@ -118,7 +119,15 @@ async function mergeState(args: {
     SHARED_STATE_KEYS.filter((key) => key in source).map((key) => [key, source[key]])
   )
   let written: Record<string, string> = {}
+  let signedOut = false
   const outcome = await updateClaudeGlobalConfig(args.target, (current) => {
+    // Why oauthAccount: Claude writes it only on a finished sign-in, while it writes this file
+    // earlier in onboarding (theme pick). It's read under Claude's own lock, on every platform;
+    // credentials sit in the Keychain on macOS. A flag set before then skips Claude's sign-in.
+    signedOut = !claudeStateLogin(current)
+    if (signedOut) {
+      return { kind: 'unchanged' }
+    }
     const config = { ...current }
     written = { ...args.ledger.keys['.claude.json'] }
     let changed = mergeClaudeProfileKeys(config, desired, written).length > 0
@@ -135,8 +144,8 @@ async function mergeState(args: {
     }
     return changed ? { kind: 'changed', config } : { kind: 'unchanged' }
   })
-  if (outcome === 'missing-config') {
-    // Why: no state file means no completed login; writing one would fabricate an account.
+  if (outcome === 'missing-config' || (outcome === 'unchanged' && signedOut)) {
+    // Why: no completed login yet; writing would fabricate an account or skip Claude's sign-in.
     return 'absent'
   }
   if (outcome === 'locked' || outcome === 'unreadable') {

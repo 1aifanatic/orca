@@ -39,7 +39,7 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
     if not string match -qr '^(/|[A-Za-z]:)' -- "$profile"
       return 1
     end
-    test -d "$profile"; or mkdir -p -- "$profile" 2>/dev/null
+    test -d "$profile"; or mkdir -p -m 700 -- "$profile" 2>/dev/null
     set -l headers
     if string match -irq 'authorization|x-api-key|api-key|bearer' -- "$ANTHROPIC_CUSTOM_HEADERS"
       set headers -u ANTHROPIC_CUSTOM_HEADERS

@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -118,6 +126,8 @@ describe.each(SHELLS)('the claude function in %s', (shell) => {
     expect(result.stdout).toBe(`HOME=${fresh} KEY=none TWIN=${fresh}\n`)
     expect(result.status).toBe(23)
     expect(existsSync(fresh)).toBe(true)
+    // Same mode as Orca's own setup: the folder will hold a login.
+    expect(statSync(fresh).mode & 0o777).toBe(0o700)
   })
 
   it('still runs Claude only in the selected folder when that folder cannot be created', () => {
@@ -157,9 +167,14 @@ it('restores PowerShell process env without creating empty variables', () => {
   expect(script).not.toMatch(/SetEnvironmentVariable\([^)]*,\s*(\$null|''|"")\s*,/)
 })
 
-it('prints nothing from the PowerShell function and creates a missing account folder', () => {
+it('prints no Orca text from the PowerShell function and creates a missing account folder', () => {
   const script = getPowerShellClaudeShellFunction()
-  expect(script).not.toMatch(/Write-(Error|Host|Output|Warning)|\bthrow\b|Orca:/)
+  expect(script).not.toMatch(/Write-(Host|Output|Warning)|\bthrow\b|Orca:/)
+  // The shell's or Claude's own failure (claude missing, a throwing claude.ps1) still surfaces.
+  expect(script.match(/Write-Error/g)).toHaveLength(1)
+  expect(script).toContain(
+    '} catch { $global:LASTEXITCODE = 1; Write-Error $_ -ErrorAction Continue }'
+  )
   expect(script).toContain(
     'if (-not [IO.Directory]::Exists($orcaClaudeHome)) { $null = New-Item -ItemType Directory -Path $orcaClaudeHome -Force -ErrorAction SilentlyContinue }'
   )

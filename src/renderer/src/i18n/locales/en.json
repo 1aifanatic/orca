@@ -19437,7 +19437,7 @@
       "usageSignInMessage": "The selected Claude account needs you to sign in again. Open Settings > Accounts, or choose System default.",
       "signIn": "Sign in",
       "signInNotice": {
-        "title": "Claude accounts now stay signed in on their own.",
+        "title": "Each Claude account now has its own sign-in.",
         "description": "Sign in once to each account to keep using it."
       }
     },

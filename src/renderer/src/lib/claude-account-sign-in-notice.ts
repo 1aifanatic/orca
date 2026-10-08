@@ -9,10 +9,7 @@ const NOTICE_TOAST_ID = 'claude-account-sign-in-notice'
 
 function showClaudeAccountSignInNotice(): void {
   toast.info(
-    translate(
-      'accounts.claude.signInNotice.title',
-      'Claude accounts now stay signed in on their own.'
-    ),
+    translate('accounts.claude.signInNotice.title', 'Each Claude account now has its own sign-in.'),
     {
       // Why a stable id: a late sync that resets the flag can't stack a second toast.
       id: NOTICE_TOAST_ID,
