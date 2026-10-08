@@ -229,6 +229,7 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       // Wired only here, so a test runtime never runs a real `claude --version`.
       claudeCliFlags: claudeCliFlagSupport,
       nativeChatVisuals: {
+        isEnabled: () => this.requireStore().getSettings().nativeChatInlineVisuals !== false,
         // Chats and their visuals are shared by every profile; each profile keeps its own catalog.
         workspaceVerdicts: createNativeChatVisualsWorkspaceVerdicts(() =>
           this.store ? readNativeChatVisualsWorkspaceCatalogs(this.store) : null
