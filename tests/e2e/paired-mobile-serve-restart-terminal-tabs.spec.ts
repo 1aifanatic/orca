@@ -76,8 +76,9 @@ test('phone paired with orca serve keeps a terminal.create terminal across a ser
       },
       30_000
     )
-    await expect.poll(() => snapshotPtyIds).toEqual(expected)
-    expect(streamErrors).toEqual([])
+    await expect
+      .poll(() => ({ snapshotPtyIds, streamErrors }))
+      .toEqual({ snapshotPtyIds: expected, streamErrors: [] })
     expect(await listedPtyIds(phone, worktreeId)).toEqual(expected)
   } finally {
     await dispose()

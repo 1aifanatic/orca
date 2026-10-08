@@ -16,7 +16,10 @@ export type PhoneMirrorTopology<TDesktop> = {
   /** Desktop paired to `host` as a client; null when the phone pairs with the host directly. */
   desktop: TDesktop
   phone: PairedMobileClient
-  /** Tears down phone, desktop, then host; every step runs even if an earlier one throws. */
+  /**
+   * Tears down phone, desktop, then host; every step runs even if an earlier one throws. Never
+   * throws, so it cannot replace a test failure: teardown errors become a `teardown-error` attachment.
+   */
   dispose: () => Promise<void>
 }
 
@@ -42,7 +45,7 @@ export async function launchPhoneMirrorTopology(
   testInfo: TestInfo
 ): Promise<PhoneMirrorTopology<PairedElectronClient | null>> {
   const cleanups: (() => void | Promise<void>)[] = []
-  const dispose = async (): Promise<void> => {
+  const runCleanups = async (): Promise<unknown[]> => {
     const failures: unknown[] = []
     for (const cleanup of cleanups.splice(0).toReversed()) {
       try {
@@ -51,9 +54,7 @@ export async function launchPhoneMirrorTopology(
         failures.push(error)
       }
     }
-    if (failures.length > 0) {
-      throw new AggregateError(failures, 'Failed to tear down the phone mirror topology')
-    }
+    return failures
   }
   try {
     const host = await launchHeadlessPairedRuntimeHost({
@@ -71,11 +72,18 @@ export async function launchPhoneMirrorTopology(
       desktop ? await createDesktopMobilePairingOffer(desktop.page) : host.offer
     )
     cleanups.push(phone.dispose)
+    const dispose = async (): Promise<void> => {
+      const failures = await runCleanups()
+      if (failures.length > 0) {
+        await testInfo.attach('teardown-error', { body: failures.map(String).join('\n') })
+      }
+    }
     return { host, desktop, phone, dispose }
   } catch (error) {
-    await dispose().catch((cleanupError: unknown) => {
-      throw new AggregateError([error, cleanupError], 'Phone mirror startup and cleanup failed')
-    })
+    const failures = await runCleanups()
+    if (failures.length > 0) {
+      throw new AggregateError([error, ...failures], 'Phone mirror startup and cleanup failed')
+    }
     throw error
   }
 }

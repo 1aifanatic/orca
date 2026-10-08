@@ -32,15 +32,17 @@ test('baseline until S2: phone paired with a desktop lists its local workspace b
     })
     // Precondition: the desktop window does show the server's workspace.
     await expect
-      .poll(() =>
-        desktop.page.evaluate(
-          (folder) =>
-            window.__store
-              ?.getState()
-              .allWorktrees()
-              .some((worktree) => worktree.path === folder) ?? false,
-          serverFolder
-        )
+      .poll(
+        () =>
+          desktop.page.evaluate(
+            (folder) =>
+              window.__store
+                ?.getState()
+                .allWorktrees()
+                .some((worktree) => worktree.path === folder) ?? false,
+            serverFolder
+          ),
+        { timeout: 30_000 }
       )
       .toBe(true)
 
@@ -50,7 +52,8 @@ test('baseline until S2: phone paired with a desktop lists its local workspace b
     )
     const paths = worktrees.map((row) => row.path)
     expect(paths).toContain(testRepoPath)
-    // BASELINE (S2 flips to toContain): the server's workspace is missing from the phone.
+    // BASELINE: the server's workspace is missing from the phone. S2 flips this to an `expect.poll`
+    // with toContain, since the desktop hydrates the server's rows asynchronously.
     expect(paths).not.toContain(serverFolder)
   } finally {
     await dispose()
