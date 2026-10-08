@@ -34,6 +34,8 @@ export type NativeChatStructuredComposerTransport = {
     text: string,
     attachments: readonly NativeChatComposerImageAttachment[]
   ) => boolean | 'queued'
+  /** A send is out: Send stays disabled, and a send returns false, until it settles. */
+  sendOut?: boolean
   dispatchCommand: (text: string) => Promise<StructuredAgentSessionCommandOutcome>
   optionsSurface: SessionOptionsSurface
   optionSnapshot: SessionOptionDescriptor[]
@@ -138,6 +140,11 @@ export type NativeChatLaunchSeed = {
 export type NativeChatComposerHandle = {
   focus: () => boolean
   insertTypedText: (text: string) => boolean
+  /** Whether the input is there and enabled, so text given to it lands. */
+  acceptsText: () => boolean
+  /** Adds text after the draft, a blank line apart, and leaves the caret at its end. Text the
+   *  draft already ends with is not added again. */
+  appendText: (text: string) => void
   /** Routes pane-level paste events back to the composer field. */
   handlePasteEvent: (event: {
     clipboardData: DataTransfer | null
