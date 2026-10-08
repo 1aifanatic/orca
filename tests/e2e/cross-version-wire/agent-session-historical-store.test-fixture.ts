@@ -1,4 +1,6 @@
 import Database from '../../../src/main/sqlite/sync-database'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { importReleaseCheckoutModule, type ReleaseCheckout } from './release-checkout'
 
 export function historicalStoreMaps(value: unknown) {
@@ -42,6 +44,17 @@ export async function historicalStore(checkout: ReleaseCheckout) {
   const rowWrites = drafts.agentSessionStoreDraftRowWrites
   const appendLink = handles.appendAgentSessionProviderHandleLink
   const key = handles.agentSessionProviderHandleKey
+  const contextHistory = existsSync(
+    join(checkout.root, 'src/shared/agent-session-provider-context-history.ts')
+  )
+    ? await importReleaseCheckoutModule(
+        checkout,
+        'src/shared/agent-session-provider-context-history.ts'
+      )
+    : null
+  if (contextHistory && typeof contextHistory.decodeProviderContextHistory !== 'function') {
+    throw new Error('historical context-history module must expose its decoder')
+  }
   if (
     typeof loadRows !== 'function' ||
     typeof writeRows !== 'function' ||
@@ -62,6 +75,7 @@ export async function historicalStore(checkout: ReleaseCheckout) {
   `)
   return {
     db,
+    readsContextHistory: contextHistory !== null,
     appendLink,
     key,
     insert: (sessionId: string, value: unknown) =>

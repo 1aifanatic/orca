@@ -18,7 +18,9 @@ import { isPersistedAgentSessionRecord } from '../../../src/shared/agent-session
 import { agentSessionProviderClaims } from '../../../src/shared/agent-session-provider-claims'
 
 const BASE_REF = '8ae5264c638'
-const REFS = [...new Set(['v1.4.222', BASE_REF, resolveBaselineReleaseRef()])]
+const LEGACY_REFS = ['v1.4.222', BASE_REF]
+// HEAD exercises the archive-aware path before the rolling stable release contains it.
+const REFS = [...new Set([...LEGACY_REFS, resolveBaselineReleaseRef(), 'HEAD'])]
 const CASES = REFS.flatMap((ref) =>
   (['claude', 'codex'] as const).map((provider) => ({ ref, provider }))
 )
@@ -90,7 +92,15 @@ test.each(CASES)(
       const loaded = store.load()
       expect(loaded.unreadableRecords.size).toBe(0)
       const old = historicalRecord(loaded.records.get(record.sessionId))
-      expect(old.providerHandleChain).toHaveLength(1)
+      if (LEGACY_REFS.includes(ref)) {
+        expect(store.readsContextHistory).toBe(false)
+      }
+      if (ref === 'HEAD') {
+        expect(store.readsContextHistory).toBe(true)
+      }
+      expect(old.providerHandleChain).toHaveLength(
+        store.readsContextHistory ? record.providerHandleChain.length : 1
+      )
       const draft = store.draft(loaded)
       draft.records.set(record.sessionId, { ...old, lease: { ...old.lease, unreconciled: false } })
       store.write(loaded, draft)
@@ -118,10 +128,11 @@ test.each(CASES)(
       const draft = store.draft(loaded)
       const old = historicalRecord(draft.records.get(record.sessionId))
       let chain = old.providerHandleChain
+      const head = chain.at(-1)
       for (let fence = 258; fence <= 512; fence += 1) {
         chain = store.appendLink(chain, {
-          ...chain[0],
           linkId: `old-${fence}`,
+          handle: head.handle,
           origin: 'resumed',
           mintedAtFence: fence,
           observedAt: fence * 1000
@@ -165,14 +176,15 @@ test.each(CASES)(
       const loaded = store.load()
       const draft = store.draft(loaded)
       const old = historicalRecord(draft.records.get(record.sessionId))
-      const neutral = 'transport' in old.providerHandleChain[0].handle
+      const head = old.providerHandleChain.at(-1)
+      const neutral = 'transport' in head.handle
       const superseding = {
         linkId: 'old-superseding',
         origin: 'created',
         mintedAtFence: 4,
         observedAt: 4000,
         handle: historicalHandle(provider, 'third-context', neutral),
-        supersedesKey: store.key(old.providerHandleChain[0].handle)
+        supersedesKey: store.key(head.handle)
       }
       const superseded = store.appendLink(old.providerHandleChain, superseding)
       const forked = store.appendLink(superseded, {
@@ -216,7 +228,7 @@ test.each(CASES)(
 )
 
 test.each(CASES)(
-  '$ref adopts an invisible $provider archive and its visible claim wins after upgrade',
+  '$ref applies its $provider archive ownership policy before re-upgrade',
   async ({ ref, provider }) => {
     const checkout = await materializeReleaseCheckout(ref)
     const store = await historicalStore(checkout)
@@ -236,34 +248,42 @@ test.each(CASES)(
       if (typeof commit !== 'function') {
         throw new Error('old adoption must use its actual reservation admission')
       }
-      commit(
-        draft,
-        {
-          sessionId: 'old-adopted',
-          location: original.location,
-          provider,
-          accountHome: original.accountHome,
-          adoptedHandleLink: {
-            linkId: 'adopted-1',
-            handle: historicalHandle(provider, 'context-0', neutral),
-            origin: 'adopted',
-            mintedAtFence: 1,
-            observedAt: 1000
+      const adopt = () =>
+        commit(
+          draft,
+          {
+            sessionId: 'old-adopted',
+            location: original.location,
+            provider,
+            accountHome: original.accountHome,
+            adoptedHandleLink: {
+              linkId: 'adopted-1',
+              handle: historicalHandle(provider, 'context-0', neutral),
+              origin: 'adopted',
+              mintedAtFence: 1,
+              observedAt: 1000
+            },
+            expectedFence: null,
+            spawnToken: 'old-token',
+            claimKeyId: 'old-key',
+            handoffOperationId: null,
+            probe: { outcome: 'reservation-unused' },
+            operation: {
+              callerKey: 'caller',
+              operationId: '1800000000000-0123456789abcdef0123456789abcdef',
+              fingerprint: 'old-adoption'
+            },
+            now: 1800000000000
           },
-          expectedFence: null,
-          spawnToken: 'old-token',
-          claimKeyId: 'old-key',
-          handoffOperationId: null,
-          probe: { outcome: 'reservation-unused' },
-          operation: {
-            callerKey: 'caller',
-            operationId: '1800000000000-0123456789abcdef0123456789abcdef',
-            fingerprint: 'old-adoption'
-          },
-          now: 1800000000000
-        },
-        30_000
-      )
+          30_000
+        )
+      if (store.readsContextHistory) {
+        expect(adopt).toThrowError('agent_session_conflict')
+        expect(draft.records.has('old-adopted')).toBe(false)
+        expect(store.read(original.sessionId)).toEqual(stored)
+        return
+      }
+      adopt()
       store.write(loaded, draft)
       const upgraded = [original.sessionId, 'old-adopted'].map((id) => {
         const row = store.read(id)
