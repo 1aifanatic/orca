@@ -112,11 +112,6 @@ export function useMobileStructuredAgentSession(args: {
     [conversationCommands, invokeStructuredOption, optionSnapshot, setStructuredOption]
   )
   const sessionCommands = enabled ? (state.commands ?? undefined) : undefined
-  // Why: one stable object per catalog change, so streamed frames keep the `/` menu memo.
-  const slashCatalog = useMemo(
-    () => ({ sessionCommands, conversationCommands }),
-    [conversationCommands, sessionCommands]
-  )
 
   const sendWithOutcome = useMobileStructuredSendWithOutcome({
     agent,
@@ -293,6 +288,7 @@ export function useMobileStructuredAgentSession(args: {
     queued,
     commandRefusalCauses,
     backgroundTasks,
-    slashCatalog
+    // Why no memo: the menu keys on these two lists, which keep their references across frames.
+    slashCatalog: { sessionCommands, conversationCommands }
   }
 }

@@ -118,10 +118,12 @@ describe('mobileNativeChatSlashMenu', () => {
     expect(result.skills).toEqual([])
   })
 
-  it('leaves out terminal-lane commands only the desktop chat answers', () => {
-    expect(names(menu({ agent: 'omp', lane: 'terminal' }).commands)).not.toContain('context')
-    expect(names(menu({ agent: 'openclaude', lane: 'terminal' }).commands)).not.toContain('context')
-  })
+  it.each(['omp', 'openclaude'])(
+    "leaves %s's /context out of the terminal lane; only desktop can answer it",
+    (agent) => {
+      expect(names(menu({ agent, lane: 'terminal' }).commands)).not.toContain('context')
+    }
+  )
 
   it('groups by whether the session reports skills, whatever the query', () => {
     expect(menu({ sessionCommands: CLAUDE_REPORT }).grouped).toBe(true)

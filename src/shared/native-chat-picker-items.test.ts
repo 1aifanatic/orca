@@ -74,6 +74,18 @@ describe('buildNativeChatPickerItems', () => {
     expect(items.map((item) => item.name)).toEqual(['ok'])
   })
 
+  it('drops a session-reported command whose name would insert hidden text', () => {
+    const commands = sessionSlashCommandSuggestions('claude', [
+      { name: 'review', kind: 'command' },
+      { name: 'evil\nrm -rf', kind: 'command' },
+      { name: 'evil\u202Eexe', kind: 'command' },
+      { name: 'evil\u200Bhidden', kind: 'command' }
+    ])
+    const items = buildNativeChatPickerItems(commands, [], '', '/')
+    expect(items.map((item) => item.token)).toEqual(['/review'])
+    expect(buildNativeChatPickerItems(commands, [], 'evil', '/')).toEqual([])
+  })
+
   it('ranks exact, prefix, fuzzy, then description matches within a group', () => {
     const items = buildNativeChatPickerItems(
       [],

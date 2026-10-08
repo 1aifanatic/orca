@@ -104,9 +104,10 @@ describe('useMobileStructuredAgentSession `/` catalog', () => {
     act(() => listener?.({ ...snapshotEvent(), commands: reported }))
     expect(hook?.slashCatalog.sessionCommands).toEqual(reported)
     const held = hook?.slashCatalog
-    // An unrelated frame omits the field: the same references keep the menu memo warm.
+    // An unrelated frame omits the field: the lists the menu keys on keep their references.
     act(() => listener?.(batch(1)))
-    expect(hook?.slashCatalog).toBe(held)
+    expect(hook?.slashCatalog.sessionCommands).toBe(held?.sessionCommands)
+    expect(hook?.slashCatalog.conversationCommands).toBe(held?.conversationCommands)
 
     const refreshed: AgentSessionSlashCommand[] = [...reported, { name: 'init', kind: 'command' }]
     act(() => listener?.(batch(2, refreshed)))

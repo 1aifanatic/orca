@@ -103,7 +103,7 @@ describe('MobileNativeChatComposer `/` menu', () => {
   function texts(): unknown[] {
     return renderer!.root
       .findAll((node) => String(node.type) === 'Text')
-      .map((node) => (node.props as { children?: unknown }).children)
+      .map((node): unknown => node.props.children)
   }
 
   function row(token: string): ReactTestInstance {

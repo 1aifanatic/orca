@@ -59,15 +59,19 @@ export function buildNativeChatPickerItems(
   )
   const mergedSkills = mergeNativeChatSkills(skills, sessionSkills, unclassifiedNames, skillSigil)
   const skillNames = new Set(mergedSkills.map((skill) => skill.name))
+  // Why: a session-reported name is untrusted; one with whitespace or hidden
+  // characters would insert text the row never shows, so it gets no row.
   const resolvedCommands = commands.filter(
-    (command) => !(sharedSigil && command.kindUnspecified && skillNames.has(command.name))
+    (command) =>
+      isTokenSafe(command.name) &&
+      !(sharedSigil && command.kindUnspecified && skillNames.has(command.name))
   )
   const commandNames = new Set(resolvedCommands.map((command) => command.name))
   const commandItems = rankItems(
     resolvedCommands.map((command, index) => ({
       item: {
         kind: 'command' as const,
-        // Why: the name, curated or session-reported, is the dispatch token: never altered.
+        // Why: the name is the dispatch token, so it is never altered; unsafe names were dropped above.
         id: `command:${command.name}`,
         name: command.name,
         token: `/${command.name}`,
