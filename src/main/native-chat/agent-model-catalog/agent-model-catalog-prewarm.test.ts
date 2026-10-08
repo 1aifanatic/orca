@@ -64,6 +64,7 @@ describe('model catalog prewarm', () => {
       store,
       getRecord: () => undefined,
       drivesRecord: () => true,
+      hasChatRecords: () => true,
       resolveAccountHome: async (agent) =>
         agent === 'codex' ? HOME('CODEX_HOME', '/homes/a') : HOME('GROK_HOME', '/grok'),
       probes: { codex, grok }
@@ -80,7 +81,9 @@ describe('model catalog prewarm', () => {
     await prewarmed
 
     expect(codex).toHaveBeenCalledTimes(1)
-    expect(codex).toHaveBeenCalledWith(HOME('CODEX_HOME', '/homes/a'))
+    expect(codex).toHaveBeenCalledWith(HOME('CODEX_HOME', '/homes/a'), {
+      signal: expect.any(AbortSignal)
+    })
     expect(grok).toHaveBeenCalledTimes(1)
     expect((await service.read({ agent: 'codex' })).origin).toBe('probe')
     expect((await service.read({ agent: 'grok' })).origin).toBe('probe')
@@ -104,6 +107,7 @@ describe('model catalog prewarm', () => {
       store,
       getRecord: () => undefined,
       drivesRecord: () => true,
+      hasChatRecords: () => true,
       resolveAccountHome: async () => HOME('CODEX_HOME', selected),
       probes: { codex: probe }
     })
@@ -131,6 +135,7 @@ describe('model catalog prewarm', () => {
       store,
       getRecord: () => undefined,
       drivesRecord: () => true,
+      hasChatRecords: () => true,
       resolveAccountHome: async (agent) => {
         if (agent === 'claude') {
           throw new Error('account home unreadable')
@@ -154,6 +159,72 @@ describe('model catalog prewarm', () => {
     ])
   })
 
+  it('lists only agents used here: a saved catalog or a chat of it', async () => {
+    const store = new AgentModelCatalogStore()
+    const probeFor = (agent: string) =>
+      vi.fn(async (_home: AgentSessionAccountHome) => listing(`${agent}-model`))
+    const probes = { codex: probeFor('codex'), claude: probeFor('claude'), pi: probeFor('pi') }
+    // Claude has a catalog saved under another account; Codex has a chat; Pi was never used.
+    store.recordSuccess('claude-other-account', 'claude', listing('opus'), 'discovery')
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      drivesRecord: () => true,
+      resolveAccountHome: async (agent) => HOME('HOME', `/homes/${agent}`),
+      hasChatRecords: (agent) => agent === 'codex',
+      probes
+    })
+    await service.prewarm()
+
+    expect(probes.codex).toHaveBeenCalledTimes(1)
+    expect(probes.claude).toHaveBeenCalledTimes(1)
+    expect(probes.pi).not.toHaveBeenCalled()
+    // Its first chat still lists it on demand.
+    expect(await service.read({ agent: 'pi' })).toEqual({
+      origin: 'unknown',
+      listingInProgress: true
+    })
+    expect(probes.pi).toHaveBeenCalledTimes(1)
+  })
+
+  it('on stop, starts no queued agent, stops the running listings and lists nothing more', async () => {
+    const store = new AgentModelCatalogStore()
+    const started: string[] = []
+    const signals: AbortSignal[] = []
+    const probeFor =
+      (agent: string) => (_home: AgentSessionAccountHome, options?: { signal?: AbortSignal }) => {
+        started.push(agent)
+        const signal = options?.signal
+        if (signal) {
+          signals.push(signal)
+        }
+        return new Promise<AgentModelCatalogSuccess>((_resolve, reject) =>
+          signal?.addEventListener('abort', () => reject(new Error('stopped')))
+        )
+      }
+    const agents = ['codex', 'claude', 'grok', 'opencode']
+    const service = createAgentModelCatalogService({
+      store,
+      getRecord: () => undefined,
+      drivesRecord: () => true,
+      resolveAccountHome: async (agent) => HOME('HOME', `/homes/${agent}`),
+      hasChatRecords: () => true,
+      probes: Object.fromEntries(agents.map((agent) => [agent, probeFor(agent)]))
+    })
+    const prewarmed = service.prewarm()
+    await vi.waitFor(() => expect(started).toHaveLength(2))
+
+    service.stop()
+    await prewarmed
+    expect(started).toEqual(['codex', 'claude'])
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+
+    // A read or another prewarm after stop spawns nothing.
+    expect(await service.read({ agent: 'grok' })).toEqual({ origin: 'unknown' })
+    await service.prewarm()
+    expect(started).toEqual(['codex', 'claude'])
+  })
+
   it('runs at most two listings at once', async () => {
     const store = new AgentModelCatalogStore()
     let running = 0
@@ -171,6 +242,7 @@ describe('model catalog prewarm', () => {
       store,
       getRecord: () => undefined,
       drivesRecord: () => true,
+      hasChatRecords: () => true,
       resolveAccountHome: async (agent) => HOME('HOME', `/homes/${agent}`),
       probes: Object.fromEntries(agents.map((agent) => [agent, probeFor(agent)]))
     })
@@ -200,7 +272,8 @@ describe('one account, one catalog key', () => {
     } as AgentSessionRecord
   }
 
-  it('a new chat’s read, the session it launches and that session’s own saves share one key', async () => {
+  // The read and launch resolvers agreeing on the home is runtime-home-catalog-account-key.test.ts.
+  it('a session’s saves through the host and through its adapter’s handle land under its record’s key', async () => {
     const store = new AgentModelCatalogStore()
     const managedHome = '/orca/codex-accounts/acct-1/home'
     const launched = record(managedHome)
@@ -208,7 +281,6 @@ describe('one account, one catalog key', () => {
       store,
       getRecord: () => launched,
       drivesRecord: () => true,
-      // The read-only resolver and launch preparation both answer the account's persisted path.
       resolveAccountHome: async () => HOME('CODEX_HOME', managedHome)
     })
     // What the chat saved, through the host and through the Codex adapter's own handle…
@@ -220,7 +292,7 @@ describe('one account, one catalog key', () => {
     )
     expect(adapterAccess?.fingerprint).toBe(agentModelCatalogFingerprintForRecord(launched))
 
-    // …is what the next new chat reads, with no record to go on: no cold start for this account.
+    // …is what the next new chat reads for the same home: no cold start for this account.
     const read = await service.read({ agent: 'codex' })
     expect(read.origin !== 'unknown' && read.models.map((model) => model.id)).toEqual(['gpt-live'])
   })
