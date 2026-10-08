@@ -34,7 +34,7 @@ import {
   type RemoteHostPlatform
 } from './ssh-remote-platform'
 import { assertPosixOrcadHost } from './orcad-remote-host-support'
-import { withRuntimeStoreLock } from './remote-node-runtime-store-lock'
+import { withRuntimeStoreLock, type HeldRuntimeStoreLock } from './remote-node-runtime-store-lock'
 import {
   assertRemoteNodeRuntimePromoted,
   REMOTE_NODE_RUNTIME_EXIT_PREFIX,
@@ -47,8 +47,7 @@ import {
   windowsNodeRuntimePresentCommand,
   windowsNodeRuntimeProbeCommand,
   windowsNodeRuntimePromoteCommand,
-  windowsNodeRuntimeStageCleanupCommand,
-  WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS
+  windowsNodeRuntimeStageCleanupCommand
 } from './orcad-remote-node-runtime-windows'
 
 export {
@@ -62,6 +61,11 @@ export {
   RemoteNodeRuntimeSelfTestError
 } from './orcad-remote-node-runtime-report'
 const VERIFIED_MARKER = REMOTE_NODE_RUNTIME_VERIFIED_MARKER
+/**
+ * Extracting, hashing and running the ~110 MiB executable takes minutes on slow storage (HH-3),
+ * and Windows may fall back to Expand-Archive.
+ */
+export const NODE_RUNTIME_PROMOTE_TIMEOUT_MS = 300_000
 /** Upload stages sit in the store beside the runtimes they become; store GC sweeps stale ones. */
 export const RUNTIME_STORE_STAGE_PREFIX = '.stage-'
 
@@ -290,16 +294,22 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
     // Why unwrapped on Windows: these are already self-contained powershell.exe command lines.
     const runLocked = (command: string, timeoutMs?: number): Promise<string> =>
       execCommand(conn, command, { signal, timeoutMs, wrapCommand: !windows })
-    const promote = (): Promise<string> => {
+    const promote = (held: HeldRuntimeStoreLock): Promise<string> => {
       promoteRan = true
-      return windows
-        ? runLocked(
-            windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target }),
-            WINDOWS_NODE_RUNTIME_PROMOTE_TIMEOUT_MS
-          )
-        : runLocked(
-            promoteRemoteNodeRuntimeCommand(host, { stageDir, archive, runtimeDir, target, token })
-          )
+      return runLocked(
+        windows
+          ? windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target })
+          : held.releasedByHostOnExit(
+              promoteRemoteNodeRuntimeCommand(host, {
+                stageDir,
+                archive,
+                runtimeDir,
+                target,
+                token
+              })
+            ),
+        NODE_RUNTIME_PROMOTE_TIMEOUT_MS
+      )
     }
     // Why the lock on Windows too: store GC collects there as well (design D5).
     const promoted = await remoteStep(() =>
@@ -308,11 +318,11 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
         host,
         remoteDirname(runtimeDir, host),
         // Why re-probe under the lock: a sibling installer may have published this pin while we uploaded.
-        async () =>
+        async (held) =>
           (await runLocked(probeRemoteNodeRuntimeCommand(host, runtimeDir, target))).trim() ===
           REMOTE_NODE_RUNTIME_READY
             ? REMOTE_NODE_RUNTIME_READY
-            : promote(),
+            : promote(held),
         signal
       )
     )

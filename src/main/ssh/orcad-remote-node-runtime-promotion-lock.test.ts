@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SshConnection } from './ssh-connection'
 import {
   ensureRemoteOrcadNodeRuntime,
+  NODE_RUNTIME_PROMOTE_TIMEOUT_MS,
   REMOTE_NODE_RUNTIME_MISSING,
   REMOTE_NODE_RUNTIME_READY
 } from './orcad-remote-node-runtime'
@@ -81,7 +82,17 @@ describe('ensureRemoteOrcadNodeRuntime promotion lock', () => {
     expect(lastIndexOf(`rm -rf '${lock}'`)).toBeGreaterThan(indexOf(`mkdir '${lock}' 2>/dev/null`))
   })
 
-  it('keeps the lock when promotion ends in an unconfirmed termination', async () => {
+  it('gives the POSIX promote the promote bound, not the 30 s exec default', async () => {
+    answer(() => REMOTE_NODE_RUNTIME_MISSING)
+    await ensure()
+    const call = vi
+      .mocked(execCommand)
+      .mock.calls.find(([, command]) => command.includes('tar -xzf'))
+    expect(call?.[2]).toMatchObject({ timeoutMs: NODE_RUNTIME_PROMOTE_TIMEOUT_MS })
+    expect(NODE_RUNTIME_PROMOTE_TIMEOUT_MS).toBeGreaterThan(30_000)
+  })
+
+  it('leaves the lock to the host release when promotion ends in an unconfirmed termination', async () => {
     answer(() => REMOTE_NODE_RUNTIME_MISSING)
     const lost = Object.assign(new Error('lost'), { sshChannelCloseConfirmed: false })
     const base = vi.mocked(execCommand).getMockImplementation()
@@ -93,6 +104,10 @@ describe('ensureRemoteOrcadNodeRuntime promotion lock', () => {
       return base!(c, command, options)
     })
     await expect(ensure()).rejects.toBe(lost)
-    expect(indexOf(`rm -rf '${lock}'`)).toBe(-1)
+    // The promote itself frees the lock on the host when its work exits; the client sends no release.
+    const releases = commands.filter((c) => c.includes(`rm -rf '${lock}'`))
+    expect(releases).toHaveLength(1)
+    expect(releases[0]).toContain('tar -xzf')
+    expect(releases[0].indexOf(`rm -rf '${lock}'`)).toBeGreaterThan(releases[0].indexOf('tar -xzf'))
   })
 })
