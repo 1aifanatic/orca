@@ -10,11 +10,21 @@ export type RetainedTerminalRow = {
   contentEnd: number
   /** Lower bound on the all-space prefix, so a repeated erase-to-start is a no-op. */
   blankPrefix: number
+  /** Upper bound on the backing string `text` may slice; 0 when `text` owns its storage. */
+  backing: number
   completed: boolean
 }
 
 export function retainedRow(text: string, completed: boolean): RetainedTerminalRow {
-  return { text, snapshot: null, contentEnd: -1, blankPrefix: 0, completed }
+  // A carried row may be a snapshot that slices up to twice its length.
+  return {
+    text,
+    snapshot: null,
+    contentEnd: -1,
+    blankPrefix: 0,
+    backing: 2 * text.length,
+    completed
+  }
 }
 
 function isTrimmedWhitespace(code: number): boolean {
@@ -45,6 +55,7 @@ export function writeRetainedRow(
   // Why own: the row can outlive this chunk as a tail line, and a long run is a slice of it.
   if (column === 0 && runLength >= text.length) {
     row.text = ownRetainedString(source.slice(start, end))
+    row.backing = 0
   } else if (column >= text.length) {
     const gap = column - text.length
     const run = ownRetainedString(source.slice(start, end))
@@ -53,10 +64,12 @@ export function writeRetainedRow(
     // Skip the identical prefix so a write past the row end can append instead of splicing.
     const at = column + offset
     const run = ownRetainedString(source.slice(start + offset, end))
-    row.text =
-      offset === overlap
-        ? `${text}${run}`
-        : `${text.slice(0, at)}${run}${text.slice(column + runLength)}`
+    if (offset === overlap) {
+      row.text = `${text}${run}`
+    } else {
+      row.text = `${text.slice(0, at)}${run}${text.slice(column + runLength)}`
+      row.backing = Math.max(row.backing, text.length)
+    }
   }
   noteWrite(row, column, column + runLength, writtenEnd(column, source, start, end))
 }
@@ -101,13 +114,9 @@ export function eraseRetainedRow(row: RetainedTerminalRow, mode: number, column:
     if (keep >= text.length) {
       return
     }
-    // Why own a short keep: the slice would otherwise pin the erased row's whole backing string.
-    row.text =
-      keep === 0
-        ? ''
-        : keep * 2 < text.length
-          ? ownRetainedString(text.slice(0, keep))
-          : text.slice(0, keep)
+    row.text = keep === 0 ? '' : text.slice(0, keep)
+    row.backing = keep === 0 ? 0 : Math.max(row.backing, text.length)
+    ownShrunkText(row)
     row.snapshot = null
     row.blankPrefix = Math.min(row.blankPrefix, keep)
     if (row.contentEnd > keep) {
@@ -128,6 +137,7 @@ export function eraseRetainedRow(row: RetainedTerminalRow, mode: number, column:
     return
   }
   row.text = `${' '.repeat(blankCount)}${text.slice(blankCount)}`
+  row.backing = Math.max(row.backing, text.length)
   row.snapshot = null
   if (row.contentEnd !== -1 && row.contentEnd <= blankCount) {
     row.contentEnd = 0
@@ -148,12 +158,22 @@ export function retainedRowSnapshot(row: RetainedTerminalRow): string {
     }
     row.contentEnd = end
   }
-  // Why own a short trim: the slice would otherwise pin the whole padded row while retained.
-  row.snapshot =
-    end === text.length
-      ? text
-      : end * 2 < text.length
-        ? ownRetainedString(text.slice(0, end))
-        : text.slice(0, end)
+  if (end === text.length) {
+    ownShrunkText(row)
+    row.snapshot = row.text
+  } else {
+    // Why own a short trim: the slice would otherwise pin the whole padded row while retained.
+    const backing = Math.max(row.backing, text.length)
+    row.snapshot = end * 2 < backing ? ownRetainedString(text.slice(0, end)) : text.slice(0, end)
+  }
   return row.snapshot
+}
+
+// Why cumulative: a chain of erases that each keep half the row never crosses a per-erase
+// threshold, yet nested slices still pin the original row.
+function ownShrunkText(row: RetainedTerminalRow): void {
+  if (row.backing > 2 * row.text.length) {
+    row.text = ownRetainedString(row.text)
+    row.backing = 0
+  }
 }
