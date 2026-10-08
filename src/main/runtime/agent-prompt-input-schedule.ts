@@ -7,8 +7,6 @@ import {
 } from '../../shared/agent-prompt-injection'
 import type { TerminalAgent } from '../../shared/terminal-agent'
 import { isTuiAgent, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
-import { CLAUDE_AGENT_PROMPT_RENDER_TIMEOUT_MS } from './orca-runtime-core'
-import type { PtyInputHold } from './pty-input-hold'
 import type { RuntimeAgentPromptWriteOptions } from './runtime-terminal-contracts'
 
 export type AgentPromptInputSchedule = {
@@ -16,7 +14,6 @@ export type AgentPromptInputSchedule = {
   pasteIngestMs: number
   submitDelayMs: number
   retryDelayMs?: number
-  hold: PtyInputHold
 }
 
 export function resolveAgentPromptInputSchedule(args: {
@@ -39,19 +36,10 @@ export function resolveAgentPromptInputSchedule(args: {
     options.composerReady && !submitWithPaste && isTuiAgent(agent)
       ? TUI_AGENT_CONFIG[agent]?.submitRetryDelayMs
       : undefined
-  const waitsForRender = !options.composerReady && (agent === 'claude' || agent === 'codex')
-  // A render marker can rearm the existing cap once after the initial arm.
-  const delayMs = waitsForRender
-    ? pasteIngestMs + 2 * CLAUDE_AGENT_PROMPT_RENDER_TIMEOUT_MS
-    : submitDelayMs
   return {
     submitWithPaste,
     pasteIngestMs,
     submitDelayMs,
-    retryDelayMs,
-    hold: {
-      writeCount: 1 + (submitWithPaste ? 0 : 1) + (retryDelayMs === undefined ? 0 : 1),
-      delayMs: (submitWithPaste ? 0 : delayMs) + (retryDelayMs ?? 0)
-    }
+    retryDelayMs
   }
 }

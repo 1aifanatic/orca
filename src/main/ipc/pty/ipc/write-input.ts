@@ -9,39 +9,28 @@ import {
 } from '../../../../shared/terminal-input'
 import { ptyOwnership } from '../provider/ownership-state'
 import { tryGetProviderForPty } from '../provider/registry'
-import type { TerminalInputKind } from '../../../../shared/terminal-input-kind'
 import { interactiveOutputCharsByPty, lastInputAtByPty } from '../delivery/visibility-state'
-import { isSettledWrite, type WriteSettlement } from '../../../../shared/pty-write-settlement'
+import {
+  isSettledWrite,
+  writeRefused,
+  type WriteSettlement
+} from '../../../../shared/pty-write-settlement'
 import { bindProviderPtyInput } from '../provider/input-binding'
 import { isTerminalQueryReply } from '../../../../shared/terminal-query-reply'
 import {
   ptyInputTransactions,
   type PtyInputTransaction
 } from '../../../runtime/pty-input-transactions'
-import { countPtyInputChunkWrites } from '../../../runtime/pty-input-hold'
 
-export function isMainWindowPtyIpcEvent(
-  event: IpcMainEvent | IpcMainInvokeEvent,
-  mainWindow: PtyRendererDelivery | undefined
-): boolean {
-  const mainWebContents = mainWindow?.webContents
-  return (
-    !!mainWindow &&
-    !!mainWebContents &&
-    event.sender === mainWebContents &&
-    !mainWindow.isDestroyed() &&
-    !(typeof mainWebContents.isDestroyed === 'function' && mainWebContents.isDestroyed())
-  )
-}
-
-export type PtyWritePayload = {
-  id: string
-  data: string
-  inputKind: TerminalInputKind
-  /** Accepted-write callers only: wait for the provider's settlement, on any provider. */
-  requireWriteSettlement?: true
-}
-export type PtyViewportClaimPayload = { id: string; cols: number; rows: number }
+import {
+  isMainWindowPtyIpcEvent,
+  isPtyWritePayload,
+  isPtyViewportClaimPayload,
+  type PtyWritePayload,
+  type PtyViewportClaimPayload
+} from './write-input-validation'
+export { isMainWindowPtyIpcEvent } from './write-input-validation'
+export type { PtyWritePayload, PtyViewportClaimPayload } from './write-input-validation'
 
 export function createPtyWriteInput(deps: {
   mainWindow?: PtyRendererDelivery
@@ -122,22 +111,20 @@ export function createPtyWriteInput(deps: {
     if (runtime?.getDriver(id).kind === 'mobile') {
       return false
     }
-    transaction?.handoff()
     if (!verify) {
-      return provider.write(id, data) !== false
+      return transaction ? transaction.write(data, 'driving') : provider.write(id, data) !== false
     }
-    const settlement = provider.writeWithSettlement(id, data)
+    const settlement = transaction
+      ? transaction.writeWithSettlement(data, 'driving')
+      : provider.writeWithSettlement(id, data)
     return isSettledWrite(settlement)
       ? acceptedSettlement(id, settlement)
-      : settlement.then((settled) => {
-          transaction?.assertWithinHold()
-          return acceptedSettlement(id, settled)
-        })
+      : settlement.then((settled) => acceptedSettlement(id, settled))
   }
 
-  const failedWrite = (id: string, error: unknown, verify: boolean): false => {
+  const failedWrite = (id: string, error: unknown, verify: boolean, noEffect = false): false => {
     reportUnavailablePtyWrite(id, error)
-    if (verify && !isPtyWriteUnavailableError(error)) {
+    if (verify && !noEffect && !isPtyWriteUnavailableError(error)) {
       throw error
     }
     return false
@@ -165,10 +152,15 @@ export function createPtyWriteInput(deps: {
           return writePtyProviderInputWithinLimit(provider, id, data, verify, transaction)
         })
         .catch((error) => {
-          return failedWrite(id, error, verify)
+          return failedWrite(
+            id,
+            error,
+            verify,
+            !!transaction && !transaction.bytesHandedToTransport
+          )
         })
     } catch (error) {
-      return failedWrite(id, error, verify)
+      return failedWrite(id, error, verify, !!transaction && !transaction.bytesHandedToTransport)
     }
   }
 
@@ -205,28 +197,9 @@ export function createPtyWriteInput(deps: {
       }
       return true
     } catch (error) {
-      return failedWrite(id, error, verify)
+      return failedWrite(id, error, verify, !!transaction && !transaction.bytesHandedToTransport)
     }
   }
-
-  const isPtyWritePayload = (value: unknown): value is PtyWritePayload =>
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { id?: unknown }).id === 'string' &&
-    (value as { id: string }).id.length > 0 &&
-    typeof (value as { data?: unknown }).data === 'string'
-
-  const isPtyViewportClaimPayload = (value: unknown): value is PtyViewportClaimPayload =>
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { id?: unknown }).id === 'string' &&
-    (value as { id: string }).id.length > 0 &&
-    typeof (value as { cols?: unknown }).cols === 'number' &&
-    Number.isFinite((value as { cols: number }).cols) &&
-    typeof (value as { rows?: unknown }).rows === 'number' &&
-    Number.isFinite((value as { rows: number }).rows) &&
-    (value as { cols: number }).cols > 0 &&
-    (value as { rows: number }).rows > 0
 
   const isPtyWriteEventFromMainWindow = (event: IpcMainEvent | IpcMainInvokeEvent): boolean =>
     isMainWindowPtyIpcEvent(event, mainWindow)
@@ -248,7 +221,9 @@ export function createPtyWriteInput(deps: {
       }
       return accepted
     }
+    let inputTransaction: PtyInputTransaction | undefined
     const write = (transaction?: PtyInputTransaction): boolean | Promise<boolean> => {
+      inputTransaction = transaction
       noteRendererPtyInput(args)
       const result = writePtyProviderInput(provider, args.id, args.data, verify, transaction)
       return typeof result === 'boolean' ? observe(result) : result.then(observe)
@@ -256,13 +231,37 @@ export function createPtyWriteInput(deps: {
     if (args.inputKind === 'query-reply' && isTerminalQueryReply(args.data)) {
       return write()
     }
-    const result = ptyInputTransactions.run(bindProviderPtyInput(args.id), write, {
-      interrupt: args.data === '\x03',
-      hold: { writeCount: countPtyInputChunkWrites(args.data) }
-    })
-    return typeof result === 'boolean'
-      ? result
-      : result.catch((error) => failedWrite(args.id, error, verify))
+    try {
+      const result = ptyInputTransactions.run(bindProviderPtyInput(args.id), write, {
+        interrupt: args.data === '\x03',
+        rawInput: true,
+        writer: {
+          write: (data) => {
+            if (runtime?.getDriver(args.id).kind === 'mobile') {
+              return false
+            }
+            const currentProvider = tryGetProviderForPty(args.id)
+            return !!currentProvider && currentProvider.write(args.id, data) !== false
+          },
+          writeWithSettlement: (data) => {
+            if (runtime?.getDriver(args.id).kind === 'mobile') {
+              return writeRefused('provider_refused_write')
+            }
+            return (
+              tryGetProviderForPty(args.id)?.writeWithSettlement(args.id, data) ??
+              writeRefused('provider_unavailable')
+            )
+          }
+        }
+      })
+      return typeof result === 'boolean'
+        ? result
+        : result.catch((error) =>
+            failedWrite(args.id, error, verify, !inputTransaction?.bytesHandedToTransport)
+          )
+    } catch (error) {
+      return failedWrite(args.id, error, verify, !inputTransaction?.bytesHandedToTransport)
+    }
   }
 
   const writePtyInput = (args: PtyWritePayload): boolean | Promise<boolean> => {

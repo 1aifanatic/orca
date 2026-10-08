@@ -8,17 +8,16 @@ import {
   waitForAgentPromptPromise
 } from './orca-runtime-core'
 import { AGENT_PROMPT_SUBMIT } from '../../shared/agent-prompt-injection'
-import type { AgentPromptWaitTextCache } from './agent-prompt-submission-verification'
+import type {
+  AgentPromptActivity,
+  AgentPromptWaitTextCache
+} from './agent-prompt-submission-verification'
 import {
   isTerminalSendSettlementAgent,
   resolveAgentPromptEffectTimeoutMs,
   verifyAgentPromptSubmission
 } from './agent-prompt-submission-verification'
-import {
-  PtyInputAbandonedError,
-  PtyInputPreemptedError,
-  type PtyInputTransaction
-} from './pty-input-transactions'
+import type { PtyInputTransaction } from './pty-input-transactions'
 import { writeUnverifiable, type WriteSettlement } from '../../shared/pty-write-settlement'
 import {
   resolveAgentPromptInputSchedule,
@@ -36,47 +35,55 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     submits: number
     prompt?: RuntimeTerminalPromptDelivery
     writeSettlement?: WriteSettlement
+    bytesWritten: number
   }> {
+    assertAgentPromptRequestActive(options.signal)
+    this.assertAgentPromptGeneration(ptyId, generation)
+    const permissionBaseline = this.getAgentPromptActivity(handle, ptyId)
+    this.assertAgentPromptPermissionSafe(permissionBaseline, permissionBaseline)
+    await options.beforeWrite?.(ptyId)
+    let inputTransaction: PtyInputTransaction | undefined
     let bytes
-    let schedule: AgentPromptInputSchedule
     try {
       bytes = await this.runTerminalInputTransaction(
         ptyId,
-        (transaction) =>
-          this.writeTerminalAgentPromptBytes(
+        (transaction) => {
+          inputTransaction = transaction
+          const pty = this.ptysById.get(ptyId)
+          const schedule = resolveAgentPromptInputSchedule({
+            platform: this.getPtyWriteHostPlatform(ptyId),
+            agent: this.getPtyAgent(ptyId),
+            pasteAgent: pty?.foregroundAgent ?? pty?.launchAgent ?? null,
+            pastePayload,
+            options
+          })
+          return this.writeTerminalAgentPromptBytes(
             handle,
             ptyId,
             generation,
             pastePayload,
             options,
             transaction,
-            schedule
-          ),
+            schedule,
+            permissionBaseline
+          )
+        },
         {
           signal: options.signal,
-          deadlineAt: options.deadlineAt,
-          hold: () => {
-            const pty = this.ptysById.get(ptyId)
-            schedule = resolveAgentPromptInputSchedule({
-              platform: this.getPtyWriteHostPlatform(ptyId),
-              agent: this.getPtyAgent(ptyId),
-              pasteAgent: pty?.foregroundAgent ?? pty?.launchAgent ?? null,
-              pastePayload,
-              options
-            })
-            return schedule.hold
-          }
+          deadlineAt: options.deadlineAt
         }
       )
     } catch (error) {
-      if (
-        (error instanceof PtyInputPreemptedError || error instanceof PtyInputAbandonedError) &&
-        error.bytesHandedToTransport
-      ) {
-        return { submits: 0, writeSettlement: writeUnverifiable('partial_write', true) }
+      if (inputTransaction?.stopSignal.aborted && inputTransaction.bytesHandedToTransport) {
+        return {
+          submits: 0,
+          bytesWritten: inputTransaction.bytesWritten,
+          writeSettlement: writeUnverifiable('partial_write', true)
+        }
       }
       throw error
     }
+    const bytesWritten = inputTransaction?.bytesWritten ?? 0
     const { submits, baseline, waitTextCache } = bytes
     const effectTimeoutMs = resolveAgentPromptEffectTimeoutMs(this.getPtyAgent(ptyId))
     if (!options.acceptQueued || !options.requestId) {
@@ -86,7 +93,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
         timeoutMs: effectTimeoutMs,
         signal: options.signal
       })
-      return { submits }
+      return { submits, bytesWritten }
     }
     const binding = this.getTerminalPromptRequestBinding(handle)
     const foregroundAgent = this.ptysById.get(ptyId)?.foregroundAgent
@@ -110,7 +117,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     const checkpoint: RuntimeTerminalSend = {
       handle,
       accepted: true,
-      bytesWritten: Buffer.byteLength(pastePayload, 'utf8') + 1,
+      bytesWritten,
       prompt: inputAccepted
     }
     options.onInputAccepted?.(checkpoint)
@@ -118,7 +125,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     // receipt; they must not fail a Dispatch merely because Orca cannot prove
     // submission through hooks.
     if (!settlementAgent) {
-      return { submits, prompt: inputAccepted }
+      return { submits, bytesWritten, prompt: inputAccepted }
     }
     this.registerAgentPromptRequest(
       ptyId,
@@ -147,6 +154,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       this.forgetAgentPromptRequest(ptyId, generation, options.requestId)
       return {
         submits,
+        bytesWritten,
         prompt: {
           ...inputAccepted,
           stages: ['input_accepted', 'turn_started']
@@ -154,12 +162,13 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       }
     } catch (error) {
       if (error instanceof Error && error.message === 'agent_prompt_stalled') {
-        return { submits, prompt: inputAccepted }
+        return { submits, bytesWritten, prompt: inputAccepted }
       }
       if (error instanceof Error && error.message === 'agent_prompt_blocked') {
         this.forgetAgentPromptRequest(ptyId, generation, options.requestId)
         return {
           submits,
+          bytesWritten,
           prompt: { ...inputAccepted, observation: 'permission' }
         }
       }
@@ -174,27 +183,26 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     pastePayload: string,
     options: RuntimeAgentPromptWriteOptions,
     transaction: PtyInputTransaction,
-    schedule: AgentPromptInputSchedule
+    schedule: AgentPromptInputSchedule,
+    permissionBaseline: AgentPromptActivity
   ) {
     assertAgentPromptRequestActive(options.signal)
     this.assertAgentPromptGeneration(ptyId, generation)
-    const permissionBaseline = this.getAgentPromptActivity(handle, ptyId)
-    this.assertAgentPromptPermissionSafe(permissionBaseline, permissionBaseline)
     const { submitWithPaste, pasteIngestMs, submitDelayMs } = schedule
     const writeSignal = options.signal
-      ? AbortSignal.any([options.signal, transaction.abandonmentSignal])
-      : transaction.abandonmentSignal
+      ? AbortSignal.any([options.signal, transaction.stopSignal])
+      : transaction.stopSignal
     // Why no gate for a ready composer: a live Claude never settles it, so Enter always waited out
     // its 8 s cap, where the desktop's own paste submitted in about 2 s.
     const renderGate = options.composerReady
       ? null
       : this.createAgentPromptRenderGate(ptyId, pasteIngestMs)
     const disposeRenderGate = (): void => {
-      transaction.abandonmentSignal.removeEventListener('abort', disposeRenderGate)
+      transaction.stopSignal.removeEventListener('abort', disposeRenderGate)
       renderGate?.dispose()
     }
     if (renderGate) {
-      transaction.abandonmentSignal.addEventListener('abort', disposeRenderGate, { once: true })
+      transaction.stopSignal.addEventListener('abort', disposeRenderGate, { once: true })
     }
     const waitTextCache: AgentPromptWaitTextCache = {}
     const preSubmitBaseline = submitWithPaste
@@ -203,7 +211,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     try {
       assertAgentPromptRequestActive(options.signal)
       this.assertAgentPromptGeneration(ptyId, generation)
-      await options.beforeWrite?.(ptyId)
+      options.beforeWrite?.revalidate?.(ptyId)
       assertAgentPromptRequestActive(options.signal)
       this.assertAgentPromptGeneration(ptyId, generation)
       this.assertAgentPromptPermissionSafe(
@@ -215,8 +223,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
       transaction.beforeWrite()
       renderGate?.arm()
       const initialWrite = submitWithPaste ? pastePayload + AGENT_PROMPT_SUBMIT : pastePayload
-      transaction.handoff()
-      if (!this.ptyController?.write(ptyId, initialWrite, options.inputKind)) {
+      if (!transaction.write(initialWrite, options.inputKind)) {
         throw new Error('terminal_not_writable')
       }
     } catch (error) {
@@ -240,7 +247,9 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     this.assertAgentPromptGeneration(ptyId, generation)
     if (!submitWithPaste) {
       try {
-        await options.beforeWrite?.(ptyId)
+        await transaction.awaitExternal(() =>
+          (options.beforeWrite?.revalidate ?? options.beforeWrite)?.(ptyId)
+        )
       } catch (error) {
         if (options.suffixFailureError) {
           throw new Error(options.suffixFailureError)
@@ -253,8 +262,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     const baseline = preSubmitBaseline ?? this.getAgentPromptActivity(handle, ptyId, waitTextCache)
     this.assertAgentPromptPermissionSafe(permissionBaseline, baseline)
     if (!submitWithPaste) {
-      transaction.handoff()
-      if (!this.ptyController?.write(ptyId, AGENT_PROMPT_SUBMIT, options.inputKind)) {
+      if (!transaction.write(AGENT_PROMPT_SUBMIT, options.inputKind)) {
         throw new Error(options.suffixFailureError ?? 'terminal_not_writable')
       }
     }
@@ -291,13 +299,11 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     try {
       await waitForAgentPromptDelay(retryDelayMs, writeSignal)
       this.assertAgentPromptGeneration(ptyId, generation)
-      await options.beforeWrite?.(ptyId)
-      transaction.handoff()
-      return this.ptyController?.write(ptyId, AGENT_PROMPT_SUBMIT, options.inputKind) ? 1 : 0
-    } catch (error) {
-      if (error instanceof PtyInputPreemptedError || error instanceof PtyInputAbandonedError) {
-        throw error
-      }
+      await transaction.awaitExternal(() =>
+        (options.beforeWrite?.revalidate ?? options.beforeWrite)?.(ptyId)
+      )
+      return transaction.write(AGENT_PROMPT_SUBMIT, options.inputKind) ? 1 : 0
+    } catch {
       return 0
     }
   }

@@ -58,7 +58,7 @@ describe('writeStartupCommandWhenShellReady', () => {
     ptyIncarnations.set(id, incarnation)
     let release: () => void = () => {}
     const pending = ptyInputTransactions.run(
-      { key: ptyInputTransactionKey(id, incarnation), isCurrent: () => true },
+      { key: ptyInputTransactionKey(id), isCurrent: () => true },
       () =>
         new Promise<void>((resolve) => {
           release = resolve

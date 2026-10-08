@@ -6,15 +6,20 @@ import { ptyIncarnationById, ptyOwnership } from './ownership-state'
 import { tryGetProviderForPty } from './registry'
 
 export function bindProviderPtyInput(id: string): PtyInputBinding {
-  const incarnation = ptyIncarnationById.get(id)
+  let incarnation = ptyIncarnationById.get(id)
   const owner = ptyOwnership.get(id)
-  const provider = tryGetProviderForPty(id)
   return {
-    key: ptyInputTransactionKey(id, incarnation),
-    isCurrent: () =>
-      ptyOwnership.get(id) === owner &&
-      ptyIncarnationById.get(id) === incarnation &&
-      tryGetProviderForPty(id) === provider &&
-      provider?.hasPty?.(id) !== false
+    key: ptyInputTransactionKey(id),
+    isCurrent: () => {
+      const currentIncarnation = ptyIncarnationById.get(id)
+      incarnation ??= currentIncarnation
+      const provider = tryGetProviderForPty(id)
+      return (
+        ptyOwnership.get(id) === owner &&
+        currentIncarnation === incarnation &&
+        !!provider &&
+        provider.hasPty?.(id) !== false
+      )
+    }
   }
 }

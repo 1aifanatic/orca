@@ -333,11 +333,12 @@ export class OrcaRuntimeWithRuntimeId {
   protected readonly terminalWaiters = new RuntimeTerminalWaiterRegistry()
 
   protected readonly terminalWriter = new RuntimeTerminalWriter(
-    (ptyId, data, inputKind) => this.ptyController?.write(ptyId, data, inputKind) ?? false,
+    (ptyId, data, inputKind, transaction) =>
+      this.ptyController?.write(ptyId, data, inputKind, transaction) ?? false,
     (ptyId) => this.getPtyWriteHostPlatform(ptyId),
     (ptyId) => this.getPtyAgent(ptyId),
-    (ptyId, data, inputKind) =>
-      this.ptyController?.writeWithSettlement?.(ptyId, data, inputKind) ??
+    (ptyId, data, inputKind, transaction) =>
+      this.ptyController?.writeWithSettlement?.(ptyId, data, inputKind, transaction) ??
       writeRefused('provider_cannot_settle'),
     (ptyId) => this.bindTerminalInput(ptyId),
     ptyInputTransactions

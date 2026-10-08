@@ -137,73 +137,81 @@ export class OrcaRuntimeWithDeliverPendingMessages extends OrcaRuntimeWithResolv
     // must end the flight here, or a leaked flag parks this pty's deliveries
     // forever. Only an armed Enter hands settling to its own callback.
     try {
-      const delivery = this.runTerminalInputTransaction(
-        deliveryPtyId,
-        (transaction) => {
-          let finishInput: () => void = () => {}
-          const pendingInput = new Promise<void>((resolve) => {
-            finishInput = resolve
-          })
-          let settlesInEnterCallback = false
-          try {
-            const payload = formatMessagePointer(unread.length, mailboxHandle)
-            transaction.handoff()
-            const wrote = this.ptyController?.write(deliveryPtyId, payload, 'driving') ?? false
-            if (!wrote) {
-              return
-            }
-            this.lastPointedMessageSequenceByHandle.set(
-              mailboxHandle,
-              Math.max(watermark, newestSequence)
-            )
-            const pointedIdsAfterWrite =
-              this.pointedMessageIdsByHandle.get(mailboxHandle) ?? new Set<string>()
-            for (const message of unread) {
-              pointedIdsAfterWrite.add(message.id)
-            }
-            this.pointedMessageIdsByHandle.set(mailboxHandle, pointedIdsAfterWrite)
+      const delivery = this.runTerminalInputTransaction(deliveryPtyId, (transaction) => {
+        let finishInput: () => void = () => {}
+        const pendingInput = new Promise<void>((resolve) => {
+          finishInput = resolve
+        })
+        const finishWait = finishInput
+        const stopInput = (): void => {
+          clearTimeout(flight.enterTimer ?? undefined)
+          finishInput()
+          this.settlePendingMessageDelivery(deliveryPtyId, flight)
+        }
+        finishInput = (): void => {
+          transaction.stopSignal.removeEventListener('abort', stopInput)
+          finishWait()
+        }
+        let settlesInEnterCallback = false
+        try {
+          const payload = formatMessagePointer(unread.length, mailboxHandle)
+          const wrote = transaction.write(payload, 'driving')
+          if (!wrote) {
+            return
+          }
+          this.lastPointedMessageSequenceByHandle.set(
+            mailboxHandle,
+            Math.max(watermark, newestSequence)
+          )
+          const pointedIdsAfterWrite =
+            this.pointedMessageIdsByHandle.get(mailboxHandle) ?? new Set<string>()
+          for (const message of unread) {
+            pointedIdsAfterWrite.add(message.id)
+          }
+          this.pointedMessageIdsByHandle.set(mailboxHandle, pointedIdsAfterWrite)
 
-            const tabTitle = this.tabs.get(leaf.tabId)?.title
-            if (isCursorAgentOrchestrationTarget(leaf, tabTitle)) {
-              // Why: Cursor Agent treats injected PTY text as editable prompt input, so submitting must stay under user control.
-              return
-            }
+          const tabTitle = this.tabs.get(leaf.tabId)?.title
+          if (isCursorAgentOrchestrationTarget(leaf, tabTitle)) {
+            // Why: Cursor Agent treats injected PTY text as editable prompt input, so submitting must stay under user control.
+            return
+          }
 
-            // Why: agent TUIs can swallow a \r in the same PTY write; submit separately after a delay.
-            flight.enterTimer = setTimeout(() => {
-              try {
-                // Why current state, not the closure: graph resync replaces leaf
-                // objects, so the captured record can read writable=true after the
-                // pty died, and an exit retire may have superseded this flight.
-                if (this.messageDeliveryFlightsByPtyId.get(deliveryPtyId) !== flight) {
-                  return
-                }
-                const currentLeaf = this.leaves.get(this.getLeafKey(leaf.tabId, leaf.leafId))
-                if (!currentLeaf || currentLeaf.ptyId !== deliveryPtyId || !currentLeaf.writable) {
-                  return
-                }
-                transaction.handoff()
-                this.ptyController?.write(deliveryPtyId, '\r', 'driving')
-              } catch {
-                // Terminal may have closed during the delay; mail remains queued for check.
-              } finally {
-                // Why finally: every outcome — submit, refusal, throw — ends the flight,
-                // and settle re-runs any trigger parked during it so nothing strands.
-                finishInput()
-                this.settlePendingMessageDelivery(deliveryPtyId, flight)
+          // Why: agent TUIs can swallow a \r in the same PTY write; submit separately after a delay.
+          flight.enterTimer = setTimeout(() => {
+            try {
+              // Why current state, not the closure: graph resync replaces leaf
+              // objects, so the captured record can read writable=true after the
+              // pty died, and an exit retire may have superseded this flight.
+              if (this.messageDeliveryFlightsByPtyId.get(deliveryPtyId) !== flight) {
+                return
               }
-            }, PENDING_MESSAGE_SUBMIT_DELAY_MS)
-            settlesInEnterCallback = true
-            return pendingInput
-          } finally {
-            if (!settlesInEnterCallback) {
+              const currentLeaf = this.leaves.get(this.getLeafKey(leaf.tabId, leaf.leafId))
+              if (!currentLeaf || currentLeaf.ptyId !== deliveryPtyId || !currentLeaf.writable) {
+                return
+              }
+              transaction.write('\r', 'driving')
+            } catch {
+              // Terminal may have closed during the delay; mail remains queued for check.
+            } finally {
+              // Why finally: every outcome — submit, refusal, throw — ends the flight,
+              // and settle re-runs any trigger parked during it so nothing strands.
               finishInput()
               this.settlePendingMessageDelivery(deliveryPtyId, flight)
             }
+          }, PENDING_MESSAGE_SUBMIT_DELAY_MS)
+          settlesInEnterCallback = true
+          transaction.stopSignal.addEventListener('abort', stopInput, { once: true })
+          if (transaction.stopSignal.aborted) {
+            stopInput()
           }
-        },
-        { hold: { writeCount: 2, delayMs: PENDING_MESSAGE_SUBMIT_DELAY_MS } }
-      )
+          return pendingInput
+        } finally {
+          if (!settlesInEnterCallback) {
+            finishInput()
+            this.settlePendingMessageDelivery(deliveryPtyId, flight)
+          }
+        }
+      })
       if (delivery instanceof Promise) {
         void delivery.catch(() => this.settlePendingMessageDelivery(deliveryPtyId, flight))
       }

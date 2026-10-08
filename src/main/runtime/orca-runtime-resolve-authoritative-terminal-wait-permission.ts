@@ -2,6 +2,7 @@
 import { OrcaRuntimeWithAgentPromptRequestCorrelation } from './orca-runtime-agent-prompt-request-correlation'
 import {
   ptyInputTransactions,
+  ptyInputTransactionKey,
   type PtyInputBinding,
   type PtyInputTransaction,
   type PtyInputTransactionOptions
@@ -178,15 +179,19 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
   protected bindTerminalInput(ptyId: string): PtyInputBinding {
     const controller = this.ptyController
     const providerBinding = controller?.bindInput?.(ptyId)
-    const incarnation = this.ptysById.get(ptyId)?.incarnationId
+    let incarnation = this.ptysById.get(ptyId)?.incarnationId
     const generation = this.getPtyLifecycleGeneration(ptyId)
     return {
-      key:
-        providerBinding?.key ?? `${this.runtimeId}\u0000${ptyId}\u0000${incarnation ?? generation}`,
-      isCurrent: () =>
-        (providerBinding ? providerBinding.isCurrent() : controller === this.ptyController) &&
-        this.ptysById.get(ptyId)?.incarnationId === incarnation &&
-        this.getPtyLifecycleGeneration(ptyId) === generation
+      key: ptyInputTransactionKey(ptyId),
+      isCurrent: () => {
+        const currentIncarnation = this.ptysById.get(ptyId)?.incarnationId
+        incarnation ??= currentIncarnation
+        return (
+          (providerBinding ? providerBinding.isCurrent() : controller === this.ptyController) &&
+          currentIncarnation === incarnation &&
+          this.getPtyLifecycleGeneration(ptyId) === generation
+        )
+      }
     }
   }
 
@@ -195,7 +200,19 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
     operation: (transaction: PtyInputTransaction) => T | Promise<T>,
     options: PtyInputTransactionOptions = {}
   ): T | Promise<T> {
-    return ptyInputTransactions.run(this.bindTerminalInput(ptyId), operation, options)
+    return ptyInputTransactions.run(this.bindTerminalInput(ptyId), operation, {
+      ...options,
+      writer: {
+        write: (data, kind, transaction) =>
+          this.ptyController?.write(ptyId, data, kind, transaction) ?? false,
+        ...(this.ptyController?.writeWithSettlement
+          ? {
+              writeWithSettlement: (data, kind, transaction) =>
+                this.ptyController.writeWithSettlement(ptyId, data, kind, transaction)
+            }
+          : {})
+      }
+    })
   }
 
   protected writeTerminalInputChunks(

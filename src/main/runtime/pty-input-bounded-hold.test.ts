@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PtyInputTransactions } from './pty-input-transactions'
-import { resolvePtyInputHoldMs } from './pty-input-hold'
+import { PtyInputTransactions, PTY_INPUT_EXTERNAL_AWAIT_TIMEOUT_MS } from './pty-input-transactions'
 import { RuntimeTerminalWriter } from './runtime-terminal-writer'
 import { resolveAgentPromptSubmitDelayForAgent } from '../../shared/agent-prompt-injection'
 
@@ -8,11 +7,11 @@ afterEach(() => vi.useRealTimers())
 
 const binding = { key: 'bounded-input', isCurrent: () => true }
 
-describe('bounded PTY input ownership', () => {
+describe('PTY input external-await backstop', () => {
   it('expires a queued request at its own deadline without running it', async () => {
     vi.useFakeTimers()
     const queue = new PtyInputTransactions()
-    const active = queue.run(binding, () => new Promise<void>(() => {}))
+    const active = queue.run(binding, (tx) => tx.awaitExternal(() => new Promise<void>(() => {})))
     const abandoned = expect(active).rejects.toMatchObject({
       message: 'request_timeout',
       bytesHandedToTransport: false
@@ -22,88 +21,103 @@ describe('bounded PTY input ownership', () => {
     const pending = queue.run(binding, write, { deadlineAt })
     const expired = expect(pending).rejects.toThrow('request_timeout')
     const key = vi.fn(() => 'key')
-    const typing = queue.run(binding, key)
+    const typing = queue.run(binding, key, { rawInput: true })
     await vi.advanceTimersByTimeAsync(100)
     await expired
     expect(write).not.toHaveBeenCalled()
     expect(key).not.toHaveBeenCalled()
-    expect(queue.size).toBe(1)
-    await vi.advanceTimersByTimeAsync(resolvePtyInputHoldMs() - 100)
+    await vi.advanceTimersByTimeAsync(PTY_INPUT_EXTERNAL_AWAIT_TIMEOUT_MS - 100)
     await abandoned
     expect(await typing).toBe('key')
     expect(queue.size).toBe(0)
     expect(() => queue.run(binding, write, { deadlineAt })).toThrow('request_timeout')
-    expect(write).not.toHaveBeenCalled()
-    expect(queue.size).toBe(0)
   })
 
-  it('starts the hold on acquisition and allows the full scheduled delay after waiting', async () => {
+  it('still writes Enter after a wall-clock jump between text and submit', async () => {
     vi.useFakeTimers()
     const queue = new PtyInputTransactions()
-    let release: () => void = () => {}
-    const active = queue.run(
+    const bytes: string[] = []
+    const writer = new RuntimeTerminalWriter(
+      (_id, data) => {
+        bytes.push(data)
+        return true
+      },
+      () => 'linux',
+      () => null,
+      undefined,
+      () => binding,
+      queue
+    )
+    const send = writer.writeAction('pty', { text: 'text', enter: true }, 'text\r', {
+      inputKind: 'driving'
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    vi.setSystemTime(Date.now() + 120_000)
+    const typing = queue.run(binding, () => bytes.push('key'), { rawInput: true })
+    await vi.runAllTimersAsync()
+    await Promise.all([send, typing])
+    expect(bytes).toEqual(['text', '\r', 'key'])
+    expect(queue.size).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('reuses a supplied transaction instead of acquiring the same key again', async () => {
+    const queue = new PtyInputTransactions()
+    const bytes: string[] = []
+    const writer = new RuntimeTerminalWriter(
+      () => {
+        throw new Error('wrong writer')
+      },
+      () => 'linux',
+      () => null,
+      undefined,
+      () => binding,
+      queue
+    )
+    await queue.run(
       binding,
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve
-        }),
+      (transaction) => writer.writeChunks('pty', 'nested', { inputKind: 'driving', transaction }),
       {
-        hold: { writeCount: 1, delayMs: 3_000 }
+        writer: {
+          write: (data) => {
+            bytes.push(data)
+            return true
+          }
+        }
       }
     )
-    const bytes: string[] = []
-    const delayMs = 3_000
-    const next = queue.run(
-      binding,
-      async (tx) => {
-        tx.handoff()
-        bytes.push('text')
-        await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
-        tx.handoff()
-        bytes.push('submit')
-      },
-      { hold: { writeCount: 2, delayMs } }
-    )
-    const key = queue.run(binding, () => bytes.push('key'))
-    await vi.advanceTimersByTimeAsync(2_000)
-    expect(bytes).toEqual([])
-    release()
-    await active
-    const acquiredAt = Date.now()
-    const holdFromEnqueueMs = resolvePtyInputHoldMs({ writeCount: 2, delayMs })
-    await vi.advanceTimersByTimeAsync(holdFromEnqueueMs - 2_000)
-    expect(bytes).toEqual(['text'])
-    expect(queue.size).toBe(1)
-    await vi.advanceTimersByTimeAsync(acquiredAt + delayMs - Date.now())
-    await Promise.all([next, key])
-    expect(bytes).toEqual(['text', 'submit', 'key'])
+    expect(bytes).toEqual(['nested'])
     expect(queue.size).toBe(0)
   })
 
-  it('checks the absolute fence before a late byte even before the timer callback runs', async () => {
+  it('delivers Ctrl-C immediately during a long Windows ingest delay', async () => {
     vi.useFakeTimers()
     const queue = new PtyInputTransactions()
-    let release: () => void = () => {}
-    const stalled = new Promise<void>((resolve) => {
-      release = resolve
-    })
     const bytes: string[] = []
-    const active = queue.run(binding, async (tx) => {
-      tx.handoff()
-      bytes.push('text')
-      await stalled
-      tx.handoff()
-      bytes.push('submit')
+    const writer = new RuntimeTerminalWriter(
+      (_id, data) => {
+        bytes.push(data)
+        return true
+      },
+      () => 'win32',
+      () => null,
+      undefined,
+      () => binding,
+      queue
+    )
+    const text = 'x'.repeat(320_000)
+    const send = writer.writeAction('pty', { text, enter: true }, `${text}\r`, {
+      inputKind: 'driving'
     })
-    const abandoned = expect(active).rejects.toMatchObject({
-      message: 'partial_write',
-      bytesHandedToTransport: true
+    await vi.advanceTimersByTimeAsync(100)
+    expect(bytes.join('')).toBe(text)
+    const interrupt = writer.writeAction('pty', { interrupt: true }, '\x03', {
+      inputKind: 'driving'
     })
-    const key = queue.run(binding, () => bytes.push('key'))
-    vi.setSystemTime(Date.now() + resolvePtyInputHoldMs())
-    release()
-    await Promise.all([abandoned, key])
-    expect(bytes).toEqual(['text', 'key'])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await send).toMatchObject({ outcome: 'unverifiable', reason: 'partial_write' })
+    await interrupt
+    expect(bytes.join('')).toBe(`${text}\x03`)
     expect(queue.size).toBe(0)
     expect(vi.getTimerCount()).toBe(0)
   })

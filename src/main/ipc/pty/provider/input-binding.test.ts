@@ -1,15 +1,22 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { bindProviderPtyInput } from './input-binding'
 import { ptyIncarnationById, ptyOwnership } from './ownership-state'
 
-const { provider } = vi.hoisted(() => ({ provider: { hasPty: vi.fn(() => true) } }))
-vi.mock('./registry', () => ({ tryGetProviderForPty: () => provider }))
+const { provider, registry } = vi.hoisted(() => ({
+  provider: { hasPty: vi.fn(() => true) },
+  registry: { current: { hasPty: (): boolean => true } }
+}))
+vi.mock('./registry', () => ({ tryGetProviderForPty: () => registry.current }))
 const PTY = 'input-binding-test'
+beforeEach(() => {
+  registry.current = provider
+})
 
 afterEach(() => {
   ptyOwnership.delete(PTY)
   ptyIncarnationById.delete(PTY)
   provider.hasPty.mockReturnValue(true)
+  registry.current = provider
 })
 
 describe('provider input binding', () => {
@@ -20,7 +27,7 @@ describe('provider input binding', () => {
     expect(binding.isCurrent()).toBe(false)
   })
 
-  it('fences retired ownership and gives reused IDs an independent incarnation key', () => {
+  it('fences retired ownership and replacement incarnations on the same key', () => {
     ptyOwnership.set(PTY, null)
     ptyIncarnationById.set(PTY, 'old')
     const old = bindProviderPtyInput(PTY)
@@ -30,8 +37,18 @@ describe('provider input binding', () => {
     ptyOwnership.set(PTY, null)
     ptyIncarnationById.set(PTY, 'new')
     const current = bindProviderPtyInput(PTY)
-    expect(current.key).not.toBe(old.key)
+    expect(current.key).toBe(old.key)
     expect(current.isCurrent()).toBe(true)
     expect(old.isCurrent()).toBe(false)
+  })
+  it('keeps a binding across provider replacement and learns an unknown incarnation', () => {
+    const binding = bindProviderPtyInput(PTY)
+    ptyIncarnationById.set(PTY, 'same')
+    registry.current = { hasPty: () => true }
+    expect(binding.isCurrent()).toBe(true)
+    registry.current = { hasPty: () => true }
+    expect(binding.isCurrent()).toBe(true)
+    ptyIncarnationById.set(PTY, 'replacement')
+    expect(binding.isCurrent()).toBe(false)
   })
 })

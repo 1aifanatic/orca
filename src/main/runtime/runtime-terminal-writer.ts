@@ -11,38 +11,53 @@ import {
 } from '../../shared/pty-write-settlement'
 import {
   PtyInputAbandonedError,
+  PtyInputPreemptedError,
   PtyInputTransactions,
+  ptyInputTransactionKey,
   type PtyInputBinding,
-  type PtyInputTransaction
+  PtyInputTransaction,
+  type PtyInputWriter
 } from './pty-input-transactions'
-import { countPtyInputChunkWrites } from './pty-input-hold'
+
+import {
+  waitForAgentPromptDelay as waitForTerminalWriteDelay,
+  yieldBetweenTerminalInputChunks
+} from './orca-runtime-core'
 
 export type RuntimeTerminalWriteOptions = {
   inputKind: TerminalInputKind
   signal?: AbortSignal
   deadlineAt?: number
-  beforeWrite?: (ptyId: string) => void | Promise<void>
+  beforeWrite?: ((ptyId: string) => void | Promise<void>) & { revalidate?: (ptyId: string) => void }
   reserveWrite?: (ptyId: string) => void
   afterWrite?: (ptyId: string) => void | Promise<void>
   suffixFailureError?: string
   requireWriteSettlement?: true
   transaction?: PtyInputTransaction
   binding?: PtyInputBinding
+  rawInput?: boolean
+  onBytesWritten?: (bytes: number) => void
 }
 
 export class RuntimeTerminalWriter {
   constructor(
-    private readonly write: (ptyId: string, data: string, inputKind: TerminalInputKind) => boolean,
+    private readonly write: (
+      ptyId: string,
+      data: string,
+      inputKind: TerminalInputKind,
+      transaction?: PtyInputTransaction
+    ) => boolean,
     private readonly getWriteHostPlatform: (ptyId: string) => NodeJS.Platform = () =>
       process.platform,
     private readonly getAgent: (ptyId: string) => TerminalAgent | null = () => null,
     private readonly writeWithSettlement?: (
       ptyId: string,
       data: string,
-      inputKind: TerminalInputKind
+      inputKind: TerminalInputKind,
+      transaction?: PtyInputTransaction
     ) => WriteSettlement | Promise<WriteSettlement>,
     private readonly bindInput: (ptyId: string) => PtyInputBinding = (ptyId) => ({
-      key: ptyId,
+      key: ptyInputTransactionKey(ptyId),
       isCurrent: () => true
     }),
     private readonly transactions = new PtyInputTransactions()
@@ -54,46 +69,61 @@ export class RuntimeTerminalWriter {
     payload: string,
     options: RuntimeTerminalWriteOptions
   ): Promise<WriteSettlement | undefined> {
-    if (options.inputKind === 'query-reply' && isTerminalQueryReply(payload)) {
-      return this.writeActionInTransaction(ptyId, action, payload, options)
+    const execute = (transaction: PtyInputTransaction) => {
+      const initialByteCount = transaction.bytesWritten
+      const text = action.text ?? ''
+      const submitDelayMs =
+        text && (action.enter || action.interrupt)
+          ? resolveAgentPromptSubmitDelayForAgent(
+              this.getWriteHostPlatform(ptyId),
+              text,
+              this.getAgent(ptyId)
+            )
+          : 0
+      return this.writeActionInTransaction(
+        ptyId,
+        action,
+        payload,
+        { ...options, transaction },
+        submitDelayMs
+      ).finally(() => options.onBytesWritten?.(transaction.bytesWritten - initialByteCount))
     }
-    const binding = options.binding ?? this.bindInput(ptyId)
-    let submitDelayMs = 0
-    try {
-      return await this.transactions.run(
-        binding,
-        (transaction) =>
-          this.writeActionInTransaction(
-            ptyId,
-            action,
-            payload,
-            { ...options, transaction },
-            submitDelayMs
-          ),
-        {
-          signal: options.signal,
-          deadlineAt: options.deadlineAt,
-          interrupt: action.text === '\x03' && !action.enter && !action.interrupt,
-          hold: () => {
-            const text = action.text ?? ''
-            const hasSuffix = action.enter || action.interrupt
-            submitDelayMs =
-              text && hasSuffix
-                ? resolveAgentPromptSubmitDelayForAgent(
-                    this.getWriteHostPlatform(ptyId),
-                    text,
-                    this.getAgent(ptyId)
-                  )
-                : 0
-            return {
-              writeCount: text ? countPtyInputChunkWrites(text) + (hasSuffix ? 1 : 0) : 1,
-              delayMs: submitDelayMs
-            }
+    const settledWrite = this.writeWithSettlement
+    const writer: PtyInputWriter = {
+      write: (data, kind, transaction) => this.write(ptyId, data, kind, transaction),
+      ...(settledWrite
+        ? {
+            writeWithSettlement: (data, kind, transaction) =>
+              settledWrite(ptyId, data, kind, transaction)
           }
-        }
+        : {})
+    }
+    if (options.transaction) {
+      return execute(options.transaction)
+    }
+    if (options.inputKind === 'query-reply' && isTerminalQueryReply(payload)) {
+      return execute(
+        new PtyInputTransaction(
+          { key: ptyInputTransactionKey(ptyId), isCurrent: () => true },
+          undefined,
+          undefined,
+          writer
+        )
       )
+    }
+    try {
+      return await this.transactions.run(options.binding ?? this.bindInput(ptyId), execute, {
+        signal: options.signal,
+        deadlineAt: options.deadlineAt,
+        interrupt: payload === '\x03',
+        rawInput: options.rawInput || payload === '\x03',
+        writer
+      })
     } catch (error) {
-      if (error instanceof PtyInputAbandonedError && error.bytesHandedToTransport) {
+      if (
+        (error instanceof PtyInputAbandonedError || error instanceof PtyInputPreemptedError) &&
+        error.bytesHandedToTransport
+      ) {
         return writeUnverifiable('partial_write', true)
       }
       throw error
@@ -111,9 +141,9 @@ export class RuntimeTerminalWriter {
     const guardedOptions = {
       ...options,
       signal: undefined,
-      afterWrite: async (id: string): Promise<void> => {
+      afterWrite: (id: string): void | Promise<void> => {
         acknowledgedPrefix = true
-        await options.afterWrite?.(id)
+        return options.afterWrite?.(id)
       }
     }
     try {
@@ -128,7 +158,7 @@ export class RuntimeTerminalWriter {
         ? writeUnverifiable('partial_write', true)
         : settlement
     } catch (error) {
-      if (acknowledgedPrefix) {
+      if (acknowledgedPrefix || options.transaction?.bytesHandedToTransport) {
         return writeUnverifiable('partial_write', true)
       }
       throw error
@@ -159,11 +189,11 @@ export class RuntimeTerminalWriter {
         // execution host is still ingesting, and a flat 500 ms cannot cover 16 MB.
         await waitForTerminalWriteDelay(
           submitDelayMs,
-          options.transaction?.abandonmentSignal ?? options.signal
+          options.transaction?.stopSignal ?? options.signal
         )
       }
       try {
-        await options.beforeWrite?.(ptyId)
+        await this.awaitCallback(options, () => options.beforeWrite?.(ptyId))
       } catch (error) {
         if (options.suffixFailureError) {
           throw new Error(options.suffixFailureError)
@@ -176,20 +206,20 @@ export class RuntimeTerminalWriter {
       if (settlement && settlement.outcome !== 'accepted') {
         return settlement
       }
-      await options.afterWrite?.(ptyId)
+      await this.awaitCallback(options, () => options.afterWrite?.(ptyId))
       return settlement
     }
     if (text) {
       return options.requireWriteSettlement ? WRITE_ACCEPTED : undefined
     }
-    await options.beforeWrite?.(ptyId)
+    await this.awaitCallback(options, () => options.beforeWrite?.(ptyId))
     options.transaction?.beforeWrite()
     options.reserveWrite?.(ptyId)
     const settlement = await this.writeInput(ptyId, payload, options)
     if (settlement && settlement.outcome !== 'accepted') {
       return settlement
     }
-    await options.afterWrite?.(ptyId)
+    await this.awaitCallback(options, () => options.afterWrite?.(ptyId))
     return settlement
   }
 
@@ -209,14 +239,14 @@ export class RuntimeTerminalWriter {
     const chunks = iterateTerminalInputChunks(text)
     let chunk = chunks.next()
     while (!chunk.done) {
-      await options.beforeWrite?.(ptyId)
+      await this.awaitCallback(options, () => options.beforeWrite?.(ptyId))
       options.transaction?.beforeWrite()
       options.reserveWrite?.(ptyId)
       const settlement = await this.writeInput(ptyId, chunk.value, options)
       if (settlement && settlement.outcome !== 'accepted') {
         return settlement
       }
-      await options.afterWrite?.(ptyId)
+      await this.awaitCallback(options, () => options.afterWrite?.(ptyId))
       chunk = chunks.next()
       if (!chunk.done) {
         await yieldBetweenTerminalInputChunks()
@@ -230,10 +260,11 @@ export class RuntimeTerminalWriter {
     data: string,
     options: RuntimeTerminalWriteOptions
   ): Promise<WriteSettlement | undefined> {
-    options.transaction?.beforeWrite()
     if (!options.requireWriteSettlement) {
-      options.transaction?.handoff()
-      if (!this.write(ptyId, data, options.inputKind)) {
+      const accepted = options.transaction
+        ? options.transaction.write(data, options.inputKind)
+        : this.write(ptyId, data, options.inputKind)
+      if (!accepted) {
         throw new Error(options.suffixFailureError ?? 'terminal_not_writable')
       }
       return undefined
@@ -241,41 +272,22 @@ export class RuntimeTerminalWriter {
     if (!this.writeWithSettlement) {
       return writeRefused('provider_cannot_settle')
     }
-    options.transaction?.handoff()
     try {
-      const settlement = await this.writeWithSettlement(ptyId, data, options.inputKind)
-      options.transaction?.assertWithinHold()
-      return settlement
-    } catch {
+      return await (options.transaction
+        ? options.transaction.writeWithSettlement(data, options.inputKind)
+        : this.writeWithSettlement(ptyId, data, options.inputKind))
+    } catch (error) {
+      if (error instanceof PtyInputPreemptedError || error instanceof PtyInputAbandonedError) {
+        throw error
+      }
       return writeUnverifiable('provider_threw_after_handoff', true)
     }
   }
-}
 
-function yieldBetweenTerminalInputChunks(): Promise<void> {
-  return new Promise<void>((resolve) => setImmediate(resolve))
-}
-
-async function waitForTerminalWriteDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
-  if (!signal) {
-    await new Promise((resolve) => setTimeout(resolve, delayMs))
-    return
+  private awaitCallback(
+    options: RuntimeTerminalWriteOptions,
+    callback: () => void | Promise<void>
+  ): void | Promise<void> {
+    return options.transaction ? options.transaction.awaitExternal(callback) : callback()
   }
-  if (signal.aborted) {
-    throw new Error('request_aborted')
-  }
-  await new Promise<void>((resolve, reject) => {
-    const onAbort = (): void => {
-      clearTimeout(timer)
-      reject(new Error('request_aborted'))
-    }
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort)
-      resolve()
-    }, delayMs)
-    signal.addEventListener('abort', onAbort, { once: true })
-    if (signal.aborted) {
-      onAbort()
-    }
-  })
 }

@@ -3,6 +3,7 @@ type Entry = {
   cancel: () => void
   preempt?: () => void
   priority: boolean
+  rawInput: boolean
   settled: boolean
 }
 
@@ -12,6 +13,7 @@ type QueueOptions = {
   signal?: AbortSignal
   deadlineAt?: number
   priority?: boolean
+  rawInput?: boolean
   preempt?: () => void
 }
 
@@ -41,6 +43,7 @@ export class KeyedOperationQueue {
       cancel: () => {},
       preempt: options.preempt,
       priority: options.priority === true,
+      rawInput: options.rawInput === true,
       settled: false
     }
     const created: Lane = { active: entry, pending: [], draining: false }
@@ -91,6 +94,7 @@ export class KeyedOperationQueue {
       }
       const entry: Entry = {
         priority: options.priority === true,
+        rawInput: options.rawInput === true,
         settled: false,
         preempt: options.preempt,
         start: () => {
@@ -108,7 +112,12 @@ export class KeyedOperationQueue {
         },
         cancel: () => cancel('request_aborted')
       }
-      const index = options.priority ? lane.pending.findIndex((pending) => !pending.priority) : -1
+      const lastRawInput = lane.pending.findLastIndex((pending) => pending.rawInput)
+      const index = options.priority
+        ? lane.pending.findIndex(
+            (pending, position) => position > lastRawInput && !pending.priority
+          )
+        : -1
       if (index === -1) {
         lane.pending.push(entry)
       } else {

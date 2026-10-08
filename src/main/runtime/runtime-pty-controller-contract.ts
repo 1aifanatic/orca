@@ -14,7 +14,7 @@ import type { PtyProviderBufferSnapshot, PtyProcessInfo, PtySpawnResult } from '
 import type { PtyProcessInspection } from '../providers/pty-process-inspection'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
-import type { PtyInputBinding } from './pty-input-transactions'
+import type { PtyInputBinding, PtyInputTransaction } from './pty-input-transactions'
 
 export type PtyInventoryRefreshOptions = {
   includeForegroundProcessEvidence?: boolean
@@ -103,12 +103,18 @@ export type RuntimePtyController = {
     stablePaneOwner?: { handle: string; tabId: string; leafId: string }
     agentSessionEnsure?: AgentSessionClaimedSpawnResult
   }>
-  write(ptyId: string, data: string, inputKind: TerminalInputKind): boolean
+  write(
+    ptyId: string,
+    data: string,
+    inputKind: TerminalInputKind,
+    transaction?: PtyInputTransaction
+  ): boolean | Promise<boolean>
   /** Three-valued settlement; local providers settle synchronously. */
   writeWithSettlement?(
     ptyId: string,
     data: string,
-    inputKind: TerminalInputKind
+    inputKind: TerminalInputKind,
+    transaction?: PtyInputTransaction
   ): WriteSettlement | Promise<WriteSettlement>
   /** Attach-only adoption of a live local daemon session so its output streams
    *  to main without a renderer pane; never creates, resizes, or focuses.

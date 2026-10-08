@@ -69,8 +69,7 @@ export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRunt
       readRecentOutput: (ptyId) => this.recentPtyOutputById.get(ptyId)?.read(),
       write: (ptyId, data, inputKind) => {
         const result = this.runTerminalInputTransaction(ptyId, (transaction) => {
-          transaction.handoff()
-          return this.ptyController?.write(ptyId, data, inputKind)
+          return transaction.write(data, inputKind)
         })
         if (result instanceof Promise) {
           void result.catch((error) =>

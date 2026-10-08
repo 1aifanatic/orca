@@ -6,13 +6,21 @@ export function writeLocalPtyStartupInput(id: string, incarnation: string, data:
   try {
     const input = ptyInputTransactions.run(
       {
-        key: ptyInputTransactionKey(id, incarnation),
+        key: ptyInputTransactionKey(id),
         isCurrent: () =>
           !!proc && ptyProcesses.get(id) === proc && ptyIncarnations.get(id) === incarnation
       },
-      (transaction) => {
-        transaction.handoff()
-        proc?.write(data)
+      (transaction) => transaction.write(data, 'launch'),
+      {
+        writer: {
+          write: (bytes) => {
+            if (!proc) {
+              return false
+            }
+            proc.write(bytes)
+            return true
+          }
+        }
       }
     )
     if (input instanceof Promise) {

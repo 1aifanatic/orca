@@ -1,15 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
 import { makeStore } from './runtime-rpc-worktree-store-fixtures'
-import { ptyInputTransactions } from './pty-input-transactions'
-import { countPtyInputChunkWrites, resolvePtyInputHoldMs } from './pty-input-hold'
-import {
-  resolveAgentPromptSubmitDelayForAgent,
-  buildAgentPromptPasteBytes
-} from '../../shared/agent-prompt-injection'
-import { resolveAgentPromptInputSchedule } from './agent-prompt-input-schedule'
+import { ptyInputTransactions, PTY_INPUT_EXTERNAL_AWAIT_TIMEOUT_MS } from './pty-input-transactions'
 import { bindProviderPtyInput } from '../ipc/pty/provider/input-binding'
 import { ptyIncarnationById, ptyOwnership } from '../ipc/pty/provider/ownership-state'
+import { createLaunchedAgentWriteGuard } from './launched-agent-write-guard'
 import { createPtyWriteInput } from '../ipc/pty/ipc/write-input'
 import { WRITE_ACCEPTED, type WriteSettlement } from '../../shared/pty-write-settlement'
 
@@ -102,15 +97,11 @@ async function harness(agent: 'aider' | 'codex' = 'aider') {
 
 describe('runtime and desktop share PTY input ownership', () => {
   it.each(['accepted', 'thrown'] as const)(
-    'releases typing at the hold deadline despite a stalled provider, including a late %s settlement',
+    'releases typing at the external-await backstop despite a stalled provider, including a late %s settlement',
     async (late) => {
       const h = await harness()
       const text = 'A'.repeat(40_000)
-      const delayMs = resolveAgentPromptSubmitDelayForAgent(process.platform, text, 'aider')
-      const holdMs = resolvePtyInputHoldMs({
-        writeCount: countPtyInputChunkWrites(text) + 1,
-        delayMs
-      })
+      const holdMs = PTY_INPUT_EXTERNAL_AWAIT_TIMEOUT_MS
       let settle: (value: WriteSettlement) => void = () => {}
       let fail: (error: Error) => void = () => {}
       const stalled = new Promise<WriteSettlement>((resolve, reject) => {
@@ -172,7 +163,6 @@ describe('runtime and desktop share PTY input ownership', () => {
       const stalled = new Promise<void>((resolve) => {
         release = resolve
       })
-      const delayMs = resolveAgentPromptSubmitDelayForAgent(process.platform, 'A', 'aider')
       const startedAt = Date.now()
       const send = h.runtime.sendTerminal(
         h.handle,
@@ -196,7 +186,7 @@ describe('runtime and desktop share PTY input ownership', () => {
       await vi.advanceTimersByTimeAsync(0)
       const key = h.desktop.writePtyInput({ id: PTY, data: 'key', inputKind: 'driving' })
       await vi.advanceTimersByTimeAsync(
-        startedAt + resolvePtyInputHoldMs({ writeCount: 2, delayMs }) - Date.now()
+        startedAt + PTY_INPUT_EXTERNAL_AWAIT_TIMEOUT_MS - Date.now()
       )
       await failure
       expect(await key).toBe(true)
@@ -229,21 +219,17 @@ describe('runtime and desktop share PTY input ownership', () => {
       beforeWrite,
       onInputAccepted
     } as const
-    const schedule = resolveAgentPromptInputSchedule({
-      platform: process.platform,
-      agent: 'codex',
-      pasteAgent: 'codex',
-      pastePayload: buildAgentPromptPasteBytes('prompt'),
-      options
-    })
     const startedAt = Date.now()
     const prompt = h.runtime.sendTerminalAgentPrompt(h.handle, 'prompt', options)
     await vi.advanceTimersByTimeAsync(100)
     const paste = h.bytes[0]
     const key = h.desktop.writePtyInput({ id: PTY, data: 'key', inputKind: 'driving' })
-    await vi.advanceTimersByTimeAsync(startedAt + resolvePtyInputHoldMs(schedule.hold) - Date.now())
+    await vi.advanceTimersByTimeAsync(
+      startedAt + PTY_INPUT_EXTERNAL_AWAIT_TIMEOUT_MS + 100 - Date.now()
+    )
     expect(await prompt).toMatchObject({
       accepted: false,
+      bytesWritten: Buffer.byteLength(paste),
       writeSettlement: { reason: 'partial_write' }
     })
     expect(await key).toBe(true)
@@ -269,17 +255,18 @@ describe('runtime and desktop share PTY input ownership', () => {
     expect(ptyInputTransactions.size).toBe(0)
   })
 
-  it('does not make a replacement incarnation wait for obsolete input', async () => {
+  it('fences obsolete input before writing to a replacement incarnation', async () => {
     const h = await harness()
     const a = h.send('A')
     await vi.advanceTimersByTimeAsync(0)
     const obsolete = h.desktop.writePtyInput({ id: PTY, data: 'old', inputKind: 'driving' })
     ptyIncarnationById.set(PTY, 'inc-2')
-    expect(h.desktop.writePtyInput({ id: PTY, data: 'new', inputKind: 'driving' })).toBe(true)
-    expect(h.bytes).toEqual(['A', 'new'])
+    const replacement = h.desktop.writePtyInput({ id: PTY, data: 'new', inputKind: 'driving' })
+    expect(h.bytes).toEqual(['A'])
     await vi.runAllTimersAsync()
     expect(await a).toMatchObject({ accepted: false, writeSettlement: { reason: 'partial_write' } })
     expect(await obsolete).toBe(false)
+    expect(await replacement).toBe(true)
     expect(h.bytes).toEqual(['A', 'new'])
     expect(ptyInputTransactions.size).toBe(0)
   })
@@ -370,11 +357,170 @@ describe('runtime and desktop share PTY input ownership', () => {
     await Promise.all([prompt, queued, observing])
   })
 
+  it('delivers Ctrl-C during the prompt render gate without advancing its timer', async () => {
+    const h = await harness('codex')
+    const prompt = h.runtime.sendTerminalAgentPrompt(h.handle, 'prompt', {
+      inputKind: 'driving',
+      acceptQueued: true,
+      requestId: 'render-preempt'
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.bytes).toHaveLength(1)
+    const interrupt = h.desktop.writePtyInput({ id: PTY, data: '\x03', inputKind: 'driving' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await prompt).toMatchObject({
+      accepted: false,
+      bytesWritten: Buffer.byteLength(h.bytes[0]),
+      writeSettlement: { reason: 'partial_write' }
+    })
+    expect(await interrupt).toBe(true)
+    expect(h.bytes.slice(1)).toEqual(['\x03'])
+    expect(ptyInputTransactions.size).toBe(0)
+  })
+
+  it.each(['desktop', 'paired', 'preview'] as const)(
+    'keeps %s typed ls and Enter before Ctrl-C while skipping later programmatic sends',
+    async (source) => {
+      const h = await harness()
+      const active = h.send('A')
+      await vi.advanceTimersByTimeAsync(0)
+      const earlierSend = h.send('earlier')
+      await vi.advanceTimersByTimeAsync(0)
+      const writeRaw = (data: string) =>
+        source === 'desktop'
+          ? h.desktop.writePtyInput({ id: PTY, data, inputKind: 'driving' })
+          : source === 'preview'
+            ? h.runtime.writeTerminalPreviewInput(PTY, data)
+            : h.runtime.sendTerminal(
+                h.handle,
+                { text: data },
+                { inputKind: 'driving', rawInput: true }
+              )
+      const typed = writeRaw('ls\r')
+      await vi.advanceTimersByTimeAsync(0)
+      const laterSend = h.send('later')
+      await vi.advanceTimersByTimeAsync(0)
+      const interrupt = writeRaw('\x03')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(await active).toMatchObject({ accepted: false, bytesWritten: 1 })
+      expect(h.bytes).toEqual(['A', 'earlier'])
+      await vi.runAllTimersAsync()
+      await Promise.all([earlierSend, typed, laterSend, interrupt])
+      expect(h.bytes).toEqual(['A', 'earlier', '\r', 'ls\r', '\x03', 'later', '\r'])
+    }
+  )
+
+  it('returns false for verified input refused in the queue before any handoff', async () => {
+    const h = await harness()
+    const active = h.send('A')
+    await vi.advanceTimersByTimeAsync(0)
+    const queued = h.desktop.writePtyInputAccepted({
+      id: PTY,
+      data: 'answer',
+      inputKind: 'driving',
+      requireWriteSettlement: true
+    })
+    ptyIncarnationById.set(PTY, 'inc-2')
+    await vi.runAllTimersAsync()
+    expect(await active).toMatchObject({ accepted: false })
+    expect(await queued).toBe(false)
+    expect(h.bytes).toEqual(['A'])
+  })
+
+  it('waits for a healthy single-write acknowledgment beyond the old hold', async () => {
+    const h = await harness()
+    provider.writeWithSettlement.mockImplementationOnce((_id, data) => {
+      h.bytes.push(data)
+      return new Promise<WriteSettlement>((resolve) =>
+        setTimeout(() => resolve(WRITE_ACCEPTED), 4_000)
+      )
+    })
+    const answer = h.desktop.writePtyInputAccepted({
+      id: PTY,
+      data: 'answer',
+      inputKind: 'driving',
+      requireWriteSettlement: true
+    })
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(h.bytes).toEqual(['answer'])
+    const key = h.desktop.writePtyInput({ id: PTY, data: 'key', inputKind: 'driving' })
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(await answer).toBe(true)
+    expect(await key).toBe(true)
+    expect(h.bytes).toEqual(['answer', 'key'])
+  })
+
+  it('keeps typing synchronous while the first launch foreground proof is pending', async () => {
+    const h = await harness('codex')
+    let prove: () => void = () => {}
+    vi.mocked(h.runtime.readLaunchedAgentForeground).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          prove = () => resolve('agent')
+        })
+    )
+    const guard = createLaunchedAgentWriteGuard(h.runtime, 'codex')
+    const prompt = h.runtime.sendTerminalAgentPrompt(h.handle, 'prompt', {
+      inputKind: 'launch',
+      composerReady: true,
+      beforeWrite: guard.beforeWrite,
+      acceptQueued: true,
+      requestId: 'slow-launch',
+      observationTimeoutMs: 0
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ptyInputTransactions.size).toBe(0)
+    expect(h.desktop.writePtyInput({ id: PTY, data: 'key', inputKind: 'driving' })).toBe(true)
+    prove()
+    await vi.runAllTimersAsync()
+    expect(await prompt).toMatchObject({ accepted: true })
+    expect(h.bytes[0]).toBe('key')
+    expect(h.runtime.readLaunchedAgentForeground).toHaveBeenCalledTimes(1)
+    guard.dispose()
+  })
+
+  it('keeps the submitted prompt accepted when the optional resubmit guard stalls', async () => {
+    const h = await harness('codex')
+    const beforeWrite = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockImplementation(() => new Promise<void>(() => {}))
+    const onInputAccepted = vi.fn()
+    const prompt = h.runtime.sendTerminalAgentPrompt(h.handle, 'prompt', {
+      inputKind: 'driving',
+      composerReady: true,
+      beforeWrite,
+      acceptQueued: true,
+      requestId: 'submitted-before-stall',
+      observationTimeoutMs: 0,
+      onInputAccepted
+    })
+    await vi.advanceTimersByTimeAsync(1_500)
+    expect(h.bytes.slice(1)).toEqual(['\r'])
+    const key = h.desktop.writePtyInput({ id: PTY, data: 'key', inputKind: 'driving' })
+    await vi.advanceTimersByTimeAsync(PTY_INPUT_EXTERNAL_AWAIT_TIMEOUT_MS)
+    const bytesWritten = Buffer.byteLength(h.bytes[0]) + 1
+    expect(await prompt).toMatchObject({
+      accepted: true,
+      bytesWritten,
+      prompt: { stages: ['input_accepted'] }
+    })
+    expect(await key).toBe(true)
+    expect(onInputAccepted).toHaveBeenCalledWith(
+      expect.objectContaining({ accepted: true, bytesWritten })
+    )
+    expect(h.bytes.slice(1)).toEqual(['\r', 'key'])
+  })
+
   it('holds prompt resubmit bytes and stops them for an explicit interrupt', async () => {
     const h = await harness('codex')
     const prompt = h.runtime.sendTerminalAgentPrompt(h.handle, 'prompt', {
       inputKind: 'driving',
-      composerReady: true
+      composerReady: true,
+      acceptQueued: true,
+      requestId: 'submitted-before-interrupt',
+      observationTimeoutMs: 0
     })
     await vi.advanceTimersByTimeAsync(200)
     expect(h.bytes).toHaveLength(2)
@@ -383,8 +529,9 @@ describe('runtime and desktop share PTY input ownership', () => {
     const interrupt = h.desktop.writePtyInput({ id: PTY, data: '\x03', inputKind: 'driving' })
     await vi.runAllTimersAsync()
     expect(await prompt).toMatchObject({
-      accepted: false,
-      writeSettlement: { reason: 'partial_write' }
+      accepted: true,
+      bytesWritten: Buffer.byteLength(h.bytes[0]) + 1,
+      prompt: { stages: ['input_accepted'] }
     })
     await Promise.all([b, interrupt])
     expect(h.bytes.slice(1)).toEqual(['\r', '\x03', 'B', '\r'])

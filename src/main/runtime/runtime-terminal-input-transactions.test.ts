@@ -80,6 +80,56 @@ describe('terminal send input transactions', () => {
     expect(h.transactions.size).toBe(0)
   })
 
+  it('finishes healthy SSH-sized chunk acknowledgments beyond the old whole-send deadline', async () => {
+    vi.useFakeTimers()
+    const bytes: string[] = []
+    const transactions = new PtyInputTransactions()
+    const writer = new RuntimeTerminalWriter(
+      () => true,
+      () => 'linux',
+      () => null,
+      (_id, data) => {
+        bytes.push(data)
+        return new Promise((resolve) => setTimeout(() => resolve(WRITE_ACCEPTED), 200))
+      },
+      () => ({ key: 'ssh-latency', isCurrent: () => true }),
+      transactions
+    )
+    const text = 'x'.repeat(256 * 1024)
+    const send = writer.writeAction('pty', { text, enter: true }, `${text}\r`, {
+      inputKind: 'driving',
+      requireWriteSettlement: true
+    })
+    await vi.runAllTimersAsync()
+    expect(await send).toEqual(WRITE_ACCEPTED)
+    expect(bytes.join('')).toBe(`${text}\r`)
+    expect(transactions.size).toBe(0)
+  })
+
+  it('counts query-reply bytes only when the bypass actually hands them off', async () => {
+    const write = vi.fn().mockReturnValueOnce(false).mockReturnValue(true)
+    const count = vi.fn()
+    const writer = new RuntimeTerminalWriter(
+      write,
+      () => 'linux',
+      () => null,
+      undefined,
+      () => {
+        throw new Error('protocol reply must bypass ownership')
+      }
+    )
+    const text = '\x1b[3;4R'
+    await expect(
+      writer.writeChunks('pty', text, {
+        inputKind: 'query-reply',
+        onBytesWritten: count
+      })
+    ).rejects.toThrow('terminal_not_writable')
+    expect(count).toHaveBeenLastCalledWith(0)
+    await writer.writeChunks('pty', text, { inputKind: 'query-reply', onBytesWritten: count })
+    expect(count).toHaveBeenLastCalledWith(Buffer.byteLength(text))
+  })
+
   it('does not preempt for a send-owned interrupt suffix', async () => {
     vi.useFakeTimers()
     const h = harness()
