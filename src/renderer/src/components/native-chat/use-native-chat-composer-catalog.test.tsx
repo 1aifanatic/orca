@@ -22,6 +22,13 @@ describe('composer catalog authority', () => {
     expect(oldHost.result.current.agentCommands).toEqual(structuredSlashCommands())
     expect(oldHost.result.current.sessionSkills).toBeUndefined()
   })
+  it.each(['omp', 'openclaude'] as const)(
+    "keeps %s's /context in the desktop terminal-chat menu, which answers it",
+    (agent) => {
+      const { result } = renderHook(() => useNativeChatComposerCatalog(agent))
+      expect(result.current.agentCommands.map(({ name }) => name)).toContain('context')
+    }
+  )
   it('offers supported conversation commands when the host has no reported catalog', () => {
     const { result, rerender } = renderHook(
       ({ conversationCommands }) =>
