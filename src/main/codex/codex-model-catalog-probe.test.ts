@@ -46,7 +46,7 @@ describe('codex model catalog probe', () => {
           })
         }
       })
-      const success = await probe('/homes/account-a')
+      const success = await probe({ variable: 'CODEX_HOME', path: '/homes/account-a' })
       expect(success.origin).toBe('probe')
       expect(success.models.map((model) => model.id)).toEqual(['gpt-live'])
       // The session launch resolves the exact same invocation for the same deps.
@@ -96,7 +96,7 @@ describe('codex model catalog probe', () => {
           body
         )
     })
-    const success = await probe('/homes/a')
+    const success = await probe({ variable: 'CODEX_HOME', path: '/homes/a' })
     expect(success.models.map((model) => ({ id: model.id, isDefault: model.isDefault }))).toEqual([
       { id: 'gpt-live', isDefault: true }
     ])
@@ -109,7 +109,9 @@ describe('codex model catalog probe', () => {
       runSession: async (_invocation, body) =>
         body({ request: async () => ({ data: [], nextCursor: null }), notify: () => {} })
     })
-    await expect(probe('/homes/a')).rejects.toThrow(/listed no models/)
+    await expect(probe({ variable: 'CODEX_HOME', path: '/homes/a' })).rejects.toThrow(
+      /listed no models/
+    )
   })
 
   it.each(['npx codex', 'codex --profile work', '/missing/codex', './codex'])(
@@ -126,7 +128,9 @@ describe('codex model catalog probe', () => {
           ),
         runSession
       })
-      await expect(probe('/homes/a')).rejects.toMatchObject({ reason: 'agentCommandNotRunnable' })
+      await expect(probe({ variable: 'CODEX_HOME', path: '/homes/a' })).rejects.toMatchObject({
+        reason: 'agentCommandNotRunnable'
+      })
       expect(runSession).not.toHaveBeenCalled()
     }
   )

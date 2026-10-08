@@ -11,6 +11,7 @@ import type {
 import { isAcpStructuredOptionKey } from './acp-structured-agent-definitions'
 import { AcpRpcError } from './acp-errors'
 import type { AcpStructuredConnection } from './acp-structured-connection'
+import type { AcpDialect } from './acp-dialects/acp-dialect'
 import {
   SessionConfigSelectGroupSchema,
   SessionConfigSelectOptionSchema,
@@ -48,6 +49,8 @@ function isSelect(option: SessionConfigOption): option is SelectOption {
 }
 
 export class AcpStructuredOptions {
+  constructor(private readonly dialect: Pick<AcpDialect, 'modelEfforts'> = {}) {}
+
   private configOptions: SessionConfigOption[] = []
   private models: SessionModelState | null = null
   private commands: AgentSessionSlashCommand[] | undefined
@@ -102,10 +105,15 @@ export class AcpStructuredOptions {
     return null
   }
 
+  /**
+   * The agent's models and what this session runs. A model's effort menu and default are catalog
+   * facts: the dialect's per-model menu when the agent advertises one, else the session's effort
+   * option for the model it runs now only. The session's current values are never a default.
+   */
   read(): Pick<AgentSessionOptionsResult, 'models' | 'current'> {
     const modelOption = this.select('model')
     const effortOption = this.select('thought_level')
-    const efforts: AgentSessionOptionChoice[] = effortOption
+    const sessionEfforts: AgentSessionOptionChoice[] = effortOption
       ? selectChoices(effortOption).map((choice) => ({
           value: choice.value,
           label: choice.name,
@@ -124,12 +132,15 @@ export class AcpStructuredOptions {
           label: model.name,
           ...(model.description ? { description: model.description } : {})
         })) ?? [])
-    const models: AgentSessionModelOption[] = listed.map((model) => ({
-      ...model,
-      isDefault: model.id === currentModel,
-      efforts,
-      ...(effortOption ? { defaultEffort: effortOption.currentValue } : {})
-    }))
+    const models: AgentSessionModelOption[] = listed.map((model) => {
+      const info = this.models?.availableModels.find((entry) => entry.modelId === model.id)
+      const advertised = info ? this.dialect.modelEfforts?.(info) : undefined
+      return {
+        ...model,
+        isDefault: false,
+        ...(advertised ?? { efforts: model.id === currentModel ? sessionEfforts : [] })
+      }
+    })
     const confirmed = [...(currentModel ? ['model'] : []), ...(effortOption ? ['effort'] : [])]
     return {
       models,

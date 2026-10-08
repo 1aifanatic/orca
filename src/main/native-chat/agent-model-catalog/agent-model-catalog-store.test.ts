@@ -103,7 +103,9 @@ describe('agent model catalog store', () => {
     let failProbe!: (error: Error) => void
     const hungProbe: AgentModelCatalogProbe = () =>
       new Promise<AgentModelCatalogSuccess>((_resolve, reject) => (failProbe = reject))
-    const probe = store.refresh('fp-1', 'codex', hungProbe, () => hungProbe('/homes/a'))
+    const probe = store.refresh('fp-1', 'codex', hungProbe, () =>
+      hungProbe({ variable: 'CODEX_HOME', path: '/homes/a' })
+    )
     expect(store.shouldRefresh('fp-1')).toBe(false)
 
     const live = await store.refresh('fp-1', 'codex', liveLister(store), async () =>
@@ -216,7 +218,9 @@ describe('agent model catalog store', () => {
     let settleProbe!: (success: AgentModelCatalogSuccess) => void
     const probe: AgentModelCatalogProbe = () =>
       new Promise<AgentModelCatalogSuccess>((resolve) => (settleProbe = resolve))
-    const pending = store.refresh('fp-1', 'codex', probe, () => probe('/homes/a'))
+    const pending = store.refresh('fp-1', 'codex', probe, () =>
+      probe({ variable: 'CODEX_HOME', path: '/homes/a' })
+    )
     store.recordSuccess('fp-1', 'codex', success('gpt-live'))
     settleProbe({ ...success('gpt-probe'), origin: 'probe' })
     expect((await pending)!.models[0]!.id).toBe('gpt-probe')

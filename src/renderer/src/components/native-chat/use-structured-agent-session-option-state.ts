@@ -4,7 +4,7 @@ import type { AgentSessionOptionsResult } from '../../../../shared/agent-session
 import type { AgentSessionRewindSupport } from '../../../../shared/agent-session-rewind'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { AgentSessionOptionCatalog } from '../../../../shared/agent-session-option-catalog'
-import { structuredAgentSessionSeedCatalog } from './structured-agent-session-seed-catalog'
+import { structuredAgentSessionSeedCatalog } from '../../../../shared/structured-agent-session-seed-catalog'
 import {
   applyStructuredAgentSessionOptions,
   createStructuredAgentSessionOptionState,

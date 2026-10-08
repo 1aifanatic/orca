@@ -5,13 +5,13 @@ import {
   type AgentModelCatalogService,
   type AgentModelCatalogServiceDeps
 } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
-import { createCodexModelCatalogProbe } from '../codex/codex-model-catalog-probe'
-import { createClaudeModelCatalogProbe } from '../claude/claude-model-catalog-probe'
 import { workspaceMayOverrideDefaultModel } from '../native-chat/agent-model-catalog/agent-project-model-override'
-import type { ClaudeStructuredLaunchResolverDeps } from '../claude/claude-structured-launch-resolution'
-import type { CodexStructuredLaunchResolverDeps } from '../codex/codex-structured-launch-resolution'
+import type { AgentModelCatalogProbe } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
-import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
+import type {
+  StructuredAgentModelCatalogContext,
+  StructuredAgentRuntimeRegistration
+} from './structured-agent-runtime-registrations'
 import type { StructuredAgentRegistry } from '../native-chat/agent-session-wire/structured-agent-registry'
 import { agentDrivesSession } from '../native-chat/agent-session-wire/structured-agent-session-provider-support'
 
@@ -34,34 +34,33 @@ export async function attachAgentModelCatalogPersistenceOnce(
   }
 }
 
+/** One probe per registration that has one: the registration list is the only agent roster. */
+export function registeredModelCatalogProbes(
+  registrations: readonly Pick<StructuredAgentRuntimeRegistration, 'definition' | 'modelCatalog'>[],
+  context: StructuredAgentModelCatalogContext
+): Record<string, AgentModelCatalogProbe> {
+  const probes: Record<string, AgentModelCatalogProbe> = {}
+  for (const registration of registrations) {
+    const discovery = registration.modelCatalog(context)
+    if (discovery.kind === 'probe') {
+      probes[registration.definition.agent] = discovery.probe
+    }
+  }
+  return probes
+}
+
 /**
  * The host-deps slice for the catalog surface: hydrates the store from disk
  * once, then builds the service — or nothing, when the runtime cannot name
  * the currently selected account, in which case every catalog read answers
  * `unknown` rather than guessing a key.
- *
- * The probes list through the SAME invocation resolvers session launches use;
- * a probe under a different env or binary could list models the user's
- * sessions cannot see, under their key.
  */
 export async function modelCatalogHostDeps(input: {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
   agents: Pick<StructuredAgentRegistry, 'definition'>
-  deps: Pick<
-    StructuredAgentSessionRuntimeDeps,
-    | 'stateDirectory'
-    | 'resolveAgentAccountHome'
-    | 'resolveCodexCommand'
-    | 'resolveClaudeCommand'
-    | 'resolveClaudeLaunchEnv'
-    | 'resolveClaudeAuthPolicy'
-  >
-  envResolvers: {
-    resolveCodexEnvironment: NonNullable<CodexStructuredLaunchResolverDeps['resolveEnvironment']>
-    resolveClaudeInheritedEnv: NonNullable<
-      ClaudeStructuredLaunchResolverDeps['resolveInheritedEnv']
-    >
-  }
+  registrations: readonly Pick<StructuredAgentRuntimeRegistration, 'definition' | 'modelCatalog'>[]
+  deps: StructuredAgentModelCatalogContext['deps']
+  environment: StructuredAgentModelCatalogContext['environment']
 }): Promise<{ modelCatalog?: AgentModelCatalogService }> {
   await attachAgentModelCatalogPersistenceOnce(input.deps.stateDirectory)
   const { deps } = input
@@ -74,18 +73,10 @@ export async function modelCatalogHostDeps(input: {
     drivesRecord: (record) => agentDrivesSession(input.agents, record),
     resolveAccountHome: deps.resolveAgentAccountHome,
     workspaceMayOverrideDefaultModel,
-    probes: {
-      codex: createCodexModelCatalogProbe({
-        resolveEnvironment: input.envResolvers.resolveCodexEnvironment,
-        ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
-      }),
-      claude: createClaudeModelCatalogProbe({
-        resolveInheritedEnv: input.envResolvers.resolveClaudeInheritedEnv,
-        resolveAuthPolicy: deps.resolveClaudeAuthPolicy,
-        ...(deps.resolveClaudeCommand ? { resolveCommand: deps.resolveClaudeCommand } : {}),
-        ...(deps.resolveClaudeLaunchEnv ? { resolveEnv: deps.resolveClaudeLaunchEnv } : {})
-      })
-    }
+    probes: registeredModelCatalogProbes(input.registrations, {
+      deps,
+      environment: input.environment
+    })
   })
   return { modelCatalog }
 }

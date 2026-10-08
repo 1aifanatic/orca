@@ -194,13 +194,26 @@ export function applyStructuredAgentSessionOptions(
   }
 }
 
+/** Before an agent with no list yet reports, it runs its provider's default: shown as the model
+ *  pill, never pickable, so displaying it can never become a launch pick. */
+const PROVIDER_DEFAULT_MODEL_PLACEHOLDER: SessionOptionDescriptor = {
+  id: 'model',
+  label: 'Model',
+  category: 'model',
+  kind: { type: 'select', choices: [] },
+  valueSource: 'unknown',
+  transport: 'agent-session',
+  settable: false,
+  disabledReason: 'available-after-session-start'
+}
+
 export function structuredAgentSessionOptionSnapshot(
   state: StructuredAgentSessionOptionState
 ): SessionOptionDescriptor[] {
   if (!state.catalog) {
     return []
   }
-  return buildNativeChatSessionOptionSnapshot({
+  const snapshot = buildNativeChatSessionOptionSnapshot({
     catalog: state.catalog,
     // A seeded default can name a model the static seed does not list yet.
     models: withTrackedNativeChatModel(state.catalog, state.catalog.models, state.record),
@@ -209,6 +222,9 @@ export function structuredAgentSessionOptionSnapshot(
     modelLabel: 'Model',
     liveTransport: 'agent-session'
   })
+  return snapshot.length > 0 || state.catalogSource === 'live'
+    ? snapshot
+    : [PROVIDER_DEFAULT_MODEL_PLACEHOLDER]
 }
 
 /** No launch holds a pick and no fence can carry one yet, so the picker only shows. */

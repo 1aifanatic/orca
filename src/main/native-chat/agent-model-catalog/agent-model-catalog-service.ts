@@ -99,14 +99,12 @@ export function createAgentModelCatalogService(
       const scoped =
         record && record.provider === params.agent && deps.drivesRecord(record) ? record : undefined
       let fingerprint: string
-      let accountHomePath: string | null
+      // The account a probe lists under; null where this host cannot spawn one natively.
+      let probeHome: AgentSessionAccountHome | null
       if (scoped) {
         fingerprint = agentModelCatalogFingerprintForRecord(scoped)
         // Probes spawn natively; a WSL-pinned record has no host-side lister.
-        accountHomePath =
-          scoped.location.wslDistro === null && isLegacyAgentSessionAccountHome(scoped.accountHome)
-            ? scoped.accountHome.path
-            : null
+        probeHome = scoped.location.wslDistro === null ? scoped.accountHome : null
       } else {
         let resolved: AgentSessionAccountHome
         try {
@@ -119,11 +117,13 @@ export function createAgentModelCatalogService(
           accountHome: resolved,
           wslDistro: null
         })
-        accountHomePath = isLegacyAgentSessionAccountHome(resolved) ? resolved.path : null
+        probeHome = resolved
       }
+      const accountHomePath =
+        probeHome && isLegacyAgentSessionAccountHome(probeHome) ? probeHome.path : null
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
-      const home = accountHomePath
+      const home = probeHome
       // Without an entry, answer from any running listing instead of starting a second one.
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
       if (probe && home) {

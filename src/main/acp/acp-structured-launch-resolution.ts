@@ -14,6 +14,7 @@ import {
   type AgentSessionProviderHandleChain
 } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import type { AgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import type { resolveCliCommand } from '../../shared/node-cli-command-resolution'
 import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 import {
@@ -114,6 +115,37 @@ export async function acpLaunchVersionSupported(
   )
 }
 
+export type AcpLaunchInvocationDeps = Pick<
+  AcpStructuredLaunchResolverDeps,
+  | 'resolveEnvironment'
+  | 'resolveLaunchEnv'
+  | 'resolveCommandSettings'
+  | 'resolveCommand'
+  | 'homePath'
+  | 'inheritedEnv'
+>
+
+/** The binary and environment any child of this agent runs under for `accountHome`: a session's
+ *  launch and a catalog probe both resolve here, so neither can reach another account or install. */
+export async function resolveAcpLaunchInvocation(
+  spec: AcpLaunchSpec,
+  accountHome: AgentSessionAccountHome,
+  deps: AcpLaunchInvocationDeps
+): Promise<{ command: string; env: Record<string, string>; envToDelete: string[] }> {
+  const base = await deps.resolveEnvironment()
+  const env: Record<string, string> = spec.account.environment(accountHome, {
+    ...base,
+    ...deps.resolveLaunchEnv?.(spec.agent)
+  })
+  const envToDelete = spec.scrubEnvironment?.(env, deps.inheritedEnv ?? process.env) ?? []
+  Object.assign(env, spec.env)
+  const command = resolveAcpLaunchCommand(spec, env, {
+    ...deps,
+    ...(deps.resolveCommandSettings ? { commandSettings: deps.resolveCommandSettings() } : {})
+  })
+  return { command, env, envToDelete }
+}
+
 export function createAcpStructuredLaunchResolver(
   spec: AcpLaunchSpec,
   deps: AcpStructuredLaunchResolverDeps
@@ -134,17 +166,7 @@ export function createAcpStructuredLaunchResolver(
         `${spec.agent} structured sessions run on this runtime's host, not ${location.executionHostId}`
       )
     }
-    const base = await deps.resolveEnvironment()
-    const env: Record<string, string> = spec.account.environment(accountHome, {
-      ...base,
-      ...deps.resolveLaunchEnv?.(spec.agent)
-    })
-    const envToDelete = spec.scrubEnvironment?.(env, deps.inheritedEnv ?? process.env) ?? []
-    Object.assign(env, spec.env)
-    const command = resolveAcpLaunchCommand(spec, env, {
-      ...deps,
-      ...(deps.resolveCommandSettings ? { commandSettings: deps.resolveCommandSettings() } : {})
-    })
+    const { env, envToDelete, command } = await resolveAcpLaunchInvocation(spec, accountHome, deps)
     const cwd = await deps.resolveWorkspacePath(location.workspaceId)
     // Again at every launch: the binary on PATH may have changed since the chat was created.
     if (!(await acpLaunchVersionSupported(spec, { command, cwd, env }, deps.probeVersion))) {

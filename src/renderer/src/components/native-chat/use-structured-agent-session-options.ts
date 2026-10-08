@@ -5,7 +5,7 @@ import type {
   AgentSessionOptionsResult
 } from '../../../../shared/agent-session-wire'
 import type { AgentType } from '../../../../shared/agent-status-types'
-import { structuredAgentSessionSeedCatalog } from './structured-agent-session-seed-catalog'
+import { structuredAgentSessionSeedCatalog } from '../../../../shared/structured-agent-session-seed-catalog'
 import type { SessionOptionsSurface } from '../../../../shared/native-chat-session-options'
 import {
   applyStructuredAgentSessionOptions,

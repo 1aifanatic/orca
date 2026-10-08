@@ -2,6 +2,7 @@ import type {
   AgentSessionFastModeSupport,
   AgentSessionModelOption
 } from '../../../shared/agent-session-wire'
+import type { AgentSessionAccountHome } from '../../../shared/agent-session-account-home'
 import type { AgentModelCatalogPersistence } from './agent-model-catalog-persistence'
 
 // The execution host's one model catalog per (agent, launch fingerprint):
@@ -34,7 +35,10 @@ export type AgentModelCatalogSuccess = {
   origin: 'live-session' | 'probe'
 }
 
-export type AgentModelCatalogProbe = (accountHomePath: string) => Promise<AgentModelCatalogSuccess>
+/** Lists an agent's models without a session, under the account a launch would pin. */
+export type AgentModelCatalogProbe = (
+  accountHome: AgentSessionAccountHome
+) => Promise<AgentModelCatalogSuccess>
 
 /** Who lists, by identity: a live session's per-spawn handle, or the session-less probe. */
 export type AgentModelCatalogLister = AgentModelCatalogSessionAccess | AgentModelCatalogProbe

@@ -396,3 +396,27 @@ describe('useMobileStructuredAgentOptions pending guard', () => {
     await harness.unmount()
   })
 })
+
+describe('useMobileStructuredAgentOptions for every agent', () => {
+  it('reads and picks for an agent with no built-in list, as the desktop does', async () => {
+    const client = optionsClient(queuedReads(OPTIONS))
+    const { calls, mutate } = recordingMutate(async () =>
+      accepted({ key: 'model', value: 'gpt-fast', options: { model: 'gpt-fast' } }, true)
+    )
+    const harness = await mountOptions({ ...BASE, agent: 'grok', client: client.client, mutate })
+
+    expect(client.optionReads()).toBe(1)
+    expect(currentValueOf(harness.current().optionSnapshot, 'model')).toBe('gpt-live')
+    await act(async () => {
+      await harness.current().setStructuredOption('model', 'gpt-fast')
+    })
+    await settle()
+    expect(calls).toEqual([
+      { method: 'agentSession.setOption', fields: { key: 'model', value: 'gpt-fast' } }
+    ])
+    expect(client.methods('settings.mutateNativeChatSessionOptions')[0]?.params).toMatchObject({
+      agent: 'grok'
+    })
+    await harness.unmount()
+  })
+})

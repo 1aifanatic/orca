@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
-import { getAgentSessionOptionCatalog } from '../../../src/shared/agent-session-option-catalog'
+import { structuredAgentSessionSeedCatalog } from '../../../src/shared/structured-agent-session-seed-catalog'
 import type {
   AgentSessionOptionResult,
   AgentSessionOptionsResult
@@ -70,8 +70,9 @@ export function useMobileStructuredAgentOptions(args: {
     sessionId: string
     commands: readonly AgentSessionConversationCommand[]
   } | null>(null)
+  // Every agent reads the host's options, which at rest carry the host catalog for the chat's account.
   const optionCatalog = useMemo(
-    () => (agent === 'claude' || agent === 'codex' ? getAgentSessionOptionCatalog(agent) : null),
+    () => (agent ? structuredAgentSessionSeedCatalog(agent) : null),
     [agent]
   )
 
@@ -152,7 +153,7 @@ export function useMobileStructuredAgentOptions(args: {
           // Only an accepted pick: an `unknown` outcome commits optimistically to the
           // visible record, and remembering one the provider refused would seed a
           // launch the user never chose.
-          if (agent === 'claude' || agent === 'codex') {
+          if (agent) {
             void persistMobileStructuredOptionPicks({
               client,
               agent,

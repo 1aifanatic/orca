@@ -4,7 +4,12 @@ import type { AgentSessionPromptResponse } from '../../../shared/agent-session-q
 import type { NativeChatBackgroundTaskBlock } from '../../../shared/native-chat-types'
 import type { ProviderTimelineRequestBody } from '../../native-chat/agent-session-timeline/provider-timeline-event'
 import type { AcpAgentError } from '../acp-errors'
-import type { PermissionOption, ToolCallUpdate } from '../generated/acp-protocol.generated'
+import type { AgentSessionOptionChoice } from '../../../shared/agent-session-wire'
+import type {
+  ModelInfo,
+  PermissionOption,
+  ToolCallUpdate
+} from '../generated/acp-protocol.generated'
 
 export type AcpRequestPresentation = {
   body: ProviderTimelineRequestBody
@@ -52,6 +57,8 @@ export type AcpDialect = {
   ): AcpBackgroundTaskUpdate[]
   notification?(method: string, params: unknown, at: number): AcpDialectNotification | undefined
   contextWindow?(models: unknown): number | undefined
+  /** A model's own effort menu and default, as the agent advertises them per model. */
+  modelEfforts?(model: ModelInfo): { efforts: AgentSessionOptionChoice[]; defaultEffort?: string }
   request?(method: string, params: unknown): AcpRequestPresentation | undefined
   /** Requests answered at once instead of shown to the person. */
   settleRequest?(method: string, params: unknown): AcpRequestSettlement | undefined

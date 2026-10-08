@@ -17,6 +17,26 @@ import { openCodeStoredUserMessagesReader } from '../opencode/opencode-acp-store
 import type { AcpStoredUserMessagesReader } from './acp-recovery-history'
 import { isStableCliVersionOnLine } from '../agent-cli-version-probe'
 import type { TuiAgent } from '../../shared/tui-agent'
+import type { AgentSessionModelOption } from '../../shared/agent-session-wire'
+import type { InitializeResponse } from './generated/acp-protocol.generated'
+import { readGrokModelCatalog } from './acp-dialects/grok-model-catalog'
+import {
+  OPENCODE_MODEL_LISTING_ARGS,
+  parseOpenCodeModelListing
+} from '../opencode/opencode-model-catalog-listing'
+
+/** How an agent lists its models without a session: from its `initialize` answer (plus extension
+ *  requests), from a listing command, or not at all. Never `authenticate` or `session/new`. */
+export type AcpModelDiscovery =
+  | {
+      kind: 'initialize'
+      read(
+        initialized: InitializeResponse,
+        connection: { requestExtension(method: string, params: unknown): Promise<unknown> }
+      ): Promise<AgentSessionModelOption[]>
+    }
+  | { kind: 'command'; args: readonly string[]; parse(stdout: string): AgentSessionModelOption[] }
+  | { kind: 'unavailable'; reason: string }
 
 export type AcpLaunchSpec = {
   /** The Orca agent id, which names the agent's records, its catalog label and its settings. */
@@ -49,6 +69,7 @@ export type AcpLaunchSpec = {
   imagePrompts?: true
   /** The agent's own store of a session's user messages, read for restart recovery only. */
   readStoredUserMessages?: AcpStoredUserMessagesReader
+  modelDiscovery: AcpModelDiscovery
 }
 
 const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
@@ -67,7 +88,9 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
         ? 'cached_token'
         : undefined,
   account: directoryAccountBinding('GROK_HOME', (homePath) => join(homePath, '.grok')),
-  installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : [])
+  installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : []),
+  // Grok computes its model state in `initialize`, before and without any session.
+  modelDiscovery: { kind: 'initialize', read: readGrokModelCatalog }
 }
 
 // OpenCode 1.x serves ACP in-process through `opencode acp`. OpenCode 2 (`opencode2`, and any
@@ -89,7 +112,13 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   // Stable 1.x from 1.18.31, the release the recorded sessions capture.
   supportsVersion: (version) => isStableCliVersionOnLine(version, { major: 1, floor: '1.18.31' }),
   imagePrompts: true,
-  readStoredUserMessages: openCodeStoredUserMessagesReader()
+  readStoredUserMessages: openCodeStoredUserMessagesReader(),
+  // Its `initialize` names no models and `session/new` stores a session; the listing does neither.
+  modelDiscovery: {
+    kind: 'command',
+    args: OPENCODE_MODEL_LISTING_ARGS,
+    parse: parseOpenCodeModelListing
+  }
 }
 
 export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [GROK_LAUNCH_SPEC, OPENCODE_LAUNCH_SPEC]

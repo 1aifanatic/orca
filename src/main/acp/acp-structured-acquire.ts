@@ -96,7 +96,7 @@ export async function acquireAcpStructuredSession(input: {
     lane: null,
     reattaching: false
   }
-  const options = new AcpStructuredOptions()
+  const options = new AcpStructuredOptions(launch.spec.dialect)
   // Only Orca's own prompt may ask the person, as with permissions: a turn the agent began itself
   // has nobody waiting on it. What a settled request carries still shows in that turn.
   const prompts = new AcpStructuredPrompts(

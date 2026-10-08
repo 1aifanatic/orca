@@ -108,7 +108,9 @@ describe('Codex session options through the host catalog store', () => {
     const store = new AgentModelCatalogStore()
     // Opening the chat's picker kicked the host probe for this account; its Codex never answers.
     const hungProbe: AgentModelCatalogProbe = () => new Promise<never>(() => {})
-    void store.refresh(FINGERPRINT, 'codex', hungProbe, () => hungProbe('/homes/a'))
+    void store.refresh(FINGERPRINT, 'codex', hungProbe, () =>
+      hungProbe({ variable: 'CODEX_HOME', path: '/homes/a' })
+    )
     const request = vi.fn(async () => listAnswer('gpt-live'))
     const session = storeSession(request, store)
     // The acquire-time restore read: joining the probe would fail the chat at the probe's deadline.
