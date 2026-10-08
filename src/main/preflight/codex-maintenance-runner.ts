@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { executeCodexMaintenanceProcess } from './codex-maintenance-process'
 import { codexMaintenanceDiagnostic } from './codex-maintenance-diagnostic'
 import { spawnProcess, type ProcessSpec } from '../../shared/child-process/run-process'
+import { clampUtf8TextTail } from '../../shared/utf8-byte-limits'
 import type { CodexMaintenanceJob, CodexMaintenanceState } from '../../shared/codex-cli-maintenance'
 import { invalidateCodexCliInstallation } from './codex-cli-installation'
 import {
@@ -97,8 +98,7 @@ export class CodexMaintenanceRunner {
     context: CodexMaintenanceContext
   ): Promise<void> {
     const append = (chunk: Buffer | string): void => {
-      const bytes = Buffer.from(job.output + chunk.toString())
-      job.output = bytes.subarray(-128 * 1024).toString('utf8')
+      job.output = clampUtf8TextTail(job.output + chunk.toString(), 128 * 1024).text
     }
     try {
       if (!resolved.spec) {

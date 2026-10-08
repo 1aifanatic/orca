@@ -144,6 +144,8 @@ export async function executeCodexMaintenanceProcess(
     void waitForProcessExitUntil(closed, PROVIDER_OUTPUT_DRAIN_TIMEOUT_MS).then(beginStop)
   }
   child.on('message', providerExit)
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
   child.stdout.on('data', append)
   child.stderr.on('data', append)
   for (const stream of [child.stdin, child.stdout, child.stderr]) {

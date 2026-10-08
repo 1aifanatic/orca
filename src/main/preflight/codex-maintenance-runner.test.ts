@@ -182,6 +182,30 @@ describe('host-owned Codex maintenance runner', () => {
     expect(Buffer.byteLength(result.job?.output ?? '')).toBeLessThanOrEqual(128 * 1024)
     expect(result.job?.output).toContain('final diagnostic')
   })
+
+  it.each(['é', '用', '😀'])(
+    'drops a partial %s at the retained tail boundary',
+    async (character) => {
+      const f = fixture()
+      const tail = 'y'.repeat(128 * 1024 - 1)
+      f.resolve.mockResolvedValue({
+        installation: codexCliInstallation(false, null),
+        action: codexMaintenanceAction(codexCliInstallation(false, null), false),
+        spec: {
+          program: process.execPath,
+          args: ['-e', `process.stdout.write('prefix${character}' + 'y'.repeat(128 * 1024 - 1))`]
+        }
+      })
+      const state = await f.runner.start()
+      if (!state.job) {
+        throw new Error('No job')
+      }
+      const result = await finished(f.runner, state.job.id)
+      expect(Buffer.byteLength(result.job?.output ?? '')).toBe(128 * 1024 - 1)
+      expect(result.job?.output).toBe(tail)
+    }
+  )
+
   it('separates a historical log read from the latest job and forwards the host evidence unchanged', async () => {
     const f = fixture(1)
     const first = await f.runner.start()
