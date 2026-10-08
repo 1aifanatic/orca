@@ -22,6 +22,10 @@ export function useMobileHostModelCatalogUpgrade(args: {
   client: RpcClient | null
   sessionId: string | null
   enabled: boolean
+  /** This phone created the chat, so it launches the listed default; a reopened one may not. */
+  newLaunch: boolean
+  /** Where a new chat runs: the host names no default its config could replace. */
+  worktree?: string
   fence: number | null
   optionCatalog: AgentSessionOptionCatalog | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
@@ -36,10 +40,12 @@ export function useMobileHostModelCatalogUpgrade(args: {
     client,
     enabled,
     fence,
+    newLaunch,
     optionCatalog,
     optionMutationGeneration,
     sessionId,
-    updateOptionState
+    updateOptionState,
+    worktree
   } = args
   useEffect(() => {
     if (!client || !sessionId || !enabled || !agent || !optionCatalog) {
@@ -47,25 +53,23 @@ export function useMobileHostModelCatalogUpgrade(args: {
     }
     let stale = false
     const readGeneration = optionMutationGeneration.current
+    const params = { agent, sessionId, ...(newLaunch && worktree ? { worktree } : {}) }
     const read = (waitForListing: boolean): Promise<AgentSessionModelCatalogResult> =>
       waitForListing
         ? callAgentSession(
             client,
             'agentSession.modelCatalog',
-            { agent, sessionId, waitForListing },
+            { ...params, waitForListing },
             LISTING_WAIT_TIMEOUT_MS
           )
-        : callAgentSession(client, 'agentSession.modelCatalog', { agent, sessionId })
+        : callAgentSession(client, 'agentSession.modelCatalog', params)
     const apply = (catalog: AgentSessionModelCatalogResult): void => {
       if (stale || optionMutationGeneration.current !== readGeneration) {
         return
       }
-      // The phone opens chats that already exist, which may run a model picked in them.
       updateOptionState((current) =>
         current.record === activeOptionRecordRef.current
-          ? applyStructuredAgentSessionModelCatalog(current, optionCatalog, catalog, {
-              newLaunch: false
-            })
+          ? applyStructuredAgentSessionModelCatalog(current, optionCatalog, catalog, { newLaunch })
           : current
       )
     }
@@ -85,9 +89,11 @@ export function useMobileHostModelCatalogUpgrade(args: {
     client,
     enabled,
     fence,
+    newLaunch,
     optionCatalog,
     optionMutationGeneration,
     sessionId,
-    updateOptionState
+    updateOptionState,
+    worktree
   ])
 }

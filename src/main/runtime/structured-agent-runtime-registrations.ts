@@ -109,9 +109,6 @@ export type StructuredAgentRuntimeRegistration = {
   /** How this agent's models are listed before any session of it runs. Required: an agent that
    *  cannot list says so, rather than being left out of the shared catalog. */
   modelCatalog: (context: StructuredAgentModelCatalogContext) => AgentModelCatalogDiscovery
-  /** The adapter writes its live sessions' listings to the catalog itself, with facts the options
-   *  answer lacks (Fast tiers, launched model); otherwise the host records them from that answer. */
-  adapterRecordsLiveListings?: true
   /** Whether this agent's chats can run at `location`; answered without building the host. */
   supportsLocation: (location: AgentSessionExecutionLocation) => boolean
   /** Whether the agent installed on this host runs a structured chat, asked at create with the
@@ -203,8 +200,7 @@ function createClaudeAdapter(
     onDispatchSettledLate: followUps.onDispatchSettledLate,
     onSessionIdle: followUps.releaseUnansweredDispatches,
     ...(deps.openClaudeConnection ? { openClaudeConnection: deps.openClaudeConnection } : {}),
-    ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
-    modelCatalog: agentModelCatalogStore
+    ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {})
   })
 }
 
@@ -291,7 +287,6 @@ export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRun
       definition: CODEX_STRUCTURED_AGENT,
       createAdapter: createCodexAdapter,
       modelCatalog: codexModelCatalogDiscovery,
-      adapterRecordsLiveListings: true,
       supportsLocation: (location) => supportsCodexStructuredLocation(location),
       resolveAccountHome: async (request, services) =>
         agentSessionAccountHome(
@@ -303,7 +298,6 @@ export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRun
       definition: CLAUDE_STRUCTURED_AGENT,
       createAdapter: createClaudeAdapter,
       modelCatalog: claudeModelCatalogDiscovery,
-      adapterRecordsLiveListings: true,
       supportsLocation: supportsClaudeStructuredLocation,
       resolveAccountHome: async ({ launchEnv, location }, services) =>
         agentSessionAccountHome(

@@ -16,6 +16,7 @@ import { createAgentModelCatalogService } from '../native-chat/agent-model-catal
 import { workspaceMayOverrideDefaultModel } from '../native-chat/agent-model-catalog/agent-project-model-override'
 import {
   AgentModelCatalogStore,
+  withLiveCatalogListing,
   type AgentModelCatalogProbe
 } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { STRUCTURED_AGENT_RUNTIME_REGISTRATIONS } from './structured-agent-runtime-registrations'
@@ -98,8 +99,7 @@ function service(
     resolveAccountHome: async (agent) => HOMES[agent]!,
     probes,
     workspaceMayOverrideDefaultModel,
-    listingNamesConfiguredModel: registered.listingNamesConfiguredModel,
-    recordsLiveListingsOf: registered.recordsLiveListingsOf
+    listingNamesConfiguredModel: registered.listingNamesConfiguredModel
   })
 }
 
@@ -177,7 +177,10 @@ describe('a running chat’s listing, saved for the next chat', () => {
         ]
       }
     })
-    catalog.recordLiveListing(record.sessionId, options.read())
+    catalog.recordLiveListing(
+      record.sessionId,
+      withLiveCatalogListing(options.read()).catalogListing
+    )
 
     const { host, model, effort } = await newChatFirstFrame(catalog, 'grok')
     expect(host.origin).toBe('live-session')
@@ -204,11 +207,16 @@ describe('a running chat’s listing, saved for the next chat', () => {
       { id: 'b', label: 'B', isDefault: false, efforts: [{ value: 'low', label: 'Low' }] }
     ]
     const catalog = service(store, {}, [record])
-    store.recordSuccess(agentModelCatalogFingerprintForRecord(record), 'opencode', {
-      models: listed,
-      fastModeTierByModel: new Map(),
-      origin: 'probe'
-    })
+    store.recordSuccess(
+      agentModelCatalogFingerprintForRecord(record),
+      'opencode',
+      {
+        models: listed,
+        fastModeTierByModel: new Map(),
+        origin: 'probe'
+      },
+      'discovery'
+    )
     catalog.recordLiveListing(record.sessionId, {
       models: [
         { id: 'a', label: 'A', isDefault: false, efforts: [{ value: 'high', label: 'High' }] },
@@ -222,15 +230,14 @@ describe('a running chat’s listing, saved for the next chat', () => {
     ])
   })
 
-  it('leaves agents whose adapters save their own listings to them', async () => {
+  it('saves a Claude live listing through the same step as every other agent', async () => {
     const store = new AgentModelCatalogStore()
     const record = { ...grokRecord(), provider: 'claude', accountHome: HOMES.claude! }
     const catalog = service(store, {}, [record])
     catalog.recordLiveListing(record.sessionId, {
       models: [{ id: 'opus', label: 'Opus', isDefault: false, efforts: [] }]
     })
-    expect(await catalog.read({ agent: 'claude', sessionId: record.sessionId })).toEqual({
-      origin: 'unknown'
-    })
+    const read = await catalog.read({ agent: 'claude', sessionId: record.sessionId })
+    expect(read.origin === 'unknown' ? null : read.models.map((m) => m.id)).toEqual(['opus'])
   })
 })

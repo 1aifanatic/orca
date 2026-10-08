@@ -27,6 +27,7 @@ import {
 } from './mobile-structured-agent-session-rpc'
 import { persistMobileStructuredOptionPicks } from './mobile-native-chat-session-option-persistence'
 import { useMobileHostModelCatalogUpgrade } from './use-mobile-host-model-catalog-upgrade'
+import { mobileCreatedStructuredSession } from './mobile-created-structured-sessions'
 import { encodeStructuredAgentSessionOptionValue } from '../../../src/shared/structured-agent-session-option-codec'
 
 type StructuredOptionsController = {
@@ -86,12 +87,19 @@ export function useMobileStructuredAgentOptions(args: {
     setOptionState(next)
   }, [agent, enabled, fence, optionCatalog, sessionId])
 
+  // A chat this phone created runs the listed default, as a desktop chat its own view launched does.
+  const createdHere = useMemo(
+    () => (sessionId ? mobileCreatedStructuredSession(sessionId) : undefined),
+    [sessionId]
+  )
   useMobileHostModelCatalogUpgrade({
     agent,
     client,
     sessionId,
     enabled,
     fence,
+    newLaunch: createdHere !== undefined,
+    ...(createdHere ? { worktree: createdHere.worktree } : {}),
     optionCatalog,
     activeOptionRecordRef,
     optionMutationGeneration,

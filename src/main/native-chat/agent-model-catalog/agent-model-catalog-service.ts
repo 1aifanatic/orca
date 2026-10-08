@@ -1,8 +1,4 @@
-import type {
-  AgentSessionModelCatalogResult,
-  AgentSessionModelOption,
-  AgentSessionOptionsResult
-} from '../../../shared/agent-session-wire'
+import type { AgentSessionModelCatalogResult } from '../../../shared/agent-session-wire'
 import type {
   AgentSessionAccountHome,
   AgentSessionRecord
@@ -14,6 +10,7 @@ import {
 } from './agent-model-catalog-fingerprint'
 import type {
   AgentModelCatalogEntry,
+  AgentModelCatalogLiveListing,
   AgentModelCatalogProbe,
   AgentModelCatalogStore
 } from './agent-model-catalog-store'
@@ -32,8 +29,6 @@ export type AgentModelCatalogServiceDeps = {
   probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
   /** Agents whose listing marks the model the account is configured to run as its default. */
   listingNamesConfiguredModel?: ReadonlySet<string>
-  /** Agents whose live sessions' listings the host records; the rest record their own. */
-  recordsLiveListingsOf?: ReadonlySet<string>
   /** Whether the workspace's own config could pick a model other than the listed default. */
   workspaceMayOverrideDefaultModel?: (input: {
     agent: string
@@ -52,10 +47,7 @@ export type AgentModelCatalogService = {
     waitForListing?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
   /** Saves what a running session listed as its account's catalog, so the next chat starts warm. */
-  recordLiveListing: (
-    sessionId: string,
-    listing: Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport'>
-  ) => void
+  recordLiveListing: (sessionId: string, listing: AgentModelCatalogLiveListing) => void
 }
 
 function resultFromEntry(
@@ -73,32 +65,6 @@ function resultFromEntry(
     fetchedAt: entry.fetchedAt,
     listingNamesConfiguredModel: namesDefault && listingNamesConfiguredModel
   }
-}
-
-/** A session names no default and may know only its running model's efforts: those facts stay as
- *  the account's last listing had them, while the session decides which models exist. */
-function liveListingOverKnown(
-  models: readonly AgentSessionModelOption[],
-  known: AgentModelCatalogEntry | null
-): AgentSessionModelOption[] {
-  const namesDefault = models.some((model) => model.isDefault)
-  return models.map((model) => {
-    const previous = known?.models.find((entry) => entry.id === model.id)
-    if (!previous) {
-      return { ...model }
-    }
-    const keepEfforts = model.efforts.length === 0 && previous.efforts.length > 0
-    return {
-      ...model,
-      ...(namesDefault ? {} : { isDefault: previous.isDefault }),
-      ...(keepEfforts
-        ? {
-            efforts: previous.efforts,
-            ...(previous.defaultEffort ? { defaultEffort: previous.defaultEffort } : {})
-          }
-        : {})
-    }
-  })
 }
 
 /** A named workspace keeps the listed default only when none of its own config can replace it. */
@@ -201,21 +167,16 @@ export function createAgentModelCatalogService(
     },
     recordLiveListing(sessionId, listing) {
       const record = deps.getRecord(sessionId)
-      if (
-        !record ||
-        !deps.recordsLiveListingsOf?.has(record.provider) ||
-        !deps.drivesRecord(record)
-      ) {
+      if (!record || !deps.drivesRecord(record)) {
         return
       }
       // The record's pinned account and host: the account this child listed under.
-      const fingerprint = agentModelCatalogFingerprintForRecord(record)
-      deps.store.recordSuccess(fingerprint, record.provider, {
-        models: liveListingOverKnown(listing.models, deps.store.get(fingerprint)),
-        ...(listing.fastModeSupport ? { fastModeSupport: listing.fastModeSupport } : {}),
-        fastModeTierByModel: new Map(),
-        origin: 'live-session'
-      })
+      deps.store.recordSuccess(
+        agentModelCatalogFingerprintForRecord(record),
+        record.provider,
+        { ...listing, fastModeTierByModel: new Map(), origin: 'live-session' },
+        'live'
+      )
     }
   }
 }

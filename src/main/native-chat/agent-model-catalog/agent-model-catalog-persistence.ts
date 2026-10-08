@@ -4,10 +4,14 @@ import type {
   AgentSessionModelOption,
   AgentSessionOptionChoice
 } from '../../../shared/agent-session-wire'
-import type { AgentModelCatalogEntry } from './agent-model-catalog-store'
+import {
+  agentModelCatalogEntry,
+  type AgentModelCatalogEntry,
+  type AgentModelCatalogListing
+} from './agent-model-catalog-entry'
 import { isStructuredAgentId } from '../../../shared/agent-session-provider-handle-encoding'
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 const SAVE_COALESCE_MS = 500
 
 export type AgentModelCatalogPersistence = {
@@ -62,16 +66,12 @@ function parseModel(value: unknown): AgentSessionModelOption | null {
   }
 }
 
-/** Checked reconstruction rather than trust: a field a future schema drops or
- *  reshapes loads as "no entry", never as a corrupt catalog. */
-function parseEntry(value: unknown): AgentModelCatalogEntry | null {
+function parseListing(value: unknown): AgentModelCatalogListing | null {
   const row = asRecord(value)
   if (
     !row ||
-    !isStructuredAgentId(row.agent) ||
-    typeof row.fingerprint !== 'string' ||
     (row.origin !== 'live-session' && row.origin !== 'probe') ||
-    typeof row.fetchedAt !== 'number' ||
+    typeof row.at !== 'number' ||
     !Array.isArray(row.models) ||
     row.models.length === 0
   ) {
@@ -86,11 +86,14 @@ function parseEntry(value: unknown): AgentModelCatalogEntry | null {
   const supported = support?.supported
   const supportReason = text(support?.reason)
   return {
-    agent: row.agent,
-    fingerprint: row.fingerprint,
     models: models.filter((model): model is AgentSessionModelOption => model !== null),
     ...(typeof supported === 'boolean'
-      ? { fastModeSupport: { supported, ...(supportReason ? { reason: supportReason } : {}) } }
+      ? {
+          fastModeSupport: {
+            supported,
+            ...(supportReason ? { reason: supportReason } : {})
+          }
+        }
       : {}),
     fastModeTierByModel: Object.fromEntries(
       Object.entries(tiers ?? {}).filter(
@@ -98,7 +101,32 @@ function parseEntry(value: unknown): AgentModelCatalogEntry | null {
       )
     ),
     origin: row.origin,
-    fetchedAt: row.fetchedAt
+    at: row.at
+  }
+}
+
+/** Checked reconstruction rather than trust: a field a future schema drops or
+ *  reshapes loads as "no entry", never as a corrupt catalog. */
+function parseEntry(value: unknown): AgentModelCatalogEntry | null {
+  const row = asRecord(value)
+  if (!row || !isStructuredAgentId(row.agent) || typeof row.fingerprint !== 'string') {
+    return null
+  }
+  return agentModelCatalogEntry(
+    row.agent,
+    row.fingerprint,
+    parseListing(row.discovered),
+    parseListing(row.live)
+  )
+}
+
+/** Only the two listings are written; the merged view is derived again on load. */
+function persistedEntry(entry: AgentModelCatalogEntry): unknown {
+  return {
+    agent: entry.agent,
+    fingerprint: entry.fingerprint,
+    discovered: entry.discovered,
+    live: entry.live
   }
 }
 
@@ -126,7 +154,14 @@ export function createAgentModelCatalogFilePersistence(
       try {
         await mkdir(dirname(filePath), { recursive: true })
         const tmpPath = `${filePath}.tmp`
-        await writeFile(tmpPath, JSON.stringify({ version: SCHEMA_VERSION, entries }), 'utf8')
+        await writeFile(
+          tmpPath,
+          JSON.stringify({
+            version: SCHEMA_VERSION,
+            entries: entries.map(persistedEntry)
+          }),
+          'utf8'
+        )
         await rename(tmpPath, filePath)
       } catch {
         // Bookkeeping only; the in-memory store stays authoritative this run.

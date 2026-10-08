@@ -48,6 +48,14 @@ import type { AgentSessionPromptResponse } from '../../../shared/agent-session-q
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
+import type { AgentModelCatalogLiveListing } from '../agent-model-catalog/agent-model-catalog-store'
+
+/** A live options read, plus what the child listed for its account's saved catalog. The host
+ *  saves that listing and strips it before answering; an adapter whose listing reaches the
+ *  catalog another way omits it. */
+export type StructuredAgentSessionLiveOptions = AgentSessionOptionsResult & {
+  catalogListing?: AgentModelCatalogLiveListing
+}
 
 export class AgentSessionAcquisitionRefusal extends Error {
   readonly code = 'agent_session_operation_invalid'
@@ -399,7 +407,10 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
     sessionId: string
     fence: number
   }): Promise<() => AgentSessionOptionsResult> | undefined
-  readOptions?(input: { sessionId: string; fence: number }): Promise<AgentSessionOptionsResult>
+  readOptions?(input: {
+    sessionId: string
+    fence: number
+  }): Promise<StructuredAgentSessionLiveOptions>
   /** Effective options already known after acquisition, without discovering picker choices. */
   readAcquisitionOptions?(input: {
     sessionId: string

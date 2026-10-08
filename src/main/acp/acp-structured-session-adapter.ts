@@ -43,6 +43,7 @@ import {
 } from './acp-structured-session-adapter-deps'
 import { writeAcpSessionOption } from './acp-structured-options'
 import { readAcpRecoveryHistory } from './acp-recovery-history'
+import { withLiveCatalogListing } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapter {
   /** Live children, and ones whose exit is not yet proven; a proven exit removes its entry. */
@@ -221,7 +222,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
   }
 
   readOptions = async (input: { sessionId: string; fence: number }) =>
-    this.live(input.sessionId).options.read()
+    withLiveCatalogListing(this.live(input.sessionId).options.read())
 
   readOptionRestoreFailures = (sessionId: string): readonly string[] =>
     this.sessions.get(sessionId)?.restoreSkipped ?? []

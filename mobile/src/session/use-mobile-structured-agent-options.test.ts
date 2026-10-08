@@ -13,6 +13,7 @@ import type {
   StructuredAgentSessionMutationResult
 } from './mobile-structured-agent-session-rpc'
 import { useMobileStructuredAgentOptions } from './use-mobile-structured-agent-options'
+import { rememberMobileCreatedStructuredSession } from './mobile-created-structured-sessions'
 
 const OPTIONS: AgentSessionOptionsResult = {
   models: [
@@ -480,6 +481,36 @@ describe('useMobileStructuredAgentOptions host catalog', () => {
     expect(currentValueOf(harness.current().optionSnapshot, 'model')).toBe('gpt-live')
     await harness.unmount()
   })
+
+  it.each(['grok', 'codex'])(
+    'names the configured model and its effort for a %s chat this phone created',
+    async (agent) => {
+      const sessionId = `${agent}-created-here`
+      rememberMobileCreatedStructuredSession(sessionId, 'id:wt-1')
+      const client = optionsClient(
+        () => deferred<AgentSessionOptionsResult>().promise,
+        async () => HOST_CATALOG
+      )
+      const { mutate } = recordingMutate(async () => ({ status: 'unknown' }))
+      const harness = await mountOptions({
+        ...BASE,
+        agent,
+        sessionId,
+        client: client.client,
+        mutate
+      })
+
+      // As the desktop asks for a chat it launched: the host checks that workspace's config.
+      expect(client.methods('agentSession.modelCatalog')[0]?.params).toEqual({
+        agent,
+        sessionId,
+        worktree: 'id:wt-1'
+      })
+      expect(currentValueOf(harness.current().optionSnapshot, 'model')).toBe('grok-4')
+      expect(currentValueOf(harness.current().optionSnapshot, 'effort')).toBe('high')
+      await harness.unmount()
+    }
+  )
 
   it('waits once for the host’s first listing of the account', async () => {
     const catalog = vi.fn(async (params: unknown): Promise<AgentSessionModelCatalogResult> =>

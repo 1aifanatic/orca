@@ -61,14 +61,6 @@ describe('the model catalog contract on every registration', () => {
     expect([...listingNamesConfiguredModel].sort()).toEqual(['codex', 'grok'])
   })
 
-  it('records live listings at the host for every agent whose adapter does not', () => {
-    const { recordsLiveListingsOf } = registeredModelCatalogDiscovery(
-      STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
-      context()
-    )
-    expect([...recordsLiveListingsOf].sort()).toEqual(['grok', 'opencode', 'pi'])
-  })
-
   it('maps an ACP agent with no session-free listing to an unavailable registration', () => {
     const spec = acpLaunchSpecFor('grok')!
     const discovery = acpModelCatalogDiscovery(

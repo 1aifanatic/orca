@@ -70,17 +70,22 @@ function storeSession(
 }
 
 function seedEntry(store: AgentModelCatalogStore, ...ids: string[]): void {
-  store.recordSuccess(FINGERPRINT, 'codex', {
-    models: ids.map((id, index) => ({
-      id,
-      label: id.toUpperCase(),
-      isDefault: index === 0,
-      efforts: [{ value: 'high', label: 'High' }],
-      defaultEffort: 'high'
-    })),
-    fastModeTierByModel: new Map(),
-    origin: 'live-session'
-  })
+  store.recordSuccess(
+    FINGERPRINT,
+    'codex',
+    {
+      models: ids.map((id, index) => ({
+        id,
+        label: id.toUpperCase(),
+        isDefault: index === 0,
+        efforts: [{ value: 'high', label: 'High' }],
+        defaultEffort: 'high'
+      })),
+      fastModeTierByModel: new Map(),
+      origin: 'live-session'
+    },
+    'discovery'
+  )
 }
 
 describe('Codex session options through the host catalog store', () => {

@@ -34,10 +34,7 @@ export async function attachAgentModelCatalogPersistenceOnce(
   }
 }
 
-type CatalogRegistration = Pick<
-  StructuredAgentRuntimeRegistration,
-  'definition' | 'modelCatalog' | 'adapterRecordsLiveListings'
->
+type CatalogRegistration = Pick<StructuredAgentRuntimeRegistration, 'definition' | 'modelCatalog'>
 
 /** What the catalog service learns from the registration list, the only agent roster. */
 export function registeredModelCatalogDiscovery(
@@ -46,11 +43,9 @@ export function registeredModelCatalogDiscovery(
 ): {
   probes: Record<string, AgentModelCatalogProbe>
   listingNamesConfiguredModel: Set<string>
-  recordsLiveListingsOf: Set<string>
 } {
   const probes: Record<string, AgentModelCatalogProbe> = {}
   const listingNamesConfiguredModel = new Set<string>()
-  const recordsLiveListingsOf = new Set<string>()
   for (const registration of registrations) {
     const { agent } = registration.definition
     const discovery = registration.modelCatalog(context)
@@ -60,11 +55,8 @@ export function registeredModelCatalogDiscovery(
         listingNamesConfiguredModel.add(agent)
       }
     }
-    if (!registration.adapterRecordsLiveListings) {
-      recordsLiveListingsOf.add(agent)
-    }
   }
-  return { probes, listingNamesConfiguredModel, recordsLiveListingsOf }
+  return { probes, listingNamesConfiguredModel }
 }
 
 /**

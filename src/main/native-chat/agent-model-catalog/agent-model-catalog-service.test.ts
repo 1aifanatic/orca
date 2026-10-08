@@ -99,7 +99,7 @@ describe('agent model catalog service', () => {
     const store = new AgentModelCatalogStore()
     // The old account listed under its own fingerprint before the switch.
     const oldFingerprint = selectedHomeFingerprint('/homes/old')
-    store.recordSuccess(oldFingerprint, 'codex', listing('gpt-old'))
+    store.recordSuccess(oldFingerprint, 'codex', listing('gpt-old'), 'discovery')
     const probe = vi.fn(async () => listing('gpt-new'))
     const service = createAgentModelCatalogService({
       store,
@@ -125,8 +125,18 @@ describe('agent model catalog service', () => {
 
   it('a record-less read serves the selected account entry when it exists', async () => {
     const store = new AgentModelCatalogStore()
-    store.recordSuccess(selectedHomeFingerprint('/homes/selected'), 'codex', listing('gpt-mine'))
-    store.recordSuccess(selectedHomeFingerprint('/homes/other'), 'codex', listing('gpt-other'))
+    store.recordSuccess(
+      selectedHomeFingerprint('/homes/selected'),
+      'codex',
+      listing('gpt-mine'),
+      'discovery'
+    )
+    store.recordSuccess(
+      selectedHomeFingerprint('/homes/other'),
+      'codex',
+      listing('gpt-other'),
+      'discovery'
+    )
     const service = createAgentModelCatalogService({
       store,
       getRecord: () => undefined,
@@ -143,12 +153,14 @@ describe('agent model catalog service', () => {
     store.recordSuccess(
       agentModelCatalogFingerprintForRecord(sessionRecord),
       'codex',
-      listing('gpt-session')
+      listing('gpt-session'),
+      'discovery'
     )
     store.recordSuccess(
       selectedHomeFingerprint('/homes/selected'),
       'codex',
-      listing('gpt-selected')
+      listing('gpt-selected'),
+      'discovery'
     )
     const service = createAgentModelCatalogService({
       store,
@@ -426,7 +438,12 @@ describe('agent model catalog service', () => {
     it('serves an aged entry at once and refreshes it behind the answer', async () => {
       let now = 0
       const store = new AgentModelCatalogStore({ now: () => now })
-      store.recordSuccess(selectedHomeFingerprint('/homes/selected'), 'codex', listing('gpt-old'))
+      store.recordSuccess(
+        selectedHomeFingerprint('/homes/selected'),
+        'codex',
+        listing('gpt-old'),
+        'discovery'
+      )
       now = AGENT_MODEL_CATALOG_FRESH_MS
       const probe = vi.fn(() => new Promise<AgentModelCatalogSuccess>(() => {}))
       const service = createAgentModelCatalogService({
@@ -445,7 +462,12 @@ describe('agent model catalog service', () => {
   describe('a read for the workspace a new chat runs in', () => {
     function serviceWith(mayOverride: boolean) {
       const store = new AgentModelCatalogStore()
-      store.recordSuccess(selectedHomeFingerprint('/homes/selected'), 'codex', listing('gpt-user'))
+      store.recordSuccess(
+        selectedHomeFingerprint('/homes/selected'),
+        'codex',
+        listing('gpt-user'),
+        'discovery'
+      )
       const workspaceMayOverrideDefaultModel = vi.fn(async () => mayOverride)
       const service = createAgentModelCatalogService({
         store,
