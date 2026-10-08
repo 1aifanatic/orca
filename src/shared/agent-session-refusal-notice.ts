@@ -167,8 +167,8 @@ export function agentSessionWriteNoticeParts(
     case 'agent_session_ownership_unknown':
     case 'execution_owner_reconciling':
       return agentSessionWriteNotDoneParts(write)
-    // Only an Orca older than this fix refuses this way; updating it is the fix, since retrying
-    // soon would be refused again.
+    // Only an older Orca host (one that capped its operation records) refuses this way; updating
+    // it is the fix, since retrying soon would be refused again.
     case 'agent_session_operation_capacity':
       return [notDone, 'capacity']
     // The phone resends under the same id, which the host refuses the same way again. The rest
