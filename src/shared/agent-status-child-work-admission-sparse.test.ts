@@ -157,6 +157,36 @@ describe('child-work admission of sparse observations', () => {
     expect(store.getChild('child-1')?.totalTokens).toBe(5_000)
   })
 
+  it('keeps the model when a sparse observation names the same agent type', () => {
+    const { store, admission } = setup()
+    admission.announce(observation(described))
+    admission.announce(observation({ agentType: 'Explore', observedAt: 11 }))
+    expect(store.getChild('child-1')).toMatchObject({ agentType: 'Explore', model: 'model-a' })
+  })
+
+  it('clears the model when the agent type changes without a replacement model', () => {
+    const { store, admission } = setup()
+    admission.announce(observation(described))
+    admission.announce(observation({ agentType: 'Plan', observedAt: 11 }))
+    const child = store.getChild('child-1')
+    expect(child?.agentType).toBe('Plan')
+    expect(child).not.toHaveProperty('model')
+  })
+
+  it('takes the replacement model when the agent type changes with one', () => {
+    const { store, admission } = setup()
+    admission.announce(observation(described))
+    admission.announce(observation({ agentType: 'Plan', model: 'model-b', observedAt: 11 }))
+    expect(store.getChild('child-1')).toMatchObject({ agentType: 'Plan', model: 'model-b' })
+  })
+
+  it('keeps the model when the agent type is first named after it', () => {
+    const { store, admission } = setup()
+    admission.announce(observation({ model: 'model-a' }))
+    admission.announce(observation({ agentType: 'Explore', observedAt: 11 }))
+    expect(store.getChild('child-1')).toMatchObject({ agentType: 'Explore', model: 'model-a' })
+  })
+
   function settledFirstRun() {
     const { store, admission } = setup()
     admission.announce(

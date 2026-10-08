@@ -208,7 +208,12 @@ function mergeObservationFacts(
     name: said.name ?? prior?.name,
     description: said.description ?? prior?.description,
     agentType: said.agentType ?? prior?.agentType,
-    model: said.model ?? prior?.model,
+    // Type and model are one fact: a newly named agent type never inherits the prior one's model.
+    model:
+      said.model ??
+      (said.agentType !== undefined && said.agentType !== (prior?.agentType ?? said.agentType)
+        ? undefined
+        : prior?.model),
     residency: said.residency ?? prior?.residency,
     // Cumulative, so a late or duplicate frame never shrinks it.
     totalTokens:
