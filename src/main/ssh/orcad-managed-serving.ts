@@ -139,7 +139,7 @@ async function wakeIfStopped(
     if (wake.outcome === 'serving') {
       return { state: 'serving' }
     }
-    const detail = wakeRefusal(wake.outcome)
+    const detail = wake.outcome === 'recovery-refused' ? wake.reason : wakeRefusal(wake.outcome)
     console.warn(`[ssh] The managed Orca server on ${label} is not answering: ${detail}`)
     return { state: 'unverifiable', detail }
   } catch (error) {

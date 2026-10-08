@@ -40,6 +40,7 @@ import { writeAtomicOrcadRemoteRecord } from './orcad-remote-record-file'
 import { deployOrcad } from './orcad-remote-deploy'
 import { rollbackOrcad } from './orcad-remote-rollback'
 import { recoverInterruptedOrcadActivation } from './orcad-activation-recovery'
+import { wakeStoppedManagedOrcad } from './orcad-managed-wake'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 import type { SshConnection } from './ssh-connection'
 import {
@@ -93,6 +94,16 @@ beforeEach(() => {
     host.write(path, contents)
   )
 })
+
+/** The candidate's terminal daemon reports absent, so it fails the activation gate. */
+function failCandidateReadinessGate(): void {
+  vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+    const answer = host.exec(command)
+    return command.includes(`orcad-${NEW}/`)
+      ? answer.replace('"state":"live"', '"state":"absent"')
+      : answer
+  })
+}
 
 /** The invariant: the host serves exactly the slot its record names, on state that slot reads. */
 function expectExactlyTheRecordedSlot(): void {
@@ -191,8 +202,35 @@ describe('recovery refusals keep the fence', () => {
     expect(host.alive.has(NEW)).toBe(true)
   }
 
+  // P1-A: the client quit before committing, and the candidate it launched kept serving.
+  it('commits the candidate an interrupted run left serving, without restoring state', async () => {
+    await interruptedAfterCandidateLaunch()
+    const data = host.data
+    const result = await recoverInterruptedOrcadActivation(slot)
+    expect(result).toMatchObject({
+      outcome: 'recovered',
+      resolution: 'committed',
+      activeVersion: NEW
+    })
+    expect(host.data).toBe(data)
+    expect(host.commands.filter((command) => command.includes('kill -TERM'))).toHaveLength(1)
+    expectExactlyTheRecordedSlot()
+    expect(host.record).toContain(`"previous": "${OLD}"`)
+  })
+
+  it('relaunches and commits that candidate after a host reboot left nothing running', async () => {
+    await interruptedAfterCandidateLaunch()
+    host.alive.clear()
+    const result = await recoverInterruptedOrcadActivation(slot)
+    expect(result).toMatchObject({ outcome: 'recovered', resolution: 'committed' })
+    expectExactlyTheRecordedSlot()
+    expect(host.activeVersion()).toBe(NEW)
+  })
+
   it('keeps changed state, unverifiable, until an operator accepts restoring over it', async () => {
     await interruptedAfterCandidateLaunch()
+    // The candidate's terminal daemon is down, so recovery undoes it instead of committing.
+    failCandidateReadinessGate()
     const result = await recoverInterruptedOrcadActivation(slot)
     expect(result).toMatchObject({
       outcome: 'refused',
@@ -258,6 +296,52 @@ describe('recovery refusals keep the fence', () => {
     host.fence = true
     expect(await recoverInterruptedOrcadActivation({ ...slot })).toEqual({ outcome: 'none' })
     expect(host.fence).toBe(false)
+  })
+})
+
+// P1-A: the app quit mid-update, then the host rebooted; nothing ran a manual Recover.
+describe('a wake over an update its client abandoned', () => {
+  const wakeSlot = {
+    ...slot,
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: execCommand is mocked; the wake reads only the target id.
+    conn: { getTarget: () => ({ id: 'ssh-1' }) } as unknown as SshConnection
+  }
+
+  async function abandonedAfterCandidateLaunch(): Promise<void> {
+    const total = await countMutations(FakeOrcadHost.deployedOld, deploy)
+    host = FakeOrcadHost.deployedOld()
+    host.crashAt = total - 2
+    await deploy().catch(() => undefined)
+    host.crashAt = null
+    // The reboot: no orcad runs, while the fence and its journal stay on disk.
+    host.alive.clear()
+    expect(host.journal).not.toBeNull()
+    expect(host.fence).toBe(true)
+  }
+
+  it('finishes the update and serves the candidate instead of staying fenced', async () => {
+    await abandonedAfterCandidateLaunch()
+    expect(await wakeStoppedManagedOrcad(wakeSlot)).toMatchObject({ outcome: 'started' })
+    expectExactlyTheRecordedSlot()
+    expect(host.activeVersion()).toBe(NEW)
+  })
+
+  it('leaves a fence a run may still hold to that run', async () => {
+    await abandonedAfterCandidateLaunch()
+    host.fenceFresh = true
+    expect(await wakeStoppedManagedOrcad(wakeSlot)).toEqual({ outcome: 'fenced' })
+    expect(host.alive.size).toBe(0)
+    expect(host.journal).not.toBeNull()
+  })
+
+  it('reports why when only an operator can finish it', async () => {
+    await abandonedAfterCandidateLaunch()
+    failCandidateReadinessGate()
+    expect(await wakeStoppedManagedOrcad(wakeSlot)).toMatchObject({
+      outcome: 'recovery-refused',
+      reason: expect.stringContaining('changed profile state')
+    })
+    expect(host.fence).toBe(true)
   })
 })
 
