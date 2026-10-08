@@ -224,6 +224,10 @@ export const QUIT_CUT_NOTICE = {
   tone: 'notice'
 }
 
+/** The quit's own row about the cut as the host stores it: red, so an older client keeps it on
+ *  screen; a reader shows it as `QUIT_CUT_NOTICE`. */
+export const QUIT_CUT_ROW = { ...QUIT_CUT_NOTICE, tone: 'error' }
+
 /** A continuation the host refuses because the user's own message was accepted first: another
  *  client's send lands after the action reserved the offer, just before the continuation is
  *  accepted. `userAnswers` instead has the user send before or after the whole attempt. */
