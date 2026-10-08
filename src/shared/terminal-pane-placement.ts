@@ -15,7 +15,7 @@ const NewTabRow = terminalTabSchema
     launchAgent: true,
     viewMode: true
   })
-  .extend({ shellOverride: z.string().optional() })
+  .extend({ shellOverride: z.string().optional(), forceHostRuntime: z.boolean().optional() })
   .partial()
 
 // Optional fields degrade alone: a malformed one is dropped, not the whole placement.

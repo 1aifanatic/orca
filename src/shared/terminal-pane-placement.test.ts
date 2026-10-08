@@ -20,7 +20,8 @@ describe('parseTerminalPanePlacement', () => {
         customTitle: null,
         color: '#f97316',
         createdAt: 1,
-        viewMode: 'chat'
+        viewMode: 'chat',
+        forceHostRuntime: true
       }
     }
     const split = {

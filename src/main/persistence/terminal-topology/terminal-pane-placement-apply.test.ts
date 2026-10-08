@@ -99,7 +99,8 @@ describe('new-tab placement', () => {
       shellOverride: 'zsh',
       quickCommandLabel: 'pnpm dev',
       launchAgent: 'claude' as const,
-      viewMode: 'chat' as const
+      viewMode: 'chat' as const,
+      forceHostRuntime: true
     }
     const placed = bind(session(), { kind: 'new-tab', row })
     expect(placed.tabsByWorktree[WORKTREE]).toEqual([

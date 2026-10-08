@@ -12,7 +12,8 @@ export function terminalPanePlacementRow(tab: TerminalTab): TerminalPaneNewTabRo
     shellOverride,
     quickCommandLabel,
     launchAgent,
-    viewMode
+    viewMode,
+    forceHostRuntime
   } = tab
   return {
     title,
@@ -24,6 +25,7 @@ export function terminalPanePlacementRow(tab: TerminalTab): TerminalPaneNewTabRo
     shellOverride,
     quickCommandLabel,
     launchAgent,
-    viewMode
+    viewMode,
+    forceHostRuntime
   }
 }

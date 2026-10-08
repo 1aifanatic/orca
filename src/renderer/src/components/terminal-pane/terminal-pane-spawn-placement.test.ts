@@ -13,6 +13,7 @@ const TAB = {
   sortOrder: 1,
   createdAt: 42,
   shellOverride: 'wsl.exe',
+  forceHostRuntime: true,
   isPinned: true
 }
 
@@ -52,7 +53,8 @@ describe('completePaneSpawnPlacement', () => {
         customTitle: 'Build',
         color: '#f97316',
         createdAt: 42,
-        shellOverride: 'wsl.exe'
+        shellOverride: 'wsl.exe',
+        forceHostRuntime: true
       }
     })
   })
