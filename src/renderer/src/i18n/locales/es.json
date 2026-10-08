@@ -7197,14 +7197,7 @@
           },
           "nativeChat": {
             "title": "Chat UI",
-            "description": "Previsualiza la interfaz de chat de escritorio para sesiones de terminal de agentes compatibles.",
-            "copy": "Añade una vista de Chat UI a la que puedes cambiar desde paneles de terminal de agentes compatibles. Es experimental mientras ajustamos la fidelidad de las transcripciones, la transmisión y la paridad con el terminal.",
             "toggleLabel": "Alternar Chat UI",
-            "defaultTitle": "Vista predeterminada",
-            "defaultCopy": "Elige cómo se abren las nuevas pestañas de terminal de agentes compatibles.",
-            "defaultViewLabel": "Vista predeterminada de Chat UI",
-            "defaultViewTerminal": "Chat en terminal",
-            "defaultViewNative": "Chat UI",
             "shellEnvNamesLabel": "Variables que se pasan desde tu shell",
             "shellEnvNamePlaceholder": "Nombre de la variable",
             "shellEnvNameAdd": "Agregar",
@@ -7215,10 +7208,6 @@
             "shellEnvCopy": "Los chats de Codex y Claude empiezan con todas las variables que exporta tu shell de inicio de sesión, igual que un terminal. Desactívalo para elegir cuáles reciben.",
             "shellEnvToggleLabel": "Alternar el uso del entorno de tu shell",
             "resumeCopy": "Cuando Orca se cierra o instala una actualización, los chats que estaban trabajando se reanudan automáticamente al volver a abrir Orca.",
-            "structuredTitle": "Utilice el chat nativo estructurado actualizado",
-            "structuredCopy": "Abre nuevos agentes como chats estructurados cuando sea posible. Si está desactivado, los abre en el chat respaldado por la terminal. Los chats que ya existen permanecen como están.",
-            "structuredScope": "Se ejecuta en esta máquina y en servidores Orca emparejados que ejecutan una versión que lo admita; los servidores más antiguos mantienen el chat de terminal. Los hosts WSL y SSH continúan usando el chat de terminal.",
-            "structuredToggleLabel": "Alternar chat nativo estructurado actualizado",
             "resumeTitle": "Reanudar los chats de trabajo automáticamente después de reiniciar",
             "resumeToggleLabel": "Alternar reanudación automática después de un reinicio"
           },
@@ -9666,7 +9655,6 @@
             },
             "nativeChat": {
               "title": "Chat UI",
-              "description": "Previsualiza la interfaz de chat de escritorio para sesiones de terminal de agentes compatibles.",
               "grok": "grok",
               "queue": "cola",
               "native": "nativo",
