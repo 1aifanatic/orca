@@ -32,7 +32,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { STRUCTURED_AGENT_SESSION_STARTUP_DEADLINE_MS } from './structured-agent-session-startup-attempt'
+import type { StructuredAgentSessionStartupLimits } from './structured-agent-session-startup-attempt'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -45,7 +45,7 @@ let host: StructuredAgentSessionHost
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
-let startupDeadlineMs: number | undefined
+let startupLimits: Partial<StructuredAgentSessionStartupLimits> | undefined
 
 function acquisition(input: StructuredAgentSessionAcquireInput): AgentSessionAcquisition {
   return {
@@ -90,7 +90,7 @@ async function startHost(): Promise<void> {
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
     idleSweep: { intervalMs: 60 * 60_000, idleMs: 60 * 60_000 },
-    ...(startupDeadlineMs === undefined ? {} : { startupDeadlineMs }),
+    ...(startupLimits === undefined ? {} : { startupLimits }),
     now: () => NOW
   })
 }
@@ -107,7 +107,7 @@ async function restartWith(next: StructuredAgentSessionAdapter['acquire']): Prom
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-startup-attempt-'))
   resetHostTestOperationIds()
-  startupDeadlineMs = undefined
+  startupLimits = undefined
   acquire = vi.fn(async (input) => acquisition(input))
   dispatch = vi.fn(async () => ({
     state: 'accepted' as const,
@@ -263,6 +263,7 @@ describe('a start that ends before it proves itself', () => {
     await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
     expect((await submission(id))?.handedOverAt).toBeUndefined()
     expect(dispatch).not.toHaveBeenCalled()
+    expect(startupAttemptOpen()).toBe(false)
   })
 
   it('withdraws what it held on a Stop, without waiting on the handshake', async () => {
@@ -278,6 +279,7 @@ describe('a start that ends before it proves itself', () => {
     expect((await submission(id))?.handedOverAt).toBeUndefined()
     expect(closeSession).toHaveBeenCalled()
     expect(dispatch).not.toHaveBeenCalled()
+    expect(startupAttemptOpen()).toBe(false)
   })
 
   it('keeps what it held for the chat on a close, without waiting on the handshake', async () => {
@@ -293,10 +295,11 @@ describe('a start that ends before it proves itself', () => {
     })
     expect((await submission(id))?.handedOverAt).toBeUndefined()
     expect(dispatch).not.toHaveBeenCalled()
+    expect(startupAttemptOpen()).toBe(false)
   })
 
-  it('stops a published start that misses its deadline and fails what it held', async () => {
-    startupDeadlineMs = 50
+  it('stops a published start that goes silent and fails what it held', async () => {
+    startupLimits = { silenceMs: 50 }
     await restartWith(publishFirst)
     const id = await heldBehindStart('hello')
 
@@ -305,13 +308,37 @@ describe('a start that ends before it proves itself', () => {
     expect((await submission(id))?.handedOverAt).toBeUndefined()
     expect(closeSession).toHaveBeenCalled()
     expect(dispatch).not.toHaveBeenCalled()
+    expect(startupAttemptOpen()).toBe(false)
   })
 
-  it('aborts an acquire still in its handshake at the deadline and fails what it held', async () => {
-    startupDeadlineMs = 50
+  it('keeps a slow start that is still talking, and stops one that never readies at the ceiling', async () => {
+    startupLimits = { silenceMs: 50, ceilingMs: 400 }
+    const chatter: ReturnType<typeof setInterval>[] = []
+    await restartWith(async (input) => {
+      await input.onSpawned?.(acquisition(input).process)
+      chatter.push(setInterval(() => input.onOutput?.(), 10))
+      return { ...acquisition(input), providerChildPhase: 'starting' }
+    })
+    try {
+      const id = await heldBehindStart('hello')
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      expect(closeSession).not.toHaveBeenCalled()
+      expect(startupAttemptOpen()).toBe(true)
+
+      await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
+      expect(await submission(id)).toMatchObject(HOST_STOPPED)
+      expect(dispatch).not.toHaveBeenCalled()
+    } finally {
+      chatter.forEach(clearInterval)
+    }
+  })
+
+  it('aborts an acquire still in its handshake once it goes silent and fails what it held', async () => {
+    startupLimits = { silenceMs: 50 }
     await restartWith(
       (input) =>
         new Promise((_resolve, reject) => {
+          void input.onSpawned?.(acquisition(input).process)
           input.signal?.addEventListener('abort', () => reject(input.signal?.reason))
         })
     )
@@ -320,10 +347,11 @@ describe('a start that ends before it proves itself', () => {
     await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
     expect(await submission(id)).toMatchObject(HOST_STOPPED)
     expect(dispatch).not.toHaveBeenCalled()
+    await eventually(() => expect(startupAttemptOpen()).toBe(false))
   })
 
-  it('is not ended by the deadline once it proved itself', async () => {
-    startupDeadlineMs = 50
+  it('is not ended by the limit once it proved itself', async () => {
+    startupLimits = { silenceMs: 50 }
     await restartWith(publishFirst)
     const id = await heldBehindStart('hello')
     await host.handleAdapterEvent(startedEvent())
@@ -333,11 +361,68 @@ describe('a start that ends before it proves itself', () => {
 
     expect(closeSession).not.toHaveBeenCalled()
     expect((await host.readStatusSummary(SESSION))?.hostExecutionPhase).toBe('ready')
+    expect(startupAttemptOpen()).toBe(false)
   })
 })
 
+describe('what a started child reports', () => {
+  it('is persisted only after what was held is handed over', async () => {
+    await restartWith(publishFirst)
+    await heldBehindStart('hello')
+    const order: string[] = []
+    dispatch.mockImplementationOnce(async (input) => {
+      order.push('dispatch')
+      return {
+        state: 'accepted' as const,
+        providerIdentity: {
+          provider: 'codex' as const,
+          threadId: THREAD,
+          turnId: `turn-${input.clientMessageId}`,
+          ordinal: 1
+        }
+      }
+    })
+    const replace = store.replaceSessionOptions.bind(store)
+    vi.spyOn(store, 'replaceSessionOptions').mockImplementation(async (args) => {
+      order.push('persist')
+      return replace(args)
+    })
+
+    await host.handleAdapterEvent({ ...startedEvent(), reportedOptions: { model: 'reported' } })
+
+    await eventually(() => expect(order).toEqual(['dispatch', 'persist']))
+    expect(store.getRecord(SESSION)?.options).toMatchObject({ model: 'reported' })
+  })
+
+  it('never overwrites a pick made after the child reported', async () => {
+    await restartWith(publishFirst)
+    await heldBehindStart('hello')
+    dispatch.mockImplementationOnce(async () => {
+      // A pick lands while the first handover is still running.
+      await store.replaceSessionOptions({
+        sessionId: SESSION,
+        fence: store.getRecord(SESSION)!.lease.runtimeFence,
+        options: { model: 'picked' },
+        now: NOW
+      })
+      return { state: 'admitted' as const }
+    })
+
+    await host.handleAdapterEvent({ ...startedEvent(), reportedOptions: { model: 'reported' } })
+    await eventually(() => expect(dispatch).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await host.flushStreamedEvents(SESSION)
+
+    expect(store.getRecord(SESSION)?.options).toEqual({ model: 'picked' })
+  })
+})
+
+function startupAttemptOpen(): boolean {
+  return host.collaboratorsForTests().runtimeState.startupAttempts.isOpen(SESSION)
+}
+
 describe('the attempt an acquire runs under', () => {
-  it('is minted by the host with the lease, the pinned launch and a fixed deadline', async () => {
+  it('is minted by the host with the lease, the pinned launch and its progress report', async () => {
     await restartWith(publishFirst)
     await heldBehindStart('hello')
 
@@ -345,9 +430,9 @@ describe('the attempt an acquire runs under', () => {
     const [input] = acquire.mock.calls.at(-1)!
     expect(input).toMatchObject({
       fence: record.lease.runtimeFence,
-      launch: { location: record.location, accountHome: record.accountHome },
-      deadlineAt: NOW + STRUCTURED_AGENT_SESSION_STARTUP_DEADLINE_MS
+      launch: { location: record.location, accountHome: record.accountHome }
     })
+    expect(input.onOutput).toEqual(expect.any(Function))
     expect(input.attemptId).toEqual(expect.any(String))
     expect(input.signal).toBeInstanceOf(AbortSignal)
   })

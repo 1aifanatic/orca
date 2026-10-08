@@ -1,6 +1,6 @@
 // The acquire each session has in flight, owned by the host that runs it, or another provider wait
 // its queue is on (an option write). The queue runs one step at a time, so a session has at most
-// one; a close, a Stop admitted now, quit, or the start's deadline aborts it from outside the queue
+// one; a close, a Stop admitted now, quit, or the startup limit aborts it from outside the queue
 // instead of waiting behind a provider that may never answer.
 
 export class StructuredAgentSessionAcquireAborts {

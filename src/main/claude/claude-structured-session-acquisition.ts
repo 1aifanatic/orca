@@ -24,6 +24,7 @@ import {
   settleClaudeSessionStartup
 } from './claude-structured-session-startup'
 import { createClaudeSessionPublication } from './claude-structured-session-publication'
+import { readClaudeStructuredSessionSettings } from './claude-structured-session-acquisition-options'
 import {
   mintClaudeAcquisitionGeneration,
   type ClaudeAcquisitionRegistry,
@@ -183,6 +184,7 @@ export async function acquireClaudeSession({
           onMessage,
           canUseTool,
           onUserDialog,
+          ...(input.onOutput ? { onOutput: input.onOutput } : {}),
           onFault: (error) => {
             childEnded ??= error
             initProof.reject(error)
@@ -275,8 +277,10 @@ export async function acquireClaudeSession({
           requestTimeoutMs: deps.requestTimeoutMs,
           emit
         }),
+        readSettings: () => readClaudeStructuredSessionSettings(connection, deps.requestTimeoutMs),
         isCurrent: () => sessions.get(sessionId) === session,
         fault: (error) => callbacks.handleExit(sessionId, attempt, error),
+        diagnose: (diagnostic) => emit({ type: 'auth-diagnostic', sessionId, diagnostic }),
         report: (event) =>
           emit({
             ...event,
@@ -293,8 +297,7 @@ export async function acquireClaudeSession({
         exits.get(sessionId)?.error ?? new Error('claude session ended before acquisition returned')
       )
     }
-    // The start reads its facts only after publish, so the child is `starting` until `started`
-    // says otherwise; it already takes input.
+    // The start reads its facts only after publish, so the child is `starting` until `started`.
     return { ...publication.acquisition, providerChildPhase: 'starting' }
   } catch (error) {
     unbindReadingControl?.()

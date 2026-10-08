@@ -29,13 +29,12 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { STRUCTURED_AGENT_SESSION_STARTUP_DEADLINE_MS } from './structured-agent-session-startup-attempt'
 
 const CALLER = { callerKey: 'client-1' }
 
-// Adapters whose own acquire already publishes at spawn, with the test that drives the real one.
-// Every other registration still runs its handshake inside acquire (the temporary bridge) until
-// its adapter moves to publish at spawn, which is when it joins this map.
+// Temporary, removed when every adapter publishes at spawn: adapters whose own acquire already does,
+// with the test that drives the real one. Every other registration still runs its handshake inside
+// acquire (the bridge) until then.
 const REAL_ADAPTER_PUBLISHES_AT_SPAWN: Readonly<Record<string, string>> = {
   claude: 'structured-agent-session-claude-hung-start-stop.test.ts'
 }
@@ -142,7 +141,7 @@ describe.each(
         attemptId: expect.any(String),
         fence: record.lease.runtimeFence,
         launch: { location: record.location, accountHome: record.accountHome },
-        deadlineAt: NOW + STRUCTURED_AGENT_SESSION_STARTUP_DEADLINE_MS
+        onOutput: expect.any(Function)
       })
 
       const body = hostTestMessage('hello')

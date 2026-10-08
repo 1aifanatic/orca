@@ -119,8 +119,8 @@ export function createStructuredAgentSessionConversationLifetime(host: {
           cause: 'host-stop'
         })
       }).catch((error: unknown) =>
-        deps().logger.warn('stopping an agent past its start deadline failed', {
-          scope: 'startup-deadline',
+        deps().logger.warn('stopping an agent past its startup limit failed', {
+          scope: 'startup-limit',
           sessionId,
           error
         })

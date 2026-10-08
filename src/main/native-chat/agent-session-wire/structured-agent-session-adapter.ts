@@ -242,9 +242,17 @@ export type StructuredAgentSessionOptionsSkippedEvent = {
   options: Readonly<Record<string, string>>
 }
 
+/** What a child that already proved its start reports later, such as an optional read that came
+ *  after `started`: persisted as the start's report is. Never delays a start. */
+export type StructuredAgentSessionOptionsReportedEvent = Omit<
+  StructuredAgentSessionStartedEvent,
+  'type'
+> & { type: 'options-reported' }
+
 export type StructuredAgentSessionLifecycleEvent =
   | StructuredAgentSessionEndedEvent
   | StructuredAgentSessionStartedEvent
+  | StructuredAgentSessionOptionsReportedEvent
   | StructuredAgentSessionOptionsSkippedEvent
 
 /** Whether the provider child behind an acquisition has proven its start. A publish-first

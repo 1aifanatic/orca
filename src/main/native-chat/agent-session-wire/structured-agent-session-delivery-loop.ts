@@ -84,6 +84,7 @@ type StartFailure = { startKey: string | null; cause: StructuredAgentSessionStar
 
 export class StructuredAgentSessionDeliveryLoop {
   private readonly running = new Set<string>()
+  private readonly runs = new Map<string, Promise<void>>()
   private disposed = false
 
   constructor(private readonly deps: StructuredAgentSessionDeliveryLoopDeps) {}
@@ -98,13 +99,23 @@ export class StructuredAgentSessionDeliveryLoop {
   }
 
   /** From inside the session's serialize, after a message was accepted or the conversation
-   *  opened. A loop already running re-reads the journal on its next step. */
-  wake(sessionId: string): void {
-    if (this.disposed || this.running.has(sessionId)) {
-      return
+   *  opened. A loop already running re-reads the journal on its next step. Settles once the loop
+   *  has handed over all it can; never rejects. */
+  wake(sessionId: string): Promise<void> {
+    if (this.disposed) {
+      return Promise.resolve()
+    }
+    if (this.running.has(sessionId)) {
+      return this.runs.get(sessionId) ?? Promise.resolve()
     }
     this.running.add(sessionId)
-    void this.run(sessionId)
+    const run = this.run(sessionId).finally(() => {
+      if (this.runs.get(sessionId) === run) {
+        this.runs.delete(sessionId)
+      }
+    })
+    this.runs.set(sessionId, run)
+    return run
   }
 
   private async run(sessionId: string): Promise<void> {

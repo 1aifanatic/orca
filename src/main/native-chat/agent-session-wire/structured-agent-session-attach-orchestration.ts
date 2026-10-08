@@ -55,7 +55,7 @@ export type StructuredAgentSessionAttachOptions = {
   startedFor?: string
   /** A close, an admitted Stop or quit aborted this attach: its refusal is that abort's. */
   onAborted?: () => void
-  /** The start's deadline aborted this attach's acquire: it failed, nobody stopped it. */
+  /** The startup limit aborted this attach's acquire: it failed, nobody stopped it. */
   onStartupExpired?: () => void
 }
 
@@ -203,12 +203,9 @@ async function runAttachUnderAbort(
       now: () => context.now(),
       recordPhase,
       acquireSignal,
-      ...(context.deps.startupDeadlineMs === undefined
-        ? {}
-        : { startupDeadlineMs: context.deps.startupDeadlineMs }),
       onStartupAttempt: (startup) => {
         attempt.startup = startup
-        startupAttempts.track(sessionId, startup)
+        return startupAttempts.track(sessionId, startup)
       },
       ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
       openConversation: async (record) => {
@@ -305,6 +302,9 @@ function endReleasedChild(
 ): void {
   const session = context.sessions.get(sessionId)
   const child = session?.child
+  if (child) {
+    context.runtimeState.startupAttempts.childEnded(sessionId, child)
+  }
   if (
     !session ||
     !child ||

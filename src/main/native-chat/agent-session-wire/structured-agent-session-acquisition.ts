@@ -49,22 +49,21 @@ export async function acquireOwner(
     } catch (error) {
       throw new AgentSessionPreSpawnError(error)
     }
-    // Minted before the adapter runs anything, so the deadline bounds the whole start.
     const attempt = mintStructuredAgentSessionStartupAttempt({
       record,
       identity: journalIdentityFor(record, input.params),
       // Retries must recover the original reservation, not mint a second child.
       spawnToken,
       ...(input.eventSink ? { events: input.eventSink } : {}),
-      ...(input.acquireSignal ? { signal: input.acquireSignal } : {}),
-      now: input.now(),
-      ...(input.startupDeadlineMs === undefined ? {} : { deadlineMs: input.startupDeadlineMs })
+      ...(input.acquireSignal ? { signal: input.acquireSignal } : {})
     })
-    input.onStartupAttempt?.(attempt)
+    const progress = input.onStartupAttempt?.(attempt)
     const acquired = await input.adapter.acquire({
       ...attempt,
+      ...(progress ? { onOutput: progress.output } : {}),
       ...(input.recordPhase ? { recordPhase: input.recordPhase } : {}),
       onSpawned: async (process) => {
+        progress?.spawned()
         record = await input.store.commitProcessIdentity({
           sessionId: record.sessionId,
           fence,

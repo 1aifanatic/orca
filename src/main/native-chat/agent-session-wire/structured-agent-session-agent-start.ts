@@ -52,7 +52,7 @@ export type StructuredAgentSessionResumeOutcome =
       diagnostic?: ProviderDiagnostic
       /** The host's own close, Stop or quit aborted the start, so it failed nothing it was for. */
       aborted?: true
-      /** The start's deadline passed before it proved itself: Orca stopped it. */
+      /** The start went silent or hit its ceiling before it proved itself: Orca stopped it. */
       expired?: true
       argumentProblem?: AgentSessionArgumentProblem
     }

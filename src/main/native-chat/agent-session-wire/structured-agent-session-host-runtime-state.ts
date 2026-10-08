@@ -13,6 +13,7 @@ import {
   type ProviderChildSessions
 } from './structured-agent-session-provider-child'
 import { resolveStructuredSessionRecovery } from './structured-agent-session-recovery-resolution'
+import { recordAgentSessionStartup } from '../../observability/agent-session-instrumentation'
 import {
   StructuredAgentSessionStartupAttempts,
   StructuredAgentSessionStartupExpiredError,
@@ -31,12 +32,13 @@ export class StructuredAgentSessionHostRuntimeState {
     /** Required: a child held here renews its lease without a PID probe. */
     sessions: ProviderChildSessions,
     onEventSinkFailure?: (sessionId: string, error: unknown) => void,
-    /** A published child's start ran past its deadline; one still acquiring is aborted here. */
+    /** A published child's start passed its startup limit; one still acquiring is aborted here. */
     onStartupExpired?: (expired: StructuredAgentSessionExpiredStartup) => void
   ) {
     this.onEventSinkFailure = onEventSinkFailure
     this.startupAttempts = new StructuredAgentSessionStartupAttempts({
-      now: () => deps.now?.() ?? Date.now(),
+      ...(deps.startupLimits ? { limits: deps.startupLimits } : {}),
+      settled: recordAgentSessionStartup,
       expire: (expired) => {
         if (expired.child === null) {
           this.acquireAborts.abort(
