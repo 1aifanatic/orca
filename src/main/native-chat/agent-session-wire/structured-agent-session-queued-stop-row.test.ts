@@ -19,6 +19,7 @@ import {
   QUEUED_RIG_CALLER,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
+import { openRigTurnFor } from './structured-agent-session-queued-rig-turn.test-fixture'
 import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 
 let rig: QueuedMessageTestRig
@@ -147,6 +148,7 @@ describe("Stop's event", () => {
 
   it('a card the Stop withdrew comes back once, under the pause, and is never sent again on its own', async () => {
     const working = await rig.workingSend()
+    await openRigTurnFor(rig, working)
     const sentId = await queuedDraft('sent now into the turn')
     await rig.sendNow(sentId)
     await eventually(async () => expect((await rig.handoff(sentId))?.handedOverAt).toBeDefined())
@@ -155,6 +157,7 @@ describe("Stop's event", () => {
     await withdraw(handoffId)
     await withdraw(handoffId)
     await rig.settleAccepted(working, 'stopped')
+    await openRigTurnFor(rig, working, 'interrupted')
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     expect(await rig.drafts()).toEqual([{ messageId: sentId, state: 'waiting' }])
@@ -167,7 +170,7 @@ describe("Stop's event", () => {
   })
 
   it('survives a host crash, unshown: the next open marks the hand-off unknown, nothing sends, Resume releases', async () => {
-    await rig.workingSend()
+    await openRigTurnFor(rig, await rig.workingSend())
     const sentId = await queuedDraft('sent now into the turn')
     const waiting = await queuedDraft('waiting behind it')
     await rig.sendNow(sentId)
@@ -243,7 +246,11 @@ describe("a /clear's carried cards", () => {
     if (!replacementId) {
       throw new Error(`expected a replacement session: ${JSON.stringify(cleared)}`)
     }
-    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
+    // Held there, unshown: nothing runs in the fresh conversation.
+    expect(await rig.queuePause(replacementId)).toBeNull()
+    expect(structuredQueuePauses(journal(replacementId)).map((pause) => pause.reason)).toEqual([
+      'cleared'
+    ])
     // Idle there, so the person's send goes straight out rather than queueing.
     const text = hostTestMessage('hi')
     const person = rig.host.send(QUEUED_RIG_CALLER, {
@@ -296,7 +303,9 @@ describe('no stored pause', () => {
       ...fields
     })
     const replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
-    expect(replacementId && (await rig.queuePause(replacementId))).toEqual({ reason: 'cleared' })
+    expect(
+      replacementId && structuredQueuePauses(journal(replacementId)).map((pause) => pause.reason)
+    ).toEqual(['cleared'])
     expect(pauseTables()).toBe(0)
   })
 })

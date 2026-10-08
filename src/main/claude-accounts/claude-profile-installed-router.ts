@@ -2,7 +2,7 @@ import { lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 // Why type-only: scan workers import this module, and the router's setup graph must not load there.
 import type { ClaudeProfileRouter } from './claude-profile-router'
-import type { CodexAccountSelectionTarget } from '../../shared/codex-selection-lane'
+import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 
 /** A real directory; a link is false, so a history folder shared by link is not read twice. */
 export function isDirectory(path: string): boolean {
@@ -26,7 +26,7 @@ export function listClaudeProfileHomes(dataRoot: string): string[] {
 
 let installed: ClaudeProfileRouter | undefined
 
-/** Installed by the host runtime only when routing is enabled; workers and child processes have none. */
+/** Installed by the desktop's account services; workers, child processes and orcad have none. */
 export function installClaudeProfileRouter(router: ClaudeProfileRouter | undefined): void {
   installed = router
 }
@@ -35,19 +35,19 @@ export function getClaudeProfileRouter(): ClaudeProfileRouter | undefined {
   return installed
 }
 
-/** A pane's env with the routed account's pointer added; SSH panes and WSL distros keep theirs. */
+/** A local or WSL pane's env with the routed account's pointer added; SSH panes keep theirs. */
 export function withClaudeProfileTerminalEnv<Env extends Record<string, string> | undefined>(
   env: Env,
   connectionId: string | null | undefined,
-  target: CodexAccountSelectionTarget
+  target: ClaudeAccountSelectionTarget
 ): Env | Record<string, string> {
-  const profileEnv = connectionId || target.runtime === 'wsl' ? undefined : installed?.terminalEnv()
+  const profileEnv = connectionId ? undefined : installed?.terminalEnv(target)
   return profileEnv ? { ...env, ...profileEnv } : env
 }
 
 /**
- * Account `<surface>` folders the System default readers cannot see. Step 1 links history into the
- * System default on macOS/Linux, so only Windows (or a cross-filesystem refusal) adds any.
+ * Account `<surface>` folders the System default readers cannot see. Setup links history into the
+ * System default on every platform, so only a folder setup could not link (e.g. across drives) adds any.
  */
 export function claudeProfileHistoryDirs(surface: 'projects' | 'transcripts'): string[] {
   return (installed?.accountHomes() ?? []).map((home) => join(home, surface)).filter(isDirectory)

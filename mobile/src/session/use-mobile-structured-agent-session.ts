@@ -18,6 +18,7 @@ import {
   projectStructuredQuestion
 } from './mobile-structured-agent-prompts'
 import type { RpcClient } from '../transport/rpc-client'
+import type { MobileNativeChatVisualSource } from './mobile-native-chat-visual-read'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
 import type { MobileNativeChatSession } from './use-mobile-native-chat-session'
@@ -29,7 +30,6 @@ import { useMobileStructuredPromptResponses } from './use-mobile-structured-prom
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileStructuredAgentOptions } from './use-mobile-structured-agent-options'
 import { useMobileStructuredAgentTurnTiming } from './use-mobile-structured-agent-turn-timing'
-import { useMobileStructuredSendOperationReconciliation } from './use-mobile-structured-send-operation-reconciliation'
 import {
   pendingStructuredPromptIdentity,
   requestMobileStructuredAgentSessionCancel
@@ -45,6 +45,10 @@ import {
   useMobileStructuredQueuedMessageControls,
   type MobileStructuredQueuedMessageControls
 } from './use-mobile-structured-queued-message-controls'
+import {
+  useMobileStructuredBackgroundTasks,
+  type MobileStructuredBackgroundTasks
+} from './use-mobile-structured-background-tasks'
 
 type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions> &
   ReturnType<typeof useMobileStructuredAgentTurnTiming> & {
@@ -67,6 +71,10 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
     cancelPrompt: (prompt?: { itemId: string; expectedRevision: number }) => Promise<boolean>
     /** The queued-draft cards and their actions, from any host that publishes them. */
     queued: MobileStructuredQueuedMessageControls
+    /** Running child work for the strip above the composer, as desktop shows it. */
+    backgroundTasks: MobileStructuredBackgroundTasks
+    /** Where this chat's `::orca-visual` lines read their HTML from; null without a client. */
+    visualSource: MobileNativeChatVisualSource | null
   }
 
 export function useMobileStructuredAgentSession(args: {
@@ -74,10 +82,8 @@ export function useMobileStructuredAgentSession(args: {
   sessionId: string | null
   /** Host/workspace scope used to keep same provider ids isolated. */
   sourceIdentity?: string
-  /** Authenticated identity the host keys mutation admission under. */
-  callerIdentity?: string
   enabled: boolean
-  /** Live transport only; gates the connection-scoped hold, nothing else. */
+  /** Live transport only; gates the connection-scoped hold, and whether child rows may read live. */
   connected: boolean
   /** Capability facts from the shared runtime status probe; null follows the legacy wire. */
   hostSupport: StructuredAgentSessionHostSupport | null
@@ -91,7 +97,6 @@ export function useMobileStructuredAgentSession(args: {
   const {
     agent,
     appendComposerText,
-    callerIdentity = '',
     client,
     connected,
     sessionId,
@@ -112,7 +117,6 @@ export function useMobileStructuredAgentSession(args: {
   const stateArgs = { client, sessionId, sessionKey, enabled, connected }
   const { state, stateRef, queuedMessages, queuePause, loadingOlder, loadEarlier } =
     useMobileStructuredAgentState(stateArgs)
-  useMobileStructuredSendOperationReconciliation(state.submissions, queuedMessages)
 
   const mutate = useMobileStructuredAgentMutate({
     client,
@@ -145,10 +149,8 @@ export function useMobileStructuredAgentSession(args: {
 
   const sendWithOutcome = useMobileStructuredSendWithOutcome({
     agent,
-    callerIdentity,
     client,
     sessionId,
-    sessionKey,
     enabled,
     queueCapable,
     stateRef,
@@ -190,6 +192,13 @@ export function useMobileStructuredAgentSession(args: {
     selectStructuredAgentTurnActivity(state.items, turnId, state.activity)?.text ?? null
   const thinking = isStructuredAgentSessionThinking(state)
   const isWorking = isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence)
+  const backgroundTasks = useMobileStructuredBackgroundTasks({
+    sessionKey,
+    state,
+    turnId,
+    connected,
+    mutate
+  })
   const hostStopping = useMobileStructuredSessionHostStopping({
     client,
     sessionId,
@@ -266,8 +275,14 @@ export function useMobileStructuredAgentSession(args: {
     ]
   )
 
+  const visualSource = useMemo<MobileNativeChatVisualSource | null>(
+    () => (client && sessionId ? { client, sessionId } : null),
+    [client, sessionId]
+  )
+
   return {
     ...options,
+    visualSource,
     session: {
       messages,
       status,
@@ -292,6 +307,7 @@ export function useMobileStructuredAgentSession(args: {
     question: projectStructuredQuestion(questionPrompt, groupedDraft),
     respondPermission,
     respondQuestion,
-    queued
+    queued,
+    backgroundTasks
   }
 }

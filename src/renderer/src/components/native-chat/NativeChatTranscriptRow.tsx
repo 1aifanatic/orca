@@ -76,7 +76,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
       />
     )
   }
-  const { message, turnKey, status, receipt, turnDiff } = slot
+  const { message, turnKey, status, receipt, turnDiff, workRun } = slot
   const deliveryNotice = context.deliveryNotices?.get(message.id)
   const predecessors = context.taskListPredecessors.get(message.id)
   const expanded = turnKey ? context.expandedTurnIds.has(turnKey) : undefined
@@ -92,7 +92,8 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
     />
   ) : null
   return (
-    <div className={cn('flex flex-col gap-5', sectionClassName)}>
+    // The negative margin shortens the measured row, which is what moves the next one up.
+    <div className={cn('flex flex-col gap-5', slot.continuesTurn && '-mb-3', sectionClassName)}>
       {/* A turn with no user bubble carries its bar above its first row. */}
       {slot.statusAbove ? statusRow : null}
       {!slot.drawsMessage ? null : receipt ? (
@@ -103,11 +104,14 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           previousTodoWrite={predecessors?.todowrite}
           previousUpdatePlan={predecessors?.update_plan}
           revealedDiff={
-            context.revealedDiff?.messageId === message.id ? context.revealedDiff : undefined
+            (workRun ?? [message]).some((member) => member.id === context.revealedDiff?.messageId)
+              ? (context.revealedDiff ?? undefined)
+              : undefined
           }
           expandSignal={context.expandSignal}
           activeTurnIsWorking={slot.activeTurnIsWorking}
           trailingRun={slot.trailingRun}
+          continuesTurn={slot.continuesTurn}
           onScrollMessageToTop={context.onScrollMessageToTop}
           onLinkClick={context.onLinkClick}
           allowFileUriLinks={context.allowFileUriLinks}
@@ -121,6 +125,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
               ? rewind
               : undefined
           }
+          workRun={workRun}
         />
       )}
       {slot.statusAbove ? null : statusRow}
