@@ -16,6 +16,7 @@ const reauthenticate = vi.fn(async (_args: unknown) => snapshot())
 const selectClaudeProviderAccount = vi.fn(async () => snapshot())
 let storeSettings: GlobalSettings
 let activeRuntimeEnvironmentId: string | null = null
+let inactiveClaudeAccounts: unknown[] = []
 
 function account(id: string): ClaudeManagedAccount {
   return {
@@ -102,7 +103,7 @@ vi.mock('../../store', () => {
     recordFeatureInteraction: vi.fn(),
     refreshClaudeRateLimitsForTarget: vi.fn(),
     fetchInactiveClaudeAccountUsage: vi.fn(),
-    rateLimits: { inactiveClaudeAccounts: [], claudeTarget: { runtime: 'host', wslDistro: null } }
+    rateLimits: { inactiveClaudeAccounts, claudeTarget: { runtime: 'host', wslDistro: null } }
   })
   const useAppStore = (selector: (value: Record<string, unknown>) => unknown): unknown =>
     selector(state())
@@ -137,6 +138,7 @@ describe('status bar Claude account that needs a sign-in', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     activeRuntimeEnvironmentId = null
+    inactiveClaudeAccounts = []
     storeSettings = {
       ...getDefaultSettings('/home/me'),
       claudeManagedAccounts: [account('old'), account('new')],
@@ -161,6 +163,21 @@ describe('status bar Claude account that needs a sign-in', () => {
     expect(selectClaudeProviderAccount).not.toHaveBeenCalled()
     await waitFor(() => expect(fetchSettings).toHaveBeenCalled())
     expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('does not repeat its sign-in note with a usage sign-in line', async () => {
+    const unavailable = (accountId: string): unknown => ({
+      accountId,
+      isFetching: false,
+      rateLimits: { ...claudeProvider, status: 'error', error: 'Not signed in' }
+    })
+    inactiveClaudeAccounts = [unavailable('old'), unavailable('new')]
+    await openAccounts()
+    expect(screen.getByText('Sign in again to use this account')).toBeTruthy()
+    // Only the row without a sign-in note keeps the usage line.
+    expect(screen.getAllByText('Sign in to see usage')).toHaveLength(1)
+    const newRow = screen.getAllByText('new@example.com').at(-1)!.closest('[role="menuitem"]')
+    expect(newRow?.textContent).toContain('Sign in to see usage')
   })
 
   it('says why a failed sign-in failed', async () => {
