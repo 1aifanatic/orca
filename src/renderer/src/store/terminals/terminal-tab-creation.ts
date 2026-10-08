@@ -20,7 +20,7 @@ import { createBrowserUuid } from '@/lib/browser-uuid'
 import { ownsGlobalSelection } from '../global-selection-owner'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import type { TerminalSlice, TerminalStoreGet, TerminalStoreSet } from './terminal-state'
-import { withPendingTerminalPane } from './terminal-pending-panes'
+import { isTerminalTabMirroredFromMain, withPendingTerminalPane } from './terminal-pending-panes'
 import {
   getRemoteConnectionIdForWorktree,
   resolveCreatedTabShellOverride,
@@ -231,10 +231,12 @@ export function createTerminalTabCreationActions(
             [worktreeId]: [...existing, tab]
           },
           // Shown before main's topology names it; its pane's spawn tells main.
-          pendingTerminalPanes: withPendingTerminalPane(s.pendingTerminalPanes, {
-            worktreeId,
-            tabId: id,
-            change: 'add'
+          ...(isTerminalTabMirroredFromMain(s, worktreeId, id) && {
+            pendingTerminalPanes: withPendingTerminalPane(s.pendingTerminalPanes, {
+              worktreeId,
+              tabId: id,
+              change: 'add'
+            })
           }),
           // Why: publish the unified tab atomically with the runtime tab so a transient legacy mount can't race the split host.
           unifiedTabsByWorktree: {
