@@ -17,7 +17,7 @@ import {
 export const PREFLIGHT_METHODS = [
   defineMethod({
     name: 'preflight.codexMaintenance',
-    permission: 'workspace',
+    permission: 'host-admin',
     params: CodexMaintenanceRequest,
     handler: async (params, { runtime }) =>
       codexMaintenanceOnHost(params, runtime.getCodexMaintenanceSettings())
