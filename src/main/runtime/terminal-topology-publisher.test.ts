@@ -171,16 +171,23 @@ describe('TerminalTopologyPublisher', () => {
     expect(h.publisher.settle()).toBe(seq)
   })
 
+  it('names no push for a worktree it publishes no slice for', () => {
+    const h = harness(sessionWith([WT]))
+
+    expect(h.publisher.settle('repo::/hosted-elsewhere')).toBeUndefined()
+  })
+
   it('keeps publishSeq monotonic across pushes', async () => {
     const h = harness(sessionWith([WT]))
-    const seqs: number[] = [h.publisher.settle(WT)]
+    const settle = (): number => h.publisher.settle(WT) ?? Number.NaN
+    const seqs = [settle()]
     for (const ptyId of ['a', 'b', 'c']) {
       const next = structuredClone(h.session)
       next.tabsByWorktree[WT]![0]!.ptyId = ptyId
       h.replace(next)
       h.publisher.markDirty()
       await Promise.resolve()
-      seqs.push(h.publisher.settle(WT))
+      seqs.push(settle())
     }
 
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
