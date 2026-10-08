@@ -1,65 +1,110 @@
-name: pnpm verification cache pilot
-
+name: Manual injected main-evaluation retry policy qualification
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      source_sha:
+        description: Exact reviewed31a5 source; temporary definition must never merge.
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  group: manual-electron-main-evaluate-retry-clock
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
+  qualify:
+    name: Injected retry policy ${{ matrix.runtime }} seed ${{ matrix.seed }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
+        runtime: [bun, node]
+        seed: [104729, 130363]
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      WAIT_SOURCE_SHA: ${{ inputs.source_sha }}
+      WAIT_RUNTIME: ${{ matrix.runtime }}
+      WAIT_SEED: ${{ matrix.seed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Checkout reviewed definition separately
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .benchmark-definition
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          node-version: '24.21.0'
+          native-runtime: node
+          cache-electron-package: 'true'
+      - name: Install Electron package binary
+        run: node config/scripts/install-electron-package-binary.mjs
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: config/.bun-version
+      - name: Materialize unchanged stock controller and source-bound proposal
+        run: node .benchmark-definition/.github/benchmark/electron-main-evaluate-retry-clock/materialize.mjs
+      - name: Preserve original attempt without retry
+        continue-on-error: true
+        run: python3 notes/bun-migration/performance/qualify-fixture-reuse.py before "$WAIT_RUNTIME" notes/bun-migration/performance/electron-main-evaluate-retry-clock-ci-31a5/shipping-launch-plan.json "electron-main-evaluate-retry-clock-ci-31a5/runs/$WAIT_RUNTIME-$WAIT_SEED/before" "$WAIT_SEED"
+      - name: Require source and process boundaries before shipping patch
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          directory = Path('notes/bun-migration/performance/electron-main-evaluate-retry-clock-ci-31a5')
+          prefix = directory / 'runs' / (os.environ['WAIT_RUNTIME'] + '-' + os.environ['WAIT_SEED']) / 'before'
+          proof = json.loads(Path(str(prefix) + '-source-proof.json').read_text())
+          assert proof['normalClose'] and proof['result'] == 0 and proof['sourceUnchanged']
+          assert proof['before'] == proof['after'] and not proof['samplingErrors']
+          assert not proof['externalObserved'] and not proof['postCloseCoordinators']
+          plan = json.loads((directory / 'shipping-launch-plan.json').read_text())
+          for target, versions in plan['patchTargets'].items():
+              assert hashlib.sha256(Path(target).read_bytes()).hexdigest() == versions['beforeSha256']
+          PY
+          git apply --check notes/bun-migration/performance/electron-main-evaluate-retry-clock-ci-31a5/shipping.patch
+          git apply notes/bun-migration/performance/electron-main-evaluate-retry-clock-ci-31a5/shipping.patch
+      - name: Preserve shipping attempt without retry
+        continue-on-error: true
+        run: python3 notes/bun-migration/performance/qualify-fixture-reuse.py after "$WAIT_RUNTIME" notes/bun-migration/performance/electron-main-evaluate-retry-clock-ci-31a5/shipping-launch-plan.json "electron-main-evaluate-retry-clock-ci-31a5/runs/$WAIT_RUNTIME-$WAIT_SEED/after" "$WAIT_SEED"
+      - name: Preserve every raw attempt and runtime context
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-main-evaluate-retry-clock-${{ matrix.runtime }}-${{ matrix.seed }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: notes/bun-migration/performance/electron-main-evaluate-retry-clock-ci-31a5/
+  evidence:
+    name: Independently verify eight original and candidate attempts
+    if: always()
+    needs: qualify
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
+      - uses: actions/download-artifact@v8
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
+          pattern: electron-main-evaluate-retry-clock-*
+          path: wait-artifacts
+      - name: Verify exact original cases, routes and provenance
         env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
-        run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          WAIT_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: python3 .github/benchmark/electron-main-evaluate-retry-clock/collect-results.py wait-artifacts .github/benchmark/electron-main-evaluate-retry-clock/payload electron-main-evaluate-retry-clock-result.json
+      - name: Preserve evidence even when qualification rejects
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-main-evaluate-retry-clock-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: electron-main-evaluate-retry-clock-result.json
