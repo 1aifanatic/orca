@@ -19591,5 +19591,12 @@
       "updateRuntime": "Update the remote runtime to change workspace links",
       "updateRuntimeSafely": "Update the remote runtime to safely change workspace links"
     }
+  },
+  "workspaceDeletion": {
+    "settingTitle": "Always Force Delete Workspaces",
+    "settingDescription": "Discard uncommitted changes and delete even when terminal shutdown cannot be verified. Archive hook failures and locked worktrees still require attention.",
+    "preferenceSaveFailed": "Could not save deletion preference",
+    "alwaysForceDelete": "Always force delete",
+    "alwaysForceDeleteDescription": "Future deletions discard changes, even if terminal shutdown cannot be verified. Change this in Settings."
   }
 }
