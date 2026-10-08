@@ -63,6 +63,7 @@ export class OrcaRuntimeWithAdoptTerminalOrphansFromInventory extends OrcaRuntim
         getPty: (handle) => this.getLivePtyForHandle(handle)?.pty ?? null,
         getLeaves: (ptyId) => this.getLeavesForPty(ptyId),
         getLeaf: (tabId, leafId) => this.leaves.get(this.getLeafKey(tabId, leafId)),
+        isStopRequested: (ptyId) => this.isPtyStopRequested(ptyId),
         getDisplayTitle: (pty) => getLatestPtyTitle(this.getPtyDisplayRecord(pty)),
         replayPersistedSurface: (pty, tabId, paneKey) =>
           recordPtySurface(pty, tabId, paneKey, SURFACE_CLAIM_WITHOUT_STANDING),
