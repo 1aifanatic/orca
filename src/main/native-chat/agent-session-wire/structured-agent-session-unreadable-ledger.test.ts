@@ -49,13 +49,15 @@ function failReceiptReads(): void {
 
 /** The provider's record of a running turn, as its translator writes it. */
 async function runningTurn(): Promise<void> {
-  acquire.mock.calls
-    .at(-1)?.[0]
-    .events.appendItem(
-      { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 900 },
-      { kind: 'turn', turnId: 'turn-1', state: 'running' },
-      { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-    )
+  const events = acquire.mock.calls.at(-1)?.[0].events
+  if (!events) {
+    throw new Error('a running turn requires an acquired session')
+  }
+  events.appendItem(
+    { provider: 'codex', threadId: THREAD, turnId: 'turn-1', ordinal: 900 },
+    { kind: 'turn', turnId: 'turn-1', state: 'running' },
+    { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+  )
   await host.flushStreamedEvents(SESSION)
 }
 
