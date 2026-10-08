@@ -7,6 +7,10 @@ import {
   type TerminalLayoutSetResult
 } from '../../shared/terminal-layout-set'
 import {
+  parseTerminalSurfaceCreateRequest,
+  type TerminalSurfaceCreateResult
+} from '../../shared/terminal-surface-create'
+import {
   parseTerminalLeafBindRequest,
   type TerminalLeafBindResult
 } from '../../shared/terminal-leaf-bind'
@@ -115,6 +119,19 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
       }
     }
   )
+
+  // A tab or pane the window created, held unbound until its spawn binds; the reply names the push.
+  ipcMain.handle('session:terminal-create-surface', async (_event, args: unknown) => {
+    const request = parseTerminalSurfaceCreateRequest(args)
+    if (!request) {
+      return { status: 'refused', reason: 'invalid_request' } satisfies TerminalSurfaceCreateResult
+    }
+    const hostId = runtime.getTerminalTopologyHomeHostId(request.worktreeId)
+    const result: TerminalSurfaceCreateResult = hostId
+      ? await store.createTerminalSurface(request, hostId)
+      : { status: 'refused', reason: 'home_unresolved' }
+    return { ...result, publishSeq: runtime.settleTerminalTopology(request.worktreeId) }
+  })
 
   // A gesture's geometry; the reply's publishSeq tells the window when main's push holds it.
   ipcMain.handle('session:terminal-set-layout', async (_event, args: unknown) => {

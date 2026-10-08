@@ -39,7 +39,7 @@ const SplitPlacement = z.object({
 // An existing tab whose layout is still empty.
 const RootPlacement = z.object({ kind: z.literal('root') })
 
-const TerminalPanePlacementSchema = z.discriminatedUnion('kind', [
+export const TerminalPanePlacementSchema = z.discriminatedUnion('kind', [
   NewTabPlacement,
   SplitPlacement,
   RootPlacement

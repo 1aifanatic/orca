@@ -1,5 +1,6 @@
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
+import type { TerminalSurfaceCreateRequest } from '../../../../shared/terminal-surface-create'
 import type {
   TerminalTopologyReply,
   TerminalTopologySlice
@@ -15,10 +16,10 @@ export type PendingTerminalPaneKey = { worktreeId: string; tabId: string; leafId
 
 /**
  * A tab or pane this window shows (`add`) or hides (`remove`), or a tab tree it keeps (`layout`,
- * a user's geometry edit), before main's topology does. An add stands until a slice names it; a
- * remove or layout until the slice holding main's reply (`publishSeq`). A layout also ends once
- * main's tab has other panes than its tree, apart from panes added here and not yet named, since
- * main refuses it then.
+ * a user's geometry edit), before main's topology does. Each stands until the slice holding main's
+ * reply (`publishSeq`); an add also ends once a slice names it. A layout also ends once main's tab
+ * has other panes than its tree, apart from panes added here and not yet named, since main
+ * refuses it then.
  */
 export type PendingTerminalPane = PendingTerminalPaneKey & { publishSeq?: number } & (
     | { change: 'add' | 'remove' }
@@ -122,14 +123,38 @@ export function isTerminalTabMirroredFromMain(
   )
 }
 
-/** A pane this window made, which main's layout doesn't name yet, stays until main names it. */
-export function markTerminalPaneIfAheadOfMain(
+/**
+ * Commits a tab or pane this window created into main, unbound, and shows it here until the push
+ * holding main's reply. The entry names the tab for a new tab, else the pane.
+ */
+export function commitTerminalSurfaceCreate(
   state: AppState,
-  pane: Required<PendingTerminalPaneKey>
+  request: TerminalSurfaceCreateRequest
 ): void {
-  const named = collectLeafIds(state.terminalLayoutsByTabId[pane.tabId]?.root).includes(pane.leafId)
-  if (!named && isTerminalTabMirroredFromMain(state, pane.worktreeId, pane.tabId)) {
-    state.markPendingTerminalPane({ ...pane, change: 'add' })
+  const { worktreeId, tabId, leafId, placement } = request
+  if (!isTerminalTabMirroredFromMain(state, worktreeId, tabId)) {
+    return
+  }
+  commitPendingTerminalChange(
+    state,
+    {
+      worktreeId,
+      tabId,
+      ...(placement.kind !== 'new-tab' && leafId ? { leafId } : {}),
+      change: 'add'
+    },
+    // Why optional: an older preload can linger through an in-place renderer reload.
+    () => globalThis.window?.api?.session?.createTerminalSurface?.(request)
+  )
+}
+
+/** A pane this window made, which main's layout doesn't name yet, is created there. */
+export function commitTerminalPaneIfAheadOfMain(
+  state: AppState,
+  pane: TerminalSurfaceCreateRequest & { leafId: string }
+): void {
+  if (!collectLeafIds(state.terminalLayoutsByTabId[pane.tabId]?.root).includes(pane.leafId)) {
+    commitTerminalSurfaceCreate(state, pane)
   }
 }
 
@@ -146,8 +171,8 @@ export function pendingAfterTerminalTopologySlice(
     if (entry.worktreeId !== slice.worktreeId) {
       return false
     }
-    if (entry.change === 'add') {
-      return named(entry)
+    if (entry.change === 'add' && named(entry)) {
+      return true
     }
     // Panes added here that main hasn't named yet don't make a gesture's tree stale.
     const unnamed = new Set(

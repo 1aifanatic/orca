@@ -20,7 +20,8 @@ import { createBrowserUuid } from '@/lib/browser-uuid'
 import { ownsGlobalSelection } from '../global-selection-owner'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import type { TerminalSlice, TerminalStoreGet, TerminalStoreSet } from './terminal-state'
-import { isTerminalTabMirroredFromMain, withPendingTerminalPane } from './terminal-pending-panes'
+import { commitTerminalSurfaceCreate } from './terminal-pending-panes'
+import { terminalPanePlacementRow } from '@/lib/terminal-pane-placement-row'
 import {
   getRemoteConnectionIdForWorktree,
   resolveCreatedTabShellOverride,
@@ -62,6 +63,7 @@ export function createTerminalTabCreationActions(
   return {
     createTab: (worktreeId, targetGroupId, shellOverride, options) => {
       let tab!: TerminalTab
+      let initialLeafId: string | undefined
       set((s) => {
         const orphanTerminalIds = getOrphanTerminalIds(s, worktreeId)
         const orphanCleanupPatch = buildOrphanTerminalCleanupPatch(s, worktreeId, orphanTerminalIds)
@@ -90,7 +92,7 @@ export function createTerminalTabCreationActions(
             : undefined
         // Why: startup delivery is pane-owned; pin its first leaf so an aborted/remounted renderer retries against the same spawn reservation.
         // Why a bare leaf id too: a host launch lays out its pane before the process it attaches to exists.
-        const initialLeafId =
+        initialLeafId =
           options?.initialPtyId || options?.pendingStartup || requestedInitialLeafId
             ? (requestedInitialLeafId ?? createBrowserUuid())
             : undefined
@@ -230,14 +232,6 @@ export function createTerminalTabCreationActions(
             ...orphanCleanupPatch.tabsByWorktree,
             [worktreeId]: [...existing, tab]
           },
-          // Shown before main's topology names it; its pane's spawn tells main.
-          ...(isTerminalTabMirroredFromMain(s, worktreeId, id) && {
-            pendingTerminalPanes: withPendingTerminalPane(s.pendingTerminalPanes, {
-              worktreeId,
-              tabId: id,
-              change: 'add'
-            })
-          }),
           // Why: publish the unified tab atomically with the runtime tab so a transient legacy mount can't race the split host.
           unifiedTabsByWorktree: {
             ...s.unifiedTabsByWorktree,
@@ -292,6 +286,13 @@ export function createTerminalTabCreationActions(
               : emptyLayoutSnapshot()
           }
         }
+      })
+      // Main records the tab now, so it outlives a spawn that fails or never starts.
+      commitTerminalSurfaceCreate(get(), {
+        worktreeId,
+        tabId: tab.id,
+        ...(initialLeafId ? { leafId: initialLeafId } : {}),
+        placement: { kind: 'new-tab', row: terminalPanePlacementRow(tab) }
       })
       if (options?.initialPtyId) {
         // Why: a tab born with a live PTY (CLI/runtime create) wakes the workspace like any other bind.

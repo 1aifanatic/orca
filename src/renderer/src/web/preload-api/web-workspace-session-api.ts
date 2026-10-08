@@ -81,6 +81,8 @@ export function createWebWorkspaceSessionApi(): Partial<PreloadApi> {
           })
         )
       },
+      // Why refused: web tabs and panes are created on the host through its session-tab RPCs.
+      createTerminalSurface: async () => ({ status: 'refused', reason: 'tab_not_held' }),
       // Why a no-op: web closes reach the host through its session-tab and terminal close RPCs.
       closeTerminalSurface: async () => ({}),
       // Web clients keep sleeping records in their saved session.

@@ -30,7 +30,8 @@ import type {
   TerminalLayoutSetRequest,
   TerminalLayoutSetResult
 } from '../../../shared/terminal-layout-set'
-import { moveLeaf, setLayout } from '../terminal-topology/terminal-topology-commit'
+import type { TerminalSurfaceCreateRequest } from '../../../shared/terminal-surface-create'
+import { createLeafOrTab, moveLeaf, setLayout } from '../terminal-topology/terminal-topology-commit'
 import { findTerminalBindingConflict } from '../terminal-topology/terminal-owner-invariants'
 
 type PtyBindingPersistenceOperationsRuntime = Pick<
@@ -224,6 +225,12 @@ export class PtyBindingPersistenceOperations {
   ): Promise<TerminalLeafMoveResult> {
     const { runtime } = this[ptyBindingPersistenceOperationsContext]
     return runtime.runDurableMutation(moveLeaf(request, hostId, topologyCommitContext(this)))
+  }
+
+  /** A tab or pane the window created, recorded unbound in the worktree's home partition. */
+  createTerminalSurface(request: TerminalSurfaceCreateRequest, hostId: ExecutionHostId) {
+    const { runtime } = this[ptyBindingPersistenceOperationsContext]
+    return runtime.runDurableMutation(createLeafOrTab(request, hostId, topologyCommitContext(this)))
   }
 
   /** A user's divider, direction or pane-order edit, written to the worktree's home partition. */

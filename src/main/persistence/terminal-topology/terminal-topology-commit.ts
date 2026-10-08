@@ -12,6 +12,7 @@ import type {
   TerminalLayoutSetResult
 } from '../../../shared/terminal-layout-set'
 import type { TerminalLeafBindRequest } from '../../../shared/terminal-leaf-bind'
+import type { TerminalSurfaceCreateRequest } from '../../../shared/terminal-surface-create'
 import type { TerminalSleepingRecordChanges } from '../../../shared/terminal-topology-slice'
 import type {
   WorkspaceSessionPatch,
@@ -27,14 +28,17 @@ import type { DurableProfileStateMutation } from '../loading-store/store-runtime
 import type { Store } from '../loading-store/store'
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
 import { planTerminalLayoutSet } from './terminal-layout-set'
+import { planTerminalSurfaceCreate } from './terminal-surface-create'
 import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
 
 // The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings, sleeping agents):
-// every window-requested topology change commits and is traced here. A spawn's binding commits
-// through `persistPtyBinding`, which `bindLeaf` also uses.
+// every window-requested topology change, creation included, commits and is traced here. A spawn's
+// binding commits through `persistPtyBinding`, which `bindLeaf` also uses.
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
 type TerminalTopologyCommitKind =
+  | 'create_tab'
+  | 'create_leaf'
   | 'close_leaf'
   | 'close_tab'
   | 'move_leaf'
@@ -49,6 +53,19 @@ export function closeLeafOrTab(
     terminalSurfaceCloseMutation(commit),
     // Refusals are fixed reason codes, never ids.
     (refusal) => refusal?.message
+  )
+}
+
+/** Records a tab or pane the window created, unbound, in `hostId`, the worktree's home. */
+export function createLeafOrTab(
+  request: TerminalSurfaceCreateRequest,
+  hostId: ExecutionHostId,
+  context: TerminalTopologyCommitContext
+) {
+  return traced(
+    request.placement.kind === 'new-tab' ? 'create_tab' : 'create_leaf',
+    commitPlan((home) => planTerminalSurfaceCreate(home, request), hostId, context),
+    (result) => (result.status === 'refused' ? result.reason : undefined)
   )
 }
 
@@ -85,18 +102,7 @@ export function setLayout(
 ): () => DurableProfileStateMutation<TerminalLayoutSetResult> {
   return traced(
     'set_layout',
-    () => {
-      const planned = planTerminalLayoutSet(context.getSession(hostId), request)
-      if (!planned.session) {
-        return { value: planned.result, persist: false }
-      }
-      const rollback = writeRestorable(
-        () => context.getSession(hostId),
-        (value) => context.markDirty(assignWorkspaceSessionPartition(context.state, hostId, value)),
-        planned.session
-      )
-      return { value: planned.result, rollback }
-    },
+    commitPlan((home) => planTerminalLayoutSet(home, request), hostId, context),
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
 }
@@ -264,6 +270,26 @@ function writeRestorable<V>(read: () => V, write: (value: V) => void, next: V): 
     if (read() === next) {
       write(prior)
     }
+  }
+}
+
+/** Writes the session `plan` makes of `hostId`'s; a null session writes nothing. */
+function commitPlan<T>(
+  plan: (home: WorkspaceSessionState) => { result: T; session: WorkspaceSessionState | null },
+  hostId: ExecutionHostId,
+  context: TerminalTopologyCommitContext
+): () => DurableProfileStateMutation<T> {
+  return () => {
+    const planned = plan(context.getSession(hostId))
+    if (!planned.session) {
+      return { value: planned.result, persist: false }
+    }
+    const rollback = writeRestorable(
+      () => context.getSession(hostId),
+      (value) => context.markDirty(assignWorkspaceSessionPartition(context.state, hostId, value)),
+      planned.session
+    )
+    return { value: planned.result, rollback }
   }
 }
 

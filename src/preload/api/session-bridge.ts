@@ -8,6 +8,7 @@ export const sessionApi = {
   listHostIds: () => ipcRenderer.invoke('session:list-host-ids'),
   set: (args, hostId) => ipcRenderer.invoke('session:set', args, hostId),
   patch: (args, hostId) => ipcRenderer.invoke('session:patch', args, hostId),
+  createTerminalSurface: (args) => ipcRenderer.invoke('session:terminal-create-surface', args),
   closeTerminalSurface: (args) => ipcRenderer.invoke('session:close-terminal-surface', args),
   commitTerminalSleepingRecords: (changes) =>
     ipcRenderer.invoke('session:commit-terminal-sleeping-records', changes),

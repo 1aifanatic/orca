@@ -22,7 +22,7 @@ export const OWNER_KEYED_SESSION_FIELDS_DELETED_WITH_THEIR_OWNER =
 export function createMinimalPersistedTerminalTab(args: {
   worktreeId: string
   tabId: string
-  ptyId: string
+  ptyId: string | null
   existingTabCount: number
   startupCwd?: string
 }): TerminalTab {
