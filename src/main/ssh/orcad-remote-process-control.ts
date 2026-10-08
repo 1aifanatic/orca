@@ -52,7 +52,7 @@ export function stopOrcadCommand(
     ...(options.user
       ? []
       : [
-          `if (r.health?.structuredWorkProtection !== ${ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY}) process.exit(1);`
+          `if (r.health?.structuredWorkProtection !== ${ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY} || r.health?.stopRequests !== ${ORCAD_STOP_REQUESTS_CAPABILITY}) process.exit(1);`
         ]),
     `const mode = r.health?.stopRequests === ${ORCAD_STOP_REQUESTS_CAPABILITY} ? 'request' : 'signal';`,
     `process.stdout.write(String(pid) + ':' + mode);`

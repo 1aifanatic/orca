@@ -428,6 +428,20 @@ describe('liveness and stop commands, run for real', () => {
     expect(existsSync(terminatedFile)).toBe(false)
   })
 
+  it('never falls back to a signal when automatic readiness lacks stop-request support', async () => {
+    const { runtimePid, terminatedFile } = await launchTestRuntime()
+    writeFileSync(
+      join(versionDir, ORCAD_READINESS_FILENAME),
+      JSON.stringify({
+        type: 'orca_server_ready',
+        health: { pid: runtimePid, structuredWorkProtection: 1 }
+      })
+    )
+    expect(stopTestRuntime(false, false)).toBe('unknown')
+    expect(() => process.kill(runtimePid, 0)).not.toThrow()
+    expect(existsSync(terminatedFile)).toBe(false)
+  })
+
   it('clears a stop request the previous process never consumed before launching', async () => {
     writeFileSync(join(versionDir, ORCAD_STOP_REQUEST_FILENAME), '')
     const { runtimePid } = await launchTestRuntime(false, true)
