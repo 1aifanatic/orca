@@ -4,6 +4,9 @@ import { SQLITE_DATABASE_RUNTIME_INCLUDE } from './vitest-sqlite-database-runtim
 export const SQLITE_RUNTIME_INCLUDE = [
   ...SQLITE_DATABASE_RUNTIME_INCLUDE,
   'src/main/acp/acp-structured-host-subagent-stop.test.ts',
+  'src/main/acp/acp-structured-child-work-admission.test.ts',
+  'src/main/acp/acp-structured-child-work.test.ts',
+  'src/main/acp/acp-structured-child-stop.test.ts',
   'src/main/acp/acp-timeline-grok-subagent-retention.test.ts',
   'src/main/active-view-persistence-boundary.test.ts',
   'src/main/automations/automation-dispatch-host-fence.test.ts',

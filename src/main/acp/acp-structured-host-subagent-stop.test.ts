@@ -16,6 +16,7 @@ import {
 } from './acp-structured-adapter.test-support'
 import { openAttachedHostRig, promptIdOf, send, stop } from './acp-structured-host.test-support'
 import { readAcpFixture } from './acp-timeline-fixture.test-support'
+import { acpChildWorkStatusSink } from './acp-structured-child-work.test-support'
 
 const teardown = vi.hoisted(() => vi.fn<typeof terminateProviderProcessTree>())
 vi.mock('../provider-process/provider-process-teardown', () => ({
@@ -56,13 +57,20 @@ async function stoppingChild(reportsOutcome: boolean) {
   agent.on('initialize', (frame) =>
     agent.reply(frame, { protocolVersion: 1, agentCapabilities: { loadSession: true } })
   )
+  agent.on('_x.ai/subagent/cancel', (frame) =>
+    agent.fail(frame, -32602, 'Invalid params', 'invalid params: missing field `subagentId`')
+  )
   agent.on('session/new', (frame) =>
     agent.reply(frame, { sessionId: PROVIDER_SESSION, configOptions: GROK_CONFIG_OPTIONS })
   )
-  const hosted = await openAttachedHostRig({
-    connect: (launch, options) => createAcpAgentConnection(launch, options, spawn),
-    now: () => Date.now()
-  })
+  const childWork = acpChildWorkStatusSink()
+  const hosted = await openAttachedHostRig(
+    {
+      connect: (launch, options) => createAcpAgentConnection(launch, options, spawn),
+      now: () => Date.now()
+    },
+    childWork.sink
+  )
   cleanup.push(async () => {
     child.emit('exit', 0, null)
     await hosted.host.close(SESSION, 'user-close')
@@ -107,7 +115,7 @@ async function stoppingChild(reportsOutcome: boolean) {
     setTimeout(() => child.emit('exit', 0, null), EXIT_AFTER_STOP_MS)
   })
   expect(await stop(hosted.host)).toMatchObject({ ok: true, value: { cancelled: true } })
-  return { ...hosted, child, agent, original, rosters, finished, closeAt }
+  return { ...hosted, child, agent, original, rosters, finished, closeAt, childWork }
 }
 
 describe('Grok child outcome during a full host Stop', () => {
@@ -117,6 +125,9 @@ describe('Grok child outcome during a full host Stop', () => {
     expect(fixture.closeAt).toEqual([STOP_AT + TURN_ANSWER_AFTER_STOP_MS])
     expect((await fixture.turns()).at(-1)).toMatchObject({ state: 'interrupted' })
     expect((await fixture.rosters())[0].group.agents[0].state).toBe('working')
+    expect(fixture.childWork.views()).toMatchObject([
+      { membership: 'live', providerId: 'subagent-1' }
+    ])
     await vi.advanceTimersByTimeAsync(233 - TURN_ANSWER_AFTER_STOP_MS)
     const [cancelled] = await fixture.rosters()
     expect(cancelled.row.itemId).toBe(fixture.original.row.itemId)
@@ -129,6 +140,9 @@ describe('Grok child outcome during a full host Stop', () => {
       }
     ])
     await vi.advanceTimersByTimeAsync(EXIT_AFTER_STOP_MS - 233)
+    expect(fixture.childWork.views()).toMatchObject([
+      { membership: 'settled', outcome: 'cancelled' }
+    ])
     expect((await fixture.rosters())[0].group).toEqual(cancelled.group)
     const settled = await fixture.rows()
     fixture.agent.notify(fixture.finished.method, fixture.finished.params)
@@ -140,6 +154,7 @@ describe('Grok child outcome during a full host Stop', () => {
     const fixture = await stoppingChild(false)
     await vi.advanceTimersByTimeAsync(EXIT_AFTER_STOP_MS)
     const [unavailable] = await fixture.rosters()
+    expect(fixture.childWork.views()).toMatchObject([{ membership: 'settled', outcome: 'unknown' }])
     expect(unavailable.row.itemId).toBe(fixture.original.row.itemId)
     expect(unavailable.group.agents).toEqual([
       { ...fixture.original.group.agents[0], state: 'unverifiable' }

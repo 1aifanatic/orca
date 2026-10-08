@@ -225,6 +225,8 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
           ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
         }),
         connect: (launch, options) => createAcpAgentConnection(launch, options),
+        onChildWorkEvidence: (sessionId, evidence) =>
+          context.host()?.publishChildWorkEvidence(sessionId, evidence),
         ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
         onDispatchSettledLate: followUps.onDispatchSettledLate,
         logger: deps.logger,

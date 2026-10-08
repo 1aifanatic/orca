@@ -12,10 +12,8 @@ import {
   boundSubagentField,
   subagentGroupJournalBody
 } from '../native-chat/agent-session-journal/journal-subagent-group-body'
-import type {
-  ProviderTimelineEvent,
-  ProviderTimelineJoin
-} from '../native-chat/agent-session-timeline/provider-timeline-event'
+import type { ProviderTimelineJoin } from '../native-chat/agent-session-timeline/provider-timeline-event'
+import { acpSubagentIdentity, type AcpTimelineEvent } from './acp-timeline-event'
 import type { AcpSubagentUpdate } from './acp-dialects/acp-dialect'
 
 /** Settled history budget; live ownership outlives it until an outcome or session close. */
@@ -63,7 +61,7 @@ export class AcpSubagentTimeline {
     updates: AcpSubagentUpdate[],
     join: ProviderTimelineJoin,
     at: number
-  ): ProviderTimelineEvent[] {
+  ): AcpTimelineEvent[] {
     if (this.disposed) {
       return []
     }
@@ -196,8 +194,9 @@ export class AcpSubagentTimeline {
     }
   }
 
-  private groupEvent(group: RosterGroup, join: ProviderTimelineJoin): ProviderTimelineEvent[] {
-    const body = subagentGroupJournalBody(group.groupId, [...group.entries.values()])
+  private groupEvent(group: RosterGroup, join: ProviderTimelineJoin): AcpTimelineEvent[] {
+    const entries = [...group.entries.values()]
+    const body = subagentGroupJournalBody(group.groupId, entries)
     const serialized = JSON.stringify(body)
     if (serialized === group.lastSerialized) {
       return []
@@ -209,6 +208,7 @@ export class AcpSubagentTimeline {
         type: 'item.update',
         item: `subagents:${group.groupId}`,
         body,
+        subagentIdentities: entries.map((entry) => acpSubagentIdentity(entry.id)),
         join: groupJoin(group, join)
       }
     ]

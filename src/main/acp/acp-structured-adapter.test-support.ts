@@ -188,6 +188,9 @@ export async function openAcpAdapterRig(
       const child = new FakeAcpChild(launch, connectionOptions)
       current = child
       const { agent } = child
+      agent.on('_x.ai/subagent/cancel', (frame) =>
+        agent.fail(frame, -32602, 'Invalid params', 'invalid params: missing field `subagentId`')
+      )
       agent.on('initialize', (frame) => {
         spawned.push('initialize')
         agent.reply(frame, {

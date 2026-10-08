@@ -60,6 +60,13 @@ export type AcpDialectNotification =
 
 /** Hooks interpret extensions; lifecycle and row identity stay shared. */
 export type AcpDialect = {
+  subagentStop?: {
+    /** Missing required target: proves the route exists without addressing any child. */
+    probe: { method: string; params: unknown }
+    recognizesProbeError(error: AcpAgentError): boolean
+    request(sessionId: string, id: string): { method: string; params: unknown }
+    response(value: unknown, id: string): { cancelled: boolean; state?: NativeChatSubagentState }
+  }
   injectedPromptIdentity?: true
   /** A tool update in the shared shape (`rawOutput.stdout`, `rawOutput.exitCode`), read first. */
   normalizeToolUpdate?(update: ToolCallUpdate): ToolCallUpdate

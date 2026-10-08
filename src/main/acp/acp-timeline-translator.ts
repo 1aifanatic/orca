@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { BoundedMap } from '../../shared/bounded-map'
-import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
+import type { AcpTimelineEvent as ProviderTimelineEvent } from './acp-timeline-event'
 import { acpNotificationEnvelopeSchema, AcpContextTimeline } from './acp-context-usage'
 import { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
 import { GENERIC_ACP_DIALECT, type AcpDialect } from './acp-dialects/acp-dialect'
@@ -14,6 +14,7 @@ import { AcpToolTimeline } from './acp-tool-timeline'
 import { AcpTurnFailures, acpPromptErrorDetail } from './acp-turn-failures'
 import { AcpTurnMessages } from './acp-turn-messages'
 import type { PromptResponse } from './generated/acp-protocol.generated'
+import type { NativeChatSubagentState } from '../../shared/native-chat-types'
 
 export { acpTurnEnd } from './acp-prompt-turns'
 
@@ -138,6 +139,22 @@ export class AcpTimelineTranslator {
 
   finishLoad(): void {
     this.loading = false
+  }
+
+  get providerSessionId(): string {
+    return this.options.sessionId
+  }
+
+  reconcileSubagent(
+    id: string,
+    state: NativeChatSubagentState,
+    at: number
+  ): ProviderTimelineEvent[] {
+    return this.subagents.translate(
+      [{ id, state, knownOnly: true }],
+      { thread: this.options.sessionId },
+      at
+    )
   }
 
   sessionEvent(event: AcpSessionEvent, at: number): ProviderTimelineEvent[] {

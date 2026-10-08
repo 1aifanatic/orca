@@ -16,6 +16,7 @@ import {
 } from './acp-structured-adapter.test-support'
 import { GrokFixtureReplay } from './acp-structured-fixture-replay.test-support'
 import { readAcpFixture } from './acp-timeline-fixture.test-support'
+import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
 
 afterEach(async () => {
   await closeProviderTimelineRigs()
@@ -29,9 +30,13 @@ const ask: AgentJournalMessageItem = {
 
 async function replaying(name: string) {
   const replay = new GrokFixtureReplay(await readAcpFixture(name))
-  const rig = await openAcpAdapterRig({ script: (agent) => replay.attach(agent) })
+  const evidence: AgentChildWorkEvidence[] = []
+  const rig = await openAcpAdapterRig({
+    script: (agent) => replay.attach(agent),
+    deps: { onChildWorkEvidence: (_sessionId, batch) => evidence.push(...batch) }
+  })
   await rig.acquire()
-  return { rig, replay }
+  return { rig, replay, evidence }
 }
 
 function send(rig: AcpAdapterRig, clientMessageId: string) {
@@ -73,7 +78,7 @@ async function stop(rig: AcpAdapterRig, replay: GrokFixtureReplay) {
 
 describe('Grok subagent recordings through the adapter', () => {
   it('a foreground subagent completes in the roster and its reply opens under it', async () => {
-    const { rig, replay } = await replaying('s7-subagent-foreground')
+    const { rig, replay, evidence } = await replaying('s7-subagent-foreground')
     await send(rig, 'send-1')
     await waitFor(() => expect(replay.awaiting).toBeNull())
     await waitFor(async () =>
@@ -85,10 +90,19 @@ describe('Grok subagent recordings through the adapter', () => {
     expect(await replies(rig)).toEqual([
       { agentId: 'subagent-1', blocks: [{ type: 'text', text: '4' }] }
     ])
+    expect(evidence).toContainEqual(
+      expect.objectContaining({
+        type: 'live',
+        child: expect.objectContaining({ kind: 'agent', description: 'Count note lines' })
+      })
+    )
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ type: 'ended', outcome: 'succeeded' })
+    )
   })
 
   it('a background subagent completes in the roster and stays out of the background tasks', async () => {
-    const { rig, replay } = await replaying('s7-subagent-background')
+    const { rig, replay, evidence } = await replaying('s7-subagent-background')
     await send(rig, 'send-1')
     await waitFor(() => expect(replay.awaiting).toBeNull())
     await waitFor(async () =>
@@ -100,6 +114,15 @@ describe('Grok subagent recordings through the adapter', () => {
       { agentId: 'subagent-1', blocks: [{ type: 'text', text: 'notes.txt, README.md' }] }
     ])
     expect(await backgroundTasks(rig)).toEqual([])
+    expect(evidence).toContainEqual(
+      expect.objectContaining({
+        type: 'live',
+        child: expect.objectContaining({ kind: 'agent', description: 'List folder files' })
+      })
+    )
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ type: 'ended', outcome: 'succeeded' })
+    )
   })
 
   it('Stop while a foreground and then a background subagent runs ends each stopped', async () => {

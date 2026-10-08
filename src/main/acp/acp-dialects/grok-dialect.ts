@@ -4,6 +4,7 @@ import type { AcpDialect, AcpDialectNotification } from './acp-dialect'
 import { grokRequest, grokSettleRequest } from './grok-requests'
 import { grokBackgroundTaskNotification, grokToolBackgroundTasks } from './grok-background-tasks'
 import { grokSubagentNotification, grokToolSubagents } from './grok-subagents'
+import { grokSubagentStop } from './grok-subagent-stop'
 
 const tokenCount = z.number().int().nonnegative()
 const toolMetaSchema = z.object({ 'x.ai/tool': z.object({ name: z.string().min(1) }) })
@@ -176,6 +177,7 @@ function notification(
 }
 
 export const GROK_ACP_DIALECT: AcpDialect = {
+  subagentStop: grokSubagentStop,
   injectedPromptIdentity: true,
   toolName: (update) => {
     const parsed = toolMetaSchema.safeParse(update._meta)

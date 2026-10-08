@@ -185,6 +185,15 @@ export class AcpSessionRuntime {
     const params: SetSessionModeRequest = { sessionId: this.sessionId(), modeId, ...withMeta(meta) }
     return this.call('session/set_mode', params, SetSessionModeResponseSchema)
   }
+
+  /** Dialect-owned control requests share this session's transport and bounded lifetime. */
+  requestExtension(method: string, params: unknown, timeoutMs = 30_000): Promise<unknown> {
+    this.sessionId()
+    if (!method.startsWith('_')) {
+      throw new Error('ACP extension methods require an underscore')
+    }
+    return this.peer.request(method, params, { timeoutMs })
+  }
   async setModel(modelId: string, meta?: Meta): Promise<SetSessionModelResponse> {
     const params: SetSessionModelRequest = {
       sessionId: this.sessionId(),
