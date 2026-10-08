@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { executeCodexMaintenanceProcess } from './codex-maintenance-process'
+import { setTimeout as scheduleTimeout } from 'node:timers'
 
 function live(pid: number): boolean {
   try {
@@ -18,18 +19,38 @@ describe('owned maintenance process supervision', () => {
       let output = ''
       const script = `
       const {spawn} = require('node:child_process');
-      const helper = spawn(process.execPath, ['-e', "process.on('SIGTERM',()=>{}); console.log('helper='+process.pid); setTimeout(()=>process.exit(0),12000)"], {stdio:'inherit'});
+      const helper = spawn(process.execPath, ['-e', "process.on('SIGTERM',()=>{}); console.log('helper='+process.pid); setTimeout(()=>process.exit(0),30000)"], {stdio:'inherit'});
       process.on('SIGTERM',()=>process.exit(0));
-      setTimeout(()=>process.exit(0),12000);
+      setTimeout(()=>process.exit(0),30000);
     `
-      const started = Date.now()
-      const result = await executeCodexMaintenanceProcess(
+      let triggerTimeout: () => void = () => {
+        throw new Error('Timeout was not scheduled')
+      }
+      const timer = vi
+        .spyOn(globalThis, 'setTimeout')
+        .mockImplementation((callback, delay, ...args) => {
+          if (delay === 30_000) {
+            triggerTimeout = () => callback(...args)
+          }
+          return scheduleTimeout(callback, delay, ...args)
+        })
+      const pending = executeCodexMaintenanceProcess(
         { program: process.execPath, args: ['-e', script], env: { PATH: process.env.PATH } },
         (chunk) => {
           output += chunk.toString()
         },
-        { timeoutMs: 400 }
+        { timeoutMs: 30_000 }
       )
+      let started = 0
+      try {
+        await vi.waitFor(() => expect(output).toMatch(/helper=\d+/), { timeout: 15_000 })
+      } finally {
+        timer.mockRestore()
+        started = Date.now()
+        triggerTimeout()
+        await pending
+      }
+      const result = await pending
       const pid = Number(output.match(/helper=(\d+)/)?.[1])
       expect(Number.isInteger(pid) && pid > 0).toBe(true)
       expect(live(pid)).toBe(false)
@@ -37,7 +58,7 @@ describe('owned maintenance process supervision', () => {
       expect(result.termination).toBe('exited')
       expect(Date.now() - started).toBeLessThan(8_000)
     },
-    10_000
+    25_000
   )
 
   it.skipIf(process.platform === 'win32')(
@@ -46,8 +67,9 @@ describe('owned maintenance process supervision', () => {
       let output = ''
       const script = `
       const {spawn} = require('node:child_process');
-      spawn(process.execPath, ['-e', "console.log('helper='+process.pid); setTimeout(()=>process.exit(0),12000)"], {stdio:'inherit'});
-      setTimeout(()=>process.exit(0),200);
+      const helper = spawn(process.execPath, ['-e', "console.log('helper='+process.pid); process.send('ready'); setTimeout(()=>process.exit(0),30000)"], {stdio:['ignore','inherit','inherit','ipc']});
+      helper.once('message',()=>process.exit(0));
+      setTimeout(()=>process.exit(2),20000);
     `
       const result = await executeCodexMaintenanceProcess(
         { program: process.execPath, args: ['-e', script], env: { PATH: process.env.PATH } },
@@ -61,7 +83,7 @@ describe('owned maintenance process supervision', () => {
       expect(result.code).toBe(0)
       expect(result.termination).toBe('exited')
     },
-    8_000
+    25_000
   )
 
   it.skipIf(process.platform === 'win32')(

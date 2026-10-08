@@ -4,10 +4,13 @@ import { codexCliInstallation } from '../../shared/codex-cli-installation'
 import { codexMaintenanceAction } from '../../shared/codex-cli-maintenance'
 import type { ProcessSpec } from '../../shared/child-process/run-process'
 import { CodexMaintenanceRunner } from './codex-maintenance-runner'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
 vi.mock('./codex-maintenance-command', () => ({ resolveCodexMaintenanceCommand: vi.fn() }))
 
-function fixture(exitCode = 0, npmInstalled = true) {
+function fixture(exitCode = 0, npmInstalled = true, releasePath?: string) {
   const installation = codexCliInstallation(true, '0.135.0')
   const ready = codexCliInstallation(true, '0.136.0')
   const action = codexMaintenanceAction(installation, npmInstalled)
@@ -15,7 +18,10 @@ function fixture(exitCode = 0, npmInstalled = true) {
     program: process.execPath,
     args: [
       '-e',
-      `process.stdout.write('first chunk\\n'); setTimeout(() => { process.stderr.write('last chunk\\n'); process.exit(${exitCode}) }, 100)`
+      releasePath
+        ? `const fs=require('node:fs'); process.stdout.write('first chunk\\n'); const timer=setInterval(()=>{if(fs.existsSync(process.argv[1])) {clearInterval(timer); process.stderr.write('last chunk\\n'); process.exit(${exitCode})}},50); setTimeout(()=>process.exit(99),20000)`
+        : `process.stdout.write('first chunk\\n'); setTimeout(() => { process.stderr.write('last chunk\\n'); process.exit(${exitCode}) }, 100)`,
+      ...(releasePath ? [releasePath] : [])
     ]
   }
   const evidence = { expiresAt: Date.now() + 30_000, configurationId: 'configuration' }
@@ -38,7 +44,7 @@ async function finished(runner: CodexMaintenanceRunner, id: string) {
     async () => {
       expect((await runner.status(id)).job?.phase).toBe('completed')
     },
-    { timeout: 5_000 }
+    { timeout: 15_000 }
   )
   return runner.status(id)
 }
@@ -57,18 +63,29 @@ describe('host-owned Codex maintenance runner', () => {
   })
 
   it('streams stdout and stderr while running, then invalidates and checks installation on exit', async () => {
-    const f = fixture()
+    const directory = await mkdtemp(join(tmpdir(), 'codex-maintenance-stream-'))
+    const releasePath = join(directory, 'release')
+    const f = fixture(0, true, releasePath)
     const state = await f.runner.start()
     if (!state.job) {
       throw new Error('No job')
     }
     const id = state.job.id
-    await vi.waitFor(async () => {
-      const current = await f.runner.status(id)
-      expect(current.job?.output).toContain('first chunk')
-      expect(current.job?.phase).toBe('running')
-    })
-    const result = await finished(f.runner, id)
+    try {
+      await vi.waitFor(
+        async () => {
+          const current = await f.runner.status(id)
+          expect(current.job?.output).toContain('first chunk')
+          expect(current.job?.phase).toBe('running')
+        },
+        { timeout: 15_000 }
+      )
+    } finally {
+      await writeFile(releasePath, 'release')
+      await finished(f.runner, id)
+      await rm(directory, { recursive: true, force: true })
+    }
+    const result = await f.runner.status(id)
     expect(result.job?.output).toContain('last chunk')
     expect(result.job?.exitCode).toBe(0)
     expect(result.installation.status).toBe('ready')
@@ -77,7 +94,7 @@ describe('host-owned Codex maintenance runner', () => {
     expect(f.resolve.mock.invocationCallOrder.at(-1)).toBeGreaterThan(
       f.invalidate.mock.invocationCallOrder[0]
     )
-  })
+  }, 25_000)
 
   it('keeps the failure exit code and log, rechecks, and permits an explicit retry', async () => {
     const f = fixture(17)
