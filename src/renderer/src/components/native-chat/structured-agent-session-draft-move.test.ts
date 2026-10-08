@@ -10,6 +10,10 @@ import {
   hydrateNativeChatComposerDrafts,
   isNativeChatComposerDraftUnverified,
   readNativeChatComposerDraft,
+  subscribeToNativeChatComposerDraft,
+  nativeChatComposerDraftWritesSettled,
+  flushNativeChatComposerDrafts,
+  isNativeChatComposerDraftUnsaved,
   structuredAgentSessionDraftScopeKey,
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
@@ -180,23 +184,51 @@ describe('moving a cleared conversation draft', () => {
     expect(readNativeChatComposerDraft(scope('b')).text).toBe('mine')
   })
 
-  it('keeps the source when saving the destination fails', async () => {
+  it('keeps the moved draft in memory through a refused save and repairs it on a normal flush', async () => {
     const storage = createMemoryNativeChatComposerDraftStorage()
     setNativeChatComposerDraftStorageForTests(storage)
     updateNativeChatComposerDraft(scope('a'), { text: 'still owed' }, 'immediate')
+    await nativeChatComposerDraftWritesSettled()
     storage.refuseWrites = true
-
-    await moveStructuredAgentSessionDraft('a', 'b')
-
-    expect(readNativeChatComposerDraft(scope('a')).text).toBe('still owed')
-    expect(readNativeChatComposerDraft(scope('b')).text).toBe('still owed')
-    storage.refuseWrites = false
-    await moveStructuredAgentSessionDraft('a', 'b')
-    expect(readNativeChatComposerDraft(scope('b')).text).toBe('still owed')
+    moveStructuredAgentSessionDraft('a', 'b')
+    await nativeChatComposerDraftWritesSettled()
     expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
+    expect(readNativeChatComposerDraft(scope('b')).text).toBe('still owed')
+    expect(isNativeChatComposerDraftUnsaved(scope('b'))).toBe(true)
+    storage.refuseWrites = false
+    flushNativeChatComposerDrafts()
+    await nativeChatComposerDraftWritesSettled()
+    expect(storage.drafts.get(scope('b'))?.text).toBe('still owed')
+    expect(storage.drafts.has(scope('a'))).toBe(false)
+    expect(isNativeChatComposerDraftUnsaved(scope('b'))).toBe(false)
   })
 
-  it('saves the skill document before removing its source, and restores it after restart', async () => {
+  it('publishes both scope changes before any subscriber observes the move', () => {
+    updateNativeChatComposerDraft(
+      scope('a'),
+      { text: 'question', images: [SSH_IMAGE] },
+      'immediate'
+    )
+    const seen: { source: string; target: string }[] = []
+    const observe = (): void => {
+      seen.push({
+        source: readNativeChatComposerDraft(scope('a')).text,
+        target: readNativeChatComposerDraft(scope('b')).text
+      })
+    }
+    const unsubscribeSource = subscribeToNativeChatComposerDraft(scope('a'), observe)
+    const unsubscribeTarget = subscribeToNativeChatComposerDraft(scope('b'), observe)
+    moveStructuredAgentSessionDraft('a', 'b')
+    unsubscribeSource()
+    unsubscribeTarget()
+    expect(seen).toEqual([
+      { source: '', target: 'question' },
+      { source: '', target: 'question' }
+    ])
+    expect(readNativeChatComposerDraft(scope('b')).images).toEqual([SSH_IMAGE])
+  })
+
+  it('saves the whole moved draft through the store and restores it after restart', async () => {
     const storage = createMemoryNativeChatComposerDraftStorage()
     setNativeChatComposerDraftStorageForTests(storage)
     const document = {
@@ -235,7 +267,7 @@ describe('moving a cleared conversation draft', () => {
     })
   })
 
-  it('does not clear a source edited while the destination save is outstanding', async () => {
+  it('keeps new history input entered after the synchronous move', async () => {
     updateNativeChatComposerDraft(scope('a'), { text: 'moved' }, 'immediate')
     const moving = moveStructuredAgentSessionDraft('a', 'b')
     updateNativeChatComposerDraft(scope('a'), { text: 'new old-chat draft' }, 'immediate')
@@ -244,7 +276,7 @@ describe('moving a cleared conversation draft', () => {
     expect(readNativeChatComposerDraft(scope('b')).text).toBe('moved')
   })
 
-  it('keeps a later history write even when it recreates the captured text', async () => {
+  it('keeps a later history write even when it recreates the moved text', async () => {
     updateNativeChatComposerDraft(scope('a'), { text: 'same question' }, 'immediate')
     const moving = moveStructuredAgentSessionDraft('a', 'b')
     updateNativeChatComposerDraft(scope('a'), { text: '' }, 'immediate')
@@ -254,42 +286,16 @@ describe('moving a cleared conversation draft', () => {
     expect(readNativeChatComposerDraft(scope('b')).text).toBe('same question')
   })
 
-  it('waits for the saved drafts to load before moving one only storage holds', async () => {
+  it('moves a restored source only after the load has finished', async () => {
     clearNativeChatComposerDraftsForTests()
     const storage = createMemoryNativeChatComposerDraftStorage()
     storage.drafts.set(scope('a'), { text: 'saved before quit', images: [SSH_IMAGE], savedAt: 1 })
     setNativeChatComposerDraftStorageForTests(storage)
-    const loading = hydrateNativeChatComposerDrafts()
-
-    await moveStructuredAgentSessionDraft('a', 'b')
-    await loading
-    await Promise.resolve()
-
+    await hydrateNativeChatComposerDrafts()
+    moveStructuredAgentSessionDraft('a', 'b')
     expect(readNativeChatComposerDraft(scope('b')).text).toBe('saved before quit')
     expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
     expect(isNativeChatComposerDraftUnverified(scope('b'))).toBe(true)
-  })
-
-  it('waits for a slow destination load so its saved input is merged', async () => {
-    clearNativeChatComposerDraftsForTests()
-    const storage = createMemoryNativeChatComposerDraftStorage()
-    storage.drafts.set(scope('a'), { text: 'source', images: [], savedAt: 1 })
-    storage.drafts.set(scope('b'), { text: 'destination', images: [], savedAt: 2 })
-    let finish = (): void => {}
-    storage.loadAll = () =>
-      new Promise((resolve) => {
-        finish = () => resolve(new Map(storage.drafts))
-      })
-    setNativeChatComposerDraftStorageForTests(storage)
-    const loading = hydrateNativeChatComposerDrafts()
-    const moving = moveStructuredAgentSessionDraft('a', 'b')
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(readNativeChatComposerDraft(scope('b')).text).toBe('')
-    finish()
-    await loading
-    await moving
-    expect(readNativeChatComposerDraft(scope('b')).text).toBe('destination\n\nsource')
   })
 })
 

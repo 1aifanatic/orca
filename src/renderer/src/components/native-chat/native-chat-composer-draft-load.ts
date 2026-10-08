@@ -34,14 +34,6 @@ let hydration: Promise<void> | null = null
 let started = false
 let failedLoads = 0
 let retryTimer: ReturnType<typeof setTimeout> | null = null
-const loadedListeners = new Set<() => void>()
-
-/** Re-derive draft ownership once saved records are available, including a successful retry. */
-export function subscribeToNativeChatComposerDraftLoad(listener: () => void): () => void {
-  loadedListeners.add(listener)
-  return () => loadedListeners.delete(listener)
-}
-
 /** The appends this load could not have read: made after it began reading, or never written. */
 function withAppends(
   scopeKey: string,
@@ -100,7 +92,6 @@ function applyLoaded(
   load.appendsBeforeLoad.clear()
   load.deletionsBeforeLoad.length = 0
   flushNativeChatComposerDrafts()
-  loadedListeners.forEach((listener) => listener())
 }
 
 function retryLater(error: unknown): void {
@@ -115,7 +106,6 @@ function retryLater(error: unknown): void {
     load.editedBeforeLoad.clear()
     load.appendsBeforeLoad.clear()
     load.deletionsBeforeLoad.length = 0
-    loadedListeners.forEach((listener) => listener())
     return
   }
   retryTimer = setTimeout(() => {
@@ -158,7 +148,6 @@ export function isNativeChatComposerDraftLoadPending(): boolean {
 }
 
 export function resetNativeChatComposerDraftLoadForTests(): void {
-  loadedListeners.clear()
   started = false
   if (retryTimer !== null) {
     clearTimeout(retryTimer)

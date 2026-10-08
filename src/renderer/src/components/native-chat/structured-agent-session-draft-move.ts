@@ -2,67 +2,26 @@
 
 import { withNativeChatComposerDraftAddition } from './native-chat-composer-draft-addition'
 import {
-  clearNativeChatComposerDraftIfUnchanged,
-  nativeChatComposerDraftWriteSettled,
-  hydrateNativeChatComposerDrafts,
-  isNativeChatComposerDraftLoadPending,
-  markNativeChatComposerDraftUnverified,
-  readNativeChatComposerDraft,
-  structuredAgentSessionDraftScopeKey,
-  updateNativeChatComposerDraft
+  isNativeChatComposerDraftHydrated,
+  moveNativeChatComposerDraft,
+  structuredAgentSessionDraftScopeKey
 } from './native-chat-composer-draft-store'
-import { sameNativeChatComposerDraftDocument } from './native-chat-composer-draft-comparison'
 import { moveNativeChatPendingAttachments } from './native-chat-pending-attachment-cache'
 import { mergeNativeChatDraftDocument } from './native-chat-draft-document-merge'
-import {
-  captureNativeChatDraftTransfer,
-  nativeChatDraftTransferSourceUnchanged,
-  type NativeChatDraftTransferSnapshot
-} from './native-chat-draft-transfer-snapshot'
 import type { Tab } from '../../../../shared/tab-types'
 
-/** Moves the whole draft, removing its source only after the destination is saved. */
-export async function moveStructuredAgentSessionDraft(
-  fromSessionId: string,
-  toSessionId: string
-): Promise<void> {
-  if (fromSessionId === toSessionId) {
+/** Moves the loaded draft synchronously with its tab; unobserved input stays in history. */
+export function moveStructuredAgentSessionDraft(fromSessionId: string, toSessionId: string): void {
+  if (fromSessionId === toSessionId || !isNativeChatComposerDraftHydrated()) {
     return
   }
   const from = structuredAgentSessionDraftScopeKey(fromSessionId)
   const to = structuredAgentSessionDraftScopeKey(toSessionId)
   moveNativeChatPendingAttachments(from, to)
-  const captured = await captureNativeChatDraftTransfer(from)
-  if (isNativeChatComposerDraftLoadPending()) {
-    await hydrateNativeChatComposerDrafts()
-    if (isNativeChatComposerDraftLoadPending()) {
-      return
-    }
-  }
-  await moveCapturedStructuredAgentSessionDraft(fromSessionId, toSessionId, captured)
-}
-
-/** Pending operations already moved at the switch; later history operations stay where begun. */
-export async function moveCapturedStructuredAgentSessionDraft(
-  fromSessionId: string,
-  toSessionId: string,
-  snapshot: NativeChatDraftTransferSnapshot
-): Promise<void> {
-  if (fromSessionId === toSessionId) {
-    return
-  }
-  const from = structuredAgentSessionDraftScopeKey(fromSessionId)
-  const to = structuredAgentSessionDraftScopeKey(toSessionId)
-  const source = snapshot.draft
-  if (source.text === '' && source.images.length === 0) {
-    return
-  }
-  const target = readNativeChatComposerDraft(to)
-  const merged = withNativeChatComposerDraftAddition(target, { text: source.text })
-  const emptyTarget = target.text === '' && target.images.length === 0
-  updateNativeChatComposerDraft(
-    to,
-    {
+  moveNativeChatComposerDraft(from, to, (target, source) => {
+    const merged = withNativeChatComposerDraftAddition(target, { text: source.text })
+    const emptyTarget = target.text === '' && target.images.length === 0
+    return {
       ...(emptyTarget ? source : merged),
       images: emptyTarget
         ? source.images
@@ -71,19 +30,8 @@ export async function moveCapturedStructuredAgentSessionDraft(
             ...source.images.filter((image) => !target.images.some((held) => held.id === image.id))
           ],
       document: mergeNativeChatDraftDocument(target, source, merged.text)
-    },
-    'immediate'
-  )
-  if (source.images.length > 0 && snapshot.unverified) {
-    markNativeChatComposerDraftUnverified(to)
-  }
-  if (
-    (await nativeChatComposerDraftWriteSettled(to)) &&
-    nativeChatDraftTransferSourceUnchanged(from, snapshot) &&
-    sameNativeChatComposerDraftDocument(readNativeChatComposerDraft(from).document, source.document)
-  ) {
-    clearNativeChatComposerDraftIfUnchanged(from, source)
-  }
+    }
+  })
 }
 
 /** Each chat whose tab now shows another conversation, whichever client ran the clear. */
