@@ -3166,7 +3166,6 @@
       "linearConnectRequired": "Connect Linear in Settings to link this issue.",
       "linearModeRequired": "Select Smart or Linear to load this issue.",
       "linearReadFailed": "Couldn’t load this Linear issue. Check the URL and connected workspace.",
-      "linkedResult": "Linked",
       "loadingLinear": "Loading Linear issue…",
       "manage": "Manage links…",
       "mrReference": "MR !{{number}}",

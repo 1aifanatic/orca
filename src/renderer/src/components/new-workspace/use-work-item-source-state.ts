@@ -5,14 +5,13 @@ import type { GitLabWorkItem } from '../../../../shared/gitlab-types'
 import type { JiraIssue } from '../../../../shared/jira-types'
 import type { LinearIssue } from '../../../../shared/linear/issue-types'
 import type { BaseRefSearchResult } from '../../../../shared/repo-types'
-import type { SmartNameMode } from './smart-workspace-source-results'
+import type { SmartNameMode } from '../../../../shared/new-workspace/smart-workspace-source-results'
 import type { MrStateFilter } from './smart-workspace-localized-options'
 import type { CrossRepoPrompt } from './smart-workspace-name-field-model'
 
-export function useSmartWorkspaceNameFieldState(textOnly: boolean, value: string) {
+export function useWorkItemSourceState(textOnly: boolean, value: string) {
   const [mode, setMode] = useState<SmartNameMode>(textOnly ? 'text' : 'smart')
   const [mrStateFilter, setMrStateFilter] = useState<MrStateFilter>('opened')
-  const [open, setOpen] = useState(false)
   const [debouncedQuery, setDebouncedQuery] = useState(value)
   const [githubItems, setGithubItems] = useState<GitHubWorkItem[]>([])
   const [gitlabItems, setGitlabItems] = useState<GitLabWorkItem[]>([])
@@ -33,16 +32,8 @@ export function useSmartWorkspaceNameFieldState(textOnly: boolean, value: string
   const [settledLinearUrlQuery, setSettledLinearUrlQuery] = useState<string | null>(null)
   const [jiraLoading, setJiraLoading] = useState(false)
   const [commandValue, setCommandValue] = useState('')
-  const [emojiCommandValue, setEmojiCommandValue] = useState('')
-  const [emojiCursor, setEmojiCursor] = useState<number | null>(null)
-  const localInputRef = useRef<HTMLInputElement | null>(null)
-  const focusedSelectedSourceKeyRef = useRef<string | null>(null)
-  const tabsListRef = useRef<HTMLDivElement | null>(null)
   const repoSlugCacheRef = useRef<Map<string, RepoSlug>>(new Map())
   const handledCrossRepoUrlRef = useRef<string | null>(null)
-  const localInputFocusFrameRef = useRef<number | null>(null)
-  // Why: Electron makes programmatic .focus() look user-initiated, so wait for real interaction.
-  const deferSourcePopoverUntilInteractionRef = useRef(true)
   const [crossRepoPrompt, setCrossRepoPrompt] = useState<CrossRepoPrompt | null>(null)
 
   return {
@@ -50,8 +41,6 @@ export function useSmartWorkspaceNameFieldState(textOnly: boolean, value: string
     setMode,
     mrStateFilter,
     setMrStateFilter,
-    open,
-    setOpen,
     debouncedQuery,
     setDebouncedQuery,
     githubItems,
@@ -82,17 +71,8 @@ export function useSmartWorkspaceNameFieldState(textOnly: boolean, value: string
     setJiraLoading,
     commandValue,
     setCommandValue,
-    emojiCommandValue,
-    setEmojiCommandValue,
-    emojiCursor,
-    setEmojiCursor,
-    localInputRef,
-    focusedSelectedSourceKeyRef,
-    tabsListRef,
     repoSlugCacheRef,
     handledCrossRepoUrlRef,
-    localInputFocusFrameRef,
-    deferSourcePopoverUntilInteractionRef,
     crossRepoPrompt,
     setCrossRepoPrompt
   }
