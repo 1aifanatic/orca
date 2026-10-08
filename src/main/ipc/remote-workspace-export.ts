@@ -18,12 +18,19 @@ import {
   type WorktreeOwnerResolver
 } from './remote-workspace-target-session-export'
 import { queueRemoteWorkspacePatch } from './remote-workspace-patch-queue'
+import { createKeyedTrailingEdgeCoalescer } from '../runtime/keyed-trailing-edge-coalescer'
 import { getRemoteSnapshot, patchRemoteWorkspaceSession } from './remote-workspace-relay-sync'
 import {
   cachedRemoteWorkspaceSnapshotAuthorizesRevision,
   getCachedRemoteWorkspaceSnapshot
 } from './remote-workspace-snapshot-cache'
 import { remoteWorkspaceSessionsMatch } from './remote-workspace-snapshot-normalization'
+
+/** Outlasts the window's 150ms save debounce after a write main made for it. */
+const EXPORT_QUIET_MS = 500
+const EXPORT_MAX_WAIT_MS = 2_000
+/** One coalesced export covers every agreed host, so ownership resolves once for all of them. */
+const EXPORT_KEY = 'all-hosts'
 
 /**
  * What this desktop and a host agree the host holds; null when the host's copy is unknown. It holds
@@ -53,7 +60,6 @@ export function createRemoteWorkspaceExports(
   sendPushStatus: (event: RemoteWorkspacePushStatusEvent) => void
 ): RemoteWorkspaceExports {
   const agreements = new Map<string, HostAgreement>()
-  let exportQueued = false
 
   const readWorktreeOwners = (): WorktreeOwnerResolver =>
     createWorktreeOwnerResolver(createRepoRowExecutionHostLookup(store.getRepos()))
@@ -134,17 +140,12 @@ export function createRemoteWorkspaceExports(
     )
   }
 
-  const exportChanged = (): void => {
-    // A write burst in one turn exports once.
-    if (exportQueued) {
-      return
-    }
-    exportQueued = true
-    queueMicrotask(() => {
-      exportQueued = false
-      void exportAll()
-    })
-  }
+  // A write burst exports once: a split's binding write and the window's save after it are one patch.
+  const exportBurst = createKeyedTrailingEdgeCoalescer(() => void exportAll(), {
+    flushMs: EXPORT_QUIET_MS,
+    maxWaitMs: EXPORT_MAX_WAIT_MS
+  })
+  const exportChanged = (): void => exportBurst.schedule(EXPORT_KEY)
 
   const recordPull: RemoteWorkspaceExports['recordPull'] = ({
     targetId,

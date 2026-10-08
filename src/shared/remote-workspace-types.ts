@@ -83,6 +83,8 @@ export type RemoteWorkspacePeerImport = RemoteWorkspaceExportAuthority & {
   outcome: 'synced' | 'kept-local' | 'conflict'
   /** The import's patch to the target's own `ssh:<targetId>` partition; empty when the host had nothing. */
   session: WorkspaceSessionPatch
+  /** The window's mirror (`publishSeq` per worktree) the patch was merged against. */
+  mirroredTopologySeqByWorktree?: Record<string, number>
 }
 
 /** Main's report of one export it ran, for the window's sync status. */

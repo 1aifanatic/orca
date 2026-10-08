@@ -6,7 +6,7 @@
  * Each desktop is its own module graph (own snapshot cache, patch queue and CLIENT_ID), as two
  * processes would be. The relay is an in-memory workspace with revisions.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
 import type {
   RemoteWorkspaceChangedEvent,
@@ -222,9 +222,10 @@ async function bootDesktop(): Promise<Desktop> {
   return desktop
 }
 
+/** Lets every export, the peer's import of it, and any export that causes run out. */
 async function settle(): Promise<void> {
   for (let turn = 0; turn < 5; turn += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await vi.advanceTimersByTimeAsync(5_000)
   }
 }
 
@@ -232,7 +233,12 @@ describe('two desktops, one relay', () => {
   let a: Desktop
   let b: Desktop
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(async () => {
+    vi.useFakeTimers()
     relay.revision = 3
     relay.session = {
       activeWorktreePath: null,
@@ -273,6 +279,35 @@ describe('two desktops, one relay', () => {
     ])
     expect(a.imports).toBe(1)
     expect(relay.revision).toBe(5)
+  })
+
+  it("exports a split's binding write and the window's save after it as one patch", async () => {
+    const split = withSplit(
+      { ...a.driver.readSession(), tabsByWorktree: { [WORKTREE_ID]: [tab('tab-a')] } },
+      'tab-a'
+    )
+    const layout = split.terminalLayoutsByTabId['tab-a']
+    // Main binds the new pane's PTY, then the window saves its focus on that pane.
+    a.driver.write({
+      ...split,
+      terminalLayoutsByTabId: {
+        'tab-a': { ...layout, ptyIdsByLeafId: { 'tab-a-a': 'pty-1', 'tab-a-b': 'pty-2' } }
+      }
+    })
+    await vi.advanceTimersByTimeAsync(200)
+    a.driver.write({
+      terminalLayoutsByTabId: {
+        'tab-a': {
+          ...a.driver.readSession().terminalLayoutsByTabId['tab-a'],
+          activeLeafId: 'tab-a-b'
+        }
+      }
+    })
+    await settle()
+
+    expect(relay.patches).toEqual([{ clientId: a.clientId, baseRevision: 3 }])
+    expect(relay.session.terminalLayoutsByTabId['tab-a']).toMatchObject({ activeLeafId: 'tab-a-b' })
+    expect(b.imports).toBe(1)
   })
 
   it('uploads a tab created during a download once, and the desktops converge', async () => {

@@ -28,6 +28,7 @@ import type { Store } from '../loading-store/store'
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
 import { planTerminalLayoutSet } from './terminal-layout-set'
 import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
+import { overNewerMainRows } from './terminal-peer-import-rows'
 
 // The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings, sleeping agents):
 // every window-requested topology change commits and is traced here. A spawn's binding commits
@@ -147,23 +148,29 @@ export function commitSleepingRecords(
   }
 }
 
-/** A window's pull from an SSH host, written only to that host's partition, its worktrees' home. */
+/**
+ * A window's pull from an SSH host, written only to that host's partition, its worktrees' home.
+ * Main's rows newer than the window's merge stand; returns whether any did, as the host lacks them.
+ */
 export function importPeerTopology(
-  store: Pick<Store, 'patchWorkspaceSession'>,
+  store: Pick<Store, 'getWorkspaceSession' | 'patchWorkspaceSession'>,
   targetId: string,
-  session: WorkspaceSessionPatch
-): void {
-  traced(
+  session: WorkspaceSessionPatch,
+  publishedSince: (worktreeId: string) => boolean
+): boolean {
+  return traced(
     'import_peer_topology',
     () => {
       if (Object.keys(session).length === 0) {
-        return { value: undefined, persist: false }
+        return { value: false, persist: false }
       }
-      store.patchWorkspaceSession(session, toSshExecutionHostId(targetId))
-      return { value: undefined }
+      const hostId = toSshExecutionHostId(targetId)
+      const patch = overNewerMainRows(session, store.getWorkspaceSession(hostId), publishedSince)
+      store.patchWorkspaceSession(patch, hostId)
+      return { value: !structuralValuesEqual(patch, session) }
     },
     () => undefined
-  )()
+  )().value
 }
 
 /** A sleeping agent's record lands beside its tab, in its worktree's home partition. */

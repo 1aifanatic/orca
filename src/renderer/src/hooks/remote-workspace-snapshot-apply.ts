@@ -261,6 +261,7 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
         : mergeKeptLocalState(merged, remoteSession, worktreeIds, localLayoutTabIds)
           ? 'kept-local'
           : 'synced',
+      mirroredTopologySeqByWorktree: state.terminalTopologySeqByWorktree,
       // Only the target's partition: the merge carries the window's copy of every other host's rows.
       session:
         buildWorkspaceSessionHostPatches(mergedFields(merged, current), currentStore).find(
