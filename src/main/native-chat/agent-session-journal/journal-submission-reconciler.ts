@@ -230,12 +230,12 @@ function windowStartsBeforeHandover(
   history: PlacedProviderHistoryWindow
 ): boolean {
   const { start } = history
-  const fence = submission.handedOverFence
-  if (!start || fence === undefined) {
+  const handover = submission.firstHandover
+  if (!start || !handover) {
     return false
   }
-  if (fence !== start.fence) {
-    return fence > start.fence
+  if (handover.fence !== start.fence) {
+    return handover.fence > start.fence
   }
-  return start.movedAt < (submission.handedOverAt ?? submission.submittedAt)
+  return start.movedAt < handover.at
 }

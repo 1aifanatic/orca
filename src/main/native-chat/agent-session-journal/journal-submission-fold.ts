@@ -28,7 +28,7 @@ export function applyJournalSubmission(
     submittedSequence: row.seq,
     ...(row.handoverRecorded
       ? { handoverRecorded: true, acceptedSequence: row.seq }
-      : { handedOverFence: row.fence }),
+      : { firstHandover: { fence: row.fence, at: row.ts } }),
     // A malformed stored link is dropped, never the row.
     ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
       ? { queuedMessageId: row.queuedMessageId }
