@@ -12588,7 +12588,7 @@
           "connecting": "Connecting to the managed Orca server…",
           "updating": "Updating managed server…",
           "starting": "Starting managed server…",
-          "notServing": "The managed Orca server isn’t running and couldn’t be started.",
+          "notServing": "Orca couldn’t confirm that the managed server is answering.",
           "hostNewer": "Runs a managed Orca server from a newer Orca; it keeps that version.",
           "terminalsLive": "Runs the relay until its {{count}} open terminals are closed, then moves to a managed server.",
           "terminalsLive_one": "Runs the relay until its {{count}} open terminal is closed, then moves to a managed server.",

@@ -14,6 +14,7 @@ import { expect, test } from './helpers/orca-app'
 import { waitForSessionReady } from './helpers/store'
 import { createRestartSession } from './helpers/orca-restart'
 import { reconnect } from './helpers/orcad-convert-flow'
+import { dismissTransientAnnouncement } from './helpers/ssh-config-host-picker'
 import { ORCAD_CONVERT_HOST_ENV } from './helpers/orcad-convert-host'
 import {
   cleanupDockerSshRelayTarget,
@@ -208,6 +209,26 @@ test('a live managed process that does not answer remains unverifiable', async (
       environmentId,
       serving: { state: 'unverifiable' }
     })
+    await page.evaluate(() => {
+      const state = window.__store?.getState()
+      state?.openSettingsTarget({ pane: 'ssh', repoId: null })
+      state?.openSettingsPage()
+    })
+    await expect(page.getByPlaceholder('Search settings')).toBeVisible()
+    await dismissTransientAnnouncement(page)
+    await page.getByRole('button', { name: 'Details', exact: true }).click()
+    await expect(
+      page.getByText('The managed Orca server process is live but is not answering.', {
+        exact: true
+      })
+    ).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('managed-serving-status-observed.png') })
+    await expect(
+      page.getByText('Orca couldn’t confirm that the managed server is answering.', {
+        exact: true
+      })
+    ).toBeVisible({ timeout: 5_000 })
+    await page.screenshot({ path: testInfo.outputPath('managed-serving-status-corrected.png') })
     execDockerSshRelayTargetCommand(target, `kill -CONT ${pid}`)
     pausedPid = null
     const recovered = JSON.parse(await reconnect(page, targetId))
@@ -217,6 +238,11 @@ test('a live managed process that does not answer remains unverifiable', async (
     )
     expect(recovered).toMatchObject({ kind: 'managed', environmentId })
     expect(recovered).not.toHaveProperty('serving')
+    await expect(
+      page.getByText('Orca couldn’t confirm that the managed server is answering.', {
+        exact: true
+      })
+    ).toHaveCount(0)
     expect(await callEnvironment(page, environmentId, 'terminal.list', {})).toMatchObject({
       ok: true
     })

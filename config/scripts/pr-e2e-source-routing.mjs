@@ -51,9 +51,10 @@ export const PR_E2E_SOURCE_ROUTES = [
     matches: (file) =>
       /^tests\/e2e\/helpers\/orcad-convert-(?:flow|host)\.ts$/.test(file) ||
       (isProductSource(file) &&
-        /^src\/(?:main\/(?:orcad\/orcad-(?:idle-|managed-idle-)|ssh\/orcad-(?:managed-serving|managed-wake|managed-tunnel|recovery-slot|remote-launch|remote-runtime-control))|shared\/orcad-idle-exit)/.test(
+        (/^src\/(?:main\/(?:orcad\/orcad-(?:idle-|managed-idle-)|ssh\/orcad-(?:managed-serving|managed-wake|managed-tunnel|recovery-slot|remote-launch|remote-runtime-control))|shared\/orcad-idle-exit)/.test(
           file
-        ))
+        ) ||
+          /^src\/renderer\/src\/components\/settings\/ssh-host-server-status-copy\.ts$/.test(file)))
   },
   {
     id: 'ssh.localhost-agent-hooks',

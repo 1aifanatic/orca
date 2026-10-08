@@ -12397,7 +12397,7 @@
           "connecting": "Conectando al servidor Orca gestionado…",
           "updating": "Actualizando el servidor gestionado…",
           "starting": "Iniciando el servidor gestionado…",
-          "notServing": "El servidor Orca gestionado no está en ejecución y no se pudo iniciar.",
+          "notServing": "Orca no pudo confirmar que el servidor gestionado esté respondiendo.",
           "hostNewer": "Ejecuta un servidor Orca gestionado de una versión más reciente de Orca; conserva esa versión.",
           "terminalsLive": "Ejecuta el relé hasta que se cierren sus {{count}} terminales abiertos y luego se mueve a un servidor gestionado.",
           "terminalsLive_one": "Ejecuta el relé hasta que se cierre su {{count}} terminal abierto y luego se mueve a un servidor gestionado.",
