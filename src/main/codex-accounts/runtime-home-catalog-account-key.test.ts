@@ -48,7 +48,7 @@ vi.mock('../codex/codex-account-session-bridge', () => ({
 async function wireCodexAccountKey(settings: ReturnType<typeof createSettings>) {
   const { CodexRuntimeHomeService } = await import('./runtime-home-service')
   const { mainProcessState } = await import('../startup/main-process-state')
-  const { prepareCodexRuntimeHomeForLaunch } = await import('../startup/codex-launch-preparation')
+  const { codexStructuredLaunchHomeResolvers } = await import('../startup/codex-launch-preparation')
   const { structuredAgentRuntimeRegistration } =
     await import('../runtime/structured-agent-runtime-registrations')
   const { agentModelCatalogFingerprint } =
@@ -59,11 +59,9 @@ async function wireCodexAccountKey(settings: ReturnType<typeof createSettings>) 
   const codex = structuredAgentRuntimeRegistration('codex')!
   const services = {
     getClaudeConfigDirectory: () => null,
-    // As main-process-runtime-service passes them to the runtime.
-    prepareCodexLaunchHome: ({ launchEnv }: { launchEnv: NodeJS.ProcessEnv }) =>
-      prepareCodexRuntimeHomeForLaunch(undefined, launchEnv),
-    readCodexLaunchHome: ({ launchEnv }: { launchEnv: NodeJS.ProcessEnv }) =>
-      runtimeHome.resolveHostCodexHomePathForLaunchReadOnly(launchEnv),
+    // The resolvers main-process-runtime-service hands the runtime.
+    prepareCodexLaunchHome: codexStructuredLaunchHomeResolvers.prepareCodexStructuredLaunch,
+    readCodexLaunchHome: codexStructuredLaunchHomeResolvers.resolveCodexStructuredLaunchHome,
     workspaceTrustSettings: () => settings
   }
   const resolve = (purpose: 'launch' | 'read') =>
