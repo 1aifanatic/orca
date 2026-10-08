@@ -1,0 +1,645 @@
+{
+  "sourceHead": "6fad8c40c6bf56f7959c219db8d320be1e5433af",
+  "historicalMapSource": "7b26725ff4b38e1981ad2e1153118fa24faa7ac3",
+  "historicalMapUse": "Identity/title/multiplicity/status evidence only, not current runtime/settings/success admission",
+  "archives": [
+    {
+      "archive": "notes/bun-migration/performance/original-current-stock-order-definition-publication-20261007/remote/artifacts/11512649758.zip",
+      "archiveSha256": "0eb430c828fccc8ecb8adbb82281b6a937f1a9a8c0f7e8d28545f3eba22190a3",
+      "member": "current-shard-4-round-0.json",
+      "memberSha256": "64c2edd354a041a94341606df511baf8e59ffd3ab6014ac3ea9ea3d0a1add8ff",
+      "files": [
+        "src/main/ipc/pty-encoding.test.ts"
+      ]
+    },
+    {
+      "archive": "notes/bun-migration/performance/original-current-stock-order-definition-publication-20261007/remote/artifacts/11513053965.zip",
+      "archiveSha256": "91caf716459b9bb7faf236ff77b54af8731c817e20874bbfe118618bde55f3f7",
+      "member": "current-shard-2-round-0.json",
+      "memberSha256": "71ef4e14a7bcc19fee87cd274636edb459bc3eda7269ded29a748ff5c9052592",
+      "files": [
+        "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx"
+      ]
+    },
+    {
+      "archive": "notes/bun-migration/performance/original-current-stock-order-definition-publication-20261007/remote/artifacts/11513164895.zip",
+      "archiveSha256": "e2ea40b152970cdf0307b88a7b0325326cb7fb2eb8086d14a181ddf5f673b70d",
+      "member": "current-shard-9-round-0.json",
+      "memberSha256": "7fc40fe53054ca2a0e952bd030acebceb2a7cf2650c729cc130390738355e64f",
+      "files": [
+        "src/shared/ssh-retained-payload-admission.test.ts"
+      ]
+    },
+    {
+      "archive": "notes/bun-migration/performance/original-current-stock-order-definition-publication-20261007/remote/artifacts/11513282421.zip",
+      "archiveSha256": "14269ae8d75a7a7ba2370751d73707940b76b563abc9a93ab49a01251ae579e1",
+      "member": "current-shard-7-round-0.json",
+      "memberSha256": "9d9b78a16c3013dbbb40d44a7877c4eb30f3b0b9e4e1b0b4ba41a0742915e68c",
+      "files": [
+        "src/shared/ssh-types.test.ts",
+        "src/main/providers/windows-shell-args.test.ts",
+        "src/renderer/src/assets/worktree-card-active-style.test.ts"
+      ]
+    },
+    {
+      "archive": "notes/bun-migration/performance/original-current-stock-order-definition-publication-20261007/remote/artifacts/11513943422.zip",
+      "archiveSha256": "466cc689bacb89ff205dd33ab881a39e262389b80da8de327ddc1609c1dcd260",
+      "member": "current-shard-10-round-0.json",
+      "memberSha256": "b38c53f5c102ea75ffec058241fdf023ced38831715d1bb2106bdd03bfc21502",
+      "files": [
+        "src/main/ipc/pty-windows-shell-selection.test.ts",
+        "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts"
+      ]
+    },
+    {
+      "archive": "notes/bun-migration/performance/original-current-stock-order-definition-publication-20261007/remote/artifacts/11513998102.zip",
+      "archiveSha256": "77f047a5d6a76fc55af994e46bb8b512aca5f6c2f10dbc1b9caed382417732c4",
+      "member": "current-shard-5-round-0.json",
+      "memberSha256": "f512492682aaa3ae9fb369dc394ce7b02aed01fd37e30d1d7166da0b6802ea91",
+      "files": [
+        "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx",
+        "src/renderer/src/components/editor/rich-markdown-cut.test.ts"
+      ]
+    }
+  ],
+  "nineSelectedFilesByteExactHistorical": {
+    "src/renderer/src/components/editor/rich-markdown-cut.test.ts": "bca19fcca85698d3fa009b713d666dc3efa4cdb7d76c13c003289648f8d3e79b",
+    "src/main/ipc/pty-encoding.test.ts": "ecd0de43651a8582094b075bf4665eb8c260ad6172034cc036e4a715eede4078",
+    "src/renderer/src/assets/worktree-card-active-style.test.ts": "bc095f11068fb6bd22866622f3d7ac7e0441695ef9c32d8a9de49c92978c5575",
+    "src/shared/ssh-types.test.ts": "aa7da5f3bc5860360cef05f050b117a9c5149a16c4cb6224668031d0dc1dd400",
+    "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts": "8d4aa9c0656bb805863e5670f75c74ceac74b336f2a7f7a00772a2cd1003f220",
+    "src/main/ipc/pty-windows-shell-selection.test.ts": "85f664b9d94f792f4849812e85a8ad408810007faf330f8f486688a736b5fd7d",
+    "src/shared/ssh-retained-payload-admission.test.ts": "c3fcd4deee0af2c90eace9867c0007d36ace17c6c1c214e5ebf2e8806ea6b81b",
+    "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx": "0a2a8df4c0fb9889dd635a4503e4c5e496efbccc70addc1d1608debd7adf6f0a",
+    "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx": "8fac93eefbe1e6a566e0ce9505457f13cb1d810b9205613aae02a1de02c333c9"
+  },
+  "currentWindowsRegistration": {
+    "file": "src/main/providers/windows-shell-args.test.ts",
+    "sha256": "2bab0665ec7b6b2842faec4614634724d022f3d11702308870394af5c0bb1eec",
+    "historicalSha256": "0d3783532c9f93f8ab67c90c3656e573ed2c0bc21012f42f5b12114f50ecc0e6",
+    "registrations": [
+      {
+        "line": 60,
+        "kind": "literal"
+      },
+      {
+        "line": 75,
+        "kind": "literal"
+      },
+      {
+        "line": 91,
+        "kind": "literal"
+      },
+      {
+        "line": 105,
+        "kind": "literal"
+      },
+      {
+        "line": 118,
+        "kind": "literal"
+      },
+      {
+        "line": 164,
+        "kind": "literal"
+      },
+      {
+        "line": 178,
+        "kind": "literal"
+      },
+      {
+        "line": 190,
+        "kind": "literal"
+      },
+      {
+        "line": 206,
+        "kind": "literal"
+      },
+      {
+        "line": 223,
+        "kind": "literal"
+      },
+      {
+        "line": 239,
+        "kind": "literal"
+      },
+      {
+        "line": 245,
+        "kind": "literal"
+      },
+      {
+        "line": 263,
+        "kind": "literal"
+      },
+      {
+        "line": 296,
+        "kind": "literal"
+      },
+      {
+        "line": 311,
+        "kind": "literal"
+      },
+      {
+        "line": 334,
+        "kind": "literal"
+      },
+      {
+        "line": 361,
+        "kind": "literal"
+      },
+      {
+        "line": 373,
+        "kind": "literal"
+      },
+      {
+        "line": 398,
+        "kind": "literal"
+      },
+      {
+        "line": 424,
+        "kind": "literal"
+      },
+      {
+        "line": 438,
+        "kind": "literal-array-each",
+        "expanded": 2
+      },
+      {
+        "line": 449,
+        "kind": "literal"
+      },
+      {
+        "line": 457,
+        "kind": "literal"
+      },
+      {
+        "line": 462,
+        "kind": "literal"
+      },
+      {
+        "line": 486,
+        "kind": "literal"
+      },
+      {
+        "line": 499,
+        "kind": "literal"
+      },
+      {
+        "line": 510,
+        "kind": "literal"
+      },
+      {
+        "line": 526,
+        "kind": "literal"
+      },
+      {
+        "line": 532,
+        "kind": "literal"
+      }
+    ],
+    "expandedCases": [
+      {
+        "title": "returns cmd.exe args with chcp 65001 for UTF-8 output",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs returns cmd.exe args with chcp 65001 for UTF-8 output",
+        "status": "passed"
+      },
+      {
+        "title": "embeds short cmd.exe startup commands in shell args",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs embeds short cmd.exe startup commands in shell args",
+        "status": "passed"
+      },
+      {
+        "title": "keeps quoted cmd.exe startup commands on stdin delivery",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps quoted cmd.exe startup commands on stdin delivery",
+        "status": "passed"
+      },
+      {
+        "title": "keeps large cmd.exe startup commands on stdin delivery",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps large cmd.exe startup commands on stdin delivery",
+        "status": "passed"
+      },
+      {
+        "title": "returns PowerShell args that install OSC 133 bootstrap after normal profile loading",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs returns PowerShell args that install OSC 133 bootstrap after normal profile loading",
+        "status": "passed"
+      },
+      {
+        "title": "normalizes MSYS drive cwd before spawning native PowerShell",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs normalizes MSYS drive cwd before spawning native PowerShell",
+        "status": "passed"
+      },
+      {
+        "title": "quotes the PowerShell cwd restore command literally",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs quotes the PowerShell cwd restore command literally",
+        "status": "passed"
+      },
+      {
+        "title": "embeds short PowerShell startup commands after the OSC 133 bootstrap",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs embeds short PowerShell startup commands after the OSC 133 bootstrap",
+        "status": "passed"
+      },
+      {
+        "title": "preserves complex PowerShell startup command text through EncodedCommand",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs preserves complex PowerShell startup command text through EncodedCommand",
+        "status": "passed"
+      },
+      {
+        "title": "keeps large PowerShell startup commands on stdin delivery",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps large PowerShell startup commands on stdin delivery",
+        "status": "passed"
+      },
+      {
+        "title": "handles pwsh.exe (PowerShell Core) the same as Windows PowerShell",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs handles pwsh.exe (PowerShell Core) the same as Windows PowerShell",
+        "status": "passed"
+      },
+      {
+        "title": "does not change PowerShell args when the cmd/Git Bash preflight is provided",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs does not change PowerShell args when the cmd/Git Bash preflight is provided",
+        "status": "passed"
+      },
+      {
+        "title": "starts Git Bash as an interactive login shell with UTF-8 console setup",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs starts Git Bash as an interactive login shell with UTF-8 console setup",
+        "status": "passed"
+      },
+      {
+        "title": "keeps Git Bash startup commands on stdin delivery with the preflight wrapper",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps Git Bash startup commands on stdin delivery with the preflight wrapper",
+        "status": "passed"
+      },
+      {
+        "title": "gives a plain Git Bash tab the same rcfile as one with a startup command",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs gives a plain Git Bash tab the same rcfile as one with a startup command",
+        "status": "passed"
+      },
+      {
+        "title": "quotes a spaced preflight path through each shell environment",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs quotes a spaced preflight path through each shell environment",
+        "status": "passed"
+      },
+      {
+        "title": "does not apply Git Bash launch args to unrelated bash.exe paths",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs does not apply Git Bash launch args to unrelated bash.exe paths",
+        "status": "passed"
+      },
+      {
+        "title": "translates Windows cwd to /mnt/<drive>/... for wsl.exe",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs translates Windows cwd to /mnt/<drive>/... for wsl.exe",
+        "status": "passed"
+      },
+      {
+        "title": "materializes shell-ready wrappers before building WSL shell args",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs materializes shell-ready wrappers before building WSL shell args",
+        "status": "passed"
+      },
+      {
+        "title": "translates MSYS drive cwd to /mnt/<drive>/... for wsl.exe",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs translates MSYS drive cwd to /mnt/<drive>/... for wsl.exe",
+        "status": "passed"
+      },
+      {
+        "title": "keeps a selected WSL runtime single-letter cwd exact (/a)",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps a selected WSL runtime single-letter cwd exact (/a)",
+        "status": "passed"
+      },
+      {
+        "title": "keeps a selected WSL runtime single-letter cwd exact (/c)",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps a selected WSL runtime single-letter cwd exact (/c)",
+        "status": "passed"
+      },
+      {
+        "title": "escapes single quotes when translating a WSL cwd",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs escapes single quotes when translating a WSL cwd",
+        "status": "passed"
+      },
+      {
+        "title": "falls back to /mnt/c when cwd is not a drive-letter path",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs falls back to /mnt/c when cwd is not a drive-letter path",
+        "status": "passed"
+      },
+      {
+        "title": "keeps WSL UNC worktree cwd inside the matching distro",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps WSL UNC worktree cwd inside the matching distro",
+        "status": "passed"
+      },
+      {
+        "title": "keeps POSIX cwd inside the worktree distro when WSL context is provided",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps POSIX cwd inside the worktree distro when WSL context is provided",
+        "status": "passed"
+      },
+      {
+        "title": "falls back to empty args + same cwd for unknown shells",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs falls back to empty args + same cwd for unknown shells",
+        "status": "passed"
+      },
+      {
+        "title": "is case-insensitive on the shell basename",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs is case-insensitive on the shell basename",
+        "status": "passed"
+      },
+      {
+        "title": "wraps the setup runner in balanced double quotes",
+        "ancestorTitles": [
+          "issue #7236: PowerShell setup-runner command delivery"
+        ],
+        "fullName": "issue #7236: PowerShell setup-runner command delivery wraps the setup runner in balanced double quotes",
+        "status": "passed"
+      },
+      {
+        "title": "delivers the setup-runner command through -EncodedCommand, never raw stdin",
+        "ancestorTitles": [
+          "issue #7236: PowerShell setup-runner command delivery"
+        ],
+        "fullName": "issue #7236: PowerShell setup-runner command delivery delivers the setup-runner command through -EncodedCommand, never raw stdin",
+        "status": "passed"
+      }
+    ],
+    "actualCurrentCasesPending": true,
+    "sourceOnlyNewTitle": "gives a plain Git Bash tab the same rcfile as one with a startup command",
+    "retainedChangedCallbackAssertions": "Current full canonical shell-args fixture unchanged in both arms, not replaced by historical behavior"
+  },
+  "removedCases": [
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior heading + paragraph: cuts only the paragraph",
+      "status": "passed",
+      "title": "heading + paragraph: cuts only the paragraph",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior paragraphs separated by blank lines are separate blocks",
+      "status": "passed",
+      "title": "paragraphs separated by blank lines are separate blocks",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior list item: cuts the entire list item",
+      "status": "passed",
+      "title": "list item: cuts the entire list item",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior document with horizontal rule: depth < 1 guard prevents crash",
+      "status": "passed",
+      "title": "document with horizontal rule: depth < 1 guard prevents crash",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior single paragraph document: cut removes the only content",
+      "status": "passed",
+      "title": "single paragraph document: cut removes the only content",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior blockquote with multiple paragraphs: cuts only one paragraph",
+      "status": "passed",
+      "title": "blockquote with multiple paragraphs: cuts only one paragraph",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior nested list item: cuts just the inner list item",
+      "status": "passed",
+      "title": "nested list item: cuts just the inner list item",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior list item with nested sublist: cuts parent list item including sublist",
+      "status": "passed",
+      "title": "list item with nested sublist: cuts parent list item including sublist",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) GBK-encoded CJK bytes produce garbled output when decoded as UTF-8",
+      "status": "passed",
+      "title": "GBK-encoded CJK bytes produce garbled output when decoded as UTF-8",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) UTF-8 encoded CJK bytes decode correctly",
+      "status": "passed",
+      "title": "UTF-8 encoded CJK bytes decode correctly",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) multi-byte split across buffer boundaries produces replacement chars",
+      "status": "passed",
+      "title": "multi-byte split across buffer boundaries produces replacement chars",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) StringDecoder correctly handles split multi-byte sequences",
+      "status": "passed",
+      "title": "StringDecoder correctly handles split multi-byte sequences",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling keeps the primary selection wash translucent so card text stays legible",
+      "status": "passed",
+      "title": "keeps the primary selection wash translucent so card text stays legible",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling keeps the secondary selection ring when CSS owns the active state",
+      "status": "passed",
+      "title": "keeps the secondary selection ring when CSS owns the active state",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling styles multi-selected cards through one rule that skips the active card",
+      "status": "passed",
+      "title": "styles multi-selected cards through one rule that skips the active card",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling dims sleeping cards through theme tokens so the cue survives any surface",
+      "status": "passed",
+      "title": "dims sleeping cards through theme tokens so the cue survives any surface",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/shared/ssh-types.test.ts",
+      "fullName": "SSH types SshConnectionState composes correctly",
+      "status": "passed",
+      "title": "SshConnectionState composes correctly",
+      "ancestorTitles": [
+        "SSH types"
+      ],
+      "multiplicity": 1
+    }
+  ],
+  "wholeFilesRemoved": [
+    "src/renderer/src/assets/worktree-card-active-style.test.ts",
+    "src/shared/ssh-types.test.ts"
+  ],
+  "constituents": {
+    "junk-test-copied-cut-and-node-codec-6fad-source-proposal": {
+      "proofSha256": "cd4c6717b8937833d961dc7d019fff0f990e2a1ec207d6d8dc283797c772106d",
+      "patchSha256": "9b598f1c4b31dd6c62e765b728b688987b86201c4aeda8c942b816d9f60171f2",
+      "sourceFinalSha256": "eb71ebf23e4720cdb2cd3a278eba3bee19f0026b74db9a1da6720a1e64d2535c"
+    },
+    "junk-test-css-source-greps-6fad-source-proposal": {
+      "proofSha256": "0acf30ecc2520aee8748b1a425147d5eb0c084d1f4737e88f740fa4707ec7e1f",
+      "patchSha256": "b294a3304003c3d2ec65a75cb43a1b8732993fca8b9c3a9227711fb9e02e260c",
+      "sourceFinalSha256": "1ad3255c276b7318fec4bb36081b3a4766d153e50e2c5e0e2b747fdb4020973e"
+    },
+    "junk-test-ssh-literal-state-6fad-source-proposal": {
+      "proofSha256": "0d0489fe143ee20ab887df9da10ee0b30449aeb01ac9c5b04f03459bcb3b2dd0",
+      "patchSha256": "177e332288957578331288f76138d79b808be02d0df19afacbb20ace2317053d",
+      "sourceFinalSha256": "a95df738435ca2ab370e5f51e39a8ff7480efb4f1636a760ad6071238ac64a78"
+    }
+  },
+  "qualificationPending": true,
+  "productionOrRemainingCallbacksChanged": false,
+  "scope": "Candidate differs only approved source-qualified17 deletions. Copied cut8 coverage assessment still requires final root/peer admission; parser/codec extension execution is not described as absent."
+}

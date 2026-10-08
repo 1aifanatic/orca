@@ -1,0 +1,2540 @@
+{
+  "sourceHead": "6fad8c40c6bf56f7959c219db8d320be1e5433af",
+  "maxWorkers": 4,
+  "driver": "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs",
+  "driverChanges": true,
+  "driverDonorSha256": "3260581eb3bf48b84712da5172c2695f5fd110be1cc37e68c1a41d18176e4626",
+  "reporterSha256": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+  "fsModuleCache": true,
+  "schedule": [
+    [
+      "before",
+      0
+    ],
+    [
+      "after",
+      0
+    ],
+    [
+      "after",
+      1
+    ],
+    [
+      "before",
+      1
+    ],
+    [
+      "before",
+      2
+    ],
+    [
+      "after",
+      2
+    ]
+  ],
+  "label": "junk-test-seventeen-pruning-held-6fad",
+  "patch": "notes/bun-migration/performance/junk-test-seventeen-pruning-ci-6fad/shipping.patch",
+  "patchSha256": "4b35afe51ff776c108df8cc11d6f7c82375eb6a8695339b221b1dff941110e4e",
+  "filesByPhase": {
+    "before": [
+      "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "src/main/ipc/pty-encoding.test.ts",
+      "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "src/shared/ssh-types.test.ts",
+      "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts",
+      "src/main/providers/windows-shell-args.test.ts",
+      "src/main/ipc/pty-windows-shell-selection.test.ts",
+      "src/shared/ssh-retained-payload-admission.test.ts",
+      "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx",
+      "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx"
+    ],
+    "after": [
+      "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "src/main/ipc/pty-encoding.test.ts",
+      "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts",
+      "src/main/providers/windows-shell-args.test.ts",
+      "src/main/ipc/pty-windows-shell-selection.test.ts",
+      "src/shared/ssh-retained-payload-admission.test.ts",
+      "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx",
+      "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx"
+    ]
+  },
+  "caseIdentityMapByPhase": {
+    "before": {
+      "src/main/ipc/pty-encoding.test.ts": [
+        {
+          "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) GBK-encoded CJK bytes produce garbled output when decoded as UTF-8",
+          "status": "passed",
+          "title": "GBK-encoded CJK bytes produce garbled output when decoded as UTF-8",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "encoding mismatch (root cause)"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) UTF-8 encoded CJK bytes decode correctly",
+          "status": "passed",
+          "title": "UTF-8 encoded CJK bytes decode correctly",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "encoding mismatch (root cause)"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) multi-byte split across buffer boundaries produces replacement chars",
+          "status": "passed",
+          "title": "multi-byte split across buffer boundaries produces replacement chars",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "encoding mismatch (root cause)"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) StringDecoder correctly handles split multi-byte sequences",
+          "status": "passed",
+          "title": "StringDecoder correctly handles split multi-byte sequences",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "encoding mismatch (root cause)"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification cmd.exe /K chcp 65001 sets code page to UTF-8",
+          "status": "skipped",
+          "title": "cmd.exe /K chcp 65001 sets code page to UTF-8",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification cmd.exe echoes CJK characters correctly with code page 65001",
+          "status": "skipped",
+          "title": "cmd.exe echoes CJK characters correctly with code page 65001",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification powershell.exe outputs UTF-8 after setting Console encoding",
+          "status": "skipped",
+          "title": "powershell.exe outputs UTF-8 after setting Console encoding",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification powershell.exe outputs CJK characters correctly with UTF-8 encoding",
+          "status": "skipped",
+          "title": "powershell.exe outputs CJK characters correctly with UTF-8 encoding",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification try/catch in profile loading does not prevent encoding from being set",
+          "status": "skipped",
+          "title": "try/catch in profile loading does not prevent encoding from being set",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification without try/catch, a terminating error prevents encoding from being set",
+          "status": "skipped",
+          "title": "without try/catch, a terminating error prevents encoding from being set",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        }
+      ],
+      "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx": [
+        {
+          "fullName": "WorktreeCard affiliate list mode keeps the card visual surface but disables mutating list interactions",
+          "status": "passed",
+          "title": "keeps the card visual surface but disables mutating list interactions",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode still shows inline agent details in affiliate list mode",
+          "status": "passed",
+          "title": "still shows inline agent details in affiliate list mode",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode dims the full card surface for sleeping workspaces in new card style",
+          "status": "passed",
+          "title": "dims the full card surface for sleeping workspaces in new card style",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode keeps awake cards at full opacity in new card style",
+          "status": "passed",
+          "title": "keeps awake cards at full opacity in new card style",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode keeps legacy sleeping cards undimmed",
+          "status": "passed",
+          "title": "keeps legacy sleeping cards undimmed",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode keeps the unread badge rendered on a dimmed sleeping card",
+          "status": "passed",
+          "title": "keeps the unread badge rendered on a dimmed sleeping card",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        }
+      ],
+      "src/shared/ssh-retained-payload-admission.test.ts": [
+        {
+          "fullName": "SSH retained payload admission keeps a managed server update note, and drops an unknown one without hiding the server",
+          "status": "passed",
+          "title": "keeps a managed server update note, and drops an unknown one without hiding the server",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission caps an unverifiable serving detail like its sibling details",
+          "status": "passed",
+          "title": "caps an unverifiable serving detail like its sibling details",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission keeps ordinary connection state while stripping unknown payload fields",
+          "status": "passed",
+          "title": "keeps ordinary connection state while stripping unknown payload fields",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission admits the plain SSH mode and drops a malformed one without dropping the state",
+          "status": "passed",
+          "title": "admits the plain SSH mode and drops a malformed one without dropping the state",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission admits only a literal move offer on a relay server status",
+          "status": "passed",
+          "title": "admits only a literal move offer on a relay server status",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission rejects partial and malformed provider authority",
+          "status": "passed",
+          "title": "rejects partial and malformed provider authority",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission admits only bounded complete direct SSH authority",
+          "status": "passed",
+          "title": "admits only bounded complete direct SSH authority",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission normalizes only partial authority for bounded reconciliation",
+          "status": "passed",
+          "title": "normalizes only partial authority for bounded reconciliation",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission normalizes legacy authority to unknown",
+          "status": "passed",
+          "title": "normalizes legacy authority to unknown",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission caps connection errors without splitting a UTF-8 code point",
+          "status": "passed",
+          "title": "caps connection errors without splitting a UTF-8 code point",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission rejects mismatched and oversized target identifiers",
+          "status": "passed",
+          "title": "rejects mismatched and oversized target identifiers",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission caps port rows and their retained strings",
+          "status": "passed",
+          "title": "caps port rows and their retained strings",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission drops malformed rows instead of retaining their payloads",
+          "status": "passed",
+          "title": "drops malformed rows instead of retaining their payloads",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        }
+      ],
+      "src/shared/ssh-types.test.ts": [
+        {
+          "fullName": "SSH types SshConnectionState composes correctly",
+          "status": "passed",
+          "title": "SshConnectionState composes correctly",
+          "ancestorTitles": [
+            "SSH types"
+          ]
+        }
+      ],
+      "src/main/providers/windows-shell-args.test.ts": [
+        {
+          "fullName": "resolveWindowsShellLaunchArgs returns cmd.exe args with chcp 65001 for UTF-8 output",
+          "status": "passed",
+          "title": "returns cmd.exe args with chcp 65001 for UTF-8 output",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs embeds short cmd.exe startup commands in shell args",
+          "status": "passed",
+          "title": "embeds short cmd.exe startup commands in shell args",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps quoted cmd.exe startup commands on stdin delivery",
+          "status": "passed",
+          "title": "keeps quoted cmd.exe startup commands on stdin delivery",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps large cmd.exe startup commands on stdin delivery",
+          "status": "passed",
+          "title": "keeps large cmd.exe startup commands on stdin delivery",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs returns PowerShell args that install OSC 133 bootstrap after normal profile loading",
+          "status": "passed",
+          "title": "returns PowerShell args that install OSC 133 bootstrap after normal profile loading",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs normalizes MSYS drive cwd before spawning native PowerShell",
+          "status": "passed",
+          "title": "normalizes MSYS drive cwd before spawning native PowerShell",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs quotes the PowerShell cwd restore command literally",
+          "status": "passed",
+          "title": "quotes the PowerShell cwd restore command literally",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs embeds short PowerShell startup commands after the OSC 133 bootstrap",
+          "status": "passed",
+          "title": "embeds short PowerShell startup commands after the OSC 133 bootstrap",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs preserves complex PowerShell startup command text through EncodedCommand",
+          "status": "passed",
+          "title": "preserves complex PowerShell startup command text through EncodedCommand",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps large PowerShell startup commands on stdin delivery",
+          "status": "passed",
+          "title": "keeps large PowerShell startup commands on stdin delivery",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs handles pwsh.exe (PowerShell Core) the same as Windows PowerShell",
+          "status": "passed",
+          "title": "handles pwsh.exe (PowerShell Core) the same as Windows PowerShell",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs does not change PowerShell args when the cmd/Git Bash preflight is provided",
+          "status": "passed",
+          "title": "does not change PowerShell args when the cmd/Git Bash preflight is provided",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs starts Git Bash as an interactive login shell with UTF-8 console setup",
+          "status": "passed",
+          "title": "starts Git Bash as an interactive login shell with UTF-8 console setup",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps Git Bash startup commands on stdin delivery with the preflight wrapper",
+          "status": "passed",
+          "title": "keeps Git Bash startup commands on stdin delivery with the preflight wrapper",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs gives a plain Git Bash tab the same rcfile as one with a startup command",
+          "status": "passed",
+          "title": "gives a plain Git Bash tab the same rcfile as one with a startup command",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs quotes a spaced preflight path through each shell environment",
+          "status": "passed",
+          "title": "quotes a spaced preflight path through each shell environment",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs does not apply Git Bash launch args to unrelated bash.exe paths",
+          "status": "passed",
+          "title": "does not apply Git Bash launch args to unrelated bash.exe paths",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs translates Windows cwd to /mnt/<drive>/... for wsl.exe",
+          "status": "passed",
+          "title": "translates Windows cwd to /mnt/<drive>/... for wsl.exe",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs materializes shell-ready wrappers before building WSL shell args",
+          "status": "passed",
+          "title": "materializes shell-ready wrappers before building WSL shell args",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs translates MSYS drive cwd to /mnt/<drive>/... for wsl.exe",
+          "status": "passed",
+          "title": "translates MSYS drive cwd to /mnt/<drive>/... for wsl.exe",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps a selected WSL runtime single-letter cwd exact (/a)",
+          "status": "passed",
+          "title": "keeps a selected WSL runtime single-letter cwd exact (/a)",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps a selected WSL runtime single-letter cwd exact (/c)",
+          "status": "passed",
+          "title": "keeps a selected WSL runtime single-letter cwd exact (/c)",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs escapes single quotes when translating a WSL cwd",
+          "status": "passed",
+          "title": "escapes single quotes when translating a WSL cwd",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs falls back to /mnt/c when cwd is not a drive-letter path",
+          "status": "passed",
+          "title": "falls back to /mnt/c when cwd is not a drive-letter path",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps WSL UNC worktree cwd inside the matching distro",
+          "status": "passed",
+          "title": "keeps WSL UNC worktree cwd inside the matching distro",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps POSIX cwd inside the worktree distro when WSL context is provided",
+          "status": "passed",
+          "title": "keeps POSIX cwd inside the worktree distro when WSL context is provided",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs falls back to empty args + same cwd for unknown shells",
+          "status": "passed",
+          "title": "falls back to empty args + same cwd for unknown shells",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs is case-insensitive on the shell basename",
+          "status": "passed",
+          "title": "is case-insensitive on the shell basename",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "issue #7236: PowerShell setup-runner command delivery wraps the setup runner in balanced double quotes",
+          "status": "passed",
+          "title": "wraps the setup runner in balanced double quotes",
+          "ancestorTitles": [
+            "issue #7236: PowerShell setup-runner command delivery"
+          ]
+        },
+        {
+          "fullName": "issue #7236: PowerShell setup-runner command delivery delivers the setup-runner command through -EncodedCommand, never raw stdin",
+          "status": "passed",
+          "title": "delivers the setup-runner command through -EncodedCommand, never raw stdin",
+          "ancestorTitles": [
+            "issue #7236: PowerShell setup-runner command delivery"
+          ]
+        }
+      ],
+      "src/renderer/src/assets/worktree-card-active-style.test.ts": [
+        {
+          "fullName": "worktree card active styling keeps the primary selection wash translucent so card text stays legible",
+          "status": "passed",
+          "title": "keeps the primary selection wash translucent so card text stays legible",
+          "ancestorTitles": [
+            "worktree card active styling"
+          ]
+        },
+        {
+          "fullName": "worktree card active styling keeps the secondary selection ring when CSS owns the active state",
+          "status": "passed",
+          "title": "keeps the secondary selection ring when CSS owns the active state",
+          "ancestorTitles": [
+            "worktree card active styling"
+          ]
+        },
+        {
+          "fullName": "worktree card active styling styles multi-selected cards through one rule that skips the active card",
+          "status": "passed",
+          "title": "styles multi-selected cards through one rule that skips the active card",
+          "ancestorTitles": [
+            "worktree card active styling"
+          ]
+        },
+        {
+          "fullName": "worktree card active styling dims sleeping cards through theme tokens so the cue survives any surface",
+          "status": "passed",
+          "title": "dims sleeping cards through theme tokens so the cue survives any surface",
+          "ancestorTitles": [
+            "worktree card active styling"
+          ]
+        }
+      ],
+      "src/main/ipc/pty-windows-shell-selection.test.ts": [
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page passes chcp 65001 to cmd.exe for UTF-8 console output",
+          "status": "passed",
+          "title": "passes chcp 65001 to cmd.exe for UTF-8 console output",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page sets Console encoding for powershell.exe",
+          "status": "passed",
+          "title": "sets Console encoding for powershell.exe",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page sets Console encoding for pwsh.exe",
+          "status": "passed",
+          "title": "sets Console encoding for pwsh.exe",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page sets PYTHONUTF8=1 in the spawn environment on Windows",
+          "status": "passed",
+          "title": "sets PYTHONUTF8=1 in the spawn environment on Windows",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page does not override an existing PYTHONUTF8 value",
+          "status": "passed",
+          "title": "does not override an existing PYTHONUTF8 value",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page launches Git Bash from COMSPEC as an interactive login shell",
+          "status": "passed",
+          "title": "launches Git Bash from COMSPEC as an interactive login shell",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page uses terminalWindowsShell setting over COMSPEC when provided",
+          "status": "passed",
+          "title": "uses terminalWindowsShell setting over COMSPEC when provided",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page uses the host shell when resolved project runtime overrides a stale WSL shell default",
+          "status": "passed",
+          "title": "uses the host shell when resolved project runtime overrides a stale WSL shell default",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page uses the selected project WSL distro when resolved runtime overrides the host shell default",
+          "status": "passed",
+          "title": "uses the selected project WSL distro when resolved runtime overrides the host shell default",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page blocks terminal spawn when project runtime requires repair",
+          "status": "passed",
+          "title": "blocks terminal spawn when project runtime requires repair",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page spawns powershell.exe when PowerShell family keeps the inbox implementation",
+          "status": "passed",
+          "title": "spawns powershell.exe when PowerShell family keeps the inbox implementation",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page spawns pwsh.exe when PowerShell 7 is selected and available",
+          "status": "passed",
+          "title": "spawns pwsh.exe when PowerShell 7 is selected and available",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page keeps PowerShell 7 selected when the pwsh availability probe is cold-false",
+          "status": "passed",
+          "title": "keeps PowerShell 7 selected when the pwsh availability probe is cold-false",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page keeps a pwsh.exe shellOverride when the pwsh availability probe is cold-false",
+          "status": "passed",
+          "title": "keeps a pwsh.exe shellOverride when the pwsh availability probe is cold-false",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page ignores the PowerShell implementation setting for cmd.exe",
+          "status": "passed",
+          "title": "ignores the PowerShell implementation setting for cmd.exe",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page ignores the PowerShell implementation setting for wsl.exe",
+          "status": "passed",
+          "title": "ignores the PowerShell implementation setting for wsl.exe",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page keeps shellOverride priority for one-off tabs",
+          "status": "passed",
+          "title": "keeps shellOverride priority for one-off tabs",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        }
+      ],
+      "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts": [
+        {
+          "fullName": "cutting Markdown images with an empty caret selection writes a restorable image before deleting its paragraph at caret 1",
+          "status": "passed",
+          "title": "writes a restorable image before deleting its paragraph at caret 1",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection writes a restorable image before deleting its paragraph at caret 2",
+          "status": "passed",
+          "title": "writes a restorable image before deleting its paragraph at caret 2",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection leaves the image intact when no clipboard is available",
+          "status": "passed",
+          "title": "leaves the image intact when no clipboard is available",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection leaves the image intact and reports failure when the clipboard rejects the write",
+          "status": "passed",
+          "title": "leaves the image intact and reports failure when the clipboard rejects the write",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection serializes an image nested in a list or table without deleting its neighbor",
+          "status": "passed",
+          "title": "serializes an image nested in a list or table without deleting its neighbor",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection serializes an image nested in a list or table without deleting its neighbor",
+          "status": "passed",
+          "title": "serializes an image nested in a list or table without deleting its neighbor",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection serializes an image nested in a list or table without deleting its neighbor",
+          "status": "passed",
+          "title": "serializes an image nested in a list or table without deleting its neighbor",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility deletes a truly empty paragraph without overwriting the clipboard",
+          "status": "passed",
+          "title": "deletes a truly empty paragraph without overwriting the clipboard",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility deletes an empty listItem without overwriting the clipboard",
+          "status": "passed",
+          "title": "deletes an empty listItem without overwriting the clipboard",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility deletes an empty taskItem without overwriting the clipboard",
+          "status": "passed",
+          "title": "deletes an empty taskItem without overwriting the clipboard",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility preserves the existing clipboard behavior for \n",
+          "status": "passed",
+          "title": "preserves the existing clipboard behavior for \n",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility preserves the existing clipboard behavior for    ",
+          "status": "passed",
+          "title": "preserves the existing clipboard behavior for    ",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        }
+      ],
+      "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx": [
+        {
+          "fullName": "WorktreeCard quick actions marks the unread toggle as a workspace-board-preserving action",
+          "status": "passed",
+          "title": "marks the unread toggle as a workspace-board-preserving action",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders repo identity in the detailed metadata row",
+          "status": "passed",
+          "title": "renders repo identity in the detailed metadata row",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions can render the current workspace with a secondary active surface",
+          "status": "passed",
+          "title": "can render the current workspace with a secondary active surface",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions marks the primary active workspace for token-driven selected styling",
+          "status": "passed",
+          "title": "marks the primary active workspace for token-driven selected styling",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions marks multi-selected workspaces for the shared selected style, except the active one",
+          "status": "passed",
+          "title": "marks multi-selected workspaces for the shared selected style, except the active one",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders folder directory name in the detailed metadata row without a Folder badge",
+          "status": "passed",
+          "title": "renders folder directory name in the detailed metadata row without a Folder badge",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders synthetic folder workspace directory name in the detailed metadata row without a Folder badge",
+          "status": "passed",
+          "title": "renders synthetic folder workspace directory name in the detailed metadata row without a Folder badge",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not render a branch icon for synthetic folder workspace path identity",
+          "status": "passed",
+          "title": "does not render a branch icon for synthetic folder workspace path identity",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not render a pending first-agent rename title badge",
+          "status": "passed",
+          "title": "does not render a pending first-agent rename title badge",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders the failed first-agent rename title badge",
+          "status": "passed",
+          "title": "renders the failed first-agent rename title badge",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders the failed first-agent rename title badge when rename is also pending",
+          "status": "passed",
+          "title": "renders the failed first-agent rename title badge when rename is also pending",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders the migrated branch metadata row when branch is enabled",
+          "status": "passed",
+          "title": "renders the migrated branch metadata row when branch is enabled",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders detached HEAD identity in detailed card metadata",
+          "status": "passed",
+          "title": "renders detached HEAD identity in detailed card metadata",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions omits the repeated branch metadata row when compact cards are enabled",
+          "status": "passed",
+          "title": "omits the repeated branch metadata row when compact cards are enabled",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions omits the branch metadata row when the workspace has a custom title",
+          "status": "passed",
+          "title": "omits the branch metadata row when the workspace has a custom title",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions uses the left status lane and primary badge when compact cards are disabled",
+          "status": "passed",
+          "title": "uses the left status lane and primary badge when compact cards are disabled",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions keeps unread in the status lane and moves primary into the title row when compact cards are enabled",
+          "status": "passed",
+          "title": "keeps unread in the status lane and moves primary into the title row when compact cards are enabled",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions hides delete by default for an inactive workspace",
+          "status": "passed",
+          "title": "hides delete by default for an inactive workspace",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions shows delete as the top-right quick action while Option/Alt is held",
+          "status": "passed",
+          "title": "shows delete as the top-right quick action while Option/Alt is held",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions shows delete as the quick action for folder workspace instances while Option/Alt is held",
+          "status": "passed",
+          "title": "shows delete as the quick action for folder workspace instances while Option/Alt is held",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions shows delete for a current workspace while Option/Alt is held",
+          "status": "passed",
+          "title": "shows delete for a current workspace while Option/Alt is held",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not show delete for the main worktree while Option/Alt is held",
+          "status": "passed",
+          "title": "does not show delete for the main worktree while Option/Alt is held",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not replace sleep with delete for a workspace with live activity",
+          "status": "passed",
+          "title": "does not replace sleep with delete for a workspace with live activity",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not show sleep as the top-right quick action for an active workspace",
+          "status": "passed",
+          "title": "does not show sleep as the top-right quick action for an active workspace",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not show delete when the workspace is current but not selected in the sidebar",
+          "status": "passed",
+          "title": "does not show delete when the workspace is current but not selected in the sidebar",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not show the rebase operation chip on the card",
+          "status": "passed",
+          "title": "does not show the rebase operation chip on the card",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions keeps non-rebase operation chips on the card",
+          "status": "passed",
+          "title": "keeps non-rebase operation chips on the card",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        }
+      ],
+      "src/renderer/src/components/editor/rich-markdown-cut.test.ts": [
+        {
+          "fullName": "rich markdown cut handler behavior heading + paragraph: cuts only the paragraph",
+          "status": "passed",
+          "title": "heading + paragraph: cuts only the paragraph",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior hard-wrapped document prose stays one paragraph after normalization",
+          "status": "passed",
+          "title": "hard-wrapped document prose stays one paragraph after normalization",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior soft-break normalization still creates visible paragraph breaks",
+          "status": "passed",
+          "title": "soft-break normalization still creates visible paragraph breaks",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior Cmd+X cuts only a visual line inside a hard-wrapped paragraph",
+          "status": "passed",
+          "title": "Cmd+X cuts only a visual line inside a hard-wrapped paragraph",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior surfaces cut-limit feedback when clipboard readback fails",
+          "status": "passed",
+          "title": "surfaces cut-limit feedback when clipboard readback fails",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior paragraphs separated by blank lines are separate blocks",
+          "status": "passed",
+          "title": "paragraphs separated by blank lines are separate blocks",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior list item: cuts the entire list item",
+          "status": "passed",
+          "title": "list item: cuts the entire list item",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior document with horizontal rule: depth < 1 guard prevents crash",
+          "status": "passed",
+          "title": "document with horizontal rule: depth < 1 guard prevents crash",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior single paragraph document: cut removes the only content",
+          "status": "passed",
+          "title": "single paragraph document: cut removes the only content",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior blockquote with multiple paragraphs: cuts only one paragraph",
+          "status": "passed",
+          "title": "blockquote with multiple paragraphs: cuts only one paragraph",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior nested list item: cuts just the inner list item",
+          "status": "passed",
+          "title": "nested list item: cuts just the inner list item",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior list item with nested sublist: cuts parent list item including sublist",
+          "status": "passed",
+          "title": "list item with nested sublist: cuts parent list item including sublist",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior normalizeEmptyListItems is idempotent on already-clean documents",
+          "status": "passed",
+          "title": "normalizeEmptyListItems is idempotent on already-clean documents",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior normalizeEmptyListItems does not modify populated list items or blockquotes",
+          "status": "passed",
+          "title": "normalizeEmptyListItems does not modify populated list items or blockquotes",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        }
+      ]
+    },
+    "after": {
+      "src/main/ipc/pty-encoding.test.ts": [
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification cmd.exe /K chcp 65001 sets code page to UTF-8",
+          "status": "skipped",
+          "title": "cmd.exe /K chcp 65001 sets code page to UTF-8",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification cmd.exe echoes CJK characters correctly with code page 65001",
+          "status": "skipped",
+          "title": "cmd.exe echoes CJK characters correctly with code page 65001",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification powershell.exe outputs UTF-8 after setting Console encoding",
+          "status": "skipped",
+          "title": "powershell.exe outputs UTF-8 after setting Console encoding",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification powershell.exe outputs CJK characters correctly with UTF-8 encoding",
+          "status": "skipped",
+          "title": "powershell.exe outputs CJK characters correctly with UTF-8 encoding",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification try/catch in profile loading does not prevent encoding from being set",
+          "status": "skipped",
+          "title": "try/catch in profile loading does not prevent encoding from being set",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        },
+        {
+          "fullName": "Windows PTY UTF-8 encoding real shell encoding verification without try/catch, a terminating error prevents encoding from being set",
+          "status": "skipped",
+          "title": "without try/catch, a terminating error prevents encoding from being set",
+          "ancestorTitles": [
+            "Windows PTY UTF-8 encoding",
+            "real shell encoding verification"
+          ]
+        }
+      ],
+      "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx": [
+        {
+          "fullName": "WorktreeCard affiliate list mode keeps the card visual surface but disables mutating list interactions",
+          "status": "passed",
+          "title": "keeps the card visual surface but disables mutating list interactions",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode still shows inline agent details in affiliate list mode",
+          "status": "passed",
+          "title": "still shows inline agent details in affiliate list mode",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode dims the full card surface for sleeping workspaces in new card style",
+          "status": "passed",
+          "title": "dims the full card surface for sleeping workspaces in new card style",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode keeps awake cards at full opacity in new card style",
+          "status": "passed",
+          "title": "keeps awake cards at full opacity in new card style",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode keeps legacy sleeping cards undimmed",
+          "status": "passed",
+          "title": "keeps legacy sleeping cards undimmed",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard affiliate list mode keeps the unread badge rendered on a dimmed sleeping card",
+          "status": "passed",
+          "title": "keeps the unread badge rendered on a dimmed sleeping card",
+          "ancestorTitles": [
+            "WorktreeCard affiliate list mode"
+          ]
+        }
+      ],
+      "src/shared/ssh-retained-payload-admission.test.ts": [
+        {
+          "fullName": "SSH retained payload admission keeps a managed server update note, and drops an unknown one without hiding the server",
+          "status": "passed",
+          "title": "keeps a managed server update note, and drops an unknown one without hiding the server",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission caps an unverifiable serving detail like its sibling details",
+          "status": "passed",
+          "title": "caps an unverifiable serving detail like its sibling details",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission keeps ordinary connection state while stripping unknown payload fields",
+          "status": "passed",
+          "title": "keeps ordinary connection state while stripping unknown payload fields",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission admits the plain SSH mode and drops a malformed one without dropping the state",
+          "status": "passed",
+          "title": "admits the plain SSH mode and drops a malformed one without dropping the state",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission admits only a literal move offer on a relay server status",
+          "status": "passed",
+          "title": "admits only a literal move offer on a relay server status",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission rejects partial and malformed provider authority",
+          "status": "passed",
+          "title": "rejects partial and malformed provider authority",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission admits only bounded complete direct SSH authority",
+          "status": "passed",
+          "title": "admits only bounded complete direct SSH authority",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission normalizes only partial authority for bounded reconciliation",
+          "status": "passed",
+          "title": "normalizes only partial authority for bounded reconciliation",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission normalizes legacy authority to unknown",
+          "status": "passed",
+          "title": "normalizes legacy authority to unknown",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission caps connection errors without splitting a UTF-8 code point",
+          "status": "passed",
+          "title": "caps connection errors without splitting a UTF-8 code point",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission rejects mismatched and oversized target identifiers",
+          "status": "passed",
+          "title": "rejects mismatched and oversized target identifiers",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission caps port rows and their retained strings",
+          "status": "passed",
+          "title": "caps port rows and their retained strings",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        },
+        {
+          "fullName": "SSH retained payload admission drops malformed rows instead of retaining their payloads",
+          "status": "passed",
+          "title": "drops malformed rows instead of retaining their payloads",
+          "ancestorTitles": [
+            "SSH retained payload admission"
+          ]
+        }
+      ],
+      "src/main/providers/windows-shell-args.test.ts": [
+        {
+          "fullName": "resolveWindowsShellLaunchArgs returns cmd.exe args with chcp 65001 for UTF-8 output",
+          "status": "passed",
+          "title": "returns cmd.exe args with chcp 65001 for UTF-8 output",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs embeds short cmd.exe startup commands in shell args",
+          "status": "passed",
+          "title": "embeds short cmd.exe startup commands in shell args",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps quoted cmd.exe startup commands on stdin delivery",
+          "status": "passed",
+          "title": "keeps quoted cmd.exe startup commands on stdin delivery",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps large cmd.exe startup commands on stdin delivery",
+          "status": "passed",
+          "title": "keeps large cmd.exe startup commands on stdin delivery",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs returns PowerShell args that install OSC 133 bootstrap after normal profile loading",
+          "status": "passed",
+          "title": "returns PowerShell args that install OSC 133 bootstrap after normal profile loading",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs normalizes MSYS drive cwd before spawning native PowerShell",
+          "status": "passed",
+          "title": "normalizes MSYS drive cwd before spawning native PowerShell",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs quotes the PowerShell cwd restore command literally",
+          "status": "passed",
+          "title": "quotes the PowerShell cwd restore command literally",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs embeds short PowerShell startup commands after the OSC 133 bootstrap",
+          "status": "passed",
+          "title": "embeds short PowerShell startup commands after the OSC 133 bootstrap",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs preserves complex PowerShell startup command text through EncodedCommand",
+          "status": "passed",
+          "title": "preserves complex PowerShell startup command text through EncodedCommand",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps large PowerShell startup commands on stdin delivery",
+          "status": "passed",
+          "title": "keeps large PowerShell startup commands on stdin delivery",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs handles pwsh.exe (PowerShell Core) the same as Windows PowerShell",
+          "status": "passed",
+          "title": "handles pwsh.exe (PowerShell Core) the same as Windows PowerShell",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs does not change PowerShell args when the cmd/Git Bash preflight is provided",
+          "status": "passed",
+          "title": "does not change PowerShell args when the cmd/Git Bash preflight is provided",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs starts Git Bash as an interactive login shell with UTF-8 console setup",
+          "status": "passed",
+          "title": "starts Git Bash as an interactive login shell with UTF-8 console setup",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps Git Bash startup commands on stdin delivery with the preflight wrapper",
+          "status": "passed",
+          "title": "keeps Git Bash startup commands on stdin delivery with the preflight wrapper",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs gives a plain Git Bash tab the same rcfile as one with a startup command",
+          "status": "passed",
+          "title": "gives a plain Git Bash tab the same rcfile as one with a startup command",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs quotes a spaced preflight path through each shell environment",
+          "status": "passed",
+          "title": "quotes a spaced preflight path through each shell environment",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs does not apply Git Bash launch args to unrelated bash.exe paths",
+          "status": "passed",
+          "title": "does not apply Git Bash launch args to unrelated bash.exe paths",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs translates Windows cwd to /mnt/<drive>/... for wsl.exe",
+          "status": "passed",
+          "title": "translates Windows cwd to /mnt/<drive>/... for wsl.exe",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs materializes shell-ready wrappers before building WSL shell args",
+          "status": "passed",
+          "title": "materializes shell-ready wrappers before building WSL shell args",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs translates MSYS drive cwd to /mnt/<drive>/... for wsl.exe",
+          "status": "passed",
+          "title": "translates MSYS drive cwd to /mnt/<drive>/... for wsl.exe",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps a selected WSL runtime single-letter cwd exact (/a)",
+          "status": "passed",
+          "title": "keeps a selected WSL runtime single-letter cwd exact (/a)",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps a selected WSL runtime single-letter cwd exact (/c)",
+          "status": "passed",
+          "title": "keeps a selected WSL runtime single-letter cwd exact (/c)",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs escapes single quotes when translating a WSL cwd",
+          "status": "passed",
+          "title": "escapes single quotes when translating a WSL cwd",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs falls back to /mnt/c when cwd is not a drive-letter path",
+          "status": "passed",
+          "title": "falls back to /mnt/c when cwd is not a drive-letter path",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps WSL UNC worktree cwd inside the matching distro",
+          "status": "passed",
+          "title": "keeps WSL UNC worktree cwd inside the matching distro",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs keeps POSIX cwd inside the worktree distro when WSL context is provided",
+          "status": "passed",
+          "title": "keeps POSIX cwd inside the worktree distro when WSL context is provided",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs falls back to empty args + same cwd for unknown shells",
+          "status": "passed",
+          "title": "falls back to empty args + same cwd for unknown shells",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "resolveWindowsShellLaunchArgs is case-insensitive on the shell basename",
+          "status": "passed",
+          "title": "is case-insensitive on the shell basename",
+          "ancestorTitles": [
+            "resolveWindowsShellLaunchArgs"
+          ]
+        },
+        {
+          "fullName": "issue #7236: PowerShell setup-runner command delivery wraps the setup runner in balanced double quotes",
+          "status": "passed",
+          "title": "wraps the setup runner in balanced double quotes",
+          "ancestorTitles": [
+            "issue #7236: PowerShell setup-runner command delivery"
+          ]
+        },
+        {
+          "fullName": "issue #7236: PowerShell setup-runner command delivery delivers the setup-runner command through -EncodedCommand, never raw stdin",
+          "status": "passed",
+          "title": "delivers the setup-runner command through -EncodedCommand, never raw stdin",
+          "ancestorTitles": [
+            "issue #7236: PowerShell setup-runner command delivery"
+          ]
+        }
+      ],
+      "src/main/ipc/pty-windows-shell-selection.test.ts": [
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page passes chcp 65001 to cmd.exe for UTF-8 console output",
+          "status": "passed",
+          "title": "passes chcp 65001 to cmd.exe for UTF-8 console output",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page sets Console encoding for powershell.exe",
+          "status": "passed",
+          "title": "sets Console encoding for powershell.exe",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page sets Console encoding for pwsh.exe",
+          "status": "passed",
+          "title": "sets Console encoding for pwsh.exe",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page sets PYTHONUTF8=1 in the spawn environment on Windows",
+          "status": "passed",
+          "title": "sets PYTHONUTF8=1 in the spawn environment on Windows",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page does not override an existing PYTHONUTF8 value",
+          "status": "passed",
+          "title": "does not override an existing PYTHONUTF8 value",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page launches Git Bash from COMSPEC as an interactive login shell",
+          "status": "passed",
+          "title": "launches Git Bash from COMSPEC as an interactive login shell",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page uses terminalWindowsShell setting over COMSPEC when provided",
+          "status": "passed",
+          "title": "uses terminalWindowsShell setting over COMSPEC when provided",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page uses the host shell when resolved project runtime overrides a stale WSL shell default",
+          "status": "passed",
+          "title": "uses the host shell when resolved project runtime overrides a stale WSL shell default",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page uses the selected project WSL distro when resolved runtime overrides the host shell default",
+          "status": "passed",
+          "title": "uses the selected project WSL distro when resolved runtime overrides the host shell default",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page blocks terminal spawn when project runtime requires repair",
+          "status": "passed",
+          "title": "blocks terminal spawn when project runtime requires repair",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page spawns powershell.exe when PowerShell family keeps the inbox implementation",
+          "status": "passed",
+          "title": "spawns powershell.exe when PowerShell family keeps the inbox implementation",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page spawns pwsh.exe when PowerShell 7 is selected and available",
+          "status": "passed",
+          "title": "spawns pwsh.exe when PowerShell 7 is selected and available",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page keeps PowerShell 7 selected when the pwsh availability probe is cold-false",
+          "status": "passed",
+          "title": "keeps PowerShell 7 selected when the pwsh availability probe is cold-false",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page keeps a pwsh.exe shellOverride when the pwsh availability probe is cold-false",
+          "status": "passed",
+          "title": "keeps a pwsh.exe shellOverride when the pwsh availability probe is cold-false",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page ignores the PowerShell implementation setting for cmd.exe",
+          "status": "passed",
+          "title": "ignores the PowerShell implementation setting for cmd.exe",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page ignores the PowerShell implementation setting for wsl.exe",
+          "status": "passed",
+          "title": "ignores the PowerShell implementation setting for wsl.exe",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        },
+        {
+          "fullName": "registerPtyHandlers Windows UTF-8 code page keeps shellOverride priority for one-off tabs",
+          "status": "passed",
+          "title": "keeps shellOverride priority for one-off tabs",
+          "ancestorTitles": [
+            "registerPtyHandlers",
+            "Windows UTF-8 code page"
+          ]
+        }
+      ],
+      "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts": [
+        {
+          "fullName": "cutting Markdown images with an empty caret selection writes a restorable image before deleting its paragraph at caret 1",
+          "status": "passed",
+          "title": "writes a restorable image before deleting its paragraph at caret 1",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection writes a restorable image before deleting its paragraph at caret 2",
+          "status": "passed",
+          "title": "writes a restorable image before deleting its paragraph at caret 2",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection leaves the image intact when no clipboard is available",
+          "status": "passed",
+          "title": "leaves the image intact when no clipboard is available",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection leaves the image intact and reports failure when the clipboard rejects the write",
+          "status": "passed",
+          "title": "leaves the image intact and reports failure when the clipboard rejects the write",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection serializes an image nested in a list or table without deleting its neighbor",
+          "status": "passed",
+          "title": "serializes an image nested in a list or table without deleting its neighbor",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection serializes an image nested in a list or table without deleting its neighbor",
+          "status": "passed",
+          "title": "serializes an image nested in a list or table without deleting its neighbor",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "cutting Markdown images with an empty caret selection serializes an image nested in a list or table without deleting its neighbor",
+          "status": "passed",
+          "title": "serializes an image nested in a list or table without deleting its neighbor",
+          "ancestorTitles": [
+            "cutting Markdown images with an empty caret selection"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility deletes a truly empty paragraph without overwriting the clipboard",
+          "status": "passed",
+          "title": "deletes a truly empty paragraph without overwriting the clipboard",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility deletes an empty listItem without overwriting the clipboard",
+          "status": "passed",
+          "title": "deletes an empty listItem without overwriting the clipboard",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility deletes an empty taskItem without overwriting the clipboard",
+          "status": "passed",
+          "title": "deletes an empty taskItem without overwriting the clipboard",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility preserves the existing clipboard behavior for \n",
+          "status": "passed",
+          "title": "preserves the existing clipboard behavior for \n",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        },
+        {
+          "fullName": "empty and textual block cut compatibility preserves the existing clipboard behavior for    ",
+          "status": "passed",
+          "title": "preserves the existing clipboard behavior for    ",
+          "ancestorTitles": [
+            "empty and textual block cut compatibility"
+          ]
+        }
+      ],
+      "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx": [
+        {
+          "fullName": "WorktreeCard quick actions marks the unread toggle as a workspace-board-preserving action",
+          "status": "passed",
+          "title": "marks the unread toggle as a workspace-board-preserving action",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders repo identity in the detailed metadata row",
+          "status": "passed",
+          "title": "renders repo identity in the detailed metadata row",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions can render the current workspace with a secondary active surface",
+          "status": "passed",
+          "title": "can render the current workspace with a secondary active surface",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions marks the primary active workspace for token-driven selected styling",
+          "status": "passed",
+          "title": "marks the primary active workspace for token-driven selected styling",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions marks multi-selected workspaces for the shared selected style, except the active one",
+          "status": "passed",
+          "title": "marks multi-selected workspaces for the shared selected style, except the active one",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders folder directory name in the detailed metadata row without a Folder badge",
+          "status": "passed",
+          "title": "renders folder directory name in the detailed metadata row without a Folder badge",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders synthetic folder workspace directory name in the detailed metadata row without a Folder badge",
+          "status": "passed",
+          "title": "renders synthetic folder workspace directory name in the detailed metadata row without a Folder badge",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not render a branch icon for synthetic folder workspace path identity",
+          "status": "passed",
+          "title": "does not render a branch icon for synthetic folder workspace path identity",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not render a pending first-agent rename title badge",
+          "status": "passed",
+          "title": "does not render a pending first-agent rename title badge",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders the failed first-agent rename title badge",
+          "status": "passed",
+          "title": "renders the failed first-agent rename title badge",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders the failed first-agent rename title badge when rename is also pending",
+          "status": "passed",
+          "title": "renders the failed first-agent rename title badge when rename is also pending",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders the migrated branch metadata row when branch is enabled",
+          "status": "passed",
+          "title": "renders the migrated branch metadata row when branch is enabled",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions renders detached HEAD identity in detailed card metadata",
+          "status": "passed",
+          "title": "renders detached HEAD identity in detailed card metadata",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions omits the repeated branch metadata row when compact cards are enabled",
+          "status": "passed",
+          "title": "omits the repeated branch metadata row when compact cards are enabled",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions omits the branch metadata row when the workspace has a custom title",
+          "status": "passed",
+          "title": "omits the branch metadata row when the workspace has a custom title",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions uses the left status lane and primary badge when compact cards are disabled",
+          "status": "passed",
+          "title": "uses the left status lane and primary badge when compact cards are disabled",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions keeps unread in the status lane and moves primary into the title row when compact cards are enabled",
+          "status": "passed",
+          "title": "keeps unread in the status lane and moves primary into the title row when compact cards are enabled",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions hides delete by default for an inactive workspace",
+          "status": "passed",
+          "title": "hides delete by default for an inactive workspace",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions shows delete as the top-right quick action while Option/Alt is held",
+          "status": "passed",
+          "title": "shows delete as the top-right quick action while Option/Alt is held",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions shows delete as the quick action for folder workspace instances while Option/Alt is held",
+          "status": "passed",
+          "title": "shows delete as the quick action for folder workspace instances while Option/Alt is held",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions shows delete for a current workspace while Option/Alt is held",
+          "status": "passed",
+          "title": "shows delete for a current workspace while Option/Alt is held",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not show delete for the main worktree while Option/Alt is held",
+          "status": "passed",
+          "title": "does not show delete for the main worktree while Option/Alt is held",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not replace sleep with delete for a workspace with live activity",
+          "status": "passed",
+          "title": "does not replace sleep with delete for a workspace with live activity",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not show sleep as the top-right quick action for an active workspace",
+          "status": "passed",
+          "title": "does not show sleep as the top-right quick action for an active workspace",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not show delete when the workspace is current but not selected in the sidebar",
+          "status": "passed",
+          "title": "does not show delete when the workspace is current but not selected in the sidebar",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions does not show the rebase operation chip on the card",
+          "status": "passed",
+          "title": "does not show the rebase operation chip on the card",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        },
+        {
+          "fullName": "WorktreeCard quick actions keeps non-rebase operation chips on the card",
+          "status": "passed",
+          "title": "keeps non-rebase operation chips on the card",
+          "ancestorTitles": [
+            "WorktreeCard quick actions"
+          ]
+        }
+      ],
+      "src/renderer/src/components/editor/rich-markdown-cut.test.ts": [
+        {
+          "fullName": "rich markdown cut handler behavior hard-wrapped document prose stays one paragraph after normalization",
+          "status": "passed",
+          "title": "hard-wrapped document prose stays one paragraph after normalization",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior soft-break normalization still creates visible paragraph breaks",
+          "status": "passed",
+          "title": "soft-break normalization still creates visible paragraph breaks",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior Cmd+X cuts only a visual line inside a hard-wrapped paragraph",
+          "status": "passed",
+          "title": "Cmd+X cuts only a visual line inside a hard-wrapped paragraph",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior surfaces cut-limit feedback when clipboard readback fails",
+          "status": "passed",
+          "title": "surfaces cut-limit feedback when clipboard readback fails",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior normalizeEmptyListItems is idempotent on already-clean documents",
+          "status": "passed",
+          "title": "normalizeEmptyListItems is idempotent on already-clean documents",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        },
+        {
+          "fullName": "rich markdown cut handler behavior normalizeEmptyListItems does not modify populated list items or blockquotes",
+          "status": "passed",
+          "title": "normalizeEmptyListItems does not modify populated list items or blockquotes",
+          "ancestorTitles": [
+            "rich markdown cut handler behavior"
+          ]
+        }
+      ]
+    }
+  },
+  "caseCountByPhase": {
+    "before": 134,
+    "after": 117
+  },
+  "expectedModuleRoutesByPhase": {
+    "before": [
+      {
+        "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/main/ipc/pty-encoding.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/ssh-types.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/main/providers/windows-shell-args.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/main/ipc/pty-windows-shell-selection.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/ssh-retained-payload-admission.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      }
+    ],
+    "after": [
+      {
+        "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/main/ipc/pty-encoding.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/main/providers/windows-shell-args.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/main/ipc/pty-windows-shell-selection.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/shared/ssh-retained-payload-admission.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      }
+    ]
+  },
+  "removedCases": [
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior heading + paragraph: cuts only the paragraph",
+      "status": "passed",
+      "title": "heading + paragraph: cuts only the paragraph",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior paragraphs separated by blank lines are separate blocks",
+      "status": "passed",
+      "title": "paragraphs separated by blank lines are separate blocks",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior list item: cuts the entire list item",
+      "status": "passed",
+      "title": "list item: cuts the entire list item",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior document with horizontal rule: depth < 1 guard prevents crash",
+      "status": "passed",
+      "title": "document with horizontal rule: depth < 1 guard prevents crash",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior single paragraph document: cut removes the only content",
+      "status": "passed",
+      "title": "single paragraph document: cut removes the only content",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior blockquote with multiple paragraphs: cuts only one paragraph",
+      "status": "passed",
+      "title": "blockquote with multiple paragraphs: cuts only one paragraph",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior nested list item: cuts just the inner list item",
+      "status": "passed",
+      "title": "nested list item: cuts just the inner list item",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior list item with nested sublist: cuts parent list item including sublist",
+      "status": "passed",
+      "title": "list item with nested sublist: cuts parent list item including sublist",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) GBK-encoded CJK bytes produce garbled output when decoded as UTF-8",
+      "status": "passed",
+      "title": "GBK-encoded CJK bytes produce garbled output when decoded as UTF-8",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) UTF-8 encoded CJK bytes decode correctly",
+      "status": "passed",
+      "title": "UTF-8 encoded CJK bytes decode correctly",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) multi-byte split across buffer boundaries produces replacement chars",
+      "status": "passed",
+      "title": "multi-byte split across buffer boundaries produces replacement chars",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) StringDecoder correctly handles split multi-byte sequences",
+      "status": "passed",
+      "title": "StringDecoder correctly handles split multi-byte sequences",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling keeps the primary selection wash translucent so card text stays legible",
+      "status": "passed",
+      "title": "keeps the primary selection wash translucent so card text stays legible",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling keeps the secondary selection ring when CSS owns the active state",
+      "status": "passed",
+      "title": "keeps the secondary selection ring when CSS owns the active state",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling styles multi-selected cards through one rule that skips the active card",
+      "status": "passed",
+      "title": "styles multi-selected cards through one rule that skips the active card",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling dims sleeping cards through theme tokens so the cue survives any surface",
+      "status": "passed",
+      "title": "dims sleeping cards through theme tokens so the cue survives any surface",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/shared/ssh-types.test.ts",
+      "fullName": "SSH types SshConnectionState composes correctly",
+      "status": "passed",
+      "title": "SshConnectionState composes correctly",
+      "ancestorTitles": [
+        "SSH types"
+      ],
+      "multiplicity": 1
+    }
+  ],
+  "wholeFilesRemoved": [
+    "src/renderer/src/assets/worktree-card-active-style.test.ts",
+    "src/shared/ssh-types.test.ts"
+  ],
+  "sourceBeforeSha256": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/ensure-native-runtime.mjs": "ba33bac7159cc8cd9375f20617d662a7ab5ef85120f94ea3b4f0877569f97365",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "8201c2fe598cc8487dec7421cf67870ca800a1e7ebb962fd1c9b6a3fa1e2a83d",
+    "config/tsconfig.node.json": "2376343959098fb004485a4148dc4199bacc716c481bbfc17fc22e497628c8d7",
+    "config/tsconfig.web.json": "c8b79d519544edd7f6134e68daa7fd50fd5297ebdb1f10661054d47760363672",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "src/main/ipc/pty-encoding.test.ts": "ecd0de43651a8582094b075bf4665eb8c260ad6172034cc036e4a715eede4078",
+    "src/main/ipc/pty-windows-shell-selection.test.ts": "85f664b9d94f792f4849812e85a8ad408810007faf330f8f486688a736b5fd7d",
+    "src/main/providers/windows-shell-args.test.ts": "2bab0665ec7b6b2842faec4614634724d022f3d11702308870394af5c0bb1eec",
+    "src/main/providers/windows-shell-args.ts": "88296a40a6b64345c3e393457a936755f3f25e5842da5c3246c10e48db7751c4",
+    "src/renderer/src/assets/main.css": "85d458c72bd1dd1187d5d815732d6ece6735b0a865342c1c27a8135306291104",
+    "src/renderer/src/assets/worktree-card-active-style.test.ts": "bc095f11068fb6bd22866622f3d7ac7e0441695ef9c32d8a9de49c92978c5575",
+    "src/renderer/src/components/editor/isolated-markdown-extension-for-tests.ts": "b22fdeeca19cd0d91df5c1e1b785f404b0060ae9d7a6ebb57d198f667ab2ba13",
+    "src/renderer/src/components/editor/rich-markdown-cut-handler.ts": "22f0c084961e5b9c9cd3359af197cc9cfefd713ca99bd3d8ae240a673aeb0c87",
+    "src/renderer/src/components/editor/rich-markdown-cut.test.ts": "bca19fcca85698d3fa009b713d666dc3efa4cdb7d76c13c003289648f8d3e79b",
+    "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts": "8d4aa9c0656bb805863e5670f75c74ceac74b336f2a7f7a00772a2cd1003f220",
+    "src/renderer/src/components/editor/rich-markdown-normalize.ts": "b4d950a36ab58718c7835e73f2bee53565a1ead83638759094e583796d0608e8",
+    "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx": "8fac93eefbe1e6a566e0ce9505457f13cb1d810b9205613aae02a1de02c333c9",
+    "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx": "0a2a8df4c0fb9889dd635a4503e4c5e496efbccc70addc1d1608debd7adf6f0a",
+    "src/renderer/src/components/sidebar/worktree-card-surface.tsx": "ae738162c6b8941bcbbf13436e684f28fb31f0c45e5175326c672aabffff72d4",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "src/shared/ssh-retained-payload-admission.test.ts": "c3fcd4deee0af2c90eace9867c0007d36ace17c6c1c214e5ebf2e8806ea6b81b",
+    "src/shared/ssh-retained-payload-admission.ts": "dfcb5aad9db7c9ddb1fc8691a3bf114b1869cf245bf51fe5151e49493712e446",
+    "src/shared/ssh-types.test.ts": "aa7da5f3bc5860360cef05f050b117a9c5149a16c4cb6224668031d0dc1dd400",
+    "src/shared/ssh-types.ts": "23e37a2a7b05a0f9167c839088ef08e71ad81461665dbd0b0fc18fb3e4d08d02",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "src/renderer/src/components/editor/rich-markdown-extension.ts": "23d9ff0ab8f9a6188708e0ab8b0c3e91d71b988a6914c3340906e6a88e9fc531",
+    "src/renderer/src/components/editor/rich-markdown-source-transport.ts": "baeab3b48744351fca4539ffc9cac9ba622893ccbcee4251d23b5d6db961eb50"
+  },
+  "sourceAfterSha256": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/ensure-native-runtime.mjs": "ba33bac7159cc8cd9375f20617d662a7ab5ef85120f94ea3b4f0877569f97365",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "8201c2fe598cc8487dec7421cf67870ca800a1e7ebb962fd1c9b6a3fa1e2a83d",
+    "config/tsconfig.node.json": "2376343959098fb004485a4148dc4199bacc716c481bbfc17fc22e497628c8d7",
+    "config/tsconfig.web.json": "c8b79d519544edd7f6134e68daa7fd50fd5297ebdb1f10661054d47760363672",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "src/main/ipc/pty-encoding.test.ts": "640ff8b4587eeb1599e4f0ca7f7ea34dc250ef7fe1cc3e3bed73999eac2be50e",
+    "src/main/ipc/pty-windows-shell-selection.test.ts": "85f664b9d94f792f4849812e85a8ad408810007faf330f8f486688a736b5fd7d",
+    "src/main/providers/windows-shell-args.test.ts": "2bab0665ec7b6b2842faec4614634724d022f3d11702308870394af5c0bb1eec",
+    "src/main/providers/windows-shell-args.ts": "88296a40a6b64345c3e393457a936755f3f25e5842da5c3246c10e48db7751c4",
+    "src/renderer/src/assets/main.css": "85d458c72bd1dd1187d5d815732d6ece6735b0a865342c1c27a8135306291104",
+    "src/renderer/src/assets/worktree-card-active-style.test.ts": null,
+    "src/renderer/src/components/editor/isolated-markdown-extension-for-tests.ts": "b22fdeeca19cd0d91df5c1e1b785f404b0060ae9d7a6ebb57d198f667ab2ba13",
+    "src/renderer/src/components/editor/rich-markdown-cut-handler.ts": "22f0c084961e5b9c9cd3359af197cc9cfefd713ca99bd3d8ae240a673aeb0c87",
+    "src/renderer/src/components/editor/rich-markdown-cut.test.ts": "b0e2f3500ddef11b4e6e488bc1f1655509077227ca4c5f4e90d3fd13d9dd7b76",
+    "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts": "8d4aa9c0656bb805863e5670f75c74ceac74b336f2a7f7a00772a2cd1003f220",
+    "src/renderer/src/components/editor/rich-markdown-normalize.ts": "b4d950a36ab58718c7835e73f2bee53565a1ead83638759094e583796d0608e8",
+    "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx": "8fac93eefbe1e6a566e0ce9505457f13cb1d810b9205613aae02a1de02c333c9",
+    "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx": "0a2a8df4c0fb9889dd635a4503e4c5e496efbccc70addc1d1608debd7adf6f0a",
+    "src/renderer/src/components/sidebar/worktree-card-surface.tsx": "ae738162c6b8941bcbbf13436e684f28fb31f0c45e5175326c672aabffff72d4",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "src/shared/ssh-retained-payload-admission.test.ts": "c3fcd4deee0af2c90eace9867c0007d36ace17c6c1c214e5ebf2e8806ea6b81b",
+    "src/shared/ssh-retained-payload-admission.ts": "dfcb5aad9db7c9ddb1fc8691a3bf114b1869cf245bf51fe5151e49493712e446",
+    "src/shared/ssh-types.test.ts": null,
+    "src/shared/ssh-types.ts": "23e37a2a7b05a0f9167c839088ef08e71ad81461665dbd0b0fc18fb3e4d08d02",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "src/renderer/src/components/editor/rich-markdown-extension.ts": "23d9ff0ab8f9a6188708e0ab8b0c3e91d71b988a6914c3340906e6a88e9fc531",
+    "src/renderer/src/components/editor/rich-markdown-source-transport.ts": "baeab3b48744351fca4539ffc9cac9ba622893ccbcee4251d23b5d6db961eb50"
+  },
+  "identityProofFiles": {
+    "notes/bun-migration/performance/junk-test-seventeen-pruning-ci-6fad/source-proposal-proof.json": "941b101ab86b15874adb1905f353f24adc6203504099179354d6eb2e18d83df8"
+  },
+  "scope": "Six first whole-pnpm commands only; no separate qualification, primer, retry or discarded samples. Each sample verifies current complete source/case/status/routes/settings/natural-close/census. Existing registered tests and actual production companions remain. Cache/OS/Bun warming across ABBAAB disclosed; no independently cold or exclusiveCPU claim. Scope intentionally17source-proven deletions, not migration or weakened assertions."
+}
