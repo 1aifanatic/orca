@@ -287,7 +287,9 @@ test.describe('workspace layout oracle over SSH', () => {
           await waitForBoundPanes(run.page, 1)
           await run.oracle.step('folder new tab', { worktreeId, panesPerTab: [2, 1] })
           const before = await partitionsHolding(run.page, worktreeId)
-          console.log(`[layout-oracle] ${FOLDER_SCENARIO_ID}: partitions before quit ${before}`)
+          console.log(
+            `[layout-oracle] ${FOLDER_SCENARIO_ID}: partitions before quit ${before.join(', ')}`
+          )
 
           await waitForPersistedRemoteSession(run.page, targetId, worktreeId)
           await run.relaunch({
@@ -297,7 +299,9 @@ test.describe('workspace layout oracle over SSH', () => {
             reopen: (page, id) => waitForRestoredRemoteWorktree(page, targetId, id)
           })
           const after = await partitionsHolding(run.page, worktreeId)
-          console.log(`[layout-oracle] ${FOLDER_SCENARIO_ID}: partitions after relaunch ${after}`)
+          console.log(
+            `[layout-oracle] ${FOLDER_SCENARIO_ID}: partitions after relaunch ${after.join(', ')}`
+          )
           // #12723: one partition owns the folder workspace, before and after the relaunch.
           expect(before).toHaveLength(1)
           expect(after).toEqual(before)
