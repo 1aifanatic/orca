@@ -12297,9 +12297,6 @@
           "notEnforced": "Enregistré, mais non appliqué par ce runtime (hôte à version mixte).",
           "refreshAccounts": "Actualiser les comptes GitHub"
         },
-        "NativeChatSupportedAgents": {
-          "label": "Agents pris en charge :"
-        },
         "contrast": {
           "title": "Contraste des couleurs",
           "description": "Améliorez la lisibilité du texte ou préservez les couleurs choisies par les programmes du terminal.",

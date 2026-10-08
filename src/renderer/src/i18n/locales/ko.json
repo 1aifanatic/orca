@@ -12192,9 +12192,6 @@
           "stopping": "멎는…",
           "confirm": "정리 중지"
         },
-        "NativeChatSupportedAgents": {
-          "label": "지원되는 에이전트:"
-        },
         "contrast": {
           "title": "색상 대비",
           "description": "텍스트 가독성을 높이거나 터미널 프로그램에서 선택한 색상을 유지합니다.",

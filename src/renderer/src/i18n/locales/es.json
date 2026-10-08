@@ -12278,9 +12278,6 @@
           "downloadInstaller": "Descargar instalador",
           "manualInstallHint": "Las compilaciones {{value0}} no están firmadas en Windows, por lo que el actualizador en la aplicación no puede instalar una sobre una compilación firmada. Ejecute el instalador descargado una vez (Windows le advertirá sobre un editor desconocido) y cada cambio posterior, incluido el regreso a Estable, funcionará desde aquí."
         },
-        "NativeChatSupportedAgents": {
-          "label": "Agentes apoyados:"
-        },
         "TerminalRenderingSection": {
           "6d4c55bacc": "Imágenes en línea",
           "fffab5890b": "Muestre imágenes directamente en el terminal utilizando los protocolos gráficos SIXEL, iTerm2 (IIP) y Kitty."

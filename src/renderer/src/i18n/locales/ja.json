@@ -12192,9 +12192,6 @@
           "stopping": "停止中…",
           "confirm": "クリーンアップを停止する"
         },
-        "NativeChatSupportedAgents": {
-          "label": "サポートされている Agent:"
-        },
         "contrast": {
           "title": "色のコントラスト",
           "description": "テキストの読みやすさを向上させるか、ターミナルプログラムによって選択された色を保持します。",

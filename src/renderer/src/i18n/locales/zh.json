@@ -12192,9 +12192,6 @@
           "stopping": "停止…",
           "confirm": "停止清理"
         },
-        "NativeChatSupportedAgents": {
-          "label": "支持智能体："
-        },
         "contrast": {
           "title": "色彩对比",
           "description": "提高文本可读性或保留终端程序选择的颜色。",
