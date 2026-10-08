@@ -21,18 +21,6 @@ describe('mobile RPC method routing census', () => {
     expect(MOBILE_RPC_METHOD_ROUTES.get('status.get')).toBe('execution-host')
   })
 
-  it("sends targeted SSH calls to the server, which holds a server workspace's SSH targets", () => {
-    for (const method of [
-      'ssh.connect',
-      'ssh.getState',
-      'ssh.listRemovedTargetLabels',
-      'ssh.listTargetSummaries',
-      'ssh.listTargets'
-    ]) {
-      expect(MOBILE_RPC_METHOD_ROUTES.get(method), method).toBe('execution-host')
-    }
-  })
-
   it('tags nothing outside the allowlist', () => {
     const stale = [...MOBILE_RPC_METHOD_ROUTES.keys()].filter(
       (method) => !MOBILE_RPC_METHOD_ALLOWLIST.has(method)

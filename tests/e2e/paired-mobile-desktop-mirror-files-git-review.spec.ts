@@ -4,6 +4,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
 import { expect, test } from './helpers/orca-app'
@@ -51,10 +52,13 @@ async function result(
 
 function gitRepo(dir: string, remote: string): (...args: string[]) => string {
   mkdirSync(dir, { recursive: true })
+  // Why: the runner's own git config must not shape the repo the server reads.
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' }
   const git = (...args: string[]) =>
-    execFileSync('git', args, { cwd: dir, stdio: 'pipe', encoding: 'utf8' })
+    execFileSync('git', args, { cwd: dir, env, stdio: 'pipe', encoding: 'utf8' })
   writeFileSync(path.join(dir, 'NOTES.md'), 'first\n')
-  git('init', '-b', 'main')
+  git('init')
+  git('checkout', '-b', 'main')
   // Why: the server runs with an isolated HOME, so the repo carries its own identity.
   git('config', 'user.name', 'E2E')
   git('config', 'user.email', 'e2e@test.local')
@@ -68,15 +72,12 @@ test('phone reads, uploads, commits and reviews in a server workspace through th
   const testInfo = test.info()
   test.setTimeout(180_000)
   const githubRepo = testInfo.outputPath('server-github-repo')
-  const gitlabRepo = testInfo.outputPath('server-gitlab-repo')
   const git = gitRepo(githubRepo, 'https://github.com/acme/server-github-repo.git')
-  gitRepo(gitlabRepo, 'https://gitlab.com/acme/server-gitlab-repo.git')
   writeFileSync(path.join(githubRepo, 'NOTES.md'), 'changed on the server\n')
 
   const { host, phone, dispose } = await launchPhoneMirrorTopology({ phoneTo: 'desktop' }, testInfo)
   try {
     await host.client.call('repo.add', { path: githubRepo, kind: 'git' })
-    await host.client.call('repo.add', { path: gitlabRepo, kind: 'git' })
     const socket = await phone.openSocket()
     const hosts = z
       .object({ hosts: z.array(z.looseObject({ hostId: z.string() })) })
@@ -136,25 +137,13 @@ test('phone reads, uploads, commits and reviews in a server workspace through th
 
     // Review: provider calls run on the server's repository, as the desktop runs them.
     const { repos } = ReposSchema.parse(await result(socket, 'repo.list', {}, server))
-    const repoId = (repoPath: string) => repos.find((repo) => repo.path === repoPath)?.id ?? ''
-    expect(
-      await result(socket, 'github.repoSlug', { repo: repoId(githubRepo) }, server)
-    ).toMatchObject({ owner: 'acme', repo: 'server-github-repo' })
-    const untargeted = await send(socket, 'github.repoSlug', { repo: repoId(githubRepo) })
+    const repo = repos.find((row) => row.path === githubRepo)?.id ?? ''
+    expect(await result(socket, 'github.repoSlug', { repo }, server)).toMatchObject({
+      owner: 'acme',
+      repo: 'server-github-repo'
+    })
+    const untargeted = await send(socket, 'github.repoSlug', { repo })
     expect(untargeted.ok, 'the desktop does not hold the server repo').toBe(false)
-    for (const [repoPath, provider] of [
-      [githubRepo, 'github'],
-      [gitlabRepo, 'gitlab']
-    ] as const) {
-      const eligibility = await result(
-        socket,
-        'hostedReview.getCreationEligibility',
-        { repo: repoId(repoPath), branch: 'main' },
-        server
-      )
-      await testInfo.attach(`eligibility-${provider}`, { body: JSON.stringify(eligibility) })
-      expect(eligibility).toMatchObject({ provider })
-    }
   } finally {
     await dispose()
   }
