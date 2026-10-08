@@ -3,7 +3,7 @@ import { OrcaRuntimeWithAgentPromptRequestCorrelation } from './orca-runtime-age
 import type { RuntimeTerminalAgentStatusSnapshot } from './runtime-terminal-agent-status-query'
 import type { AgentStatus } from '../../shared/agent-detection'
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
-import { detectTerminalWaitBlockedReason, isKnownReadyPromptBody } from './terminal-wait-detection'
+import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 import { isOpenCodeNativeTitle } from '../../shared/agent-detection'
 import type { AgentStatusEntry, AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
@@ -19,12 +19,6 @@ import type { TerminalAgent } from '../../shared/terminal-agent'
 import type { AgentPromptActivity } from './agent-prompt-submission-verification'
 import { hasExplicitIdleTitle } from './tui-idle-evidence'
 import { readTuiIdleHookTurn, type TuiIdleHookTurn } from './tui-idle-hook-lane'
-import {
-  agentSaysNotWaiting,
-  judgeBlockedAgainstLiveScreen,
-  type LiveScreenBlockedEvidence
-} from './live-screen-blocked-judgement'
-import { readsTrustedScreen } from './agent-state-rules/agent-state-rules-engine'
 
 export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends OrcaRuntimeWithAgentPromptRequestCorrelation {
   readOpenCodeStartupPromptOwner(ptyId: string, incarnationId: string, launchToken: string) {
@@ -77,51 +71,6 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
       lifecycle?.status && lifecycle.status !== 'permission' ? lifecycle.updatedAt : -1
     )
     return newestPermissionAt >= 0 && newestPermissionAt >= newestClearAt ? blockedByWaitText : null
-  }
-
-  /** The line-tail arbiter judged against the live screen, for every reader of a blocked prompt. */
-  protected resolveLiveTerminalWaitPermission(
-    ptyId: string,
-    terminal: RuntimeTerminalAgentStatusSnapshot,
-    explicitStatus: { status: AgentStatus; updatedAt: number } | null,
-    lifecycle: { status: AgentStatus | null; updatedAt: number } | null | undefined
-  ): RuntimeTerminalWaitBlockedReason | null {
-    return judgeBlockedAgainstLiveScreen({
-      tailVerdict: this.resolveAuthoritativeTerminalWaitPermission(
-        terminal,
-        explicitStatus,
-        lifecycle
-      ),
-      tailShowsBlockedText: detectTerminalWaitBlockedReason(terminal.waitText) !== null,
-      screen: this.readCurrentScreenBlockedEvidence(ptyId),
-      agentSaysNotWaiting: agentSaysNotWaiting(terminal, explicitStatus)
-    })
-  }
-
-  /** Undefined when no whole-screen model has applied every byte the runtime received. */
-  protected readCurrentScreenBlockedEvidence(ptyId: string): LiveScreenBlockedEvidence | undefined {
-    const state = this.readWholeScreenModel(ptyId)
-    // Why caught up: the model applies bytes asynchronously, and a lagging grid would hide a
-    // dialog the newest chunk painted.
-    if (!state || state.outputSequence < this.getPtyOutputSequence(ptyId)) {
-      return undefined
-    }
-    const lines = this.readLiveTerminalScreenLines(ptyId)
-    if (!lines) {
-      return undefined
-    }
-    const text = lines.join('\n')
-    const blockedReason = detectTerminalWaitBlockedReason(text)
-    const agent = this.getPaneAgentForTuiIdle(ptyId)
-    const readScreenLines = readsTrustedScreen(agent)
-      ? () => this.readRuledScreen(ptyId)?.lines ?? null
-      : () => lines
-    return {
-      blockedReason,
-      // Why clockless: quiet decides when a turn ended, not whether the composer is painted.
-      showsReadyPrompt:
-        blockedReason === null && isKnownReadyPromptBody(text, agent, readScreenLines, false)
-    }
   }
 
   /**
@@ -192,8 +141,7 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
       return null
     }
     try {
-      return this.resolveLiveTerminalWaitPermission(
-        ptyId,
+      return this.resolveAuthoritativeTerminalWaitPermission(
         this.getTerminalAgentStatusSnapshot(handle, ptyId),
         { status: state === 'done' ? 'idle' : state, updatedAt: row.receivedAt },
         this.agentPromptLifecycleByPtyId.get(ptyId)

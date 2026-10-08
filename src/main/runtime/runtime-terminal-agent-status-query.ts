@@ -20,11 +20,6 @@ import {
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 import { getTerminalState } from './terminal-wait-results'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
-import {
-  agentSaysNotWaiting,
-  judgeBlockedAgainstLiveScreen,
-  type LiveScreenBlockedEvidence
-} from './live-screen-blocked-judgement'
 
 export type RuntimeTerminalAgentStatusSnapshot = {
   waitText: string
@@ -48,8 +43,6 @@ type Dependencies = {
   ): { status: AgentStatus | null; updatedAt: number } | null | undefined
   isRunning(handle: string): Promise<boolean>
   getTitleDisplayClear(ptyId: string): TitleDisplayClear | null
-  /** What the current whole-screen model shows; undefined when there is none. */
-  readScreenBlockedEvidence?(ptyId: string): LiveScreenBlockedEvidence | undefined
   /** Stamps blocked text the PTY's throttled scan has not yet judged. */
   flushPendingBlockedStamp(ptyId: string): void
 }
@@ -103,20 +96,12 @@ export class RuntimeTerminalAgentStatusQuery {
     if (terminal.titleStatus === 'permission' && terminal.titleStatusIsLive) {
       return { handle, isRunningAgent: true, status: 'permission' }
     }
-    const tailBlocked =
+    if (
       blockedByWaitText &&
       (!liveTitleClearsBlockedText || lifecycle?.status === terminal.titleStatus) &&
       (blockedByWaitText === 'agent-approval-prompt' ||
         (newestPermissionAt >= 0 && newestPermissionAt >= newestClearAt))
-        ? blockedByWaitText
-        : null
-    const blocked = judgeBlockedAgainstLiveScreen({
-      tailVerdict: tailBlocked,
-      tailShowsBlockedText: blockedByWaitText !== null,
-      screen: this.deps.readScreenBlockedEvidence?.(ptyId),
-      agentSaysNotWaiting: agentSaysNotWaiting(terminal, explicitStatus)
-    })
-    if (blocked) {
+    ) {
       return { handle, isRunningAgent: true, status: 'permission' }
     }
     if (explicitStatus) {
