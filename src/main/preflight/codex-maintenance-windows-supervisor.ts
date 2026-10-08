@@ -1,3 +1,5 @@
+import { win32 } from 'node:path'
+import { windowsSystem32Binary } from '../../shared/child-process/windows-system-binary'
 import { resolveSpawn, type ProcessSpec } from '../../shared/child-process/run-process'
 
 export const CODEX_MAINTENANCE_PROVIDER_EXIT = 'codex-maintenance-provider-exit'
@@ -26,7 +28,7 @@ child.once('error', (error) => report(null, null, error.message))
 child.once('exit', (code, signal) => report(code, signal, null))
 // An IPC disconnect means the owner died; this still-live pid owns the entire tree.
 process.once('disconnect', () => {
-  const killer = spawn('taskkill.exe', ['/pid', String(process.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' })
+  const killer = spawn(spec.taskkill, ['/pid', String(process.pid), '/t', '/f'], { cwd: spec.systemCwd, windowsHide: true, stdio: 'ignore' })
   killer.once('error', () => {})
 })
 `
@@ -34,16 +36,20 @@ process.once('disconnect', () => {
 export function codexMaintenanceWindowsSpawnSpec(input: ProcessSpec): ProcessSpec {
   const resolved = resolveSpawn(input, 'win32')
   const env = { ...process.env, ...resolved.options.env }
+  const taskkill = windowsSystem32Binary('taskkill.exe')
+  const systemCwd = win32.dirname(taskkill)
   return {
     program: process.execPath,
     args: ['-e', WINDOWS_MAINTENANCE_SUPERVISOR],
-    cwd: input.cwd,
+    cwd: systemCwd,
     env: {
       ...env,
       NODE_OPTIONS: undefined,
       ELECTRON_RUN_AS_NODE: '1',
       ORCA_MAINTENANCE_SUPERVISOR_SPEC: Buffer.from(
         JSON.stringify({
+          taskkill,
+          systemCwd,
           file: resolved.file,
           args: resolved.args,
           cwd: input.cwd,

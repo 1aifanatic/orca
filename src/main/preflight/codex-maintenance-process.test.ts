@@ -80,7 +80,10 @@ describe('owned maintenance process supervision', () => {
   it('reports failed tree termination as unverifiable and drains pipes within a bound', async () => {
     const children: ReturnType<typeof spawnProcess>[] = []
     const spawn = (spec: Parameters<typeof spawnProcess>[0]) => {
-      const child = spawnProcess(spec)
+      // The Windows supervisor's system cwd does not exist on the POSIX test host.
+      const child = spawnProcess(
+        process.platform === 'win32' ? spec : { ...spec, cwd: process.cwd() }
+      )
       children.push(child)
       return child
     }
