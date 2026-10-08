@@ -82,7 +82,7 @@ export const loadOpenCodeVisualsSkill: AcpVisualsSkillLoader = async ({ skill, e
   return content === null ? null : { env: { OPENCODE_CONFIG_CONTENT: content } }
 }
 
-// Why no version check: every release Orca runs structured chats on (17.0.5+) has `--plugin-dir`.
+// No gate: 17.0.5+ has `--plugin-dir`, but 18.1.5-18.1.8 skip its skills by default (no visuals).
 /** OMP takes Claude's plugin layout through `--plugin-dir` too, for this process only, beside the
  *  user's own plugins and skill folders. */
 export const loadOmpVisualsSkill: AcpVisualsSkillLoader = async ({ skill }) => ({
