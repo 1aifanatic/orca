@@ -10,7 +10,12 @@ import {
   type AgentModelCatalogListing
 } from './agent-model-catalog-entry'
 
-export type { AgentModelCatalogEntry, AgentModelCatalogListing } from './agent-model-catalog-entry'
+export type {
+  AgentModelCatalogEntry,
+  AgentModelCatalogListing,
+  AgentModelCatalogLiveListing
+} from './agent-model-catalog-entry'
+export { withLiveCatalogListing } from './agent-model-catalog-entry'
 
 // The execution host's one model catalog per (agent, launch fingerprint):
 // served immediately at any age, refreshed in the background when old, and
@@ -40,25 +45,6 @@ export type AgentModelCatalogSuccess = {
   /** A row only this session's launch added (its own `--model`): kept only once the account's
    *  catalog already lists that model. */
   launchOnlyModelId?: string
-}
-
-/** What a running session listed, as its adapter hands it to the host with an options read. */
-export type AgentModelCatalogLiveListing = Pick<
-  AgentModelCatalogSuccess,
-  'models' | 'fastModeSupport' | 'launchOnlyModelId'
->
-
-/** A live options answer whose model rows are the account's listing as the child reported it. */
-export function withLiveCatalogListing<
-  T extends Pick<AgentModelCatalogSuccess, 'models' | 'fastModeSupport'>
->(options: T): T & { catalogListing: AgentModelCatalogLiveListing } {
-  return {
-    ...options,
-    catalogListing: {
-      models: options.models,
-      ...(options.fastModeSupport ? { fastModeSupport: options.fastModeSupport } : {})
-    }
-  }
 }
 
 /** Lists an agent's models without a session, under the account a launch would pin. */

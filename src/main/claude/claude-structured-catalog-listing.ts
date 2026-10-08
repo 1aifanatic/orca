@@ -4,7 +4,7 @@ import type {
   AgentSessionFastModeSupport,
   AgentSessionOptionsResult
 } from '../../shared/agent-session-wire'
-import type { AgentModelCatalogLiveListing } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import type { AgentModelCatalogLiveListing } from '../native-chat/agent-model-catalog/agent-model-catalog-entry'
 import type { ListedModel } from './claude-structured-model-catalog'
 import type { ClaudeSession } from './claude-structured-session-state'
 

@@ -13,6 +13,29 @@ export type AgentModelCatalogListing = {
   at: number
 }
 
+/** What a running session listed, as its adapter hands it to the host. Kept here, apart from the
+ *  store, so the session wire types don't pull the store's Node-only persistence into clients. */
+export type AgentModelCatalogLiveListing = {
+  models: AgentSessionModelOption[]
+  fastModeSupport?: AgentSessionFastModeSupport
+  /** A row only this session's launch added (its own `--model`): kept only once the account's
+   *  catalog already lists that model. */
+  launchOnlyModelId?: string
+}
+
+/** A live options answer whose model rows are the account's listing as the child reported it. */
+export function withLiveCatalogListing<
+  T extends Pick<AgentModelCatalogLiveListing, 'models' | 'fastModeSupport'>
+>(options: T): T & { catalogListing: AgentModelCatalogLiveListing } {
+  return {
+    ...options,
+    catalogListing: {
+      models: options.models,
+      ...(options.fastModeSupport ? { fastModeSupport: options.fastModeSupport } : {})
+    }
+  }
+}
+
 export type AgentModelCatalogEntry = {
   agent: string
   fingerprint: string

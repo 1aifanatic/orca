@@ -48,7 +48,7 @@ import type { AgentSessionPromptResponse } from '../../../shared/agent-session-q
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { AgentSessionCreatePhaseRecorder } from '../../observability/agent-session-instrumentation'
-import type { AgentModelCatalogLiveListing } from '../agent-model-catalog/agent-model-catalog-store'
+import type { AgentModelCatalogLiveListing } from '../agent-model-catalog/agent-model-catalog-entry'
 
 /** A live options read, plus what the child listed for its account's saved catalog. The host
  *  saves that listing and strips it before answering; an adapter whose listing reaches the
