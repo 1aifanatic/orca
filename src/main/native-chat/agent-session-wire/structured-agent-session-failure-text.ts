@@ -74,10 +74,10 @@ export function providerStartupFailureFact(cause?: unknown): SubmissionRejection
     cause instanceof AgentSessionAcquisitionRefusal ? cause.reason : undefined
   )
   if (typed) {
-    return agentSessionFailureFact(
-      typed,
-      cause instanceof AgentSessionAcquisitionRefusal ? { account: cause.account } : {}
-    )
+    return agentSessionFailureFact(typed, {
+      ...(cause instanceof AgentSessionAcquisitionRefusal ? { account: cause.account } : {}),
+      detail: providerDiagnosticOf(cause)
+    })
   }
   if (providerExecutableMissing(cause)) {
     return agentSessionFailureFact('cliMissing')
@@ -109,12 +109,12 @@ function refusedStartFailureFact(
   const reason = refusal.details?.reason
   const typed = typedStartRefusal(reason)
   if (typed) {
-    return agentSessionFailureFact(
-      typed,
-      refusal.code === 'agent_session_operation_invalid'
+    return agentSessionFailureFact(typed, {
+      ...(refusal.code === 'agent_session_operation_invalid'
         ? { account: refusal.details?.account }
-        : {}
-    )
+        : {}),
+      detail: diagnostic
+    })
   }
   if (reason === 'providerStartFailed') {
     return agentSessionFailureFact('providerStartFailed', { detail: diagnostic })
@@ -182,6 +182,7 @@ export function structuredAgentSessionStartFailure(
 ): StructuredAgentSessionStartFailureWords {
   return agentSessionFailureWords(structuredAgentSessionStartFailureFact(cause), {
     ...context,
+    ...('refusal' in cause && cause.newSession ? { messageSubmitted: false } : {}),
     surface: 'rejection'
   })
 }
