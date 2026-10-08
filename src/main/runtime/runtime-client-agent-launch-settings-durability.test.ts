@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fixture } from '../persistence/loading-store/profile-state-delayed-authority-fixture'
+import {
+  deferred,
+  fixture
+} from '../persistence/loading-store/profile-state-delayed-authority-fixture'
 import { RuntimeClientSettingsController } from './runtime-client-settings'
 
+const hooks = vi.hoisted(() => ({ apply: vi.fn(async () => {}) }))
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({
   getCohortAtEmit: () => ({ nth_repo_added: 2 })
@@ -11,10 +15,78 @@ vi.mock('../ssh/ssh-config-parser', () => ({
   sshConfigHostsToTargets: () => []
 }))
 vi.mock('../agent-hooks/managed-agent-hook-controls', () => ({
-  applyAgentStatusHooksEnabled: vi.fn(async () => {})
+  applyAgentStatusHooksEnabled: hooks.apply
 }))
 
 describe('durable execution-host launch settings', () => {
+  it('acknowledges a committed availability edit and its queued follow-up while hooks are pending', async () => {
+    const { store, readState } = await fixture()
+    const controller = new RuntimeClientSettingsController(store)
+    const started = deferred<void>()
+    const finish = deferred<void>()
+    hooks.apply.mockImplementationOnce(async () => {
+      started.resolve()
+      await finish.promise
+    })
+    let acknowledged = false
+    let followupAcknowledged = false
+    const saving = controller
+      .mutateAgentLaunch({ type: 'availability', agent: 'claude', enabled: false })
+      .then((settings) => {
+        acknowledged = true
+        return settings
+      })
+    const followup = saving
+      .then(() =>
+        controller.mutateAgentLaunch({ type: 'arguments', agent: 'codex', value: '--followup' })
+      )
+      .then(() => {
+        followupAcknowledged = true
+      })
+    try {
+      await started.promise
+      expect(readState().settings.disabledTuiAgents).toContain('claude')
+      await vi.waitFor(() => {
+        expect(acknowledged).toBe(true)
+        expect(followupAcknowledged).toBe(true)
+      })
+      expect(readState().settings.agentDefaultArgs.codex).toBe('--followup')
+    } finally {
+      finish.resolve()
+      await saving
+      await followup
+    }
+  })
+
+  it('reports hook failure separately without rejecting durable settings or blocking another save', async () => {
+    const { store, readState } = await fixture()
+    const controller = new RuntimeClientSettingsController(store)
+    const error = new Error('hook-filesystem-unavailable')
+    const reported = vi.spyOn(console, 'error').mockImplementation(() => {})
+    hooks.apply.mockRejectedValueOnce(error)
+    try {
+      await expect(
+        controller.mutateAgentLaunch({ type: 'availability', agent: 'claude', enabled: false })
+      ).resolves.toMatchObject({ disabledTuiAgents: ['claude'] })
+      await controller.mutateAgentLaunch({
+        type: 'arguments',
+        agent: 'codex',
+        value: '--after-failure'
+      })
+      expect(readState().settings.agentDefaultArgs.codex).toBe('--after-failure')
+      await vi.waitFor(() =>
+        expect(reported).toHaveBeenCalledWith(
+          '[agent-hooks] Failed to reconcile managed hooks after saving launch settings:',
+          error
+        )
+      )
+      await controller.mutateAgentLaunch({ type: 'availability', agent: 'claude', enabled: true })
+      expect(readState().settings.disabledTuiAgents).not.toContain('claude')
+    } finally {
+      reported.mockRestore()
+    }
+  })
+
   it('acknowledges a settings change only after the real database write finishes', async () => {
     const { store, authority, readState } = await fixture()
     const controller = new RuntimeClientSettingsController(store)

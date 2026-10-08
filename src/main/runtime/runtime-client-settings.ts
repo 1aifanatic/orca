@@ -229,7 +229,12 @@ export class RuntimeClientSettingsController {
       }
     })
     if (committed.reconcileHooks) {
-      await this.reconcileManagedAgentHooks()
+      void this.reconcileManagedAgentHooks().catch((error) => {
+        console.error(
+          '[agent-hooks] Failed to reconcile managed hooks after saving launch settings:',
+          error
+        )
+      })
     }
     return committed.settings
   }
