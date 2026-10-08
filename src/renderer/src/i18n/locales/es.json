@@ -17958,11 +17958,11 @@
         "permissionAskCodexDescription": "Trabaja dentro del entorno aislado del espacio de trabajo; pregunta antes de salir de él",
         "permissionAskSharedDescription": "Claude pregunta antes de editar o ejecutar comandos; Codex pregunta al salir del entorno aislado del espacio de trabajo",
         "permissionAcceptEdits": "Aceptar ediciones",
-        "permissionAcceptEditsDescription": "Claude edita archivos sin preguntar",
+        "permissionAcceptEditsDescription": "Edita archivos sin preguntar; pregunta antes de ejecutar comandos",
         "permissionAuto": "Aprobar por mí",
         "permissionAutoDescription": "Revisa las solicitudes de aprobación por ti",
         "permissionBypass": "Acceso total",
-        "permissionBypassDescription": "Edita archivos y ejecuta comandos sin preguntar",
+        "permissionBypassDescription": "Nunca pregunta; sin sandbox ni comprobaciones de aprobación",
         "pasteFailed": "Error al pegar.",
         "commandAttachmentsUnsupported": "Quita los archivos adjuntos antes de usar un comando de la sesión de chat."
       },

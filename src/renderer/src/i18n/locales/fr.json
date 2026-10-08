@@ -18059,11 +18059,11 @@
         "permissionAskCodexDescription": "Travaille dans le bac à sable de l’espace de travail ; demande avant d’en sortir",
         "permissionAskSharedDescription": "Claude demande avant les modifications et les commandes ; Codex demande au-delà du bac à sable de l’espace de travail",
         "permissionAcceptEdits": "Accepter les modifications",
-        "permissionAcceptEditsDescription": "Claude modifie les fichiers sans demander",
+        "permissionAcceptEditsDescription": "Modifie les fichiers sans demander ; demande avant les commandes",
         "permissionAuto": "Approuver pour moi",
         "permissionAutoDescription": "Examine les demandes d’approbation pour vous",
         "permissionBypass": "Accès complet",
-        "permissionBypassDescription": "Modifie les fichiers et exécute les commandes sans demander",
+        "permissionBypassDescription": "Ne demande jamais ; ni bac à sable ni vérification d'approbation",
         "pasteFailed": "Échec du collage.",
         "commandAttachmentsUnsupported": "Retirez les pièces jointes avant d'utiliser une commande de session de chat."
       },

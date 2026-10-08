@@ -18216,11 +18216,11 @@
         "permissionAskCodexDescription": "Works inside the workspace sandbox; asks before going beyond it",
         "permissionAskSharedDescription": "Claude asks before edits and commands; Codex asks beyond the workspace sandbox",
         "permissionAcceptEdits": "Accept edits",
-        "permissionAcceptEditsDescription": "Claude edits files without asking",
+        "permissionAcceptEditsDescription": "Edits files without asking; asks before commands",
         "permissionAuto": "Approve for me",
         "permissionAutoDescription": "Reviews approval requests for you",
         "permissionBypass": "Full access",
-        "permissionBypassDescription": "Runs edits and commands without asking",
+        "permissionBypassDescription": "Never asks; no sandbox or approval checks",
         "pasteFailed": "Paste failed.",
         "commandAttachmentsUnsupported": "Remove attachments before using a chat-session command."
       },

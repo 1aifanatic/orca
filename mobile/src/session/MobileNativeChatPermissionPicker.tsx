@@ -20,13 +20,13 @@ const MODE_COPY: Record<AgentChatPermissionMode, { label: string; description: s
   ask: { label: 'Ask for approval', description: 'Always asks before edits and commands' },
   'accept-edits': {
     label: 'Accept edits',
-    description: 'Claude edits files without asking'
+    description: 'Edits files without asking; asks before commands'
   },
   auto: {
     label: 'Approve for me',
     description: 'Reviews approval requests for you'
   },
-  bypass: { label: 'Full access', description: 'Runs edits and commands without asking' }
+  bypass: { label: 'Full access', description: 'Never asks; no sandbox or approval checks' }
 }
 
 function modeDescription(mode: AgentChatPermissionMode, provider?: string | null): string {

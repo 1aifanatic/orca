@@ -17993,11 +17993,11 @@
         "permissionAskCodexDescription": "ワークスペースのサンドボックス内で動作し、その範囲を超える前に確認します",
         "permissionAskSharedDescription": "Claude は編集やコマンドの前に確認し、Codex はワークスペースのサンドボックスを超える前に確認します",
         "permissionAcceptEdits": "編集を許可",
-        "permissionAcceptEditsDescription": "Claude が確認せずにファイルを編集します",
+        "permissionAcceptEditsDescription": "ファイルは確認なしで編集し、コマンドの前に確認します",
         "permissionAuto": "代わりに承認",
         "permissionAutoDescription": "承認リクエストを代わりに審査します",
         "permissionBypass": "フルアクセス",
-        "permissionBypassDescription": "確認せずにファイルを編集し、コマンドを実行します",
+        "permissionBypassDescription": "確認しません。サンドボックスも承認チェックもありません",
         "pasteFailed": "貼り付けに失敗しました。",
         "commandAttachmentsUnsupported": "チャットセッションのコマンドを使う前に添付ファイルを削除してください。"
       },

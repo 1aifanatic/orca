@@ -134,9 +134,9 @@ describe('NativeChatPermissionModePicker', () => {
     ).toEqual(['ask', 'accept-edits', 'auto', 'bypass'])
     expect(within(menu).getByText('Ask for approval')).toBeTruthy()
     expect(within(menu).getByText('Always asks before edits and commands')).toBeTruthy()
-    expect(within(menu).getByText('Claude edits files without asking')).toBeTruthy()
+    expect(within(menu).getByText('Edits files without asking; asks before commands')).toBeTruthy()
     expect(within(menu).getByText('Reviews approval requests for you')).toBeTruthy()
-    expect(within(menu).getByText('Runs edits and commands without asking')).toBeTruthy()
+    expect(within(menu).getByText('Never asks; no sandbox or approval checks')).toBeTruthy()
   })
 
   it('offers Codex no edits-only mode', () => {

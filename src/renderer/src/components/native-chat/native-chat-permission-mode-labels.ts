@@ -66,7 +66,7 @@ export function nativeChatPermissionModeDescription(
     case 'accept-edits':
       return translate(
         'components.native-chat.composer.permissionAcceptEditsDescription',
-        'Claude edits files without asking'
+        'Edits files without asking; asks before commands'
       )
     case 'auto':
       return translate(
@@ -76,7 +76,7 @@ export function nativeChatPermissionModeDescription(
     case 'bypass':
       return translate(
         'components.native-chat.composer.permissionBypassDescription',
-        'Runs edits and commands without asking'
+        'Never asks; no sandbox or approval checks'
       )
   }
 }
