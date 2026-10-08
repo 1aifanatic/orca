@@ -77,14 +77,14 @@ describe('a chat permission mode at rest', () => {
     ).resolves.toMatchObject({
       permissionModes: {
         current: 'accept-edits',
-        supported: ['ask', 'accept-edits', 'auto', 'bypass']
+        supported: ['ask', 'accept-edits', 'bypass']
       }
     })
   })
 
   it('reports where the setting starts a chat that never chose', async () => {
     await expect(restingRead(record('codex'), () => 'bypass')).resolves.toMatchObject({
-      permissionModes: { current: 'bypass', supported: ['ask', 'auto', 'bypass'] }
+      permissionModes: { current: 'bypass', supported: ['ask', 'bypass'] }
     })
   })
 
@@ -114,10 +114,13 @@ describe('a chat permission-mode pick at rest', () => {
     await expect(
       recordStructuredAgentSessionOptionIntent(deps(value), turn, {
         key: 'permissionMode',
-        value: 'auto'
+        value: 'bypass'
       })
     ).resolves.toMatchObject({ ok: true })
-    expect(turn.persistOptions).toHaveBeenCalledWith({ model: 'gpt-live', permissionMode: 'auto' })
+    expect(turn.persistOptions).toHaveBeenCalledWith({
+      model: 'gpt-live',
+      permissionMode: 'bypass'
+    })
   })
 
   it('refuses a mode the agent has no equivalent for', async () => {
@@ -226,4 +229,34 @@ describe('relaunching a child the chat outgrew before a send', () => {
       )
     ).resolves.toBeUndefined()
   })
+})
+
+it('refuses an unsupported held Auto choice at rest', async () => {
+  const value = record('codex', { permissionMode: 'ask' })
+  const persistOptions = vi.fn(async () => {})
+  const result = await recordStructuredAgentSessionOptionIntent(
+    {
+      store: { getRecord: () => value },
+      agents: { definition: () => CODEX_STRUCTURED_AGENT }
+    },
+    { sessionId: SESSION, persistOptions, publish: () => {} },
+    { key: 'permissionMode', value: 'auto' }
+  )
+  expect(result.ok).toBe(false)
+  expect(persistOptions).not.toHaveBeenCalled()
+})
+
+it('translates a resting legacy user-reviewer write into Ask and drops the saved reviewer', async () => {
+  const value = record('codex', { permissionMode: 'bypass', approvalsReviewer: 'auto_review' })
+  const persistOptions = vi.fn(async () => {})
+  const result = await recordStructuredAgentSessionOptionIntent(
+    {
+      store: { getRecord: () => value },
+      agents: { definition: () => CODEX_STRUCTURED_AGENT }
+    },
+    { sessionId: SESSION, persistOptions, publish: () => {} },
+    { key: 'approvalsReviewer', value: 'user' }
+  )
+  expect(result).toMatchObject({ ok: true, value: { key: 'permissionMode', value: 'ask' } })
+  expect(persistOptions).toHaveBeenCalledWith({ permissionMode: 'ask' })
 })

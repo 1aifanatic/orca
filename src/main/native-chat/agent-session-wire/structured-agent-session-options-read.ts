@@ -33,17 +33,17 @@ type RestingOptions = Pick<
   'models' | 'fastModeSupport' | 'current' | 'permissionModes'
 >
 
-/** At rest the chat's mode is its record's, else where the setting starts it; the list is the
- *  agent's own, since only a running child can narrow it. */
+/** A resting record holds intent, not evidence of its next child's reviewer support. */
 function restingPermissionModes(
   record: AgentSessionRecord,
   defaultPermissionMode: StructuredAgentSessionHostDeps['defaultPermissionMode']
 ): AgentSessionPermissionModes | null {
-  const supported = agentChatPermissionModes(record.provider)
+  const support = { autoReview: false }
+  const supported = agentChatPermissionModes(record.provider, support)
   const fallback = defaultPermissionMode?.(record.provider)
   const current =
     record.options?.permissionMode !== undefined || fallback !== undefined
-      ? agentChatLaunchPermissionMode(record.provider, record.options, fallback)
+      ? agentChatLaunchPermissionMode(record.provider, record.options, fallback, support)
       : null
   return supported && current ? { current, supported } : null
 }
@@ -57,11 +57,9 @@ function restingOptionRules(
 }
 
 export async function readStructuredAgentSessionOptionsAtRest(
-  deps: Pick<
-    StructuredAgentSessionHostDeps,
-    'agents' | 'modelCatalog' | 'defaultPermissionMode'
-  > & {
+  deps: Pick<StructuredAgentSessionHostDeps, 'modelCatalog' | 'defaultPermissionMode'> & {
     store: Pick<AgentSessionRecordStore, 'getRecord'>
+    agents: Pick<StructuredAgentRegistry, 'definition'>
   },
   sessionId: string
 ): Promise<RestingOptions> {
@@ -110,7 +108,7 @@ export async function readStructuredAgentSessionOptionsAtRest(
 
 /** Records a pick for the next start. Only a key the provider would accept is kept. */
 export async function recordStructuredAgentSessionOptionIntent(
-  deps: {
+  deps: Pick<StructuredAgentSessionHostDeps, 'modelCatalog' | 'defaultPermissionMode'> & {
     store: Pick<AgentSessionRecordStore, 'getRecord'>
     agents: Pick<StructuredAgentRegistry, 'definition'>
   },
@@ -118,11 +116,30 @@ export async function recordStructuredAgentSessionOptionIntent(
   input: { key: string; value: string }
 ): Promise<TurnOutcome<AgentSessionOptionResult>> {
   const record = deps.store.getRecord(ctx.sessionId)
+  const rules = record ? restingOptionRules(deps.agents, record) : null
+  try {
+    input = rules?.normalizePick?.(input.key, input.value) ?? input
+  } catch (error) {
+    return {
+      ok: false,
+      refusal: refuse(
+        'agent_session_operation_invalid',
+        { reason: 'optionRejected' },
+        error instanceof Error ? error.message : String(error)
+      )
+    }
+  }
+  const supported =
+    record && input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID && input.value === 'auto'
+      ? (await readStructuredAgentSessionOptionsAtRest(deps, ctx.sessionId)).permissionModes
+          ?.supported
+      : undefined
   if (
     !record ||
-    !restingOptionRules(deps.agents, record)?.acceptsKey(input.key) ||
+    !rules?.acceptsKey(input.key) ||
     (input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID &&
-      !agentChatPermissionModeSupported(record.provider, input.value))
+      (!agentChatPermissionModeSupported(record.provider, input.value) ||
+        (input.value === 'auto' && !supported?.includes('auto'))))
   ) {
     return {
       ok: false,
@@ -133,7 +150,10 @@ export async function recordStructuredAgentSessionOptionIntent(
       )
     }
   }
-  const options = { ...record.options, [input.key]: input.value }
+  const options = {
+    ...(rules?.normalizeOptions?.(record.options) ?? record.options),
+    [input.key]: input.value
+  }
   await ctx.persistOptions(options)
   ctx.publish()
   return { ok: true, value: { ...input, options } }

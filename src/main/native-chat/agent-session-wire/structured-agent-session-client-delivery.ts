@@ -1,5 +1,6 @@
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
+import { storedAgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -60,6 +61,10 @@ export class StructuredAgentSessionClientDelivery {
     )
     this.waitForSendSettlement = this.sendSettlement.wait
     this.subscribers = new AgentSessionSubscribers({
+      readPermissionMode: (sessionId) => {
+        const record = this.deps().store.getRecord(sessionId)
+        return record ? storedAgentChatPermissionMode(record.provider, record.options) : null
+      },
       readCommands: (sessionId) => this.readCommands(sessionId),
       readQueuePublication: (sessionId) =>
         tryReadQueuePublication(

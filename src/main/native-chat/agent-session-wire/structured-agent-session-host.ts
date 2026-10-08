@@ -119,6 +119,7 @@ export class StructuredAgentSessionHost {
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       // Quit drains a delivery start before it evicts, so the child it produces is stopped.
       trackStart: (start) => this.tasks.trackAttach(start),
+      acquireAborts: this.runtimeState.acquireAborts,
       ensureProviderChild: (sessionId, startedFor) =>
         agentStart.ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
       restProviderChild: (id) => this.lifetime.stopAgent(id, { cause: 'evict', resting: true }),

@@ -393,6 +393,8 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
    *  flag). Derived on every read; the host starts the next send on a new child when this one
    *  owes no work. */
   childRelaunchRequired?(sessionId: string): boolean
+  /** Permission preparation before handover; awaited outside the session lane. */
+  prepareDispatch?(sessionId: string): Promise<void> | undefined
   /** Resolves once a live session can take an option write, or after a bound; never rejects. */
   awaitOptionWritable?(sessionId: string): Promise<void>
   /** False while the live child has not answered its start, so it has run nothing it was handed.

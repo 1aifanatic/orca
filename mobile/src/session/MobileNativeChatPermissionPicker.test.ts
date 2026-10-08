@@ -128,12 +128,12 @@ describe('MobileNativeChatPermissionPicker', () => {
     expect(color(textNode('Ask for approval'))).not.toBe(colors.statusAmber)
   })
 
-  it('sends a pick of another mode and nothing for the current one', async () => {
+  it('establishes Ask even when the displayed mode may be stale', async () => {
     const picker = mount({ current: 'ask' })
     act(() => pill().props.onPress())
 
     await act(async () => row('Ask for approval').props.onPress())
-    expect(picker.setMode).not.toHaveBeenCalled()
+    expect(picker.setMode).toHaveBeenCalledWith('ask')
 
     act(() => pill().props.onPress())
     await act(async () => row('Full access').props.onPress())

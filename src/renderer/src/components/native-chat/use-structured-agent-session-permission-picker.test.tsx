@@ -33,6 +33,7 @@ type Props = {
   transportEnabled: boolean
   seed?: Record<string, string>
   held?: Record<string, string>
+  permissionMode?: string
 }
 
 // Stable across renders, as a real target is: a fresh object each render re-runs every read.
@@ -61,6 +62,7 @@ function render(initial: Props, mutate: StructuredAgentSessionMutate) {
         providerVisible: props.transportEnabled,
         fence: props.fence,
         turnId: null,
+        permissionMode: props.permissionMode,
         unloadedTurnRevisions: undefined,
         mutate,
         launch: {
@@ -169,4 +171,37 @@ describe('the structured chat permission picker', () => {
     expect(result.current.optionSurface.permissionPicker?.disabled).toBe(true)
     unmount()
   })
+})
+
+it('reconciles an idle host mode update without a local pick', async () => {
+  let current = 'ask'
+  mocks.call.mockImplementation((_target: unknown, method: string) =>
+    method === 'agentSession.options'
+      ? Promise.resolve({ ...OPTIONS, permissionModes: { current, supported: ['ask', 'bypass'] } })
+      : new Promise(() => {})
+  )
+  const { result, rerender, unmount } = render(
+    { transportEnabled: true, fence: 1, permissionMode: 'ask' },
+    mutateReplying({}).mutate
+  )
+  await waitFor(() => expect(result.current.optionSurface.permissionPicker?.current).toBe('ask'))
+  current = 'bypass'
+  rerender({ transportEnabled: true, fence: 1, permissionMode: 'bypass' })
+  await waitFor(() => expect(result.current.optionSurface.permissionPicker?.current).toBe('bypass'))
+  unmount()
+})
+
+it('rejects provisional Auto before the launch can hold an unsupported choice', async () => {
+  mocks.call.mockImplementation(() => new Promise(() => {}))
+  mocks.hold.mockClear()
+  const { result, unmount } = render(
+    { transportEnabled: false, fence: null, seed: { permissionMode: 'ask' } },
+    mutateReplying({}).mutate
+  )
+  expect(result.current.optionSurface.permissionPicker?.supported).not.toContain('auto')
+  await act(async () => {
+    expect(await result.current.setStructuredOption('permissionMode', 'auto')).toBe(false)
+  })
+  expect(mocks.hold).not.toHaveBeenCalled()
+  unmount()
 })

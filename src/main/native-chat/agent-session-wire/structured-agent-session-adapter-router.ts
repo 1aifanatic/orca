@@ -165,6 +165,8 @@ export class StructuredAgentSessionAdapterRouter implements StructuredAgentSessi
 
   awaitOptionWritable = (sessionId: string): Promise<void> =>
     this.liveOwnerOrNull(sessionId)?.awaitOptionWritable?.(sessionId) ?? Promise.resolve()
+  prepareDispatch = (sessionId: string): Promise<void> | undefined =>
+    this.liveOwnerOrNull(sessionId)?.prepareDispatch?.(sessionId)
   startAnswered = (sessionId: string): boolean | undefined =>
     this.liveOwnerOrNull(sessionId)?.startAnswered?.(sessionId)
 

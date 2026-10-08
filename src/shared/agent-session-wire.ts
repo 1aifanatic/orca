@@ -16,7 +16,10 @@ export * from './agent-session-queued-message-wire'
 export * from './agent-session-turn-completion-wire'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
 import type { AgentSessionContextUsage } from './agent-session-context-usage'
-import type { AgentSessionPermissionModes } from './agent-chat-permission-mode'
+import type {
+  AgentChatPermissionMode,
+  AgentSessionPermissionModes
+} from './agent-chat-permission-mode'
 // ─── Structured agent-session wire contract ─────────────────────────────────
 // The shapes `agentSession.*` accepts and publishes. Phase 2 builds provider
 // adapters and clients against exactly these types, so everything here must be
@@ -174,7 +177,11 @@ export type AgentSessionJournalBatch = {
 
 /** Every published frame: the host wall clock (ms epoch, see `AgentSessionHistoryPage`), and what
  *  rides beside its `queuedMessages`. */
-type AgentSessionFrameFields = { hostNow?: number } & AgentSessionQueuePublicationFields
+type AgentSessionFrameFields = {
+  hostNow?: number
+  /** Host-owned permission intent; omitted by older hosts, null before a choice is known. */
+  permissionMode?: AgentChatPermissionMode | null
+} & AgentSessionQueuePublicationFields
 
 export type AgentSessionSubscribeEvent =
   | ({

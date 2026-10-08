@@ -112,6 +112,7 @@ export function useStructuredAgentSession(args: {
     fence: state.fence,
     turnId: transportState.turnId,
     unloadedTurnRevisions: state.unloadedTurnRevisions,
+    permissionMode: state.permissionMode,
     mutate,
     ...(launch ? { launch } : {})
   })

@@ -45,7 +45,9 @@ describe('inherited Claude chat permissions before the first message', () => {
         events
       )
       await adapter.acquire(ACQUIRE)
-      const sent = adapter.dispatch(PROMPT)
+      const sent = Promise.resolve(adapter.prepareDispatch('session-1')).then(() =>
+        adapter.dispatch(PROMPT)
+      )
       expect(claude.connections[0].sent).toEqual([])
       await vi.advanceTimersByTimeAsync(1000)
       await claudeStartupSettled(adapter, 'session-1')
@@ -91,6 +93,7 @@ describe('inherited Claude chat permissions before the first message', () => {
         events
       )
       await adapter.acquire(ACQUIRE)
+      await adapter.prepareDispatch('session-1')
       await expect(adapter.dispatch(PROMPT)).resolves.toMatchObject({ state: 'admitted' })
       expect(
         claude.connections[0].calls

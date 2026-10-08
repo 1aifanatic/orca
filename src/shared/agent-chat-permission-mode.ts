@@ -103,6 +103,12 @@ export function commitAgentSessionPermissionMode(
   if (permission) {
     return permission.supported.includes(value) ? { ...permission, current: value } : permission
   }
-  const supported = agentChatPermissionModes(agent)
-  return supported?.includes(value) ? { current: value, supported } : null
+  if (!agentChatPermissionModeSupported(agent, value)) {
+    return null
+  }
+  const supported = agentChatPermissionModes(agent, { autoReview: false })
+  if (!supported) {
+    return null
+  }
+  return { current: supported.includes(value) ? value : 'ask', supported }
 }

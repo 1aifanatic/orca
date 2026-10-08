@@ -1,3 +1,4 @@
+import { structuredAgentSessionEndedChildFailure } from './structured-agent-session-ended-child-failure'
 // The one thing that starts a provider child for a send, the one thing that hands a message to
 // it, and the one thing that settles a queued message because of a start, a child or a leftover.
 //
@@ -25,8 +26,6 @@ import {
 } from './structured-agent-session-failure-text'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
-  StructuredAgentSessionChildEndCause,
-  StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
@@ -48,6 +47,7 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** A start step, tracked from enqueue so quit waits for the child it may produce. */
   trackStart: <T>(start: Promise<T>) => Promise<T>
+  prepareDispatch?: (sessionId: string) => Promise<boolean>
   /** Gives the session a provider child if it has none; for a caller inside `serialize`. */
   /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
   ensureProviderChild: (
@@ -78,7 +78,11 @@ type RefusedStart = Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
 type Prepared =
   | 'stop'
   | RefusedStart
-  | { ok: true; awaited: StructuredAgentSessionProviderChildIdentity | null }
+  | {
+      ok: true
+      awaited: StructuredAgentSessionProviderChildIdentity | null
+      prepared: Promise<boolean>
+    }
 
 /** A failed start before it is worded; `fail` words it once, through the one wording point. */
 type StartFailure = { startKey: string | null; cause: StructuredAgentSessionStartFailureCause }
@@ -127,6 +131,9 @@ export class StructuredAgentSessionDeliveryLoop {
             this.fail(sessionId, this.refusedStart(sessionId, prepared))
           )
           return
+        }
+        if (!(await this.deps.trackStart(prepared.prepared))) {
+          continue
         }
         const handed = await this.deps.serialize(sessionId, () =>
           this.handOver(sessionId, prepared.awaited)
@@ -199,7 +206,8 @@ export class StructuredAgentSessionDeliveryLoop {
     // The child this run waits on; handover checks it is still the one there.
     return {
       ok: true,
-      awaited: child ? { generation: child.generation, fence: child.fence } : null
+      awaited: child ? { generation: child.generation, fence: child.fence } : null,
+      prepared: this.deps.prepareDispatch?.(sessionId) ?? Promise.resolve(true)
     }
   }
 
@@ -346,35 +354,4 @@ function startThatFailedWhileQueued(
   return cause ? { startKey: ended.generation, cause } : null
 }
 
-function providerEndFailure(
-  ended: StructuredAgentSessionEndedChild
-): StructuredAgentSessionStartFailureCause {
-  if (ended.duringStartup) {
-    return { exit: ended.failure }
-  }
-  return { failure: ended.failure ?? agentSessionFailureFact('providerExited') }
-}
-
-// Every end cause, so a new one does not compile until it says whether it fails what is queued.
-const ENDED_CHILD_FAILURE = {
-  'user-stop': () => null,
-  // The user closing this chat closes what was queued before it; see `closeWhatTheUserClosed`.
-  'user-close': () => null,
-  // The host stopping the child is Orca's cause, never the provider's: a start that never finished.
-  'host-stop': () => ({ failure: agentSessionFailureFact('hostStopped') }),
-  exit: providerEndFailure,
-  // The attach records its own fault as the end's failure.
-  'attach-failed': providerEndFailure,
-  // Reached only when an eviction's stop landed and a later step failed, leaving the conversation.
-  evict: providerEndFailure
-} satisfies Record<
-  StructuredAgentSessionChildEndCause,
-  (ended: StructuredAgentSessionEndedChild) => StructuredAgentSessionStartFailureCause | null
->
-
-/** Why a queued message the child never took is rejected; null when its end fails nothing. */
-export function structuredAgentSessionEndedChildFailure(
-  ended: StructuredAgentSessionEndedChild
-): StructuredAgentSessionStartFailureCause | null {
-  return ENDED_CHILD_FAILURE[ended.cause](ended)
-}
+export { structuredAgentSessionEndedChildFailure } from './structured-agent-session-ended-child-failure'

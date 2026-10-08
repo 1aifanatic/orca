@@ -4,6 +4,7 @@
 // subscriber — never advanced on a frame that withheld the field, or the final
 // replacement would be suppressed — and each attaches whole to hydrating frames.
 
+import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 import type {
   AgentSessionBackgroundTaskState,
   AgentSessionSlashCommand,
@@ -14,6 +15,7 @@ import type { QueuePublication } from './structured-agent-session-queued-publica
 export type SubscriberFieldState = {
   sessionId: string
   commands?: AgentSessionSlashCommand[] | null
+  permissionMode?: AgentChatPermissionMode | null
   /** The last queue publication actually SENT. */
   queuePublication?: QueuePublication
   /** Fingerprint of the roster last SENT; absent until this subscriber's first frame. */
@@ -21,6 +23,7 @@ export type SubscriberFieldState = {
 }
 
 export type SubscriberFieldHooks = {
+  readPermissionMode?: (sessionId: string) => AgentChatPermissionMode | null
   readCommands?: (sessionId: string) => AgentSessionSlashCommand[] | undefined
   readQueuePublication?: (sessionId: string) => QueuePublication | undefined
   /** Built from the host's child records, so it is read only when a frame owes it: never per token. */
@@ -29,6 +32,7 @@ export type SubscriberFieldHooks = {
 
 export type SubscriberFrame = {
   frame: AgentSessionSubscribeEvent
+  permissionMode: AgentChatPermissionMode | null | undefined
   commands: AgentSessionSlashCommand[] | null
   attachedQueued: boolean
   queued: QueuePublication | undefined
@@ -48,6 +52,11 @@ export function buildSubscriberFrame(
   event: AgentSessionSubscribeEvent,
   withholdQueued: boolean
 ): SubscriberFrame {
+  const permissionMode = hooks.readPermissionMode?.(subscriber.sessionId)
+  const includePermission =
+    permissionMode !== undefined &&
+    event.type !== 'end' &&
+    (event.type !== 'batch' || permissionMode !== subscriber.permissionMode)
   const commands = hooks.readCommands?.(subscriber.sessionId) ?? null
   const includeCommands =
     hooks.readCommands !== undefined &&
@@ -64,6 +73,7 @@ export function buildSubscriberFrame(
   return {
     frame: {
       ...event,
+      ...(includePermission ? { permissionMode } : {}),
       ...(includeCommands ? { commands: commands ?? null } : {}),
       ...(attachedQueued && queued
         ? {
@@ -75,6 +85,7 @@ export function buildSubscriberFrame(
       ...(backgroundTasks !== undefined ? { backgroundTasks } : {})
     },
     commands,
+    permissionMode,
     attachedQueued,
     queued,
     backgroundTasks:

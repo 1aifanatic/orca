@@ -119,8 +119,17 @@ function emitCaughtUp(
   const commandsChanged =
     port.hooks.readCommands !== undefined &&
     (port.hooks.readCommands(subscriber.sessionId) ?? null) !== subscriber.commands
+  const permissionChanged =
+    port.hooks.readPermissionMode !== undefined &&
+    port.hooks.readPermissionMode(subscriber.sessionId) !== subscriber.permissionMode
   const queuedChanged = subscriberQueuedMessagesChanged(port.hooks, subscriber)
-  if (emitCheckpoint || shared.activity !== undefined || commandsChanged || queuedChanged) {
+  if (
+    emitCheckpoint ||
+    shared.activity !== undefined ||
+    commandsChanged ||
+    queuedChanged ||
+    permissionChanged
+  ) {
     port.emit(subscriber, {
       type: 'batch',
       sessionId: subscriber.sessionId,

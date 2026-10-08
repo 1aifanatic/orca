@@ -16,6 +16,7 @@ import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-lau
 import type { CodexStructuredLaunch } from './codex-structured-session-adapter'
 import { codexStructuredPermissionPolicy } from './codex-structured-permission-policy'
 import type { AgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
+import { codexChatPermissionOptions } from './codex-structured-permission-mode'
 import { agentChatLaunchPermissionMode } from '../../shared/agent-chat-permission-mode'
 import { resolvePinnedCodexRolloutProof } from './codex-pinned-rollout-proof'
 import { codexStructuredLaunchArgs } from './codex-structured-launch-args'
@@ -93,7 +94,7 @@ export function createCodexStructuredLaunchResolver(
     const args = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
     const permissionMode = agentChatLaunchPermissionMode(
       'codex',
-      record.options,
+      codexChatPermissionOptions(record.options),
       deps.resolveDefaultPermissionMode?.()
     )
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)

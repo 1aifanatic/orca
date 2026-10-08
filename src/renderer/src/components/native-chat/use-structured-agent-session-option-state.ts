@@ -29,6 +29,7 @@ export function useStructuredAgentSessionOptionState(args: {
   providerStarting: boolean
   readsBeforeStart: boolean
   turnId: string | null
+  permissionMode?: string | null
   unloadedTurnRevisions: number | undefined
 }) {
   const {
@@ -138,6 +139,7 @@ export function useStructuredAgentSessionOptionState(args: {
     readsBeforeStart,
     sessionId,
     target,
+    args.permissionMode,
     turnId,
     updateOptionState
   ])

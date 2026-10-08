@@ -49,6 +49,7 @@ export function useStructuredAgentSessionOptions(args: {
   providerStarting?: boolean
   fence: number | null
   turnId: string | null
+  permissionMode?: string | null
   unloadedTurnRevisions: number | undefined
   mutate: StructuredAgentSessionMutate
   launch?: StructuredAgentSessionLaunchView
@@ -91,6 +92,7 @@ export function useStructuredAgentSessionOptions(args: {
     // holds the model it ran, so only the former waits rather than show the host's guess.
     readsBeforeStart: launch?.kind !== 'new',
     turnId,
+    permissionMode: args.permissionMode,
     unloadedTurnRevisions: args.unloadedTurnRevisions
   })
 

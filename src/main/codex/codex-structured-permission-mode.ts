@@ -103,7 +103,9 @@ export function adoptCodexOpenedPermissionState(
   restoreCodexChatPermissionMode(options, launch, opened)
   const workspaceWriteRoots = codexThreadWritableRoots(launch.threadConfig)
   return {
-    ...(launch.permissionMode ? { threadPermissionMode: launch.permissionMode } : {}),
+    ...(launch.permissionMode
+      ? { threadPermissionMode: codexChatPermissionMode({ options, ...opened }) }
+      : {}),
     approvalsReviewerSupported: opened.approvalsReviewerSupported === true,
     ...(workspaceWriteRoots ? { workspaceWriteRoots } : {})
   }
@@ -125,4 +127,32 @@ export function restoreCodexChatPermissionMode(
       })
     )
   }
+}
+
+/** Older clients still write the reviewer; the chat mode owns that intent now. */
+export function codexPermissionModeOption(
+  key: string,
+  value: string
+): { key: string; value: string } {
+  if (key !== 'approvalsReviewer') {
+    return { key, value }
+  }
+  if (value !== 'auto_review' && value !== 'user') {
+    throw new Error(`codex has no approvals reviewer named ${value}`)
+  }
+  return {
+    key: AGENT_CHAT_PERMISSION_MODE_OPTION_ID,
+    value: value === 'auto_review' ? 'auto' : 'ask'
+  }
+}
+
+/** Explicit chat choices supersede the retired reviewer option. */
+export function codexChatPermissionOptions(
+  options: Readonly<Record<string, string>> | undefined
+): Record<string, string> {
+  const { approvalsReviewer, ...restored } = options ?? {}
+  if (restored.permissionMode === undefined && approvalsReviewer === 'auto_review') {
+    return { ...restored, permissionMode: 'auto' }
+  }
+  return restored
 }

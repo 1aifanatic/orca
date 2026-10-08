@@ -76,7 +76,7 @@ describe('a new chat permission mode before its session exists', () => {
   it('shows the mode the host will create the chat in', () => {
     expect(
       structuredAgentSessionOptionView(fresh(), { permissionMode: 'bypass' }, {}).permission
-    ).toEqual({ current: 'bypass', supported: ['ask', 'accept-edits', 'auto', 'bypass'] })
+    ).toEqual({ current: 'bypass', supported: ['ask', 'accept-edits', 'bypass'] })
   })
 
   it('shows a pick held for the launch over the seed', () => {
@@ -108,3 +108,21 @@ describe('a new chat permission mode before its session exists', () => {
     })
   })
 })
+
+it.each(['claude', 'codex'])(
+  'withholds provisional Auto for %s and rejects a held unsupported choice',
+  (agent) => {
+    const state = createStructuredAgentSessionOptionState(agent)
+    const view = structuredAgentSessionOptionView(
+      state,
+      { permissionMode: 'ask' },
+      { permissionMode: 'auto' }
+    )
+    expect(view.permission?.current).toBe('ask')
+    expect(view.permission?.supported).not.toContain('auto')
+    expect(canSetStructuredAgentSessionOption(view, 'permissionMode', 'auto')).toBe(false)
+    expect(
+      structuredAgentSessionOptionView(state, { permissionMode: 'auto' }, {}).permission?.current
+    ).toBe('ask')
+  }
+)

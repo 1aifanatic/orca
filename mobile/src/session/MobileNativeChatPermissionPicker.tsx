@@ -50,11 +50,6 @@ export function MobileNativeChatPermissionPicker({
   const label = MODE_COPY[picker.current].label
   const close = (): void => setOpen(false)
   const choose = (mode: AgentChatPermissionMode): void => {
-    // Re-picking the current mode sends nothing; a change applies from the next message.
-    if (mode === picker.current) {
-      close()
-      return
-    }
     void picker.setMode(mode).then((applied) => {
       if (applied) {
         close()

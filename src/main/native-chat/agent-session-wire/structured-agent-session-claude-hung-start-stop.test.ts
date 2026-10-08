@@ -221,3 +221,57 @@ it('leaves a message in doubt when the start answered and the chat closes before
     expect(await submission(id)).toMatchObject({ dispatchState: 'unknown' })
   )
 })
+
+it.each(['accept-edits', 'auto'] as const)(
+  'Stop closes an inherited %s child while initialize is withheld, without sending input',
+  async (mode) => {
+    const session = adapter['sessions'].get(SESSION)
+    if (!session) {
+      throw new Error('no starting child')
+    }
+    session.launchPermissionMode = mode
+    const preparing = vi.spyOn(adapter, 'prepareDispatch')
+    const body = hostTestMessage('inherited permission')
+    await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+    await vi.waitFor(() => expect(preparing).toHaveBeenCalledWith(SESSION))
+    const [connection] = claude.connections
+    expect(connection!.sent).toEqual([])
+    const result = { settled: false }
+    const stop = host
+      .cancel(CALLER, { envelope: envelope('agentSession.cancel', {}) })
+      .then((outcome) => {
+        result.settled = true
+        return outcome
+      })
+    await vi.waitFor(() => expect(result.settled).toBe(true))
+    expect(await stop).toMatchObject({ ok: true, value: { cancelled: true } })
+    expect(connection!.closeCount).toBeGreaterThan(0)
+    expect(connection!.sent).toEqual([])
+    expect(host['sessions'].get(SESSION)?.child).toBeNull()
+    expect(await readsWorking()).toBe(false)
+  }
+)
+
+it('close can settle inherited permission preparation without an initialize answer', async () => {
+  const session = adapter['sessions'].get(SESSION)
+  if (!session) {
+    throw new Error('no starting child')
+  }
+  session.launchPermissionMode = 'accept-edits'
+  const preparing = vi.spyOn(adapter, 'prepareDispatch')
+  const body = hostTestMessage('close before permissions')
+  await host.send(CALLER, {
+    envelope: envelope('agentSession.send', { body }),
+    body,
+    userSend: true
+  })
+  await vi.waitFor(() => expect(preparing).toHaveBeenCalled())
+  const closed = { settled: false }
+  const close = host.close(SESSION, 'user-close').then(() => {
+    closed.settled = true
+  })
+  await vi.waitFor(() => expect(closed.settled).toBe(true))
+  await close
+  expect(claude.connections[0]!.sent).toEqual([])
+  expect(claude.connections[0]!.closeCount).toBeGreaterThan(0)
+})

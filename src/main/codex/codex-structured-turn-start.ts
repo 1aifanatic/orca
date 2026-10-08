@@ -90,7 +90,10 @@ function codexTurnOptions(host: CodexTurnHost): Record<string, string> {
   const options = Object.fromEntries(
     [...host.options].filter(
       ([key]) =>
-        key !== 'fastMode' && key !== 'serviceTier' && key !== AGENT_CHAT_PERMISSION_MODE_OPTION_ID
+        key !== 'fastMode' &&
+        key !== 'serviceTier' &&
+        key !== 'approvalsReviewer' &&
+        key !== AGENT_CHAT_PERMISSION_MODE_OPTION_ID
     )
   )
   const encodedFastMode = host.options.get('fastMode')
@@ -180,17 +183,30 @@ export async function startCodexTurn(
     return steered
   }
   const permission = codexTurnPermissionOverrides(host)
-  const answer = await host.connection.request(
-    'turn/start',
-    {
-      threadId: host.threadId,
-      clientUserMessageId: input.clientMessageId,
-      input: turnInputFor(input.body),
-      ...codexTurnOptions(host),
-      ...permission?.params
-    },
-    { timeoutMs: input.timeoutMs }
-  )
+  let answer: unknown
+  try {
+    answer = await host.connection.request(
+      'turn/start',
+      {
+        threadId: host.threadId,
+        clientUserMessageId: input.clientMessageId,
+        input: turnInputFor(input.body),
+        ...codexTurnOptions(host),
+        ...permission?.params
+      },
+      { timeoutMs: input.timeoutMs }
+    )
+  } catch (error) {
+    if (
+      permission &&
+      !isCodexAppServerRequestError(error) &&
+      !isCodexAppServerUnsupportedError(error)
+    ) {
+      // A lost reply may follow an applied policy; the next turn must establish it again.
+      delete host.threadPermissionMode
+    }
+    throw error
+  }
   if (permission) {
     host.threadPermissionMode = permission.mode
   }

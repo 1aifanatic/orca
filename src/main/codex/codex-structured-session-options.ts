@@ -18,6 +18,8 @@ import {
   agentChatPermissionModeSupported
 } from '../../shared/agent-chat-permission-mode'
 import {
+  codexChatPermissionOptions,
+  codexPermissionModeOption,
   codexPermissionModePickable,
   codexPermissionModesFor
 } from './codex-structured-permission-mode'
@@ -27,7 +29,7 @@ export function restoredCodexSessionOptions(
   options: Readonly<Record<string, string>> | undefined
 ): Map<string, string> {
   const restored = new Map(
-    Object.entries(options ?? {}).filter(([key, value]) => {
+    Object.entries(codexChatPermissionOptions(options)).filter(([key, value]) => {
       return (
         isCodexTurnOptionKey(key) &&
         (key !== 'fastMode' ||
@@ -168,7 +170,8 @@ export async function applyCodexStructuredSessionOption(
   value: string
 ): Promise<Readonly<Record<string, string>>> {
   try {
-    return applyValidatedCodexStructuredSessionOption(session, key, value)
+    const pick = codexPermissionModeOption(key, value)
+    return applyValidatedCodexStructuredSessionOption(session, pick.key, pick.value)
   } catch (error) {
     throw new AgentSessionOptionRejectedError(error)
   }
@@ -213,6 +216,9 @@ function applyValidatedCodexStructuredSessionOption(
     !codexPermissionModePickable(session, value)
   ) {
     throw new Error(`codex app-server has no permission mode named ${value}`)
+  }
+  if (key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID) {
+    session.options.delete('approvalsReviewer')
   }
   if (key !== 'model' && key !== 'effort' && key !== 'fastMode') {
     session.options.set(key, value)

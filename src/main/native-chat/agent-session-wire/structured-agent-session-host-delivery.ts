@@ -2,6 +2,8 @@
 // messages to a provider child. Bundled because they share one invariant — a conversation open
 // with a message queued has a delivery loop — and the open is where a loop for leftovers wakes.
 
+import { prepareStructuredAgentSessionDispatch } from './structured-agent-session-dispatch-preparation'
+import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { holdClosedStructuredAgentSessionSends } from './structured-agent-session-host-lifetime'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -52,6 +54,7 @@ export function createStructuredAgentSessionConversationDelivery(input: {
   sessions: Map<string, StructuredAgentSessionHostSession>
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   trackStart: <T>(start: Promise<T>) => Promise<T>
+  acquireAborts: StructuredAgentSessionAcquireAborts
   /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
   ensureProviderChild: (
     sessionId: string,
@@ -71,6 +74,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     agents: deps.agents,
     serialize: input.serialize,
     trackStart: input.trackStart,
+    prepareDispatch: (sessionId) =>
+      prepareStructuredAgentSessionDispatch(deps.adapter, input.acquireAborts, sessionId),
     // A child launched for options the chat has since outgrown is replaced before it takes a send.
     ensureProviderChild: async (sessionId, startedFor) => {
       await relaunchOutgrownStructuredAgentSessionChild(
