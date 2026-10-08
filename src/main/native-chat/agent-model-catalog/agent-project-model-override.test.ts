@@ -91,7 +91,11 @@ describe('workspaceMayOverrideDefaultModel', () => {
     ['the model env var', { env: { ANTHROPIC_MODEL: 'claude-sonnet-5' } }],
     ['an alias target', { env: { ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-5' } }],
     ['the effort env var', { env: { CLAUDE_CODE_EFFORT_LEVEL: 'low' } }],
-    ['another provider', { env: { CLAUDE_CODE_USE_BEDROCK: '1' } }]
+    ['another provider', { env: { CLAUDE_CODE_USE_BEDROCK: '1' } }],
+    ['an effort cap', { maxEffortLevel: 'medium' }],
+    ['a main-thread agent', { agent: 'reviewer' }],
+    ['Anthropic on AWS', { env: { CLAUDE_CODE_USE_ANTHROPIC_AWS: '1' } }],
+    ['Anthropic on Google Cloud', { env: { CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD: '1' } }]
   ])('counts Claude project settings that set %s', async (_name, settings) => {
     const worktree = join(root, 'claude-model')
     write(join(worktree, '.git'), 'gitdir: /elsewhere')

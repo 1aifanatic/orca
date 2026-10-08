@@ -13,10 +13,13 @@ function setsAny(table: Record<string, unknown>, keys: readonly string[]): boole
   return keys.some((key) => table[key] !== undefined)
 }
 
-// Claude settings keys that pick the model, its effort, or which models Default may resolve to.
+// Claude settings keys that pick the model, its effort or effort cap, or which models Default may
+// resolve to; `agent` applies that agent's model to the main thread.
 const CLAUDE_MODEL_SETTINGS = [
   'model',
+  'agent',
   'effortLevel',
+  'maxEffortLevel',
   'modelSettings',
   'availableModels',
   'enforceAvailableModels',
@@ -30,7 +33,9 @@ function isClaudeModelEnvKey(key: string): boolean {
     key === 'ANTHROPIC_MODEL' ||
     key === 'CLAUDE_CODE_EFFORT_LEVEL' ||
     /^ANTHROPIC_DEFAULT_([A-Z]+_)?MODEL$/.test(key) ||
-    /^CLAUDE_CODE_USE_(BEDROCK|VERTEX|FOUNDRY|MANTLE|GATEWAY)$/.test(key)
+    /^CLAUDE_CODE_USE_(BEDROCK|VERTEX|FOUNDRY|ANTHROPIC_AWS|ANTHROPIC_GOOGLE_CLOUD|MANTLE|GATEWAY)$/.test(
+      key
+    )
   )
 }
 
