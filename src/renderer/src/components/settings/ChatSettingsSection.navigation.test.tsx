@@ -40,7 +40,7 @@ function NavigationHarness({
     isMac: false,
     isWindows: false,
     isWebClient: false,
-    nativeChatEnabled: enabled,
+    structuredChatsInUse: enabled,
     repos: []
   })
   const pendingNavSectionRef = useRef<string | null>('chat')
@@ -99,7 +99,11 @@ function NavigationHarness({
         updateSettings={vi.fn()}
         writeSourceControlAiSettings={async () => {}}
         searchEntries={[
-          ...getChatUiSearchEntries(),
+          ...getChatUiSearchEntries({
+            isWebClient: false,
+            structuredChatsInUse: enabled,
+            hostQueuesChatMessages: false
+          }),
           ...getChatAppearanceSearchEntries(),
           getChatNamingSearchEntry(),
           getChatInlineVisualsSearchEntry()

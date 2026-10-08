@@ -3,20 +3,26 @@ import { translate } from '@/i18n/i18n'
 import type { SettingsSearchEntry } from './settings-search'
 import { translateSearchKeyword } from './settings-search-keywords'
 
-export type ChatSettingRowId =
-  | 'chat-ui'
-  | 'chat-queue-follow-ups'
-  | 'chat-resume-on-restart'
-  | 'chat-shell-environment'
-
-type ChatSearchEntry = SettingsSearchEntry & { id: ChatSettingRowId }
-
-// Why: these rows configure host-owned structured sessions; a paired web client only writes browser storage.
-const HOST_OWNED_ROW_IDS: ReadonlySet<ChatSettingRowId> = new Set([
+const CHAT_SETTING_ROW_IDS = [
+  'chat-ui',
   'chat-queue-follow-ups',
   'chat-resume-on-restart',
   'chat-shell-environment'
-])
+] as const
+
+export type ChatSettingRowId = (typeof CHAT_SETTING_ROW_IDS)[number]
+
+type ChatSearchEntry = SettingsSearchEntry & { id: ChatSettingRowId }
+
+/** What decides which Chat UI rows exist. The pane renders exactly the rows indexed from it. */
+export type ChatUiRowConditions = {
+  /** The browser client cannot open chats: its host gives it a terminal, so it gets no rows. */
+  isWebClient: boolean
+  /** Chat UI is on, or this machine still holds chats: `useLocalStructuredChatsInUse`. */
+  structuredChatsInUse: boolean
+  /** This machine's runtime holds follow-ups sent mid-turn; without it the switch does nothing. */
+  hostQueuesChatMessages: boolean
+}
 
 const getAllChatUiSearchEntries = createLocalizedCatalog((): ChatSearchEntry[] => [
   {
@@ -75,15 +81,26 @@ const getAllChatUiSearchEntries = createLocalizedCatalog((): ChatSearchEntry[] =
 ])
 
 export function getChatUiSearchEntries({
-  includeHostOwnedRows = true,
-  includeEnabledRows = true
-}: { includeHostOwnedRows?: boolean; includeEnabledRows?: boolean } = {}): ChatSearchEntry[] {
-  const entries = getAllChatUiSearchEntries()
-  return entries.filter(
+  isWebClient,
+  structuredChatsInUse,
+  hostQueuesChatMessages
+}: ChatUiRowConditions): ChatSearchEntry[] {
+  if (isWebClient) {
+    return []
+  }
+  return getAllChatUiSearchEntries().filter(
     (entry) =>
-      (includeEnabledRows || entry.id === 'chat-ui') &&
-      (includeHostOwnedRows || !HOST_OWNED_ROW_IDS.has(entry.id))
+      entry.id === 'chat-ui' ||
+      (structuredChatsInUse && (entry.id !== 'chat-queue-follow-ups' || hostQueuesChatMessages))
   )
+}
+
+/** The Chat UI rows `entries` index; the pane renders only these, so a row cannot lose its entry. */
+export function chatUiRowsIndexedIn(
+  entries: readonly SettingsSearchEntry[]
+): ReadonlySet<ChatSettingRowId> {
+  const indexed = new Set(entries.map((entry) => entry.targetSectionId))
+  return new Set(CHAT_SETTING_ROW_IDS.filter((id) => indexed.has(id)))
 }
 
 export function getChatSearchEntry(id: ChatSettingRowId): ChatSearchEntry {

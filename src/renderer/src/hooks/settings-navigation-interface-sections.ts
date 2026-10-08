@@ -16,8 +16,8 @@ export function buildInterfaceSettingsSections({
   isMac,
   isWindows,
   isWebClient,
-  nativeChatEnabled,
-  holdsStructuredChats,
+  structuredChatsInUse,
+  hostQueuesChatMessages,
   managedBrowserCreationEnabled,
   mobileEmulatorCreationEnabled
 }: SettingsNavigationBuildOptions): SettingsNavSection[] {
@@ -47,10 +47,7 @@ export function buildInterfaceSettingsSections({
       ),
       icon: MessageSquare,
       searchEntries: [
-        ...getChatUiSearchEntries({
-          includeHostOwnedRows: showDesktopOnlySettings,
-          includeEnabledRows: nativeChatEnabled || holdsStructuredChats
-        }),
+        ...getChatUiSearchEntries({ isWebClient, structuredChatsInUse, hostQueuesChatMessages }),
         ...getChatAppearanceSearchEntries(),
         ...(showDesktopOnlySettings
           ? [getChatNamingSearchEntry(), getChatInlineVisualsSearchEntry()]

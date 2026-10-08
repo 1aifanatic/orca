@@ -40,7 +40,7 @@ describe('settings navigation metadata', () => {
         isMac: false,
         isWindows: false,
         isWebClient: false,
-        nativeChatEnabled: enabled,
+        structuredChatsInUse: enabled,
         repos: []
       })
       const chat = sections.find((section) => section.id === 'chat')
@@ -61,7 +61,7 @@ describe('settings navigation metadata', () => {
       isMac: false,
       isWindows: false,
       isWebClient: false,
-      nativeChatEnabled: true,
+      structuredChatsInUse: true,
       repos: []
     })
     const appearanceIndex = sections.findIndex((section) => section.id === 'appearance')
@@ -111,7 +111,8 @@ describe('settings navigation metadata', () => {
       isMac: false,
       isWindows: false,
       isWebClient: false,
-      nativeChatEnabled: true,
+      structuredChatsInUse: true,
+      hostQueuesChatMessages: true,
       repos: [repo]
     })
     const chat = sections.find((section) => section.id === 'chat')
@@ -148,18 +149,30 @@ describe('settings navigation metadata', () => {
     expect(titles).not.toContain('Resume working chats automatically after a restart')
   })
 
-  it('indexes host options with Chat UI off while this machine holds chats', () => {
+  it('indexes host options while chats are in use on this machine', () => {
     const chat = buildSettingsNavigationMetadata({
       isMac: false,
       isWindows: false,
       isWebClient: false,
-      nativeChatEnabled: false,
-      holdsStructuredChats: true,
+      structuredChatsInUse: true,
       repos: [repo]
     }).find((section) => section.id === 'chat')
     expect(chat?.searchEntries.map((entry) => entry.title)).toContain(
       'Resume working chats automatically after a restart'
     )
+  })
+
+  it('leaves Queue follow-ups out of search until this machine queues follow-ups', () => {
+    const chat = buildSettingsNavigationMetadata({
+      isMac: false,
+      isWindows: false,
+      isWebClient: false,
+      structuredChatsInUse: true,
+      repos: [repo]
+    }).find((section) => section.id === 'chat')
+    const titles = chat?.searchEntries.map((entry) => entry.title)
+    expect(titles).toContain('Use your shell environment')
+    expect(titles).not.toContain('Queue follow-ups')
   })
 
   it('adds the Linear capability section right after Orchestration only when connected', () => {
@@ -250,7 +263,8 @@ describe('settings navigation metadata', () => {
       isMac: false,
       isWindows: false,
       isWebClient: true,
-      nativeChatEnabled: true,
+      structuredChatsInUse: true,
+      hostQueuesChatMessages: true,
       repos: [repo]
     })
     const webIds = webSections.map((section) => section.id)
@@ -279,9 +293,9 @@ describe('settings navigation metadata', () => {
     expect(orchestration?.searchEntries.map((entry) => entry.title)).not.toContain(
       'Nested worker depth'
     )
-    // Host-owned structured-chat rows would only write browser storage on web.
+    // The browser opens agents in the host's terminal, so Chat keeps only its appearance rows.
     const chat = webSections.find((section) => section.id === 'chat')
-    expect(chat?.searchEntries.map((entry) => entry.title)).toContain('Chat UI')
+    expect(chat?.searchEntries.map((entry) => entry.title)).not.toContain('Chat UI')
     expect(chat?.searchEntries.map((entry) => entry.title)).toContain('Text size')
     expect(chat?.searchEntries.map((entry) => entry.title)).not.toContain('Default view')
     expect(chat?.searchEntries.map((entry) => entry.title)).not.toContain('Queue follow-ups')

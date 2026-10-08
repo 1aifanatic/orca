@@ -140,7 +140,7 @@ describe('SettingsSidebar', () => {
       isMac: false,
       isWindows: false,
       isWebClient: false,
-      nativeChatEnabled: enabled,
+      structuredChatsInUse: enabled,
       repos: []
     }).filter((section) => section.group === 'interface')
     const container = document.createElement('div')

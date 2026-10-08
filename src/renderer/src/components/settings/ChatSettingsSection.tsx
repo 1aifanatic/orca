@@ -12,7 +12,7 @@ import type { SettingsSearchEntry } from './settings-search'
 import { useAppStore } from '../../store'
 import { Card, CardContent } from '../ui/card'
 import { getChatAppearanceSearchEntries } from './chat-appearance-search'
-import { getChatUiSearchEntries } from './chat-search'
+import { chatUiRowsIndexedIn, getChatSearchEntry } from './chat-search'
 
 export function ChatSettingsSection({
   settings,
@@ -38,6 +38,8 @@ export function ChatSettingsSection({
   const query = useAppStore((state) => state.settingsSearchQuery)
   const title = translate('settings.appearance.chat.title', 'Chat')
   const appearanceTitle = translate('auto.components.settings.Settings.2b4474780a', 'Appearance')
+  // The index decides which Chat UI rows exist, so a row and its search entry cannot drift.
+  const chatUiRows = chatUiRowsIndexedIn(searchEntries)
   return (
     <SettingsSection
       id="chat"
@@ -52,13 +54,14 @@ export function ChatSettingsSection({
     >
       {isMounted ? (
         <div className="space-y-5">
-          {matchesSettingsSearch(query, [{ title }, ...getChatUiSearchEntries()]) ? (
+          {chatUiRows.has('chat-ui') &&
+          matchesSettingsSearch(query, [{ title }, ...[...chatUiRows].map(getChatSearchEntry)]) ? (
             <Card>
               <CardContent>
                 <ChatUiSetting
                   settings={settings}
                   updateSettings={updateSettings}
-                  showHostOwnedRows={showDesktopOnlySettings}
+                  rows={chatUiRows}
                   forceVisibleRows={matchesSettingsSearch(query, [{ title }])}
                 />
               </CardContent>

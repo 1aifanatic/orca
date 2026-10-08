@@ -1,21 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { getChatUiSearchEntries, getChatSearchEntry } from './chat-search'
+import {
+  chatUiRowsIndexedIn,
+  getChatSearchEntry,
+  getChatUiSearchEntries,
+  type ChatUiRowConditions
+} from './chat-search'
 import { matchesSettingsSearch } from './settings-search'
 
+const everyRow: ChatUiRowConditions = {
+  isWebClient: false,
+  structuredChatsInUse: true,
+  hostQueuesChatMessages: true
+}
+
+function rowIds(conditions: Partial<ChatUiRowConditions>): string[] {
+  return getChatUiSearchEntries({ ...everyRow, ...conditions }).map((entry) => entry.id)
+}
+
 describe('Chat UI settings search', () => {
-  it.each(['claude', 'codex'])('matches the built-in structured-agent keyword %s', (query) => {
+  it.each(['claude', 'codex'])('matches the structured-chat agent keyword %s', (query) => {
     expect(matchesSettingsSearch(query, getChatSearchEntry('chat-ui'))).toBe(true)
   })
 
-  it.each(['openclaude', 'grok', 'omp'])(
-    'does not suggest the legacy terminal chat parser for %s',
-    (query) => {
-      expect(matchesSettingsSearch(query, getChatSearchEntry('chat-ui'))).toBe(false)
-    }
-  )
+  it('does not suggest the retired terminal chat parser for openclaude', () => {
+    expect(matchesSettingsSearch('openclaude', getChatSearchEntry('chat-ui'))).toBe(false)
+  })
 
   it('indexes one entry per row, in pane order', () => {
-    expect(getChatUiSearchEntries().map((entry) => entry.id)).toEqual([
+    expect(rowIds({})).toEqual([
       'chat-ui',
       'chat-queue-follow-ups',
       'chat-resume-on-restart',
@@ -24,7 +36,7 @@ describe('Chat UI settings search', () => {
   })
 
   it('finds the child rows by their own copy', () => {
-    const entries = getChatUiSearchEntries()
+    const entries = getChatUiSearchEntries(everyRow)
     expect(matchesSettingsSearch('queue follow-ups', entries)).toBe(true)
     expect(matchesSettingsSearch('restart', entries)).toBe(true)
     expect(matchesSettingsSearch('shell environment', entries)).toBe(true)
@@ -32,20 +44,38 @@ describe('Chat UI settings search', () => {
   })
 
   it('no longer describes Chat UI as experimental', () => {
-    expect(matchesSettingsSearch('experimental', getChatUiSearchEntries())).toBe(false)
+    expect(matchesSettingsSearch('experimental', getChatUiSearchEntries(everyRow))).toBe(false)
     expect(getChatSearchEntry('chat-ui').description).not.toMatch(/preview/i)
   })
 
-  it('drops the host-owned rows for web clients', () => {
-    const entries = getChatUiSearchEntries({ includeHostOwnedRows: false })
-    expect(entries.map((entry) => entry.id)).toEqual(['chat-ui'])
-    expect(matchesSettingsSearch('restart', entries)).toBe(false)
-    expect(matchesSettingsSearch('shell environment', entries)).toBe(false)
+  it('indexes no Chat UI row for the browser client, which cannot open chats', () => {
+    expect(rowIds({ isWebClient: true })).toEqual([])
   })
 
-  it('indexes only the enable switch while Chat UI is off', () => {
-    expect(getChatUiSearchEntries({ includeEnabledRows: false }).map((entry) => entry.id)).toEqual([
-      'chat-ui'
+  it('indexes only the enable switch while no chats are in use on this machine', () => {
+    expect(rowIds({ structuredChatsInUse: false })).toEqual(['chat-ui'])
+  })
+
+  it('indexes queue follow-ups only when this machine queues follow-ups', () => {
+    const entries = getChatUiSearchEntries({ ...everyRow, hostQueuesChatMessages: false })
+    expect(entries.map((entry) => entry.id)).toEqual([
+      'chat-ui',
+      'chat-resume-on-restart',
+      'chat-shell-environment'
     ])
+    expect(matchesSettingsSearch('queue follow-ups', entries)).toBe(false)
+  })
+
+  it('reads back exactly the rows an index lists, ignoring other entries', () => {
+    const entries = [
+      { title: 'Text size', targetSectionId: 'chat-text-size' },
+      ...getChatUiSearchEntries({ ...everyRow, hostQueuesChatMessages: false })
+    ]
+    expect([...chatUiRowsIndexedIn(entries)]).toEqual([
+      'chat-ui',
+      'chat-resume-on-restart',
+      'chat-shell-environment'
+    ])
+    expect(chatUiRowsIndexedIn([]).size).toBe(0)
   })
 })

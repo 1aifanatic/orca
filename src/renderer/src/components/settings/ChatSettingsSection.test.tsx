@@ -33,7 +33,8 @@ beforeEach(() => {
 function renderChat(
   enabled: boolean | undefined,
   showDesktopOnlySettings = true,
-  hasUnsavedChatPromptChanges = false
+  hasUnsavedChatPromptChanges = false,
+  hostQueuesChatMessages = false
 ) {
   const settings = { ...getDefaultSettings('/tmp'), experimentalNativeChat: enabled }
   state.settings = settings
@@ -50,8 +51,9 @@ function renderChat(
         writeSourceControlAiSettings={async () => {}}
         searchEntries={[
           ...getChatUiSearchEntries({
-            includeHostOwnedRows: showDesktopOnlySettings,
-            includeEnabledRows: enabled === true
+            isWebClient: !showDesktopOnlySettings,
+            structuredChatsInUse: enabled === true,
+            hostQueuesChatMessages
           }),
           ...getChatAppearanceSearchEntries(),
           ...(showDesktopOnlySettings
@@ -68,10 +70,11 @@ function renderChat(
 }
 
 describe('Chat settings page', () => {
-  it('keeps Chat appearance on paired web without ineffective host naming controls or search results', () => {
+  it('keeps Chat appearance on paired web without ineffective host controls or search results', () => {
     const { container } = renderChat(true, false)
     expect(screen.getByRole('spinbutton', { name: 'Text size' })).toBeTruthy()
-    expect(screen.getByRole('switch', { name: 'Toggle Chat UI' })).toBeTruthy()
+    expect(container.querySelector('#chat-ui')).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Toggle Chat UI' })).toBeNull()
     expect(
       screen.queryByRole('switch', { name: 'Toggle automatic resume after a restart' })
     ).toBeNull()
@@ -86,10 +89,23 @@ describe('Chat settings page', () => {
     })
     const results = buildCmdJSettingsResults(sections).filter((entry) => entry.sectionId === 'chat')
     expect(results.some((entry) => entry.targetSectionId === 'chat-text-size')).toBe(true)
-    expect(results.some((entry) => entry.targetSectionId === 'chat-ui')).toBe(true)
+    expect(results.some((entry) => entry.targetSectionId?.startsWith('chat-ui'))).toBe(false)
     expect(results.some((entry) => entry.targetSectionId === 'chat-names')).toBe(false)
     expect(results.some((entry) => entry.targetSectionId === 'chat-resume-on-restart')).toBe(false)
     expect(results.some((entry) => entry.targetSectionId === 'chat-inline-visuals')).toBe(false)
+  })
+
+  it('shows Queue follow-ups only when this machine queues follow-ups', () => {
+    const { container, unmount } = renderChat(true)
+    expect(container.querySelector('#chat-queue-follow-ups')).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Toggle queue follow-ups' })).toBeNull()
+    expect(
+      screen.getByRole('switch', { name: 'Toggle automatic resume after a restart' })
+    ).toBeTruthy()
+    unmount()
+
+    renderChat(true, true, false, true)
+    expect(screen.getByRole('switch', { name: 'Toggle queue follow-ups' })).toBeTruthy()
   })
 
   it.each([false, undefined])('keeps Chat and its controls with Chat UI set to %s', (enabled) => {
