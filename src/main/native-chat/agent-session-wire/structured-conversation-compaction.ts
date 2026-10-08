@@ -24,11 +24,11 @@ import {
   type ConversationCommandAcceptance
 } from './structured-agent-session-mutation-plans'
 import {
-  runSendAfterRewindRecovery,
   sendPreparation,
   structuredAgentSessionFailureWordsContext,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
+import { runAfterProviderStart } from './structured-agent-session-provider-start-hold'
 import { STRUCTURED_AGENT_SESSION_START_WAIT_MS } from './structured-agent-session-send-settlement'
 import {
   conversationCommandFailure,
@@ -128,7 +128,7 @@ function acceptStructuredConversationCommand(
   priorRecord: () => AgentSessionConversationCommandResult | null
 ): Promise<AgentSessionMutationResult<ConversationCommandAcceptance>> {
   const plan = conversationCommandPlan({ envelope: params.envelope, priorRecord })
-  return runSendAfterRewindRecovery(context, params.envelope.sessionId, () =>
+  return runAfterProviderStart(context, params.envelope.sessionId, () =>
     acceptUnderSerialize(context, caller, params, plan)
   )
 }

@@ -8,7 +8,6 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   refuse,
   type AgentSessionMutationEnvelope,
-  type AgentSessionMutationResult,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../shared/tui-agent-display-names'
@@ -27,10 +26,7 @@ import {
 import { agentSessionOperationOutcomeUnknown } from './structured-agent-session-replay-outcome'
 import { rewindRefusal } from './structured-rewind-refusal'
 import { recoverStructuredRewind } from './structured-rewind-recovery'
-import {
-  refuseWhileProviderStarting,
-  runAfterProviderStart
-} from './structured-agent-session-provider-start-hold'
+import { refuseWhileProviderStarting } from './structured-agent-session-provider-start-hold'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import { conversationCommandInFlight } from './structured-conversation-command-admission'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
@@ -120,13 +116,17 @@ export function openForProviderWrite(
 }
 
 /** For an operation only the provider can perform: the conversation, then its agent, proven
- *  started; the caller waits out a start under way (`runAfterProviderStart`). */
+ *  started; the caller waits out a start under way (`runAfterProviderStart`). `refuseAtRest`
+ *  answers what needs no agent before one is started for it. */
 export function openWithAgent(
   context: Pick<
     StructuredAgentSessionMutationContext,
     'openConversation' | 'ensureAgent' | 'deps' | 'sessions'
   >,
-  envelope: AgentSessionMutationEnvelope
+  envelope: AgentSessionMutationEnvelope,
+  refuseAtRest?: (
+    record: AgentSessionRecord | null
+  ) => AgentSessionMutationSessionPreparation | null
 ): () => Promise<AgentSessionMutationSessionPreparation> {
   return async () => {
     const opened = await openConversationForWrite(
@@ -136,6 +136,10 @@ export function openWithAgent(
     )
     if (!opened.ok) {
       return opened
+    }
+    const refused = refuseAtRest?.(context.deps.store.getRecord(envelope.sessionId))
+    if (refused) {
+      return refused
     }
     const ensured = await context.ensureAgent(envelope.sessionId)
     return ensured.ok
@@ -223,19 +227,6 @@ export function sendPreparation(
       ? rewindRefusal('outcome-unknown')
       : ensured
   }
-}
-
-/** A send, `/clear` or `/compact` waits out a start only to settle a rewind in doubt; any other
- *  keeps its single step in the session's queue. */
-export function runSendAfterRewindRecovery<T>(
-  context: Parameters<typeof runAfterProviderStart>[0] &
-    Pick<StructuredAgentSessionMutationContext, 'deps'>,
-  sessionId: string,
-  run: () => Promise<AgentSessionMutationResult<T>>
-): Promise<AgentSessionMutationResult<T>> {
-  return rewindInDoubt(context.deps.store.getRecord(sessionId))
-    ? runAfterProviderStart(context, sessionId, run)
-    : run()
 }
 
 /** Who a failure sentence names: the chat's agent, when the record says; and, given the journal,

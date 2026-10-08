@@ -70,10 +70,38 @@ export function indexProviderChild(
   session: ChildBearer,
   child: StructuredAgentSessionProviderChild
 ): void {
-  if (session.child && session.child !== child) {
-    settleStartWait(session.child, 'ended')
+  const previous = session.child
+  if (previous && previous !== child) {
+    if (sameProviderChild(previous, child)) {
+      carryStartWait(previous, child)
+    } else {
+      settleStartWait(previous, 'ended')
+    }
   }
   session.child = child
+}
+
+/** A re-attach rebuilds the same child (a second window, a phone, a reconnect): its start is still
+ *  the one waited on. */
+function carryStartWait(
+  from: StructuredAgentSessionProviderChild,
+  to: StructuredAgentSessionProviderChild
+): void {
+  const wait = startWaits.get(from)
+  startWaits.delete(from)
+  if (!wait) {
+    return
+  }
+  if (to.phase !== 'starting') {
+    wait.resolve('ready')
+    return
+  }
+  const existing = startWaits.get(to)
+  if (existing) {
+    void existing.promise.then(wait.resolve)
+  } else {
+    startWaits.set(to, wait)
+  }
 }
 
 export function markProviderChildStarted(

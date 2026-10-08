@@ -9,10 +9,8 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
-import {
-  runSendAfterRewindRecovery,
-  sendPreparation
-} from './structured-agent-session-send-preparation'
+import { sendPreparation } from './structured-agent-session-send-preparation'
+import { runAfterProviderStart } from './structured-agent-session-provider-start-hold'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
 import {
   committedClearOfCaller,
@@ -93,7 +91,7 @@ export function runStructuredConversationCommand(
   params: ConversationCommandParams
 ): Promise<AgentSessionMutationResult<AgentSessionConversationCommandResult>> {
   // A rewind in doubt is recovered by a proven start, which the clear waits out.
-  return runSendAfterRewindRecovery(context, params.envelope.sessionId, () =>
+  return runAfterProviderStart(context, params.envelope.sessionId, () =>
     clearUnderSerialize(context, caller, params)
   )
 }

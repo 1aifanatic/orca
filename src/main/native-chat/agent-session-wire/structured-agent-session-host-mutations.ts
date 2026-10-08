@@ -19,7 +19,7 @@ import type {
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
-import { threadGoalPlan } from './structured-agent-session-thread-goal'
+import { refuseThreadGoalUnsupported, threadGoalPlan } from './structured-agent-session-thread-goal'
 import {
   mutateStructuredAgentSession,
   type StructuredAgentSessionMutationContext
@@ -27,7 +27,6 @@ import {
 import {
   openForProviderWrite,
   openWithAgent,
-  runSendAfterRewindRecovery,
   sendPreparation,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
@@ -73,7 +72,7 @@ export function sendStructuredAgentSessionTurn(
   arrival?: Parameters<typeof sendPreparation>[2]
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
   const plan = sendPlan(params)
-  return runSendAfterRewindRecovery(context, params.envelope.sessionId, () =>
+  return runAfterProviderStart(context, params.envelope.sessionId, () =>
     mutateStructuredAgentSession(
       context,
       caller,
@@ -227,7 +226,10 @@ export function changeStructuredAgentSessionThreadGoal(
       caller,
       params.envelope,
       threadGoalPlan(params),
-      openWithAgent(context, params.envelope)
+      // An agent without goals answers so at once, with no start to wait out.
+      openWithAgent(context, params.envelope, (record) =>
+        refuseThreadGoalUnsupported(context.deps.adapter, context.deps.agents, record?.provider)
+      )
     )
   )
 }
