@@ -12,11 +12,9 @@ import { createTables } from './schema/create-tables'
 import { migrate } from './schema/migrate'
 import { backfillStructuredWorkerOrcaSessionIds } from './schema/structured-worker-orca-session-backfill'
 import { reconcileSettledWorkerDispatches } from './worker-dispatch/worker-dispatch-settlement'
-import { startMutationReceiptMaintenance } from '../mutation-receipt-maintenance'
 
 class OrchestrationDbCore {
   db: Database.Database
-  private readonly stopReceiptMaintenance: () => void
 
   // Why: the orchestration DB is created lazily for ALL users, but only the
   // small minority who dispatch work ever have dispatch_contexts rows. The
@@ -41,11 +39,9 @@ class OrchestrationDbCore {
     createCoordinatorMailRoutingTrigger.call(this as unknown as OrchestrationDb)
     rememberCurrentRunCoordinatorHandles.call(this as unknown as OrchestrationDb)
     hardenOrchestrationDatabaseFiles(dbPath)
-    this.stopReceiptMaintenance = startMutationReceiptMaintenance(this.db)
   }
 
   close(): void {
-    this.stopReceiptMaintenance()
     this.db.close()
   }
 }

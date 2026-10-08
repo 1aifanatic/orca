@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import Database from '../../sqlite/sync-database'
 import { OrchestrationDb } from './db'
 import { SCHEMA_VERSION } from './db/contract-constants'
+import { MUTATION_RECEIPT_PRUNE_RULES } from './mutation-receipt-maintenance'
 
 const PREVIOUS_RECEIPT_LIMIT = 10_000
 
@@ -56,33 +57,22 @@ describe('mutation receipt capacity schema', () => {
     }
   })
 
-  it('uses the completed receipt index for age and capacity pruning', () => {
+  it('serves every maintenance statement from a receipt index without a sort', () => {
     db = new OrchestrationDb(':memory:')
     const sqlite = sqliteFor(db)
     insertReceipts(sqlite, 10, 'completed')
 
-    const agePlan = sqlite
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         DELETE FROM mutation_receipts
-         WHERE state = 'completed'
-           AND updated_at < datetime('now', ?)`
-      )
-      .all('-30 days') as { detail: string }[]
-    const capacityPlan = sqlite
-      .prepare(
-        `EXPLAIN QUERY PLAN
-         SELECT rowid FROM mutation_receipts
-         WHERE state = 'completed'
-         ORDER BY updated_at ASC, rowid ASC
-         LIMIT ?`
-      )
-      .all(64) as { detail: string }[]
-    const details = [...agePlan, ...capacityPlan].map((row) => row.detail).join('\n')
+    for (const rule of MUTATION_RECEIPT_PRUNE_RULES) {
+      const details = sqlite
+        .prepare(`EXPLAIN QUERY PLAN ${rule.sql}`)
+        .all(...rule.params, 256)
+        .map((row) => String(row.detail))
+        .join('\n')
 
-    expect(details).toContain('idx_mutation_receipts_completed_updated')
-    expect(details).not.toContain('USE TEMP B-TREE')
-    expect(details).not.toMatch(/SCAN mutation_receipts(?:\n|$)/)
+      expect(details).toMatch(/idx_mutation_receipts_(completed|pending)_updated/)
+      expect(details).not.toContain('USE TEMP B-TREE')
+      expect(details).not.toMatch(/SCAN mutation_receipts(?:\n|$)/)
+    }
   })
 
   it('migrates a populated v25 database and tracks writes from older connections', () => {

@@ -1,7 +1,8 @@
 import type Database from '../../sqlite/sync-database'
 
 export function migrateMutationReceiptCapacity(db: Database.Database): void {
-  // Why: database triggers keep the count exact for concurrent connections and older binaries.
+  // Why: nothing here reads the count; older binaries' acceptance gate does and refuses every command
+  // without it. Drop the table and triggers once downgrading below this release is unsupported.
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_mutation_receipts_completed_updated
       ON mutation_receipts(updated_at) WHERE state = 'completed';
