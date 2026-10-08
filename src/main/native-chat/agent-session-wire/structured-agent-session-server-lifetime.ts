@@ -7,6 +7,7 @@ import { renderJournalState } from '../agent-session-journal/journal-reducer'
 import type { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { structuredAgentSessionOwesWork } from './structured-agent-session-owed-work'
+import { isProvenDeadProbe } from '../../../shared/agent-session-lease-adjudication'
 
 export const STRUCTURED_AGENT_SESSION_UNANSWERED_PROMPT_MAX_AGE_MS = 24 * 60 * 60_000
 
@@ -20,7 +21,11 @@ export function createStructuredAgentSessionServerLifetime(input: {
   const read = (): number | null => {
     const deps = input.context().deps
     try {
-      if (deps.store.readOnly || deps.journalDatabase.readOnly) {
+      if (
+        deps.store.readOnly ||
+        deps.journalDatabase.readOnly ||
+        deps.store.listHeldSessionIds().some((id) => deps.store.isSessionUnreadable(id))
+      ) {
         return null
       }
       let count = 0
@@ -66,10 +71,24 @@ export function createStructuredAgentSessionServerLifetime(input: {
       try {
         const context = input.context()
         for (const { sessionId, lease } of context.deps.store.listRecords()) {
-          if (!context.sessions.get(sessionId)?.child && lease.handoffStage === 'recovering') {
+          if (!context.sessions.get(sessionId)?.child && lease.claimStatus !== 'released') {
             await input.tasks.serialize(sessionId, async () => {
-              if (!input.context().sessions.get(sessionId)?.child) {
-                await input.context().runtimeState.resolveRecovery(sessionId)
+              const current = input.context()
+              const record = current.deps.store.getRecord(sessionId)
+              if (!record || current.sessions.get(sessionId)?.child) {
+                return
+              }
+              const probe = await current.runtimeState.probeRecord(record)
+              if (
+                isProvenDeadProbe(probe) ||
+                (record.lease.ownerProcess === null && probe.outcome === 'reservation-unused')
+              ) {
+                await current.deps.store.evictProvenDeadOwner({
+                  sessionId,
+                  expectedFence: record.lease.runtimeFence,
+                  probe,
+                  now: current.now()
+                })
               }
             })
           }
@@ -89,7 +108,6 @@ export function createStructuredAgentSessionServerLifetime(input: {
         const now = input.context().deps.now?.() ?? Date.now()
         return (
           session?.child != null &&
-          session.child.close === undefined &&
           session.journal
             .snapshot()
             .items.some(

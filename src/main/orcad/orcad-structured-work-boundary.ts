@@ -11,7 +11,7 @@ export async function prepareOrcadStructuredWorkBoundary(runtime: {
     await runtime.ensureStructuredAgentSessionHost()
     const host = getStructuredAgentSessionHost()
     await host?.reconcileRestartLeases()
-    await host?.restoreReadableSessions()
+    await host?.serverRetirement.observe()
   } catch (error) {
     console.error('[orcad] structured work is unverifiable:', error)
   }

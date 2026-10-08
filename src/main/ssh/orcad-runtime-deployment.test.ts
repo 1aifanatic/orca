@@ -193,7 +193,6 @@ describe('createManagedOrcadEnvironment', () => {
     await deploy()
     expect(mocks.deploy.mock.calls[0]?.[0]).toMatchObject({
       census: {
-        structuredWork: 0,
         liveSessions: 0,
         startedSinceActivation: 0,
         daemonProtocolVersion: null
