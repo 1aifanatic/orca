@@ -156,8 +156,7 @@ describe('the notice for every failure and write', () => {
     }
   })
 
-  // The control that sent the write is how to try again; only the phone's composer has none.
-  it('says how to try again only to update Orca, or on the phone where a resend can work', () => {
+  it('says how to try again only where that can help', () => {
     for (const { failure, write, parts, english, cell } of cells) {
       const phoneResend = write === 'composer-send' && RESEND_CAN_WORK.has(codeOf(failure))
       expect(parts.includes('tryAgainComposerSend'), cell).toBe(phoneResend)
@@ -165,10 +164,15 @@ describe('the notice for every failure and write', () => {
         phoneResend || codeOf(failure) === 'structured_agent_session_unsupported'
       )
     }
-    for (const reason of [null, DISPATCH_REJECTED_WRITE_FAILED, DISPATCH_REJECTED_QUEUE_FULL]) {
-      expect(
-        agentSessionWriteNoticeEnglish(structuredAgentSessionRejectionParts(reason, 'send'))
-      ).not.toMatch(/again/i)
+    for (const [reason, canSendAgain] of [
+      [null, false],
+      [DISPATCH_REJECTED_WRITE_FAILED, true],
+      [DISPATCH_REJECTED_QUEUE_FULL, false]
+    ] as const) {
+      const english = agentSessionWriteNoticeEnglish(
+        structuredAgentSessionRejectionParts(reason, 'send')
+      )
+      expect(/again/i.test(english)).toBe(canSendAgain)
     }
   })
 
