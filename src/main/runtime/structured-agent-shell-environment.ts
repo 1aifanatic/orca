@@ -1,4 +1,5 @@
 import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
+import { mergePersistedWindowsPathAsync } from '../pty/windows-environment-path'
 import {
   nativeChatShellEnvironmentPolicy,
   type NativeChatShellEnvironmentPolicy
@@ -81,10 +82,17 @@ export type StructuredAgentEnvironmentSources = {
   resolveCodexOverrides?: () => NodeJS.ProcessEnv
 }
 
+async function captureHostShellEnvironment(): Promise<NodeJS.ProcessEnv> {
+  if (process.platform !== 'win32') {
+    return resolveLoginShellEnvironment({ force: true })
+  }
+  const env = { ...process.env }
+  await mergePersistedWindowsPathAsync(env, { forceRefresh: true })
+  return resolveLoginShellEnvironment({ force: true, env })
+}
+
 /**
- * Both providers' child envs over one login-shell snapshot, taken once at install.
- * The policy and overlays are re-read per acquisition, so a settings change reaches
- * the next chat without a restart.
+ * Refresh on acquisition so a host-side CLI install reaches the next chat.
  */
 export function createStructuredAgentEnvironmentResolvers(
   sources: StructuredAgentEnvironmentSources
@@ -94,10 +102,18 @@ export function createStructuredAgentEnvironmentResolvers(
   /** The shared base every agent's child env starts from, before its own overlay. */
   resolveBaseEnvironment: () => Promise<Record<string, string>>
 } {
-  const shellEnvironment = (sources.resolveEnvironment ?? resolveLoginShellEnvironment)()
+  let pendingEnvironment: Promise<NodeJS.ProcessEnv> | null = null
+  const resolveEnvironment = sources.resolveEnvironment ?? captureHostShellEnvironment
+  const resolveShellEnvironment = (): Promise<NodeJS.ProcessEnv> => {
+    // Concurrent probes share a capture; a settled capture never survives the next acquisition.
+    pendingEnvironment ??= resolveEnvironment().finally(() => {
+      pendingEnvironment = null
+    })
+    return pendingEnvironment
+  }
   const resolveBase = async (): Promise<Record<string, string>> =>
     structuredAgentBaseEnvironment({
-      shellEnv: await shellEnvironment,
+      shellEnv: await resolveShellEnvironment(),
       policy: sources.resolveShellEnvironmentPolicy?.() ?? nativeChatShellEnvironmentPolicy(null)
     })
   return {
