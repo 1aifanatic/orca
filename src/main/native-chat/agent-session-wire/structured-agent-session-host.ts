@@ -104,8 +104,11 @@ export class StructuredAgentSessionHost {
       (sessionId) => this.lifetime.conversation(sessionId),
       this.clientDelivery.readChildWork
     )
-    this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, this.sessions, (id, e) =>
-      this.eventRecovery.recoverAfterSinkFailure(id, e)
+    this.runtimeState = new StructuredAgentSessionHostRuntimeState(
+      deps,
+      this.sessions,
+      (id, e) => this.eventRecovery.recoverAfterSinkFailure(id, e),
+      (expired) => this.lifetime.expireStartup(expired)
     )
     this.reconcileLeases = createRestartReconciler({
       store: deps.store,

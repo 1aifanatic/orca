@@ -1,10 +1,11 @@
 // The host's half of a provider child proving its start.
 //
 // A publish-first acquire hands the host a child that has answered nothing yet, so the record
-// keeps only the saved options the reservation carried. This is where the host learns the start
-// landed, flips the session to `ready`, and persists what the child now reports as fact through
-// the same record write a user's option change takes. Bookkeeping never gates the user: a failed
-// write is reported and the session stays usable.
+// keeps only the saved options the reservation carried, and the delivery loop hands it nothing.
+// This is where the host learns the start landed: the child turns `ready`, its startup attempt
+// ends, the loop wakes to hand over what was queued meanwhile, and what the child now reports is
+// persisted as fact through the same record write a user's option change takes. Bookkeeping never
+// gates the user: a failed write is reported, and delivery has already been woken.
 //
 // This runs under the session's own serialized step, which its close and sends wait on, so it
 // asks the provider nothing: the event carries what the child proved.
@@ -20,6 +21,7 @@ import type {
 } from './structured-agent-session-host-types'
 import { nativeSessionOptionsFromReport } from './structured-agent-session-option-restoration'
 import { markProviderChildStarted } from './structured-agent-session-provider-child'
+import type { StructuredAgentSessionStartupAttempts } from './structured-agent-session-startup-attempt'
 
 export type StructuredAgentSessionProviderStartedContext = {
   deps: StructuredAgentSessionHostDeps
@@ -27,6 +29,9 @@ export type StructuredAgentSessionProviderStartedContext = {
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
   publishStatus?: (sessionId: string) => void
+  runtimeState: { startupAttempts: Pick<StructuredAgentSessionStartupAttempts, 'ready'> }
+  /** The barrier lifts: what was accepted while the child started is handed over now. */
+  wakeDelivery: (sessionId: string) => void
 }
 
 export function settleStructuredAgentSessionProviderStarted(
@@ -36,15 +41,13 @@ export function settleStructuredAgentSessionProviderStarted(
   // Serialized behind the attach that published this child, so the lease it proved is committed.
   return context.serialize(event.sessionId, async () => {
     const session = context.sessions.get(event.sessionId)
-    if (
-      !session ||
-      !markProviderChildStarted(session, {
-        generation: event.acquisitionGeneration,
-        fence: event.fence
-      })
-    ) {
+    const child = { generation: event.acquisitionGeneration, fence: event.fence }
+    // A stale child's proof starts nothing: the barrier stays on the child the host holds.
+    if (!session || !markProviderChildStarted(session, child)) {
       return
     }
+    context.runtimeState.startupAttempts.ready(event.sessionId, child)
+    context.wakeDelivery(event.sessionId)
     try {
       await persistStartedOptions(context, event)
     } catch (error) {

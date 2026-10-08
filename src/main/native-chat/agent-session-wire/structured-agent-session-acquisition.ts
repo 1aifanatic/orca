@@ -13,6 +13,7 @@ import { journalIdentityFor } from './structured-agent-session-attach'
 import type { AttachFlowInput } from './structured-agent-session-attach-flow'
 import { readNativeSessionOptions } from './structured-agent-session-option-restoration'
 import { withAgentSessionCreatePhase } from '../../observability/agent-session-instrumentation'
+import { mintStructuredAgentSessionStartupAttempt } from './structured-agent-session-startup-attempt'
 
 /** The same process, whatever Orca runtime the store stamped on its record (`runtime`): that stamp
  *  is about who holds the process, not which process it is. */
@@ -48,15 +49,21 @@ export async function acquireOwner(
     } catch (error) {
       throw new AgentSessionPreSpawnError(error)
     }
-    const acquired = await input.adapter.acquire({
+    // Minted before the adapter runs anything, so the deadline bounds the whole start.
+    const attempt = mintStructuredAgentSessionStartupAttempt({
+      record,
       identity: journalIdentityFor(record, input.params),
-      fence,
       // Retries must recover the original reservation, not mint a second child.
       spawnToken,
-      ...(record.options ? { options: record.options } : {}),
       ...(input.eventSink ? { events: input.eventSink } : {}),
-      ...(input.recordPhase ? { recordPhase: input.recordPhase } : {}),
       ...(input.acquireSignal ? { signal: input.acquireSignal } : {}),
+      now: input.now(),
+      ...(input.startupDeadlineMs === undefined ? {} : { deadlineMs: input.startupDeadlineMs })
+    })
+    input.onStartupAttempt?.(attempt)
+    const acquired = await input.adapter.acquire({
+      ...attempt,
+      ...(input.recordPhase ? { recordPhase: input.recordPhase } : {}),
       onSpawned: async (process) => {
         record = await input.store.commitProcessIdentity({
           sessionId: record.sessionId,

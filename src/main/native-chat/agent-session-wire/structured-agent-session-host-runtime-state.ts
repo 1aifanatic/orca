@@ -13,10 +13,16 @@ import {
   type ProviderChildSessions
 } from './structured-agent-session-provider-child'
 import { resolveStructuredSessionRecovery } from './structured-agent-session-recovery-resolution'
+import {
+  StructuredAgentSessionStartupAttempts,
+  StructuredAgentSessionStartupExpiredError,
+  type StructuredAgentSessionExpiredStartup
+} from './structured-agent-session-startup-attempt'
 
 export class StructuredAgentSessionHostRuntimeState {
   private readonly eventSinks = new Map<string, DeferredStructuredAgentSessionEventSink>()
   readonly acquireAborts = new StructuredAgentSessionAcquireAborts()
+  readonly startupAttempts: StructuredAgentSessionStartupAttempts
   private readonly leaseRenewer: StructuredAgentSessionLeaseRenewer
   private readonly onEventSinkFailure?: (sessionId: string, error: unknown) => void
 
@@ -24,9 +30,24 @@ export class StructuredAgentSessionHostRuntimeState {
     private readonly deps: StructuredAgentSessionHostDeps,
     /** Required: a child held here renews its lease without a PID probe. */
     sessions: ProviderChildSessions,
-    onEventSinkFailure?: (sessionId: string, error: unknown) => void
+    onEventSinkFailure?: (sessionId: string, error: unknown) => void,
+    /** A published child's start ran past its deadline; one still acquiring is aborted here. */
+    onStartupExpired?: (expired: StructuredAgentSessionExpiredStartup) => void
   ) {
     this.onEventSinkFailure = onEventSinkFailure
+    this.startupAttempts = new StructuredAgentSessionStartupAttempts({
+      now: () => deps.now?.() ?? Date.now(),
+      expire: (expired) => {
+        if (expired.child === null) {
+          this.acquireAborts.abort(
+            expired.sessionId,
+            new StructuredAgentSessionStartupExpiredError()
+          )
+          return
+        }
+        onStartupExpired?.(expired)
+      }
+    })
     this.leaseRenewer = new StructuredAgentSessionLeaseRenewer({
       store: deps.store,
       probe: (record) => this.probeRecord(record),

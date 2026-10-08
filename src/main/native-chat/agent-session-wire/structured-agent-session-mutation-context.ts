@@ -71,7 +71,6 @@ export function mutateStructuredAgentSession<TValue>(
       journal: () => context.sessions.get(envelope.sessionId)?.journal,
       prepareSession,
       publish: (journal) => context.publish(envelope.sessionId, journal),
-      providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
       now: () => context.now()
     })
   )

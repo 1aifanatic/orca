@@ -141,6 +141,8 @@ export type StructuredAgentSessionHostDeps = {
   now?: () => number
   /** The idle sweep's period and window. Tests drive these; production takes the defaults. */
   idleSweep?: { intervalMs?: number; idleMs?: number }
+  /** How long a start may take to prove itself. Tests drive this; production takes the default. */
+  startupDeadlineMs?: number
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
   /** A chat tab left the screen: closed, or its workspace removed. Advisory; a throw is logged. */

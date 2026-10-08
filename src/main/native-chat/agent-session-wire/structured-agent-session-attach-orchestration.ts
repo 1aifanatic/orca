@@ -37,6 +37,10 @@ import {
 import type { DeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
+  isStructuredAgentSessionStartupExpired,
+  type StructuredAgentSessionStartupAttempt
+} from './structured-agent-session-startup-attempt'
+import {
   addAgentSessionCreatePhaseAttributes,
   withAgentSessionCreatePhase,
   withAgentSessionSpan,
@@ -51,6 +55,8 @@ export type StructuredAgentSessionAttachOptions = {
   startedFor?: string
   /** A close, an admitted Stop or quit aborted this attach: its refusal is that abort's. */
   onAborted?: () => void
+  /** The start's deadline aborted this attach's acquire: it failed, nobody stopped it. */
+  onStartupExpired?: () => void
 }
 
 /**
@@ -114,7 +120,9 @@ async function runAttach(
     return await runAttachUnderAbort(context, callerKey, params, options, acquire.signal)
   } finally {
     acquire.end()
-    if (acquire.signal.aborted) {
+    if (isStructuredAgentSessionStartupExpired(acquire.signal.reason)) {
+      options.onStartupExpired?.()
+    } else if (acquire.signal.aborted) {
       options.onAborted?.()
     }
   }
@@ -161,10 +169,12 @@ async function runAttachUnderAbort(
   // attach makes the child and its sink the session's; any other exit closes the sink with
   // whatever the child queued, and leaves the conversation's child as it was.
   const attemptSink = context.runtimeState.mintEventSink(sessionId)
-  const attempt: { candidate: AttachCandidate | null; committed: boolean } = {
-    candidate: null,
-    committed: false
-  }
+  const attempt: {
+    candidate: AttachCandidate | null
+    committed: boolean
+    startup: StructuredAgentSessionStartupAttempt | null
+  } = { candidate: null, committed: false, startup: null }
+  const { startupAttempts } = context.runtimeState
   try {
     const attached = await performAttach({
       store: context.deps.store,
@@ -193,6 +203,13 @@ async function runAttachUnderAbort(
       now: () => context.now(),
       recordPhase,
       acquireSignal,
+      ...(context.deps.startupDeadlineMs === undefined
+        ? {}
+        : { startupDeadlineMs: context.deps.startupDeadlineMs }),
+      onStartupAttempt: (startup) => {
+        attempt.startup = startup
+        startupAttempts.track(sessionId, startup)
+      },
       ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
       openConversation: async (record) => {
         const conversation = await context.openConversation(record.sessionId, {
@@ -259,12 +276,18 @@ async function runAttachUnderAbort(
       context.runtimeState.adoptEventSink(sessionId, candidate.sink)
       attempt.committed = candidate.sink === attemptSink
       indexProviderChild(conversation, candidate.child)
+      if (attempt.startup) {
+        startupAttempts.published(sessionId, attempt.startup.attemptId, candidate.child)
+      }
       context.publishStatus?.(sessionId)
     }
     return stampFailedCreateOwnerVerdict(context.deps.store, callerKey, params.envelope, attached)
   } finally {
     if (!attempt.committed) {
       attemptSink.close()
+      if (attempt.startup) {
+        startupAttempts.abandon(sessionId, attempt.startup.attemptId)
+      }
     }
   }
 }
