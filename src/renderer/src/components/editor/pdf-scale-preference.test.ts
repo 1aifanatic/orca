@@ -60,7 +60,8 @@ describe('zoomPdfViewerWithWheel', () => {
         scrollLeft: 100,
         scrollTop: 400,
         getBoundingClientRect: () => ({ left: 200, top: 50 })
-      }
+      },
+      update: vi.fn()
     }
   }
 
@@ -82,6 +83,8 @@ describe('zoomPdfViewerWithWheel', () => {
     // Pointer sits 100px right of and 200px below the container's top-left.
     expect(viewer.container.scrollLeft).toBeCloseTo(100 + 100 * growth)
     expect(viewer.container.scrollTop).toBeCloseTo(400 + 200 * growth)
+    // The next same-frame event must anchor to this scroll position.
+    expect(viewer.update).toHaveBeenCalledOnce()
   })
 
   it('accumulates slow trackpad pinches instead of rounding them away', () => {
@@ -98,5 +101,6 @@ describe('zoomPdfViewerWithWheel', () => {
     expect(zoomPdfViewerWithWheel(viewer, event, BOUNDS)).toBeNull()
     expect(event.preventDefault).toHaveBeenCalled()
     expect(viewer.container.scrollLeft).toBe(100)
+    expect(viewer.update).not.toHaveBeenCalled()
   })
 })

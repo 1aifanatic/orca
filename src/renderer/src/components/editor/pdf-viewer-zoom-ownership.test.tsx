@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import PdfViewer from './PdfViewer'
 import { EditorCommandOwnerContext } from './editor-command-owner-context'
 import { requestPdfZoom } from './pdf-zoom-request'
+import { readPdfScalePreference } from './pdf-scale-preference-storage'
 
 type PdfDocumentFixture = { name: string }
 
@@ -57,10 +58,14 @@ describe('PdfViewer app zoom ownership', () => {
 
     expect(claimed).toBe(true)
     expect(viewers[0].currentScale).toBe(1.25)
+    expect(readPdfScalePreference('report')).toBe(1.25)
+
+    viewers[0].currentScaleValue = '1.25'
     act(() => {
       requestPdfZoom('reset')
     })
     expect(viewers[0].currentScaleValue).toBe('page-width')
+    expect(readPdfScalePreference('report')).toBe('page-width')
   })
 
   it('leaves zoom to the focused pane when this PDF is in an unfocused split or hidden worktree', () => {

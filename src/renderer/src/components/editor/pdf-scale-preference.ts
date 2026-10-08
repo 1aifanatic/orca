@@ -46,6 +46,7 @@ export function zoomPdfViewerWithWheel(
       scrollTop: number
       getBoundingClientRect: () => { left: number; top: number }
     }
+    update: () => void
   },
   event: PdfWheelZoomEvent,
   bounds: { min: number; max: number }
@@ -71,5 +72,7 @@ export function zoomPdfViewerWithWheel(
   const growth = next / previous - 1
   container.scrollLeft += (event.clientX - rect.left) * growth
   container.scrollTop += (event.clientY - rect.top) * growth
+  // Why: pdf.js re-reads its location on the next frame; a faster pinch event would anchor to the old one.
+  viewer.update()
   return next
 }
