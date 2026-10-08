@@ -60,7 +60,7 @@ async function crashWithSends(count: number) {
     throw new Error(attached.refusal.message)
   }
   rig.adapter.dispatch.mockResolvedValue({ state: 'admitted' })
-  const sends = []
+  const sends: ReturnType<typeof restTestSend>[] = []
   for (let index = 0; index < count; index += 1) {
     const send = restTestSend(`message ${index}`, attached.fence)
     expect(await rig.host.send(CALLER, send)).toMatchObject({ ok: true })
