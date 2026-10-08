@@ -12375,6 +12375,7 @@
           },
           "loadFailed": "Orca no pudo cargar los hosts SSH ni los movimientos sin terminar. Vuelve a abrir Ajustes e inténtalo de nuevo.",
           "outcome": {
+            "activeServer": "No se hizo: elige otro Servidor activo en Avanzado antes de detener este servidor.",
             "live": "No se hizo: los terminales de este servidor siguen en ejecución. Ciérralos e inténtalo de nuevo.",
             "unverifiable": "No se hizo: Orca no pudo confirmar qué se ejecuta en este servidor. Inténtalo de nuevo cuando el host esté disponible.",
             "migration": "No se hizo: un movimiento a este servidor quedó sin terminar. Reanúdalo primero.",
