@@ -193,6 +193,34 @@ describe('mergeRendererPresentationSave', () => {
     expect(saved.unifiedTabs).toEqual(prior.unifiedTabs)
   })
 
+  it("keeps main's scrollback for a pane the window has not attached yet", () => {
+    const prior = mainSession()
+    prior.terminalLayoutsByTabId.tab = {
+      ...splitLayout,
+      scrollbackRefsByLeafId: { [LEFT]: 'ref-left', [RIGHT]: 'ref-right' },
+      buffersByLeafId: { [LEFT]: 'left-buffer' }
+    }
+    // A snapshot from before the left pane respawned; the right one is attached and saves its own.
+    const window: WorkspaceSessionState = {
+      ...prior,
+      terminalLayoutsByTabId: {
+        tab: {
+          ...splitLayout,
+          ptyIdsByLeafId: { [RIGHT]: 'pty-right' },
+          buffersByLeafId: { [RIGHT]: 'right-buffer' }
+        }
+      }
+    }
+
+    const saved = mergeRendererPresentationSave(window, prior, 'local')
+
+    expect(saved.terminalLayoutsByTabId.tab).toEqual({
+      ...splitLayout,
+      scrollbackRefsByLeafId: { [LEFT]: 'ref-left' },
+      buffersByLeafId: { [LEFT]: 'left-buffer', [RIGHT]: 'right-buffer' }
+    })
+  })
+
   it("a save cannot change a tab's creation fields", () => {
     const prior = mainSession()
     prior.tabsByWorktree[WORKTREE] = [

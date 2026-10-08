@@ -185,7 +185,10 @@ function mainLayouts(
   return layouts
 }
 
-/** Per-leaf presentation applies only to the panes main holds; a different pane set is stale. */
+/**
+ * Per-leaf presentation applies only to the panes main holds; a different pane set is stale. A pane
+ * main binds that the window has not attached yet saved no scrollback, so main's stands.
+ */
 function presentationLayout(
   main: TerminalLayoutSnapshot,
   window: TerminalLayoutSnapshot | undefined
@@ -193,7 +196,26 @@ function presentationLayout(
   if (!window || !sameTerminalLeafSet(main.root, window.root)) {
     return main
   }
-  return { ...window, root: main.root, ptyIdsByLeafId: main.ptyIdsByLeafId }
+  const unattached = new Set(
+    Object.keys(main.ptyIdsByLeafId ?? {}).filter((leafId) => !window.ptyIdsByLeafId?.[leafId])
+  )
+  return {
+    ...window,
+    root: main.root,
+    ptyIdsByLeafId: main.ptyIdsByLeafId,
+    ...withMainLeafRecords('buffersByLeafId', unattached, main, window),
+    ...withMainLeafRecords('scrollbackRefsByLeafId', unattached, main, window)
+  }
+}
+
+function withMainLeafRecords(
+  field: 'buffersByLeafId' | 'scrollbackRefsByLeafId',
+  leafIds: ReadonlySet<string>,
+  main: TerminalLayoutSnapshot,
+  window: TerminalLayoutSnapshot
+): Partial<TerminalLayoutSnapshot> {
+  const kept = Object.entries(main[field] ?? {}).filter(([leafId]) => leafIds.has(leafId))
+  return kept.length > 0 ? { [field]: { ...Object.fromEntries(kept), ...window[field] } } : {}
 }
 
 /** The window's tab bar, holding exactly main's terminal tabs. */
