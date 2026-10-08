@@ -18,7 +18,14 @@ export type MobileDesktopRelayHostListing = {
   name: string
   source?: RuntimeEnvironmentSource
   orcadDeployment?: { sshTargetId: string } | null
-  fence: string
+  pairingRevision: number
+  runtimeId: string | null
+}
+
+/** Bounds a call; `expected` refuses it once the server was re-paired or its runtime changed. */
+export type MobileDesktopRelayCallOptions = {
+  timeoutMs?: number
+  expected?: Pick<MobileDesktopRelayHostListing, 'pairingRevision' | 'runtimeId'>
 }
 
 /** The desktop's configured servers, as the relay sees them. */
@@ -32,9 +39,10 @@ export type MobileDesktopRelayHosts = {
   resolve: (environmentId: string) => Promise<MobileDesktopRelayHost | null>
   /** A call as the desktop itself, over its own connection to the server. */
   call: (
-    host: MobileDesktopRelayHost,
+    host: Pick<MobileDesktopRelayHost, 'environmentId'>,
     method: string,
-    params: unknown
+    params: unknown,
+    options?: MobileDesktopRelayCallOptions
   ) => Promise<RuntimeRpcResponse<unknown>>
   /** Fires when a server is removed, re-paired or disconnected; returns an unsubscribe. */
   onEnvironmentRetired: (listener: (environmentId: string) => void) => () => void

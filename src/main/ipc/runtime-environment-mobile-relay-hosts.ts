@@ -43,7 +43,8 @@ export function createRuntimeEnvironmentMobileRelayHosts(): MobileDesktopRelayHo
           name: environment.name,
           source: environment.source,
           orcadDeployment: environment.orcadDeployment,
-          fence: relayHostFence(environment)
+          pairingRevision: pairingRevision(environment),
+          runtimeId: environment.runtimeId
         })),
         statusByEnvironmentId
       }
@@ -59,8 +60,19 @@ export function createRuntimeEnvironmentMobileRelayHosts(): MobileDesktopRelayHo
         pairing: getPreferredPairingOffer(environment)
       }
     },
-    call: (host, method, params) =>
-      callRuntimeEnvironment(userDataPath, host.environmentId, method, params),
+    call: (host, method, params, options) =>
+      callRuntimeEnvironment(
+        userDataPath,
+        host.environmentId,
+        method,
+        params,
+        options?.timeoutMs,
+        options?.expected?.pairingRevision,
+        undefined,
+        options?.expected?.runtimeId
+          ? { expectedEnvironmentRuntimeId: options.expected.runtimeId }
+          : undefined
+      ),
     onEnvironmentRetired: (listener) => {
       retirementListeners.add(listener)
       return () => retirementListeners.delete(listener)

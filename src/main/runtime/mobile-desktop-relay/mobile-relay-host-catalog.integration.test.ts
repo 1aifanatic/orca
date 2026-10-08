@@ -115,7 +115,12 @@ describe('mobile relay hosts: phone -> desktop lists the servers it shows', () =
     ])
     const hosts: MobileDesktopRelayHosts = {
       list: () => ({
-        environments: [...servers].map(([id, { name }]) => ({ id, name, fence: 'pairing-1' })),
+        environments: [...servers].map(([id, { name }]) => ({
+          id,
+          name,
+          pairingRevision: 1,
+          runtimeId: id
+        })),
         statusByEnvironmentId: new Map(
           [...servers].map(([id, { capable }]) => [
             id,

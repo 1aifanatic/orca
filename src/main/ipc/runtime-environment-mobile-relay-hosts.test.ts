@@ -83,14 +83,16 @@ describe('runtime environment mobile relay hosts', () => {
         name: 'VM',
         source: undefined,
         orcadDeployment: undefined,
-        fence: '7\0runtime-a'
+        pairingRevision: 7,
+        runtimeId: 'runtime-a'
       },
       {
         id: 'env-2',
         name: 'Box',
         source: 'ephemeral-vm',
         orcadDeployment: undefined,
-        fence: '2\0null'
+        pairingRevision: 2,
+        runtimeId: null
       }
     ])
     expect([...listing.statusByEnvironmentId.keys()]).toEqual(['env-1'])
@@ -122,7 +124,36 @@ describe('runtime environment mobile relay hosts', () => {
     mocks.call.mockResolvedValue({ id: 'x', ok: true, result: {}, _meta: { runtimeId: 'r' } })
     const host = (await hosts.resolve('env-1'))!
     await hosts.call(host, 'status.get', undefined)
-    expect(mocks.call).toHaveBeenCalledWith('/user-data', 'env-1', 'status.get', undefined)
+    expect(mocks.call).toHaveBeenLastCalledWith(
+      '/user-data',
+      'env-1',
+      'status.get',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    )
+    // A bounded call refused by the transport once the server was re-paired or replaced.
+    await hosts.call(
+      { environmentId: 'env-1' },
+      'worktree.ps',
+      {},
+      {
+        timeoutMs: 5_000,
+        expected: { pairingRevision: 7, runtimeId: 'runtime-a' }
+      }
+    )
+    expect(mocks.call).toHaveBeenLastCalledWith(
+      '/user-data',
+      'env-1',
+      'worktree.ps',
+      {},
+      5_000,
+      7,
+      undefined,
+      { expectedEnvironmentRuntimeId: 'runtime-a' }
+    )
 
     const retired: string[] = []
     const stop = hosts.onEnvironmentRetired((id) => retired.push(id))

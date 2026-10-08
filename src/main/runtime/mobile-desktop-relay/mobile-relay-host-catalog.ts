@@ -15,7 +15,15 @@ import type {
 } from '../../../shared/mobile-relay-hosts-contract'
 import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
-import type { MobileDesktopRelayHosts } from './mobile-desktop-relay-hosts'
+import type {
+  MobileDesktopRelayHostListing,
+  MobileDesktopRelayHosts
+} from './mobile-desktop-relay-hosts'
+
+// Why the phone's own full-catalog limit: the server's default page is 200 and nothing pages on.
+const SERVER_WORKTREE_LIMIT = 10_000
+// Why well under the phone's 30s request timeout: a hung server must answer with its last rows.
+const SERVER_FETCH_TIMEOUT_MS = 5_000
 
 const WorktreePsReplySchema = z.object({
   worktrees: z.array(z.looseObject({})),
@@ -31,7 +39,10 @@ type CachedServerWorktrees = {
   truncated: boolean
 }
 
-type DescribedHost = MobileRelayHost & { environmentId: string; fence: string }
+type DescribedHost = MobileRelayHost & {
+  environmentId: string
+  identity: Pick<MobileDesktopRelayHostListing, 'pairingRevision' | 'runtimeId'>
+}
 
 /**
  * The configured servers the desktop shows, for the phone: health from the desktop's own status
@@ -42,6 +53,7 @@ type DescribedHost = MobileRelayHost & { environmentId: string; fence: string }
 export class MobileRelayHostCatalog {
   private readonly cached = new Map<string, CachedServerWorktrees>()
   private readonly refreshing = new Map<string, Promise<boolean>>()
+  private readonly stopRetirementWatch: () => void
 
   constructor(
     private readonly options: {
@@ -49,7 +61,16 @@ export class MobileRelayHostCatalog {
       hostLabelOverrides: () => ReadonlyMap<ExecutionHostId, string>
       now?: () => number
     }
-  ) {}
+  ) {
+    this.stopRetirementWatch = options.hosts.onEnvironmentRetired((environmentId) =>
+      this.cached.delete(environmentId)
+    )
+  }
+
+  dispose(): void {
+    this.stopRetirementWatch()
+    this.cached.clear()
+  }
 
   list(): MobileRelayHostsListResult {
     return {
@@ -71,10 +92,13 @@ export class MobileRelayHostCatalog {
     if (!host) {
       return { worktrees: null }
     }
-    const refreshed = host.health === 'available' && (await this.refresh(host))
+    const refreshed = host.health === 'available' && (await withinFetchBound(this.refresh(host)))
     const cached = this.cached.get(host.environmentId)
-    // Why: rows from before a re-pair may belong to a different server.
-    if (!cached || cached.fence !== host.fence) {
+    const current = this.options.hosts
+      .list()
+      .environments.find((environment) => environment.id === host.environmentId)
+    // Why the identity read after the fetch: one answered after a re-pair stored the old server's rows.
+    if (!cached || !current || cached.fence !== fenceOf(current)) {
       return { worktrees: null }
     }
     const { fence: _fence, ...rows } = cached
@@ -83,7 +107,7 @@ export class MobileRelayHostCatalog {
 
   private describe(): DescribedHost[] {
     const { environments, statusByEnvironmentId } = this.options.hosts.list()
-    const fences = new Map(environments.map((environment) => [environment.id, environment.fence]))
+    const identities = new Map(environments.map((environment) => [environment.id, environment]))
     return buildExecutionHostRegistry({
       repos: [],
       settings: null,
@@ -93,8 +117,8 @@ export class MobileRelayHostCatalog {
       hostLabelOverrides: this.options.hostLabelOverrides()
     }).flatMap((entry) => {
       const parsed = parseExecutionHostId(entry.id)
-      const fence = parsed?.kind === 'runtime' ? fences.get(parsed.environmentId) : undefined
-      if (parsed?.kind !== 'runtime' || fence === undefined) {
+      const identity = parsed?.kind === 'runtime' ? identities.get(parsed.environmentId) : undefined
+      if (parsed?.kind !== 'runtime' || !identity) {
         return []
       }
       const answer = lastVerifiedRuntimeStatus(statusByEnvironmentId.get(parsed.environmentId))
@@ -102,7 +126,7 @@ export class MobileRelayHostCatalog {
         {
           hostId: parsed.id,
           environmentId: parsed.environmentId,
-          fence,
+          identity: { pairingRevision: identity.pairingRevision, runtimeId: identity.runtimeId },
           label: entry.label,
           health: entry.health,
           relay: relayVerdict(entry.health, answer)
@@ -125,20 +149,19 @@ export class MobileRelayHostCatalog {
 
   private async fetchAsDesktop(host: DescribedHost): Promise<boolean> {
     try {
-      const resolved = await this.options.hosts.resolve(host.environmentId)
-      if (!resolved) {
-        return false
-      }
-      const response = await this.options.hosts.call(resolved, 'worktree.ps', {
-        supportsWorktreeVisibilitySourceDefaults: true
-      })
+      const response = await this.options.hosts.call(
+        host,
+        'worktree.ps',
+        { limit: SERVER_WORKTREE_LIMIT, supportsWorktreeVisibilitySourceDefaults: true },
+        { timeoutMs: SERVER_FETCH_TIMEOUT_MS, expected: host.identity }
+      )
       const reply = response.ok ? WorktreePsReplySchema.safeParse(response.result) : null
       if (!reply?.success) {
         return false
       }
       this.cached.set(host.environmentId, {
-        // Why the listing's fence, taken before the fetch: a re-pair mid-fetch must not adopt these rows.
-        fence: host.fence,
+        // Why the identity taken before the fetch: the call's own check cannot see a re-pair after dispatch.
+        fence: fenceOf(host.identity),
         fetchedAt: (this.options.now ?? Date.now)(),
         worktrees: stampServerWorktreeRows(host.environmentId, reply.data.worktrees),
         totalCount: reply.data.totalCount,
@@ -149,6 +172,23 @@ export class MobileRelayHostCatalog {
       // An unreachable server keeps its last rows; they are served as stale.
       return false
     }
+  }
+}
+
+function fenceOf(identity: DescribedHost['identity']): string {
+  return `${identity.pairingRevision}\0${identity.runtimeId}`
+}
+
+/** False once the bound passes; the call's own timeout starts only after the desktop's per-server queue. */
+async function withinFetchBound(refresh: Promise<boolean>): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const bound = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), SERVER_FETCH_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([refresh, bound])
+  } finally {
+    clearTimeout(timer)
   }
 }
 

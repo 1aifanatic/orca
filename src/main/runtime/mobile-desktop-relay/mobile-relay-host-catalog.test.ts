@@ -51,11 +51,16 @@ function psReply(rows: Record<string, unknown>[]): RuntimeRpcResponse<unknown> {
 function fakeHosts(
   environments: { id: string; name: string; snapshot: RuntimeHostStatusSnapshot }[]
 ) {
-  const state = { environments, fence: 'fence-1' }
+  const state = { environments, pairingRevision: 1, retire: (_environmentId: string) => {} }
   const call = vi.fn<MobileDesktopRelayHosts['call']>()
   const hosts: MobileDesktopRelayHosts = {
     list: () => ({
-      environments: state.environments.map(({ id, name }) => ({ id, name, fence: state.fence })),
+      environments: state.environments.map(({ id, name }) => ({
+        id,
+        name,
+        pairingRevision: state.pairingRevision,
+        runtimeId: 'runtime-a'
+      })),
       statusByEnvironmentId: new Map(
         state.environments.map((entry) => [
           entry.id,
@@ -65,11 +70,14 @@ function fakeHosts(
     }),
     resolve: async (environmentId) => ({
       environmentId,
-      fence: state.fence,
+      fence: 'unused',
       pairing: { v: 2, endpoint: 'ws://server', deviceToken: 'desktop', publicKeyB64: 'k' }
     }),
     call,
-    onEnvironmentRetired: () => () => {}
+    onEnvironmentRetired: (listener) => {
+      state.retire = listener
+      return () => {}
+    }
   }
   return { hosts, call, state }
 }
@@ -147,9 +155,9 @@ describe('mobile relay host catalog', () => {
     expect(call).toHaveBeenCalledWith(
       expect.objectContaining({ environmentId: 'env' }),
       'worktree.ps',
-      {
-        supportsWorktreeVisibilitySourceDefaults: true
-      }
+      // The phone's full-catalog limit: the server's default page would silently truncate.
+      { limit: 10_000, supportsWorktreeVisibilitySourceDefaults: true },
+      { timeoutMs: 5_000, expected: { pairingRevision: 1, runtimeId: 'runtime-a' } }
     )
   })
 
@@ -206,9 +214,64 @@ describe('mobile relay host catalog', () => {
     state.environments = [{ id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }]
     call.mockResolvedValue(psReply([{ worktreeId: 'w', hostId: 'local' }]))
     await hostCatalog.worktrees('runtime:env')
-    state.fence = 'fence-2'
+    state.pairingRevision = 2
     state.environments = [{ id: 'env', name: 'Box', snapshot: snapshot('env', 'unreachable') }]
     await expect(hostCatalog.worktrees('runtime:env')).resolves.toEqual({ worktrees: null })
+  })
+
+  it('has no rows when the server is re-paired while its fetch is in flight', async () => {
+    const { hosts, call, state } = fakeHosts([
+      { id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }
+    ])
+    let answerFetch: (response: RuntimeRpcResponse<unknown>) => void = () => {}
+    call.mockReturnValue(new Promise((resolve) => (answerFetch = resolve)))
+    const { catalog: hostCatalog } = catalog(hosts)
+    const rows = hostCatalog.worktrees('runtime:env')
+    await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(1))
+    state.pairingRevision = 2
+    state.retire('env')
+    answerFetch(psReply([{ worktreeId: 'old-server-row', hostId: 'local' }]))
+    await expect(rows).resolves.toEqual({ worktrees: null })
+  })
+
+  it("drops a removed server's rows, so a server added back under the same id starts empty", async () => {
+    const { hosts, call, state } = fakeHosts([
+      { id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }
+    ])
+    call.mockResolvedValue(psReply([{ worktreeId: 'w', hostId: 'local' }]))
+    const { catalog: hostCatalog } = catalog(hosts)
+    await hostCatalog.worktrees('runtime:env')
+    const removed = state.environments
+    state.environments = []
+    state.retire('env')
+    await expect(hostCatalog.worktrees('runtime:env')).resolves.toEqual({ worktrees: null })
+    state.environments = [{ ...removed[0]!, snapshot: snapshot('env', 'unreachable') }]
+    await expect(hostCatalog.worktrees('runtime:env')).resolves.toEqual({ worktrees: null })
+  })
+
+  it('answers with the last rows, marked stale, when the server never answers the fetch', async () => {
+    vi.useFakeTimers()
+    try {
+      const { hosts, call } = fakeHosts([
+        { id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }
+      ])
+      call.mockResolvedValueOnce(psReply([{ worktreeId: 'w', hostId: 'local' }]))
+      const { catalog: hostCatalog } = catalog(hosts)
+      await hostCatalog.worktrees('runtime:env')
+      call.mockReturnValue(new Promise(() => {}))
+      let settled = false
+      const rows = hostCatalog.worktrees('runtime:env').finally(() => (settled = true))
+      await vi.advanceTimersByTimeAsync(4_999)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(rows).resolves.toMatchObject({
+        worktrees: [{ worktreeId: 'w', hostId: 'runtime:env' }],
+        fetchedAt: 1_000,
+        stale: true
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shares one in-flight fetch per server between concurrent rows requests', async () => {
