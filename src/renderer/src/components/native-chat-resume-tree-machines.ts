@@ -23,6 +23,8 @@ export type ResumeTreeMachines = {
   originLabelFor: (key: string) => string | undefined
   defaultExpanded: (nodeKey: string) => boolean
   machineSubtitle: (hostId: ExecutionHostId) => string | undefined
+  /** The listing a host's chats came from: its machine and the pairing it was read under. */
+  listingOf: (hostId: ExecutionHostId) => string
   /** The machine and session a key names, for the row's own actions. */
   rowOf: (key: string) => { machine: MachineView; sessionId: string } | undefined
 }
@@ -99,6 +101,7 @@ export function resumeTreeMachines(
       const machine = machineByHost.get(hostId)
       return machine ? machineSubtitleFor(machine) : undefined
     },
+    listingOf: (hostId) => machineByHost.get(hostId)?.identity ?? hostId,
     rowOf: (key) => rowByKey.get(key)
   }
 }

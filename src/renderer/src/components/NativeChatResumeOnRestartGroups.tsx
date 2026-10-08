@@ -85,13 +85,13 @@ function GroupNode({
   children: React.ReactNode
 }): React.JSX.Element {
   const selection = resumeSelectionState(covered, tree.selected)
-  const expanded = tree.isExpanded(nodeKey)
+  const expanded = tree.isExpanded(nodeKey, hostId)
   return (
     <>
       <ResumeTreeRow
         depth={depth}
         expanded={expanded}
-        onExpandedChange={(next) => tree.setExpanded(nodeKey, next)}
+        onExpandedChange={(next) => tree.setExpanded(nodeKey, next, hostId)}
         name={name}
         checked={selection.checked}
         disabled={treeBusy(tree, hostId) || selection.total === 0}
@@ -357,11 +357,7 @@ export function ResumeOnRestartGroups({
   onToggle,
   failureFor,
   onFailureAction,
-  rowKey,
-  busyFor,
-  originLabelFor,
-  defaultExpanded,
-  machineSubtitle
+  ...machineProps
 }: {
   candidates: readonly ResumeCandidate[]
   listedAt: number
@@ -386,7 +382,11 @@ export function ResumeOnRestartGroups({
     () => new Map(hostOptions.map((host) => [host.id, host.label])),
     [hostOptions]
   )
-  const expansion = useResumeTreeExpansion(defaultExpanded)
+  const { defaultExpanded, listingOf } = machineProps
+  const expansion = useResumeTreeExpansion(
+    defaultExpanded,
+    listingOf && { listingOf, shown: machines.map((machine) => listingOf(machine.hostId)) }
+  )
   const tree: TreeProps = {
     listedAt,
     busy,
@@ -397,9 +397,7 @@ export function ResumeOnRestartGroups({
     ancestorsOf,
     failureFor,
     onFailureAction,
-    rowKey,
-    busyFor,
-    originLabelFor
+    ...machineProps
   }
   // Why: the machine is worth a level only when it is not obvious.
   const showMachines =
@@ -414,7 +412,7 @@ export function ResumeOnRestartGroups({
             candidates={machine.candidates}
             workspaces={machine.workspaces}
             hostLabelById={hostLabelById}
-            subtitle={machineSubtitle?.(machine.hostId)}
+            subtitle={machineProps.machineSubtitle?.(machine.hostId)}
             tree={tree}
           />
         ) : (

@@ -20,6 +20,7 @@ import {
 import { readNativeChatRestartMachine } from './native-chat-resume-on-restart-store'
 import { _resetNativeChatRestartOffer } from './native-chat-restart-offer-triggers'
 import { pairedEnvironment } from './native-chat-restart-offer-test-support'
+import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
 import { button, chatBox, namedBox } from './native-chat-resume-on-restart-modal.test-support'
 import {
   machineDisclosure,
@@ -100,6 +101,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  replaceRuntimeEnvironmentRevisions([])
   act(() => root.unmount())
   container.remove()
   _resetNativeChatRestartOffer()
@@ -251,6 +253,33 @@ it('keeps a machine the user closed closed when its answer arrives again', async
   expect(machineRow('studio-mac').getAttribute('aria-expanded')).toBe('false')
   expect(machineRow('studio-mac').textContent).toContain('2 of 4')
 })
+
+// What the user opened or closed holds for the listing it was done in: a server re-paired, or gone
+// and listed again, starts from its own defaults.
+it.each([
+  ['re-paired', 2],
+  ['listed again under the same pairing', undefined]
+] as const)(
+  'opens a machine the user had closed by its default once it is %s',
+  async (_, pairingRevision) => {
+    replaceRuntimeEnvironmentRevisions([])
+    await stage({ sessions: [row('l1', 'own')] }, { studio: { sessions: SERVER_ROWS } })
+    await open('environment:studio')
+    await act(async () => machineDisclosure('studio-mac').click())
+    expect(machineRow('studio-mac').getAttribute('aria-expanded')).toBe('false')
+    // The server's listing goes; this computer's keeps the dialog open.
+    await stage({ sessions: [row('l1', 'own')] }, { studio: { sessions: [] } })
+    expect(document.querySelectorAll('[aria-label="Select all chats on studio-mac"]')).toHaveLength(
+      0
+    )
+    if (pairingRevision !== undefined) {
+      replaceRuntimeEnvironmentRevisions([{ id: 'studio', createdAt: 1, pairingRevision }])
+    }
+    await stage({ sessions: [row('l1', 'own')] }, { studio: { sessions: SERVER_ROWS } })
+    expect(machineRow('studio-mac').getAttribute('aria-expanded')).toBe('true')
+    expect(chatBox('s1')).toBeTruthy()
+  }
+)
 
 it('ticks and clears only its own machine’s chats from a machine’s tri-state box', async () => {
   await stage(

@@ -373,6 +373,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             originLabelFor={tree.originLabelFor}
             defaultExpanded={tree.defaultExpanded}
             machineSubtitle={tree.machineSubtitle}
+            listingOf={tree.listingOf}
           />
         </div>
 

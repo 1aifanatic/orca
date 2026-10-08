@@ -13,20 +13,46 @@ import {
 // The resume tree's shared state: which nodes are open, how deep a chat row sits, and how a chat
 // is read by its key.
 
+/** Separates a choice's listing from its node key; neither contains it. */
+const LISTING_SEPARATOR = '\u0001'
+
 /**
  * Which nodes are open. Everything starts expanded unless `defaultExpanded` says otherwise; what the
  * user opens or closes then wins, also over a default that changes as answers arrive. The state is
  * this mount's own, so a dialog that unmounts its tree on close reopens it from the defaults. Never
  * persisted.
+ *
+ * With `listings`, a choice belongs to the listing its node's host was shown under (a paired server
+ * re-paired is a new listing) and goes when that listing is no longer shown, so a machine that
+ * leaves and comes back starts from its defaults again.
  */
-export function useResumeTreeExpansion(defaultExpanded?: (key: string) => boolean): {
-  isExpanded: (key: string) => boolean
-  setExpanded: (key: string, expanded: boolean) => void
+export function useResumeTreeExpansion(
+  defaultExpanded?: (key: string) => boolean,
+  listings?: { listingOf: (hostId: ExecutionHostId) => string; shown: readonly string[] }
+): {
+  isExpanded: (key: string, hostId?: ExecutionHostId) => boolean
+  setExpanded: (key: string, expanded: boolean, hostId?: ExecutionHostId) => void
 } {
   const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(() => new Map())
+  const entry = (key: string, hostId: ExecutionHostId | undefined) =>
+    listings && hostId !== undefined
+      ? `${listings.listingOf(hostId)}${LISTING_SEPARATOR}${key}`
+      : key
+  if (listings) {
+    const shown = new Set(listings.shown)
+    const kept = [...chosen].filter(([stored]) => {
+      const at = stored.indexOf(LISTING_SEPARATOR)
+      return at === -1 || shown.has(stored.slice(0, at))
+    })
+    // Render-time adjustment of this hook's own state: a listing gone takes its choices with it.
+    if (kept.length !== chosen.size) {
+      setChosen(new Map(kept))
+    }
+  }
   return {
-    isExpanded: (key) => chosen.get(key) ?? defaultExpanded?.(key) ?? true,
-    setExpanded: (key, expanded) => setChosen((current) => new Map(current).set(key, expanded))
+    isExpanded: (key, hostId) => chosen.get(entry(key, hostId)) ?? defaultExpanded?.(key) ?? true,
+    setExpanded: (key, expanded, hostId) =>
+      setChosen((current) => new Map(current).set(entry(key, hostId), expanded))
   }
 }
 
@@ -54,6 +80,9 @@ export type MachineProps = {
   defaultExpanded?: (nodeKey: string) => boolean
   /** A line beside a machine's name, e.g. why it stopped and when. */
   machineSubtitle?: (hostId: ExecutionHostId) => string | undefined
+  /** The listing a host's chats were shown under (a re-paired server is a new one): what the user
+   *  opened or closed under it holds only for it. */
+  listingOf?: (hostId: ExecutionHostId) => string
 }
 
 /** What every node needs from the tree as a whole. */
@@ -62,8 +91,8 @@ export type TreeProps = {
   busy: boolean
   selected: ReadonlySet<string>
   onToggle: (sessionId: string, checked: boolean) => void
-  isExpanded: (key: string) => boolean
-  setExpanded: (key: string, expanded: boolean) => void
+  isExpanded: (key: string, hostId?: ExecutionHostId) => boolean
+  setExpanded: (key: string, expanded: boolean, hostId?: ExecutionHostId) => void
   repoIdOf: (group: ResumeWorkspaceGroup) => string | null
   ancestorsOf: (group: ResumeWorkspaceGroup) => readonly string[]
 } & FailureProps &
