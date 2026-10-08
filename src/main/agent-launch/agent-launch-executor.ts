@@ -96,6 +96,7 @@ export async function executeAgentLaunch(
   const vocabulary = execution.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
   const settings = readAgentLaunchModeSettings(runtime)
   const preflight = decideAgentLaunchMode({
+    ...(intent.prompt ? { prompt: intent.prompt } : {}),
     placement: {
       agent: intent.agent,
       workspaceKind: launchWorkspaceKind(intent.target),

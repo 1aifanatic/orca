@@ -19,10 +19,12 @@
 
 import { requestsCwdOutsideWorkspaceRoot } from '../../shared/terminal-startup-cwd'
 import type {
+  AgentLaunchPrompt,
   AgentLaunchMode,
   AgentLaunchModeReason,
   AgentLaunchModeReceipt
 } from '../../shared/agent-launch-intent'
+import { isDesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
 import { RUNTIME_CAPABILITIES } from '../../shared/protocol-version'
 import { STRUCTURED_AGENT_RUNTIME_REGISTRATIONS } from '../runtime/structured-agent-runtime-registrations'
 import {
@@ -129,6 +131,7 @@ const HOST_SUPPORT_REASON: Record<
  */
 export function decideAgentLaunchMode(args: {
   placement: AgentLaunchModePlacement
+  prompt?: AgentLaunchPrompt
   settings: AgentLaunchModeSettings | null | undefined
   vocabulary?: AgentLaunchModeVocabulary
   /** Registered agents (beyond Claude and Codex) this surface can open as structured; defaults to
@@ -137,7 +140,8 @@ export function decideAgentLaunchMode(args: {
 }): AgentLaunchModeReceipt {
   const { placement, settings } = args
   const vocabulary = args.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
-  if (!prefersStructuredNativeChatByDefault(settings)) {
+  // Desktop startup transport preserves the terminal choice already made at the click.
+  if (isDesktopNewTabPrompt(args.prompt) || !prefersStructuredNativeChatByDefault(settings)) {
     return {
       mode: 'terminal',
       preferred: 'terminal',

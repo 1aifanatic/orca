@@ -5,39 +5,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import type { AgentSessionAttachResult } from '../../src/shared/agent-session-wire'
 import type * as AgentStatusModule from '../../src/renderer/src/lib/agent-status'
-import { RuntimeRpcCallError } from '../../src/renderer/src/runtime/runtime-rpc-result'
-import { mapRuntimeError } from '../../src/main/runtime/rpc/errors'
 import { createTabsSliceMockApi } from '../../src/renderer/src/store/slices/tabs-slice-test-harness'
 import { createTestStore } from '../../src/renderer/src/store/slices/store-test-helpers'
 import {
   agentSessionOperationKey,
   pendingAgentSessionOperationRow
 } from '../../src/shared/agent-session-operation-ledger'
-import {
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
-} from '../../src/shared/agent-launch-runtime-capability'
 import type { AgentLaunchResult } from '../../src/shared/agent-launch-intent'
-import type { AgentLaunchPaneVerdict } from '../../src/shared/agent-launch-pane-verdict'
 import {
   isAgentLaunchRunningIn,
   markAgentLaunchesClosedByUser,
-  resetAgentLaunchPanesForTests,
-  resolveAgentLaunchPaneVerdict
+  resetAgentLaunchPanesForTests
 } from '../../src/main/agent-launch/agent-launch-pane-attachment'
 import { openTestAgentSessionRecordStore } from '../../src/main/runtime/agent-session-record-store-test-harness'
 import {
   methodNamed,
-  rpcContext,
-  runtimeStub,
   setAgentLaunchRecordStore
 } from '../../src/main/runtime/rpc/methods/agent-launch.test-fixture'
-import { DESKTOP_RPC_CALLER } from '../../src/main/runtime/rpc/rpc-caller-identity'
 import { activeAgentLaunchesFor } from '../../src/main/runtime/rpc/methods/agent-launch-active-operations'
-import { makePaneKey } from '../../src/shared/stable-pane-id'
 import { setStructuredAgentSessionHost } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
 import { installDesktopStructuredTestHost } from './desktop-agent-launch-structured-test-host'
+import { createDesktopAgentLaunchRig, deferred } from './desktop-agent-launch-composed-test-rig'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }))
 vi.mock('../../src/renderer/src/lib/agent-status', async (original) => ({
@@ -66,30 +54,13 @@ createTabsSliceMockApi()
 const { AGENT_LAUNCH_METHODS } = await import('../../src/main/runtime/rpc/methods/agent-launch')
 const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
 const REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
-const { launchAgentThroughHost } =
-  await import('../../src/renderer/src/lib/agent-launch-through-host')
-const { launchNewTabPromptThroughHost } =
-  await import('../../src/renderer/src/lib/launch-agent-new-tab-host-route')
-const { publishAgentLaunchTab } =
-  await import('../../src/renderer/src/lib/agent-launch-tab-publication')
-const { applyAgentLaunchPaneVerdict } =
-  await import('../../src/renderer/src/lib/agent-launch-pane-verdict-application')
 
 const WT = 'wt-7'
-const OTHER = 'wt-other'
 const PROMPT = {
   text: "first '🦄'\nsecond\x1b",
   delivery: 'submit',
   transport: { kind: 'desktop-new-tab', promptDelivery: 'submit-after-ready' }
 } as const
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => {
-    resolve = done
-  })
-  return { promise, resolve }
-}
 
 let store: ReturnType<typeof createTestStore>
 let record: Awaited<ReturnType<typeof openTestAgentSessionRecordStore>>
@@ -129,180 +100,8 @@ afterEach(async () => {
   setAgentLaunchRecordStore(null)
 })
 
-function rig(
-  options: {
-    selectOther?: boolean
-    failure?: 'before' | 'after'
-    admissionError?: string
-    deferWorkspace?: boolean
-    activate?: boolean
-    canPublish?: boolean
-    workspaceError?: boolean
-    rootCwd?: boolean
-  } = {}
-) {
-  const start = deferred<void>()
-  const admitted = deferred<void>()
-  const admission = deferred<void>()
-  const workspaceRequested = deferred<void>()
-  const workspace = deferred<void>()
-  const mount: {
-    verdict: AgentLaunchPaneVerdict | null
-    shellStarts: number
-    attachments: number
-  } = {
-    verdict: null,
-    shellStarts: 0,
-    attachments: 0
-  }
-  const requests: Record<string, unknown>[] = []
-  const verdicts: AgentLaunchPaneVerdict[] = []
-  const runtime = runtimeStub({
-    settings: {},
-    publishAgentLaunchTab: async (request) => {
-      const answer = publishAgentLaunchTab({ ...request, requestId: 'capacity-publication' })
-      const waiting = resolveAgentLaunchPaneVerdict(
-        { worktreeId: request.worktreeId, paneKey: `${request.tabId}:${request.leafId}` },
-        {
-          isPaneLive: (key) => runtime.hasLiveTerminalForPaneKey(key),
-          openedRows: () => record.listOperationRows(),
-          launchPaneOnTab: () =>
-            store.getState().tabsByWorktree[WT]?.find((tab) => tab.id === request.tabId)
-              ?.agentLaunchPane ?? null,
-          openRows: async () => record.listOperationRows(),
-          now: () => Date.now()
-        }
-      )
-      if (!waiting) {
-        throw new Error('unowned pane at mount')
-      }
-      void waiting.then((verdict) => {
-        mount.verdict = verdict
-        applyAgentLaunchPaneVerdict({ ...request, verdict })
-        if (verdict.kind === 'proceed') {
-          if (runtime.hasLiveTerminalForPaneKey(`${request.tabId}:${request.leafId}`)) {
-            mount.attachments += 1
-          } else {
-            mount.shellStarts += 1
-          }
-        }
-      })
-      return answer
-    }
-  })
-  const context = rpcContext(runtime, {
-    caller: DESKTOP_RPC_CALLER,
-    clientKind: 'runtime',
-    clientCapabilities: [
-      AGENT_LAUNCH_RUNTIME_CAPABILITY,
-      AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
-      AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
-    ]
-  })
-  const open = runtime.openAgentSessionRecordStore.getMockImplementation()!
-  if (options.deferWorkspace) {
-    const resolveWorkspace = runtime.showTerminalWorkspaceLaunchScope.getMockImplementation()!
-    runtime.showTerminalWorkspaceLaunchScope.mockImplementationOnce(async (selector) => {
-      workspaceRequested.resolve()
-      await workspace.promise
-      if (options.workspaceError) {
-        throw new Error('workspace_unavailable')
-      }
-      return resolveWorkspace(selector)
-    })
-  }
-  if (options.canPublish === false) {
-    runtime.canPublishAgentLaunchTab.mockReturnValue(false)
-  }
-  runtime.openAgentSessionRecordStore.mockImplementation(async () => {
-    admitted.resolve()
-    await admission.promise
-    if (options.admissionError) {
-      throw new Error(options.admissionError)
-    }
-    return open()
-  })
-  let livePane: string | null = null
-  runtime.hasLiveTerminalForPaneKey.mockImplementation((key) => livePane === key)
-  runtime.getTerminalHandleForPaneKey.mockImplementation((key) =>
-    livePane === key ? 'term_1' : null
-  )
-  runtime.createTerminal.mockImplementation(async (_selector, createOptions) => {
-    await start.promise
-    if (options.failure === 'after' && typeof createOptions?.onPtySpawnDispatched === 'function') {
-      createOptions.onPtySpawnDispatched()
-    }
-    if (options.failure) {
-      throw new Error('spawn_failed')
-    }
-    if (typeof createOptions?.onPtySpawnDispatched === 'function') {
-      createOptions.onPtySpawnDispatched()
-    }
-    const tabId = createOptions?.tabId
-    const leafId = createOptions?.leafId
-    if (typeof tabId !== 'string' || typeof leafId !== 'string') {
-      throw new Error('missing reserved pane')
-    }
-    livePane = makePaneKey(tabId, leafId)
-    return { handle: 'term_1', paneKey: livePane }
-  })
-  runtime.closeTerminal.mockImplementation(async () => {
-    livePane = null
-    return {}
-  })
-  runtime.reportAgentLaunchPaneVerdict.mockImplementation((pane, verdict) => {
-    applyAgentLaunchPaneVerdict({ ...pane, verdict })
-    verdicts.push(verdict)
-  })
-  callRuntimeRpc.mockImplementation(async (_target, method, params) => {
-    requests.push(params)
-    if (method !== 'agent.launch') {
-      throw new Error(`unexpected desktop method ${method}`)
-    }
-    try {
-      return await LAUNCH.handler(LAUNCH.params.parse(params), context)
-    } catch (error) {
-      throw new RuntimeRpcCallError(
-        mapRuntimeError('desktop-capacity', { runtimeId: 'capacity-runtime' }, error)
-      )
-    }
-  })
-  if (options.selectOther) {
-    store.getState().createTab(OTHER)
-    store.getState().setActiveWorktree(OTHER)
-  }
-  const selected = store.getState().activeTabId
-  const groupId = store.getState().groupsByWorktree[WT]![0]!.id
-  const launchArgs = {
-    agent: 'claude',
-    worktreeId: WT,
-    groupId,
-    prompt: PROMPT.text,
-    desktopPrompt: PROMPT,
-    activate: options.activate ?? false,
-    agentArgs: null,
-    cwd: options.rootCwd ? '/tmp/wt-7' : '/tmp/wt-7/src',
-    sessionOptions: { model: 'chosen', thinking: true }
-  } as const
-  const launch = () => launchAgentThroughHost(launchArgs)
-  const launchPrompt = () =>
-    launchNewTabPromptThroughHost({ ...launchArgs, pasteContent: PROMPT.text })
-  return {
-    runtime,
-    context,
-    mount,
-    verdicts,
-    requests,
-    selected,
-    groupId,
-    launch,
-    launchPrompt,
-    workspaceRequested,
-    workspace,
-    start,
-    admitted,
-    admission
-  }
+function rig(options: Parameters<typeof createDesktopAgentLaunchRig>[1] = {}) {
+  return createDesktopAgentLaunchRig({ store, record, prompt: PROMPT, callRuntimeRpc }, options)
 }
 
 function tab(tabId: string) {
@@ -310,11 +109,121 @@ function tab(tabId: string) {
 }
 
 describe('desktop capacity fallback keeps the original published pane', () => {
+  it('a lost desktop creation reply without early publication retains its uncertainty notice after close', async () => {
+    await record.transactOperations((draft) => draft.operations.clear())
+    const r = rig({ failure: 'after', rootCwd: true, canPublish: false })
+    r.admission.resolve()
+    const { tabId, promptDeliveryResult } = r.launchPrompt()
+    await r.creating.promise
+    markAgentLaunchesClosedByUser(WT, { kind: 'tab', tabId })
+    store.getState().closeTab(tabId)
+    r.start.resolve()
+    await expect(promptDeliveryResult).resolves.toMatchObject({ delivered: false })
+    await expect(callRuntimeRpc.mock.results[0]?.value).rejects.toMatchObject({
+      code: 'agent_session_operation_unknown'
+    })
+    const operationId = r.requests[0]?.operationId
+    const row = record.listOperationRows().find((item) => item.operationId === operationId)
+    expect(row?.outcome.status).not.toBe('failed')
+    expect(r.runtime.closeTerminal).not.toHaveBeenCalled()
+    expect(r.runtime.createTerminal).toHaveBeenCalledOnce()
+    expect(deliver).not.toHaveBeenCalled()
+    expect(callRuntimeRpc).toHaveBeenCalledOnce()
+    expect(toast.error).toHaveBeenCalledOnce()
+    expect(tab(tabId)).toBeUndefined()
+  })
+
+  it.each([false, true])(
+    'keeps the captured terminal and original input when the chat default changes (capacity=%s)',
+    async (capacity) => {
+      if (!capacity) {
+        await record.transactOperations((draft) => draft.operations.clear())
+      }
+      const r = rig({ deferWorkspace: true, rootCwd: true })
+      structured = installDesktopStructuredTestHost(r.runtime, record, directory)
+      r.admission.resolve()
+      const { tabId, outcome } = r.launch()
+      await r.workspaceRequested.promise
+      expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(true)
+      r.runtime.getClientSettings.mockReturnValue({
+        experimentalNativeChat: true,
+        experimentalStructuredNativeChat: true,
+        openAgentTabsInChatByDefault: true
+      })
+      r.start.resolve()
+      r.workspace.resolve()
+      await expect(outcome).resolves.toMatchObject({ kind: 'started' })
+      const result = await callRuntimeRpc.mock.results[0]?.value
+      expect(result).toMatchObject({
+        outcome: { kind: 'terminal', handle: 'term_1' },
+        prompt: { outcome: 'handed-to-terminal' },
+        ...(capacity ? { recorded: false } : {})
+      })
+      expect(r.runtime.createTerminal).toHaveBeenCalledExactlyOnceWith(
+        `id:${WT}`,
+        expect.objectContaining({
+          tabId,
+          desktopPrompt: PROMPT,
+          agentArgs: null,
+          cwd: '/tmp/wt-7',
+          viewMode: 'terminal',
+          desktopSessionOptions: { model: 'chosen', thinking: true }
+        })
+      )
+      expect(deliver).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ text: PROMPT.text, prompt: PROMPT })
+      )
+      expect(tab(tabId)?.viewMode ?? 'terminal').toBe('terminal')
+      expect(r.runtime.publishAgentLaunchTab).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ tabId, viewMode: 'terminal' })
+      )
+      expect(structured.attach).not.toHaveBeenCalled()
+      expect(structured.publish).not.toHaveBeenCalled()
+      expect(structured.send).not.toHaveBeenCalled()
+      expect(structured.acquire).not.toHaveBeenCalled()
+      expect(record.getVisibleSessionTabIndex().sessionIds).toEqual([])
+      expect(callRuntimeRpc).toHaveBeenCalledOnce()
+      expect(r.mount.attachments).toBe(1)
+      expect(r.mount.shellStarts).toBe(0)
+    }
+  )
+
+  it.each([false, true])(
+    'closed existing AI owner prevents structured effects after intent lookup (activate=%s)',
+    async (activate) => {
+      await record.transactOperations((draft) => draft.operations.clear())
+      const r = rig({ deferWorkspace: true, rootCwd: true, structuredAi: true, activate })
+      structured = installDesktopStructuredTestHost(r.runtime, record, directory)
+      r.admission.resolve()
+      const { tabId, promptDeliveryResult } = r.launchPrompt()
+      await r.workspaceRequested.promise
+      expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(true)
+      markAgentLaunchesClosedByUser(WT, { kind: 'tab', tabId })
+      store.getState().closeTab(tabId)
+      r.runtime.getClientSettings.mockReturnValue({
+        experimentalNativeChat: true,
+        experimentalStructuredNativeChat: true,
+        openAgentTabsInChatByDefault: true
+      })
+      r.workspace.resolve()
+      await expect(promptDeliveryResult).resolves.toMatchObject({ delivered: false })
+      expect(structured.attach).not.toHaveBeenCalled()
+      expect(structured.publish).not.toHaveBeenCalled()
+      expect(structured.send).not.toHaveBeenCalled()
+      expect(structured.acquire).not.toHaveBeenCalled()
+      expect(r.runtime.createTerminal).not.toHaveBeenCalled()
+      expect(deliver).not.toHaveBeenCalled()
+      expect(callRuntimeRpc).toHaveBeenCalledOnce()
+      expect(tab(tabId)).toBeUndefined()
+      expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(false)
+    }
+  )
+
   it.each(['attach', 'publication', 'send', 'lost-attach'] as const)(
     'settles a close during structured %s honestly without another launch',
     async (waitAt) => {
       await record.transactOperations((draft) => draft.operations.clear())
-      const r = rig({ deferWorkspace: true, rootCwd: true })
+      const r = rig({ deferWorkspace: true, rootCwd: true, structuredAi: true })
       const s = installDesktopStructuredTestHost(r.runtime, record, directory)
       structured = s
       const created = deferred<AgentSessionAttachResult>()
@@ -414,19 +323,15 @@ describe('desktop capacity fallback keeps the original published pane', () => {
       expect(deliver).not.toHaveBeenCalled()
       expect(callRuntimeRpc).toHaveBeenCalledOnce()
       expect(tab(tabId)).toBeUndefined()
-      if (waitAt === 'lost-attach') {
-        expect(toast.error).toHaveBeenCalledOnce()
-      } else {
-        expect(toast.error).not.toHaveBeenCalled()
-      }
+      expect(toast.error).not.toHaveBeenCalled()
       expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
       expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(false)
     }
   )
 
-  it('an open owner permits the current chat default and journals the exact original prompt once', async () => {
+  it('an existing AI owner permits the current chat default and journals the exact original prompt once', async () => {
     await record.transactOperations((draft) => draft.operations.clear())
-    const r = rig({ deferWorkspace: true, rootCwd: true })
+    const r = rig({ deferWorkspace: true, rootCwd: true, structuredAi: true })
     const s = installDesktopStructuredTestHost(r.runtime, record, directory)
     structured = s
     r.admission.resolve()
@@ -498,7 +403,7 @@ describe('desktop capacity fallback keeps the original published pane', () => {
     'close during structured %s preparation prevents attachment',
     async (waitAt) => {
       await record.transactOperations((draft) => draft.operations.clear())
-      const r = rig({ deferWorkspace: true, rootCwd: true })
+      const r = rig({ deferWorkspace: true, rootCwd: true, structuredAi: true })
       structured = installDesktopStructuredTestHost(r.runtime, record, directory)
       const entered = deferred<void>()
       const release = deferred<void>()

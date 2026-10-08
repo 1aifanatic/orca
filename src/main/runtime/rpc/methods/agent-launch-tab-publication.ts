@@ -130,10 +130,7 @@ function isRecordedOperation(params: AgentLaunchParams, context: RpcContext): bo
     return false
   }
   const store = context.runtime.openedAgentSessionRecordStore()
-  return (
-    store !== null &&
-    store.getOperationRow(agentLaunchOperationCallerKey(context), params.operationId) !== null
-  )
+  return Boolean(store?.getOperationRow(agentLaunchOperationCallerKey(context), params.operationId))
 }
 
 /** Never throws: the early tab is a view, and a launch must not fail over one. */
@@ -193,6 +190,7 @@ export async function publishAgentLaunchTabEarly(
     }
     const settings = readAgentLaunchModeSettings(runtime)
     const preflight = decideAgentLaunchMode({
+      ...(params.prompt ? { prompt: params.prompt } : {}),
       placement: {
         agent: params.agent,
         workspaceKind: workspaceKindForWorktreeId(workspace.id),

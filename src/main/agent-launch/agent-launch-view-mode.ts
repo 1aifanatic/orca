@@ -5,6 +5,7 @@
  */
 
 import type { AgentLaunchPrompt } from '../../shared/agent-launch-intent'
+import { isDesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { decideInitialAgentTabViewMode } from '../../shared/native-chat-initial-view-mode'
 import { isNativeChatTranscriptLocalReadable } from '../../shared/native-chat-transcript-readability'
@@ -22,6 +23,9 @@ export function deriveAgentLaunchTerminalViewMode(args: {
   /** The workspace's SSH connection; `null` is local. */
   connectionId: string | null | undefined
 }): AgentLaunchTerminalViewMode {
+  if (isDesktopNewTabPrompt(args.prompt)) {
+    return 'terminal'
+  }
   const viewMode = decideInitialAgentTabViewMode({
     experimentalNativeChat: args.settings?.experimentalNativeChat,
     openAgentTabsInChatByDefault: args.settings?.openAgentTabsInChatByDefault,
