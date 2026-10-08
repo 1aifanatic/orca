@@ -16,7 +16,7 @@ import { DEVICE_REGISTRY_FILENAME } from './mobile-pairing-files'
 import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-connection-mode'
 import type { RuntimePairingReach } from '../../shared/runtime-pairing-reach'
-import type { RuntimeDeviceGrant } from './rpc/rpc-caller-scope'
+import { RUNTIME_DEVICE_GRANTS, type RuntimeDeviceGrant } from './rpc/rpc-method-permission'
 import {
   parseMobilePushRegistration,
   type MobilePushRegistration
@@ -43,10 +43,10 @@ export type DeviceEntry = {
   grants?: RuntimeDeviceGrant[]
 }
 
-const RUNTIME_DEVICE_GRANTS: ReadonlySet<string> = new Set<RuntimeDeviceGrant>(['desktop-control'])
+const GRANTABLE: ReadonlySet<string> = new Set(RUNTIME_DEVICE_GRANTS)
 
 function isRuntimeDeviceGrant(value: unknown): value is RuntimeDeviceGrant {
-  return typeof value === 'string' && RUNTIME_DEVICE_GRANTS.has(value)
+  return typeof value === 'string' && GRANTABLE.has(value)
 }
 
 function validGrants(value: unknown, scope: DeviceScope): RuntimeDeviceGrant[] | undefined {

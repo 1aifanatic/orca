@@ -8,6 +8,7 @@
  * mailboxes the caller's live pane reads, never to a Run it merely shares.
  */
 import { z } from 'zod'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import type { OrchestrationDb } from '../orchestration/db'
 import {
@@ -15,50 +16,45 @@ import {
   type TerminalOwnedMailboxes
 } from './methods/orchestration/messaging/terminal-owned-mailboxes'
 
-export type SshBridgeOrchestrationRuntime = OrcaRuntimeService
-
 const TERMINAL_CALLER_METHODS: ReadonlySet<string> = new Set([
   'orchestration.check',
   'orchestration.inbox'
 ])
 
-export const SSH_BRIDGE_ORCHESTRATION_METHODS: ReadonlySet<string> = new Set([
+export const SSH_BRIDGE_ORCHESTRATION_METHODS: readonly string[] = [
   ...TERMINAL_CALLER_METHODS,
   'orchestration.send',
   'orchestration.ask',
   'orchestration.reply'
-])
+]
 
 /** The refused subject, or null when the call stays inside the caller's own orchestration. */
 export async function findSshBridgeOrchestrationViolation(
-  runtime: SshBridgeOrchestrationRuntime,
-  isOwnTerminal: (handle: string) => Promise<boolean>,
+  runtime: OrcaRuntimeService,
+  hostId: ExecutionHostId,
   methodName: string,
-  params: unknown
+  selectors: SshBridgeSelectors
 ): Promise<string | null> {
-  const callerKey = TERMINAL_CALLER_METHODS.has(methodName) ? 'terminal' : 'from'
-  const caller = readStringParam(params, callerKey)
-  if (!caller || !(await isOwnTerminal(caller))) {
+  const caller = selectors[TERMINAL_CALLER_METHODS.has(methodName) ? 'terminal' : 'from']
+  if (!caller || !(await isHostTerminal(runtime, hostId, caller))) {
     return `terminal '${caller ?? ''}'`
   }
   const paneKey = runtime.getTerminalPaneKey(caller) ?? undefined
-  const claimedPane = readStringParam(
-    params,
-    methodName === 'orchestration.check' ? 'terminalPaneKey' : 'senderPaneKey'
-  )
+  const claimedPane =
+    selectors[methodName === 'orchestration.check' ? 'terminalPaneKey' : 'senderPaneKey']
   // Why: the pane key is the lifecycle identity, so it must be the caller's own, not a sibling's.
   if (claimedPane && claimedPane !== paneKey) {
     return `pane '${claimedPane}'`
   }
   const db = runtime.getOrchestrationDb()
   const ownDispatch = db.getActiveDispatchForIdentity(caller, paneKey)
-  const run = readStringParam(params, 'run')
+  const run = selectors.run
   if (run && ownDispatch?.run_id !== run && db.getRun(run)?.coordinator_handle !== caller) {
     return `run '${run}'`
   }
   const owned = resolveTerminalOwnedMailboxes(runtime, db, caller)
   if (methodName === 'orchestration.reply') {
-    const id = readStringParam(params, 'id') ?? ''
+    const id = selectors.id ?? ''
     const original = db.getMessageById(id)
     return original && owned.addresses.has(original.to_handle) && (!run || run === original.run_id)
       ? null
@@ -67,7 +63,7 @@ export async function findSshBridgeOrchestrationViolation(
   if (TERMINAL_CALLER_METHODS.has(methodName)) {
     return null
   }
-  const dispatchId = readPayloadDispatchId(params)
+  const dispatchId = readPayloadDispatchId(selectors)
   if (dispatchId) {
     const named = db.getDispatchContextById(dispatchId)
     const party =
@@ -79,15 +75,15 @@ export async function findSshBridgeOrchestrationViolation(
       return `dispatch '${dispatchId}'`
     }
   }
-  const to = readStringParam(params, 'to')
+  const to = selectors.to
   if (
     !to ||
     (ownDispatch?.creator_handle && to === ownDispatch.creator_handle) ||
-    (await isOwnCanonicalRecipient(db, owned, isOwnTerminal, to))
+    (await isOwnCanonicalRecipient(db, owned, runtime, hostId, to))
   ) {
     return null
   }
-  return (await isOwnTerminal(to)) ? null : `recipient '${to}'`
+  return (await isHostTerminal(runtime, hostId, to)) ? null : `recipient '${to}'`
 }
 
 // A canonical address is in scope when it is the caller's own mailbox, the Run mailbox its held
@@ -95,7 +91,8 @@ export async function findSshBridgeOrchestrationViolation(
 async function isOwnCanonicalRecipient(
   db: OrchestrationDb,
   owned: TerminalOwnedMailboxes,
-  isOwnTerminal: (handle: string) => Promise<boolean>,
+  runtime: OrcaRuntimeService,
+  hostId: ExecutionHostId,
   to: string
 ): Promise<boolean> {
   if (owned.addresses.has(to) || (owned.dispatch && to === `run:${owned.dispatch.run_id}`)) {
@@ -108,17 +105,35 @@ async function isOwnCanonicalRecipient(
   return (
     dispatch?.run_id === owned.runId &&
     dispatch.assignee_handle !== null &&
-    (await isOwnTerminal(dispatch.assignee_handle))
+    (await isHostTerminal(runtime, hostId, dispatch.assignee_handle))
   )
 }
 
-function readPayloadDispatchId(params: unknown): string | null {
-  const payload = readStringParam(params, 'payload')
-  if (!payload) {
+export async function isHostTerminal(
+  runtime: OrcaRuntimeService,
+  hostId: ExecutionHostId,
+  handle: string
+): Promise<boolean> {
+  return (await resolveTerminalHost(runtime, handle)) === hostId
+}
+
+async function resolveTerminalHost(
+  runtime: OrcaRuntimeService,
+  handle: string
+): Promise<ExecutionHostId | null> {
+  try {
+    return (await runtime.showTerminal(handle)).executionHostId ?? null
+  } catch {
+    return null
+  }
+}
+
+function readPayloadDispatchId(selectors: SshBridgeSelectors): string | null {
+  if (!selectors.payload) {
     return null
   }
   try {
-    return readStringParam(JSON.parse(payload), 'dispatchId')
+    return parseSshBridgeSelectors(JSON.parse(selectors.payload)).dispatchId ?? null
   } catch {
     // Why: the handler owns malformed-payload errors; nothing here can name a Dispatch.
     return null
@@ -144,8 +159,8 @@ const SshBridgeCallSelectors = z
   })
   .catch({})
 
-export type SshBridgeCallSelectorKey = keyof z.infer<typeof SshBridgeCallSelectors>
+export type SshBridgeSelectors = z.infer<typeof SshBridgeCallSelectors>
 
-export function readStringParam(params: unknown, key: SshBridgeCallSelectorKey): string | null {
-  return SshBridgeCallSelectors.parse(params)[key] ?? null
+export function parseSshBridgeSelectors(params: unknown): SshBridgeSelectors {
+  return SshBridgeCallSelectors.parse(params)
 }

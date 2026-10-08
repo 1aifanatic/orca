@@ -5,32 +5,19 @@
  * resolve to a terminal on the bridged host; orchestration callers are bound the same way. Terminals whose host cannot be named are refused:
  * failing closed is the only safe answer for a credential that must not reach other hosts.
  */
-import { toSshExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import { toSshExecutionHostId } from '../../../shared/execution-host'
 import type { RuntimeTerminalListResult } from '../../../shared/runtime-terminal-contracts'
+import type { OrcaRuntimeService } from '../orca-runtime'
 import {
   findSshBridgeOrchestrationViolation,
-  readStringParam,
+  isHostTerminal,
+  parseSshBridgeSelectors,
   SSH_BRIDGE_ORCHESTRATION_METHODS,
-  type SshBridgeOrchestrationRuntime
+  type SshBridgeSelectors
 } from './ssh-bridge-orchestration-binding'
 
-const TERMINAL_HANDLE_METHODS: ReadonlySet<string> = new Set([
-  'terminal.show',
-  'terminal.read',
-  'terminal.send',
-  'terminal.wait'
-])
-
-export const SSH_BRIDGE_HOST_BOUND_METHODS: ReadonlySet<string> = new Set([
-  'status.get',
-  'terminal.list',
-  ...TERMINAL_HANDLE_METHODS,
-  ...SSH_BRIDGE_ORCHESTRATION_METHODS
-])
-
-export type SshBridgeHostBindingRuntime = SshBridgeOrchestrationRuntime & {
-  showTerminal(handle: string): Promise<{ executionHostId?: ExecutionHostId }>
-}
+export const SSH_BRIDGE_REMOTE_CONTROL_HINT =
+  'To let that host\'s CLI control this Orca, enable "Allow this host\'s orca CLI to control Orca" in Settings > SSH for that host.'
 
 export type SshBridgeResultFilter = (
   result: unknown
@@ -40,56 +27,75 @@ export type SshBridgeCallBinding =
   | { kind: 'denied'; message: string }
   | { kind: 'allowed'; filterResult?: SshBridgeResultFilter }
 
-export async function bindSshBridgeCall(
-  runtime: SshBridgeHostBindingRuntime,
+type SshBridgeBinder = (
+  runtime: OrcaRuntimeService,
+  targetId: string,
+  methodName: string,
+  selectors: SshBridgeSelectors
+) => Promise<SshBridgeCallBinding>
+
+const bindTerminalHandle: SshBridgeBinder = async (runtime, targetId, _methodName, selectors) => {
+  const handle = selectors.terminal
+  return handle && (await isHostTerminal(runtime, toSshExecutionHostId(targetId), handle))
+    ? { kind: 'allowed' }
+    : { kind: 'denied', message: outsideHostMessage(targetId, `terminal '${handle ?? ''}'`) }
+}
+
+const bindOrchestration: SshBridgeBinder = async (runtime, targetId, methodName, selectors) => {
+  const violation = await findSshBridgeOrchestrationViolation(
+    runtime,
+    toSshExecutionHostId(targetId),
+    methodName,
+    selectors
+  )
+  return violation
+    ? { kind: 'denied', message: outsideHostMessage(targetId, violation) }
+    : { kind: 'allowed' }
+}
+
+/** Every method an unopted bridge may reach, each with how its selectors are bound to the host. */
+export const SSH_BRIDGE_HOST_BINDERS: ReadonlyMap<string, SshBridgeBinder> = new Map<
+  string,
+  SshBridgeBinder
+>([
+  ['status.get', async () => ({ kind: 'allowed' })],
+  [
+    'terminal.list',
+    async (_runtime, targetId, _methodName, { worktree }) => ({
+      kind: 'allowed',
+      filterResult: (result) => filterTerminalListToHost(result, targetId, worktree)
+    })
+  ],
+  ['terminal.show', bindTerminalHandle],
+  ['terminal.read', bindTerminalHandle],
+  ['terminal.send', bindTerminalHandle],
+  ['terminal.wait', bindTerminalHandle],
+  ...SSH_BRIDGE_ORCHESTRATION_METHODS.map((method): [string, SshBridgeBinder] => [
+    method,
+    bindOrchestration
+  ])
+])
+
+export function bindSshBridgeCall(
+  runtime: OrcaRuntimeService,
   targetId: string,
   methodName: string,
   params: unknown
 ): Promise<SshBridgeCallBinding> {
-  const hostId = toSshExecutionHostId(targetId)
-  if (TERMINAL_HANDLE_METHODS.has(methodName)) {
-    const handle = readStringParam(params, 'terminal')
-    const terminalHostId = handle ? await resolveTerminalHost(runtime, handle) : null
-    return terminalHostId === hostId
-      ? { kind: 'allowed' }
-      : { kind: 'denied', message: outsideHostMessage(targetId, `terminal '${handle ?? ''}'`) }
-  }
-  if (SSH_BRIDGE_ORCHESTRATION_METHODS.has(methodName)) {
-    const violation = await findSshBridgeOrchestrationViolation(
-      runtime,
-      async (handle) => (await resolveTerminalHost(runtime, handle)) === hostId,
-      methodName,
-      params
-    )
-    return violation
-      ? { kind: 'denied', message: outsideHostMessage(targetId, violation) }
-      : { kind: 'allowed' }
-  }
-  if (methodName === 'terminal.list') {
-    const worktree = readStringParam(params, 'worktree')
-    return {
-      kind: 'allowed',
-      filterResult: (result) => filterTerminalListToHost(result, targetId, worktree)
-    }
-  }
-  return { kind: 'allowed' }
-}
-
-async function resolveTerminalHost(
-  runtime: SshBridgeHostBindingRuntime,
-  handle: string
-): Promise<ExecutionHostId | null> {
-  try {
-    return (await runtime.showTerminal(handle)).executionHostId ?? null
-  } catch {
-    return null
-  }
+  const bind = SSH_BRIDGE_HOST_BINDERS.get(methodName)
+  // Why: the dispatcher admits only table methods, so a miss is unreachable and must fail closed.
+  return bind
+    ? bind(runtime, targetId, methodName, parseSshBridgeSelectors(params))
+    : Promise.resolve({
+        kind: 'denied',
+        message: outsideHostMessage(targetId, `method '${methodName}'`)
+      })
 }
 
 function filterTerminalListToHost(
   result: unknown,
   targetId: string,
-  worktreeSelector: string | null
+  worktreeSelector: string | undefined
 ): ReturnType<SshBridgeResultFilter> {
   const hostId = toSshExecutionHostId(targetId)
   if (!isTerminalListResult(result)) {
@@ -145,5 +151,5 @@ function isTerminalListResult(value: unknown): value is RuntimeTerminalListResul
 }
 
 function outsideHostMessage(targetId: string, subject: string): string {
-  return `The orca CLI on SSH host '${targetId}' can only reach that host's own terminals and the coordinator that dispatched them, and ${subject} is outside that. To let that host's CLI control this Orca, enable "Allow this host's orca CLI to control Orca" in Settings > SSH for that host.`
+  return `The orca CLI on SSH host '${targetId}' can only reach that host's own terminals and the coordinator that dispatched them, and ${subject} is outside that. ${SSH_BRIDGE_REMOTE_CONTROL_HINT}`
 }

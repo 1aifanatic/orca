@@ -211,10 +211,7 @@ export async function runHostOrcaCliPassthrough(
     throw new HostCliUnavailableError(`Orca CLI entry not found at ${cliEntryPath}`)
   }
 
-  const credential = (options.credentials ?? sshBridgeCredentials).mint(
-    request.callerScope,
-    request.runtimeAuthority?.connectionIncarnation ?? ''
-  )
+  const credential = (options.credentials ?? sshBridgeCredentials).mint(request.callerScope)
   const env = buildHostCliEnv({
     hostEnv,
     remoteEnv: request.env,

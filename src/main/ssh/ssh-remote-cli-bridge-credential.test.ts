@@ -69,11 +69,7 @@ describe('the SSH bridge CLI child', () => {
 
     const token = spawnedEnv[ORCA_SSH_BRIDGE_CREDENTIAL_ENV]
     expect(token).toMatch(/^sshb_[0-9a-f]{48}$/)
-    expect(credentials.resolve(token ?? '')).toEqual({
-      scope: HOST_BOUND_SSH_BRIDGE_SCOPE,
-      connectionIncarnation: 'incarnation-1',
-      invocationId: expect.any(String)
-    })
+    expect(credentials.resolve(token ?? '')).toEqual(HOST_BOUND_SSH_BRIDGE_SCOPE)
     // Why: this machine's paired-server selection would route the guest's command with owner credentials.
     expect(spawnedEnv.ORCA_ENVIRONMENT).toBeUndefined()
     expect(spawnedEnv.ORCA_PAIRING_CODE).toBeUndefined()

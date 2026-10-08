@@ -34,7 +34,7 @@ function errorCode(response: RpcResponse): string | null {
 describe('the runtime socket and SSH bridge credentials', () => {
   it('scopes a bridge credential to its SSH target instead of owner authority', async () => {
     const server = createServer()
-    const credential = sshBridgeCredentials.mint(BRIDGE_SCOPE, 'incarnation-1')
+    const credential = sshBridgeCredentials.mint(BRIDGE_SCOPE)
     try {
       expect(errorCode(await send(server, credential.token, 'computer.click'))).toBe('forbidden')
       expect(errorCode(await send(server, credential.token, 'accounts.selectClaude'))).toBe(
@@ -49,7 +49,7 @@ describe('the runtime socket and SSH bridge credentials', () => {
 
   it('rejects a credential once its invocation settled', async () => {
     const server = createServer()
-    const credential = sshBridgeCredentials.mint(BRIDGE_SCOPE, 'incarnation-1')
+    const credential = sshBridgeCredentials.mint(BRIDGE_SCOPE)
     credential.revoke()
     expect(errorCode(await send(server, credential.token, 'status.get'))).toBe('unauthorized')
   })
