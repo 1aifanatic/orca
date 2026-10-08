@@ -50,7 +50,7 @@ describe('bounded agent hook status cache', () => {
     )
     upsertBoundedAgentHookStatus(listener, status('done', 'done', now), { maxPanes: 3, now })
     listener.lastPromptByProducerKey.set('stale', 'cached prompt')
-    listener.lastToolByProducerKey.set('stale\0tool', {} as never)
+    listener.lastToolByProducerKey.set('stale\0tool', {})
 
     const evicted = upsertBoundedAgentHookStatus(listener, status('current', 'working', now), {
       maxPanes: 3,

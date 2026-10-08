@@ -79,7 +79,7 @@ describe('AgentHookServer listener replay', () => {
       server.registerPaneKeyAlias('tab-1:0', sameTabPane, 'pty-1')
       const state = server._getStateForTests()
       state.lastPromptByProducerKey.set(PANE, 'cached prompt')
-      state.lastToolByProducerKey.set(`${sameTabPane}\0tool`, {} as never)
+      state.lastToolByProducerKey.set(`${sameTabPane}\0tool`, {})
       state.antigravityCompletedTranscriptByPaneKey.set(`${sameTabPane}\0done`, 'cached')
       state.ampCompletedCacheKeys.add(`${sameTabPane}\0amp`)
       state.lastPromptByProducerKey.set(siblingPrefixPane, 'sibling prompt')

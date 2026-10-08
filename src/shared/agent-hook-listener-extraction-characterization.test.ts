@@ -183,7 +183,7 @@ describe('agent hook extraction boundaries', () => {
     }
 
     movePaneCacheState(state, MOVED_PANE, MOVED_PANE)
-    expect((state.lastPromptByProducerKey as Map<string, unknown>).get(MOVED_PANE)).toBe('exact')
+    expect(state.lastPromptByProducerKey.get(MOVED_PANE)).toBe('exact')
   })
 
   it('clears exact and NUL-scoped cache keys but not sibling prefixes', () => {
