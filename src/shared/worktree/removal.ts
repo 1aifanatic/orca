@@ -3,6 +3,10 @@ import type { GitWorktreeInfo, Worktree } from './types'
 
 export const LOCKED_WORKTREE_REMOVAL_PREFIX = 'Worktree is locked by Git.'
 
+// Why: a caller waiting for the delete (the CLI) needs an answer even when Git stalls; past this
+// the removal keeps running and the reply says it is unfinished.
+export const WORKTREE_REMOVAL_WAIT_LIMIT_MS = 4 * 60_000
+
 export const UNSTOPPED_PTY_REMOVAL_PREFIX = 'Failed to physically stop every PTY for worktree:'
 
 // Why (#11960): the desktop force affordance is driven entirely by the classifier

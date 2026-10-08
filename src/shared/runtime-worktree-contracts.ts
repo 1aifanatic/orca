@@ -137,6 +137,8 @@ export type RuntimeWorktreeCreateResult = {
 export type RuntimeWorktreeRemoveResult = RemoveWorktreeResult & {
   removed: boolean
   warning?: string
+  /** The caller's wait ran out while the delete was still running; it continues on the host. */
+  waitExpired?: true
 }
 
 export type RuntimeWorktreePsResult = {

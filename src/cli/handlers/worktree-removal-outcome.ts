@@ -1,9 +1,10 @@
 import type { RuntimeWorktreeRemoveResult } from '../../shared/runtime-types'
+import { WORKTREE_REMOVAL_WAIT_LIMIT_MS } from '../../shared/worktree/removal'
 import { RuntimeClientError, type RuntimeClient, type RuntimeRpcSuccess } from '../runtime-client'
 
-// Why: the reply now waits out Git's checkout delete (20-35 s on a large repo, after the PTY
-// sweep), which the 60 s default request timeout does not reliably cover.
-export const WORKTREE_REMOVAL_WAIT_TIMEOUT_MS = 5 * 60_000
+// Why: the host bounds the wait itself and answers `waitExpired`; this only catches a host that
+// stops answering altogether, so it must outlast the host's own limit.
+export const WORKTREE_REMOVAL_WAIT_TIMEOUT_MS = WORKTREE_REMOVAL_WAIT_LIMIT_MS + 60_000
 
 export type WorktreeRemovalRequest = {
   worktree: string
@@ -16,8 +17,9 @@ export type WorktreeRemovalRequest = {
 
 /**
  * Removes the worktree and answers with the delete's outcome: `removed: true` only once Git
- * has finished. A host that predates `waitForRemoval` still answers on acceptance with
- * `removing: true`; that is reported as not yet removed rather than as a removal.
+ * has finished, a non-zero error if it failed or is still running past the wait. A host that
+ * predates `waitForRemoval` still answers on acceptance with `removing: true`; that is reported
+ * as not yet removed rather than as a removal.
  */
 export async function removeWorktreeAndWait(
   client: RuntimeClient,
@@ -30,8 +32,11 @@ export async function removeWorktreeAndWait(
       { timeoutMs: WORKTREE_REMOVAL_WAIT_TIMEOUT_MS }
     )
     .catch((error: unknown) => {
-      throw describeUnfinishedRemoval(error, request.worktree)
+      throw isRuntimeTimeout(error) ? unansweredRemovalError(request.worktree) : error
     })
+  if (response.result.waitExpired) {
+    throw stillRunningError(request.worktree)
+  }
   return response.result.removing
     ? { ...response, result: { ...response.result, removed: false } }
     : response
@@ -44,13 +49,18 @@ export function formatWorktreeRemoval(value: RuntimeWorktreeRemoveResult): strin
 }
 
 /** A wait that ran out says the removal may still be running, not that it failed. */
-function describeUnfinishedRemoval(error: unknown, worktree: string): unknown {
-  if (!isRuntimeTimeout(error)) {
-    return error
-  }
+function stillRunningError(worktree: string): RuntimeClientError {
   return new RuntimeClientError(
     'worktree_removal_still_running',
-    `Orca did not report the outcome of removing ${worktree} within ${WORKTREE_REMOVAL_WAIT_TIMEOUT_MS / 60_000} minutes. The removal may still be running; check \`orca worktree show --worktree ${worktree}\` before retrying.`
+    `Orca is still removing ${worktree}; it did not finish within ${WORKTREE_REMOVAL_WAIT_LIMIT_MS / 60_000} minutes. Check \`orca worktree show --worktree ${worktree}\` before retrying.`
+  )
+}
+
+// Why: only a host that stops answering reaches this; it may not have started the delete at all.
+function unansweredRemovalError(worktree: string): RuntimeClientError {
+  return new RuntimeClientError(
+    'worktree_removal_still_running',
+    `Orca stopped answering while removing ${worktree}; the removal may still be running. Check \`orca worktree show --worktree ${worktree}\` before retrying.`
   )
 }
 

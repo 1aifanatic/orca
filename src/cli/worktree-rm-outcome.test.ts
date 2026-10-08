@@ -97,7 +97,17 @@ describe('worktree rm reports the removal outcome, not its acceptance', () => {
     expect(printed()).toContain('Failed to delete worktree at /tmp/wt-1. EBUSY')
   })
 
-  it('says the removal may still be running when the wait runs out', async () => {
+  it('exits non-zero saying the removal is still running when the host wait runs out', async () => {
+    removeReplying({ removed: false, removing: true, waitExpired: true })
+
+    await main(['worktree', 'rm', '--worktree', 'id:wt-1', '--json'], '/tmp/repo')
+
+    expect(process.exitCode).toBe(1)
+    expect(printed()).toContain('worktree_removal_still_running')
+    expect(printed()).toContain('Orca is still removing id:wt-1')
+  })
+
+  it('says the removal may still be running when Orca stops answering', async () => {
     queueFixtures(callMock, okFixture('req_show', { worktree: { hostId: 'local' } }))
     callMock.mockRejectedValueOnce(
       new RuntimeClientError(
@@ -110,6 +120,6 @@ describe('worktree rm reports the removal outcome, not its acceptance', () => {
 
     expect(process.exitCode).toBe(1)
     expect(printed()).toContain('worktree_removal_still_running')
-    expect(printed()).toContain('The removal may still be running')
+    expect(printed()).toContain('the removal may still be running')
   })
 })

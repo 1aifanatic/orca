@@ -27,6 +27,7 @@ import {
 } from './worktree-schemas'
 import { WORKTREE_CATALOG_METHODS } from './worktree-catalog-methods'
 import { readsWorktreeRemovalMarker } from '../worktree-removal-marker-projection'
+import { settleRemovalWithinWaitLimit } from './worktree-removal-wait'
 
 export const WORKTREE_METHODS = [
   ...WORKTREE_CATALOG_METHODS,
@@ -255,7 +256,7 @@ export const WORKTREE_METHODS = [
       // resolution costs a scan and throws for an id two hosts share. Other selectors stay unstamped.
       const explicitWorktreeId = getExplicitWorktreeIdSelector(params.worktree)
       const repoId = explicitWorktreeId ? splitWorktreeId(explicitWorktreeId)?.repoId : undefined
-      const result = await runtime.removeManagedWorktree(params.worktree, {
+      const removal = runtime.removeManagedWorktree(params.worktree, {
         force: params.force === true,
         runHooks: params.runHooks === true,
         allowUnverifiedPtyStop: params.allowUnverifiedPtyStop === true,
@@ -267,8 +268,10 @@ export const WORKTREE_METHODS = [
           ? { waitForBackgroundRemoval: true }
           : {})
       })
+      const result =
+        params.waitForRemoval === true ? await settleRemovalWithinWaitLimit(removal) : await removal
       return {
-        removed: true,
+        removed: !('waitExpired' in result),
         ...result,
         ...(repoId ? { catalogVersion: getLocalWorktreeCatalogVersion(repoId) } : {})
       }
