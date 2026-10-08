@@ -137,8 +137,7 @@ export function beginHostAdmittedStructuredLaunch(args: {
   worktreeId: string
   executionHostId: ExecutionHostId
   target: RuntimeClientTarget
-  /** Commits the admitted chat: the local launch path, told which host admitted it and the saved
-   *  selection that host said create will seed. */
+  /** Show the same choices the admitted request will create with. */
   openAdmitted: (
     seedOptions?: Readonly<Record<string, string>>,
     clientOptions?: Readonly<Record<string, string>>

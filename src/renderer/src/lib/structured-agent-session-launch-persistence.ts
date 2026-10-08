@@ -36,7 +36,8 @@ export function structuredAgentLaunchRecordFor(
 ): StructuredAgentLaunchPersistedRecord {
   const { envelope, resumeFrom, options } = intent.params
   // Legacy paired launches cannot re-derive their host seed; explicit client options are frozen.
-  const pairedSeed = intent.target.kind === 'local' ? undefined : intent.seedOptions
+  const pairedSeed =
+    options !== undefined || intent.target.kind === 'local' ? undefined : intent.seedOptions
   return {
     sessionId: intent.sessionId,
     executionHostId: intent.executionHostId,

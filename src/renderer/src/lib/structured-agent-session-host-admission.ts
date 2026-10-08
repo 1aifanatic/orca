@@ -28,8 +28,7 @@ function runtimeErrorCode(error: unknown): string {
   return 'runtime_unavailable'
 }
 
-/** The owning host's answer to "can you run this chat here?", asked before anything is created.
- *  An admitting host also names the saved selection create will seed, when it is new enough to. */
+/** Keep the picker aligned with the starting choices this host version can honour. */
 export type StructuredLaunchAdmission =
   | {
       kind: 'admitted'
