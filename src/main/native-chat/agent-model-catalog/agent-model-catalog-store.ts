@@ -24,8 +24,13 @@ import {
   AgentModelCatalogFailures,
   type AgentModelCatalogFailure
 } from './agent-model-catalog-failures'
+import {
+  AGENT_MODEL_CATALOG_PICKER_WAIT_MS,
+  AgentModelCatalogListingWaiters
+} from './agent-model-catalog-listing-waiters'
 
-export { AGENT_MODEL_CATALOG_FAILURE_TTL_MS, type AgentModelCatalogFailure }
+export { AGENT_MODEL_CATALOG_FAILURE_TTL_MS, AGENT_MODEL_CATALOG_PICKER_WAIT_MS }
+export type { AgentModelCatalogFailure }
 
 // The execution host's one model catalog per (agent, launch fingerprint):
 // served immediately at any age, refreshed in the background when old, and
@@ -40,7 +45,6 @@ export { AGENT_MODEL_CATALOG_FAILURE_TTL_MS, type AgentModelCatalogFailure }
 // `AgentModelCatalogFailures`, which also holds why no chat can start under the account).
 
 export const AGENT_MODEL_CATALOG_FRESH_MS = 10 * 60_000
-export const AGENT_MODEL_CATALOG_PICKER_WAIT_MS = 30_000
 export const AGENT_MODEL_CATALOG_MAX_ENTRIES = 256
 
 /** Lists an agent's models without a session, under the account a launch would pin. `signal`
@@ -68,7 +72,10 @@ export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
   private readonly failures: AgentModelCatalogFailures
   private readonly refreshes = new Map<string, InFlightListings>()
-  private readonly listingWaiters = new Map<string, Set<() => void>>()
+  private readonly listingWaiters = new AgentModelCatalogListingWaiters(
+    (fingerprint) => this.get(fingerprint),
+    (fingerprint) => this.refreshes.has(fingerprint)
+  )
   private readonly latestWrittenOrder = new Map<string, number>()
   private nextListingOrder = 0
   private persistence: AgentModelCatalogPersistence | null = null
@@ -150,7 +157,7 @@ export class AgentModelCatalogStore {
     source: AgentModelCatalogSource
   ): AgentModelCatalogEntry | null {
     const entry = this.writeSuccess(fingerprint, agent, success, source, ++this.nextListingOrder)
-    this.notifyListingWaiters(fingerprint)
+    this.listingWaiters.notify(fingerprint)
     return entry
   }
 
@@ -183,7 +190,7 @@ export class AgentModelCatalogStore {
     }
     this.entries.set(fingerprint, entry)
     this.persistence?.save([...this.entries.values()])
-    this.notifyListingWaiters(fingerprint)
+    this.listingWaiters.notify(fingerprint)
   }
 
   private writeSuccess(
@@ -239,7 +246,7 @@ export class AgentModelCatalogStore {
         this.refreshes.delete(fingerprint)
         this.latestWrittenOrder.delete(fingerprint)
       }
-      this.notifyListingWaiters(fingerprint)
+      this.listingWaiters.notify(fingerprint)
     }
     const order = ++this.nextListingOrder
     // Agent, outcome and duration only: a slow listing shows in the trace log without its content.
@@ -286,44 +293,7 @@ export class AgentModelCatalogStore {
   /** A picker follows the current account work until a catalog lands, all work ends,
    *  or its fixed deadline expires. */
   pendingListing(fingerprint: string): Promise<AgentModelCatalogEntry | null> | null {
-    if (!this.refreshes.has(fingerprint)) {
-      return null
-    }
-    return new Promise((resolve) => {
-      const waiters = this.listingWaiters.get(fingerprint) ?? new Set<() => void>()
-      let settled = false
-      const finish = (entry: AgentModelCatalogEntry | null): void => {
-        if (settled) {
-          return
-        }
-        settled = true
-        clearTimeout(deadline)
-        waiters.delete(check)
-        if (waiters.size === 0) {
-          this.listingWaiters.delete(fingerprint)
-        }
-        resolve(entry)
-      }
-      const check = (): void => {
-        const entry = this.get(fingerprint)
-        if (entry || !this.refreshes.has(fingerprint)) {
-          finish(entry)
-        }
-      }
-      const deadline = setTimeout(
-        () => finish(this.get(fingerprint)),
-        AGENT_MODEL_CATALOG_PICKER_WAIT_MS
-      )
-      waiters.add(check)
-      this.listingWaiters.set(fingerprint, waiters)
-      check()
-    })
-  }
-
-  private notifyListingWaiters(fingerprint: string): void {
-    for (const check of this.listingWaiters.get(fingerprint) ?? []) {
-      check()
-    }
+    return this.listingWaiters.wait(fingerprint)
   }
 
   /** True when a read should kick a background refresh: nothing known or the
