@@ -1,13 +1,12 @@
 import type Database from '../../sqlite/sync-database'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { writeAgentSessionStoreRows } from '../../runtime/agent-session-record-rows'
-import { commandReceiptScope, type CommandReceipt } from './command-receipt-schema'
+import type { CommandReceipt } from './command-receipt-schema'
 
 type AcceptedReceipt = Extract<CommandReceipt, { status: 'accepted' }>
 
 export function commandReceiptFixture(overrides: Partial<AcceptedReceipt> = {}): AcceptedReceipt {
   return {
-    scope: commandReceiptScope('caller-1', 'global'),
     operationId: 'operation-1',
     sessionId: 'session-1',
     callerKey: 'caller-1',

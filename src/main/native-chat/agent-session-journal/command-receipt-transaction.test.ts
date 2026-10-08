@@ -20,6 +20,7 @@ import type { JournalRow } from './journal-row-schema'
 import { JournalRowWriter } from './journal-row-writer'
 import { JournalWriteQueue } from './journal-write-queue'
 import { insertCommandReceiptIfAbsent, readCommandReceipt } from './command-receipt-table'
+import { commandReceiptScope, type CommandReceiptResult } from './command-receipt-schema'
 import {
   commandReceiptFixture,
   writeCommandReceiptTestRecord
@@ -32,6 +33,7 @@ import {
 let root: string
 let database: JournalHostDatabase
 const receipt = commandReceiptFixture()
+const scope = commandReceiptScope(receipt.callerKey, 'global')
 const identity = {
   sessionId: 'session-1',
   workspaceId: 'workspace-1',
@@ -72,12 +74,12 @@ function storedRows() {
 }
 
 function readReceipt() {
-  return readCommandReceipt(database.db, receipt.scope, receipt.operationId)
+  return readCommandReceipt(database.db, scope, receipt.operationId)
 }
 
 describe('command receipt transaction hook', () => {
   it('rolls back the effect and receipt together if the enclosing transaction throws', () => {
-    const hook = buildCommandReceiptTransaction(receipt)
+    const hook = buildCommandReceiptTransaction(scope, receipt)
     expect(() =>
       runJournalTransaction(database.db, (db) => {
         insertJournalRow(db, identity.sessionId, epochRow(1, 1000))
@@ -93,7 +95,7 @@ describe('command receipt transaction hook', () => {
   it('commits through the existing row writer with a pointer to the row it assigned', async () => {
     const queue = new JournalWriteQueue(identity.sessionId)
     const committed: JournalRow[] = []
-    let result = receipt.result
+    let result: CommandReceiptResult = { kind: 'journal-row', epoch: 'epoch-0', sequence: 99 }
     const writer = new JournalRowWriter({
       sessionId: identity.sessionId,
       now: () => 1000,
@@ -101,7 +103,7 @@ describe('command receipt transaction hook', () => {
       database: () => database,
       readOnly: () => database.readOnly,
       highestFence: () => 0,
-      nextSequence: () => 1,
+      nextSequence: () => 7,
       commit: (row) => committed.push(row)
     })
     await writer.enqueue(
@@ -109,21 +111,24 @@ describe('command receipt transaction hook', () => {
       (_db, row) => {
         result = { kind: 'journal-row', epoch: row.epoch, sequence: row.seq }
       },
-      buildCommandReceiptTransaction(() => ({ ...receipt, result }))
+      buildCommandReceiptTransaction(scope, () => ({ ...receipt, result }))
     )
     expect(committed).toHaveLength(1)
-    expect(storedRows()).toEqual([{ seq: 1 }])
-    expect(readReceipt()).toEqual({ verdict: 'readable', receipt })
+    expect(storedRows()).toEqual([{ seq: 7 }])
+    expect(readReceipt()).toEqual({
+      verdict: 'readable',
+      receipt: { ...receipt, result: { kind: 'journal-row', epoch: 'epoch-1', sequence: 7 } }
+    })
   })
 
   it.each(['duplicate', 'conflict', 'unreadable'] as const)(
     'throws a typed %s verdict and rolls back the second effect',
     (reason) => {
-      database.transaction((db) => insertCommandReceiptIfAbsent(db, receipt))
+      database.transaction((db) => insertCommandReceiptIfAbsent(db, scope, receipt))
       if (reason === 'unreadable') {
         database.db.prepare("UPDATE agent_session_command_receipts SET result_json = '{'").run()
       }
-      const hook = buildCommandReceiptTransaction({
+      const hook = buildCommandReceiptTransaction(scope, {
         ...receipt,
         fingerprint: reason === 'conflict' ? 'changed' : receipt.fingerprint
       })
@@ -146,7 +151,7 @@ describe('command receipts across epoch replacement', () => {
   it('survives deletion of its referenced journal epoch as retained spent proof', () => {
     database.transaction((db) => {
       insertJournalRow(db, identity.sessionId, epochRow(1, 1000))
-      insertCommandReceiptIfAbsent(db, receipt)
+      insertCommandReceiptIfAbsent(db, scope, receipt)
       deleteJournalEpochRows(db, identity.sessionId, 'epoch-1')
     })
     expect(storedRows()).toEqual([])
@@ -156,7 +161,7 @@ describe('command receipts across epoch replacement', () => {
   it('survives the actual replacement transaction without transferring or copying results', () => {
     database.transaction((db) => {
       insertJournalRow(db, identity.sessionId, epochRow(1, 1000))
-      insertCommandReceiptIfAbsent(db, receipt)
+      insertCommandReceiptIfAbsent(db, scope, receipt)
     })
     replaceJournalEpoch({
       database,
@@ -173,7 +178,9 @@ describe('command receipts across epoch replacement', () => {
       { epoch: 'epoch-2' }
     ])
     expect(readReceipt()).toEqual({ verdict: 'readable', receipt })
-    expect(database.transaction((db) => insertCommandReceiptIfAbsent(db, receipt))).toMatchObject({
+    expect(
+      database.transaction((db) => insertCommandReceiptIfAbsent(db, scope, receipt))
+    ).toMatchObject({
       inserted: false,
       reason: 'duplicate'
     })

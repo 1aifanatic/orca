@@ -15,6 +15,7 @@ import {
   openTestJournalHostDatabase
 } from './journal-host-database-test-support'
 import { insertCommandReceiptIfAbsent, readCommandReceipt } from './command-receipt-table'
+import { commandReceiptScope } from './command-receipt-schema'
 import {
   commandReceiptFixture,
   writeCommandReceiptTestRecord
@@ -24,6 +25,7 @@ import { buildCommandReceiptTransaction } from './command-receipt-transaction'
 
 let root: string
 let dbPath: string
+const scope = commandReceiptScope('caller-1', 'global')
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-command-receipt-schema-'))
@@ -44,15 +46,29 @@ function hasReceiptTable(db: Database.Database): boolean {
 }
 
 describe('command receipt schema at writable open', () => {
-  it('creates the table and session index on a fresh host database', () => {
+  it('creates the caller/id primary key and lookup indexes on a fresh host database', () => {
     const database = openTestJournalHostDatabase(root)
     expect(hasReceiptTable(database.db)).toBe(true)
     expect(journalPragmaNumber(database.db, 'user_version')).toBe(JOURNAL_DB_SCHEMA_VERSION)
-    expect(
-      database.db
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
-        .get('agent_session_command_receipts_session')
-    ).toBeDefined()
+    expect(database.db.prepare('PRAGMA table_info(agent_session_command_receipts)').all()).toEqual([
+      expect.objectContaining({ name: 'operation_id', pk: 2 }),
+      expect.objectContaining({ name: 'session_id', pk: 0 }),
+      expect.objectContaining({ name: 'caller_key', pk: 1 }),
+      expect.objectContaining({ name: 'method', pk: 0 }),
+      expect.objectContaining({ name: 'fingerprint', pk: 0 }),
+      expect.objectContaining({ name: 'status', pk: 0 }),
+      expect.objectContaining({ name: 'result_json', pk: 0 }),
+      expect.objectContaining({ name: 'rejection_json', pk: 0 }),
+      expect.objectContaining({ name: 'accepted_at', pk: 0 })
+    ])
+    for (const [index, column] of [
+      ['operation', 'operation_id'],
+      ['session', 'session_id']
+    ] as const) {
+      expect(
+        database.db.prepare(`PRAGMA index_info(agent_session_command_receipts_${index})`).all()
+      ).toEqual([expect.objectContaining({ name: column })])
+    }
     expect(
       database.db.prepare('PRAGMA foreign_key_list(agent_session_command_receipts)').all()
     ).toEqual([
@@ -100,7 +116,7 @@ describe('command receipts on a newer database', () => {
     const receipt = commandReceiptFixture()
     runJournalTransaction(seeded, (db) => {
       writeCommandReceiptTestRecord(db)
-      insertCommandReceiptIfAbsent(db, receipt)
+      insertCommandReceiptIfAbsent(db, scope, receipt)
     })
     seeded.pragma(`user_version = ${JOURNAL_DB_SCHEMA_VERSION + 1}`)
     seeded.close()
@@ -109,14 +125,14 @@ describe('command receipts on a newer database', () => {
     const { db, readOnly } = openJournalDatabase(dbPath)
     try {
       expect(readOnly).toBe(true)
-      expect(readCommandReceipt(db, receipt.scope, receipt.operationId)).toEqual({
+      expect(readCommandReceipt(db, scope, receipt.operationId)).toEqual({
         verdict: 'readable',
         receipt
       })
-      const write = () => insertCommandReceiptIfAbsent(db, receipt)
+      const write = () => insertCommandReceiptIfAbsent(db, scope, receipt)
       expect(write).toThrow(AgentSessionJournalError)
       expect(write).toThrow(expect.objectContaining({ code: 'journal_read_only' }))
-      expect(() => buildCommandReceiptTransaction(receipt).write(db)).toThrow(
+      expect(() => buildCommandReceiptTransaction(scope, receipt).write(db)).toThrow(
         expect.objectContaining({ code: 'journal_read_only' })
       )
     } finally {
@@ -139,9 +155,9 @@ describe('command receipts on a newer database', () => {
     try {
       const receipt = commandReceiptFixture()
       expect(hasReceiptTable(db)).toBe(false)
-      expect(readCommandReceipt(db, receipt.scope, receipt.operationId)).toEqual({
+      expect(readCommandReceipt(db, scope, receipt.operationId)).toEqual({
         verdict: 'unreadable',
-        scope: receipt.scope,
+        scope,
         operationId: receipt.operationId
       })
     } finally {

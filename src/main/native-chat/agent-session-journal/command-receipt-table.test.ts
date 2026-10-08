@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JournalHostDatabase } from './journal-host-database'
 import {
   closeTestJournalHostDatabases,
@@ -9,8 +9,8 @@ import {
 } from './journal-host-database-test-support'
 import {
   commandReceiptScope,
-  commandReceiptScopeKey,
-  type CommandReceipt
+  type CommandReceipt,
+  type CommandReceiptScope
 } from './command-receipt-schema'
 import { insertCommandReceiptIfAbsent, readCommandReceipt } from './command-receipt-table'
 import {
@@ -21,6 +21,7 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 
 let root: string
 let database: JournalHostDatabase
+const globalScope = commandReceiptScope('caller-1', 'global')
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-command-receipt-table-'))
@@ -33,16 +34,29 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function insert(receipt: CommandReceipt) {
-  return database.transaction((db) => insertCommandReceiptIfAbsent(db, receipt))
+function insert(receipt: CommandReceipt, scope: CommandReceiptScope = globalScope) {
+  return database.transaction((db) => insertCommandReceiptIfAbsent(db, scope, receipt))
 }
 
-function read(receipt: CommandReceipt) {
-  return readCommandReceipt(database.db, receipt.scope, receipt.operationId)
+function read(receipt: CommandReceipt, scope: CommandReceiptScope = globalScope) {
+  return readCommandReceipt(database.db, scope, receipt.operationId)
+}
+
+function cancelReceipt(callerKey: string, turnId = 'turn-1') {
+  return commandReceiptFixture({
+    callerKey,
+    method: 'agentSession.cancel',
+    fingerprint: computeAgentSessionPayloadFingerprint({
+      method: 'agentSession.cancel',
+      sessionId: 'session-1',
+      fields: { turnId }
+    }),
+    result: { kind: 'no-op', outcome: { kind: 'cancel', cancelled: false, turnId } }
+  })
 }
 
 describe('command receipt identity', () => {
-  it('inserts once and returns the established receipt on a duplicate', () => {
+  it('inserts a send once and replays the original receipt across callers with the same fingerprint', () => {
     const receipt = commandReceiptFixture()
     expect(read(receipt)).toEqual({ verdict: 'absent' })
     expect(insert(receipt)).toEqual({ inserted: true })
@@ -75,22 +89,85 @@ describe('command receipt identity', () => {
     expect(read(receipt)).toEqual({ verdict: 'readable', receipt })
   })
 
-  it('isolates global and caller namespaces without scope string collisions', () => {
-    const receipts = [
-      commandReceiptFixture(),
-      commandReceiptFixture({ scope: commandReceiptScope('caller-1') }),
-      commandReceiptFixture({ scope: commandReceiptScope('caller-2'), callerKey: 'caller-2' }),
-      commandReceiptFixture({ scope: commandReceiptScope('global'), callerKey: 'global' })
-    ]
-    for (const receipt of receipts) {
-      expect(insert(receipt)).toEqual({ inserted: true })
-      expect(read(receipt)).toEqual({ verdict: 'readable', receipt })
+  it('conflicts when the same caller sends and then stops with the same id', () => {
+    const send = commandReceiptFixture()
+    const stop = cancelReceipt(send.callerKey)
+    const scope = commandReceiptScope(stop.callerKey)
+    expect(insert(send)).toEqual({ inserted: true })
+    expect(read(stop, scope)).toEqual({ verdict: 'readable', receipt: send })
+    expect(insert(stop, scope)).toEqual({
+      inserted: false,
+      reason: 'conflict',
+      existing: { verdict: 'readable', receipt: send }
+    })
+  })
+
+  it('conflicts when one caller stops and another sends with the same id', () => {
+    const stop = cancelReceipt('caller-1')
+    expect(insert(stop, commandReceiptScope(stop.callerKey))).toEqual({ inserted: true })
+    expect(insert(commandReceiptFixture({ callerKey: 'caller-2' }))).toEqual({
+      inserted: false,
+      reason: 'conflict',
+      existing: { verdict: 'readable', receipt: stop }
+    })
+  })
+
+  it('allows separate callers to stop with the same id', () => {
+    for (const callerKey of ['caller-1', 'caller-2']) {
+      const receipt = cancelReceipt(callerKey)
+      const scope = commandReceiptScope(callerKey)
+      expect(insert(receipt, scope)).toEqual({ inserted: true })
+      expect(read(receipt, scope)).toEqual({ verdict: 'readable', receipt })
     }
   })
 
+  it('allows another caller to stop with an id already used by a send', () => {
+    const send = commandReceiptFixture()
+    const stop = cancelReceipt('caller-2')
+    const scope = commandReceiptScope(stop.callerKey)
+    expect(insert(send)).toEqual({ inserted: true })
+    expect(read(stop, scope)).toEqual({ verdict: 'absent' })
+    expect(insert(stop, scope)).toEqual({ inserted: true })
+    expect(read(stop, scope)).toEqual({ verdict: 'readable', receipt: stop })
+  })
+
+  it('treats a caller key literally named global as an ordinary caller', () => {
+    const stop = cancelReceipt('global')
+    const scope = commandReceiptScope(stop.callerKey)
+    expect(insert(stop, scope)).toEqual({ inserted: true })
+    expect(insert(cancelReceipt('caller-2'), commandReceiptScope('caller-2'))).toEqual({
+      inserted: true
+    })
+    expect(read(stop, scope)).toEqual({ verdict: 'readable', receipt: stop })
+    expect(insert(commandReceiptFixture())).toMatchObject({ inserted: false, reason: 'conflict' })
+  })
+
+  it.each([500, 1000])(
+    'orders global candidates by time then caller and checks every fingerprint (%i)',
+    (acceptedAt) => {
+      const later = cancelReceipt('caller-b', 'turn-b')
+      const first = { ...cancelReceipt('caller-a', 'turn-a'), acceptedAt }
+      expect(insert(later, commandReceiptScope(later.callerKey))).toEqual({ inserted: true })
+      expect(insert(first, commandReceiptScope(first.callerKey))).toEqual({ inserted: true })
+      expect(read(later)).toEqual({ verdict: 'readable', receipt: first })
+      expect(insert({ ...later, callerKey: 'caller-c' })).toEqual({
+        inserted: false,
+        reason: 'duplicate',
+        existing: { verdict: 'readable', receipt: later }
+      })
+      expect(insert(commandReceiptFixture())).toEqual({
+        inserted: false,
+        reason: 'conflict',
+        existing: { verdict: 'readable', receipt: first }
+      })
+    }
+  )
+
   it('refuses a caller that does not match its namespace', () => {
-    const receipt = commandReceiptFixture({ scope: commandReceiptScope('caller-2') })
-    expect(() => insert(receipt)).toThrow('command caller does not match its scope')
+    const receipt = commandReceiptFixture()
+    expect(() => insert(receipt, commandReceiptScope('caller-2'))).toThrow(
+      'command caller does not match its scope'
+    )
     expect(read(receipt)).toEqual({ verdict: 'absent' })
   })
 
@@ -100,10 +177,27 @@ describe('command receipt identity', () => {
     expect(read(receipt)).toEqual({ verdict: 'absent' })
   })
 
-  it('requires an effect transaction instead of committing a preliminary reservation', () => {
+  it('requires a receipt to be written inside an open transaction', () => {
     const receipt = commandReceiptFixture()
-    expect(() => insertCommandReceiptIfAbsent(database.db, receipt)).toThrow(/effect transaction/)
+    expect(() => insertCommandReceiptIfAbsent(database.db, globalScope, receipt)).toThrow(
+      /inside an open transaction/
+    )
     expect(read(receipt)).toEqual({ verdict: 'absent' })
+  })
+
+  it('throws and rolls back an unexpected key collision after an absent lookup', () => {
+    database.db
+      .exec(`CREATE TRIGGER collide_command_receipt BEFORE INSERT ON agent_session_command_receipts
+      BEGIN
+        INSERT INTO agent_session_command_receipts
+          (operation_id, session_id, caller_key, method, fingerprint, status, result_json, rejection_json, accepted_at)
+          VALUES (NEW.operation_id, NEW.session_id, NEW.caller_key, NEW.method, NEW.fingerprint,
+            NEW.status, NEW.result_json, NEW.rejection_json, NEW.accepted_at);
+      END`)
+    const receipt = commandReceiptFixture()
+    expect(() => insert(receipt)).toThrow(/UNIQUE constraint/i)
+    expect(read(receipt)).toEqual({ verdict: 'absent' })
+    expect(database.db.isTransaction).toBe(false)
   })
 })
 
@@ -161,7 +255,7 @@ describe('unreadable command receipts', () => {
     database.db.prepare(`UPDATE agent_session_command_receipts SET ${column} = ?`).run(value)
     const existing = {
       verdict: 'unreadable',
-      scope: receipt.scope,
+      scope: globalScope,
       operationId: receipt.operationId
     }
     expect(read(receipt)).toEqual(existing)
@@ -173,15 +267,82 @@ describe('unreadable command receipts', () => {
     insert(receipt)
     database.db
       .prepare(`UPDATE agent_session_command_receipts SET status = 'rejected', result_json = NULL,
-        rejection_json = ? WHERE scope = ? AND operation_id = ?`)
+        rejection_json = ? WHERE caller_key = ? AND operation_id = ?`)
       .run(
         JSON.stringify({
           reference: { code: 'agent_session_operation_invalid', details: { reason: 'madeUp' } }
         }),
-        commandReceiptScopeKey(receipt.scope),
+        receipt.callerKey,
         receipt.operationId
       )
     expect(read(receipt)).toMatchObject({ verdict: 'unreadable' })
     expect(insert(receipt)).toMatchObject({ inserted: false, reason: 'unreadable' })
+  })
+
+  it('refuses a global lookup if any candidate is unreadable, even after a matching receipt', () => {
+    const readable = cancelReceipt('caller-a')
+    const unreadable = cancelReceipt('caller-b')
+    insert(readable, commandReceiptScope(readable.callerKey))
+    insert(unreadable, commandReceiptScope(unreadable.callerKey))
+    database.db
+      .prepare("UPDATE agent_session_command_receipts SET result_json = '{' WHERE caller_key = ?")
+      .run(unreadable.callerKey)
+    expect(read(readable, commandReceiptScope(readable.callerKey))).toEqual({
+      verdict: 'readable',
+      receipt: readable
+    })
+    const existing = {
+      verdict: 'unreadable',
+      scope: globalScope,
+      operationId: readable.operationId
+    }
+    expect(read(readable)).toEqual(existing)
+    expect(insert({ ...readable, callerKey: 'caller-c' })).toEqual({
+      inserted: false,
+      reason: 'unreadable',
+      existing
+    })
+  })
+
+  it('reads an oversized accepted_at integer as unreadable', () => {
+    const receipt = commandReceiptFixture()
+    insert(receipt)
+    database.db.exec('UPDATE agent_session_command_receipts SET accepted_at = 9007199254740993')
+    expect(read(receipt)).toEqual({
+      verdict: 'unreadable',
+      scope: globalScope,
+      operationId: receipt.operationId
+    })
+    expect(insert(receipt)).toMatchObject({ inserted: false, reason: 'unreadable' })
+  })
+
+  it('reads a table missing an expected column as unreadable', () => {
+    database.db.exec(
+      'ALTER TABLE agent_session_command_receipts RENAME COLUMN result_json TO future_result_json'
+    )
+    const receipt = commandReceiptFixture()
+    for (const scope of [globalScope, commandReceiptScope(receipt.callerKey)]) {
+      expect(read(receipt, scope)).toEqual({
+        verdict: 'unreadable',
+        scope,
+        operationId: receipt.operationId
+      })
+      expect(insert(receipt, scope)).toMatchObject({ inserted: false, reason: 'unreadable' })
+    }
+  })
+
+  it.each([
+    [5, 'database is locked'],
+    [10, 'disk I/O error']
+  ] as const)('propagates operational SQLite error %i', (errcode, message) => {
+    const failure = Object.assign(new Error(message), { code: 'ERR_SQLITE_ERROR', errcode })
+    const prepare = vi.spyOn(database.db, 'prepare').mockImplementationOnce(() => {
+      throw failure
+    })
+    try {
+      expect(() => read(commandReceiptFixture())).toThrow(failure)
+    } finally {
+      prepare.mockRestore()
+    }
   })
 })

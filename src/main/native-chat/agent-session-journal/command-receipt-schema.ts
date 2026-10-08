@@ -10,7 +10,7 @@ export const commandReceiptScopeSchema = z.discriminatedUnion('kind', [
 
 export type CommandReceiptScope = z.infer<typeof commandReceiptScopeSchema>
 
-/** Sends use global identity; other methods keep the authenticated caller's namespace. */
+/** Sends look across callers; other methods look up only the authenticated caller's row. */
 export function commandReceiptScope(
   callerKey: string,
   operationIdScope?: 'global'
@@ -18,11 +18,7 @@ export function commandReceiptScope(
   return operationIdScope === 'global' ? { kind: 'global' } : { kind: 'caller', callerKey }
 }
 
-export function commandReceiptScopeKey(scope: CommandReceiptScope): string {
-  return scope.kind === 'global' ? 'global' : `caller:${scope.callerKey}`
-}
-
-/** A missing referenced row is spent proof: replay answers unknown, never repeats the effect. */
+/** The pointer locates the result; if its row is gone, the command stays spent: read what remains, else unknown, never rerun. */
 export const commandReceiptResultSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('journal-row'),
@@ -56,7 +52,6 @@ const rejectionSchema = z
   })
 
 const receiptIdentity = {
-  scope: commandReceiptScopeSchema,
   operationId: z.string().min(1),
   sessionId: z.string().min(1),
   callerKey: z.string().min(1),
@@ -65,23 +60,18 @@ const receiptIdentity = {
   acceptedAt: z.int().nonnegative()
 }
 
-export const commandReceiptSchema = z
-  .discriminatedUnion('status', [
-    z.strictObject({
-      ...receiptIdentity,
-      status: z.literal('accepted'),
-      result: commandReceiptResultSchema
-    }),
-    z.strictObject({
-      ...receiptIdentity,
-      status: z.literal('rejected'),
-      rejection: rejectionSchema
-    })
-  ])
-  .refine(
-    (receipt) => receipt.scope.kind === 'global' || receipt.scope.callerKey === receipt.callerKey,
-    { message: 'command caller does not match its scope' }
-  )
+export const commandReceiptSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    ...receiptIdentity,
+    status: z.literal('accepted'),
+    result: commandReceiptResultSchema
+  }),
+  z.strictObject({
+    ...receiptIdentity,
+    status: z.literal('rejected'),
+    rejection: rejectionSchema
+  })
+])
 
 export type CommandReceipt = z.infer<typeof commandReceiptSchema>
 
@@ -89,7 +79,6 @@ export type CommandReceipt = z.infer<typeof commandReceiptSchema>
 export function ensureCommandReceiptsTable(db: Database.Database): void {
   db.exec(`
 CREATE TABLE IF NOT EXISTS agent_session_command_receipts (
-  scope         TEXT    NOT NULL,
   operation_id  TEXT    NOT NULL,
   session_id    TEXT    NOT NULL REFERENCES agent_session_records(session_id) ON DELETE CASCADE,
   caller_key    TEXT    NOT NULL,
@@ -99,8 +88,10 @@ CREATE TABLE IF NOT EXISTS agent_session_command_receipts (
   result_json   TEXT,
   rejection_json TEXT,
   accepted_at   INTEGER NOT NULL,
-  PRIMARY KEY (scope, operation_id)
+  PRIMARY KEY (caller_key, operation_id)
 );
+CREATE INDEX IF NOT EXISTS agent_session_command_receipts_operation
+  ON agent_session_command_receipts (operation_id);
 CREATE INDEX IF NOT EXISTS agent_session_command_receipts_session
   ON agent_session_command_receipts (session_id);
 `)
