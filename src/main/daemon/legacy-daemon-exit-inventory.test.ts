@@ -88,7 +88,7 @@ describe.skipIf(process.platform === 'win32')(
       await expect(router.listProcesses()).resolves.toEqual([])
     })
 
-    it('retires the exited daemon from the router so no reader asks it again', async () => {
+    it('drops the exited daemon from the router so no reader asks it again', async () => {
       const exited = adoptLegacyDaemon(EXITED_PID)
       const legacyList = vi.spyOn(exited, 'listProcesses')
       const router = new DaemonPtyRouter({ current: harness.adapter, legacy: [exited] })
@@ -96,7 +96,7 @@ describe.skipIf(process.platform === 'win32')(
       await router.listProcesses()
       await router.listProcesses()
 
-      expect(exited.isRetired()).toBe(true)
+      expect(exited.hasDaemonExited()).toBe(true)
       expect(router.getLegacyAdapters()).toEqual([])
       expect(router.getAllAdapters()).toEqual([harness.adapter])
       expect(legacyList).toHaveBeenCalledTimes(1)
@@ -127,10 +127,10 @@ describe.skipIf(process.platform === 'win32')(
       await expect(
         router.spawn({ cols: 80, rows: 24, attachOnly: true, sessionId })
       ).rejects.toBeInstanceOf(SessionNotFoundError)
-      expect(legacy!.isRetired()).toBe(true)
+      expect(legacy!.hasDaemonExited()).toBe(true)
     })
 
-    it('reads an unrouted session as absent in the same lookup that retires the daemon', async () => {
+    it('reads an unrouted session as absent in the same lookup that finds the daemon exited', async () => {
       const router = new DaemonPtyRouter({
         current: harness.adapter,
         legacy: [adoptLegacyDaemon(EXITED_PID)]
@@ -146,7 +146,7 @@ describe.skipIf(process.platform === 'win32')(
       ).rejects.toBeInstanceOf(SessionNotFoundError)
     })
 
-    it('retires the exited daemon from the degraded provider too', async () => {
+    it('drops the exited daemon from the degraded provider too', async () => {
       const exited = adoptLegacyDaemon(EXITED_PID)
       const fallback = new DaemonPtyAdapter({
         socketPath: harness.socketPath,

@@ -21,23 +21,23 @@ function provider(
 }
 
 describe('DaemonSessionOwnerResolver', () => {
-  it('ignores an answer from a provider that retired while the lookup was in flight', async () => {
+  it('ignores an answer from a provider whose daemon exited while the lookup was in flight', async () => {
     let releaseCurrent!: (processes: PtyProcessInfo[]) => void
     const currentGate = new Promise<PtyProcessInfo[]>((resolve) => {
       releaseCurrent = resolve
     })
-    let retired = false
+    let exited = false
     const current = provider(() => currentGate)
     const legacy: IPtyProvider = {
       ...provider(async () => [{ id: 'pane', cwd: '', title: 'shell' }]),
-      isRetired: () => retired
+      hasDaemonExited: () => exited
     }
     const routes = new Map<string, IPtyProvider>()
     const resolver = new DaemonSessionOwnerResolver([current, legacy], routes)
 
     const resolution = resolver.resolve('pane')
     await vi.waitFor(() => expect(legacy.listProcesses).toHaveBeenCalled())
-    retired = true
+    exited = true
     resolver.forgetProvider(legacy)
     releaseCurrent([])
 

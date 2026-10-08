@@ -47,11 +47,11 @@ function isMissingFileError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 }
 
-/** Adapter sets exclude a retired daemon adapter; it has proven it owns no session and never will. */
-export function isRetiredProvider(provider: IPtyProvider): boolean {
-  return provider.isRetired?.() === true
+/** Adapter sets exclude an adapter whose daemon exited; it owns no session and never will. */
+export function isExitedDaemonProvider(provider: IPtyProvider): boolean {
+  return provider.hasDaemonExited?.() === true
 }
 
-export function withoutRetiredProviders<T extends IPtyProvider>(providers: readonly T[]): T[] {
-  return providers.filter((provider) => !isRetiredProvider(provider))
+export function withoutExitedDaemons<T extends IPtyProvider>(providers: readonly T[]): T[] {
+  return providers.filter((provider) => !isExitedDaemonProvider(provider))
 }

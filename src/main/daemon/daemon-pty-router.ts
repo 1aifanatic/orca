@@ -13,7 +13,7 @@ import type { PtyProcessInspection } from '../providers/pty-process-inspection'
 import { shouldHandoffDaemonHistory } from './daemon-history-handoff'
 import type { DaemonPtyRouterDataEvent, DaemonPtyRouterExitEvent } from './daemon-pty-router-events'
 import { DaemonSessionOwnerResolver } from './daemon-session-owner-resolution'
-import { withoutRetiredProviders } from './legacy-daemon-exit-evidence'
+import { withoutExitedDaemons } from './legacy-daemon-exit-evidence'
 import type { DaemonIdleRetirementResult } from './daemon-pty-runtime-state'
 import { DaemonRouterRetirement } from './daemon-router-retirement'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
@@ -288,7 +288,7 @@ export class DaemonPtyRouter implements IPtyProvider {
 
   dispose(): void {
     this.subscriptions.dispose()
-    // Why every adapter: teardown still owes a retired one its disposal.
+    // Why every adapter: teardown still owes an exited-daemon adapter its disposal.
     for (const adapter of [this.current, ...this.legacy]) {
       adapter.dispose()
     }
@@ -312,14 +312,14 @@ export class DaemonPtyRouter implements IPtyProvider {
 
   // Why: the Manage Sessions panel iterates all adapters to list sessions
   // across every protocol version, and the restart handler needs to preserve
-  // surviving legacy adapters across the current-adapter swap. A retired
-  // legacy adapter is left out, so a restart never carries an exited daemon.
+  // surviving legacy adapters across the current-adapter swap. An adapter
+  // whose daemon exited is left out, so a restart never carries it.
   getCurrentAdapter(): DaemonPtyAdapter {
     return this.current
   }
 
   getLegacyAdapters(): readonly DaemonPtyAdapter[] {
-    return withoutRetiredProviders(this.legacy)
+    return withoutExitedDaemons(this.legacy)
   }
 
   getAllAdapters(): readonly DaemonPtyAdapter[] {
@@ -342,6 +342,6 @@ export class DaemonPtyRouter implements IPtyProvider {
   }
 
   private allAdapters(): DaemonPtyAdapter[] {
-    return [this.current, ...withoutRetiredProviders(this.legacy)]
+    return [this.current, ...withoutExitedDaemons(this.legacy)]
   }
 }

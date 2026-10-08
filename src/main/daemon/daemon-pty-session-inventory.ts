@@ -22,21 +22,21 @@ import { PtyProcessListAdmission } from '../providers/pty-process-list-admission
 import type { PtyProcessInfo } from '../providers/types'
 
 export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspection {
-  private retired = false
-  private readonly retiredListeners: (() => void)[] = []
+  private daemonExited = false
+  private readonly daemonExitedListeners: (() => void)[] = []
 
   /** True once this preserved older-protocol daemon has provably exited; it never owns a session again. */
-  isRetired(): boolean {
-    return this.retired
+  hasDaemonExited(): boolean {
+    return this.daemonExited
   }
 
-  onRetired(listener: () => void): () => void {
-    this.retiredListeners.push(listener)
-    return () => removeDaemonListener(this.retiredListeners, listener)
+  onDaemonExited(listener: () => void): () => void {
+    this.daemonExitedListeners.push(listener)
+    return () => removeDaemonListener(this.daemonExitedListeners, listener)
   }
 
   async listProcesses(opts?: { deadlineMs?: number }): Promise<PtyProcessInfo[]> {
-    if (this.retired) {
+    if (this.daemonExited) {
       return []
     }
     // Why: snapshotted before the request so ids spawned mid-flight can never
@@ -144,7 +144,7 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
   // the IPtyProvider contract. Keep both in parallel rather than widening
   // the provider surface.
   async listSessions(): Promise<SessionInfo[]> {
-    if (this.retired) {
+    if (this.daemonExited) {
       return []
     }
     const result = await this.ensureConnected()
@@ -162,17 +162,17 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
   }
 
   /**
-   * Retires this adapter when it is a preserved older-protocol daemon that has exited.
+   * Marks this adapter's daemon exited when it is a preserved older-protocol daemon that has exited.
    *
    * Why: nothing respawns a legacy daemon, so once it exits (idle shutdown, or a signal) its
    * endpoint refuses for the rest of the app's life. Keeping it in every adapter set blocked every
    * worktree delete with `connect ECONNREFUSED daemon-v<old>.sock` until Orca restarted. A
    * refused endpoint plus no process behind any known pid proves it owns no sessions; anything
-   * weaker (a timeout, a live or unreadable pid) still fails closed. Retirement is final, so
+   * weaker (a timeout, a live or unreadable pid) still fails closed. The mark is final, so
    * holders drop it once instead of every reader re-probing.
    */
-  protected retireIfExitedLegacyDaemon(error: unknown): boolean {
-    if (this.retired) {
+  protected markLegacyDaemonExitedIfProven(error: unknown): boolean {
+    if (this.daemonExited) {
       return true
     }
     if (
@@ -182,17 +182,17 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
     ) {
       return false
     }
-    this.retired = true
+    this.daemonExited = true
     // Why no exits or dispose: panes recover through attach and cold restore, which dispose would suppress.
     this.clearSessionTracking()
-    console.warn(`[daemon] protocol v${this.protocolVersion} daemon exited; retiring its adapter`)
-    notifyDaemonAuditListeners(this.retiredListeners, undefined)
+    console.warn(`[daemon] protocol v${this.protocolVersion} daemon exited; dropping its adapter`)
+    notifyDaemonAuditListeners(this.daemonExitedListeners, undefined)
     return true
   }
 
-  /** A retired daemon's inventory is empty; any other failure propagates. */
+  /** An exited daemon's inventory is empty; any other failure propagates. */
   protected inventoryOfExitedLegacyDaemon(error: unknown): null {
-    if (!this.retireIfExitedLegacyDaemon(error)) {
+    if (!this.markLegacyDaemonExitedIfProven(error)) {
       throw error
     }
     return null
