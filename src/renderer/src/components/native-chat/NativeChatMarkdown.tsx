@@ -8,7 +8,7 @@ import './native-chat-markdown.css'
 type NativeChatMarkdownProps = ComponentProps<typeof CommentMarkdown> & {
   /** On assistant prose in a structured chat: this message may show visuals. */
   visualMessageId?: string
-  /** The reply is still arriving, so an unfinished visual line at its end is held back. */
+  /** The reply is still arriving; repair unfinished markdown and visual syntax. */
   streaming?: boolean
 }
 
@@ -27,6 +27,8 @@ export function NativeChatMarkdown({
         extension && streaming ? withoutPendingNativeChatVisualDirectiveTail(content) : content
       }
       extension={extension}
+      streaming={streaming}
+      data-streaming={streaming ? '' : undefined}
       className={cn('native-chat-markdown', className)}
     />
   )

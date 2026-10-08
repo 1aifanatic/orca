@@ -15,6 +15,7 @@ import {
   type DocumentCodeBlockRenderer
 } from './comment-markdown-element-renderers'
 import { remarkNativeChatFileLinks } from './comment-markdown-native-chat-file-links'
+import { useCommentMarkdownBlocks } from './use-comment-markdown-blocks'
 import {
   GITHUB_CALLOUT_SANITIZE_ATTRIBUTE,
   remarkGitHubCallouts
@@ -221,7 +222,11 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   expandImages?: boolean
   renderCodeBlock?: DocumentCodeBlockRenderer
   extension?: CommentMarkdownExtension
+  /** Native chat opts into incremental rendering and unfinished-markup repair. */
+  streaming?: boolean
 }
+
+const MemoizedMarkdown = React.memo(Markdown)
 
 // Why forwardRef + rest props: Radix's HoverCardTrigger asChild merges a ref
 // and event handlers (onPointerEnter, onPointerLeave, data-state, etc.) onto
@@ -239,6 +244,7 @@ const CommentMarkdown = React.memo(
       expandImages = false,
       renderCodeBlock,
       extension,
+      streaming = false,
       ...rest
     },
     ref
@@ -272,6 +278,7 @@ const CommentMarkdown = React.memo(
       const withExtension = extension ? [...plugins, ...extension.remarkPlugins] : plugins
       return githubRepo ? [...withExtension, remarkGitHubReferences(githubRepo)] : withExtension
     }, [extension, githubRepo, linkifyFilePaths])
+    const blocks = useCommentMarkdownBlocks(content, streaming)
 
     return (
       <div
@@ -286,16 +293,19 @@ const CommentMarkdown = React.memo(
         )}
         {...rest}
       >
-        <Markdown
-          remarkPlugins={activeRemarkPlugins}
-          rehypePlugins={activeRehypePlugins}
-          components={components}
-          urlTransform={
-            allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
-          }
-        >
-          {content}
-        </Markdown>
+        {blocks.map((block) => (
+          <MemoizedMarkdown
+            key={block.start}
+            remarkPlugins={activeRemarkPlugins}
+            rehypePlugins={activeRehypePlugins}
+            components={components}
+            urlTransform={
+              allowFileUriLinks ? commentMarkdownFileUriUrlTransform : commentMarkdownUrlTransform
+            }
+          >
+            {block.text}
+          </MemoizedMarkdown>
+        ))}
       </div>
     )
   })
