@@ -111,7 +111,7 @@ function renderHeldQueue(
       queuedMessages,
       queuePause,
       submissions: [],
-      prompts: [],
+      hasPendingPrompt: false,
       isWorking: false,
       composerScopeKey: undefined,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the list only awaits mutate; its answer is never read.
