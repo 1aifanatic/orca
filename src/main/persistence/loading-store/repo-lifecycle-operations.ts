@@ -63,9 +63,16 @@ export class RepoLifecycleOperations {
   }
 
   removeProject(id: string): void {
-    const repoRemoved = this[repoLifecycleOperationsContext].runtime.state.repos.some(
-      (repo) => repo.id === id
+    const matchingHostIds = new Set(
+      this[repoLifecycleOperationsContext].runtime.state.repos
+        .filter((repo) => repo.id === id)
+        .map((repo) => getRepoExecutionHostId(repo))
     )
+    // Why: an id-only delete would take every host's registration and metadata; callers must name the host (#13071).
+    if (matchingHostIds.size > 1) {
+      throw new Error(`repo_id_ambiguous: ${id} exists on more than one host; remove it by host.`)
+    }
+    const repoRemoved = matchingHostIds.size > 0
     this[repoLifecycleOperationsContext].runtime.state.repos = this[
       repoLifecycleOperationsContext
     ].runtime.state.repos.filter((r) => r.id !== id)
