@@ -28,7 +28,7 @@ export type StructuredAgentSessionReadRestoreDeps = {
     store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords'>
   }
   // Lease bookkeeping. Neither throws: a read grants no writer, so bookkeeping must not block it.
-  /** Whether every lease is settled. */
+  /** Whether this chat's lease is settled. */
   reconcile: (sessionId: string) => Promise<boolean>
   /** False when its store write failed; the next attach or send resolves it again. */
   resolveRecovery: (sessionId: string) => Promise<boolean>
@@ -74,21 +74,11 @@ async function restoreOneStructuredAgentSessionReadUnderSerialize(
 export async function restoreStructuredAgentSessionsOnRestart(
   input: StructuredAgentSessionReadRestoreDeps & { records: AgentSessionRecord[] }
 ): Promise<void> {
-  const [first] = input.records
-  if (!first) {
-    return
-  }
-  // One check for the pass. Each chat checks again while it holds, since another writer can mark
-  // leases unreconciled mid-pass; after the first failure, retrying per chat only waits on the
-  // same store again, and the next attach or send settles those chats instead.
-  let settled = await input.reconcile(first.sessionId)
+  // Each chat's check covers only its own lease, so one chat's failure must not skip another's.
   const settleLeases = async (sessionId: string): Promise<void> => {
     // A session latched in recovery exits here at startup, without waiting for a client.
-    if (
-      settled &&
-      !((await input.reconcile(sessionId)) && (await input.resolveRecovery(sessionId)))
-    ) {
-      settled = false
+    if (await input.reconcile(sessionId)) {
+      await input.resolveRecovery(sessionId)
     }
   }
   await mapWithConcurrency(input.records, JOURNAL_RESTORE_CONCURRENCY, async ({ sessionId }) => {

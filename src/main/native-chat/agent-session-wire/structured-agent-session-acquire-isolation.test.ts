@@ -11,7 +11,7 @@ import {
   replaceHostTestState
 } from './structured-agent-session-host-test-harness'
 
-it('creates a chat while another saved chat has an unreachable owner', async () => {
+it("creates a chat while another saved chat's owner check fails", async () => {
   await attach()
   const prior = hostTestState()
   prior.acquire.mockImplementation(async ({ fence, spawnToken }) => ({
@@ -27,7 +27,7 @@ it('creates a chat while another saved chat has an unreachable owner', async () 
   const peerId = attachParams().envelope.sessionId
   const store = await openTestAgentSessionRecordStore(prior.root)
   const probeOwners = vi.fn(async () => {
-    throw new Error('peer owner unavailable')
+    throw new Error('owner check failed')
   })
   const host = new StructuredAgentSessionHost({ ...prior.host.deps, store, probeOwners })
   replaceHostTestState({ store, host })

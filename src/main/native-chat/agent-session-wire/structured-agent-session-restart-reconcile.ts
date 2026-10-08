@@ -79,15 +79,15 @@ export function reportEachFailureOnce(
 
 /** The reconcile a reader runs, at startup and before each restored read: it never throws, since
  *  an unreconciled lease grants no writer and the next send reconciles again before it acts.
- *  Answers whether every lease is settled. */
-export function createReaderReconcile(
-  reconcile: (sessionId: string) => Promise<AgentSessionWireRefusal | null>,
+ *  Answers whether the leases it checked are settled. */
+export function createReaderReconcile<Args extends unknown[]>(
+  reconcile: (...args: Args) => Promise<AgentSessionWireRefusal | null>,
   failures: ReaderBookkeepingFailures
-): (sessionId: string) => Promise<boolean> {
-  return async (sessionId) => {
+): (...args: Args) => Promise<boolean> {
+  return async (...args) => {
     let failure: unknown
     try {
-      const refusal = await reconcile(sessionId)
+      const refusal = await reconcile(...args)
       if (!refusal) {
         failures.clear()
         return true

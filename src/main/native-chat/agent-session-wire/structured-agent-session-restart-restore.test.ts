@@ -165,7 +165,7 @@ describe('restart journal restoration', () => {
   })
 
   // Each failed bookkeeping call stands for one refused store write.
-  describe('once lease bookkeeping fails in a pass', () => {
+  describe('when lease bookkeeping fails for a chat', () => {
     const records = Array.from(
       { length: 8 },
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restore reads only the record's session id here.
@@ -175,11 +175,12 @@ describe('restart journal restoration', () => {
       bookkeeping: Pick<
         Parameters<typeof restoreStructuredAgentSessionsOnRestart>[0],
         'reconcile' | 'resolveRecovery'
-      >
+      >,
+      restored: AgentSessionRecord[] = records
     ) =>
       restoreStructuredAgentSessionsOnRestart({
         openDeps: NO_OPEN_DEPS,
-        records,
+        records: restored,
         ...bookkeeping,
         serialize: async (_sessionId, task) => task(),
         hasSession: () => false,
@@ -194,24 +195,45 @@ describe('restart journal restoration', () => {
 
     beforeEach(() => restoreRead.mockResolvedValue(null))
 
-    it('skips it for every chat when the pass check fails, and still opens them all', async () => {
+    it('checks each chat on its own when every check fails, and still opens them all', async () => {
       const reconcile = vi.fn(slowFailure)
       const resolveRecovery = vi.fn(async () => true)
 
       await restore({ reconcile, resolveRecovery })
 
-      expect(reconcile).toHaveBeenCalledOnce()
+      expect(reconcile).toHaveBeenCalledTimes(records.length)
       expect(resolveRecovery).not.toHaveBeenCalled()
       expect(restoreRead).toHaveBeenCalledTimes(records.length)
     })
 
-    it('starts no more after the first failed recovery, and still opens every chat', async () => {
+    it("resolves every other chat's recovery when the first chat's check fails", async () => {
+      const restored = ['first', 'b', 'c', 'd'].map(
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restore reads only the record's session id here.
+        (sessionId) => ({ sessionId }) as AgentSessionRecord
+      )
+      const resolved: string[] = []
+
+      await restore(
+        {
+          reconcile: async (sessionId) => sessionId !== 'first',
+          resolveRecovery: async (sessionId) => {
+            resolved.push(sessionId)
+            return true
+          }
+        },
+        restored
+      )
+
+      expect(resolved.sort()).toEqual(['b', 'c', 'd'])
+      expect(restoreRead).toHaveBeenCalledTimes(restored.length)
+    })
+
+    it('keeps resolving recovery for the other chats after one recovery fails', async () => {
       const resolveRecovery = vi.fn(slowFailure)
 
       await restore({ reconcile: async () => true, resolveRecovery })
 
-      // Only those already started when the first failed: at most one per chat open at once.
-      expect(resolveRecovery.mock.calls.length).toBeLessThanOrEqual(4)
+      expect(resolveRecovery).toHaveBeenCalledTimes(records.length)
       expect(restoreRead).toHaveBeenCalledTimes(records.length)
     })
   })

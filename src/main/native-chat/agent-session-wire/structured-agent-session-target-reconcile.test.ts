@@ -21,7 +21,7 @@ function reservation(sessionId: string): AgentSessionReserveRequest {
   return {
     sessionId,
     location: {
-      executionHostId: sessionId === 'session-2' ? 'ssh:unreachable' : 'local',
+      executionHostId: 'local',
       wslDistro: null,
       workspaceId: 'folder-workspace',
       workspaceKind: 'folder' as const
@@ -53,7 +53,7 @@ beforeEach(async () => {
       sessionId,
       fence: previous.getRecord(sessionId)?.lease.runtimeFence ?? 0,
       process: {
-        hostId: sessionId === 'session-2' ? 'ssh:unreachable' : 'local',
+        hostId: 'local',
         pid: 4242,
         processStartTimeMs: NOW,
         spawnToken: sessionId
@@ -70,10 +70,10 @@ afterEach(async () => {
 })
 
 describe('targeted restart reconciliation', () => {
-  it('does not fail an action because another execution host cannot be probed', async () => {
+  it("does not fail an action because another chat's owner check fails", async () => {
     const probe = vi.fn(async (record: AgentSessionRecord) => {
       if (record.sessionId === 'session-2') {
-        throw new Error('SSH host unavailable')
+        throw new Error('owner check failed')
       }
       return UNUSED
     })
@@ -82,10 +82,29 @@ describe('targeted restart reconciliation', () => {
     expect(await reconcile('session-1')).toBeNull()
     expect(probe).toHaveBeenCalledOnce()
     expect(store.getRecord('session-2')?.lease.unreconciled).toBe(true)
-    await expect(reconcile('session-2')).rejects.toThrow('SSH host unavailable')
+    await expect(reconcile('session-2')).rejects.toThrow('owner check failed')
   })
 
-  it('does not join a stalled startup batch for another session', async () => {
+  it("settles a chat while another chat's record changes under every check of it", async () => {
+    let renames = 0
+    const probe = vi.fn(async (record: AgentSessionRecord) => {
+      if (record.sessionId === 'session-2') {
+        renames += 1
+        // Each check of session-2 is stale by the time it applies.
+        await store.setConversationName('session-2', `renamed ${renames}`)
+      }
+      return UNUSED
+    })
+    const reconcile = createRestartReconciler({ store, probe, now: () => NOW })
+
+    expect(await reconcile('session-1')).toBeNull()
+    expect(store.getRecord('session-1')?.lease.unreconciled).toBe(false)
+    // The whole-host pass does run out of passes on session-2.
+    expect(await reconcile()).not.toBeNull()
+    expect(store.getRecord('session-2')?.lease.unreconciled).toBe(true)
+  })
+
+  it("does not wait on another chat's stalled owner check in the startup batch", async () => {
     let release: (probe: AgentSessionOwnerProbe) => void = () => undefined
     let started: () => void = () => undefined
     const probing = new Promise<void>((resolve) => {
@@ -146,7 +165,7 @@ describe('targeted restart reconciliation', () => {
   it('keeps an unproven target in recovery and refuses a new writer', async () => {
     const reconcile = createRestartReconciler({
       store,
-      probe: async () => ({ outcome: 'indeterminate', reason: 'host contact lost' }),
+      probe: async () => ({ outcome: 'indeterminate', reason: 'owner runs on another host' }),
       now: () => NOW
     })
     expect(await reconcile('session-1')).toBeNull()
@@ -155,7 +174,7 @@ describe('targeted restart reconciliation', () => {
       store.reserveOwner({
         ...reservation('session-1'),
         expectedFence: fence,
-        probe: { outcome: 'indeterminate', reason: 'host contact lost' }
+        probe: { outcome: 'indeterminate', reason: 'owner runs on another host' }
       })
     ).rejects.toThrow('agent_session_ownership_unknown')
   })

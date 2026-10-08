@@ -89,7 +89,7 @@ export function createStructuredAgentSessionHostRestore(
   const gate = new StructuredAgentSessionRestartRestoreGate()
   return {
     reconcileRestartLeases: async () => {
-      await reconcileStartup('startup')
+      await reconcileStartup()
     },
     restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds))
   }
