@@ -1,0 +1,1792 @@
+{
+  "qualified": true,
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "files": [
+    "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts",
+    "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts"
+  ],
+  "runtimeDerivedCaseCount": 15,
+  "caseIdentityMapByFile": {
+    "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+      {
+        "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+        "title": "goes in at once when the send ahead lost its answer",
+        "ancestorTitles": [
+          "a message queued behind a send whose turn hasn't opened"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+        "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+        "ancestorTitles": [
+          "a message queued behind a send whose turn hasn't opened"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+        "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+        "ancestorTitles": [
+          "a message queued behind a send whose turn hasn't opened"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+        "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+        "ancestorTitles": [
+          "a message queued behind a send whose turn hasn't opened"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+        "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+        "ancestorTitles": [
+          "a message queued behind a send whose turn hasn't opened"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+        "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+        "ancestorTitles": [
+          "a send in a turn Codex opened, when Codex reports the thread idle"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+        "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+        "ancestorTitles": [
+          "a send in a turn Codex opened, when Codex reports the thread idle"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+        "title": "raises no doubt when its turn completes with it echoed",
+        "ancestorTitles": [
+          "a send in a turn Codex opened, when Codex reports the thread idle"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+        "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+        "ancestorTitles": [
+          "a send whose turn Codex answered and never opened"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+        "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+        "ancestorTitles": [
+          "a send whose turn Codex answered and never opened"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+        "title": "releases the message behind it once Codex fails that turn before opening it",
+        "ancestorTitles": [
+          "a send whose turn Codex answered and never opened"
+        ],
+        "status": "passed"
+      }
+    ],
+    "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+      {
+        "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+        "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+        "ancestorTitles": [
+          "a send a Stop took back before Codex echoed it"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+        "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+        "ancestorTitles": [
+          "a send a Stop took back before Codex echoed it"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+        "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+        "ancestorTitles": [
+          "a send a Stop took back, then a send made while it read Stopping"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+        "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+        "ancestorTitles": [
+          "a send made while Codex held the first send's answer, then a Stop"
+        ],
+        "status": "passed"
+      }
+    ]
+  },
+  "candidateAddsNoCases": true,
+  "allEightOriginalSourceCommandProcessRuntimeConfigCaseStatusMapsEqual": true,
+  "contexts": [
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/ci-context.json",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/ci-context.json",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/ci-context.json",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/ci-context.json"
+  ],
+  "inputSignatures": [
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    }
+  ],
+  "snapshots": [
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "bun",
+      "seed": 104729,
+      "count": 15,
+      "reportedCount": 15,
+      "map": {
+        "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+            "title": "goes in at once when the send ahead lost its answer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+            "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+            "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+            "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+            "title": "raises no doubt when its turn completes with it echoed",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+            "title": "releases the message behind it once Codex fails that turn before opening it",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          }
+        ],
+        "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+            "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+            "ancestorTitles": [
+              "a send a Stop took back, then a send made while it read Stopping"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "ancestorTitles": [
+              "a send made while Codex held the first send's answer, then a Stop"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/before-source-proof.json",
+      "report": "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/before.json",
+      "details": "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "bun",
+      "seed": 104729,
+      "count": 15,
+      "reportedCount": 15,
+      "map": {
+        "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+            "title": "goes in at once when the send ahead lost its answer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+            "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+            "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+            "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+            "title": "raises no doubt when its turn completes with it echoed",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+            "title": "releases the message behind it once Codex fails that turn before opening it",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          }
+        ],
+        "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+            "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+            "ancestorTitles": [
+              "a send a Stop took back, then a send made while it read Stopping"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "ancestorTitles": [
+              "a send made while Codex held the first send's answer, then a Stop"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/after-source-proof.json",
+      "report": "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/after.json",
+      "details": "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "bun",
+      "seed": 130363,
+      "count": 15,
+      "reportedCount": 15,
+      "map": {
+        "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+            "title": "goes in at once when the send ahead lost its answer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+            "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+            "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+            "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+            "title": "raises no doubt when its turn completes with it echoed",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+            "title": "releases the message behind it once Codex fails that turn before opening it",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          }
+        ],
+        "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+            "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+            "ancestorTitles": [
+              "a send a Stop took back, then a send made while it read Stopping"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "ancestorTitles": [
+              "a send made while Codex held the first send's answer, then a Stop"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/before-source-proof.json",
+      "report": "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/before.json",
+      "details": "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "bun",
+      "seed": 130363,
+      "count": 15,
+      "reportedCount": 15,
+      "map": {
+        "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+            "title": "goes in at once when the send ahead lost its answer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+            "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+            "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+            "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+            "title": "raises no doubt when its turn completes with it echoed",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+            "title": "releases the message behind it once Codex fails that turn before opening it",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          }
+        ],
+        "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+            "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+            "ancestorTitles": [
+              "a send a Stop took back, then a send made while it read Stopping"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "ancestorTitles": [
+              "a send made while Codex held the first send's answer, then a Stop"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/after-source-proof.json",
+      "report": "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/after.json",
+      "details": "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "node",
+      "seed": 104729,
+      "count": 15,
+      "reportedCount": 15,
+      "map": {
+        "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+            "title": "goes in at once when the send ahead lost its answer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+            "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+            "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+            "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+            "title": "raises no doubt when its turn completes with it echoed",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+            "title": "releases the message behind it once Codex fails that turn before opening it",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          }
+        ],
+        "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+            "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+            "ancestorTitles": [
+              "a send a Stop took back, then a send made while it read Stopping"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "ancestorTitles": [
+              "a send made while Codex held the first send's answer, then a Stop"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/before-source-proof.json",
+      "report": "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/before.json",
+      "details": "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "node",
+      "seed": 104729,
+      "count": 15,
+      "reportedCount": 15,
+      "map": {
+        "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+            "title": "goes in at once when the send ahead lost its answer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+            "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+            "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+            "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+            "title": "raises no doubt when its turn completes with it echoed",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+            "title": "releases the message behind it once Codex fails that turn before opening it",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          }
+        ],
+        "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+            "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+            "ancestorTitles": [
+              "a send a Stop took back, then a send made while it read Stopping"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "ancestorTitles": [
+              "a send made while Codex held the first send's answer, then a Stop"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/after-source-proof.json",
+      "report": "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/after.json",
+      "details": "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "node",
+      "seed": 130363,
+      "count": 15,
+      "reportedCount": 15,
+      "map": {
+        "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+            "title": "goes in at once when the send ahead lost its answer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+            "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+            "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+            "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+            "title": "raises no doubt when its turn completes with it echoed",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+            "title": "releases the message behind it once Codex fails that turn before opening it",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          }
+        ],
+        "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+            "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+            "ancestorTitles": [
+              "a send a Stop took back, then a send made while it read Stopping"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "ancestorTitles": [
+              "a send made while Codex held the first send's answer, then a Stop"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/before-source-proof.json",
+      "report": "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/before.json",
+      "details": "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "node",
+      "seed": 130363,
+      "count": 15,
+      "reportedCount": 15,
+      "map": {
+        "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts": [
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened goes in at once when the send ahead lost its answer",
+            "title": "goes in at once when the send ahead lost its answer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened is withdrawn with the queue by a Stop pressed before that turn opens",
+            "title": "is withdrawn with the queue by a Stop pressed before that turn opens",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "title": "lets each message behind it go in as a steer once the turn opens, in the order sent",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened never holds a message sent into a turn already running, nor one behind such a steer",
+            "title": "never holds a message sent into a turn already running, nor one behind such a steer",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a message queued behind a send whose turn hasn't opened waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "title": "waits for that turn, then joins it as a steer, drawn in it with the turn streaming on",
+            "ancestorTitles": [
+              "a message queued behind a send whose turn hasn't opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "title": "is never doubted for the idle when it opened the turn and a Stop ends it before the echo",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle is never doubted for the idle when it was steered in and a Stop takes it back",
+            "title": "is never doubted for the idle when it was steered in and a Stop takes it back",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send in a turn Codex opened, when Codex reports the thread idle raises no doubt when its turn completes with it echoed",
+            "title": "raises no doubt when its turn completes with it echoed",
+            "ancestorTitles": [
+              "a send in a turn Codex opened, when Codex reports the thread idle"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "title": "keeps the turn, and its live status, on the send that opened it when the steer echoes first",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "title": "never doubts a send whose turn is slow to open, and holds the next until it opens",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send whose turn Codex answered and never opened releases the message behind it once Codex fails that turn before opening it",
+            "title": "releases the message behind it once Codex fails that turn before opening it",
+            "ancestorTitles": [
+              "a send whose turn Codex answered and never opened"
+            ],
+            "status": "passed"
+          }
+        ],
+        "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts": [
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "title": "is drawn as the opener of the turn Codex opened for it, with no row of its own",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back before Codex echoed it is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "title": "is drawn where it was sent, then the one row saying it never started, when no turn opened",
+            "ancestorTitles": [
+              "a send a Stop took back before Codex echoed it"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send a Stop took back, then a send made while it read Stopping keeps the stopped send above the later exchange after a restart resumes the thread",
+            "title": "keeps the stopped send above the later exchange after a restart resumes the thread",
+            "ancestorTitles": [
+              "a send a Stop took back, then a send made while it read Stopping"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "a send made while Codex held the first send's answer, then a Stop is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "title": "is drawn after the first send's interrupted turn, which streamed after the Stop",
+            "ancestorTitles": [
+              "a send made while Codex held the first send's answer, then a Stop"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/after-source-proof.json",
+      "report": "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/after.json",
+      "details": "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/after-details.json"
+    }
+  ],
+  "artifactHashes": {
+    ".github/benchmark/codex-positive-settlement-poll/payload/shipping-launch-plan.json": "9f3a824ce2b7e8420616e81a7f07bc0c6826a8a7cb5a863b10b99bc59b0f31fe",
+    ".github/benchmark/codex-positive-settlement-poll/payload/definition-manifest.json": "903ab319c622fb55bff3eec9a254d3d09fcd64900577d5f2910f6cde077ae38e",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/ci-context.json": "864cbd650af1a8bd326271c6bd1b5a7a8feacef776d43571f841b3f9587a101e",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/shipping-launch-plan.json": "9f3a824ce2b7e8420616e81a7f07bc0c6826a8a7cb5a863b10b99bc59b0f31fe",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/shipping.patch": "7791957113ae157f5f353415468b900a41255eb926693bbe51469d9b368e6251",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/source-proposal-proof.json": "c9a59d14a70e1a202f61a2a6ce8b2a0b18d1e2540d6a314c7e62fe81c923aaa7",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/ci-context.json": "d566a0b1f80d5202b714a1dcabf06d2186fad8113df124078ff6f0826083ec71",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/shipping-launch-plan.json": "9f3a824ce2b7e8420616e81a7f07bc0c6826a8a7cb5a863b10b99bc59b0f31fe",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/shipping.patch": "7791957113ae157f5f353415468b900a41255eb926693bbe51469d9b368e6251",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/source-proposal-proof.json": "c9a59d14a70e1a202f61a2a6ce8b2a0b18d1e2540d6a314c7e62fe81c923aaa7",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/ci-context.json": "56b4e724baad8fa82f2c0a91b6bcc97672ff5b8e5e4ed614443a8ddd471cffca",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/shipping-launch-plan.json": "9f3a824ce2b7e8420616e81a7f07bc0c6826a8a7cb5a863b10b99bc59b0f31fe",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/shipping.patch": "7791957113ae157f5f353415468b900a41255eb926693bbe51469d9b368e6251",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/source-proposal-proof.json": "c9a59d14a70e1a202f61a2a6ce8b2a0b18d1e2540d6a314c7e62fe81c923aaa7",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/ci-context.json": "7ba5876613c01337d4ec472dce218e939f6b14afc5b9d05c759dce5b4465f8fa",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/shipping-launch-plan.json": "9f3a824ce2b7e8420616e81a7f07bc0c6826a8a7cb5a863b10b99bc59b0f31fe",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/shipping.patch": "7791957113ae157f5f353415468b900a41255eb926693bbe51469d9b368e6251",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/source-proposal-proof.json": "c9a59d14a70e1a202f61a2a6ce8b2a0b18d1e2540d6a314c7e62fe81c923aaa7",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/before-source-proof.json": "947d27acaf67e3de0a47e3335cdc195663de7a4c4063815611db09d06b0e0fc8",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/before.json": "8e91a0edb7a1c3a1fee8dbcff3b1f253fbc26ba97790fab1a64b951a4809657d",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/before-details.json": "ec8d97a7c2a78df5ee15f12702907f6d5c48505a2a87080402670cd6c3370888",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/before.log": "183ed7343066b49e4022258d94e66d7eaf8ae46d1934dac185327f6305144aec",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/after-source-proof.json": "7477b59665da3b0659c9cfd196a78deb67f8531852b22310737043c5d582e9f9",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/after.json": "9cf47ffdc22c357c49cecdccbfacb51583a8230515f952dc140c3b96e7d706c1",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/after-details.json": "d967913a489eb7d3ea596e4be314e00cd10ab128e03da14a6631e5e36625a6ea",
+    "wait-artifacts/codex-positive-settlement-poll-bun-104729/runs/bun-104729/after.log": "5f6eaad79d8ee55d8c8927048bc6ba7559d5b0a9998ed47be554ab6a8922b856",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/before-source-proof.json": "662f71939c8dbad5e4a57909c90fff86df9602ec429a05e75cfd1156e27e1113",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/before.json": "1aceaf259ef0960c131f00532b39343ecbd71314831eddc1eb8392ee650d0396",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/before-details.json": "4c6a9cadd2f4ff007220e1b878283d9a000b6cd1540d79f78a3751fd4a10577f",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/before.log": "1ffd25e7ed9365a5ab9be587b2d3174d5fc0897cce618c335f19ede4cc2707c0",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/after-source-proof.json": "c29a252eafcf44b6ba9a3f96a1e21c5b0e99f1a7abb489ab864d30ff31010ea2",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/after.json": "ab6d09700f74c55e9a109209c6836cbf5e695d77f85cd90d4ae6ddd07f1a7013",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/after-details.json": "3bdc89048f543d67a466c0fe9dbbc80badd7ad93153b3c86df6f3595b477364e",
+    "wait-artifacts/codex-positive-settlement-poll-bun-130363/runs/bun-130363/after.log": "e54d660fcd739a7ce7091fa27262d59664ee51b753877c5743ddf785e8629127",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/before-source-proof.json": "ac0875b8bb29f67c96b68c98698a3dbb875fcdde4b330f49d2794c6b72b3ef6a",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/before.json": "95b4c68a1259687af99cf039d9330327608b5d25125f4a6437dee83953688ef1",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/before-details.json": "36986b28133adfc9260d7ef8040a45013f30c17701c760d1db247c9e36ab7caf",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/before.log": "ceb34d9ad719878c7e163a15a1bcdd8aa1d0877551d259870eb886d4105ad1cb",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/after-source-proof.json": "91cca88c45d646f86ccaee02a14674ec38357d89b3af842ef8d0a4b1718ea318",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/after.json": "1aab4c1987bb5d6f5dfe539c68fcb13066cc6be7eed050804dd0cc7efbcc5b47",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/after-details.json": "61b7591200db8eb0763467ad35e4992e49ea7f8b502eaf715c5e1964578e8f66",
+    "wait-artifacts/codex-positive-settlement-poll-node-104729/runs/node-104729/after.log": "db74b9977c746a56653830fe00e05ea1e53a2958f99ef82f80c087a421ddc0c4",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/before-source-proof.json": "778adac968ee894f83d10b06e81d363cdbfffc0fe3feb4e0f743662c8a660304",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/before.json": "bc0943b9c2d41d9451aa0e20ac16ba4d7a115372f9f14308f3dccf62cbfbde77",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/before-details.json": "559b59d673e892ba4213356e0b443ee556f323c9be67ba18e725ca6baf8cc663",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/before.log": "2f5f86ca4267460052b7d20fb73b519f4c6c9450d9255ceabeb402a272b539d0",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/after-source-proof.json": "625361f97397c8daa439f252f6e2c0f50e3a5f7c1511d6e0eeded9e2801b75f2",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/after.json": "b910d01bd40b31d7e966a79b21ac84f6f962370e9554d3249b62529c8f01b45d",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/after-details.json": "c359e7a55ef3bccc0891fb19c97075b4407ff80763f9119c4994e0324a42a98e",
+    "wait-artifacts/codex-positive-settlement-poll-node-130363/runs/node-130363/after.log": "bc3e1ca23797e264a435e981e1cb12b487a604a1ae014f8bdba10b3a38517fc7"
+  },
+  "scope": "Isolated CI correctness only; exact original status maps and pins verified. No timing gain or real native cleanup claim."
+}

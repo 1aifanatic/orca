@@ -1,0 +1,179 @@
+diff --git a/src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts b/src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts
+--- a/src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts
++++ b/src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts
+@@ -282,7 +282,7 @@
+ /** The delivery loop has stopped: it handed over what it could, and holds the rest. */
+ async function deliveryAtRest(): Promise<void> {
+   const { loop } = host.collaboratorsForTests().conversationDelivery
+-  await vi.waitFor(() => expect(loop.isRunning(SESSION)).toBe(false))
++  await vi.waitFor(() => expect(loop.isRunning(SESSION)).toBe(false), { interval: 1 })
+ }
+ 
+ async function submission(clientMessageId: string) {
+@@ -298,7 +298,7 @@
+ /** A finished first turn, then `/compact` running, so the sends that follow queue behind it. */
+ async function compactRunning(): Promise<{ compacted: Promise<unknown> }> {
+   const warmUp = await send('warm up')
+-  await vi.waitFor(() => expect(answers).toBe(1))
++  await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+   turns.start()
+   turns.echo(warmUp)
+   turns.end('completed')
+@@ -342,7 +342,7 @@
+     const second = await send('queued second')
+     await finishCompaction(compaction)
+     await vi.waitFor(async () => expect((await submission(first))?.handedOverAt).toBeDefined())
+-    await vi.waitFor(() => expect(answers).toBe(2))
++    await vi.waitFor(() => expect(answers).toBe(2), { interval: 1 })
+     await deliveryAtRest()
+ 
+     expect((await submission(second))?.handedOverAt).toBeUndefined()
+@@ -350,7 +350,7 @@
+ 
+     turns.start()
+     await vi.waitFor(async () => expect((await submission(second))?.handedOverAt).toBeDefined())
+-    await vi.waitFor(() => expect(steers).toBe(1))
++    await vi.waitFor(() => expect(steers).toBe(1), { interval: 1 })
+     turns.echo(first)
+     says('working on the first', 'reply-1')
+     says('more on both', 'reply-2')
+@@ -385,7 +385,7 @@
+     expect((await submission(b))?.handedOverAt).toBeUndefined()
+ 
+     turns.start()
+-    await vi.waitFor(() => expect(steers).toBe(2))
++    await vi.waitFor(() => expect(steers).toBe(2), { interval: 1 })
+     turns.echo(zero)
+     says('working on zero', 'reply-0')
+ 
+@@ -441,14 +441,14 @@
+   // A steer still unanswered joined a turn that is open; it opens nothing, so nothing waits on it.
+   it('never holds a message sent into a turn already running, nor one behind such a steer', async () => {
+     const warmUp = await send('warm up')
+-    await vi.waitFor(() => expect(answers).toBe(1))
++    await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+     turns.start()
+     turns.echo(warmUp)
+ 
+     const steered = await send('and also this')
+     const after = await send('and this too')
+ 
+-    await vi.waitFor(() => expect(steers).toBe(2))
++    await vi.waitFor(() => expect(steers).toBe(2), { interval: 1 })
+     expect(await rowScope(steered)).toMatchObject({ kind: 'turn' })
+     expect(await rowScope(after)).toMatchObject({ kind: 'turn' })
+     expect(openWaits.turnIds).toEqual([])
+@@ -481,7 +481,7 @@
+     expect(JSON.stringify(await submission(first))).toContain('invalid turn settings')
+     // A turn Codex never opened has no record in the journal to name.
+     expect((await submission(first))?.answeredInTurn).toBeNull()
+-    await vi.waitFor(() => expect(answers).toBe(2))
++    await vi.waitFor(() => expect(answers).toBe(2), { interval: 1 })
+     expect(openWaits.turnIds).toEqual([])
+   })
+ 
+@@ -507,7 +507,7 @@
+   it('keeps the turn, and its live status, on the send that opened it when the steer echoes first', async () => {
+     const { first, second } = await heldBehindAnAnsweredSend()
+     turns.start()
+-    await vi.waitFor(() => expect(steers).toBe(1))
++    await vi.waitFor(() => expect(steers).toBe(1), { interval: 1 })
+ 
+     turns.echo(second)
+     await vi.waitFor(async () =>
+@@ -537,11 +537,11 @@
+   it('is never doubted for the idle when it was steered in and a Stop takes it back', async () => {
+     vi.spyOn(host, 'settleLateDispatch')
+     const warmUp = await send('warm up')
+-    await vi.waitFor(() => expect(answers).toBe(1))
++    await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+     turns.start()
+     turns.echo(warmUp)
+     const steered = await send('and also this')
+-    await vi.waitFor(() => expect(steers).toBe(1))
++    await vi.waitFor(() => expect(steers).toBe(1), { interval: 1 })
+ 
+     await stop()
+ 
+@@ -554,7 +554,7 @@
+   it('is never doubted for the idle when it opened the turn and a Stop ends it before the echo', async () => {
+     vi.spyOn(host, 'settleLateDispatch')
+     const first = await send('look around')
+-    await vi.waitFor(() => expect(answers).toBe(1))
++    await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+     turns.start()
+ 
+     await stop()
+@@ -568,7 +568,7 @@
+   it('raises no doubt when its turn completes with it echoed', async () => {
+     vi.spyOn(host, 'settleLateDispatch')
+     const first = await send('look around')
+-    await vi.waitFor(() => expect(answers).toBe(1))
++    await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+     turns.start()
+     turns.echo(first)
+     turns.end('completed')
+diff --git a/src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts b/src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts
+--- a/src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts
++++ b/src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts
+@@ -221,7 +221,7 @@
+   it("is drawn after the first send's interrupted turn, which streamed after the Stop", async () => {
+     const release = turns.holdNextAnswer()
+     const first = await send('first')
+-    await vi.waitFor(() => expect(answers).toBe(1))
++    await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+     // Both wait on the session behind the held answer: the second send, then the Stop.
+     const second = send('second')
+     const stopping = stop()
+@@ -261,7 +261,7 @@
+ describe('a send a Stop took back, then a send made while it read Stopping', () => {
+   it('keeps the stopped send above the later exchange after a restart resumes the thread', async () => {
+     const first = await send('look around')
+-    await vi.waitFor(() => expect(answers).toBe(1))
++    await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+     // Codex has answered but not opened the turn, so the Stop waits for it to open.
+     const stopping = stop()
+     expect(await settledWithin(stopping, 500)).toBe('held')
+@@ -269,7 +269,7 @@
+     turns.start()
+     await settledWithin(stopping, 3_000)
+     await vi.waitFor(async () => expect(verdictOf(await submissions(), first)).toBe('withdrawn'))
+-    await vi.waitFor(() => expect(answers).toBe(2))
++    await vi.waitFor(() => expect(answers).toBe(2), { interval: 1 })
+     turns.start()
+     turns.echo(second)
+     turns.end('completed')
+@@ -299,7 +299,7 @@
+     await stopStructuredAgentSessionRuntime()
+     await startHost()
+     await attach(fence)
+-    await vi.waitFor(() => expect(resumes).toBeGreaterThan(0))
++    await vi.waitFor(() => expect(resumes).toBeGreaterThan(0), { interval: 1 })
+     await vi.waitFor(async () => {
+       const restored = (await host.journalSnapshot(SESSION)).items
+         .map((item) => readAgentJournalTurn(item.body)?.startedAt)
+@@ -314,7 +314,7 @@
+ describe('a send a Stop took back before Codex echoed it', () => {
+   it('is drawn as the opener of the turn Codex opened for it, with no row of its own', async () => {
+     const sent = await send('look around')
+-    await vi.waitFor(() => expect(answers).toBe(1))
++    await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+     turns.start()
+     await stop('turn-1')
+     await vi.waitFor(async () => expect(verdictOf(await submissions(), sent)).toBe('withdrawn'))
+@@ -333,13 +333,13 @@
+ 
+   it('is drawn where it was sent, then the one row saying it never started, when no turn opened', async () => {
+     const warmUp = await send('warm up')
+-    await vi.waitFor(() => expect(answers).toBe(1))
++    await vi.waitFor(() => expect(answers).toBe(1), { interval: 1 })
+     turns.start()
+     turns.echo(warmUp)
+     turns.end('completed')
+     const release = turns.holdNextAnswer()
+     const sent = await send('look around')
+-    await vi.waitFor(() => expect(answers).toBe(2))
++    await vi.waitFor(() => expect(answers).toBe(2), { interval: 1 })
+     const stopping = stop()
+     release()
+     // The Stop waits out the turn-open wait for a turn that never opens, then ends there.

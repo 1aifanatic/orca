@@ -1,0 +1,236 @@
+{
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "sourceOnly": true,
+  "shippingCasesChanged": false,
+  "newAssertionsAdded": false,
+  "productionChanged": false,
+  "sourceRows": [
+    {
+      "file": "src/main/runtime/structured-agent-session-codex-opening-send-hold.test.ts",
+      "beforeSha256": "bf3127c03f7b6ea4d4195a66e3fdbe1a02868a7dbde944f394a5ffdfb7eef938",
+      "afterSha256": "d7bb28b2d20546a4a1b1880cee5f1e78f6cc757d3b82683d8edf130ec69100c3",
+      "allOriginalWaitForCallbacksByteExact": true,
+      "allUnselectedWaitForCallsByteExact": true,
+      "removingOnlySelectedIntervalOptionsAndFormattingRestoresWholeOriginalBytes": true,
+      "selectedSites": [
+        {
+          "line": 285,
+          "waitForOrdinal": 0,
+          "callback": "() => expect(loop.isRunning(SESSION)).toBe(false)",
+          "callbackSha256": "00d5147f6a0b3c205d4f09ab7ab5251270bc9a15ec9aaeb9075e1a9ee044e25d",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 301,
+          "waitForOrdinal": 1,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 345,
+          "waitForOrdinal": 4,
+          "callback": "() => expect(answers).toBe(2)",
+          "callbackSha256": "3342465b504c5860bcad1b1e94318b0b2525e9480ce06132015103799d2c8c8a",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 353,
+          "waitForOrdinal": 6,
+          "callback": "() => expect(steers).toBe(1)",
+          "callbackSha256": "8c0ee52cd4b3693aa9e683e54256b65d3e5315b165117bf872c7ec8d548c634c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 388,
+          "waitForOrdinal": 8,
+          "callback": "() => expect(steers).toBe(2)",
+          "callbackSha256": "c6f7a56f4991ab5b79707bd310c48816ce86198c1762ad5ac0885d57559d4559",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 444,
+          "waitForOrdinal": 12,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 451,
+          "waitForOrdinal": 13,
+          "callback": "() => expect(steers).toBe(2)",
+          "callbackSha256": "c6f7a56f4991ab5b79707bd310c48816ce86198c1762ad5ac0885d57559d4559",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 484,
+          "waitForOrdinal": 16,
+          "callback": "() => expect(answers).toBe(2)",
+          "callbackSha256": "3342465b504c5860bcad1b1e94318b0b2525e9480ce06132015103799d2c8c8a",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 510,
+          "waitForOrdinal": 19,
+          "callback": "() => expect(steers).toBe(1)",
+          "callbackSha256": "8c0ee52cd4b3693aa9e683e54256b65d3e5315b165117bf872c7ec8d548c634c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 540,
+          "waitForOrdinal": 21,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 544,
+          "waitForOrdinal": 22,
+          "callback": "() => expect(steers).toBe(1)",
+          "callbackSha256": "8c0ee52cd4b3693aa9e683e54256b65d3e5315b165117bf872c7ec8d548c634c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 557,
+          "waitForOrdinal": 24,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 571,
+          "waitForOrdinal": 26,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        }
+      ],
+      "originalWaitForSiteCount": 28,
+      "oldSame7bModuleMilliseconds": [
+        8710,
+        8668,
+        8725
+      ]
+    },
+    {
+      "file": "src/main/runtime/structured-agent-session-codex-stopped-send-order.test.ts",
+      "beforeSha256": "62ab907009a397046b426cc98cbe4084bfb2bbf559ec7fa25334563f987a8f9e",
+      "afterSha256": "3dd9a5bcff4873288798a4b8e551b78b426b5b38b54bc4c32d47d06b5bf65050",
+      "allOriginalWaitForCallbacksByteExact": true,
+      "allUnselectedWaitForCallsByteExact": true,
+      "removingOnlySelectedIntervalOptionsAndFormattingRestoresWholeOriginalBytes": true,
+      "selectedSites": [
+        {
+          "line": 224,
+          "waitForOrdinal": 0,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 264,
+          "waitForOrdinal": 3,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 272,
+          "waitForOrdinal": 5,
+          "callback": "() => expect(answers).toBe(2)",
+          "callbackSha256": "3342465b504c5860bcad1b1e94318b0b2525e9480ce06132015103799d2c8c8a",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 302,
+          "waitForOrdinal": 7,
+          "callback": "() => expect(resumes).toBeGreaterThan(0)",
+          "callbackSha256": "62a6a5324eba7596144f314e5092b0ecef867071fb82b1d407042d3657b23664",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 317,
+          "waitForOrdinal": 9,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 336,
+          "waitForOrdinal": 11,
+          "callback": "() => expect(answers).toBe(1)",
+          "callbackSha256": "bc76b8aa9d228a9fcd8aa0de0a09d818d2a66b6bbd10cfcd3356a508e9a8429c",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        },
+        {
+          "line": 342,
+          "waitForOrdinal": 12,
+          "callback": "() => expect(answers).toBe(2)",
+          "callbackSha256": "3342465b504c5860bcad1b1e94318b0b2525e9480ce06132015103799d2c8c8a",
+          "timeoutMsUnchanged": 1000,
+          "intervalBeforeMs": 50,
+          "intervalAfterMs": 1
+        }
+      ],
+      "originalWaitForSiteCount": 13,
+      "oldSame7bModuleMilliseconds": [
+        12130,
+        11967,
+        12068
+      ]
+    }
+  ],
+  "selectedSites": 20,
+  "installedWaitForOwner": {
+    "path": "node_modules/vitest/dist/chunks/index.C4tKZ0yW.js",
+    "sha256": "82c2b55e5dd5245c0c5e9eccd73fa6d7ade2694644175967e27a28b67932cb9d",
+    "defaultIntervalMs": 50,
+    "defaultTimeoutMs": 1000,
+    "initialSuccessfulPredicateResolvesImmediately": true
+  },
+  "allAsyncCallbacksUnchanged": true,
+  "entireFakeClockRegistrationUnchanged": true,
+  "realJournalSQLiteTurnOpenCloseAndNegativeWindowsUnchanged": true,
+  "ciOnly": true,
+  "noTestsConfigNativeOrTrackedChanges": true,
+  "formatMethod": "Installed oxfmt stdin with actual tracked filenames; ignored candidate writes only.",
+  "scope": "20 sync positive counter/settlement polls only. Complete original callback text and all excluded wait expressions byte exact; removing20 option additions and formatting recovers whole original sources. Old8.7/12s module values selection only, no causal gain or runtime case count claim."
+}

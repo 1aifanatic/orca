@@ -1,0 +1,48 @@
+{
+  "runId": 37705605420,
+  "definitionHead": "4405e0d60d25853024864a10d221632e23fd292f",
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "terminalConclusion": "success",
+  "allFiveJobsSuccess": true,
+  "runtimeCorrectnessQualified": true,
+  "eachCommandOriginalCasesPassed": 15,
+  "eachCommandOriginalCasesSkipped": 0,
+  "actualCiCollectorSha256": "00912f0d0cf0a729f3d88cbf5ff07bb43063bd4e90716449bb30342003648991",
+  "independentRawProofSha256": "f5773b98abd02fcc7cd728f7a6dd26c0593069bea73219016116dbe3229c504b",
+  "artifactAcquisitionSha256": "9efcd63f27f9bb56c22b83f33b57e6ec9491d58a0a2588630303be38875c1535",
+  "runMetadataSha256": "5ff4edf430671d868c8d6bd84e558ba29b804549645d80e5afa5a664b8869e09",
+  "jobsMetadataSha256": "f705b3762dc502ef6134f686c74ca59c4990cfd2bae7d430ebc02cd3af227f2d",
+  "jobs": [
+    {
+      "id": 113079112084,
+      "name": "Codex positive polls bun seed 130363",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 113079112292,
+      "name": "Codex positive polls bun seed 104729",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 113079112311,
+      "name": "Codex positive polls node seed 130363",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 113079112357,
+      "name": "Codex positive polls node seed 104729",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 113079688186,
+      "name": "Independently verify eight original and candidate attempts",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "scope": "Actual terminal qualification only; no timed commands or speed claim."
+}
