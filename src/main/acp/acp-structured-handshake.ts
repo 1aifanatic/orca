@@ -1,3 +1,9 @@
+// An ACP child's handshake, run after the host has published it: initialize, reopen the chat's
+// session or start a new one, restore its saved options, then report `started`. A saved session the
+// agent cannot reopen is replaced by a new one, with a warning row that any later start writes if
+// this one never did; while a reopened session replays history the journal already holds, nothing
+// it sends is written except context usage.
+
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import type {
   StructuredAgentSessionAcquireInput,
@@ -18,7 +24,7 @@ import type { AcpStructuredSession } from './acp-structured-session'
 import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
 import { AcpStructuredTurns, type AcpStructuredTurnsDeps } from './acp-structured-turns'
 import { assertAcpStartingSession, type AcpStartingSession } from './acp-structured-child'
-import { acpAgentName } from './acp-structured-acquire'
+import { acpAgentName } from './acp-agent-name'
 
 type AcpHandshakeInput = {
   acquire: StructuredAgentSessionAcquireInput

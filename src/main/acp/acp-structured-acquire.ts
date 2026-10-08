@@ -1,6 +1,12 @@
+// Making a reservation real for an ACP agent: open its connection (which spawns and owns the
+// process) and record it before any handshake, so the host publishes the child at spawn. The
+// handshake (`acp-structured-handshake`) runs after: initialize, then reattach the session this chat
+// proved with `session/load` (`session/resume` for an agent that cannot load) or start a new one,
+// and the child reports `started` once that session answers. The handshake has no time bound of
+// its own: the host's startup limit, or a close, Stop or quit, stops it at any point.
+
 import { initializeAcpStructuredSession } from './acp-structured-handshake'
-import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
-import { isTuiAgent } from '../../shared/tui-agent-config'
+import { acpAgentName } from './acp-agent-name'
 import {
   AgentSessionPreSpawnError,
   type AgentSessionAcquisition,
@@ -36,9 +42,6 @@ import { RequestPermissionResponseSchema } from './generated/acp-protocol.genera
 
 /** Frames an agent may send before its session exists; past this they are dropped. */
 const MAX_EARLY_FRAMES = 2_048
-export function acpAgentName(agent: string): string {
-  return isTuiAgent(agent) ? TUI_AGENT_DISPLAY_NAMES[agent] : agent
-}
 
 export async function acquireAcpStructuredSession(input: {
   acquire: StructuredAgentSessionAcquireInput

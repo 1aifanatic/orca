@@ -220,9 +220,7 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
         resolveLaunch: createAcpStructuredLaunchResolver(spec, {
           store,
           readJournal,
-          ...(deps.openAcpConnection
-            ? { resolveCommand: () => 'scripted-acp-agent', probeVersion: async () => true }
-            : {}),
+          ...deps.acpLaunchCommand,
           resolveWorkspacePath: deps.resolveWorkspacePath,
           resolveEnvironment: context.environment.resolveBaseEnvironment,
           ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
