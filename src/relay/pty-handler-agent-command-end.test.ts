@@ -6,7 +6,6 @@ import { PtyHandler } from './pty-handler'
 import { TEST_PTY_ID_MINT_EPOCH } from './pty-handler-test-harness'
 import { makePaneKey } from '../shared/stable-pane-id'
 import type * as PtyShellUtils from './pty-shell-utils'
-import { getForegroundProcessName } from './pty-shell-utils'
 import type { FinishedCommand } from '../shared/command-foreground-tracker'
 
 const { mockPtySpawn, foreground } = vi.hoisted(() => {
@@ -35,11 +34,17 @@ describe('PtyHandler: a command finishing', () => {
   let emitData: (data: string) => void
   let commandEnd: ReturnType<typeof vi.fn<(paneKey: string, command: FinishedCommand) => void>>
   let presence: ReturnType<typeof vi.fn<(paneKey: string) => void>>
+  // node-pty's read of the terminal's foreground group.
+  let pty: { process: string }
 
   beforeEach(() => {
     vi.useFakeTimers()
     mockPtySpawn.mockReset()
+    pty = { process: 'bash' }
     mockPtySpawn.mockReturnValue({
+      get process() {
+        return pty.process
+      },
       pid: process.pid,
       onData: vi.fn((callback: (data: string) => void) => (emitData = callback)),
       onExit: vi.fn(),
@@ -107,18 +112,20 @@ describe('PtyHandler: a command finishing', () => {
     expect(presence).toHaveBeenCalledOnce()
   })
 
-  it('confirms the prompt returned from a fresh read, so a leaked end under an agent ends nothing', async () => {
+  it("confirms the prompt returned from the terminal's own group, not the cached sampler", async () => {
     await spawn({})
     emitData(COMMAND_START)
-    foreground.current = 'codex'
+    // A nested shell's leaked end while Codex still holds the terminal.
+    pty.process = 'codex'
     emitData(COMMAND_DONE)
     await vi.advanceTimersByTimeAsync(0)
-    const command = commandEnd.mock.calls[0]?.[1]
-    await expect(command?.promptReturned()).resolves.toBe(false)
-    expect(vi.mocked(getForegroundProcessName)).toHaveBeenLastCalledWith(
-      process.pid,
-      null,
-      expect.objectContaining({ fresh: true })
-    )
+    await expect(commandEnd.mock.calls[0]?.[1].promptReturned()).resolves.toBe(false)
+    // Codex exited: the cached sampler may still name it, the terminal does not.
+    foreground.current = 'codex'
+    pty.process = 'bash'
+    emitData(COMMAND_START)
+    emitData(COMMAND_DONE)
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(commandEnd.mock.calls[1]?.[1].promptReturned()).resolves.toBe(true)
   })
 })

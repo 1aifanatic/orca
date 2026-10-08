@@ -773,10 +773,12 @@ export class PtyHandler {
       const process = await getForegroundProcessName(managed.pty.pid, managed.pty.process || null)
       return { available: process !== null, process }
     },
+    // Why node-pty's name: it reads the terminal's foreground process group now, while the process
+    // table is shared and TTL-cached. Windows names only the spawned shell, so it reads nothing.
     readTerminalForeground: async (id) => {
       const managed = this.ptys.get(id)
-      return managed && !managed.disposed
-        ? getForegroundProcessName(managed.pty.pid, managed.pty.process || null, { fresh: true })
+      return managed && !managed.disposed && process.platform !== 'win32'
+        ? managed.pty.process || null
         : null
     },
     now: () => Date.now()

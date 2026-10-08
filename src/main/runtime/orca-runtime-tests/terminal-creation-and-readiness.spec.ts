@@ -236,8 +236,9 @@ describe('OrcaRuntimeService', () => {
     const endLaunch = vi.fn()
     const endCommand = vi.fn<(paneKey: string, command: FinishedCommand) => void>()
     let foreground: string | null = null
-    // The fresh read at the end, unlike the cached sampler, sees the shell back in the terminal.
-    const confirmForegroundProcess = vi.fn(async () => 'zsh')
+    // The terminal's own read at the end, unlike the cached sampler, sees the shell back.
+    const readTerminalForeground = vi.fn(async () => 'zsh')
+    const confirmForegroundProcess = vi.fn(async () => 'codex')
     const runtime = new OrcaRuntimeService(store, undefined, {
       attestAgentHookCompatibilityAuthority: (candidate) => ({
         paneKey: candidate.paneKey,
@@ -251,6 +252,7 @@ describe('OrcaRuntimeService', () => {
       write: () => true,
       kill: () => true,
       getForegroundProcess: async () => foreground,
+      readTerminalForeground,
       confirmForegroundProcess
     })
     runtime.setNotifier({
@@ -304,7 +306,8 @@ describe('OrcaRuntimeService', () => {
       )
     )
     await expect(endCommand.mock.calls[0]?.[1].promptReturned()).resolves.toBe(true)
-    expect(confirmForegroundProcess).toHaveBeenCalledWith('pty-authority')
+    expect(readTerminalForeground).toHaveBeenCalledWith('pty-authority')
+    expect(confirmForegroundProcess).not.toHaveBeenCalled()
     expect(runtime.verifyOrchestrationCompatibilityCaller(evidence)).toBeNull()
     expect((await runtime.listTerminals()).terminals).toEqual([
       expect.not.objectContaining({ agentIdentity: expect.anything() })

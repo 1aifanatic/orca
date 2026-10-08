@@ -194,9 +194,12 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
         available: false,
         process: null
       },
+    // Why the fallback: a host that cannot read the terminal's group (Windows, an older daemon)
+    // still answers from a fresh process-table read.
     readTerminalForeground: async (ptyId) =>
       (this.isForegroundReadablePty(ptyId) &&
-        (await this.ptyController?.confirmForegroundProcess?.(ptyId))) ||
+        ((await this.ptyController?.readTerminalForeground?.(ptyId)) ??
+          (await this.ptyController?.confirmForegroundProcess?.(ptyId)))) ||
       null,
     readsOnStart: (ptyId) =>
       this.isForegroundReadablePty(ptyId) && this.openCodeRunLifetime.wantsStartReads(),

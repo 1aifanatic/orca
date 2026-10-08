@@ -11,10 +11,7 @@ import {
 import { getFirstCommandToken } from '../shared/command-token-scanner'
 import { getProcessTableIndex, type ProcessTableIndex } from '../shared/process-table-index'
 import { PS_MAX_BUFFER_BYTES, type ProcessTableRow } from '../shared/process-table-snapshot'
-import {
-  getFreshProcessTableSnapshot,
-  getProcessTableSnapshot
-} from '../shared/process-table-snapshot-reader'
+import { getProcessTableSnapshot } from '../shared/process-table-snapshot-reader'
 import { selectForegroundProcessCandidate } from '../shared/foreground-process-selection'
 import {
   resolveOuterWrapperForegroundProcess,
@@ -206,11 +203,10 @@ function collectDescendants(
 
 async function getRecognizedForegroundDescendant(
   pid: number,
-  fallbackProcess: string | null | undefined,
-  fresh: boolean
+  fallbackProcess?: string | null
 ): Promise<string | null> {
   try {
-    const rows = fresh ? await getFreshProcessTableSnapshot() : await getProcessTableSnapshot()
+    const rows = await getProcessTableSnapshot()
     return getForegroundProcessNameFromProcessTable(rows, pid, fallbackProcess)
   } catch {
     // Fall through to node-pty's process name or the root command name.
@@ -267,11 +263,8 @@ function getForegroundProcessNameFromProcessTable(
  */
 export async function getForegroundProcessName(
   pid: number,
-  fallbackProcess?: string | null,
-  /** Skip the shared TTL capture, which can still list an exited or stopped foreground. */
-  options: { fresh?: boolean } = {}
+  fallbackProcess?: string | null
 ): Promise<string | null> {
-  const fresh = options.fresh === true
   if (fallbackProcess) {
     const fallbackRecognition = recognizeAgentProcess(fallbackProcess)
     if (fallbackRecognition) {
@@ -285,7 +278,7 @@ export async function getForegroundProcessName(
           )
         }
         return (
-          (await getRecognizedForegroundDescendant(pid, fallbackProcess, fresh)) ??
+          (await getRecognizedForegroundDescendant(pid, fallbackProcess)) ??
           fallbackRecognition.processName
         )
       }
@@ -304,7 +297,7 @@ export async function getForegroundProcessName(
   // to the executable basename, which for the native Claude install is its version directory
   // (`2.1.258`). The TTL-cached table read resolves the real command line; a foreground that
   // is genuinely not an agent still answers with its own name below.
-  const recognized = await getRecognizedForegroundDescendant(pid, fallbackProcess, fresh)
+  const recognized = await getRecognizedForegroundDescendant(pid, fallbackProcess)
   if (recognized) {
     return recognized
   }
