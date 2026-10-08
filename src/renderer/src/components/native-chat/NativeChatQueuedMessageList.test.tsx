@@ -5,7 +5,7 @@
 // captions derived client-side per state.
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn()
@@ -604,5 +604,24 @@ describe('NativeChatQueuedMessageList', () => {
       card({ messageId: 'mine', position: 4 })
     ])
     expect(list.scrollTop).toBe(500)
+  })
+
+  // The queue a chat opens with arrives after the list mounts; it opens on the next card to send.
+  it('does not scroll for cards that load after the list mounts', () => {
+    // The list mounts with the cards, so its height is stubbed where it will be read.
+    const height = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(500)
+    onTestFinished(() => height.mockRestore())
+    const view = renderList(controller([]))
+    view.rerender(
+      <TooltipProvider delayDuration={0}>
+        <NativeChatQueuedMessageList
+          controller={controller([
+            card({ messageId: 'a', position: 1 }),
+            card({ messageId: 'b', position: 2 })
+          ])}
+        />
+      </TooltipProvider>
+    )
+    expect(screen.getByRole('list', { name: 'Queued messages' }).scrollTop).toBe(0)
   })
 })

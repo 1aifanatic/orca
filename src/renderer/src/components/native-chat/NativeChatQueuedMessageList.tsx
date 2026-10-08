@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { Pause, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '../../store'
@@ -30,8 +30,10 @@ export function NativeChatQueuedMessageList({
   const newestPosition = newest?.position ?? 0
   const newestIsPersons = newest !== undefined && !newest.from
   const shownPosition = useRef(newestPosition)
-  useEffect(() => {
-    const appended = newestPosition > shownPosition.current
+  // Before paint, so the new card never shows a frame before the scroll.
+  useLayoutEffect(() => {
+    // From 0 the queue is loading or holds one card: nothing to scroll to.
+    const appended = shownPosition.current > 0 && newestPosition > shownPosition.current
     shownPosition.current = newestPosition
     // The list opens on the next card to send; a card the person just queued is shown instead.
     if (appended && newestIsPersons && listRef.current) {
