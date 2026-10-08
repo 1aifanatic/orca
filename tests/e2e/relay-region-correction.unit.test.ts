@@ -4,11 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import nacl from 'tweetnacl'
 import WebSocket from 'ws'
 import type { IdleRegionalRehomeRequest } from '../../cloud/packages/relay-contract/src/idle-regional-rehome'
+import { ASSIGNMENT_LIMITS } from '../../cloud/packages/relay-contract/src/assignment-invariants'
 import {
   openInMemoryRelayDatabase,
   readRelayDatabasePoolPressure
 } from '../../cloud/apps/relay/src/database'
 import { createRelayServer } from '../../cloud/apps/relay/src/relay-server'
+import { IDLE_REHOME_MIN_CONTROL_AGE_MS } from '../../cloud/apps/relay/src/host-session-registry'
 import type { RelayConfig } from '../../cloud/apps/relay/src/config'
 import type * as AdminTokenVerifier from '../../cloud/apps/relay/src/admin-token-verifier'
 import { RelayOriginPool } from '../../src/main/runtime/relay/relay-origin-pool'
@@ -292,6 +294,18 @@ async function topology() {
     },
     hostId
   )
+  // Cutover scenarios require an established control, beyond the reconnect grace period.
+  clock += IDLE_REHOME_MIN_CONTROL_AGE_MS
+  const activityId = source.sessions.get(identity)?.controlActivityId
+  if (!activityId) {
+    throw new Error('Missing active control lease')
+  }
+  await source.assignments.renewControlActivity(identity, {
+    activityId,
+    cellId: cells[0]!.id,
+    expiresAt: clock + ASSIGNMENT_LIMITS.activityLeaseMs
+  })
+  await heartbeat()
   const attachPhone = async (cellIndex: number, device: string) => {
     const invite = await source.store.createInvite(identity, device)
     const socket = connect(`${cells[cellIndex]!.url}/v1/connect/${hostId}`)
