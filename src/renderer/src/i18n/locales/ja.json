@@ -164,6 +164,7 @@
     "reportCrash": "クラッシュを報告…",
     "file": "ファイル",
     "exit": "終了",
+    "quitApp": "{{appName}} を終了",
     "edit": "編集",
     "appearance": "外観",
     "toggleLeftSidebar": "左サイドバーの表示/非表示",
@@ -13657,7 +13658,9 @@
             "sessionDeleteFailed": "セッションを削除できませんでした",
             "resumeInChatConflict": "別のチャットですでにこの会話が行われています。",
             "resumeInChatTranscriptMissing": "この会話の履歴を読み込めなかったため、チャットで再開できません。",
-            "resumeInChatFailed": "新規チャットでこのセッションを再開できませんでした。"
+            "resumeInChatFailed": "新規チャットでこのセッションを再開できませんでした。",
+            "resumeInNewCliUnavailable": "このセッションは CLI で開けません。",
+            "resumeInNewCliHostTooOld": "このチャットを新しい CLI で再開するには、チャットを実行しているホストの Orca を更新してください。"
           },
           "AiVaultPanelControls": {
             "scanningSessions": "セッションをスキャンしています",
@@ -13793,7 +13796,10 @@
             "deleteReasonNonLocalHost": "このデバイス上のセッションのみ削除できます。",
             "deleteReasonSyntheticPath": "このセッションは Orca では削除できません。",
             "deleteReasonUnsupportedAgent": "{{value0}} のセッションは Orca では削除できません。",
-            "resumeInNewChat": "新規チャットで再開"
+            "resumeInNewNativeChat": "新規ネイティブチャットで再開",
+            "resumeInNewCli": "新規 CLI で再開",
+            "resumeInNewCliTooltipFork": "この会話を新しい CLI セッションにフォークします。",
+            "resumeInNewCliTooltipChat": "ネイティブチャットはそのまま残ります。"
           },
           "AiVaultSessionDeleteDialog": {
             "title": "このセッションを削除しますか?",
@@ -17809,6 +17815,11 @@
         "editSavedArguments": "設定 > Agent > 引数で編集してください。",
         "couldNotRestart": "{{agent}} を再起動できませんでした。",
         "notSignedIn": "{{agent}} は選択したアカウントでサインインしていません。",
+        "claudeSystemNotSignedIn": "Claude にサインインしていません。`claude` を実行して /login でサインインするか、設定の Claude アカウントでアカウントを選択してください。",
+        "claudeManagedNotSignedIn": "この Claude アカウントにサインインしていません。設定の Claude アカウントで再度サインインしてください。",
+        "codexSystemNotSignedIn": "Codex にサインインしていません。`codex login` を実行してください。",
+        "codexManagedNotSignedIn": "この Codex アカウントにサインインしていません。設定の Codex アカウントで再度サインインしてください。",
+        "cliMissing": "このチャットを実行しているコンピューターで {{agent}} が見つかりませんでした。インストールするか、[設定] → [Agent] の [コマンド] を確認してください。",
         "signInFirst": "先にサインインしてください。",
         "signInThenRunCommand": "サインインしてから、/{{command}} をもう一度実行してください。",
         "signInThenSend": "サインインしてから、メッセージをもう一度送信してください。",

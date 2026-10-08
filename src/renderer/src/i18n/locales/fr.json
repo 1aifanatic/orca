@@ -265,6 +265,7 @@
     "reportCrash": "Signaler un plantage...",
     "file": "Fichier",
     "exit": "Quitter",
+    "quitApp": "Quitter {{appName}}",
     "edit": "Édition",
     "appearance": "Apparence",
     "toggleLeftSidebar": "Basculer la barre latérale gauche",
@@ -13762,7 +13763,9 @@
             "sessionDeleteFailed": "Impossible de supprimer la session",
             "resumeInChatConflict": "Un autre chat tient déjà cette conversation.",
             "resumeInChatTranscriptMissing": "L'historique de cette conversation n'a pas pu être chargé, elle ne peut donc pas être reprise dans le chat.",
-            "resumeInChatFailed": "Impossible de reprendre cette session dans un nouveau chat."
+            "resumeInChatFailed": "Impossible de reprendre cette session dans un nouveau chat.",
+            "resumeInNewCliUnavailable": "Impossible d'ouvrir cette session dans la CLI.",
+            "resumeInNewCliHostTooOld": "Mettez à jour Orca sur l'hôte qui exécute ce chat pour le reprendre dans une nouvelle CLI."
           },
           "AiVaultPanelControls": {
             "scanningSessions": "Analyse des sessions",
@@ -13898,7 +13901,10 @@
             "deleteReasonNonLocalHost": "Seules les sessions de cet appareil peuvent être supprimées.",
             "deleteReasonSyntheticPath": "Cette session ne peut pas être supprimée depuis Orca.",
             "deleteReasonUnsupportedAgent": "{{value0}} sessions ne peuvent pas être supprimées depuis Orca.",
-            "resumeInNewChat": "Reprendre dans une nouvelle discussion"
+            "resumeInNewNativeChat": "Reprendre dans un nouveau chat natif",
+            "resumeInNewCli": "Reprendre dans une nouvelle CLI",
+            "resumeInNewCliTooltipFork": "Forke cette conversation dans une nouvelle session CLI.",
+            "resumeInNewCliTooltipChat": "Le chat natif reste tel quel."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "Supprimer cette session ?",
@@ -17875,6 +17881,11 @@
         "editSavedArguments": "Modifiez-les dans Paramètres > Agents > Arguments.",
         "couldNotRestart": "{{agent}} n'a pas pu redémarrer.",
         "notSignedIn": "{{agent}} n'est pas connecté avec le compte sélectionné.",
+        "claudeSystemNotSignedIn": "Claude n’est pas connecté. Exécutez `claude` et connectez-vous avec /login, ou choisissez un compte dans les paramètres des Comptes Claude.",
+        "claudeManagedNotSignedIn": "Ce compte Claude n’est pas connecté. Reconnectez-vous dans les paramètres des Comptes Claude.",
+        "codexSystemNotSignedIn": "Codex n’est pas connecté. Exécutez `codex login`.",
+        "codexManagedNotSignedIn": "Ce compte Codex n’est pas connecté. Reconnectez-vous dans les paramètres des Comptes Codex.",
+        "cliMissing": "{{agent}} est introuvable sur l’ordinateur qui exécute cette conversation. Installez-le ou vérifiez sa Commande dans Paramètres → Agents.",
         "signInFirst": "Connectez-vous d'abord.",
         "signInThenRunCommand": "Connectez-vous, puis relancez /{{command}}.",
         "signInThenSend": "Connectez-vous, puis renvoyez votre message.",
