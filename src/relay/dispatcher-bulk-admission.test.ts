@@ -2,6 +2,29 @@ import { describe, expect, it } from 'vitest'
 import { createBulkWriteHarness, nextBulkWriteTurn } from './dispatcher-bulk-write-test-harness'
 
 describe('bulk admission and sink settlement', () => {
+  it('streams more than four fixed-bulk frames without tripping the teardown watchdog', async () => {
+    const harness = createBulkWriteHarness()
+    try {
+      const sequences = Array.from({ length: 8 }, (_, seq) => seq)
+      const completion = Promise.all(
+        sequences.map((seq) =>
+          harness.dispatcher.notifyBulk('fs.streamChunk', { streamId: 1, seq, data: 'fixed' })
+        )
+      ).then(
+        () => ({ ok: true }),
+        (error: unknown) => ({ ok: false, error })
+      )
+      await nextBulkWriteTurn()
+      await harness.drain()
+      expect(await completion).toEqual({ ok: true })
+      expect(harness.frames.filter((frame) => frame.method === 'fs.streamChunk')).toEqual(
+        sequences.map((seq) => ({ method: 'fs.streamChunk', seq }))
+      )
+    } finally {
+      harness.dispose()
+    }
+  })
+
   it('retires a fixed-bulk retry when a closed writer settles it before its client closes', async () => {
     const harness = createBulkWriteHarness(2048, 800)
     try {

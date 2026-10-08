@@ -21,6 +21,7 @@ class BulkWriteDispatcher extends RelayDispatcher {
   fixedBulkAdmissions: FixedBulkAdmission[] = []
   lastCapacityRetry: (() => void) | null = null
   private bulkAdmissionDepth = 0
+  private consecutiveFixedBulkRejections = 0
 
   get capacityRetryCount(): number {
     return this.legacyCapacityListeners.size
@@ -73,7 +74,7 @@ class BulkWriteDispatcher extends RelayDispatcher {
     if (lane !== 'fixed-bulk') {
       return super.enqueuePreparedFrame(client, frame, lane, onSettled, controlOverflow)
     }
-    if (this.fixedBulkAdmissions.length >= 4) {
+    if (this.consecutiveFixedBulkRejections >= 4) {
       throw new Error('Settled fixed-bulk admission retried during writer teardown')
     }
     const before = {
@@ -93,6 +94,7 @@ class BulkWriteDispatcher extends RelayDispatcher {
       controlOverflow
     )
     this.fixedBulkAdmissions.push({ ...before, settledBeforeReturn, accepted })
+    this.consecutiveFixedBulkRejections = accepted ? 0 : this.consecutiveFixedBulkRejections + 1
     return accepted
   }
 }
