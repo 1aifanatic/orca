@@ -19,9 +19,7 @@ import { encodeAgentSessionRecord } from '../../../src/shared/agent-session-reco
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
 // A release before neutral handles: handles stored and held in their typed form.
-const RELEASE_REF = 'v1.4.220'
-// The main build that made handles neutral; no release has it yet. Move to the first that does.
-const NEUTRAL_HANDLE_REF = 'e817b0e23747ffd6f16f2ddefea861950d82a3c0'
+const RELEASE_REF = 'v1.4.222'
 
 const acp = (nativeId: string): AgentSessionProviderHandle => ({
   transport: 'acp',
@@ -113,9 +111,8 @@ function legacyRow(provider: 'claude' | 'codex') {
   })
 }
 
-// A replacement is stored as it is held, which older builds would refuse; it is safe only because
-// the rows that can hold one are rows they already set aside. Claude and Codex chains refuse it.
-test.each([RELEASE_REF, NEUTRAL_HANDLE_REF])(
+// Older builds that do not run this agent preserve its unreadable row verbatim.
+test.each([RELEASE_REF])(
   '%s preserves legacy rows and sets aside a replaced neutral row verbatim until re-upgrade',
   async (ref) => {
     const checkout = await materializeReleaseCheckout(ref)

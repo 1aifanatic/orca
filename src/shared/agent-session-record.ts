@@ -20,10 +20,8 @@ import {
   isAgentSessionConversationCommandRecord,
   type AgentSessionConversationCommandRecord
 } from './agent-session-conversation-command'
-import {
-  decodePersistedAgentSessionProviderHandleChain,
-  type AgentSessionProviderHandleLink
-} from './agent-session-provider-handle'
+import type { AgentSessionProviderHandleLink } from './agent-session-provider-handle'
+import { decodeProviderContextHistory } from './agent-session-provider-context-history'
 import {
   isAgentSessionProviderHandleInNamespace,
   isStructuredAgentId
@@ -374,7 +372,10 @@ export function isPersistedAgentSessionRecord(
   }
   const validated = record as AgentSessionRecord
   // The row holds stored handles; validate the chain they decode to.
-  const chain = decodePersistedAgentSessionProviderHandleChain(validated.providerHandleChain)
+  const chain = decodeProviderContextHistory(
+    validated.providerHandleChain,
+    'providerContextHistory' in value ? value.providerContextHistory : undefined
+  )
   const head = chain?.at(-1)
   // One namespace, owned by the record's own agent; which transport is the chain's own fact.
   const transport = chain?.[0]?.handle.transport

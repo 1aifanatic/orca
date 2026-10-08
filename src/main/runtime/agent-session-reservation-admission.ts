@@ -48,6 +48,7 @@ import {
 import type { AgentSessionStoreState } from './agent-session-store-state'
 import { agentSessionRecordIdentityFields } from './agent-session-record-founding'
 import { agentSessionAccountHomesEqual } from '../../shared/agent-session-account-home'
+import { agentSessionProviderClaims } from '../../shared/agent-session-provider-claims'
 
 export type AgentSessionReserveRequest = {
   /** Host-resolved floating directory committed with the first owner reservation. */
@@ -237,13 +238,11 @@ function assertAdoptedConversationUnowned(
     return
   }
   const root = agentSessionProviderHandleRoot(adopted.handle)
-  for (const record of state.records.values()) {
+  for (const { record, handle } of agentSessionProviderClaims(state.records.values())) {
     if (record.sessionId === request.sessionId) {
       continue
     }
-    const holdsSameConversation = record.providerHandleChain.some(
-      (link) => agentSessionProviderHandleRoot(link.handle) === root
-    )
+    const holdsSameConversation = agentSessionProviderHandleRoot(handle) === root
     if (holdsSameConversation) {
       throw agentSessionRefusalError('agent_session_conflict', {
         reason: 'conversationHeldElsewhere'

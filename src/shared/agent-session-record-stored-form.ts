@@ -9,9 +9,9 @@ import {
   type PersistedAgentSessionRecord
 } from './agent-session-legacy-handoff-lease'
 import {
-  decodePersistedAgentSessionProviderHandleChain,
-  encodePersistedAgentSessionProviderHandleChain
-} from './agent-session-provider-handle'
+  decodeProviderContextHistory,
+  encodeProviderContextHistory
+} from './agent-session-provider-context-history'
 import type { AgentSessionRecord } from './agent-session-record'
 
 /** The in-memory record, plus whether decode changed anything the store must write back. A
@@ -20,14 +20,16 @@ export function decodePersistedAgentSessionRecord(record: PersistedAgentSessionR
   record: AgentSessionRecord
   normalized: boolean
 } {
-  const providerHandleChain = decodePersistedAgentSessionProviderHandleChain(
-    record.providerHandleChain
+  const { providerContextHistory, ...fields } = record
+  const providerHandleChain = decodeProviderContextHistory(
+    record.providerHandleChain,
+    providerContextHistory
   )
   if (!providerHandleChain) {
     throw new Error('agent_session_provider_handle_invalid')
   }
   return {
-    record: { ...record, providerHandleChain, lease: normalizeLegacyHandoffLease(record.lease) },
+    record: { ...fields, providerHandleChain, lease: normalizeLegacyHandoffLease(record.lease) },
     normalized: leaseCarriesLegacyHandoffValues(record.lease)
   }
 }
@@ -36,6 +38,6 @@ export function decodePersistedAgentSessionRecord(record: PersistedAgentSessionR
 export function encodeAgentSessionRecord(record: AgentSessionRecord): PersistedAgentSessionRecord {
   return {
     ...record,
-    providerHandleChain: encodePersistedAgentSessionProviderHandleChain(record.providerHandleChain)
+    ...encodeProviderContextHistory(record.providerHandleChain)
   }
 }

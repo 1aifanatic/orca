@@ -14,6 +14,7 @@ import type {
   AgentSessionRecord
 } from './agent-session-record'
 import type { PersistedAgentSessionProviderHandleLink } from './agent-session-provider-handle'
+import type { PersistedAgentSessionProviderContextHistory } from './agent-session-provider-context-history'
 
 type LegacyHandoffRuntimeKind = 'tui'
 type LegacyHandoffStage = 'preparing' | 'old-owner-stopped' | 'manual-recovery'
@@ -36,6 +37,7 @@ export type PersistedAgentSessionRecord = Omit<
 > & {
   lease: PersistedAgentSessionLease
   providerHandleChain: PersistedAgentSessionProviderHandleLink[]
+  providerContextHistory?: PersistedAgentSessionProviderContextHistory
 }
 
 export function isPersistedAgentSessionRuntimeKind(

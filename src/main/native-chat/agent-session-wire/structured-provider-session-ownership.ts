@@ -1,5 +1,6 @@
 import type { AgentSessionLease, AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
+import { agentSessionProviderClaims } from '../../../shared/agent-session-provider-claims'
 
 export type StructuredProviderSessionOwnership = {
   sessionId: string
@@ -13,14 +14,12 @@ export type StructuredProviderSessionOwnership = {
 export function listStructuredProviderSessionOwnership(
   records: readonly AgentSessionRecord[]
 ): StructuredProviderSessionOwnership[] {
-  return records.flatMap((record) =>
-    record.providerHandleChain.map((link) => ({
-      sessionId: record.sessionId,
-      workspaceId: record.location.workspaceId,
-      provider: record.provider,
-      providerSessionId: link.handle.nativeId,
-      conversationName: record.conversationName,
-      lease: record.lease
-    }))
-  )
+  return agentSessionProviderClaims(records).map(({ record, handle }) => ({
+    sessionId: record.sessionId,
+    workspaceId: record.location.workspaceId,
+    provider: record.provider,
+    providerSessionId: handle.nativeId,
+    conversationName: record.conversationName,
+    lease: record.lease
+  }))
 }

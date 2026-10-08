@@ -654,24 +654,22 @@ describe('replacing a conversation the provider could not restore', () => {
     ).toThrow('agent_session_provider_handle_invalid')
   })
 
-  it('is refused in a Claude or Codex chain, whose rows older builds read', () => {
-    for (const [first, lost, next] of [
-      [CLAUDE, CLAUDE, claudeProviderHandle('sess-2', null)],
-      [codexProviderHandle('t-1'), codexProviderHandle('t-1'), codexProviderHandle('t-2')]
+  it('retains truthful replacements in Claude and Codex chains', () => {
+    for (const [first, next] of [
+      [CLAUDE, claudeProviderHandle('sess-2', null)],
+      [codexProviderHandle('t-1'), codexProviderHandle('t-2')]
     ] as const) {
-      expect(() =>
-        appendAgentSessionProviderHandleLink(
-          [link({ handle: first })],
-          fresh({
-            handle: next,
-            replaces: {
-              key: agentSessionProviderHandleKey(lost),
-              reason: 'restore-failed',
-              replacedAt: 3_000
-            }
-          })
-        )
-      ).toThrow('agent_session_provider_handle_invalid')
+      const replacement = fresh({
+        handle: next,
+        replaces: {
+          key: agentSessionProviderHandleKey(first),
+          reason: 'restore-failed',
+          replacedAt: 3_000
+        }
+      })
+      const chain = appendAgentSessionProviderHandleLink([link({ handle: first })], replacement)
+      expect(chain).toEqual([link({ handle: first }), replacement])
+      expect(isAgentSessionProviderHandleChain(chain)).toBe(true)
     }
   })
 

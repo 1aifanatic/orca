@@ -16,8 +16,16 @@
 
 import type { AgentType } from './agent-status-types'
 import {
+  agentSessionProviderHandlesEqual,
+  isAgentSessionProviderHandleLink,
+  providerHandleLinkFollows
+} from './agent-session-provider-link-validation'
+export {
+  agentSessionProviderHandlesEqual,
+  isAgentSessionProviderHandleLink
+} from './agent-session-provider-link-validation'
+import {
   agentSessionProviderHandleReplacementsEqual,
-  isAgentSessionProviderHandleReplacement,
   type AgentSessionProviderHandleReplacement
 } from './agent-session-provider-handle-replacement'
 import {
@@ -25,9 +33,7 @@ import {
   agentSessionProviderHandleRoot,
   decodePersistedAgentSessionProviderHandle,
   encodePersistedAgentSessionProviderHandle,
-  isAgentSessionProviderHandle,
   isAgentSessionProviderHandleInNamespace,
-  isAgentSessionProviderHandleKeyFor,
   type PersistedAgentSessionProviderHandle
 } from './agent-session-provider-handle-encoding'
 
@@ -103,23 +109,8 @@ export type AgentSessionProviderHandleLink = {
 
 export type AgentSessionProviderHandleChain = readonly AgentSessionProviderHandleLink[]
 
-/** Bounded so one session cannot grow an unbounded persisted record. */
+/** Each context stays within the limit older builds apply to the visible stored chain. */
 export const MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS = 256
-
-const LINK_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
-
-/** Every field, resume cursor included: a resume that only moved the adapter's state is still news. */
-export function agentSessionProviderHandlesEqual(
-  left: AgentSessionProviderHandle,
-  right: AgentSessionProviderHandle
-): boolean {
-  return (
-    left.transport === right.transport &&
-    left.agent === right.agent &&
-    left.nativeId === right.nativeId &&
-    left.resumeCursor === right.resumeCursor
-  )
-}
 
 export function agentSessionProviderHandleChainHead(
   chain: AgentSessionProviderHandleChain
@@ -134,63 +125,44 @@ export function findAgentSessionProviderHandleLink(
   return chain.find((link) => link.linkId === linkId) ?? null
 }
 
-export function isAgentSessionProviderHandleLink(
-  value: unknown
-): value is AgentSessionProviderHandleLink {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  const link = value as Partial<AgentSessionProviderHandleLink>
-  if (!isAgentSessionProviderHandle(link.handle)) {
-    return false
-  }
-  const handle = link.handle
-  const originValid =
-    link.origin === 'created' ||
-    link.origin === 'adopted' ||
-    link.origin === 'resumed' ||
-    link.origin === 'forked'
-  return (
-    typeof link.linkId === 'string' &&
-    LINK_ID_PATTERN.test(link.linkId) &&
-    originValid &&
-    Number.isSafeInteger(link.mintedAtFence) &&
-    (link.mintedAtFence as number) >= 0 &&
-    Number.isSafeInteger(link.observedAt) &&
-    (link.origin === 'forked'
-      ? isAgentSessionProviderHandleKeyFor(handle, link.forkedFromKey)
-      : link.forkedFromKey === undefined) &&
-    (link.supersedesKey === undefined ||
-      (link.origin === 'created' &&
-        isAgentSessionProviderHandleKeyFor(handle, link.supersedesKey))) &&
-    (link.replaces === undefined ||
-      (link.origin === 'created' && isAgentSessionProviderHandleReplacement(handle, link.replaces)))
-  )
-}
-
 export function isAgentSessionProviderHandleChain(
   value: unknown
 ): value is AgentSessionProviderHandleLink[] {
-  if (!Array.isArray(value) || value.length > MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
+  if (!Array.isArray(value)) {
     return false
   }
-  let validated: AgentSessionProviderHandleLink[] = []
-  try {
-    for (const link of value) {
-      if (!isAgentSessionProviderHandleLink(link)) {
-        return false
-      }
-      const next = appendLink(validated, link, true)
-      // A persisted chain must name every link exactly once; retry elision belongs at append time.
-      if (next.length !== validated.length + 1) {
-        return false
-      }
-      validated = next
+  let head: AgentSessionProviderHandleLink | null = null
+  let contextLength = 0
+  const linkIds = new Set<string>()
+  for (const link of value) {
+    if (!isAgentSessionProviderHandleLink(link) || linkIds.has(link.linkId)) {
+      return false
     }
-    return true
-  } catch {
-    return false
+    if (!head) {
+      if ((link.origin !== 'created' && link.origin !== 'adopted') || link.replaces) {
+        return false
+      }
+    } else if (!providerHandleLinkFollows(head, link)) {
+      return false
+    }
+    contextLength = link.replaces ? 1 : contextLength + 1
+    if (contextLength > MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
+      return false
+    }
+    linkIds.add(link.linkId)
+    head = link
   }
+  return true
+}
+
+/** The latest fresh context's first link; earlier links are retained provenance. */
+export function agentSessionProviderContextStart(chain: AgentSessionProviderHandleChain): number {
+  for (let index = chain.length - 1; index >= 0; index -= 1) {
+    if (chain[index].replaces) {
+      return index
+    }
+  }
+  return 0
 }
 
 /**
@@ -277,9 +249,11 @@ function appendNewLink(
     // Why: the lease names its exact proof by link id; reuse would make that reference ambiguous.
     throw new Error('agent_session_provider_handle_invalid')
   }
-  if (chain.length >= MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
-    // Why: dropping older links would erase fork provenance, so refuse and let the caller roll
-    // the journal epoch instead of silently losing where this conversation came from.
+  if (
+    !link.replaces &&
+    chain.length - agentSessionProviderContextStart(chain) >=
+      MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS
+  ) {
     throw new Error('agent_session_provider_handle_chain_overflow')
   }
   return [...chain, link]
@@ -336,7 +310,7 @@ export function encodePersistedAgentSessionProviderHandleChain(
 export function decodePersistedAgentSessionProviderHandleChain(
   value: unknown
 ): AgentSessionProviderHandleLink[] | null {
-  if (!Array.isArray(value) || value.length > MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
+  if (!Array.isArray(value)) {
     return null
   }
   const decoded: unknown[] = []
