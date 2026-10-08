@@ -19,6 +19,7 @@ import {
 import type { AgentLaunchResult } from '../../src/shared/agent-launch-intent'
 import type { AgentLaunchPaneVerdict } from '../../src/shared/agent-launch-pane-verdict'
 import {
+  isAgentLaunchRunningIn,
   markAgentLaunchesClosedByUser,
   resetAgentLaunchPanesForTests,
   resolveAgentLaunchPaneVerdict
@@ -63,6 +64,8 @@ const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
 const REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 const { launchAgentThroughHost } =
   await import('../../src/renderer/src/lib/agent-launch-through-host')
+const { launchNewTabPromptThroughHost } =
+  await import('../../src/renderer/src/lib/launch-agent-new-tab-host-route')
 const { publishAgentLaunchTab } =
   await import('../../src/renderer/src/lib/agent-launch-tab-publication')
 const { applyAgentLaunchPaneVerdict } =
@@ -88,6 +91,7 @@ let store: ReturnType<typeof createTestStore>
 let record: Awaited<ReturnType<typeof openTestAgentSessionRecordStore>>
 
 beforeEach(async () => {
+  vi.stubGlobal('requestAnimationFrame', () => 0)
   store = createTestStore()
   storeRef.current = store
   store.getState().setActiveWorktree(WT)
@@ -122,11 +126,17 @@ function rig(
     selectOther?: boolean
     failure?: 'before' | 'after'
     admissionError?: string
+    deferWorkspace?: boolean
+    activate?: boolean
+    canPublish?: boolean
+    workspaceError?: boolean
   } = {}
 ) {
   const start = deferred<void>()
   const admitted = deferred<void>()
   const admission = deferred<void>()
+  const workspaceRequested = deferred<void>()
+  const workspace = deferred<void>()
   const mount: {
     verdict: AgentLaunchPaneVerdict | null
     shellStarts: number
@@ -181,6 +191,20 @@ function rig(
     ]
   })
   const open = runtime.openAgentSessionRecordStore.getMockImplementation()!
+  if (options.deferWorkspace) {
+    const resolveWorkspace = runtime.showTerminalWorkspaceLaunchScope.getMockImplementation()!
+    runtime.showTerminalWorkspaceLaunchScope.mockImplementationOnce(async (selector) => {
+      workspaceRequested.resolve()
+      await workspace.promise
+      if (options.workspaceError) {
+        throw new Error('workspace_unavailable')
+      }
+      return resolveWorkspace(selector)
+    })
+  }
+  if (options.canPublish === false) {
+    runtime.canPublishAgentLaunchTab.mockReturnValue(false)
+  }
   runtime.openAgentSessionRecordStore.mockImplementation(async () => {
     admitted.resolve()
     await admission.promise
@@ -240,18 +264,20 @@ function rig(
   }
   const selected = store.getState().activeTabId
   const groupId = store.getState().groupsByWorktree[WT]![0]!.id
-  const launch = () =>
-    launchAgentThroughHost({
-      agent: 'claude',
-      worktreeId: WT,
-      groupId,
-      prompt: PROMPT.text,
-      desktopPrompt: PROMPT,
-      activate: false,
-      agentArgs: null,
-      cwd: '/tmp/wt-7/src',
-      sessionOptions: { model: 'chosen', thinking: true }
-    })
+  const launchArgs = {
+    agent: 'claude',
+    worktreeId: WT,
+    groupId,
+    prompt: PROMPT.text,
+    desktopPrompt: PROMPT,
+    activate: options.activate ?? false,
+    agentArgs: null,
+    cwd: '/tmp/wt-7/src',
+    sessionOptions: { model: 'chosen', thinking: true }
+  } as const
+  const launch = () => launchAgentThroughHost(launchArgs)
+  const launchPrompt = () =>
+    launchNewTabPromptThroughHost({ ...launchArgs, pasteContent: PROMPT.text })
   return {
     runtime,
     context,
@@ -261,6 +287,9 @@ function rig(
     selected,
     groupId,
     launch,
+    launchPrompt,
+    workspaceRequested,
+    workspace,
     start,
     admitted,
     admission
@@ -272,6 +301,40 @@ function tab(tabId: string) {
 }
 
 describe('desktop capacity fallback keeps the original published pane', () => {
+  it.each([
+    { activate: false, capacity: true },
+    { activate: true, capacity: true },
+    { activate: false, capacity: false },
+    { activate: true, capacity: false },
+    { activate: false, capacity: true, canPublish: false },
+    { activate: false, capacity: true, workspaceError: true }
+  ])(
+    'closing before workspace resolution prevents tab recreation and input (%j)',
+    async (options) => {
+      if (!options.capacity) {
+        await record.transactOperations((draft) => draft.operations.clear())
+      }
+      const r = rig({ ...options, deferWorkspace: true })
+      r.admission.resolve()
+      const { tabId, promptDeliveryResult } = r.launchPrompt()
+      await r.workspaceRequested.promise
+      expect(tab(tabId)).toBeDefined()
+      markAgentLaunchesClosedByUser(WT, { kind: 'tab', tabId })
+      store.getState().closeTab(tabId)
+      expect(tab(tabId)).toBeUndefined()
+      r.start.resolve()
+      r.workspace.resolve()
+      await expect(promptDeliveryResult).resolves.toMatchObject({ delivered: false })
+      expect(r.runtime.publishAgentLaunchTab).not.toHaveBeenCalled()
+      expect(r.runtime.createTerminal).not.toHaveBeenCalled()
+      expect(deliver).not.toHaveBeenCalled()
+      expect(tab(tabId)).toBeUndefined()
+      expect(r.mount.shellStarts).toBe(0)
+      expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
+      expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(false)
+    }
+  )
+
   it('never falls back when admission loses its answer, even with capacity in the error text', async () => {
     const r = rig({ admissionError: 'agent_session_operation_capacity' })
     const { tabId, outcome } = r.launch()
