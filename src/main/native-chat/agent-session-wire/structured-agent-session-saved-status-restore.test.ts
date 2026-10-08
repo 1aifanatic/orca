@@ -114,13 +114,15 @@ describe('a saved status, as a restart shows it', () => {
 function restoreInput(
   entries: SavedStructuredSessionStatus[],
   records: AgentSessionRecord[],
-  listed: string[]
+  listed: string[],
+  owedMail: string[] = []
 ) {
   const log = recordingStructuredAgentSessionLogger()
   return {
     log,
     input: {
       listed,
+      owedMail,
       saved: entries,
       getRecord: (sessionId: string) =>
         records.find((candidate) => candidate.sessionId === sessionId) ?? null,
@@ -158,6 +160,20 @@ describe('restoring saved statuses at startup', () => {
     await restoreSavedStructuredAgentSessionStatuses(input)
 
     expect(input.settle).not.toHaveBeenCalled()
+  })
+
+  it('also opens each chat parked mail waits on, once, so its idle edge re-drives the mail', async () => {
+    const { input } = restoreInput(
+      [saved('cut', {}, FENCE), saved('mailed', { status: 'idle' })],
+      [record('cut', exited), record('mailed'), record('unsaved')],
+      ['cut', 'mailed', 'unsaved'],
+      ['mailed', 'cut', 'unsaved', 'gone']
+    )
+
+    await restoreSavedStructuredAgentSessionStatuses(input)
+
+    expect(input.settle).toHaveBeenCalledExactlyOnceWith(['cut', 'mailed', 'unsaved'])
+    expect(input.close).not.toHaveBeenCalled()
   })
 
   it('settles an unlisted cut chat, then closes it and lets its saved status die', async () => {

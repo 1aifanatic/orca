@@ -184,7 +184,7 @@ describe('structured session cold restoration', () => {
 
     await runtime.restoreStructuredAgentSessionTabs()
 
-    expect(restoreSavedStatuses).toHaveBeenCalledWith(['session-survives-rollback'])
+    expect(restoreSavedStatuses).toHaveBeenCalledWith(['session-survives-rollback'], [])
     // Listed from saved records, not from whatever the restore opened.
     expect(listSessionTabs).toHaveBeenCalledWith(['session-survives-rollback'])
   })
@@ -241,7 +241,7 @@ describe('structured session cold restoration', () => {
 
     await runtime.restoreStructuredAgentSessionTabs()
 
-    expect(restoreSavedStatuses).toHaveBeenCalledWith([])
+    expect(restoreSavedStatuses).toHaveBeenCalledWith([], [])
   })
 
   it('normalizes a restored tab id and removes it when closed', async () => {

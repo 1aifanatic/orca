@@ -240,8 +240,8 @@ export class StructuredAgentSessionHost {
     this.restore.restoreReadableSessions(sessionIds)
 
   /** Startup, after the lease check: see `structured-agent-session-saved-status-restore`. */
-  restoreSavedStatuses = (listed: readonly string[]): Promise<void> =>
-    this.restore.restoreSavedStatuses(listed)
+  restoreSavedStatuses = (listed: readonly string[], owedMail?: readonly string[]): Promise<void> =>
+    this.restore.restoreSavedStatuses(listed, owedMail)
 
   /** Make one persisted session addressable again; see `structured-agent-session-reveal`. */
   revealSession = (sessionId: string): Promise<StructuredAgentSessionReveal> =>

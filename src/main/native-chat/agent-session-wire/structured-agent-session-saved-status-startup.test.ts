@@ -130,7 +130,7 @@ function savedAs(status: AgentSessionStatusSummary['status']): SavedStructuredSe
 
 function sinkWith(saved: SavedStructuredSessionStatus[]) {
   return {
-    publish: vi.fn(),
+    publish: vi.fn<(summary: AgentSessionStatusSummary, subject: unknown) => void>(),
     forget: vi.fn(),
     readChildWork: vi.fn(() => []),
     saveStatus: vi.fn(),
@@ -174,7 +174,7 @@ async function startUp(listed: string[] = [SESSION]): Promise<void> {
 }
 
 const published = (sink: ReturnType<typeof sinkWith>) =>
-  sink.publish.mock.calls.map(([summary]: [AgentSessionStatusSummary]) => summary)
+  sink.publish.mock.calls.map(([summary]) => summary)
 
 async function turnState(): Promise<string | undefined> {
   return (await host.journalSnapshot(SESSION)).items

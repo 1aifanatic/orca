@@ -69,7 +69,7 @@ export function createStructuredAgentSessionHostRestore(
 ): {
   reconcileRestartLeases: () => Promise<void>
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
-  restoreSavedStatuses: (listed: readonly string[]) => Promise<void>
+  restoreSavedStatuses: (listed: readonly string[], owedMail?: readonly string[]) => Promise<void>
 } {
   const { reconcileLeases, resolveRecovery, restoreSaved, close, ...rest } = wiring
   const failures = reportEachFailureOnce(deps.logger)
@@ -96,9 +96,10 @@ export function createStructuredAgentSessionHostRestore(
       await reconcile('startup')
     },
     restoreReadableSessions,
-    restoreSavedStatuses: (listed) =>
+    restoreSavedStatuses: (listed, owedMail = []) =>
       restoreSavedStructuredAgentSessionStatuses({
         listed,
+        owedMail,
         saved: deps.statusSink?.readSavedStatuses?.() ?? [],
         getRecord: (sessionId) => deps.store.getRecord(sessionId),
         restoreSaved,

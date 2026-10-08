@@ -1,6 +1,6 @@
-// What startup owes native chat statuses. Each listed chat shows its saved status without its
-// history being opened. Only the chats the restart cut mid-turn are opened, at once, so their
-// journals settle at the restart boundary rather than whenever someone next looks.
+// What startup owes native chats. Each listed chat shows its saved status without its history being
+// opened. Only two kinds open, at once: a chat the restart cut mid-turn, so its journal settles at
+// the restart boundary, and a chat undelivered mail waits on, so its idle edge re-drives that mail.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
@@ -42,6 +42,8 @@ export function settledSavedStructuredSessionSummary(
  *  settle is logged: the chat still lists, and its own open settles it again. */
 export async function restoreSavedStructuredAgentSessionStatuses(input: {
   listed: readonly string[]
+  /** Chats undelivered orchestration mail waits on. */
+  owedMail: readonly string[]
   saved: readonly SavedStructuredSessionStatus[]
   getRecord: (sessionId: string) => AgentSessionRecord | null
   restoreSaved: (
@@ -69,13 +71,14 @@ export async function restoreSavedStructuredAgentSessionStatuses(input: {
       cut.push(sessionId)
     }
   }
-  if (cut.length === 0) {
+  const owed = [...new Set([...cut, ...input.owedMail.filter((id) => input.getRecord(id))])]
+  if (owed.length === 0) {
     return
   }
-  await input.settle(cut).catch((error: unknown) => {
-    input.logger.warn('settling chats a restart cut failed', {
+  await input.settle(owed).catch((error: unknown) => {
+    input.logger.warn('opening chats a restart owes failed', {
       scope: 'saved-status-settle',
-      sessionIds: cut,
+      sessionIds: owed,
       error
     })
   })
