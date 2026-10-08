@@ -21,6 +21,7 @@ import {
   JCODE_RUNTIME_DIR_ENV_KEY,
   shouldInjectJcodeRuntimeDir
 } from '../../../shared/jcode-runtime-dir'
+import type { FinishedCommand } from '../../../shared/command-foreground-tracker'
 
 describe('OrcaRuntimeService', () => {
   it('creates visible terminal sessions without asking the renderer to focus a tab', async () => {
@@ -233,8 +234,10 @@ describe('OrcaRuntimeService', () => {
   it("ends the launch's authority, and the agent its command ran, when it finishes", async () => {
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-authority', incarnationId: 'process-1' })
     const endLaunch = vi.fn()
-    const endCommand = vi.fn()
+    const endCommand = vi.fn<(paneKey: string, command: FinishedCommand) => void>()
     let foreground: string | null = null
+    // The fresh read at the end, unlike the cached sampler, sees the shell back in the terminal.
+    const confirmForegroundProcess = vi.fn(async () => 'zsh')
     const runtime = new OrcaRuntimeService(store, undefined, {
       attestAgentHookCompatibilityAuthority: (candidate) => ({
         paneKey: candidate.paneKey,
@@ -247,7 +250,8 @@ describe('OrcaRuntimeService', () => {
       spawn,
       write: () => true,
       kill: () => true,
-      getForegroundProcess: async () => foreground
+      getForegroundProcess: async () => foreground,
+      confirmForegroundProcess
     })
     runtime.setNotifier({
       worktreesChanged: vi.fn(),
@@ -299,6 +303,8 @@ describe('OrcaRuntimeService', () => {
         expect.objectContaining({ foreground: { kind: 'agent', agent: 'codex' } })
       )
     )
+    await expect(endCommand.mock.calls[0]?.[1].promptReturned()).resolves.toBe(true)
+    expect(confirmForegroundProcess).toHaveBeenCalledWith('pty-authority')
     expect(runtime.verifyOrchestrationCompatibilityCaller(evidence)).toBeNull()
     expect((await runtime.listTerminals()).terminals).toEqual([
       expect.not.objectContaining({ agentIdentity: expect.anything() })

@@ -4,7 +4,7 @@ import { AgentHookServer } from './server'
 import { buildBody, LEAF_2, PANE, postHookEvent } from './server.test-fixtures'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { wslHookRelayConnectionId } from '../../shared/wsl-hook-relay-contract'
-import type { CommandForeground } from '../../shared/command-foreground-tracker'
+import type { CommandForeground, FinishedCommand } from '../../shared/command-foreground-tracker'
 
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: () => ({}) }))
@@ -55,8 +55,17 @@ function row(server: AgentHookServer) {
 const toolUse = { tool_name: 'Bash', tool_input: { command: 'ls' } }
 
 /** A command that started before the pane's rows and finished now, with this foreground. */
-function finished(foreground: CommandForeground, startedAt: number | null = 0) {
-  return { foreground, startedAt, finishedAt: Date.now() + 1 }
+function finished(
+  foreground: CommandForeground,
+  startedAt: number | null = 0,
+  promptReturned = true
+): FinishedCommand {
+  return {
+    foreground,
+    startedAt,
+    finishedAt: Date.now() + 1,
+    promptReturned: async () => promptReturned
+  }
 }
 const ran = (agent: string) => finished({ kind: 'agent', agent })
 
@@ -86,7 +95,7 @@ describe('the host ending the agent a finished command ran', () => {
     // The command-finished recheck proves Claude gone; the held Codex takes the pane.
     await server.checkAgentPresence(PANE)
     expect(row(server)).toMatchObject({ agentType: 'codex', prompt: 'codex task' })
-    server.endCommand(PANE, ran('claude'))
+    await server.endCommand(PANE, ran('claude'))
     expect(row(server)).toMatchObject({ agentType: 'codex', prompt: 'codex task' })
     await codex(server, 'PreToolUse', toolUse)
     expect(row(server)).toMatchObject({
@@ -99,7 +108,7 @@ describe('the host ending the agent a finished command ran', () => {
   it('leaves an owner with a process to the process check (a killed typed Claude ends there)', async () => {
     const server = await createServer()
     await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
-    server.endCommand(PANE, ran('claude'))
+    await server.endCommand(PANE, ran('claude'))
     expect(row(server)).toMatchObject({ state: 'working' })
     probe.mockResolvedValue('exited')
     await server.checkAgentPresence(PANE)
@@ -118,7 +127,7 @@ describe('the host ending the agent a finished command ran', () => {
   ])('ends a typed Codex when %s; its late hooks never revive it', async (_, command) => {
     const server = await createServer()
     await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
-    server.endCommand(PANE, command())
+    await server.endCommand(PANE, command())
     expect(row(server)).toMatchObject({ providerSessionOnly: true, agentType: 'codex' })
     await codex(server, 'Stop')
     expect(row(server)).toMatchObject({ providerSessionOnly: true })
@@ -136,18 +145,21 @@ describe('the host ending the agent a finished command ran', () => {
   ])('keeps a Codex when %s', async (_, command) => {
     const server = await createServer()
     await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
-    server.endCommand(PANE, command())
+    await server.endCommand(PANE, command())
+    expect(row(server)).toMatchObject({ state: 'working', agentType: 'codex' })
+  })
+
+  it('keeps a Codex when a fresh read finds a non-shell holding the terminal (a leaked end)', async () => {
+    const server = await createServer()
+    await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
+    await server.endCommand(PANE, finished({ kind: 'agent', agent: 'codex' }, 0, false))
     expect(row(server)).toMatchObject({ state: 'working', agentType: 'codex' })
   })
 
   it("keeps a row reported after the command finished (a run's own Done)", async () => {
     const server = await createServer()
     await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
-    server.endCommand(PANE, {
-      foreground: { kind: 'agent', agent: 'codex' },
-      startedAt: 0,
-      finishedAt: 0
-    })
+    await server.endCommand(PANE, { ...ran('codex'), finishedAt: 0 })
     expect(row(server)).toMatchObject({ state: 'working' })
   })
 
@@ -159,20 +171,32 @@ describe('the host ending the agent a finished command ran', () => {
       worktreeId: 'wt-1',
       payload: { state: 'working', prompt: '', agentType: 'aider' }
     })
-    server.endCommand(PANE, ran('codex'))
+    await server.endCommand(PANE, ran('codex'))
     expect(row(server)).toMatchObject({ state: 'working' })
-    server.endCommand(PANE, ran('aider'))
+    await server.endCommand(PANE, ran('aider'))
+    expect(row(server)).toBeUndefined()
+  })
+
+  it('clears a row painted from output when its printing command ends under a program (e2e viii)', async () => {
+    const server = await createServer()
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      payload: { state: 'working', prompt: 'osc only', agentType: 'opencode' }
+    })
+    await server.endCommand(PANE, finished({ kind: 'program' }))
     expect(row(server)).toBeUndefined()
   })
 
   it('leaves an SSH row to its relay, and ends a WSL row, which this machine executes', async () => {
     const ssh = await createServer()
     relayed(ssh, 'ssh-1')
-    ssh.endCommand(PANE, ran('codex'))
+    await ssh.endCommand(PANE, ran('codex'))
     expect(row(ssh)).toMatchObject({ state: 'working' })
     const wsl = await createServer()
     relayed(wsl, wslHookRelayConnectionId('Ubuntu'))
-    wsl.endCommand(PANE, finished({ kind: 'unknown' }))
+    await wsl.endCommand(PANE, finished({ kind: 'unknown' }))
     expect(row(wsl)).toMatchObject({ providerSessionOnly: true })
   })
 
@@ -187,7 +211,7 @@ describe('the host ending the agent a finished command ran', () => {
     })
     expect(row(server)).toMatchObject({ state: 'working', connectionId: 'ssh-1' })
     // Main cannot read an SSH foreground: the row reported during the command, so it ends.
-    server.endCommand(PANE, finished({ kind: 'unknown' }))
+    await server.endCommand(PANE, finished({ kind: 'unknown' }))
     expect(row(server)).toBeUndefined()
   })
 
@@ -196,7 +220,7 @@ describe('the host ending the agent a finished command ran', () => {
     const commandCode = (event: string) =>
       postHookEvent(server, buildBody({ hook_event_name: event, ...toolUse }), '/hook/command-code')
     await commandCode('PreToolUse')
-    server.endCommand(PANE, ran('command-code'))
+    await server.endCommand(PANE, ran('command-code'))
     expect(row(server)).toBeUndefined()
     await commandCode('PostToolUse')
     expect(row(server)).toBeUndefined()

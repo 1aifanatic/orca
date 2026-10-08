@@ -4,15 +4,24 @@ import { FOREGROUND_COMMAND_READS } from './foreground-command-settle'
 
 let foreground: string | null = 'zsh'
 let available = true
+let terminal: string | null = 'zsh'
 const read = vi.fn(async () => ({ available, process: foreground }))
+const readTerminalForeground = vi.fn(async () => terminal)
 const tracker = (readsOnStart = false) =>
-  new CommandForegroundTracker({ read, now: () => Date.now(), readsOnStart: () => readsOnStart })
+  new CommandForegroundTracker({
+    read,
+    readTerminalForeground,
+    now: () => Date.now(),
+    readsOnStart: () => readsOnStart
+  })
 
 beforeEach(() => {
   vi.useFakeTimers()
   read.mockClear()
+  readTerminalForeground.mockClear()
   foreground = 'zsh'
   available = true
+  terminal = 'zsh'
 })
 afterEach(() => vi.useRealTimers())
 
@@ -34,7 +43,7 @@ describe('CommandForegroundTracker', () => {
     foreground = 'codex'
     await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
     foreground = 'zsh'
-    await expect(commands.finished('pty')).resolves.toMatchObject({
+    expect(commands.finished('pty')).toMatchObject({
       foreground: { kind: 'agent', agent: 'codex' }
     })
   })
@@ -47,7 +56,7 @@ describe('CommandForegroundTracker', () => {
     commands.observeActivity('pty')
     await vi.advanceTimersByTimeAsync(0)
     foreground = 'zsh'
-    await expect(commands.finished('pty')).resolves.toMatchObject({
+    expect(commands.finished('pty')).toMatchObject({
       foreground: { kind: 'agent', agent: 'claude' }
     })
   })
@@ -61,7 +70,7 @@ describe('CommandForegroundTracker', () => {
     commands.observeActivity('pty')
     await vi.advanceTimersByTimeAsync(0)
     foreground = 'zsh'
-    await expect(commands.finished('pty')).resolves.toMatchObject({
+    expect(commands.finished('pty')).toMatchObject({
       foreground: { kind: 'agent', agent: 'codex' }
     })
   })
@@ -72,18 +81,35 @@ describe('CommandForegroundTracker', () => {
     foreground = 'ls'
     await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
     foreground = 'zsh'
-    await expect(commands.finished('a')).resolves.toMatchObject({ foreground: { kind: 'program' } })
+    expect(commands.finished('a')).toMatchObject({ foreground: { kind: 'program' } })
     available = false
     commands.started('b')
     await vi.advanceTimersByTimeAsync(FOREGROUND_COMMAND_READS.settleMs)
-    await expect(commands.finished('b')).resolves.toMatchObject({ foreground: { kind: 'unknown' } })
-    await expect(commands.finished('never-started')).resolves.toMatchObject({ startedAt: null })
+    expect(commands.finished('b')).toMatchObject({ foreground: { kind: 'unknown' } })
+    expect(commands.finished('never-started')).toMatchObject({ startedAt: null })
   })
 
-  it('reports nothing while the agent still holds the foreground (a leaked command end)', async () => {
+  it('confirms the prompt returned from a fresh read, never the cached sampler (e2e iv, vi, ix)', async () => {
     const commands = tracker()
     commands.started('pty')
+    // The cached sampler still names the exited (or Ctrl-Z-stopped) agent; the terminal does not.
     foreground = 'codex'
-    await expect(commands.finished('pty')).resolves.toBeNull()
+    const command = commands.finished('pty')
+    expect(read).not.toHaveBeenCalled()
+    await expect(command.promptReturned()).resolves.toBe(true)
+    await expect(command.promptReturned()).resolves.toBe(true)
+    expect(readTerminalForeground).toHaveBeenCalledOnce()
+  })
+
+  it('reports a leaked end while a non-shell still holds the terminal, and trusts an unreadable one', async () => {
+    const commands = tracker()
+    terminal = 'codex'
+    await expect(commands.finished('pty').promptReturned()).resolves.toBe(false)
+    terminal = null
+    await expect(commands.finished('pty').promptReturned()).resolves.toBe(true)
+    readTerminalForeground.mockRejectedValueOnce(new Error('ps failed'))
+    await expect(commands.finished('pty').promptReturned()).resolves.toBe(true)
+    const unreadable = new CommandForegroundTracker({ read, now: () => Date.now() })
+    await expect(unreadable.finished('pty').promptReturned()).resolves.toBe(true)
   })
 })

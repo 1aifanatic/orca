@@ -10,12 +10,18 @@ export type CommandForeground =
   /** No read named it: unavailable, or only the shell or a launcher was seen. */
   | { kind: 'unknown' }
 
-export type FinishedCommand = {
+/** What the shared command-end rule reads. */
+export type CommandEnd = {
   foreground: CommandForeground
   /** Host clock at the command's start; null when the host saw no start. */
   startedAt: number | null
   /** Host clock at its end: a row reported after it is newer than the command. */
   finishedAt: number
+}
+
+export type FinishedCommand = CommandEnd & {
+  /** False when a fresh read finds a non-shell holding the terminal: a nested shell's leaked end. */
+  promptReturned: () => Promise<boolean>
 }
 
 export type ForegroundRead = { available: boolean; process: string | null }
@@ -65,6 +71,8 @@ export class CommandForegroundTracker {
   constructor(
     private readonly deps: {
       read: (key: string) => Promise<ForegroundRead>
+      /** Fresh, uncached name of the process group holding the terminal; null when unreadable. */
+      readTerminalForeground?: (key: string) => Promise<string | null>
       now: () => number
       /** Whether this command also gets the start ladder (a consumer that has no reports to wait for). */
       readsOnStart?: (key: string) => boolean
@@ -98,19 +106,21 @@ export class CommandForegroundTracker {
     }
   }
 
-  /** Null when the pane's foreground is still not a shell: a nested shell leaked the command end. */
-  async finished(key: string): Promise<FinishedCommand | null> {
+  /** The command's end, read only when a row would end on it. */
+  finished(key: string): FinishedCommand {
     const state = this.commands.get(key)
     const finishedAt = this.deps.now()
     this.forget(key)
-    const now = await this.deps.read(key).catch(() => ({ available: false, process: null }))
-    if (classify(now).kind !== 'unknown') {
-      return null
-    }
+    let promptReturned: Promise<boolean> | undefined
     return {
       foreground: state?.foreground ?? { kind: 'unknown' },
       startedAt: state?.startedAt ?? null,
-      finishedAt
+      finishedAt,
+      // Why fresh: a cached read still names the agent that just exited, or a job Ctrl-Z stopped.
+      promptReturned: () =>
+        (promptReturned ??= (this.deps.readTerminalForeground?.(key) ?? Promise.resolve(null))
+          .catch(() => null)
+          .then((process) => process === null || isShellProcess(process)))
     }
   }
 

@@ -1,5 +1,5 @@
 import { clearPaneCacheState } from '../../../shared/agent-hook-listener/listener-state'
-import { commandEndEndsRow } from '../../../shared/agent-command-end'
+import { commandEndEndsRow, confirmCommandEnd } from '../../../shared/agent-command-end'
 import { currentOwner } from '../../../shared/agent-hook-presence-transition'
 import type { FinishedCommand } from '../../../shared/command-foreground-tracker'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
@@ -35,20 +35,12 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
   /** A command finished in a pane: end the agent it ran. A hook row from an SSH pane is its relay's,
    *  which runs the same rule; main decides every other row, including SSH rows painted only from
    *  terminal output, which no relay holds. */
-  endCommand(paneKey: string, command: FinishedCommand): void {
+  async endCommand(paneKey: string, command: FinishedCommand): Promise<void> {
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
-    const row = this.state.lastStatusByPaneKey.get(ownerPaneKey) as
-      | EnrichedAgentHookEventPayload
-      | undefined
-    if (
-      !row ||
-      (!isLocalHookConnectionId(row.connectionId ?? null) && row.agentPresence !== undefined) ||
-      !commandEndEndsRow(row, row.receivedAt, command)
-    ) {
+    if (!(await confirmCommandEnd(() => this.commandEndsRow(ownerPaneKey, command), command))) {
       return
     }
-    const owner = currentOwner(row)
+    const owner = currentOwner(this.state.lastStatusByPaneKey.get(ownerPaneKey))
     if (!owner) {
       this.reconcileEndedProcessForPaneKeys([ownerPaneKey], { preserveResumeIdentity: true })
       return
@@ -60,6 +52,18 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
     if (!this.state.lastStatusByPaneKey.has(ownerPaneKey)) {
       this.retirePaneAuthority(paneKey)
     }
+  }
+
+  private commandEndsRow(ownerPaneKey: string, command: FinishedCommand): boolean {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
+    const row = this.state.lastStatusByPaneKey.get(ownerPaneKey) as
+      | EnrichedAgentHookEventPayload
+      | undefined
+    return (
+      !!row &&
+      (isLocalHookConnectionId(row.connectionId ?? null) || row.agentPresence === undefined) &&
+      commandEndEndsRow(row, row.receivedAt, command)
+    )
   }
 
   // Why: retirement fences a pane and every alias of it, then deletes those aliases.

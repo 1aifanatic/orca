@@ -6,6 +6,7 @@ import { PtyHandler } from './pty-handler'
 import { TEST_PTY_ID_MINT_EPOCH } from './pty-handler-test-harness'
 import { makePaneKey } from '../shared/stable-pane-id'
 import type * as PtyShellUtils from './pty-shell-utils'
+import { getForegroundProcessName } from './pty-shell-utils'
 import type { FinishedCommand } from '../shared/command-foreground-tracker'
 
 const { mockPtySpawn, foreground } = vi.hoisted(() => {
@@ -106,12 +107,18 @@ describe('PtyHandler: a command finishing', () => {
     expect(presence).toHaveBeenCalledOnce()
   })
 
-  it('reports nothing for a command end a nested shell leaked while the agent runs', async () => {
+  it('confirms the prompt returned from a fresh read, so a leaked end under an agent ends nothing', async () => {
     await spawn({})
     emitData(COMMAND_START)
     foreground.current = 'codex'
     emitData(COMMAND_DONE)
     await vi.advanceTimersByTimeAsync(0)
-    expect(commandEnd).not.toHaveBeenCalled()
+    const command = commandEnd.mock.calls[0]?.[1]
+    await expect(command?.promptReturned()).resolves.toBe(false)
+    expect(vi.mocked(getForegroundProcessName)).toHaveBeenLastCalledWith(
+      process.pid,
+      null,
+      expect.objectContaining({ fresh: true })
+    )
   })
 })

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { RelayAgentHookServer } from './agent-hook-server'
 import type { AgentHookRelayEnvelope } from '../shared/agent-hook-relay'
 import { makePaneKey } from '../shared/stable-pane-id'
+import type { FinishedCommand } from '../shared/command-foreground-tracker'
 
 const probe = vi.hoisted(() =>
   vi.fn(async (): Promise<'live' | 'unverifiable' | 'exited'> => 'live')
@@ -61,10 +62,11 @@ async function startRelay() {
   return { server, forward, post, codex, last }
 }
 
-const ran = (agent: string) => ({
-  foreground: { kind: 'agent' as const, agent },
+const ran = (agent: string, promptReturned = true): FinishedCommand => ({
+  foreground: { kind: 'agent', agent },
   startedAt: 0,
-  finishedAt: Date.now() + 1
+  finishedAt: Date.now() + 1,
+  promptReturned: async () => promptReturned
 })
 
 describe('relay: the host ending the agent a finished command ran', () => {
@@ -73,7 +75,7 @@ describe('relay: the host ending the agent a finished command ran', () => {
     await codex('UserPromptSubmit', { prompt: 'codex task' })
     await codex('PreToolUse', toolUse)
     expect(last()?.payload.state).toBe('working')
-    server.endCommand(paneKey, ran('codex'))
+    await server.endCommand(paneKey, ran('codex'))
     expect(last()).toMatchObject({ providerSessionOnly: true, agentPresence: { ended: true } })
     const forwarded = forward.mock.calls.length
     await codex('Stop')
@@ -88,12 +90,16 @@ describe('relay: the host ending the agent a finished command ran', () => {
     const { server, forward, codex } = await startRelay()
     await codex('UserPromptSubmit', { prompt: 'codex task' })
     const forwarded = forward.mock.calls.length
-    server.endCommand(paneKey, {
-      foreground: { kind: 'program' },
-      startedAt: 0,
-      finishedAt: Date.now() + 1
-    })
-    server.endCommand(paneKey, ran('claude'))
+    await server.endCommand(paneKey, { ...ran('codex'), foreground: { kind: 'program' } })
+    await server.endCommand(paneKey, ran('claude'))
+    expect(forward.mock.calls.length).toBe(forwarded)
+  })
+
+  it('keeps a Codex when a fresh read finds a non-shell holding the terminal (a leaked end)', async () => {
+    const { server, forward, codex } = await startRelay()
+    await codex('UserPromptSubmit', { prompt: 'codex task' })
+    const forwarded = forward.mock.calls.length
+    await server.endCommand(paneKey, ran('codex', false))
     expect(forward.mock.calls.length).toBe(forwarded)
   })
 
@@ -109,7 +115,7 @@ describe('relay: the host ending the agent a finished command ran', () => {
     probe.mockResolvedValue('exited')
     await server.checkAgentPresence(paneKey)
     expect(last()).toMatchObject({ payload: { agentType: 'codex', prompt: 'codex task' } })
-    server.endCommand(paneKey, ran('claude'))
+    await server.endCommand(paneKey, ran('claude'))
     await codex('PreToolUse', toolUse)
     expect(last()).toMatchObject({
       payload: { agentType: 'codex', prompt: 'codex task', toolName: 'Bash' }

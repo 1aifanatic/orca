@@ -84,7 +84,7 @@ export class RelayAgentHookRuntime {
       void this.hookServer.checkAgentPresence(paneKey)
     })
     this.ptyHandler.setAgentCommandEndListener((paneKey, command) => {
-      this.hookServer.endCommand(paneKey, command)
+      void this.hookServer.endCommand(paneKey, command)
     })
     this.ptyHandler.addEnvAugmenter(() => this.hookServer.buildPtyEnv())
     this.ptyHandler.addEnvAugmenter((context) => this.buildPluginEnvironment(context))

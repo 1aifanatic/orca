@@ -145,14 +145,10 @@ export class OrcaRuntimeWithGetOrchestrationDispatchAuthority extends OrcaRuntim
   /** A command finished: the host checks owners with a process and ends the agent it ran. */
   protected endPtyCommand(ptyId: string): void {
     void this.recheckHookAgentPresenceForPty(ptyId)
-    void this.commandForeground.finished(ptyId).then((command) => {
-      if (!command) {
-        return
-      }
-      for (const paneKey of this.collectAgentStatusPaneKeysForPty(ptyId)) {
-        this.endAgentHookCommandFn?.(paneKey, command)
-      }
-    })
+    const command = this.commandForeground.finished(ptyId)
+    for (const paneKey of this.collectAgentStatusPaneKeysForPty(ptyId)) {
+      this.endAgentHookCommandFn?.(paneKey, command)
+    }
   }
 
   /** An agent reported in this pane: let the running command read who holds its foreground. */

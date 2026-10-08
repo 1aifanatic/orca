@@ -194,6 +194,10 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
         available: false,
         process: null
       },
+    readTerminalForeground: async (ptyId) =>
+      (this.isForegroundReadablePty(ptyId) &&
+        (await this.ptyController?.confirmForegroundProcess?.(ptyId))) ||
+      null,
     readsOnStart: (ptyId) =>
       this.isForegroundReadablePty(ptyId) && this.openCodeRunLifetime.wantsStartReads(),
     onSample: (ptyId, process, commandId) =>

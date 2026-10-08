@@ -123,7 +123,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     retireAgentHookCompatibilityAuthority: (paneKey) =>
       agentHookServer.retirePaneAuthority(paneKey),
     endAgentHookLaunch: (paneKey) => agentHookServer.endLaunchAuthority(paneKey),
-    endAgentHookCommand: (paneKey, command) => agentHookServer.endCommand(paneKey, command),
+    endAgentHookCommand: (paneKey, command) => void agentHookServer.endCommand(paneKey, command),
     checkHookAgentPresence: (paneKey) => agentHookServer.checkAgentPresence(paneKey),
     reconcileAgentStatusForEndedProcess: (paneKeys) =>
       agentHookServer.reconcileEndedProcessForPaneKeys(paneKeys),

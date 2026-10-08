@@ -773,6 +773,12 @@ export class PtyHandler {
       const process = await getForegroundProcessName(managed.pty.pid, managed.pty.process || null)
       return { available: process !== null, process }
     },
+    readTerminalForeground: async (id) => {
+      const managed = this.ptys.get(id)
+      return managed && !managed.disposed
+        ? getForegroundProcessName(managed.pty.pid, managed.pty.process || null, { fresh: true })
+        : null
+    },
     now: () => Date.now()
   })
 
@@ -1175,11 +1181,10 @@ export class PtyHandler {
       onCommandStarted: () => this.commandForeground.started(managed.id),
       onCommandFinished: () => {
         const paneKey = managed.paneKey
-        void this.commandForeground.finished(managed.id).then((command) => {
-          if (command && paneKey) {
-            this.agentCommandEndListener?.(paneKey, command)
-          }
-        })
+        const command = this.commandForeground.finished(managed.id)
+        if (paneKey) {
+          this.agentCommandEndListener?.(paneKey, command)
+        }
         recheckAgentPresence()
       }
     })

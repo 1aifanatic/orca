@@ -51,4 +51,11 @@ describe('commandEndEndsRow', () => {
     expect(commandEndEndsRow(terminal, 50, command({ kind: 'agent', agent: 'aider' }))).toBe(true)
     expect(commandEndEndsRow(terminal, 50, command({ kind: 'agent', agent: 'codex' }))).toBe(false)
   })
+
+  it('ends a row painted from output under an unrecognized program it reported during', () => {
+    // Why: `printf <OSC 9999>; sleep 6` reads as `sleep`; the printing command is the row's agent.
+    const terminal = row({ agentPresence: undefined })
+    expect(commandEndEndsRow(terminal, 50, command({ kind: 'program' }))).toBe(true)
+    expect(commandEndEndsRow(terminal, 5, command({ kind: 'program' }))).toBe(false)
+  })
 })
