@@ -11,6 +11,7 @@
  */
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { agentSessionProviderClaims } from '../../../shared/agent-session-provider-claims'
 import { isOrcaSessionId, type OrcaSessionId } from '../../../shared/orca-session-address'
 import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../shared/orchestration-session-caller-codes'
 import type { OrchestrationDb } from './db'
@@ -35,9 +36,9 @@ export function lookupOrcaAgentSession(
   if (record) {
     return { kind: 'found', record }
   }
-  const owner = store
-    .listRecords()
-    .find((candidate) => candidate.providerHandleChain.some(({ handle }) => handle.nativeId === id))
+  const owner = agentSessionProviderClaims(store.listRecords()).find(
+    ({ handle }) => handle.nativeId === id
+  )?.record
   return owner ? { kind: 'provider-id', orcaSessionId: owner.sessionId } : { kind: 'unknown' }
 }
 
