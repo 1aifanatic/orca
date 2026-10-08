@@ -29,7 +29,7 @@ type MermaidBlockProps = {
 // where one render can clobber another's temporary DOM node. Serializing all
 // render calls through a single promise chain avoids this.
 //
-// The queue is replaced with a fresh promise after each render completes so
+// The queue is replaced with a fresh promise once all waiting renders complete so
 // that old .then() closures (which capture content and id)
 // become unreachable and can be GC'd. Without this, the chain grows with
 // every MermaidBlock mount/unmount cycle for the lifetime of the renderer.
