@@ -17,6 +17,7 @@ import { ptyIncarnationById, ptyOwnership } from '../provider/ownership-state'
 import { isHostReportedPtyAbsenceError, isObservedPtyExitEvidence } from '../provider/liveness'
 import { clearProviderPtyState } from '../provider/state-cleanup'
 import { spawnCommitBindingOrigin } from '../../../persistence/loading-store/pty-binding-span'
+import { releaseTabRowPty } from '../../../persistence/loading-store/replaced-pane-binding'
 
 export type StablePaneOwner = {
   handle?: string
@@ -225,7 +226,7 @@ export async function persistAdmittedStablePaneBinding(args: {
 export async function attachStablePaneOwner(
   args: StablePaneSpawnContext & { owner: StablePaneOwner }
 ): Promise<{ result: PtySpawnResult; owner: StablePaneOwner } | null> {
-  const { owner, provider, runtime, spawnOptions } = args
+  const { owner, provider, runtime, spawnOptions, store, worktreeId, connectionId } = args
   let result: PtySpawnResult
   try {
     result = await provider.spawn({
@@ -265,6 +266,10 @@ export async function attachStablePaneOwner(
     ) {
       throw new Error('terminal_pane_owner_changed')
     }
+    // Why 'replaced': the fresh spawn that follows takes the pane, so main keeps the pane and its
+    // binding until that spawn's bind swaps it, as for a restart.
+    const stops = runtime?.intentionalPtyStops
+    const settleReplacement = stops?.mark(owner.ptyId, 'replaced', owner.incarnationId ?? null)
     // `pty.attach` answers absent both for a pid the relay probed and found gone and for an id its
     // session map never had — every id minted before a relay restart, checked against nothing. Only
     // the marked half observed the process, so only it may certify a death; the rest publishes the
@@ -276,16 +281,13 @@ export async function attachStablePaneOwner(
       owner.incarnationId,
       isObservedPtyExitEvidence(error) ? { hostExitConfirmed: true } : {}
     )
+    settleReplacement?.(true)
     clearProviderPtyState(owner.ptyId)
     ptyOwnership.delete(owner.ptyId)
-    if (
-      args.worktreeId &&
-      !(await retirePersistedStablePaneOwner(args.store, owner, args.worktreeId, args.connectionId))
-    ) {
-      throw new Error('terminal_pane_owner_changed')
-    }
-    if (args.resolveOwner?.()) {
-      throw new Error('terminal_pane_owner_changed')
+    if (worktreeId) {
+      // The first pane to bind takes the row, as after the window's hydration.
+      const hostId = connectionId ? toSshExecutionHostId(connectionId) : undefined
+      await store?.retirePtyBinding?.({ ...owner, worktreeId }, hostId, releaseTabRowPty)
     }
     return null
   }

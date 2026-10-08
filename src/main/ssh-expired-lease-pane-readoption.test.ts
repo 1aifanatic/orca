@@ -155,6 +155,12 @@ describe('recovery through createTerminal reattaches before it respawns', () => 
     // A null adoption is exactly what routes createTerminal to a fresh shell, so a pane whose
     // shell genuinely died still gets a working terminal.
     await expect(adoptStablePane(undefined, store, ADOPT_ARGS)).resolves.toBeNull()
-    expect(resolvePersistedStablePaneOwner(store, PANE_KEY, WORKTREE, TARGET)).toBeNull()
+    // The pane keeps its binding for the fresh shell's bind to swap; only the row lets go.
+    expect(resolvePersistedStablePaneOwner(store, PANE_KEY, WORKTREE, TARGET)).toMatchObject({
+      ptyId: APP_PTY_ID
+    })
+    expect(store.getWorkspaceSession(`ssh:${TARGET}`).tabsByWorktree[WORKTREE]?.[0]?.ptyId).toBe(
+      null
+    )
   })
 })
