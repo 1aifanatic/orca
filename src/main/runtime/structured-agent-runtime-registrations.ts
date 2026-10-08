@@ -27,6 +27,7 @@ import {
   createNativeChatVisualsDelivery,
   type PrepareNativeChatVisuals
 } from '../native-chat/native-chat-visuals-delivery'
+import { nativeChatVisualsAgentConfigDirectory } from '../native-chat/native-chat-visuals-folder'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { replayJournal } from '../native-chat/agent-session-journal/journal-open'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
@@ -223,7 +224,12 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
           ...(deps.resolveAgentCommandSettings
             ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
             : {}),
-          ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
+          ...(deps.resolveAgentFullAccess
+            ? { resolveFullAccess: deps.resolveAgentFullAccess }
+            : {}),
+          ...nativeChatVisualsFor(deps),
+          visualsConfigDirectory: nativeChatVisualsAgentConfigDirectory(deps.stateDirectory),
+          logger: deps.logger
         }),
         connect: (launch, options) => createAcpAgentConnection(launch, options),
         ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),

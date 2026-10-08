@@ -11,6 +11,12 @@ export function nativeChatVisualsRootFor(stateDirectory: string): string {
   return join(stateDirectory, NATIVE_CHAT_VISUALS_DIR_NAME)
 }
 
+/** Config files an agent can only take by path (as the skill), beside the chats' folders; the
+ *  sweep never touches a name it did not mint. */
+export function nativeChatVisualsAgentConfigDirectory(stateDirectory: string): string {
+  return join(nativeChatVisualsRootFor(stateDirectory), 'agent-config')
+}
+
 /** The one path segment a chat's folder is named by: hashed so any id is a safe segment. */
 export function nativeChatVisualsFolderName(sessionId: string): string {
   return createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 32)
