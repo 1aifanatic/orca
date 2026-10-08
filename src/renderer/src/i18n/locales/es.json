@@ -7175,7 +7175,7 @@
           "shellEnvNamesEmpty": "Aún no se han agregado variables.",
           "shellEnvNamesAlwaysPassed": "PATH, la configuración regional y SSH_AUTH_SOCK se pasan siempre. Se aplica la próxima vez que un chat se inicie o se reanude.",
           "shellEnvTitle": "Usar el entorno de tu shell",
-          "shellEnvCopy": "Los chats de Codex y Claude empiezan con todas las variables que exporta tu shell de inicio de sesión, igual que un terminal. Desactívalo para elegir cuáles reciben.",
+          "shellEnvCopy": "Los chats empiezan con todas las variables que exporta tu shell de inicio de sesión, igual que un terminal. Desactívalo para elegir cuáles reciben.",
           "shellEnvToggleLabel": "Alternar el uso del entorno de tu shell"
         },
         "chat": {

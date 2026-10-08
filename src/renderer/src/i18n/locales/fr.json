@@ -7280,7 +7280,7 @@
           "shellEnvNamesEmpty": "Aucune variable ajoutée pour le moment.",
           "shellEnvNamesAlwaysPassed": "PATH, les paramètres régionaux et SSH_AUTH_SOCK sont toujours transmis. S'applique au prochain démarrage ou à la prochaine reprise d'un chat.",
           "shellEnvTitle": "Utiliser l'environnement de votre shell",
-          "shellEnvCopy": "Les chats Codex et Claude démarrent avec toutes les variables exportées par votre shell de connexion, comme un terminal. Désactivez pour choisir celles qu'ils reçoivent.",
+          "shellEnvCopy": "Les chats démarrent avec toutes les variables exportées par votre shell de connexion, comme un terminal. Désactivez pour choisir celles qu'ils reçoivent.",
           "shellEnvToggleLabel": "Activer l'utilisation de l'environnement de votre shell"
         },
         "chat": {

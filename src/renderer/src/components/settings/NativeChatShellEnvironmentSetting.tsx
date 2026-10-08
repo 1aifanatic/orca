@@ -143,7 +143,7 @@ export function NativeChatShellEnvironmentSetting({
           <p className="text-xs text-muted-foreground">
             {translate(
               'auto.components.settings.ChatPane.shellEnvCopy',
-              'Codex and Claude chats start with every variable your login shell exports, the same as a terminal. Turn off to choose which ones they get.'
+              'Chats start with every variable your login shell exports, the same as a terminal. Turn off to choose which ones they get.'
             )}
           </p>
         </div>

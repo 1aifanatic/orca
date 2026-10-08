@@ -7160,7 +7160,7 @@
           "shellEnvNamesEmpty": "まだ変数は追加されていません。",
           "shellEnvNamesAlwaysPassed": "PATH、ロケール、SSH_AUTH_SOCK は常に渡されます。次にチャットを開始または再開したときに適用されます。",
           "shellEnvTitle": "シェル環境を使用する",
-          "shellEnvCopy": "Codex と Claude のチャットは、ターミナルと同じく、ログインシェルがエクスポートするすべての変数を引き継いで開始します。オフにすると、渡す変数を選択できます。",
+          "shellEnvCopy": "チャットは、ターミナルと同じく、ログインシェルがエクスポートするすべての変数を引き継いで開始します。オフにすると、渡す変数を選択できます。",
           "shellEnvToggleLabel": "シェル環境の使用の切り替え"
         },
         "chat": {
