@@ -20,12 +20,20 @@ const TabsSchema = z.looseObject({
 const ReadySchema = z.looseObject({ type: z.literal('ready'), subscriptionId: z.string() })
 const JPEG_MAGIC = [0xff, 0xd8, 0xff]
 
+let requestCount = 0
+function nextId(label: string): string {
+  requestCount += 1
+  return `${label}-${requestCount}`
+}
+
 async function reply(socket: PairedMobileSocket, id: string, timeout = 30_000): Promise<Frame> {
-  let found: Frame | undefined
-  await expect
-    .poll(() => (found = socket.frames.find((frame) => frame.id === id)), { timeout })
-    .toBeDefined()
-  return found!
+  const find = (): Frame | undefined => socket.frames.find((frame) => frame.id === id)
+  await expect.poll(find, { timeout }).toBeDefined()
+  const found = find()
+  if (!found) {
+    throw new Error(`no reply to ${id}`)
+  }
+  return found
 }
 
 async function call<T>(
@@ -69,7 +77,7 @@ test('phone paired with a desktop sees and streams a browser page running on its
     let worktreeId = ''
     await expect
       .poll(async () => {
-        const id = `host-worktrees-${Date.now()}`
+        const id = nextId('host-worktrees')
         socket.send(id, 'mobileRelay.hosts.worktrees', { hostId: serverHostId })
         const listed = HostWorktreesSchema.safeParse((await reply(socket, id)).result)
         worktreeId = listed.success
@@ -101,7 +109,7 @@ test('phone paired with a desktop sees and streams a browser page running on its
         const { tabs } = await call(
           socket,
           {
-            id: `tabs-${Date.now()}`,
+            id: nextId('tabs'),
             method: 'session.tabs.list',
             params: { worktree },
             executionHost: serverHostId
