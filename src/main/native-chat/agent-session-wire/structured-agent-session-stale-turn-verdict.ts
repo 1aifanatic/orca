@@ -36,7 +36,7 @@ export function turnVerdictFromDeathEvidence(
   evidence: AgentSessionDeathEvidence | null | undefined,
   /** Fence of the owner that wrote the turn. */
   turnFence: number | undefined,
-  /** A provider observation or Stop that found the turn running: a later proof of life. */
+  /** Saved provider output or a Stop that found the turn running: a later proof of life. */
   liveAt?: number
 ): StructuredAgentSessionTurnVerdict {
   if (!evidence) {
@@ -55,13 +55,13 @@ export function turnVerdictFromDeathEvidence(
     return { state: 'interrupted', completedAt: evidence.observedAt }
   }
   // A probe finds a dead child long after it died; its last renewal bounds the end, so the turn never
-  // counts the time Orca was down. Provider output and a Stop that found the turn running can
+  // counts the time Orca was down. Saved provider output and a Stop that found the turn running can
   // prove life after that renewal; a client's later send or a recovery write cannot.
   const lastAlive = Math.max(evidence.lastProvenAliveAt ?? evidence.observedAt, liveAt ?? 0)
   return { state: 'interrupted', completedAt: Math.min(lastAlive, evidence.observedAt) }
 }
 
-/** The latest observation of this turn's owner, including a Stop that found it running. */
+/** The latest saved output from this turn's owner, including a Stop that found it running. */
 export function lastProvenTurnLiveAt(
   journal: Pick<AgentSessionJournal, 'stopMarks' | 'itemFence' | 'lastProviderActivityAt'>,
   item: AgentJournalRenderItem

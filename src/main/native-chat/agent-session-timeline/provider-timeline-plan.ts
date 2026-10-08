@@ -28,19 +28,13 @@ export class ProviderTimelinePlan {
   private readonly admitted: (() => void)[] = []
   private lifecycle = false
 
-  constructor(readonly providerObservedAt: number) {}
-
   item(step: Omit<ItemStep, 'kind'>, lifecycle = false): void {
-    this.steps.push({
-      kind: 'item',
-      ...step,
-      options: { providerObservedAt: this.providerObservedAt, ...step.options }
-    })
+    this.steps.push({ kind: 'item', ...step })
     this.lifecycle ||= lifecycle
   }
 
   settlement(step: Omit<SettlementStep, 'kind'>): void {
-    this.steps.push({ kind: 'settlement', providerObservedAt: this.providerObservedAt, ...step })
+    this.steps.push({ kind: 'settlement', ...step })
     this.lifecycle = true
   }
 

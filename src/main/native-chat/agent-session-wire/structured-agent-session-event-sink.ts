@@ -8,9 +8,9 @@ import type {
 import type { AgentSessionTurnActivity } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import { estimateStructuredAgentSessionItemBytes } from './structured-agent-session-event-sink-estimate'
 import { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
-import { providerObservedAppendOptions } from './structured-agent-session-journal-append-options'
-import { createStructuredAgentSessionItemAppend } from './structured-agent-session-item-append'
+import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
 import { createStructuredAgentSessionResolvedAppend } from './structured-agent-session-resolved-append'
 import {
   createStructuredAgentSessionTransitionMembers,
@@ -38,8 +38,6 @@ export type StructuredAgentSessionAppendOptions = AgentJournalProducerLinkage & 
   lifecycle?: boolean
   /** Host clock to stamp on the row instead of its append time. */
   observedAt?: number
-  /** Latest frame receipt; a coalesced checkpoint keeps this rather than its write time. */
-  providerObservedAt?: number
 }
 
 export type StructuredAgentSessionPublishOptions = Pick<
@@ -239,9 +237,8 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
     settlementId: string,
     mutations: readonly JournalLifecycleMutationInput[],
     options: StructuredAgentSessionAppendOptions = {}
-  ): StructuredAgentSessionSinkAdmission => {
-    const observation = providerObservedAppendOptions(options)
-    return queue.submit(
+  ): StructuredAgentSessionSinkAdmission =>
+    queue.submit(
       {
         bytes: Buffer.byteLength(JSON.stringify({ settlementId, mutations }), 'utf8') + 512,
         run: (bound) =>
@@ -249,13 +246,11 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
             settlementId,
             mutations,
             // No row-level linkage: each mutation names its own (see the batch row builder).
-            fence: bound.fence,
-            providerObservedAt: observation.providerObservedAt
+            fence: bound.fence
           })
       },
       { ...options, lifecycle: true }
     )
-  }
 
   const publish = (
     options: StructuredAgentSessionPublishOptions = {}
@@ -269,7 +264,23 @@ export function createDeferredStructuredAgentSessionEventSink(deps: {
       options
     )
 
-  const appendItem = createStructuredAgentSessionItemAppend(queue)
+  const appendItem: NonNullable<StructuredAgentSessionEventSink['tryAppendItem']> = (
+    identity,
+    body,
+    options
+  ) =>
+    queue.submit(
+      {
+        bytes: estimateStructuredAgentSessionItemBytes(identity, body),
+        run: (bound) =>
+          bound.journal.appendItem(
+            identity,
+            body,
+            structuredAgentSessionJournalAppendOptions(bound.fence, options)
+          )
+      },
+      options
+    )
 
   return {
     sink: {

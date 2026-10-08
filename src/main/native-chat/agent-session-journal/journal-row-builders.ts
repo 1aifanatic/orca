@@ -10,6 +10,7 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { agentSessionJournalProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { journalRowSchemaVersion } from '../../../shared/agent-session-journal-types'
 import {
   agentJournalLinkageFields,
   namesAgentJournalProducer
@@ -32,10 +33,6 @@ import { boundInlineText, DEFAULT_JOURNAL_PAYLOAD_LIMITS } from './journal-paylo
 import { assertSubmissionIdUnused } from './journal-write-guards'
 import { turnEndAfterStop } from './journal-stop-turn-end'
 import type { ResolveDispatchInput } from './journal-store-contracts'
-import { journalRowBase } from './journal-row-base'
-import { buildJournalItemRow } from './journal-item-row'
-export { journalRowBase } from './journal-row-base'
-export { buildJournalItemRow } from './journal-item-row'
 
 type RowBuilder<T> = (seq: number, ts: number) => T
 
@@ -43,12 +40,7 @@ export function journalItemRowBuilder(
   state: () => JournalReducerState,
   identity: AgentJournalItemIdentity,
   body: AgentJournalItemBody,
-  options: AgentJournalRowAttribution & {
-    fence: number
-    observedAt?: number
-    providerObservedAt?: number
-    recovered?: true
-  }
+  options: AgentJournalRowAttribution & { fence: number; observedAt?: number; recovered?: true }
 ): RowBuilder<JournalItemRow> {
   return (seq, ts) =>
     buildJournalItemRow({
@@ -58,7 +50,6 @@ export function journalItemRowBuilder(
       seq,
       fence: options.fence,
       ts: options.observedAt ?? ts,
-      providerObservedAt: options.providerObservedAt,
       recovered: options.recovered,
       linkage: options,
       turnScope: options.turnScope
@@ -209,7 +200,7 @@ export function journalLifecycleBatchRowBuilder(
    *  An item mutation names its own, or none to keep the row's existing one.
    *  The reducer still reads row-level linkage as the fallback for a mutation
    *  that names none, because a row may come from a host that wrote one. */
-  options: { fence: number; recovered?: true; providerObservedAt?: number }
+  options: { fence: number; recovered?: true }
 ): RowBuilder<JournalLifecycleBatchRow> {
   return (seq, ts) => {
     if (mutations.length === 0 || mutations.length > MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS) {
@@ -246,15 +237,55 @@ export function journalLifecycleBatchRowBuilder(
         ts,
         built.flatMap((mutation) => (mutation.kind === 'item' ? [mutation.body] : []))
       ),
-      ...(options.recovered ? { recovered: options.recovered } : {}),
-      ...(options.providerObservedAt === undefined
-        ? {}
-        : { providerObservedAt: options.providerObservedAt })
+      ...(options.recovered ? { recovered: options.recovered } : {})
     }
     if (Buffer.byteLength(JSON.stringify(row), 'utf8') + 1 > MAX_JOURNAL_LIFECYCLE_BATCH_BYTES) {
       throw new Error('journal_lifecycle_batch_byte_bound_exceeded')
     }
     return row
+  }
+}
+
+export function journalRowBase(
+  epoch: string,
+  seq: number,
+  fence: number,
+  ts: number,
+  bodies: readonly { kind: string }[] = []
+): { v: number; epoch: string; seq: number; fence: number; ts: number } {
+  return { v: journalRowSchemaVersion(bodies), epoch, seq, fence, ts }
+}
+
+export function buildJournalItemRow(input: {
+  state: JournalReducerState
+  identity: AgentJournalItemIdentity
+  body: AgentJournalItemBody
+  seq: number
+  fence: number
+  ts: number
+  recovered?: true
+  linkage?: AgentJournalProducerLinkage
+  turnScope: AgentJournalTurnScope
+}): JournalItemRow {
+  const itemId = agentJournalItemKey(input.identity)
+  const resolved = input.state.aliases.get(itemId) ?? itemId
+  // A tombstoned row keeps its revision in `tombstones`, and the reducer drops
+  // any item at or below it — so a re-add has to outrank the tombstone too.
+  const revision =
+    Math.max(
+      input.state.items.get(resolved)?.revision ?? 0,
+      input.state.tombstones.get(resolved) ?? 0
+    ) + 1
+  const body = turnEndAfterStop(input.state, resolved, input.body)
+  return {
+    kind: 'item',
+    itemId,
+    revision,
+    body,
+    ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts, [body]),
+    ...(input.recovered ? { recovered: input.recovered } : {}),
+    turnScope: input.turnScope,
+    ...agentJournalLinkageFields(input.linkage)
   }
 }
 

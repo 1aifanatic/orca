@@ -4,23 +4,30 @@ import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 
-/** Provider revisions prove life after a renewal; client actions and recovery writes do not. */
+/** Saved output extends a turn; client actions and recovery writes do not. */
 export function observeJournalProviderActivity(
   state: Pick<JournalReducerState, 'providerActivityAt'>,
   row: JournalRow,
   itemId: string,
-  body: AgentJournalItemBody
+  body: AgentJournalItemBody,
+  savedAt: number
 ): void {
   if (row.recovered || !isProviderActivity(body)) {
     return
   }
   const identity = parseAgentJournalItemKey(itemId)
-  if (!identity || (identity.provider === 'orca' && row.providerObservedAt === undefined)) {
+  // Codex detail rows use the Orca namespace; fallback rows already name their provider.
+  if (
+    !identity ||
+    (identity.provider === 'orca' &&
+      !identity.clientMessageId.startsWith('codex-item:') &&
+      !(body.kind === 'status' && body.providerFrame !== undefined))
+  ) {
     return
   }
   state.providerActivityAt.set(
     row.fence,
-    Math.max(state.providerActivityAt.get(row.fence) ?? 0, row.providerObservedAt ?? row.ts)
+    Math.max(state.providerActivityAt.get(row.fence) ?? 0, savedAt)
   )
 }
 

@@ -38,6 +38,7 @@ let rig: RestTestRig
 
 beforeEach(async () => {
   rig = await createRestTestRig({ idleSweep: { intervalMs: 3_600_000 } })
+  vi.spyOn(Date, 'now').mockImplementation(() => rig.clock.now)
 })
 
 afterEach(async () => {
@@ -71,6 +72,7 @@ async function streamBeforeCrash(
     { turnScope: AGENT_JOURNAL_THREAD_SCOPE, observedAt: HOST_TEST_NOW }
   )
   for (let chunk = 1; chunk <= 11; chunk += 1) {
+    rig.clock.now = HOST_TEST_NOW + chunk * 500
     events.appendItem(
       REPLY,
       {
@@ -119,7 +121,7 @@ async function expectSettledStream(): Promise<void> {
   expect(completedStructuredAgentTurnSeconds(timing)).toBe(5)
   expect(
     withNativeChatCutTurnNotices(snapshot.items, { agentName: 'Codex' }).filter(
-      (item) => item.body.kind === 'status'
+      (item) => item.body.kind === 'status' && item.body.text !== 'host notice'
     )
   ).toHaveLength(1)
   expect(rig.adapter.acquire).toHaveBeenCalledOnce()
@@ -215,6 +217,7 @@ describe('a provider stream cut short before its next lease renewal', () => {
       throw new Error('the streaming journal is not open')
     }
     const later = RESTARTED_AT - 1_000
+    rig.clock.now = later
     await journal.appendItem(
       { provider: 'orca', clientMessageId: 'late-client-send' },
       { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'next task' }] },
@@ -240,13 +243,17 @@ describe('a provider stream cut short before its next lease renewal', () => {
     if (!originalReply) {
       throw new Error('the streamed reply is missing')
     }
-    vi.spyOn(Date, 'now').mockReturnValue(later)
     await journal.appendLifecycleBatch({
       settlementId: 'earlier-read-recovery',
       fence: 1,
       recovered: true,
       mutations: [{ kind: 'item', identity: REPLY, body: originalReply, turnScope: TURN_SCOPE }]
     })
+    await journal.appendItem(
+      { provider: 'orca', clientMessageId: 'late-host-notice' },
+      { kind: 'status', text: 'host notice' },
+      { fence: 1, turnScope: TURN_SCOPE }
+    )
     await journal.appendItem(
       { ...REPLY, ordinal: 3 },
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'another owner' }] },

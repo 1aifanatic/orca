@@ -109,7 +109,7 @@ export function createClaudeStreamedThinking(deps: {
           startedAt: delta.startedAt
         })
       }
-      checkpoints.append(identity, delta.text, delta.parentToolUseId, observedAt)
+      checkpoints.append(identity, delta.text, delta.parentToolUseId)
       return true
     },
     /** The row a final frame's thinking lands on — its streamed block's, else its own — closed.

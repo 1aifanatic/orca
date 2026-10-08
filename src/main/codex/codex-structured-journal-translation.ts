@@ -188,12 +188,7 @@ export function createCodexJournalTranslator(
         return CODEX_JOURNAL_ADMITTED
       }
       if (event.type === 'notification') {
-        const streamResult = items.streams.handle(
-          event.threadId,
-          event.method,
-          event.params,
-          event.observedAt
-        )
+        const streamResult = items.streams.handle(event.threadId, event.method, event.params)
         if (streamResult.handled) {
           return publishActivity(event, streamResult.admission)
         }

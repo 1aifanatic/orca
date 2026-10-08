@@ -21,10 +21,7 @@ import type {
   StructuredAgentSessionSinkAdmission
 } from './structured-agent-session-event-sink'
 import type { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
-import {
-  providerObservedAppendOptions,
-  structuredAgentSessionJournalAppendOptions
-} from './structured-agent-session-journal-append-options'
+import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
 
 /** What a transition step reads: rows by key, every row, and the turns they joined. */
 export type StructuredAgentSessionTransitionJournal = Pick<
@@ -48,7 +45,6 @@ export type StructuredAgentSessionTransitionStep =
       kind: 'settlement'
       /** Unique per settlement: the journal applies one id once. */
       settlementId: string
-      providerObservedAt?: number
       /** Paces the queue only; the mutations are the journal's to choose. */
       reservedBytes: number
       /** Read at execution; none writes nothing. */
@@ -88,17 +84,8 @@ export function createStructuredAgentSessionTransitionMembers(
 function transitionAppend(
   queue: StructuredAgentSessionSinkQueue
 ): (transition: StructuredAgentSessionTransition) => StructuredAgentSessionSinkAdmission {
-  return (transition) => {
-    const providerObservedAt = Date.now()
-    const steps = transition.steps.map((step) =>
-      step.kind === 'item'
-        ? {
-            ...step,
-            options: providerObservedAppendOptions(step.options)
-          }
-        : step
-    )
-    return queue.submit({
+  return (transition) =>
+    queue.submit({
       bytes:
         transition.steps.reduce((total, step) => total + step.reservedBytes, 0) +
         (transition.publish ? 1 : 0),
@@ -107,7 +94,7 @@ function transitionAppend(
       run: async (bound) => {
         const { journal, fence } = bound
         const wrote = await journal.appendSteps(
-          steps.map((step): JournalStep =>
+          transition.steps.map((step): JournalStep =>
             step.kind === 'item'
               ? {
                   kind: 'item',
@@ -129,7 +116,6 @@ function transitionAppend(
                   batch: {
                     settlementId: step.settlementId,
                     fence,
-                    providerObservedAt: step.providerObservedAt ?? providerObservedAt,
                     resolve: () => step.resolve(journal)
                   }
                 }
@@ -140,5 +126,4 @@ function transitionAppend(
         }
       }
     })
-  }
 }

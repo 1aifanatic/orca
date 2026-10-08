@@ -6,20 +6,7 @@
 
 import { agentJournalLinkageFields } from '../../../shared/agent-session-journal-producer'
 import type { JournalItemAppendOptions } from '../agent-session-journal/journal-store-contracts'
-import type {
-  StructuredAgentSessionAppendOptions,
-  StructuredAgentSessionItemAppendOptions
-} from './structured-agent-session-event-sink'
-
-/** Capture before admission, so a delayed journal write cannot extend provider life. */
-export function providerObservedAppendOptions<T extends StructuredAgentSessionAppendOptions>(
-  options: T
-): T & { providerObservedAt: number } {
-  return {
-    ...options,
-    providerObservedAt: options.providerObservedAt ?? options.observedAt ?? Date.now()
-  }
-}
+import type { StructuredAgentSessionItemAppendOptions } from './structured-agent-session-event-sink'
 
 export function structuredAgentSessionJournalAppendOptions(
   fence: number,
@@ -28,9 +15,6 @@ export function structuredAgentSessionJournalAppendOptions(
   return {
     fence,
     ...(options.observedAt === undefined ? {} : { observedAt: options.observedAt }),
-    ...(options.providerObservedAt === undefined
-      ? {}
-      : { providerObservedAt: options.providerObservedAt }),
     turnScope: options.turnScope,
     ...agentJournalLinkageFields(options)
   }

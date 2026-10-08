@@ -31,8 +31,7 @@ export type ClaudeStreamedTextCheckpoints = {
   append: (
     identity: AgentJournalItemIdentity,
     text: string,
-    parentToolUseId?: string | null,
-    providerObservedAt?: number
+    parentToolUseId?: string | null
   ) => void
   /** Write every block whose row is behind the text received for it. */
   flush: () => void
@@ -91,19 +90,16 @@ export function createClaudeStreamedTextCheckpoints(
   const writtenLinkage = new Map<string, StructuredAgentSessionAppendOptions>()
   const latestText = new Map<string, string>()
   const checkpointLengths = new Map<string, number>()
-  const observations = new Map<string, number>()
 
   /** Resolved FRESH on every checkpoint. A provisional producer is stamped with
    *  the handle it has rather than holding the prose back: the next checkpoint,
    *  or `reattribute` once the announcement lands, revises the same row. */
   const producerOptions = (key: string): StructuredAgentSessionAppendOptions => {
     const scope = scopes.get(key) ?? null
-    return {
-      ...(scope === null
-        ? {}
-        : agentJournalLinkageFields(deps.producer.settledLinkageFor(scope).linkage)),
-      providerObservedAt: observations.get(key)
+    if (scope === null) {
+      return {}
     }
+    return agentJournalLinkageFields(deps.producer.settledLinkageFor(scope).linkage)
   }
 
   const persist = (key: string, text: string, force: boolean): void => {
@@ -136,15 +132,13 @@ export function createClaudeStreamedTextCheckpoints(
     writtenLinkage.delete(key)
     latestText.delete(key)
     checkpointLengths.delete(key)
-    observations.delete(key)
   }
 
   return {
-    append: (identity, text, parentToolUseId = null, providerObservedAt = Date.now()) => {
+    append: (identity, text, parentToolUseId = null) => {
       const key = agentJournalItemKey(identity)
       identities.set(key, identity)
       scopes.set(key, parentToolUseId)
-      observations.set(key, providerObservedAt)
       coalescer.append(key, text)
     },
     flush: () => {
@@ -202,7 +196,6 @@ export function createClaudeStreamedTextCheckpoints(
       writtenLinkage.clear()
       latestText.clear()
       checkpointLengths.clear()
-      observations.clear()
     }
   }
 }

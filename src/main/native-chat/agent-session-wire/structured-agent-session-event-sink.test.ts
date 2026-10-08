@@ -120,23 +120,6 @@ function target(
 }
 
 describe('deferred structured agent-session event sink', () => {
-  it('records receipt before a deferred append waits for its journal', async () => {
-    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000)
-    const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
-    try {
-      deferred.sink.appendItem(identity(1), BODY, { turnScope: AGENT_JOURNAL_THREAD_SCOPE })
-      now.mockReturnValue(9_000)
-      deferred.bind(target(5, []))
-      await deferred.drained()
-      expect(journalAppendOptions).toEqual([
-        { fence: 5, turnScope: AGENT_JOURNAL_THREAD_SCOPE, providerObservedAt: 1_000 }
-      ])
-    } finally {
-      deferred.close()
-      now.mockRestore()
-    }
-  })
-
   it('buffers writes made before the journal exists and drains them in arrival order', async () => {
     const log: Recorded[] = []
     const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
@@ -594,12 +577,7 @@ describe('producer linkage reaches the journal through every append path', () =>
       await deferred.drained()
 
       expect(journalAppendOptions).toEqual([
-        {
-          fence: 5,
-          turnScope: AGENT_JOURNAL_THREAD_SCOPE,
-          ...LINKAGE,
-          providerObservedAt: expect.any(Number)
-        }
+        { fence: 5, turnScope: AGENT_JOURNAL_THREAD_SCOPE, ...LINKAGE }
       ])
       deferred.close()
     }
@@ -623,12 +601,7 @@ describe('producer linkage reaches the journal through every append path', () =>
       await deferred.drained()
 
       expect(journalAppendOptions).toEqual([
-        {
-          fence: 5,
-          turnScope: AGENT_JOURNAL_THREAD_SCOPE,
-          ...LINKAGE,
-          providerObservedAt: expect.any(Number)
-        }
+        { fence: 5, turnScope: AGENT_JOURNAL_THREAD_SCOPE, ...LINKAGE }
       ])
       deferred.close()
     }
@@ -664,9 +637,7 @@ describe('producer linkage reaches the journal through every append path', () =>
     // A control, not a pin. Absence is the claim, so the keys must be missing
     // rather than present-and-undefined: a reader holding this options object
     // would read `agentId: undefined` as a key that exists.
-    expect(journalAppendOptions).toEqual([
-      { fence: 5, turnScope: AGENT_JOURNAL_THREAD_SCOPE, providerObservedAt: expect.any(Number) }
-    ])
+    expect(journalAppendOptions).toEqual([{ fence: 5, turnScope: AGENT_JOURNAL_THREAD_SCOPE }])
     deferred.close()
   })
 })

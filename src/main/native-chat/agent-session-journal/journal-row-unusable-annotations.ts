@@ -6,14 +6,6 @@ import { isAdmissibleAgentSessionContextUsage } from '../../../shared/agent-sess
 export function dropUnusableRowAnnotations(record: Record<string, unknown>): void {
   dropUnusableProducerLinkage(record)
   dropUnusableTurnScope(record)
-  if (
-    record.providerObservedAt !== undefined &&
-    (typeof record.providerObservedAt !== 'number' ||
-      !Number.isFinite(record.providerObservedAt) ||
-      record.providerObservedAt < 0)
-  ) {
-    delete record.providerObservedAt
-  }
   if (record.kind === 'lifecycle-batch' && Array.isArray(record.mutations)) {
     for (const mutation of record.mutations) {
       if (isPlainObject(mutation)) {

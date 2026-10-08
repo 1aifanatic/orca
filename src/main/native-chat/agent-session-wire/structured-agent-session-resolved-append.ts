@@ -8,10 +8,7 @@ import type {
   StructuredAgentSessionEventSink,
   StructuredAgentSessionRevisionJournal
 } from './structured-agent-session-event-sink'
-import {
-  providerObservedAppendOptions,
-  structuredAgentSessionJournalAppendOptions
-} from './structured-agent-session-journal-append-options'
+import { structuredAgentSessionJournalAppendOptions } from './structured-agent-session-journal-append-options'
 import type { StructuredAgentSessionSinkQueue } from './structured-agent-session-event-sink-queue'
 
 type ResolvedItem = { identity: AgentJournalItemIdentity; body: AgentJournalItemBody }
@@ -35,9 +32,8 @@ export function createStructuredAgentSessionResolvedAppend(
     resolve: (journal: StructuredAgentSessionRevisionJournal) => ResolvedItem | null,
     options: StructuredAgentSessionItemAppendOptions,
     input: { publish: boolean; lifecycle?: true; overflow: string }
-  ) => {
-    const observation = providerObservedAppendOptions(options)
-    return queue.submit(
+  ) =>
+    queue.submit(
       {
         bytes: reservedBytes,
         ...(input.lifecycle ? { lifecycle: true } : {}),
@@ -55,7 +51,7 @@ export function createStructuredAgentSessionResolvedAppend(
               }
               return resolved
             },
-            structuredAgentSessionJournalAppendOptions(bound.fence, observation)
+            structuredAgentSessionJournalAppendOptions(bound.fence, options)
           )
           if (landed !== null && input.publish) {
             bound.publish()
@@ -64,7 +60,6 @@ export function createStructuredAgentSessionResolvedAppend(
       },
       input.lifecycle ? { lifecycle: true } : options
     )
-  }
   const ITEM_OVERFLOW = 'structured agent-session resolved item exceeded its reserved size'
   const identityOnly = (publish: boolean) =>
     ((identitySizeBound, body, resolveIdentity, options) =>

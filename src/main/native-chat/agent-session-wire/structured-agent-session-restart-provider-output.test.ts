@@ -16,6 +16,7 @@ import {
 } from '../agent-session-journal/journal-host-database-test-support'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { HOST_TEST_NOW, hostTestAttachParams } from './structured-agent-session-host-test-data'
+import { unhandledProviderFrameJournalItem } from './unhandled-provider-frame'
 import {
   createRestTestRig,
   REST_TEST_CALLER,
@@ -26,6 +27,7 @@ import {
 } from './structured-agent-session-rest-test-rig'
 
 const LAST_CHUNK_AT = HOST_TEST_NOW + 5_500
+const SAVED_AT = HOST_TEST_NOW + 60_000
 const RESTARTED_AT = HOST_TEST_NOW + 3_600_000
 const TURN = { provider: 'codex' as const, threadId: THREAD, turnId: 'stream-turn', ordinal: 0 }
 const REPLY = { ...TURN, ordinal: 1 }
@@ -35,6 +37,7 @@ let rig: RestTestRig
 
 beforeEach(async () => {
   rig = await createRestTestRig({ idleSweep: { intervalMs: 3_600_000 } })
+  vi.spyOn(Date, 'now').mockImplementation(() => rig.clock.now)
 })
 
 afterEach(async () => {
@@ -84,12 +87,12 @@ async function beginTurn() {
   return events
 }
 
-async function expectInterruptedOutput(): Promise<void> {
+async function expectInterruptedOutput(completedAt = LAST_CHUNK_AT): Promise<void> {
   await restartAfterCrash()
   await rig.host.restoreReadableSessions()
   const snapshot = await rig.host.journalSnapshot(SESSION)
   const turn = snapshot.items.map((item) => readAgentJournalTurn(item.body)).find(Boolean)
-  expect(turn).toMatchObject({ state: 'interrupted', completedAt: LAST_CHUNK_AT })
+  expect(turn).toMatchObject({ state: 'interrupted', completedAt })
 }
 
 describe('provider output survives host restart', () => {
@@ -99,7 +102,7 @@ describe('provider output survives host restart', () => {
     ['plan', 'item/plan/delta'],
     ['reasoning', 'item/reasoning/textDelta'],
     ['commandExecution', 'item/commandExecution/outputDelta']
-  ] as const)('times actual Codex %s deltas rather than item start', async (type, method) => {
+  ] as const)('times saved Codex %s output rather than item start', async (type, method) => {
     const events = await beginTurn()
     let receivedAt = HOST_TEST_NOW
     vi.spyOn(Date, 'now').mockImplementation(() => receivedAt)
@@ -137,6 +140,7 @@ describe('provider output survives host restart', () => {
     })
     for (let chunk = 1; chunk <= 11; chunk += 1) {
       receivedAt = HOST_TEST_NOW + chunk * 500
+      rig.clock.now = receivedAt
       expect(
         translator.handle({
           type: 'notification',
@@ -160,6 +164,9 @@ describe('provider output survives host restart', () => {
       JSON.stringify(item.body).includes('actual chunk 11')
     )
     expect(output?.observedAt).toBe(HOST_TEST_NOW)
+    expect(
+      rig.host.collaboratorsForTests().sessions.get(SESSION)?.journal.lastProviderActivityAt(1)
+    ).toBe(LAST_CHUNK_AT)
     await restartAfterCrash()
     await rig.host.restoreReadableSessions()
     const snapshot = await rig.host.journalSnapshot(SESSION)
@@ -170,6 +177,7 @@ describe('provider output survives host restart', () => {
   it('counts streamed file-change output as later proof of provider life', async () => {
     const events = await beginTurn()
     for (let chunk = 1; chunk <= 11; chunk += 1) {
+      rig.clock.now = HOST_TEST_NOW + chunk * 500
       const translated = codexStreamingJournalItem(
         { id: 'file-change-1', type: 'fileChange', changes: [{ path: 'file.ts' }] },
         `patch chunk ${chunk}`
@@ -191,7 +199,7 @@ describe('provider output survives host restart', () => {
     expect(turn).toMatchObject({ state: 'interrupted', completedAt: LAST_CHUNK_AT })
   })
 
-  it('keeps a delayed first checkpoint at item start without counting a later flush', async () => {
+  it('uses a delayed first save while keeping the bubble at item start', async () => {
     const events = await beginTurn()
     const translator = createCodexJournalTranslator({
       sink: events,
@@ -222,7 +230,7 @@ describe('provider output survives host restart', () => {
       params: { turnId: TURN.turnId, itemId: 'late-first', delta: 'first durable output' },
       observedAt: LAST_CHUNK_AT
     })
-    vi.spyOn(Date, 'now').mockReturnValue(RESTARTED_AT - 1_000)
+    rig.clock.now = SAVED_AT
     translator.flush()
     await rig.host.flushStreamedEvents(SESSION)
     translator.dispose()
@@ -231,7 +239,7 @@ describe('provider output survives host restart', () => {
       before.items.find((item) => JSON.stringify(item.body).includes('first durable output'))
         ?.observedAt
     ).toBe(HOST_TEST_NOW)
-    await expectInterruptedOutput()
+    await expectInterruptedOutput(SAVED_AT)
   })
 
   it.each(['text_delta', 'thinking_delta'] as const)(
@@ -257,7 +265,7 @@ describe('provider output survives host restart', () => {
           }
         })
       }
-      vi.spyOn(Date, 'now').mockReturnValue(RESTARTED_AT - 1_000)
+      rig.clock.now = SAVED_AT
       translator.flush()
       await rig.host.flushStreamedEvents(SESSION)
       translator.dispose()
@@ -267,32 +275,41 @@ describe('provider output survives host restart', () => {
       if (type === 'thinking_delta') {
         expect(output?.observedAt).toBe(HOST_TEST_NOW)
       }
-      await expectInterruptedOutput()
+      await expectInterruptedOutput(SAVED_AT)
     }
   )
 
-  it('counts a synthetic provider fallback while excluding a later host notice', async () => {
+  it('counts a saved provider fallback but excludes a later host notice', async () => {
     const events = await beginTurn()
+    rig.clock.now = LAST_CHUNK_AT
+    const fallback = unhandledProviderFrameJournalItem('codex', 'test-output', {
+      message: 'provider output'
+    })
+    if (!fallback) {
+      throw new Error('provider output was not translated')
+    }
     events.appendItem(
-      { provider: 'orca', clientMessageId: 'provider-fallback' },
-      { kind: 'status', text: 'provider output' },
-      { turnScope: TURN_SCOPE, providerObservedAt: LAST_CHUNK_AT }
+      { provider: 'orca', clientMessageId: 'provider-frame:codex:acquisition:1' },
+      fallback.body,
+      { turnScope: TURN_SCOPE }
     )
     await rig.host.flushStreamedEvents(SESSION)
     const journal = rig.host.collaboratorsForTests().sessions.get(SESSION)?.journal
     if (!journal) {
       throw new Error('journal absent')
     }
+    rig.clock.now = SAVED_AT
     await journal.appendItem(
       { provider: 'orca', clientMessageId: 'host-notice' },
       { kind: 'status', text: 'host notice' },
-      { fence: 1, turnScope: TURN_SCOPE, observedAt: RESTARTED_AT - 1_000 }
+      { fence: 1, turnScope: TURN_SCOPE }
     )
     await expectInterruptedOutput()
   })
 
   it('counts a pending approval with no assistant output before the crash', async () => {
     const events = await beginTurn()
+    rig.clock.now = LAST_CHUNK_AT
     events.appendItem(
       REPLY,
       {
@@ -319,6 +336,7 @@ describe('provider output survives host restart', () => {
 
   it('cannot record interruption from a surviving owner before exit proof', async () => {
     const events = await beginTurn()
+    rig.clock.now = LAST_CHUNK_AT
     events.appendItem(
       REPLY,
       { kind: 'status', text: 'working' },

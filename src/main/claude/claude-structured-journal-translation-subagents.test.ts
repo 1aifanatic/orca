@@ -510,8 +510,7 @@ describe('claude journal translation — which agent produced a row', () => {
           role: 'user',
           content: [{ type: 'tool_result', tool_use_id: 'toolu_bash', content: 'a.ts' }]
         }
-      },
-      observedAt: 1_800_000_005_500
+      }
     })
 
     const row = items.find(
@@ -519,7 +518,6 @@ describe('claude journal translation — which agent produced a row', () => {
     )
     expect(row?.body).toMatchObject({ kind: 'tool-call', state: 'completed' })
     expect(row?.options).toEqual({
-      providerObservedAt: 1_800_000_005_500,
       turnScope: { kind: 'turn', turnItemId: expect.any(String) }
     })
   })

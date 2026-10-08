@@ -121,8 +121,8 @@ export class AgentSessionJournal {
         this.adoptLoadedJournal(loaded)
         this.onCommitted?.()
       },
-      commit: (row) => {
-        applyJournalRow(this.state, row)
+      commit: (row, savedAt) => {
+        applyJournalRow(this.state, row, savedAt)
         this.onCommitted?.()
       },
       notifyCommitted: () => this.onCommitted?.(),
@@ -240,7 +240,7 @@ export class AgentSessionJournal {
   /** Fence of the writer that created the item, while it is in the timeline. */
   itemFence = (itemId: string): number | undefined => this.state.itemFences.get(itemId)
 
-  /** Provider output at this fence, excluding client actions and recovery bookkeeping. */
+  /** Latest saved output at this fence, excluding client actions and recovery bookkeeping. */
   lastProviderActivityAt = (fence: number): number | undefined =>
     this.state.providerActivityAt.get(fence)
 
