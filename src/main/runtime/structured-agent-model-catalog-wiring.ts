@@ -14,6 +14,7 @@ import type {
 } from './structured-agent-runtime-registrations'
 import type { StructuredAgentRegistry } from '../native-chat/agent-session-wire/structured-agent-registry'
 import { agentDrivesSession } from '../native-chat/agent-session-wire/structured-agent-session-provider-support'
+import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 
 // The store is process-global; hydrate it from disk at most once per process.
 let persistenceAttached = false
@@ -88,7 +89,15 @@ export async function modelCatalogHostDeps(input: {
       environment: input.environment
     })
   })
+  // The host starts with its runtime, local or remote, so this is the runtime-start listing.
+  void modelCatalog.prewarm()
   return { modelCatalog }
+}
+
+/** The installed host lists what a changed account or agent setting made cold; with no host yet,
+ *  its install lists everything anyway. */
+export function prewarmStructuredAgentModelCatalogs(): void {
+  void getStructuredAgentSessionHost()?.deps.modelCatalog?.prewarm()
 }
 
 // Re-exported so the runtime deps type can reference the resolver shape without

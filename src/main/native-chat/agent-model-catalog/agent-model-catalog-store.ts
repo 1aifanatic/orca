@@ -4,6 +4,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionAccountHome } from '../../../shared/agent-session-account-home'
 import type { AgentModelCatalogPersistence } from './agent-model-catalog-persistence'
+import { startSpan } from '../../observability/tracer'
 import {
   agentModelCatalogEntry,
   type AgentModelCatalogEntry,
@@ -241,8 +242,14 @@ export class AgentModelCatalogStore {
       this.notifyListingWaiters(fingerprint)
     }
     const order = ++this.nextListingOrder
+    // Agent, outcome and duration only: a slow listing shows in the trace log without its content.
+    const span = startSpan('agentModelCatalog.discovery', {
+      attributes: { agent, lister: typeof lister === 'function' ? 'probe' : 'session' }
+    })
     const run = listModels().then(
       (success) => {
+        span.setAttribute('models', success.models.length)
+        span.end()
         // An older lister still receives its own result, but cannot replace a newer discovery.
         const entry =
           (this.latestWrittenOrder.get(fingerprint) ?? 0) > order && this.entries.has(fingerprint)
@@ -252,6 +259,7 @@ export class AgentModelCatalogStore {
         return entry
       },
       (error: unknown) => {
+        span.fail(error instanceof Error ? error : String(error))
         settle()
         this.recordFailure(fingerprint, error instanceof Error ? error.message : String(error))
         return null

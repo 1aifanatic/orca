@@ -48,7 +48,13 @@ export type AgentModelCatalogService = {
   }) => Promise<AgentSessionModelCatalogResult>
   /** Saves what a running session listed as its account's catalog, so the next chat starts warm. */
   recordLiveListing: (sessionId: string, listing: AgentModelCatalogLiveListing) => void
+  /** Lists, in the background, every agent whose catalog for the account a new chat would pin is
+   *  missing or old, so a picker never meets a cold catalog. Resolves once those listings settle. */
+  prewarm: () => Promise<void>
 }
+
+// At most this many agents list at once: each listing spawns that agent's CLI.
+const PREWARM_CONCURRENCY = 2
 
 function resultFromEntry(
   entry: AgentModelCatalogEntry,
@@ -87,6 +93,37 @@ async function workspaceKeepsListedDefault(
   }
 }
 
+/** The catalog a new chat of `agent` would read: the account a launch would pin right now. */
+async function newChatCatalogKey(
+  deps: AgentModelCatalogServiceDeps,
+  agent: string
+): Promise<{ fingerprint: string; accountHome: AgentSessionAccountHome } | null> {
+  let accountHome: AgentSessionAccountHome
+  try {
+    accountHome = await deps.resolveAccountHome(agent)
+  } catch {
+    return null
+  }
+  return {
+    fingerprint: agentModelCatalogFingerprint({ agent, accountHome, wslDistro: null }),
+    accountHome
+  }
+}
+
+async function runBounded<T>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T) => Promise<unknown>
+): Promise<void> {
+  const queue = [...items]
+  const worker = async (): Promise<void> => {
+    for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+      await run(item).catch(() => {})
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, queue.length) }, worker))
+}
+
 /**
  * Serves the host catalog to pickers, never through a session's serialize
  * queue. A session record names its own catalog (the account home pinned at
@@ -113,18 +150,12 @@ export function createAgentModelCatalogService(
         // Probes spawn natively; a WSL-pinned record has no host-side lister.
         probeHome = scoped.location.wslDistro === null ? scoped.accountHome : null
       } else {
-        let resolved: AgentSessionAccountHome
-        try {
-          resolved = await deps.resolveAccountHome(params.agent)
-        } catch {
+        const key = await newChatCatalogKey(deps, params.agent)
+        if (!key) {
           return { origin: 'unknown' }
         }
-        fingerprint = agentModelCatalogFingerprint({
-          agent: params.agent,
-          accountHome: resolved,
-          wslDistro: null
-        })
-        probeHome = resolved
+        fingerprint = key.fingerprint
+        probeHome = key.accountHome
       }
       const accountHomePath =
         probeHome && isLegacyAgentSessionAccountHome(probeHome) ? probeHome.path : null
@@ -177,6 +208,18 @@ export function createAgentModelCatalogService(
         { ...listing, fastModeTierByModel: new Map(), origin: 'live-session' },
         'live'
       )
+    },
+    async prewarm() {
+      const probes = deps.probes ?? {}
+      await runBounded(Object.keys(probes), PREWARM_CONCURRENCY, async (agent) => {
+        const probe = probes[agent]
+        const key = probe ? await newChatCatalogKey(deps, agent) : null
+        // A fresh entry, a listing already running, or a recent failure each mean nothing to do.
+        if (!probe || !key || !deps.store.shouldRefresh(key.fingerprint)) {
+          return
+        }
+        await deps.store.refresh(key.fingerprint, agent, probe, () => probe(key.accountHome))
+      })
     }
   }
 }
