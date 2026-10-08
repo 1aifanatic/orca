@@ -35,6 +35,14 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
       ),
     couldNotStart: (values) =>
       translate('components.native-chat.failureWords.couldNotStart', COPY.couldNotStart, values),
+    codexCliMissing: (values) =>
+      translate(
+        'components.native-chat.failureWords.codexCliMissing',
+        COPY.codexCliMissing,
+        values
+      ),
+    codexCliTooOld: (values) =>
+      translate('components.native-chat.failureWords.codexCliTooOld', COPY.codexCliTooOld, values),
     couldNotRestart: (values) =>
       translate(
         'components.native-chat.failureWords.couldNotRestart',

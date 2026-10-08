@@ -7,6 +7,7 @@ import {
   type PreflightRuntimeContext
 } from '../ipc/preflight-runtime-target'
 import { isCommandOnPath } from '../ipc/preflight-command-exec'
+export { detectCodexInstallationOnHost } from './codex-host-installation'
 
 export async function detectAgentCommandsOnHost(
   commands: readonly string[],

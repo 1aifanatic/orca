@@ -17785,6 +17785,8 @@
         "couldNotStart": "{{agent}} を起動できませんでした。",
         "editSavedArguments": "設定 > Agent > 引数で編集してください。",
         "couldNotRestart": "{{agent}} を再起動できませんでした。",
+        "codexCliMissing": "このホストに Codex がインストールされていません。チャットには Codex {{minimumVersion}} 以降が必要です。npm install -g @openai/codex でインストールしてから、再試行してください。",
+        "codexCliTooOld": "Codex {{installedVersion}} はチャットに対応していません。このホストで codex update（npm でインストールした場合は npm install -g @openai/codex）を実行して {{minimumVersion}} 以降に更新し、再試行してください。",
         "notSignedIn": "{{agent}} は選択したアカウントでサインインしていません。",
         "signInFirst": "先にサインインしてください。",
         "signInThenRunCommand": "サインインしてから、/{{command}} をもう一度実行してください。",

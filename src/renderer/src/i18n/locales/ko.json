@@ -17785,6 +17785,8 @@
         "couldNotStart": "{{agent}}을(를) 시작하지 못했습니다.",
         "editSavedArguments": "설정 > 에이전트 > 인수에서 수정하세요.",
         "couldNotRestart": "{{agent}}을(를) 다시 시작하지 못했습니다.",
+        "codexCliMissing": "이 호스트에 Codex가 설치되어 있지 않습니다. 채팅에는 Codex {{minimumVersion}} 이상이 필요합니다. npm install -g @openai/codex로 설치한 후 다시 시도하세요.",
+        "codexCliTooOld": "Codex {{installedVersion}}은 채팅에 사용하기에 너무 오래된 버전입니다. 이 호스트에서 codex update(또는 npm으로 설치했다면 npm install -g @openai/codex)로 {{minimumVersion}} 이상으로 업데이트한 후 다시 시도하세요.",
         "notSignedIn": "{{agent}}이(가) 선택한 계정으로 로그인되어 있지 않습니다.",
         "signInFirst": "먼저 로그인하세요.",
         "signInThenRunCommand": "로그인한 다음 /{{command}}을(를) 다시 실행하세요.",

@@ -17750,6 +17750,8 @@
         "couldNotStart": "{{agent}} no pudo iniciarse.",
         "editSavedArguments": "Edítalos en Ajustes > Agentes > Argumentos.",
         "couldNotRestart": "{{agent}} no pudo reiniciarse.",
+        "codexCliMissing": "Codex no está instalado en este equipo. Los chats requieren Codex {{minimumVersion}} o posterior. Instálalo con npm install -g @openai/codex y vuelve a intentarlo.",
+        "codexCliTooOld": "Codex {{installedVersion}} es demasiado antiguo para los chats. Actualiza a {{minimumVersion}} o posterior en este equipo con codex update (o npm install -g @openai/codex si lo instalaste con npm) y vuelve a intentarlo.",
         "notSignedIn": "{{agent}} no tiene la sesión iniciada con la cuenta seleccionada.",
         "signInFirst": "Inicie sesión primero.",
         "signInThenRunCommand": "Inicie sesión y vuelva a ejecutar /{{command}}.",

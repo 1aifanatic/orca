@@ -17851,6 +17851,8 @@
         "couldNotStart": "{{agent}} n'a pas pu démarrer.",
         "editSavedArguments": "Modifiez-les dans Paramètres > Agents > Arguments.",
         "couldNotRestart": "{{agent}} n'a pas pu redémarrer.",
+        "codexCliMissing": "Codex n’est pas installé sur cet hôte. Les chats nécessitent Codex {{minimumVersion}} ou une version ultérieure. Installez-le avec npm install -g @openai/codex, puis réessayez.",
+        "codexCliTooOld": "Codex {{installedVersion}} est trop ancien pour les chats. Passez à {{minimumVersion}} ou une version ultérieure sur cet hôte avec codex update (ou npm install -g @openai/codex pour une installation npm), puis réessayez.",
         "notSignedIn": "{{agent}} n'est pas connecté avec le compte sélectionné.",
         "signInFirst": "Connectez-vous d'abord.",
         "signInThenRunCommand": "Connectez-vous, puis relancez /{{command}}.",

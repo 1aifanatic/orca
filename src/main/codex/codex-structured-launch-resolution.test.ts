@@ -18,6 +18,7 @@ vi.mock('../windows/windows-process-table', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   isWindowsProcessStartTimeAvailable
 }))
+vi.mock('./codex-cli-installation-error', () => ({ requireSupportedCodexCli: vi.fn() }))
 
 const SESSION_ID = 'session-1'
 const IDENTITY = { sessionId: SESSION_ID } as Parameters<

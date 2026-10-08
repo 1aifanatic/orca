@@ -22,6 +22,10 @@ export const AGENT_SESSION_FAILURE_COPY = {
   sendAgainToTryOnceMore: 'Send your message again to try once more.',
   couldNotStart: "{{agent}} couldn't start.",
   couldNotRestart: "{{agent}} couldn't restart.",
+  codexCliMissing:
+    'Codex is not installed on this host. Chats require Codex {{minimumVersion}} or newer. Install it with npm install -g @openai/codex, then try again.',
+  codexCliTooOld:
+    'Codex {{installedVersion}} is too old for chats. Update to {{minimumVersion}} or newer on this host with codex update (or npm install -g @openai/codex for npm installs), then try again.',
   argumentsUnsupportedOption: 'Saved Arguments contain an unsupported option ({{option}}).',
   argumentsMissingValue: 'Saved Arguments need a value for {{option}}.',
   argumentsMultipleValues: 'Saved Arguments give {{option}} more than one value.',
@@ -112,6 +116,8 @@ export type AgentSessionFailureCopyId = keyof typeof AGENT_SESSION_FAILURE_COPY
 
 /** What a piece's `{{name}}` placeholders stand for. */
 export type AgentSessionFailureCopyValues = {
+  installedVersion?: string
+  minimumVersion?: string
   agent?: string
   command?: string
   detail?: string

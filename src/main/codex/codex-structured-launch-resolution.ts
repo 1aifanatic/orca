@@ -18,6 +18,7 @@ import type { CodexStructuredPermissionPolicy } from './codex-structured-permiss
 import { resolvePinnedCodexRolloutProof } from './codex-pinned-rollout-proof'
 import { codexStructuredLaunchArgs } from './codex-structured-launch-args'
 import { CODEX_STRUCTURED_AGENT } from './codex-structured-agent-definition'
+import { requireSupportedCodexCli } from './codex-cli-installation-error'
 import type { PrepareNativeChatVisuals } from '../native-chat/native-chat-visuals-delivery'
 
 export type CodexStructuredLaunchResolverDeps = {
@@ -36,6 +37,7 @@ export type CodexStructuredLaunchResolverDeps = {
   resolvePermissionPolicy?: () => CodexStructuredPermissionPolicy
   /** This chat's visuals folder and skill; absent or null ⇒ the chat gets neither. */
   prepareVisuals?: PrepareNativeChatVisuals
+  requireSupportedCli?: typeof requireSupportedCodexCli
 }
 
 export type CodexStructuredInvocation = {
@@ -90,6 +92,10 @@ export function createCodexStructuredLaunchResolver(
     }
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
     const args = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
+    await (deps.requireSupportedCli ?? requireSupportedCodexCli)({
+      program: command,
+      env: environment
+    })
     const permissionPolicy = deps.resolvePermissionPolicy?.()
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
     // A Codex record's chain holds only Codex handles; the attach admission refuses anything else.

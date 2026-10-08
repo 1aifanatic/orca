@@ -8,6 +8,10 @@
 
 import type { AgentJournalResolution } from './agent-session-journal-types'
 import {
+  readCodexInstallationProblem,
+  type CodexInstallationProblem
+} from './codex-cli-installation'
+import {
   readAgentSessionArgumentProblem,
   type AgentSessionArgumentProblem
 } from './agent-session-argument-problem'
@@ -150,7 +154,10 @@ type NoFacts = Record<never, never>
 
 /** The facts a code carries beside its reason. */
 type AgentSessionRefusalFactsByCode = {
-  agent_session_operation_invalid: RewindFacts & { argumentProblem?: AgentSessionArgumentProblem }
+  agent_session_operation_invalid: RewindFacts & {
+    argumentProblem?: AgentSessionArgumentProblem
+    codexInstallation?: CodexInstallationProblem
+  }
   agent_session_operation_unknown: RewindFacts
   agent_session_checkpoint_stale: {
     /** So the client can retry without another round trip. */
@@ -271,10 +278,15 @@ export function readAgentSessionRefusalDetails<C extends AgentSessionWireRefusal
     code === 'agent_session_operation_invalid'
       ? readAgentSessionArgumentProblem(value.argumentProblem)
       : undefined
+  const codexInstallation =
+    code === 'agent_session_operation_invalid'
+      ? readCodexInstallationProblem(value.codexInstallation)
+      : undefined
   const read = {
     ...(isAgentSessionRefusalReason(code, value.reason) ? { reason: value.reason } : {}),
     ...facts,
-    ...(argumentProblem ? { argumentProblem } : {})
+    ...(argumentProblem ? { argumentProblem } : {}),
+    ...(codexInstallation ? { codexInstallation } : {})
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the reason was checked against `code`'s list and only the facts `code` lists (plus the verdict every code may carry) were kept.
   return Object.keys(read).length > 0 ? (read as AgentSessionRefusalDetails<C>) : undefined

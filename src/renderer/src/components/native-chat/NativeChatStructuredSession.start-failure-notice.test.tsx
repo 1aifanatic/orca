@@ -83,7 +83,10 @@ function rejected(clientMessageId: string, reason: string, rejection: AgentSessi
 }
 
 // The notices are the host's rows'; a copy an earlier session left in the outbox gives way to them.
-function renderPane(messages: ReturnType<typeof rejected>[]): void {
+function renderPane(
+  messages: ReturnType<typeof rejected>[],
+  agent: 'claude' | 'codex' = 'claude'
+): void {
   mocks.submissions = messages.map((message) => message.submission)
   localStorage.setItem(
     `orca:desktopStructuredAgentSessionOutbox:v1:${encodeURIComponent(SESSION_ID)}`,
@@ -96,7 +99,7 @@ function renderPane(messages: ReturnType<typeof rejected>[]): void {
       tabId="start-failure-tab"
       sessionId={SESSION_ID}
       target={{ kind: 'local' }}
-      agent="claude"
+      agent={agent}
     />
   )
 }
@@ -160,3 +163,25 @@ it("keeps the start failure's own words when its row is not loaded", async () =>
 
   expect(within(await notice('first')).getByText(START_FAILED_REASON)).toBeTruthy()
 })
+
+it.each([null, '0.135.0'])(
+  'shows the Codex install/update instructions for installed version %s in the existing failure notice',
+  async (installedVersion) => {
+    const failure: AgentSessionFailureFact = {
+      kind: 'startFailed',
+      refusal: {
+        code: 'agent_session_operation_invalid',
+        details: {
+          reason: 'attachFailed',
+          codexInstallation: { installedVersion, minimumVersion: '0.136.0' }
+        }
+      }
+    }
+    const { text } = agentSessionFailureWords(failure, { agentName: 'Codex', surface: 'row' })
+    renderPane([rejected('codex-message', text, failure)], 'codex')
+    const row = await notice('codex-message')
+    expect(within(row).getByText(text)).toBeTruthy()
+    expect(text).toContain('0.136.0')
+    expect(text).toContain('npm install -g @openai/codex')
+  }
+)

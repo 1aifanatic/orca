@@ -9,6 +9,7 @@ import { isWslAvailableAsync, listWslDistrosAsync } from '../main/wsl'
 import { isGitBashAvailable } from '../main/git-bash'
 import { buildPosixCommandPathLookupScript } from '../shared/posix-command-path-lookup'
 import { runProcess } from '../shared/child-process/run-process'
+import { readCodexCliInstallation } from '../main/preflight/codex-cli-installation'
 
 const execFileAsync = promisify(execFile)
 
@@ -87,9 +88,9 @@ export class PreflightHandler {
     const versions: Record<string, string> = {}
     for (const command of detectedCommands) {
       if (
-        command.id !== 'claude' ||
+        (command.id !== 'claude' && command.id !== 'codex') ||
         command.reportVersion !== true ||
-        versions.claude !== undefined
+        versions[command.id] !== undefined
       ) {
         continue
       }
@@ -97,7 +98,15 @@ export class PreflightHandler {
       if (!executablePath) {
         continue
       }
-      const version = await probeCommandVersion(executablePath)
+      const version =
+        command.id === 'codex'
+          ? (
+              await readCodexCliInstallation({
+                program: executablePath,
+                env: buildRelayCommandEnv(process.env, process.platform)
+              })
+            ).version
+          : await probeCommandVersion(executablePath)
       if (version) {
         versions[command.id] = version
       }
