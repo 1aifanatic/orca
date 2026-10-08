@@ -107,7 +107,7 @@ export type ClaudeStructuredLaunch = {
   /** Lineage: the record's chain already heads this provider session, so the child continues it
    *  even when no transcript exists to `--resume`. Never derived from the launch mode. */
   continuesChain: boolean
-  /** The mode this child must run; inherited middle modes settle after initialize. */
+  /** Chat intent; Auto needs capability evidence before live application. */
   permissionMode?: chatPermission.AgentChatPermissionMode
 }
 
@@ -272,7 +272,7 @@ export function createClaudeStructuredLaunchResolver(
       await deps.resolveDefaultPermissionMode?.()
     )
     const permission = claudeStructuredPermissionOptions(
-      permissionMode === 'accept-edits' || permissionMode === 'auto' ? 'ask' : permissionMode
+      permissionMode === 'auto' ? 'ask' : permissionMode
     )
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.

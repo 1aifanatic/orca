@@ -2,15 +2,28 @@ import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeControlRequestError } from './claude-agent-sdk-control-requests'
 import {
   claudeChatPermissionMode,
+  claudePermissionModeNeedsRelaunch,
   claudeSdkPermissionMode
 } from './claude-structured-permission-mode'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { isAgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
 
+function claudePermissionPreparation(
+  session: Pick<ClaudeSession, 'options' | 'launchPermissionMode' | 'appliedPermissionMode'>
+): { kind: 'applied' | 'relaunch' } | { kind: 'live'; mode: PermissionMode } {
+  if (claudePermissionModeNeedsRelaunch(session)) {
+    return { kind: 'relaunch' }
+  }
+  const desired = claudeChatPermissionMode(session)
+  return session.appliedPermissionMode === desired
+    ? { kind: 'applied' }
+    : { kind: 'live', mode: claudeSdkPermissionMode(desired) }
+}
+
 export function claudePermissionNeedsPreparation(
   session: Pick<ClaudeSession, 'options' | 'launchPermissionMode' | 'appliedPermissionMode'>
 ): boolean {
-  return session.appliedPermissionMode !== claudeChatPermissionMode(session)
+  return claudePermissionPreparation(session).kind === 'live'
 }
 
 /** A lost answer cannot vouch for the policy that still runs. */
@@ -58,12 +71,10 @@ export function prepareClaudePermissionMode(
     if (session.startup.state !== 'proven') {
       throw session.startup.failure ?? new Error('claude startup did not complete')
     }
-    while (claudePermissionNeedsPreparation(session)) {
-      await applyClaudePermissionMode(
-        session,
-        claudeSdkPermissionMode(claudeChatPermissionMode(session)),
-        timeoutMs
-      )
+    let preparation = claudePermissionPreparation(session)
+    while (preparation.kind === 'live') {
+      await applyClaudePermissionMode(session, preparation.mode, timeoutMs)
+      preparation = claudePermissionPreparation(session)
     }
   })
 }

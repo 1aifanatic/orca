@@ -98,3 +98,42 @@ it('establishes the latest intent if it changes during preparation', async () =>
   expect(setPermissionMode.mock.calls.map(([mode]) => mode)).toEqual(['default', 'acceptEdits'])
   expect(session.appliedPermissionMode).toBe('accept-edits')
 })
+
+it.each(['ask', undefined] as const)(
+  'leaves relaunch-only Full access to the host with applied mode %s',
+  async (applied) => {
+    const session = sessionFor()
+    session.launchPermissionMode = 'ask'
+    session.appliedPermissionMode = applied
+    const setPermissionMode = vi.fn()
+    Object.assign(session.connection, { setPermissionMode })
+    await setClaudeStructuredOption(session, { key: 'permissionMode', value: 'bypass' }, 1)
+    expect(prepareClaudePermissionMode(session, 1)).toBeUndefined()
+    expect(setPermissionMode).not.toHaveBeenCalled()
+    expect(session.options.get('permissionMode')).toBe('bypass')
+    expect(session.appliedPermissionMode).toBe(applied)
+  }
+)
+
+it('re-derives a relaunch-only choice made while live preparation is outstanding', async () => {
+  const session = sessionFor()
+  session.launchPermissionMode = 'ask'
+  session.options.set('permissionMode', 'accept-edits')
+  let finishApplication = () => {}
+  const setPermissionMode = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finishApplication = resolve
+      })
+  )
+  Object.assign(session.connection, { setPermissionMode })
+  const preparing = prepareClaudePermissionMode(session, 1)
+  await vi.waitFor(() => expect(setPermissionMode).toHaveBeenCalledOnce())
+  await setClaudeStructuredOption(session, { key: 'permissionMode', value: 'bypass' }, 1)
+  finishApplication()
+  await preparing
+  expect(setPermissionMode.mock.calls).toEqual([['acceptEdits', { timeoutMs: 1 }]])
+  expect(session.options.get('permissionMode')).toBe('bypass')
+  expect(session.appliedPermissionMode).toBe('accept-edits')
+  expect(prepareClaudePermissionMode(session, 1)).toBeUndefined()
+})

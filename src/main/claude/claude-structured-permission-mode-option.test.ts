@@ -74,7 +74,7 @@ describe('a Claude chat permission-mode write', () => {
 describe('a Claude chat permission mode across a restart', () => {
   it.each([
     ['ask', 'default'],
-    ['accept-edits', 'default'],
+    ['accept-edits', 'acceptEdits'],
     ['auto', 'default']
   ] as const)(
     'starts the stored %s chat mode as %s with capability preparation when needed',

@@ -1,6 +1,6 @@
 import { claudeChatPermissionMode } from './claude-structured-permission-mode'
 import { applyClaudeStartPermissionMode } from './claude-structured-start-permission-mode'
-// Middle permissions settle before the first message, including retained choices.
+// Auto needs capability discovery; other modes ride the launch.
 
 import type {
   StructuredAgentSessionOptionsSkippedEvent,

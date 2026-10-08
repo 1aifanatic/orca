@@ -40,7 +40,7 @@ describe('a Claude chat launched with its saved options', () => {
       model: 'opus',
       effort: 'high',
       settings: { fastMode: true },
-      permissionMode: 'default',
+      permissionMode: 'acceptEdits',
       // The base launch is kept whole.
       includePartialMessages: true,
       extraArgs: { 'replay-user-messages': null }
@@ -154,7 +154,8 @@ describe('a Claude chat launched with its saved options', () => {
   it('starts a saved narrower mode on a child granted Full access without any bypass flag', () => {
     const spawn = launched({ permissionMode: 'accept-edits' }, { base: BYPASS_LAUNCH })
 
-    expect(spawn.sdkOptions.permissionMode).toBe('default')
+    expect(spawn.sdkOptions.permissionMode).toBe('acceptEdits')
+    expect(spawn.appliedPermissionMode).toBe('accept-edits')
     expect(spawn.sdkOptions).not.toHaveProperty('allowDangerouslySkipPermissions')
     expect(spawn.sdkOptions.extraArgs).toEqual({ 'replay-user-messages': null })
   })
@@ -162,7 +163,16 @@ describe('a Claude chat launched with its saved options', () => {
   it('starts a saved narrower mode without the allow flag on a child without bypass', () => {
     const spawn = launched({ permissionMode: 'accept-edits' })
 
-    expect(spawn.sdkOptions.permissionMode).toBe('default')
+    expect(spawn.sdkOptions.permissionMode).toBe('acceptEdits')
+    expect(spawn.appliedPermissionMode).toBe('accept-edits')
     expect(spawn.sdkOptions).not.toHaveProperty('allowDangerouslySkipPermissions')
+  })
+
+  it('keeps saved Auto on Ask without account, CLI and model capability evidence', () => {
+    const spawn = launched({ model: 'sonnet', permissionMode: 'auto' })
+
+    expect(spawn.sdkOptions.permissionMode).toBe('default')
+    expect(spawn.appliedPermissionMode).toBe('ask')
+    expect(spawn.options.get('permissionMode')).toBe('auto')
   })
 })

@@ -8,6 +8,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { storedAgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
+import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-live-turn'
+import { ClaudeControlRequestError } from '../../claude/claude-agent-sdk-control-requests'
 import { claudeStructuredPermissionOptions } from '../../claude/claude-structured-permission-mode'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
 import {
@@ -188,3 +190,75 @@ it('applies any other mode live without a new child', async () => {
   )
   expect(claude.connections).toHaveLength(1)
 })
+
+it.each(['bypass', 'ask'] as const)(
+  'delivers a busy follow-up under the old launch, then re-derives %s at idle',
+  async (idleMode) => {
+    claude.routes.set_permission_mode = (params) => {
+      if (params?.mode === 'bypassPermissions') {
+        throw new ClaudeControlRequestError('set_permission_mode', 'missing bypass launch flag')
+      }
+      return {}
+    }
+    const send = async (text: string) => {
+      const body = hostTestMessage(text)
+      const sent = await host.send(CALLER, {
+        envelope: envelope('agentSession.send', { body }),
+        body
+      })
+      if (!sent.ok) {
+        throw new Error('send refused')
+      }
+      return sent.value.clientMessageId
+    }
+    const accepted = async (id: string) => {
+      const snapshot = await host.journalSnapshot(SESSION)
+      expect(snapshot.submissions.find((entry) => entry.clientMessageId === id)).toMatchObject({
+        dispatchState: 'accepted'
+      })
+      expect(activeStructuredAgentSessionTurnId(snapshot.items)).not.toBeNull()
+    }
+    const connection = claude.connections[0]
+    const first = await send('first reply')
+    await vi.waitFor(() => expect(connection.sent).toHaveLength(1))
+    connection.handlers.onMessage?.(connection.sent[0])
+    await vi.waitFor(() => accepted(first))
+
+    expect(await pick('bypass')).toMatchObject({ ok: true })
+    const followUp = await send('follow-up while replying')
+    await vi.waitFor(() => expect(connection.sent).toHaveLength(2))
+    connection.handlers.onMessage?.(connection.sent[1])
+    await vi.waitFor(() => accepted(followUp))
+    expect(connection.closeCount).toBe(0)
+    expect(claude.connections).toHaveLength(1)
+    expect(permissionWrites(0)).toEqual([])
+    expect(store.getRecord(SESSION)?.options?.permissionMode).toBe('bypass')
+
+    if (idleMode === 'ask') {
+      expect(await pick('ask')).toMatchObject({ ok: true })
+    }
+    connection.handlers.onMessage?.({
+      type: 'result',
+      subtype: 'success',
+      session_id: PROVIDER_SESSION_ID,
+      uuid: 'first-result',
+      is_error: false,
+      result: 'done'
+    })
+    await vi.waitFor(async () => {
+      expect(
+        activeStructuredAgentSessionTurnId((await host.journalSnapshot(SESSION)).items)
+      ).toBeNull()
+    })
+    await send('after idle')
+    const index = idleMode === 'bypass' ? 1 : 0
+    await vi.waitFor(() => expect(claude.connections[index]?.sent).toHaveLength(index ? 1 : 3))
+    expect(claude.connections).toHaveLength(index + 1)
+    expect(connection.closeCount).toBe(index)
+    expect(claude.connections[index].launch.options).toEqual(
+      claudeStructuredPermissionOptions(idleMode)
+    )
+    expect(permissionWrites(0)).toEqual(idleMode === 'ask' ? [{ mode: 'default' }] : [])
+    expect(permissionWrites(1)).toEqual([])
+  }
+)

@@ -1,4 +1,4 @@
-// Saved model and effort ride the launch; middle permissions await capability evidence.
+// Saved options ride the launch; Auto awaits capability evidence.
 
 import type { EffortLevel, PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
@@ -125,7 +125,7 @@ export function claudeStructuredSpawnOptions(input: {
     options.set('permissionMode', mode)
     sdkOptions = claudeStructuredOptionsWithPermissionMode(
       sdkOptions,
-      claudeSdkPermissionMode(mode === 'auto' || mode === 'accept-edits' ? 'ask' : mode)
+      claudeSdkPermissionMode(mode === 'auto' ? 'ask' : mode)
     )
   }
   const appliedPermissionMode = claudeStructuredOptionsBypassPermissions(sdkOptions)
