@@ -5,6 +5,8 @@ import PdfViewer from './PdfViewer'
 import { EditorCommandOwnerContext } from './editor-command-owner-context'
 import { requestPdfZoom } from './pdf-zoom-request'
 
+type PdfDocumentFixture = { name: string }
+
 const viewers = vi.hoisted((): { currentScale: number; currentScaleValue: string }[] => [])
 
 vi.mock('pdfjs-dist', () => ({ GlobalWorkerOptions: {} }))
@@ -17,8 +19,8 @@ vi.mock('@/store', () => ({
     selector({ keybindings: {} })
 }))
 vi.mock('./pdf-document-loader', () => ({
-  createPdfDocumentLoader: ({ display }: { display: (doc: object) => () => void }) => ({
-    load: () => display({}),
+  createPdfDocumentLoader: ({ display }: { display: (doc: PdfDocumentFixture) => () => void }) => ({
+    load: () => display({ name: 'report.pdf' }),
     dispose: () => {}
   })
 }))
