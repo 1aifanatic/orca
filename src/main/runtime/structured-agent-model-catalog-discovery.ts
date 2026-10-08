@@ -17,6 +17,10 @@ export function codexModelCatalogDiscovery({
     // `model/list` marks the account's configured model as its default.
     listingNamesConfiguredModel: true,
     probe: createCodexModelCatalogProbe({
+      resolveAccountKind: deps.resolveCodexAccountKind,
+      ...(deps.prepareCodexCatalogProbeHome
+        ? { prepareHome: deps.prepareCodexCatalogProbeHome }
+        : {}),
       resolveEnvironment: environment.resolveCodexEnvironment,
       ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
     })

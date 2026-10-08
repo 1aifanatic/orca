@@ -121,13 +121,13 @@ describe('the shared catalog probe runner', () => {
     await vi.waitFor(() => expect(isAlive(pid)).toBe(false), { timeout: 5_000 })
   }, 20_000)
 
-  it('rejects a command that cannot start', async () => {
-    await expect(
-      runAgentModelCatalogListing(
-        { command: join(tmpdir(), 'orca-no-such-agent-binary'), args: [] },
-        { site: 'test-listing' }
-      )
-    ).rejects.toBeInstanceOf(AgentModelCatalogProbeError)
+  it('rejects a command that cannot start, saying its executable is missing', async () => {
+    const failure = await runAgentModelCatalogListing(
+      { command: join(tmpdir(), 'orca-no-such-agent-binary'), args: [] },
+      { site: 'test-listing' }
+    ).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(AgentModelCatalogProbeError)
+    expect(failure).toMatchObject({ reason: 'spawn', executableMissing: true })
   })
 
   it('closes a probe connection on success, failure and timeout alike', async () => {

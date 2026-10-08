@@ -38,7 +38,8 @@ describe('the host catalog lifetime', () => {
       read: vi.fn(async () => ({ origin: 'unknown' as const })),
       recordLiveListing: vi.fn(),
       prewarm: vi.fn(async () => {}),
-      stop: vi.fn()
+      stop: vi.fn(),
+      providerStarted: vi.fn()
     }
     catalog.service = service
     await ensureStructuredAgentSessionHost({

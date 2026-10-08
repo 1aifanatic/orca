@@ -93,7 +93,8 @@ beforeEach(async () => {
       read: async () => ({ origin: 'unknown' }),
       recordLiveListing: (sessionId, listing) => savedListings.push({ sessionId, listing }),
       prewarm: async () => {},
-      stop: () => {}
+      stop: () => {},
+      providerStarted: () => {}
     },
     now: () => NOW
   })

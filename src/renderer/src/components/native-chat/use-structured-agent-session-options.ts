@@ -89,7 +89,7 @@ export function useStructuredAgentSessionOptions(args: {
     unloadedTurnRevisions: args.unloadedTurnRevisions
   })
 
-  useHostModelCatalogUpgrade({
+  const hostCatalog = useHostModelCatalogUpgrade({
     agent,
     sessionId,
     target,
@@ -99,6 +99,7 @@ export function useStructuredAgentSessionOptions(args: {
     newLaunch: launch?.kind === 'new',
     ...(launch?.worktree ? { worktree: launch.worktree } : {}),
     fence,
+    turnId,
     activeOptionRecordRef,
     updateOptionState
   })
@@ -280,6 +281,7 @@ export function useStructuredAgentSessionOptions(args: {
     rewind: support?.fence === fence ? support.rewind : undefined,
     optionSnapshot,
     optionSurface,
-    setStructuredOption
+    setStructuredOption,
+    unavailable: hostCatalog.unavailable
   }
 }

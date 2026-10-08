@@ -30,7 +30,9 @@ export type AgentModelCatalogProbeFailure =
 export class AgentModelCatalogProbeError extends Error {
   constructor(
     message: string,
-    readonly reason: AgentModelCatalogProbeFailure
+    readonly reason: AgentModelCatalogProbeFailure,
+    /** The listing's own executable was not found, as the spawn or its supervisor reported. */
+    readonly executableMissing = false
   ) {
     super(message)
     this.name = 'AgentModelCatalogProbeError'
@@ -91,7 +93,13 @@ export async function runAgentModelCatalogListing(
   try {
     return await new Promise<string>((resolve, reject) => {
       const fail = (message: string, reason: AgentModelCatalogProbeFailure): void =>
-        reject(new AgentModelCatalogProbeError(message, reason))
+        reject(
+          new AgentModelCatalogProbeError(
+            message,
+            reason,
+            reason === 'spawn' && managed.executableMissing
+          )
+        )
       onAbort = () => fail(`${launch.command} listing stopped`, 'stopped')
       options.signal?.addEventListener('abort', onAbort, { once: true })
       timer = setTimeout(

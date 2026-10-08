@@ -3,6 +3,7 @@ import { SQLITE_DATABASE_RUNTIME_INCLUDE } from './vitest-sqlite-database-runtim
 // Real SQLite fixtures keep Node publication and close semantics.
 export const SQLITE_RUNTIME_INCLUDE = [
   ...SQLITE_DATABASE_RUNTIME_INCLUDE,
+  'src/main/acp/acp-structured-host-live-listing.test.ts',
   'src/main/active-view-persistence-boundary.test.ts',
   'src/main/automations/automation-dispatch-host-fence.test.ts',
   'src/main/automations/automation-owner-fencing.test.ts',
@@ -98,6 +99,7 @@ export const SQLITE_RUNTIME_INCLUDE = [
   'src/main/native-chat/agent-session-wire/structured-agent-session-prompt-cancel.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-provider-child-record.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-provider-restore.test.ts',
+  'src/main/native-chat/agent-session-wire/structured-agent-session-provider-started-catalog.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-provider-started.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-queued-newer-orca.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-read-restore.test.ts',

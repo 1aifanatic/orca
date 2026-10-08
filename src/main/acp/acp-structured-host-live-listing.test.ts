@@ -17,7 +17,8 @@ describe('a live Grok listing', () => {
       read: vi.fn(async () => ({ origin: 'unknown' as const })),
       recordLiveListing: vi.fn(),
       prewarm: vi.fn(async () => {}),
-      stop: vi.fn()
+      stop: vi.fn(),
+      providerStarted: vi.fn()
     }
     const { host } = await openAttachedHostRig({}, modelCatalog)
 

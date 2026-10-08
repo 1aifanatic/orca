@@ -1,3 +1,4 @@
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-unavailable'
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +7,10 @@ import { PROVIDER_STDIN_END_GRACE_MS } from '../provider-process/provider-proces
 import { createClaudeModelCatalogProbe } from './claude-model-catalog-probe'
 import { resolveClaudeStructuredInvocation } from './claude-structured-launch-resolution'
 import { resolveStructuredAgentCommand } from '../native-chat/structured-agent-command-resolution'
-import type { runAgentModelCatalogListing } from '../native-chat/agent-model-catalog/agent-model-catalog-probe-runner'
+import {
+  AgentModelCatalogProbeError,
+  type runAgentModelCatalogListing
+} from '../native-chat/agent-model-catalog/agent-model-catalog-probe-runner'
 import {
   CLAUDE_MODEL_LIST_ARGS,
   CLAUDE_MODEL_LIST_STDIN
@@ -174,4 +178,49 @@ process.stdin.on('end', () => setTimeout(() => {
       }
     }
   )
+})
+
+describe('Claude catalog availability', () => {
+  it('does not turn a generic listing failure into unavailable', async () => {
+    const probe = createClaudeModelCatalogProbe({
+      ...probeDeps(),
+      runListing: async () => {
+        throw new AgentModelCatalogProbeError('claude did not list models', 'timeout')
+      }
+    })
+    await expect(probe(HOME('/homes/a'))).rejects.not.toBeInstanceOf(
+      AgentModelCatalogUnavailableError
+    )
+  })
+
+  // Claude has no pre-send sign-in verdict: its real start refusal is the only one.
+  it.each([false, true])('lists with no sign-in verdict, managed=%s', async (managed) => {
+    const runListing = vi.fn(async () => LISTED)
+    const probe = createClaudeModelCatalogProbe({
+      ...probeDeps(),
+      resolveAuthPolicy: () => ({ stripAuthEnv: managed }),
+      runListing
+    })
+    const result = await probe(HOME('/homes/a'))
+    expect(result).toMatchObject({ models: [{ id: 'sonnet' }] })
+    expect(result).not.toHaveProperty('unavailable')
+    expect(runListing).toHaveBeenCalledTimes(1)
+  })
+
+  it('says the CLI is missing when the resolved executable is not there', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'orca-claude-missing-'))
+    try {
+      // Never created: the real runner's spawn reports ENOENT for this exact path.
+      const missing = join(folder, 'claude with spaces', 'claude')
+      const probe = createClaudeModelCatalogProbe({
+        ...probeDeps(),
+        resolveCommand: () => missing
+      })
+      await expect(probe(HOME('/homes/a'))).rejects.toMatchObject({
+        unavailable: { reason: 'cliMissing' }
+      })
+    } finally {
+      rmSync(folder, { recursive: true, force: true })
+    }
+  })
 })

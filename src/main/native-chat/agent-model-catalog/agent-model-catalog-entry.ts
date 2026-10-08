@@ -1,7 +1,25 @@
+import type { AgentSessionUnavailable } from '../../../shared/agent-session-availability'
 import type {
   AgentSessionFastModeSupport,
   AgentSessionModelOption
 } from '../../../shared/agent-session-wire'
+
+/** `discovery`: an account-level listing that names the configured default and owns freshness.
+ *  `live`: what a running session listed — which models exist and their efforts, nothing more. */
+export type AgentModelCatalogSource = 'discovery' | 'live'
+
+/** One successful listing, as any lister hands it to the store. */
+export type AgentModelCatalogSuccess = {
+  models: AgentSessionModelOption[]
+  fastModeSupport?: AgentSessionFastModeSupport
+  fastModeTierByModel: ReadonlyMap<string, string>
+  origin: 'live-session' | 'probe'
+  /** A row only this session's launch added (its own `--model`): kept only once the account's
+   *  catalog already lists that model. */
+  launchOnlyModelId?: string
+  /** A probe that listed models but also found no chat can start (a signed-out Codex): both kept. */
+  unavailable?: AgentSessionUnavailable
+}
 
 /** One listing as the store keeps it. */
 export type AgentModelCatalogListing = {
@@ -139,6 +157,37 @@ export function agentModelCatalogEntry(
     origin: newer.origin,
     fetchedAt: newer.at
   }
+}
+
+/** The entry `success` makes of `previous`, replacing only the listing of its source. */
+export function agentModelCatalogEntryWithSuccess(
+  previous: AgentModelCatalogEntry | undefined,
+  identity: { agent: string; fingerprint: string },
+  success: AgentModelCatalogSuccess,
+  source: AgentModelCatalogSource,
+  at: number
+): AgentModelCatalogEntry | null {
+  const launchOnly = success.launchOnlyModelId
+  const models =
+    launchOnly !== undefined && !previous?.models.some((model) => model.id === launchOnly)
+      ? success.models.filter((model) => model.id !== launchOnly)
+      : success.models
+  if (models.length === 0) {
+    // An empty list identifies no model; it is doubt, not a catalog.
+    return null
+  }
+  const listing: AgentModelCatalogListing = {
+    models: models.map((model) => ({ ...model })),
+    ...(success.fastModeSupport ? { fastModeSupport: success.fastModeSupport } : {}),
+    fastModeTierByModel: Object.fromEntries(success.fastModeTierByModel.entries()),
+    origin: success.origin,
+    at
+  }
+  const { agent, fingerprint } = identity
+  const configured = previous?.configured ?? null
+  return source === 'discovery'
+    ? agentModelCatalogEntry(agent, fingerprint, listing, previous?.live ?? null, configured)
+    : agentModelCatalogEntry(agent, fingerprint, previous?.discovered ?? null, listing, configured)
 }
 
 /** A choice as the store keeps it: one that says nothing of effort keeps the saved effort of the

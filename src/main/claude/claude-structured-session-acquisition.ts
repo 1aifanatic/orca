@@ -261,6 +261,7 @@ export async function acquireClaudeSession({
       settleClaudeSessionStartup({
         session,
         facts: readClaudeStartupFacts({
+          account: launch.account,
           connection,
           initProof,
           sessionId,
