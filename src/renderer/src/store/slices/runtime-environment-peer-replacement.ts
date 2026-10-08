@@ -14,11 +14,7 @@ export function replacedRuntimeEnvironmentIds(
   return next
     .filter((environment) => {
       const before = previousById.get(environment.id)
-      return (
-        before !== undefined &&
-        (before.pairingRevision ?? before.createdAt) !==
-          (environment.pairingRevision ?? environment.createdAt)
-      )
+      return before !== undefined && pairingRevisionOf(before) !== pairingRevisionOf(environment)
     })
     .map((environment) => environment.id)
 }
@@ -51,23 +47,13 @@ function pairingRevisionOf(environment: CatalogEnvironment | undefined): number 
 export type SameHostPairingRotation = { id: string; fromRevision: number; toRevision: number }
 
 /**
- * Ids that now name a different machine, whose workspaces and tabs are retired. A managed server
- * re-pairs on every update and is the same machine while the host's key digest, which its pairing
- * handshake proves, is unchanged under the same SSH target registration. A registration alone is
- * no proof (a reinstall or a target that resolves elsewhere keeps it), so a re-pair whose key is
- * not known yet is decided later, once a catalog carries it, rather than purged on a guess.
- */
-export function peerReplacedEnvironmentIds(
-  previous: readonly CatalogEnvironment[],
-  next: readonly CatalogEnvironment[],
-  replacedIds: readonly string[]
-): string[] {
-  return classifyPeerReplacements(previous, next, replacedIds).retired
-}
-
-/**
- * `retired` as above, plus the re-pairs proven to be the same machine (same registration, same
- * host key), with the pairing they continue. Re-pairs in neither list are still unresolved.
+ * `retired`: ids that now name a different machine, whose workspaces and tabs are retired. A managed
+ * server re-pairs on every update and is the same machine while the host's key digest, which its
+ * pairing handshake proves, is unchanged under the same SSH target registration. A registration
+ * alone is no proof (a reinstall or a target that resolves elsewhere keeps it), so a re-pair whose
+ * key is not known yet is decided later, once a catalog carries it, rather than purged on a guess.
+ * `sameHost`: re-pairs proven to be the same machine, with the pairing they continue. Re-pairs in
+ * neither list are still unresolved.
  */
 export function classifyPeerReplacements(
   previous: readonly CatalogEnvironment[],

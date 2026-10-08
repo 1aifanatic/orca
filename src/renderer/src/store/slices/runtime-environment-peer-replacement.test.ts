@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   classifyPeerReplacements,
-  peerReplacedEnvironmentIds,
   replacedRuntimeEnvironmentIds,
   resetDeferredPeerChecksForTests
 } from './runtime-environment-peer-replacement'
@@ -26,11 +25,11 @@ function managed(
 }
 
 function retired(previous: ReturnType<typeof managed>, next: ReturnType<typeof managed>): string[] {
-  return peerReplacedEnvironmentIds(
+  return classifyPeerReplacements(
     [previous],
     [next],
     replacedRuntimeEnvironmentIds([previous], [next])
-  )
+  ).retired
 }
 
 describe('which re-paired environments name a different machine', () => {
@@ -47,11 +46,11 @@ describe('which re-paired environments name a different machine', () => {
   it('defers a re-pair whose host key is not known yet instead of retiring it', () => {
     expect(retired(managed(), managed({ pairingRevision: 2, hostKey: null }))).toEqual([])
     expect(
-      peerReplacedEnvironmentIds(
+      classifyPeerReplacements(
         [managed({ pairingRevision: 2, hostKey: null })],
         [managed({ pairingRevision: 2, hostKey: 'key-b' })],
         []
-      )
+      ).retired
     ).toEqual(['env-1'])
   })
 
@@ -62,7 +61,7 @@ describe('which re-paired environments name a different machine', () => {
   it('retires a re-paired environment that is not a managed server', () => {
     const paired = { id: 'env-1', createdAt: 1, pairingRevision: 1, hostKeyFingerprint: 'k' }
     expect(
-      peerReplacedEnvironmentIds([paired], [{ ...paired, pairingRevision: 2 }], ['env-1'])
+      classifyPeerReplacements([paired], [{ ...paired, pairingRevision: 2 }], ['env-1']).retired
     ).toEqual(['env-1'])
   })
 
