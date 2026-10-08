@@ -19475,6 +19475,12 @@
   "fileSearch": {
     "failed": "Search failed. Try again."
   },
+  "workspaceDeletion": {
+    "preferenceSaveFailed": "Could not save deletion preference",
+    "alwaysForceDelete": "Always force delete",
+    "moreActions": "More force delete options",
+    "alwaysForceDeleteTooltip": "Applies to all future workspace deletions."
+  },
   "worktree": {
     "nestedRemoval": {
       "refreshFailed": "Could not refresh the workspace list",
@@ -19591,11 +19597,5 @@
       "updateRuntime": "Update the remote runtime to change workspace links",
       "updateRuntimeSafely": "Update the remote runtime to safely change workspace links"
     }
-  },
-  "workspaceDeletion": {
-    "preferenceSaveFailed": "Could not save deletion preference",
-    "alwaysForceDelete": "Always force delete",
-    "moreActions": "More force delete options",
-    "alwaysForceDeleteTooltip": "Applies to all future workspace deletions."
   }
 }
