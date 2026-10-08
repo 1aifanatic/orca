@@ -17993,6 +17993,7 @@
         "commands": "命令",
         "skills": "技能",
         "loadingSkills": "正在加载技能…",
+        "clearDescription": "清除对话上下文",
         "skillsUnavailableHost": "SSH 聊天中无法列出技能",
         "skillsLoadFailed": "无法加载技能",
         "retrySkills": "重试",
@@ -18220,6 +18221,7 @@
         "cancelledBy": "于 {{device}} 取消"
       },
       "notices": {
+        "contextCleared": "上下文已清除",
         "compaction": "上下文压缩",
         "details": "细节",
         "plan": "计划",
