@@ -22,8 +22,6 @@ export {
   QueuedMessagesResumeParams,
   RespondParams,
   RespondToQuestionParams,
-  RestartResumableParams,
-  RestartResumeParams,
   RewindParams,
   SendParams,
   SessionId,
@@ -33,4 +31,9 @@ export {
   ThreadGoalParams,
   UnsubscribeParams
 } from '../../../../shared/rpc-contract/structured-agent-session-params'
+export {
+  RestartDismissParams,
+  RestartResumableParams,
+  RestartResumeParams
+} from '../../../../shared/rpc-contract/structured-agent-session-restart-params'
 export { ContinueInterruptedParams } from '../../../../shared/rpc-contract/structured-agent-session-continue-params'

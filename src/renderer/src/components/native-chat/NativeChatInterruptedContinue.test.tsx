@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => {
   const hostLabel = (): string | null => 'studio-mac'
   const capability = (): 'unknown' | 'supported' | 'unsupported' => 'supported'
-  const resuming: readonly string[] = []
+  const resuming: ReadonlyMap<string, readonly string[]> = new Map()
   return {
     call: vi.fn(),
     capability: capability(),
@@ -41,6 +41,7 @@ import type {
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import { restartMachineKey } from '../native-chat-restart-machines'
 import {
   NativeChatInterruptedContinue,
   useNativeChatInterruptedContinuation
@@ -89,9 +90,7 @@ function Harness(props: Props): React.JSX.Element {
     <TooltipProvider delayDuration={0}>
       <span data-testid="offered">{continuation.offeredTurnItemId ?? 'none'}</span>
       <span data-testid="available">{String(continuation.view.continueAvailable)}</span>
-      <span data-testid="error">
-        {composerError ?? continuation.continueError?.text ?? 'none'}
-      </span>
+      <span data-testid="error">{composerError ?? continuation.continueError?.text ?? 'none'}</span>
       <button type="button" onClick={() => setComposerError(ATTACHMENTS)}>
         compose
       </button>
@@ -106,7 +105,7 @@ const ATTACHMENTS = 'Remove attachments before using a chat-session command.'
 
 beforeEach(() => {
   mocks.capability = 'supported'
-  mocks.resuming = []
+  mocks.resuming = new Map()
   mocks.launchPending = false
   mocks.hostLabel = 'studio-mac'
   mocks.call.mockReset()
@@ -161,9 +160,16 @@ describe('Continue on a reply an Orca stop cut off', () => {
   })
 
   it('is not offered while the restart prompt or the launch is resuming this chat', () => {
-    mocks.resuming = ['session-1']
+    mocks.resuming = new Map([[restartMachineKey(PAIRED), ['session-1']]])
     render(<Harness />)
     expect(continueButton()).toBeNull()
+  })
+
+  // Resumes are per machine: a chat of the same id resuming elsewhere is another chat.
+  it('is still offered while a chat of the same id resumes on another machine', () => {
+    mocks.resuming = new Map([['local', ['session-1']]])
+    render(<Harness />)
+    expect(continueButton()).toBeInTheDocument()
   })
 
   it("is not offered on this machine's chats while the launch may still resume them", () => {

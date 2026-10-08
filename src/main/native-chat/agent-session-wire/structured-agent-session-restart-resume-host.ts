@@ -290,6 +290,7 @@ export function createStructuredAgentSessionRestartResume(
         },
         audience
       ),
+    dismissListed: failures.dismissListed,
     continueAfterRestart,
     onAgentStarted: withdrawal.onAgentStarted,
     continueInterrupted: createInterruptedContinuation(continuationHost, readMarkers)

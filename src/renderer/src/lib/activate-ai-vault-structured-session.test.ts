@@ -19,6 +19,69 @@ function deps(overrides: Partial<Parameters<typeof activateAiVaultStructuredSess
 }
 
 describe('activateAiVaultStructuredSession', () => {
+  // The resume dialog knows which machine listed the chat; it is asked, not whichever machine
+  // owns a workspace that happens to share the id.
+  it('asks the machine the caller names for both the refresh and the reveal', async () => {
+    const parts = deps({
+      activate: vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(false).mockReturnValue(true)
+    })
+    const onServer = {
+      structuredSession: {
+        sessionId: 'session-1',
+        workspaceId: 'workspace-1',
+        executionHostId: 'runtime:studio' as const,
+        pairingRevision: 3
+      }
+    }
+
+    await expect(activateAiVaultStructuredSession(onServer, parts)).resolves.toBe(true)
+
+    expect(parts.refresh).toHaveBeenCalledWith('workspace-1', {
+      executionHostId: 'runtime:studio',
+      pairingRevision: 3
+    })
+    expect(parts.reveal).toHaveBeenCalledWith({
+      worktreeId: 'workspace-1',
+      sessionId: 'session-1',
+      executionHostId: 'runtime:studio',
+      pairingRevision: 3
+    })
+    // The tab is looked up, and focused, on that machine too.
+    expect(parts.activate).toHaveBeenLastCalledWith({
+      worktreeId: 'workspace-1',
+      sessionId: 'session-1',
+      executionHostId: 'runtime:studio',
+      pairingRevision: 3
+    })
+  })
+
+  it('treats the same session id on two machines as two activations, not one in flight', async () => {
+    const pending = Promise.withResolvers<void>()
+    const parts = deps({
+      activate: vi.fn(() => false),
+      refresh: vi.fn(() => pending.promise),
+      reveal: vi.fn(async () => 'gone' as const)
+    })
+    const here = activateAiVaultStructuredSession(
+      { structuredSession: { sessionId: 'session-1', workspaceId: 'workspace-1' } },
+      parts
+    )
+    const there = activateAiVaultStructuredSession(
+      {
+        structuredSession: {
+          sessionId: 'session-1',
+          workspaceId: 'workspace-1',
+          executionHostId: 'runtime:studio'
+        }
+      },
+      parts
+    )
+    // Settled before asserting, so a failure here never strands an activation for later cases.
+    pending.resolve()
+    await Promise.all([here, there])
+    expect(parts.refresh).toHaveBeenCalledTimes(2)
+  })
+
   it('refreshes an unpublished structured tab before activating it', async () => {
     const parts = deps({
       activate: vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true)

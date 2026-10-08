@@ -96,12 +96,14 @@ function Harness({
   candidates,
   initiallySelected,
   busy = false,
-  failureFor
+  failureFor,
+  machineHostId
 }: {
   candidates: ResumeCandidate[]
   initiallySelected?: string[]
   busy?: boolean
   failureFor?: (sessionId: string) => ResumeFailure | undefined
+  machineHostId?: ExecutionHostId
 }): React.JSX.Element {
   const [selected, setSelected] = useState<ReadonlySet<string>>(
     () => new Set(initiallySelected ?? candidates.map((entry) => entry.sessionId))
@@ -126,6 +128,7 @@ function Harness({
           })
         }}
         failureFor={failureFor}
+        machineHostId={machineHostId}
       />
     </TooltipProvider>
   )
@@ -499,6 +502,34 @@ it('names hosts only when the machine is not obvious', () => {
   render({ candidates: seedTree({ parent: 'local', child: remote }) })
   expect(rowOf(workspaceBox('parent')).textContent).toContain(local)
   expect(rowOf(workspaceBox('child')).textContent).toContain(getHostContextLabel(remote))
+})
+
+// Under a machine row the row already names the machine; only a workspace elsewhere says where.
+it('under a machine row, indents one level and names only a workspace on another host', () => {
+  const remote: ExecutionHostId = 'ssh:build-server'
+  render({ candidates: seedTree({ parent: 'local', child: remote }), machineHostId: 'local' })
+
+  expect(rowOf(workspaceBox('parent')).textContent).not.toContain(getHostContextLabel('local'))
+  expect(rowOf(workspaceBox('other')).textContent).not.toContain(getHostContextLabel('local'))
+  expect(rowOf(workspaceBox('child')).textContent).toContain(getHostContextLabel(remote))
+  // The child is on another host, so it is not nested under its parent, as in the sidebar. Every
+  // box and title sits one level further in than without a machine row; checkboxes do not move.
+  expect(rowOutline()).toEqual([
+    'project:orca',
+    'ws:child@40px',
+    'chat:in-child@60px',
+    'chat:also-in-child@60px',
+    'ws:parent@40px',
+    'chat:in-parent@60px',
+    'ws:other@40px',
+    'chat:in-other@60px'
+  ])
+  const header = container.querySelector<HTMLElement>('section > label')!
+  expect(cell(header, 2).style.marginLeft).toBe('20px')
+  const box = rowOf(workspaceBox('parent')).parentElement?.querySelector<HTMLElement>(
+    ':scope > [aria-hidden="true"]'
+  )
+  expect(box?.style.left).toBe('calc(1.75rem + 40px)')
 })
 
 it('names a workspace the store does not know by its id, with the kind the host recorded', () => {

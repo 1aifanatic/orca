@@ -1,3 +1,4 @@
+import { Badge } from './ui/badge'
 import { Checkbox } from './ui/checkbox'
 import { AgentIcon } from '@/lib/agent-catalog'
 import { agentTypeToIconAgent, formatAgentTypeLabel } from '@/lib/agent-status'
@@ -8,7 +9,11 @@ import {
   resumeFailureSelectable,
   type ResumeFailureAction
 } from './native-chat-resume-failure-guidance'
-import { ResumeFailureGuidanceLine, ResumeFailureStatus } from './NativeChatResumeFailureDetails'
+import {
+  ResumeFailureGuidanceLine,
+  ResumeFailureStatus,
+  ResumeRowDismiss
+} from './NativeChatResumeFailureDetails'
 import { resumeActivityLabel } from './native-chat-resume-activity-label'
 
 /**
@@ -43,7 +48,8 @@ export function ResumeCandidateRow({
   disabled,
   onCheckedChange,
   failure,
-  onFailureAction
+  onFailureAction,
+  originLabel
 }: {
   candidate: ResumeCandidate
   /** Named in the checkbox's accessible name: several rows otherwise read identically. */
@@ -55,6 +61,8 @@ export function ResumeCandidateRow({
   /** Present when an earlier resume of this chat did not carry on. */
   failure?: ResumeFailure
   onFailureAction?: (action: ResumeFailureAction, sessionId: string) => void
+  /** Where the chat came from, for one that does not start ticked; absent for the user's own. */
+  originLabel?: string
 }): React.JSX.Element {
   const agentLabel = formatAgentTypeLabel(candidate.agent)
   const title =
@@ -90,6 +98,8 @@ export function ResumeCandidateRow({
           <span className="text-foreground/90">{title}</span>
           {activity && <span className="text-muted-foreground/80"> - {activity.summary}</span>}
         </span>
+        {/* The same quiet context chip that names a workspace's machine. */}
+        {originLabel && <Badge variant="hostContext">{originLabel}</Badge>}
         {model && (
           <span
             className="min-w-0 max-w-24 shrink-0 truncate font-mono text-[10px] text-muted-foreground/70"
@@ -105,10 +115,23 @@ export function ResumeCandidateRow({
       </span>
     </label>
   )
-  if (!failure) {
-    return <li>{row}</li>
-  }
   const act = (action: ResumeFailureAction) => onFailureAction?.(action, candidate.sessionId)
+  if (!failure) {
+    // A chat that is not the user's is never cleared by Dismiss; its own control ends it here.
+    return originLabel && onFailureAction ? (
+      <li className="flex items-center gap-1 pr-1">
+        {row}
+        <ResumeRowDismiss
+          title={title}
+          workspaceName={workspaceName}
+          disabled={disabled}
+          onDismiss={() => act('dismiss')}
+        />
+      </li>
+    ) : (
+      <li>{row}</li>
+    )
+  }
   return (
     <li className="flex flex-col">
       {/* Outside the label, so pressing them never toggles the checkbox. */}

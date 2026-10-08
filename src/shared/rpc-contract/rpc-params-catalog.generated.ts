@@ -505,8 +505,6 @@ import {
   QueuedMessagesResumeParams,
   RespondParams,
   RespondToQuestionParams,
-  RestartResumableParams,
-  RestartResumeParams,
   RewindParams,
   SendParams,
   SetOptionParams,
@@ -515,6 +513,11 @@ import {
   ThreadGoalParams,
   UnsubscribeParams
 } from './structured-agent-session-params'
+import {
+  RestartDismissParams,
+  RestartResumableParams,
+  RestartResumeParams
+} from './structured-agent-session-restart-params'
 import { TerminalAdoptOrphans } from './terminal-orphan-params'
 import { TerminalQuickCommandsUpdate } from './terminal-quick-command-params'
 import {
@@ -630,7 +633,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'agentSession.respondToQuestion': RespondToQuestionParams,
   'agentSession.restartContinue': RestartResumeParams,
   'agentSession.restartResumable': RestartResumableParams,
-  'agentSession.restartResumableDismiss': RestartResumableParams,
+  'agentSession.restartResumableDismiss': RestartDismissParams,
   'agentSession.restartResume': RestartResumeParams,
   'agentSession.reveal': OptionsParams,
   'agentSession.rewind': RewindParams,

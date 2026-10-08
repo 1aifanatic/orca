@@ -158,7 +158,8 @@ function RepoHeader({
   covered,
   busy,
   selected,
-  onToggle
+  onToggle,
+  depth
 }: {
   repoId: string
   /** Every selectable chat in the project, nested workspaces included. */
@@ -166,6 +167,7 @@ function RepoHeader({
   busy: boolean
   selected: ReadonlySet<string>
   onToggle: (sessionId: string, checked: boolean) => void
+  depth: number
 }): React.JSX.Element {
   const repos = useAppStore((store) => store.repos)
   const projectGroups = useAppStore((store) => store.projectGroups)
@@ -186,7 +188,10 @@ function RepoHeader({
           )}
         />
       </span>
-      <span className="mr-1.5 flex h-full min-w-0 items-center gap-1.5 rounded-t-md bg-[color-mix(in_srgb,var(--foreground)_5%,var(--worktree-sidebar-accent))] pr-2.5 pl-2 group-hover/row:bg-[color-mix(in_srgb,var(--foreground)_9%,var(--worktree-sidebar-accent))]">
+      <span
+        className="mr-1.5 flex h-full min-w-0 items-center gap-1.5 rounded-t-md bg-[color-mix(in_srgb,var(--foreground)_5%,var(--worktree-sidebar-accent))] pr-2.5 pl-2 group-hover/row:bg-[color-mix(in_srgb,var(--foreground)_9%,var(--worktree-sidebar-accent))]"
+        style={depth > 0 ? { marginLeft: depth * RESUME_INDENT_PX } : undefined}
+      >
         {/* A repo shows its own configured glyph; a project group uses the FolderTree the sidebar's
             own PROJECT_GROUP_META uses. */}
         {header.kind === 'project' ? (
@@ -220,6 +225,10 @@ type RowProps = {
   selectable: (sessionId: string) => boolean
   /** The sidebar's host names (SSH target labels, display overrides), so a chip never shows a raw id. */
   hostLabelById: ReadonlyMap<ExecutionHostId, string>
+  /** Where a chat that does not start ticked came from ("Automation", "Another device"). */
+  originLabelFor?: (sessionId: string) => string | undefined
+  /** The host a machine row above the list already names. */
+  machineHostId?: ExecutionHostId
 } & FailureProps
 
 function WorkspaceRows({
@@ -234,10 +243,22 @@ function WorkspaceRows({
   const kind = first ? resumeWorkspaceKind(first) : 'git-worktree'
   const name = (worktree && resolveWorktreeDisplayName(worktree)) || group.workspaceId
   const branch = worktree && kind === 'git-worktree' ? resolveWorktreeBranchLabel(worktree) : ''
-  const { mixedHosts, listedAt, busy, selected, onToggle, selectable, hostLabelById } = rowProps
-  // Why: a remote workspace is named by its machine even when it is the only one listed.
+  const {
+    mixedHosts,
+    listedAt,
+    busy,
+    selected,
+    onToggle,
+    selectable,
+    hostLabelById,
+    machineHostId
+  } = rowProps
+  const workspaceHostId = hostId ?? LOCAL_EXECUTION_HOST_ID
+  // Why: a remote workspace is named by its machine even when it is the only one listed — unless
+  // the machine row above it already does.
   const showHostLabel =
-    mixedHosts || (hostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
+    workspaceHostId !== machineHostId &&
+    (mixedHosts || workspaceHostId !== LOCAL_EXECUTION_HOST_ID)
   const covered = resumeWorkspaceSessionIds(node).filter(selectable)
   const selection = resumeSelectionState(covered, selected)
   // Why: a top-level workspace sits one step in from its project, so its box does too.
@@ -282,9 +303,7 @@ function WorkspaceRows({
           )}
           {showHostLabel && (
             <WorktreeHostContextBadge
-              label={getHostContextLabel(hostId ?? LOCAL_EXECUTION_HOST_ID, {
-                hostLabelById
-              })}
+              label={getHostContextLabel(workspaceHostId, { hostLabelById })}
             />
           )}
           {selection.total > 0 && (
@@ -310,6 +329,7 @@ function WorkspaceRows({
             onCheckedChange={(checked) => onToggle(candidate.sessionId, checked)}
             failure={rowProps.failureFor?.(candidate.sessionId)}
             onFailureAction={rowProps.onFailureAction}
+            originLabel={rowProps.originLabelFor?.(candidate.sessionId)}
           />
         ))}
       </ul>
@@ -327,14 +347,12 @@ export function ResumeOnRestartGroups({
   selected,
   onToggle,
   failureFor,
-  onFailureAction
+  onFailureAction,
+  originLabelFor,
+  machineHostId
 }: {
   candidates: readonly ResumeCandidate[]
-  listedAt: number
-  busy: boolean
-  selected: ReadonlySet<string>
-  onToggle: (sessionId: string, checked: boolean) => void
-} & FailureProps): React.JSX.Element {
+} & Omit<RowProps, 'mixedHosts' | 'selectable' | 'hostLabelById'>): React.JSX.Element {
   const workspaces = useMemo(() => groupResumeCandidates(candidates), [candidates])
   const repoIdFor = useRepoIdByWorkspace(workspaces)
   const ancestorsOf = useLineageAncestors(workspaces)
@@ -347,6 +365,8 @@ export function ResumeOnRestartGroups({
   const mixedHosts =
     new Set(candidates.map((candidate) => candidate.executionHostId ?? LOCAL_EXECUTION_HOST_ID))
       .size > 1
+  // Under a machine row, the whole list is nested one level below it.
+  const depth = machineHostId === undefined ? 0 : 1
   const selectable = (sessionId: string): boolean => {
     const failure = failureFor?.(sessionId)
     return !failure || resumeFailureSelectable(failure)
@@ -366,13 +386,14 @@ export function ResumeOnRestartGroups({
               busy={busy}
               selected={selected}
               onToggle={onToggle}
+              depth={depth}
             />
           )}
           {nestResumeWorkspaces(repoGroup.workspaces, ancestorsOf).map((node) => (
             <WorkspaceRows
               key={node.group.workspaceId}
               node={node}
-              depth={0}
+              depth={depth}
               mixedHosts={mixedHosts}
               listedAt={listedAt}
               busy={busy}
@@ -382,6 +403,8 @@ export function ResumeOnRestartGroups({
               hostLabelById={hostLabelById}
               failureFor={failureFor}
               onFailureAction={onFailureAction}
+              originLabelFor={originLabelFor}
+              machineHostId={machineHostId}
             />
           ))}
         </section>
