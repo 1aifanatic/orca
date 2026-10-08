@@ -10,6 +10,7 @@ import type { E2EEKeypair } from '../e2ee-keypair'
 import type { UnpairedDeviceAuthThrottle } from '../rpc/unpaired-device-auth-throttle'
 import type { MobileSocketWiring } from '../rpc/mobile-socket-wiring'
 import type { MobileDesktopRelay } from '../mobile-desktop-relay/mobile-desktop-relay'
+import type { MobileRelayHostCatalog } from '../mobile-desktop-relay/mobile-relay-host-catalog'
 import { RelayRevokeOutbox } from '../relay/relay-revoke-outbox'
 import { PushUnregisterOutbox } from '../push/push-unregister-outbox'
 import { RuntimeBinaryMessageRouter } from '../runtime-binary-message-router'
@@ -73,6 +74,7 @@ export class RuntimeRpcState {
   protected mobileRelayPairingProvider: MobileRelayPairingProvider | null = null
   // Why: only a desktop with configured servers relays; headless serve leaves this unset.
   protected mobileDesktopRelay: MobileDesktopRelay | null = null
+  protected mobileRelayHostCatalog: MobileRelayHostCatalog | null = null
   protected mobileRelayPairingOfferQueue: Promise<void> = Promise.resolve()
   protected mobileRelayPairingOfferInFlight: {
     generation: number
