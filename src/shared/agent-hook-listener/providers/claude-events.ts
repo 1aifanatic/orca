@@ -152,7 +152,7 @@ export function normalizeClaudeEvent(
   }
 
   const eventToolUseId = readFirstString(hookPayload, ['tool_use_id', 'toolUseId'])
-  const previousTool = state.lastToolByPaneKey.get(producerCacheKey(paneKey, 'claude'))
+  const previousTool = state.lastToolByProducerKey.get(producerCacheKey(paneKey, 'claude'))
   const isParallelSiblingCompletionDuringQuestion =
     eventAgentId === undefined &&
     previousLead?.state === 'waiting' &&

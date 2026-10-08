@@ -102,16 +102,16 @@ export function resolvePrompt(
 ): string {
   // Why: harness-injected turns fire UserPromptSubmit but aren't the user's ask — keep cached prompt; match only known tags so real <tags> still reset the turn.
   if (isKnownHarnessInjectedUserTurnText(promptText)) {
-    return state.lastPromptByPaneKey.get(cacheKey) ?? ''
+    return state.lastPromptByProducerKey.get(cacheKey) ?? ''
   }
   if (options?.resetOnNewTurn) {
-    state.lastPromptByPaneKey.delete(cacheKey)
+    state.lastPromptByProducerKey.delete(cacheKey)
   }
   if (promptText) {
-    state.lastPromptByPaneKey.set(cacheKey, promptText)
+    state.lastPromptByProducerKey.set(cacheKey, promptText)
     return promptText
   }
-  return state.lastPromptByPaneKey.get(cacheKey) ?? ''
+  return state.lastPromptByProducerKey.get(cacheKey) ?? ''
 }
 
 export function resolveToolState(
@@ -121,9 +121,9 @@ export function resolveToolState(
   options: { resetOnNewTurn: boolean }
 ): ToolSnapshot {
   if (options.resetOnNewTurn) {
-    state.lastToolByPaneKey.delete(cacheKey)
+    state.lastToolByProducerKey.delete(cacheKey)
   }
-  const previous = state.lastToolByPaneKey.get(cacheKey) ?? {}
+  const previous = state.lastToolByProducerKey.get(cacheKey) ?? {}
   // Why: undefined means either "no update" or "input not previewable"; extractor metadata decides whether to inherit stale input.
   const clearsUnpreviewableInput =
     update.hasToolInputField === true && update.toolInput === undefined
@@ -156,6 +156,6 @@ export function resolveToolState(
         ? previous.lastAssistantMessageIsToolOutput
         : update.lastAssistantMessageIsToolOutput
   }
-  state.lastToolByPaneKey.set(cacheKey, merged)
+  state.lastToolByProducerKey.set(cacheKey, merged)
   return merged
 }

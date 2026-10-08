@@ -696,7 +696,7 @@ describe('shared agent-hook-listener', () => {
 
       clearClaudeAnsweredQuestionWait(state, PANE_KEY)
 
-      expect(state.lastToolByPaneKey.get(producerCacheKey(PANE_KEY, 'claude'))).toMatchObject({
+      expect(state.lastToolByProducerKey.get(producerCacheKey(PANE_KEY, 'claude'))).toMatchObject({
         lastAssistantMessage: 'raw command output',
         lastAssistantMessageIsToolOutput: true
       })

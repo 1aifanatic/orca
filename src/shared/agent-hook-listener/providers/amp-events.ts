@@ -68,7 +68,7 @@ export function normalizeAmpEvent(
   ])
   const canUseMessageAsPrompt =
     eventName === 'agent.start' ||
-    (eventName === 'agent.end' && !state.lastPromptByPaneKey.has(ampCacheKey))
+    (eventName === 'agent.end' && !state.lastPromptByProducerKey.has(ampCacheKey))
   const ampPromptText = explicitPrompt ?? (canUseMessageAsPrompt ? promptText : '')
 
   const normalized = normalizeAgentStatusPayload({
@@ -116,12 +116,12 @@ export function pruneAmpThreadCacheKeys(
   }
 
   const scopedKeys = new Set<string>()
-  for (const key of state.lastPromptByPaneKey.keys()) {
+  for (const key of state.lastPromptByProducerKey.keys()) {
     if (key.startsWith(scopedPrefix)) {
       scopedKeys.add(key)
     }
   }
-  for (const key of state.lastToolByPaneKey.keys()) {
+  for (const key of state.lastToolByProducerKey.keys()) {
     if (key.startsWith(scopedPrefix)) {
       scopedKeys.add(key)
     }
@@ -145,8 +145,8 @@ export function pruneAmpThreadCacheKeys(
     if (key === currentCacheKey) {
       continue
     }
-    state.lastPromptByPaneKey.delete(key)
-    state.lastToolByPaneKey.delete(key)
+    state.lastPromptByProducerKey.delete(key)
+    state.lastToolByProducerKey.delete(key)
     state.ampCompletedCacheKeys.delete(key)
     overflow--
   }

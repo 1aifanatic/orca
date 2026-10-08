@@ -193,8 +193,8 @@ export function normalizeHookPayload(
     // rather than blanking the row as it clears — but only a row this producer wrote.
     const promptCacheKey = producerCacheKey(paneKey, source)
     const ownPreviousPrompt = producerPreviousStatus(state, paneKey, source)?.payload.prompt
-    if (ownPreviousPrompt && !state.lastPromptByPaneKey.has(promptCacheKey)) {
-      state.lastPromptByPaneKey.set(promptCacheKey, ownPreviousPrompt)
+    if (ownPreviousPrompt && !state.lastPromptByProducerKey.has(promptCacheKey)) {
+      state.lastPromptByProducerKey.set(promptCacheKey, ownPreviousPrompt)
     }
   }
 

@@ -56,7 +56,7 @@ export function normalizeAntigravityEvent(
 
   const resetsTurn = isNewTurnEvent('antigravity', eventName)
   // Why: once the prompt is cached for this pane, avoid rescanning the (potentially large) Antigravity transcript per hook.
-  const cachedPrompt = resetsTurn ? undefined : state.lastPromptByPaneKey.get(cacheKey)
+  const cachedPrompt = resetsTurn ? undefined : state.lastPromptByProducerKey.get(cacheKey)
   const effectivePrompt =
     promptText || cachedPrompt || readLastUserPromptFromTranscript(transcriptPath) || ''
   const snapshot = resolveToolState(

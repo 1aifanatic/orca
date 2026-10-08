@@ -71,7 +71,7 @@ describe("a nested agent's normalizer ignores another agent's row", () => {
         mainAgent: { state: 'done', stateStartedAt: 1 }
       }
     })
-    expect(fresh.lastPromptByPaneKey.get(producerCacheKey(PANE_KEY, 'claude'))).toBe(prompt)
+    expect(fresh.lastPromptByProducerKey.get(producerCacheKey(PANE_KEY, 'claude'))).toBe(prompt)
     expect(fresh.claudeLeadStateByPaneKey.has(PANE_KEY)).toBe(source === 'claude')
   })
 })

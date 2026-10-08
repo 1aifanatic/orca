@@ -32,7 +32,7 @@ export function buildClaudeStatusPayload(
     ? resolveToolState(state, cacheKey, extractToolFields('claude', eventName, hookPayload), {
         resetOnNewTurn: isNewTurnEvent('claude', eventName)
       })
-    : (state.lastToolByPaneKey.get(cacheKey) ?? {})
+    : (state.lastToolByProducerKey.get(cacheKey) ?? {})
 
   // Why: every path writes the main agent record before building, so the row's `mainAgent`, its
   // `interrupted` flag and its turn stamp are all read off that one record rather than restated by

@@ -47,7 +47,7 @@ export function buildCodexStatusPayload(
     ? resolveToolState(state, cacheKey, extractToolFields('codex', eventName, hookPayload), {
         resetOnNewTurn: isNewTurnEvent('codex', eventName)
       })
-    : (state.lastToolByPaneKey.get(cacheKey) ?? {})
+    : (state.lastToolByProducerKey.get(cacheKey) ?? {})
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
 
   return normalizeAgentStatusPayload({

@@ -247,10 +247,10 @@ export function seedClaudeLeadTurnFromPersistedStatus(
     })
     const cacheKey = producerCacheKey(paneKey, 'claude')
     if (status.payload.prompt) {
-      state.lastPromptByPaneKey.set(cacheKey, status.payload.prompt)
+      state.lastPromptByProducerKey.set(cacheKey, status.payload.prompt)
     }
     if (status.payload.lastAssistantMessage) {
-      state.lastToolByPaneKey.set(cacheKey, {
+      state.lastToolByProducerKey.set(cacheKey, {
         lastAssistantMessage: status.payload.lastAssistantMessage,
         lastAssistantMessageIsToolOutput: status.payload.lastAssistantMessageIsToolOutput
       })
@@ -280,8 +280,8 @@ export function reapRestoredClaudeSubagentsForDeadPane(
 /** A cleared wait drops the cached tool and card but keeps the lead's last reply. */
 function keepOnlyClaudeAssistantMessage(state: HookListenerState, paneKey: string): void {
   const cacheKey = producerCacheKey(paneKey, 'claude')
-  const previousTool = state.lastToolByPaneKey.get(cacheKey)
-  state.lastToolByPaneKey.set(
+  const previousTool = state.lastToolByProducerKey.get(cacheKey)
+  state.lastToolByProducerKey.set(
     cacheKey,
     previousTool?.lastAssistantMessage
       ? {

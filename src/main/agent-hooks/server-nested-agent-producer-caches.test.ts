@@ -146,8 +146,8 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
     const state = server._getStateForTests()
     const claudeKey = producerCacheKey(PANE, 'claude')
     const before = {
-      prompt: state.lastPromptByPaneKey.get(claudeKey),
-      tool: structuredClone(state.lastToolByPaneKey.get(claudeKey)),
+      prompt: state.lastPromptByProducerKey.get(claudeKey),
+      tool: structuredClone(state.lastToolByProducerKey.get(claudeKey)),
       lead: structuredClone(state.claudeLeadStateByPaneKey.get(PANE)),
       sessionOwner: state.claudeSessionOwnerByPaneKey.get(PANE)
     }
@@ -163,8 +163,8 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
     }
 
     expect({
-      prompt: state.lastPromptByPaneKey.get(claudeKey),
-      tool: state.lastToolByPaneKey.get(claudeKey),
+      prompt: state.lastPromptByProducerKey.get(claudeKey),
+      tool: state.lastToolByProducerKey.get(claudeKey),
       lead: state.claudeLeadStateByPaneKey.get(PANE),
       sessionOwner: state.claudeSessionOwnerByPaneKey.get(PANE)
     }).toEqual(before)
@@ -175,7 +175,7 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
     const state = server._getStateForTests()
     const moved = makePaneKey('tab-1', '99999999-9999-4999-8999-999999999999')
     const producerKeys = (paneKey: string): string[] =>
-      [...state.lastPromptByPaneKey.keys(), ...state.lastToolByPaneKey.keys()].filter(
+      [...state.lastPromptByProducerKey.keys(), ...state.lastToolByProducerKey.keys()].filter(
         (key) => key === paneKey || key.startsWith(`${paneKey}\0`)
       )
     expect(new Set(producerKeys(PANE))).toEqual(
@@ -184,10 +184,10 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
 
     movePaneCacheState(state, PANE, moved)
     expect(producerKeys(PANE)).toEqual([])
-    expect(state.lastPromptByPaneKey.get(producerCacheKey(moved, 'claude'))).toBe(
+    expect(state.lastPromptByProducerKey.get(producerCacheKey(moved, 'claude'))).toBe(
       'claude: refactor the parser'
     )
-    expect(state.lastPromptByPaneKey.get(producerCacheKey(moved, 'codex'))).toBe(
+    expect(state.lastPromptByProducerKey.get(producerCacheKey(moved, 'codex'))).toBe(
       'codex: summarize the diff'
     )
 
@@ -201,7 +201,7 @@ describe('agents nested on one pane keep their own prompt and tool caches', () =
 
     server.dropStatusEntriesByTabPrefix('tab-1')
 
-    expect([...state.lastPromptByPaneKey.keys()]).toEqual([])
-    expect([...state.lastToolByPaneKey.keys()]).toEqual([])
+    expect([...state.lastPromptByProducerKey.keys()]).toEqual([])
+    expect([...state.lastToolByProducerKey.keys()]).toEqual([])
   })
 })
