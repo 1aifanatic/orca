@@ -57,6 +57,7 @@ export function announceSettledLaunchFollowUps(
 export const AGENT_LAUNCH_FOLLOW_UP_METHODS = [
   defineMethod({
     name: 'agent.takeLaunchFollowUps',
+    permission: 'workspace',
     params: AgentTakeLaunchFollowUps,
     handler: async (params, context): Promise<AgentLaunchFollowUpTake> => {
       const callerKey = agentLaunchOperationCallerKey(context)
