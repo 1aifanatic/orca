@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from 'node:fs'
+import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -18,6 +19,33 @@ const mutations = [
     params: { inject: true, to: 'orca_session_id:chat' }
   }
 ]
+
+// Why: past maxConnections the server never replies (the socket closes or just hangs), so bound the wait.
+function sendOrNoReply(
+  endpoint: string,
+  request: Record<string, unknown>
+): Promise<Record<string, unknown> | 'no reply'> {
+  return new Promise((resolve) => {
+    const socket = createConnection(endpoint)
+    const timer = setTimeout(() => socket.destroy(), 5_000)
+    let buffer = ''
+    socket.setEncoding('utf8')
+    socket.on('error', () => resolve('no reply'))
+    socket.on('close', () => {
+      clearTimeout(timer)
+      resolve('no reply')
+    })
+    socket.on('data', (chunk: string) => {
+      buffer += chunk
+      const newlineIndex = buffer.indexOf('\n')
+      if (newlineIndex !== -1) {
+        resolve(JSON.parse(buffer.slice(0, newlineIndex)))
+        socket.end()
+      }
+    })
+    socket.on('connect', () => socket.write(`${JSON.stringify(request)}\n`))
+  })
+}
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve = (): void => {}
@@ -146,4 +174,62 @@ describe('slow mutations under passive observation load', () => {
       }
     }
   )
+
+  it('still answers a short RPC with every observer slot and as many slow actions held open', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-mutation-admission-'))
+    const runtime = new OrcaRuntimeService()
+    const server = new OrcaRuntimeRpcServer({ runtime, userDataPath })
+    const held = deferred()
+    const dispatchedActions = new Set<string>()
+    vi.spyOn(server['dispatcher'], 'dispatch').mockImplementation(async (request) => {
+      if (request.method === 'terminal.send') {
+        dispatchedActions.add(request.id)
+      }
+      if (request.method !== 'status.get') {
+        await held.promise
+      }
+      return { id: request.id, ok: true, result: {}, _meta: { runtimeId: runtime.getRuntimeId() } }
+    })
+    await server.start()
+    const sessions: ReturnType<typeof openFramedSession>[] = []
+    try {
+      const metadata = readRuntimeMetadata(userDataPath)
+      if (!metadata?.transports[0]) {
+        throw new Error('Missing test transport')
+      }
+      const endpoint = metadata.transports[0].endpoint
+      const cap = server['longPollCap']
+      for (let index = 0; index < cap; index += 1) {
+        sessions.push(
+          openFramedSession(endpoint, {
+            id: `observer-${index}`,
+            authToken: metadata.authToken,
+            method: 'terminal.wait'
+          }),
+          openFramedSession(endpoint, {
+            id: `action-${index}`,
+            authToken: metadata.authToken,
+            method: 'terminal.send',
+            params: { agentPrompt: true }
+          })
+        )
+      }
+      await waitFor(() => server['activeLongPolls'] === cap && dispatchedActions.size === cap)
+
+      const short = await sendOrNoReply(endpoint, {
+        id: 'short',
+        authToken: metadata.authToken,
+        method: 'status.get'
+      })
+      expect(short).toMatchObject({ id: 'short', ok: true })
+    } finally {
+      held.resolve()
+      for (const session of sessions) {
+        session.socket.destroy()
+      }
+      await Promise.all(sessions.map((session) => session.done.catch(() => {})))
+      await server.stop()
+      rmSync(userDataPath, { recursive: true, force: true })
+    }
+  })
 })

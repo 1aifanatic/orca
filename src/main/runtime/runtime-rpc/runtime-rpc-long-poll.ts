@@ -3,7 +3,7 @@ import { ORCA_SESSION_ADDRESS_PREFIX } from '../../../shared/orca-session-addres
 
 export const KEEPALIVE_INTERVAL_MS = 10_000
 
-// Why: cap long-polls at half the 32-slot connection budget so they can't starve short RPCs; overflow → runtime_busy. See §7 risk #2.
+// Why: cap observer long-polls far below the 128-connection socket budget so they can't starve actions or short RPCs; overflow → runtime_busy.
 export const LONG_POLL_CAP = 16
 
 // Why: orchestration.ask blocks on a human/agent reply for minutes, an order of
@@ -16,7 +16,7 @@ export const BROWSER_HOST_LONG_POLL_SHARE = 0.5
 // Why: asks and permanent hosts together retain the prior quarter-budget reservation for waits.
 export const SPECIALIZED_LONG_POLL_SHARE = 0.75
 
-// Mutations need keepalive and cancellation, but passive observers must never gate their dispatch.
+// Why: mutations need keepalive and cancellation but take no slot, so passive observers never refuse a user's action.
 export type RuntimeLongPollClass = 'ask' | 'browser-host' | 'wait' | 'mutation'
 
 // Why: single classifier for long-poll requests (handlers that block on an external event), shared by counter/abort/keepalive. See §3.1.

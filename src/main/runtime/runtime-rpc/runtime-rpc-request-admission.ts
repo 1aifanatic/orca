@@ -43,8 +43,8 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     }
   }
 
-  // Why: one fence for both transports — the total cap protects short RPCs, the ask
-  // sub-cap protects terminal.wait / check --wait from slow reply-blocked asks.
+  // Why: one fence for both transports — the total cap keeps observers well below the connection
+  // budget (mutations are not charged); the ask sub-cap protects waits from slow reply-blocked asks.
   // Returns the rejection message, or null once the slot is reserved.
   protected admitLongPoll(
     longPoll: RuntimeLongPollClass | null,
