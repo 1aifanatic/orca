@@ -233,6 +233,8 @@ export type StructuredAgentSessionStartedEvent = {
   restoreSkippedOptions: readonly string[]
   /** Values the child showed it cannot run: a report naming the same value is not persisted. */
   retiredOptions?: Readonly<Record<string, string>>
+  /** What the child listed at startup, saved as its account's catalog even if no view reads it. */
+  catalogListing?: AgentModelCatalogLiveListing
 }
 
 /** A running child showed saved options it cannot run, as a model the provider reports missing.

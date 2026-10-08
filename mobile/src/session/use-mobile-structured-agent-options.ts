@@ -27,7 +27,10 @@ import {
 } from './mobile-structured-agent-session-rpc'
 import { persistMobileStructuredOptionPicks } from './mobile-native-chat-session-option-persistence'
 import { useMobileHostModelCatalogUpgrade } from './use-mobile-host-model-catalog-upgrade'
-import { mobileCreatedStructuredSession } from './mobile-created-structured-sessions'
+import {
+  forgetMobileCreatedStructuredSession,
+  mobileCreatedStructuredSession
+} from './mobile-created-structured-sessions'
 import { encodeStructuredAgentSessionOptionValue } from '../../../src/shared/structured-agent-session-option-codec'
 
 type StructuredOptionsController = {
@@ -114,6 +117,8 @@ export function useMobileStructuredAgentOptions(args: {
     const readGeneration = optionMutationGeneration.current
     void callAgentSession<AgentSessionOptionsResult>(client, 'agentSession.options', { sessionId })
       .then((result) => {
+        // This view keeps its latch; a later one may run a model picked here.
+        forgetMobileCreatedStructuredSession(sessionId)
         if (!stale && optionMutationGeneration.current === readGeneration) {
           setConversationSupport({ sessionId, commands: result.conversationCommands ?? [] })
           updateOptionState((current) =>

@@ -512,6 +512,50 @@ describe('useMobileStructuredAgentOptions host catalog', () => {
     }
   )
 
+  it('does not name the listed default when a chat this phone created is reopened', async () => {
+    const sessionId = 'grok-reopened'
+    rememberMobileCreatedStructuredSession(sessionId, 'id:wt-1')
+    const live = { ...OPTIONS, current: { model: 'gpt-fast', confirmed: ['model'] } }
+    const first = optionsClient(
+      () => Promise.resolve(live),
+      async () => HOST_CATALOG
+    )
+    const { mutate } = recordingMutate(async () => ({ status: 'unknown' }))
+    const opened = await mountOptions({
+      ...BASE,
+      agent: 'grok',
+      sessionId,
+      client: first.client,
+      mutate
+    })
+    await settle()
+    await opened.unmount()
+
+    const pending = deferred<AgentSessionOptionsResult>()
+    const second = optionsClient(
+      () => pending.promise,
+      async () => HOST_CATALOG
+    )
+    const reopened = await mountOptions({
+      ...BASE,
+      agent: 'grok',
+      sessionId,
+      client: second.client,
+      mutate
+    })
+    await settle()
+
+    expect(second.methods('agentSession.modelCatalog')[0]?.params).toEqual({
+      agent: 'grok',
+      sessionId
+    })
+    expect(currentValueOf(reopened.current().optionSnapshot, 'model')).toBeUndefined()
+    pending.resolve(live)
+    await settle()
+    expect(currentValueOf(reopened.current().optionSnapshot, 'model')).toBe('gpt-fast')
+    await reopened.unmount()
+  })
+
   it('waits once for the host’s first listing of the account', async () => {
     const catalog = vi.fn(async (params: unknown): Promise<AgentSessionModelCatalogResult> =>
       typeof params === 'object' && params !== null && 'waitForListing' in params

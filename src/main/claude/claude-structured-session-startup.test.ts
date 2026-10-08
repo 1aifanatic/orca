@@ -87,7 +87,9 @@ describe('Claude structured session publishes before the CLI answers initialize'
       acquisitionGeneration: expect.any(String),
       // What the child was launched with, carried so the host never asks the CLI again.
       reportedOptions: expect.objectContaining({ model: 'opus' }),
-      restoreSkippedOptions: []
+      restoreSkippedOptions: [],
+      // The account listing initialize answered, for the host's catalog.
+      catalogListing: { models: [expect.objectContaining({ id: 'claude-sonnet' })] }
     })
     expect(claude.connections[0].calls.map(({ subtype }) => subtype)).toEqual([
       'initialize',

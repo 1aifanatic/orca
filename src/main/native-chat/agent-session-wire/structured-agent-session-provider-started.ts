@@ -45,6 +45,9 @@ export function settleStructuredAgentSessionProviderStarted(
     ) {
       return
     }
+    if (event.catalogListing) {
+      context.deps.modelCatalog?.recordLiveListing(event.sessionId, event.catalogListing)
+    }
     try {
       await persistStartedOptions(context, event)
     } catch (error) {
