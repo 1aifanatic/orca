@@ -41,8 +41,54 @@ describe('OMP tool updates', () => {
     })
     expect(update).toMatchObject({
       content: [],
-      rawOutput: { stdout: 'done\n\nCommand exited with code 3' }
+      rawOutput: { stdout: 'done\n\nCommand exited with code 3', exitCode: 0 }
     })
-    expect(update.rawOutput).not.toHaveProperty('exitCode')
+  })
+
+  const command = (
+    status: ToolCallUpdate['status'],
+    details: Record<string, unknown>,
+    rawInput?: unknown
+  ): ToolCallUpdate => ({
+    toolCallId: 'call-1',
+    status,
+    ...(rawInput === undefined ? {} : { rawInput }),
+    rawOutput: { content: [{ type: 'text', text: 'ok' }], details },
+    content: [text('$ ./run'), text('ok')]
+  })
+
+  it('shows exit 0 for a foreground command that completed, since OMP omits a zero exit', () => {
+    expect(normalize(command('completed', { wallTimeMs: 12 })).rawOutput).toMatchObject({
+      stdout: 'ok',
+      exitCode: 0
+    })
+    expect(normalize(command('completed', { signal: null })).rawOutput).toMatchObject({
+      exitCode: 0
+    })
+  })
+
+  it('infers no exit code for a command that is running, timed out, signalled or in the background', () => {
+    for (const update of [
+      command('in_progress', {}),
+      command('completed', { timedOut: true }),
+      command('completed', { signal: 'SIGTERM' }),
+      command('completed', { async: { jobId: 'job-1' } }),
+      command('completed', {}, { command: './run', async: true })
+    ]) {
+      expect(normalize(update).rawOutput).not.toHaveProperty('exitCode')
+    }
+  })
+
+  it("keeps a failed command's reported exit code", () => {
+    const update = normalize({
+      toolCallId: 'call-1',
+      status: 'failed',
+      rawOutput: {
+        content: [{ type: 'text', text: 'hi\n\nCommand exited with code 3' }],
+        details: { exitCode: 3 }
+      },
+      content: [text('$ ./run'), text('hi\n\nCommand exited with code 3')]
+    })
+    expect(update.rawOutput).toMatchObject({ stdout: 'hi', exitCode: 3 })
   })
 })
