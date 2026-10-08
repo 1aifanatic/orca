@@ -102,7 +102,7 @@ describe('ACP restart recovery from the agent store', () => {
     expect(
       reconcileSubmissions({
         submissions: [...load.state.submissions.values()],
-        history: { ...window!, startFence: null }
+        history: { ...window!, start: null }
       })
     ).toEqual([
       {
@@ -124,7 +124,7 @@ describe('ACP restart recovery from the agent store', () => {
     expect(
       reconcileSubmissions({
         submissions: [...load.state.submissions.values()],
-        history: { ...window!, startFence: null }
+        history: { ...window!, start: null }
       })
     ).toMatchObject([{ clientMessageId: 'held', outcome: 'unknown' }])
   })
@@ -161,7 +161,7 @@ describe('ACP restart recovery from the agent store', () => {
     expect(
       reconcileSubmissions({
         submissions: [...load.state.submissions.values()],
-        history: { ...window!, startFence: null }
+        history: { ...window!, start: null }
       })
     ).toMatchObject([{ clientMessageId: 'held', outcome: 'accepted', providerItemId: 'msg_2' }])
   })

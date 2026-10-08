@@ -85,12 +85,18 @@ function history(input: {
   }
 }
 
-/** Read from the resume point the sends' own owner, at fence 1, left. */
+/** Read from a resume point the sends' own owner, at fence 1, set before handing them over. */
 function window(
   items: ProviderHistoryItem[],
   overrides: Partial<PlacedProviderHistoryWindow> = {}
 ): PlacedProviderHistoryWindow {
-  return { items, boundaryConsistent: true, turnInFlight: false, startFence: 1, ...overrides }
+  return {
+    items,
+    boundaryConsistent: true,
+    turnInFlight: false,
+    start: { fence: 1, movedAt: 0 },
+    ...overrides
+  }
 }
 
 beforeEach(async () => {
@@ -478,21 +484,21 @@ describe('reconciliation matching', () => {
     // The owner at fence 2 finished a turn after this send: its resume point may sit past it.
     const [outcome] = reconcileSubmissions({
       submissions: [submissions[0]!],
-      history: window([], { startFence: 2 })
+      history: window([], { start: { fence: 2, movedAt: 0 } })
     })
     expect(outcome).toEqual({
       clientMessageId: 'cm_1',
       outcome: 'unknown',
-      reason: 'history_starts_after_submission'
+      reason: 'history_start_unproven'
     })
   })
 
   it('stays unknown when no recorded resume point bounds the read', () => {
     const [outcome] = reconcileSubmissions({
       submissions: [submissions[0]!],
-      history: window([], { startFence: null })
+      history: window([], { start: null })
     })
-    expect(outcome).toMatchObject({ outcome: 'unknown', reason: 'history_starts_after_submission' })
+    expect(outcome).toMatchObject({ outcome: 'unknown', reason: 'history_start_unproven' })
   })
 
   it('still accepts a send a later-started history holds', () => {
@@ -500,18 +506,43 @@ describe('reconciliation matching', () => {
       submissions: [submissions[0]!],
       history: window(
         [history({ itemId: 'item-1', clientId: 'cm_1', text: 'same text', ordinal: 0 })],
-        { startFence: 2 }
+        { start: { fence: 2, movedAt: 0 } }
       )
     })
     expect(outcome).toMatchObject({ outcome: 'accepted', providerItemId: 'item-1' })
   })
 
-  it('rejects an absent send handed over after the start was last moved', () => {
+  it('rejects an absent send handed over at a fence after the start last moved', () => {
     const [outcome] = reconcileSubmissions({
-      submissions: [{ ...submissions[0]!, handedOverFence: 3 }],
-      history: window([], { startFence: 2 })
+      submissions: [{ ...submissions[0]!, handedOverFence: 3, handedOverAt: 1 }],
+      history: window([], { start: { fence: 2, movedAt: 50 } })
     })
     expect(outcome).toMatchObject({ outcome: 'rejected', reason: 'not_delivered' })
+  })
+
+  it('rejects an absent send its own owner handed over after a turn moved the start', () => {
+    // Turn 1 ended at 10; the send went out at 20 and the host died before the agent took it.
+    const [outcome] = reconcileSubmissions({
+      submissions: [{ ...submissions[0]!, handedOverAt: 20 }],
+      history: window([], { start: { fence: 1, movedAt: 10 } })
+    })
+    expect(outcome).toMatchObject({ outcome: 'rejected', reason: 'not_delivered' })
+  })
+
+  it.each([
+    ['after', 30],
+    ['at the same instant as', 20]
+  ])('leaves a send unknown when its own owner moved the start %s its handover', (_, movedAt) => {
+    // The agent ran the send without its echo being recorded, and the turn's end moved the start.
+    const [outcome] = reconcileSubmissions({
+      submissions: [{ ...submissions[0]!, handedOverAt: 20 }],
+      history: window([], { start: { fence: 1, movedAt } })
+    })
+    expect(outcome).toEqual({
+      clientMessageId: 'cm_1',
+      outcome: 'unknown',
+      reason: 'history_start_unproven'
+    })
   })
 
   it('leaves settled submissions alone', () => {

@@ -36,7 +36,7 @@ export type ProviderHistoryItem = {
 }
 
 export type ProviderHistoryWindow = {
-  /** Provider items observed at or after the session's recorded resume point. */
+  /** Provider items the read found: with a consistent boundary, all of them from the resume point on. */
   items: readonly ProviderHistoryItem[]
   /**
    * The history read actually started at the session's recorded resume point. A
@@ -48,14 +48,14 @@ export type ProviderHistoryWindow = {
   turnInFlight: boolean
 }
 
+/** When the resume point the read started at last moved: only the owner at `fence` moves it, and
+ *  `movedAt` is on that owner's clock, the one its journal rows are stamped with. */
+export type ProviderHistoryWindowStart = { fence: number; movedAt: number }
+
 /** A window placed against the sends it is asked about. */
 export type PlacedProviderHistoryWindow = ProviderHistoryWindow & {
-  /**
-   * The fence of the owner that last moved the resume point the read started at; null when no
-   * recorded resume point bounds it. Only that owner moves it, so a send handed over at an earlier
-   * fence may sit before the start, where its absence proves nothing.
-   */
-  startFence: number | null
+  /** null when no recorded resume point bounds the read. */
+  start: ProviderHistoryWindowStart | null
 }
 
 export type SubmissionReconciliation =
@@ -74,7 +74,7 @@ export type SubmissionUnknownReason =
   | 'history_boundary_inconsistent'
   | 'turn_in_flight'
   | 'ambiguous_match'
-  | 'history_starts_after_submission'
+  | 'history_start_unproven'
 
 /**
  * Resolve every unsettled submission against provider history.
@@ -211,7 +211,7 @@ function resolveOne(
     return {
       clientMessageId: submission.clientMessageId,
       outcome: 'unknown',
-      reason: 'history_starts_after_submission'
+      reason: 'history_start_unproven'
     }
   }
   // Absent from a history we can trust the boundary of, with nothing running:
@@ -223,18 +223,19 @@ function resolveOne(
   }
 }
 
-/**
- * A later owner moves the resume point past whatever its child resumed, delivered sends included,
- * so only a send handed over at the start's fence or later provably follows the start. At that
- * same fence the point moves only past turns the child ran, and a send it ran was accepted live.
- */
+/** Absence proves non-delivery only past where the read starts. Moves at an earlier fence precede
+ *  any handover at a later one; at the same fence, the owner's clock orders them, ties unproven. */
 function windowStartsBeforeHandover(
   submission: AgentJournalSubmission,
   history: PlacedProviderHistoryWindow
 ): boolean {
-  return (
-    history.startFence !== null &&
-    submission.handedOverFence !== undefined &&
-    submission.handedOverFence >= history.startFence
-  )
+  const { start } = history
+  const fence = submission.handedOverFence
+  if (!start || fence === undefined) {
+    return false
+  }
+  if (fence !== start.fence) {
+    return fence > start.fence
+  }
+  return start.movedAt < (submission.handedOverAt ?? submission.submittedAt)
 }

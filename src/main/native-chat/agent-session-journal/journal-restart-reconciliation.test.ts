@@ -68,12 +68,18 @@ function history(uuid: string, text: string): ProviderHistoryItem {
   }
 }
 
-/** Read from the resume point the sends' own owner, at fence 1, left. */
+/** Read from a resume point the sends' own owner, at fence 1, set before handing them over. */
 function window(
   items: ProviderHistoryItem[],
   overrides: Partial<PlacedProviderHistoryWindow> = {}
 ): PlacedProviderHistoryWindow {
-  return { items, boundaryConsistent: true, turnInFlight: false, startFence: 1, ...overrides }
+  return {
+    items,
+    boundaryConsistent: true,
+    turnInFlight: false,
+    start: { fence: 1, movedAt: 0 },
+    ...overrides
+  }
 }
 
 /** A host that wrote the submission row and died before learning its outcome. */

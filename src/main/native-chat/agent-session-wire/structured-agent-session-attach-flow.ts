@@ -246,8 +246,6 @@ export async function performAttach(
     await input.beforeJournalOpen?.()
     attached = await attachJournal({
       record,
-      params,
-      adapter: input.adapter,
       openConversation: input.openConversation,
       logger: input.logger,
       providerHistoryWindow

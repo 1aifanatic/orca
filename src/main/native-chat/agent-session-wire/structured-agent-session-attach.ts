@@ -44,10 +44,8 @@ import { agentSessionProviderHandleChainHead } from '../../../shared/agent-sessi
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { reconcileJournalSubmissionsAgainstHistory } from '../agent-session-journal/journal-restart-reconciliation'
 import type { PlacedProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { structuredAgentSessionRefusalMessage } from './structured-agent-session-refusal-message'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { sampleProviderHistoryWindow } from './structured-agent-session-history-sample'
 
 /**
  * Everything a client may declare about the session it wants. Deliberately no
@@ -198,73 +196,35 @@ export type AttachedJournal = {
  */
 export async function attachJournal(input: {
   record: AgentSessionRecord
-  params: AgentSessionAttachParams
-  adapter: StructuredAgentSessionAdapter
   logger: StructuredAgentSessionLogger
   /** The host's open conversation, whose journal the attach adopts. */
   openConversation: (record: AgentSessionRecord) => Promise<AgentSessionJournal>
-  /** Provider history sampled before a new child is acquired. `null` means the
-   *  adapter had no usable history; omit to read lazily for direct callers. */
-  providerHistoryWindow?: PlacedProviderHistoryWindow | null
+  /** Provider history sampled before a new child is acquired; null when there is none to use. */
+  providerHistoryWindow: PlacedProviderHistoryWindow | null
 }): Promise<AttachedJournal> {
-  const identity = journalIdentityFor(input.record, input.params)
-  const fence = input.record.lease.runtimeFence
   const journal = await input.openConversation(input.record)
-  await reconcileAgainstProviderHistory({
-    adapter: input.adapter,
-    logger: input.logger,
-    identity,
-    journal,
-    fence,
-    record: input.record,
-    ...(Object.hasOwn(input, 'providerHistoryWindow')
-      ? { history: input.providerHistoryWindow }
-      : {})
-  })
+  if (input.providerHistoryWindow) {
+    try {
+      await reconcileJournalSubmissionsAgainstHistory({
+        journal,
+        fence: input.record.lease.runtimeFence,
+        history: input.providerHistoryWindow
+      })
+    } catch (error) {
+      // Best effort: a send whose verdict did not save stays `unknown`, for a later attach's window.
+      input.logger.warn('settling earlier sends against provider history failed', {
+        scope: 'attach-send-reconcile',
+        sessionId: input.record.sessionId,
+        error
+      })
+    }
+  }
   return {
     journal,
     unconfirmedClientMessageIds: journal
       .submissions()
       .filter((entry) => entry.dispatchState === 'unknown' && entry.recovered === true)
       .map((entry) => entry.clientMessageId)
-  }
-}
-
-/** Best effort: a send whose verdict fails to save stays `unknown`, and each later attach decides
- *  it again against its own window. */
-async function reconcileAgainstProviderHistory(input: {
-  adapter: StructuredAgentSessionAdapter
-  logger: StructuredAgentSessionLogger
-  identity: AgentSessionJournalIdentity
-  journal: AgentSessionJournal
-  fence: number
-  record: AgentSessionRecord
-  history?: PlacedProviderHistoryWindow | null
-}): Promise<void> {
-  const history =
-    input.history === undefined
-      ? await sampleProviderHistoryWindow({
-          adapter: input.adapter,
-          identity: input.identity,
-          record: input.record,
-          ownerAlreadyAdmitted: false
-        })
-      : input.history
-  if (!history) {
-    return
-  }
-  try {
-    await reconcileJournalSubmissionsAgainstHistory({
-      journal: input.journal,
-      fence: input.fence,
-      history
-    })
-  } catch (error) {
-    input.logger.warn('settling earlier sends against provider history failed', {
-      scope: 'attach-send-reconcile',
-      sessionId: input.identity.sessionId,
-      error
-    })
   }
 }
 
