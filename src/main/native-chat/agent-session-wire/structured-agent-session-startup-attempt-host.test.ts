@@ -45,6 +45,8 @@ let host: StructuredAgentSessionHost
 let acquire: Mock<StructuredAgentSessionAdapter['acquire']>
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
+let setOption: Mock<StructuredAgentSessionAdapter['setOption']>
+let readAcquisitionOptions: StructuredAgentSessionAdapter['readAcquisitionOptions']
 let startupLimits: Partial<StructuredAgentSessionStartupLimits> | undefined
 
 function acquisition(input: StructuredAgentSessionAcquireInput): AgentSessionAcquisition {
@@ -84,7 +86,8 @@ async function startHost(): Promise<void> {
       releaseAcquisition: vi.fn(async () => true),
       cancelTurn: vi.fn(async () => ({ cancelled: false })),
       answerPrompt: vi.fn(async () => undefined),
-      setOption: vi.fn(async () => undefined)
+      setOption,
+      ...(readAcquisitionOptions ? { readAcquisitionOptions } : {})
     },
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
@@ -119,6 +122,8 @@ beforeEach(async () => {
     }
   }))
   closeSession = vi.fn(async () => true)
+  setOption = vi.fn(async () => undefined)
+  readAcquisitionOptions = undefined
   store = await openTestAgentSessionRecordStore(root)
   await startHost()
   expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
@@ -161,6 +166,12 @@ async function submission(id: string): Promise<AgentJournalSubmission | undefine
   )
 }
 
+/** The revision the attempt's `optionRevision()` answers now, as a report's read would stamp. */
+function optionRevisionNow(): number {
+  const [input] = acquire.mock.calls.at(-1)!
+  return input.optionRevision!()
+}
+
 function startedEvent(generation = `generation-${acquire.mock.calls.length}`) {
   return {
     type: 'started' as const,
@@ -168,8 +179,26 @@ function startedEvent(generation = `generation-${acquire.mock.calls.length}`) {
     fence: store.getRecord(SESSION)!.lease.runtimeFence,
     acquisitionGeneration: generation,
     reportedOptions: { model: 'default' },
-    restoreSkippedOptions: []
+    restoreSkippedOptions: [],
+    optionRevision: optionRevisionNow()
   }
+}
+
+function pick(value: string) {
+  const fields = { key: 'model', value }
+  return host.setOption(CALLER, {
+    envelope: {
+      sessionId: SESSION,
+      clientOperationId: hostTestOperationId(),
+      expectedRuntimeFence: store.getRecord(SESSION)!.lease.runtimeFence,
+      payloadFingerprint: computeAgentSessionPayloadFingerprint({
+        method: 'agentSession.setOption',
+        sessionId: SESSION,
+        fields
+      })
+    },
+    ...fields
+  })
 }
 
 /** The send's start has published its child, still starting; the host holds the send. */
@@ -350,6 +379,42 @@ describe('a start that ends before it proves itself', () => {
     await eventually(() => expect(startupAttemptOpen()).toBe(false))
   })
 
+  it('ends a ready child’s option read that never answers, and fails what it held', async () => {
+    startupLimits = { silenceMs: 50 }
+    readAcquisitionOptions = () => new Promise(() => {})
+    await restartWith(async (input) => {
+      await input.onSpawned?.(acquisition(input).process)
+      return acquisition(input)
+    })
+    const id = await accept('hello')
+
+    await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
+    expect(await submission(id)).toMatchObject(HOST_STOPPED)
+    expect(dispatch).not.toHaveBeenCalled()
+    await eventually(() => expect(startupAttemptOpen()).toBe(false))
+  })
+
+  it('ends a ready child inside its start when the chat closes before its options are read', async () => {
+    let land = (): void => {}
+    const landed = new Promise<void>((resolve) => {
+      land = resolve
+    })
+    await restartWith(async (input) => {
+      await landed
+      return acquisition(input)
+    })
+    const id = await accept('hello')
+    await eventually(() => expect(acquire).toHaveBeenCalled())
+
+    const closing = host.close(SESSION, 'evict')
+    land()
+    await expect(closing).resolves.toBeUndefined()
+
+    await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
+    expect((await submission(id))?.rejection).toMatchObject({ kind: 'chatClosed' })
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
   it('is not ended by the limit once it proved itself', async () => {
     startupLimits = { silenceMs: 50 }
     await restartWith(publishFirst)
@@ -397,23 +462,79 @@ describe('what a started child reports', () => {
   it('never overwrites a pick made after the child reported', async () => {
     await restartWith(publishFirst)
     await heldBehindStart('hello')
+    const report = { ...startedEvent(), reportedOptions: { model: 'reported' } }
     dispatch.mockImplementationOnce(async () => {
       // A pick lands while the first handover is still running.
-      await store.replaceSessionOptions({
-        sessionId: SESSION,
-        fence: store.getRecord(SESSION)!.lease.runtimeFence,
-        options: { model: 'picked' },
-        now: NOW
-      })
+      void pick('picked')
       return { state: 'admitted' as const }
     })
 
-    await host.handleAdapterEvent({ ...startedEvent(), reportedOptions: { model: 'reported' } })
-    await eventually(() => expect(dispatch).toHaveBeenCalled())
+    await host.handleAdapterEvent(report)
+    await eventually(() => expect(store.getRecord(SESSION)?.options).toEqual({ model: 'picked' }))
     await new Promise((resolve) => setTimeout(resolve, 50))
     await host.flushStreamedEvents(SESSION)
 
     expect(store.getRecord(SESSION)?.options).toEqual({ model: 'picked' })
+  })
+
+  it('never lets a settings read made before a pick undo it, even queued behind the pick', async () => {
+    await restartWith(publishFirst)
+    const id = await heldBehindStart('hello')
+    await host.handleAdapterEvent(startedEvent())
+    await eventually(async () => expect((await submission(id))?.dispatchState).toBe('accepted'))
+    await eventually(() => expect(store.getRecord(SESSION)?.options).toEqual({ model: 'default' }))
+    // The settings read starts, then the user picks while it is out.
+    const readAt = optionRevisionNow()
+    let landPick = (): void => {}
+    setOption.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          landPick = () => resolve(undefined)
+        })
+    )
+    const picked = pick('picked')
+    await eventually(() => expect(setOption).toHaveBeenCalled())
+
+    // The read answers with what the child ran before the pick, while the pick is still in flight.
+    const reported = host.handleAdapterEvent({
+      ...startedEvent(),
+      type: 'options-reported',
+      reportedOptions: { model: 'default' },
+      optionRevision: readAt
+    })
+    landPick()
+    expect(await picked).toMatchObject({ ok: true })
+    await reported
+    await host.flushStreamedEvents(SESSION)
+
+    expect(store.getRecord(SESSION)?.options).toEqual({ model: 'picked' })
+  })
+
+  it('never lands the start’s report after a newer settings report', async () => {
+    await restartWith(publishFirst)
+    await heldBehindStart('hello')
+    let landHandover = (): void => {}
+    dispatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          landHandover = () => resolve({ state: 'admitted' as const })
+        })
+    )
+    // The start's report waits on the handover; the settings report that follows it does not.
+    await host.handleAdapterEvent({ ...startedEvent(), reportedOptions: { model: 'at-start' } })
+    await eventually(() => expect(dispatch).toHaveBeenCalled())
+    const reported = host.handleAdapterEvent({
+      ...startedEvent(),
+      type: 'options-reported',
+      reportedOptions: { model: 'from-settings' }
+    })
+
+    landHandover()
+    await reported
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await host.flushStreamedEvents(SESSION)
+
+    expect(store.getRecord(SESSION)?.options).toEqual({ model: 'from-settings' })
   })
 })
 
@@ -435,5 +556,6 @@ describe('the attempt an acquire runs under', () => {
     expect(input.onOutput).toEqual(expect.any(Function))
     expect(input.attemptId).toEqual(expect.any(String))
     expect(input.signal).toBeInstanceOf(AbortSignal)
+    expect(input.optionRevision).toEqual(expect.any(Function))
   })
 })

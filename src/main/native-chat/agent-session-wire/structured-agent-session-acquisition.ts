@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
+import { waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import type {
   AgentSessionProcessIdentity,
   AgentSessionRecord
@@ -55,7 +56,8 @@ export async function acquireOwner(
       // Retries must recover the original reservation, not mint a second child.
       spawnToken,
       ...(input.eventSink ? { events: input.eventSink } : {}),
-      ...(input.acquireSignal ? { signal: input.acquireSignal } : {})
+      ...(input.acquireSignal ? { signal: input.acquireSignal } : {}),
+      ...(input.optionRevision ? { optionRevision: input.optionRevision } : {})
     })
     const progress = input.onStartupAttempt?.(attempt)
     const acquired = await input.adapter.acquire({
@@ -78,20 +80,22 @@ export async function acquireOwner(
     const options =
       providerChildPhase === 'starting'
         ? undefined
-        : await withAgentSessionCreatePhase('restore_options', input.recordPhase, async () =>
-            input.adapter.readAcquisitionOptions
-              ? input.adapter.readAcquisitionOptions({
-                  sessionId: record.sessionId,
-                  fence,
-                  ...(record.options ? { priorOptions: record.options } : {})
-                })
-              : readNativeSessionOptions({
-                  adapter: input.adapter,
-                  sessionId: record.sessionId,
-                  fence,
-                  ...(record.options ? { priorOptions: record.options } : {})
-                })
-          )
+        : await withAgentSessionCreatePhase('restore_options', input.recordPhase, async () => {
+            const read = {
+              sessionId: record.sessionId,
+              fence,
+              ...(record.options ? { priorOptions: record.options } : {})
+            }
+            // Still inside the start, so the limit or a Stop ends a read the provider never answers.
+            return waitForPromiseWithSignal(
+              Promise.resolve(
+                input.adapter.readAcquisitionOptions
+                  ? input.adapter.readAcquisitionOptions(read)
+                  : readNativeSessionOptions({ adapter: input.adapter, ...read })
+              ),
+              input.acquireSignal
+            )
+          })
     if (record.lease.ownerProcess === null) {
       await input.store.commitProcessIdentity({
         sessionId: record.sessionId,

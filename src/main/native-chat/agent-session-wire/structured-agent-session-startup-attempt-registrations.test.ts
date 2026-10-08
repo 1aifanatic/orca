@@ -172,7 +172,8 @@ describe.each(
         fence: record.lease.runtimeFence,
         acquisitionGeneration: 'generation-1',
         reportedOptions: { model: 'default' },
-        restoreSkippedOptions: []
+        restoreSkippedOptions: [],
+        optionRevision: host.collaboratorsForTests().runtimeState.optionRevisions.current(SESSION)
       })
 
       await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())

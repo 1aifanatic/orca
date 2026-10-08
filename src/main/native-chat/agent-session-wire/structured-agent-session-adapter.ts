@@ -229,6 +229,9 @@ export type StructuredAgentSessionStartedEvent = {
   restoreSkippedOptions: readonly string[]
   /** Values the child showed it cannot run: a report naming the same value is not persisted. */
   retiredOptions?: Readonly<Record<string, string>>
+  /** The attempt's `optionRevision()` as the read behind this report began: a pick or report the
+   *  host took since makes it out of date. */
+  optionRevision: number
 }
 
 /** A running child showed saved options it cannot run, as a model the provider reports missing.

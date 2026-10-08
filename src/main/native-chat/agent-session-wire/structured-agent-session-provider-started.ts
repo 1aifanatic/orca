@@ -5,12 +5,12 @@
 // This is where the host learns the start landed: the child turns `ready`, its startup attempt
 // ends, and the loop wakes to hand over what was queued meanwhile. Only once that handover is done
 // is what the child reports persisted, in a step of its own, so bookkeeping never sits between a
-// ready child and the user's first message; a failed write is reported, never thrown.
+// ready child and the user's first message; a failed write is reported, never thrown. Every report
+// is persisted only if no pick or later report came after its read (`option-revisions`).
 //
 // These run under the session's own serialized steps, which its close and sends wait on, so they
 // ask the provider nothing: the event carries what the child proved.
 
-import { isDeepStrictEqual } from 'node:util'
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import type {
   StructuredAgentSessionOptionsReportedEvent,
@@ -26,6 +26,7 @@ import {
   markProviderChildStarted,
   sameProviderChild
 } from './structured-agent-session-provider-child'
+import type { StructuredAgentSessionOptionRevisions } from './structured-agent-session-option-revisions'
 import type { StructuredAgentSessionStartupAttempts } from './structured-agent-session-startup-attempt'
 
 export type StructuredAgentSessionProviderStartedContext = {
@@ -34,22 +35,26 @@ export type StructuredAgentSessionProviderStartedContext = {
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
   publishStatus?: (sessionId: string) => void
-  runtimeState: { startupAttempts: Pick<StructuredAgentSessionStartupAttempts, 'ready'> }
+  runtimeState: {
+    startupAttempts: Pick<StructuredAgentSessionStartupAttempts, 'ready'>
+    optionRevisions: Pick<
+      StructuredAgentSessionOptionRevisions,
+      'admitReport' | 'advance' | 'current'
+    >
+  }
   /** The barrier lifts: what was accepted while the child started is handed over now. Settles once
    *  the loop has handed over all it can. */
   wakeDelivery: (sessionId: string) => Promise<void>
 }
 
-type ReportedOptions = Pick<
-  StructuredAgentSessionOptionsReportedEvent,
-  'sessionId' | 'fence' | 'acquisitionGeneration' | 'reportedOptions' | 'restoreSkippedOptions'
-> &
-  Pick<StructuredAgentSessionOptionsReportedEvent, 'retiredOptions'>
+type ReportedOptions = Omit<StructuredAgentSessionOptionsReportedEvent, 'type'>
 
 export async function settleStructuredAgentSessionProviderStarted(
   context: StructuredAgentSessionProviderStartedContext,
   event: StructuredAgentSessionStartedEvent
 ): Promise<void> {
+  // On arrival, before any wait: reports are admitted in the order the child made them.
+  const admitted = admitReportedOptions(context, event)
   // Serialized behind the attach that published this child, so the lease it proved is committed.
   const started = await context.serialize(event.sessionId, async () => {
     const session = context.sessions.get(event.sessionId)
@@ -61,15 +66,13 @@ export async function settleStructuredAgentSessionProviderStarted(
     context.runtimeState.startupAttempts.ready(event.sessionId, child)
     const delivered = context.wakeDelivery(event.sessionId)
     context.publishStatus?.(event.sessionId)
-    return { delivered, optionsAtStart: context.deps.store.getRecord(event.sessionId)?.options }
+    return { delivered }
   })
   if (!started) {
     return
   }
   // Not awaited: the adapter's next event may be what the handover itself waits on.
-  void started.delivered.then(() =>
-    persistReportedOptions(context, event, { optionsAtStart: started.optionsAtStart })
-  )
+  void started.delivered.then(() => persistReportedOptions(context, event, admitted))
 }
 
 /** What a ready child reports later, such as a read that came after its start: persisted as the
@@ -78,16 +81,26 @@ export function settleStructuredAgentSessionOptionsReported(
   context: StructuredAgentSessionProviderStartedContext,
   event: StructuredAgentSessionOptionsReportedEvent
 ): Promise<void> {
-  return persistReportedOptions(context, event, null)
+  return persistReportedOptions(context, event, admitReportedOptions(context, event))
 }
 
-/** Non-fatal, and only for the child that reported, with the record as it stood when it did: a pick
- *  made since is the user's and newer than the report. */
+function admitReportedOptions(
+  context: StructuredAgentSessionProviderStartedContext,
+  event: ReportedOptions
+): number | null {
+  return context.runtimeState.optionRevisions.admitReport(event.sessionId, event.optionRevision)
+}
+
+/** Non-fatal, and only for the child that reported, while its report is still the newest word: a
+ *  pick or a later report since it was admitted is newer than what it read. */
 function persistReportedOptions(
   context: StructuredAgentSessionProviderStartedContext,
   event: ReportedOptions,
-  snapshot: { optionsAtStart: Readonly<Record<string, string>> | undefined } | null
+  admitted: number | null
 ): Promise<void> {
+  if (admitted === null) {
+    return Promise.resolve()
+  }
   return context
     .serialize(event.sessionId, async () => {
       const child = context.sessions.get(event.sessionId)?.child
@@ -101,7 +114,7 @@ function persistReportedOptions(
         !record ||
         record.lease.runtimeFence !== event.fence ||
         !agentSessionLeaseAdmitsWriter(record.lease) ||
-        (snapshot && !isDeepStrictEqual(record.options, snapshot.optionsAtStart))
+        context.runtimeState.optionRevisions.current(event.sessionId) !== admitted
       ) {
         return
       }
@@ -136,6 +149,8 @@ export function settleStructuredAgentSessionOptionsSkipped(
   context: StructuredAgentSessionProviderStartedContext,
   event: StructuredAgentSessionOptionsSkippedEvent
 ): Promise<void> {
+  // A report read before the child showed this is out of date: it would write the value back.
+  context.runtimeState.optionRevisions.advance(event.sessionId)
   return context.serialize(event.sessionId, async () => {
     const { store } = context.deps
     const record = store.getRecord(event.sessionId)

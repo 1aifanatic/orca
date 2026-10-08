@@ -8,6 +8,7 @@ import { resolveClaudeReplayTurn } from './claude-replay-turn-resolution'
 import { claudeSessionStateEndsTurn } from './claude-session-state-turn-over'
 import { settleClaudeTurnEndWaiters } from './claude-request-end-wait'
 import {
+  createClaudeInitProof,
   readClaudeCapabilities,
   readClaudeFrameString,
   readClaudeInit
@@ -19,7 +20,6 @@ import { adoptClaudeStructuredSpawnOptions } from './claude-structured-spawn-opt
 import { createClaudeSessionJournalTranslator } from './claude-structured-journal-translation'
 import { observeClaudeFastModeFacts } from './claude-structured-session-options'
 import {
-  createClaudeInitProof,
   readClaudeStartupFacts,
   settleClaudeSessionStartup
 } from './claude-structured-session-startup'
@@ -281,6 +281,7 @@ export async function acquireClaudeSession({
         isCurrent: () => sessions.get(sessionId) === session,
         fault: (error) => callbacks.handleExit(sessionId, attempt, error),
         diagnose: (diagnostic) => emit({ type: 'auth-diagnostic', sessionId, diagnostic }),
+        optionRevision: () => input.optionRevision?.() ?? 0,
         report: (event) =>
           emit({
             ...event,

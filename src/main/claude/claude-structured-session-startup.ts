@@ -15,7 +15,8 @@ import {
   claudeInitializationAuthError,
   readClaudeCapabilities,
   readClaudeModels,
-  type ClaudeInitObservation
+  type ClaudeInitObservation,
+  type ClaudeInitProof
 } from './claude-structured-init-proof'
 import {
   claudeStructuredSessionPublicationOptions,
@@ -42,64 +43,9 @@ import {
   applyClaudeStartFastMode
 } from './claude-structured-start-fast-mode'
 
-/** The CLI's own frame naming the session it runs (system/init or a SessionStart hook). Only a
- *  SessionStart hook sends one before the first turn, so startup takes it when it came and never
- *  waits for it. */
-export type ClaudeInitProof = {
-  promise: Promise<ClaudeInitObservation>
-  resolve: (init: ClaudeInitObservation) => void
-  reject: (error: Error) => void
-  /** A frame named another provider session. */
-  refuse: () => void
-  /** The proof seen so far, or null; throws when it was refused or the child failed first. */
-  seen: () => ClaudeInitObservation | null
-  /** Set once startup has read the proof: a later refusal ends the session. */
-  onRefusal: ((error: Error) => void) | null
-}
-
-export function createClaudeInitProof(): ClaudeInitProof {
-  let resolvePromise = (_init: ClaudeInitObservation): void => {}
-  let rejectPromise = (_error: Error): void => {}
-  const promise = new Promise<ClaudeInitObservation>((resolve, reject) => {
-    resolvePromise = resolve
-    rejectPromise = reject
-  })
-  void promise.catch(() => {})
-  let outcome: { init: ClaudeInitObservation } | { error: Error } | null = null
-  const reject = (error: Error): void => {
-    outcome ??= { error }
-    rejectPromise(error)
-  }
-  const proof: ClaudeInitProof = {
-    promise,
-    resolve: (init) => {
-      outcome ??= { init }
-      resolvePromise(init)
-    },
-    reject,
-    refuse: () => {
-      // A session already proven by its own frame keeps that proof.
-      if (outcome && 'init' in outcome) {
-        return
-      }
-      const error = new Error('claude provider session expected')
-      reject(error)
-      proof.onRefusal?.(error)
-    },
-    seen: () => {
-      if (outcome && 'error' in outcome) {
-        throw outcome.error
-      }
-      return outcome?.init ?? null
-    },
-    onRefusal: null
-  }
-  return proof
-}
-
 export type StructuredAgentSessionStartedOptions = Pick<
   StructuredAgentSessionStartedEvent,
-  'reportedOptions' | 'restoreSkippedOptions' | 'retiredOptions'
+  'reportedOptions' | 'restoreSkippedOptions' | 'retiredOptions' | 'optionRevision'
 >
 
 /** A lifecycle event the start reports, before the session's identity is stamped on it. */
@@ -248,6 +194,8 @@ export async function settleClaudeSessionStartup(input: {
   isCurrent: () => boolean
   fault: (error: Error) => void
   diagnose: (diagnostic: ClaudeAuthDiagnostic) => void
+  /** The host's option revision now, stamped on each report as its read begins. */
+  optionRevision: () => number
   /** `started` once startup has proven, with what the child now reports, snapshotted from memory;
    *  then what the settings add, and any saved option the child showed it cannot run. */
   report: (event: ClaudeStartupReport) => void
@@ -285,7 +233,8 @@ export async function settleClaudeSessionStartup(input: {
         session.fastModeAtStart ? session.optionMutationSequence - 1 : undefined
       ),
       restoreSkippedOptions: [...session.restoreSkippedOptions],
-      ...claudeRetiredOptions(session)
+      ...claudeRetiredOptions(session),
+      optionRevision: input.optionRevision()
     })
     if (session.startup.state === 'pending') {
       session.startup.state = 'proven'
@@ -309,6 +258,7 @@ async function settleClaudeStartupSettings(
 ): Promise<void> {
   const { session } = input
   const sequence = session.optionMutationSequence
+  const optionRevision = input.optionRevision()
   const settings = await input.readSettings()
   if (!input.isCurrent()) {
     return
@@ -337,7 +287,8 @@ async function settleClaudeStartupSettings(
     type: 'options-reported',
     reportedOptions: claudeStartedReportedOptions(session, readClaudeModels(facts.initialization)),
     restoreSkippedOptions: [...session.restoreSkippedOptions],
-    ...claudeRetiredOptions(session)
+    ...claudeRetiredOptions(session),
+    optionRevision
   })
   if (startFastMode !== null) {
     void applyClaudeStartFastMode(session, facts, startFastMode, (event) => {

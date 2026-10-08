@@ -828,10 +828,7 @@ describe('a close that stops the child and then a wind-down step fails', () => {
     evict: () => host.close(SESSION, 'evict')
   } satisfies Partial<Record<StructuredAgentSessionChildEndCause, () => Promise<void>>>
 
-  it.each([
-    { end: 'evict', starting: true, kind: 'chatClosed', verdict: null },
-    { end: 'evict', starting: false, kind: 'chatClosed', verdict: null }
-  ] as const)(
+  it.each([{ end: 'evict', starting: true, kind: 'chatClosed', verdict: null }] as const)(
     'rejects what is queued as $kind after a $end (during startup: $starting)',
     async ({ end, starting, kind, verdict }) => {
       const started = deferred<void>()

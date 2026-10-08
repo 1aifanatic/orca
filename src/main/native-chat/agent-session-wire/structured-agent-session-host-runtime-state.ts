@@ -12,6 +12,7 @@ import {
   heldProviderChildReader,
   type ProviderChildSessions
 } from './structured-agent-session-provider-child'
+import { StructuredAgentSessionOptionRevisions } from './structured-agent-session-option-revisions'
 import { resolveStructuredSessionRecovery } from './structured-agent-session-recovery-resolution'
 import { recordAgentSessionStartup } from '../../observability/agent-session-instrumentation'
 import {
@@ -24,6 +25,7 @@ export class StructuredAgentSessionHostRuntimeState {
   private readonly eventSinks = new Map<string, DeferredStructuredAgentSessionEventSink>()
   readonly acquireAborts = new StructuredAgentSessionAcquireAborts()
   readonly startupAttempts: StructuredAgentSessionStartupAttempts
+  readonly optionRevisions = new StructuredAgentSessionOptionRevisions()
   private readonly leaseRenewer: StructuredAgentSessionLeaseRenewer
   private readonly onEventSinkFailure?: (sessionId: string, error: unknown) => void
 

@@ -28,6 +28,7 @@ export function mintStructuredAgentSessionStartupAttempt(input: {
   spawnToken: string
   events?: StructuredAgentSessionEventSink
   signal?: AbortSignal
+  optionRevision?: () => number
 }): StructuredAgentSessionStartupAttempt {
   const { record } = input
   return {
@@ -42,7 +43,8 @@ export function mintStructuredAgentSessionStartupAttempt(input: {
     },
     ...(record.options ? { options: record.options } : {}),
     ...(input.events ? { events: input.events } : {}),
-    ...(input.signal ? { signal: input.signal } : {})
+    ...(input.signal ? { signal: input.signal } : {}),
+    ...(input.optionRevision ? { optionRevision: input.optionRevision } : {})
   }
 }
 
@@ -89,6 +91,9 @@ type Tracked = {
   lastOutputAt: number
   timer: ReturnType<typeof setTimeout> | null
   expired: boolean
+  /** The limit's measure, held until an acquire it aborted settles: one that is ready anyway
+   *  reports that instead. */
+  expiry: StructuredAgentSessionStartupSettled | null
 }
 
 /** Each session's open attempt and its startup clock. A session starts one child at a time, so a
@@ -125,7 +130,8 @@ export class StructuredAgentSessionStartupAttempts {
       spawnedAt: null,
       lastOutputAt: 0,
       timer: null,
-      expired: false
+      expired: false,
+      expiry: null
     }
     this.open.set(sessionId, tracked)
     const current = (): boolean => this.open.get(sessionId) === tracked && !this.disposed
@@ -258,35 +264,45 @@ export class StructuredAgentSessionStartupAttempts {
       return
     }
     if (reason) {
-      this.report(tracked, reason)
+      tracked.expiry = this.measure(tracked, reason)
     }
     tracked.expired = true
     const { child } = tracked
     // A published child's stop is under way and ends nothing a newer attempt owns; one still
     // acquiring stays tracked until its aborted acquire is abandoned or published.
     if (child) {
+      this.report(tracked.expiry)
       this.end(sessionId)
     }
     this.deps.expire({ sessionId, attemptId: tracked.attempt.attemptId, child })
   }
 
   private settle(sessionId: string, tracked: Tracked, outcome: 'ready' | 'ended'): void {
-    if (!tracked.expired) {
-      this.report(tracked, outcome)
-    }
+    this.report(
+      tracked.expired && outcome === 'ended' ? tracked.expiry : this.measure(tracked, outcome)
+    )
     this.end(sessionId)
   }
 
-  private report(tracked: Tracked, outcome: StructuredAgentSessionStartupSettled['outcome']): void {
-    if (tracked.spawnedAt === null || this.disposed) {
+  private measure(
+    tracked: Tracked,
+    outcome: StructuredAgentSessionStartupSettled['outcome']
+  ): StructuredAgentSessionStartupSettled | null {
+    return tracked.spawnedAt === null
+      ? null
+      : {
+          agent: tracked.attempt.identity.agent,
+          outcome,
+          durationMs: Math.max(0, this.now() - tracked.spawnedAt)
+        }
+  }
+
+  private report(settled: StructuredAgentSessionStartupSettled | null): void {
+    if (!settled || this.disposed) {
       return
     }
     try {
-      this.deps.settled?.({
-        agent: tracked.attempt.identity.agent,
-        outcome,
-        durationMs: Math.max(0, this.now() - tracked.spawnedAt)
-      })
+      this.deps.settled?.(settled)
     } catch {
       // Measurement is bookkeeping: it never decides a start.
     }

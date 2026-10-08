@@ -79,9 +79,23 @@ describe('the startup clock', () => {
     vi.advanceTimersByTime(1)
 
     expect(expired).toEqual([{ sessionId: SESSION, attemptId: attempt.attemptId, child: null }])
-    expect(settled).toEqual([{ agent: 'codex', outcome: 'silent', durationMs: SILENCE_MS }])
     vi.advanceTimersByTime(CEILING_MS)
     expect(expired).toHaveLength(1)
+    // Measured at the limit, recorded once the aborted acquire settles.
+    expect(settled).toEqual([])
+    attempts.abandon(SESSION, attempt.attemptId)
+    expect(settled).toEqual([{ agent: 'codex', outcome: 'silent', durationMs: SILENCE_MS }])
+  })
+
+  it('records a start that turned ready as the limit fired as ready', () => {
+    const attempt = mint()
+    attempts.track(SESSION, attempt).spawned()
+    vi.advanceTimersByTime(SILENCE_MS)
+    expect(expired).toHaveLength(1)
+
+    attempts.published(SESSION, attempt.attemptId, { ...CHILD, phase: 'ready' })
+
+    expect(settled).toEqual([{ agent: 'codex', outcome: 'ready', durationMs: SILENCE_MS }])
   })
 
   it('keeps a slow start that is still talking past the silence limit', () => {

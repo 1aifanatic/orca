@@ -205,6 +205,7 @@ async function runAttachUnderAbort(
         attempt.startup = startup
         return startupAttempts.track(sessionId, startup)
       },
+      optionRevision: () => context.runtimeState.optionRevisions.current(sessionId),
       ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
       openConversation: async (record) => {
         const conversation = await context.openConversation(record.sessionId, {

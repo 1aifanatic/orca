@@ -59,7 +59,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
     if (await releaseLeaseOfEndedStructuredAgentSessionChild(host.context(), sessionId)) {
       return false
     }
-    return closeStructuredAgentSessionConversationUnderSerialize(
+    const closed = await closeStructuredAgentSessionConversationUnderSerialize(
       {
         sessions,
         closeStatus: (id) => {
@@ -71,6 +71,10 @@ export function createStructuredAgentSessionConversationLifetime(host: {
       sessionId,
       atRest
     )
+    if (closed) {
+      host.context().runtimeState.optionRevisions.forget(sessionId)
+    }
+    return closed
   }
 
   const idleSweep = new StructuredAgentSessionIdleSweep({
