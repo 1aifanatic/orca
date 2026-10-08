@@ -354,3 +354,43 @@ describe('a tab a phone closes on the desktop', () => {
     }
   })
 })
+
+describe('an SSH workspace whose tabs an older build left in the local partition', () => {
+  it('keeps them through the first save and a relaunch, in the SSH partition', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'orca-stranded-ssh-rows-'))
+    directories.push(directory)
+    const tab = row('tab-stranded', SSH_WORKTREE, 'server')
+    const layout = {
+      root: { type: 'leaf' as const, leafId: LEFT },
+      activeLeafId: LEFT,
+      expandedLeafId: null,
+      ptyIdsByLeafId: { [LEFT]: 'pty-stranded' }
+    }
+    const profile = JSON.parse(emptyTerminalSessionProfile())
+    profile.workspaceSession.tabsByWorktree = { [SSH_WORKTREE]: [tab] }
+    profile.workspaceSession.terminalLayoutsByTabId = { [tab.id]: layout }
+    const store = await openTopologyStore(directory, JSON.stringify(profile))
+    registerSessionHandlers(store, new OrcaRuntimeService(store))
+
+    // The window shows the reunited rows and routes them to the workspace's own partition.
+    const local = structuredClone(store.getWorkspaceSession())
+    local.tabsByWorktree = {}
+    local.terminalLayoutsByTabId = {}
+    await invokeHandlers.get('session:set')!({}, local)
+    const ssh = structuredClone(store.getWorkspaceSession(SSH_HOST))
+    ssh.tabsByWorktree = { [SSH_WORKTREE]: [tab] }
+    ssh.terminalLayoutsByTabId = { [tab.id]: layout }
+    await invokeHandlers.get('session:set')!({}, ssh, SSH_HOST)
+
+    const relaunched = await reopenTopologyStore(store, directory)
+    try {
+      const session = relaunched.getWorkspaceSession(SSH_HOST)
+      expect(session.tabsByWorktree[SSH_WORKTREE]?.map((entry) => entry.customTitle)).toEqual([
+        'server'
+      ])
+      expect(session.terminalLayoutsByTabId[tab.id]?.root).toEqual(layout.root)
+    } finally {
+      await relaunched.freezeWritesAsync()
+    }
+  })
+})

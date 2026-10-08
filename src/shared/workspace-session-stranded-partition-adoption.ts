@@ -263,7 +263,7 @@ function entryWorkspaceResolver(
 }
 
 /** The base without any rows for these workspaces, routed by the same indexes the split uses. */
-function withoutWorkspaces(
+export function withoutWorkspaces(
   base: WorkspaceSessionState,
   workspaceIds: ReadonlySet<string>
 ): WorkspaceSessionState {

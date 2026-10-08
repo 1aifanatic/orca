@@ -14,6 +14,7 @@ import { projectTabRow } from '../../runtime/terminal-topology-projection'
 import type { Store } from '../loading-store/store'
 import { resolveHostId } from '../loading-store/session-host-partitions'
 import { sameTerminalLeafSet } from './terminal-layout-set'
+import { homeStrandedRowsBeforeWindowSave } from './terminal-local-residue-homing'
 import {
   hasHostAuthoritativeTerminalMembership,
   isTerminalOwnerPartition
@@ -63,11 +64,13 @@ function overMainTopology<T extends WorkspaceSessionPatch>(
   incoming: T,
   hostId?: string | null
 ): T {
+  const homeHostIdOf = (worktreeId: string) => catalogHomeHostId(store, worktreeId)
+  homeStrandedRowsBeforeWindowSave(store, resolveHostId(hostId), homeHostIdOf)
   return mergeRendererPresentationSave(
     incoming,
     store.getWorkspaceSession(hostId),
     resolveHostId(hostId),
-    (worktreeId) => catalogHomeHostId(store, worktreeId)
+    homeHostIdOf
   )
 }
 
