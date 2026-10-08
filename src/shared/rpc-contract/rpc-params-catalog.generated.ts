@@ -31,7 +31,9 @@ import {
   AddClaudeFromConfigDirParams,
   AddCodexFromHomeParams,
   AddDataAccountParams,
+  BeginClaudeSignInParams,
   ConsumeCodexResetCreditParams,
+  FinishClaudeSignInParams,
   ListAccountsParams,
   RemoveAccountParams,
   RemoveDataAccountParams,
@@ -41,6 +43,12 @@ import {
 } from './accounts-params'
 import { PrepareCodexForWslPaneParams } from './agent-hooks-params'
 import { AgentLaunch, AgentLaunchReplay } from './agent-launch-params'
+import {
+  AttachmentReadParams,
+  AttachmentUploadAppendParams,
+  AttachmentUploadIdParams,
+  AttachmentUploadStartParams
+} from './agent-session-attachment-params'
 import { CreateAgentSessionParams, EnsureAgentSessionParams } from './agent-session-params'
 import { ReadVisualParams } from './agent-session-visual-params'
 import {
@@ -481,6 +489,7 @@ import {
   SpeechModelAction
 } from './speech-params'
 import { SshTarget } from './ssh-params'
+import { ContinueInterruptedParams } from './structured-agent-session-continue-params'
 import {
   AcknowledgeAttentionParams,
   AgentsParams,
@@ -583,7 +592,10 @@ export const RPC_PARAMS_BY_METHOD = {
   'accounts.antigravityList': AntigravityAccountTargetParams,
   'accounts.antigravityRemove': AntigravityAccountMutationParams,
   'accounts.antigravitySelect': AntigravityAccountMutationParams,
+  'accounts.beginClaudeSignIn': BeginClaudeSignInParams,
+  'accounts.cancelClaudeSignIn': FinishClaudeSignInParams,
   'accounts.consumeCodexResetCredit': ConsumeCodexResetCreditParams,
+  'accounts.finishClaudeSignIn': FinishClaudeSignInParams,
   'accounts.list': ListAccountsParams,
   'accounts.listData': null,
   'accounts.removeClaude': RemoveAccountParams,
@@ -603,6 +615,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'agentSession.cancel': CancelParams,
   'agentSession.close': OptionsParams,
   'agentSession.commands': OptionsParams,
+  'agentSession.continueInterrupted': ContinueInterruptedParams,
   'agentSession.conversationCommand': ConversationCommandParams,
   'agentSession.conversationOutline': OptionsParams,
   'agentSession.create': CreateParams,
@@ -633,6 +646,11 @@ export const RPC_PARAMS_BY_METHOD = {
   'agentSession.subscribeTurnCompletions': SubscribeTurnCompletionsParams,
   'agentSession.threadGoal': ThreadGoalParams,
   'agentSession.unsubscribe': UnsubscribeParams,
+  'agentSessionAttachment.read': AttachmentReadParams,
+  'agentSessionAttachment.uploadAbort': AttachmentUploadIdParams,
+  'agentSessionAttachment.uploadAppend': AttachmentUploadAppendParams,
+  'agentSessionAttachment.uploadCommit': AttachmentUploadIdParams,
+  'agentSessionAttachment.uploadStart': AttachmentUploadStartParams,
   'agentTeams.prepareLaunch': AgentTeamsPrepareLaunch,
   'agentTeams.tmuxCompat': AgentTeamsTmuxCompat,
   'aiVault.listSessions': AiVaultListSessionsParams,
