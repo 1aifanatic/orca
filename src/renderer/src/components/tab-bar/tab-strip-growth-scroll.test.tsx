@@ -2,6 +2,7 @@
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTabStripOverflowNavigation } from './tab-strip-overflow-navigation'
+import { beginTabStripPointerGesture } from './tab-strip-pointer-gesture'
 
 const TAB_WIDTH = 100
 const VIEWPORT_WIDTH = 300
@@ -88,19 +89,21 @@ function Strip({
   tabs,
   active,
   hostedRows = NO_HOSTED_ROWS,
-  activeHostedRow = null
+  activeHostedRow = null,
+  worktreeId = 'wt-1'
 }: {
   tabs: string[]
   active: string
   hostedRows?: string[]
   activeHostedRow?: string | null
+  worktreeId?: string
 }): React.JSX.Element {
   stripRenderCount++
   const navigation = useTabStripOverflowNavigation({
     activeVisibleTabId: active,
     activeDockSlotId: activeHostedRow ?? active,
     layoutKey: [...tabs, ...hostedRows].join(','),
-    worktreeId: 'wt-1'
+    worktreeId
   })
   subscribeToStripResize = navigation.subscribeToStripResize
   return (
@@ -145,6 +148,10 @@ function tabX(strip: HTMLElement, id: string): number {
     .left
 }
 
+function without(...closed: string[]): string[] {
+  return TABS.filter((id) => !closed.includes(id))
+}
+
 describe('tab strip scroll when tabs are added', () => {
   beforeEach(installStripLayout)
   afterEach(() => {
@@ -170,6 +177,31 @@ describe('tab strip scroll when tabs are added', () => {
     const { strip, rerender } = mountScrolled('C', 0)
     rerender(<Strip tabs={[...TABS, 'N']} active="N" />)
     expect(strip.scrollLeft).toBe(800)
+  })
+
+  it('does not let an append callback override a subsequent manual scroll', async () => {
+    const { strip, rerender } = mountScrolled('C', 0)
+    rerender(<Strip tabs={[...TABS, 'N']} active="N" />)
+    act(() => {
+      strip.scrollLeft = 400
+      strip.dispatchEvent(new Event('scroll'))
+    })
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    expect(strip.scrollLeft).toBe(400)
+  })
+
+  it('releases end-pinning on a wheel before the browser delivers its scroll event', async () => {
+    const { strip, rerender } = mountScrolled('C', 0)
+    rerender(<Strip tabs={[...TABS, 'N']} active="N" />)
+    act(() => {
+      strip.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, cancelable: true }))
+    })
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    expect(strip.scrollLeft).toBe(400)
   })
 
   it('reveals a background tab appended past the end, beside the active tab', () => {
@@ -248,6 +280,147 @@ describe('tab strip scroll when tabs are closed', () => {
     rerender(<Strip tabs={TABS.filter((id) => id !== 'E')} active="A" />)
     expect(strip.scrollLeft).toBe(300)
     expect(strip.dataset.dock).toBe('start')
+  })
+
+  it('keeps the viewed tab still when an inactive tab before the viewport closes', () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    rerender(<Strip tabs={without('B')} active="F" />)
+    expect(strip.scrollLeft).toBe(300)
+    expect(tabX(strip, 'E')).toBe(0)
+    expect(tabX(strip, 'F')).toBe(100)
+  })
+
+  it('anchors client-hosted rows when they are the only visible survivors', () => {
+    const hostedRows = ['remote-1', 'remote-2', 'remote-3', 'remote-4']
+    const { strip, rerender } = mountScrolled('A', 1050, hostedRows)
+    rerender(<Strip tabs={without('B')} hostedRows={hostedRows} active="A" />)
+    expect(strip.scrollLeft).toBe(950)
+    expect(tabX(strip, 'remote-2')).toBe(50)
+  })
+
+  it('restores the snapshot after consecutive closes without waiting for a scroll event', () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    rerender(<Strip tabs={without('B')} active="F" />)
+    rerender(<Strip tabs={without('B', 'C')} active="F" />)
+    expect(strip.scrollLeft).toBe(200)
+    expect(tabX(strip, 'F')).toBe(100)
+  })
+
+  it('holds the next survivor still when the leftmost visible tab closes', () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    rerender(<Strip tabs={without('E')} active="F" />)
+    expect(tabX(strip, 'F')).toBe(100)
+    expect(tabX(strip, 'D')).toBe(0)
+  })
+
+  it('fills an on-screen gap from the right, even left of the active tab', () => {
+    const { strip, rerender } = mountScrolled('G', 350)
+    rerender(<Strip tabs={without('F')} active="G" />)
+    expect(strip.scrollLeft).toBe(350)
+    expect(tabX(strip, 'E')).toBe(50)
+    expect(tabX(strip, 'G')).toBe(150)
+  })
+
+  it('slides later tabs in when an inactive tab after the viewed tab closes', () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    rerender(<Strip tabs={without('G')} active="F" />)
+    expect(strip.scrollLeft).toBe(400)
+    expect(tabX(strip, 'H')).toBe(200)
+  })
+
+  it('holds the first visible tab still while the active tab is docked', () => {
+    const { strip, rerender } = mountScrolled('A', 500)
+    expect(strip.dataset.dock).toBe('start')
+    rerender(<Strip tabs={without('C')} active="A" />)
+    expect(strip.scrollLeft).toBe(400)
+    expect(tabX(strip, 'F')).toBe(0)
+    expect(strip.dataset.dock).toBe('start')
+  })
+
+  it('measures an anchor the close pushed into the dock by its place, not its painted x', () => {
+    const { strip, rerender } = mountScrolled('E', 400)
+    rerender(<Strip tabs={without('B')} active="E" />)
+    expect(strip.scrollLeft).toBe(300)
+    expect(tabX(strip, 'E')).toBe(0)
+    expect(tabX(strip, 'F')).toBe(100)
+    expect(strip.dataset.dock).toBeUndefined()
+  })
+
+  it('falls back to a surviving tab when the viewed tab closes with one before the viewport', () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    rerender(<Strip tabs={without('B', 'F')} active="G" />)
+    expect(strip.scrollLeft).toBe(300)
+    expect(tabX(strip, 'E')).toBe(0)
+    expect(tabX(strip, 'G')).toBe(100)
+  })
+
+  it('skips fallbacks that closed too, and lets a far successor dock', () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    rerender(<Strip tabs={without('B', 'E', 'F')} active="A" />)
+    expect(strip.scrollLeft).toBe(100)
+    expect(tabX(strip, 'G')).toBe(200)
+    expect(strip.dataset.dock).toBe('start')
+  })
+
+  it('stops at the start edge instead of forcing an impossible offset', () => {
+    const { strip, rerender } = mountScrolled('B', 50)
+    rerender(<Strip tabs={without('A')} active="B" />)
+    expect(strip.scrollLeft).toBe(0)
+    expect(tabX(strip, 'B')).toBe(0)
+  })
+
+  it('stays pinned to the end when a tab closes', () => {
+    const { strip, rerender } = mountScrolled('J', 700)
+    rerender(<Strip tabs={without('B')} active="J" />)
+    expect(strip.scrollLeft).toBe(600)
+    expect(tabX(strip, 'J')).toBe(200)
+  })
+
+  it('does not scroll for a close during a tab press', () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    const release = beginTabStripPointerGesture()
+    try {
+      rerender(<Strip tabs={without('B')} active="F" />)
+      expect(strip.scrollLeft).toBe(400)
+    } finally {
+      release()
+    }
+  })
+
+  it('holds the restored position after observers and queued frames settle', async () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    rerender(<Strip tabs={without('B')} active="F" />)
+    await act(async () => {
+      strip.dispatchEvent(new Event('scroll'))
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    expect(strip.scrollLeft).toBe(300)
+    expect(tabX(strip, 'F')).toBe(100)
+  })
+
+  it('anchors a close after a workspace switch to the new workspace strip', () => {
+    const { strip, rerender } = mountScrolled('F', 400)
+    const otherOrder = ['F', ...without('F')]
+    rerender(<Strip tabs={otherOrder} active="F" worktreeId="wt-2" />)
+    rerender(<Strip tabs={otherOrder.filter((id) => id !== 'B')} active="F" worktreeId="wt-2" />)
+    expect(strip.scrollLeft).toBe(300)
+    expect(tabX(strip, 'D')).toBe(0)
+    expect(tabX(strip, 'E')).toBe(100)
+  })
+
+  it('cancels an append frame before switching workspaces', async () => {
+    const { strip, rerender } = mountScrolled('C', 0)
+    rerender(<Strip tabs={[...TABS, 'N']} active="N" />)
+    act(() => {
+      strip.scrollLeft = 400
+      strip.dispatchEvent(new Event('scroll'))
+    })
+    rerender(<Strip tabs={[...TABS, 'N', 'M']} active="N" worktreeId="wt-2" />)
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    expect(strip.scrollLeft).toBe(400)
   })
 
   it('still reveals a later tab switch after a close', () => {

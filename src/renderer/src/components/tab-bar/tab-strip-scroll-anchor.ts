@@ -1,54 +1,50 @@
-import { isDockedTabStripElement } from './tab-strip-slot-geometry'
+import { getTabStripSlots, isDockedTabStripElement } from './tab-strip-slot-geometry'
 
-/** A tab's on-screen x inside the strip viewport, recorded before tabs are inserted around it. */
+/** A tab's on-screen x inside the strip viewport, recorded before tabs are added or closed around it. */
 export type TabStripScrollAnchor = {
   tabId: string
   offset: number
 }
 
-function tabElements(strip: HTMLElement): HTMLElement[] {
-  return Array.from(strip.querySelectorAll<HTMLElement>('[data-tab-id]'))
-}
-
-function findTab(strip: HTMLElement, tabId: string): HTMLElement | undefined {
-  return tabElements(strip).find((tab) => tab.dataset.tabId === tabId)
-}
-
 /**
- * The active tab when it is on screen, else the first visible tab; null when nothing is visible.
- * A docked active tab never counts: it holds its x while the tabs around it move.
+ * Every visible tab in strip order. A docked active tab never counts: it holds its x while the
+ * tabs around it move.
  */
-export function captureTabStripScrollAnchor(
-  strip: HTMLElement,
-  activeTabId: string | null
-): TabStripScrollAnchor | null {
+export function captureTabStripScrollAnchors(strip: HTMLElement): TabStripScrollAnchor[] {
   const stripRect = strip.getBoundingClientRect()
-  const isVisible = (tab: HTMLElement): boolean => {
+  const visible: TabStripScrollAnchor[] = []
+  for (const tab of getTabStripSlots(strip)) {
     const rect = tab.getBoundingClientRect()
-    return (
+    const tabId = tab.dataset.tabStripSlot
+    if (
+      tabId &&
       rect.width > 0 &&
       rect.right > stripRect.left &&
       rect.left < stripRect.right &&
       !isDockedTabStripElement(strip, tab)
-    )
+    ) {
+      visible.push({ tabId, offset: rect.left - stripRect.left })
+    } else if (rect.left >= stripRect.right) {
+      break
+    }
   }
-  const active = activeTabId ? findTab(strip, activeTabId) : undefined
-  const anchor =
-    active && isVisible(active) ? active : tabElements(strip).find((tab) => isVisible(tab))
-  const tabId = anchor?.dataset.tabId
-  if (!anchor || !tabId) {
-    return null
-  }
-  return { tabId, offset: anchor.getBoundingClientRect().left - stripRect.left }
+  return visible
 }
 
-/** Scroll so the anchor tab is back at its recorded x; false when that tab is gone. */
+/** Restore a visible survivor, preferring the active tab for insertions. Docked slots cannot measure drift. */
 export function restoreTabStripScrollAnchor(
   strip: HTMLElement,
-  anchor: TabStripScrollAnchor
+  anchors: readonly TabStripScrollAnchor[],
+  preferredTabId: string | null = null
 ): boolean {
-  const tab = findTab(strip, anchor.tabId)
-  if (!tab) {
+  const tabsById = new Map(getTabStripSlots(strip).map((tab) => [tab.dataset.tabStripSlot, tab]))
+  const survivors = anchors.filter(({ tabId }) => {
+    const tab = tabsById.get(tabId)
+    return tab && !isDockedTabStripElement(strip, tab)
+  })
+  const anchor = survivors.find(({ tabId }) => tabId === preferredTabId) ?? survivors[0]
+  const tab = anchor && tabsById.get(anchor.tabId)
+  if (!anchor || !tab) {
     return false
   }
   const drift =
@@ -60,5 +56,5 @@ export function restoreTabStripScrollAnchor(
 }
 
 export function isLastTabStripTab(strip: HTMLElement, tabId: string | null): boolean {
-  return tabId !== null && tabElements(strip).at(-1)?.dataset.tabId === tabId
+  return tabId !== null && getTabStripSlots(strip).at(-1)?.dataset.tabStripSlot === tabId
 }

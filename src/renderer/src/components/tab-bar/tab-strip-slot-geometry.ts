@@ -5,7 +5,7 @@ const DOCK_SELECTOR = '[data-active-tab-dock]'
 
 export type ActiveTabDockSide = 'start' | 'end'
 
-function getSlots(strip: HTMLElement): HTMLElement[] {
+export function getTabStripSlots(strip: HTMLElement): HTMLElement[] {
   return Array.from(strip.querySelectorAll<HTMLElement>(`:scope > ${SLOT_SELECTOR}`))
 }
 
@@ -18,11 +18,11 @@ function getActiveTabDock(strip: HTMLElement): HTMLElement | null {
 }
 
 export function findTabStripSlot(strip: HTMLElement, tabId: string): HTMLElement | undefined {
-  return getSlots(strip).find((slot) => getSlotId(slot) === tabId)
+  return getTabStripSlots(strip).find((slot) => getSlotId(slot) === tabId)
 }
 
 export function readTabStripSlotIds(strip: HTMLElement): ReadonlySet<string> {
-  return new Set(getSlots(strip).map(getSlotId))
+  return new Set(getTabStripSlots(strip).map(getSlotId))
 }
 
 /** Viewport span of `slot`'s place in the tab order; only the dock is drawn anywhere else. */
@@ -70,7 +70,7 @@ export function findOffscreenOpenedTabStripSlot(
   strip: HTMLElement,
   knownIds: ReadonlySet<string>
 ): HTMLElement | undefined {
-  return getSlots(strip).find(
+  return getTabStripSlots(strip).find(
     (slot) => !knownIds.has(getSlotId(slot)) && getSlotOffscreenSide(strip, slot) !== null
   )
 }

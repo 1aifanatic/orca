@@ -7,7 +7,7 @@ import {
 } from './tab-strip-scroll-metrics'
 import { isTabStripPointerGestureActive } from './tab-strip-pointer-gesture'
 import {
-  captureTabStripScrollAnchor,
+  captureTabStripScrollAnchors,
   isLastTabStripTab,
   restoreTabStripScrollAnchor,
   type TabStripScrollAnchor
@@ -70,15 +70,15 @@ export function useTabStripOverflowNavigation({
 } {
   const tabStripRef = useRef<HTMLDivElement>(null)
   const stripResizeListenersRef = useRef<Set<() => void>>(new Set())
-  const prevStripRef = useRef<{ worktreeId: string; tabIds: ReadonlySet<string> } | null>(null)
-  const stickToEndRef = useRef(false)
-  const tabClosedThisCommitRef = useRef(false)
-  const activeTabIdRef = useRef<string | null>(null)
-  const hoverDeferredRevealIdsRef = useRef<Set<string>>(new Set())
-  const scrollAnchorRef = useRef<{
+  const prevStripRef = useRef<{
+    worktreeId: string
+    layoutKey: string
+    tabIds: ReadonlySet<string>
     activeTabId: string | null
-    anchor: TabStripScrollAnchor | null
   } | null>(null)
+  const stickToEndRef = useRef(false)
+  const hoverDeferredRevealIdsRef = useRef<Set<string>>(new Set())
+  const scrollAnchorRef = useRef<TabStripScrollAnchor[]>([])
   // Why no thumb position here: it changes every scroll frame, and every tab would re-render with it.
   const [tabStripOverflowState, setTabStripOverflowState] = useState<TabStripOverflowState>(
     EMPTY_TAB_STRIP_OVERFLOW_STATE
@@ -110,25 +110,8 @@ export function useTabStripOverflowNavigation({
     if (!el) {
       return
     }
-    const activeTabId = activeTabIdRef.current
-    scrollAnchorRef.current = { activeTabId, anchor: captureTabStripScrollAnchor(el, activeTabId) }
+    scrollAnchorRef.current = captureTabStripScrollAnchors(el)
   }, [])
-
-  useEffect(() => {
-    const el = tabStripRef.current
-    if (!el) {
-      return
-    }
-    const onWheel = (e: WheelEvent): void => {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault()
-        el.scrollLeft += e.deltaY
-        updateTabStripOverflowState()
-      }
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [updateTabStripOverflowState])
 
   useEffect(() => {
     const el = tabStripRef.current
@@ -141,16 +124,24 @@ export function useTabStripOverflowNavigation({
       updateTabStripOverflowState()
       recordScrollAnchor()
     }
+    const onWheel = (e: WheelEvent): void => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault()
+        el.scrollLeft += e.deltaY
+        onScroll()
+      }
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
     el.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
 
     const handleStripResize = (): void => {
-      updateTabStripOverflowState()
       // If the user is pinned to the right edge, keep it pinned even as tab
       // labels (e.g. "Terminal 5" -> branch name) expand and change scrollWidth.
       if (stickToEndRef.current && !isTabStripPointerGestureActive()) {
         el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth)
       }
+      updateTabStripOverflowState()
       recordScrollAnchor()
       for (const listener of stripResizeListenersRef.current) {
         listener()
@@ -160,6 +151,7 @@ export function useTabStripOverflowNavigation({
     const disconnectResizeObservers = bindTabStripContentResizeObservers(el, handleStripResize)
 
     return () => {
+      el.removeEventListener('wheel', onWheel)
       el.removeEventListener('scroll', onScroll)
       disconnectResizeObservers()
     }
@@ -193,116 +185,90 @@ export function useTabStripOverflowNavigation({
     return () => el.removeEventListener('pointerleave', onPointerLeave)
   }, [recordScrollAnchor, updateTabStripOverflowState])
 
-  // Why a ref set first: the growth effect below must see this commit's active tab without re-running on every tab switch.
-  useLayoutEffect(() => {
-    activeTabIdRef.current = activeVisibleTabId
-  }, [activeVisibleTabId])
-
   useLayoutEffect(() => {
     const strip = tabStripRef.current
     if (!strip) {
       prevStripRef.current = null
+      scrollAnchorRef.current = []
       return
     }
     const prev = prevStripRef.current
     const tabIds = readTabStripSlotIds(strip)
-    prevStripRef.current = { worktreeId, tabIds }
-    if (!prev || prev.worktreeId !== worktreeId) {
-      hoverDeferredRevealIdsRef.current = new Set()
-      updateTabStripOverflowState()
-      return
-    }
+    prevStripRef.current = { worktreeId, layoutKey, tabIds, activeTabId: activeVisibleTabId }
+    const workspaceChanged = !prev || prev.worktreeId !== worktreeId
+    const layoutChanged = !prev || prev.layoutKey !== layoutKey
     const pointerGestureActive = isTabStripPointerGestureActive()
-    // Why identities, not a count: a tab that replaces another opens without the strip growing.
-    const tabOpened = [...tabIds].some((id) => !prev.tabIds.has(id))
-    tabClosedThisCommitRef.current = !tabOpened && [...prev.tabIds].some((id) => !tabIds.has(id))
-    const scrollToEnd = (stick: boolean): void => {
-      const el = tabStripRef.current
-      if (!el) {
-        return
+    let tabClosed = false
+    let maintainEnd = false
+    const scrollToEnd = (): void => {
+      strip.scrollLeft = Math.max(0, strip.scrollWidth - strip.clientWidth)
+    }
+
+    if (workspaceChanged) {
+      hoverDeferredRevealIdsRef.current.clear()
+    } else if (layoutChanged) {
+      // Replacing a tab opens a new slot even when the count stays the same.
+      const tabOpened = [...tabIds].some((id) => !prev.tabIds.has(id))
+      tabClosed = !tabOpened && [...prev.tabIds].some((id) => !tabIds.has(id))
+      if (!pointerGestureActive) {
+        if (tabOpened) {
+          if (prev.activeTabId === activeVisibleTabId) {
+            restoreTabStripScrollAnchor(strip, scrollAnchorRef.current, activeVisibleTabId)
+            // Defer reveals under the pointer so the next click still lands on the same tab.
+            if (strip.matches(':hover')) {
+              for (const id of tabIds) {
+                if (!prev.tabIds.has(id)) {
+                  hoverDeferredRevealIdsRef.current.add(id)
+                }
+              }
+            } else {
+              const offscreenOpened = findOffscreenOpenedTabStripSlot(strip, prev.tabIds)
+              if (offscreenOpened) {
+                revealTabStripSlot(strip, offscreenOpened)
+              }
+            }
+          } else if (isLastTabStripTab(strip, activeVisibleTabId)) {
+            scrollToEnd()
+            maintainEnd = true
+          }
+        } else if (stickToEndRef.current) {
+          scrollToEnd()
+          maintainEnd = true
+        } else if (tabClosed) {
+          // Hold the leftmost survivor still; tabs after an on-screen close fill its gap.
+          restoreTabStripScrollAnchor(strip, scrollAnchorRef.current)
+        }
       }
-      el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth)
-      if (stick) {
-        stickToEndRef.current = true
+    }
+
+    const activeChanged = !prev || prev.activeTabId !== activeVisibleTabId
+    // Closing can select a distant recent tab, which docks without moving the viewport.
+    if (activeChanged && activeVisibleTabId && !pointerGestureActive && !tabClosed) {
+      const activeSlot = findTabStripSlot(strip, activeVisibleTabId)
+      if (activeSlot) {
+        revealTabStripSlot(strip, activeSlot)
+      }
+    }
+    // Scroll events arrive after observers, so update the pin before either can use it.
+    stickToEndRef.current = isTabStripScrolledToEnd(strip)
+    updateTabStripOverflowState()
+    recordScrollAnchor()
+    const frame = requestAnimationFrame(() => {
+      if (maintainEnd && stickToEndRef.current && !isTabStripPointerGestureActive()) {
+        scrollToEnd()
       }
       updateTabStripOverflowState()
-    }
-    const recorded = scrollAnchorRef.current
-    if (tabOpened && !pointerGestureActive) {
-      if (recorded?.activeTabId === activeTabIdRef.current) {
-        // Why: insertions around the viewed tab keep its on-screen x, the way VS Code and Chrome
-        // leave it still; only a tab that lands out of view scrolls, and the active tab docks.
-        if (recorded.anchor) {
-          restoreTabStripScrollAnchor(strip, recorded.anchor)
-        }
-        // Why wait for the pointer to leave: the tab it is over would slide away before the click lands.
-        if (strip.matches(':hover')) {
-          for (const id of tabIds) {
-            if (!prev.tabIds.has(id)) {
-              hoverDeferredRevealIdsRef.current.add(id)
-            }
-          }
-        } else {
-          const offscreenOpened = findOffscreenOpenedTabStripSlot(strip, prev.tabIds)
-          if (offscreenOpened) {
-            revealTabStripSlot(strip, offscreenOpened)
-          }
-        }
-        stickToEndRef.current = isTabStripScrolledToEnd(strip)
-      } else if (isLastTabStripTab(strip, activeTabIdRef.current)) {
-        scrollToEnd(true)
-        requestAnimationFrame(() => scrollToEnd(true))
-      }
-      // A foreground tab opened mid-strip is revealed by the active-tab effect below.
-    } else if (stickToEndRef.current && !pointerGestureActive) {
-      scrollToEnd(false)
-      // Why re-check: a reveal later in this commit may have scrolled away from the end.
-      requestAnimationFrame(() => {
-        if (stickToEndRef.current) {
-          scrollToEnd(false)
-        }
-      })
-    }
-    updateTabStripOverflowState()
-    requestAnimationFrame(updateTabStripOverflowState)
-    recordScrollAnchor()
-  }, [layoutKey, recordScrollAnchor, updateTabStripOverflowState, worktreeId])
-
-  useLayoutEffect(() => {
-    const strip = tabStripRef.current
-    if (!strip || !activeVisibleTabId) {
       recordScrollAnchor()
-      return
-    }
-    const activeSlot = findTabStripSlot(strip, activeVisibleTabId)
-    if (!activeSlot) {
-      recordScrollAnchor()
-      return
-    }
-    // Why hold still: active-tab preview changes during a tab press must not move the strip under
-    // a stationary pointer before the release decides click/drag. After a close, the next tab can
-    // be far back in recent history; chasing it throws the strip around, and it docks into view.
-    if (isTabStripPointerGestureActive() || tabClosedThisCommitRef.current) {
-      requestAnimationFrame(updateTabStripOverflowState)
-      recordScrollAnchor()
-      return
-    }
-    revealTabStripSlot(strip, activeSlot)
-    // Why: the scroll event lands after the resize observer, which would re-pin a stale end stick over this reveal.
-    stickToEndRef.current = isTabStripScrolledToEnd(strip)
-    requestAnimationFrame(updateTabStripOverflowState)
-    recordScrollAnchor()
-  }, [activeVisibleTabId, recordScrollAnchor, updateTabStripOverflowState])
-
-  // Why: moving the dock between slots shifts which edge it is drawn at with no scroll or resize.
-  useLayoutEffect(() => {
-    updateTabStripOverflowState()
-  }, [activeDockSlotId, updateTabStripOverflowState])
-
-  // Why every render: the close flag belongs to the commit that set it, not a later tab switch.
-  useLayoutEffect(() => {
-    tabClosedThisCommitRef.current = false
-  })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [
+    activeDockSlotId,
+    activeVisibleTabId,
+    layoutKey,
+    recordScrollAnchor,
+    updateTabStripOverflowState,
+    worktreeId
+  ])
 
   // Why share these observers: each one watches every tab, so a second set doubles that work.
   const subscribeToStripResize = useCallback((listener: () => void): (() => void) => {
