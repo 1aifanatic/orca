@@ -119,8 +119,8 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
 const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   agent: 'omp',
   command: 'omp',
-  // `omp acp` takes no flags: full access answers each permission request yes.
-  args: () => ['acp'],
+  // Full access answers each permission request yes.
+  args: ({ pluginDir }) => ['acp', ...(pluginDir ? ['--plugin-dir', pluginDir] : [])],
   env: {},
   dialect: OMP_ACP_DIALECT,
   // OMP signs in from its own `/login`.

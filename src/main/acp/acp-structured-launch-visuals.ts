@@ -12,8 +12,6 @@ import type { AcpVisualsSkillLaunch } from './acp-visuals-skill'
 export type AcpLaunchVisualsDeps = {
   /** Prepares a chat's inline-visuals folder; absent, no chat gets visuals. */
   prepareVisuals?: PrepareNativeChatVisuals
-  /** Where a visuals skill loader keeps config files it hands an agent by path. */
-  visualsConfigDirectory?: string
   logger?: StructuredAgentSessionLogger
 }
 
@@ -48,20 +46,17 @@ export async function loadAcpVisualsSkill(
     env: Readonly<Record<string, string>>
     envToDelete: readonly string[]
     inherited: NodeJS.ProcessEnv
-    cwd: string
   }
 ): Promise<AcpVisualsSkillLaunch | null> {
   const { visualsSkill } = spec
-  if (!visualsSkill || !deps.visualsConfigDirectory) {
+  if (!visualsSkill) {
     return null
   }
   try {
     const skill = await visualsSkill({
       skill: input.visuals.skill,
       version: input.version,
-      env: childEnvironmentView(input.env, input.inherited, input.envToDelete),
-      cwd: input.cwd,
-      configDirectory: deps.visualsConfigDirectory
+      env: childEnvironmentView(input.env, input.inherited, input.envToDelete)
     })
     if (!skill) {
       deps.logger?.warn(`${spec.agent} cannot load the visuals skill; the chat has no visuals`, {

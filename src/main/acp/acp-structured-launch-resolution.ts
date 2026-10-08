@@ -194,8 +194,7 @@ export function createAcpStructuredLaunchResolver(
           version: launchVersion.version,
           env,
           envToDelete,
-          inherited: deps.inheritedEnv ?? process.env,
-          cwd
+          inherited: deps.inheritedEnv ?? process.env
         })
       : null
     // Without visuals, a folder Orca itself inherited (started from a chat) names another chat's.

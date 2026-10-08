@@ -1,7 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import { NATIVE_CHAT_VISUALS_DIR_ENV } from '../native-chat/native-chat-visuals-delivery'
@@ -20,13 +17,6 @@ const identity = {
   hostId: 'local',
   providerHandle: null
 }
-
-const scratch: string[] = []
-afterEach(() => {
-  for (const dir of scratch.splice(0)) {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
 
 function record(spec: AcpLaunchSpec): AgentSessionRecord {
   const accountHome: AgentSessionRecord['accountHome'] =
@@ -51,11 +41,10 @@ function resolve(
     inheritedEnv?: NodeJS.ProcessEnv
     launchEnv?: Record<string, string>
     deps?: Partial<AcpStructuredLaunchResolverDeps>
+    spec?: Partial<AcpLaunchSpec>
   } = {}
 ) {
-  const spec = acpLaunchSpecFor(agent)!
-  const configDirectory = mkdtempSync(join(tmpdir(), 'acp-launch-visuals-'))
-  scratch.push(configDirectory)
+  const spec = { ...acpLaunchSpecFor(agent)!, ...options.spec }
   const probeVersion = vi.fn<NonNullable<AcpStructuredLaunchResolverDeps['probeVersion']>>(
     async (_input, supports) => supports(options.version ?? '1.0.46')
   )
@@ -73,11 +62,10 @@ function resolve(
     inheritedEnv: options.inheritedEnv ?? {},
     probeVersion,
     prepareVisuals,
-    visualsConfigDirectory: configDirectory,
     logger,
     ...options.deps
   })({ identity: { ...identity, agent } })
-  return { launch, probeVersion, prepareVisuals, logger, configDirectory }
+  return { launch, probeVersion, prepareVisuals, logger }
 }
 
 describe('ACP launch visuals', () => {
@@ -125,25 +113,29 @@ describe('ACP launch visuals', () => {
     expect(launch.env[NATIVE_CHAT_VISUALS_DIR_ENV]).toBe(FOLDER)
   })
 
-  it("names OMP's overlay after the user's own", async () => {
-    const { launch, configDirectory } = resolve('omp', {
+  // OMP's settings layers (global, profile, project, overlays) replace lists, so any config of
+  // Orca's would hide the user's own skill folders; a plugin folder adds beside them.
+  it("gives OMP the plugin folder, leaving the user's config files as they set them", async () => {
+    const launch = await resolve('omp', {
       version: '17.0.5',
       launchEnv: { PI_CONFIG_FILES: '/user/overlay.yml' }
-    })
-    const resolved = await launch
-    const [overlay] = readdirSync(configDirectory).map((name) => join(configDirectory, name))
-    expect(resolved.env.PI_CONFIG_FILES).toBe(['/user/overlay.yml', overlay].join(delimiter))
-    expect(resolved.env[NATIVE_CHAT_VISUALS_DIR_ENV]).toBe(FOLDER)
+    }).launch
+    expect(launch.args).toEqual(['acp', '--plugin-dir', SKILL.pluginDir])
+    expect(launch.env.PI_CONFIG_FILES).toBe('/user/overlay.yml')
+    expect(launch.env[NATIVE_CHAT_VISUALS_DIR_ENV]).toBe(FOLDER)
   })
 
   it('still starts the chat when the skill cannot be prepared', async () => {
     const { launch, logger } = resolve('omp', {
       version: '17.0.5',
-      deps: { visualsConfigDirectory: '\0not-a-path' }
+      spec: {
+        visualsSkill: async () => {
+          throw new Error('unreadable')
+        }
+      }
     })
     const resolved = await launch
     expect(resolved.args).toEqual(['acp'])
-    expect(resolved.env.PI_CONFIG_FILES).toBeUndefined()
     expect(resolved.envToDelete).toContain(NATIVE_CHAT_VISUALS_DIR_ENV)
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('could not be prepared'),

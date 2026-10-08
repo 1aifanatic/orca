@@ -1,15 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync
-} from 'node:fs'
-import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   loadGrokVisualsSkill,
   loadOmpVisualsSkill,
@@ -20,20 +9,11 @@ import {
 
 const SKILL = { pluginDir: '/app/plugin', skillsRoot: '/app/plugin/skills' }
 
-const scratch: string[] = []
-afterEach(() => {
-  for (const dir of scratch.splice(0)) {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
-
 function input(overrides: Partial<AcpVisualsSkillInput> = {}): AcpVisualsSkillInput {
   return {
     skill: SKILL,
     version: null,
     env: {},
-    cwd: '/repo',
-    configDirectory: '/unused',
     ...overrides
   }
 }
@@ -90,70 +70,11 @@ describe('OpenCode visuals skill', () => {
 })
 
 describe('OMP visuals skill', () => {
-  function scratchDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'acp-visuals-'))
-    scratch.push(dir)
-    return dir
-  }
-  async function loadOmp(env: Record<string, string>, root = scratchDir()) {
-    const configDirectory = join(root, 'agent-config')
-    const loaded = await loadOmpVisualsSkill(input({ configDirectory, env, cwd: root }))
-    const overlays = readdirSync(configDirectory, { withFileTypes: true }).map((entry) =>
-      join(configDirectory, entry.name)
-    )
-    return { loaded, overlays, root }
-  }
-
-  it("writes an overlay naming the skills root and appends it to the user's own overlays", async () => {
-    const { loaded, overlays } = await loadOmp({ PI_CONFIG_FILES: '/user/overlay.yml' })
-    expect(overlays).toHaveLength(1)
-    expect(loaded).toEqual({
-      env: { PI_CONFIG_FILES: `/user/overlay.yml${delimiter}${overlays[0]}` }
-    })
-    expect(JSON.parse(readFileSync(overlays[0], 'utf8'))).toEqual({
-      skills: { customDirectories: [SKILL.skillsRoot] }
-    })
-    if (process.platform !== 'win32') {
-      expect(statSync(overlays[0]).mode & 0o777).toBe(0o600)
-    }
-  })
-
-  it("keeps the user's own skill folders, which the overlay's list replaces", async () => {
-    const root = scratchDir()
-    const agent = join(root, 'agent')
-    mkdirSync(agent)
-    writeFileSync(join(agent, 'config.yml'), 'skills:\n  customDirectories:\n    - ~/my-skills\n')
-    const fromAgent = await loadOmp({ PI_CODING_AGENT_DIR: agent }, root)
-    expect(JSON.parse(readFileSync(fromAgent.overlays[0], 'utf8'))).toEqual({
-      skills: { customDirectories: ['~/my-skills', SKILL.skillsRoot] }
-    })
-  })
-
-  it("takes the user's last overlay naming skill folders over the agent directory's config", async () => {
-    const root = scratchDir()
-    writeFileSync(join(root, 'config.yml'), 'skills:\n  customDirectories: [/agent-skills]\n')
-    // Relative to the launch's working directory, as OMP reads it.
-    writeFileSync(join(root, 'mine.yml'), 'skills:\n  customDirectories: [/team-skills]\n')
-    writeFileSync(join(root, 'later.yml'), 'model: fast\n')
-    const { loaded, overlays } = await loadOmp(
-      { PI_CODING_AGENT_DIR: root, PI_CONFIG_FILES: ['mine.yml', 'later.yml'].join(delimiter) },
-      root
-    )
-    expect(JSON.parse(readFileSync(overlays[0], 'utf8'))).toEqual({
-      skills: { customDirectories: ['/team-skills', SKILL.skillsRoot] }
-    })
-    expect(loaded?.env?.PI_CONFIG_FILES).toBe(
-      ['mine.yml', 'later.yml', overlays[0]].join(delimiter)
-    )
-  })
-
-  it("starts without visuals when the user's config can't be read as OMP would", async () => {
-    const root = scratchDir()
-    writeFileSync(join(root, 'config.yml'), 'skills: [unclosed\n')
+  it("names the plugin folder and leaves the user's own config files alone", async () => {
     await expect(
       loadOmpVisualsSkill(
-        input({ configDirectory: join(root, 'agent-config'), env: { PI_CODING_AGENT_DIR: root } })
+        input({ version: '17.0.5', env: { PI_CONFIG_FILES: '/user/overlay.yml' } })
       )
-    ).resolves.toBeNull()
+    ).resolves.toEqual({ pluginDir: '/app/plugin' })
   })
 })
