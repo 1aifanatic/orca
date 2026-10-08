@@ -12,6 +12,7 @@ import { seedCodexStateFromSnapshot } from '../../../shared/agent-hook-listener/
 import { AGENT_STATUS_PERSISTED_HYDRATION_MODE } from '../../../shared/agent-status-legacy-adapter'
 import { HYDRATE_MAX_AGE_MS, LAST_STATUS_FILE_VERSION } from './server-constants'
 import type { LastStatusFile } from './server-types'
+import { parseSavedStructuredSessionStatus } from '../../../shared/structured-agent-session-saved-status'
 import {
   authorityCommitmentsMatch,
   dropHydratedIdleClaudeSubagents,
@@ -22,6 +23,66 @@ import {
 import { AgentHookServerReaping } from './server-reaping'
 
 export abstract class AgentHookServerHydration extends AgentHookServerReaping {
+  /** The file as the last write left it, or null; a missing one is normal (first launch). */
+  private readLastStatusFile(): { raw: string; file: Partial<LastStatusFile> } | null {
+    if (!this.lastStatusFilePath) {
+      return null
+    }
+    let raw: string
+    try {
+      raw = readFileSync(this.lastStatusFilePath, 'utf8')
+    } catch (err) {
+      // Why: missing file is normal (first launch); other errors degrade to empty hydration + one warn.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn('[agent-hooks] failed to read last-status file:', err)
+      }
+      return null
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      console.warn('[agent-hooks] last-status file is not valid JSON; ignoring')
+      return null
+    }
+    if (typeof parsed !== 'object' || parsed === null) {
+      console.warn('[agent-hooks] last-status file is not an object; ignoring')
+      return null
+    }
+    const file = parsed as Partial<LastStatusFile>
+    if (file.version !== LAST_STATUS_FILE_VERSION) {
+      console.warn(
+        `[agent-hooks] last-status file version mismatch (${String(
+          file.version
+        )} != ${LAST_STATUS_FILE_VERSION}); ignoring`
+      )
+      return null
+    }
+    return { raw, file }
+  }
+
+  /** Native chats have no status hooks, so their saved statuses load whatever that setting says. */
+  protected loadSavedStructuredStatuses(): void {
+    this.savedStructuredStatuses.clear()
+    const read = this.readLastStatusFile()
+    this.unhydratedStatusFile = read
+      ? { entries: read.file.entries ?? {}, authorityCommitments: read.file.authorityCommitments }
+      : null
+    const ttlCutoff = Date.now() - HYDRATE_MAX_AGE_MS
+    let dropped = 0
+    for (const [sessionId, rawStatus] of Object.entries(read?.file.structuredSessions ?? {})) {
+      const saved = parseSavedStructuredSessionStatus(sessionId, rawStatus)
+      if (saved && saved.summary.updatedAt >= ttlCutoff) {
+        this.savedStructuredStatuses.set(sessionId, saved)
+      } else {
+        dropped += 1
+      }
+    }
+    if (dropped > 0) {
+      this.runStatusPersist()
+    }
+  }
+
   /** Hydrate the durable cache, validating every row before it reaches the live listener state. */
   protected hydrateLastStatusFromDisk(): void {
     if (!this.lastStatusFilePath) {
@@ -31,36 +92,12 @@ export abstract class AgentHookServerHydration extends AgentHookServerReaping {
     clearLegacyAgentStatuses(this.state)
     this.hydratedLaunchTokenHashByPaneKey.clear()
     this.persistedAuthorityCommitmentsByPaneKey.clear()
-    let raw: string
-    try {
-      raw = readFileSync(this.lastStatusFilePath, 'utf8')
-    } catch (err) {
-      // Why: missing file is normal (first launch); other errors degrade to empty hydration + one warn.
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.warn('[agent-hooks] failed to read last-status file:', err)
-      }
+    this.unhydratedStatusFile = null
+    const read = this.readLastStatusFile()
+    if (!read) {
       return
     }
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      console.warn('[agent-hooks] last-status file is not valid JSON; ignoring')
-      return
-    }
-    if (typeof parsed !== 'object' || parsed === null) {
-      console.warn('[agent-hooks] last-status file is not an object; ignoring')
-      return
-    }
-    const file = parsed as Partial<LastStatusFile>
-    if (file.version !== LAST_STATUS_FILE_VERSION) {
-      console.warn(
-        `[agent-hooks] last-status file version mismatch (${String(
-          file.version
-        )} != ${LAST_STATUS_FILE_VERSION}); ignoring`
-      )
-      return
-    }
+    const { raw, file } = read
     const entries = file.entries
     if (typeof entries !== 'object' || entries === null) {
       console.warn('[agent-hooks] last-status file entries missing or wrong shape; ignoring')

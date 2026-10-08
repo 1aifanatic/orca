@@ -12,6 +12,7 @@ import type {
 } from './server-types'
 import { authorityCommitmentsMatch } from './server-persistence-validation'
 import { AgentHookServerHydration } from './server-hydration'
+import type { SavedStructuredSessionStatus } from '../../../shared/structured-agent-session-saved-status'
 
 export abstract class AgentHookServerPersistence extends AgentHookServerHydration {
   protected serializeStatusFile(): string {
@@ -27,11 +28,6 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
         continue
       }
       const enrichedPayload = payload as EnrichedAgentHookEventPayload
-      // Why: the session journal is the durable truth for a structured row and the host republishes
-      // it on restore; a persisted copy would hydrate unconfirmed and fight that republish.
-      if (enrichedPayload.structuredHost) {
-        continue
-      }
       const {
         promptInteractionKey: _promptInteractionKey,
         // Why: never persisted — hydrate re-stamps it, so a stored copy could only drift.
@@ -72,10 +68,29 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
     }
     const file: LastStatusFile = {
       version: LAST_STATUS_FILE_VERSION,
-      entries,
-      authorityCommitments
+      ...(this.unhydratedStatusFile ?? { entries, authorityCommitments }),
+      ...(this.savedStructuredStatuses.size > 0
+        ? { structuredSessions: Object.fromEntries(this.savedStructuredStatuses) }
+        : {})
     }
     return JSON.stringify(file)
+  }
+
+  /** Written at once, not debounced: it changes only on a chat's status edges, and a crash right
+   *  after a turn ends must still find the end. */
+  saveStructuredStatus(saved: SavedStructuredSessionStatus): void {
+    this.savedStructuredStatuses.set(saved.summary.sessionId, saved)
+    this.runStatusPersist()
+  }
+
+  dropSavedStructuredStatus(sessionId: string): void {
+    if (this.savedStructuredStatuses.delete(sessionId)) {
+      this.runStatusPersist()
+    }
+  }
+
+  readSavedStructuredStatuses(): SavedStructuredSessionStatus[] {
+    return [...this.savedStructuredStatuses.values()]
   }
 
   protected scheduleStatusPersist(): void {

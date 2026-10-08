@@ -36,6 +36,7 @@ import type {
   AgentHookStatusFreshnessObservation,
   AgentPromptSentDedupeEntry,
   EnrichedAgentHookEventPayload,
+  LastStatusFile,
   NormalizedLocalHook,
   PaneKeyAliasEntry,
   PaneKeyAliasPersistenceListener,
@@ -50,6 +51,7 @@ import type {
   StatusFreshnessListener,
   StatusRowMutationListener
 } from './server-types'
+import type { SavedStructuredSessionStatus } from '../../../shared/structured-agent-session-saved-status'
 
 /** Shared mutable state for the layered hook-server implementation. */
 export abstract class AgentHookServerState {
@@ -140,6 +142,10 @@ export abstract class AgentHookServerState {
   protected paneKeyAliasPersistenceListener: PaneKeyAliasPersistenceListener | null = null
   // Why: on-disk last-status cache path; null without a userDataPath (tests), where persistence is a no-op and only in-memory replay applies.
   protected lastStatusFilePath: string | null = null
+  protected savedStructuredStatuses = new Map<string, SavedStructuredSessionStatus>()
+  // Why: with status hooks off nothing hydrates the CLI rows, so a native chat's save writes them back as read.
+  protected unhydratedStatusFile: Pick<LastStatusFile, 'entries' | 'authorityCommitments'> | null =
+    null
   // Why: trailing-edge debounce timer, per-instance so test servers in one process don't share state.
   protected statusPersistTimer: ReturnType<typeof setTimeout> | null = null
   protected assistantMessageRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
