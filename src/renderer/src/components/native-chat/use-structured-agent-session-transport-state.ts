@@ -5,6 +5,7 @@ import type { StructuredAgentSessionState } from '../../../../shared/structured-
 import type { StructuredAgentSubagentRoster } from '../../../../shared/structured-agent-session-subagent-roster'
 import { selectStructuredAgentTurnActivity } from '../../../../shared/native-chat-turn-activity'
 import { structuredSessionBackgroundTasksView } from '../../../../shared/structured-session-background-tasks-view'
+import { structuredSessionForegroundCommands } from '../../../../shared/structured-session-foreground-commands'
 import { useStructuredAgentTurnTiming } from './use-structured-agent-turn-timing'
 import { agentSessionCurrentContextRows } from '../../../../shared/agent-session-context-clear'
 
@@ -46,10 +47,14 @@ export function useStructuredAgentSessionTransportState(
     },
     turnId
   )
-  const backgroundTasks = structuredSessionBackgroundTasksView(
-    enabled ? state.backgroundTasks : null,
-    turnId
-  )
+  const backgroundTasks = useMemo(() => {
+    const roster = enabled ? state.backgroundTasks : null
+    return structuredSessionBackgroundTasksView(
+      roster,
+      turnId,
+      structuredSessionForegroundCommands(roster, { items: journalItems, latestTurn })
+    )
+  }, [enabled, journalItems, latestTurn, state.backgroundTasks, turnId])
   return {
     journalItems,
     latestTurn,
