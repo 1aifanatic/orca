@@ -14,8 +14,14 @@ import type {
   SshPtySourceCancellationRequest
 } from './ssh-pty-output-intake-contract'
 import { SshPtyRemoteSourceRangeConsumers } from './ssh-pty-remote-source-range-consumers'
-import type { SshPtySourceAdmissionReservation } from './ssh-pty-source-obligation-contract'
-import { SshPtySourceObligationCoordinator } from './ssh-pty-source-obligation-coordinator'
+import type {
+  SshPtySourceAdmissionReservation,
+  SshPtySourceConsumerId
+} from './ssh-pty-source-obligation-contract'
+import {
+  SshPtySourceObligationCoordinator,
+  type SshPtySourceObligationTransition
+} from './ssh-pty-source-obligation-coordinator'
 
 export type SshPtyOutputSourceReservation = Readonly<{
   admission: SshPtySourceAdmissionReservation
@@ -106,43 +112,23 @@ export class SshPtyOutputSourceObligations {
     )
   }
 
-  // Why the guards: a recovery cancellation closes a delivery whose spans the model or renderer may
-  // still settle. Nothing is owed to a closed delivery, and a throw would fail every later ACK.
   settleModel(span: PtySourceSpan): void {
-    if (!this.isDeliveryOpen(span)) {
-      return
+    const transition = this.openTransition(span, 'model', 'model-accepted')
+    if (transition) {
+      this.coordinator.settle(transition)
     }
-    this.coordinator.settle({
-      identity: span,
-      spanId: span.spanId,
-      consumer: 'model',
-      reason: 'model-accepted'
-    })
   }
 
   settleDesktop(span: DesktopProjectionSpan, reason: string): void {
-    if (!this.isDeliveryOpen(span)) {
-      return
+    const transition = this.openTransition(span, 'desktop', reason)
+    if (transition) {
+      this.coordinator.settle(transition)
     }
-    this.coordinator.settle({
-      identity: span,
-      spanId: span.spanId,
-      consumer: 'desktop',
-      reason
-    })
   }
 
   transferDesktop(span: DesktopProjectionSpan, reason: string): void {
-    if (!this.isDeliveryOpen(span)) {
-      return
-    }
-    const transition = {
-      identity: span,
-      spanId: span.spanId,
-      consumer: 'desktop' as const,
-      reason
-    }
-    if (this.coordinator.beginTransfer(transition, 'model')) {
+    const transition = this.openTransition(span, 'desktop', reason)
+    if (transition && this.coordinator.beginTransfer(transition, 'model')) {
       this.coordinator.commitTransfer(transition)
     }
   }
@@ -297,6 +283,18 @@ export class SshPtyOutputSourceObligations {
     ptyIncarnation: string
   }): string {
     return `${event.providerGeneration}\0${event.id}\0${event.ptyIncarnation}`
+  }
+
+  // Why: a recovery cancellation closes a delivery whose spans the model or renderer may still
+  // settle. Nothing is owed to a closed delivery, and a throw would fail every later ACK.
+  private openTransition(
+    span: PtySourceDeliveryIdentity & Readonly<{ spanId: string }>,
+    consumer: SshPtySourceConsumerId,
+    reason: string
+  ): SshPtySourceObligationTransition | null {
+    return this.isDeliveryOpen(span)
+      ? { identity: span, spanId: span.spanId, consumer, reason }
+      : null
   }
 
   private isDeliveryOpen(
