@@ -32,15 +32,13 @@ function verifyAdminPost() {
   return step.slice(start, step.indexOf('\n          }', start) + '\n          }'.length)
 }
 
-// A single transient 5xx from a warming instance behind the global load balancer
-// must not fail a canary, so no admin endpoint may be read by a bare curl.
-test('no admin endpoint is reached by a curl without a bounded retry', () => {
+// curl 7.81 (the Ubuntu 22.04 runners) never retries under --fail-with-body, so the
+// remaining --retry flags are inert and only the verify loop below really retries.
+// What holds for every admin curl: it is bounded and never retries a final 4xx.
+test('every admin curl is bounded and never retries a final 4xx', () => {
   for (const name of WORKFLOWS) {
-    // The post-roll verify retries in its own loop, pinned and run below.
-    const text = workflow(name).replace(verifyAdminPost(), '')
-    for (const invocation of text.split(/\bcurl\b/).slice(1)) {
+    for (const invocation of workflow(name).split(/\bcurl\b/).slice(1)) {
       const flags = invocation.split('\n          }')[0]
-      assert.match(flags, /--retry 3 --retry-delay 2 --retry-connrefused/, name)
       assert.match(flags, /--max-time 30/, name)
       // --retry-all-errors would also retry 401, 403, and 409, which are final.
       assert.doesNotMatch(flags, /--retry-all-errors/, name)
@@ -80,7 +78,8 @@ async function runVerifyAdminPost(respond) {
   const startedAt = Date.now()
   const server = createServer((request, response) => {
     calls += 1
-    const { status, body } = respond(Date.now() - startedAt)
+    const { status, body, drop } = respond(Date.now() - startedAt)
+    if (drop) return void request.socket.destroy()
     response.writeHead(status, { 'content-type': 'application/json' })
     response.end(body)
   })
@@ -128,4 +127,11 @@ test('the verify read fails a final 4xx without waiting out the window', async (
   const result = await runVerifyAdminPost(() => ({ status: 409, body: '{"error":"generation"}' }))
   assert.notEqual(result.code, 0)
   assert.equal(result.calls, 1)
+})
+
+test('a final connection failure does not report the previous attempt body', async () => {
+  const result = await runVerifyAdminPost((elapsedMs) => (elapsedMs < 1_000 ? UNHEALTHY : { drop: true }))
+  assert.notEqual(result.code, 0)
+  assert.match(result.stderr, /admin_post target-runtime: HTTP 000/)
+  assert.doesNotMatch(result.stderr, /no healthy upstream/)
 })

@@ -725,6 +725,8 @@ jobs:
             local out="${RUNNER_TEMP}/$1.json" window=60 delay=5 status
             local deadline=$((SECONDS + window))
             while true; do
+              # A refused or timed-out attempt writes no body; never report the last one's.
+              rm -f "${out}"
               status="$(curl --silent --show-error --max-time 30 --output "${out}" \
                 --write-out '%{http_code}' --request POST "$2" \
                 --header "Authorization: Bearer ${ORCA_RELAY_ADMIN_ID_TOKEN}" \
