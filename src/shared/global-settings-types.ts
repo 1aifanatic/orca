@@ -361,6 +361,8 @@ export type GlobalSettings = NativeChatGlobalSettings & {
   claudeAgentTeamsDefaultDisabledMigrated?: boolean
   /** Why: worktree deletion is destructive (rm -rf of the working dir), so confirm by default. */
   skipDeleteWorktreeConfirm: boolean
+  /** Opt-in: workspace deletion discards changes and may waive terminal-stop verification. */
+  alwaysForceDeleteWorktrees?: boolean
   /** Why: closing a terminal with child processes kills foreground work; keep this skip separate from other confirmations. */
   skipCloseTerminalWithRunningProcessConfirm: boolean
   /** Why: deleting an automation also deletes its run history; keep this skip separate from worktree deletion. */
