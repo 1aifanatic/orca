@@ -7,6 +7,7 @@ import {
   SshPtyAbsentFromRelayError
 } from '../../../providers/ssh-pty-errors'
 import type { Store } from '../../../persistence'
+import { clearReplacedPaneBinding } from '../../../persistence/loading-store/replaced-pane-binding'
 import type { IPtyProvider } from '../../../providers/types'
 import { spawnForStablePane, type StablePaneOwner } from './stable-owner'
 
@@ -76,6 +77,13 @@ function sessionStore(leaves: string[]): { store: Store; read: () => WorkspaceSe
       getWorkspaceSession: () => session,
       setWorkspaceSession: (next: WorkspaceSessionState) => {
         session = next
+      },
+      // The store's host-side binding retirement, applying the change the caller names.
+      retirePtyBinding: async (
+        ...[binding, , retire = clearReplacedPaneBinding]: Parameters<Store['retirePtyBinding']>
+      ) => {
+        session = retire(session, { ...binding, parentTabId: binding.tabId })
+        return true
       },
       flushOrThrow: () => {}
     }) as unknown as Store
@@ -152,47 +160,30 @@ describe('stable pane adoption after the relay reports the PTY absent', () => {
     expect(spawn).toHaveBeenCalledTimes(1)
   })
 
-  // Why a real store: without one the `args.worktreeId` guard short-circuits and the retirement —
-  // which can delete the parent tab and its layout — never runs. "Reconnect lost every tab" is the
-  // regression this subsystem was reverted for twice, so the composition needs its own coverage.
+  // Why a real store: "Reconnect lost every tab" is the regression this subsystem was reverted for
+  // twice. The fresh spawn takes the pane, so the absence leaves the tab, its layout and the
+  // bindings for that spawn's bind to swap; only the row lets go of the gone process.
   describe('with persistence actually reached', () => {
-    it('retires only the absent leaf and leaves the tab and its sibling bound', async () => {
-      const { store, read } = sessionStore([LEAF, SIBLING_LEAF])
-      const { run, spawn } = spawnAfterAttachRejection(
-        new SshPtyAbsentFromRelayError(`${SSH_SESSION_EXPIRED_ERROR}: pty-1`),
-        { store, worktreeId: WORKTREE }
-      )
+    it.each([[[LEAF, SIBLING_LEAF]], [[LEAF]]])(
+      'keeps the tab, its panes and their bindings (leaves %j)',
+      async (leaves) => {
+        const { store, read } = sessionStore(leaves)
+        const layouts = structuredClone(read().terminalLayoutsByTabId)
+        const { run, spawn } = spawnAfterAttachRejection(
+          new SshPtyAbsentFromRelayError(`${SSH_SESSION_EXPIRED_ERROR}: pty-1`),
+          { store, worktreeId: WORKTREE }
+        )
 
-      const result = await run()
+        const result = await run()
 
-      expect(spawn).toHaveBeenCalledTimes(2)
-      expect(result.owner).toBeNull()
-      const session = read()
-      expect(session.tabsByWorktree[WORKTREE]?.map((tab) => tab.id)).toEqual(['tab-1'])
-      const layout = session.terminalLayoutsByTabId['tab-1']
-      expect(layout).toBeDefined()
-      expect(layout?.ptyIdsByLeafId?.[SIBLING_LEAF]).toBe('ssh:conn-1@@pty-2')
-      expect(layout?.ptyIdsByLeafId?.[LEAF]).toBeUndefined()
-    })
-
-    // Pins current behaviour rather than blessing it: retiring the LAST leaf drops the tab from
-    // persistence, and the fallback returns owner=null so main does not re-persist a binding — tab
-    // survival then rests entirely on the renderer. If that ever regresses, this is the tripwire.
-    it('drops the tab when the absent leaf was the only one, leaving re-persistence to the renderer', async () => {
-      const { store, read } = sessionStore([LEAF])
-      const { run, spawn } = spawnAfterAttachRejection(
-        new SshPtyAbsentFromRelayError(`${SSH_SESSION_EXPIRED_ERROR}: pty-1`),
-        { store, worktreeId: WORKTREE }
-      )
-
-      const result = await run()
-
-      expect(spawn).toHaveBeenCalledTimes(2)
-      expect(result.owner).toBeNull()
-      const session = read()
-      expect(session.tabsByWorktree[WORKTREE]).toEqual([])
-      expect(session.terminalLayoutsByTabId['tab-1']).toBeUndefined()
-    })
+        expect(spawn).toHaveBeenCalledTimes(2)
+        expect(result.owner).toBeNull()
+        expect(read().terminalLayoutsByTabId).toEqual(layouts)
+        expect(read().tabsByWorktree[WORKTREE]).toEqual([
+          { id: 'tab-1', worktreeId: WORKTREE, ptyId: null }
+        ])
+      }
+    )
 
     it('leaves persistence untouched when the failure is not positive absence', async () => {
       const { store, read } = sessionStore([LEAF, SIBLING_LEAF])
