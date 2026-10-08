@@ -26,7 +26,7 @@ vi.mock('@/components/terminal-pane/terminal-file-link-target', async (importOri
   })
 }))
 
-const host = { cwd: '/repo', worktreeId: 'wt-1', worktreePath: '/repo' }
+const host = { cwd: '/repo', worktreeId: 'wt-1', worktreePath: '/repo', connectionId: null }
 
 function link(pathText: string): ParsedTerminalFileLink {
   return {
@@ -154,6 +154,44 @@ describe('createNativeChatFileLinkExistence', () => {
     expect(pathExists).toHaveBeenCalledTimes(4)
   })
 
+  it('shows an answer that landed between a message rendering and subscribing', async () => {
+    const { pathExists } = hostWith(() => true)
+    const existence = createNativeChatFileLinkExistence(host, pathExists)
+    watching(existence).watcher.getSnapshot().check(link('src/App.tsx'))
+    // Why: React renders (and checks) before its effect subscribes.
+    const late = existence.watch()
+    expect(late.getSnapshot().check(link('src/App.tsx'))).toBe(false)
+    await settle()
+
+    const onChange = vi.fn()
+    late.subscribe(onChange)
+
+    expect(onChange).toHaveBeenCalledOnce()
+    expect(late.getSnapshot().check(link('src/App.tsx'))).toBe(true)
+    expect(pathExists).toHaveBeenCalledOnce()
+  })
+
+  it('asks again on subscribe when the host failed before the message subscribed', async () => {
+    vi.useFakeTimers()
+    let reachable = false
+    const { pathExists } = hostWith(() => (reachable ? true : new Error('SSH connection closed')))
+    const existence = createNativeChatFileLinkExistence(host, pathExists)
+    const late = existence.watch()
+    late.getSnapshot().check(link('src/App.tsx'))
+    await settle()
+    // Why: nothing showed the path yet, so no retry was armed for it.
+    expect(vi.getTimerCount()).toBe(0)
+
+    reachable = true
+    const onChange = vi.fn()
+    late.subscribe(onChange)
+    await settle()
+
+    expect(pathExists).toHaveBeenCalledTimes(2)
+    expect(onChange).toHaveBeenCalledOnce()
+    expect(late.getSnapshot().check(link('src/App.tsx'))).toBe(true)
+  })
+
   it('refreshes only the messages that named a confirmed path', async () => {
     const { pathExists } = hostWith(() => true)
     const existence = createNativeChatFileLinkExistence(host, pathExists)
@@ -270,7 +308,9 @@ describe('createNativeChatFileLinkExistence', () => {
   it('never checks on this machine while a remote workspace connection is unresolved', async () => {
     connection.resolved = false
     const { pathExists } = hostWith(() => true)
-    const { watcher } = watching(createNativeChatFileLinkExistence(host, pathExists))
+    const { watcher } = watching(
+      createNativeChatFileLinkExistence({ ...host, connectionId: undefined }, pathExists)
+    )
 
     expect(watcher.getSnapshot().check(link('src/App.tsx'))).toBe(false)
     await settle()

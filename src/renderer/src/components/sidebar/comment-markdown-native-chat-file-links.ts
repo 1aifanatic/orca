@@ -105,16 +105,27 @@ function createFileLinkNode(link: ParsedTerminalFileLink, child: MarkdownNode): 
   }
 }
 
-function linkableTokens(link: ParsedTerminalFileLink): ParsedTerminalFileLink[] {
+function isTrailingPunctuation(token: string, endIndex: number): boolean {
+  return isSafeTrailingBoundary(token, endIndex) && /^\p{P}+$/u.test(token.slice(endIndex))
+}
+
+/** `endsSentence`: a token may end in sentence punctuation, which stays outside the link. */
+function linkableTokens(
+  link: ParsedTerminalFileLink,
+  endsSentence: boolean
+): ParsedTerminalFileLink[] {
   const tokenLinks: ParsedTerminalFileLink[] = []
   for (const match of link.displayText.matchAll(/\S+/g)) {
     const token = match[0]
     const exactLink = extractTerminalFileLinks(token).find(
-      (candidate) => candidate.startIndex === 0 && candidate.endIndex === token.length
+      (candidate) =>
+        candidate.startIndex === 0 &&
+        (candidate.endIndex === token.length ||
+          (endsSentence && isTrailingPunctuation(token, candidate.endIndex)))
     )
     if (exactLink && isLinkifiableFile(exactLink, true)) {
       const startIndex = link.startIndex + (match.index ?? 0)
-      tokenLinks.push({ ...exactLink, startIndex, endIndex: startIndex + token.length })
+      tokenLinks.push({ ...exactLink, startIndex, endIndex: startIndex + exactLink.endIndex })
     }
   }
   return tokenLinks
@@ -129,10 +140,11 @@ function splitProseJoinedLinks(link: ParsedTerminalFileLink): ParsedTerminalFile
   if (!/\s/.test(link.displayText)) {
     return [link]
   }
-  const tokenLinks = linkableTokens(link)
   if (ROOTED_PATH_PREFIX_PATTERN.test(link.pathText)) {
-    return [link, ...tokenLinks]
+    return [link, ...linkableTokens(link, true)]
   }
+  // Why: main never split sentence punctuation off an unrooted span's tokens; doing so would add links.
+  const tokenLinks = linkableTokens(link, false)
   const hasBareWord = Array.from(link.displayText.matchAll(/\S+/g)).some(
     (match) => !/[\\/.]/.test(match[0])
   )

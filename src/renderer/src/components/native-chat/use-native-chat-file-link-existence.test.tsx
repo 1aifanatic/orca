@@ -93,6 +93,22 @@ describe('NativeChatFileLinkExistenceProvider', () => {
     expect(mocks.created[0].recheck).toHaveBeenCalledOnce()
   })
 
+  it('does not recheck when the SSH connection drops', () => {
+    mocks.store.sshConnectionStates = new Map([['ssh-1', { status: 'connected' }]])
+    const view = renderProvider(false)
+
+    for (const status of ['reconnecting', 'connecting', 'deploying-relay']) {
+      mocks.store.sshConnectionStates = new Map([['ssh-1', { status }]])
+      view.rerender(
+        <NativeChatFileLinkExistenceProvider context={context} isWorking={false}>
+          {null}
+        </NativeChatFileLinkExistenceProvider>
+      )
+    }
+
+    expect(mocks.created[0].recheck).not.toHaveBeenCalled()
+  })
+
   it('starts over when the workspace connection resolves', () => {
     mocks.store.connectionId = undefined
     const view = renderProvider(false)

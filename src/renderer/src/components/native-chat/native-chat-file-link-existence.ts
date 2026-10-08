@@ -40,8 +40,8 @@ export type NativeChatFileLinkExistence = {
 type Answer = { exists: boolean; generation: number }
 
 type WatcherState = {
-  /** Paths this message has an answer for, or asked about. */
-  held: Map<string, FileLinkTarget>
+  /** Paths this message has an answer for, or asked about, with the answer its render used. */
+  held: Map<string, { target: FileLinkTarget; shown: boolean }>
   subscribed: boolean
   refresh: () => void
 }
@@ -50,8 +50,13 @@ export const NativeChatFileLinkExistenceContext = createContext<NativeChatFileLi
   null
 )
 
+export type NativeChatFileLinkHost = FileLinkHost & {
+  /** The workspace's SSH connection; undefined while the store cannot name its host yet. */
+  connectionId: string | null | undefined
+}
+
 export function createNativeChatFileLinkExistence(
-  host: FileLinkHost,
+  host: NativeChatFileLinkHost,
   pathExists: FileLinkPathExistence = createTerminalPathExistenceBatch()
 ): NativeChatFileLinkExistence {
   let generation = 0
@@ -92,8 +97,9 @@ export function createNativeChatFileLinkExistence(
     if (inFlight.get(key) === sentIn) {
       inFlight.delete(key)
     }
-    // Why: a recheck since then has asked again; an unreachable host is not evidence the file is gone.
-    if (sentIn !== generation) {
+    // Why: a recheck since then has asked again, or nothing shows the path (a later subscribe re-asks).
+    // An unreachable host is not evidence the file is gone.
+    if (sentIn !== generation || !holders.has(key)) {
       return
     }
     const attempt = (failures.get(key)?.attempt ?? -1) + 1
@@ -153,10 +159,10 @@ export function createNativeChatFileLinkExistence(
   }
 
   // Why: until an SSH workspace's connection is known, an unrouted check would stat this machine (#6648).
+  const hostUnresolved =
+    host.connectionId === undefined && !isWorktreeConnectionResolved(host.worktreeId)
   const isHostUnresolved = (target: FileLinkTarget): boolean =>
-    !target.fileContext.connectionId &&
-    !target.isRemoteRuntimePath &&
-    !isWorktreeConnectionResolved(host.worktreeId)
+    hostUnresolved && !target.fileContext.connectionId && !target.isRemoteRuntimePath
 
   const lookup = (
     link: ParsedTerminalFileLink,
@@ -175,15 +181,33 @@ export function createNativeChatFileLinkExistence(
     if (!answer && !mayAsk) {
       return false
     }
-    watcher.held.set(key, target)
+    const shown = answer?.exists ?? false
+    watcher.held.set(key, { target, shown })
     if (watcher.subscribed) {
       index(watcher, target)
     }
-    const outdated = !answer || answer.generation < generation
-    if (mayAsk && outdated && !failures.has(key)) {
+    if (mayAsk && isOutdated(key)) {
       send(target)
     }
-    return answer?.exists ?? false
+    return shown
+  }
+
+  const isOutdated = (key: string): boolean =>
+    (answers.get(key)?.generation ?? -1) < generation && !failures.has(key)
+
+  // Why: an answer can land between a message's render and its subscribe; nothing would refresh it.
+  const catchUp = (watcher: WatcherState): void => {
+    let changed = false
+    for (const [key, { target, shown }] of watcher.held) {
+      index(watcher, target)
+      changed ||= (answers.get(key)?.exists ?? false) !== shown
+      if (isOutdated(key)) {
+        send(target)
+      }
+    }
+    if (changed) {
+      watcher.refresh()
+    }
   }
 
   return {
@@ -206,9 +230,7 @@ export function createNativeChatFileLinkExistence(
           listeners.add(listener)
           if (!state.subscribed) {
             state.subscribed = true
-            for (const target of state.held.values()) {
-              index(state, target)
-            }
+            catchUp(state)
           }
           return () => {
             listeners.delete(listener)

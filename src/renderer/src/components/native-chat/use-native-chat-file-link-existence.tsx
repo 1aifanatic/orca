@@ -17,16 +17,22 @@ import {
 const subscribeToPairings = (onChange: () => void): (() => void) =>
   onRuntimeEnvironmentRevisionsChanged(onChange)
 
-/** Changes when the host answering for this workspace reconnects or is paired again. */
+type FileLinkHostEpoch = {
+  /** The SSH connection generation while connected; null while it is not. */
+  sshUp: string | null
+  /** Changes when the runtime host answers again or is paired again. */
+  runtime: string
+}
+
 function useFileLinkHostEpoch(
   connectionId: string | null | undefined,
   runtimeEnvironmentId: string | null
-): string {
-  const ssh = useAppStore((s) => {
+): FileLinkHostEpoch {
+  const sshUp = useAppStore((s) => {
     const state = connectionId ? s.sshConnectionStates.get(connectionId) : undefined
-    return state ? `${state.status}:${state.connectionGeneration ?? 0}` : ''
+    return state?.status === 'connected' ? String(state.connectionGeneration ?? 0) : null
   })
-  const runtime = useAppStore((s) => {
+  const runtimeStatus = useAppStore((s) => {
     const status = runtimeEnvironmentId
       ? s.runtimeStatusByEnvironmentId.get(runtimeEnvironmentId)
       : undefined
@@ -35,31 +41,35 @@ function useFileLinkHostEpoch(
   const pairing = useSyncExternalStore(subscribeToPairings, () =>
     runtimeEnvironmentId ? getRuntimeEnvironmentRevision(runtimeEnvironmentId) : undefined
   )
-  return `${ssh}|${runtime}|${pairing ?? ''}`
+  return { sshUp, runtime: `${runtimeStatus}|${pairing ?? ''}` }
 }
 
 /** Asks again about watched paths when a turn ends or the workspace's host comes back. */
 function useRecheckFileLinks(
   existence: NativeChatFileLinkExistence | null,
   isWorking: boolean,
-  hostEpoch: string
+  { sshUp, runtime }: FileLinkHostEpoch
 ): void {
   const seen = useRef<{
     existence: NativeChatFileLinkExistence | null
     isWorking: boolean
-    hostEpoch: string
+    sshUp: string | null
+    runtime: string
   } | null>(null)
   useEffect(() => {
     const previous = seen.current
-    seen.current = { existence, isWorking, hostEpoch }
+    seen.current = { existence, isWorking, sshUp, runtime }
     // Why: a fresh checker has nothing to recheck; its messages are asking right now.
     if (!existence || previous?.existence !== existence) {
       return
     }
-    if ((previous.isWorking && !isWorking) || previous.hostEpoch !== hostEpoch) {
+    const turnEnded = previous.isWorking && !isWorking
+    // Why: only a host coming back (or a new connection) can change answers; going down cannot.
+    const sshReturned = sshUp !== null && sshUp !== previous.sshUp
+    if (turnEnded || sshReturned || runtime !== previous.runtime) {
       existence.recheck()
     }
-  }, [existence, isWorking, hostEpoch])
+  }, [existence, isWorking, sshUp, runtime])
 }
 
 /** One per chat view: paths in its transcript are checked on the workspace's host. */
@@ -85,12 +95,10 @@ export function NativeChatFileLinkExistenceProvider({
             cwd: worktreePath,
             worktreeId,
             worktreePath,
-            runtimeEnvironmentId
+            runtimeEnvironmentId,
+            connectionId
           })
         : null,
-    // Why connectionId: answers belong to the host that gave them, so a workspace whose SSH
-    // connection resolves or changes starts over; lookups read the connection from the store.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [connectionId, runtimeEnvironmentId, worktreeId, worktreePath]
   )
   const hostEpoch = useFileLinkHostEpoch(connectionId, runtimeEnvironmentId)

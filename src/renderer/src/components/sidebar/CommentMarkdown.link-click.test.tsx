@@ -388,6 +388,30 @@ describe('CommentMarkdown link click handler', () => {
     )
   })
 
+  it('links a rooted path that ends a sentence and a later relative path', () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+
+    act(() => {
+      root?.render(
+        <CommentMarkdown
+          variant="document"
+          content="I updated /Users/me/r/a.ts. The test in src/b.ts now passes."
+          onLinkClick={vi.fn()}
+          fileLinkExists={filesAt('/Users/me/r/a.ts', 'src/b.ts')}
+        />
+      )
+    })
+
+    expect(Array.from(container.querySelectorAll('a')).map((anchor) => anchor.textContent)).toEqual(
+      ['/Users/me/r/a.ts', 'src/b.ts']
+    )
+    expect(container.textContent).toBe(
+      'I updated /Users/me/r/a.ts. The test in src/b.ts now passes.'
+    )
+  })
+
   it('links a spaced rooted path as one link when it and its pieces all exist', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
