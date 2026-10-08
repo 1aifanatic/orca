@@ -9,6 +9,7 @@ import {
   agentSessionRecordFixture
 } from '../../shared/agent-session-record.test-fixture'
 import { testOrcaSessionId } from '../../shared/orca-session-address-test-fixture'
+import { wslHookRelayConnectionId } from '../../shared/wsl-hook-relay-contract'
 import { OrchestrationDb } from './orchestration/db'
 import { createRootDispatch } from './orchestration/db/root-dispatch-test-fixture'
 import { reconcileLifecycleMessage } from './orchestration/lifecycle-reconciliation'
@@ -29,11 +30,16 @@ type Session = NonNullable<
     ConstructorParameters<typeof RuntimeOrchestrationSenderNames>[0]['getWorkspaceSession']
   >
 >
+type SenderNamingDeps = ConstructorParameters<typeof RuntimeOrchestrationSenderNames>[0]
+type HookRow = ReturnType<SenderNamingDeps['getAgentStatusSnapshotForPane']>[number]
 
 let db: OrchestrationDb
 let session: Session
 let records: Map<string, AgentSessionRecord>
 let generatedTitles: boolean
+let hookRows: HookRow[]
+let pty: NonNullable<ReturnType<SenderNamingDeps['getPtyAgents']>>
+let trackedTitle: string | null
 
 function names() {
   return new RuntimeOrchestrationSenderNames({
@@ -42,10 +48,12 @@ function names() {
       handle === 'term_worker' || handle === 'term_plain'
         ? { worktreeId: WORKTREE, tabId: `tab_${handle}`, ptyId: `pty_${handle}` }
         : undefined,
-    getPtyAgents: () => ({ launchAgent: 'codex' }),
+    getPtyAgents: () => pty,
     getTerminalPaneKey: (handle) => `tab_${handle}:leaf`,
     getWorkspaceSession: (worktreeId) => (worktreeId === WORKTREE ? session : undefined),
-    getGeneratedTitlesEnabled: () => generatedTitles
+    getGeneratedTitlesEnabled: () => generatedTitles,
+    getAgentStatusSnapshotForPane: (paneKey) => hookRows.filter((row) => row.paneKey === paneKey),
+    getTrackedTitle: () => trackedTitle
   })
 }
 
@@ -111,10 +119,34 @@ function chatTab(customLabel: string | null, label: string) {
   return { contentType: 'agent-session' as const, entityId: CHAT, customLabel, label }
 }
 
+function providerTitleTab() {
+  return {
+    id: 'tab_term_plain',
+    title: '',
+    aiVaultTitle: { agent: 'claude', sessionId: 'current-session', title: 'Parser work' }
+  }
+}
+
+function hookRow(overrides: Partial<HookRow> = {}): HookRow {
+  return {
+    paneKey: 'tab_term_plain:leaf',
+    worktreeId: WORKTREE,
+    agentType: 'claude',
+    connectionId: null,
+    launchToken: 'launch-current',
+    receivedAt: 1,
+    providerSession: { key: 'session_id', id: 'current-session' },
+    ...overrides
+  }
+}
+
 beforeEach(() => {
   db = new OrchestrationDb(':memory:')
   session = { unifiedTabs: {}, tabsByWorktree: {} }
   generatedTitles = false
+  hookRows = []
+  pty = { launchAgent: 'codex', connectionId: null, launchToken: 'launch-current' }
+  trackedTitle = null
   const base = agentSessionRecordFixture(agentSessionLeaseFixture({ sessionId: CHAT }))
   records = new Map([[CHAT, { ...base, location: { ...base.location, workspaceId: WORKTREE } }]])
   hostRef.current = {
@@ -199,6 +231,26 @@ describe("a sender's name, from what Orca shows for it", () => {
     expect(names().nameOf(chatParty)).toBe('Port the lexer')
   })
 
+  it.each(['rename', 'saved name'])(
+    'keeps a chat %s even when it equals the default label',
+    (kind) => {
+      const record = records.get(CHAT)
+      if (!record) {
+        throw new Error('chat record missing')
+      }
+      records.set(CHAT, {
+        ...record,
+        conversationName: kind === 'saved name' ? 'Claude Chat' : undefined
+      })
+      session.unifiedTabs = {
+        [WORKTREE]: [chatTab(kind === 'rename' ? 'Claude Chat' : null, 'Claude Chat')]
+      }
+      const { dispatchId } = finishedWorker('Port the parser')
+      expect(db.getDispatchContextById(dispatchId)?.status).toBe('dispatched')
+      expect(names().nameOf({ ...chatParty, terminalHandle: 'term_worker' })).toBe('Claude Chat')
+    }
+  )
+
   it("names a chat with no tab by its agent's chat label", () => {
     expect(names().nameOf(chatParty)).toBe('Claude Chat')
   })
@@ -225,6 +277,71 @@ describe("a sender's name, from what Orca shows for it", () => {
     expect(names().nameOf(terminalParty('term_plain'))).toBe('Lint fixes')
   })
 
+  it.each([
+    { id: 'current-session', expected: 'Parser work' },
+    { id: 'another-session', expected: 'Claude' },
+    { id: undefined, expected: 'Claude' }
+  ])('accepts a saved provider title only for the hook row session $id', ({ id, expected }) => {
+    session.tabsByWorktree = { [WORKTREE]: [providerTitleTab()] }
+    // The hook's current owner is Claude even though the PTY was launched as Codex.
+    hookRows = [hookRow({ providerSession: id ? { key: 'session_id', id } : undefined })]
+    expect(names().nameOf(terminalParty('term_plain'))).toBe(expected)
+  })
+
+  it.each<{ label: string; row: Partial<HookRow> }>([
+    { label: 'another pane', row: { paneKey: 'tab_sibling:leaf' } },
+    { label: 'another workspace', row: { worktreeId: 'folder:other' } },
+    { label: 'another launch', row: { launchToken: 'launch-old' } },
+    { label: 'another SSH host', row: { connectionId: 'ssh-other' } }
+  ])('does not use a provider title from $label', ({ row }) => {
+    session.tabsByWorktree = { [WORKTREE]: [providerTitleTab()] }
+    hookRows = [hookRow(row)]
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Codex')
+  })
+
+  it('uses the newest owner row even when it has not reported a provider session', () => {
+    session.tabsByWorktree = { [WORKTREE]: [providerTitleTab()] }
+    hookRows = [hookRow(), hookRow({ receivedAt: 2, providerSession: undefined })]
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Claude')
+  })
+
+  it.each([
+    { ptyConnection: 'ssh-current', rowConnection: 'ssh-current', expected: 'Parser work' },
+    { ptyConnection: 'ssh-current', rowConnection: 'ssh-other', expected: 'Codex' },
+    {
+      ptyConnection: null,
+      rowConnection: wslHookRelayConnectionId('Ubuntu'),
+      expected: 'Parser work'
+    },
+    { ptyConnection: null, rowConnection: wslHookRelayConnectionId('Debian'), expected: 'Codex' }
+  ])('selects provider identity only on its execution host: $rowConnection', (test) => {
+    session.tabsByWorktree = { [WORKTREE]: [providerTitleTab()] }
+    pty = { ...pty, connectionId: test.ptyConnection, wslDistro: 'Ubuntu' }
+    hookRows = [hookRow({ connectionId: test.rowConnection })]
+    expect(names().nameOf(terminalParty('term_plain'))).toBe(test.expected)
+  })
+
+  it('does not infer provider identity from the cached title without a status row', () => {
+    session.tabsByWorktree = {
+      [WORKTREE]: [
+        {
+          id: 'tab_term_plain',
+          title: 'Codex ready',
+          aiVaultTitle: { agent: 'codex', sessionId: 'old-session', title: 'Old task' }
+        }
+      ]
+    }
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Codex')
+  })
+
+  it('names a single pane by its current title before its older mirrored tab title', () => {
+    session.tabsByWorktree = {
+      [WORKTREE]: [{ id: 'tab_term_plain', title: 'Old task' }]
+    }
+    trackedTitle = '✳ Current task'
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Current task')
+  })
+
   it("never names a pane in a split tab by the tab title, which is its focused sibling's", () => {
     session.tabsByWorktree = { [WORKTREE]: [{ id: 'tab_term_plain', title: 'Sibling task' }] }
     session.terminalLayoutsByTabId = {
@@ -238,6 +355,8 @@ describe("a sender's name, from what Orca shows for it", () => {
       }
     }
     expect(names().nameOf(terminalParty('term_plain'))).toBe('Codex')
+    trackedTitle = '✳ Own pane task'
+    expect(names().nameOf(terminalParty('term_plain'))).toBe('Own pane task')
   })
 
   it('names a party nothing records as nothing', () => {

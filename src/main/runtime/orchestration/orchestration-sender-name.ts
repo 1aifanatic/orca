@@ -18,8 +18,9 @@ import { lineageLiveSession, type AgentSessionRecordReader } from './structured-
 export type TerminalSenderNaming = {
   /** The tab as this host mirrors the workspace session. */
   tab: ConversationNameTab | null
-  /** Its pane's own title in a split tab, null when it has none; undefined for a single pane. */
+  /** Its current pane title; undefined lets a single pane use its mirrored tab title. */
   paneTitle?: string | null
+  providerSessionId?: string
   agent: AgentType | null
   /** Its pane, which an active dispatch still names after the handle was reissued. */
   paneKey: string | null
@@ -51,7 +52,8 @@ export function orchestrationSenderName(
         terminal.tab,
         terminal.agent,
         sources.generatedTitlesEnabled,
-        terminal.paneTitle
+        terminal.paneTitle,
+        terminal.providerSessionId
       )
     : null
   return (
@@ -74,8 +76,8 @@ function chatNaming(
   }
   const tab = sources.chatTab(record.location.workspaceId, record.sessionId)
   const fallback = tab?.label.trim() || defaultAgentChatLabel(record.provider)
-  const shown = structuredChatDisplayName(tab?.customLabel, record.conversationName, fallback)
-  return { ownName: shown === fallback ? null : shown, fallback }
+  const ownName = structuredChatDisplayName(tab?.customLabel, record.conversationName, '') || null
+  return { ownName, fallback }
 }
 
 /** The task its dispatch was given: the federated `dispatch:<id>` address, or the dispatch a local
