@@ -105,10 +105,9 @@ export function agentLaunchSettingsMutationUpdates(
           delete env[name]
         }
       }
-      if (mutation.type === 'environment-set') {
-        env[mutation.name] = mutation.value
-      }
-      return { agentDefaultEnv: { ...settings.agentDefaultEnv, [mutation.agent]: env } }
+      const nextEnv =
+        mutation.type === 'environment-set' ? { ...env, [mutation.name]: mutation.value } : env
+      return { agentDefaultEnv: { ...settings.agentDefaultEnv, [mutation.agent]: nextEnv } }
     }
   }
 }

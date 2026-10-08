@@ -140,6 +140,19 @@ describe('execution-host agent launch settings', () => {
     expect(updates.agentDefaultEnv?.claude).toEqual({ PATH: 'new', API_KEY: 'keep' })
   })
 
+  it('preserves valid environment names that also name object properties', async () => {
+    const { controller, host } = fixture()
+    const result = await controller.mutateAgentLaunch({
+      type: 'environment-set',
+      agent: 'claude',
+      name: '__proto__',
+      value: 'explicit-value'
+    })
+    expect(host.agentDefaultEnv?.claude?.['__proto__']).toBe('explicit-value')
+    expect(result.environmentNames.claude).toContain('__proto__')
+    expect(host.agentDefaultEnv?.claude?.API_KEY).toBe('host-secret')
+  })
+
   it('rejects invalid agents, names, nul bytes, and oversized values', () => {
     for (const mutation of [
       { type: 'arguments', agent: 'unknown', value: '' },
