@@ -67,13 +67,7 @@ export abstract class AgentHookServerAuthorityEvidence extends AgentHookServerSt
   protected recordCurrentAuthorityObservation<T extends AgentHookEventPayload>(payload: T): T {
     const evidence = this.toAuthorityEvidence(payload)
     if (!evidence) {
-      return payload
-    }
-    const endedHash = this.endedLaunchTokenHashByPaneKey.get(
-      this.resolvePaneKeyAlias(payload.paneKey)
-    )
-    if (endedHash === evidence.launchTokenHash) {
-      return { ...payload, launchToken: undefined }
+      return payload.launchToken === undefined ? payload : { ...payload, launchToken: undefined }
     }
     this.currentAuthorityObservations.set(evidence.paneKey, evidence)
     this.persistedAuthorityCommitmentsByPaneKey.set(evidence.paneKey, evidence)
@@ -89,7 +83,13 @@ export abstract class AgentHookServerAuthorityEvidence extends AgentHookServerSt
     const launchTokenHash =
       launchTokenHashOverride ??
       (launchToken ? createHash('sha256').update(launchToken).digest('hex') : null)
-    if (!launchTokenHash) {
+    // Why here, the one place evidence is minted: an ended launch's token, which every later process
+    // in its shell inherits, is never authority again, whichever path reports it.
+    if (
+      !launchTokenHash ||
+      launchTokenHash ===
+        this.endedLaunchTokenHashByPaneKey.get(this.resolvePaneKeyAlias(payload.paneKey))
+    ) {
       return null
     }
     return Object.freeze({
