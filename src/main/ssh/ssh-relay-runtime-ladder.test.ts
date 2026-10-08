@@ -118,7 +118,7 @@ describe('relay runtime ladder (design D6)', () => {
     expect(remoteRuntimeUnavailableReason('host_node_missing')).toBe('no_runtime')
     expect(remoteRuntimeUnavailableMessage('home_noexec', 'noexec')).toContain('mounted noexec')
     expect(remoteRuntimeUnavailableMessage('no_runtime', 'host_node_missing')).toContain(
-      'Install Node.js 18+'
+      'Install Node.js 24+'
     )
   })
 

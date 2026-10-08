@@ -178,8 +178,8 @@ function hostNodePlan(): HostNodeAddonRelayPlan {
     glibc: { major: 2, minor: 31 },
     fullVersion: HOST_NODE_VERSION,
     addons: { dir: '/tmp/host-addons', digest: 'd', dispose: vi.fn().mockResolvedValue(undefined) },
-    nodePath: '/opt/node18/bin/node',
-    hostNode: { version: { major: 18, minor: 20 }, napi: 9 }
+    nodePath: '/opt/node24/bin/node',
+    hostNode: { version: { major: 24, minor: 20 }, napi: 9 }
   }
 }
 
@@ -245,8 +245,8 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     resetSshRemoteRuntimeTelemetryForTests()
   })
 
-  it('keeps the legacy host-Node path when the host has no runtime setting', async () => {
-    const conn = makeConnection()
+  it('keeps an explicitly selected host-Node runtime', async () => {
+    const conn = makeConnection('legacy')
     queueInstalledLegacyLaunch()
 
     const result = await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
@@ -257,7 +257,7 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
   })
 
   it('launches from the runtime-folded version dir with the pinned Node and no host Node probe', async () => {
-    const conn = makeConnection('pinned-node')
+    const conn = makeConnection()
     queueInstalledPinnedLaunch()
 
     const result = await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
@@ -293,7 +293,7 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
   })
 
   it('leaves the runtime store alone on the legacy host-Node path', async () => {
-    const conn = makeConnection()
+    const conn = makeConnection('legacy')
     queueInstalledLegacyLaunch()
 
     await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
@@ -493,15 +493,15 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     expect(resolveRemoteNodePath).not.toHaveBeenCalled()
     expect(ensurePinnedRelayRuntime).not.toHaveBeenCalled()
     expect(result.serverBuildId).toBe(HOST_NODE_VERSION)
-    expect(result.nodePath).toBe('/opt/node18/bin/node')
-    expect(detachedLaunchCommand(conn)).toContain("'/opt/node18/bin/node' relay.js --detached")
+    expect(result.nodePath).toBe('/opt/node24/bin/node')
+    expect(detachedLaunchCommand(conn)).toContain("'/opt/node24/bin/node' relay.js --detached")
     expect(plan.addons.dispose).toHaveBeenCalledOnce()
     expect(track).toHaveBeenCalledWith(
       'ssh_remote_runtime_resolved',
       expect.objectContaining({
         rung: 'c',
         first_refusal: 'artifacts_unavailable',
-        host_node_major: '18',
+        host_node_major: '24',
         host_libc: 'glibc',
         glibc_minor: '31'
       })

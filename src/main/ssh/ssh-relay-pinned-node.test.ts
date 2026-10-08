@@ -65,12 +65,12 @@ afterEach(() => {
 })
 
 describe('remote runtime setting', () => {
-  it('defaults to legacy, lets the host setting win, and accepts only known env values', () => {
-    expect(resolveSshRemoteRuntime(undefined, {})).toBe('legacy')
+  it('defaults to bundled Node, lets the host setting win, and accepts only known env values', () => {
+    expect(resolveSshRemoteRuntime(undefined, {})).toBe('pinned-node')
     expect(resolveSshRemoteRuntime({}, { [SSH_REMOTE_RUNTIME_ENV]: 'pinned-node' })).toBe(
       'pinned-node'
     )
-    expect(resolveSshRemoteRuntime({}, { [SSH_REMOTE_RUNTIME_ENV]: 'bun' })).toBe('legacy')
+    expect(resolveSshRemoteRuntime({}, { [SSH_REMOTE_RUNTIME_ENV]: 'bun' })).toBe('pinned-node')
     expect(
       resolveSshRemoteRuntime(
         { remoteRuntime: 'legacy' },

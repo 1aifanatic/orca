@@ -2,7 +2,7 @@
  * Plan a relay launch on Orca's pinned Node with the orcad slot's prebuilt addons, instead
  * of the host's Node plus a host-side npm install (design D5, D6 rung A, D8.1).
  *
- * Opt-in per host (`SshTarget.remoteRuntime`), and on by default where managed orcad can't run.
+ * Default unless a host selects the legacy runtime.
  * Anything this module cannot establish on the client, and every classified refusal from the
  * host, falls back to the legacy host-Node path with a logged reason.
  */
@@ -190,7 +190,7 @@ export type RelayRuntimeFallbackReason =
   | 'artifacts_unavailable'
   /** No runtime exists for this rung and host (rung B before a compat build ships). */
   | 'runtime_unavailable'
-  /** Rung C found no host Node >= 18 with the addons' N-API level. */
+  /** Rung C found no host Node >= 24 with the addons' N-API level. */
   | 'host_node_missing'
 
 export type HostNodeRelayPlan = {

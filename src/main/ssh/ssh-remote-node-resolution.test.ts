@@ -36,24 +36,24 @@ describe('resolveRemoteNodePath', () => {
   it('resolves system node via the path probe', async () => {
     execCommandMock
       .mockResolvedValueOnce('/usr/local/bin/node\n') // path probe
-      .mockResolvedValueOnce('v20.0.0\n') // version check
+      .mockResolvedValueOnce('v24.0.0\n') // version check
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe('/usr/local/bin/node')
   })
 
   it('skips an incomplete system Node and selects a complete NVM toolchain', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/usr/bin/node\n/home/u/.nvm/versions/node/v22.22.0/bin/node\n')
+      .mockResolvedValueOnce('/usr/bin/node\n/home/u/.nvm/versions/node/v24.22.0/bin/node\n')
       .mockRejectedValueOnce(new Error('/usr/bin/npm: not found'))
-      .mockResolvedValueOnce('__ORCA_NODE_VERSION__\nv22.22.0\n__ORCA_NPM_VERSION__\n11.13.0\n')
+      .mockResolvedValueOnce('__ORCA_NODE_VERSION__\nv24.22.0\n__ORCA_NPM_VERSION__\n11.13.0\n')
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe(
-      '/home/u/.nvm/versions/node/v22.22.0/bin/node'
+      '/home/u/.nvm/versions/node/v24.22.0/bin/node'
     )
 
     expect(execCommandMock.mock.calls[1]![1]).toContain("PATH='/usr/bin':$PATH npm --version")
     expect(execCommandMock.mock.calls[2]![1]).toContain(
-      "PATH='/home/u/.nvm/versions/node/v22.22.0/bin':$PATH npm --version"
+      "PATH='/home/u/.nvm/versions/node/v24.22.0/bin':$PATH npm --version"
     )
   })
 
@@ -66,7 +66,7 @@ describe('resolveRemoteNodePath', () => {
         const npmBinDir = path.join(root, 'npm elsewhere', 'bin')
         mkdirSync(path.dirname(nodePath), { recursive: true })
         mkdirSync(npmBinDir, { recursive: true })
-        writeFileSync(nodePath, '#!/bin/sh\nprintf "v22.22.0\\n"\n')
+        writeFileSync(nodePath, '#!/bin/sh\nprintf "v24.22.0\\n"\n')
         writeFileSync(path.join(npmBinDir, 'npm'), '#!/bin/sh\nprintf "11.13.0\\n"\n')
         chmodSync(nodePath, 0o755)
         chmodSync(path.join(npmBinDir, 'npm'), 0o755)
@@ -93,8 +93,8 @@ describe('resolveRemoteNodePath', () => {
 
   it('probes mise install directories', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/home/u/.local/share/mise/installs/node/20/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/home/u/.local/share/mise/installs/node/24/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -104,8 +104,8 @@ describe('resolveRemoteNodePath', () => {
 
   it('probes asdf install directories', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/home/u/.asdf/installs/nodejs/20.11.0/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/home/u/.asdf/installs/nodejs/24.11.0/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -116,7 +116,7 @@ describe('resolveRemoteNodePath', () => {
   it('probes volta bin directory', async () => {
     execCommandMock
       .mockResolvedValueOnce('/home/u/.volta/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -126,8 +126,8 @@ describe('resolveRemoteNodePath', () => {
 
   it('respects a custom NVM_DIR instead of hardcoding $HOME/.nvm', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/custom/nvm/versions/node/v20.11.0/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/custom/nvm/versions/node/v24.11.0/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -139,8 +139,8 @@ describe('resolveRemoteNodePath', () => {
 
   it('respects a custom MISE_DATA_DIR instead of hardcoding $HOME/.local/share/mise', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/opt/mise-data/installs/node/v20.11.0/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/opt/mise-data/installs/node/v24.11.0/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -154,7 +154,7 @@ describe('resolveRemoteNodePath', () => {
   it('finds node under a MISE_DATA_DIR exported from a shell dotfile', async () => {
     execCommandMock
       .mockResolvedValueOnce('/home/u/.local/share/mise/shims/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -162,10 +162,10 @@ describe('resolveRemoteNodePath', () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'orca-mise-probe-'))
     try {
       const shimPath = path.join(home, 'custom-mise/shims/node')
-      const installPath = path.join(home, 'custom-mise/installs/node/v20.11.0/bin/node')
+      const installPath = path.join(home, 'custom-mise/installs/node/v24.11.0/bin/node')
       for (const target of [shimPath, installPath]) {
         mkdirSync(path.dirname(target), { recursive: true })
-        writeFileSync(target, '#!/bin/sh\nprintf "v20.11.0\\n"\n')
+        writeFileSync(target, '#!/bin/sh\nprintf "v24.11.0\\n"\n')
         chmodSync(target, 0o755)
       }
       writeFileSync(path.join(home, '.zshrc'), 'export MISE_DATA_DIR=~/custom-mise\n')
@@ -186,7 +186,7 @@ describe('resolveRemoteNodePath', () => {
   it('finds node under a MISE_DATA_DIR present only in the probe environment', async () => {
     execCommandMock
       .mockResolvedValueOnce('/home/u/.local/share/mise/shims/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -194,9 +194,9 @@ describe('resolveRemoteNodePath', () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'orca-mise-env-probe-'))
     try {
       const miseDataDir = path.join(home, 'env-mise')
-      const installPath = path.join(miseDataDir, 'installs/node/v20.11.0/bin/node')
+      const installPath = path.join(miseDataDir, 'installs/node/v24.11.0/bin/node')
       mkdirSync(path.dirname(installPath), { recursive: true })
-      writeFileSync(installPath, '#!/bin/sh\nprintf "v20.11.0\\n"\n')
+      writeFileSync(installPath, '#!/bin/sh\nprintf "v24.11.0\\n"\n')
       chmodSync(installPath, 0o755)
 
       const output = execFileSync('/bin/sh', ['-c', callScript], {
@@ -213,7 +213,7 @@ describe('resolveRemoteNodePath', () => {
   it('falls back to XDG_DATA_HOME for mise installs when MISE_DATA_DIR is unset', async () => {
     execCommandMock
       .mockResolvedValueOnce('/home/u/.local/share/mise/shims/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -221,9 +221,9 @@ describe('resolveRemoteNodePath', () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'orca-mise-xdg-probe-'))
     try {
       const xdgDataHome = path.join(home, 'xdg')
-      const installPath = path.join(xdgDataHome, 'mise/installs/node/v20.11.0/bin/node')
+      const installPath = path.join(xdgDataHome, 'mise/installs/node/v24.11.0/bin/node')
       mkdirSync(path.dirname(installPath), { recursive: true })
-      writeFileSync(installPath, '#!/bin/sh\nprintf "v20.11.0\\n"\n')
+      writeFileSync(installPath, '#!/bin/sh\nprintf "v24.11.0\\n"\n')
       chmodSync(installPath, 0o755)
 
       const output = execFileSync('/bin/sh', ['-c', callScript], {
@@ -239,8 +239,8 @@ describe('resolveRemoteNodePath', () => {
 
   it('quotes version-manager directory prefixes while leaving globs active', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/home/u/.fnm/node-versions/v20.11.0/installation/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/home/u/.fnm/node-versions/v24.11.0/installation/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -265,8 +265,8 @@ describe('resolveRemoteNodePath', () => {
 
   it('does not depend on GNU sort when probing version-manager directories', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v20.11.0/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v24.11.0/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -276,8 +276,8 @@ describe('resolveRemoteNodePath', () => {
 
   it('keeps the path-probe script successful when optional directories are missing', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v20.11.0/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v24.11.0/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -287,17 +287,17 @@ describe('resolveRemoteNodePath', () => {
 
   it('expands tilde NVM_DIR assignments from shell dotfiles', async () => {
     execCommandMock
-      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v20.11.0/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v24.11.0/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
     const callScript = execCommandMock.mock.calls[0]![1] as string
     const home = mkdtempSync(path.join(os.tmpdir(), 'orca-nvm-probe-'))
     try {
-      const nodePath = path.join(home, 'tilde-nvm/versions/node/v20.11.0/bin/node')
+      const nodePath = path.join(home, 'tilde-nvm/versions/node/v24.11.0/bin/node')
       mkdirSync(path.dirname(nodePath), { recursive: true })
-      writeFileSync(nodePath, '#!/bin/sh\nprintf "v20.11.0\\n"\n')
+      writeFileSync(nodePath, '#!/bin/sh\nprintf "v24.11.0\\n"\n')
       chmodSync(nodePath, 0o755)
       writeFileSync(path.join(home, '.zshrc'), 'export NVM_DIR=~/tilde-nvm\n')
 
@@ -315,7 +315,7 @@ describe('resolveRemoteNodePath', () => {
   it('expands an $XDG_DATA_HOME-relative MISE_DATA_DIR assignment from shell dotfiles', async () => {
     execCommandMock
       .mockResolvedValueOnce('/home/u/.local/share/mise/shims/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -324,9 +324,9 @@ describe('resolveRemoteNodePath', () => {
     try {
       // A name the seeded `${XDG_DATA_HOME:-$HOME/.local/share}/mise` default cannot reach, so
       // only the dotfile arm can find it.
-      const nodePath = path.join(home, 'xdg-data/custom-mise/installs/node/20.11.0/bin/node')
+      const nodePath = path.join(home, 'xdg-data/custom-mise/installs/node/24.11.0/bin/node')
       mkdirSync(path.dirname(nodePath), { recursive: true })
-      writeFileSync(nodePath, '#!/bin/sh\nprintf "v20.11.0\\n"\n')
+      writeFileSync(nodePath, '#!/bin/sh\nprintf "v24.11.0\\n"\n')
       chmodSync(nodePath, 0o755)
       writeFileSync(path.join(home, '.zshrc'), 'export MISE_DATA_DIR=$XDG_DATA_HOME/custom-mise\n')
 
@@ -348,7 +348,7 @@ describe('resolveRemoteNodePath', () => {
   it('falls back to the POSIX default when an $XDG_DATA_HOME assignment has no env value', async () => {
     execCommandMock
       .mockResolvedValueOnce('/home/u/.local/share/mise/shims/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -356,9 +356,9 @@ describe('resolveRemoteNodePath', () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'orca-xdg-default-probe-'))
     try {
       // sshd's exec channel runs without the profile, so XDG_DATA_HOME is often simply absent.
-      const nodePath = path.join(home, '.local/share/custom-mise/installs/node/20.11.0/bin/node')
+      const nodePath = path.join(home, '.local/share/custom-mise/installs/node/24.11.0/bin/node')
       mkdirSync(path.dirname(nodePath), { recursive: true })
-      writeFileSync(nodePath, '#!/bin/sh\nprintf "v20.11.0\\n"\n')
+      writeFileSync(nodePath, '#!/bin/sh\nprintf "v24.11.0\\n"\n')
       chmodSync(nodePath, 0o755)
       writeFileSync(path.join(home, '.zshrc'), 'export MISE_DATA_DIR=$XDG_DATA_HOME/custom-mise\n')
 
@@ -376,7 +376,7 @@ describe('resolveRemoteNodePath', () => {
   it('joins probes with newlines, not ||, so a missing dir does not mask later probes', async () => {
     execCommandMock
       .mockResolvedValueOnce('/usr/local/bin/node\n')
-      .mockResolvedValueOnce('v20.0.0\n')
+      .mockResolvedValueOnce('v24.0.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -388,23 +388,23 @@ describe('resolveRemoteNodePath', () => {
 
   it('rejects a path-probe candidate whose version is below the minimum', async () => {
     // Probe returns two candidates; the first (v10) is too old, the second
-    // (v20) must be selected instead.
+    // (v24) must be selected instead.
     execCommandMock
       .mockResolvedValueOnce(
-        '/home/u/.nvm/versions/node/v10.24.1/bin/node\n/home/u/.nvm/versions/node/v20.11.0/bin/node\n'
+        '/home/u/.nvm/versions/node/v10.24.1/bin/node\n/home/u/.nvm/versions/node/v24.11.0/bin/node\n'
       )
       .mockResolvedValueOnce('v10.24.1\n') // first candidate fails the gate
-      .mockResolvedValueOnce('v20.11.0\n') // second candidate passes
+      .mockResolvedValueOnce('v24.11.0\n') // second candidate passes
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe(
-      '/home/u/.nvm/versions/node/v20.11.0/bin/node'
+      '/home/u/.nvm/versions/node/v24.11.0/bin/node'
     )
   })
 
-  it('accepts Node 18 (the exact minimum) as valid', async () => {
+  it('accepts Node 24 (the exact minimum) as valid', async () => {
     execCommandMock
       .mockResolvedValueOnce('/usr/local/bin/node\n')
-      .mockResolvedValueOnce('v18.0.0\n')
+      .mockResolvedValueOnce('v24.0.0\n')
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe('/usr/local/bin/node')
   })
@@ -414,7 +414,7 @@ describe('resolveRemoteNodePath', () => {
     // we should not version-check the same path twice.
     execCommandMock
       .mockResolvedValueOnce('/usr/local/bin/node\n/usr/local/bin/node\n')
-      .mockResolvedValueOnce('v20.0.0\n')
+      .mockResolvedValueOnce('v24.0.0\n')
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe('/usr/local/bin/node')
     expect(execCommandMock).toHaveBeenCalledTimes(2)
@@ -424,11 +424,11 @@ describe('resolveRemoteNodePath', () => {
     execCommandMock
       .mockResolvedValueOnce('\n') // path probe: empty
       .mockResolvedValueOnce('/bin/zsh') // $SHELL
-      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v20.11.0/bin/node\n') // command -v node
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v24.11.0/bin/node\n') // command -v node
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe(
-      '/home/u/.nvm/versions/node/v20.11.0/bin/node'
+      '/home/u/.nvm/versions/node/v24.11.0/bin/node'
     )
 
     expect(execCommandMock).toHaveBeenNthCalledWith(3, conn, `'/bin/zsh' -lc 'command -v node'`, {
@@ -442,11 +442,11 @@ describe('resolveRemoteNodePath', () => {
       .mockResolvedValueOnce('/old/node\n') // path probe
       .mockResolvedValueOnce('v10.24.1\n') // too old
       .mockResolvedValueOnce('/bin/bash') // $SHELL
-      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v20.11.0/bin/node\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('/home/u/.nvm/versions/node/v24.11.0/bin/node\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe(
-      '/home/u/.nvm/versions/node/v20.11.0/bin/node'
+      '/home/u/.nvm/versions/node/v24.11.0/bin/node'
     )
   })
 
@@ -457,7 +457,7 @@ describe('resolveRemoteNodePath', () => {
       .mockResolvedValueOnce('\n') // path probe: empty
       .mockResolvedValueOnce('/usr/bin/fish') // $SHELL
       .mockResolvedValueOnce('/opt/homebrew/bin/node\n')
-      .mockResolvedValueOnce('v22.0.0\n')
+      .mockResolvedValueOnce('v24.0.0\n')
 
     await resolveRemoteNodePath(conn)
 
@@ -474,7 +474,7 @@ describe('resolveRemoteNodePath', () => {
       .mockResolvedValueOnce('\n') // path probe: empty
       .mockResolvedValueOnce('/bin/sh\n') // ${SHELL:-/bin/sh}
       .mockResolvedValueOnce('/usr/local/bin/node\n')
-      .mockResolvedValueOnce('v20.0.0\n')
+      .mockResolvedValueOnce('v24.0.0\n')
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe('/usr/local/bin/node')
     expect(execCommandMock).toHaveBeenNthCalledWith(3, conn, `'/bin/sh' -c 'command -v node'`, {
@@ -490,7 +490,7 @@ describe('resolveRemoteNodePath', () => {
       .mockResolvedValueOnce('\n') // path probe: empty
       .mockResolvedValueOnce('/bin/csh\n') // $SHELL
       .mockResolvedValueOnce('/usr/local/bin/node\n')
-      .mockResolvedValueOnce('v20.0.0\n')
+      .mockResolvedValueOnce('v24.0.0\n')
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe('/usr/local/bin/node')
     expect(execCommandMock).toHaveBeenNthCalledWith(3, conn, `'/bin/csh' -c 'command -v node'`, {
@@ -504,7 +504,7 @@ describe('resolveRemoteNodePath', () => {
       .mockResolvedValueOnce('\n') // path probe: empty
       .mockResolvedValueOnce('/usr/bin/tcsh\n') // $SHELL
       .mockResolvedValueOnce('/usr/local/bin/node\n')
-      .mockResolvedValueOnce('v20.0.0\n')
+      .mockResolvedValueOnce('v24.0.0\n')
 
     await expect(resolveRemoteNodePath(conn)).resolves.toBe('/usr/local/bin/node')
     expect(execCommandMock).toHaveBeenNthCalledWith(
@@ -675,7 +675,7 @@ describe('resolveRemoteNodePath', () => {
     execCommandMock
       .mockResolvedValueOnce('C:\\old\\node.exe\nC:\\Program Files\\nodejs\\node.exe\n')
       .mockResolvedValueOnce('v16.20.2\n')
-      .mockResolvedValueOnce('v20.11.0\n')
+      .mockResolvedValueOnce('v24.11.0\n')
 
     await expect(resolveRemoteNodePath(conn, getRemoteHostPlatform('win32-x64'))).resolves.toBe(
       'C:/Program Files/nodejs/node.exe'

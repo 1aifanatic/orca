@@ -272,8 +272,8 @@ async function main() {
     ]),
     { allowFailure: true }
   )
-  if (nodeVersion.status !== 0 || Number(nodeVersion.stdout.trim().split('.')[0]) < 18) {
-    throw new Error(`WSL distro '${distro}' needs Node.js 18 or newer to run Orca's relay`)
+  if (nodeVersion.status !== 0 || Number(nodeVersion.stdout.trim().split('.')[0]) < 24) {
+    throw new Error(`WSL distro '${distro}' needs Node.js 24 or newer to run Orca's relay`)
   }
 
   const bundleDir = join(process.cwd(), 'out', 'relay', 'wsl')

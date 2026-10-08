@@ -3,8 +3,8 @@
  *
  *   A  Orca's pinned Node + slot prebuilds
  *   B  a compat pinned Node + compat addons (chosen only when a compat runtime exists)
- *   C  the host's Node >= 18 + Orca's N-API prebuilds, no npm
- *   legacy  the host's Node + npm install (kept until the default flips)
+ *   C  the host's Node >= 24 + Orca's N-API prebuilds, no npm
+ *   legacy  the host's Node >= 24 + npm install
  *   D  nothing runs: plain SSH terminals and SFTP, recording the classified reason
  *
  * The ladder steps down only on a classified refusal (a `PinnedRelayFallbackError`); an
@@ -156,7 +156,7 @@ const REMOTE_RUNTIME_UNAVAILABLE_MESSAGES: Record<RemoteRuntimeUnavailableReason
     'unavailable until an administrator allows exec there.',
   no_runtime:
     "Orca can't run its remote runtime on this host: its bundled Node.js was refused and no " +
-    'Node.js 18 or newer was found on the host. Install Node.js 18+ on the host, then reconnect.'
+    'Node.js 24 or newer was found on the host. Install Node.js 24+ on the host, then reconnect.'
 }
 
 // Why its own wording: a host Node would load addons from the same noexec tree, so installing one cannot help.
