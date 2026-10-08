@@ -19,6 +19,7 @@ import type { TerminalAgent } from '../../shared/terminal-agent'
 import type { AgentPromptActivity } from './agent-prompt-submission-verification'
 import { hasExplicitIdleTitle } from './tui-idle-evidence'
 import { readTuiIdleHookTurn, type TuiIdleHookTurn } from './tui-idle-hook-lane'
+import { judgeBlockedAgainstLiveScreen } from './live-screen-blocked-judgement'
 
 export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends OrcaRuntimeWithAgentPromptRequestCorrelation {
   readOpenCodeStartupPromptOwner(ptyId: string, incarnationId: string, launchToken: string) {
@@ -71,6 +72,38 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
       lifecycle?.status && lifecycle.status !== 'permission' ? lifecycle.updatedAt : -1
     )
     return newestPermissionAt >= 0 && newestPermissionAt >= newestClearAt ? blockedByWaitText : null
+  }
+
+  /** The line-tail arbiter judged against the live screen, for every reader of a blocked prompt. */
+  protected resolveLiveTerminalWaitPermission(
+    ptyId: string,
+    terminal: RuntimeTerminalAgentStatusSnapshot,
+    explicitStatus: { status: AgentStatus; updatedAt: number } | null,
+    lifecycle: { status: AgentStatus | null; updatedAt: number } | null | undefined
+  ): RuntimeTerminalWaitBlockedReason | null {
+    return judgeBlockedAgainstLiveScreen({
+      tailVerdict: this.resolveAuthoritativeTerminalWaitPermission(
+        terminal,
+        explicitStatus,
+        lifecycle
+      ),
+      screenReason: this.readCurrentScreenBlockedReason(ptyId),
+      agentWorking: terminal.titleStatus === 'working' || explicitStatus?.status === 'working'
+    })
+  }
+
+  /** Undefined when no whole-screen model has applied every byte the runtime received. */
+  protected readCurrentScreenBlockedReason(
+    ptyId: string
+  ): RuntimeTerminalWaitBlockedReason | null | undefined {
+    const state = this.readWholeScreenModel(ptyId)
+    // Why caught up: the model applies bytes asynchronously, and a lagging grid would hide a
+    // dialog the newest chunk painted.
+    if (!state || state.outputSequence < this.getPtyOutputSequence(ptyId)) {
+      return undefined
+    }
+    const lines = this.readLiveTerminalScreenLines(ptyId)
+    return lines ? detectTerminalWaitBlockedReason(lines.join('\n')) : undefined
   }
 
   /**
@@ -141,7 +174,8 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
       return null
     }
     try {
-      return this.resolveAuthoritativeTerminalWaitPermission(
+      return this.resolveLiveTerminalWaitPermission(
+        ptyId,
         this.getTerminalAgentStatusSnapshot(handle, ptyId),
         { status: state === 'done' ? 'idle' : state, updatedAt: row.receivedAt },
         this.agentPromptLifecycleByPtyId.get(ptyId)

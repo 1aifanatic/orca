@@ -289,6 +289,7 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
       : undefined
     const waitInputs = this.getTerminalWaitPermissionInputs(handle, ptyId, waitText)
     const status = this.hasAuthoritativeTerminalWaitPermission(
+      ptyId,
       waitInputs.terminal,
       explicit,
       waitInputs.lifecycle
@@ -308,12 +309,13 @@ export class OrcaRuntimeWithSerializeAgentPromptSubmission extends OrcaRuntimeWi
   }
 
   protected hasAuthoritativeTerminalWaitPermission(
+    ptyId: string,
     terminal: RuntimeTerminalAgentStatusSnapshot,
     explicitStatus: { status: AgentStatus; updatedAt: number } | null,
     lifecycle: { status: AgentStatus | null; updatedAt: number } | null | undefined
   ): boolean {
     return (
-      this.resolveAuthoritativeTerminalWaitPermission(terminal, explicitStatus, lifecycle) !== null
+      this.resolveLiveTerminalWaitPermission(ptyId, terminal, explicitStatus, lifecycle) !== null
     )
   }
 

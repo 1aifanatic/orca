@@ -36,13 +36,20 @@ export class OrcaRuntimeWithGetTerminalInteractiveWait extends OrcaRuntimeWithAd
     }
     try {
       ptyId = this.getTerminalAgentStatusPtyId(handle)
+    } catch {
+      return undefined
+    }
+    // Why: the screen judgement reads the model only once it has applied every received byte.
+    await this.headlessTerminals.get(ptyId)?.writeChain
+    try {
       inputs = this.getTerminalWaitPermissionInputs(handle, ptyId)
     } catch {
       return undefined
     }
     const { terminal, lifecycle } = inputs
     const explicitStatus = this.getFreshExplicitAgentStatusForHandle(handle)
-    const promptReason = this.resolveAuthoritativeTerminalWaitPermission(
+    const promptReason = this.resolveLiveTerminalWaitPermission(
+      ptyId,
       terminal,
       explicitStatus,
       lifecycle
