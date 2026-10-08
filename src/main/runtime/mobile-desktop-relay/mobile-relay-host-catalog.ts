@@ -1,14 +1,17 @@
 import { z } from 'zod'
 import { DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY } from '../../../shared/delegated-mobile-device-contract'
-import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
-import { buildExecutionHostRegistry } from '../../../shared/execution-host-registry'
 import {
-  stampServerWorktreeRows,
-  type MobileRelayHost,
-  type MobileRelayHostRelay,
-  type MobileRelayHostsListResult,
-  type MobileRelayHostWorktreesResult,
-  type MobileRelayServerWorktreeRow
+  parseExecutionHostId,
+  toRuntimeExecutionHostId,
+  type ExecutionHostId
+} from '../../../shared/execution-host'
+import { buildExecutionHostRegistry } from '../../../shared/execution-host-registry'
+import type {
+  MobileRelayHost,
+  MobileRelayHostRelay,
+  MobileRelayHostsListResult,
+  MobileRelayHostWorktreesResult,
+  MobileRelayServerWorktreeRow
 } from '../../../shared/mobile-relay-hosts-contract'
 import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
@@ -49,15 +52,13 @@ export class MobileRelayHostCatalog {
   ) {}
 
   list(): MobileRelayHostsListResult {
-    const hosts = this.describe()
-    for (const host of hosts) {
-      // Why: keeps the last list warm while the server answers, for when it stops answering.
-      if (host.health === 'available') {
-        void this.refresh(host)
-      }
-    }
     return {
-      hosts: hosts.map(({ hostId, label, health, relay }) => ({ hostId, label, health, relay }))
+      hosts: this.describe().map(({ hostId, label, health, relay }) => ({
+        hostId,
+        label,
+        health,
+        relay
+      }))
     }
   }
 
@@ -163,4 +164,16 @@ function relayVerdict(
     return 'update-needed'
   }
   return health === 'available' ? 'ready' : 'unavailable'
+}
+
+/**
+ * A server's rows name hosts relative to that server (`local`, its own `ssh:` targets). Like the
+ * desktop sidebar, the phone shows every one of them under the server, so all become its host id.
+ */
+function stampServerWorktreeRows<Row extends { hostId?: string }>(
+  environmentId: string,
+  rows: readonly Row[]
+): (Row & { hostId: `runtime:${string}` })[] {
+  const hostId = toRuntimeExecutionHostId(environmentId)
+  return rows.map((row) => ({ ...row, hostId }))
 }

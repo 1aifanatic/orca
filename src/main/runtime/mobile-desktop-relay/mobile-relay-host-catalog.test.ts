@@ -89,7 +89,7 @@ function catalog(hosts: MobileDesktopRelayHosts, labels = new Map()) {
 }
 
 describe('mobile relay host catalog', () => {
-  it("lists every configured server with the desktop's health and whether it can relay", () => {
+  it("lists every configured server with the desktop's health and whether it can relay", async () => {
     const { hosts, call } = fakeHosts([
       { id: 'ready', name: 'Box', snapshot: snapshot('ready', 'live') },
       { id: 'old', name: 'ThinkPad', snapshot: snapshot('old', 'live', false) },
@@ -108,6 +108,9 @@ describe('mobile relay host catalog', () => {
       { hostId: 'runtime:old-down', label: 'Pi', health: 'connecting', relay: 'update-needed' },
       { hostId: 'runtime:new', label: 'Fresh', health: 'connecting', relay: 'unavailable' }
     ])
+    // Listing reads what the desktop already knows; it never contacts a server.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(call).not.toHaveBeenCalled()
   })
 
   it('encodes an environment id into the host id the desktop uses', () => {
@@ -156,8 +159,7 @@ describe('mobile relay host catalog', () => {
     ])
     call.mockResolvedValue(psReply([{ worktreeId: 'w', hostId: 'local', status: 'working' }]))
     const { catalog: hostCatalog, advance } = catalog(hosts)
-    hostCatalog.list()
-    await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(1))
+    await hostCatalog.worktrees('runtime:env')
     advance(5_000)
 
     state.environments = [{ id: 'env', name: 'Box', snapshot: snapshot('env', 'unreachable') }]
@@ -209,19 +211,21 @@ describe('mobile relay host catalog', () => {
     await expect(hostCatalog.worktrees('runtime:env')).resolves.toEqual({ worktrees: null })
   })
 
-  it('shares one in-flight fetch per server between listing and a rows request', async () => {
+  it('shares one in-flight fetch per server between concurrent rows requests', async () => {
     const { hosts, call } = fakeHosts([
       { id: 'env', name: 'Box', snapshot: snapshot('env', 'live') }
     ])
     let answerFetch: (response: RuntimeRpcResponse<unknown>) => void = () => {}
     call.mockReturnValue(new Promise((resolve) => (answerFetch = resolve)))
     const { catalog: hostCatalog } = catalog(hosts)
-    hostCatalog.list()
-    hostCatalog.list()
-    const rows = hostCatalog.worktrees('runtime:env')
+    const first = hostCatalog.worktrees('runtime:env')
+    const second = hostCatalog.worktrees('runtime:env')
     await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(1))
     answerFetch(psReply([{ worktreeId: 'w', hostId: 'local' }]))
-    await expect(rows).resolves.toMatchObject({ stale: false })
+    await expect(Promise.all([first, second])).resolves.toMatchObject([
+      { stale: false },
+      { stale: false }
+    ])
     expect(call).toHaveBeenCalledTimes(1)
   })
 })

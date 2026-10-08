@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { toRuntimeExecutionHostId } from './execution-host'
 import type { ExecutionHostHealth } from './execution-host-health'
 
 // Why: both are answered by the paired desktop itself; the phone lists servers the desktop shows.
@@ -38,15 +37,3 @@ export type MobileRelayHostWorktreesResult =
       stale: boolean
     }
   | { worktrees: null }
-
-/**
- * A server's rows name hosts relative to that server (`local`, its own `ssh:` targets). Like the
- * desktop sidebar, the phone shows every one of them under the server, so all become its host id.
- */
-export function stampServerWorktreeRows<Row extends { hostId?: string }>(
-  environmentId: string,
-  rows: readonly Row[]
-): (Row & { hostId: `runtime:${string}` })[] {
-  const hostId = toRuntimeExecutionHostId(environmentId)
-  return rows.map((row) => ({ ...row, hostId }))
-}

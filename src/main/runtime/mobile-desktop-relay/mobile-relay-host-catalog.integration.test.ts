@@ -148,7 +148,7 @@ describe('mobile relay hosts: phone -> desktop lists the servers it shows', () =
     return { box, contact, phoneCall }
   }
 
-  it('lists cached rows for an unreachable server and live rows for an update-needed one', async () => {
+  it('lists rows live through the desktop, then its last rows as stale once a server is unreachable', async () => {
     const { box, contact, phoneCall } = await startTopology()
 
     await expect(phoneCall('mobileRelay.hosts.list')).resolves.toEqual({
