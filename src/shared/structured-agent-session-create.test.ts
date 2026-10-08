@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES, RUNTIME_CAPABILITIES } from './protocol-version'
 import {
   AGENT_SESSION_CREATE_TAB_ID_RUNTIME_CAPABILITY,
-  AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY,
-  NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
-  RUNTIME_CAPABILITIES
-} from './protocol-version'
+  AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY
+} from './agent-session-create-capabilities'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from './electron-remote-runtime-client-capabilities'
 import {
   structuredAgentSessionCreateParams,

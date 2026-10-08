@@ -1,12 +1,12 @@
 import type { z } from 'zod'
 import { agentSessionRefusalError } from '../../../../shared/agent-session-wire-refusals'
 import { agentSessionFingerprintConflict } from '../../../../shared/agent-session-mutation-envelope'
-import { AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { AGENT_SESSION_CREATE_MESSAGE_RUNTIME_CAPABILITY } from '../../../../shared/agent-session-create-capabilities'
 import type { RpcContext } from '../core'
 import {
   ensureStructuredHostInstalled as ensureHostInstalled,
   requireStructuredHost as requireHost,
-  requireStructuredCapability,
+  requireStructuredAgentAudience,
   structuredCallerFor as callerFor
 } from './structured-agent-session-gate'
 import type { AgentSessionAttachParams } from '../../../native-chat/agent-session-wire/structured-agent-session-attach'
@@ -25,8 +25,8 @@ import { resolveUncommittedStructuredCreate } from './structured-agent-session-p
  * cannot forge that answer.
  */
 async function resolveClientSuppliedAttach(params: z.infer<typeof AttachParams>, ctx: RpcContext) {
-  await ensureHostInstalled(ctx)
-  const host = requireHost(ctx)
+  await ensureHostInstalled(ctx, params.agent)
+  const host = requireHost(ctx, params.agent)
   if (!host.supportsCreate(params.location, params.agent)) {
     throw agentSessionRefusalError('structured_agent_session_unsupported', {
       reason: 'hostUnsupported'
@@ -48,7 +48,7 @@ export async function handleStructuredAgentSessionCreate(
   params: z.infer<typeof CreateParams>,
   ctx: RpcContext
 ) {
-  requireStructuredCapability(ctx)
+  requireStructuredAgentAudience(ctx, params.agent)
   if (params.envelope.expectedRuntimeFence !== null) {
     throw agentSessionRefusalError('agent_session_operation_invalid', {
       reason: 'requestMalformed'
