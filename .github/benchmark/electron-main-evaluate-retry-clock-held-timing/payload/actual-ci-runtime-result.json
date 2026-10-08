@@ -1,0 +1,1197 @@
+{
+  "qualified": true,
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "files": [
+    "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts"
+  ],
+  "runtimeDerivedCaseCount": 7,
+  "caseIdentityMapByFile": {
+    "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+      {
+        "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+        "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+        "ancestorTitles": [
+          "retryTransientMainEvaluate"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+        "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+        "ancestorTitles": [
+          "retryTransientMainEvaluate"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "retryTransientMainEvaluate does not retry a closed application",
+        "title": "does not retry a closed application",
+        "ancestorTitles": [
+          "retryTransientMainEvaluate"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+        "title": "rethrows a real failure immediately instead of masking it behind retries",
+        "ancestorTitles": [
+          "retryTransientMainEvaluate"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+        "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+        "ancestorTitles": [
+          "retryTransientMainEvaluate"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+        "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+        "ancestorTitles": [
+          "retryTransientMainEvaluate"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+        "title": "returns the first successful read without retrying",
+        "ancestorTitles": [
+          "retryTransientMainEvaluate"
+        ],
+        "status": "passed"
+      }
+    ]
+  },
+  "candidateAddsNoCases": true,
+  "allEightOriginalSourceCommandProcessRuntimeConfigCaseStatusMapsEqual": true,
+  "contexts": [
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/ci-context.json",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/ci-context.json",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/ci-context.json",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/ci-context.json"
+  ],
+  "inputSignatures": [
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    },
+    {
+      "nodeExecutable": "/opt/hostedtoolcache/node/24.21.0/arm64/bin/node",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "bunRevision": "1.4.2+744846f84",
+      "vitestVersion": "5.0.3",
+      "launchEnvironment": {
+        "ORCA_BACKGROUND_LAUNCH": "1",
+        "ORCA_BALANCE_UNIT_SHARDS": null,
+        "ORCA_VITEST_RUNTIME": null,
+        "NODE_COMPILE_CACHE": null,
+        "NODE_DISABLE_COMPILE_CACHE": null,
+        "NODE_OPTIONS": null
+      }
+    }
+  ],
+  "snapshots": [
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "bun",
+      "seed": 104729,
+      "count": 7,
+      "reportedCount": 7,
+      "map": {
+        "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate does not retry a closed application",
+            "title": "does not retry a closed application",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+            "title": "rethrows a real failure immediately instead of masking it behind retries",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+            "title": "returns the first successful read without retrying",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/before-source-proof.json",
+      "report": "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/before.json",
+      "details": "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "bun",
+      "seed": 104729,
+      "count": 7,
+      "reportedCount": 7,
+      "map": {
+        "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate does not retry a closed application",
+            "title": "does not retry a closed application",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+            "title": "rethrows a real failure immediately instead of masking it behind retries",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+            "title": "returns the first successful read without retrying",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/after-source-proof.json",
+      "report": "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/after.json",
+      "details": "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "bun",
+      "seed": 130363,
+      "count": 7,
+      "reportedCount": 7,
+      "map": {
+        "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate does not retry a closed application",
+            "title": "does not retry a closed application",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+            "title": "rethrows a real failure immediately instead of masking it behind retries",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+            "title": "returns the first successful read without retrying",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/before-source-proof.json",
+      "report": "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/before.json",
+      "details": "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "bun",
+      "seed": 130363,
+      "count": 7,
+      "reportedCount": 7,
+      "map": {
+        "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate does not retry a closed application",
+            "title": "does not retry a closed application",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+            "title": "rethrows a real failure immediately instead of masking it behind retries",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+            "title": "returns the first successful read without retrying",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "bun",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-runtime",
+          "pool": "node-runtime",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/after-source-proof.json",
+      "report": "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/after.json",
+      "details": "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "node",
+      "seed": 104729,
+      "count": 7,
+      "reportedCount": 7,
+      "map": {
+        "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate does not retry a closed application",
+            "title": "does not retry a closed application",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+            "title": "rethrows a real failure immediately instead of masking it behind retries",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+            "title": "returns the first successful read without retrying",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/before-source-proof.json",
+      "report": "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/before.json",
+      "details": "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "node",
+      "seed": 104729,
+      "count": 7,
+      "reportedCount": 7,
+      "map": {
+        "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate does not retry a closed application",
+            "title": "does not retry a closed application",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+            "title": "rethrows a real failure immediately instead of masking it behind retries",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+            "title": "returns the first successful read without retrying",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/after-source-proof.json",
+      "report": "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/after.json",
+      "details": "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/after-details.json"
+    },
+    {
+      "phase": "before",
+      "arm": "before",
+      "runtime": "node",
+      "seed": 130363,
+      "count": 7,
+      "reportedCount": 7,
+      "map": {
+        "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate does not retry a closed application",
+            "title": "does not retry a closed application",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+            "title": "rethrows a real failure immediately instead of masking it behind retries",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+            "title": "returns the first successful read without retrying",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/before-source-proof.json",
+      "report": "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/before.json",
+      "details": "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/before-details.json"
+    },
+    {
+      "phase": "after",
+      "arm": "after",
+      "runtime": "node",
+      "seed": 130363,
+      "count": 7,
+      "reportedCount": 7,
+      "map": {
+        "tests/e2e/helpers/electron-main-evaluate-retry.unit.test.ts": [
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "title": "bounds retries when evaluation keeps failing: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "bounds retries when evaluation keeps failing: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate does not retry a closed application",
+            "title": "does not retry a closed application",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate rethrows a real failure immediately instead of masking it behind retries",
+            "title": "rethrows a real failure immediately instead of masking it behind retries",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "title": "retries a transient startup failure: Execution context was destroyed, most likely because of a navigation.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "title": "retries a transient startup failure: electronApplication.evaluate: Resulting promise was garbage collected.",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          },
+          {
+            "fullName": "retryTransientMainEvaluate returns the first successful read without retrying",
+            "title": "returns the first successful read without retrying",
+            "ancestorTitles": [
+              "retryTransientMainEvaluate"
+            ],
+            "status": "passed"
+          }
+        ]
+      },
+      "config": [
+        {
+          "name": "node",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        },
+        {
+          "name": "node-measurement",
+          "pool": "forks",
+          "fsModuleCache": false,
+          "effectiveMaxWorkers": 4,
+          "isolate": true,
+          "testTimeout": 30000,
+          "hookTimeout": 60000,
+          "setups": [
+            "config/scripts/vitest-real-agent-home-write-guard.ts",
+            "config/scripts/vitest-bun-node-builtins.ts",
+            "config/scripts/happy-dom-offscreen-canvas.ts",
+            "config/scripts/happy-dom-mutation-observer-retention.ts",
+            "config/scripts/vitest-host-ports-setup.ts",
+            "config/scripts/vitest-caller-identity-env-setup.ts"
+          ],
+          "execArgv": [
+            "--no-experimental-webstorage",
+            "--expose-gc"
+          ]
+        }
+      ],
+      "sourceProof": "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/after-source-proof.json",
+      "report": "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/after.json",
+      "details": "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/after-details.json"
+    }
+  ],
+  "artifactHashes": {
+    ".github/benchmark/electron-main-evaluate-retry-clock/payload/shipping-launch-plan.json": "be23735306123491d2b32942513cbe949bbdb55af45f9a06cf1b5e6d5ed6bce8",
+    ".github/benchmark/electron-main-evaluate-retry-clock/payload/definition-manifest.json": "d8f83ecedd6075a188639053be1683786f7c6b8d54a50c954245dd4e225f98de",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/ci-context.json": "a2558b7ff64f29c6e05a705ccd01b0c5469aedbb67f72ced99b421ee7a2da530",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/shipping-launch-plan.json": "be23735306123491d2b32942513cbe949bbdb55af45f9a06cf1b5e6d5ed6bce8",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/shipping.patch": "7f0950c64018d8e0e2cba7a64343591dca79436eb048b4e66456f053b9b709db",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/source-proposal-proof.json": "29b20b2d1588592e2bd3eed8d55098f9c6ca31757826985a0398693690aa07ef",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/ci-context.json": "f72ec5cebb5fee71cd5dd80a59adcf1267fae6a45e6953440bad726df92a1ed3",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/shipping-launch-plan.json": "be23735306123491d2b32942513cbe949bbdb55af45f9a06cf1b5e6d5ed6bce8",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/shipping.patch": "7f0950c64018d8e0e2cba7a64343591dca79436eb048b4e66456f053b9b709db",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/source-proposal-proof.json": "29b20b2d1588592e2bd3eed8d55098f9c6ca31757826985a0398693690aa07ef",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/ci-context.json": "e5899b02e74404bc5ebd2514d1ff37a48e806f8e3ea313b15dada24209d0cea8",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/shipping-launch-plan.json": "be23735306123491d2b32942513cbe949bbdb55af45f9a06cf1b5e6d5ed6bce8",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/shipping.patch": "7f0950c64018d8e0e2cba7a64343591dca79436eb048b4e66456f053b9b709db",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/source-proposal-proof.json": "29b20b2d1588592e2bd3eed8d55098f9c6ca31757826985a0398693690aa07ef",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/ci-context.json": "92b8cbf199c9f2c6a17953c4aa058174ffb4fca682f12a8df6f7d339f6a3256c",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/shipping-launch-plan.json": "be23735306123491d2b32942513cbe949bbdb55af45f9a06cf1b5e6d5ed6bce8",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/shipping.patch": "7f0950c64018d8e0e2cba7a64343591dca79436eb048b4e66456f053b9b709db",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/source-proposal-proof.json": "29b20b2d1588592e2bd3eed8d55098f9c6ca31757826985a0398693690aa07ef",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/before-source-proof.json": "31bee5f61f96fa0579b82f81a99e1fe0d2397f80d7dea9a7ec5ffdd2d4337cf7",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/before.json": "94ac7ef358b6be00c613716b920a8e6d37a536bcf1e364d0459a70d6bad33949",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/before-details.json": "b78adad57fb5260498466bc3c6c0cc0fb908544da30f35e1e40bdb57320ce44b",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/before.log": "157cbd815e97736be64a2de99704cc6baa95eea094be29588ce88ba47c5c872b",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/after-source-proof.json": "c5de31d26da599bd21de0df0990e01a2d2f1690e27f63f5cb952cdeebeeb03d9",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/after.json": "66cc31458d8f759a48c9b1ced3c0825964c468e464584d8b0779849a2acf6a6e",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/after-details.json": "7aeb3f38b790140b065cdae02513df0e6b9264697cbbdb48c4cc147da15a7b25",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-104729/runs/bun-104729/after.log": "7671c039ddae3a96db98e549d2592b768f4d32740013ac0c5ca5f742f9a5b818",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/before-source-proof.json": "cc5c17b0fafe4d0dc94b169eaf8d4f7a88d7fb000b6d53bf0f7713cbc2e8069d",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/before.json": "ae8220088765be2d38f6d26ffe6880fa1a7fc0191ce7486b897b2532e4fed7ca",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/before-details.json": "3d23e2a5df7bf20b76c92377c1cfdcc5fd2ae57ccff8b523bc2dae25db9403b7",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/before.log": "0c057c077927d2b69b6605ff9e11196e9c88f2cdff873fbe8930e076f57ce10c",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/after-source-proof.json": "5c07ba7d32b35e626a63559ee2fa078e021b040ed9cb086483834c6710d6869c",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/after.json": "68a1061ed4af9b17d89d5e3ebb4bc37a7909aa1eec34d15d17c56dd8a6227c30",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/after-details.json": "cb56659aefdb5256647984b69cf5a575470dedf65a2ef1c572c8821b54df2b47",
+    "wait-artifacts/electron-main-evaluate-retry-clock-bun-130363/runs/bun-130363/after.log": "0568046f2aed923954e32f0843a940383df9ce737a3effcd186343b25a2dbc25",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/before-source-proof.json": "8c63208a4c3022731e5e0afa1090e1c955f05761ff860b98352c12eabf5cf83c",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/before.json": "c7458c5bf6fdb9ee27e7e7e31deef64ebb56055759fed1fecabf02af6768bb8c",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/before-details.json": "78e011eda49b0ee25698eec480d97365a1e0359ff36c96998dba5bacb067e3c1",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/before.log": "e20f88810963cbcd84eaa6ae7fb9aacb52e7e05c77df658d65cbf1faf6683320",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/after-source-proof.json": "4964d97e37f7cb860dbaf8739adf7cdad03b09dc181a79af4f99f3cf1ad2df41",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/after.json": "83fdeaa1d14cf8def6b72c3908f5f913a9a98eb032eb76476dffea294dcfc806",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/after-details.json": "0451f15c42549ff58e25a6fc9dd8bce4434e16cce7d07eca74e45b48c74efd7e",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-104729/runs/node-104729/after.log": "7b0ed1e0338ac2aa5239de9fe194fe1d5ae2775e1f613039d0ae58f9cbebd8d2",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/before-source-proof.json": "c3ea0c1332d1193c2728cfe5dd17b926e10be02a853e4ee08a20b528a0aa8c63",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/before.json": "8061c6a564f7f5e0972bb7f2c2facd17f2a32d87b330a16a60a7d818b68c3a9c",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/before-details.json": "cb3d0b50302967d98b490b8b86d7f26d45af80b136ecefb15812124e07490151",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/before.log": "5feff1a1ef750760a56ca79e7afcf8b556c6873b29b40d3021017368dab3ff4a",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/after-source-proof.json": "71b4a95b338eb65ecac874b1ecedf8a71e6b740a76f600b0ef07dc3f0bc54030",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/after.json": "f2923bcf057de37d62188007568b9fa0b16a5a3d16e379d65e977ca0945525e7",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/after-details.json": "365ba822a660a6056440e179cb5e068d31634ee502cbb41c2f18383233a202fb",
+    "wait-artifacts/electron-main-evaluate-retry-clock-node-130363/runs/node-130363/after.log": "188c11fe9691410ed1b3c5bc845d3d19ed4e33f3705a2c6514180d9bc330c201"
+  },
+  "scope": "Isolated CI correctness only; exact original status maps and pins verified. No timing gain or real native cleanup claim."
+}

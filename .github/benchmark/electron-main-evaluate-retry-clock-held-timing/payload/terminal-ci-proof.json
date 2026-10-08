@@ -1,0 +1,18 @@
+{
+  "runId": 37711634618,
+  "definitionHead": "5a57dcbd4b2ad7d1ef664a1875b64b7d813e945b",
+  "sourceHead": "31a5b42b0d272526c405458154eea932cd0ded8e",
+  "terminalConclusion": "success",
+  "allFiveJobsSuccess": true,
+  "runtimeCorrectnessQualified": true,
+  "eachCommandOriginalCases": 7,
+  "eachCommandOriginalCasesPassed": 7,
+  "eachCommandOriginalCasesSkipped": 0,
+  "actualCiCollectorSha256": "1c074fccc678744613c6898e328c33302bac9a559d3c2e52fc588524f2bcb4dc",
+  "terminalMetadataSha256": "1fa58ad10c0763426fa3a87e91eb1e3706fed07db38bfebd62138f6ecc80e40d",
+  "terminalJobsSha256": "cb688c53634de3e4694dd8b6af3b85d688bcf26fc80210735ab689d1346007af",
+  "independentRawReplaySha256": "ea0469694627302d47e17f7e029f7f1246cbbccdb34d2a9d715a34985d7329b3",
+  "rootFullRawByteReplaySha256": "141aa5a0ff5ac5f47367ca10987ec4305fd1095aaeb7eee25315c9b92e138656",
+  "peerFullRawByteReplaySha256": "ea0469694627302d47e17f7e029f7f1246cbbccdb34d2a9d715a34985d7329b3",
+  "noTimingClaim": true
+}

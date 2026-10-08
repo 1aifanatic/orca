@@ -1,65 +1,74 @@
-name: pnpm verification cache pilot
-
+name: Manual injected retry policy shipping-cache held timing
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      source_sha:
+        description: Exact reviewed31a5 source only; temporary definition never merges.
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  group: manual-electron-main-evaluate-retry-clock-held-timing
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
   measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      WAIT_TIMING_SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .benchmark-definition
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
-        id: deps
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+          node-version: '24.21.0'
+          native-runtime: node
+          cache-electron-package: 'true'
+      - name: Install Electron package binary
+        run: node config/scripts/install-electron-package-binary.mjs
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: config/.bun-version
+      - name: Materialize source and actual8 correctness admission
+        run: node .benchmark-definition/.github/benchmark/electron-main-evaluate-retry-clock-held-timing/materialize.mjs
+      - name: Count all six whole commands without warmup or retry
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          driver=notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs
+          plan=notes/bun-migration/performance/electron-main-evaluate-retry-clock-held-timing-ci-31a5/measurement-plan.json
+          patch=notes/bun-migration/performance/electron-main-evaluate-retry-clock-held-timing-ci-31a5/shipping.patch
+          node "$driver" before 0 "$plan"
+          git apply --check "$patch"
+          git apply "$patch"
+          node "$driver" after 0 "$plan"
+          node "$driver" after 1 "$plan"
+          git apply --reverse --check "$patch"
+          git apply --reverse "$patch"
+          git diff --exit-code HEAD
+          node "$driver" before 1 "$plan"
+          node "$driver" before 2 "$plan"
+          git apply --check "$patch"
+          git apply "$patch"
+          node "$driver" after 2 "$plan"
+      - name: Independently verify all six retained commands
+        if: always()
+        run: python3 .benchmark-definition/.github/benchmark/electron-main-evaluate-retry-clock-held-timing/collect-results.py notes/bun-migration/performance .benchmark-definition/.github/benchmark/electron-main-evaluate-retry-clock-held-timing/payload electron-main-evaluate-retry-clock-held-timing-result.json
+      - name: Preserve every attempted sample and failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-main-evaluate-retry-clock-held-timing-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            notes/bun-migration/performance/electron-main-evaluate-retry-clock-held-timing-ci-31a5/
+            notes/bun-migration/performance/electron-main-evaluate-retry-clock-held-31a5-*
+            electron-main-evaluate-retry-clock-held-timing-result.json
