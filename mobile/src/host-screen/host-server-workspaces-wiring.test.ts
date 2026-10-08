@@ -95,6 +95,7 @@ type Screen = {
   hideHosts: (ids: string[]) => void
   open: (worktreeId: string) => void
   notice: () => string | null
+  catalogError: () => string | null
   navigations: string[]
 }
 
@@ -159,6 +160,7 @@ async function mountScreen(client: FakeSession, hostCapabilities: string[]): Pro
         held.actions?.openWorktreeSession(item!)
       }),
     notice: () => held.state?.serverNotice ?? null,
+    catalogError: () => held.state?.catalogError ?? null,
     navigations
   }
 }
@@ -199,6 +201,25 @@ describe("a desktop's server workspaces on the phone", () => {
         []
       )
     }
+  })
+
+  it('shows no server rows, and no error, when the desktop cannot answer the hosts list', async () => {
+    const client = desktop()
+    const base = client.sendRequest.getMockImplementation()!
+    client.sendRequest.mockImplementation(async (method: string, params?: unknown) =>
+      method.startsWith('mobileRelay.')
+        ? {
+            id: 'reply',
+            ok: false,
+            error: { code: 'method_not_found', message: `Unknown method: ${method}` },
+            _meta: { runtimeId: 'runtime' }
+          }
+        : base(method, params)
+    )
+    const screen = await mountScreen(client, RELAYS)
+    expect(listed(screen.rows())).toEqual([['mac-wt', 'local', undefined]])
+    expect(calledMethods(client)).toContain('mobileRelay.hosts.list')
+    expect(screen.catalogError()).toBeNull()
   })
 
   it('keeps a server’s rows when one poll cannot read them, and drops a server the desktop forgot', async () => {
