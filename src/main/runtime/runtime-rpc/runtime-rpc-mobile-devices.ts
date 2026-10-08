@@ -13,7 +13,7 @@ export class RuntimeRpcMobileDevices extends RuntimeRpcRequestAdmission {
     return this.revokeMobileDeviceNow(deviceId)
   }
 
-  protected revokeMobileDeviceNow(deviceId: string): boolean {
+  private revokeMobileDeviceNow(deviceId: string): boolean {
     const device = this.deviceRegistry?.getDevice(deviceId)
     if (device?.scope !== 'mobile') {
       return false
@@ -30,6 +30,25 @@ export class RuntimeRpcMobileDevices extends RuntimeRpcRequestAdmission {
       return false
     }
     this.mobileRelayPairingProvider?.onDemandStateChanged?.()
+    this.runtime.forgetClientNavigationState(deviceId)
+    this.mobileSocketWiring?.terminateDeviceConnections(device.token)
+    return true
+  }
+
+  revokeRuntimeAccess(deviceId: string): boolean {
+    const device = this.deviceRegistry?.getDevice(deviceId)
+    if (device?.scope !== 'runtime') {
+      return false
+    }
+    for (const child of this.deviceRegistry?.listDelegatedMobileDevices(deviceId) ?? []) {
+      // Why: keep the parent until every child's cleanup is saved, so a retry can still find them.
+      if (!this.revokeMobileDeviceNow(child.deviceId)) {
+        return false
+      }
+    }
+    if (!this.deviceRegistry?.removeDevice(deviceId)) {
+      return false
+    }
     this.runtime.forgetClientNavigationState(deviceId)
     this.mobileSocketWiring?.terminateDeviceConnections(device.token)
     return true

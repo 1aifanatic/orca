@@ -38,8 +38,7 @@ describe('pairing.delegatedMobileDevice.sync', () => {
     }
   })
 
-  async function startServer() {
-    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-delegated-'))
+  async function startServer(userDataPath = mkdtempSync(join(tmpdir(), 'orca-delegated-'))) {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture store carries the surface these RPCs read, as in the sibling WebSocket tests.
     const runtime = new OrcaRuntimeService(makeStore() as never)
     const server = new OrcaRuntimeRpcServer({
@@ -82,6 +81,10 @@ describe('pairing.delegatedMobileDevice.sync', () => {
       throw new Error(`sync failed: ${response.error.code} ${response.error.message}`)
     }
     return response.result.devices
+  }
+
+  function sendSync(desktop: PairingOffer, phones: unknown) {
+    return sendRemoteRuntimeRequest(desktop, DELEGATED_MOBILE_DEVICE_SYNC_METHOD, { phones }, 5_000)
   }
 
   function asPhone(desktop: PairingOffer, device: DelegatedDevice): PairingOffer {
@@ -159,7 +162,10 @@ describe('pairing.delegatedMobileDevice.sync', () => {
         method: DELEGATED_MOBILE_DEVICE_SYNC_METHOD,
         params: { phones: [{ phoneKey: 'p', name: 'p' }] }
       })
-    ).resolves.toMatchObject({ ok: false })
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'runtime_error', message: 'runtime_device_required' }
+    })
     expect(registry.listDevices().filter((device) => device.parentDeviceId)).toEqual([])
   })
 
@@ -225,6 +231,67 @@ describe('pairing.delegatedMobileDevice.sync', () => {
     expect(registry.getDevice(child!.deviceId)).toBeNull()
     expect(registry.getDevice(otherChild!.deviceId)).not.toBeNull()
     await closed
+  })
+
+  it('renames a child in place and rejects duplicate or too many phones', async () => {
+    const { server, registry, userDataPath } = await startServer()
+    const desktop = pairDesktop(server)
+    const [child] = await sync(desktop, [{ phoneKey: 'p', name: 'iPhone via MacBook' }])
+    expect(await sync(desktop, [{ phoneKey: 'p', name: 'iPad via MacBook' }])).toEqual([child])
+    expect(new DeviceRegistry(userDataPath).getDevice(child!.deviceId)?.name).toBe(
+      'iPad via MacBook'
+    )
+
+    const tooMany = Array.from({ length: 33 }, (_, index) => ({ phoneKey: `p${index}`, name: 'n' }))
+    for (const phones of [
+      [
+        { phoneKey: 'p', name: 'a' },
+        { phoneKey: 'p', name: 'b' }
+      ],
+      tooMany
+    ]) {
+      await expect(sendSync(desktop, phones)).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'invalid_argument' }
+      })
+    }
+    expect(registry.listDelegatedMobileDevices(desktop.pairedDeviceId!)).toHaveLength(1)
+  })
+
+  it('keeps the parent when a child cleanup cannot be saved', async () => {
+    const { server, registry } = await startServer()
+    const desktop = pairDesktop(server)
+    const [child] = await sync(desktop, [{ phoneKey: 'p', name: 'p' }])
+    expect(
+      server.setMobileRelayBinding(child!.deviceId, {
+        relayHostId: 'host',
+        relayDeviceId: child!.deviceId,
+        ownerIdentityKey: 'owner'
+      })
+    ).toBe(true)
+    const enqueue = vi.spyOn(server.getRelayRevokeOutbox(), 'enqueue').mockImplementation(() => {
+      throw new Error('disk full')
+    })
+    cleanups.push(() => enqueue.mockRestore())
+
+    expect(server.revokeRuntimeAccess(desktop.pairedDeviceId!)).toBe(false)
+    expect(registry.getDevice(desktop.pairedDeviceId!)).not.toBeNull()
+    expect(registry.getDevice(child!.deviceId)).not.toBeNull()
+  })
+
+  it('keeps the parent link across a restart, so the cascade still applies', async () => {
+    const first = await startServer()
+    const desktop = pairDesktop(first.server)
+    const [child] = await sync(desktop, [{ phoneKey: 'p', name: 'p' }])
+    await first.server.stop()
+
+    const reloaded = new DeviceRegistry(first.userDataPath)
+    expect(reloaded.listDelegatedMobileDevices(desktop.pairedDeviceId!)).toMatchObject([
+      { deviceId: child!.deviceId, phoneKey: 'p', parentDeviceId: desktop.pairedDeviceId }
+    ])
+    const { server, registry } = await startServer(first.userDataPath)
+    expect(server.revokeRuntimeAccess(desktop.pairedDeviceId!)).toBe(true)
+    expect(registry.getDevice(child!.deviceId)).toBeNull()
   })
 
   it('loads a registry written before delegated devices existed unchanged', () => {

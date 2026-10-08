@@ -79,22 +79,6 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     this.mobileRelayPairingProvider = provider
   }
 
-  revokeRuntimeAccess(deviceId: string): boolean {
-    const device = this.deviceRegistry?.getDevice(deviceId)
-    if (device?.scope !== 'runtime') {
-      return false
-    }
-    for (const child of this.deviceRegistry?.listDelegatedMobileDevices(deviceId) ?? []) {
-      this.revokeMobileDeviceNow(child.deviceId)
-    }
-    if (!this.deviceRegistry?.removeDevice(deviceId)) {
-      return false
-    }
-    this.runtime.forgetClientNavigationState(deviceId)
-    this.mobileSocketWiring?.terminateDeviceConnections(device.token)
-    return true
-  }
-
   getWebSocketEndpoint(): string | null {
     const ws = this.transports.find((t) => t.kind === 'websocket')
     return ws?.endpoint ?? null

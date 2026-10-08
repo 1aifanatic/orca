@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { mintDeviceCredential } from './device-credential'
 import type { DelegatedPhone } from '../../shared/delegated-mobile-device-contract'
 import type { DeviceEntry } from './device-registry'
 
@@ -26,9 +26,8 @@ export function planDelegatedMobileDevices(
       return renamed
     }
     const entry: DelegatedMobileDeviceEntry = {
-      deviceId: randomUUID(),
+      ...mintDeviceCredential(),
       name: phone.name,
-      token: randomBytes(24).toString('hex'),
       scope: 'mobile',
       pairedAt: now,
       // Why: never pending — the QR lookups select lastSeenAt === 0 and must not hand out or rotate a child.

@@ -2,7 +2,6 @@
 // (mobile) connections. Each paired device gets its own revocable token so
 // compromising one device doesn't expose others. The registry is a simple
 // JSON file with hardened permissions matching the runtime metadata pattern.
-import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -13,6 +12,7 @@ import {
 import type { DeviceScope } from '../../shared/runtime-types'
 import { removeStaleDurableWriteTempFiles } from '../durable-file-write'
 import { DEVICE_REGISTRY_FILENAME } from './mobile-pairing-files'
+import { mintDeviceCredential } from './device-credential'
 import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-connection-mode'
 import type { RuntimePairingReach } from '../../shared/runtime-pairing-reach'
@@ -103,9 +103,8 @@ export class DeviceRegistry {
     pairingReach: RuntimePairingReach
   ): DeviceEntry {
     const entry: DeviceEntry = {
-      deviceId: randomUUID(),
+      ...mintDeviceCredential(),
       name,
-      token: randomBytes(24).toString('hex'),
       scope,
       pairedAt: Date.now(),
       lastSeenAt: 0,
