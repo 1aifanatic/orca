@@ -1,3 +1,4 @@
+import { retryTransientMainEvaluate } from './helpers/electron-main-evaluate-retry'
 import { expect, test } from './helpers/orca-app'
 
 test.use({ seedTestRepo: false })
@@ -10,10 +11,12 @@ test('shows one delayed-save notice, restores it after reload, and clears on rec
 
   const setSaveDelayed = async (delayed: boolean): Promise<void> => {
     // Simulate the writer's status without stalling the app or touching real profile data.
-    await electronApp.evaluate(({ ipcMain }, value) => {
-      ipcMain.removeHandler('app:isProfileStateSaveDelayed')
-      ipcMain.handle('app:isProfileStateSaveDelayed', () => value)
-    }, delayed)
+    await retryTransientMainEvaluate(() =>
+      electronApp.evaluate(({ ipcMain }, value) => {
+        ipcMain.removeHandler('app:isProfileStateSaveDelayed')
+        ipcMain.handle('app:isProfileStateSaveDelayed', () => value)
+      }, delayed)
+    )
     const window = await electronApp.browserWindow(orcaPage)
     await window.evaluate((browserWindow, value) => {
       browserWindow.webContents.send('app:profileStateSaveDelayChanged', value)
@@ -38,6 +41,23 @@ test('shows one delayed-save notice, restores it after reload, and clears on rec
 
   await setSaveDelayed(true)
   await expect(notice).toHaveCount(1)
+
+  await orcaPage.clock.install()
+  await orcaPage.clock.pauseAt(await orcaPage.evaluate(() => Date.now() + 1_000))
+  try {
+    // Hold dismissal frames until the replacement warning has been published.
+    await setSaveDelayed(false)
+    await setSaveDelayed(true)
+    await setSaveDelayed(true)
+    await orcaPage.clock.runFor(50)
+    await expect(notice.and(orcaPage.locator('[data-removed="true"]'))).toHaveCount(1)
+    await orcaPage.clock.runFor(400)
+    await expect(notice).toHaveCount(1)
+    await expect(notice).toBeVisible()
+  } finally {
+    await orcaPage.clock.resume()
+  }
+
   await orcaPage.reload()
   await expect(notice).toBeVisible()
   expect(await orcaPage.evaluate(() => window.api.app.isProfileStateSaveDelayed())).toBe(true)

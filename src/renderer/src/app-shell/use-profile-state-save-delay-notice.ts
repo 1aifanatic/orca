@@ -2,8 +2,6 @@ import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 
-const TOAST_ID = 'profile-state-save-delay'
-
 export function useProfileStateSaveDelayNotice(): void {
   useEffect(() => {
     const app = window.api?.app
@@ -12,24 +10,35 @@ export function useProfileStateSaveDelayNotice(): void {
     }
     let disposed = false
     let receivedChange = false
+    // Deferred dismissal must target this warning, never its replacement.
+    let toastId: ReturnType<typeof toast.warning> | undefined
+    const dismissNotice = (): void => {
+      if (toastId !== undefined) {
+        toast.dismiss(toastId)
+        toastId = undefined
+      }
+    }
     const present = (delayed: boolean): void => {
       if (disposed) {
         return
       }
       if (!delayed) {
-        toast.dismiss(TOAST_ID)
+        dismissNotice()
         return
       }
-      toast.warning(translate('app.saving.delayedTitle', 'Saving is taking longer than usual'), {
-        id: TOAST_ID,
-        description: translate(
-          'app.saving.delayedDescription',
-          'Recent changes haven’t been confirmed saved yet. Orca is still trying.'
-        ),
-        duration: Infinity,
-        dismissible: false,
-        closeButton: false
-      })
+      toastId = toast.warning(
+        translate('app.saving.delayedTitle', 'Saving is taking longer than usual'),
+        {
+          id: toastId,
+          description: translate(
+            'app.saving.delayedDescription',
+            'Recent changes haven’t been confirmed saved yet. Orca is still trying.'
+          ),
+          duration: Infinity,
+          dismissible: false,
+          closeButton: false
+        }
+      )
     }
     const unsubscribe = app.onProfileStateSaveDelayChanged((delayed) => {
       receivedChange = true
@@ -47,7 +56,7 @@ export function useProfileStateSaveDelayNotice(): void {
     return () => {
       disposed = true
       unsubscribe()
-      toast.dismiss(TOAST_ID)
+      dismissNotice()
     }
   }, [])
 }
