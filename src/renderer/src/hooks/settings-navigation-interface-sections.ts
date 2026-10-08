@@ -1,17 +1,21 @@
 import { getAppearancePaneSearchEntries } from '@/components/settings/appearance-search'
+import { getChatAppearanceSearchEntries } from '@/components/settings/chat-appearance-search'
+import { getChatNamingSearchEntry } from '@/components/settings/chat-naming-search'
+import { getChatUiSearchEntries } from '@/components/settings/chat-search'
 import { getInputPaneSearchEntries } from '@/components/settings/input-search'
 import { getNotificationsPaneSearchEntries } from '@/components/settings/notifications-search'
 import { getShortcutsPaneSearchEntries } from '@/components/settings/shortcuts-search'
 import { getStatsPaneSearchEntries } from '@/components/stats/stats-search'
 import { translate } from '@/i18n/i18n'
 import type { SettingsNavSection } from '@/lib/settings-navigation-types'
-import { BarChart3, Bell, Keyboard, Palette, TextCursorInput } from 'lucide-react'
+import { BarChart3, Bell, Keyboard, MessageSquare, Palette, TextCursorInput } from 'lucide-react'
 import type { SettingsNavigationBuildOptions } from './settings-navigation-build-options'
 
 export function buildInterfaceSettingsSections({
   isMac,
   isWindows,
   isWebClient,
+  chatUiEnabled,
   managedBrowserCreationEnabled,
   mobileEmulatorCreationEnabled
 }: SettingsNavigationBuildOptions): SettingsNavSection[] {
@@ -30,6 +34,24 @@ export function buildInterfaceSettingsSections({
         showSystemTray: showDesktopOnlySettings && isWindows,
         showMenuBarIcon: showDesktopOnlySettings && isMac
       }),
+      group: 'interface'
+    },
+    {
+      id: 'chat',
+      title: translate('settings.appearance.chat.title', 'Chat'),
+      description: translate(
+        'settings.chat.description',
+        'Choose how chats look and get their names.'
+      ),
+      icon: MessageSquare,
+      searchEntries: [
+        ...getChatUiSearchEntries({
+          includeHostOwnedRows: showDesktopOnlySettings,
+          includeEnabledRows: chatUiEnabled
+        }),
+        ...getChatAppearanceSearchEntries(),
+        ...(showDesktopOnlySettings ? [getChatNamingSearchEntry()] : [])
+      ],
       group: 'interface'
     },
     {

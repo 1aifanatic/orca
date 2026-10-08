@@ -33,9 +33,8 @@ function ids(
 
 describe('settings navigation metadata', () => {
   it('puts AI capability panes at the top on desktop', () => {
-    expect(ids().slice(0, 11)).toEqual([
+    expect(ids().slice(0, 10)).toEqual([
       'agents',
-      'chat',
       'accounts',
       'orchestration',
       'computer-use',
@@ -64,21 +63,26 @@ describe('settings navigation metadata', () => {
     )
   })
 
-  it('places Chat UI under AI Capabilities with its rows searchable', () => {
-    const chat = buildSettingsNavigationMetadata({
+  it('places one Chat section under Interface with Chat UI and appearance searchable', () => {
+    const sections = buildSettingsNavigationMetadata({
       isMac: false,
       isWindows: false,
       isWebClient: false,
+      chatUiEnabled: true,
       repos: [repo]
-    }).find((section) => section.id === 'chat')
+    })
+    const chat = sections.find((section) => section.id === 'chat')
 
-    expect(chat).toMatchObject({ title: 'Chat UI', group: 'capabilities' })
-    expect(chat?.searchEntries.map((entry) => entry.title)).toEqual([
-      'Chat UI',
-      'Default view',
-      'Resume working chats automatically after a restart',
-      'Use your shell environment'
-    ])
+    expect(sections.filter((section) => section.id === 'chat')).toHaveLength(1)
+    expect(chat).toMatchObject({ title: 'Chat', group: 'interface' })
+    const titles = chat?.searchEntries.map((entry) => entry.title)
+    expect(titles).toContain('Chat UI')
+    expect(titles).toContain('Queue follow-ups')
+    expect(titles).toContain('Resume working chats automatically after a restart')
+    expect(titles).toContain('Use your shell environment')
+    expect(titles).toContain('Text size')
+    expect(titles).toContain('Chat names')
+    expect(titles).not.toContain('Default view')
     const experimental = buildSettingsNavigationMetadata({
       isMac: false,
       isWindows: false,
@@ -86,6 +90,19 @@ describe('settings navigation metadata', () => {
       repos: [repo]
     }).find((section) => section.id === 'experimental')
     expect(experimental?.searchEntries.map((entry) => entry.title)).not.toContain('Chat UI')
+  })
+
+  it('keeps Chat UI searchable while off without indexing hidden options', () => {
+    const chat = buildSettingsNavigationMetadata({
+      isMac: false,
+      isWindows: false,
+      isWebClient: false,
+      repos: [repo]
+    }).find((section) => section.id === 'chat')
+    const titles = chat?.searchEntries.map((entry) => entry.title)
+    expect(titles).toContain('Chat UI')
+    expect(titles).toContain('Chat names')
+    expect(titles).not.toContain('Resume working chats automatically after a restart')
   })
 
   it('adds the Linear capability section right after Orchestration only when connected', () => {
@@ -161,9 +178,8 @@ describe('settings navigation metadata', () => {
   })
 
   it('puts web-safe AI capability panes at the top while hiding desktop-only panes', () => {
-    expect(ids({ isWebClient: true }).slice(0, 7)).toEqual([
+    expect(ids({ isWebClient: true }).slice(0, 6)).toEqual([
       'agents',
-      'chat',
       'accounts',
       'orchestration',
       'setup-guide',
@@ -177,6 +193,7 @@ describe('settings navigation metadata', () => {
       isMac: false,
       isWindows: false,
       isWebClient: true,
+      chatUiEnabled: true,
       repos: [repo]
     })
     const webIds = webSections.map((section) => section.id)
@@ -207,7 +224,11 @@ describe('settings navigation metadata', () => {
     )
     // Host-owned structured-chat rows would only write browser storage on web.
     const chat = webSections.find((section) => section.id === 'chat')
-    expect(chat?.searchEntries.map((entry) => entry.title)).toEqual(['Chat UI', 'Default view'])
+    expect(chat?.searchEntries.map((entry) => entry.title)).toContain('Chat UI')
+    expect(chat?.searchEntries.map((entry) => entry.title)).toContain('Text size')
+    expect(chat?.searchEntries.map((entry) => entry.title)).not.toContain('Default view')
+    expect(chat?.searchEntries.map((entry) => entry.title)).not.toContain('Queue follow-ups')
+    expect(chat?.searchEntries.map((entry) => entry.title)).not.toContain('Chat names')
   })
 
   it('keeps the Browser shortcut searchable for a capable web runtime', () => {

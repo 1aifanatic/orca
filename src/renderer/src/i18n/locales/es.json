@@ -6022,14 +6022,9 @@
         },
         "ChatPane": {
           "title": "Chat UI",
-          "description": "Vista de chat para sesiones de agentes compatibles.",
-          "copy": "Añade una vista de chat a las sesiones de agentes compatibles. Cambia entre el chat y el terminal desde el panel del agente.",
+          "description": "Abre nuevos agentes compatibles en el chat.",
+          "copy": "Los agentes nuevos compatibles se abren en el chat. Los lanzamientos no compatibles usan la terminal. Desactiva esta opción para abrir los agentes nuevos en la terminal; los chats existentes siguen disponibles.",
           "toggleLabel": "Alternar Chat UI",
-          "defaultTitle": "Vista predeterminada",
-          "defaultCopy": "Elige cómo se abren las nuevas pestañas de terminal de agentes compatibles.",
-          "defaultViewLabel": "Vista predeterminada de Chat UI",
-          "defaultViewTerminal": "Chat en terminal",
-          "defaultViewNative": "Chat UI",
           "shellEnvNamesLabel": "Variables que se pasan desde tu shell",
           "shellEnvNamePlaceholder": "Nombre de la variable",
           "shellEnvNameAdd": "Agregar",
@@ -8274,7 +8269,6 @@
         },
         "chat": {
           "search": {
-            "grok": "grok",
             "variables": "variables"
           }
         },
@@ -14751,7 +14745,7 @@
         "notConfirmedOtherMany": "No se pudo confirmar que {{value0}} otros chats se reanudaron",
         "show": "Mostrar",
         "dismiss": "Descartar",
-        "dontAskAgainSettingsHint": "Puedes desactivarlo en Ajustes → Chat UI."
+        "dontAskAgainSettingsHint": "Puedes desactivarlo en Ajustes → Chat."
       },
       "NativeChatResumeOutcomeRow": {
         "openChat": "Abrir chat",

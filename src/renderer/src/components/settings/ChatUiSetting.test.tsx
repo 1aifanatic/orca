@@ -1,91 +1,34 @@
 // @vitest-environment happy-dom
 
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { useAppStore } from '../../store'
-import { ChatPane } from './ChatPane'
-
-vi.mock('../ui/select', async () => {
-  const React = await import('react')
-  const SelectContext = React.createContext<{ onValueChange?: (value: string) => void }>({})
-
-  return {
-    Select: ({
-      value,
-      onValueChange,
-      children
-    }: {
-      value: string
-      onValueChange: (value: string) => void
-      children: React.ReactNode
-    }) => {
-      const contextValue = React.useMemo(() => ({ onValueChange }), [onValueChange])
-      return (
-        <SelectContext.Provider value={contextValue}>
-          <div data-slot="native-chat-default-view-select" data-value={value}>
-            {children}
-          </div>
-        </SelectContext.Provider>
-      )
-    },
-    SelectTrigger: ({ children, ...props }: React.ComponentProps<'button'> & { size?: string }) => (
-      <button type="button" data-slot="select-trigger" {...props}>
-        {children}
-      </button>
-    ),
-    SelectValue: () => null,
-    SelectContent: ({ children }: { children: React.ReactNode }) => (
-      <div data-slot="select-content">{children}</div>
-    ),
-    SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => {
-      const { onValueChange } = React.useContext(SelectContext)
-      return (
-        <button
-          type="button"
-          data-slot="select-item"
-          data-value={value}
-          onClick={() => onValueChange?.(value)}
-        >
-          {children}
-        </button>
-      )
-    }
-  }
-})
+import { ChatUiSetting } from './ChatUiSetting'
 
 afterEach(() => {
   cleanup()
   useAppStore.setState({ settingsSearchQuery: '' })
-  vi.unstubAllGlobals()
 })
 
 const CHAT_UI_TOGGLE = '#chat-ui button[role="switch"]'
 const RESUME_TOGGLE = '[aria-label="Toggle automatic resume after a restart"]'
 const SHELL_ENV_TOGGLE = '[aria-label="Toggle using your shell environment"]'
 const NAME_INPUT = '#settings-native-chat-shell-environment-name'
-const DEFAULT_VIEW_SELECT = '[data-slot="native-chat-default-view-select"]'
-const STRUCTURED_SCOPE =
-  'Local sessions only for now. WSL and remote execution hosts (including SSH) continue to use terminal chat.'
 
-function renderSetting(overrides: Partial<GlobalSettings>, updateSettings = vi.fn()) {
+function renderSetting(
+  overrides: Partial<GlobalSettings>,
+  updateSettings = vi.fn(),
+  showHostOwnedRows = true
+) {
   return render(
-    <ChatPane
+    <ChatUiSetting
       settings={{ ...getDefaultSettings('/tmp'), ...overrides }}
       updateSettings={updateSettings}
+      showHostOwnedRows={showHostOwnedRows}
     />
   )
-}
-
-function defaultViewOption(container: HTMLElement, value: string): HTMLButtonElement {
-  const option = container.querySelector<HTMLButtonElement>(
-    `[data-slot="select-item"][data-value="${value}"]`
-  )
-  if (!option) {
-    throw new Error(`Default-view option ${value} was not rendered`)
-  }
-  return option
 }
 
 function nameInput(container: HTMLElement): HTMLInputElement {
@@ -106,26 +49,18 @@ function listedNames(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('li')).map((item) => item.title)
 }
 
-describe('ChatPane shell environment', () => {
-  it('shows whenever Chat UI is on, whatever the default view', () => {
+describe('ChatUiSetting shell environment', () => {
+  it('shows resume and shell options whenever Chat UI is on', () => {
     for (const experimentalNativeChat of [false, true]) {
-      for (const openAgentTabsInChatByDefault of [false, true]) {
-        const { container, unmount } = renderSetting({
-          experimentalNativeChat,
-          openAgentTabsInChatByDefault
-        })
-        const expected = experimentalNativeChat
-        const label = JSON.stringify({ experimentalNativeChat, openAgentTabsInChatByDefault })
-        expect(container.querySelector(SHELL_ENV_TOGGLE) !== null, label).toBe(expected)
-        expect(container.querySelector(RESUME_TOGGLE) !== null, label).toBe(expected)
-        unmount()
-      }
+      const { container, unmount } = renderSetting({ experimentalNativeChat })
+      expect(container.querySelector(SHELL_ENV_TOGGLE) !== null).toBe(experimentalNativeChat)
+      expect(container.querySelector(RESUME_TOGGLE) !== null).toBe(experimentalNativeChat)
+      unmount()
     }
   })
 
   const structuredOn = {
-    experimentalNativeChat: true,
-    openAgentTabsInChatByDefault: true
+    experimentalNativeChat: true
   }
   const chooseNames = { ...structuredOn, nativeChatInheritShellEnvironment: false }
 
@@ -147,13 +82,14 @@ describe('ChatPane shell environment', () => {
     expect(container.textContent).toContain('No variables added yet.')
 
     rerender(
-      <ChatPane
+      <ChatUiSetting
         settings={{
           ...getDefaultSettings('/tmp'),
           ...chooseNames,
           nativeChatShellEnvironmentVariables: ['HTTPS_PROXY', 'CODEX_LB_API_KEY']
         }}
         updateSettings={vi.fn()}
+        showHostOwnedRows={true}
       />
     )
     expect(listedNames(container)).toEqual(['HTTPS_PROXY', 'CODEX_LB_API_KEY'])
@@ -248,13 +184,14 @@ describe('ChatPane shell environment', () => {
     fireEvent.change(nameInput(container), { target: { value: 'HTTPS_PRO' } })
 
     rerender(
-      <ChatPane
+      <ChatUiSetting
         settings={{
           ...getDefaultSettings('/tmp'),
           ...chooseNames,
           nativeChatResumeWorkOnRestart: true
         }}
         updateSettings={vi.fn()}
+        showHostOwnedRows={true}
       />
     )
 
@@ -262,7 +199,7 @@ describe('ChatPane shell environment', () => {
   })
 })
 
-describe('ChatPane', () => {
+describe('ChatUiSetting', () => {
   it('renders Chat UI off by default with no child rows', () => {
     const settings = getDefaultSettings('/tmp')
     const { container } = renderSetting({})
@@ -270,6 +207,9 @@ describe('ChatPane', () => {
     expect(settings.experimentalNativeChat).toBe(false)
     expect(container.querySelector(CHAT_UI_TOGGLE)?.getAttribute('aria-checked')).toBe('false')
     expect(container.textContent).toContain('Chat UI')
+    expect(container.textContent).toContain('New supported agents open in chat.')
+    expect(container.textContent).toContain('existing chats stay available.')
+    expect(container.textContent).not.toContain('Supported agents:')
     expect(container.textContent).not.toContain('Default view')
     expect(container.textContent).not.toMatch(/experimental|preview/i)
   })
@@ -284,50 +224,8 @@ describe('ChatPane', () => {
     expect(updateSettings).toHaveBeenCalledWith({ experimentalNativeChat: true })
   })
 
-  it('shows the default view as a child row only when Chat UI is enabled', async () => {
-    const updateSettings = vi.fn()
-    const settings = { experimentalNativeChat: true, openAgentTabsInChatByDefault: false }
-    const { container, rerender } = renderSetting(settings, updateSettings)
-
-    expect(container.querySelector('#chat-default-view')).not.toBeNull()
-    expect(container.textContent).toContain('Terminal chat')
-    expect(container.querySelector(DEFAULT_VIEW_SELECT)?.getAttribute('data-value')).toBe(
-      'terminal-chat'
-    )
-    expect(container.textContent).not.toContain(STRUCTURED_SCOPE)
-
-    await act(async () => {
-      defaultViewOption(container, 'native-chat').click()
-    })
-    expect(updateSettings).toHaveBeenCalledWith({ openAgentTabsInChatByDefault: true })
-
-    rerender(
-      <ChatPane
-        settings={{
-          ...getDefaultSettings('/tmp'),
-          ...settings,
-          openAgentTabsInChatByDefault: true
-        }}
-        updateSettings={updateSettings}
-      />
-    )
-    expect(container.querySelector(DEFAULT_VIEW_SELECT)?.getAttribute('data-value')).toBe(
-      'native-chat'
-    )
-    expect(container.textContent).toContain(STRUCTURED_SCOPE)
-
-    await act(async () => {
-      defaultViewOption(container, 'terminal-chat').click()
-    })
-    expect(updateSettings).toHaveBeenCalledWith({ openAgentTabsInChatByDefault: false })
-    expect(updateSettings).toHaveBeenCalledTimes(2)
-  })
-
   it('offers no structured-runtime opt-in', () => {
-    const { container } = renderSetting({
-      experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: true
-    })
+    const { container } = renderSetting({ experimentalNativeChat: true })
 
     expect(container.textContent).not.toContain('Use updated structured native chat')
     expect(container.querySelectorAll('button[role="switch"]')).toHaveLength(3)
@@ -335,10 +233,7 @@ describe('ChatPane', () => {
 
   it('writes only the resume key from its switch', () => {
     const updateSettings = vi.fn()
-    const { container } = renderSetting(
-      { experimentalNativeChat: true, openAgentTabsInChatByDefault: true },
-      updateSettings
-    )
+    const { container } = renderSetting({ experimentalNativeChat: true }, updateSettings)
 
     fireEvent.click(container.querySelector(RESUME_TOGGLE)!)
 
@@ -347,49 +242,33 @@ describe('ChatPane', () => {
   })
 
   it('hides the host-owned resume and shell rows on a paired web client', () => {
-    vi.stubGlobal('__ORCA_WEB_CLIENT__', true)
-    const { container } = renderSetting({
-      experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: true
-    })
+    const { container } = renderSetting({ experimentalNativeChat: true }, vi.fn(), false)
 
     expect(container.querySelector(CHAT_UI_TOGGLE)).not.toBeNull()
-    expect(container.querySelector('#chat-default-view')).not.toBeNull()
     expect(container.querySelector(RESUME_TOGGLE)).toBeNull()
     expect(container.querySelector(SHELL_ENV_TOGGLE)).toBeNull()
   })
 
   it('keeps the Chat UI switch reachable when a search matches only a host-owned row', () => {
     useAppStore.setState({ settingsSearchQuery: 'variables' })
-    const { container } = renderSetting({
-      experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: true
-    })
+    const { container } = renderSetting({ experimentalNativeChat: true })
 
     expect(container.querySelector(CHAT_UI_TOGGLE)).not.toBeNull()
-    expect(container.querySelector('#chat-default-view')).toBeNull()
     expect(container.querySelector('#chat-shell-environment')).not.toBeNull()
     expect(container.querySelector('#chat-resume-on-restart')).toBeNull()
   })
 
-  it('finds the resume row under Terminal chat', () => {
+  it('finds the resume row when Chat UI is on', () => {
     useAppStore.setState({ settingsSearchQuery: 'resume' })
-    const { container } = renderSetting({
-      experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: false
-    })
+    const { container } = renderSetting({ experimentalNativeChat: true })
 
     expect(container.querySelector('#chat-resume-on-restart')).not.toBeNull()
   })
 
-  it('hides the default view when a search matches neither it nor a structured row', () => {
+  it('keeps the Chat UI switch on unrelated searches', () => {
     useAppStore.setState({ settingsSearchQuery: 'grok' })
-    const { container } = renderSetting({
-      experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: true
-    })
+    const { container } = renderSetting({ experimentalNativeChat: true })
 
     expect(container.querySelector(CHAT_UI_TOGGLE)).not.toBeNull()
-    expect(container.querySelector('#chat-default-view')).toBeNull()
   })
 })
