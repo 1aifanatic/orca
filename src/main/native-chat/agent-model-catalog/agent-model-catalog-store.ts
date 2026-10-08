@@ -77,6 +77,8 @@ export class AgentModelCatalogStore {
     (fingerprint) => this.refreshes.has(fingerprint)
   )
   private readonly latestWrittenOrder = new Map<string, number>()
+  // Catalogs listed under a command or env the agent no longer launches with; cleared by a discovery.
+  private readonly dueEntries = new Set<string>()
   private nextListingOrder = 0
   private persistence: AgentModelCatalogPersistence | null = null
   private readonly now: () => number
@@ -124,7 +126,11 @@ export class AgentModelCatalogStore {
 
   /** Only a discovery ages: live saves never postpone the next account-level listing. */
   isStale(entry: AgentModelCatalogEntry): boolean {
-    return !entry.discovered || this.now() - entry.discovered.at >= AGENT_MODEL_CATALOG_FRESH_MS
+    return (
+      this.dueEntries.has(entry.fingerprint) ||
+      !entry.discovered ||
+      this.now() - entry.discovered.at >= AGENT_MODEL_CATALOG_FRESH_MS
+    )
   }
 
   failureDetail(fingerprint: string): string | null {
@@ -147,6 +153,16 @@ export class AgentModelCatalogStore {
 
   expireFailure(fingerprint: string): void {
     this.failures.expire(fingerprint)
+  }
+
+  /** The agent's command or launch env changed: each of its catalogs and held reasons is due. */
+  expireAgent(agent: string): void {
+    for (const entry of this.entries.values()) {
+      if (entry.agent === agent) {
+        this.dueEntries.add(entry.fingerprint)
+      }
+    }
+    this.failures.expireAgent(agent)
   }
 
   /** The one ingestion step every listing goes through, whoever listed it. */
@@ -212,6 +228,7 @@ export class AgentModelCatalogStore {
     }
     // A live listing is not the account's answer: it neither clears a failure nor a probe's verdict.
     if (source === 'discovery') {
+      this.dueEntries.delete(fingerprint)
       this.failures.listed(fingerprint, agent, success.origin, success.unavailable)
     }
     this.evictOverCap()
@@ -329,6 +346,7 @@ export class AgentModelCatalogStore {
         return
       }
       this.entries.delete(key)
+      this.dueEntries.delete(key)
     }
   }
 }

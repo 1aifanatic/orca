@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionModelCatalogResult } from '../../../shared/agent-session-wire'
 import { agentModelCatalogFingerprint } from './agent-model-catalog-fingerprint'
 import { createAgentModelCatalogService } from './agent-model-catalog-service'
-import { expireAgentModelCatalogFailuresForSettings } from './agent-model-catalog-account-expiry'
+import {
+  agentsWithChangedLaunchSettings,
+  createAgentModelCatalogSettingsExpiry,
+  expireAgentModelCatalogFailuresForSettings
+} from './agent-model-catalog-account-expiry'
 import {
   AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
   AgentModelCatalogStore,
@@ -262,5 +266,47 @@ describe('a prewarm probe', () => {
     await service.prewarm()
     expect(probe).toHaveBeenCalledTimes(2)
     expect(store.failure(FINGERPRINT)).toBeNull()
+  })
+})
+
+describe("an agent's command or environment change", () => {
+  it('re-lists its fresh catalog and re-checks a held "not installed" at the next prewarm', async () => {
+    const { store, probe, service, probed, answerWith } = rig(() =>
+      Promise.reject(new AgentModelCatalogUnavailableError({ reason: 'cliMissing' }))
+    )
+    store.recordSuccess(FINGERPRINT, 'codex', listing('gpt-saved', 'probe'), 'discovery')
+    await probed()
+    expect(store.failure(FINGERPRINT)?.unavailable).toEqual({ reason: 'cliMissing' })
+    await service.prewarm()
+    expect(probe).toHaveBeenCalledTimes(1)
+    const expire = createAgentModelCatalogSettingsExpiry(store, { agentCmdOverrides: {} })
+    const fixed = { agentCmdOverrides: { codex: '/opt/codex/bin/codex' } }
+    expire(fixed, fixed)
+    answerWith(async () => listing('gpt-new', 'probe'))
+    await service.prewarm()
+    expect(probe).toHaveBeenCalledTimes(2)
+    expect(store.failure(FINGERPRINT)).toBeNull()
+    expect(store.get(FINGERPRINT)!.models.map((model) => model.id)).toEqual(['gpt-new'])
+    // The new listing is the fresh one: nothing is due until the next change.
+    await service.prewarm()
+    expect(probe).toHaveBeenCalledTimes(2)
+  })
+
+  it('touches only the agents whose command or env changed', () => {
+    expect(
+      agentsWithChangedLaunchSettings(
+        {
+          agentCmdOverrides: { codex: 'codex', claude: 'claude' },
+          agentDefaultEnv: { claude: { A: '1', B: '2' } }
+        },
+        {
+          agentCmdOverrides: { codex: 'codex', claude: 'claude' },
+          agentDefaultEnv: { claude: { B: '2', A: '1' }, pi: { KEY: 'x' } }
+        }
+      )
+    ).toEqual(['pi'])
+    expect(agentsWithChangedLaunchSettings({ agentCmdOverrides: { codex: 'codex' } }, {})).toEqual([
+      'codex'
+    ])
   })
 })
