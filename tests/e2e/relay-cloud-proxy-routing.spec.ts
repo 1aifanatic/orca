@@ -144,10 +144,10 @@ test.use({
 
 async function signInAndEnable(page: Page, proxyUrl: string): Promise<void> {
   await waitForSessionReady(page)
-  // The fixture seeds an existing-install profile, so the setting starts off.
+  // Off by default: absent means direct.
   expect(
     await page.evaluate(async () => (await window.api.settings.get()).relayAndCloudUseProxy)
-  ).toBe(false)
+  ).not.toBe(true)
   await page.evaluate(async (httpProxyUrl) => {
     await window.api.settings.set({ httpProxyUrl, relayAndCloudUseProxy: true })
     await window.api.orcaProfiles.connectCurrent()

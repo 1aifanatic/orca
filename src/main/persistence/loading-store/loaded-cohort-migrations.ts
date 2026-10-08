@@ -25,18 +25,6 @@ export class LoadedCohortMigrationOperations {
     }
   }
 
-  migrateRelayAndCloudProxy(state: PersistedState, fileExistedOnLoad: boolean): PersistedState {
-    if (typeof state.settings?.relayAndCloudUseProxy === 'boolean') {
-      return state
-    }
-    this.runtime.loadNeedsSave = true
-    return {
-      ...state,
-      // Why: existing installs keep their working direct route; only new installs start proxied.
-      settings: { ...state.settings, relayAndCloudUseProxy: !fileExistedOnLoad }
-    }
-  }
-
   migrateTelemetry(state: PersistedState, fileExistedOnLoad: boolean): PersistedState {
     const existing = state.settings?.telemetry
     // Why: require all three invariants; keying on existedBeforeTelemetryRelease alone lets a partial block skip migration.
