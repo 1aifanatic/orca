@@ -111,6 +111,34 @@ describe('getWorktreeHostContextLabels', () => {
     ])
   })
 
+  it('adds the health word only for hosts the desktop reports as unhealthy', () => {
+    const rows = [
+      worktree({ hostId: 'local', worktreeId: 'a' }),
+      worktree({ hostId: sshHostId, worktreeId: 'b' }),
+      worktree({ hostId: 'ssh:healthy', worktreeId: 'c' }),
+      worktree({ hostId: 'runtime:env-1', worktreeId: 'd' }),
+      worktree({ repoId: 'repo-ssh', worktreeId: 'e' })
+    ]
+    const labeled = applyWorktreeHostContextLabels(rows, {
+      ...sources,
+      repoHostIdByRepoId: buildRepoHostIdByRepoId([
+        { id: 'repo-ssh', connectionId: 'ssh-1785104650217-eduhep' }
+      ]),
+      hostHealthById: new Map([
+        ['local', 'local'],
+        [sshHostId, 'disconnected'],
+        ['ssh:healthy', 'available']
+      ])
+    })
+    expect(labeled.map((row) => row.hostContextHealthLabel)).toEqual([
+      undefined,
+      'Disconnected',
+      undefined,
+      undefined,
+      'Disconnected'
+    ])
+  })
+
   it('names the local host from the paired host platform, not the phone', () => {
     const rows = [
       worktree({ hostId: 'local', worktreeId: 'a' }),

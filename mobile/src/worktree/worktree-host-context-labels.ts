@@ -10,7 +10,9 @@ export {
   buildHostLabelById,
   getHostContextLabel
 } from '../../../src/shared/worktree/host-context-labels'
+import type { ExecutionHostHealth } from '../../../src/shared/execution-host-health'
 import type { Worktree } from './workspace-list-types'
+import { getHostHealthBadgeLabel } from './worktree-host-health'
 
 export type HostLabelSources = {
   /** Host id per repo id from repo.list; rows from hosts that predate `hostId` fall back to it. */
@@ -19,6 +21,8 @@ export type HostLabelSources = {
   hostLabelById: ReadonlyMap<ExecutionHostId, string>
   /** The paired host's own platform; the phone's platform must never name the desktop. */
   hostPlatform: NodeJS.Platform | null
+  /** Health per host the desktop reports one for; an absent host keeps the bare label. */
+  hostHealthById?: ReadonlyMap<ExecutionHostId, ExecutionHostHealth>
 }
 
 export function buildRepoHostIdByRepoId(
@@ -82,10 +86,15 @@ export function applyWorktreeHostContextLabels(
     if (!hostContextLabel) {
       return worktree
     }
+    const hostContextHostId = resolveWorktreeHostId(worktree, sources.repoHostIdByRepoId)
+    const hostContextHealthLabel = getHostHealthBadgeLabel(
+      sources.hostHealthById?.get(hostContextHostId)
+    )
     return {
       ...worktree,
       hostContextLabel,
-      hostContextHostId: resolveWorktreeHostId(worktree, sources.repoHostIdByRepoId)
+      hostContextHostId,
+      ...(hostContextHealthLabel ? { hostContextHealthLabel } : {})
     }
   })
 }

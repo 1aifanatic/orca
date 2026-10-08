@@ -244,7 +244,24 @@ describe('memoized worktree rows', () => {
       )
     })
     expect(textNodes()).toContain('openclaw')
+    expect(textNodes().some((text) => text.includes('Disconnected'))).toBe(false)
     expect(renderer!.root.findAllByType('Server' as never)).toHaveLength(1)
+
+    await act(async () =>
+      renderer!.update(
+        createElement(ListRowHarness, {
+          item: {
+            ...baseItem,
+            hostId: 'ssh:ssh-1',
+            hostContextLabel: 'openclaw',
+            hostContextHealthLabel: 'Disconnected'
+          },
+          now: 2_000
+        })
+      )
+    )
+    // Separate nodes: the name truncates while the health word stays whole.
+    expect(textNodes()).toEqual(expect.arrayContaining(['openclaw', '· Disconnected']))
     expect(renderer!.root.findAllByType('Monitor' as never)).toHaveLength(0)
 
     await act(async () =>

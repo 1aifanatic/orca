@@ -111,7 +111,8 @@ export function useHostScreenController({
       {
         repoHostIdByRepoId: state.repoHostIdByRepoId,
         hostLabelById: state.hostLabelById,
-        hostPlatform: state.hostPlatform
+        hostPlatform: state.hostPlatform,
+        hostHealthById: state.hostHealthById
       }
     )
   }, [
@@ -122,7 +123,8 @@ export function useHostScreenController({
     state.optimisticActiveWorktreeIdentity,
     state.repoHostIdByRepoId,
     state.hostLabelById,
-    state.hostPlatform
+    state.hostPlatform,
+    state.hostHealthById
   ])
   const sectionsResult = useWorkspaceSections({
     displayWorktrees,

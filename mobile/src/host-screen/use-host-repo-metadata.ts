@@ -10,6 +10,7 @@ import {
   buildHostLabelById,
   buildRepoHostIdByRepoId
 } from '../worktree/worktree-host-context-labels'
+import { buildSshHostHealthById } from '../worktree/worktree-host-health'
 import {
   hostPlatformRead,
   hostRepoCatalogRead,
@@ -58,6 +59,7 @@ export function useHostRepoMetadata(args: {
     fetchRepoMetadataPendingRef,
     repoMetadataFetchedAtRef,
     setHostLabelById,
+    setHostHealthById,
     setHostPlatform,
     setRepoColorsByName,
     setRepoHostIdByRepoId,
@@ -132,10 +134,12 @@ export function useHostRepoMetadata(args: {
             const hostSettingsResult = hostSettings
               ? optionalSettingsRead.interpret(hostSettings)
               : null
+            const sshTargetSummaries =
+              acceptedMetadata(sshTargets, hostSshTargetSummariesRead.interpret) ?? []
+            setHostHealthById(buildSshHostHealthById(sshTargetSummaries))
             setHostLabelById(
               buildHostLabelById({
-                sshTargets:
-                  acceptedMetadata(sshTargets, hostSshTargetSummariesRead.interpret) ?? [],
+                sshTargets: sshTargetSummaries,
                 hostSettingOverrides: readHostSettingOverrides(
                   hostSettingsResult?.accepted ? hostSettingsResult.value : undefined
                 )
