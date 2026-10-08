@@ -13,8 +13,12 @@ import {
   getUnstageAllPaths,
   isStageableStatusEntry
 } from './discard-all-sequence'
-import type { SourceControlEntryGroups } from '../listing/section-order'
+import type {
+  SourceControlDisplaySectionId,
+  SourceControlEntryGroups
+} from '../listing/section-order'
 import type { FlatEntry } from '../listing/use-selection'
+import type { GitStageWorktreeScope } from '../../../../../../shared/git-stage-worktree-scope'
 
 /** Why: every bulk handler is invoked with `void`, so a Git failure would otherwise be an unhandled rejection with no user feedback. */
 function reportBulkMutationFailure(error: unknown): void {
@@ -35,6 +39,7 @@ export function useSourceControlBulkActions({
   activeWorktreeId,
   worktreePath,
   grouped,
+  isStatusTruncated,
   clearSelection,
   refreshActiveGitStatusAfterMutation
 }: {
@@ -44,6 +49,8 @@ export function useSourceControlBulkActions({
   activeWorktreeId: string | null
   worktreePath: string | null
   grouped: SourceControlEntryGroups
+  /** The status read hit its entry cap, so `grouped` holds only the first rows. */
+  isStatusTruncated: boolean
   clearSelection: () => void
   refreshActiveGitStatusAfterMutation: () => Promise<void>
 }) {
@@ -145,9 +152,9 @@ export function useSourceControlBulkActions({
     refreshActiveGitStatusAfterMutation
   ])
 
-  const handleStageAllPaths = useCallback(
-    async (paths: readonly string[]) => {
-      if (!worktreePath || isExecutingBulk || paths.length === 0) {
+  const stagePaths = useCallback(
+    async (paths: readonly string[], scope?: GitStageWorktreeScope) => {
+      if (!worktreePath || isExecutingBulk || (paths.length === 0 && !scope)) {
         return
       }
       setIsExecutingBulk(true)
@@ -161,7 +168,8 @@ export function useSourceControlBulkActions({
             worktreePath,
             connectionId
           },
-          [...paths]
+          [...paths],
+          scope
         )
         await refreshActiveGitStatusAfterMutation()
         clearSelection()
@@ -179,6 +187,18 @@ export function useSourceControlBulkActions({
       refreshActiveGitStatusAfterMutation,
       worktreePath
     ]
+  )
+
+  const handleStageAllPaths = useCallback(
+    (paths: readonly string[]) => stagePaths(paths),
+    [stagePaths]
+  )
+
+  // Why: a capped listing holds only the first rows, so "all" must be resolved by the host.
+  const handleStageSectionPaths = useCallback(
+    (sectionId: SourceControlDisplaySectionId, paths: readonly string[]) =>
+      stagePaths(paths, isStatusTruncated && sectionId === 'unstaged' ? 'tracked' : undefined),
+    [isStatusTruncated, stagePaths]
   )
 
   const handleUnstagePaths = useCallback(
@@ -219,45 +239,13 @@ export function useSourceControlBulkActions({
 
   // Why: bypasses handleActionInvoke because that handler is typed to DropdownActionKind and 'stage' is intentionally not in the dropdown union.
   const handleStageAllPrimary = useCallback(async (): Promise<void> => {
-    if (!worktreePath || isExecutingBulk) {
-      return
-    }
     const filePaths = [
       ...getStageAllPaths(grouped.unstaged, 'unstaged'),
       ...getStageAllPaths(grouped.untracked, 'untracked')
     ]
-    if (filePaths.length === 0) {
-      return
-    }
-    setIsExecutingBulk(true)
-    try {
-      const connectionId = getConnectionId(activeWorktreeId ?? null) ?? undefined
-      await bulkStageRuntimeGitPaths(
-        {
-          // Why: route staging by the repo OWNER host, not the focused runtime.
-          settings: activeRepoSettings,
-          worktreeId: activeWorktreeId,
-          worktreePath,
-          connectionId
-        },
-        filePaths
-      )
-      await refreshActiveGitStatusAfterMutation()
-      clearSelection()
-    } catch (error) {
-      reportBulkMutationFailure(error)
-    } finally {
-      setIsExecutingBulk(false)
-    }
-  }, [
-    activeRepoSettings,
-    worktreePath,
-    isExecutingBulk,
-    grouped,
-    activeWorktreeId,
-    clearSelection,
-    refreshActiveGitStatusAfterMutation
-  ])
+    // Why: the listed paths still ride along so a host without scope support stages what it can.
+    await stagePaths(filePaths, isStatusTruncated ? 'all' : undefined)
+  }, [grouped, isStatusTruncated, stagePaths])
 
   return {
     isExecutingBulk,
@@ -268,6 +256,7 @@ export function useSourceControlBulkActions({
     handleBulkStage,
     handleBulkUnstage,
     handleStageAllPaths,
+    handleStageSectionPaths,
     handleUnstagePaths,
     handleStageAllPrimary
   }

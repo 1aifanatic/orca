@@ -1,3 +1,4 @@
+import type { GitStageWorktreeScope } from '../../../shared/git-stage-worktree-scope'
 import { resolveLocalWorktreePath, type RuntimeGitContext } from './runtime-git-client-context'
 import { callRuntimeRpc, getActiveRuntimeTarget } from './runtime-rpc-client'
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
@@ -25,21 +26,28 @@ export async function stageRuntimeGitPath(
 
 export async function bulkStageRuntimeGitPaths(
   context: RuntimeGitContext,
-  filePaths: string[]
+  filePaths: string[],
+  // Why: a capped listing cannot name every change; `filePaths` stays as the older-host fallback.
+  scope?: GitStageWorktreeScope
 ): Promise<void> {
   const target = getActiveRuntimeTarget(context.settings)
   if (target.kind === 'local' || !context.worktreeId) {
     await window.api.git.bulkStage({
       worktreePath: resolveLocalWorktreePath(context),
       filePaths,
-      connectionId: context.connectionId
+      connectionId: context.connectionId,
+      ...(scope ? { scope } : {})
     })
     return
   }
   await callRuntimeRpc(
     target,
     'git.bulkStage',
-    { worktree: toRuntimeWorktreeSelector(context.worktreeId), filePaths },
+    {
+      worktree: toRuntimeWorktreeSelector(context.worktreeId),
+      filePaths,
+      ...(scope ? { scope } : {})
+    },
     { timeoutMs: 15_000 }
   )
 }

@@ -12,6 +12,7 @@ import {
   abortRebaseMock,
   stageFileMock,
   bulkStageFilesMock,
+  stageWorktreeChangesMock,
   bulkUnstageFilesMock,
   bulkDiscardChangesMock,
   discardChangesMock,
@@ -472,6 +473,23 @@ describe('registerFilesystemHandlers', () => {
       [path.join('src', 'file.ts'), path.join('nested', 'child.ts')],
       { admissionTier: 'interactive' }
     )
+  })
+
+  it('stages the whole worktree when bulk stage carries a scope', async () => {
+    stageWorktreeChangesMock.mockResolvedValue(undefined)
+
+    registerFilesystemHandlers(store as never)
+
+    await handlers.get('git:bulkStage')!(null, {
+      worktreePath: WORKTREE_FEATURE_PATH,
+      filePaths: ['src/file.ts'],
+      scope: 'all'
+    })
+
+    expect(stageWorktreeChangesMock).toHaveBeenCalledWith(WORKTREE_FEATURE_PATH, 'all', {
+      admissionTier: 'interactive'
+    })
+    expect(bulkStageFilesMock).not.toHaveBeenCalled()
   })
 
   it('normalizes git file paths for bulk discard requests', async () => {

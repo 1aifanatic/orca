@@ -4,8 +4,10 @@ import {
   bulkUnstageFiles,
   discardChanges,
   stageFile,
+  stageWorktreeChanges,
   unstageFile
 } from '../git/status'
+import type { GitStageWorktreeScope } from '../../shared/git-stage-worktree-scope'
 import {
   localGitOptionsForTarget,
   normalizeRuntimeGitRelativePath,
@@ -48,13 +50,21 @@ export class RuntimeGitStagingCommands {
 
   async bulkStageRuntimeGitPaths(
     worktreeSelector: string,
-    filePaths: string[]
+    filePaths: string[],
+    scope?: GitStageWorktreeScope
   ): Promise<{ ok: true }> {
     const target = await this.host.resolveRuntimeGitTarget(worktreeSelector)
     const relativePaths = filePaths.map((path) => normalizeRuntimeGitRelativePath(path))
     const provider = requireRuntimeGitProvider(target)
     if (provider) {
-      await provider.bulkStageFiles(target.worktree.path, relativePaths)
+      await provider.bulkStageFiles(target.worktree.path, relativePaths, scope)
+      return { ok: true }
+    }
+    if (scope) {
+      await stageWorktreeChanges(target.worktree.path, scope, {
+        ...localGitOptionsForTarget(target),
+        admissionTier: 'interactive'
+      })
       return { ok: true }
     }
     await bulkStageFiles(target.worktree.path, relativePaths, {

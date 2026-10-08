@@ -4,6 +4,10 @@ import { gitExecFileAsync } from '../runner'
 import { invalidateGitReadCaches } from './git-read-cache-invalidation'
 import { literalPathspec } from './git-pathspec'
 import { encodeGitPathspecs } from '../../../shared/git-pathspec-stdin'
+import {
+  stageGitWorktreeScope,
+  type GitStageWorktreeScope
+} from '../../../shared/git-stage-worktree-scope'
 
 /**
  * Stage a file.
@@ -60,6 +64,25 @@ export async function bulkStageFiles(
       ...gitOptionsForWorktree(worktreePath, options),
       stdin: encodeGitPathspecs(filePaths.map((filePath) => literalPathspec(filePath, options)))
     })
+  } finally {
+    invalidateGitReadCaches()
+  }
+}
+
+/**
+ * Stage every change in the worktree when the capped listing cannot name them all.
+ */
+export async function stageWorktreeChanges(
+  worktreePath: string,
+  scope: GitStageWorktreeScope,
+  options: GitRuntimeOptions = {}
+): Promise<void> {
+  invalidateGitReadCaches()
+  try {
+    const gitOptions = gitOptionsForWorktree(worktreePath, options)
+    await stageGitWorktreeScope(scope, (args, stdin) =>
+      gitExecFileAsync(args, stdin === undefined ? gitOptions : { ...gitOptions, stdin })
+    )
   } finally {
     invalidateGitReadCaches()
   }

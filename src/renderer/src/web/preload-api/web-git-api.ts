@@ -241,8 +241,8 @@ export function createGitApi(): NonNullable<Partial<PreloadApi>['git']> {
     }),
     cancelGeneratePullRequestFields: () => Promise.resolve(),
     stage: async ({ worktreePath, filePath }) => mutateGitPath('git.stage', worktreePath, filePath),
-    bulkStage: async ({ worktreePath, filePaths }) =>
-      mutateGitPaths('git.bulkStage', worktreePath, filePaths),
+    bulkStage: async ({ worktreePath, filePaths, scope }) =>
+      mutateGitPaths('git.bulkStage', worktreePath, filePaths, scope ? { scope } : {}),
     unstage: async ({ worktreePath, filePath }) =>
       mutateGitPath('git.unstage', worktreePath, filePath),
     bulkUnstage: async ({ worktreePath, filePaths }) =>
@@ -287,8 +287,13 @@ export async function mutateGitPath(
 export async function mutateGitPaths(
   method: string,
   worktreePath: string,
-  filePaths: string[]
+  filePaths: string[],
+  extraParams: Record<string, unknown> = {}
 ): Promise<void> {
   const worktree = await resolveRuntimeWorktreeByPath(worktreePath)
-  await callRuntimeResult(method, { worktree: toRuntimeWorktreeSelector(worktree.id), filePaths })
+  await callRuntimeResult(method, {
+    worktree: toRuntimeWorktreeSelector(worktree.id),
+    filePaths,
+    ...extraParams
+  })
 }

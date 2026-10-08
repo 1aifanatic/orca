@@ -48,6 +48,15 @@ describe('SshGitProvider', () => {
     })
   })
 
+  it('bulkStageFiles forwards a whole-worktree scope alongside the listed paths', async () => {
+    await provider.bulkStageFiles('/home/user/repo', ['a.ts'], 'all')
+    expect(mux.request).toHaveBeenCalledWith('git.bulkStage', {
+      worktreePath: '/home/user/repo',
+      filePaths: ['a.ts'],
+      scope: 'all'
+    })
+  })
+
   it('bulkUnstageFiles sends git.bulkUnstage request', async () => {
     await provider.bulkUnstageFiles('/home/user/repo', ['a.ts', 'b.ts'])
     expect(mux.request).toHaveBeenCalledWith('git.bulkUnstage', {
