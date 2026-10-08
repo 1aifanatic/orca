@@ -1,11 +1,12 @@
 // Ledger admission for mutations that are not reservations — send, cancel, an
 // approval answer. Split from the store so the store keeps only the transaction.
 
-import type {
-  AgentSessionOperationClaim,
-  AgentSessionOperationDecision,
-  AgentSessionOperationOutcome,
-  AgentSessionOperationOwnedPane
+import {
+  evaluateAgentSessionOperation,
+  type AgentSessionOperationClaim,
+  type AgentSessionOperationDecision,
+  type AgentSessionOperationOutcome,
+  type AgentSessionOperationOwnedPane
 } from '../../shared/agent-session-operation-ledger'
 import {
   admitAgentSessionMutation,
@@ -48,6 +49,20 @@ export function evaluateAgentSessionMutationOperation(
   }
   const operation = mutationOperation(args)
   return { decision: state.operations.evaluate(operation, Boolean(args.operationIdScope)), record }
+}
+
+/** The same answer as if no row were recorded: for a call that must run when the ledger can't be
+ *  read. Null when no record exists. */
+export function evaluateAgentSessionMutationWithoutLedger(
+  record: AgentSessionRecord | null,
+  args: AgentSessionMutationOperationAdmission
+): { decision: AgentSessionOperationDecision; record: AgentSessionRecord } | null {
+  return record
+    ? {
+        decision: evaluateAgentSessionOperation({ rows: new Map(), ...mutationOperation(args) }),
+        record
+      }
+    : null
 }
 
 function mutationOperation(

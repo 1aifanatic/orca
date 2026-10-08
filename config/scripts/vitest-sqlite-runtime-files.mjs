@@ -146,6 +146,7 @@ export const SQLITE_RUNTIME_INCLUDE = [
   'src/main/native-chat/agent-session-wire/structured-agent-session-transition.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-turns.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-unopened-tab.test.ts',
+  'src/main/native-chat/agent-session-wire/structured-agent-session-unreadable-ledger.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-unsent-send-hold.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-view-start-after-failed-start.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-wedged-profile-migration.test.ts',
