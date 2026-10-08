@@ -1,7 +1,7 @@
 /**
- * A server workspace's editor tabs live in the desktop's window, not on the server. The phone lists
- * them from the desktop beside the server's tabs, in the desktop's order, and opens and reads them
- * through the desktop.
+ * A server workspace's editor tabs live in the desktop's window, not on the server. The phone's
+ * server-workspace client lists them from the desktop beside the server's tabs, in the desktop's
+ * order, and sends each tab's calls to the host that holds it.
  */
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -10,31 +10,64 @@ import { z } from 'zod'
 import { expect, test } from './helpers/orca-app'
 import { launchPhoneMirrorTopology } from './helpers/phone-mirror-topology'
 import type { PairedMobileSocket } from './helpers/paired-mobile-client'
-import { composeDesktopOwnedSessionTabs } from '../../mobile/src/transport/desktop-owned-session-tabs'
+import { scopeRpcClientToExecutionHost } from '../../mobile/src/transport/execution-host-scoped-rpc-client'
+import type { RpcClient } from '../../mobile/src/transport/rpc-client'
+import type { RpcResponse } from '../../mobile/src/transport/types'
 import { MOBILE_DESKTOP_OWNED_TABS_RUNTIME_CAPABILITY } from '../../src/shared/mobile-desktop-relay-contract'
 
-const TabsSchema = z.looseObject({
-  tabs: z.array(z.looseObject({ id: z.string(), type: z.string() }))
+const StripSchema = z.looseObject({
+  tabs: z.array(
+    z.looseObject({ id: z.string(), type: z.string(), relativePath: z.string().optional() })
+  )
 })
-const ReadTabSchema = z.looseObject({ content: z.string() })
+const ResponseSchema = z.union([
+  z.looseObject({ id: z.string(), ok: z.literal(true), result: z.unknown() }),
+  z.looseObject({
+    id: z.string(),
+    ok: z.literal(false),
+    error: z.looseObject({ code: z.string(), message: z.string() })
+  })
+])
 
 let requestId = 0
-async function call(
-  socket: PairedMobileSocket,
-  method: string,
-  params: unknown,
-  executionHost?: string
-): Promise<{ ok: boolean; result?: unknown }> {
-  requestId += 1
-  const id = `owned-${requestId}`
-  socket.send(id, method, params, executionHost)
-  let frame: PairedMobileSocket['frames'][number] | undefined
-  await expect
-    .poll(() => (frame = socket.frames.find((candidate) => candidate.id === id)), {
-      timeout: 30_000
-    })
-    .toBeDefined()
-  return frame!
+/** The phone's socket as the app's RpcClient, so the real server-workspace client runs over it. */
+function socketRpcClient(socket: PairedMobileSocket): RpcClient {
+  const reply = async (id: string): Promise<RpcResponse> => {
+    let frame: unknown
+    await expect
+      .poll(() => (frame = socket.frames.find((candidate) => candidate.id === id)), {
+        timeout: 30_000
+      })
+      .toBeDefined()
+    return ResponseSchema.parse(frame)
+  }
+  return {
+    sendRequest: async (method, params, options) => {
+      const id = `owned-${++requestId}`
+      socket.send(id, method, params, options?.executionHost)
+      return reply(id)
+    },
+    subscribe: (method, params, onData, options) => {
+      const id = `owned-${++requestId}`
+      let delivered = 0
+      socket.send(id, method, params, options?.executionHost)
+      const timer = setInterval(() => {
+        const frames = socket.frames.filter((candidate) => candidate.id === id)
+        for (const frame of frames.slice(delivered)) {
+          onData(frame.result)
+        }
+        delivered = frames.length
+      }, 50)
+      return () => clearInterval(timer)
+    },
+    updateTerminalSubscriptionViewport: () => {},
+    getState: () => 'connected',
+    getReconnectAttempt: () => 0,
+    getLastConnectedAt: () => null,
+    onStateChange: () => () => {},
+    notifyForeground: () => {},
+    close: () => {}
+  }
 }
 
 const TITLE = "phone lists, places and opens the desktop's editor tabs in a server workspace"
@@ -54,6 +87,7 @@ test(TITLE, async ({}, testInfo) => {
     { phoneTo: 'desktop' },
     testInfo
   )
+  let stopStrip = (): void => {}
   try {
     await host.client.call('repo.add', { path: serverRepo, kind: 'git' })
     let row: { id: string; hostId: string } | null = null
@@ -73,15 +107,27 @@ test(TITLE, async ({}, testInfo) => {
       )
       .not.toBeNull()
     const { id: worktreeId, hostId } = row!
+    if (!hostId.startsWith('runtime:')) {
+      throw new Error(`not a server workspace: ${hostId}`)
+    }
     const worktree = `id:${worktreeId}`
     const socket = await phone.openSocket()
-    const status = z
-      .looseObject({ capabilities: z.array(z.string()) })
-      .parse((await call(socket, 'status.get', {})).result)
-    expect(status.capabilities).toContain(MOBILE_DESKTOP_OWNED_TABS_RUNTIME_CAPABILITY)
+    const server = scopeRpcClientToExecutionHost(
+      socketRpcClient(socket),
+      `runtime:${hostId.slice('runtime:'.length)}`,
+      true
+    )
+    let latest: z.infer<typeof StripSchema> | null = null
+    stopStrip = server.subscribe('session.tabs.subscribe', { worktree }, (frame) => {
+      latest = StripSchema.safeParse(frame).data ?? latest
+    })
+    const phoneStrip = () =>
+      (latest?.tabs ?? []).map((tab) =>
+        tab.type === 'file' || tab.type === 'markdown' ? `editor:${tab.relativePath}` : tab.type
+      )
 
     // The phone opens a file on the server workspace; the desktop's window holds the tab.
-    const opened = await call(socket, 'files.open', { worktree, relativePath: 'NOTES.md' }, hostId)
+    const opened = await server.sendRequest('files.open', { worktree, relativePath: 'NOTES.md' })
     expect(opened).toMatchObject({ ok: true, result: { opened: true } })
     await desktop.page.evaluate(
       ({ id, repo, environmentId }) =>
@@ -99,7 +145,7 @@ test(TITLE, async ({}, testInfo) => {
       { id: worktreeId, repo: serverRepo, environmentId: hostId.slice('runtime:'.length) }
     )
 
-    // The desktop's strip, with each tab named as the phone's lists name it.
+    // The desktop's strip, with each tab named as the phone's strip names it.
     const desktopStrip = () =>
       desktop.page.evaluate((id) => {
         const state = window.__store!.getState()
@@ -113,24 +159,11 @@ test(TITLE, async ({}, testInfo) => {
           })
         )
       }, worktreeId)
-    const phoneStrip = async () => {
-      const server = await call(socket, 'session.tabs.list', { worktree }, hostId)
-      const own = await call(socket, 'session.tabs.list', { worktree })
-      const composed = TabsSchema.parse(
-        composeDesktopOwnedSessionTabs(server.result, own.result).result
-      )
-      return composed.tabs.map((tab) =>
-        tab.type === 'file' || tab.type === 'markdown'
-          ? `editor:${z.looseObject({ relativePath: z.string() }).parse(tab).relativePath}`
-          : tab.type
-      )
-    }
     await expect
-      .poll(async () => (await phoneStrip()).filter((entry) => entry.startsWith('editor:')), {
-        timeout: 30_000
-      })
+      .poll(() => phoneStrip().filter((entry) => entry.startsWith('editor:')), { timeout: 30_000 })
       .toEqual(['editor:NOTES.md', 'editor:a.ts'])
-    expect(await phoneStrip()).toEqual(await desktopStrip())
+    expect(phoneStrip()).toEqual(await desktopStrip())
+
     // The desktop moves its tab past the server's terminal; the phone follows.
     await desktop.page.evaluate((id) => {
       const state = window.__store!.getState()
@@ -146,12 +179,20 @@ test(TITLE, async ({}, testInfo) => {
       .toEqual(['editor:NOTES.md', 'terminal', 'editor:a.ts'])
     expect(await desktopStrip()).toEqual(['editor:NOTES.md', 'terminal', 'editor:a.ts'])
 
-    // A desktop tab reads through the desktop, even on the server workspace's client.
-    const own = TabsSchema.parse((await call(socket, 'session.tabs.list', { worktree })).result)
-    const notes = own.tabs.find((tab) => tab.type === 'markdown')
-    const read = await call(socket, 'markdown.readTab', { worktree, tabId: notes?.id }, hostId)
-    expect(ReadTabSchema.parse(read.result).content).toBe('notes on the server\n')
+    // A desktop tab's own call goes to the desktop that holds it.
+    const notes = latest!.tabs.find((tab) => tab.relativePath === 'NOTES.md')
+    const read = await server.sendRequest('markdown.readTab', { worktree, tabId: notes?.id })
+    expect(read).toMatchObject({ ok: true, result: { content: 'notes on the server\n' } })
+
+    const status = await socketRpcClient(socket).sendRequest('status.get', {})
+    expect(status).toMatchObject({
+      ok: true,
+      result: {
+        capabilities: expect.arrayContaining([MOBILE_DESKTOP_OWNED_TABS_RUNTIME_CAPABILITY])
+      }
+    })
   } finally {
+    stopStrip()
     await dispose()
   }
 })

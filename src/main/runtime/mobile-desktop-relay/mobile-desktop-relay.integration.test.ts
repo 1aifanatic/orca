@@ -447,7 +447,7 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     expect(isOk(await phone.next('after-sync'))).toBe(true)
   })
 
-  it('answers a targeted desktop-owned call on the desktop, exactly as the untargeted one', async () => {
+  it('answers a targeted paired-desktop call on the desktop: the target is context, never a relay', async () => {
     const { desktop } = await startTopology()
     const phone = await connectPhone(desktop.server, 'iPhone')
     const opensBefore = passthroughOpens.count

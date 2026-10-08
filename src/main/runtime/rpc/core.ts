@@ -123,18 +123,21 @@ export type RpcContext = {
   // Why: federation pins the authenticated saved-environment caller without exposing its token to handlers or storage.
   authenticatedCallerFingerprint?: string
   pairing?: PairingRpcContext
-  // Why: a phone's target on a call this desktop answers itself (MOBILE_RPC_METHOD_ROUTES).
+  // Why: a phone's target on a paired-desktop call; the handler may read it as context, never relay on it.
   executionHost?: Extract<ParsedExecutionHost, { kind: 'runtime' }>
   // Why: set only on a desktop that relays; it lists the configured servers it shows.
   mobileRelayHosts?: {
     list(): MobileRelayHostsListResult
     worktrees(hostId: string): Promise<MobileRelayHostWorktreesResult>
-    resolveWorkspaceFile(
+    resolveWorkspace(
+      host: Extract<ParsedExecutionHost, { kind: 'runtime' }>,
+      worktreeId: string
+    ): Promise<ServerWorkspaceFileTarget>
+    assertWorkspaceFile(
       host: Extract<ParsedExecutionHost, { kind: 'runtime' }>,
       worktreeId: string,
-      relativePath: string,
-      options: { requireFile: boolean }
-    ): Promise<ServerWorkspaceFileTarget>
+      relativePath: string
+    ): Promise<void>
   }
   // Why: set only for an authenticated runtime-scope device and bound to it, so it manages only its own phones.
   delegatedMobileDevices?: {

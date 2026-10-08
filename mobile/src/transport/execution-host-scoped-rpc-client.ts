@@ -6,7 +6,6 @@ import {
 } from '../../../src/shared/mobile-desktop-relay-contract'
 import { composeDesktopOwnedSessionTabs } from './desktop-owned-session-tabs'
 import type { RpcClient, SendRequestOptions } from './rpc-client'
-import { isSnapshotResult } from './rpc-subscription-result-shapes'
 
 const scopedViews = new WeakMap<RpcClient, Map<string, RpcClient>>()
 
@@ -59,7 +58,11 @@ export function scopeRpcClientToExecutionHost(
   if (existing) {
     return existing
   }
+  // The desktop's side of each workspace's strip, kept in memory only: its tabs, its last strip
+  // (so a failed desktop call composes as the last one did) and whether the phone's last pick was its.
   const desktopTabIdsByWorktree = new Map<string, ReadonlySet<string>>()
+  const lastDesktopStripByWorktree = new Map<string, unknown>()
+  const pickedOnDesktopByWorktree = new Map<string, boolean>()
   const owner = (params: unknown): ExecutionHostId | undefined => {
     const tabId = TabCallParamsSchema.safeParse(params).data?.tabId
     const ownedByDesktop =
@@ -68,12 +71,23 @@ export function scopeRpcClientToExecutionHost(
       [...desktopTabIdsByWorktree.values()].some((ids) => ids.has(tabId))
     return ownedByDesktop ? undefined : executionHost
   }
-  const compose = (params: unknown, server: unknown, desktop: unknown): unknown => {
-    const composed = composeDesktopOwnedSessionTabs(server, desktop)
+  const recordPick = (method: string, params: unknown, host: ExecutionHostId | undefined) => {
     const worktree = TabCallParamsSchema.safeParse(params).data?.worktree
-    if (worktree !== undefined) {
-      desktopTabIdsByWorktree.set(worktree, composed.desktopTabIds)
+    if (composesDesktopTabs && method === 'session.tabs.activate' && worktree !== undefined) {
+      pickedOnDesktopByWorktree.set(worktree, host === undefined)
     }
+  }
+  const compose = (params: unknown, server: unknown, desktop: unknown | null): unknown => {
+    const worktree = TabCallParamsSchema.safeParse(params).data?.worktree ?? ''
+    if (desktop !== null) {
+      lastDesktopStripByWorktree.set(worktree, desktop)
+    }
+    const composed = composeDesktopOwnedSessionTabs(
+      server,
+      desktop ?? lastDesktopStripByWorktree.get(worktree),
+      pickedOnDesktopByWorktree.get(worktree) === true
+    )
+    desktopTabIdsByWorktree.set(worktree, composed.desktopTabIds)
     return composed.result
   }
   const send = (
@@ -93,14 +107,16 @@ export function scopeRpcClientToExecutionHost(
   const view: RpcClient = {
     sendRequest: async (method, params, options) => {
       if (!composesDesktopTabs || method !== 'session.tabs.list') {
-        return send(method, params, options, owner(params))
+        const host = owner(params)
+        recordPick(method, params, host)
+        return send(method, params, options, host)
       }
       const [server, desktop] = await Promise.all([
         send(method, params, options, executionHost),
         send(method, params, options, undefined).catch(() => null)
       ])
-      return server.ok && desktop?.ok
-        ? { ...server, result: compose(params, server.result, desktop.result) }
+      return server.ok
+        ? { ...server, result: compose(params, server.result, desktop?.ok ? desktop.result : null) }
         : server
     },
     subscribe: (method, params, onData, options) =>
@@ -140,18 +156,34 @@ const TabCallParamsSchema = z.looseObject({
 function subscribeComposedSessionTabs(
   open: (host: ExecutionHostId | undefined, listener: (frame: unknown) => void) => () => void,
   executionHost: ExecutionHostId,
-  compose: (server: unknown, desktop: unknown) => unknown,
+  compose: (server: unknown, desktop: unknown | null) => unknown,
   onData: (frame: unknown) => void
 ): () => void {
-  let server: unknown = null
-  let desktop: unknown = null
+  let server: Record<string, unknown> | null = null
+  let desktop: unknown | null = null
+  let ended = false
+  let stopDesktop = (): void => {}
   const stopServer = open(executionHost, (frame) => {
-    const isTabs = isSnapshotResult(frame) || isUpdatedResult(frame)
-    server = isTabs ? frame : server
-    onData(isTabs ? compose(frame, desktop) : frame)
+    if (ended) {
+      return
+    }
+    const tabs = TabsFrameSchema.safeParse(frame).data
+    if (!tabs) {
+      // Why: the server's end or error ends the composed stream; the desktop's half goes with it.
+      ended = EndFrameSchema.safeParse(frame).success
+      if (ended) {
+        stopDesktop()
+      }
+      onData(frame)
+      return
+    }
+    // Why: a follow is one-shot; re-sending it on a desktop change would undo the phone's own pick.
+    const { navigationIntent: _oneShot, ...standing } = tabs
+    server = standing
+    onData(compose(frame, desktop))
   })
-  const stopDesktop = open(undefined, (frame) => {
-    if (!isSnapshotResult(frame) && !isUpdatedResult(frame)) {
+  stopDesktop = open(undefined, (frame) => {
+    if (ended || !TabsFrameSchema.safeParse(frame).success) {
       return
     }
     desktop = frame
@@ -165,11 +197,8 @@ function subscribeComposedSessionTabs(
   }
 }
 
-function isUpdatedResult(value: unknown): boolean {
-  return UpdatedFrameSchema.safeParse(value).success
-}
-
-const UpdatedFrameSchema = z.looseObject({ type: z.literal('updated') })
+const TabsFrameSchema = z.looseObject({ type: z.enum(['snapshot', 'updated']) })
+const EndFrameSchema = z.looseObject({ type: z.enum(['end', 'error']) })
 
 function asRecord(value: unknown): Record<string, unknown> {
   return z.record(z.string(), z.unknown()).safeParse(value).data ?? {}

@@ -446,9 +446,12 @@ describe('mobile relay host catalog', () => {
     it("takes the server's path for it, and asks the server that it is a file", async () => {
       const { hostCatalog, call } = serverWithWorkspace(statReply(false))
 
-      await expect(
-        hostCatalog.resolveWorkspaceFile(SERVER, 'w', 'src/a.ts', { requireFile: true })
-      ).resolves.toEqual({ environmentId: 'env', worktreeId: 'w', worktreePath: '/srv/repo' })
+      await expect(hostCatalog.resolveWorkspace(SERVER, 'w')).resolves.toEqual({
+        environmentId: 'env',
+        worktreeId: 'w',
+        worktreePath: '/srv/repo'
+      })
+      await hostCatalog.assertWorkspaceFile(SERVER, 'w', 'src/a.ts')
       expect(call).toHaveBeenCalledWith(
         expect.objectContaining({ environmentId: 'env' }),
         'files.stat',
@@ -459,25 +462,31 @@ describe('mobile relay host catalog', () => {
 
     it("refuses a directory, and a missing file with the server's own error", async () => {
       await expect(
-        serverWithWorkspace(statReply(true)).hostCatalog.resolveWorkspaceFile(SERVER, 'w', 'src', {
-          requireFile: true
-        })
+        serverWithWorkspace(statReply(true)).hostCatalog.assertWorkspaceFile(SERVER, 'w', 'src')
       ).rejects.toThrow(/^EISDIR/)
       const missing = serverWithWorkspace({
         id: 'stat',
         ok: false,
         error: { code: 'runtime_error', message: "ENOENT: no such file or directory, open 'x'" }
       })
-      await expect(
-        missing.hostCatalog.resolveWorkspaceFile(SERVER, 'w', 'x', { requireFile: true })
-      ).rejects.toThrow(/^ENOENT/)
+      await expect(missing.hostCatalog.assertWorkspaceFile(SERVER, 'w', 'x')).rejects.toThrow(
+        /^ENOENT/
+      )
+    })
+
+    it('refuses an escaping path before asking the server anything', async () => {
+      const { hostCatalog, call } = serverWithWorkspace(statReply(false))
+      await expect(hostCatalog.assertWorkspaceFile(SERVER, 'w', '../etc/passwd')).rejects.toThrow(
+        'invalid_relative_path'
+      )
+      expect(call).not.toHaveBeenCalled()
     })
 
     it('refuses a workspace the server does not list', async () => {
       const { hostCatalog } = serverWithWorkspace(statReply(false))
-      await expect(
-        hostCatalog.resolveWorkspaceFile(SERVER, 'gone', 'a.ts', { requireFile: false })
-      ).rejects.toThrow('selector_not_found')
+      await expect(hostCatalog.resolveWorkspace(SERVER, 'gone')).rejects.toThrow(
+        'selector_not_found'
+      )
     })
   })
 })

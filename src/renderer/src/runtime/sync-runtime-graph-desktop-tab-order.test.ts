@@ -96,7 +96,7 @@ describe('desktop tab order in the mobile publication', () => {
     ])
   })
 
-  it('leaves the field out when the publication already holds every tab', () => {
+  it('sends it for a server workspace even when the desktop holds every tab', () => {
     const state = makeState({
       worktreesByRepo: serverWorktrees,
       activeGroupIdByWorktree: { [WORKTREE]: 'group-1' },
@@ -105,9 +105,9 @@ describe('desktop tab order in the mobile publication', () => {
       openFiles: [file('/srv/repo/a.ts')]
     })
 
-    expect(buildMobileSessionTabSnapshots(state)[0]?.tabGroups?.[0]).not.toHaveProperty(
-      'desktopTabOrder'
-    )
+    expect(buildMobileSessionTabSnapshots(state)[0]?.tabGroups?.[0]).toMatchObject({
+      desktopTabOrder: ['unified-editor']
+    })
   })
 
   it("leaves it out for the desktop's own workspaces, whose strip it publishes whole", () => {

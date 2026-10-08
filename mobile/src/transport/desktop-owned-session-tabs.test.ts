@@ -74,28 +74,30 @@ describe("a server workspace's strip with the desktop's own tabs", () => {
     expect(desktopTabIds.has('desktop-readme')).toBe(true)
   })
 
-  it("keeps the server's selection, and takes the desktop's only when the server has none", () => {
-    const withServerPick = composeDesktopOwnedSessionTabs(
-      server([terminal('t1', 'a', true)], 't1::a'),
-      desktop([editor('e1', '/a.ts')], ['t1', 'e1'], 'e1')
-    ).result
-    expect(withServerPick).toMatchObject({
+  it("shows the phone's own last pick, on whichever host it was made", () => {
+    const serverFrame = server([terminal('t1', 'a', true)], 't1::a')
+    const desktopFrame = desktop([editor('e1', '/a.ts')], ['t1', 'e1'], 'e1')
+
+    expect(composeDesktopOwnedSessionTabs(serverFrame, desktopFrame).result).toMatchObject({
       activeTabId: 't1::a',
       tabs: [
         { id: 't1::a', isActive: true },
         { id: 'e1', isActive: false }
       ]
     })
-
-    const withoutServerPick = composeDesktopOwnedSessionTabs(
-      server([]),
-      desktop([editor('e1', '/a.ts')], ['e1'], 'e1')
-    ).result
-    expect(withoutServerPick).toMatchObject({
+    expect(composeDesktopOwnedSessionTabs(serverFrame, desktopFrame, true).result).toMatchObject({
       activeTabId: 'e1',
       activeTabType: 'file',
-      tabs: [{ id: 'e1', isActive: true }]
+      tabs: [
+        { id: 't1::a', isActive: false },
+        { id: 'e1', isActive: true }
+      ]
     })
+    // With nothing picked on the server, the desktop's pick shows either way.
+    expect(
+      composeDesktopOwnedSessionTabs(server([]), desktop([editor('e1', '/a.ts')], ['e1'], 'e1'))
+        .result
+    ).toMatchObject({ activeTabId: 'e1', tabs: [{ id: 'e1', isActive: true }] })
   })
 
   it("reads as newer when either side changes, and keeps the server's stream fields", () => {
@@ -114,12 +116,22 @@ describe("a server workspace's strip with the desktop's own tabs", () => {
     expect(after).toMatchObject({ snapshotVersion: 7 })
   })
 
-  it("passes the server's frame through when the desktop has no strip to add", () => {
+  it('composes a desktop with no strip to give as an empty one, under one epoch', () => {
     const serverFrame = server([terminal('t1', 'a')])
+    const empty = composeDesktopOwnedSessionTabs(serverFrame, { type: 'end' })
 
-    expect(composeDesktopOwnedSessionTabs(serverFrame, { type: 'end' })).toEqual({
-      result: serverFrame,
-      desktopTabIds: new Set()
+    expect(empty.result).toMatchObject({
+      publicationEpoch: 'headless:1|desktop:',
+      snapshotVersion: 4,
+      tabs: [{ id: 't1::a' }]
+    })
+    expect(composeDesktopOwnedSessionTabs(serverFrame, undefined).result).toEqual(empty.result)
+    expect(empty.desktopTabIds.size).toBe(0)
+  })
+
+  it('passes a server frame that is not a strip through untouched', () => {
+    expect(composeDesktopOwnedSessionTabs({ type: 'end' }, desktop([], [])).result).toEqual({
+      type: 'end'
     })
   })
 })

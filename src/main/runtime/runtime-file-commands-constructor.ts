@@ -193,8 +193,34 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
     navigation?: RuntimeNavigationTarget,
     server?: ServerWorkspaceFileTarget
   ): Promise<RuntimeFileOpenResult> {
-    const local = server ? null : await this.host.resolveRuntimeFileTarget(worktreeSelector)
-    const worktree = server ? { id: server.worktreeId, path: server.worktreePath } : local.worktree
+    if (server) {
+      // Why: a server workspace's file was checked on its server, which holds it.
+      return this.openMobileFileTab(
+        { id: server.worktreeId, path: server.worktreePath },
+        relativePath,
+        server.environmentId,
+        navigation
+      )
+    }
+    const target = await this.host.resolveRuntimeFileTarget(worktreeSelector)
+    if (!isSafeMobileRelativePath(relativePath)) {
+      throw new Error('invalid_relative_path')
+    }
+    // Why: CLI/agents treat opened:true as success; stat first so missing paths and directories fail the RPC instead of opening a ghost tab.
+    await this.assertOpenTargetIsFile(
+      joinWorktreeRelativePath(target.worktree.path, relativePath),
+      runtimeFileRouteForTarget(target)
+    )
+    // Why: the internal runtimeId isn't a valid env selector; pass undefined so openFile falls back to activeRuntimeEnvironmentId.
+    return this.openMobileFileTab(target.worktree, relativePath, undefined, navigation)
+  }
+
+  private openMobileFileTab(
+    worktree: { id: string; path: string },
+    relativePath: string,
+    runtimeEnvironmentId: string | undefined,
+    navigation: RuntimeNavigationTarget | undefined
+  ): RuntimeFileOpenResult {
     if (!isSafeMobileRelativePath(relativePath)) {
       throw new Error('invalid_relative_path')
     }
@@ -207,13 +233,7 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
           : 'text'
     // Why: `kind` only describes the file; the desktop editor opens binaries (e.g. PDFs) like the File Explorer.
     const filePath = joinWorktreeRelativePath(worktree.path, relativePath)
-    // Why: CLI/agents treat opened:true as success; stat first so missing paths and directories fail the RPC instead of opening a ghost tab.
-    // A server workspace's file was checked on its server before it got here.
-    if (local) {
-      await this.assertOpenTargetIsFile(filePath, runtimeFileRouteForTarget(local))
-    }
-    // Why: the internal runtimeId isn't a valid env selector, so only a server workspace names one.
-    this.host.openFile(worktree.id, filePath, relativePath, server?.environmentId, navigation)
+    this.host.openFile(worktree.id, filePath, relativePath, runtimeEnvironmentId, navigation)
     return { worktree: worktree.id, relativePath, kind, opened: true }
   }
 

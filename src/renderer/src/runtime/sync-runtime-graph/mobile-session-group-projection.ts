@@ -217,10 +217,10 @@ function buildDesktopTabOrder(
   group: TabGroup,
   groupTabs: readonly Tab[],
   tabOrder: readonly string[]
-): string[] | undefined {
+): string[] {
   const published = new Set(tabOrder)
   const tabsById = new Map(groupTabs.map((tab) => [tab.id, tab]))
-  const order = group.tabOrder.map((tabId) => {
+  return group.tabOrder.map((tabId) => {
     const tab = tabsById.get(tabId)
     if (!tab) {
       return tabId
@@ -230,9 +230,6 @@ function buildDesktopTabOrder(
     }
     return isEditorSurfaceTab(tab) && published.has(tabId) ? tabId : tab.entityId
   })
-  return order.length === tabOrder.length && order.every((id, index) => id === tabOrder[index])
-    ? undefined
-    : order
 }
 
 export function collectTabGroupLayoutIds(layout: TabGroupLayoutNode | undefined): string[] {

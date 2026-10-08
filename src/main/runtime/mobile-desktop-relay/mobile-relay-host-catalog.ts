@@ -22,6 +22,7 @@ import type {
   MobileDesktopRelayHosts
 } from './mobile-desktop-relay-hosts'
 import type { ServerWorkspaceFileTarget } from '../server-workspace-file-target'
+import { isSafeMobileRelativePath } from '../runtime-file-command-host'
 
 // Why the phone's own full-catalog limit: the server's default page is 200 and nothing pages on.
 const SERVER_WORKTREE_LIMIT = 10_000
@@ -105,42 +106,46 @@ export class MobileRelayHostCatalog {
     }
   }
 
-  /**
-   * A server workspace's file as the desktop's own window opens it: the path from the rows the
-   * desktop fetched (refetched when the workspace is not among them), and, when asked, the
-   * server's own answer that it is a file.
-   */
-  async resolveWorkspaceFile(
+  /** A server workspace as the desktop's window opens files in it: its path, from the fetched rows. */
+  async resolveWorkspace(
     host: Extract<ParsedExecutionHost, { kind: 'runtime' }>,
-    worktreeId: string,
-    relativePath: string,
-    options: { requireFile: boolean }
+    worktreeId: string
   ): Promise<ServerWorkspaceFileTarget> {
     const rowPath = (rows: readonly MobileRelayServerWorktreeRow[] | null | undefined) => {
       const path = rows?.find((row) => row.worktreeId === worktreeId)?.path
       return typeof path === 'string' ? path : null
     }
+    // Why: refetch only for a workspace the last rows lack, not on every open.
     const worktreePath =
       rowPath(this.currentEntry(host.environmentId)?.worktrees) ??
       rowPath((await this.worktrees(host.id)).worktrees)
     if (!worktreePath) {
       throw new Error('selector_not_found')
     }
-    if (options.requireFile) {
-      const response = await this.options.hosts.call(
-        host,
-        'files.stat',
-        { worktree: `id:${worktreeId}`, relativePath },
-        { timeoutMs: SERVER_FETCH_TIMEOUT_MS }
-      )
-      if (!response.ok) {
-        throw new Error(response.error.message)
-      }
-      if (FileStatReplySchema.safeParse(response.result).data?.isDirectory === true) {
-        throw new Error(`EISDIR: illegal operation on a directory, open '${relativePath}'`)
-      }
-    }
     return { environmentId: host.environmentId, worktreeId, worktreePath }
+  }
+
+  /** Throws unless the server itself says this path in its workspace is a file. */
+  async assertWorkspaceFile(
+    host: Extract<ParsedExecutionHost, { kind: 'runtime' }>,
+    worktreeId: string,
+    relativePath: string
+  ): Promise<void> {
+    if (!isSafeMobileRelativePath(relativePath)) {
+      throw new Error('invalid_relative_path')
+    }
+    const response = await this.options.hosts.call(
+      host,
+      'files.stat',
+      { worktree: `id:${worktreeId}`, relativePath },
+      { timeoutMs: SERVER_FETCH_TIMEOUT_MS }
+    )
+    if (!response.ok) {
+      throw new Error(response.error.message)
+    }
+    if (FileStatReplySchema.safeParse(response.result).data?.isDirectory === true) {
+      throw new Error(`EISDIR: illegal operation on a directory, open '${relativePath}'`)
+    }
   }
 
   /** The rows last fetched from this server, unless it was re-paired or removed since. */

@@ -38,11 +38,18 @@ function desktopSnapshot(type: 'snapshot' | 'updated', version: number) {
 function fakeDesktopClient() {
   const listeners = new Map<string, (frame: unknown) => void>()
   const requests: { method: string; executionHost: string | undefined }[] = []
+  const state = { desktopFails: false }
   const reply = (result: unknown): RpcResponse => ({ id: 'r', ok: true, result })
   const client: RpcClient = {
     sendRequest: vi.fn(async (method, _params, options) => {
       requests.push({ method, executionHost: options?.executionHost })
-      return reply(options?.executionHost ? serverSnapshot : desktopSnapshot('snapshot', 1))
+      if (options?.executionHost) {
+        return reply(serverSnapshot)
+      }
+      if (state.desktopFails) {
+        throw new Error('desktop unreachable')
+      }
+      return reply(desktopSnapshot('snapshot', 1))
     }),
     subscribe: vi.fn((_method, _params, onData, options) => {
       listeners.set(options?.executionHost ?? 'desktop', onData)
@@ -56,12 +63,15 @@ function fakeDesktopClient() {
     notifyForeground: () => {},
     close: () => {}
   }
-  return { client, listeners, requests }
+  return { client, listeners, requests, state }
 }
 
 const FrameSchema = z.looseObject({
   type: z.string().optional(),
-  tabs: z.array(z.looseObject({ id: z.string() })).optional()
+  publicationEpoch: z.string().optional(),
+  activeTabId: z.string().nullable().optional(),
+  navigationIntent: z.string().optional(),
+  tabs: z.array(z.looseObject({ id: z.string(), isActive: z.boolean().optional() })).optional()
 })
 const tabIds = (frame: unknown) => FrameSchema.parse(frame).tabs?.map((tab) => tab.id)
 
@@ -105,6 +115,82 @@ describe("a server workspace's client, when the desktop publishes its own tabs",
       { method: 'session.tabs.activate', executionHost: SERVER },
       { method: 'files.read', executionHost: SERVER }
     ])
+  })
+
+  it("ends with the server's stream, and stops the desktop's", () => {
+    const { client, listeners } = fakeDesktopClient()
+    const view = scopeRpcClientToExecutionHost(client, SERVER, true)
+    const frames: unknown[] = []
+    view.subscribe('session.tabs.subscribe', PARAMS, (frame) => frames.push(frame))
+    const desktopListener = listeners.get('desktop')
+    listeners.get(SERVER)?.(serverSnapshot)
+
+    listeners.get(SERVER)?.({ type: 'error', message: 'gone' })
+    desktopListener?.(desktopSnapshot('updated', 2))
+
+    expect(listeners.has('desktop')).toBe(false)
+    expect(frames.map((frame) => FrameSchema.parse(frame).type)).toEqual(['snapshot', 'error'])
+  })
+
+  it("never repeats the server's one-shot follow when the desktop changes", () => {
+    const { client, listeners } = fakeDesktopClient()
+    const view = scopeRpcClientToExecutionHost(client, SERVER, true)
+    const frames: unknown[] = []
+    view.subscribe('session.tabs.subscribe', PARAMS, (frame) => frames.push(frame))
+
+    listeners.get(SERVER)?.({ ...serverSnapshot, type: 'updated', navigationIntent: 'follow' })
+    listeners.get('desktop')?.(desktopSnapshot('updated', 2))
+
+    expect(frames.map((frame) => FrameSchema.parse(frame).navigationIntent)).toEqual([
+      'follow',
+      undefined
+    ])
+  })
+
+  it("shows the phone's tap on a desktop tab over the server's pick, until it taps a server tab", async () => {
+    const { client, listeners } = fakeDesktopClient()
+    const view = scopeRpcClientToExecutionHost(client, SERVER, true)
+    const frames: unknown[] = []
+    view.subscribe('session.tabs.subscribe', PARAMS, (frame) => frames.push(frame))
+    listeners.get(SERVER)?.(serverSnapshot)
+    listeners.get('desktop')?.(desktopSnapshot('snapshot', 1))
+    const active = () => FrameSchema.parse(frames.at(-1)).activeTabId
+    expect(active()).toBe('t1::a')
+
+    await view.sendRequest('session.tabs.activate', { ...PARAMS, tabId: 'e1' })
+    listeners.get('desktop')?.(desktopSnapshot('updated', 2))
+    expect(active()).toBe('e1')
+    expect(FrameSchema.parse(frames.at(-1)).tabs).toEqual([
+      expect.objectContaining({ id: 'e1', isActive: true }),
+      expect.objectContaining({ id: 't1::a', isActive: false })
+    ])
+
+    await view.sendRequest('session.tabs.activate', { ...PARAMS, tabId: 't1' })
+    listeners.get(SERVER)?.({ ...serverSnapshot, type: 'updated' })
+    expect(active()).toBe('t1::a')
+  })
+
+  it('composes a failed desktop call as its last strip, so list and stream keep one epoch', async () => {
+    const { client, listeners, state } = fakeDesktopClient()
+    const view = scopeRpcClientToExecutionHost(client, SERVER, true)
+    const epoch = (response: RpcResponse) =>
+      response.ok ? FrameSchema.parse(response.result).publicationEpoch : null
+    const frames: unknown[] = []
+    view.subscribe('session.tabs.subscribe', PARAMS, (frame) => frames.push(frame))
+
+    // Before the desktop has answered at all, list and stream agree on an empty desktop side.
+    state.desktopFails = true
+    listeners.get(SERVER)?.(serverSnapshot)
+    const coldList = await view.sendRequest('session.tabs.list', PARAMS)
+    expect(epoch(coldList)).toBe('headless:1|desktop:')
+    expect(FrameSchema.parse(frames[0]).publicationEpoch).toBe('headless:1|desktop:')
+
+    state.desktopFails = false
+    const warm = await view.sendRequest('session.tabs.list', PARAMS)
+    state.desktopFails = true
+    const failed = await view.sendRequest('session.tabs.list', PARAMS)
+    expect(epoch(failed)).toBe(epoch(warm))
+    expect(failed.ok && tabIds(failed.result)).toEqual(['e1', 't1::a'])
   })
 
   it('stays a plain server client when the desktop does not advertise it', async () => {

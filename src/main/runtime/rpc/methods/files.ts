@@ -1,5 +1,4 @@
 import { defineMethod, defineStreamingMethod, type RpcContext } from '../core'
-import type { ServerWorkspaceFileTarget } from '../../server-workspace-file-target'
 import { getExplicitWorktreeIdSelector } from '../../runtime-worktree-selection'
 import { runFileWatchStream } from './file-watch-stream-lifecycle'
 import { FILE_MUTATION_METHODS } from './files-mutation-methods'
@@ -25,24 +24,22 @@ import {
 let filesWatchSubscriptionSeq = 0
 
 /** A phone's server workspace, whose editor tabs this desktop's own window holds. */
-async function resolveServerWorkspaceFile(
+function serverWorkspaceOf(
   { executionHost, mobileRelayHosts }: RpcContext,
-  params: { worktree: string; relativePath: string },
-  options: { requireFile: boolean }
-): Promise<ServerWorkspaceFileTarget | undefined> {
+  worktreeSelector: string
+) {
   if (!executionHost) {
     return undefined
   }
-  const worktreeId = getExplicitWorktreeIdSelector(params.worktree)
+  const worktreeId = getExplicitWorktreeIdSelector(worktreeSelector)
   if (!worktreeId || !mobileRelayHosts) {
     throw new Error('selector_not_found')
   }
-  return mobileRelayHosts.resolveWorkspaceFile(
-    executionHost,
-    worktreeId,
-    params.relativePath,
-    options
-  )
+  return {
+    resolve: () => mobileRelayHosts.resolveWorkspace(executionHost, worktreeId),
+    assertFile: (relativePath: string) =>
+      mobileRelayHosts.assertWorkspaceFile(executionHost, worktreeId, relativePath)
+  }
 }
 
 export const FILE_METHODS = [
@@ -84,10 +81,14 @@ export const FILE_METHODS = [
     params: FileOpenTab,
     handler: async (params, context) => {
       const { worktree, relativePath, navigation } = params
-      const server = await resolveServerWorkspaceFile(context, params, { requireFile: true })
-      return server
-        ? context.runtime.openMobileFile(worktree, relativePath, navigation, server)
-        : context.runtime.openMobileFile(worktree, relativePath, navigation)
+      const server = serverWorkspaceOf(context, worktree)
+      if (!server) {
+        return context.runtime.openMobileFile(worktree, relativePath, navigation)
+      }
+      const target = await server.resolve()
+      // Why: CLI/agents treat opened:true as success, so the server checks it is a file first.
+      await server.assertFile(relativePath)
+      return context.runtime.openMobileFile(worktree, relativePath, navigation, target)
     }
   }),
   defineMethod({
@@ -96,9 +97,15 @@ export const FILE_METHODS = [
     handler: async (params, context) => {
       const { worktree, relativePath, navigation } = params
       const staged = params.staged === true
-      const server = await resolveServerWorkspaceFile(context, params, { requireFile: false })
+      const server = serverWorkspaceOf(context, worktree)
       return server
-        ? context.runtime.openMobileDiff(worktree, relativePath, staged, navigation, server)
+        ? context.runtime.openMobileDiff(
+            worktree,
+            relativePath,
+            staged,
+            navigation,
+            await server.resolve()
+          )
         : context.runtime.openMobileDiff(worktree, relativePath, staged, navigation)
     }
   }),

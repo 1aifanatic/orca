@@ -39,38 +39,49 @@ export type ComposedSessionTabs = {
   desktopTabIds: ReadonlySet<string>
 }
 
+/** What the desktop adds when it has no strip to give (or its call failed): nothing, as one epoch. */
+const NO_DESKTOP_STRIP: z.infer<typeof SnapshotSchema> = {
+  snapshotVersion: 0,
+  tabs: [],
+  activeTabId: null,
+  activeTabType: null
+}
+
+/**
+ * `pickedOnDesktop`: the phone's own last pick in this workspace was a desktop tab. Each host keeps
+ * this device's selection separately, so the latest pick says which host's selection to show.
+ */
 export function composeDesktopOwnedSessionTabs(
   serverResult: unknown,
-  desktopResult: unknown
+  desktopResult: unknown,
+  pickedOnDesktop = false
 ): ComposedSessionTabs {
   const server = SnapshotSchema.safeParse(serverResult)
-  const desktop = SnapshotSchema.safeParse(desktopResult)
-  if (!server.success || !desktop.success) {
+  if (!server.success) {
     return { result: serverResult, desktopTabIds: new Set() }
   }
-  const desktopTabs = desktop.data.tabs.filter((tab) => DESKTOP_OWNED_TAB_TYPES.has(tab.type))
+  const desktop = SnapshotSchema.safeParse(desktopResult).data ?? NO_DESKTOP_STRIP
+  const desktopTabs = desktop.tabs.filter((tab) => DESKTOP_OWNED_TAB_TYPES.has(tab.type))
   const desktopFiles = new Set(desktopTabs.map((tab) => tab.filePath))
   // Why: the desktop mirrors an editor tab the server persisted, so it is listed once, as the desktop's.
   const serverTabs = server.data.tabs.filter(
     (tab) => !DESKTOP_OWNED_TAB_TYPES.has(tab.type) || !desktopFiles.has(tab.filePath)
   )
-  const tabs = placeDesktopTabs(serverTabs, desktopTabs, desktopStripOrder(desktop.data))
+  const tabs = placeDesktopTabs(serverTabs, desktopTabs, desktopStripOrder(desktop))
   const desktopTabIds = new Set(desktopTabs.map((tab) => tab.id))
-  // Why: selection is per device on each host; the server's pick wins unless it has none to give.
+  const desktopActive = desktopTabs.find((tab) => tab.id === desktop.activeTabId) ?? null
   const serverHasActive = serverTabs.some((tab) => tab.id === server.data.activeTabId)
-  const desktopActive = serverHasActive
-    ? null
-    : (desktopTabs.find((tab) => tab.id === desktop.data.activeTabId) ?? null)
+  const active = desktopActive && (pickedOnDesktop || !serverHasActive) ? desktopActive : null
   return {
     result: {
       ...server.data,
       // Why: one publisher per pair, so a change on either side reads as newer to the phone's gate.
-      publicationEpoch: `${server.data.publicationEpoch ?? ''}|desktop:${desktop.data.publicationEpoch ?? ''}`,
-      snapshotVersion: server.data.snapshotVersion + desktop.data.snapshotVersion,
+      publicationEpoch: `${server.data.publicationEpoch ?? ''}|desktop:${desktop.publicationEpoch ?? ''}`,
+      snapshotVersion: server.data.snapshotVersion + desktop.snapshotVersion,
       tabs: tabs.map((tab) =>
-        desktopTabIds.has(tab.id) ? { ...tab, isActive: tab.id === desktopActive?.id } : tab
+        active || desktopTabIds.has(tab.id) ? { ...tab, isActive: tab.id === active?.id } : tab
       ),
-      ...(desktopActive ? { activeTabId: desktopActive.id, activeTabType: desktopActive.type } : {})
+      ...(active ? { activeTabId: active.id, activeTabType: active.type } : {})
     },
     desktopTabIds
   }
