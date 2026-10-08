@@ -36,16 +36,26 @@ export type ProviderHistoryItem = {
 }
 
 export type ProviderHistoryWindow = {
-  /** Provider items observed at or after the journal's last committed item. */
+  /** Provider items observed at or after the session's recorded resume point. */
   items: readonly ProviderHistoryItem[]
   /**
-   * The history read actually started at the journal's last committed item. A
+   * The history read actually started at the session's recorded resume point. A
    * fork, a compacted provider log, or a truncated read makes absence
    * meaningless, so a missing submission cannot be called "not delivered".
    */
   boundaryConsistent: boolean
   /** The provider reports a turn still running: absence proves nothing yet. */
   turnInFlight: boolean
+}
+
+/** A window placed against the sends it is asked about. */
+export type PlacedProviderHistoryWindow = ProviderHistoryWindow & {
+  /**
+   * The fence of the owner that last moved the resume point the read started at; null when no
+   * recorded resume point bounds it. Only that owner moves it, so a send handed over at an earlier
+   * fence may sit before the start, where its absence proves nothing.
+   */
+  startFence: number | null
 }
 
 export type SubmissionReconciliation =
@@ -64,6 +74,7 @@ export type SubmissionUnknownReason =
   | 'history_boundary_inconsistent'
   | 'turn_in_flight'
   | 'ambiguous_match'
+  | 'history_starts_after_submission'
 
 /**
  * Resolve every unsettled submission against provider history.
@@ -74,7 +85,7 @@ export type SubmissionUnknownReason =
  */
 export function reconcileSubmissions(input: {
   submissions: readonly AgentJournalSubmission[]
-  history: ProviderHistoryWindow
+  history: PlacedProviderHistoryWindow
 }): SubmissionReconciliation[] {
   const unsettled = input.submissions.filter(
     (submission) => submission.dispatchState === 'pending' || submission.dispatchState === 'unknown'
@@ -164,7 +175,7 @@ function resolveOne(
   submission: AgentJournalSubmission,
   matched: Map<string, ProviderHistoryItem>,
   ambiguous: Set<string>,
-  history: ProviderHistoryWindow
+  history: PlacedProviderHistoryWindow
 ): SubmissionReconciliation {
   const item = matched.get(submission.clientMessageId)
   if (item) {
@@ -196,6 +207,13 @@ function resolveOne(
       reason: 'turn_in_flight'
     }
   }
+  if (!windowStartsBeforeHandover(submission, history)) {
+    return {
+      clientMessageId: submission.clientMessageId,
+      outcome: 'unknown',
+      reason: 'history_starts_after_submission'
+    }
+  }
   // Absent from a history we can trust the boundary of, with nothing running:
   // the provider never took it.
   return {
@@ -203,4 +221,20 @@ function resolveOne(
     outcome: 'rejected',
     reason: DISPATCH_REJECTED_NOT_DELIVERED
   }
+}
+
+/**
+ * A later owner moves the resume point past whatever its child resumed, delivered sends included,
+ * so only a send handed over at the start's fence or later provably follows the start. At that
+ * same fence the point moves only past turns the child ran, and a send it ran was accepted live.
+ */
+function windowStartsBeforeHandover(
+  submission: AgentJournalSubmission,
+  history: PlacedProviderHistoryWindow
+): boolean {
+  return (
+    history.startFence !== null &&
+    submission.handedOverFence !== undefined &&
+    submission.handedOverFence >= history.startFence
+  )
 }

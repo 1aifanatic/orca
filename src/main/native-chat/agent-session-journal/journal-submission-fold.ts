@@ -26,7 +26,9 @@ export function applyJournalSubmission(
     submittedAt: row.ts,
     resolvedAt: null,
     submittedSequence: row.seq,
-    ...(row.handoverRecorded ? { handoverRecorded: true, acceptedSequence: row.seq } : {}),
+    ...(row.handoverRecorded
+      ? { handoverRecorded: true, acceptedSequence: row.seq }
+      : { handedOverFence: row.fence }),
     // A malformed stored link is dropped, never the row.
     ...(typeof row.queuedMessageId === 'string' && row.queuedMessageId.length > 0
       ? { queuedMessageId: row.queuedMessageId }

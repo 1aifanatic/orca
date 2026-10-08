@@ -43,10 +43,11 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import { agentSessionProviderHandleChainHead } from '../../../shared/agent-session-provider-handle'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { reconcileJournalSubmissionsAgainstHistory } from '../agent-session-journal/journal-restart-reconciliation'
-import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
+import type { PlacedProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { structuredAgentSessionRefusalMessage } from './structured-agent-session-refusal-message'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { sampleProviderHistoryWindow } from './structured-agent-session-history-sample'
 
 /**
  * Everything a client may declare about the session it wants. Deliberately no
@@ -179,7 +180,8 @@ export function journalIdentityFor(
 
 export type AttachedJournal = {
   journal: AgentSessionJournal
-  /** Submissions the crash boundary left `unknown` that provider history could not decide. */
+  /** Sends the crash boundary left `unknown` that this attach did not settle: history could not
+   *  decide them, or saving the verdict failed. */
   unconfirmedClientMessageIds: string[]
 }
 
@@ -203,7 +205,7 @@ export async function attachJournal(input: {
   openConversation: (record: AgentSessionRecord) => Promise<AgentSessionJournal>
   /** Provider history sampled before a new child is acquired. `null` means the
    *  adapter had no usable history; omit to read lazily for direct callers. */
-  providerHistoryWindow?: ProviderHistoryWindow | null
+  providerHistoryWindow?: PlacedProviderHistoryWindow | null
 }): Promise<AttachedJournal> {
   const identity = journalIdentityFor(input.record, input.params)
   const fence = input.record.lease.runtimeFence
@@ -214,7 +216,7 @@ export async function attachJournal(input: {
     identity,
     journal,
     fence,
-    accountHome: input.record.accountHome,
+    record: input.record,
     ...(Object.hasOwn(input, 'providerHistoryWindow')
       ? { history: input.providerHistoryWindow }
       : {})
@@ -228,30 +230,26 @@ export async function attachJournal(input: {
   }
 }
 
-/** Best effort: a failed settlement leaves its submission for the next attach to re-derive. */
+/** Best effort: a send whose verdict fails to save stays `unknown`, and each later attach decides
+ *  it again against its own window. */
 async function reconcileAgainstProviderHistory(input: {
   adapter: StructuredAgentSessionAdapter
   logger: StructuredAgentSessionLogger
   identity: AgentSessionJournalIdentity
   journal: AgentSessionJournal
   fence: number
-  accountHome: AgentSessionAccountHome
-  history?: ProviderHistoryWindow | null
+  record: AgentSessionRecord
+  history?: PlacedProviderHistoryWindow | null
 }): Promise<void> {
-  let history = input.history
-  if (history === undefined) {
-    if (!input.adapter.providerHistoryWindow) {
-      return
-    }
-    try {
-      history = await input.adapter.providerHistoryWindow({
-        identity: input.identity,
-        accountHome: input.accountHome
-      })
-    } catch {
-      return
-    }
-  }
+  const history =
+    input.history === undefined
+      ? await sampleProviderHistoryWindow({
+          adapter: input.adapter,
+          identity: input.identity,
+          record: input.record,
+          ownerAlreadyAdmitted: false
+        })
+      : input.history
   if (!history) {
     return
   }

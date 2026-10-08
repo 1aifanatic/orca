@@ -23,7 +23,7 @@ import { digestPayload } from './journal-payload-bounds'
 import {
   reconcileSubmissions,
   type ProviderHistoryItem,
-  type ProviderHistoryWindow
+  type PlacedProviderHistoryWindow
 } from './journal-submission-reconciler'
 import { createTrackedJournalOpener } from './journal-host-database-test-support'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
@@ -85,11 +85,12 @@ function history(input: {
   }
 }
 
+/** Read from the resume point the sends' own owner, at fence 1, left. */
 function window(
   items: ProviderHistoryItem[],
-  overrides: Partial<ProviderHistoryWindow> = {}
-): ProviderHistoryWindow {
-  return { items, boundaryConsistent: true, turnInFlight: false, ...overrides }
+  overrides: Partial<PlacedProviderHistoryWindow> = {}
+): PlacedProviderHistoryWindow {
+  return { items, boundaryConsistent: true, turnInFlight: false, startFence: 1, ...overrides }
 }
 
 beforeEach(async () => {
@@ -324,7 +325,8 @@ describe('reconciliation matching', () => {
       providerItemId: null,
       reason: null,
       submittedAt: 1,
-      resolvedAt: null
+      resolvedAt: null,
+      handedOverFence: 1
     },
     {
       clientMessageId: 'cm_2',
@@ -334,7 +336,8 @@ describe('reconciliation matching', () => {
       providerItemId: null,
       reason: null,
       submittedAt: 2,
-      resolvedAt: null
+      resolvedAt: null,
+      handedOverFence: 1
     }
   ]
 
@@ -469,6 +472,46 @@ describe('reconciliation matching', () => {
       outcome: 'unknown',
       reason: 'turn_in_flight'
     })
+  })
+
+  it('leaves a send unknown once a later owner moved where the history starts', () => {
+    // The owner at fence 2 finished a turn after this send: its resume point may sit past it.
+    const [outcome] = reconcileSubmissions({
+      submissions: [submissions[0]!],
+      history: window([], { startFence: 2 })
+    })
+    expect(outcome).toEqual({
+      clientMessageId: 'cm_1',
+      outcome: 'unknown',
+      reason: 'history_starts_after_submission'
+    })
+  })
+
+  it('stays unknown when no recorded resume point bounds the read', () => {
+    const [outcome] = reconcileSubmissions({
+      submissions: [submissions[0]!],
+      history: window([], { startFence: null })
+    })
+    expect(outcome).toMatchObject({ outcome: 'unknown', reason: 'history_starts_after_submission' })
+  })
+
+  it('still accepts a send a later-started history holds', () => {
+    const [outcome] = reconcileSubmissions({
+      submissions: [submissions[0]!],
+      history: window(
+        [history({ itemId: 'item-1', clientId: 'cm_1', text: 'same text', ordinal: 0 })],
+        { startFence: 2 }
+      )
+    })
+    expect(outcome).toMatchObject({ outcome: 'accepted', providerItemId: 'item-1' })
+  })
+
+  it('rejects an absent send handed over after the start was last moved', () => {
+    const [outcome] = reconcileSubmissions({
+      submissions: [{ ...submissions[0]!, handedOverFence: 3 }],
+      history: window([], { startFence: 2 })
+    })
+    expect(outcome).toMatchObject({ outcome: 'rejected', reason: 'not_delivered' })
   })
 
   it('leaves settled submissions alone', () => {
