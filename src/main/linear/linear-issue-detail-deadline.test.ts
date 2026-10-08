@@ -90,10 +90,11 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   vi.restoreAllMocks()
-  server.closeAllConnections()
-  await new Promise<void>((resolve, reject) =>
+  const closed = new Promise<void>((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve()))
   )
+  server.closeAllConnections()
+  await closed
 })
 
 function waitForRequests(count: number): Promise<void> {
