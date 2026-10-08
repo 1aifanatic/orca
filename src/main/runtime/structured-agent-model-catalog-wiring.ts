@@ -51,6 +51,8 @@ export async function modelCatalogHostDeps(input: {
     StructuredAgentSessionRuntimeDeps,
     | 'stateDirectory'
     | 'resolveAgentAccountHome'
+    | 'resolveCodexAccountKind'
+    | 'prepareCodexCatalogProbeHome'
     | 'resolveCodexCommand'
     | 'resolveClaudeCommand'
     | 'resolveClaudeLaunchEnv'
@@ -77,6 +79,10 @@ export async function modelCatalogHostDeps(input: {
     workspaceMayOverrideDefaultModel,
     probes: {
       codex: createCodexModelCatalogProbe({
+        resolveAccountKind: deps.resolveCodexAccountKind,
+        ...(deps.prepareCodexCatalogProbeHome
+          ? { prepareHome: deps.prepareCodexCatalogProbeHome }
+          : {}),
         resolveEnvironment: input.envResolvers.resolveCodexEnvironment,
         ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
       }),

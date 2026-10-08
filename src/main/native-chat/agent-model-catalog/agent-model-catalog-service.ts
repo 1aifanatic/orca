@@ -43,9 +43,14 @@ export type AgentModelCatalogService = {
     sessionId?: string
     /** Where a new chat would run; null when one was named but is not a local directory. */
     workspacePath?: string | null
-    /** With no entry yet, answer from the listing this read starts or joins instead of `unknown`. */
+    /** With no entry yet, answer from the listing this read starts or joins instead of `unknown`;
+     *  with a held reason past its TTL, from the probe re-checking it. */
     waitForListing?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
+  /** A chat under this record's account proved its start: a held reason is re-checked sooner. */
+  providerStarted: (
+    record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>
+  ) => void
 }
 
 function resultFromEntry(
@@ -92,11 +97,16 @@ async function workspaceKeepsListedDefault(
  * probe so the next read is warm. With no entry, the answer says that listing
  * is running, and only a read that asks waits for it. Failures suppress a new
  * probe for 30s, but never hide another listing already running for the account.
+ * A probe failure that says why no chat can start rides every answer as
+ * `unavailable` until a later probe answers again.
  */
 export function createAgentModelCatalogService(
   deps: AgentModelCatalogServiceDeps
 ): AgentModelCatalogService {
   return {
+    providerStarted(record) {
+      deps.store.expireFailure(agentModelCatalogFingerprintForRecord(record))
+    },
     async read(params) {
       const record = params.sessionId ? deps.getRecord(params.sessionId) : undefined
       const scoped =
@@ -127,6 +137,58 @@ export function createAgentModelCatalogService(
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
       const home = accountHomePath
+      const projectedCatalog = async (
+        listed: AgentModelCatalogEntry
+      ): Promise<AgentSessionModelCatalogResult> => {
+        const catalog = resultFromEntry(
+          listed,
+          await workspaceKeepsListedDefault(
+            deps,
+            params.agent,
+            params.workspacePath,
+            accountHomePath
+          )
+        )
+        const projectOptions = deps.agents?.definition(params.agent)?.restingOptions.projectOptions
+        if (!projectOptions) {
+          return catalog
+        }
+        // A host listing is remembered evidence, even when another child just published it.
+        const projected = projectOptions(catalog, { model: scoped?.options?.model ?? '' })
+        return {
+          origin: listed.origin,
+          models: projected.models,
+          ...(projected.fastModeSupport ? { fastModeSupport: projected.fastModeSupport } : {}),
+          fetchedAt: listed.fetchedAt
+        }
+      }
+      // Every answer carries the reason the probe last found, read when the answer is made.
+      const answer = async (
+        listed: AgentModelCatalogEntry | null,
+        extra: { listingInProgress?: true } = {}
+      ): Promise<AgentSessionModelCatalogResult> => {
+        const unavailable = deps.store.failure(fingerprint)?.unavailable
+        return {
+          ...(listed ? await projectedCatalog(listed) : { origin: 'unknown' }),
+          ...extra,
+          ...(unavailable ? { unavailable } : {})
+        }
+      }
+      // Past its TTL, only the probe re-derives a held reason. The reason is served meanwhile;
+      // only a read that asks waits for the probe's answer.
+      if (
+        probe &&
+        home &&
+        deps.store.failure(fingerprint)?.unavailable &&
+        !deps.store.hasActiveFailure(fingerprint)
+      ) {
+        const probing = deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+        if (!params.waitForListing) {
+          return answer(entry, { listingInProgress: true })
+        }
+        await probing
+        return answer(deps.store.get(fingerprint))
+      }
       // Without an entry, answer from any running listing instead of starting a second one.
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
       if (probe && home) {
@@ -139,33 +201,15 @@ export function createAgentModelCatalogService(
       }
       if (!entry) {
         if (!listing) {
-          return { origin: 'unknown' }
+          return answer(null)
         }
         if (!params.waitForListing) {
-          return { origin: 'unknown', listingInProgress: true }
+          return answer(null, { listingInProgress: true })
         }
         const listed = await listing
         entry = deps.store.get(fingerprint) ?? listed
-        if (!entry) {
-          return { origin: 'unknown' }
-        }
       }
-      const catalog = resultFromEntry(
-        entry,
-        await workspaceKeepsListedDefault(deps, params.agent, params.workspacePath, accountHomePath)
-      )
-      const projectOptions = deps.agents?.definition(params.agent)?.restingOptions.projectOptions
-      if (!projectOptions) {
-        return catalog
-      }
-      // A host listing is remembered evidence, even when another child just published it.
-      const projected = projectOptions(catalog, { model: scoped?.options?.model ?? '' })
-      return {
-        origin: entry.origin,
-        models: projected.models,
-        ...(projected.fastModeSupport ? { fastModeSupport: projected.fastModeSupport } : {}),
-        fetchedAt: entry.fetchedAt
-      }
+      return answer(entry)
     }
   }
 }
