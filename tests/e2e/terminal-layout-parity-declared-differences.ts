@@ -48,13 +48,13 @@ export const TERMINAL_LAYOUT_PARITY_DECLARED_DIFFERENCES: readonly DeclaredParit
 export const TERMINAL_LAYOUT_PARITY_UNSTABLE_ON_MAIN: readonly UnstableOnMainPath[] = [
   {
     // The window lists a tab's PTYs, and on main saves its row, in the order the woken panes'
-    // respawns return; main usually but not always returns the first pane first.
+    // respawns return; main returns the first pane first only most of the time.
     scenario: 'sleep-quit-resume',
     paths: [
       '[1].renderer.ptyIdsByTabId',
       '[1].renderer.tabsByWorktree.#4::<repo>[0].ptyId',
       '[1].persisted.local.tabsByWorktree.#4::<repo>[0].ptyId'
     ],
-    evidence: 'main 61de2d8ec85 saved and listed the second pane first in 1 of 7 runs on macOS'
+    evidence: 'main 61de2d8ec85 saved the second pane as the row in 5 of 15 runs on macOS'
   }
 ]
