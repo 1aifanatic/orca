@@ -3,6 +3,7 @@ import { acpNotificationEnvelopeSchema } from '../acp-context-usage'
 import type { AcpDialect, AcpDialectNotification } from './acp-dialect'
 import { grokRequest, grokSettleRequest } from './grok-requests'
 import { grokBackgroundTaskNotification, grokToolBackgroundTasks } from './grok-background-tasks'
+import { grokSubagentNotification, grokToolSubagents } from './grok-subagents'
 
 const tokenCount = z.number().int().nonnegative()
 const toolMetaSchema = z.object({ 'x.ai/tool': z.object({ name: z.string().min(1) }) })
@@ -123,6 +124,14 @@ function notification(
     return method === 'session/update' ? undefined : { disposition: 'ignore' }
   }
   const envelope = parsed.data
+  const subagent = grokSubagentNotification(envelope.update)
+  if (subagent) {
+    return {
+      disposition: 'map',
+      ...(envelope._meta?.isReplay === true ? { replay: true } : {}),
+      subagents: [subagent]
+    }
+  }
   const meta = turnMetaSchema.safeParse(envelope._meta)
   const completion = completionSchema.safeParse(envelope.update)
   const response = responseSchema.safeParse(envelope.update)
@@ -175,6 +184,7 @@ export const GROK_ACP_DIALECT: AcpDialect = {
   request: grokRequest,
   settleRequest: grokSettleRequest,
   toolBackgroundTasks: grokToolBackgroundTasks,
+  toolSubagents: grokToolSubagents,
   notification,
   contextWindow,
   promptErrorDetail: (error) => promptErrorDataSchema.safeParse(error.data).data?.message,

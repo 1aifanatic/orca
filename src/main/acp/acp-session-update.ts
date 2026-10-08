@@ -6,6 +6,7 @@ import {
 import { acpWindowUsage } from './acp-context-usage'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import type { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
+import type { AcpSubagentTimeline } from './acp-subagent-timeline'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import type { SessionNotification } from './generated/acp-protocol.generated'
 
@@ -17,6 +18,7 @@ export function acpSessionUpdate(
     tools: AcpToolTimeline
     dialect: AcpDialect
     backgroundTasks: AcpBackgroundTaskTimeline
+    subagents: AcpSubagentTimeline
     messageKey?: string
   }
 ): ProviderTimelineEvent[] {
@@ -45,14 +47,17 @@ export function acpSessionUpdate(
       return []
     case 'tool_call':
     case 'tool_call_update': {
-      const { tools, dialect, backgroundTasks } = context
+      const { tools, dialect, backgroundTasks, subagents } = context
       const events = tools.translate(update, dialect, join.join)
       const tool = events[0]
-      const tasks =
-        tool && 'body' in tool && tool.body?.kind === 'tool-call'
-          ? (dialect.toolBackgroundTasks?.(update, tool.body) ?? [])
-          : []
-      return [...events, ...backgroundTasks.translate(tasks, join.join)]
+      const body = tool && 'body' in tool && tool.body?.kind === 'tool-call' ? tool.body : null
+      const subagentUpdates = body ? (dialect.toolSubagents?.(update, body) ?? []) : []
+      // Runs first, so a subagent this call reveals is never also taken for a background task.
+      const subagentEvents = subagents.translate(subagentUpdates, join.join, at)
+      const tasks = (body ? (dialect.toolBackgroundTasks?.(update, body) ?? []) : []).filter(
+        (task) => !subagents.has(task.taskId)
+      )
+      return [...events, ...backgroundTasks.translate(tasks, join.join), ...subagentEvents]
     }
     case 'plan':
       return [

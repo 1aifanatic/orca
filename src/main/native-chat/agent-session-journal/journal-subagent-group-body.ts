@@ -1,17 +1,17 @@
-import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
-import type { NativeChatSubagentEntry } from '../../shared/native-chat-types'
+import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import type { NativeChatSubagentEntry } from '../../../shared/native-chat-types'
 import {
   MAX_SUBAGENT_FIELD_CHARS,
   subagentGroupFallbackText
-} from '../../shared/native-chat-subagent-summary'
+} from '../../../shared/native-chat-subagent-summary'
 
 /** The roster row: the structured block plus the plain sentence an older client
  *  renders in its place. A message whose only block is the new variant would
  *  reach such a client with nothing it can draw. */
-export function codexSubagentGroupBody(
+export function subagentGroupJournalBody(
   groupId: string,
   agents: readonly NativeChatSubagentEntry[]
-): AgentJournalItemBody {
+): AgentJournalMessageItem {
   const bounded = agents.map((agent, index) => ({
     ...agent,
     id: boundSubagentField(agent.id, index),

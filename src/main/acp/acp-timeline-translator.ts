@@ -9,6 +9,7 @@ import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
 import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
 import { translateAcpRequest } from './acp-timeline-requests'
 import { acpSessionUpdate } from './acp-session-update'
+import { AcpSubagentTimeline } from './acp-subagent-timeline'
 import { AcpToolTimeline } from './acp-tool-timeline'
 import { AcpTurnFailures, acpPromptErrorDetail } from './acp-turn-failures'
 import { AcpTurnMessages } from './acp-turn-messages'
@@ -40,6 +41,7 @@ export class AcpTimelineTranslator {
   private readonly prompts: AcpPromptTurns
   private readonly tools = new AcpToolTimeline()
   private readonly backgroundTasks: AcpBackgroundTaskTimeline
+  private readonly subagents = new AcpSubagentTimeline()
   private readonly messages = new AcpTurnMessages()
   private readonly started = new BoundedMap<string, true>({ maxEntries: 128 })
   private readonly failures: AcpTurnFailures
@@ -176,7 +178,11 @@ export class AcpTimelineTranslator {
     }
     const join = { thread: this.options.sessionId, ...(turn === undefined ? {} : { turn }) }
     if (extension?.backgroundTasks) {
-      events.push(...this.backgroundTasks.translate(extension.backgroundTasks, join))
+      const tasks = extension.backgroundTasks.filter((task) => !this.subagents.has(task.taskId))
+      events.push(...this.backgroundTasks.translate(tasks, join))
+    }
+    if (extension?.subagents) {
+      events.push(...this.subagents.translate(extension.subagents, join, at))
     }
     if (extension?.usage) {
       events.push(...this.context.update(extension.usage, join))
@@ -207,6 +213,7 @@ export class AcpTimelineTranslator {
           tools: this.tools,
           dialect: this.dialect,
           backgroundTasks: this.backgroundTasks,
+          subagents: this.subagents,
           messageKey
         })
       ]
