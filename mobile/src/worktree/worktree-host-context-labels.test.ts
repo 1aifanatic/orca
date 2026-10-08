@@ -86,13 +86,31 @@ describe('getWorktreeHostContextLabels', () => {
   const sources = {
     repoHostIdByRepoId: new Map(),
     hostLabelById: new Map([[sshHostId, 'openclaw']]),
-    hostPlatform: 'darwin' as const
+    hostPlatform: 'darwin' as const,
+    hostHealthById: new Map()
   }
 
   it('returns nothing for a single-host list', () => {
     const rows = [worktree({ hostId: 'local' }), worktree({ hostId: 'local', worktreeId: 'b' })]
     expect(getWorktreeHostContextLabels(rows, sources)).toBeUndefined()
     expect(applyWorktreeHostContextLabels(rows, sources)).toBe(rows)
+  })
+
+  it('names an unhealthy host even in a single-host list, and only that host', () => {
+    const rows = [worktree({ hostId: sshHostId, worktreeId: 'a' })]
+    const unhealthy = applyWorktreeHostContextLabels(rows, {
+      ...sources,
+      hostHealthById: new Map([[sshHostId, 'connecting']])
+    })
+    expect(unhealthy.map((row) => [row.hostContextLabel, row.hostContextHealthLabel])).toEqual([
+      ['openclaw', 'Connecting']
+    ])
+    const healthy = { ...sources, hostHealthById: new Map([[sshHostId, 'available']]) }
+    expect(applyWorktreeHostContextLabels(rows, healthy)).toBe(rows)
+    const otherHostUnhealthy = { ...sources, hostHealthById: new Map([['ssh:x', 'error']]) }
+    expect(applyWorktreeHostContextLabels(rows, otherHostUnhealthy)[0].hostContextLabel).toBe(
+      undefined
+    )
   })
 
   it('names every row by host once the list spans hosts', () => {

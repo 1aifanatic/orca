@@ -1,21 +1,11 @@
-import {
-  normalizeExecutionHostId,
-  toSshExecutionHostId,
-  type ExecutionHostId
-} from '../../../src/shared/execution-host'
+import type { ExecutionHostId } from '../../../src/shared/execution-host'
 import {
   getExecutionHostHealthLabel,
   getSshConnectionHealth,
   type ExecutionHostHealth
 } from '../../../src/shared/execution-host-health'
-import type { SshConnectionStatus } from '../../../src/shared/ssh-types'
-import { SSH_CONNECTION_STATUS } from '../tasks/workspace-source-reply-schema'
-
-const KNOWN_SSH_CONNECTION_STATUSES: ReadonlySet<string> = new Set(SSH_CONNECTION_STATUS)
-
-function isSshConnectionStatus(status: string): status is SshConnectionStatus {
-  return KNOWN_SSH_CONNECTION_STATUSES.has(status)
-}
+import { sshTargetSummaryHostId } from '../../../src/shared/worktree/host-context-labels'
+import { isSshConnectionStatus } from '../transport/ssh-connection-status-arms'
 
 /**
  * Health per SSH host, derived exactly as the desktop sidebar derives it. A desktop that predates
@@ -33,10 +23,7 @@ export function buildSshHostHealthById(
     ) {
       continue
     }
-    health.set(
-      normalizeExecutionHostId(target.id) ?? toSshExecutionHostId(target.id),
-      target.connected ? 'available' : getSshConnectionHealth(status)
-    )
+    health.set(sshTargetSummaryHostId(target.id), getSshConnectionHealth(status))
   }
   return health
 }

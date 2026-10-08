@@ -262,6 +262,10 @@ describe('memoized worktree rows', () => {
     )
     // Separate nodes: the name truncates while the health word stays whole.
     expect(textNodes()).toEqual(expect.arrayContaining(['openclaw', '· Disconnected']))
+    const healthText = renderer!.root
+      .findAllByType('Text' as never)
+      .find((node) => node.props.children === '· Disconnected')
+    expect([healthText?.props.style].flat()).toContainEqual({ flexShrink: 0 })
     expect(renderer!.root.findAllByType('Monitor' as never)).toHaveLength(0)
 
     await act(async () =>
