@@ -83,9 +83,18 @@ type ResolvedCandidate<T> = { nodePath: string; result: T }
 /** `strict` rethrows unanswered probes rather than reading them as "no Node here". */
 export type ProbeOptions = RemoteNodeResolutionOptions & { strict?: boolean }
 
-/** Only a command that ran and exited answered; a refused channel, session limit or timeout did not. */
-function isUnansweredExec(err: unknown): boolean {
-  return !isSshCommandExitError(err)
+/**
+ * Rethrows what is not a host-answered miss: an opted-in session limit, an abort, or (under
+ * `strict`) an exec that never exited. Only a command that ran and exited answered.
+ */
+function rethrowUnlessAnsweredMiss(err: unknown, options?: ProbeOptions): void {
+  if (options?.rethrowSessionLimitErrors && isSshSessionLimitError(err)) {
+    throw err
+  }
+  throwIfAborted(options)
+  if (options?.strict && !isSshCommandExitError(err)) {
+    throw err
+  }
 }
 
 // Probe the on-disk install directories of every common Node version manager
@@ -167,14 +176,8 @@ export async function tryResolveViaLoginShell<T>(
       return { nodePath: candidate, result }
     }
   } catch (err) {
-    if (options?.rethrowSessionLimitErrors && isSshSessionLimitError(err)) {
-      throw err
-    }
-    throwIfAborted(options)
-    // Why only these: `command -v node` exits non-zero when the shell answered "none".
-    if (options?.strict && isUnansweredExec(err)) {
-      throw err
-    }
+    // Why: `command -v node` exits non-zero when the shell answered "none".
+    rethrowUnlessAnsweredMiss(err, options)
     // Fall through.
   }
   return null
@@ -182,8 +185,6 @@ export async function tryResolveViaLoginShell<T>(
 
 // Validates the same PATH-prepend + bare npm contract used during deployment.
 // This rejects missing npm (#8450) without requiring colocation (#9165).
-// Caches nothing — this runs at most a few times per resolution (one per
-// candidate), and the exec round-trip dominates.
 async function nodeToolchainMeetsRequirements(
   conn: SshConnection,
   nodePath: string,
@@ -199,13 +200,7 @@ async function nodeToolchainMeetsRequirements(
     )
     return nodeToolchainVersionsMeetRequirements(versionOutput)
   } catch (err) {
-    if (options?.rethrowSessionLimitErrors && isSshSessionLimitError(err)) {
-      throw err
-    }
-    throwIfAborted(options)
-    if (options?.strict && isUnansweredExec(err)) {
-      throw err
-    }
+    rethrowUnlessAnsweredMiss(err, options)
     // Binary missing or fails to run — not usable.
     return false
   }
@@ -252,14 +247,8 @@ async function resolveRemoteWindowsNodePath(
       }
     }
   } catch (err) {
-    if (options?.rethrowSessionLimitErrors && isSshSessionLimitError(err)) {
-      throw err
-    }
-    throwIfAborted(options)
     // Why: the script exits 1 when it finds nothing, so only an unanswered probe is unknown.
-    if (options?.strict && isUnansweredExec(err)) {
-      throw err
-    }
+    rethrowUnlessAnsweredMiss(err, options)
     // Fall through to the shared error below.
   }
 
@@ -279,13 +268,7 @@ async function windowsNodeToolchainMeetsRequirements(
     )
     return nodeToolchainVersionsMeetRequirements(versionOutput)
   } catch (err) {
-    if (options?.rethrowSessionLimitErrors && isSshSessionLimitError(err)) {
-      throw err
-    }
-    throwIfAborted(options)
-    if (options?.strict && isUnansweredExec(err)) {
-      throw err
-    }
+    rethrowUnlessAnsweredMiss(err, options)
     return false
   }
 }
