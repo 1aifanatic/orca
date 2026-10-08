@@ -4,7 +4,10 @@ import {
 } from './remote-runtime-terminal-e2e-control'
 import type { RemoteRuntimeTerminalMultiplexerBase } from './remote-runtime-terminal-multiplexer-base'
 import { RemoteRuntimeTerminalMultiplexer } from './remote-runtime-terminal-multiplexer-implementation'
-import { getRuntimeEnvironmentRevision } from './runtime-environment-revision'
+import {
+  getRuntimeEnvironmentRevision,
+  onRuntimeEnvironmentRevisionsChanged
+} from './runtime-environment-revision'
 
 export {
   REMOTE_TERMINAL_SNAPSHOT_REQUEST_TIMEOUT_MS,
@@ -24,6 +27,17 @@ export type {
 } from './remote-runtime-terminal-multiplexer-types'
 
 const multiplexers = new Map<string, RemoteRuntimeTerminalMultiplexer>()
+
+// Why: a stream opened before main re-paired stays open but sendFrame refuses its stale revision,
+// so input would vanish silently; closing it as recoverable makes each pane rebind on the new pairing.
+onRuntimeEnvironmentRevisionsChanged((environmentIds) => {
+  for (const environmentId of environmentIds) {
+    const multiplexer = multiplexers.get(environmentId)
+    if (multiplexer && !multiplexer.matchesCurrentEnvironmentRevision()) {
+      multiplexer.closeForEnvironmentReplacement()
+    }
+  }
+})
 
 function releaseRemoteRuntimeTerminalMultiplexer(
   environmentId: string,

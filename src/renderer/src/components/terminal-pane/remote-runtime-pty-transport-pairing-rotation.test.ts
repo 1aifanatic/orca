@@ -191,6 +191,29 @@ describe('remote runtime pane across a pairing rotation', () => {
     transport.destroy?.()
   })
 
+  it('rebinds a pane whose stream reopened before main re-paired, instead of dropping its keys', async () => {
+    const { transport, onError, repair } = await restartServerUnderLivePane('tab-1')
+    const firstCallbacks = subscriptionCallbacks
+    const { replaceRuntimeEnvironmentRevisions } =
+      await import('@/runtime/runtime-environment-revision')
+
+    // The server is back and the stream reopened on the old pairing; main re-pairs only afterwards.
+    repair()
+    replaceRuntimeEnvironmentRevisions([{ id: 'env-1', createdAt: 1, pairingRevision: 2 }])
+
+    await vi.waitFor(() => expect(subscribeRevisions().at(-1)).toBe(2))
+    await vi.waitFor(() => expect(subscriptionCallbacks).not.toBe(firstCallbacks))
+    await vi.waitFor(() => expect(subscribeFrameCount()).toBe(2))
+    emitSnapshot(latestSubscribePayload().streamId, 'prompt$ ')
+    await vi.waitFor(() => expect(transport.getRecoveryState?.().phase).toBe('connected'))
+    expect(transport.sendInput('echo typed-after-repair\r', 'driving')).toBe(true)
+
+    await vi.waitFor(() => expect(inputFrameTexts().join('')).toBe('echo typed-after-repair\r'))
+    expect(latestSubscribePayload().terminal).toBe('terminal-1')
+    expect(onError).not.toHaveBeenCalled()
+    transport.destroy?.()
+  })
+
   it('rebinds a host session pane through its inventory on the new pairing', async () => {
     const { transport, onError, repair } =
       await restartServerUnderLivePane('web-terminal-host-tab-1')
