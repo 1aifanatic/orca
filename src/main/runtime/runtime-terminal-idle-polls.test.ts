@@ -71,7 +71,6 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       intervalMs: INTERVAL_MS,
       quiescenceMs: 1500,
       getTabTitle: () => null,
-      refreshPaneAgent: () => {},
       getForegroundProcess: () => null,
       hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
@@ -110,7 +109,6 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       intervalMs: INTERVAL_MS,
       quiescenceMs: 1500,
       getTabTitle: () => null,
-      refreshPaneAgent: () => {},
       getForegroundProcess: () => null,
       hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
@@ -139,7 +137,6 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       intervalMs: INTERVAL_MS,
       quiescenceMs: 1500,
       getTabTitle: () => null,
-      refreshPaneAgent: () => {},
       getForegroundProcess: () => null,
       hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
@@ -170,7 +167,6 @@ describe('RuntimeTerminalIdlePolls timer budget', () => {
       intervalMs: INTERVAL_MS,
       quiescenceMs: 1500,
       getTabTitle: () => null,
-      refreshPaneAgent: () => {},
       getForegroundProcess: () =>
         new Promise<string | null>((resolve) => {
           gates.push(resolve)
@@ -233,7 +229,6 @@ describe('RuntimeTerminalIdlePolls rendered-screen blocked prompts', () => {
       quiescenceMs: 1500,
       getTabTitle: () => null,
       // Unknown agent + quiet pane: without the screen check this would settle idle.
-      refreshPaneAgent: () => {},
       getForegroundProcess: () => (foreground ? Promise.resolve(foreground) : null),
       hasCommandPainted: () => true,
       getAdoptedPtyIdleStatus: () => null,
@@ -386,7 +381,6 @@ describe('RuntimeTerminalIdlePolls quiet foreground for a launched agent', () =>
       intervalMs: INTERVAL_MS,
       quiescenceMs: QUIESCENCE_MS,
       getTabTitle: () => null,
-      refreshPaneAgent: () => {},
       getForegroundProcess: (ptyId) => {
         foregroundReads.push(ptyId)
         return Promise.resolve(TUI_AGENT_CONFIG[agent].expectedProcess)

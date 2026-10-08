@@ -59,7 +59,11 @@ export async function createTranscriptPane(
   })
   const processInspection = options.processInspection
   runtime.setPtyController({
-    spawn: vi.fn().mockResolvedValue({ id: TRANSCRIPT_PANE_PTY_ID, incarnationId: 'inc-1' }),
+    // The spawn commit notes the launch command, as the main-process spawn path does.
+    spawn: vi.fn(async (args: { command?: string }) => {
+      runtime.noteTerminalSpawnCommand(TRANSCRIPT_PANE_PTY_ID, args.command)
+      return { id: TRANSCRIPT_PANE_PTY_ID, incarnationId: 'inc-1' }
+    }),
     write: () => true,
     kill: () => true,
     getSize: () => options.size ?? null,

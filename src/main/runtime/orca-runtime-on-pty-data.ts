@@ -92,7 +92,16 @@ export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecution
       pty.lastOutputAt = at
       const normalized = normalizeTerminalChunk(data, pty.tailPendingAnsi)
       pty.tailPendingAnsi = normalized.pendingAnsi
-      observeTerminalCommandPaint(pty, data, normalized.text)
+      const commandFirstPainted = observeTerminalCommandPaint(pty, data, normalized.text)
+      // Why: a launched TUI paints and goes quiet before it titles itself, so name it by its
+      // process now or tui-idle reads its boot as an unknown command at rest.
+      if (
+        commandFirstPainted &&
+        !pty.foregroundAgent &&
+        this.terminalSpawnCommandsByPtyId.has(ptyId)
+      ) {
+        void this.ptyForegroundAgent.refresh(ptyId)
+      }
       const nextTail = appendNormalizedToTailBuffer(
         pty.tailBuffer,
         pty.tailPartialLine,

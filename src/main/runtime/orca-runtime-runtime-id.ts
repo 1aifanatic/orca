@@ -271,15 +271,13 @@ export class OrcaRuntimeWithRuntimeId {
     null
 
   /** The agent Orca believes owns this pane, for tui-idle evidence ranking. Launch
-   *  authority first; the live foreground agent covers panes Orca did not launch, and the
-   *  launch command's argv covers a typed agent that has not painted a title yet. */
+   *  authority first; the live foreground agent covers panes Orca did not launch. */
   protected getPaneAgentForTuiIdle(ptyId: string | null | undefined): TuiAgent | null {
     if (!ptyId) {
       return null
     }
     const pty = this.ptysById.get(ptyId)
-    const agent =
-      pty?.launchAgent ?? pty?.foregroundAgent ?? pty?.launchCommandIdentity?.agent ?? null
+    const agent = pty?.launchAgent ?? pty?.foregroundAgent ?? null
     return isTuiAgent(agent) ? agent : null
   }
 
@@ -348,7 +346,7 @@ export class OrcaRuntimeWithRuntimeId {
     getTabTitle: (tabId) => this.tabs.get(tabId)?.title ?? null,
     getAdoptedPtyIdleStatus: (pty) => this.getAdoptedPtyExplicitIdleStatus(pty),
     getPaneAgent: (ptyId) => this.getPaneAgentForTuiIdle(ptyId),
-    hasLaunchCommand: (ptyId) => Boolean(ptyId && this.ptysById.get(ptyId)?.launchCommandIdentity),
+    hasLaunchCommand: (ptyId) => Boolean(ptyId && this.terminalSpawnCommandsByPtyId.has(ptyId)),
     getFirstPartyAgentStatus: (ptyId) =>
       (ptyId ? this.ptysById.get(ptyId)?.lastExplicitAgentStatus : null) ?? null,
     getHookTurn: (ptyId, agent) => this.readTuiIdleHookTurnForPty(ptyId, agent),
@@ -362,7 +360,6 @@ export class OrcaRuntimeWithRuntimeId {
     ...this.tuiIdleEvidenceSource,
     intervalMs: TUI_IDLE_POLL_INTERVAL_MS,
     getForegroundProcess: (ptyId) => this.ptyController?.getForegroundProcess(ptyId) ?? null,
-    refreshPaneAgent: (ptyId) => void this.ptyForegroundAgent.refresh(ptyId),
     hasCommandPainted: (ptyId) => {
       const pty = this.ptysById.get(ptyId)
       return pty === undefined || hasTerminalCommandPainted(pty)

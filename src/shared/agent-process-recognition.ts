@@ -19,7 +19,7 @@ const PROCESS_EXTENSION_RE = /\.(?:exe|cmd|bat|ps1)$/i
 const INTERPRETER_SCRIPT_EXTENSION_RE = /\.(?:js|mjs|cjs)$/i
 const PYTHON_SCRIPT_EXTENSION_RE = /\.(?:py|pyw)$/i
 
-export function normalizeProcessName(
+function normalizeProcessName(
   processName: string | null | undefined,
   options: { stripInterpreterScriptExtension?: boolean } = {}
 ): string {

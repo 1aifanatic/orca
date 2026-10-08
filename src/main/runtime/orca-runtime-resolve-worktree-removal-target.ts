@@ -35,7 +35,6 @@ import { retryFailedRemovalUnlessRegistered } from '../worktree-removal-table'
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { resolveQoderTerminalCommandForWorkspace } from './qoder-terminal-command-resolution'
 import { buildRuntimeAgentTerminalStartupOptions } from './runtime-agent-terminal-startup'
-import { resolveAgentLaunchCommandIdentity } from './runtime-agent-launch-resolution'
 
 export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWithRemoveManagedWorktree {
   protected async resolveWorktreeRemovalTarget(
@@ -245,24 +244,12 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     opts: TerminalCreateOptions
   ): Promise<TerminalCreateOptions> {
     const launch = await this.buildAgentTerminalCreateOptions(workspace, opts)
-    const resolved = await resolveQoderTerminalCommandForWorkspace(
+    return resolveQoderTerminalCommandForWorkspace(
       launch,
       workspace,
       this.store,
       this.getAgentLaunchPlatformForWorkspace(workspace)
     )
-    if (!resolved.command) {
-      return resolved
-    }
-    const agent =
-      resolved.launchAgent ??
-      resolveAgentLaunchCommandIdentity({
-        command: opts.command,
-        settings: this.store?.getSettings() ?? {},
-        platform: this.getAgentLaunchPlatformForWorkspace(workspace),
-        isRemote: Boolean(workspace.connectionId)
-      })
-    return { ...resolved, launchCommandIdentity: { agent } }
   }
 
   protected async buildAgentTerminalCreateOptions(

@@ -26,7 +26,7 @@ export type TuiIdleEvidenceSource = {
   getTabTitle(tabId: string): string | null
   getAdoptedPtyIdleStatus(pty: RuntimePtyWorktreeRecord): AgentStatus | null
   getPaneAgent(ptyId: string | null | undefined): TuiAgent | null
-  /** Whether this runtime spawned the PTY with a startup command. */
+  /** Whether the PTY was spawned with a startup command (see noteTerminalSpawnCommand). */
   hasLaunchCommand?(ptyId: string | null | undefined): boolean
   getFirstPartyAgentStatus(ptyId: string | null | undefined): FirstPartyAgentStatus
   /** The hook server's fresh row for the pane's main agent; absent on a host with no store. */

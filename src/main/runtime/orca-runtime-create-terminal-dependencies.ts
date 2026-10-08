@@ -15,8 +15,7 @@ export {
 export {
   copySleepingAgentLaunchConfig,
   inferCapturedClaudeAgentTeamsMode,
-  mergeTerminalEnvDeletionKeys,
-  recordPtyLaunchAgents
+  mergeTerminalEnvDeletionKeys
 } from './runtime-agent-launch-resolution'
 export { buildClaudeAgentTeamsLaunchPlan } from './claude-agent-teams-shim-env'
 export {
