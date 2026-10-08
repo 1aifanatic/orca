@@ -5,6 +5,7 @@ import { BUNDLED_RIPGREP_PLATFORMS, bundledRipgrepBinaryName } from './bundled-r
 import { SERVER_TARGETS } from './node-runtime-pin'
 import {
   ORCAD_BUILD_TARGET_FILENAME,
+  ORCAD_CLI_ENTRY_FILENAME,
   ORCAD_FOREIGN_SQLITE_READER_ENTRY,
   ORCAD_NODE_PTY_JS_ARTIFACTS,
   ORCAD_NODE_RUNTIME_MARKER_FILENAME,
@@ -17,6 +18,14 @@ import {
 } from './orcad-artifacts'
 
 describe('standalone runtime artifacts', () => {
+  it.each(SERVER_TARGETS)('ships a CLI and host launcher for %s', (target) => {
+    expect(orcadArtifactFilenames(target)).toContain(ORCAD_CLI_ENTRY_FILENAME)
+    expect(orcadArtifactFilenames(target)).toContain(
+      target.startsWith('win32-') ? 'bin/orca.exe' : 'bin/orca'
+    )
+    expect(orcadTemplateCommonFilenames()).toContain(ORCAD_CLI_ENTRY_FILENAME)
+  })
+
   it.each(SERVER_TARGETS)(
     'ships the foreign SQLite reader worker the %s runtime starts',
     (target) => {

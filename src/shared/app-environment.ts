@@ -22,6 +22,8 @@ export type AppEnvironment = {
   getPath(name: AppPathName): string
   /** Mirrors electron `app.getAppPath()` — the install/bundle root. */
   getAppPath(): string
+  /** The execution host's CLI launcher, when its layout differs from Electron resources. */
+  getCliLauncherPath?(): string | null
   getVersion(): string
   isPackaged(): boolean
   /** Shutdown hook: electron `will-quit`, or SIGTERM/SIGINT on a Node host. */

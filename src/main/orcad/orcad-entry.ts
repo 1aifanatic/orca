@@ -12,6 +12,7 @@
  */
 import process from 'node:process'
 import { setAppEnvironment, type AppEnvironment } from '../../shared/app-environment'
+import { resolveOrcadCliLauncher } from './orcad-cli-launcher'
 import { setSecretStore, type SecretStore } from '../../shared/secret-store'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { resolveOrcadInstallRoot, resolveOrcadPath, resolveUserDataPath } from './orcad-app-paths'
@@ -59,6 +60,7 @@ function createNodeAppEnvironment(): AppEnvironment {
   return {
     getPath: resolveOrcadPath,
     getAppPath: () => resolveOrcadInstallRoot(),
+    getCliLauncherPath: () => resolveOrcadCliLauncher(),
     getVersion: () => process.env.ORCA_VERSION ?? '0.0.0-orcad',
     // Why still true: consumers read this as "production build, not a dev checkout" —
     // it gates HTTPS-only skill downloads, the real CLI command name, and shell-PATH

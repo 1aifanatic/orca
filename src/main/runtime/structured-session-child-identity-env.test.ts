@@ -57,6 +57,29 @@ afterEach(() => {
 })
 
 describe('structuredSessionChildIdentityEnv', () => {
+  it.each(['linux', 'darwin', 'win32'] as const)(
+    'gives a plain-Node %s child the execution host launcher',
+    (platform) => {
+      pinPlatform(platform)
+      Object.defineProperty(process, 'resourcesPath', { configurable: true, value: undefined })
+      const launcher = join('/server', 'bin', platform === 'win32' ? 'orca.exe' : 'orca')
+      installFakeAppEnvironment({
+        isPackaged: () => true,
+        getPath: () => USER_DATA,
+        getCliLauncherPath: () => launcher
+      })
+      const env = structuredSessionChildIdentityEnv(SESSION_ID, {
+        PATH: '/task/bin',
+        ORCA_CLI_COMMAND: '/other/orca',
+        ORCA_USER_DATA_PATH: '/other/profile'
+      })
+      expect(env.ORCA_CLI_COMMAND).toBe(launcher)
+      expect(env.ORCA_USER_DATA_PATH).toBe(USER_DATA)
+      expect(env.PATH).toBe(`${join('/server', 'bin')}${platform === 'win32' ? ';' : ':'}/task/bin`)
+      expect(env.ORCA_AGENT_SESSION_ID).toBe(SESSION_ID)
+    }
+  )
+
   it("gives an ordinary chat session its own id and this app's CLI, and no terminal identity", () => {
     // The id names the caller, so a bare `orca orchestration check` acts as this session instead of
     // guessing a terminal — every guess landed on a sibling pane, and `check` consumed its mail.

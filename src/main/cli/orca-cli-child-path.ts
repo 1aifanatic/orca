@@ -13,7 +13,7 @@
  * every branch behaves exactly as it did inside `buildPtyHostEnv`.
  */
 
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { readInheritedPath } from '../ipc/pty/host-env/path'
 import { resolvePathEnvKey } from '../pty/windows-environment-path'
 import { ensureLinuxTerminalOrcaCliShimDir } from './linux-terminal-orca-cli-shim'
@@ -24,6 +24,7 @@ export type OrcaCliChildPathOptions = {
   isPackaged: boolean
   userDataPath: string
   resourcesPath?: string | null
+  launcherPath?: string | null
   /** Test seam — production reads the real platform, which is what every branch below assumes. */
   platform?: NodeJS.Platform
 }
@@ -43,6 +44,17 @@ export function prependOrcaCliDirToChildPath(
   // Why: matches node:path's `delimiter` for the running platform, but stays correct when a test
   // drives a foreign platform through the seam.
   const pathDelimiter = platform === 'win32' ? ';' : delimiter
+  if (opts.launcherPath) {
+    const cliBin = dirname(opts.launcherPath)
+    const inheritedPath = readInheritedPath(env, platform)
+    env[resolvePathEnvKey(env, platform)] = inheritedPath
+      ? `${cliBin}${pathDelimiter}${inheritedPath}`
+      : cliBin
+    if (platform !== 'win32') {
+      env.ORCA_CLI_BIN_DIR = cliBin
+    }
+    return opts.launcherPath
+  }
   // Why: dev mode needs the launcher PATH override so `orca` resolves to the dev build instead of the production binary at /usr/local/bin/orca.
   if (!opts.isPackaged) {
     const devCliBin = join(opts.userDataPath, 'cli', 'bin')
@@ -57,7 +69,10 @@ export function prependOrcaCliDirToChildPath(
     return join(devCliBin, platform === 'win32' ? `${DEV_COMMAND_NAME}.cmd` : DEV_COMMAND_NAME)
   } else if (platform === 'linux') {
     // Why: bare-`orca` shim scoped to Orca PTYs — Linux CLI installs as `orca-ide` to avoid shadowing GNOME's /usr/bin/orca screen reader (stablyai/orca#7904).
-    const shimDir = ensureLinuxTerminalOrcaCliShimDir({ userDataPath: opts.userDataPath })
+    const shimDir = ensureLinuxTerminalOrcaCliShimDir({
+      userDataPath: opts.userDataPath,
+      resourcesPath: opts.resourcesPath
+    })
     if (shimDir) {
       env.ORCA_CLI_BIN_DIR = shimDir
       const inheritedEntries = readInheritedPath(env, platform)

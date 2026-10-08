@@ -29,7 +29,8 @@ describe('prependOrcaCliDirToChildPath', () => {
     expect(env.PATH).toBe(`${SHIM_DIR}:/usr/local/bin:/usr/bin`)
     expect(env.ORCA_CLI_BIN_DIR).toBe(SHIM_DIR)
     expect(shim.ensureLinuxTerminalOrcaCliShimDir).toHaveBeenCalledWith({
-      userDataPath: USER_DATA
+      userDataPath: USER_DATA,
+      resourcesPath: RESOURCES
     })
   })
 

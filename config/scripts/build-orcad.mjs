@@ -27,6 +27,7 @@ import { smokeProfileStateWorkers } from './profile-state-worker-smoke.mjs'
 import { smokeForeignSqliteReaderWorker } from './foreign-sqlite-reader-worker-smoke.mjs'
 import { materializeWatcherPackage } from './orcad-watcher-package.mjs'
 import { stageOrcadWindowsProcessTree } from './orcad-windows-process-tree.mjs'
+import { buildOrcadCli } from './orcad-cli-package.mjs'
 import {
   ORCAD_EMOJI_SHORTCODE_DATASET,
   ORCAD_FOREIGN_SQLITE_READER_ENTRY,
@@ -235,6 +236,7 @@ const childResults = await Promise.all([
 
 const result = await buildOrcadEntry(SERVER_OUT_FILE)
 const launcherResult = await buildOrcadLauncher(OUT_FILE)
+const cliResult = await buildOrcadCli(ROOT, OUT_DIR, BUILD_TARGET)
 
 const output = Object.values(result.metafile.outputs).find(
   (o) => o.entryPoint === 'src/main/orcad/main.ts'
@@ -262,6 +264,7 @@ function collectImporters(metafiles, matches) {
 const metafiles = [
   launcherResult.metafile,
   result.metafile,
+  cliResult.metafile,
   ...childResults.map((child) => child.metafile)
 ]
 const electronImporters = collectImporters(

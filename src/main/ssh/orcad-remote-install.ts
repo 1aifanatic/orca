@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { orcadNodePtyNativeArtifacts, orcadRipgrepArtifact } from '../../shared/orcad-artifacts'
+import {
+  orcadCliLauncherFilename,
+  orcadNodePtyNativeArtifacts,
+  orcadRipgrepArtifact
+} from '../../shared/orcad-artifacts'
 import { orcadAgentBrowserNativeName } from '../../shared/orcad-agent-browser-name'
 import type { NodeRuntimeTarget } from '../../shared/node-runtime-pin'
 import { ensureRemoteOrcadNodeRuntime } from './orcad-remote-node-runtime'
@@ -122,8 +126,12 @@ function executablePermissionsCommand(
   directory: string,
   target: NodeRuntimeTarget
 ): string {
-  const required = [orcadRipgrepArtifact(target), ...orcadNodePtyNativeArtifacts(target)]
-    .filter((artifact) => /\/(?:rg|spawn-helper)$/.test(artifact))
+  const required = [
+    orcadCliLauncherFilename(host.os),
+    orcadRipgrepArtifact(target),
+    ...orcadNodePtyNativeArtifacts(target)
+  ]
+    .filter((artifact) => /\/(?:rg|spawn-helper|orca)$/.test(artifact))
     .map((artifact) => joinRemotePath(host, directory, ...artifact.split('/')))
   const browsers = new Set(
     (['glibc', 'musl'] as const).map((libc) =>

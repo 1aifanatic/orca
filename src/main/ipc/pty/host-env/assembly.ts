@@ -4,6 +4,7 @@ import {
   isPiCompatibleAgentType
 } from '../../../../shared/pi-agent-kind'
 import { applyTerminalGitCredentialPromptGuard } from '../../terminal-git-credential-guard'
+import { getAppEnvironment } from '../../../../shared/app-environment'
 import { ensureOpenCodeStartupPromptForLaunch } from '../../../opencode/opencode-startup-prompt-installer'
 import { mimoCodeHookService } from '../../../mimo/hook-service'
 import { agentHookServer } from '../../../agent-hooks/server'
@@ -278,11 +279,17 @@ export function buildPtyHostEnv(
     }
     delete baseEnv.ORCA_CLI_COMMAND
   }
-  prependOrcaCliDirToChildPath(baseEnv, {
+  const hostLauncher = !opts.isWsl ? getAppEnvironment().getCliLauncherPath?.() : null
+  const launcher = prependOrcaCliDirToChildPath(baseEnv, {
     isPackaged: opts.isPackaged,
     userDataPath: opts.userDataPath,
-    resourcesPath: opts.resourcesPath
+    resourcesPath: opts.resourcesPath,
+    launcherPath: hostLauncher
   })
+  if (hostLauncher && launcher) {
+    baseEnv.ORCA_CLI_COMMAND = launcher
+    baseEnv.ORCA_USER_DATA_PATH = opts.userDataPath
+  }
 
   if (
     opts.routeBrowserOpensToClient === true &&

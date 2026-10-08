@@ -102,6 +102,11 @@ export const ORCAD_EMOJI_SHORTCODE_DATASET =
 export const ORCAD_VERSION = '0.1.0'
 export const ORCAD_LAUNCHER_FILENAME = 'orcad.js'
 export const ORCAD_SERVER_ENTRY_FILENAME = 'orcad-server.js'
+export const ORCAD_CLI_ENTRY_FILENAME = 'orca-cli.js'
+
+export function orcadCliLauncherFilename(platform: string): string {
+  return platform === 'win32' ? 'bin/orca.exe' : 'bin/orca'
+}
 
 // Equals FOREIGN_SQLITE_READER_ENTRY_FILENAME; that module is not loadable under type stripping.
 export const ORCAD_FOREIGN_SQLITE_READER_ENTRY = 'foreign-sqlite-reader-entry.js'
@@ -161,6 +166,7 @@ export type OrcadArtifact = {
 export const ORCAD_ARTIFACTS: readonly OrcadArtifact[] = [
   { filename: ORCAD_LAUNCHER_FILENAME },
   { filename: ORCAD_SERVER_ENTRY_FILENAME },
+  { filename: ORCAD_CLI_ENTRY_FILENAME },
   // Forked so a native @parcel/watcher fault kills the child, not the server.
   { filename: 'parcel-watcher-process-entry.js' },
   // Forked so PTYs outlive the runtime process; its absence makes every restart destructive.
@@ -195,7 +201,11 @@ export function orcadArtifactFilenames(target: string): string[] {
   const filenames = ORCAD_ARTIFACTS.filter((artifact) => !artifact.optional).map(
     (artifact) => artifact.filename
   )
-  filenames.push(...orcadNodePtyNativeArtifacts(target), orcadRipgrepArtifact(target))
+  filenames.push(
+    ...orcadNodePtyNativeArtifacts(target),
+    orcadRipgrepArtifact(target),
+    orcadCliLauncherFilename(target.split('-')[0])
+  )
   if (isWindowsTarget(target)) {
     filenames.push(ORCAD_WINDOWS_PROCESS_TREE_FILENAME)
   }

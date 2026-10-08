@@ -164,6 +164,7 @@ describe('assembleOrcadArtifact', () => {
       const target = 'darwin-arm64' as const
       const fixture = createTemplate(target)
       const executables = [
+        'bin/orca',
         orcadRipgrepArtifact(target),
         'node_modules/node-pty/build/Release/spawn-helper'
       ]
