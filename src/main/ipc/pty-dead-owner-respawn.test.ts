@@ -171,8 +171,8 @@ describe('registerPtyHandlers', () => {
       'inc-proven-absent-owner',
       { hostExitConfirmed: true }
     )
-    expect(store.setWorkspaceSession).toHaveBeenCalledOnce()
-    expect(store.flushOrThrow).toHaveBeenCalledOnce()
+    // The pane and its binding stay for the fresh spawn's bind to swap.
+    expect(store.setWorkspaceSession).not.toHaveBeenCalled()
   })
   it('does not poll after the routed provider confirms absence', async () => {
     const worktreeId = 'repo-1::/tmp/probe-blip-owner'

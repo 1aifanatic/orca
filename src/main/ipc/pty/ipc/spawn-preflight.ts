@@ -69,6 +69,8 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
       : null
   ctx.spawnTiming.mark('stable_adoption')
   if (ctx.earlyStablePaneOwner && !ctx.preAdoptedStablePane) {
+    // The owner's process is absent; this spawn replaces it, so it is not reattached again.
+    ctx.replacedPaneOwner ??= { ptyId: ctx.earlyStablePaneOwner.ptyId, pane: null }
     const pathUsable = ctx.deps.assertFolderWorkspacePtyPathUsable(args.worktreeId)
     if (pathUsable) {
       await pathUsable
