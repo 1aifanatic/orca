@@ -118,7 +118,7 @@ function deps(
 }
 
 describe('structured session recovery resolution', () => {
-  it('releases an ownerless reservation: nothing it recorded can be holding it', async () => {
+  it('retains an unverified reservation until a token scan proves nothing spawned', async () => {
     const store = await openStore()
     await reserve(store)
     await latch(store)
@@ -128,13 +128,25 @@ describe('structured session recovery resolution', () => {
       SESSION
     )
 
-    expect(result).toBe('resolved')
+    expect(result).toBe('unresolved')
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      claimStatus: 'reserved',
+      handoffStage: 'recovering',
+      runtimeFence: 1,
+      reservedSpawnToken: 'spawn-recovery'
+    })
+    expect(
+      await resolveStructuredSessionRecovery(
+        deps(store, () => ({ outcome: 'reservation-unused' })),
+        SESSION
+      )
+    ).toBe('resolved')
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,
       runtimeFence: 2,
       reservedSpawnToken: null,
-      deathEvidence: null
+      deathEvidence: { kind: 'pid-absent' }
     })
   })
 
@@ -190,7 +202,7 @@ describe('structured session recovery resolution', () => {
     })
   })
 
-  it('releases an owner that survives the stop ladder, with no death evidence', async () => {
+  it('retains an owner that survives the bounded stop ladder', async () => {
     const store = await openStore()
     await liveOwner(store)
     await latch(store)
@@ -203,22 +215,21 @@ describe('structured session recovery resolution', () => {
       SESSION
     )
 
-    expect(result).toBe('resolved')
+    expect(result).toBe('unresolved')
     expect(stopOwnerProcess.mock.calls).toEqual([
       [4242, 'SIGTERM'],
       [4242, 'SIGKILL']
     ])
-    // Its transport died with the runtime that held it; nothing proved it gone, so no evidence.
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'released',
-      handoffStage: null,
-      runtimeFence: 2,
-      ownerProcess: null,
+      claimStatus: 'live',
+      handoffStage: 'recovering',
+      runtimeFence: 1,
+      ownerProcess: { pid: 4242 },
       deathEvidence: null
     })
   })
 
-  it('releases an owner whose identity cannot be verified, and signals nothing', async () => {
+  it('retains an owner whose identity cannot be verified, and signals nothing', async () => {
     const store = await openStore()
     await liveOwner(store)
     await latch(store)
@@ -231,19 +242,19 @@ describe('structured session recovery resolution', () => {
       SESSION
     )
 
-    expect(result).toBe('resolved')
+    expect(result).toBe('unresolved')
     // The pid may have been reused by an unrelated process.
     expect(stopOwnerProcess).not.toHaveBeenCalled()
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'released',
-      handoffStage: null,
-      runtimeFence: 2,
-      ownerProcess: null,
+      claimStatus: 'live',
+      handoffStage: 'recovering',
+      runtimeFence: 1,
+      ownerProcess: { pid: 4242 },
       deathEvidence: null
     })
   })
 
-  it('releases a Windows owner the probe matches without signalling its saved pid', async () => {
+  it('retains a Windows owner without signalling its saved pid until exit is proven', async () => {
     const store = await openStore()
     await liveOwner(store)
     await latch(store)
@@ -257,13 +268,13 @@ describe('structured session recovery resolution', () => {
       SESSION
     )
 
-    expect(result).toBe('resolved')
+    expect(result).toBe('unresolved')
     // Windows stops a tree only through a child it still holds; a saved pid is never signalled.
     expect(stopOwnerProcess).not.toHaveBeenCalled()
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'released',
-      handoffStage: null,
-      ownerProcess: null,
+      claimStatus: 'live',
+      handoffStage: 'recovering',
+      ownerProcess: { pid: 4242 },
       deathEvidence: null
     })
   })
@@ -304,7 +315,7 @@ describe('structured session recovery resolution', () => {
     })
   })
 
-  it('releases a terminal reservation an older build left naming nobody at restart', async () => {
+  it('retains an older terminal reservation until the host proves it unused', async () => {
     const directory = await newStoreDirectory()
     await reserve(await openStore(directory))
     await writeOlderBuildLease(directory, SESSION, { runtimeKind: 'tui' })
@@ -313,11 +324,10 @@ describe('structured session recovery resolution', () => {
       probe: async () => ({ outcome: 'indeterminate', reason: 'no scan' }),
       now: NOW
     })
-    // No process is recorded for a conflict to name, so there is nothing to wait out.
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       runtimeKind: 'native',
-      claimStatus: 'released',
-      handoffStage: null,
+      handoffStage: 'recovering',
+      reservedSpawnToken: 'spawn-recovery',
       deathEvidence: null
     })
     expect(
@@ -325,7 +335,8 @@ describe('structured session recovery resolution', () => {
         deps(store, () => ({ outcome: 'reservation-unused' })),
         SESSION
       )
-    ).toBe('not-applicable')
+    ).toBe('resolved')
+    expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('released')
   })
 })
 

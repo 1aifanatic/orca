@@ -268,7 +268,7 @@ describe('restart reconciliation', () => {
         probe: INDETERMINATE,
         observedAt: 9_000
       })
-    ).toEqual({ disposition: 'evicted', nextFence: 8, evidence: null })
+    ).toMatchObject({ disposition: 'recovering', stage: 'recovering' })
   })
 
   it('frees a conflict whose named owner is proven gone', () => {
@@ -311,14 +311,12 @@ describe('restart reconciliation', () => {
   })
 
   it.each([null, 'recovering'] as const)(
-    'releases an ownerless reservation at stage %s, with evidence only when a scan proved nothing spawned',
+    'retains an ownerless reservation at stage %s until a scan proves nothing spawned',
     (handoffStage) => {
-      // A child spawned before its identity was recorded lost its stdio with the runtime that
-      // crashed, and a token scan is the only proof there can be.
       const reserved = lease({ ownerProcess: null, claimStatus: 'reserved', handoffStage })
       expect(
         adjudicateAgentSessionRestart({ lease: reserved, probe: INDETERMINATE, observedAt: 9_000 })
-      ).toEqual({ disposition: 'evicted', nextFence: 8, evidence: null })
+      ).toMatchObject({ disposition: 'recovering', stage: 'recovering' })
       expect(
         adjudicateAgentSessionRestart({
           lease: reserved,

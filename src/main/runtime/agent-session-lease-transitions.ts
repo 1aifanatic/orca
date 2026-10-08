@@ -17,7 +17,6 @@ import {
   type AgentSessionProviderHandleLink
 } from '../../shared/agent-session-provider-handle'
 import { agentSessionProviderHandleBelongsTo } from '../../shared/agent-session-provider-handle-encoding'
-import { nextAgentSessionFence } from '../../shared/agent-session-next-fence'
 import type {
   AgentSessionDeathEvidence,
   AgentSessionLease,
@@ -232,25 +231,6 @@ export function evictAgentSessionOwner(args: {
     throw new Error('agent_session_ownership_unknown')
   }
   return releasedAgentSessionLease(record, adjudication.nextFence, adjudication.evidence, args.now)
-}
-
-/**
- * Recovery's conclusion when proof never came: a recorded owner whose identity cannot be verified,
- * or that survived the stop ladder. Its transport died with the runtime that held it, so nothing
- * can drive it, and a verdict that never arrives must not hold the conversation. Nothing proved it
- * gone, so no death evidence is written.
- */
-export function releaseUnprovenAgentSessionOwner(args: {
-  record: AgentSessionRecord
-  expectedFence: number
-  now: number
-}): AgentSessionRecord {
-  const { record } = args
-  assertFence(record.lease, args.expectedFence)
-  if (record.lease.handoffStage !== 'recovering') {
-    throw new Error('agent_session_ownership_unknown')
-  }
-  return releasedAgentSessionLease(record, nextAgentSessionFence(record.lease), null, args.now)
 }
 
 function releasedAgentSessionLease(
