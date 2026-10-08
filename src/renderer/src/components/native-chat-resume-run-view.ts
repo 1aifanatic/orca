@@ -1,13 +1,7 @@
 import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
-import type { ResumeRun } from './native-chat-resume-run'
-import type { ResumeRunHostStatus } from './use-resume-run-status-feed'
+import type { ResumeRun, ResumeRunHostStatus } from './native-chat-resume-run'
 
-/**
- * What the dialog shows while it follows a run: one row per chat, each with where it stands.
- *
- * Pure, so the ordering and the counts are tested without a store. A chat the host already lists as
- * failed is shown as that failure row, with its guidance and Retry, rather than as a bare status.
- */
+/** Only current host failures create attention obligations after a run. */
 
 /** Where one chat of the run stands, as the leading icon shows it in place of the checkbox. */
 export type ResumeRunRowStatus =
@@ -53,13 +47,18 @@ export function resumeRunView(
   const statusBySession = new Map<string, ResumeRunRowStatus>()
   const placed: { row: ResumeCandidate; category: Category; index: number }[] = []
   const inRun = new Set<string>()
+  let inRunCount = 0
   for (const entry of run.entries) {
     const { sessionId } = entry.candidate
     inRun.add(sessionId)
     const row = listedById.get(sessionId) ?? entry.candidate
     const failure = failureFor(sessionId)
-    const hostStatus = run.inFlight ? hostStatusFor(sessionId) : undefined
+    const hostStatus = run.inFlight ? (entry.observedStatus ?? hostStatusFor(sessionId)) : undefined
     const phase = hostStatus?.restartResume?.phase
+    if (entry.observedStatus?.restartResume?.phase === 'skipped' || phase === 'skipped') {
+      continue
+    }
+    inRunCount += 1
     if (run.inFlight && (phase === undefined || phase === 'queued' || phase === 'starting')) {
       const hostPhase = hostStatus?.hostExecutionPhase
       statusBySession.set(sessionId, {
@@ -90,7 +89,6 @@ export function resumeRunView(
     }
   }
   const count = (category: Category) => placed.filter((entry) => entry.category === category).length
-  const inRunCount = run.entries.length
   const inProgress = count('in-progress')
   return {
     rows: placed

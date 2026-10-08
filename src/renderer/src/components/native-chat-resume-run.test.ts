@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
-import { beginResumeRun, resumeRunInFlight, resumeRunPendingIds } from './native-chat-resume-run'
+import {
+  beginResumeRun,
+  observeResumeRun,
+  resumeRunInFlight,
+  resumeRunPendingIds,
+  type ResumeRunHostStatus
+} from './native-chat-resume-run'
 import { resumeRunView } from './native-chat-resume-run-view'
-import type { ResumeRunHostStatus } from './use-resume-run-status-feed'
 
 const row = (sessionId: string): ResumeCandidate => ({
   sessionId,
@@ -16,6 +21,41 @@ const failure = { ...row('a'), failedAt: 2, outcome: 'unconfirmed' as const, rea
 const run = beginResumeRun([row('a'), row('b')], 10)
 
 describe('the dialog over a bulk action', () => {
+  it('never regresses a seen phase or verdict when live progress clears', () => {
+    let observed = run
+    for (const phase of ['queued', 'starting', 'continued'] as const) {
+      observed = observeResumeRun(observed, () => ({ restartResume: { phase } }))
+      const before = resumeRunView(observed, [], () => undefined, 'all')
+      expect(observeResumeRun(observed, () => undefined)).toBe(observed)
+      expect(observeResumeRun(observed, () => ({ restartResume: { phase: 'queued' } }))).toBe(
+        observed
+      )
+      expect(resumeRunView(observed, [], () => undefined, 'all')).toEqual(before)
+    }
+    expect(resumeRunView(observed, [], () => undefined, 'all').counts.done).toBe(2)
+    expect(observeResumeRun(observed, () => ({ restartResume: { phase: 'refused' } }))).toBe(
+      observed
+    )
+    expect(observeResumeRun({ ...observed, inFlight: false }, () => undefined).inFlight).toBe(false)
+  })
+
+  it('remembers readiness and excludes skipped chats from rows and the denominator', () => {
+    const observed = observeResumeRun(run, (id) => ({
+      restartResume: { phase: id === 'a' ? 'skipped' : 'starting' },
+      hostExecutionPhase: 'ready'
+    }))
+    const view = resumeRunView(observed, [row('a')], () => undefined, 'all')
+    expect(view.rows).toEqual([row('b')])
+    expect(view.counts).toMatchObject({ all: 1, total: 1, done: 0, inProgress: 1 })
+    expect(view.statusBySession.get('b')).toEqual({
+      kind: 'in-flight',
+      phase: 'ready',
+      startedAt: 10
+    })
+    expect(observeResumeRun(observed, () => ({ restartResume: { phase: 'starting' } }))).toBe(
+      observed
+    )
+  })
   it('settles a chat from its host verdict while the request remains in flight', () => {
     const statusFor = (id: string): ResumeRunHostStatus => ({
       restartResume: { phase: id === 'a' ? 'continued' : 'queued' }

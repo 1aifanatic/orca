@@ -9,7 +9,6 @@ import {
 } from '../native-chat-resume-on-restart-store'
 import { resumeRunInFlight } from '../native-chat-resume-run'
 import { resumeRunView } from '../native-chat-resume-run-view'
-import { useResumeRunStatusFeed } from '../use-resume-run-status-feed'
 
 // Why: closing the resume dialog is a snooze, not a decline — the host keeps the offer. This is
 // then the only surface left carrying it, so it is always rendered rather than gated by
@@ -145,13 +144,8 @@ export function NativeChatResumeStatusSegment({
   const offerEnabled = useNativeChatRestartOfferEnabled()
   const { candidates, failed } = useNativeChatRestartOffer(offerEnabled)
   const run = useNativeChatRestartRun()
-  const hostStatusFor = useResumeRunStatusFeed(
-    run?.inFlight ? run.entries.map((entry) => entry.candidate.sessionId) : []
-  )
   const failureBySession = new Map(failed.map((entry) => [entry.sessionId, entry]))
-  const view = run
-    ? resumeRunView(run, candidates, (id) => failureBySession.get(id), 'all', hostStatusFor)
-    : null
+  const view = run ? resumeRunView(run, candidates, (id) => failureBySession.get(id), 'all') : null
   if (!offerEnabled) {
     return null
   }
@@ -169,9 +163,9 @@ export function NativeChatResumeStatusSegment({
       {running && (
         <Segment
           iconOnly={iconOnly}
-          count={inRun.size}
+          count={view?.counts.total ?? 0}
           icon={<Loader2 className="size-3 animate-spin text-muted-foreground" />}
-          {...resumingText(view?.counts.done ?? 0, run.entries.length)}
+          {...resumingText(view?.counts.done ?? 0, view?.counts.total ?? 0)}
         />
       )}
       {pending > 0 && (

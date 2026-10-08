@@ -4,10 +4,7 @@ import { formatNativeChatDuration } from '../../../shared/native-chat-turn-statu
 import type { ResumeRunFilter, ResumeRunView } from './native-chat-resume-run-view'
 import type { ResumeRunStartPhase } from './NativeChatResumeRunStatusIcon'
 
-/**
- * The line above a followed run's list: how many chats are done and where the rest stand, and the
- * filters that narrow the list to one of those groups.
- */
+/** Counts and filters use the same categories so narrowing the list preserves its meaning. */
 
 function progressText(
   counts: ResumeRunView['counts'],

@@ -694,7 +694,7 @@ describe('spending a marker', () => {
     expect(outcomes).toHaveLength(candidates.length)
   })
 
-  // A client resumes each chat with its own request, so the limit has to span requests.
+  // Different callers share one host-wide start limit.
   it('shares the start limit across separate resume requests', async () => {
     let live = 0
     let peak = 0

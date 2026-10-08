@@ -14,7 +14,7 @@ const summary: AgentSessionStatusSummary = {
   updatedAt: 1
 }
 
-it.each(['queued', 'starting', 'continued', 'refused', 'unconfirmed'] as const)(
+it.each(['queued', 'starting', 'continued', 'refused', 'unconfirmed', 'skipped'] as const)(
   'folds %s progress and revokes it on contact loss, even without a provider child',
   (phase) => {
     const snapshot = foldAgentSessionStatusEvent(new Map(), {

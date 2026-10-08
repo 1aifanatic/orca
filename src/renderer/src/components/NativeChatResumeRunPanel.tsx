@@ -7,7 +7,6 @@ import { resumeRunInFlight, type ResumeRun } from './native-chat-resume-run'
 import { resumeRunView, type ResumeRunFilter } from './native-chat-resume-run-view'
 import { ResumeRunStatusIcon } from './NativeChatResumeRunStatusIcon'
 import { ResumeRunSummary } from './NativeChatResumeRunSummary'
-import { useResumeRunStatusFeed } from './use-resume-run-status-feed'
 
 /**
  * The dialog's view of a run it is following: its title, the progress line and filters, the rows
@@ -75,10 +74,7 @@ export function useResumeRunPanel({
   const inFlight = run !== null && resumeRunInFlight(run)
   // Ticks only while a visible run is moving: the row timers and the running clock read it.
   const now = useNow(1000, open && inFlight)
-  const hostStatusFor = useResumeRunStatusFeed(
-    inFlight && run ? run.entries.map((entry) => entry.candidate.sessionId) : []
-  )
-  const view = run ? resumeRunView(run, rows, failureFor, filter.value, hostStatusFor) : null
+  const view = run ? resumeRunView(run, rows, failureFor, filter.value) : null
   const inFlightIds = view
     ? [...view.statusBySession].flatMap(([sessionId, status]) =>
         status.kind === 'in-flight' ? [sessionId] : []

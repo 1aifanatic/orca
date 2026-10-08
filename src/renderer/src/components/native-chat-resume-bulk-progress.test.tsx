@@ -11,6 +11,7 @@ import { expect, it, vi, type Mock } from 'vitest'
 import { NativeChatResumeOnRestartModal } from './NativeChatResumeOnRestartModal'
 import { NativeChatResumeStatusSegment } from './status-bar/NativeChatResumeStatusSegment'
 import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
+import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import { requestNativeChatResumeOnRestartDialog } from './native-chat-resume-on-restart-dialog'
 import {
   continueNativeChatRestartOffer,
@@ -43,6 +44,24 @@ const { mount, button, checkbox, offerIds, toasts, fakeHost, runStatus } = creat
   rpc,
   statusStream
 )
+
+function emitPhase(
+  sessionId: string,
+  phase?: NonNullable<AgentSessionStatusSummary['restartResume']>['phase']
+): void {
+  statusStream.emit({
+    type: 'status',
+    session: {
+      sessionId,
+      workspaceId: 'workspace',
+      agent: 'codex',
+      status: 'idle',
+      latestPrompt: '',
+      updatedAt: 1,
+      ...(phase ? { restartResume: { phase } } : {})
+    }
+  })
+}
 
 it('resumes a 21-chat selection with one action and no redundant listing', async () => {
   const candidates = Array.from({ length: 21 }, (_, index) => ({
@@ -162,12 +181,139 @@ it('keeps the run in flight after every feed verdict until the fallback list is 
     })
   })
   expect(button('Resuming chats 2/2')).toBeTruthy()
+  await act(async () => offered.forEach(({ sessionId }) => emitPhase(sessionId)))
+  expect(button('Resuming chats 2/2')).toBeTruthy()
+  expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
   expect(button('Resuming…').disabled).toBe(true)
   expect(document.body.textContent).not.toContain('chats to resume')
   await act(async () => listing.resolve({ sessions: [], failed: [] }))
   expect(offerIds()).toEqual([])
   expect(button('Done').disabled).toBe(false)
   expect(document.body.textContent).not.toContain('Resuming chats')
+})
+
+it('retains success and refusal frames through cleanup before a delayed bulk reply', async () => {
+  const reply = Promise.withResolvers<unknown>()
+  rpc.mockImplementation(async (_target, method) =>
+    method === 'agentSession.restartResumable' ? { sessions: offered, failed: [] } : reply.promise
+  )
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <NativeChatResumeStatusSegment iconOnly={false} />
+    </>
+  )
+  await act(async () => button('Resume 2 chats').click())
+  // Verdicts and cleanup can arrive together before React gets a render.
+  await act(async () => {
+    emitPhase('a', 'continued')
+    emitPhase('b', 'refused')
+    emitPhase('a')
+    emitPhase('b')
+  })
+  expect(button('Resuming chats 2/2')).toBeTruthy()
+  await act(async () => button('Resuming chats 2/2').click())
+  expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
+  expect(runStatus('Prompt b')).toBe('Prompt b: Couldn’t resume')
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Need you1')
+  await act(async () =>
+    reply.resolve({
+      sessions: [],
+      failed: [failure('b')],
+      continued: [
+        { sessionId: 'a', outcome: 'continued' },
+        { sessionId: 'b', outcome: 'refused' }
+      ]
+    })
+  )
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Resumed 1 of 2 chats')
+})
+
+it('removes a skipped selection from pending rows and all progress counts', async () => {
+  const host = fakeHost({}, (sessionId) => (sessionId === 'a' ? 'skipped' : 'continued'))
+  host.hold('b')
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <NativeChatResumeStatusSegment iconOnly={false} />
+    </>
+  )
+  host.state.sessions = host.state.sessions.filter((row) => row.sessionId !== 'a')
+  await act(async () => button('Resume 2 chats').click())
+  await act(async () => button('Resuming chats 0/1').click())
+  const dialog = () => document.querySelector('[role="dialog"]')?.textContent
+  expect(dialog()).not.toContain('Prompt a')
+  expect(dialog()).toContain('All1')
+  expect(dialog()).toContain('0 of 1 done')
+  expect(dialog()).toContain('In progress1')
+  await host.release('b')
+  expect(dialog()).toContain('Resumed 1 of 1 chat')
+  expect(dialog()).toContain('1 of 1 done')
+  expect(dialog()).toContain('All1')
+  expect(dialog()).toContain('In progress0')
+  expect(runStatus('Prompt b')).toBe('Prompt b: Resumed')
+  expect(toasts()).toEqual([['Resumed 1 chat']])
+})
+
+it('uses reply skipped ids even when the skip frame was missed', async () => {
+  rpc.mockImplementation(async (_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? { sessions: offered, failed: [] }
+      : {
+          sessions: [],
+          failed: [],
+          skipped: ['b'],
+          continued: [{ sessionId: 'a', outcome: 'continued' }]
+        }
+  )
+  await mount(<NativeChatResumeOnRestartModal />)
+  await act(async () => continueNativeChatRestartOffer(['a', 'b']))
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Resumed 1 of 1 chat')
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('All1')
+  expect(runStatus('Prompt b')).toBeNull()
+})
+
+it.each(['unknown', 'pending'] as const)(
+  'reconciles %s with the reply failure list for both dialog and toast',
+  async (outcome) => {
+    rpc.mockImplementation(async (_target, method) =>
+      method === 'agentSession.restartResumable'
+        ? { sessions: [offered[0]], failed: [] }
+        : { sessions: [], failed: [], continued: [{ sessionId: 'a', outcome }] }
+    )
+    await mount(<NativeChatResumeOnRestartModal />)
+    await act(async () => continueNativeChatRestartOffer(['a']))
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Resumed 1 of 1 chat')
+    expect(runStatus('Prompt a')).toBe('Prompt a: Resumed')
+    expect(toasts()).toEqual([['Resumed 1 chat']])
+  }
+)
+
+it('dismissing a failure after the reply never promotes it to resumed history', async () => {
+  fakeHost({ sessions: [offered[0]!] }, () => 'unknown')
+  await mount(<NativeChatResumeOnRestartModal />)
+  await act(async () => continueNativeChatRestartOffer(['a']))
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Resumed 0 of 1 chat')
+  const dismiss = document.querySelector<HTMLButtonElement>('button[aria-label^="Dismiss"]')
+  expect(dismiss).not.toBeNull()
+  await act(async () => dismiss?.click())
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Resumed 0 of 1 chat')
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Need you0')
+  expect(runStatus('Prompt a')).toBeNull()
+  expect(toasts()).toEqual([['Couldn’t confirm 1 chat was resumed']])
+})
+
+it('keeps an unknown reply unconfirmed when it carries no confirmed failure list', async () => {
+  rpc.mockImplementation(async (_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? { sessions: [offered[0]], failed: [] }
+      : { sessions: [], continued: [{ sessionId: 'a', outcome: 'unknown' }] }
+  )
+  await mount(<NativeChatResumeOnRestartModal />)
+  await act(async () => continueNativeChatRestartOffer(['a']))
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Resumed 0 of 1 chat')
+  expect(runStatus('Prompt a')).toBeNull()
+  expect(toasts()).toEqual([['Couldn’t confirm 1 chat was resumed']])
 })
 
 it('a retry hides its old failure, then a dismissed final failure leaves Need you', async () => {

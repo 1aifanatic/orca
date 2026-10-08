@@ -121,6 +121,17 @@ export function createResumeModalFixture(rpc: Mock<RestartRpc>, statusStream: Re
             await held.get(sessionId)?.promise
             const verdict = verdictFor(sessionId)
             if (verdict === 'skipped') {
+              const summary: AgentSessionStatusSummary = {
+                sessionId,
+                workspaceId: 'workspace',
+                agent: 'codex',
+                status: 'idle',
+                latestPrompt: '',
+                updatedAt: 1,
+                restartResume: { phase: 'skipped' }
+              }
+              statusStream.snapshot.set(sessionId, summary)
+              statusStream.emit({ type: 'status', session: summary })
               return []
             }
             state.sessions = state.sessions.filter((entry) => entry.sessionId !== sessionId)
@@ -146,9 +157,23 @@ export function createResumeModalFixture(rpc: Mock<RestartRpc>, statusStream: Re
             return [{ sessionId, outcome: verdict }]
           })
         )
+        const skipped: string[] = []
+        for (const sessionId of params?.sessionIds ?? []) {
+          const previous = statusStream.snapshot.get(sessionId)
+          if (!previous) {
+            continue
+          }
+          if (previous.restartResume?.phase === 'skipped') {
+            skipped.push(sessionId)
+          }
+          const { restartResume: _restartResume, ...summary } = previous
+          statusStream.snapshot.set(sessionId, summary)
+          statusStream.emit({ type: 'status', session: summary })
+        }
         return {
           resumed: [],
           continued: continued.flat(),
+          skipped,
           sessions: state.sessions,
           failed: state.failed
         }

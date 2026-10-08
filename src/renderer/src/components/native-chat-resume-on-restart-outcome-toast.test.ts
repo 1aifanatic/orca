@@ -55,8 +55,7 @@ function hostLostAfterListing(): void {
   })
 }
 
-/** How each caller starts a resume: a click names the chats it ticked; an opted-in launch names
- *  every chat the host offered. Both resume each chat with its own request. */
+/** Clicks and opted-in launches use the same bulk action over their selection. */
 const resumes = {
   click: () => continueNativeChatRestartOffer(['a', 'b']),
   launch: () => continueNativeChatRestartOffer(offered.map((candidate) => candidate.sessionId))
@@ -101,9 +100,11 @@ it('answers a mixed opted-in launch with one toast', async () => {
       return { sessions: acted ? [] : offered, failed }
     }
     acted = true
-    const [sessionId] = params?.sessionIds ?? []
     return {
-      continued: [{ sessionId, outcome: sessionId === 'b' ? 'refused' : 'continued' }],
+      continued: (params?.sessionIds ?? []).map((sessionId) => ({
+        sessionId,
+        outcome: sessionId === 'b' ? 'refused' : 'continued'
+      })),
       sessions: [],
       failed: [failure]
     }

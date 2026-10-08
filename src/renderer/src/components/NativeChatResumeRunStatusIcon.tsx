@@ -4,10 +4,7 @@ import { translate } from '@/i18n/i18n'
 import { formatNativeChatDuration } from '../../../shared/native-chat-turn-status'
 import type { ResumeRunRowStatus } from './native-chat-resume-run-view'
 
-/**
- * Where one chat of a run stands, in the slot its checkbox had: a gray spinner while it resumes,
- * then what it came to. The words live in the tooltip, so the row carries no badge.
- */
+/** Tooltips keep per-chat progress from adding another label to each row. */
 
 export type ResumeRunStartPhase = 'starting' | 'ready' | null
 

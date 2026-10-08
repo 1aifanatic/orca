@@ -12,8 +12,19 @@ export function createRestartResumeProgress(
 ) {
   const operationId = randomUUID()
   const owned = new Map<string, StructuredAgentSessionRestartOfferSession>()
+  const skipped: string[] = []
   let active = true
   return {
+    skipped,
+    skipExcluded(requested: readonly string[], admitted: readonly { sessionId: string }[]): void {
+      const admittedIds = new Set(admitted.map((entry) => entry.sessionId))
+      for (const sessionId of new Set(requested)) {
+        if (!admittedIds.has(sessionId)) {
+          skipped.push(sessionId)
+          this.set(sessionId, 'skipped')
+        }
+      }
+    },
     set(sessionId: string, phase: Phase): void {
       if (!active) {
         return
@@ -22,7 +33,7 @@ export function createRestartResumeProgress(
       if (!session) {
         return
       }
-      if (phase === 'queued') {
+      if (phase === 'queued' || phase === 'skipped') {
         if (session.restartResume) {
           return
         }

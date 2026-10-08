@@ -241,7 +241,9 @@ export type AgentSessionStatusSummary = {
   hostExecutionPhase?: 'starting' | 'ready'
   /** This restart action's progress, derived by the live host and never persisted.
    *  Cleared when the action returns; absent on older hosts. */
-  restartResume?: { phase: 'queued' | 'starting' | 'continued' | 'refused' | 'unconfirmed' }
+  restartResume?: {
+    phase: 'queued' | 'starting' | 'continued' | 'refused' | 'unconfirmed' | 'skipped'
+  }
   latestPrompt: string
   /** Provider model in force for the next turn; absent until the host has read the options. */
   model?: string

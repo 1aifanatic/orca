@@ -161,6 +161,7 @@ export function createStructuredAgentSessionRestartResume(
     const eligible = restartRowsFor(derived.candidates, audience).filter((candidate) =>
       requested.has(candidate.sessionId)
     )
+    progress.skipExcluded(sessionIds ?? [], eligible)
     if (eligible.length === 0) {
       return null
     }
@@ -180,6 +181,10 @@ export function createStructuredAgentSessionRestartResume(
       )) ?? []
     const markersBySession = new Map(reserved.map((marker) => [marker.sessionId, marker]))
     const candidates = derive(reserved, 'may-be-held').candidates
+    progress.skipExcluded(
+      eligible.map((candidate) => candidate.sessionId),
+      candidates
+    )
     try {
       const outcomes = await resumeStructuredAgentSessionsFromRestart(
         {
@@ -283,6 +288,7 @@ export function createStructuredAgentSessionRestartResume(
       return {
         resumed,
         continued,
+        ...(progress.skipped.length > 0 ? { skipped: progress.skipped } : {}),
         ...(await remainingRestartRows(
           () => list(audience),
           () => listFailures(audience),
