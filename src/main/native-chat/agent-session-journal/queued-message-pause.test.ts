@@ -648,19 +648,22 @@ describe('which cards the pauses in force hold', () => {
 
   function card(messageId: string, queuedAfter: number, fields: Partial<Card> = {}): Card {
     const queuedAt = { epoch: 'epoch-1', sequence: queuedAfter + 1 }
-    const base = { state: 'waiting', holdReason: null, carriedFrom: null }
+    const base = { state: 'waiting', holdReason: null }
     return { messageId, ...base, queuedAt, ...fields }
   }
 
   /** A Stop at sequence 5 unless `stopped` is 0; this handle opened at `opened` and could not mark
    *  it (0: nothing to mark); no turn, Resume or reopen mark since. */
-  function pausesOver(cards: readonly Card[], stopped = 5, opened = 0) {
+  function pausesOver(cards: readonly Card[], stopped = 5, opened = 0, clearedIds?: string[]) {
     return deriveQueuePauses({
       epoch: 'epoch-1',
       marks: {
         latestStop: stopped ? { sequence: stopped, event: { reason: 'user-stop', at: 0 } } : null,
         resumedSequence: 0,
-        reopenedSequence: 0
+        reopenedSequence: 0,
+        ...(clearedIds
+          ? { cleared: { sequence: 4, operationId: 'clear', messageIds: clearedIds } }
+          : {})
       },
       latestAcceptedTurnSequence: 0,
       cards,
@@ -727,15 +730,15 @@ describe('which cards the pauses in force hold', () => {
   })
 
   it("a /clear's pause that holds nothing never hides a reopen's", () => {
-    const cards = [
-      card('carried', 1, { carriedFrom: 'source-session', holdReason: 'send_failed' }),
-      card('typed', 2)
-    ]
-    expect(pausesOver(cards, 0, 4).map((pause) => pause.reason)).toEqual(['cleared', 'restarted'])
-    expect(holding(cards, 0, 4)).toEqual([
-      ['carried', null],
+    const cards = [card('cleared', 1, { holdReason: 'send_failed' }), card('typed', 2)]
+    const pauses = pausesOver(cards, 0, 4, ['cleared'])
+    expect(pauses.map((pause) => pause.reason)).toEqual(['cleared', 'restarted'])
+    expect(
+      cards.map((each) => [each.messageId, queuePauseHolding(pauses, each)?.reason ?? null])
+    ).toEqual([
+      ['cleared', null],
       ['typed', 'restarted']
     ])
-    expect(nextSendableQueuedCard(pausesOver(cards, 0, 4), cards)).toBeNull()
+    expect(nextSendableQueuedCard(pauses, cards)).toBeNull()
   })
 })

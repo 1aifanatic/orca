@@ -55,8 +55,7 @@ export type QueuedMessageRow = {
    *  card, cleared when a withdrawal sends it back to waiting. Host-only; the published link is
    *  the submission's `queuedMessageId`. */
   consumedAs: string | null
-  /** The conversation /clear carried this card from; null for a card written here. What the
-   *  replacement's 'cleared' pause is derived from. */
+  /** Inert historical column; current inserts write null. */
   carriedFrom: string | null
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */

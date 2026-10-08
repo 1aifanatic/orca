@@ -3,8 +3,7 @@
 //   - 'stopped': the latest Stop event is a person's (reason `user-stop`), with no later Resume row
 //     and no turn sent after it and accepted. A later Stop of any reason supersedes it; only a
 //     person's pauses.
-//   - 'cleared': a card /clear carried into this conversation waits, and no turn or Resume has
-//     happened here since.
+//   - 'cleared': a card named by the latest clear mark waits, with no later accepted turn or Resume.
 //   - 'restarted': a card queued before this conversation last opened waits — Orca quit or
 //     crashed, or the chat closed, while it waited — and no turn or Resume has happened since the
 //     open. The open marks itself with a row when it finds waiting cards (`queueReopen`), so a card
@@ -48,8 +47,7 @@ export type JournalQueuePauseMarks = {
 
 export type DerivedQueuePause = {
   reason: QueuePauseReason
-  /** Where a Stop's or a reopen's pause began: a card queued at or after it is newer. Null for
-   *  /clear's, which holds the cards it carried. */
+  /** Where the pause began; clear holds its exact recorded message IDs. */
   since: AgentJournalCursor | null
   messageIds?: readonly string[]
 }
@@ -58,7 +56,6 @@ type QueueCard = {
   messageId?: string
   state: string
   holdReason: string | null
-  carriedFrom: string | null
   queuedAt: AgentJournalCursor | null
 }
 
@@ -184,7 +181,6 @@ export function deriveQueuePauses(input: {
     pauses.push({ reason: 'stopped', since: { epoch, sequence: stop.sequence } })
   }
   const waiting = input.cards.filter((card) => card.state === 'waiting')
-  const carried = waiting.filter((card) => card.carriedFrom !== null)
   const cleared = marks.cleared
   if (
     cleared &&
@@ -198,13 +194,6 @@ export function deriveQueuePauses(input: {
     if (messageIds.length > 0) {
       pauses.push({ reason: 'cleared', since: { epoch, sequence: cleared.sequence }, messageIds })
     }
-  } else if (
-    !cleared &&
-    carried.length > 0 &&
-    latestAcceptedTurnSequence === 0 &&
-    marks.resumedSequence === 0
-  ) {
-    pauses.push({ reason: 'cleared', since: null })
   }
   const reopened = reopenPause(input)
   if (
@@ -238,14 +227,10 @@ function reopenPause(input: {
   return { reason: 'restarted', since: { epoch, sequence } }
 }
 
-/** Queued before the pause began: for /clear, a card it carried. For a Stop or a reopen, a card
- *  queued before its row; one from another epoch (before a rewind) or from a build that recorded
- *  no position counts as before. A withdrawn steer keeps its position, so is held. */
+/** Clear holds recorded IDs; other pauses compare queued positions within the journal epoch. */
 function queuedBefore(pause: DerivedQueuePause, card: QueueCard): boolean {
   if (pause.reason === 'cleared') {
-    return pause.messageIds
-      ? pause.messageIds.includes(card.messageId ?? '')
-      : card.carriedFrom !== null
+    return pause.messageIds?.includes(card.messageId ?? '') ?? false
   }
   const { since } = pause
   return (

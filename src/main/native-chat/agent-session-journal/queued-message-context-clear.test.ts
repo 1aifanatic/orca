@@ -7,11 +7,10 @@ import {
   nextSendableQueuedCard
 } from './queued-message-pause'
 
-const card = (messageId: string, carriedFrom: string | null = null) => ({
+const card = (messageId: string) => ({
   messageId,
   state: 'waiting',
   holdReason: null,
-  carriedFrom,
   queuedAt: { epoch: 'epoch', sequence: 2 }
 })
 const marks = () => ({
@@ -29,7 +28,7 @@ const pauses = (cards = [card('before-one'), card('before-two')], m = marks(), a
 
 describe('exact waiting-card membership after context clear', () => {
   it('holds only recorded waiting IDs and intersects them with cards still waiting', () => {
-    const after = card('after', 'old-legacy-source')
+    const after = card('after')
     const current = [card('before-two'), after]
     const held = pauses(current)
     expect(held).toEqual([
@@ -76,19 +75,5 @@ describe('exact waiting-card membership after context clear', () => {
       operationId: 'clear',
       messageIds: ['before-two']
     })
-  })
-
-  it('uses carried-from only for old-host cards without a new clear mark', () => {
-    const cards = [card('legacy', 'old-source')]
-    expect(
-      deriveQueuePauses({
-        epoch: 'epoch',
-        marks: createJournalQueuePauseMarks(),
-        latestAcceptedTurnSequence: 0,
-        cards,
-        reopenFloor: null
-      })
-    ).toEqual([{ reason: 'cleared', since: null }])
-    expect(pauses(cards)).toEqual([])
   })
 })
