@@ -5,8 +5,6 @@ const posixAuthHeaderPattern = authHeaderWords
   .split('|')
   .map((word) => `*${word.replace(/[a-z]/g, (letter) => `[${letter}${letter.toUpperCase()}]`)}*`)
   .join('|')
-const OVERRIDE_NOTE =
-  'Orca: CLAUDE_CONFIG_DIR is set in this shell, so the Claude account selected in Orca is not used here.'
 const MISSING_NOTE = `Orca: ${CLAUDE_PROFILE_MISSING_MESSAGE}`
 
 /**
@@ -24,7 +22,6 @@ if [[ -n "\${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "\${__orca_claude_binary:-}" 
     case "$__orca_claude_pointer" in '~/'*) __orca_claude_pointer="\${HOME:-}/\${__orca_claude_pointer#??}" ;; esac
     __orca_claude_home="$(cat "$__orca_claude_pointer" 2>/dev/null || :)"
     if [ -n "\${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "\${ORCA_CLAUDE_INJECTED_CONFIG_DIR:-}" ]; then
-      [ -z "$__orca_claude_home" ] || [ "$__orca_claude_home" = "$CLAUDE_CONFIG_DIR" ] || printf '%s\\n' '${OVERRIDE_NOTE}' >&2
       command claude "$@"; return
     fi
     # Why: Orca's value replaced the user's own at spawn, so System default restores theirs.
@@ -52,9 +49,6 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
     set -l pointer (string replace -r '^~/' "$HOME/" -- "$ORCA_CLAUDE_PROFILE_POINTER")
     set -l profile (cat "$pointer" 2>/dev/null)
     if test -n "$CLAUDE_CONFIG_DIR"; and test "$CLAUDE_CONFIG_DIR" != "$ORCA_CLAUDE_INJECTED_CONFIG_DIR"
-      if test -n "$profile"; and test "$profile" != "$CLAUDE_CONFIG_DIR"
-        echo '${OVERRIDE_NOTE}' >&2
-      end
       command claude $argv
       return $status
     end
@@ -96,7 +90,7 @@ function Global:claude {
             $orcaClaudeHome = [IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER).TrimEnd()
         }
         if ($env:CLAUDE_CONFIG_DIR -and $env:CLAUDE_CONFIG_DIR -ne $env:ORCA_CLAUDE_INJECTED_CONFIG_DIR) {
-            if ($orcaClaudeHome -and $orcaClaudeHome -ne $env:CLAUDE_CONFIG_DIR) { [Console]::Error.WriteLine('${OVERRIDE_NOTE}') }
+            # The user's own value wins.
         } elseif (-not $orcaClaudeHome) {
             Remove-Item Env:ORCA_CLAUDE_INJECTED_CONFIG_DIR -ErrorAction SilentlyContinue
             if ($env:CLAUDE_CONFIG_DIR -and $env:ORCA_CLAUDE_USER_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR = $env:ORCA_CLAUDE_USER_CONFIG_DIR }

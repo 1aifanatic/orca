@@ -116,7 +116,7 @@ describe.each(SHELLS)('the claude function in %s', (shell) => {
     expect(result.stderr).toContain('folder is missing')
   })
 
-  it('lets the user’s own CLAUDE_CONFIG_DIR win and says so when an account is selected', () => {
+  it('lets the user’s own CLAUDE_CONFIG_DIR win silently when an account is selected', () => {
     const f = fixture()
     const own = f.run(shell, ['CLAUDE_CONFIG_DIR=/user/own'])
     expect(own.stdout).toBe('HOME=/user/own KEY=fake TWIN=none\n')
@@ -124,7 +124,7 @@ describe.each(SHELLS)('the claude function in %s', (shell) => {
     writeFileSync(f.pointer, f.a)
     const overridden = f.run(shell, ['CLAUDE_CONFIG_DIR=/user/own'])
     expect(overridden.stdout).toBe('HOME=/user/own KEY=fake TWIN=none\n')
-    expect(overridden.stderr).toContain('not used here')
+    expect(overridden.stderr).toBe('')
   })
 })
 

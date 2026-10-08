@@ -25,9 +25,6 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
     set -l pointer (string replace -r '^~/' "$HOME/" -- "$ORCA_CLAUDE_PROFILE_POINTER")
     set -l profile (cat "$pointer" 2>/dev/null)
     if test -n "$CLAUDE_CONFIG_DIR"; and test "$CLAUDE_CONFIG_DIR" != "$ORCA_CLAUDE_INJECTED_CONFIG_DIR"
-      if test -n "$profile"; and test "$profile" != "$CLAUDE_CONFIG_DIR"
-        echo 'Orca: CLAUDE_CONFIG_DIR is set in this shell, so the Claude account selected in Orca is not used here.' >&2
-      end
       command claude $argv
       return $status
     end
