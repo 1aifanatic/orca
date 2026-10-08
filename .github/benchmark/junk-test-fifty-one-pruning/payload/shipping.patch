@@ -1,0 +1,1131 @@
+diff --git a/src/main/ipc/pty-encoding.test.ts b/src/main/ipc/pty-encoding.test.ts
+index 082ac2df501..c6d36215014 100644
+--- a/src/main/ipc/pty-encoding.test.ts
++++ b/src/main/ipc/pty-encoding.test.ts
+@@ -1,8 +1,7 @@
+ /**
+  * Tests for Windows UTF-8 encoding fix.
+  *
+- * Unit tests demonstrate the GBK/UTF-8 encoding mismatch that causes garbled
+- * CJK characters. Integration tests spawn real shell processes to verify the
++ * Integration tests spawn real shell processes to verify the
+  * code page and encoding are correctly set by our shell arguments.
+  *
+  * Why child_process instead of node-pty: node-pty's ConPTY backend requires
+@@ -16,56 +15,6 @@ import { describe, expect, it } from 'vitest'
+ const isWindows = process.platform === 'win32'
+ 
+ describe('Windows PTY UTF-8 encoding', () => {
+-  // Why: GBK (code page 936) is the default console encoding on Chinese Windows.
+-  // When ConPTY uses GBK internally and node-pty decodes the pipe as UTF-8,
+-  // CJK characters are garbled. This test proves the root cause: GBK-encoded
+-  // bytes are invalid or produce wrong characters when decoded as UTF-8.
+-  describe('encoding mismatch (root cause)', () => {
+-    it('GBK-encoded CJK bytes produce garbled output when decoded as UTF-8', () => {
+-      // "你好" in GBK is [0xC4, 0xE3, 0xBA, 0xC3]
+-      const gbkBytes = Buffer.from([0xc4, 0xe3, 0xba, 0xc3])
+-
+-      // Decoding GBK bytes as UTF-8 produces replacement characters
+-      const garbled = gbkBytes.toString('utf8')
+-      expect(garbled).not.toBe('你好')
+-      expect(garbled).toContain('\ufffd')
+-    })
+-
+-    it('UTF-8 encoded CJK bytes decode correctly', () => {
+-      // "你好" in UTF-8 is [0xE4, 0xBD, 0xA0, 0xE5, 0xA5, 0xBD]
+-      const utf8Bytes = Buffer.from([0xe4, 0xbd, 0xa0, 0xe5, 0xa5, 0xbd])
+-
+-      expect(utf8Bytes.toString('utf8')).toBe('你好')
+-    })
+-
+-    it('multi-byte split across buffer boundaries produces replacement chars', () => {
+-      // Simulates ConPTY pipe read splitting a 3-byte UTF-8 char "你" across reads.
+-      // First read gets bytes [0xE4, 0xBD], second read gets [0xA0].
+-      // If each chunk is decoded independently (no StringDecoder), the result is garbled.
+-      const chunk1 = Buffer.from([0xe4, 0xbd])
+-      const chunk2 = Buffer.from([0xa0])
+-
+-      const decoded1 = chunk1.toString('utf8') // incomplete sequence → replacement char
+-      const decoded2 = chunk2.toString('utf8') // orphan continuation byte → replacement char
+-
+-      // Concatenating independently decoded chunks does NOT produce "你"
+-      expect(decoded1 + decoded2).not.toBe('你')
+-    })
+-
+-    it('StringDecoder correctly handles split multi-byte sequences', () => {
+-      // This is what node-pty does internally — StringDecoder buffers incomplete
+-      // trailing bytes and prepends them to the next write.
+-      const { StringDecoder } = require('node:string_decoder')
+-      const decoder = new StringDecoder('utf8')
+-
+-      const chunk1 = Buffer.from([0xe4, 0xbd])
+-      const chunk2 = Buffer.from([0xa0])
+-
+-      const result = decoder.write(chunk1) + decoder.write(chunk2)
+-      expect(result).toBe('你')
+-    })
+-  })
+-
+   describe.skipIf(!isWindows)('real shell encoding verification', () => {
+     it('cmd.exe /K chcp 65001 sets code page to UTF-8', () => {
+       // Spawn cmd.exe with the same args our fix uses, then query the code page.
+diff --git a/src/main/ipc/worktree-watcher-removal-binding.test.ts b/src/main/ipc/worktree-watcher-removal-binding.test.ts
+index b0b99ed1f79..14440db7ffa 100644
+--- a/src/main/ipc/worktree-watcher-removal-binding.test.ts
++++ b/src/main/ipc/worktree-watcher-removal-binding.test.ts
+@@ -1,13 +1,7 @@
+ import { describe, expect, it } from 'vitest'
+ import { getWorktreeWatcherRemoval, setWorktreeWatcherRemoval } from './worktree-watcher-removal'
+ 
+-/**
+- * Why: the port's default is inert by design — a host with no renderer has no watchers
+- * to close. That is correct for orcad and silently wrong for the desktop, where an
+- * uninstalled port means worktree removal stops releasing the directory and Windows
+- * fails the delete on a locked file. The default is indistinguishable from a working
+- * install at the call site, so it gets asserted here.
+- */
++/** The renderer-less default stays inert; installed ports route method calls. */
+ describe('WorktreeWatcherRemoval port', () => {
+   const METHODS = [
+     'closeLocal',
+@@ -44,17 +38,4 @@ describe('WorktreeWatcherRemoval port', () => {
+     expect(calls).toEqual([...METHODS])
+     setWorktreeWatcherRemoval(null)
+   })
+-
+-  it('exposes a desktop binding that delegates rather than stubbing', async () => {
+-    // Why import lazily: filesystem-watcher pulls electron, so it must not load in the
+-    // inert-default case above.
+-    const { desktopWorktreeWatcherRemoval } = await import('./filesystem-watcher')
+-    for (const method of METHODS) {
+-      expect(typeof desktopWorktreeWatcherRemoval[method], method).toBe('function')
+-      // An inert stub is an empty arrow; a real delegation is not.
+-      expect(desktopWorktreeWatcherRemoval[method].toString(), method).not.toMatch(
+-        /^\s*(async )?\(\s*\)\s*=>\s*\{?\s*\}?\s*$/
+-      )
+-    }
+-  })
+ })
+diff --git a/src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts b/src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts
+deleted file mode 100644
+index 1145c30aa2d..00000000000
+--- a/src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts
++++ /dev/null
+@@ -1,79 +0,0 @@
+-import { join, resolve } from 'node:path'
+-import { describe, expect, it } from 'vitest'
+-import { scanSourceTree, stripComments } from '../../../shared/source-scan/source-tree-scan'
+-
+-/**
+- * The retired copy has to stay retired.
+- *
+- * A bare `Provider exited: <reason>` status row is the reported symptom: a chat the user could
+- * not act on, settled by a restart rather than by observed death. Both production writers of that
+- * copy are gone, replaced by outcome copy the death evidence decides. Nothing filters this string
+- * at read time, so a producer that resurrects it reaches the transcript directly — which is why
+- * the guard sits on the writing side.
+- *
+- * Deliberately narrow: only a literal that OPENS with the prefix. Prose about the retirement, and
+- * copy that merely mentions a provider exiting, are not producers.
+- */
+-
+-const RETIRED_COPY_PREFIX = 'Provider exited'
+-
+-/** Line numbers of string literals whose first character begins the retired copy. */
+-export function findRetiredProviderExitCopyLines(source: string): number[] {
+-  const code = stripComments(source)
+-  const pattern = new RegExp(`['"\`]${RETIRED_COPY_PREFIX}`, 'g')
+-  return [...code.matchAll(pattern)].map((match) => code.slice(0, match.index).split('\n').length)
+-}
+-
+-describe('retired provider-exit copy ratchet', () => {
+-  it('flags a literal that opens with the retired copy', () => {
+-    const flagged = [
+-      `const text = 'Provider exited: recorded pid absent on host'`,
+-      `appendStatus("Provider exited")`,
+-      'appendStatus(`Provider exited: ${reason}`)'
+-    ]
+-    for (const source of flagged) {
+-      expect(findRetiredProviderExitCopyLines(source), source).toHaveLength(1)
+-    }
+-  })
+-
+-  it('reports the line the literal sits on', () => {
+-    expect(findRetiredProviderExitCopyLines(`const a = 1\n\nconst b = 'Provider exited'`)).toEqual([
+-      3
+-    ])
+-  })
+-
+-  it('leaves prose and unrelated copy alone', () => {
+-    const allowed = [
+-      `// the old bare 'Provider exited: <reason>' row`,
+-      `/* wrote \`Provider exited\` once */`,
+-      `const text = 'provider exited'`,
+-      `const text = 'The provider exited unexpectedly'`,
+-      `const text = 'Provider exit was not proven'`,
+-      `if (text.startsWith(prefix)) {}`
+-    ]
+-    for (const source of allowed) {
+-      expect(findRetiredProviderExitCopyLines(source), source).toEqual([])
+-    }
+-  })
+-
+-  const repoRoot = resolve(__dirname, '..', '..', '..', '..')
+-  // Tests assert on the retired copy on purpose; the walk skips them.
+-  const files = scanSourceTree(join(repoRoot, 'src'))
+-
+-  it('scans a plausible number of files', () => {
+-    // A broken root or extension list would make the guard silently vacuous.
+-    expect(files.length).toBeGreaterThan(500)
+-  })
+-
+-  it('has no production writer of the retired copy', () => {
+-    const offenders = files.flatMap(({ relativePath, source }) =>
+-      findRetiredProviderExitCopyLines(source).map((line) => `src/${relativePath}:${line}`)
+-    )
+-    expect(
+-      offenders,
+-      `A status row whose copy opens with "${RETIRED_COPY_PREFIX}" lands in the user's transcript ` +
+-        'unfiltered, which is the symptom this chat surface was reported for. Write the outcome ' +
+-        'copy the death evidence decides instead of resurrecting the retired prefix.'
+-    ).toEqual([])
+-  })
+-})
+diff --git a/src/main/providers/ssh-pty-notification-routing-recovery.test.ts b/src/main/providers/ssh-pty-notification-routing-recovery.test.ts
+deleted file mode 100644
+index 2ad66f62b18..00000000000
+--- a/src/main/providers/ssh-pty-notification-routing-recovery.test.ts
++++ /dev/null
+@@ -1,281 +0,0 @@
+-import { describe, expect, it, vi } from 'vitest'
+-import { subscribeSshPtyNotifications } from './ssh-pty-notification-routing'
+-import type { PtySourceReceivingActivation } from '../../shared/pty-source-receiving-activation'
+-
+-type MockMux = {
+-  onNotification: ReturnType<typeof vi.fn>
+-  request: ReturnType<typeof vi.fn>
+-}
+-
+-function createSubscription() {
+-  const mux: MockMux = {
+-    onNotification: vi.fn(),
+-    request: vi.fn(async () => ({ canceled: true, sentEndSu: 0, creditedEndSu: 0 }))
+-  }
+-  const dataListeners = new Set<(payload: { id: string; data: string }) => void>()
+-  const replayListeners = new Set<(payload: { id: string; data: string }) => void>()
+-  const exitListeners = new Set<(payload: { id: string; code: number }) => void>()
+-  const livePtyIds = new Set<string>()
+-  const recordExit = vi.fn()
+-  const toAppPtyId = vi.fn((id: string) => `ssh:conn@@${id}`)
+-  const resolvePtyIncarnation = vi.fn((id: string) => `incarnation:${id}`)
+-
+-  const subscription = subscribeSshPtyNotifications({
+-    mux: mux as never,
+-    toAppPtyId,
+-    dataListeners: dataListeners as never,
+-    replayListeners: replayListeners as never,
+-    exitListeners: exitListeners as never,
+-    livePtyIds,
+-    recordExit,
+-    providerGeneration: 7,
+-    resolvePtyIncarnation,
+-    peekPtyIncarnation: () => undefined
+-  })
+-  const handler = mux.onNotification.mock.calls[0]?.[0] as (
+-    method: string,
+-    params: Record<string, unknown>
+-  ) => void
+-  if (!handler) {
+-    throw new Error('notification handler was not registered')
+-  }
+-  return {
+-    handler,
+-    mux,
+-    toAppPtyId,
+-    dataListeners,
+-    replayListeners,
+-    exitListeners,
+-    livePtyIds,
+-    recordExit,
+-    resolvePtyIncarnation,
+-    installReceivingActivation: subscription.installReceivingActivation
+-  }
+-}
+-
+-function sourceActivation(
+-  overrides: Partial<PtySourceReceivingActivation> = {}
+-): PtySourceReceivingActivation {
+-  return Object.freeze({
+-    status: 'pending',
+-    clientGeneration: 2,
+-    ownerGeneration: 3,
+-    ptyIncarnation: 'incarnation-1',
+-    deliveryToken: 'token-1',
+-    checkpointSourceEndSu: 0,
+-    recoveryEndSu: 0,
+-    ...overrides
+-  })
+-}
+-
+-describe('SSH PTY notification recovery routing', () => {
+-  it('rejects a stale activation without disturbing current continuity', () => {
+-    const { handler, dataListeners, installReceivingActivation } = createSubscription()
+-    const onData = vi.fn()
+-    dataListeners.add(onData)
+-    installReceivingActivation('pty-1', sourceActivation({ recoveryEndSu: 3 })).commit()
+-
+-    expect(() =>
+-      installReceivingActivation(
+-        'pty-1',
+-        sourceActivation({
+-          clientGeneration: 1,
+-          ownerGeneration: 4,
+-          deliveryToken: 'token-stale',
+-          checkpointSourceEndSu: 3,
+-          recoveryEndSu: 3
+-        })
+-      )
+-    ).toThrow('ssh_source_receiving_activation_stale')
+-
+-    handler('pty.data', {
+-      id: 'pty-1',
+-      data: 'one',
+-      ptyIncarnation: 'incarnation-1',
+-      deliveryToken: 'token-1',
+-      clientGeneration: 2,
+-      ownerGeneration: 3,
+-      sourceEndSu: 3,
+-      sourceLengthSu: 3
+-    })
+-    expect(onData).toHaveBeenCalledOnce()
+-  })
+-
+-  it('drops provisional frames and settles cancellation before rollback completes', async () => {
+-    const { handler, mux, dataListeners, livePtyIds, installReceivingActivation } =
+-      createSubscription()
+-    const onData = vi.fn()
+-    dataListeners.add(onData)
+-    const lease = installReceivingActivation(
+-      'pty-1',
+-      sourceActivation({ checkpointSourceEndSu: 4, recoveryEndSu: 8 })
+-    )
+-    handler('pty.data', {
+-      id: 'pty-1',
+-      data: 'next',
+-      ptyIncarnation: 'incarnation-1',
+-      deliveryToken: 'token-1',
+-      clientGeneration: 2,
+-      ownerGeneration: 3,
+-      sourceEndSu: 8,
+-      sourceLengthSu: 4
+-    })
+-
+-    await expect(lease.rollback()).resolves.toBe(true)
+-
+-    expect(onData).not.toHaveBeenCalled()
+-    expect(livePtyIds).not.toContain('ssh:conn@@pty-1')
+-    expect(mux.request).toHaveBeenCalledWith('pty.cancelDelivery', {
+-      id: 'pty-1',
+-      clientGeneration: 2,
+-      ownerGeneration: 3,
+-      deliveryToken: 'token-1'
+-    })
+-  })
+-
+-  it('restores the exact prior cursor when a replacement rolls back after frames', async () => {
+-    const { handler, dataListeners, installReceivingActivation } = createSubscription()
+-    const onData = vi.fn()
+-    dataListeners.add(onData)
+-    installReceivingActivation('pty-1', sourceActivation({ deliveryToken: 'token-old' })).commit()
+-    handler('pty.data', {
+-      id: 'pty-1',
+-      data: 'pre',
+-      ptyIncarnation: 'incarnation-1',
+-      deliveryToken: 'token-old',
+-      clientGeneration: 2,
+-      ownerGeneration: 3,
+-      sourceEndSu: 3,
+-      sourceLengthSu: 3
+-    })
+-    const replacement = installReceivingActivation(
+-      'pty-1',
+-      sourceActivation({
+-        clientGeneration: 3,
+-        ownerGeneration: 4,
+-        deliveryToken: 'token-new',
+-        checkpointSourceEndSu: 3,
+-        recoveryEndSu: 3
+-      })
+-    )
+-    handler('pty.data', {
+-      id: 'pty-1',
+-      data: 'new',
+-      ptyIncarnation: 'incarnation-1',
+-      deliveryToken: 'token-new',
+-      clientGeneration: 3,
+-      ownerGeneration: 4,
+-      sourceEndSu: 6,
+-      sourceLengthSu: 3
+-    })
+-
+-    await replacement.rollback()
+-    handler('pty.data', {
+-      id: 'pty-1',
+-      data: 'old',
+-      ptyIncarnation: 'incarnation-1',
+-      deliveryToken: 'token-old',
+-      clientGeneration: 2,
+-      ownerGeneration: 3,
+-      sourceEndSu: 6,
+-      sourceLengthSu: 3
+-    })
+-
+-    expect(onData.mock.calls.map(([payload]) => payload.data)).toEqual(['pre', 'old'])
+-  })
+-
+-  it('does not let an older lease rollback replace a newer activation', async () => {
+-    const { handler, mux, dataListeners, installReceivingActivation } = createSubscription()
+-    const onData = vi.fn()
+-    dataListeners.add(onData)
+-    const older = installReceivingActivation('pty-1', sourceActivation())
+-    const newer = installReceivingActivation(
+-      'pty-1',
+-      sourceActivation({
+-        clientGeneration: 3,
+-        ownerGeneration: 4,
+-        deliveryToken: 'token-new'
+-      })
+-    )
+-
+-    await older.rollback()
+-    handler('pty.data', {
+-      id: 'pty-1',
+-      data: 'new',
+-      ptyIncarnation: 'incarnation-1',
+-      deliveryToken: 'token-new',
+-      clientGeneration: 3,
+-      ownerGeneration: 4,
+-      sourceEndSu: 3,
+-      sourceLengthSu: 3
+-    })
+-    newer.commit()
+-
+-    expect(onData).toHaveBeenCalledWith(expect.objectContaining({ data: 'new' }))
+-    expect(mux.request).toHaveBeenCalledWith('pty.cancelDelivery', {
+-      id: 'pty-1',
+-      clientGeneration: 2,
+-      ownerGeneration: 3,
+-      deliveryToken: 'token-1'
+-    })
+-    expect(mux.request).not.toHaveBeenCalledWith(
+-      'pty.cancelDelivery',
+-      expect.objectContaining({ deliveryToken: 'token-new' })
+-    )
+-  })
+-
+-  it('ignores PTY methods with missing ids', () => {
+-    const { handler, toAppPtyId, dataListeners } = createSubscription()
+-    const onData = vi.fn()
+-    dataListeners.add(onData)
+-
+-    expect(() => handler('pty.data', { data: 'orphan' })).not.toThrow()
+-    expect(toAppPtyId).not.toHaveBeenCalled()
+-    expect(onData).not.toHaveBeenCalled()
+-  })
+-
+-  it('leaves recovery and cancellation control methods to their dedicated handlers', () => {
+-    const {
+-      handler,
+-      mux,
+-      toAppPtyId,
+-      dataListeners,
+-      replayListeners,
+-      exitListeners,
+-      livePtyIds,
+-      recordExit,
+-      resolvePtyIncarnation
+-    } = createSubscription()
+-    const onData = vi.fn()
+-    const onReplay = vi.fn()
+-    const onExit = vi.fn()
+-    dataListeners.add(onData)
+-    replayListeners.add(onReplay)
+-    exitListeners.add(onExit)
+-    livePtyIds.add('ssh:conn@@unrelated')
+-
+-    for (const method of [
+-      'pty.recoveryData',
+-      'pty.recoveryComplete',
+-      'pty.restoreRequired',
+-      'pty.deliveryCanceled'
+-    ]) {
+-      handler(method, {
+-        id: 'pty-1',
+-        data: 'control',
+-        deliveryToken: 'token-1',
+-        clientGeneration: 2,
+-        ownerGeneration: 3
+-      })
+-    }
+-
+-    expect(toAppPtyId).not.toHaveBeenCalled()
+-    expect(resolvePtyIncarnation).not.toHaveBeenCalled()
+-    expect(recordExit).not.toHaveBeenCalled()
+-    expect(onData).not.toHaveBeenCalled()
+-    expect(onReplay).not.toHaveBeenCalled()
+-    expect(onExit).not.toHaveBeenCalled()
+-    expect(livePtyIds).toEqual(new Set(['ssh:conn@@unrelated']))
+-    expect(mux.request).not.toHaveBeenCalled()
+-  })
+-})
+diff --git a/src/renderer/src/assets/worktree-card-active-style.test.ts b/src/renderer/src/assets/worktree-card-active-style.test.ts
+deleted file mode 100644
+index 9fc69fe25b0..00000000000
+--- a/src/renderer/src/assets/worktree-card-active-style.test.ts
++++ /dev/null
+@@ -1,77 +0,0 @@
+-import fs from 'node:fs'
+-import { describe, expect, it } from 'vitest'
+-
+-const mainCss = fs.readFileSync(new URL('./main.css', import.meta.url), 'utf8')
+-
+-function getCssRuleBody(selector: string): string {
+-  const ruleMarker = mainCss.indexOf(`\n${selector} {`)
+-  expect(ruleMarker).toBeGreaterThanOrEqual(0)
+-
+-  const ruleStart = ruleMarker + 1
+-  const bodyStart = mainCss.indexOf('{', ruleStart) + 1
+-  const bodyEnd = mainCss.indexOf('}', bodyStart)
+-  return mainCss.slice(bodyStart, bodyEnd)
+-}
+-
+-describe('worktree card active styling', () => {
+-  it('keeps the primary selection wash translucent so card text stays legible', () => {
+-    const primary = getCssRuleBody(
+-      "[data-worktree-card-surface][data-worktree-card-active='primary']"
+-    )
+-    const darkPrimary = getCssRuleBody(
+-      ".dark [data-worktree-card-surface][data-worktree-card-active='primary']"
+-    )
+-
+-    expect(primary).toContain(
+-      'background: color-mix(in srgb, var(--worktree-sidebar-foreground) 8%, transparent)'
+-    )
+-    expect(darkPrimary).toContain(
+-      'background: color-mix(in srgb, var(--worktree-sidebar-foreground) 10%, transparent)'
+-    )
+-    expect(darkPrimary).toContain('var(--worktree-sidebar-border)')
+-  })
+-
+-  it('keeps the secondary selection ring when CSS owns the active state', () => {
+-    const secondary = getCssRuleBody(
+-      "[data-worktree-card-surface][data-worktree-card-active='secondary']"
+-    )
+-    const darkSecondary = getCssRuleBody(
+-      ".dark [data-worktree-card-surface][data-worktree-card-active='secondary']"
+-    )
+-
+-    expect(secondary).toContain('var(--sidebar-ring) 15%')
+-    expect(darkSecondary).toContain('var(--sidebar-ring) 18%')
+-  })
+-
+-  it('styles multi-selected cards through one rule that skips the active card', () => {
+-    const selected = getCssRuleBody(
+-      '[data-worktree-card-surface][data-worktree-card-selected]:not([data-worktree-card-active])'
+-    )
+-
+-    expect(selected).toContain('var(--worktree-sidebar-ring) 35%')
+-    expect(selected).toContain('var(--worktree-sidebar-accent) 70%')
+-    expect(selected).toContain('var(--worktree-sidebar-ring) 30%')
+-    // Why after hover: equal-specificity dark hover must not repaint a selected card.
+-    expect(mainCss.indexOf('[data-worktree-card-selected]')).toBeGreaterThan(
+-      mainCss.indexOf('.dark .worktree-sidebar-card-hover:hover')
+-    )
+-  })
+-
+-  it('dims sleeping cards through theme tokens so the cue survives any surface', () => {
+-    const sleeping = getCssRuleBody('[data-worktree-sleeping-dim]')
+-
+-    // Why oklab: a fixed perceptual step. An sRGB alpha over the painted backdrop
+-    // shrank as the surface lightened, so slept and awake read alike (#19624).
+-    expect(sleeping).toContain('in oklab')
+-    // Why token-anchored: the mix is defined by the theme's own foreground and
+-    // surface, so a custom background or tint scales it instead of cancelling it.
+-    expect(sleeping).toContain('var(--worktree-sidebar-foreground)')
+-    expect(sleeping).toContain('var(--worktree-sidebar)')
+-    // Why these two: title text and the muted lane (Moon, host badge) carry the cue.
+-    expect(sleeping).toContain('--foreground:')
+-    expect(sleeping).toContain('--muted-foreground:')
+-    // Why not opacity/filter: both dim toward the backdrop or strip themed hues.
+-    expect(sleeping).not.toContain('opacity:')
+-    expect(sleeping).not.toContain('filter:')
+-  })
+-})
+diff --git a/src/renderer/src/components/AgentStateDot.test.ts b/src/renderer/src/components/AgentStateDot.test.ts
+index 97488e50fd6..4972ec387a1 100644
+--- a/src/renderer/src/components/AgentStateDot.test.ts
++++ b/src/renderer/src/components/AgentStateDot.test.ts
+@@ -1,6 +1,4 @@
+ import React from 'react'
+-import { readFileSync } from 'node:fs'
+-import { join } from 'node:path'
+ import { renderToStaticMarkup } from 'react-dom/server'
+ import { describe, expect, it, vi } from 'vitest'
+ import { AgentStateDot, agentStateLabel, type AgentDotState } from './AgentStateDot'
+@@ -35,15 +33,6 @@ function renderDotClassNames(state: AgentDotState): string[] {
+ }
+ 
+ describe('AgentStateDot', () => {
+-  it('keeps the question glyph above the light-theme non-text contrast floor', () => {
+-    const css = readFileSync(join(__dirname, '../assets/main.css'), 'utf8')
+-    const lightTheme = css.match(/:root\s*\{(?<body>[\s\S]*?)\n\}/)?.groups?.body
+-    const darkTheme = css.match(/\.dark\s*\{(?<body>[\s\S]*?)\n\}/)?.groups?.body
+-
+-    expect(lightTheme).toContain('--agent-question: var(--color-orange-600)')
+-    expect(darkTheme).toContain('--agent-question: var(--color-orange-500)')
+-  })
+-
+   it('renders working as a yellow spinner', () => {
+     const markup = renderMarkup('working')
+ 
+diff --git a/src/renderer/src/components/AgentWorkingSpinner.test.tsx b/src/renderer/src/components/AgentWorkingSpinner.test.tsx
+index c2aca2c359b..59d3f1b4ad5 100644
+--- a/src/renderer/src/components/AgentWorkingSpinner.test.tsx
++++ b/src/renderer/src/components/AgentWorkingSpinner.test.tsx
+@@ -1,7 +1,5 @@
+ // @vitest-environment happy-dom
+ 
+-import { readFileSync } from 'node:fs'
+-import { join } from 'node:path'
+ import React, { act } from 'react'
+ import { createRoot } from 'react-dom/client'
+ import { renderToStaticMarkup } from 'react-dom/server'
+@@ -182,19 +180,4 @@ describe('AgentWorkingSpinner', () => {
+       }
+     }
+   })
+-
+-  it('preserves 12 steps per second without frequent iteration events', () => {
+-    const css = readFileSync(join(__dirname, '../assets/main.css'), 'utf8')
+-
+-    const rule = css.match(/\.agent-working-spinner\s*\{[^}]*\}/)?.[0]
+-    expect(rule).toBeDefined()
+-    expect(rule).toContain('animation: agent-spinner-rotate 86400s steps(1036800, end) infinite')
+-    expect(css).toContain('transform: rotate(86400turn)')
+-    expect(css).toContain('@keyframes agent-spinner-rotate')
+-
+-    const reducedMotionBlock = css.match(
+-      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.agent-working-spinner\s*\{[^}]*\}/
+-    )?.[0]
+-    expect(reducedMotionBlock).toContain('animation: none')
+-  })
+ })
+diff --git a/src/renderer/src/components/editor/rich-markdown-cut.test.ts b/src/renderer/src/components/editor/rich-markdown-cut.test.ts
+index 13f87403f6b..40d42d2835a 100644
+--- a/src/renderer/src/components/editor/rich-markdown-cut.test.ts
++++ b/src/renderer/src/components/editor/rich-markdown-cut.test.ts
+@@ -48,63 +48,6 @@ afterEach(() => {
+   vi.restoreAllMocks()
+ })
+ 
+-/**
+- * Simulates the cut handler's depth walk to determine what node would be cut.
+- * This mirrors the logic in RichMarkdownEditor.tsx handleDOMEvents.cut,
+- * including the depth < 1 guard.
+- */
+-function simulateCut(
+-  editor: Editor,
+-  pos: number
+-): {
+-  depth: number
+-  cutDepth: number
+-  cutNodeType: string
+-  cutText: string
+-  path: string[]
+-  wouldBail: boolean
+-} {
+-  const $from = editor.state.doc.resolve(pos)
+-  const path: string[] = []
+-  for (let d = 0; d <= $from.depth; d++) {
+-    path.push($from.node(d).type.name)
+-  }
+-
+-  // Mirror the depth < 1 guard from the real handler
+-  if ($from.depth < 1) {
+-    return {
+-      depth: $from.depth,
+-      cutDepth: 0,
+-      cutNodeType: $from.node(0).type.name,
+-      cutText: $from.node(0).textContent,
+-      path,
+-      wouldBail: true
+-    }
+-  }
+-
+-  let cutDepth = $from.depth
+-  for (let d = $from.depth - 1; d >= 1; d--) {
+-    const name = $from.node(d).type.name
+-    if (name === 'listItem' || name === 'taskItem') {
+-      cutDepth = d
+-      break
+-    }
+-    if (name === 'tableCell' || name === 'tableHeader') {
+-      break
+-    }
+-  }
+-
+-  const cutNode = $from.node(cutDepth)
+-  return {
+-    depth: $from.depth,
+-    cutDepth,
+-    cutNodeType: cutNode.type.name,
+-    cutText: cutNode.textContent,
+-    path,
+-    wouldBail: false
+-  }
+-}
+-
+ /** Count top-level paragraph nodes in the document. */
+ function countParagraphs(editor: Editor): number {
+   let count = 0
+@@ -139,25 +82,6 @@ function createClipboardEventMock(options?: { failReadback?: boolean }): {
+ }
+ 
+ describe('rich markdown cut handler behavior', () => {
+-  it('heading + paragraph: cuts only the paragraph', () => {
+-    const editor = createEditor('# Title\n\nBody text here.\n')
+-
+-    // Find position inside the paragraph
+-    const doc = editor.state.doc
+-    let paraPos = -1
+-    doc.forEach((node, offset) => {
+-      if (node.type.name === 'paragraph') {
+-        paraPos = offset + 1
+-      }
+-    })
+-
+-    const result = simulateCut(editor, paraPos)
+-
+-    expect(result.cutNodeType).toBe('paragraph')
+-    expect(result.cutText).toBe('Body text here.')
+-    editor.destroy()
+-  })
+-
+   it('hard-wrapped document prose stays one paragraph after normalization', () => {
+     const editor = createEditor('Line one\nLine two\nLine three\n')
+ 
+@@ -285,177 +209,6 @@ describe('rich markdown cut handler behavior', () => {
+     }
+   })
+ 
+-  it('paragraphs separated by blank lines are separate blocks', () => {
+-    const editor = createEditor('First paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n')
+-
+-    // Find second paragraph
+-    const doc = editor.state.doc
+-    let secondParaPos = -1
+-    let count = 0
+-    doc.forEach((node, offset) => {
+-      if (node.type.name === 'paragraph') {
+-        count++
+-        if (count === 2) {
+-          secondParaPos = offset + 1
+-        }
+-      }
+-    })
+-
+-    const result = simulateCut(editor, secondParaPos)
+-
+-    expect(result.cutNodeType).toBe('paragraph')
+-    expect(result.cutText).toBe('Second paragraph.')
+-    editor.destroy()
+-  })
+-
+-  it('list item: cuts the entire list item', () => {
+-    const editor = createEditor('- Item 1\n- Item 2\n- Item 3\n')
+-
+-    // Find position inside second list item's paragraph
+-    const doc = editor.state.doc
+-    let secondItemPos = -1
+-    let listItemCount = 0
+-    doc.descendants((node, pos) => {
+-      if (node.type.name === 'paragraph' && secondItemPos === -1) {
+-        // Check if parent path includes listItem
+-        const $pos = doc.resolve(pos + 1)
+-        for (let d = $pos.depth; d >= 1; d--) {
+-          if ($pos.node(d).type.name === 'listItem') {
+-            listItemCount++
+-            if (listItemCount === 2) {
+-              secondItemPos = pos + 1
+-            }
+-            break
+-          }
+-        }
+-      }
+-    })
+-
+-    if (secondItemPos > 0) {
+-      const result = simulateCut(editor, secondItemPos)
+-      expect(result.cutNodeType).toBe('listItem')
+-      expect(result.cutText).toBe('Item 2')
+-    }
+-
+-    editor.destroy()
+-  })
+-
+-  it('document with horizontal rule: depth < 1 guard prevents crash', () => {
+-    const editor = createEditor('---\n\nBody text here.\n')
+-
+-    // Position 0 is before the horizontal rule — depth 0 (GapCursor territory)
+-    const $pos0 = editor.state.doc.resolve(0)
+-    expect($pos0.depth).toBe(0)
+-
+-    // The cut handler should bail out (return false) at depth 0 instead of crashing
+-    const result = simulateCut(editor, 0)
+-    expect(result.wouldBail).toBe(true)
+-
+-    // Paragraph after the hr is still cuttable normally
+-    const doc = editor.state.doc
+-    let paraPos = -1
+-    doc.forEach((node, offset) => {
+-      if (node.type.name === 'paragraph') {
+-        paraPos = offset + 1
+-      }
+-    })
+-    if (paraPos > 0) {
+-      const safeResult = simulateCut(editor, paraPos)
+-      expect(safeResult.wouldBail).toBe(false)
+-      expect(safeResult.cutNodeType).toBe('paragraph')
+-    }
+-
+-    editor.destroy()
+-  })
+-
+-  it('single paragraph document: cut removes the only content', () => {
+-    const editor = createEditor('This is the only paragraph.\n')
+-
+-    const result = simulateCut(editor, 1)
+-
+-    expect(result.cutNodeType).toBe('paragraph')
+-
+-    // Check that from/to would encompass the entire doc content
+-    const $from = editor.state.doc.resolve(1)
+-    const from = $from.before(result.cutDepth)
+-    const to = $from.after(result.cutDepth)
+-    expect(from).toBe(0)
+-    expect(to).toBe(editor.state.doc.content.size)
+-
+-    editor.destroy()
+-  })
+-
+-  it('blockquote with multiple paragraphs: cuts only one paragraph', () => {
+-    const editor = createEditor('> Line 1\n>\n> Line 2\n>\n> Line 3\n')
+-
+-    // Find first paragraph in blockquote
+-    const doc = editor.state.doc
+-    let firstParaInBq = -1
+-    doc.descendants((node, pos) => {
+-      if (node.type.name === 'paragraph' && firstParaInBq === -1) {
+-        const $pos = doc.resolve(pos + 1)
+-        for (let d = $pos.depth; d >= 1; d--) {
+-          if ($pos.node(d).type.name === 'blockquote') {
+-            firstParaInBq = pos + 1
+-            break
+-          }
+-        }
+-      }
+-    })
+-
+-    if (firstParaInBq > 0) {
+-      const result = simulateCut(editor, firstParaInBq)
+-      expect(result.cutNodeType).toBe('paragraph')
+-    }
+-
+-    editor.destroy()
+-  })
+-
+-  it('nested list item: cuts just the inner list item', () => {
+-    const editor = createEditor('- Item 1\n  - Nested A\n  - Nested B\n- Item 2\n')
+-
+-    // Find a paragraph inside a nested list item
+-    const doc = editor.state.doc
+-    let nestedPos = -1
+-    doc.descendants((node, pos) => {
+-      if (node.type.name === 'paragraph' && node.textContent === 'Nested A' && nestedPos === -1) {
+-        nestedPos = pos + 1
+-      }
+-    })
+-
+-    if (nestedPos > 0) {
+-      const result = simulateCut(editor, nestedPos)
+-      expect(result.cutNodeType).toBe('listItem')
+-      expect(result.cutText).toBe('Nested A')
+-    }
+-
+-    editor.destroy()
+-  })
+-
+-  it('list item with nested sublist: cuts parent list item including sublist', () => {
+-    const editor = createEditor('- Parent item\n  - Child A\n  - Child B\n- Other item\n')
+-
+-    // Find the paragraph "Parent item"
+-    const doc = editor.state.doc
+-    let parentPos = -1
+-    doc.descendants((node, pos) => {
+-      if (
+-        node.type.name === 'paragraph' &&
+-        node.textContent === 'Parent item' &&
+-        parentPos === -1
+-      ) {
+-        parentPos = pos + 1
+-      }
+-    })
+-
+-    if (parentPos > 0) {
+-      const result = simulateCut(editor, parentPos)
+-      expect(result.cutNodeType).toBe('listItem')
+-    }
+-
+-    editor.destroy()
+-  })
+-
+   it('normalizeEmptyListItems is idempotent on already-clean documents', () => {
+     const editor = createEditor('First.\n\nSecond.\n\nThird.\n')
+ 
+diff --git a/src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts b/src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts
+deleted file mode 100644
+index 3cd4b9276b1..00000000000
+--- a/src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts
++++ /dev/null
+@@ -1,135 +0,0 @@
+-import { readFileSync } from 'node:fs'
+-import path from 'node:path'
+-import { describe, expect, it } from 'vitest'
+-
+-/**
+- * Guard against the i18n fragment glue-word class of bugs:
+- * `translate('…', 'word')}` immediately followed by `<code>` / `{value}` without
+- * an explicit `{' '}` space. Newline indentation alone is not reliable.
+- */
+-const ROOT = path.resolve(__dirname, '..')
+-
+-type GuardCase = {
+-  file: string
+-  /** English fallback that must be followed by `{' '}` before the next token. */
+-  afterFallback: string
+-  /** Human-readable description for assertion messages. */
+-  label: string
+-}
+-
+-const CASES: GuardCase[] = [
+-  {
+-    file: 'components/sidebar/SetupScriptPromptCardViews.tsx',
+-    afterFallback: 'This repo ignores shared',
+-    label: 'shared orca.yaml'
+-  },
+-  {
+-    file: 'components/sidebar/SetupScriptPromptCardViews.tsx',
+-    afterFallback: 'Detected from',
+-    label: 'Detected from provenance'
+-  },
+-  {
+-    file: 'components/sidebar/SetupScriptPromptCardViews.tsx',
+-    afterFallback: 'Found a setup command in',
+-    label: 'Found a setup command in source'
+-  },
+-  {
+-    file: 'components/settings/RepositoryHooksYamlStatus.tsx',
+-    afterFallback: 'Example',
+-    label: 'Example orca.yaml template'
+-  },
+-  {
+-    file: 'components/settings/RepositoryHookScriptSetting.tsx',
+-    afterFallback: 'Edit',
+-    label: 'Edit orca.yaml'
+-  },
+-  {
+-    file: 'components/settings/RepositoryHookPolicySettings.tsx',
+-    afterFallback: 'When both',
+-    label: 'When both orca.yaml'
+-  },
+-  {
+-    file: 'components/settings/GitPane.tsx',
+-    afterFallback: 'or',
+-    label: 'main or master'
+-  },
+-  {
+-    file: 'components/settings/GitPane.tsx',
+-    afterFallback: 'such as',
+-    label: 'such as main'
+-  },
+-  {
+-    file: 'components/settings/AutoRenameBranchFromWorkSetting.tsx',
+-    afterFallback: 'Use',
+-    label: 'Use {basePrompt}'
+-  },
+-  {
+-    file: 'components/settings/CustomAgentCommandField.tsx',
+-    afterFallback: 'Use',
+-    label: 'Use {prompt}'
+-  },
+-  {
+-    file: 'components/editor/RichMarkdownDocLinkMenu.tsx',
+-    afterFallback: 'Showing',
+-    label: 'Showing N of M'
+-  },
+-  {
+-    file: 'components/editor/RichMarkdownDocLinkMenu.tsx',
+-    afterFallback: 'of',
+-    label: 'of totalMatches'
+-  },
+-  {
+-    file: 'components/contextual-tours/ContextualTourProgressDots.tsx',
+-    afterFallback: 'of',
+-    label: 'tour of total'
+-  },
+-  {
+-    file: 'components/github/PRFilterSections.tsx',
+-    afterFallback: 'Filter',
+-    label: 'Filter pull requests'
+-  },
+-  {
+-    file: 'components/editor/ConflictComponents.tsx',
+-    afterFallback: 'Renamed from',
+-    label: 'Renamed from path'
+-  },
+-  {
+-    file: 'components/settings/SshPassphraseDialog.tsx',
+-    afterFallback: 'Enter the password for',
+-    label: 'password for host'
+-  },
+-  {
+-    file: 'components/settings/ManageSessionKillDialog.tsx',
+-    afterFallback: 'Force-quits',
+-    label: 'Force-quits session id'
+-  },
+-  {
+-    file: 'components/sidebar/DeleteWorktreeWarningPanels.tsx',
+-    afterFallback: 'This is the',
+-    label: 'This is the main worktree'
+-  }
+-]
+-
+-function hasExplicitSpaceAfterFallback(source: string, fallback: string): boolean {
+-  // Match translate fallbacks that end with (or equal) the given phrase, then
+-  // require an explicit {' '} after the closing )} so JSX whitespace is not
+-  // left to indentation alone.
+-  const escaped = fallback.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+-  const pattern = new RegExp(
+-    String.raw`translate\(\s*'[^']+',\s*(?:'[^']*${escaped}'|"[^"]*${escaped}")\s*(?:,\s*\{[^}]*\})?\s*\)\s*\}\s*\{\s*['"]\s['"]\s*\}`,
+-    'm'
+-  )
+-  return pattern.test(source)
+-}
+-
+-describe('i18n JSX fragment spacing guard', () => {
+-  for (const testCase of CASES) {
+-    it(`keeps an explicit space after "${testCase.label}" in ${testCase.file}`, () => {
+-      const source = readFileSync(path.join(ROOT, testCase.file), 'utf8')
+-      expect(
+-        hasExplicitSpaceAfterFallback(source, testCase.afterFallback),
+-        `Expected {' '} immediately after translate fallback "${testCase.afterFallback}" in ${testCase.file}`
+-      ).toBe(true)
+-    })
+-  }
+-})
+diff --git a/src/renderer/src/store/slices/ui/sidebar-body-writers.test.ts b/src/renderer/src/store/slices/ui/sidebar-body-writers.test.ts
+deleted file mode 100644
+index 1935eea6f8c..00000000000
+--- a/src/renderer/src/store/slices/ui/sidebar-body-writers.test.ts
++++ /dev/null
+@@ -1,65 +0,0 @@
+-import { readFileSync, readdirSync } from 'node:fs'
+-import path from 'node:path'
+-import { describe, expect, it } from 'vitest'
+-
+-/**
+- * Leaving the activity view is a user decision: the bell toggles the body, and only explicit
+- * "show me this in the workspace list" requests switch it (activation only via showWorkspaceList).
+- * Reveals must never write sidebarBody, or every incidental activation kicks the user out.
+- */
+-const RENDERER_ROOT = path.resolve(import.meta.dirname, '../../..')
+-
+-const SLICE_DEFINITION_FILES = [
+-  'store/slices/ui/ui-slice-contract-preferences.ts',
+-  'store/slices/ui/ui-slice-preference-actions.ts'
+-]
+-
+-const BODY_WRITER_FILES = [
+-  // The bell toggle.
+-  'components/sidebar/SidebarHeader.tsx',
+-  // Explicit workspace-list requests.
+-  'components/sidebar/use-workspace-reveal-body-redirect.ts',
+-  'components/use-worktree-jump-palette-selection-actions.ts',
+-  'lib/worktree-activation.ts',
+-  'store/slices/ui/ui-slice-agent-actions.ts'
+-]
+-
+-function collectSourceFiles(dir: string, out: string[] = []): string[] {
+-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+-    const full = path.join(dir, entry.name)
+-    if (entry.isDirectory()) {
+-      if (entry.name !== 'node_modules') {
+-        collectSourceFiles(full, out)
+-      }
+-      continue
+-    }
+-    if (/\.tsx?$/.test(entry.name) && !/\.(test|spec)\.tsx?$/.test(entry.name)) {
+-      out.push(full)
+-    }
+-  }
+-  return out
+-}
+-
+-function filesMatching(pattern: RegExp): string[] {
+-  return (
+-    collectSourceFiles(RENDERER_ROOT)
+-      .map((file) => ({ file, source: readFileSync(file, 'utf8') }))
+-      // Test harnesses stub the actions without being callers.
+-      .filter(({ source }) => pattern.test(source) && !source.includes("from 'vitest'"))
+-      .map(({ file }) => file)
+-      .map((file) => path.relative(RENDERER_ROOT, file).split(path.sep).join('/'))
+-      .sort()
+-  )
+-}
+-
+-describe('sidebarBody writers', () => {
+-  it('only the slice defines sidebarBody state writes', () => {
+-    expect(filesMatching(/\bsidebarBody\s*:/)).toEqual(SLICE_DEFINITION_FILES)
+-  })
+-
+-  it('only the bell toggle and explicit workspace-list requests call setSidebarBody', () => {
+-    expect(filesMatching(/\bsetSidebarBody\b/)).toEqual(
+-      [...SLICE_DEFINITION_FILES, ...BODY_WRITER_FILES].sort()
+-    )
+-  })
+-})
+diff --git a/src/shared/ssh-types.test.ts b/src/shared/ssh-types.test.ts
+deleted file mode 100644
+index d52170ad21b..00000000000
+--- a/src/shared/ssh-types.test.ts
++++ /dev/null
+@@ -1,19 +0,0 @@
+-import { describe, expect, it } from 'vitest'
+-import type { SshConnectionState, SshProviderEpoch } from './ssh-types'
+-
+-describe('SSH types', () => {
+-  it('SshConnectionState composes correctly', () => {
+-    const state: SshConnectionState = {
+-      targetId: 'target-1',
+-      status: 'connected',
+-      error: null,
+-      reconnectAttempt: 0,
+-      providerEpoch: 'provider-a' as SshProviderEpoch,
+-      connectionGeneration: 1
+-    }
+-    expect(state.status).toBe('connected')
+-    expect(state.error).toBeNull()
+-    expect(state.providerEpoch).toBe('provider-a')
+-    expect(state.connectionGeneration).toBe(1)
+-  })
+-})

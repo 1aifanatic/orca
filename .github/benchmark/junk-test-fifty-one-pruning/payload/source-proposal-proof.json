@@ -1,0 +1,951 @@
+{
+  "sourceHead": "5252884a9c7a34ab556ee8e3e1d8d4decae4982b",
+  "historicalMapSource": "7b26725ff4b38e1981ad2e1153118fa24faa7ac3",
+  "historicalMapUse": "Exact selected test-byte identity/title/status/multiplicity evidence only, no historical runtime/settings/current pass admission",
+  "selectedFilesByteExactHistorical": {
+    "src/renderer/src/components/editor/rich-markdown-cut.test.ts": "bca19fcca85698d3fa009b713d666dc3efa4cdb7d76c13c003289648f8d3e79b",
+    "src/main/ipc/pty-encoding.test.ts": "ecd0de43651a8582094b075bf4665eb8c260ad6172034cc036e4a715eede4078",
+    "src/renderer/src/assets/worktree-card-active-style.test.ts": "bc095f11068fb6bd22866622f3d7ac7e0441695ef9c32d8a9de49c92978c5575",
+    "src/shared/ssh-types.test.ts": "aa7da5f3bc5860360cef05f050b117a9c5149a16c4cb6224668031d0dc1dd400",
+    "src/renderer/src/components/editor/rich-markdown-image-cut.test.ts": "8d4aa9c0656bb805863e5670f75c74ceac74b336f2a7f7a00772a2cd1003f220",
+    "src/main/ipc/pty-windows-shell-selection.test.ts": "85f664b9d94f792f4849812e85a8ad408810007faf330f8f486688a736b5fd7d",
+    "src/shared/ssh-retained-payload-admission.test.ts": "c3fcd4deee0af2c90eace9867c0007d36ace17c6c1c214e5ebf2e8806ea6b81b",
+    "src/renderer/src/components/sidebar/WorktreeCard.quick-actions.test.tsx": "0a2a8df4c0fb9889dd635a4503e4c5e496efbccc70addc1d1608debd7adf6f0a",
+    "src/renderer/src/components/sidebar/WorktreeCard.affiliate-list-mode.test.tsx": "8fac93eefbe1e6a566e0ce9505457f13cb1d810b9205613aae02a1de02c333c9",
+    "src/renderer/src/components/AgentStateDot.test.ts": "8bd3f37a263c6e4d72e1c0883f3042dc4da369a43196d2072505ee964851c83b",
+    "src/renderer/src/components/AgentWorkingSpinner.test.tsx": "f956f2d2ec34148c075b5af8bc022a17b6ec2302c023369b5d5daafa8b1bf033",
+    "src/main/ipc/worktree-watcher-removal-binding.test.ts": "86ceb5922d3b082a6a3506242760fcd15ba708e8d50020dd8a4bc01e9839ebe2",
+    "src/renderer/src/store/slices/ui/sidebar-body-writers.test.ts": "4b80a13c3daee537ddddc16d729e337a91e392e48ecaf2772ebbaa7067defa64",
+    "src/main/providers/ssh-pty-notification-routing-recovery.test.ts": "b25296cbd1b3db177e8fa290b69ace4dbb63f168060a85053f75af26a315c8f8",
+    "src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts": "7822cf960ce9ccd09708f5dc537a043ddf9439a24cc9ff543972250f00c00b8e",
+    "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts": "b15c3390d3e5470dbbe908c0b52ed60d2eb357f05d16a600cceab3043c20922c"
+  },
+  "currentWindowsRegistration": {
+    "file": "src/main/providers/windows-shell-args.test.ts",
+    "sha256": "2bab0665ec7b6b2842faec4614634724d022f3d11702308870394af5c0bb1eec",
+    "historicalSha256": "0d3783532c9f93f8ab67c90c3656e573ed2c0bc21012f42f5b12114f50ecc0e6",
+    "registrations": [
+      {
+        "line": 60,
+        "kind": "literal"
+      },
+      {
+        "line": 75,
+        "kind": "literal"
+      },
+      {
+        "line": 91,
+        "kind": "literal"
+      },
+      {
+        "line": 105,
+        "kind": "literal"
+      },
+      {
+        "line": 118,
+        "kind": "literal"
+      },
+      {
+        "line": 164,
+        "kind": "literal"
+      },
+      {
+        "line": 178,
+        "kind": "literal"
+      },
+      {
+        "line": 190,
+        "kind": "literal"
+      },
+      {
+        "line": 206,
+        "kind": "literal"
+      },
+      {
+        "line": 223,
+        "kind": "literal"
+      },
+      {
+        "line": 239,
+        "kind": "literal"
+      },
+      {
+        "line": 245,
+        "kind": "literal"
+      },
+      {
+        "line": 263,
+        "kind": "literal"
+      },
+      {
+        "line": 296,
+        "kind": "literal"
+      },
+      {
+        "line": 311,
+        "kind": "literal"
+      },
+      {
+        "line": 334,
+        "kind": "literal"
+      },
+      {
+        "line": 361,
+        "kind": "literal"
+      },
+      {
+        "line": 373,
+        "kind": "literal"
+      },
+      {
+        "line": 398,
+        "kind": "literal"
+      },
+      {
+        "line": 424,
+        "kind": "literal"
+      },
+      {
+        "line": 438,
+        "kind": "literal-array-each",
+        "expanded": 2
+      },
+      {
+        "line": 449,
+        "kind": "literal"
+      },
+      {
+        "line": 457,
+        "kind": "literal"
+      },
+      {
+        "line": 462,
+        "kind": "literal"
+      },
+      {
+        "line": 486,
+        "kind": "literal"
+      },
+      {
+        "line": 499,
+        "kind": "literal"
+      },
+      {
+        "line": 510,
+        "kind": "literal"
+      },
+      {
+        "line": 526,
+        "kind": "literal"
+      },
+      {
+        "line": 532,
+        "kind": "literal"
+      }
+    ],
+    "expandedCases": [
+      {
+        "title": "returns cmd.exe args with chcp 65001 for UTF-8 output",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs returns cmd.exe args with chcp 65001 for UTF-8 output",
+        "status": "passed"
+      },
+      {
+        "title": "embeds short cmd.exe startup commands in shell args",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs embeds short cmd.exe startup commands in shell args",
+        "status": "passed"
+      },
+      {
+        "title": "keeps quoted cmd.exe startup commands on stdin delivery",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps quoted cmd.exe startup commands on stdin delivery",
+        "status": "passed"
+      },
+      {
+        "title": "keeps large cmd.exe startup commands on stdin delivery",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps large cmd.exe startup commands on stdin delivery",
+        "status": "passed"
+      },
+      {
+        "title": "returns PowerShell args that install OSC 133 bootstrap after normal profile loading",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs returns PowerShell args that install OSC 133 bootstrap after normal profile loading",
+        "status": "passed"
+      },
+      {
+        "title": "normalizes MSYS drive cwd before spawning native PowerShell",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs normalizes MSYS drive cwd before spawning native PowerShell",
+        "status": "passed"
+      },
+      {
+        "title": "quotes the PowerShell cwd restore command literally",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs quotes the PowerShell cwd restore command literally",
+        "status": "passed"
+      },
+      {
+        "title": "embeds short PowerShell startup commands after the OSC 133 bootstrap",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs embeds short PowerShell startup commands after the OSC 133 bootstrap",
+        "status": "passed"
+      },
+      {
+        "title": "preserves complex PowerShell startup command text through EncodedCommand",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs preserves complex PowerShell startup command text through EncodedCommand",
+        "status": "passed"
+      },
+      {
+        "title": "keeps large PowerShell startup commands on stdin delivery",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps large PowerShell startup commands on stdin delivery",
+        "status": "passed"
+      },
+      {
+        "title": "handles pwsh.exe (PowerShell Core) the same as Windows PowerShell",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs handles pwsh.exe (PowerShell Core) the same as Windows PowerShell",
+        "status": "passed"
+      },
+      {
+        "title": "does not change PowerShell args when the cmd/Git Bash preflight is provided",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs does not change PowerShell args when the cmd/Git Bash preflight is provided",
+        "status": "passed"
+      },
+      {
+        "title": "starts Git Bash as an interactive login shell with UTF-8 console setup",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs starts Git Bash as an interactive login shell with UTF-8 console setup",
+        "status": "passed"
+      },
+      {
+        "title": "keeps Git Bash startup commands on stdin delivery with the preflight wrapper",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps Git Bash startup commands on stdin delivery with the preflight wrapper",
+        "status": "passed"
+      },
+      {
+        "title": "gives a plain Git Bash tab the same rcfile as one with a startup command",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs gives a plain Git Bash tab the same rcfile as one with a startup command",
+        "status": "passed"
+      },
+      {
+        "title": "quotes a spaced preflight path through each shell environment",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs quotes a spaced preflight path through each shell environment",
+        "status": "passed"
+      },
+      {
+        "title": "does not apply Git Bash launch args to unrelated bash.exe paths",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs does not apply Git Bash launch args to unrelated bash.exe paths",
+        "status": "passed"
+      },
+      {
+        "title": "translates Windows cwd to /mnt/<drive>/... for wsl.exe",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs translates Windows cwd to /mnt/<drive>/... for wsl.exe",
+        "status": "passed"
+      },
+      {
+        "title": "materializes shell-ready wrappers before building WSL shell args",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs materializes shell-ready wrappers before building WSL shell args",
+        "status": "passed"
+      },
+      {
+        "title": "translates MSYS drive cwd to /mnt/<drive>/... for wsl.exe",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs translates MSYS drive cwd to /mnt/<drive>/... for wsl.exe",
+        "status": "passed"
+      },
+      {
+        "title": "keeps a selected WSL runtime single-letter cwd exact (/a)",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps a selected WSL runtime single-letter cwd exact (/a)",
+        "status": "passed"
+      },
+      {
+        "title": "keeps a selected WSL runtime single-letter cwd exact (/c)",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps a selected WSL runtime single-letter cwd exact (/c)",
+        "status": "passed"
+      },
+      {
+        "title": "escapes single quotes when translating a WSL cwd",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs escapes single quotes when translating a WSL cwd",
+        "status": "passed"
+      },
+      {
+        "title": "falls back to /mnt/c when cwd is not a drive-letter path",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs falls back to /mnt/c when cwd is not a drive-letter path",
+        "status": "passed"
+      },
+      {
+        "title": "keeps WSL UNC worktree cwd inside the matching distro",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps WSL UNC worktree cwd inside the matching distro",
+        "status": "passed"
+      },
+      {
+        "title": "keeps POSIX cwd inside the worktree distro when WSL context is provided",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs keeps POSIX cwd inside the worktree distro when WSL context is provided",
+        "status": "passed"
+      },
+      {
+        "title": "falls back to empty args + same cwd for unknown shells",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs falls back to empty args + same cwd for unknown shells",
+        "status": "passed"
+      },
+      {
+        "title": "is case-insensitive on the shell basename",
+        "ancestorTitles": [
+          "resolveWindowsShellLaunchArgs"
+        ],
+        "fullName": "resolveWindowsShellLaunchArgs is case-insensitive on the shell basename",
+        "status": "passed"
+      },
+      {
+        "title": "wraps the setup runner in balanced double quotes",
+        "ancestorTitles": [
+          "issue #7236: PowerShell setup-runner command delivery"
+        ],
+        "fullName": "issue #7236: PowerShell setup-runner command delivery wraps the setup runner in balanced double quotes",
+        "status": "passed"
+      },
+      {
+        "title": "delivers the setup-runner command through -EncodedCommand, never raw stdin",
+        "ancestorTitles": [
+          "issue #7236: PowerShell setup-runner command delivery"
+        ],
+        "fullName": "issue #7236: PowerShell setup-runner command delivery delivers the setup-runner command through -EncodedCommand, never raw stdin",
+        "status": "passed"
+      }
+    ],
+    "actualCurrentCasesPending": true,
+    "sourceOnlyNewTitle": "gives a plain Git Bash tab the same rcfile as one with a startup command",
+    "retainedChangedCallbackAssertions": "Current full canonical shell-args fixture unchanged in both arms, not replaced by historical behavior"
+  },
+  "removedCases": [
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior heading + paragraph: cuts only the paragraph",
+      "status": "passed",
+      "title": "heading + paragraph: cuts only the paragraph",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior paragraphs separated by blank lines are separate blocks",
+      "status": "passed",
+      "title": "paragraphs separated by blank lines are separate blocks",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior list item: cuts the entire list item",
+      "status": "passed",
+      "title": "list item: cuts the entire list item",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior document with horizontal rule: depth < 1 guard prevents crash",
+      "status": "passed",
+      "title": "document with horizontal rule: depth < 1 guard prevents crash",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior single paragraph document: cut removes the only content",
+      "status": "passed",
+      "title": "single paragraph document: cut removes the only content",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior blockquote with multiple paragraphs: cuts only one paragraph",
+      "status": "passed",
+      "title": "blockquote with multiple paragraphs: cuts only one paragraph",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior nested list item: cuts just the inner list item",
+      "status": "passed",
+      "title": "nested list item: cuts just the inner list item",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/editor/rich-markdown-cut.test.ts",
+      "fullName": "rich markdown cut handler behavior list item with nested sublist: cuts parent list item including sublist",
+      "status": "passed",
+      "title": "list item with nested sublist: cuts parent list item including sublist",
+      "ancestorTitles": [
+        "rich markdown cut handler behavior"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) GBK-encoded CJK bytes produce garbled output when decoded as UTF-8",
+      "status": "passed",
+      "title": "GBK-encoded CJK bytes produce garbled output when decoded as UTF-8",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) UTF-8 encoded CJK bytes decode correctly",
+      "status": "passed",
+      "title": "UTF-8 encoded CJK bytes decode correctly",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) multi-byte split across buffer boundaries produces replacement chars",
+      "status": "passed",
+      "title": "multi-byte split across buffer boundaries produces replacement chars",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "fullName": "Windows PTY UTF-8 encoding encoding mismatch (root cause) StringDecoder correctly handles split multi-byte sequences",
+      "status": "passed",
+      "title": "StringDecoder correctly handles split multi-byte sequences",
+      "ancestorTitles": [
+        "Windows PTY UTF-8 encoding",
+        "encoding mismatch (root cause)"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling keeps the primary selection wash translucent so card text stays legible",
+      "status": "passed",
+      "title": "keeps the primary selection wash translucent so card text stays legible",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling keeps the secondary selection ring when CSS owns the active state",
+      "status": "passed",
+      "title": "keeps the secondary selection ring when CSS owns the active state",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling styles multi-selected cards through one rule that skips the active card",
+      "status": "passed",
+      "title": "styles multi-selected cards through one rule that skips the active card",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/assets/worktree-card-active-style.test.ts",
+      "fullName": "worktree card active styling dims sleeping cards through theme tokens so the cue survives any surface",
+      "status": "passed",
+      "title": "dims sleeping cards through theme tokens so the cue survives any surface",
+      "ancestorTitles": [
+        "worktree card active styling"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/shared/ssh-types.test.ts",
+      "fullName": "SSH types SshConnectionState composes correctly",
+      "status": "passed",
+      "title": "SshConnectionState composes correctly",
+      "ancestorTitles": [
+        "SSH types"
+      ],
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/AgentStateDot.test.ts",
+      "fullName": "AgentStateDot keeps the question glyph above the light-theme non-text contrast floor",
+      "title": "keeps the question glyph above the light-theme non-text contrast floor",
+      "ancestorTitles": [
+        "AgentStateDot"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/components/AgentWorkingSpinner.test.tsx",
+      "fullName": "AgentWorkingSpinner preserves 12 steps per second without frequent iteration events",
+      "title": "preserves 12 steps per second without frequent iteration events",
+      "ancestorTitles": [
+        "AgentWorkingSpinner"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/ipc/worktree-watcher-removal-binding.test.ts",
+      "fullName": "WorktreeWatcherRemoval port exposes a desktop binding that delegates rather than stubbing",
+      "title": "exposes a desktop binding that delegates rather than stubbing",
+      "ancestorTitles": [
+        "WorktreeWatcherRemoval port"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/store/slices/ui/sidebar-body-writers.test.ts",
+      "fullName": "sidebarBody writers only the slice defines sidebarBody state writes",
+      "title": "only the slice defines sidebarBody state writes",
+      "ancestorTitles": [
+        "sidebarBody writers"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/store/slices/ui/sidebar-body-writers.test.ts",
+      "fullName": "sidebarBody writers only the bell toggle and explicit workspace-list requests call setSidebarBody",
+      "title": "only the bell toggle and explicit workspace-list requests call setSidebarBody",
+      "ancestorTitles": [
+        "sidebarBody writers"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/providers/ssh-pty-notification-routing-recovery.test.ts",
+      "fullName": "SSH PTY notification recovery routing rejects a stale activation without disturbing current continuity",
+      "title": "rejects a stale activation without disturbing current continuity",
+      "ancestorTitles": [
+        "SSH PTY notification recovery routing"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/providers/ssh-pty-notification-routing-recovery.test.ts",
+      "fullName": "SSH PTY notification recovery routing drops provisional frames and settles cancellation before rollback completes",
+      "title": "drops provisional frames and settles cancellation before rollback completes",
+      "ancestorTitles": [
+        "SSH PTY notification recovery routing"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/providers/ssh-pty-notification-routing-recovery.test.ts",
+      "fullName": "SSH PTY notification recovery routing restores the exact prior cursor when a replacement rolls back after frames",
+      "title": "restores the exact prior cursor when a replacement rolls back after frames",
+      "ancestorTitles": [
+        "SSH PTY notification recovery routing"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/providers/ssh-pty-notification-routing-recovery.test.ts",
+      "fullName": "SSH PTY notification recovery routing does not let an older lease rollback replace a newer activation",
+      "title": "does not let an older lease rollback replace a newer activation",
+      "ancestorTitles": [
+        "SSH PTY notification recovery routing"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/providers/ssh-pty-notification-routing-recovery.test.ts",
+      "fullName": "SSH PTY notification recovery routing ignores PTY methods with missing ids",
+      "title": "ignores PTY methods with missing ids",
+      "ancestorTitles": [
+        "SSH PTY notification recovery routing"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/providers/ssh-pty-notification-routing-recovery.test.ts",
+      "fullName": "SSH PTY notification recovery routing leaves recovery and cancellation control methods to their dedicated handlers",
+      "title": "leaves recovery and cancellation control methods to their dedicated handlers",
+      "ancestorTitles": [
+        "SSH PTY notification recovery routing"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts",
+      "fullName": "retired provider-exit copy ratchet flags a literal that opens with the retired copy",
+      "title": "flags a literal that opens with the retired copy",
+      "ancestorTitles": [
+        "retired provider-exit copy ratchet"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts",
+      "fullName": "retired provider-exit copy ratchet reports the line the literal sits on",
+      "title": "reports the line the literal sits on",
+      "ancestorTitles": [
+        "retired provider-exit copy ratchet"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts",
+      "fullName": "retired provider-exit copy ratchet leaves prose and unrelated copy alone",
+      "title": "leaves prose and unrelated copy alone",
+      "ancestorTitles": [
+        "retired provider-exit copy ratchet"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts",
+      "fullName": "retired provider-exit copy ratchet scans a plausible number of files",
+      "title": "scans a plausible number of files",
+      "ancestorTitles": [
+        "retired provider-exit copy ratchet"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts",
+      "fullName": "retired provider-exit copy ratchet has no production writer of the retired copy",
+      "title": "has no production writer of the retired copy",
+      "ancestorTitles": [
+        "retired provider-exit copy ratchet"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"shared orca.yaml\" in components/sidebar/SetupScriptPromptCardViews.tsx",
+      "title": "keeps an explicit space after \"shared orca.yaml\" in components/sidebar/SetupScriptPromptCardViews.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Detected from provenance\" in components/sidebar/SetupScriptPromptCardViews.tsx",
+      "title": "keeps an explicit space after \"Detected from provenance\" in components/sidebar/SetupScriptPromptCardViews.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Found a setup command in source\" in components/sidebar/SetupScriptPromptCardViews.tsx",
+      "title": "keeps an explicit space after \"Found a setup command in source\" in components/sidebar/SetupScriptPromptCardViews.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Example orca.yaml template\" in components/settings/RepositoryHooksYamlStatus.tsx",
+      "title": "keeps an explicit space after \"Example orca.yaml template\" in components/settings/RepositoryHooksYamlStatus.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Edit orca.yaml\" in components/settings/RepositoryHookScriptSetting.tsx",
+      "title": "keeps an explicit space after \"Edit orca.yaml\" in components/settings/RepositoryHookScriptSetting.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"When both orca.yaml\" in components/settings/RepositoryHookPolicySettings.tsx",
+      "title": "keeps an explicit space after \"When both orca.yaml\" in components/settings/RepositoryHookPolicySettings.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"main or master\" in components/settings/GitPane.tsx",
+      "title": "keeps an explicit space after \"main or master\" in components/settings/GitPane.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"such as main\" in components/settings/GitPane.tsx",
+      "title": "keeps an explicit space after \"such as main\" in components/settings/GitPane.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Use {basePrompt}\" in components/settings/AutoRenameBranchFromWorkSetting.tsx",
+      "title": "keeps an explicit space after \"Use {basePrompt}\" in components/settings/AutoRenameBranchFromWorkSetting.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Use {prompt}\" in components/settings/CustomAgentCommandField.tsx",
+      "title": "keeps an explicit space after \"Use {prompt}\" in components/settings/CustomAgentCommandField.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Showing N of M\" in components/editor/RichMarkdownDocLinkMenu.tsx",
+      "title": "keeps an explicit space after \"Showing N of M\" in components/editor/RichMarkdownDocLinkMenu.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"of totalMatches\" in components/editor/RichMarkdownDocLinkMenu.tsx",
+      "title": "keeps an explicit space after \"of totalMatches\" in components/editor/RichMarkdownDocLinkMenu.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"tour of total\" in components/contextual-tours/ContextualTourProgressDots.tsx",
+      "title": "keeps an explicit space after \"tour of total\" in components/contextual-tours/ContextualTourProgressDots.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Filter pull requests\" in components/github/PRFilterSections.tsx",
+      "title": "keeps an explicit space after \"Filter pull requests\" in components/github/PRFilterSections.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Renamed from path\" in components/editor/ConflictComponents.tsx",
+      "title": "keeps an explicit space after \"Renamed from path\" in components/editor/ConflictComponents.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"password for host\" in components/settings/SshPassphraseDialog.tsx",
+      "title": "keeps an explicit space after \"password for host\" in components/settings/SshPassphraseDialog.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"Force-quits session id\" in components/settings/ManageSessionKillDialog.tsx",
+      "title": "keeps an explicit space after \"Force-quits session id\" in components/settings/ManageSessionKillDialog.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    },
+    {
+      "file": "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts",
+      "fullName": "i18n JSX fragment spacing guard keeps an explicit space after \"This is the main worktree\" in components/sidebar/DeleteWorktreeWarningPanels.tsx",
+      "title": "keeps an explicit space after \"This is the main worktree\" in components/sidebar/DeleteWorktreeWarningPanels.tsx",
+      "ancestorTitles": [
+        "i18n JSX fragment spacing guard"
+      ],
+      "status": "passed",
+      "multiplicity": 1
+    }
+  ],
+  "wholeFilesRemoved": [
+    "src/renderer/src/assets/worktree-card-active-style.test.ts",
+    "src/shared/ssh-types.test.ts",
+    "src/renderer/src/store/slices/ui/sidebar-body-writers.test.ts",
+    "src/main/providers/ssh-pty-notification-routing-recovery.test.ts",
+    "src/main/native-chat/agent-session-wire/agent-session-retired-provider-exit-copy-ratchet.test.ts",
+    "src/renderer/src/lib/i18n-jsx-spacing-guard.test.ts"
+  ],
+  "shippingReceipt": {
+    "path": "notes/bun-migration/performance/junk-test-fifty-one-root-shipping-20261008/shipping-receipt.json",
+    "sha256": "5cd6d06b1a7ede062e92854c6f870a1dba68d311545d77d31e650d0d88a47007",
+    "head": "cbc01ab099432d9f1cc69ff8ae8f4013c47d383c",
+    "patchSha256": "e43f23366b5e44c4347d185039845e03c6db38c5464a73f5c7544772dc05cb95"
+  },
+  "rootFinalShippingCleanup": [
+    {
+      "file": "src/main/ipc/pty-encoding.test.ts",
+      "difference": "--- reviewed-deletion-union/src/main/ipc/pty-encoding.test.ts\n+++ final-shipping/src/main/ipc/pty-encoding.test.ts\n@@ -1,8 +1,7 @@\n /**\n  * Tests for Windows UTF-8 encoding fix.\n  *\n- * Unit tests demonstrate the GBK/UTF-8 encoding mismatch that causes garbled\n- * CJK characters. Integration tests spawn real shell processes to verify the\n+ * Integration tests spawn real shell processes to verify the\n  * code page and encoding are correctly set by our shell arguments.\n  *\n  * Why child_process instead of node-pty: node-pty's ConPTY backend requires\n"
+    },
+    {
+      "file": "src/main/ipc/worktree-watcher-removal-binding.test.ts",
+      "difference": "--- reviewed-deletion-union/src/main/ipc/worktree-watcher-removal-binding.test.ts\n+++ final-shipping/src/main/ipc/worktree-watcher-removal-binding.test.ts\n@@ -38,5 +38,4 @@\n     expect(calls).toEqual([...METHODS])\n     setWorktreeWatcherRemoval(null)\n   })\n-\n })\n"
+    },
+    {
+      "file": "src/renderer/src/components/AgentWorkingSpinner.test.tsx",
+      "difference": "--- reviewed-deletion-union/src/renderer/src/components/AgentWorkingSpinner.test.tsx\n+++ final-shipping/src/renderer/src/components/AgentWorkingSpinner.test.tsx\n@@ -180,6 +180,4 @@\n       }\n     }\n   })\n-\n-\n })\n"
+    }
+  ],
+  "first17SourceWitness": {
+    "path": "notes/bun-migration/performance/junk-test-seventeen-pruning-6fad-held-six-retained-order-source-draft/historical-source-and-literal-membership-witness.json",
+    "sha256": "941b101ab86b15874adb1905f353f24adc6203504099179354d6eb2e18d83df8"
+  },
+  "next34UnionWitness": {
+    "path": "notes/bun-migration/performance/junk-test-thirty-four-pruning-5252884-source-proposal/strict-source-union-witness.json",
+    "sha256": "c3b1622441dfe2f0f8e1068305fe9aad49f08e57578f0fd47e64a00ba9983e11"
+  },
+  "next34HistoricalWitness": {
+    "path": "notes/bun-migration/performance/junk-test-thirty-four-historical-7b-identity-source-only/historical-identity-viability-proof.json",
+    "sha256": "3ae8ab036bc997347c114d138b88c3fd534c17553659fb95358b616fb3abc3d2"
+  },
+  "qualificationPending": true,
+  "actualCurrentBeforeAfterCaseCounts": null,
+  "scope": "Exact final shipping51 callback/file deletions plus explicit stale header/blank-line cleanup only. No production or remaining callback/assertion/mock/timeout/setup changes. Independent source peers and all six actual receipts required."
+}
