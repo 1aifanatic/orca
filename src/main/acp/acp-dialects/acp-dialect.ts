@@ -76,6 +76,8 @@ export type AcpDialect = {
     tool: AgentJournalToolCallItem
   ): AcpBackgroundTaskUpdate[]
   toolSubagents?(update: ToolCallUpdate, tool: AgentJournalToolCallItem): AcpSubagentUpdate[]
+  /** A child-session notice supplies only its outcome; the translator owns membership and replay. */
+  subagentSessionEnd?(method: string, params: unknown): 'completed' | 'stopped' | undefined
   notification?(method: string, params: unknown, at: number): AcpDialectNotification | undefined
   contextWindow?(models: unknown): number | undefined
   request?(method: string, params: unknown): AcpRequestPresentation | undefined

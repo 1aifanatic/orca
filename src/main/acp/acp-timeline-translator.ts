@@ -168,7 +168,16 @@ export class AcpTimelineTranslator {
   notification(method: string, params: unknown, at: number): ProviderTimelineEvent[] {
     const session = requestSessionSchema.safeParse(params)
     if (session.success && session.data.sessionId !== this.options.sessionId) {
-      return []
+      const id = session.data.sessionId
+      if (this.loading || !this.subagents.has(id)) {
+        return []
+      }
+      const child = acpNotificationEnvelopeSchema.safeParse(params)
+      if (!child.success || child.data._meta?.isReplay === true) {
+        return []
+      }
+      const state = this.dialect.subagentSessionEnd?.(method, params)
+      return state ? this.reconcileSubagent(id, state, at) : []
     }
     const extension = this.dialect.notification?.(method, params, at)
     if (extension?.disposition === 'ignore') {
