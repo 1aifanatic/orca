@@ -14,12 +14,8 @@ import { ensureWslPinnedRuntime } from '../wsl/wsl-pinned-runtime'
 import { relayBundleCandidates } from '../ssh/relay-bundle-paths'
 import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
 import { claudeProfileMarkerPath, type ClaudeProfileDescriptor } from './claude-profile-paths'
-import {
-  claudeProfileMissing,
-  claudeProfileSetupFailed,
-  sameClaudeEmail,
-  type ClaudeProfileRouterSettings
-} from './claude-profile-router'
+import { sameClaudeEmail, type ClaudeProfileRouterSettings } from './claude-profile-router'
+import { claudeProfileMissing, claudeProfileSetupFailed } from './claude-profile-launch-errors'
 import { claudeStateLogin } from './claude-account-folder'
 import { wslClaudeProfile, wslClaudeProfilePointer } from './claude-profile-wsl-paths'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'

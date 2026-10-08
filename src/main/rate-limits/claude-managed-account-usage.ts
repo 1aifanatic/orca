@@ -19,10 +19,15 @@ export async function fetchInactiveClaudeAccountUsage(
   account: InactiveClaudeAccount,
   options: ClaudeManagedAccountUsageOptions = {}
 ): Promise<ProviderRateLimits> {
+  // Why the router: a covered account's usage is System default's, as its launches are.
+  const hostUsage =
+    account.managedAuthRuntime === 'wsl'
+      ? undefined
+      : getClaudeProfileRouter()?.accountUsagePreparation(account.id)
   const configDir =
     account.managedAuthRuntime === 'wsl'
       ? savedWslClaudeAccountHome(account)
-      : (getClaudeProfileRouter()?.accountHome(account.id) ?? null)
+      : (hostUsage?.configDir ?? null)
   if (!configDir || (account.managedAuthRuntime === 'wsl' && !account.wslDistro)) {
     return makeClaudeUsageResult('error', 'Sign in again to use this account.', {
       failureKind: 'missing-credentials',
@@ -42,7 +47,7 @@ export async function fetchInactiveClaudeAccountUsage(
   }
   const read = fetchActiveClaudeRateLimits({
     signal: options.signal,
-    authPreparation: {
+    authPreparation: hostUsage ?? {
       configDir: home,
       runtime: account.managedAuthRuntime,
       wslDistro: account.wslDistro,

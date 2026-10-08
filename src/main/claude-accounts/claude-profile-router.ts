@@ -4,16 +4,15 @@ import { dirname, join } from 'node:path'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import {
   CLAUDE_INJECTED_CONFIG_DIR_ENV,
-  CLAUDE_PROFILE_MISSING_MESSAGE,
   CLAUDE_PROFILE_POINTER_ENV,
   CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
   CLAUDE_USER_CONFIG_DIR_ENV
 } from '../../shared/claude-profile-routing'
+import { claudeProfileMissing, claudeProfileSetupFailed } from './claude-profile-launch-errors'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { resolveClaudeCommand } from '../codex-cli/command'
-import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
   claudeProfileMarkerPath,
   describeClaudeProfile,
@@ -328,6 +327,31 @@ export class ClaudeProfileRouter {
     }
   }
 
+  /** Whether launches run in an account's folder, which owns their auth, rather than System default. */
+  routesToAccount(): boolean {
+    return this.routedProfile() !== null
+  }
+
+  /** Where an unselected account's usage is read: where its launches would run once selected. */
+  accountUsagePreparation(accountId: string): ClaudeRuntimeAuthPreparation {
+    if (this.coveredBySystemDefault(accountId)) {
+      // Why no CLAUDE_CONFIG_DIR: naming System default's folder moves Claude to another Keychain item.
+      return {
+        configDir: this.systemDefaultHome(),
+        envPatch: {},
+        stripAuthEnv: false,
+        provenance: 'system'
+      }
+    }
+    const home = this.accountHome(accountId)
+    return {
+      configDir: home,
+      envPatch: { CLAUDE_CONFIG_DIR: home },
+      stripAuthEnv: true,
+      provenance: `profile:${accountId}`
+    }
+  }
+
   /** Every account folder on this host, selected or not. */
   accountHomes(): string[] {
     return listClaudeProfileHomes(this.args.dataRoot)
@@ -344,17 +368,4 @@ function readFileIfPresent(file: string): string | null {
   } catch {
     return null
   }
-}
-
-// Typed so a chat names the situation; a terminal reads the same message.
-export function claudeProfileMissing(): AgentSessionPreSpawnError {
-  return new AgentSessionPreSpawnError(new Error(CLAUDE_PROFILE_MISSING_MESSAGE), {
-    reason: 'claudeAccountFolderMissing'
-  })
-}
-
-export function claudeProfileSetupFailed(): AgentSessionPreSpawnError {
-  return new AgentSessionPreSpawnError(new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE), {
-    reason: 'claudeAccountSetupFailed'
-  })
 }

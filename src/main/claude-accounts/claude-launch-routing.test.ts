@@ -1,0 +1,151 @@
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, relative } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
+import { resolveClaudeStructuredLaunchHome } from '../claude/claude-structured-launch-home'
+import { resolveStructuredClaudeAccountHomePath } from '../runtime/structured-agent-account-home'
+import {
+  installClaudeProfileRouter,
+  withClaudeProfileTerminalEnv
+} from './claude-profile-installed-router'
+import { ClaudeProfileRouter, type ClaudeProfileRouterSettings } from './claude-profile-router'
+import { claudeStructuredAuthPolicyForSettings } from './claude-structured-auth-policy'
+
+const roots: string[] = []
+afterEach(() => {
+  installClaudeProfileRouter(undefined)
+  roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
+})
+
+function signIn(stateDir: string, email: string): void {
+  mkdirSync(stateDir, { recursive: true })
+  writeFileSync(
+    join(stateDir, '.claude.json'),
+    JSON.stringify({ oauthAccount: { emailAddress: email } })
+  )
+}
+
+/** Account a is selected and set up but signed in only in System default. */
+function coveredAccount() {
+  const root = mkdtempSync(join(tmpdir(), 'claude-launch-routing-'))
+  roots.push(root)
+  const userHome = join(root, 'personal')
+  const dataRoot = join(root, 'data')
+  const account: ClaudeManagedAccount = {
+    id: 'a',
+    email: 'a@example.test',
+    authMethod: 'subscription-oauth',
+    managedAuthPath: '/unused-legacy',
+    createdAt: 0,
+    updatedAt: 0,
+    lastAuthenticatedAt: 0
+  }
+  const settings: ClaudeProfileRouterSettings = {
+    claudeManagedAccounts: [account],
+    activeClaudeManagedAccountId: 'a',
+    activeClaudeManagedAccountIdsByRuntime: undefined,
+    agentStatusHooksEnabled: false,
+    disabledTuiAgents: []
+  }
+  const router = new ClaudeProfileRouter({
+    getSettings: () => settings,
+    dataRoot,
+    userHome,
+    env: {},
+    runSetup: async () => ({ outcome: 'prepared', warnings: [], surfaces: {} })
+  })
+  const accountHome = router.accountHome('a')
+  mkdirSync(accountHome, { recursive: true })
+  writeFileSync(join(accountHome, '..', 'profile.json'), '{}')
+  signIn(userHome, 'a@example.test')
+  installClaudeProfileRouter(router)
+  return { router, settings, accountHome, systemHome: join(userHome, '.claude') }
+}
+
+/** Where every Orca-started Claude would run right now, read through each entry point. */
+async function launchHomes(f: ReturnType<typeof coveredAccount>) {
+  const chatEnv: Record<string, string> = {}
+  return {
+    terminal: (await f.router.prepareLaunch()).configDir,
+    terminalEnv: withClaudeProfileTerminalEnv<Record<string, string>>({}, null, {
+      runtime: 'host'
+    }).CLAUDE_CONFIG_DIR,
+    chat: await resolveClaudeStructuredLaunchHome(f.router, chatEnv, '/recorded'),
+    chatEnv: chatEnv.CLAUDE_CONFIG_DIR,
+    chatRecord: resolveStructuredClaudeAccountHomePath({
+      launchEnv: {},
+      wslDistro: null,
+      getClaudeConfigDirectory: () => f.router.systemDefaultHome()
+    }),
+    chatStripsAuth: claudeStructuredAuthPolicyForSettings(f.settings).stripAuthEnv,
+    usage: f.router.preparation().configDir,
+    inactiveUsage: f.router.accountUsagePreparation('a').configDir
+  }
+}
+
+describe('one router decision for every Claude launch', () => {
+  it('sends every entry point to System default, then to the account once it signs in', async () => {
+    const f = coveredAccount()
+    expect(await launchHomes(f)).toEqual({
+      terminal: f.systemHome,
+      terminalEnv: undefined,
+      chat: f.systemHome,
+      chatEnv: undefined,
+      chatRecord: f.systemHome,
+      chatStripsAuth: false,
+      usage: f.systemHome,
+      inactiveUsage: f.systemHome
+    })
+    signIn(f.accountHome, 'a@example.test')
+    expect(await launchHomes(f)).toEqual({
+      terminal: f.accountHome,
+      terminalEnv: f.accountHome,
+      chat: f.accountHome,
+      chatEnv: f.accountHome,
+      chatRecord: f.accountHome,
+      chatStripsAuth: true,
+      usage: f.accountHome,
+      inactiveUsage: f.accountHome
+    })
+  })
+
+  // Terminals, chats, AI commit messages and automations launch through
+  // ClaudeRuntimeAuthService.prepareForClaudeLaunch; usage through prepareForRateLimitFetch.
+  it('keeps the Claude selection and account folders out of every launch path but the router', () => {
+    const mainRoot = join(__dirname, '..')
+    const routing =
+      /\b(?:getSelectedClaudeAccountIdForTarget|activeClaudeManagedAccountIds?(?:ByRuntime)?|describeClaudeProfile|wslClaudeProfile|shouldStripClaudeAuthEnvForAccount)\b|\.accountHome\(/
+    // Maps settings keys to the provider whose model catalog they expire; it routes nothing.
+    const allowed = new Set([
+      'native-chat/agent-model-catalog/agent-model-catalog-account-expiry.ts'
+    ])
+    const files: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(path)
+        } else if (
+          entry.name.endsWith('.ts') &&
+          !/\.test\.|test-(?:support|fixture|harness)/.test(entry.name)
+        ) {
+          files.push(relative(mainRoot, path).split('\\').join('/'))
+        }
+      }
+    }
+    walk(mainRoot)
+    // Presence: the scan reaches the router, and the pattern finds what the router reads.
+    expect(files).toContain('claude-accounts/claude-profile-router.ts')
+    expect(
+      readFileSync(join(mainRoot, 'claude-accounts/claude-profile-router.ts'), 'utf8')
+    ).toMatch(routing)
+    const bypassing = files.filter(
+      (file) =>
+        !file.startsWith('claude-accounts/') &&
+        !allowed.has(file) &&
+        routing.test(readFileSync(join(mainRoot, file), 'utf8'))
+    )
+    expect(bypassing).toEqual([])
+  })
+})

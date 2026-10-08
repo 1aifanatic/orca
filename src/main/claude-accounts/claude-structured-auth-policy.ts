@@ -1,4 +1,5 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import { getClaudeProfileRouter } from './claude-profile-installed-router'
 import { shouldStripClaudeAuthEnvForAccount } from './environment'
 import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
 
@@ -28,6 +29,11 @@ export function claudeStructuredAuthPolicyForSettings(
     | 'activeClaudeManagedAccountIdsByRuntime'
   >
 ): ClaudeStructuredAuthPolicy {
+  // Why the router first: it decides whether the account or System default runs, as for terminals.
+  const router = getClaudeProfileRouter()
+  if (router) {
+    return { stripAuthEnv: router.routesToAccount() }
+  }
   return {
     stripAuthEnv: shouldStripClaudeAuthEnvForAccount(
       settings.claudeManagedAccounts,
