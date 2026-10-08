@@ -326,18 +326,31 @@ export class AgentModelCatalogStore {
     }
   }
 
-  /** True when a read should kick a background refresh: nothing known, the
-   *  entry aged out, or a probe's verdict aged out, and no failure is still inside its TTL. */
+  /** True when a read should kick a background refresh: nothing known or the
+   *  entry aged out, and no failure is still inside its TTL. */
   shouldRefresh(fingerprint: string): boolean {
     if (this.refreshes.has(fingerprint) || this.hasActiveFailure(fingerprint)) {
       return false
     }
-    // Only a probe re-derives a verdict, however fresh the catalog beside it.
-    if (this.failures.get(fingerprint)?.unavailable) {
-      return true
-    }
     const entry = this.entries.get(fingerprint)
     return !entry || this.isStale(entry)
+  }
+
+  /** A probe's reason past its TTL. Only a probe re-derives it, however fresh the catalog beside
+   *  it, so only probe paths ask; a chat's own listing would never clear it. */
+  heldReasonDue(fingerprint: string): boolean {
+    return (
+      this.failures.get(fingerprint)?.unavailable !== undefined &&
+      !this.hasActiveFailure(fingerprint)
+    )
+  }
+
+  /** Whether a session-less probe should list now: the refresh rule, or a held reason due. */
+  probeDue(fingerprint: string): boolean {
+    return (
+      this.shouldRefresh(fingerprint) ||
+      (!this.refreshes.has(fingerprint) && this.heldReasonDue(fingerprint))
+    )
   }
 
   private evictOverCap(): void {

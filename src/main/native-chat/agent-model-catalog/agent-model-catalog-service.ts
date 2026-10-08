@@ -247,13 +247,7 @@ export function createAgentModelCatalogService(
       }
       // Past its TTL, only the probe re-derives a held reason. The reason is served meanwhile;
       // only a read that asks waits for the probe's answer.
-      if (
-        probe &&
-        home &&
-        !lifetime.signal.aborted &&
-        deps.store.failure(fingerprint)?.unavailable &&
-        !deps.store.hasActiveFailure(fingerprint)
-      ) {
+      if (probe && home && !lifetime.signal.aborted && deps.store.heldReasonDue(fingerprint)) {
         const probing = deps.store.refresh(fingerprint, params.agent, probe, listWith(probe, home))
         if (!params.waitForListing) {
           return answer(entry, { listingInProgress: true })
@@ -311,12 +305,7 @@ export function createAgentModelCatalogService(
         const probe = probes[agent]
         const key = probe ? await newChatCatalogKey(deps, agent) : null
         // A fresh entry, a listing already running, or a recent failure each mean nothing to do.
-        if (
-          !probe ||
-          !key ||
-          lifetime.signal.aborted ||
-          !deps.store.shouldRefresh(key.fingerprint)
-        ) {
+        if (!probe || !key || lifetime.signal.aborted || !deps.store.probeDue(key.fingerprint)) {
           return
         }
         await deps.store.refresh(key.fingerprint, agent, probe, listWith(probe, key.accountHome))

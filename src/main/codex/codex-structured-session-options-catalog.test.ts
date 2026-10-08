@@ -11,6 +11,7 @@ import { fetchCodexModelCatalogListing } from './codex-structured-model-catalog'
 import { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import type { CodexSession } from './codex-structured-session-state'
 import {
+  AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
   AGENT_MODEL_CATALOG_FRESH_MS,
   AgentModelCatalogStore,
   type AgentModelCatalogProbe
@@ -105,6 +106,27 @@ describe('Codex session options through the host catalog store', () => {
       reason: 'notSignedIn',
       account: 'system'
     })
+  })
+
+  it('never re-lists for an aged signed-out verdict beside a fresh entry', async () => {
+    let at = 1_000
+    const store = new AgentModelCatalogStore({ now: () => at })
+    seedEntry(store, 'gpt-live')
+    const signedOut: AgentModelCatalogProbe = async () => {
+      throw new AgentModelCatalogUnavailableError({ reason: 'notSignedIn', account: 'system' })
+    }
+    await store.refresh(FINGERPRINT, 'codex', signedOut, () =>
+      signedOut({ variable: 'CODEX_HOME', path: '/homes/a' })
+    )
+    at += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
+    const request = vi.fn(async () => listAnswer('gpt-live'))
+    const session = storeSession(request, store)
+    // Only a probe re-derives the verdict, so the chat's own listing would repeat on every read.
+    await readLiveCodexSessionOptions(session, undefined)
+    await readLiveCodexSessionOptions(session, undefined)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(modelListCalls(request)).toBe(0)
+    expect(store.probeDue(FINGERPRINT)).toBe(true)
   })
 
   it('lists once at the first read and serves every later read from the store', async () => {
