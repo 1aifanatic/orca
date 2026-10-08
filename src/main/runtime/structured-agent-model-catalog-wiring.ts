@@ -83,6 +83,9 @@ export async function modelCatalogHostDeps(input: {
     getRecord: (sessionId) => input.store.getRecord(sessionId) ?? undefined,
     drivesRecord: (record) => agentDrivesSession(input.agents, record),
     resolveAccountHome: deps.resolveAgentAccountHome,
+    recordWorkspacePath: async (record) =>
+      record.launchDirectory ??
+      (await deps.resolveWorkspacePath(record.location.workspaceId).catch(() => null)),
     workspaceMayOverrideDefaultModel,
     ...registeredModelCatalogDiscovery(input.registrations, {
       deps,

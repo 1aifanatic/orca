@@ -43,12 +43,25 @@ async function projectConfigDirectories(cwd: string): Promise<string[]> {
   }
 }
 
-/** Codex skips the `.codex` that is its own home; any other one with a config is a layer. */
-function directoryMayOverride(dir: string, accountHomePath: string): Promise<boolean> {
-  const layer = join(dir, '.codex')
-  return layer === resolve(accountHomePath)
-    ? Promise.resolve(false)
-    : exists(join(layer, 'config.toml'))
+// The project files each agent's CLI reads a model from, under its per-directory config folder.
+const PROJECT_MODEL_LAYERS: Readonly<Record<string, { folder: string; files: string[] }>> = {
+  codex: { folder: '.codex', files: ['config.toml'] },
+  claude: { folder: '.claude', files: ['settings.json', 'settings.local.json'] }
+}
+
+/** The folder that is the agent's own home is account config, not a layer; any other with a
+ *  config file is one. */
+async function directoryMayOverride(
+  dir: string,
+  layers: { folder: string; files: string[] },
+  accountHomePath: string
+): Promise<boolean> {
+  const layer = join(dir, layers.folder)
+  if (layer === resolve(accountHomePath)) {
+    return false
+  }
+  const found = await Promise.all(layers.files.map((file) => exists(join(layer, file))))
+  return found.some(Boolean)
 }
 
 /** True when a new chat in `workspacePath` could run a model other than the listed default. */
@@ -61,13 +74,14 @@ export async function workspaceMayOverrideDefaultModel(input: {
   if (input.agent === 'grok') {
     return false
   }
-  // Every other agent's own settings or env may pick another model; Codex's project layers are checked.
-  if (input.agent !== 'codex') {
+  // Every other agent's own settings may pick another model; Codex's and Claude's project layers are checked.
+  const layers = PROJECT_MODEL_LAYERS[input.agent]
+  if (!layers) {
     return true
   }
   const dirs = await projectConfigDirectories(input.workspacePath)
   const results = await Promise.all(
-    dirs.map((dir) => directoryMayOverride(dir, input.accountHomePath))
+    dirs.map((dir) => directoryMayOverride(dir, layers, input.accountHomePath))
   )
   return results.some(Boolean)
 }

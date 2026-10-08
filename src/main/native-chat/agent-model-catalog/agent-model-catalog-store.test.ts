@@ -387,6 +387,33 @@ describe('agent model catalog store', () => {
     expect(store.get('fp')!.models[0]).not.toHaveProperty('defaultEffort')
   })
 
+  it('keeps a CLI-resolved configured default through later listings and a restart', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'agent-model-catalog-'))
+    const store = new AgentModelCatalogStore()
+    await store.attachPersistence(createAgentModelCatalogFilePersistence(directory))
+    // Never on its own: there is no catalog to name a default in yet.
+    store.recordConfiguredDefault('fp', 'sonnet')
+    expect(store.get('fp')).toBeNull()
+
+    store.recordSuccess('fp', 'claude', success('opus', 'sonnet'), 'live')
+    store.recordConfiguredDefault('fp', 'sonnet')
+    store.recordSuccess(
+      'fp',
+      'claude',
+      { ...success('opus', 'sonnet'), origin: 'probe' },
+      'discovery'
+    )
+    const named = (entry: ReturnType<typeof store.get>) =>
+      entry?.models.filter((model) => model.isDefault).map((model) => model.id)
+    expect(named(store.get('fp'))).toEqual(['sonnet'])
+
+    await store.flushPersistence()
+    const restarted = new AgentModelCatalogStore()
+    await restarted.attachPersistence(createAgentModelCatalogFilePersistence(directory))
+    expect(restarted.get('fp')?.configured?.modelId).toBe('sonnet')
+    expect(named(restarted.get('fp'))).toEqual(['sonnet'])
+  })
+
   it('persists successes only and hydrates them across a restart', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'agent-model-catalog-'))
     const store = new AgentModelCatalogStore()

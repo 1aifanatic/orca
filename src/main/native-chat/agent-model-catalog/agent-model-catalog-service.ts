@@ -29,6 +29,8 @@ export type AgentModelCatalogServiceDeps = {
   probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
   /** Agents whose listing marks the model the account is configured to run as its default. */
   listingNamesConfiguredModel?: ReadonlySet<string>
+  /** Where a session's provider runs, for deciding whether its own config scope is the account's. */
+  recordWorkspacePath?: (record: AgentSessionRecord) => Promise<string | null>
   /** Whether the workspace's own config could pick a model other than the listed default. */
   workspaceMayOverrideDefaultModel?: (input: {
     agent: string
@@ -61,6 +63,8 @@ function resultFromEntry(
   namesDefault: boolean,
   listingNamesConfiguredModel: boolean
 ): AgentSessionModelCatalogResult {
+  // A CLI-resolved default names the configured model even where the listing names none.
+  const namesConfigured = listingNamesConfiguredModel || entry.configured !== null
   return {
     origin: entry.origin,
     // Without a default the picker names nothing until the chat reports its model.
@@ -69,7 +73,7 @@ function resultFromEntry(
     ),
     ...(entry.fastModeSupport ? { fastModeSupport: entry.fastModeSupport } : {}),
     fetchedAt: entry.fetchedAt,
-    listingNamesConfiguredModel: namesDefault && listingNamesConfiguredModel
+    listingNamesConfiguredModel: namesDefault && namesConfigured
   }
 }
 
@@ -108,6 +112,37 @@ async function newChatCatalogKey(
     fingerprint: agentModelCatalogFingerprint({ agent, accountHome, wslDistro: null }),
     accountHome
   }
+}
+
+/** A session launched with no model pick resolved its config scope's default; when that scope
+ *  is the account's (a native workspace with no config of its own), it is the account's default. */
+async function recordConfiguredDefault(
+  deps: AgentModelCatalogServiceDeps,
+  record: AgentSessionRecord,
+  fingerprint: string,
+  modelId: string
+): Promise<void> {
+  const accountHome = record.accountHome
+  if (
+    record.location.wslDistro !== null ||
+    !isLegacyAgentSessionAccountHome(accountHome) ||
+    !deps.recordWorkspacePath ||
+    !deps.workspaceMayOverrideDefaultModel
+  ) {
+    return
+  }
+  const workspacePath = await deps.recordWorkspacePath(record)
+  if (
+    !workspacePath ||
+    (await deps.workspaceMayOverrideDefaultModel({
+      agent: record.provider,
+      workspacePath,
+      accountHomePath: accountHome.path
+    }))
+  ) {
+    return
+  }
+  deps.store.recordConfiguredDefault(fingerprint, modelId)
 }
 
 async function runBounded<T>(
@@ -202,12 +237,17 @@ export function createAgentModelCatalogService(
         return
       }
       // The record's pinned account and host: the account this child listed under.
-      deps.store.recordSuccess(
-        agentModelCatalogFingerprintForRecord(record),
+      const fingerprint = agentModelCatalogFingerprintForRecord(record)
+      const { configuredModelId, ...listed } = listing
+      const saved = deps.store.recordSuccess(
+        fingerprint,
         record.provider,
-        { ...listing, fastModeTierByModel: new Map(), origin: 'live-session' },
+        { ...listed, fastModeTierByModel: new Map(), origin: 'live-session' },
         'live'
       )
+      if (saved && configuredModelId) {
+        void recordConfiguredDefault(deps, record, fingerprint, configuredModelId).catch(() => {})
+      }
     },
     async prewarm() {
       const probes = deps.probes ?? {}

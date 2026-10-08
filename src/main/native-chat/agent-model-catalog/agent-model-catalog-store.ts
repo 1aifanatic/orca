@@ -81,7 +81,7 @@ function listingKey(entry: AgentModelCatalogEntry): string {
       listing.fastModeSupport ?? null,
       listing.fastModeTierByModel
     ]
-  return JSON.stringify([facts(entry.discovered), facts(entry.live)])
+  return JSON.stringify([facts(entry.discovered), facts(entry.live), entry.configured?.modelId])
 }
 
 export class AgentModelCatalogStore {
@@ -182,9 +182,38 @@ export class AgentModelCatalogStore {
       origin: success.origin,
       at: this.now()
     }
+    const configured = previous?.configured ?? null
     return source === 'discovery'
-      ? agentModelCatalogEntry(agent, fingerprint, listing, previous?.live ?? null)
-      : agentModelCatalogEntry(agent, fingerprint, previous?.discovered ?? null, listing)
+      ? agentModelCatalogEntry(agent, fingerprint, listing, previous?.live ?? null, configured)
+      : agentModelCatalogEntry(
+          agent,
+          fingerprint,
+          previous?.discovered ?? null,
+          listing,
+          configured
+        )
+  }
+
+  /** Records which model the account's own config resolves to, for an agent whose listing names
+   *  none. Superseded by the next chat that resolves it; never creates an entry on its own. */
+  recordConfiguredDefault(fingerprint: string, modelId: string): void {
+    const previous = this.entries.get(fingerprint)
+    if (!previous || previous.configured?.modelId === modelId) {
+      return
+    }
+    const entry = agentModelCatalogEntry(
+      previous.agent,
+      fingerprint,
+      previous.discovered,
+      previous.live,
+      { modelId, at: this.now() }
+    )
+    if (!entry) {
+      return
+    }
+    this.entries.set(fingerprint, entry)
+    this.persistence?.save([...this.entries.values()])
+    this.notifyListingWaiters(fingerprint)
   }
 
   private writeSuccess(

@@ -112,21 +112,27 @@ function parseEntry(value: unknown): AgentModelCatalogEntry | null {
   if (!row || !isStructuredAgentId(row.agent) || typeof row.fingerprint !== 'string') {
     return null
   }
+  const configured = asRecord(row.configured)
+  const configuredModelId = text(configured?.modelId)
   return agentModelCatalogEntry(
     row.agent,
     row.fingerprint,
     parseListing(row.discovered),
-    parseListing(row.live)
+    parseListing(row.live),
+    configuredModelId && typeof configured?.at === 'number'
+      ? { modelId: configuredModelId, at: configured.at }
+      : null
   )
 }
 
-/** Only the two listings are written; the merged view is derived again on load. */
+/** Only the two listings and the configured default are written; the merged view is derived again on load. */
 function persistedEntry(entry: AgentModelCatalogEntry): unknown {
   return {
     agent: entry.agent,
     fingerprint: entry.fingerprint,
     discovered: entry.discovered,
-    live: entry.live
+    live: entry.live,
+    ...(entry.configured ? { configured: entry.configured } : {})
   }
 }
 

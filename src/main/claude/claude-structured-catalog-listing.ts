@@ -78,9 +78,21 @@ export function claudeCatalogListing(
   const launchOnly =
     launched !== null && discovered.some((row) => row.id === launched && row.label === row.id)
   const support = claudeFastModeSupport(discovered, undefined)
+  const configured = configuredClaudeModel(session, discovered)
   return {
     models: catalogClaudeModels(session, discovered),
     ...(support ? { fastModeSupport: support } : {}),
-    ...(launchOnly ? { launchOnlyModelId: launched } : {})
+    ...(launchOnly ? { launchOnlyModelId: launched } : {}),
+    ...(configured ? { configuredModelId: configured } : {})
   }
+}
+
+/** With no model sent at launch or since, the model the CLI says it applies is its own resolution
+ *  of env over settings over its default: the configured model for this session's config scope. */
+function configuredClaudeModel(session: ClaudeSession, discovered: ListedModel[]): string | null {
+  const applied = session.appliedOptions?.model
+  if (session.launchedModel !== null || session.options.has('model') || !applied) {
+    return null
+  }
+  return discovered.find((row) => row.id === applied || row.resolvedModel === applied)?.id ?? null
 }

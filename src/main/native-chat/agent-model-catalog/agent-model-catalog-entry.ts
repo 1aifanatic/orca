@@ -21,7 +21,14 @@ export type AgentModelCatalogLiveListing = {
   /** A row only this session's launch added (its own `--model`): kept only once the account's
    *  catalog already lists that model. */
   launchOnlyModelId?: string
+  /** The model the agent's own config resolution picked for a session launched with no model
+   *  pick: the configured default for that session's config scope. */
+  configuredModelId?: string
 }
+
+/** The account's configured default as an agent's CLI resolved it for a chat with no model pick,
+ *  in a workspace with no config of its own; for agents whose listing names none. */
+export type AgentModelCatalogConfiguredDefault = { modelId: string; at: number }
 
 /** A live options answer whose model rows are the account's listing as the child reported it. */
 export function withLiveCatalogListing<
@@ -41,6 +48,7 @@ export type AgentModelCatalogEntry = {
   fingerprint: string
   discovered: AgentModelCatalogListing | null
   live: AgentModelCatalogListing | null
+  configured: AgentModelCatalogConfiguredDefault | null
   // The merged view every reader uses, derived from the two listings above.
   models: AgentSessionModelOption[]
   fastModeSupport?: AgentSessionFastModeSupport
@@ -50,10 +58,12 @@ export type AgentModelCatalogEntry = {
 }
 
 /** Which models exist and their menus follow the newer listing; the configured default and
- *  default efforts are discovery's, else what a live child reported while its model offers it. */
+ *  default efforts are discovery's (or the CLI-resolved default), else what a live child reported
+ *  while its model offers it. */
 function mergedModels(
   discovered: AgentModelCatalogListing | null,
-  live: AgentModelCatalogListing | null
+  live: AgentModelCatalogListing | null,
+  configured: AgentModelCatalogConfiguredDefault | null
 ): AgentSessionModelOption[] {
   const liveIsNewer = live !== null && (discovered === null || live.at >= discovered.at)
   const newer = liveIsNewer ? live : discovered
@@ -72,7 +82,11 @@ function mergedModels(
     return {
       ...rest,
       // A session names no default; without any discovery its own flags are all there is.
-      isDefault: discovered ? listed?.isDefault === true : model.isDefault,
+      isDefault: configured
+        ? model.id === configured.modelId
+        : discovered
+          ? listed?.isDefault === true
+          : model.isDefault,
       efforts,
       ...(defaultEffort ? { defaultEffort } : {})
     }
@@ -83,7 +97,8 @@ export function agentModelCatalogEntry(
   agent: string,
   fingerprint: string,
   discovered: AgentModelCatalogListing | null,
-  live: AgentModelCatalogListing | null
+  live: AgentModelCatalogListing | null,
+  configured: AgentModelCatalogConfiguredDefault | null
 ): AgentModelCatalogEntry | null {
   const newer = live && (!discovered || live.at >= discovered.at) ? live : discovered
   if (!newer) {
@@ -96,7 +111,8 @@ export function agentModelCatalogEntry(
     fingerprint,
     discovered,
     live,
-    models: mergedModels(discovered, live),
+    configured,
+    models: mergedModels(discovered, live, configured),
     ...(fastModeSupport ? { fastModeSupport } : {}),
     fastModeTierByModel: {
       ...live?.fastModeTierByModel,

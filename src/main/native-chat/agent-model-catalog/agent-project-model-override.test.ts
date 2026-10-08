@@ -11,11 +11,7 @@ function write(path: string, content = ''): void {
   writeFileSync(path, content)
 }
 
-function mayOverride(
-  agent: 'claude' | 'codex',
-  workspacePath: string,
-  accountHomePath = '/homes/a'
-) {
+function mayOverride(agent: string, workspacePath: string, accountHomePath = '/homes/a') {
   return workspaceMayOverrideDefaultModel({ agent, workspacePath, accountHomePath })
 }
 
@@ -61,7 +57,20 @@ describe('workspaceMayOverrideDefaultModel', () => {
     expect(await mayOverride('codex', worktree, join(worktree, '.codex'))).toBe(false)
   })
 
-  it('never vouches for a Claude default, whose user settings can pick the model', async () => {
-    expect(await mayOverride('claude', join(root, 'anywhere'))).toBe(true)
+  it('finds a Claude project settings file, shared or local, but not the account home', async () => {
+    const worktree = join(root, 'claude-repo')
+    write(join(worktree, '.git'), 'gitdir: /elsewhere')
+    expect(await mayOverride('claude', worktree)).toBe(false)
+    // The user's own `.claude` is account config, which the CLI's resolution already covers.
+    write(join(worktree, '.claude', 'settings.json'), '{}')
+    expect(await mayOverride('claude', worktree, join(worktree, '.claude'))).toBe(false)
+    expect(await mayOverride('claude', worktree)).toBe(true)
+    rmSync(join(worktree, '.claude', 'settings.json'))
+    write(join(worktree, '.claude', 'settings.local.json'), '{}')
+    expect(await mayOverride('claude', worktree)).toBe(true)
+  })
+
+  it('never vouches for an agent whose project config it does not know', async () => {
+    expect(await mayOverride('opencode', join(root, 'anywhere'))).toBe(true)
   })
 })
