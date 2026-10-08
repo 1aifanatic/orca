@@ -1,3 +1,6 @@
+import { useAppStore } from '@/store'
+import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { resolveWorktreeOperationRouteForHost } from '@/lib/worktree-operation-route'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,6 +104,12 @@ export default function WorktreeContextMenuView({ model }: { model: WorktreeCont
     worktree,
     workspaceStatuses
   } = model
+  const runtimeEnvironmentId = useAppStore((s) =>
+    worktree.hostId
+      ? (resolveWorktreeOperationRouteForHost(s, worktree.id, worktree.hostId)
+          ?.runtimeEnvironmentId ?? null)
+      : getRuntimeEnvironmentIdForWorktree(s, worktree.id)
+  )
   const deleteShortcut = useOptionalShortcutLabel('workspace.delete')
   return (
     <div
@@ -176,6 +185,7 @@ export default function WorktreeContextMenuView({ model }: { model: WorktreeCont
               <WorktreeOpenInSubMenu
                 worktreePath={worktree.path}
                 connectionId={repo?.connectionId ?? null}
+                runtimeEnvironmentId={runtimeEnvironmentId}
                 disabled={isDeleting}
               />
               <DropdownMenuItem onSelect={handleCopyPath} disabled={isDeleting}>
