@@ -192,7 +192,7 @@ describe('verifyPinnedRelayInstall', () => {
   it('self-tests rung C on the host Node without the pinned version check or a cached refusal', async () => {
     vi.mocked(withRuntimeStoreLock).mockClear()
     vi.mocked(execCommand).mockResolvedValue('')
-    const run = new RelayRuntimeLadderRun('target-1', null)
+    const run = new RelayRuntimeLadderRun('target-1', null, true)
     const hostPlan: HostNodeAddonRelayPlan = {
       kind: 'host-node-addons',
       target: 'linux-x64-glibc',

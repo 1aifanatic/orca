@@ -62,7 +62,7 @@ export async function planRelayRuntimeStep(
   run.host = host
   switch (step) {
     case 'legacy':
-      if (run.hostNodeFallback) {
+      if (run.laddered) {
         run.hostNodePath = await proveHostNodeForFallback(conn, host, signal)
       }
       return undefined

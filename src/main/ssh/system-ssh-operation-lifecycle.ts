@@ -4,7 +4,7 @@ import type { SystemSshCommandChannel } from './system-ssh-command'
 export type ProcessResult = { label: string; stderr: string }
 
 /** OpenSSH's own exit status for a connection-level failure, never the remote command's. */
-export const SYSTEM_SSH_TRANSPORT_EXIT_CODE = 255
+const SYSTEM_SSH_TRANSPORT_EXIT_CODE = 255
 
 export class SystemSshCommandExitError extends Error {
   constructor(
@@ -16,6 +16,15 @@ export class SystemSshCommandExitError extends Error {
     const detail = exitCode === null ? `signal ${signal ?? 'unknown'}` : `exit ${exitCode}`
     super(`${label} failed (${detail}): ${stderr.trim()}`)
   }
+}
+
+/** The remote command, not OpenSSH, produced this exit. */
+export function isHostAnsweredSystemSshExit(err: unknown): err is SystemSshCommandExitError {
+  return (
+    err instanceof SystemSshCommandExitError &&
+    err.exitCode !== null &&
+    err.exitCode !== SYSTEM_SSH_TRANSPORT_EXIT_CODE
+  )
 }
 
 /**

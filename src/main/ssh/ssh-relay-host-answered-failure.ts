@@ -6,7 +6,7 @@
 import { isSshCommandExitError } from './ssh-relay-exec-command'
 import { isSshSessionLimitError } from './ssh-session-limit-error'
 import {
-  SYSTEM_SSH_TRANSPORT_EXIT_CODE,
+  isHostAnsweredSystemSshExit,
   SystemSshCommandExitError
 } from './system-ssh-operation-lifecycle'
 
@@ -35,7 +35,7 @@ export function isAnsweredHostFailure(err: unknown): boolean {
     return false
   }
   if (err instanceof SystemSshCommandExitError) {
-    return err.exitCode !== null && err.exitCode !== SYSTEM_SSH_TRANSPORT_EXIT_CODE
+    return isHostAnsweredSystemSshExit(err)
   }
   return (
     err instanceof RelayHostAnsweredError || isSshCommandExitError(err) || isSftpStatusError(err)

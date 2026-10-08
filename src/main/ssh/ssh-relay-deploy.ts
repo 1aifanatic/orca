@@ -434,7 +434,8 @@ async function deployAndLaunchRelayInner(
   const ladder = relayRuntimeLadder(resolveSshRemoteRuntime(target))
   const run = new RelayRuntimeLadderRun(
     target?.id ?? relayInstanceId ?? '',
-    target && registry ? sshTargetRelayRuntimeDecisionStore(registry) : null
+    target && registry ? sshTargetRelayRuntimeDecisionStore(registry) : null,
+    ladder.length > 1
   )
   let step = ladder[0] ?? 'legacy'
   while (true) {
@@ -457,7 +458,7 @@ async function deployAndLaunchRelayInner(
         { step, run }
       )
       // Why only a laddered pass: a plain host-npm connect has no rung decision to record.
-      if (ladder.length > 1) {
+      if (run.laddered) {
         run.settle(step)
       }
       if (target) {
@@ -471,15 +472,12 @@ async function deployAndLaunchRelayInner(
           `[ssh-relay] Relay runtime rung ${step} unavailable (${refusal.reason}): ${refusal.detail}`
         )
         run.refused(step, refusal.reason, refusal.remembered)
-        step = relayRuntimeStepAfterRefusal(ladder, step, refusal.reason, refusal.remembered, {
-          hostOs: run.host?.os ?? null
-        })
-        run.hostNodeFallback = step === 'legacy'
+        step = relayRuntimeStepAfterRefusal(ladder, step, refusal.reason, refusal.remembered)
         run.enter(step)
         continue
       }
       if (!(err instanceof RelayDirectoryGcConflictError)) {
-        if (ladder.length > 1 && !deploySignal?.aborted) {
+        if (run.laddered && !deploySignal?.aborted) {
           run.unresolved(step)
         }
         throw err
@@ -499,7 +497,7 @@ function ladderRefusal(
   step: RelayRuntimeStep,
   run: RelayRuntimeLadderRun
 ): PinnedRelayFallbackError | null {
-  if (step === 'D' || (step === 'legacy' && !run.hostNodeFallback)) {
+  if (step === 'D' || (step === 'legacy' && !run.laddered)) {
     return null
   }
   if (err instanceof PinnedRelayFallbackError) {
@@ -526,7 +524,7 @@ async function deployAndLaunchRelayAttempt(
   deploySignal?: AbortSignal,
   runtimeRequest: RelayRuntimeRequest = {
     step: 'legacy',
-    run: new RelayRuntimeLadderRun(relayInstanceId ?? '', null)
+    run: new RelayRuntimeLadderRun(relayInstanceId ?? '', null, false)
   }
 ): Promise<RelayDeployResult> {
   onProgress?.('Detecting remote platform...')

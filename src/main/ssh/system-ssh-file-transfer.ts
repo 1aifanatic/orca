@@ -20,8 +20,7 @@ import {
   throwIfAborted,
   waitForChannelClose,
   waitForProcess,
-  SYSTEM_SSH_TRANSPORT_EXIT_CODE,
-  SystemSshCommandExitError,
+  isHostAnsweredSystemSshExit,
   type ProcessResult
 } from './system-ssh-operation-lifecycle'
 import {
@@ -107,10 +106,11 @@ export async function uploadDirectoryViaSystemSsh(
 const DOWNSTREAM_WRITE_FAILURE = /write error|cannot write|broken pipe|EPIPE/i
 
 /**
- * Waits for all three, then names the cause. A remote exit the host answered wins over a local
- * tar failure that only followed it: local tar finished, was signalled, failed after ssh closed,
- * or reported a write/pipe error (BSD tar exits 1 with "Write error", no signal). A local tar
- * that failed on its own input first (missing directory, unreadable file) is the client's fault.
+ * Waits for all three, then names the cause; a failed ssh wins over a tar that succeeded. A remote
+ * exit the host answered wins over a local tar failure that only followed it: tar was signalled,
+ * failed after ssh closed, or reported a write/pipe error (BSD tar exits 1 with "Write error", no
+ * signal). A local tar that failed on its own input first (missing directory, unreadable file) is
+ * the client's fault.
  */
 async function settleUploadPipeline(
   tarProcess: ChildProcess,
@@ -128,24 +128,13 @@ async function settleUploadPipeline(
     stamp(remote, (at) => (remoteAt = at)),
     pipe
   ])
-  const remoteAnswered =
-    ssh.status === 'rejected' &&
-    ssh.reason instanceof SystemSshCommandExitError &&
-    ssh.reason.exitCode !== null &&
-    ssh.reason.exitCode !== SYSTEM_SSH_TRANSPORT_EXIT_CODE
-  const localFollowedRemote =
-    tar.status === 'fulfilled' ||
-    tarProcess.signalCode !== null ||
-    remoteAt < localAt ||
-    (tar.reason instanceof Error && DOWNSTREAM_WRITE_FAILURE.test(tar.reason.message))
-  if (
-    ssh.status === 'rejected' &&
-    (tar.status === 'fulfilled' || (remoteAnswered && localFollowedRemote))
-  ) {
-    throw ssh.reason
-  }
+  const remoteAnswered = ssh.status === 'rejected' && isHostAnsweredSystemSshExit(ssh.reason)
   if (tar.status === 'rejected') {
-    throw tar.reason
+    const localFollowedRemote =
+      tarProcess.signalCode !== null ||
+      remoteAt < localAt ||
+      (tar.reason instanceof Error && DOWNSTREAM_WRITE_FAILURE.test(tar.reason.message))
+    throw remoteAnswered && localFollowedRemote ? ssh.reason : tar.reason
   }
   if (ssh.status === 'rejected') {
     throw ssh.reason
