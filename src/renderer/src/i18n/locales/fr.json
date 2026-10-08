@@ -18246,6 +18246,7 @@
       },
       "receipt": {
         "unavailable": "Réponse sélectionnée indisponible",
+        "emptyAnswer": "Réponse vide",
         "cancelled": "Annulé",
         "resolved": "Résolu",
         "resolver": "Répondu le {{device}}",
@@ -18392,6 +18393,10 @@
       "messageNotSent": "Message non envoyé",
       "deliveryUnconfirmed": "Livraison non confirmée — vérifiez le chat avant de réessayer",
       "messageSending": "Envoi…",
+      "userMessage": {
+        "showFull": "Afficher le message complet",
+        "showLess": "Afficher moins"
+      },
       "queuedMessages": {
         "alreadySent": "Ce message a déjà été envoyé.",
         "editAlreadySent": "Déjà envoyé — votre texte reste dans la zone de saisie.",

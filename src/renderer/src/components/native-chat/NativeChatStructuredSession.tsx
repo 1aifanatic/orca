@@ -13,7 +13,8 @@ import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { NativeChatLoadingCue } from './NativeChatLoadingCue'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { useStructuredNativeChatSubmitReveal } from './use-structured-native-chat-submit-reveal'
-import { NativeChatQuestionCard } from './NativeChatQuestionCard'
+import { useStructuredPromptResponseHold } from './use-structured-prompt-response-hold'
+import { NativeChatStructuredQuestionCard } from './NativeChatStructuredQuestionCard'
 import { selectNativeChatViewState, structuredChatHistoryPhase } from './native-chat-view-state'
 import { useNativeChatComposerRevealFocus } from './use-native-chat-composer-reveal-focus'
 import { useNativeChatFontSize } from './use-native-chat-font-size'
@@ -124,6 +125,7 @@ export function NativeChatStructuredSession(
   )
   const submits = useStructuredNativeChatSubmitReveal(controller, provisionalLaunch.retry)
   const { revealLatest } = submits
+  const promptResponse = useStructuredPromptResponseHold(submits.respond)
   const agentLabel = structuredAgentLabel(props.agent)
   const continuation = useNativeChatInterruptedContinuation({
     target: props.target,
@@ -172,8 +174,8 @@ export function NativeChatStructuredSession(
   const composerShown = (prompt === null || promptsUnanswerable) && !readFailedFinally
   const approval = prompt?.body.kind === 'approval' ? chatApprovalFromJournal(prompt.body) : null
   const cancelPrompt = () => {
-    if (controller.turnId && prompt) {
-      void controller.cancel(controller.turnId, {
+    if (prompt && (controller.turnId || props.agent === 'pi')) {
+      void controller.cancel(controller.turnId ?? undefined, {
         itemId: prompt.itemId,
         expectedRevision: prompt.revision
       })
@@ -316,7 +318,10 @@ export function NativeChatStructuredSession(
             <NativeChatApprovalCard
               key={`${prompt.itemId}:${prompt.revision}`}
               approval={approval}
-              onChoose={(optionId) => void submits.respond(prompt, { kind: 'option', optionId })}
+              onChoose={(optionId) =>
+                void promptResponse.respond(prompt, { kind: 'option', optionId })
+              }
+              isSubmitting={promptResponse.holds(prompt)}
               onCancel={cancelPrompt}
               shouldFocus={!promptsUnanswerable && props.isVisible && props.isFocusedGroup}
               onLinkClick={onLinkClick}
@@ -324,35 +329,13 @@ export function NativeChatStructuredSession(
             />
           ) : null}
           {prompt && questionBody ? (
-            <NativeChatQuestionCard
+            <NativeChatStructuredQuestionCard
               key={`${prompt.itemId}:${prompt.revision}`}
-              prompt={{
-                questions: questions.map((question) => ({
-                  question: question.question,
-                  ...(question.header ? { header: question.header } : {}),
-                  multiSelect: question.multiSelect,
-                  options: question.options.map((option) => ({
-                    label: option.label,
-                    ...(option.description ? { description: option.description } : {})
-                  }))
-                }))
-              }}
-              allowOther={questions.map((question) => Boolean(question.freeTextQuestionId))}
-              onAnswer={(answers) => {
-                const chosen = questions.map((question, questionIndex) => {
-                  const answer = answers[questionIndex]
-                  const other = answer?.other?.trim()
-                  const optionIds = (answer?.indices ?? []).flatMap((optionIndex) => {
-                    const optionId = question.options[optionIndex]?.id
-                    return optionId ? [optionId] : []
-                  })
-                  return { questionId: question.id, optionIds, ...(other ? { other } : {}) }
-                })
-                if (chosen.every((answer) => answer.optionIds.length > 0 || answer.other)) {
-                  void submits.respond(prompt, { kind: 'answers', answers: chosen })
-                }
-              }}
+              questions={questions}
+              onAnswer={(response) => void promptResponse.respond(prompt, response)}
+              isSubmitting={promptResponse.holds(prompt)}
               onCancel={cancelPrompt}
+              shouldFocus={!promptsUnanswerable && props.isVisible && props.isFocusedGroup}
               answerInputRef={questionAnswerInputRef}
             />
           ) : null}

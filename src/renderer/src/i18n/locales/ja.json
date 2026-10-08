@@ -18180,6 +18180,7 @@
       },
       "receipt": {
         "unavailable": "選択した回答は利用できません",
+        "emptyAnswer": "空の回答",
         "cancelled": "キャンセル",
         "resolved": "解決済み",
         "resolver": "{{device}} に回答しました",
@@ -18326,6 +18327,10 @@
       "messageNotSent": "メッセージは送信されませんでした",
       "deliveryUnconfirmed": "配信を確認できません — 再試行する前にチャットを確認してください",
       "messageSending": "送信中…",
+      "userMessage": {
+        "showFull": "メッセージ全体を表示",
+        "showLess": "折りたたむ"
+      },
       "queuedMessages": {
         "alreadySent": "このメッセージはすでに送信されています。",
         "editAlreadySent": "すでに送信されています — テキストは入力欄に残っています。",
