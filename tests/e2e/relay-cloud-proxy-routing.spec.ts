@@ -139,20 +139,6 @@ test.describe('Orca Relay and Orca Cloud proxy setting', () => {
       orcaPage.evaluate(() =>
         window.api.mobile.getPairingQR({ connectionMode: 'automatic' }).catch(() => null)
       )
-    const recordRelayStatuses = (): Promise<void> =>
-      orcaPage.evaluate(() => {
-        const statuses: string[] = []
-        Object.assign(window, { __relayStatuses: statuses })
-        window.api.mobile.onRelayStatusChanged((detail) => statuses.push(detail.status))
-      })
-    const relayStatuses = (): Promise<string[]> =>
-      orcaPage.evaluate(() => {
-        const statuses: unknown = Reflect.get(window, '__relayStatuses')
-        return Array.isArray(statuses)
-          ? statuses.filter((status): status is string => typeof status === 'string')
-          : []
-      })
-
     // On: token exchange, assignment, and the control websocket all tunnel through the proxy.
     void requestPairing()
     await expect
@@ -171,13 +157,23 @@ test.describe('Orca Relay and Orca Cloud proxy setting', () => {
     await orcaPage.evaluate(() => window.api.settings.set({ relayAndCloudUseProxy: false }))
     lab.tunnels.length = 0
     lab.backendRequests.length = 0
-    await recordRelayStatuses()
+    const offAttempt = await orcaPage.evaluate(async () => {
+      const statuses: string[] = []
+      const unsubscribe = window.api.mobile.onRelayStatusChanged((detail) =>
+        statuses.push(detail.status)
+      )
+      const pairing = await window.api.mobile
+        .getPairingQR({ connectionMode: 'automatic' })
+        .catch(() => null)
+      unsubscribe()
+      return { pairing, statuses }
+    })
     // With the proxy bypassed the backend is unreachable: the user's reported failure.
-    expect(await requestPairing()).toMatchObject({
+    expect(offAttempt.pairing).toMatchObject({
       relayFailure: { code: 'relay_control_not_active', stage: 'create_pairing_relay' }
     })
     // Presence precondition: a relay connection attempt really ran after the toggle.
-    expect(await relayStatuses()).toContain('connecting')
+    expect(offAttempt.statuses).toContain('connecting')
     expect(lab.tunnels.filter((authority) => authority.endsWith('.relay-e2e.test:443'))).toEqual([])
     expect(lab.backendRequests).toEqual([])
   })
