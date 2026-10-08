@@ -3,7 +3,7 @@ import { writeWsFallbackPort } from '../rpc/ws-fallback-port-store'
 import { RuntimeRpcLifecycle } from './runtime-rpc-lifecycle'
 import { WS_BIND_HOST_ALL_INTERFACES, WS_BIND_HOST_LOOPBACK } from './runtime-rpc-pairing-types'
 
-export class RuntimeRpcNetworkExposure extends RuntimeRpcLifecycle {
+export abstract class RuntimeRpcNetworkExposure extends RuntimeRpcLifecycle {
   // Why: STA-2370 — widen the loopback listener to all interfaces so a freshly generated pairing
   // offer's advertised LAN endpoint is reachable. Idempotent, but it is no longer confined to the first
   // pairing action: a "This computer only" link never widens, so live loopback clients can already be

@@ -3,6 +3,10 @@ import type {
   PairingGetEndpointsParams,
   PairingProvisionRelayParams
 } from '../../../shared/mobile-relay-credential-contract'
+import type {
+  DelegatedPhone,
+  DelegatedMobileDeviceSyncResult
+} from '../../../shared/delegated-mobile-device-contract'
 import { fingerprintAuthenticatedPairingCredential } from '../rpc/orchestration-mutation-executor'
 import type { AuthenticatedMobileSocket } from '../rpc/mobile-socket-wiring'
 import type { RpcRequest, RpcResponse } from '../rpc/core'
@@ -26,7 +30,13 @@ function injectDeviceScope(response: string, scope: DeviceScope): string {
   }
 }
 
-export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
+export abstract class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
+  // Why: the pairing layer owns device revocation; dispatch only binds the authenticated parent.
+  protected abstract syncDelegatedMobileDevices(
+    parentDeviceId: string,
+    phones: readonly DelegatedPhone[]
+  ): DelegatedMobileDeviceSyncResult
+
   // Why: WebSocket dispatch is streaming (multiple responses) and auths via per-device tokens, not the shared token.
   protected async handleWebSocketMessage(
     rawMessage: string,
@@ -148,6 +158,10 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
               }
             : undefined,
         pairing: pairingContext,
+        delegatedMobileDevices:
+          device.scope === 'runtime'
+            ? { sync: (phones) => this.syncDelegatedMobileDevices(device.deviceId, phones) }
+            : undefined,
         signal: abortRegistration?.signal,
         sendBinary,
         registerBinaryStreamHandler: (streamId, handler) =>

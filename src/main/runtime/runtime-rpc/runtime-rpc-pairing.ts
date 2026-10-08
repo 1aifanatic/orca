@@ -9,6 +9,10 @@ import type {
 import type { PushUnregisterOutbox } from '../push/push-unregister-outbox'
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../../shared/pairing'
 import type { RuntimePairingReach } from '../../../shared/runtime-pairing-reach'
+import type {
+  DelegatedPhone,
+  DelegatedMobileDeviceSyncResult
+} from '../../../shared/delegated-mobile-device-contract'
 import { resolveAdvertisedPairingEndpoint } from '../pairing-endpoint'
 import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
 import {
@@ -86,6 +90,10 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
   }
 
   async revokeMobileDevice(deviceId: string): Promise<boolean> {
+    return this.revokeMobileDeviceNow(deviceId)
+  }
+
+  private revokeMobileDeviceNow(deviceId: string): boolean {
     const device = this.deviceRegistry?.getDevice(deviceId)
     if (device?.scope !== 'mobile') {
       return false
@@ -109,12 +117,43 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
 
   revokeRuntimeAccess(deviceId: string): boolean {
     const device = this.deviceRegistry?.getDevice(deviceId)
-    if (device?.scope !== 'runtime' || !this.deviceRegistry?.removeDevice(deviceId)) {
+    if (device?.scope !== 'runtime') {
+      return false
+    }
+    for (const child of this.deviceRegistry?.listDelegatedMobileDevices(deviceId) ?? []) {
+      this.revokeMobileDeviceNow(child.deviceId)
+    }
+    if (!this.deviceRegistry?.removeDevice(deviceId)) {
       return false
     }
     this.runtime.forgetClientNavigationState(deviceId)
     this.mobileSocketWiring?.terminateDeviceConnections(device.token)
     return true
+  }
+
+  /** Make the runtime device `parentDeviceId`'s phones exactly `phones`; dropped ones are fully revoked. */
+  protected syncDelegatedMobileDevices(
+    parentDeviceId: string,
+    phones: readonly DelegatedPhone[]
+  ): DelegatedMobileDeviceSyncResult {
+    const registry = this.deviceRegistry
+    const parent = registry?.getDevice(parentDeviceId)
+    if (!registry || parent?.scope !== 'runtime') {
+      throw new Error('delegated_device_parent_unavailable')
+    }
+    const wanted = new Set(phones.map((phone) => phone.phoneKey))
+    for (const child of registry.listDelegatedMobileDevices(parentDeviceId)) {
+      if (!child.phoneKey || !wanted.has(child.phoneKey)) {
+        this.revokeMobileDeviceNow(child.deviceId)
+      }
+    }
+    return {
+      devices: registry.upsertDelegatedMobileDevices(parent, phones).map((device) => ({
+        phoneKey: device.phoneKey,
+        deviceId: device.deviceId,
+        token: device.token
+      }))
+    }
   }
 
   getWebSocketEndpoint(): string | null {
