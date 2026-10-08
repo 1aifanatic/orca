@@ -31,19 +31,44 @@ export function buildPosixStdoutFence(
   label: string,
   nonce: string = nextPosixStdoutFenceNonce()
 ): PosixStdoutFence {
+  const markers = fenceMarkers(label, nonce)
+  return {
+    ...markers,
+    command: [
+      // Markers are [A-Za-z0-9_] only, so plain single quotes are exact.
+      `printf %s '${markers.beginMarker}'`,
+      command,
+      '_orca_capture_status=$?',
+      `printf %s '${markers.endMarker}'`,
+      'exit $_orca_capture_status'
+    ].join('\n')
+  }
+}
+
+/**
+ * Same fence on one line that sh, bash, zsh, fish and csh all parse, for a payload run by the
+ * user's own login shell. It cannot carry the payload's exit status (fish and csh have no `$?`),
+ * so the command always exits with the closing printf's status.
+ */
+export function buildAnyShellStdoutFence(
+  command: string,
+  label: string,
+  nonce: string = nextPosixStdoutFenceNonce()
+): PosixStdoutFence {
+  const markers = fenceMarkers(label, nonce)
+  return {
+    ...markers,
+    // Unquoted: nested quoting differs between these shells, and the markers need none.
+    command: `printf %s ${markers.beginMarker}; ${command}; printf %s ${markers.endMarker}`
+  }
+}
+
+function fenceMarkers(label: string, nonce: string): Omit<PosixStdoutFence, 'command'> {
   const begin = `__ORCA_${label}_CAPTURE_BEGIN_${nonce}__`
   const end = `__ORCA_${label}_CAPTURE_END_${nonce}__`
   return {
     beginMarker: begin,
     endMarker: end,
-    command: [
-      // Markers are [A-Za-z0-9_] only, so plain single quotes are exact.
-      `printf %s '${begin}'`,
-      command,
-      '_orca_capture_status=$?',
-      `printf %s '${end}'`,
-      'exit $_orca_capture_status'
-    ].join('\n'),
     readStdout: (stdout) => {
       // Why lastIndexOf: a login shell can echo the command text before running
       // it (`set -x` in an rc file), which repeats the opening fence verbatim.
