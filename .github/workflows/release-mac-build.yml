@@ -70,22 +70,27 @@ jobs:
             pnpm-lock.yaml
             mobile/pnpm-lock.yaml
 
-      # Cache the Electron binary + electron-builder tool downloads (notarytool,
-      # winCodeSign, nsis, squirrel, AppImage). Saves ~30-90s per job, incl. mac.
-      # Why: packaging bundles the pinned Node into the macOS terminal host; caching it keeps
-      # each build off nodejs.org unless the pin changed.
+      # Why: packaging bundles the pinned Node into the macOS terminal host. Keyed on the pin alone
+      # with no restore-keys, so a pin bump starts empty instead of carrying old archives forward.
       - name: Locate the pinned Node runtime cache
         shell: bash
         run: echo "ORCA_NODE_RUNTIME_CACHE_DIR=$HOME/Library/Caches/orca-node-runtime" >>"$GITHUB_ENV"
 
+      - name: Cache the pinned Node runtime
+        uses: actions/cache@v5
+        with:
+          path: ~/Library/Caches/orca-node-runtime
+          key: orca-node-runtime-mac-${{ hashFiles('src/shared/node-runtime-pin.ts') }}
+
+      # Cache the Electron binary + electron-builder tool downloads (notarytool,
+      # winCodeSign, nsis, squirrel, AppImage). Saves ~30-90s per job, incl. mac.
       - name: Cache electron-builder downloads
         uses: actions/cache@v5
         with:
           path: |
             ~/Library/Caches/electron
             ~/Library/Caches/electron-builder
-            ~/Library/Caches/orca-node-runtime
-          key: electron-builder-mac-${{ hashFiles('pnpm-lock.yaml', 'src/shared/node-runtime-pin.ts') }}
+          key: electron-builder-mac-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             electron-builder-mac-
 
