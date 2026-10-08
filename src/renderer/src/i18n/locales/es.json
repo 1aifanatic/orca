@@ -156,6 +156,7 @@
     "reportCrash": "Informar fallo...",
     "file": "Archivo",
     "exit": "Salir",
+    "quitApp": "Salir de {{appName}}",
     "edit": "Editar",
     "appearance": "Apariencia",
     "toggleLeftSidebar": "Alternar barra lateral izquierda",
