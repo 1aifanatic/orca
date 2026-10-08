@@ -251,6 +251,34 @@ describe('a click’s follow-up on its launch’s record', () => {
     await expect(take(runtime, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
   })
 
+  it('does not announce another caller’s completed launch with the same operation id as a pending desktop launch', async () => {
+    const runtime = host()
+    let complete: (value: boolean) => void = () => {}
+    let started: () => void = () => {}
+    const promptStarted = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    deliverTerminalPrompt.mockImplementationOnce(() => {
+      started()
+      return new Promise<boolean>((resolve) => {
+        complete = resolve
+      })
+    })
+    const running = launch(runtime)
+    await promptStarted
+    try {
+      expect((await take(runtime, DESKTOP)).pending).toMatchObject([{ operationId: OPERATION_ID }])
+      await launch(runtime, LAUNCH, PHONE)
+      expect(runtime.reportAgentLaunchPromptSettled).not.toHaveBeenCalled()
+    } finally {
+      complete(true)
+      await running
+    }
+    expect(runtime.reportAgentLaunchPromptSettled).toHaveBeenCalledExactlyOnceWith(OPERATION_ID)
+    expect((await take(runtime, DESKTOP)).taken).toHaveLength(1)
+    await expect(take(runtime, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
+  })
+
   it('is not recorded over the size cap, and the launch still runs', async () => {
     const runtime = host()
     const huge = { ...FOLLOW_UP, payload: { blob: 'x'.repeat(300 * 1024) } }

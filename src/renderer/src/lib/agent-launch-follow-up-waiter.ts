@@ -2,7 +2,8 @@
  * The follow-ups this window waits on (`agent-launch-follow-ups`): ones its launches recorded that
  * the host has not settled yet, found at startup after a reload, or left behind by a click whose own
  * take missed. Each one's notes or threads stay unsendable while it waits. It is taken when the host
- * says its prompt settled, or once more just past the host's own deadline, then let go.
+ * says its prompt settled, or once more just past an older host's deadline. A host that still
+ * reports the launch pending keeps the wait subscribed until its settlement.
  *
  * One take per launch runs at a time: a second answer that finds it already gone must not release
  * the hold while the first take is still running it.
@@ -17,9 +18,9 @@ import {
   takeLaunchFollowUps
 } from './agent-launch-follow-ups'
 
-/** How long past the host's own deadline a waiting window takes once more, then lets go. */
+/** How long past an older host's deadline a waiting window takes once more. */
 const PAST_DEADLINE_GRACE_MS = 15_000
-/** Bounds this window's hold if a live launch never announces settlement. */
+/** When to ask once more if the host supplied no deadline. */
 const FALLBACK_WAIT_MS = 5 * 60_000
 /** A click's own take that missed is asked again once this soon: the host's word came before it. */
 const CLICK_RETAKE_MS = 3_000
@@ -96,7 +97,7 @@ class LaunchFollowUpWaiter {
     })
     this.listen()
     if (this.heard?.has(operationId)) {
-      void this.take(operationId, false)
+      void this.take(operationId, true)
     }
     return done
   }
@@ -104,7 +105,7 @@ class LaunchFollowUpWaiter {
   private listen(): void {
     this.unsubscribe ??= this.clock.onSettled((operationId) => {
       if (this.waiting.has(operationId)) {
-        void this.take(operationId, false)
+        void this.take(operationId, true)
       } else {
         this.heard?.add(operationId)
       }
@@ -118,9 +119,9 @@ class LaunchFollowUpWaiter {
     }
   }
 
-  private take(operationId: string, last: boolean): Promise<void> {
+  private take(operationId: string, finishIfUnavailable: boolean): Promise<void> {
     const next = (this.takes.get(operationId) ?? Promise.resolve()).then(() =>
-      this.takeNow(operationId, last)
+      this.takeNow(operationId, finishIfUnavailable)
     )
     this.takes.set(operationId, next)
     void next.finally(() => {
@@ -131,7 +132,7 @@ class LaunchFollowUpWaiter {
     return next
   }
 
-  private async takeNow(operationId: string, last: boolean): Promise<void> {
+  private async takeNow(operationId: string, finishIfUnavailable: boolean): Promise<void> {
     if (!this.waiting.has(operationId)) {
       return
     }
@@ -139,7 +140,7 @@ class LaunchFollowUpWaiter {
     if (take && !take.pending.some((entry) => entry.operationId === operationId)) {
       await runTakenLaunchFollowUps(take.taken)
       this.finish(operationId)
-    } else if (last) {
+    } else if (finishIfUnavailable && !take) {
       this.finish(operationId)
     }
   }

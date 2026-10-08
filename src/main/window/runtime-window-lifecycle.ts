@@ -13,6 +13,7 @@ import type { TerminalTabCreateReply } from '../../shared/terminal-reveal-identi
 import { runWorktreeChangeInvalidators } from '../ipc/worktree-change-invalidators'
 import { requestAgentLaunchTabPublishFromRenderer } from './agent-launch-tab-publish-relay'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
+import { announceSettledLaunchFollowUps } from '../runtime/rpc/methods/agent-launch-follow-ups'
 import { requestMobileMarkdownFromRenderer } from './mobile-markdown-request-relay'
 import { registerRendererDocumentNavigation } from './renderer-document-navigation'
 import { createRuntimeRendererNotificationSender } from './runtime-renderer-notification-sender'
@@ -230,6 +231,7 @@ export function registerRuntimeWindowLifecycle(
     return () => {
       if (fence && runtime.markRendererReloadCancelled(mainWindow.id, fence)) {
         rendererNotifications.onMainFrameReloadCancelled()
+        announceSettledLaunchFollowUps(runtime)
       }
     }
   })

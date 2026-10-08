@@ -278,7 +278,10 @@ function runReplaySafeAgentLaunch(
     // Every way a launch ends, once it no longer reads as running: a window that reloaded mid-launch
     // holds its follow-up's notes and threads until it hears.
     if (params.followUp) {
-      announceSettledLaunchFollowUps(context.runtime)
+      announceSettledLaunchFollowUps(context.runtime, {
+        callerKey,
+        operationId: params.operationId
+      })
     }
   })
   activeAgentLaunches.set(key, { fingerprint, promise })
