@@ -1,3 +1,4 @@
+import { normalizeAgentLaunchSnapshot } from '../../../../shared/agent-launch-snapshot'
 import type { AutomationRun, AutomationRunStatus } from '../../../../shared/automations-types'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import type { AutomationActionNotice } from './automation-row-action-dispatch'
@@ -5,7 +6,7 @@ import type { AutomationListRow } from './automation-list-row-identity'
 
 export type AutomationRunsDashboardRun = Pick<
   AutomationRun,
-  'id' | 'title' | 'scheduledFor' | 'status' | 'trigger'
+  'id' | 'title' | 'scheduledFor' | 'status' | 'trigger' | 'launchSnapshot'
 >
 
 export function projectAutomationRunsDashboardRun(run: AutomationRun): AutomationRunsDashboardRun {
@@ -14,7 +15,8 @@ export function projectAutomationRunsDashboardRun(run: AutomationRun): Automatio
     title: run.title,
     scheduledFor: run.scheduledFor,
     status: run.status,
-    trigger: run.trigger
+    trigger: run.trigger,
+    launchSnapshot: normalizeAgentLaunchSnapshot(run.launchSnapshot)
   }
 }
 

@@ -1,3 +1,4 @@
+import type { AgentLaunchSnapshot } from '../../shared/agent-launch-snapshot'
 import type {
   Automation,
   AutomationRun,
@@ -9,6 +10,7 @@ const MAX_HEADLESS_OUTPUT_SNAPSHOT_CHARS = 256 * 1024
 
 export type HeadlessAutomationDispatchLaunch = {
   workspaceId: string
+  launchSnapshot?: AgentLaunchSnapshot
   workspaceDisplayName?: string | null
   terminalSessionId: string | null
   terminalPaneKey?: string | null

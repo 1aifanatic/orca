@@ -34,7 +34,8 @@ const terminal = {
   workspaceId: 'launched-workspace',
   terminalSessionId: 'launched-tab',
   terminalPaneKey: 'launched-pane',
-  terminalPtyId: 'launched-pty'
+  terminalPtyId: 'launched-pty',
+  launchSnapshot: { agentId: 'claude' as const, effectiveAgentArgs: '--model opus' }
 }
 
 describe('headless automation observation during persistence', () => {
