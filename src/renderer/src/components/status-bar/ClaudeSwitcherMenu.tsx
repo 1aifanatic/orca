@@ -130,12 +130,19 @@ export function ClaudeSwitcherMenu({
         setAccountsExpanded(false)
         return
       }
+      // Why: an account that needs a sign-in is the reason to open; show its inline Sign in.
+      if (accounts.accounts.some((account) => account.needsSignIn)) {
+        setAccountsExpanded(true)
+        if (!hasActiveRuntimeEnvironment) {
+          void fetchInactiveClaudeAccountUsage()
+        }
+      }
       // Why reload: the login each account folder holds changes without a settings change.
       void loadAccounts().catch((error) => {
         console.error('Failed to load Claude accounts for status bar:', error)
       })
     },
-    [loadAccounts]
+    [accounts.accounts, fetchInactiveClaudeAccountUsage, hasActiveRuntimeEnvironment, loadAccounts]
   )
 
   // Why: fetch inactive-account usage only on switcher expansion; remote-owned accounts have no local cache to fill.

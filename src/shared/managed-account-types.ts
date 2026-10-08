@@ -122,8 +122,6 @@ export type ClaudeRateLimitAccountsState = {
   systemDefaultEmail?: string
   /** An older Orca's copy-based switching once wrote an account's login into System default. */
   systemDefaultMayBeCopied?: boolean
-  /** The user's own CLAUDE_CONFIG_DIR while an account is selected: it wins in their terminals. */
-  userClaudeConfigDir?: string
 }
 
 export type ClaudeManagedAccountRuntimeSelection = {

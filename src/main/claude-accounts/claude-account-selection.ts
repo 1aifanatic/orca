@@ -82,8 +82,7 @@ export class ClaudeAccountSelection {
       ...(systemDefault ? { systemDefaultEmail: systemDefault.email } : {}),
       ...(systemDefault && this.runtimeAuth.router.copiedLoginIntoSystemDefault()
         ? { systemDefaultMayBeCopied: true }
-        : {}),
-      ...(userConfigDir && selection.host ? { userClaudeConfigDir: userConfigDir } : {})
+        : {})
     }
   }
 

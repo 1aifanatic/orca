@@ -121,7 +121,7 @@ describe('ClaudeAccountService', () => {
     expect(byId.get('new-wsl')?.needsSignIn).toBeUndefined()
   })
 
-  it("reports System default's login and the user's own folder while an account is selected", () => {
+  it("reports System default's login from the user's own folder", () => {
     const f = fixture()
     mkdirSync(join(f.root, 'personal'))
     writeFileSync(
@@ -129,9 +129,9 @@ describe('ClaudeAccountService', () => {
       JSON.stringify({ oauthAccount: { emailAddress: 'me@example.test' } })
     )
     expect(f.service.listAccounts()).toMatchObject({
-      systemDefaultEmail: 'me@example.test',
-      userClaudeConfigDir: join(f.root, 'personal')
+      systemDefaultEmail: 'me@example.test'
     })
+    expect(f.service.listAccounts()).not.toHaveProperty('userClaudeConfigDir')
     expect(f.service.listAccounts().systemDefaultMayBeCopied).toBeUndefined()
     mkdirSync(join(f.root, 'claude-runtime-auth'))
     expect(f.service.listAccounts().systemDefaultMayBeCopied).toBe(true)

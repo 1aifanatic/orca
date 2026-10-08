@@ -19426,7 +19426,6 @@
     "claude": {
       "added": "Account added. Select it to use it for the next Claude you start.",
       "nextLaunch": "{{value0}} → {{value1}}. The next Claude you start uses it. Running sessions keep their account.",
-      "userConfigDirWins": "Your shell sets CLAUDE_CONFIG_DIR to {{value0}}, so Claude in your terminals uses that folder instead of the selected account.",
       "profileSwitching": "Switching applies to the next Claude you start in any tab. Running sessions keep their account.",
       "systemDefaultNamed": "System default: {{value0}}",
       "systemDefaultIsSaved": "System default is signed in as {{value0}}, which is also a saved account. An earlier Orca version may have copied that login there. If it is not your own login, select System default and run claude /login.",

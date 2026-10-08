@@ -153,11 +153,4 @@ describe('Claude accounts section', () => {
     expect(own).toContain('System default: me@example.test')
     expect(own).not.toContain('An earlier Orca version')
   })
-
-  it("says when the user's own CLAUDE_CONFIG_DIR wins in their terminals", () => {
-    expect(render()).not.toContain('CLAUDE_CONFIG_DIR')
-    expect(render({ userClaudeConfigDir: '/home/me/.claude-work' })).toContain(
-      'Your shell sets CLAUDE_CONFIG_DIR to /home/me/.claude-work'
-    )
-  })
 })

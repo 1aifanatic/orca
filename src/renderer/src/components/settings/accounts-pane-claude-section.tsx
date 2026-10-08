@@ -57,15 +57,6 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
         </p>
       </div>
 
-      {claudeAccounts.userClaudeConfigDir && accountRuntime.runtime === 'host' ? (
-        <p role="status" className="text-xs text-muted-foreground">
-          {translate(
-            'accounts.claude.userConfigDirWins',
-            'Your shell sets CLAUDE_CONFIG_DIR to {{value0}}, so Claude in your terminals uses that folder instead of the selected account.',
-            { value0: claudeAccounts.userClaudeConfigDir }
-          )}
-        </p>
-      ) : null}
       <SearchableSetting
         title={translate('auto.components.settings.AccountsPane.8bbfd74556', 'Claude Accounts')}
         description={translate(

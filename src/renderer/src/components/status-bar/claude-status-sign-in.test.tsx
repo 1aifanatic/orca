@@ -170,6 +170,52 @@ describe('status bar Claude account that needs a sign-in', () => {
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1))
   })
 
+  it('keeps the account list in the usage roster when the selected account needs a sign-in', async () => {
+    const { ClaudeSwitcherMenu } = await import('./ClaudeSwitcherMenu')
+    const { UsageRosterPanel } = await import('./UsageRosterPanel')
+    const { TooltipProvider } = await import('@/components/ui/tooltip')
+    const { usageRowSignInOpensSettings } = await import('./usage-provider-settings-target')
+    const onSignIn = vi.fn()
+    const signedOut: ProviderRateLimits = {
+      ...claudeProvider,
+      status: 'error',
+      error: 'Not signed in',
+      usageMetadata: { failureKind: 'missing-credentials' }
+    }
+    render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(UsageRosterPanel, {
+          providers: [signedOut],
+          display: 'used',
+          statusBarUsageMode: 'verbose',
+          onStatusBarUsageModeChange: () => {},
+          isRefreshing: false,
+          onRefresh: () => {},
+          onOpenProvider: () => {},
+          onSignIn,
+          canSignIn: (provider) => usageRowSignInOpensSettings(provider, storeSettings),
+          onManageAccounts: () => {},
+          onUsageDetails: () => {},
+          renderRow: (p, row) =>
+            React.createElement(ClaudeSwitcherMenu, {
+              claude: p,
+              compact: false,
+              iconOnly: false,
+              asSubmenu: true,
+              triggerContent: row
+            })
+        })
+      )
+    )
+    fireEvent.click(await screen.findByText('old@example.com'))
+    expect(await screen.findByText('Sign in again to use this account')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Sign in/ }))
+    await waitFor(() => expect(reauthenticate).toHaveBeenCalledWith({ accountId: 'old' }))
+    expect(onSignIn).not.toHaveBeenCalled()
+  })
+
   it('offers no sign-in on a remote server, which this device cannot sign in for', async () => {
     activeRuntimeEnvironmentId = 'env-1'
     await openAccounts()
