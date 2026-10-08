@@ -2,6 +2,7 @@ import type { AgentSessionCancelResult } from '../../../src/shared/agent-session
 import type { AgentJournalRenderItem } from '../../../src/shared/agent-session-journal-types'
 import type { StructuredAgentSessionState } from '../../../src/shared/structured-agent-session-reducer'
 import { runningStructuredAgentSessionTurnId } from '../../../src/shared/structured-agent-session-live-turn'
+import { agentSessionStopTarget } from '../../../src/shared/agent-session-stop-target'
 import type { RpcClient } from '../transport/rpc-client'
 import {
   requestStructuredAgentSessionMutation,
@@ -39,14 +40,17 @@ export async function requestMobileStructuredAgentSessionCancel(args: {
   const { client, enabled, inFlight, onSendError, sessionId, stateRef } = args
   const current = stateRef.current
   const turnId = runningStructuredAgentSessionTurnId(current)
-  if (!client || !sessionId || !enabled || current.fence === null || !turnId) {
+  const stopTarget = args.targetedStopSupported
+    ? agentSessionStopTarget(turnId, current.submissions, current.fence)
+    : undefined
+  if (!client || !sessionId || !enabled || current.fence === null || (!turnId && !stopTarget)) {
     onSendError('Stop not sent')
     return false
   }
   // Check the capability before fields enter the fingerprint.
   const fields = {
-    turnId,
-    ...(args.targetedStopSupported ? { stopTarget: { kind: 'turn', turnId } } : {}),
+    ...(turnId ? { turnId } : {}),
+    ...(stopTarget ? { stopTarget } : {}),
     ...(args.prompt && args.promptCancelSupported === true ? { prompt: args.prompt } : {})
   }
   // Every press is its own Stop: a kept id would be answered from the last one and stop nothing.
