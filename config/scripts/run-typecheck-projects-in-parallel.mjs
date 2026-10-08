@@ -79,9 +79,9 @@ function checkProject(project) {
     child.on('error', reject)
     child.on('close', (code, signal) => {
       if (signal) {
-        reject(new Error(`tsc ${project} exited with signal ${signal}`))
+        reject(new Error(`typecheck ${project} exited with signal ${signal}`))
       } else if (code !== 0) {
-        reject(new Error(`tsc ${project} exited with code ${code}`))
+        reject(new Error(`typecheck ${project} exited with code ${code}`))
       } else {
         resolve()
       }
