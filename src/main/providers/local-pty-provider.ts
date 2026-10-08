@@ -1,4 +1,5 @@
 import type * as pty from 'node-pty'
+import { withEvidenceBudget } from '../../shared/process-table-snapshot-reader'
 import type { IPtyProvider, PtyProcessInfo, PtySpawnOptions, PtySpawnResult } from './types'
 import {
   WRITE_ACCEPTED,
@@ -141,7 +142,10 @@ export class LocalPtyProvider implements IPtyProvider {
 
   async inspectProcess(id: string): Promise<PtyProcessInspection> {
     const proc = ptyProcesses.get(id)
-    const foregroundProcess = await getLocalPtyForegroundProcess(id)
+    const foregroundProcess =
+      process.platform === 'win32'
+        ? await getLocalPtyForegroundProcess(id)
+        : await withEvidenceBudget(getLocalPtyForegroundProcess(id))
     const childProcessEvidence = await inspectLocalPtyChildProcesses(id)
     // Neither asynchronous inspection may publish a replacement pane's identity.
     if (ptyProcesses.get(id) !== proc) {

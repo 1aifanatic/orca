@@ -20,6 +20,8 @@ vi.mock('./agent-foreground-process', () => ({
 }))
 
 import { getLocalPtyForegroundProcess } from './local-pty-foreground-inspection'
+import { LocalPtyProvider } from './local-pty-provider'
+import { PROCESS_TABLE_EVIDENCE_BUDGET_MS } from '../../shared/process-table-snapshot-reader'
 import { ptyLastRecognizedForeground, ptyProcesses, ptyShellPath } from './local-pty-provider-state'
 
 const SHELL_PID = 4242
@@ -82,6 +84,7 @@ describe('local POSIX provider cheap-tier revalidation', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     ptyProcesses.delete(ID)
     ptyShellPath.delete(ID)
     ptyLastRecognizedForeground.delete(ID)
@@ -134,5 +137,28 @@ describe('local POSIX provider cheap-tier revalidation', () => {
     cheapSnapshotMock.mockRejectedValueOnce(new Error('ps died'))
     expect(await getLocalPtyForegroundProcess(ID)).toBe('claude')
     expect(resolveMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops a direct provider inspection at the existing evidence budget when its full capture hangs', async () => {
+    vi.useFakeTimers()
+    fullSnapshotMock.mockImplementationOnce(() => new Promise(() => {}))
+    const rejected = vi.fn()
+    void new LocalPtyProvider().inspectProcess(ID).catch(rejected)
+
+    await vi.advanceTimersByTimeAsync(PROCESS_TABLE_EVIDENCE_BUDGET_MS - 1)
+    expect(fullSnapshotMock).toHaveBeenCalledOnce()
+    expect(rejected).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(rejected).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ reason: 'capture_over_budget' })
+    )
+  })
+
+  it('retains a direct provider’s positive foreground and child evidence when capture completes', async () => {
+    await expect(new LocalPtyProvider().inspectProcess(ID)).resolves.toEqual({
+      foregroundProcess: 'claude',
+      hasChildProcesses: true,
+      childProcessEvidence: 'children'
+    })
   })
 })

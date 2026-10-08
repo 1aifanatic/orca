@@ -25,8 +25,6 @@ export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
   'src/main/opencode-usage/scanner.test.ts',
   'src/main/rate-limits/opencode-go-api-key-source.test.ts',
   'src/main/rate-limits/opencode-go-managed-account-source.test.ts',
-  'src/main/runtime/agent-launch-persisted-obligations.test.ts',
-  'src/main/runtime/agent-launch-pty-identity.test.ts',
   'src/main/runtime/agent-session-record-store-slot.test.ts',
   'src/main/runtime/claude-structured-exit-mid-response.test.ts',
   'src/main/runtime/claude-structured-failed-start-resume.test.ts',
