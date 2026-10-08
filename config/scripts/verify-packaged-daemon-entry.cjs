@@ -79,41 +79,102 @@ function macCommandPrefixForArch(targetArch, run = spawnSync) {
   return null
 }
 
-/** One NDJSON daemon connection; resolves after a successful hello. */
-function openDaemonConnection(socketPath, hello) {
-  return new Promise((resolve, reject) => {
-    const socket = connect(socketPath)
-    const listeners = []
-    let buffer = ''
-    let greeted = false
-    socket.setEncoding('utf8')
-    socket.on('error', reject)
-    socket.on('data', (chunk) => {
-      buffer += chunk.toString()
-      let newline
-      while ((newline = buffer.indexOf('\n')) !== -1) {
-        const message = JSON.parse(buffer.slice(0, newline))
-        buffer = buffer.slice(newline + 1)
-        if (!greeted) {
-          greeted = true
-          if (message.ok) {
-            resolve({ socket, onMessage: (listener) => listeners.push(listener) })
-          } else {
-            reject(new Error(`daemon rejected ${hello.role} hello: ${message.error}`))
-          }
-          continue
-        }
-        for (const listener of listeners) {
-          listener(message)
-        }
-      }
-    })
-    socket.write(`${JSON.stringify({ type: 'hello', ...hello })}\n`)
+/** Settles with `promise`, or rejects once `deadline` passes. */
+function beforeDeadline(promise, deadline, what) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`timed out waiting for ${what}`)),
+      Math.max(0, deadline - Date.now())
+    )
   })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
-async function runTerminalHostRoundTrip({ command, entry, deadline, stderr }) {
-  const scratch = mkdtempSync('/tmp/oth-')
+/**
+ * One NDJSON daemon connection. `ready` settles on the hello reply; `broken` rejects when the
+ * connection errors, closes or sends a line that is not JSON, at any point.
+ */
+function openDaemonConnection(socketPath, hello) {
+  const socket = connect(socketPath)
+  const listeners = []
+  let fail
+  const broken = new Promise((_, reject) => {
+    fail = (error) => {
+      reject(error)
+      socket.destroy()
+    }
+  })
+  broken.catch(() => {})
+  let greet
+  const greeted = new Promise((resolve) => {
+    greet = resolve
+  })
+  let isGreeted = false
+  let buffer = ''
+  socket.setEncoding('utf8')
+  socket.on('error', (error) => fail(error))
+  socket.on('close', () => fail(new Error(`the daemon closed the ${hello.role} connection`)))
+  socket.on('data', (chunk) => {
+    buffer += chunk.toString()
+    let newline
+    while ((newline = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, newline)
+      buffer = buffer.slice(newline + 1)
+      let message
+      try {
+        message = JSON.parse(line)
+      } catch {
+        fail(new Error(`the daemon sent a non-JSON ${hello.role} line: ${line.slice(0, 200)}`))
+        return
+      }
+      if (!isGreeted) {
+        isGreeted = true
+        if (message?.ok) {
+          greet()
+        } else {
+          fail(new Error(`daemon rejected ${hello.role} hello: ${message?.error}`))
+        }
+        continue
+      }
+      for (const listener of listeners) {
+        listener(message)
+      }
+    }
+  })
+  socket.write(`${JSON.stringify({ type: 'hello', ...hello })}\n`)
+  return {
+    socket,
+    broken,
+    ready: Promise.race([greeted, broken]),
+    onMessage: (listener) => listeners.push(listener)
+  }
+}
+
+async function stopDaemon(daemon, isExited) {
+  if (isExited()) {
+    return
+  }
+  const exited = new Promise((resolve) => daemon.once('exit', resolve))
+  const waitForExit = (ms) =>
+    beforeDeadline(exited, Date.now() + ms, 'the daemon to exit').catch(() => {})
+  daemon.kill('SIGTERM')
+  await waitForExit(3_000)
+  if (!isExited()) {
+    daemon.kill('SIGKILL')
+    await waitForExit(1_000)
+  }
+}
+
+async function runTerminalHostRoundTrip({
+  command,
+  entry,
+  deadline,
+  stderr,
+  scratchPrefix = '/tmp/oth-'
+}) {
+  // A short path: the socket must fit sun_path.
+  const scratch = mkdtempSync(scratchPrefix)
   const socketPath = join(scratch, 'd.sock')
   const tokenPath = join(scratch, 'token')
   const env = { ...process.env, ORCA_USER_DATA_PATH: join(scratch, 'user-data') }
@@ -123,15 +184,23 @@ async function runTerminalHostRoundTrip({ command, entry, deadline, stderr }) {
     [...command.slice(1), entry, '--socket', socketPath, '--token', tokenPath],
     { env, stdio: ['ignore', 'ignore', 'pipe'] }
   )
-  daemon.stderr.setEncoding('utf8')
-  daemon.stderr.on('data', (chunk) => stderr.push(chunk))
   let exited = false
   daemon.on('exit', () => {
     exited = true
   })
-  daemon.on('error', (error) => stderr.push(error.message))
-  const sockets = []
-  const timers = new AbortController()
+  daemon.on('error', (error) => {
+    exited = true
+    stderr.push(error.message)
+  })
+  daemon.stderr.setEncoding('utf8')
+  daemon.stderr.on('data', (chunk) => stderr.push(chunk))
+  // If something exits the process mid-check, still leave no daemon or scratch dir behind.
+  const cleanupOnExit = () => {
+    daemon.kill('SIGKILL')
+    rmSync(scratch, { recursive: true, force: true })
+  }
+  process.once('exit', cleanupOnExit)
+  const connections = []
   try {
     // The first exec of a freshly signed binary can be slow while the system assesses it.
     while (!(existsSync(socketPath) && existsSync(tokenPath) && statSync(tokenPath).size > 0)) {
@@ -143,21 +212,23 @@ async function runTerminalHostRoundTrip({ command, entry, deadline, stderr }) {
     const token = readFileSync(tokenPath, 'utf8').trim()
     const clientId = randomUUID()
     const hello = { version: daemonProtocolVersion, token, clientId }
-    const control = await openDaemonConnection(socketPath, { ...hello, role: 'control' })
-    sockets.push(control.socket)
-    const stream = await openDaemonConnection(socketPath, { ...hello, role: 'stream' })
-    sockets.push(stream.socket)
+    const control = openDaemonConnection(socketPath, { ...hello, role: 'control' })
+    connections.push(control)
+    await beforeDeadline(control.ready, deadline, 'the control hello reply')
+    const stream = openDaemonConnection(socketPath, { ...hello, role: 'stream' })
+    connections.push(stream)
+    await beforeDeadline(stream.ready, deadline, 'the stream hello reply')
     let output = ''
     const sawOutput = new Promise((resolve) => {
       stream.onMessage((message) => {
-        output += message.payload?.data ?? ''
+        output += message?.payload?.data ?? ''
         if (output.includes(TERMINAL_HOST_BOOT_OUTPUT)) {
-          resolve(true)
+          resolve()
         }
       })
     })
     control.onMessage((message) => {
-      if (message.id === 'boot-1' && message.ok === false) {
+      if (message?.id === 'boot-1' && message.ok === false) {
         stderr.push(`createOrAttach failed: ${message.error}`)
       }
     })
@@ -174,31 +245,21 @@ async function runTerminalHostRoundTrip({ command, entry, deadline, stderr }) {
         }
       })}\n`
     )
-    const remainingMs = Math.max(0, deadline - Date.now())
-    const timeout = delay(remainingMs, false, { signal: timers.signal }).catch(() => false)
-    const passed = await Promise.race([sawOutput, timeout])
-    if (!passed) {
-      throw new Error(
-        `no "${TERMINAL_HOST_BOOT_OUTPUT}" from the PTY; output: ${output.slice(-400)}`
+    try {
+      await beforeDeadline(
+        Promise.race([sawOutput, control.broken, stream.broken]),
+        deadline,
+        `"${TERMINAL_HOST_BOOT_OUTPUT}" from the PTY`
       )
+    } catch (error) {
+      throw new Error(`${error.message}; output: ${output.slice(-400)}`)
     }
   } finally {
-    timers.abort()
-    for (const socket of sockets) {
-      socket.destroy()
+    for (const connection of connections) {
+      connection.socket.destroy()
     }
-    if (!exited) {
-      daemon.kill('SIGTERM')
-      const grace = new AbortController()
-      await Promise.race([
-        new Promise((resolve) => daemon.once('exit', resolve)),
-        delay(3_000, undefined, { signal: grace.signal }).catch(() => {})
-      ])
-      grace.abort()
-      if (!exited) {
-        daemon.kill('SIGKILL')
-      }
-    }
+    await stopDaemon(daemon, () => exited)
+    process.removeListener('exit', cleanupOnExit)
     rmSync(scratch, { recursive: true, force: true })
   }
 }
@@ -235,6 +296,7 @@ async function verifyPackagedMacTerminalHostBoots(appPath, { arch }) {
 module.exports = {
   assertPackagedDaemonEntryExists,
   macCommandPrefixForArch,
+  runTerminalHostRoundTrip,
   verifyPackagedDaemonEntryBoots,
   verifyPackagedMacTerminalHostBoots
 }
