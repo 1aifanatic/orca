@@ -96,7 +96,10 @@ export async function launchHeadlessPairedRuntimeHost(
   options: {
     agentBrowserSocketParent?: string
     executablePath?: string
-    /** `mobile` makes `offer` a phone pairing (`orca serve --mobile-pairing`); a desktop cannot use it. */
+    /**
+     * `mobile` makes `offer` a phone pairing (`orca serve --mobile-pairing`). It is the host's only
+     * offer, so no desktop can pair to such a host: a desktop plus a direct phone is unsupported.
+     */
     pairingScope?: 'runtime' | 'mobile'
     /** Bind a stable loopback port so `restartServeProcess` can reclaim it. */
     pinnedServePort?: boolean

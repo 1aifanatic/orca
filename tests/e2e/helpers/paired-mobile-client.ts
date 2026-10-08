@@ -1,6 +1,5 @@
-import type { Page } from '@stablyai/playwright-test'
 import { MOBILE_RUNTIME_CLIENT_CAPABILITIES } from '../../../mobile/src/transport/mobile-runtime-client-capabilities'
-import { decodePairingOffer, type PairingOffer } from '../../../src/shared/pairing'
+import { decodePairingOffer } from '../../../src/shared/pairing'
 import {
   sendRemoteRuntimeRequest,
   subscribeRemoteRuntimeRequest,
@@ -8,15 +7,16 @@ import {
   type RemoteRuntimeSubscriptionCallbacks
 } from '../../../src/shared/remote-runtime-client'
 import type { RuntimeRpcResponse } from '../../../src/shared/runtime-rpc-envelope'
+import type { RuntimeDesktopPairingOffer } from './paired-electron-client'
 
 const DEFAULT_TIMEOUT_MS = 15_000
 
 /**
  * A phone paired to one runtime: the mobile-scoped device token and the phone app's own
- * capability list, over the same E2EE transport the app uses.
+ * capability list, over the app's E2EE transport. Each request opens a fresh socket, so requests
+ * reach a restarted host; subscriptions do not reconnect across a host restart.
  */
 export type PairedMobileClient = {
-  pairing: PairingOffer
   /** Raw response, for asserting a refusal. */
   request: <T>(
     method: string,
@@ -35,13 +35,12 @@ export type PairedMobileClient = {
   dispose: () => void
 }
 
-export function pairMobileClient(offer: { pairingUrl: string }): PairedMobileClient {
+export function pairMobileClient(offer: RuntimeDesktopPairingOffer): PairedMobileClient {
   const pairing = decodePairingOffer(offer.pairingUrl)
   // Why: a runtime-scope token skips the mobile allowlist, so the oracle would not be a phone.
   if (pairing.scope !== 'mobile') {
     throw new Error(`Expected a mobile-scoped pairing offer, got scope ${String(pairing.scope)}`)
   }
-  const capabilities = [...MOBILE_RUNTIME_CLIENT_CAPABILITIES]
   const open = new Set<RemoteRuntimeSubscription>()
   const request = <T>(
     method: string,
@@ -55,10 +54,9 @@ export function pairMobileClient(offer: { pairingUrl: string }): PairedMobileCli
       timeoutMs,
       undefined,
       undefined,
-      capabilities
+      MOBILE_RUNTIME_CLIENT_CAPABILITIES
     )
   return {
-    pairing,
     request,
     call: async <T>(method: string, params?: unknown, timeoutMs?: number): Promise<T> => {
       const response = await request<T>(method, params, timeoutMs)
@@ -74,7 +72,7 @@ export function pairMobileClient(offer: { pairingUrl: string }): PairedMobileCli
         params,
         timeoutMs,
         callbacks,
-        { clientCapabilities: capabilities }
+        { clientCapabilities: MOBILE_RUNTIME_CLIENT_CAPABILITIES }
       )
       open.add(subscription)
       return subscription
@@ -86,21 +84,4 @@ export function pairMobileClient(offer: { pairingUrl: string }): PairedMobileCli
       open.clear()
     }
   }
-}
-
-/** The phone QR a desktop shows in Settings, minted LAN-only so no Relay is involved. */
-export async function createDesktopMobilePairingOffer(
-  desktopPage: Page
-): Promise<{ pairingUrl: string }> {
-  return desktopPage.evaluate(async () => {
-    const offer = await window.api.mobile.getPairingQR({
-      address: '127.0.0.1',
-      connectionMode: 'local-only',
-      rotate: true
-    })
-    if (!offer.available) {
-      throw new Error(`Desktop did not mint a mobile pairing offer: ${JSON.stringify(offer)}`)
-    }
-    return { pairingUrl: offer.pairingUrl }
-  })
 }
