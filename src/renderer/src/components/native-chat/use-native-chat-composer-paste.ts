@@ -24,9 +24,9 @@ import {
 
 export type UseNativeChatComposerPasteArgs = {
   targetKey?: string
+  attachmentScopeKey?: string
   agent: AgentType
-  /** Live composer-disabled state (no pty / presence-lock); read at await-resume
-   *  via a ref so a flip mid-paste doesn't write into a guarded composer. */
+  /** Re-read after awaits so a mid-paste disable guards the composer. */
   disabled: boolean
   caret: number
   /** Resolved at paste time: SSH panes must save the clipboard image on the
@@ -49,6 +49,7 @@ export type UseNativeChatComposerPasteArgs = {
 
 export function useNativeChatComposerPaste({
   targetKey,
+  attachmentScopeKey,
   disabled,
   caret,
   resolveAttachmentOwner,
@@ -71,6 +72,7 @@ export function useNativeChatComposerPaste({
   const { lifetime, track, startImageChip, keepStoreUploadAfterUnmount } =
     useNativeChatPasteLifetime({
       targetKey,
+      attachmentScopeKey,
       beginPendingImageAttachment,
       resolvePendingImageAttachment,
       revealPendingImageAttachment,
@@ -188,16 +190,15 @@ export function useNativeChatComposerPaste({
       // Beside pasted text, a server too old to store the image drops it quietly, so its chip stays
       // out of sight until the server answers; Send waits for it from the start all the same.
       const awaitServer = Boolean(text) && owner.kind === 'runtime-session'
-      const chip = startImageChip(owner, imageFile, {
+      const { id: pendingId, reveal } = startImageChip(owner, imageFile, {
         hidden: awaitServer,
         canShow: () => ownerAcceptsClipboardImage(owner) && canPaste()
       })
-      const pendingId = chip.id
       void (async () => {
         const saved = await saveClipboardImageForOwner(
           owner,
           async () => Boolean(text),
-          awaitServer ? chip.reveal : undefined
+          awaitServer ? reveal : undefined
         )
         if (keepStoreUploadAfterUnmount(pendingId, saved)) {
           return

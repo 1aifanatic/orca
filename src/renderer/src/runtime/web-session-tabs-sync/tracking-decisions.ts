@@ -22,7 +22,6 @@ import { clearWebSessionTabsTrackingForWorktree } from './tracking-lifecycle'
 import { queueAcceptedWebSessionTerminalSnapshot } from '../web-session-terminal-handle-events'
 import { shouldAutoCreateInitialTerminal } from '@/components/terminal/initial-terminal'
 import { hostSnapshotAffirmsWorktreeContents } from '../host-session-snapshot-authority'
-import { queueInitialHostSessionTabs } from '../initial-host-session-tabs-events'
 
 /** A frame's fate, paired with whether that fate is host evidence for the worktree. */
 export type WebSessionTabsSnapshotDecision = {
@@ -130,12 +129,6 @@ export function decideWebSessionTabsSnapshot(
   recordAcceptedWebSessionTabsEnvironment(environmentId, snapshot)
   // Why: a mounted mirror that exhausted bounded polling needs fresh host evidence without subscribing to every store write.
   queueAcceptedWebSessionTerminalSnapshot(snapshot, environmentId)
-  if (
-    (!current || !hostSnapshotAffirmsWorktreeContents(current)) &&
-    hostSnapshotAffirmsWorktreeContents(snapshot)
-  ) {
-    queueInitialHostSessionTabs(snapshot, environmentId)
-  }
   return WEB_SESSION_TABS_FRAME_APPLIED
 }
 

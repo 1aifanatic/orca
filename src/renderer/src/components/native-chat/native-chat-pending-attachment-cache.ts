@@ -19,6 +19,8 @@ import {
 
 const EMPTY: readonly NativeChatComposerImageAttachment[] = Object.freeze([])
 const pendingCache = new Map<string, readonly NativeChatComposerImageAttachment[]>()
+// An upload's original scope survives only until that upload settles or is removed.
+const origins = new Map<NativeChatComposerImageAttachment, string>()
 // Why: a chip can outlive its tab, which is what names the draft's owner, so it is named at once.
 const pendingOwners = new Map<string, NativeChatComposerDraftOwner>()
 const listeners = new Map<string, Set<() => void>>()
@@ -31,6 +33,11 @@ export function nativeChatPendingAttachmentSnapshot(
 }
 
 function writePending(scopeKey: string, next: readonly NativeChatComposerImageAttachment[]): void {
+  for (const chip of nativeChatPendingAttachmentSnapshot(scopeKey)) {
+    if (!next.includes(chip)) {
+      origins.delete(chip)
+    }
+  }
   if (next.length === 0) {
     pendingCache.delete(scopeKey)
     pendingOwners.delete(scopeKey)
@@ -76,7 +83,44 @@ export function addNativeChatPendingAttachment(
   if (owner) {
     pendingOwners.set(scopeKey, owner)
   }
+  origins.set(pending, scopeKey)
   writePending(scopeKey, [...nativeChatPendingAttachmentSnapshot(scopeKey), pending])
+}
+
+/** Current ownership of an operation, including callbacks held by its earlier composer. */
+function pendingScope(scopeKey: string, id: string): string {
+  if (nativeChatPendingAttachmentSnapshot(scopeKey).some((chip) => chip.id === id)) {
+    return scopeKey
+  }
+  for (const [scope, chips] of pendingCache) {
+    if (chips.some((chip) => chip.id === id && origins.get(chip) === scopeKey)) {
+      return scope
+    }
+  }
+  return scopeKey
+}
+
+export function nativeChatPendingAttachmentMoved(scopeKey: string, id: string): boolean {
+  return pendingScope(scopeKey, id) !== scopeKey
+}
+
+/** Pending work follows the draft; its original callbacks still address the same operation. */
+export function moveNativeChatPendingAttachments(from: string, to: string): void {
+  if (from === to) {
+    return
+  }
+  const source = nativeChatPendingAttachmentSnapshot(from)
+  if (source.length === 0) {
+    return
+  }
+  const owner = pendingOwners.get(from)
+  const sourceOrigins = source.map((chip) => origins.get(chip) ?? from)
+  writePending(from, [])
+  if (owner && !pendingOwners.has(to)) {
+    pendingOwners.set(to, owner)
+  }
+  source.forEach((chip, index) => origins.set(chip, sourceOrigins[index]))
+  writePending(to, [...nativeChatPendingAttachmentSnapshot(to), ...source])
 }
 
 /** Removes a pending chip and returns it; undefined when the user already removed it. */
@@ -84,6 +128,7 @@ export function takeNativeChatPendingAttachment(
   scopeKey: string,
   id: string
 ): NativeChatComposerImageAttachment | undefined {
+  scopeKey = pendingScope(scopeKey, id)
   const current = nativeChatPendingAttachmentSnapshot(scopeKey)
   const taken = current.find((attachment) => attachment.id === id)
   if (taken) {
@@ -103,6 +148,7 @@ export function settleNativeChatPendingAttachment(
   path: string,
   connectionId?: string | null
 ): boolean {
+  scopeKey = pendingScope(scopeKey, id)
   const owner = pendingOwners.get(scopeKey)
   if (!takeNativeChatPendingAttachment(scopeKey, id)) {
     return false
@@ -117,13 +163,18 @@ export function settleNativeChatPendingAttachment(
 
 /** Shows a pending chip that was held out of sight, such as while a server was asked first. */
 export function revealNativeChatPendingAttachment(scopeKey: string, id: string): void {
+  scopeKey = pendingScope(scopeKey, id)
   const current = nativeChatPendingAttachmentSnapshot(scopeKey)
   if (current.some((attachment) => attachment.id === id && attachment.hidden)) {
     writePending(
       scopeKey,
       current.map((attachment) => {
         const { hidden: _hidden, ...shown } = attachment
-        return attachment.id === id ? shown : attachment
+        if (attachment.id === id) {
+          origins.set(shown, origins.get(attachment) ?? scopeKey)
+          return shown
+        }
+        return attachment
       })
     )
   }
@@ -166,4 +217,5 @@ export function dropNativeChatPendingAttachmentsOwnedBy(owner: NativeChatCompose
 export function clearNativeChatPendingAttachmentsForTests(): void {
   pendingCache.clear()
   pendingOwners.clear()
+  origins.clear()
 }

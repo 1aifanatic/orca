@@ -31,9 +31,13 @@ import {
   takeNativeChatPendingAttachment,
   useNativeChatPendingAttachments
 } from './native-chat-pending-attachment-cache'
-import { appendNativeChatAttachmentCache, appendNativeChatDraftCache } from './native-chat-draft-cache'
+import {
+  appendNativeChatAttachmentCache,
+  appendNativeChatDraftCache
+} from './native-chat-draft-cache'
 import { useNativeChatComposerAttachmentPreviews } from './use-native-chat-composer-attachment-previews'
 import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
+import { createUuidV4 } from '../../../../shared/uuid-v4'
 
 export type UseNativeChatComposerAttachmentsArgs = {
   attachmentScopeKey: string
@@ -114,7 +118,6 @@ export function useNativeChatComposerAttachments({
     ],
     [pending, previews, restoring, settled]
   )
-  const imageAttachmentCounter = useRef(0)
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
@@ -123,10 +126,7 @@ export function useNativeChatComposerAttachments({
     }
   }, [])
 
-  const nextAttachmentId = useCallback((): string => {
-    imageAttachmentCounter.current += 1
-    return `${Date.now()}-${imageAttachmentCounter.current}`
-  }, [])
+  const nextAttachmentId = useCallback(() => createUuidV4(), [])
 
   // Client-local paths cannot cross into a runtime target; workspace-owned
   // paths may only bypass this after the internal drop ownership gate.

@@ -14,6 +14,8 @@ import {
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
 import { sameNativeChatComposerDraftDocument } from './native-chat-composer-draft-comparison'
+import { moveNativeChatPendingAttachments } from './native-chat-pending-attachment-cache'
+import { mergeNativeChatDraftDocument } from './native-chat-draft-document-merge'
 import type { Tab } from '../../../../shared/tab-types'
 
 /** Moves the whole draft, removing its source only after the destination is saved. */
@@ -24,14 +26,15 @@ export async function moveStructuredAgentSessionDraft(
   if (fromSessionId === toSessionId) {
     return
   }
+  const from = structuredAgentSessionDraftScopeKey(fromSessionId)
+  const to = structuredAgentSessionDraftScopeKey(toSessionId)
+  moveNativeChatPendingAttachments(from, to)
   if (isNativeChatComposerDraftLoadPending()) {
     await hydrateNativeChatComposerDrafts()
     if (isNativeChatComposerDraftLoadPending()) {
       return
     }
   }
-  const from = structuredAgentSessionDraftScopeKey(fromSessionId)
-  const to = structuredAgentSessionDraftScopeKey(toSessionId)
   const source = readNativeChatComposerDraft(from)
   if (source.text === '' && source.images.length === 0) {
     return
@@ -49,11 +52,7 @@ export async function moveStructuredAgentSessionDraft(
             ...target.images,
             ...source.images.filter((image) => !target.images.some((held) => held.id === image.id))
           ],
-      document: emptyTarget
-        ? source.document
-        : merged.text === target.text
-          ? target.document
-          : undefined
+      document: mergeNativeChatDraftDocument(target, source, merged.text)
     },
     'immediate'
   )

@@ -7,6 +7,10 @@ import {
   shouldApplyWebSessionTabsSnapshot
 } from '@/runtime/web-session-tabs-sync'
 import {
+  applyLocalStructuredSessionTabSnapshots,
+  resetLocalStructuredSessionVersionForTests
+} from '@/runtime/local-structured-session-tabs-sync'
+import {
   ENV,
   NOW,
   WT,
@@ -16,7 +20,7 @@ import {
 import {
   clearNativeChatComposerDraftsForTests,
   readNativeChatComposerDraft,
-  structuredAgentSessionDraftScopeKey,
+  structuredAgentSessionDraftScopeKey as scope,
   updateNativeChatComposerDraft,
   nativeChatComposerDraftWritesSettled,
   waitForNativeChatComposerDrafts
@@ -26,192 +30,43 @@ import {
   setNativeChatComposerDraftStorageForTests
 } from '@/components/native-chat/native-chat-composer-draft-storage'
 
-const initialState = useAppStore.getState()
-let stop: () => void = () => {}
-
-beforeEach(async () => {
-  resetWebSessionTabsSyncTestState()
-  setNativeChatComposerDraftStorageForTests(createMemoryNativeChatComposerDraftStorage())
-  stop = startNativeChatDraftLoad()
-  await waitForNativeChatComposerDrafts(1_000)
-})
-
-afterEach(() => {
-  stop()
-  useAppStore.setState(initialState, true)
-  clearNativeChatComposerDraftsForTests()
-  vi.useRealTimers()
-})
-
-it('re-derives a saved draft move after the first storage load fails and a retry succeeds', async () => {
-  stop()
-  clearNativeChatComposerDraftsForTests()
-  vi.useFakeTimers()
-  const storage = createMemoryNativeChatComposerDraftStorage()
-  storage.drafts.set(structuredAgentSessionDraftScopeKey('old-session'), {
-    text: 'saved despite the failed load',
-    images: [],
-    savedAt: 1
-  })
-  storage.loadAll = vi
-    .fn()
-    .mockRejectedValueOnce(new Error('temporarily unavailable'))
-    .mockImplementationOnce(async () => new Map(storage.drafts))
-  setNativeChatComposerDraftStorageForTests(storage)
-  useAppStore.setState({
-    unifiedTabsByWorktree: {
-      [WT]: [chatTab('new-session')]
-    }
-  })
-  stop = startNativeChatDraftLoad()
-  publishReplacement()
-  await waitForNativeChatComposerDrafts(1_000)
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
-    ''
-  )
-  await vi.advanceTimersByTimeAsync(1_000)
-  await nativeChatComposerDraftWritesSettled()
-  await Promise.resolve()
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
-    'saved despite the failed load'
-  )
-})
-
-function chatTab(entityId: string) {
+const initial = useAppStore.getState()
+let stop = (): void => {}
+function chat(entityId: string, id = 'pane') {
   return {
-    id: 'local-pane',
+    id,
     entityId,
     contentType: 'agent-session' as const,
     agentSessionAgent: 'codex' as const,
     worktreeId: WT,
-    groupId: 'local-group',
-    label: 'Codex Chat',
+    groupId: 'group',
+    label: 'Chat',
     customLabel: null,
     color: null,
     createdAt: 1,
     sortOrder: 0
   }
 }
-
-// The host moves a cleared chat's tab to its new conversation, whichever client ran the /clear.
-it("moves what the chat's box held into the conversation its tab moved to", async () => {
-  useAppStore.setState({
-    unifiedTabsByWorktree: { [WT]: [chatTab('old-session')] },
-    groupsByWorktree: {
-      [WT]: [
-        { id: 'local-group', worktreeId: WT, tabOrder: ['local-pane'], activeTabId: 'local-pane' }
-      ]
-    },
-    activeGroupIdByWorktree: { [WT]: 'local-group' }
-  })
-  updateNativeChatComposerDraft(
-    structuredAgentSessionDraftScopeKey('old-session'),
-    {
-      text: 'typed during the clear',
-      images: [{ id: 'i1', path: '/remote/shot.png', connectionId: 'ssh-1' }]
-    },
-    'immediate'
-  )
-
-  useAppStore.setState((state) =>
-    applyWebSessionTabsSnapshot(
-      state,
-      makeSnapshot(
-        [
-          {
-            type: 'agent-session',
-            id: 'agent-session:new-session',
-            sessionId: 'new-session',
-            replacesSessionId: 'old-session',
-            agent: 'codex',
-            title: 'Codex Chat',
-            isActive: true
-          }
-        ],
-        { activeTabId: 'agent-session:new-session', activeTabType: 'agent-session' }
-      ),
-      ENV,
-      NOW,
-      { contentScope: 'agent-session', preserveLocalLayout: true, terminalPtyMode: 'local' }
-    )
-  )
-
-  await nativeChatComposerDraftWritesSettled()
-  await Promise.resolve()
-
-  expect(useAppStore.getState().unifiedTabsByWorktree[WT]?.[0]).toMatchObject({
-    id: 'local-pane',
-    entityId: 'new-session'
-  })
-  expect(
-    readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session'))
-  ).toMatchObject({
-    text: 'typed during the clear',
-    images: [{ id: 'i1', path: '/remote/shot.png', connectionId: 'ssh-1' }]
-  })
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
-    ''
-  )
-})
-
-it('restores a saved source into an already switched tab when startup reads its replacement', async () => {
-  stop()
-  clearNativeChatComposerDraftsForTests()
-  const storage = createMemoryNativeChatComposerDraftStorage()
-  storage.drafts.set(structuredAgentSessionDraftScopeKey('old-session'), {
-    text: 'saved before the switch',
-    images: [],
-    savedAt: 1
-  })
-  setNativeChatComposerDraftStorageForTests(storage)
-  useAppStore.setState({
-    unifiedTabsByWorktree: {
-      [WT]: [chatTab('new-session')]
-    }
-  })
-  stop = startNativeChatDraftLoad()
-  publishReplacement()
-  await waitForNativeChatComposerDrafts(1_000)
-  await nativeChatComposerDraftWritesSettled()
-  await Promise.resolve()
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
-    'saved before the switch'
-  )
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
-    ''
-  )
-})
-
-function publishReplacement(version = 1, sourceVisible = false): void {
-  const snapshot = makeSnapshot(
+function snapshot(sessionId: string, source: string, version = 1) {
+  return makeSnapshot(
     [
       {
         type: 'agent-session',
-        id: 'agent-session:new-session',
-        sessionId: 'new-session',
-        replacesSessionId: 'old-session',
+        id: `agent-session:${sessionId}`,
+        sessionId,
+        replacesSessionId: source,
         agent: 'codex',
-        title: 'Codex Chat',
+        title: 'Chat',
         isActive: true
-      },
-      ...(sourceVisible
-        ? [
-            {
-              type: 'agent-session' as const,
-              id: 'history',
-              sessionId: 'old-session',
-              agent: 'codex' as const,
-              title: 'History',
-              isActive: false
-            }
-          ]
-        : [])
+      }
     ],
     { snapshotVersion: version }
   )
-  if (shouldApplyWebSessionTabsSnapshot(snapshot, ENV)) {
+}
+function publish(frame: ReturnType<typeof makeSnapshot>): void {
+  if (shouldApplyWebSessionTabsSnapshot(frame, ENV)) {
     useAppStore.setState((state) =>
-      applyWebSessionTabsSnapshot(state, snapshot, ENV, NOW, {
+      applyWebSessionTabsSnapshot(state, frame, ENV, NOW, {
         contentScope: 'agent-session',
         preserveLocalLayout: true,
         terminalPtyMode: 'local'
@@ -219,52 +74,158 @@ function publishReplacement(version = 1, sourceVisible = false): void {
     )
   }
 }
-
-it('does not move a later source-history draft when the host repeats the replacement', async () => {
-  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chatTab('new-session')] } })
-  updateNativeChatComposerDraft(
-    structuredAgentSessionDraftScopeKey('old-session'),
-    { text: 'initial draft' },
-    'immediate'
-  )
-  publishReplacement()
+async function settled(): Promise<void> {
   await Promise.resolve()
   await nativeChatComposerDraftWritesSettled()
   await Promise.resolve()
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
-    'initial draft'
-  )
-  updateNativeChatComposerDraft(
-    structuredAgentSessionDraftScopeKey('old-session'),
-    { text: 'later history draft' },
-    'immediate'
-  )
-  publishReplacement(2)
-  await Promise.resolve()
-  await nativeChatComposerDraftWritesSettled()
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
-    'later history draft'
-  )
+}
+beforeEach(async () => {
+  resetWebSessionTabsSyncTestState()
+  resetLocalStructuredSessionVersionForTests()
+  setNativeChatComposerDraftStorageForTests(createMemoryNativeChatComposerDraftStorage())
+  stop = startNativeChatDraftLoad()
+  await waitForNativeChatComposerDrafts(1000)
+})
+afterEach(() => {
+  stop()
+  useAppStore.setState(initial, true)
+  clearNativeChatComposerDraftsForTests()
+  vi.useRealTimers()
 })
 
-it('leaves an explicitly reopened source history draft in that conversation on first publication', async () => {
-  useAppStore.setState({
-    unifiedTabsByWorktree: {
-      [WT]: [chatTab('new-session'), { ...chatTab('old-session'), id: 'history' }]
-    }
-  })
+it('moves text and images through the real host snapshot binding change', async () => {
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('a')] } })
   updateNativeChatComposerDraft(
-    structuredAgentSessionDraftScopeKey('old-session'),
-    { text: 'history draft' },
+    scope('a'),
+    {
+      text: 'typed during clear',
+      images: [{ id: 'i', path: '/remote/shot.png', connectionId: 'ssh-1' }]
+    },
     'immediate'
   )
-  publishReplacement(1, true)
-  await Promise.resolve()
-  await nativeChatComposerDraftWritesSettled()
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('old-session')).text).toBe(
-    'history draft'
+  publish(snapshot('b', 'a'))
+  await settled()
+  expect(useAppStore.getState().unifiedTabsByWorktree[WT]?.[0]).toMatchObject({
+    id: 'pane',
+    entityId: 'b'
+  })
+  expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
+    text: 'typed during clear',
+    images: [{ id: 'i', path: '/remote/shot.png', connectionId: 'ssh-1' }]
+  })
+  expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
+})
+
+it('leaves a saved draft on its earlier conversation when this renderer did not observe the clear', async () => {
+  stop()
+  clearNativeChatComposerDraftsForTests()
+  const storage = createMemoryNativeChatComposerDraftStorage()
+  storage.drafts.set(scope('a'), { text: 'reachable from history', images: [], savedAt: 1 })
+  setNativeChatComposerDraftStorageForTests(storage)
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('b')] } })
+  stop = startNativeChatDraftLoad()
+  publish(snapshot('b', 'a'))
+  await waitForNativeChatComposerDrafts(1000)
+  await settled()
+  expect(readNativeChatComposerDraft(scope('a')).text).toBe('reachable from history')
+  expect(readNativeChatComposerDraft(scope('b')).text).toBe('')
+})
+
+it('keeps a later closed-history draft through restart and repeated replacement publications', async () => {
+  const storage = createMemoryNativeChatComposerDraftStorage()
+  setNativeChatComposerDraftStorageForTests(storage)
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('a')] } })
+  updateNativeChatComposerDraft(scope('a'), { text: 'first draft' }, 'immediate')
+  publish(snapshot('b', 'a'))
+  await settled()
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('b'), chat('a', 'history')] } })
+  updateNativeChatComposerDraft(scope('a'), { text: 'later history draft' }, 'immediate')
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('b')] } })
+  await settled()
+  stop()
+  clearNativeChatComposerDraftsForTests()
+  setNativeChatComposerDraftStorageForTests(storage)
+  resetWebSessionTabsSyncTestState()
+  stop = startNativeChatDraftLoad()
+  publish(snapshot('b', 'a'))
+  await waitForNativeChatComposerDrafts(1000)
+  publish(snapshot('b', 'a', 2))
+  await settled()
+  expect(readNativeChatComposerDraft(scope('a')).text).toBe('later history draft')
+  expect(readNativeChatComposerDraft(scope('b')).text).toBe('first draft')
+})
+
+it.each(['local', 'paired'] as const)(
+  'does not infer a move from %s unverifiable then verified inventories',
+  async (host) => {
+    useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('b')] } })
+    updateNativeChatComposerDraft(scope('a'), { text: 'earlier conversation' }, 'immediate')
+    const first = makeSnapshot([], { agentSessionsUnverifiable: true })
+    const next = snapshot('b', 'a', 2)
+    for (const frame of [first, next]) {
+      if (host === 'paired') {
+        publish(frame)
+      } else {
+        useAppStore.setState((state) =>
+          applyLocalStructuredSessionTabSnapshots(state, [frame], undefined, NOW, {
+            authoritative: true
+          })
+        )
+      }
+      await settled()
+    }
+    expect(readNativeChatComposerDraft(scope('a')).text).toBe('earlier conversation')
+    expect(readNativeChatComposerDraft(scope('b')).text).toBe('')
+    publish(snapshot('c', 'b', 3))
+    await settled()
+    expect(readNativeChatComposerDraft(scope('a')).text).toBe('earlier conversation')
+  }
+)
+
+it('replays an observed clear after a failed storage load retries successfully', async () => {
+  stop()
+  clearNativeChatComposerDraftsForTests()
+  vi.useFakeTimers()
+  const storage = createMemoryNativeChatComposerDraftStorage()
+  storage.drafts.set(scope('b'), { text: 'saved in b', images: [], savedAt: 1 })
+  storage.loadAll = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('temporary failure'))
+    .mockImplementationOnce(async () => new Map(storage.drafts))
+  setNativeChatComposerDraftStorageForTests(storage)
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('b')] } })
+  stop = startNativeChatDraftLoad()
+  publish(snapshot('b', 'a'))
+  await waitForNativeChatComposerDrafts(1000)
+  publish(snapshot('c', 'b', 2))
+  await settled()
+  await vi.advanceTimersByTimeAsync(1000)
+  await settled()
+  expect(readNativeChatComposerDraft(scope('c')).text).toBe('saved in b')
+  expect(readNativeChatComposerDraft(scope('b')).text).toBe('')
+})
+
+it('collapses repeated observed clears while storage is still loading', async () => {
+  stop()
+  clearNativeChatComposerDraftsForTests()
+  const storage = createMemoryNativeChatComposerDraftStorage()
+  storage.drafts.set(scope('a'), { text: 'a to c', images: [], savedAt: 1 })
+  let finish = (): void => {}
+  storage.loadAll = vi.fn().mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = () => resolve(new Map(storage.drafts))
+      })
   )
-  expect(readNativeChatComposerDraft(structuredAgentSessionDraftScopeKey('new-session')).text).toBe(
-    ''
-  )
+  setNativeChatComposerDraftStorageForTests(storage)
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('a')] } })
+  stop = startNativeChatDraftLoad()
+  publish(snapshot('b', 'a'))
+  publish(snapshot('c', 'b', 2))
+  finish()
+  await waitForNativeChatComposerDrafts(1000)
+  await settled()
+  expect(readNativeChatComposerDraft(scope('c')).text).toBe('a to c')
+  expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
+  expect(readNativeChatComposerDraft(scope('b')).text).toBe('')
 })

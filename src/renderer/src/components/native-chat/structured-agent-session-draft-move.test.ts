@@ -31,6 +31,68 @@ afterEach(() => {
 })
 
 describe('moving a cleared conversation draft', () => {
+  it('preserves the skill document when the destination holds only an image', async () => {
+    const document = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'nativeChatSkill', attrs: { token: '$review' } }] }
+      ]
+    }
+    updateNativeChatComposerDraft(scope('a'), { text: '$review', document }, 'immediate')
+    updateNativeChatComposerDraft(scope('b'), { images: [SSH_IMAGE] }, 'immediate')
+    await moveStructuredAgentSessionDraft('a', 'b')
+    expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
+      text: '$review',
+      document,
+      images: [SSH_IMAGE]
+    })
+  })
+
+  it('saves chips in both merged documents without flattening either', async () => {
+    const storage = createMemoryNativeChatComposerDraftStorage()
+    setNativeChatComposerDraftStorageForTests(storage)
+    const first = {
+      type: 'paragraph',
+      content: [
+        { type: 'nativeChatSkill', attrs: { token: '$first' } },
+        { type: 'text', text: ' \n' }
+      ]
+    }
+    const second = {
+      type: 'paragraph',
+      content: [{ type: 'nativeChatSkill', attrs: { token: '$second' } }]
+    }
+    updateNativeChatComposerDraft(
+      scope('b'),
+      { text: '$first \n', document: { type: 'doc', content: [first] } },
+      'immediate'
+    )
+    updateNativeChatComposerDraft(
+      scope('a'),
+      { text: '$second', document: { type: 'doc', content: [second] } },
+      'immediate'
+    )
+    await moveStructuredAgentSessionDraft('a', 'b')
+    const expected = {
+      type: 'doc',
+      content: [
+        { ...first, content: [first.content[0]] },
+        { type: 'paragraph', content: [] },
+        second
+      ]
+    }
+    expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
+      text: '$first\n\n$second',
+      document: expected
+    })
+    clearNativeChatComposerDraftsForTests()
+    setNativeChatComposerDraftStorageForTests(storage)
+    await hydrateNativeChatComposerDrafts()
+    expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
+      text: '$first\n\n$second',
+      document: expected
+    })
+  })
   it('moves text, SSH images and skill chips whole into the new conversation', async () => {
     const document = { type: 'doc', content: [{ type: 'paragraph' }] }
     updateNativeChatComposerDraft(
