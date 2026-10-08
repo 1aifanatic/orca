@@ -11,7 +11,7 @@ import { toWebTerminalSurfaceTabId } from '../web-runtime-session'
 import { clearHostSessionTabIdMappings, setHostSessionTabIdMapping } from './tracking-mappings'
 import { isWebSessionBrowserPlacementGroupReserved } from '../web-session-browser-placement'
 import { resolveWebSessionReorderedOrder } from '../web-session-reorder-intent'
-import { mapHostRecentTabIds } from './tab-group-layout-tree'
+import { buildHostGroupIdByTabId, mapHostRecentTabIds } from './tab-group-layout-tree'
 import { pushRecentTabId, sanitizeRecentTabIds } from './state-equality-core'
 
 export function buildHostToLocalTabIdMap({
@@ -57,24 +57,22 @@ export function updateHostSessionTabIdMappings(args: {
   browserTabs: readonly MirroredBrowserTab[]
   editorTabs: readonly MirroredEditorTab[]
   agentTabs: readonly MirroredAgentTab[]
+  hostGroups: readonly RuntimeMobileSessionTabGroup[] | undefined
 }): void {
   clearHostSessionTabIdMappings(args.environmentId, args.worktreeId)
+  const hostGroupIdByTabId = buildHostGroupIdByTabId(args.hostGroups)
+  const map = (tabId: string, hostTabId: string): void =>
+    setHostSessionTabIdMapping({ ...args, tabId }, hostTabId, hostGroupIdByTabId.get(hostTabId))
 
   const mirroredTerminalIds = new Set(args.terminalTabs.map((tab) => tab.id))
   for (const surface of args.terminalSurfaces) {
     const localId = toWebTerminalSurfaceTabId(surface.parentTabId)
     if (mirroredTerminalIds.has(localId)) {
-      setHostSessionTabIdMapping({ ...args, tabId: localId }, surface.parentTabId)
+      map(localId, surface.parentTabId)
     }
   }
-  for (const entry of args.browserTabs) {
-    setHostSessionTabIdMapping({ ...args, tabId: entry.unifiedTab.id }, entry.hostTabId)
-  }
-  for (const entry of args.editorTabs) {
-    setHostSessionTabIdMapping({ ...args, tabId: entry.unifiedTab.id }, entry.hostTabId)
-  }
-  for (const entry of args.agentTabs) {
-    setHostSessionTabIdMapping({ ...args, tabId: entry.unifiedTab.id }, entry.hostTabId)
+  for (const entry of [...args.browserTabs, ...args.editorTabs, ...args.agentTabs]) {
+    map(entry.unifiedTab.id, entry.hostTabId)
   }
 }
 

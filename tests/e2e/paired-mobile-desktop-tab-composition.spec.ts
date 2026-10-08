@@ -72,6 +72,16 @@ function desktopTab(page: Page, hostTabId: string) {
   return page.locator(`${SORTABLE_TAB}[data-tab-id="${toWebTerminalSurfaceTabId(hostTabId)}"]`)
 }
 
+/** Drops one desktop tab onto the leading edge of another, as a user drags in the tab strip. */
+async function dragTab(page: Page, hostTabId: string, ontoHostTabId: string): Promise<void> {
+  const from = (await desktopTab(page, hostTabId).boundingBox())!
+  const onto = (await desktopTab(page, ontoHostTabId).boundingBox())!
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(onto.x + onto.width * 0.25, onto.y + onto.height / 2, { steps: 8 })
+  await page.mouse.up()
+}
+
 test('phone shows the desktop tab strip of a server workspace, also with the window closed', async (// oxlint-disable-next-line no-empty-pattern -- this test owns its topology launch.
 {}, testInfo) => {
   test.setTimeout(240_000)
@@ -156,14 +166,7 @@ test('phone shows the desktop tab strip of a server workspace, also with the win
     const [first, second, third] = created
 
     // Reorder on the desktop by dragging the third terminal onto the first.
-    const from = (await desktopTab(desktop.page, third).boundingBox())!
-    const onto = (await desktopTab(desktop.page, first).boundingBox())!
-    await desktop.page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
-    await desktop.page.mouse.down()
-    await desktop.page.mouse.move(onto.x + onto.width * 0.25, onto.y + onto.height / 2, {
-      steps: 8
-    })
-    await desktop.page.mouse.up()
+    await dragTab(desktop.page, third, first)
     await expect
       .poll(async () => (await desktopStrip(desktop.page, desktopWorktree.id))[0]?.slice(0, 3))
       .toEqual([third, first, second])
@@ -175,8 +178,20 @@ test('phone shows the desktop tab strip of a server workspace, also with the win
     await expect
       .poll(async () => (await desktopStrip(desktop.page, desktopWorktree.id)).length)
       .toBe(2)
+    await expect
+      .poll(phoneStrip, { timeout: 30_000 })
+      .toEqual(await desktopStrip(desktop.page, desktopWorktree.id))
+
+    // Drag the first terminal into the group the desktop just split off.
+    await dragTab(desktop.page, first, second)
+    await expect
+      .poll(async () =>
+        (await desktopStrip(desktop.page, desktopWorktree.id)).find((group) =>
+          group.includes(second)
+        )
+      )
+      .toContain(first)
     const arranged = await desktopStrip(desktop.page, desktopWorktree.id)
-    expect(arranged.find((group) => group.includes(second))).toEqual([second])
     await expect.poll(phoneStrip, { timeout: 30_000 }).toEqual(arranged)
     // Only the server holds this workspace's tabs; the desktop's own answer has none of them.
     const untargeted = await call(socket, 'session.tabs.list', { worktree }, SessionTabsSchema)

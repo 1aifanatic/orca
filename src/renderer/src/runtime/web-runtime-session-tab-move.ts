@@ -45,8 +45,24 @@ export async function moveWebRuntimeSessionTab(
   }
 
   try {
-    const { resolveHostSessionTabIdForWebSessionTab } = await import('./web-session-tabs-sync')
+    const { resolveHostSessionGroupIdForWebSessionTab, resolveHostSessionTabIdForWebSessionTab } =
+      await import('./web-session-tabs-sync')
     const state = useAppStore.getState()
+    const targetTabOrder =
+      state.groupsByWorktree?.[args.worktreeId]?.find((group) => group.id === args.targetGroupId)
+        ?.tabOrder ?? []
+    // Why: a group this desktop split off has another id on the host, so name it by a tab it holds.
+    const targetHostGroupId =
+      targetTabOrder
+        .filter((tabId) => tabId !== args.tabId)
+        .map((tabId) =>
+          resolveHostSessionGroupIdForWebSessionTab({
+            environmentId,
+            worktreeId: args.worktreeId,
+            tabId
+          })
+        )
+        .find((groupId) => groupId !== null) ?? args.targetGroupId
     const resolveHostBackedTabId = (tabId: string): string | null =>
       resolveHostSessionTabIdForWebSessionTab(state, {
         environmentId,
@@ -83,7 +99,7 @@ export async function moveWebRuntimeSessionTab(
     const base = {
       worktree: toRuntimeWorktreeSelector(args.worktreeId),
       tabId: movedHostTabId,
-      targetGroupId: args.targetGroupId
+      targetGroupId: targetHostGroupId
     }
     const move =
       args.kind === 'reorder'
