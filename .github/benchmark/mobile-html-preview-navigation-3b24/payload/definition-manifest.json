@@ -1,0 +1,123 @@
+{
+  "sourceHead": "3b24c0d4e77f011327eee9215b4e7418883594dc",
+  "sourceHashes": {
+    ".github/actions/install-mobile-dependencies/action.yml": "cdbd5c905201ccd8e8332f55a61729e9180d044ab0927f6c1b3fd30da66bcce2",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    ".github/workflows/pr.yml": "945cd635eae0a73b9bf4f00ae13ef6bc1d252cbce48c3000a012dc625624287b",
+    "config/scripts/build-mobile-web-app-bundle.mjs": "5f4664e7b9270d1d23afe224474659352547c0ca36fef3b3f353aaf669339957",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/mobile-web-app-bundle-dependencies.mjs": "c57e0e2e43b0bbd52d78b685b7126e553bd109d1ddce94df12faf3ba0128321a",
+    "config/scripts/mobile-web-app-html-preview-render.test.mjs": "ed6d4264892ab88ae0828763c40e462121a8d7e687d6183dbbe4133438245424",
+    "config/scripts/mobile-web-app-preview-arm-driver.mjs": "04e62d302f28070230d017d1fbda97bc35566d49dc15b30a406f4bd3ce3bd7df",
+    "config/scripts/mobile-web-app-preview-artifact-fixture.mjs": "f252e42db9269fe9f1717ae0dbf89dc90704b78d4dbeaa0737d60e4c615434b9",
+    "config/scripts/mobile-web-app-preview-asset-server.mjs": "d9a90cbf5436a3569e7d1aefb947167ca879d9d9b83df00897c3ab908cc831ed",
+    "config/scripts/mobile-web-app-preview-csp-reports.mjs": "ad599405e9bd2c74604babafe86301f01d0feefba58f2f1d61108b7a406c8c47",
+    "config/scripts/mobile-web-app-preview-frame-diagnosis.mjs": "7ac15afae939f909795c0183c787434f04751b31fe8a7b7a677dc8e62314f3d2",
+    "config/scripts/mobile-web-app-preview-frame-readiness.mjs": "f82cb575714b47709a2497ba5479577184cf592750d5380b62c970f5963f20d0",
+    "config/scripts/mobile-web-app-preview-frame-readings.mjs": "d2825eea0d744c93f4a6604633816048823dcd1bb9d45e49d1282454286337e9",
+    "config/scripts/mobile-web-app-preview-image-evidence.mjs": "12da25e76870524c5dd5daf017e80c78c7bc356f4bb25b9de34a5b5bcb60b1a0",
+    "config/scripts/mobile-web-app-preview-request-log.mjs": "e7cf0464d66d420ac6fed3396d131bbd88ab0b2a6f7d7c109a1b6249654c8a04",
+    "config/scripts/mobile-web-app-render-harness.mjs": "3a603aed4e58a54889488eb46f18c06f012b202010dbe91469259140db870a2a",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "8201c2fe598cc8487dec7421cf67870ca800a1e7ebb962fd1c9b6a3fa1e2a83d",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "mobile/package.json": "c7d0398fa4dbdf3dddd2e0a844ee41baac9f5cb11bf779328938d55cc89e2189",
+    "mobile/pnpm-lock.yaml": "ce1ebe3469ffa21bcc3ee851f80afc840dce0ca515236d18fc22c7a470ee69ba",
+    "mobile/src/components/MobileHtmlPreview.web.tsx": "54cd70c8539cda1be284fa08c2274ed14b56bb5b1c147ee2afc06e91ec97efd5",
+    "mobile/src/components/html-preview-inert-links.ts": "f95c441a1523ab74e02ce324fa7479cf885d2f75116acc58337c948d0e92ddf2",
+    "mobile/src/components/use-html-preview-link-grant.web.ts": "4c54f8eaa49e5bd2dc175da5bca792a9ef38506d20ad02031b0e86303931b8d4",
+    "mobile/src/theme/mobile-theme.ts": "0b622538ae68934110fb9c8c283c05d125a97358d7a715ff172f3bf2591a3fdd",
+    "mobile/src/transport/client-context.web.tsx": "41fd1b3504ce82edd294aa962a245fff64f9d33839d2a3d834faa676ef41b03e",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163"
+  },
+  "targets": {
+    "config/scripts/mobile-web-app-preview-arm-driver.mjs": {
+      "beforeSha256": "04e62d302f28070230d017d1fbda97bc35566d49dc15b30a406f4bd3ce3bd7df",
+      "afterSha256": "35dc083e4ca18a38f8d53bed5451d788c917b9771638bd28448e3380f3ff797a",
+      "candidate": "notes/bun-migration/performance/mobile-html-preview-navigation-3b24-candidate/candidate/mobile-web-app-preview-arm-driver.mjs"
+    },
+    "config/scripts/mobile-web-app-preview-request-log.mjs": {
+      "beforeSha256": "e7cf0464d66d420ac6fed3396d131bbd88ab0b2a6f7d7c109a1b6249654c8a04",
+      "afterSha256": "6dc48d29f69200a14f85802fe4e394594b13f581ecee900eb94972083e10e0f5",
+      "candidate": "notes/bun-migration/performance/mobile-html-preview-navigation-3b24-candidate/candidate/mobile-web-app-preview-request-log.mjs"
+    },
+    "config/scripts/mobile-web-app-preview-frame-readiness.mjs": {
+      "beforeSha256": "f82cb575714b47709a2497ba5479577184cf592750d5380b62c970f5963f20d0",
+      "afterSha256": "a76f39f6a4bde645be6cbb501064de608a392812f350c6350947cbf76b367f5d",
+      "candidate": "notes/bun-migration/performance/mobile-html-preview-navigation-3b24-candidate/candidate/mobile-web-app-preview-frame-readiness.mjs"
+    }
+  },
+  "payloadSha256": {
+    "persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "source-proof.json": "c276fe0bc40d61faa007070a9ade57cad24d18a4d35552991eff79e1992e2b1e",
+    "shipping.patch": "ddb146ccf4e7c1a784d3d85b4ae8386a7ae5f16cea0ef3e399a0f748c6218b1c"
+  },
+  "isolatedDirectory": "notes/bun-migration/performance/mobile-html-preview-navigation-ci-3b24",
+  "testFile": "config/scripts/mobile-web-app-html-preview-render.test.mjs",
+  "allOriginalTitles": [
+    "paints the artifact under the policy the shell already ships",
+    "does not run the artifact, behind two fences either of which would hold",
+    "refuses the artifact cleartext subresources by scheme and its font by directive",
+    "loads the artifact https images the directive admits, and still refuses its font",
+    "sends no referrer with an admitted https image, which is the shell header doing it",
+    "asks to navigate the top frame to the shell itself, which the shell must refuse",
+    "renders an artifact link as text against a shell that cannot open one",
+    "changes nothing an engine renders except that links are not links",
+    "taps a fragment link, which navigates this frame rather than scrolling it",
+    "hands a user's tap on a link to the top frame, exactly once",
+    "cannot reach the shell through a meta refresh at the embedder's own URL",
+    "hands up nothing without a tap, and nothing for a form or a new window",
+    "reads the frame while a navigation it expects has not arrived",
+    "gives up on a navigation that is not coming, and names why",
+    "keeps the Preview/Source toggle, and Source shows the source"
+  ],
+  "selectedTitles": [
+    "paints the artifact under the policy the shell already ships",
+    "asks to navigate the top frame to the shell itself, which the shell must refuse",
+    "renders an artifact link as text against a shell that cannot open one",
+    "taps a fragment link, which navigates this frame rather than scrolling it",
+    "hands a user's tap on a link to the top frame, exactly once",
+    "hands up nothing without a tap, and nothing for a form or a new window"
+  ],
+  "testNamePattern": "paints\\ the\\ artifact\\ under\\ the\\ policy\\ the\\ shell\\ already\\ ships|asks\\ to\\ navigate\\ the\\ top\\ frame\\ to\\ the\\ shell\\ itself,\\ which\\ the\\ shell\\ must\\ refuse|renders\\ an\\ artifact\\ link\\ as\\ text\\ against\\ a\\ shell\\ that\\ cannot\\ open\\ one|taps\\ a\\ fragment\\ link,\\ which\\ navigates\\ this\\ frame\\ rather\\ than\\ scrolling\\ it|hands\\ a\\ user's\\ tap\\ on\\ a\\ link\\ to\\ the\\ top\\ frame,\\ exactly\\ once|hands\\ up\\ nothing\\ without\\ a\\ tap,\\ and\\ nothing\\ for\\ a\\ form\\ or\\ a\\ new\\ window",
+  "engines": [
+    "chromium",
+    "webkit"
+  ],
+  "expectedBrowser": "154.0.8037.57",
+  "expectedPins": {
+    "node": "24.21.0",
+    "vitest": "5.0.3",
+    "playwright": "1.63.0"
+  },
+  "diagnosticOnlyNeverMerge": true,
+  "runtimeQualificationPending": true,
+  "actualExpectedSelectedCases": 12,
+  "wholeOriginalCallbacksUnchanged": true,
+  "originalFailure": {
+    "log": "notes/bun-migration/performance/ci-five-shard-final-after-upstream-writer-fix-20261008/failed-job-113182852160.log",
+    "sha256": "7fc978657b585e80b712ddcea314a70f42633bfa121de379e5bd61b63de52769"
+  },
+  "expectedWebKit": {
+    "browserVersion": "26.6",
+    "revision": "2359"
+  },
+  "installedPlaywrightOwnerHashes": {
+    "node_modules/playwright-core/package.json": "f061c58427e47e843e26d201f0a57076c734e57c734ecbbd87d4a23b7a20db9b",
+    "node_modules/playwright-core/browsers.json": "545d52f8382c391e605562c330e9c1c534a16045898203037a49bb8bd769a946",
+    "node_modules/playwright-core/lib/coreBundle.js": "549070af3acabb3efcc4f55bfe6210f9f7c2fcf633cf7eaa59bfe60719969171"
+  }
+}

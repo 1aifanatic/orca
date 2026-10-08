@@ -1,0 +1,294 @@
+--- a/config/scripts/mobile-web-app-preview-arm-driver.mjs
++++ b/config/scripts/mobile-web-app-preview-arm-driver.mjs
+@@ -69,7 +69,17 @@
+   const page = await context.newPage()
+   // Subscribed before the first navigation, so a request made during load is in the log. Cheap
+   // while an arm passes: it fills arrays, and only an abort asks them to speak.
+-  const requestLog = await recordRequestsTo(page, assetServer.origin)
++  const requestLog = await recordRequestsTo(page, [assetServer.origin, foreignOrigin, origin])
++  const actionEvidence = { nonce, browserVersion, engine: browser.browserType().name(), expectedNavigation: expectNavigation, boundary: [], clicks: [], consoleErrors: [], navigationRequests: [], routes: [] }
++  page.on('console', (message) => {
++    const text = message.text()
++    if (text.startsWith('HTML_PREVIEW_TRUSTED_CLICK ')) {
++      try { actionEvidence.clicks.push(JSON.parse(text.slice('HTML_PREVIEW_TRUSTED_CLICK '.length))) } catch {}
++    } else if (message.type() === 'error') {
++      actionEvidence.consoleErrors.push(text)
++    }
++  })
++  page.on('pageerror', (error) => actionEvidence.consoleErrors.push(String(error)))
+   // Asked only when an arm has aborted, so the fresh-image probe and its wait cost a failing run
+   // and never a passing one.
+   const describeRequests = watchImageEvidence(page, assetServer.origin, requestLog, assetServer.saw)
+@@ -94,6 +104,10 @@
+     // artifact asked for.
+     let recordingNavigations = false
+     page.on('request', (request) => {
++      if (request.isNavigationRequest()) {
++        actionEvidence.navigationRequests.push({ url: request.url(),
++          main: request.frame() === page.mainFrame(), recording: recordingNavigations })
++      }
+       if (!recordingNavigations || !request.isNavigationRequest()) {
+         return
+       }
+@@ -111,12 +125,20 @@
+     // shell, so a top-frame navigation is aborted here the way the shell's delegate would refuse
+     // it, and a frame navigating itself is left alone -- aborting that would make "the frame stayed
+     // on the artifact" true by the rig's own doing.
+-    const record = (route) => {
++    const record = async (route) => {
+       const request = route.request()
+-      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+-        return void route.abort()
+-      }
+-      return void route.continue()
++      const refuse = request.isNavigationRequest() && request.frame() === page.mainFrame()
++      const row = { url: request.url(), navigation: request.isNavigationRequest(),
++        main: request.frame() === page.mainFrame(), decision: refuse ? 'abort' : 'continue' }
++      actionEvidence.routes.push(row)
++      try {
++        if (refuse) await route.abort()
++        else await route.continue()
++        row.settled = true
++      } catch (error) {
++        row.error = String(error)
++        throw error
++      }
+     }
+     await page.route(`${foreignOrigin}/**`, record)
+     // The shell page's violations, and only those: an artifact's own listener would have to run, and
+@@ -126,6 +148,22 @@
+       // present for, so its own moment is a reading rather than an assumption.
+       window.__initAt = `${String(Math.round(performance.now()))} ${document.readyState}`
+       window.__violations = []
++      for (const type of ['pointerdown', 'pointerup', 'click']) {
++        document.addEventListener(type, (event) => {
++          const link = event.target?.closest?.('a')
++          if (!link) return
++          const rectangle = link.getBoundingClientRect()
++          const row = { type, id: link.id, href: link.href, target: link.target,
++            connected: link.isConnected, trusted: event.isTrusted, prevented: event.defaultPrevented,
++            activation: navigator.userActivation?.isActive ?? null,
++            hasBeenActive: navigator.userActivation?.hasBeenActive ?? null,
++            x: event.clientX, y: event.clientY,
++            rectangle: { x: rectangle.x, y: rectangle.y, width: rectangle.width, height: rectangle.height } }
++          console.debug('HTML_PREVIEW_TRUSTED_CLICK ' + JSON.stringify(row))
++          if (type === 'click') queueMicrotask(() => console.debug('HTML_PREVIEW_TRUSTED_CLICK ' +
++            JSON.stringify({ ...row, type: 'click-dispatched', prevented: event.defaultPrevented })))
++        }, true)
++      }
+       document.addEventListener('securitypolicyviolation', (event) => {
+         window.__violations.push(`${event.violatedDirective} ${event.blockedURI || 'inline'}`)
+       })
+@@ -179,6 +217,12 @@
+     // produced, and by then the top frame is mid-navigation and the iframe has blanked to its own
+     // background. So the precondition "there was a rendered artifact to tap" is this reading, and the
+     // one below is only meaningful for a case that did nothing.
++    if (!artifactFrame || artifactFrame.isDetached()) {
++      actionEvidence.boundary.push({ type: 'frame-unavailable', missing: !artifactFrame,
++        detached: artifactFrame?.isDetached() ?? null })
++      throw new Error('The loaded preview frame is missing before diagnostics')
++    }
++    await requestLog.bindFrame(artifactFrame)
+     const pixelBefore = await probePreviewPixel(page, clip)
+     // Sampled before the action as well, because the toggle's whole claim is that it changes.
+     const togglesBefore = await readPreviewToggles(page)
+@@ -186,8 +230,17 @@
+     if (act) {
+       // Recorded, never swallowed: a click that never landed and a click that produced no
+       // navigation are the same empty counter, and only one of them is the product's doing.
+-      await act({ page, frame: previewFrame(page) }).catch((error) => {
++      if (!artifactFrame || artifactFrame.isDetached()) {
++        actionEvidence.boundary.push({ type: 'frame-unavailable', missing: !artifactFrame,
++          detached: artifactFrame?.isDetached() ?? null })
++        throw new Error('The loaded preview frame is missing before its action')
++      }
++      actionEvidence.boundary.push({ type: 'entered', frameUrl: artifactFrame.url(), detached: false })
++      await act({ page, frame: artifactFrame }).then(() => {
++        actionEvidence.boundary.push({ type: 'resolved' })
++      }).catch((error) => {
+         actError = String(error).split('\n')[0]
++        actionEvidence.boundary.push({ type: 'rejected', error: actError })
+       })
+     }
+     // Every arm settles, acting or not: an artifact can start a navigation with no tap behind it --
+@@ -200,7 +253,8 @@
+       describeRequests,
+       // Carried, not just recorded: an arm whose click threw is waiting for a record nobody will
+       // write, and the bounded wait says so rather than leaving a bare timeout.
+-      actError
++      actError,
++      describeAction: () => JSON.stringify(actionEvidence)
+     })
+     // A refusal caused by the tap arrives after mount readiness.
+     if (reportAfterAct && !actError) {
+@@ -228,6 +282,9 @@
+     })
+     return result
+   } finally {
++    console.info('HTML_PREVIEW_NAVIGATION_EVIDENCE ' + JSON.stringify({
++      ...actionEvidence, requests: requestLog.snapshot()
++    }))
+     // The context and not just the page: an arm whose wait aborted still owns one, and the case
+     // after it runs on the same browser. On the happy path this is the close that always ran.
+     await page.close().catch(() => {})
+--- a/config/scripts/mobile-web-app-preview-request-log.mjs
++++ b/config/scripts/mobile-web-app-preview-request-log.mjs
+@@ -1,5 +1,5 @@
+ /**
+- * What the browser said about every request to one origin, for an arm that expected one and did not
++ * What the browser said about requests to the observed origins, for an arm that expected one and did not
+  * get it.
+  *
+  * Every `at` recorded here is Node's `performance.now()`, so `asked` and `attached` can be read
+@@ -19,6 +19,12 @@
+  * subscription and never for the reading.
+  */
+ export async function recordRequestsTo(page, originPrefix) {
++  const prefixes = Array.isArray(originPrefix) ? originPrefix : [originPrefix]
++  const matches = (url) => prefixes.some((prefix) => url.startsWith(prefix))
++  const sessionFailures = []
++  const frameBindings = []
++  let parentEnabled = false
++  let frameSessionMode = null
+   const asked = []
+   const failed = []
+   const sent = []
+@@ -26,12 +32,11 @@
+   // Only this origin's ids, because `Network.loadingFailed` carries a request id and no URL, and an
+   // unfiltered list would report every other request on the page as this arm's evidence.
+   const ours = new Set()
+-  /** Every child target this session attached to, which says whether the frame is out of process. */
+-  const attached = []
+ 
+   page.on('request', (request) => {
+-    if (request.url().startsWith(originPrefix)) {
+-      asked.push({ url: request.url(), at: Math.round(performance.now()) })
++    if (matches(request.url())) {
++      asked.push({ url: request.url(), navigation: request.isNavigationRequest(),
++        main: request.frame() === page.mainFrame(), at: Math.round(performance.now()) })
+     }
+   })
+   // When this page first had any frame at all, so an attachment time has something to be early or
+@@ -41,69 +46,58 @@
+     frameAttached.push({ url: frame.url(), at: Math.round(performance.now()) })
+   })
+   page.on('requestfailed', (request) => {
+-    if (request.url().startsWith(originPrefix)) {
+-      failed.push({ url: request.url(), errorText: request.failure()?.errorText ?? null })
++    if (request.isNavigationRequest() || matches(request.url())) {
++      failed.push({ url: request.url(), navigation: request.isNavigationRequest(),
++        main: request.frame() === page.mainFrame(), errorText: request.failure()?.errorText ?? null })
+     }
+   })
+ 
+-  const cdp = await page
+-    .context()
+-    .newCDPSession(page)
+-    .catch(() => null)
+-  if (cdp) {
+-    await cdp.send('Network.enable').catch(() => {})
+-    // Chromium isolates sandboxed iframes into their own process, srcdoc included, so the page's own
+-    // session sees none of the frame's requests: `cdp sent` came back empty on CI even for a request
+-    // Playwright did record. Flattened auto-attach puts each child target on this same connection,
+-    // and `Network.enable` on the child is what makes its requests visible here.
+-    cdp.on('Target.attachedToTarget', (event) => {
+-      // The moment, not just the fact. This and every `at` on `asked` come from the same Node
+-      // clock, which is what makes them comparable: a request recorded before the frame's target
+-      // was attached was issued while nothing was listening to that frame, and that is a different
+-      // bug from a refusal. Nothing here is comparable to the frame's own resource timing, which
+-      // counts from that document's navigation.
+-      attached.push({
+-        type: event.targetInfo?.type ?? null,
+-        url: event.targetInfo?.url ?? null,
+-        at: Math.round(performance.now())
+-      })
+-      cdp.send('Network.enable', {}, event.sessionId).catch(() => {})
++  const wire = async (subject, label) => {
++    if (label === 'loaded-preview') frameSessionMode = 'child'
++    const session = await page.context().newCDPSession(subject).catch((error) => {
++      if (label === 'loaded-preview' && parentEnabled && error.message ===
++          "browserContext.newCDPSession: This frame does not have a separate CDP session, it is a part of the parent frame's session") {
++        frameSessionMode = 'parent'
++        return null
++      }
++      sessionFailures.push({ label, error: String(error) })
++      return null
+     })
+-    await cdp
+-      .send('Target.setAutoAttach', {
+-        autoAttach: true,
+-        waitForDebuggerOnStart: false,
+-        flatten: true
+-      })
+-      .catch(() => {})
+-    cdp.on('Network.requestWillBeSent', (event) => {
+-      if (!event.request?.url?.startsWith(originPrefix)) {
+-        return
+-      }
+-      ours.add(event.requestId)
+-      sent.push({
+-        url: event.request.url,
+-        type: event.type ?? null,
+-        initiator: event.initiator?.type ?? null,
+-        frameId: event.frameId ?? null
+-      })
++    if (!session) return frameSessionMode === 'parent' && label === 'loaded-preview'
++    session.on('Network.requestWillBeSent', (event) => {
++      if (!event.request?.url || !matches(event.request.url)) return
++      ours.add(`${label}:${event.requestId}`)
++      sent.push({ session: label, url: event.request.url, type: event.type ?? null,
++        initiator: event.initiator?.type ?? null, frameId: event.frameId ?? null })
+     })
+-    cdp.on('Network.loadingFailed', (event) => {
+-      if (!ours.has(event.requestId)) {
+-        return
+-      }
+-      loadingFailed.push({
+-        errorText: event.errorText ?? null,
+-        blockedReason: event.blockedReason ?? null,
+-        corsErrorStatus: event.corsErrorStatus ?? null,
+-        type: event.type ?? null
+-      })
++    session.on('Network.loadingFailed', (event) => {
++      if (!ours.has(`${label}:${event.requestId}`)) return
++      loadingFailed.push({ session: label, errorText: event.errorText ?? null,
++        blockedReason: event.blockedReason ?? null, corsErrorStatus: event.corsErrorStatus ?? null,
++        type: event.type ?? null })
+     })
++    let enabled = true
++    await session.send('Network.enable').catch((error) => {
++      enabled = false
++      sessionFailures.push({ label, error: String(error) })
++    })
++    return enabled
++  }
++  const cdp = await wire(page, 'page')
++  parentEnabled = cdp
++  const bindFrame = async (frame) => {
++    if (!cdp) return
++    if (!frame || frame.isDetached()) throw new Error('Cannot bind diagnostics to a missing loaded frame')
++    const enabled = await wire(frame, 'loaded-preview')
++    frameBindings.push({ url: frame.url(), enabled, session: frameSessionMode })
+   }
+ 
+   return {
++    bindFrame,
++    snapshot: () => ({ prefixes, asked, failed, sent, loadingFailed, frameAttached,
++      frameBindings, sessionFailures, cdp: Boolean(cdp) }),
+     asked: () => asked.map((one) => one.url),
+     describe: () =>
+-      `asked ${JSON.stringify(asked)}; failed ${JSON.stringify(failed)}; frameAttached ${JSON.stringify(frameAttached)}; cdp ${cdp ? 'on' : 'off'} attached ${JSON.stringify(attached)} sent ${JSON.stringify(sent)}; cdp loadingFailed ${JSON.stringify(loadingFailed)}`
++      `asked ${JSON.stringify(asked)}; failed ${JSON.stringify(failed)}; frameAttached ${JSON.stringify(frameAttached)}; cdp ${cdp ? 'on' : 'off'} frameBindings ${JSON.stringify(frameBindings)} sessionFailures ${JSON.stringify(sessionFailures)} sent ${JSON.stringify(sent)}; cdp loadingFailed ${JSON.stringify(loadingFailed)}`
+   }
+ }
+--- a/config/scripts/mobile-web-app-preview-frame-readiness.mjs
++++ b/config/scripts/mobile-web-app-preview-frame-readiness.mjs
+@@ -313,7 +313,7 @@
+     `${reading?.arm ?? 'arm unknown'} waited ${String(waited)}ms for the navigation it expects ` +
+     `and recorded ${JSON.stringify(navigations)}; its action ` +
+     `${reading?.actError ? `failed with ${JSON.stringify(reading.actError)}` : 'reported no error'}` +
+-    ` | ${last}`
++    ` | action evidence ${reading?.describeAction?.() ?? 'not captured'} | ${last}`
+   while (!navigations.some((one) => matches(one))) {
+     if (signal?.aborted) {
+       console.error(`[html-preview-render] ${absent(Date.now() - started, latest)}`)
