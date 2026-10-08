@@ -273,6 +273,42 @@ describe('OrcaRuntimeService', () => {
     ])
   })
 
+  // As before the topology core: a background worker's title names its terminal, never a desktop tab.
+  it("keeps a background create's title off every tab, revealing none", async () => {
+    const spawn = vi.fn().mockResolvedValue({ id: 'pty-worker' })
+    const revealTerminalSession = vi.fn().mockResolvedValue({ tabId: 'tab-worker' })
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    runtime.setNotifier({
+      worktreesChanged: vi.fn(),
+      reposChanged: vi.fn(),
+      activateWorktree: vi.fn(),
+      createTerminal: vi.fn(),
+      revealTerminalSession,
+      splitTerminal: vi.fn(),
+      renameTerminal: vi.fn(),
+      focusTerminal: vi.fn(),
+      closeTerminal: vi.fn(),
+      sleepWorktree: vi.fn(),
+      terminalFitOverrideChanged: vi.fn(),
+      terminalDriverChanged: vi.fn()
+    })
+
+    const created = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
+      title: 'worker-1',
+      presentation: 'background'
+    })
+
+    expect(created).toMatchObject({ title: 'worker-1', surface: 'background' })
+    expect(revealTerminalSession).not.toHaveBeenCalled()
+    expect(JSON.stringify(spawn.mock.calls[0]?.[0])).not.toContain('worker-1')
+  })
+
   // Why (flipped by the aug20 "windows 2" incident): #8646 scoped the persisted
   // binding to windowless promotion, which left a host-initiated terminal on a
   // host running the full app with neither a persisted tab nor runtime
