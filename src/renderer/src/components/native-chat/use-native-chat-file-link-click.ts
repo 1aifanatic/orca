@@ -30,18 +30,24 @@ export function useNativeChatFileLinkClick(
       if (!context) {
         return
       }
-      const target = resolveNativeChatFileLink(href, context)
-      if (!target) {
-        const route = routeNativeChatHref(href)
-        if (route.kind === 'file') {
-          // Why: e.g. `~/x` when the home folder cannot be inferred; never a dead click.
-          event.preventDefault()
-          showFileLinkUnresolvedToast(route.pathText)
-        }
+      const route = routeNativeChatHref(href)
+      if (route.kind !== 'file') {
         return
       }
       event.preventDefault()
       event.stopPropagation()
+      const state = useAppStore.getState()
+      const behavior = isTerminalLinkActionActivation(event)
+        ? nativeChatPlainLinkClickBehavior(state.settings)
+        : 'open'
+      if (behavior === 'none') {
+        return
+      }
+      const target = resolveNativeChatFileLink(href, context)
+      if (!target) {
+        showFileLinkUnresolvedToast(route.pathText)
+        return
+      }
       const deps = {
         worktreeId: context.worktreeId,
         worktreePath: context.worktreePath,
@@ -51,13 +57,6 @@ export function useNativeChatFileLinkClick(
           failure.verdict === 'unverifiable'
             ? showFileLinkUnverifiableToast(target.absolutePath, failure.error)
             : showFileLinkNotFoundToast(target.absolutePath)
-      }
-      const state = useAppStore.getState()
-      const behavior = isTerminalLinkActionActivation(event)
-        ? nativeChatPlainLinkClickBehavior(state.settings)
-        : 'open'
-      if (behavior === 'none') {
-        return
       }
       if (behavior === 'open' || !request) {
         openDetectedFilePath(target.absolutePath, target.line, target.column, {

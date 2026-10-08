@@ -36,7 +36,7 @@ describe('tool row file targets', () => {
     fireEvent.click(link)
     expect(onLinkClick).toHaveBeenCalledWith(
       expect.anything(),
-      createNativeChatFileHref('/repo/src/main.ts')
+      createNativeChatFileHref('/repo/src/main.ts', 'literal')
     )
     expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByRole('button')).toHaveAccessibleName(/Read.*\/repo\/src\/main.ts/)
@@ -51,7 +51,10 @@ describe('tool row file targets', () => {
       />
     )
     fireEvent.keyDown(screen.getByRole('link'), { key: 'Enter' })
-    expect(onLinkClick).toHaveBeenCalledWith(expect.anything(), createNativeChatFileHref('new.ts'))
+    expect(onLinkClick).toHaveBeenCalledWith(
+      expect.anything(),
+      createNativeChatFileHref('new.ts', 'literal')
+    )
   })
 
   it('leaves the name plain when the chat cannot open files, and for non-file tools', () => {
@@ -77,7 +80,7 @@ describe('tool row file targets', () => {
     fireEvent.click(screen.getByRole('link', { name: 'src/main.ts' }))
     expect(onLinkClick).toHaveBeenCalledWith(
       expect.anything(),
-      createNativeChatFileHref('src/main.ts')
+      createNativeChatFileHref('src/main.ts', 'literal')
     )
     expect(screen.getByRole('button', { expanded: false })).toBeInTheDocument()
   })

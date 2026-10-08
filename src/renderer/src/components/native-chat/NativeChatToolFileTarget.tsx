@@ -38,13 +38,23 @@ export function NativeChatToolFileTarget({
       onClick={(event) => {
         // The row around this is its expand button; opening the file must not also toggle it.
         event.stopPropagation()
-        onLinkClick(event, createNativeChatFileHref(path))
+        onLinkClick(event, createNativeChatFileHref(path, 'literal'))
       }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           event.stopPropagation()
-          event.currentTarget.click()
+          event.currentTarget.dispatchEvent(
+            new MouseEvent('click', {
+              bubbles: true,
+              cancelable: true,
+              detail: 0,
+              altKey: event.altKey,
+              ctrlKey: event.ctrlKey,
+              metaKey: event.metaKey,
+              shiftKey: event.shiftKey
+            })
+          )
         }
       }}
     >
