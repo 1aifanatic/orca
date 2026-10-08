@@ -106,9 +106,16 @@ export function NativeChatNoticeRow({
   const { orcaStop } = block
   const { hostLabel, continueAvailable } = orcaStopView
   const named = orcaStop !== undefined && hostLabel !== null
-  const text = named
-    ? nativeChatOrcaStopRowText(orcaStop.cause, hostLabel, { continueAvailable })
-    : block.text
+  const codexRefusal =
+    block.failure?.refusal?.code === 'agent_session_operation_invalid' &&
+    block.failure.refusal.details?.codexInstallation
+  const repairNotice = codexRefusal ? codexMaintenance : null
+  const repairAction = repairNotice?.action
+  const text =
+    repairNotice?.text ??
+    (named
+      ? nativeChatOrcaStopRowText(orcaStop.cause, hostLabel, { continueAvailable })
+      : block.text)
   const tone =
     named || block.presentation === AGENT_SESSION_ORCA_STOP_PRESENTATION ? 'notice' : block.tone
   const Icon =
@@ -131,7 +138,15 @@ export function NativeChatNoticeRow({
     >
       <div className="flex items-start gap-2">
         {Icon ? <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" /> : null}
-        <p className="min-w-0 whitespace-pre-wrap break-words">{text}</p>
+        <p className="min-w-0 whitespace-pre-wrap break-words">
+          {repairNotice?.title ? (
+            <span className="block font-medium">{repairNotice.title}</span>
+          ) : null}
+          {text}
+          {repairNotice?.errorText ? (
+            <span className="block font-mono">{repairNotice.errorText}</span>
+          ) : null}
+        </p>
       </div>
       {claudeSignIn && isClaudeSignInFailureKind(block.failure?.kind) ? (
         <Button
@@ -144,18 +159,16 @@ export function NativeChatNoticeRow({
           {nativeChatClaudeSignInLabel(claudeSignIn)}
         </Button>
       ) : null}
-      {codexMaintenance &&
-      block.failure?.refusal?.code === 'agent_session_operation_invalid' &&
-      block.failure.refusal.details?.codexInstallation ? (
+      {repairAction ? (
         <Button
           type="button"
           variant="outline"
           size="xs"
-          disabled={codexMaintenance.disabled}
-          onClick={codexMaintenance.onClick}
+          disabled={repairAction.disabled}
+          onClick={repairAction.onClick}
         >
-          {codexMaintenance.busy ? <Loader2 className="size-3 animate-spin" /> : null}
-          {codexMaintenance.label}
+          {repairAction.busy ? <Loader2 className="size-3 animate-spin" /> : null}
+          {repairAction.label}
         </Button>
       ) : null}
       {block.providerFrame ? (

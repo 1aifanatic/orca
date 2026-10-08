@@ -50,7 +50,7 @@ describe.skipIf(process.platform === 'win32')('POSIX npm installation repair', (
         kind: 'update',
         manual: true,
         installationPath: canonical,
-        command: `Install or update Codex at ${canonical} to 0.136.0 or newer, then try again.`
+        command: `Install Codex 0.136.0 or newer at ${canonical}, then retry.`
       })
     }
   )

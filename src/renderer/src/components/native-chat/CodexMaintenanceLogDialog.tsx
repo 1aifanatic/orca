@@ -31,15 +31,17 @@ export function CodexMaintenanceLogDialog(): React.JSX.Element {
   const busySnapshot = () => Boolean(target && getCodexMaintenanceHostBusy(target))
   const busy = useSyncExternalStore(subscribeCodexMaintenance, busySnapshot, busySnapshot)
   const message =
-    entry.error ??
-    job?.error ??
-    (job?.phase === 'completed'
-      ? translate('codex.maintenance.exitCode', 'Command exited with code {{code}}', {
-          code: job.exitCode ?? '?'
-        })
-      : !busy || job?.phase === 'unknown'
-        ? (job?.action.command ?? '')
-        : codexMaintenanceLabel(job?.action.kind === 'update', true))
+    entry.error || job?.error
+      ? job?.action.kind === 'install'
+        ? translate('codex.maintenance.installFailed', 'Codex could not be installed. Try again.')
+        : translate('codex.maintenance.updateFailed', 'Codex could not be updated. Try again.')
+      : job?.phase === 'completed'
+        ? translate('codex.maintenance.exitCode', 'Command exited with code {{code}}', {
+            code: job.exitCode ?? '?'
+          })
+        : !busy || job?.phase === 'unknown'
+          ? (job?.action.command ?? '')
+          : codexMaintenanceLabel(job?.action.kind === 'update', true)
   const output = job?.output ?? ''
   return (
     <Dialog
@@ -52,9 +54,7 @@ export function CodexMaintenanceLogDialog(): React.JSX.Element {
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {translate('codex.maintenance.logTitle', 'Codex installation log')}
-          </DialogTitle>
+          <DialogTitle>{translate('codex.maintenance.logTitle', 'Codex setup log')}</DialogTitle>
           <DialogDescription>{message}</DialogDescription>
         </DialogHeader>
         {busy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}

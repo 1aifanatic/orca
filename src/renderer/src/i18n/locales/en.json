@@ -17978,8 +17978,8 @@
         "sendAgainToTryOnceMore": "Send your message again to try once more.",
         "couldNotStart": "{{agent}} couldn't start.",
         "couldNotRestart": "{{agent}} couldn't restart.",
-        "codexCliMissing": "Codex is not installed on this host. Chats require Codex {{minimumVersion}} or newer. Check the selected Codex command in Settings → Agents, then install it on this host and try again.",
-        "codexCliTooOld": "Codex {{installedVersion}} is too old for chats. Update the selected installation to {{minimumVersion}} or newer on this host using Settings → Agents, then try again.",
+        "codexCliMissing": "Codex isn't installed.",
+        "codexCliTooOld": "Codex {{installedVersion}} is too old for chats. Update to {{minimumVersion}} or newer.",
         "notSignedIn": "{{agent}} is not signed in for the selected account.",
         "signInFirst": "Sign in first.",
         "signInThenRunCommand": "Sign in, then run /{{command}} again.",
@@ -19608,14 +19608,14 @@
       "install": "Install Codex",
       "missingTitle": "Codex not installed",
       "unsupportedTitle": "Codex update required",
-      "missingReason": "Install Codex before starting a chat.",
-      "unsupportedReason": "Installed {{installed}}; version {{minimum}} or newer is required.",
-      "notInstalled": "Not installed",
-      "settingsRequired": "Update required (installed {{installed}}, needs {{minimum}})",
       "exitCode": "Command exited with code {{code}}",
-      "logTitle": "Codex installation log",
+      "logTitle": "Codex setup log",
       "copyLog": "Copy log",
-      "manualUpdate": "Install or update Codex at {{path}} to {{minimum}} or newer, then try again."
+      "manualUpdate": "Install Codex {{minimum}} or newer at {{path}}, then retry.",
+      "updatedRetry": "Codex is updated. Retry.",
+      "installFailed": "Codex could not be installed. Try again.",
+      "updateFailed": "Codex could not be updated. Try again.",
+      "runCommand": "Run {{command}}."
     }
   }
 }

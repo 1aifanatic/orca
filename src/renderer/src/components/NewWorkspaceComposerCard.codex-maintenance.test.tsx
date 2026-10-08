@@ -86,6 +86,16 @@ describe('workspace composer Codex installation admission', () => {
       expect(
         query.getByText(installed ? 'Codex update required' : 'Codex not installed')
       ).toBeInTheDocument()
+      expect(
+        query.getByText(
+          installed
+            ? 'Codex 0.135.0 is too old for chats. Update to 0.136.0 or newer.'
+            : "Codex isn't installed."
+        )
+      ).toBeInTheDocument()
+      expect(
+        query.getByRole('button', { name: installed ? 'Update Codex' : 'Install Codex' })
+      ).toBeEnabled()
       expect(mocks.route).toHaveBeenCalledWith(mocks.state, {
         agent: 'codex',
         workspace: { kind: 'git-worktree', repoId: 'repo-a', executionHostId: 'local' }

@@ -32,7 +32,7 @@ function record(): AgentSessionRecord {
 
 describe('Codex structured launch version admission', () => {
   it.each([null, '0.100.0', '0.135.0'])(
-    'refuses %s with install/update commands and both version facts',
+    'refuses %s with concise repair copy and both version facts',
     async (version) => {
       vi.mocked(readCodexCliInstallation).mockResolvedValue(
         codexCliInstallation(version !== null, version)
@@ -43,9 +43,12 @@ describe('Codex structured launch version admission', () => {
       expect(caught).toBeInstanceOf(CodexCliInstallationError)
       const wording = { record: record(), newSession: true }
       const result = failedAcquisitionRefusal(caught, wording)
-      expect(result?.refusal.message).toContain('0.136.0')
-      expect(result?.refusal.message).toContain('Settings → Agents')
-      expect(result?.refusal.message).toContain(version ?? 'not installed')
+      expect(result?.refusal.message).toBe(
+        version === null
+          ? "Codex isn't installed."
+          : `Codex ${version} is too old for chats. Update to 0.136.0 or newer.`
+      )
+      expect(result?.refusal.message).not.toContain('Settings → Agents')
       expect(result?.refusal.message).not.toContain('codex update')
       expect(failedAcquisitionSettlement(caught, wording).exitProof).toBe('processless')
       const failure = structuredAgentSessionStartFailure({ error: caught })

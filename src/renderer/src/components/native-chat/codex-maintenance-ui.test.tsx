@@ -3,7 +3,6 @@ import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { codexCliInstallation } from '../../../../shared/codex-cli-installation'
-import { agentSessionRefusalFailure } from '../../../../shared/agent-session-write-failure'
 import {
   codexMaintenanceAction,
   codexMaintenanceManualAction,
@@ -19,7 +18,6 @@ import {
 import { CodexMaintenanceRow } from '../settings/CodexMaintenanceRow'
 import { NativeChatComposerNotices } from './NativeChatComposerNotices'
 import { CodexMaintenanceLogDialog } from './CodexMaintenanceLogDialog'
-import { structuredSessionNotices } from './native-chat-structured-session-notices'
 
 const { call, refreshAgents } = vi.hoisted(() => ({
   call: vi.fn(),
@@ -130,9 +128,7 @@ describe('Codex composer and Settings maintenance', () => {
     )
     await flush()
     expect(
-      screen.getAllByText(
-        'Install or update Codex at /selected/codex to 0.136.0 or newer, then try again.'
-      )
+      screen.getAllByText('Install Codex 0.136.0 or newer at /selected/codex, then retry.')
     ).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'Update Codex' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
@@ -147,11 +143,11 @@ describe('Codex composer and Settings maintenance', () => {
     expect(screen.queryByText('Codex update required')).toBeNull()
   })
   it.each([
-    { installed: false, version: null, text: 'Not installed', action: 'Install Codex' },
+    { installed: false, version: null, text: "Codex isn't installed.", action: 'Install Codex' },
     {
       installed: true,
       version: '0.135.0',
-      text: 'Update required (installed 0.135.0, needs 0.136.0)',
+      text: 'Codex 0.135.0 is too old for chats. Update to 0.136.0 or newer.',
       action: 'Update Codex'
     },
     { installed: true, version: null, text: null, action: null },
@@ -255,7 +251,7 @@ describe('Codex composer and Settings maintenance', () => {
       { timeout: 3000 }
     )
     expect(screen.queryByText('Codex not installed')).toBeNull()
-    expect(screen.queryByText('Not installed')).toBeNull()
+    expect(screen.queryByText("Codex isn't installed.")).toBeNull()
     expect(screen.getByText('Send', { selector: 'button' })).toBeEnabled()
   })
   it('withholds a cached refusal on remount, focus revalidation and failed contact', async () => {
@@ -298,29 +294,5 @@ describe('Codex composer and Settings maintenance', () => {
       completeRead(state(true, '0.136.0'))
     })
     expect(screen.queryByText('Codex update required')).toBeNull()
-  })
-
-  it('adds Update to the existing start-failure notice while retaining Retry for other failures', () => {
-    const action = { label: 'Update Codex', onClick: vi.fn() }
-    const notices = structuredSessionNotices({
-      agentLabel: 'Codex',
-      sessionError: null,
-      composerError: null,
-      launch: {
-        lifecycle: 'failed',
-        retry: vi.fn(),
-        failure: agentSessionRefusalFailure({
-          code: 'agent_session_operation_invalid',
-          details: {
-            reason: 'attachFailed',
-            codexInstallation: { installedVersion: '0.135.0', minimumVersion: '0.136.0' }
-          }
-        })
-      },
-      codexMaintenanceAction: action
-    })
-    render(<NativeChatComposerNotices notices={notices} />)
-    expect(screen.getByRole('button', { name: 'Update Codex' })).toBeEnabled()
-    expect(screen.getByText(/Codex 0.135.0 is too old for chats/)).toBeInTheDocument()
   })
 })

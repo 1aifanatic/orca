@@ -20,8 +20,9 @@ import {
 } from '@/components/native-chat/codex-maintenance-copy'
 import type { NativeChatComposerNotice } from '@/components/native-chat/native-chat-composer-notice'
 
-export const NativeChatCodexMaintenanceContext =
-  createContext<NativeChatComposerNotice['action']>(undefined)
+export const NativeChatCodexMaintenanceContext = createContext<NativeChatComposerNotice | null>(
+  null
+)
 
 export function useCodexMaintenance(target: CodexMaintenanceTarget | null) {
   const key = target ? codexMaintenanceTargetKey(target) : ''

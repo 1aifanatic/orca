@@ -1,5 +1,6 @@
 import { translate } from '@/i18n/i18n'
 import type { CodexCliInstallation } from '../../../../shared/codex-cli-installation'
+import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import type { CodexMaintenanceAction } from '../../../../shared/codex-cli-maintenance'
 
 export function codexMaintenanceCommandText(
@@ -9,10 +10,10 @@ export function codexMaintenanceCommandText(
   return action.manual
     ? translate(
         'codex.maintenance.manualUpdate',
-        'Install or update Codex at {{path}} to {{minimum}} or newer, then try again.',
+        'Install Codex {{minimum}} or newer at {{path}}, then retry.',
         { path: action.installationPath ?? action.command, minimum }
       )
-    : action.command
+    : translate('codex.maintenance.runCommand', 'Run {{command}}.', { command: action.command })
 }
 
 export function codexMaintenanceLabel(update: boolean, busy = false): string {
@@ -32,30 +33,14 @@ export function codexMaintenanceTitle(installation: CodexCliInstallation): strin
 }
 
 export function codexMaintenanceReason(installation: CodexCliInstallation): string {
-  return installation.status === 'missing'
-    ? translate('codex.maintenance.missingReason', 'Install Codex before starting a chat.')
-    : translate(
-        'codex.maintenance.unsupportedReason',
-        'Installed {{installed}}; version {{minimum}} or newer is required.',
-        {
-          installed: installation.version ?? '',
-          minimum: installation.minimumVersion
-        }
-      )
+  return sayAgentSessionFailureTranslated(
+    installation.status === 'missing' ? 'codexCliMissing' : 'codexCliTooOld',
+    { installedVersion: installation.version ?? '', minimumVersion: installation.minimumVersion }
+  )
 }
 
 export function codexMaintenanceSettingsStatus(installation: CodexCliInstallation): string | null {
-  if (installation.status === 'missing') {
-    return translate('codex.maintenance.notInstalled', 'Not installed')
-  }
-  return installation.status === 'unsupported'
-    ? translate(
-        'codex.maintenance.settingsRequired',
-        'Update required (installed {{installed}}, needs {{minimum}})',
-        {
-          installed: installation.version ?? '',
-          minimum: installation.minimumVersion
-        }
-      )
+  return installation.status === 'missing' || installation.status === 'unsupported'
+    ? codexMaintenanceReason(installation)
     : null
 }

@@ -181,8 +181,12 @@ it.each([null, '0.100.0', '0.135.0'])(
     renderPane([rejected('codex-message', text, failure)], 'codex')
     const row = await notice('codex-message')
     expect(within(row).getByText(text)).toBeTruthy()
-    expect(text).toContain('0.136.0')
-    expect(text).toContain('Settings → Agents')
+    expect(text).toContain(
+      installedVersion === null
+        ? "Codex isn't installed."
+        : `Codex ${installedVersion} is too old for chats. Update to 0.136.0 or newer.`
+    )
+    expect(text).not.toContain('Settings → Agents')
     expect(text).not.toContain('codex update')
   }
 )

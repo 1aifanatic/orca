@@ -4,6 +4,7 @@ import { agentSessionRefusalCauseParts } from '../../../../shared/agent-session-
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
 import { joinSentences } from '../../../../shared/sentence-joining'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
+import { codexMaintenanceReason, codexMaintenanceTitle } from './codex-maintenance-copy'
 import {
   isClaudeSignInFailureKind,
   nativeChatClaudeSignInLabel,
@@ -21,7 +22,8 @@ function nativeChatLaunchNotice({
   agentLabel,
   onRetry,
   claudeSignIn = null,
-  codexMaintenanceAction
+  codexMaintenanceAction,
+  codexMaintenanceNotice
 }: {
   lifecycle: StructuredAgentSessionLaunchLifecycle | null
   /** The host's refusal behind the failed start; its message is never shown. */
@@ -32,9 +34,31 @@ function nativeChatLaunchNotice({
   /** Offered instead of Retry until it signs in, when the start failed for want of a sign-in. */
   claudeSignIn?: NativeChatClaudeSignIn | null
   codexMaintenanceAction?: NativeChatComposerNotice['action']
+  codexMaintenanceNotice?: NativeChatComposerNotice | null
 }): NativeChatComposerNotice | null {
   if (lifecycle !== 'failed' && lifecycle !== 'visibility-unknown') {
     return null
+  }
+  const installation =
+    lifecycle === 'failed' && failure?.code === 'agent_session_operation_invalid'
+      ? failure.details?.codexInstallation
+      : undefined
+  if (installation) {
+    const facts = {
+      status:
+        installation.installedVersion === null ? ('missing' as const) : ('unsupported' as const),
+      version: installation.installedVersion,
+      minimumVersion: installation.minimumVersion
+    }
+    return codexMaintenanceNotice
+      ? { ...codexMaintenanceNotice, key: 'launch' }
+      : {
+          key: 'launch',
+          kind: 'error',
+          title: codexMaintenanceTitle(facts),
+          text: codexMaintenanceReason(facts),
+          action: codexMaintenanceAction
+        }
   }
   const message =
     lifecycle === 'failed'
@@ -60,20 +84,16 @@ function nativeChatLaunchNotice({
     kind: 'error',
     text: cause ? (saysStartFailure ? cause : joinSentences([message, cause])) : message,
     action:
-      failure?.code === 'agent_session_operation_invalid' &&
-      failure.details?.codexInstallation &&
-      codexMaintenanceAction
-        ? codexMaintenanceAction
-        : claudeSignIn && isClaudeSignInFailureKind(failure?.details?.reason)
-          ? {
-              label: nativeChatClaudeSignInLabel(claudeSignIn),
-              onClick: claudeSignIn.signIn,
-              disabled: claudeSignIn.signingIn
-            }
-          : {
-              label: translate('auto.components.native.chat.NativeChatLaunchRetry.retry', 'Retry'),
-              onClick: onRetry
-            }
+      claudeSignIn && isClaudeSignInFailureKind(failure?.details?.reason)
+        ? {
+            label: nativeChatClaudeSignInLabel(claudeSignIn),
+            onClick: claudeSignIn.signIn,
+            disabled: claudeSignIn.signingIn
+          }
+        : {
+            label: translate('auto.components.native.chat.NativeChatLaunchRetry.retry', 'Retry'),
+            onClick: onRetry
+          }
   }
 }
 
@@ -84,7 +104,8 @@ export function structuredSessionNotices({
   sessionError,
   composerError,
   claudeSignIn = null,
-  codexMaintenanceAction
+  codexMaintenanceAction,
+  codexMaintenanceNotice
 }: {
   launch: {
     lifecycle: StructuredAgentSessionLaunchLifecycle | null
@@ -96,6 +117,7 @@ export function structuredSessionNotices({
   composerError: (NativeChatComposerNoticeContent & { onDismiss: () => void }) | null
   claudeSignIn?: NativeChatClaudeSignIn | null
   codexMaintenanceAction?: NativeChatComposerNotice['action']
+  codexMaintenanceNotice?: NativeChatComposerNotice | null
 }): NativeChatComposerNotice[] {
   const launchNotice = nativeChatLaunchNotice({
     lifecycle: launch.lifecycle,
@@ -103,7 +125,8 @@ export function structuredSessionNotices({
     agentLabel,
     onRetry: launch.retry,
     claudeSignIn,
-    codexMaintenanceAction
+    codexMaintenanceAction,
+    codexMaintenanceNotice
   })
   return [
     ...(launchNotice ? [launchNotice] : []),

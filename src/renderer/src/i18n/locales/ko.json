@@ -17785,8 +17785,8 @@
         "couldNotStart": "{{agent}}을(를) 시작하지 못했습니다.",
         "editSavedArguments": "설정 > 에이전트 > 인수에서 수정하세요.",
         "couldNotRestart": "{{agent}}을(를) 다시 시작하지 못했습니다.",
-        "codexCliMissing": "이 호스트에 Codex가 설치되어 있지 않습니다. 채팅에는 Codex {{minimumVersion}} 이상이 필요합니다. 설정 → 에이전트에서 선택한 Codex 명령을 확인하고 이 호스트에 설치한 후 다시 시도하세요.",
-        "codexCliTooOld": "Codex {{installedVersion}}은 채팅에 사용하기에 너무 오래되었습니다. 설정 → 에이전트에서 이 호스트의 선택한 설치를 {{minimumVersion}} 이상으로 업데이트한 후 다시 시도하세요.",
+        "codexCliMissing": "Codex가 설치되어 있지 않습니다.",
+        "codexCliTooOld": "Codex {{installedVersion}}은 채팅에 사용하기에는 너무 오래된 버전입니다. {{minimumVersion}} 이상으로 업데이트하세요.",
         "notSignedIn": "{{agent}}이(가) 선택한 계정으로 로그인되어 있지 않습니다.",
         "signInFirst": "먼저 로그인하세요.",
         "signInThenRunCommand": "로그인한 다음 /{{command}}을(를) 다시 실행하세요.",
@@ -19474,14 +19474,14 @@
       "install": "Codex 설치",
       "missingTitle": "Codex가 설치되지 않았습니다",
       "unsupportedTitle": "Codex 업데이트가 필요합니다",
-      "missingReason": "채팅을 시작하기 전에 Codex를 설치하세요.",
-      "unsupportedReason": "설치된 버전: {{installed}}. 버전 {{minimum}} 이상이 필요합니다.",
-      "notInstalled": "설치되지 않음",
-      "settingsRequired": "업데이트 필요 (설치된 버전: {{installed}}, 필요한 버전: {{minimum}})",
       "exitCode": "명령이 종료 코드 {{code}}로 종료되었습니다",
-      "logTitle": "Codex 설치 로그",
+      "logTitle": "Codex 설정 로그",
       "copyLog": "로그 복사",
-      "manualUpdate": "{{path}}에 Codex {{minimum}} 이상을 설치하거나 업데이트한 후 다시 시도하세요."
+      "manualUpdate": "{{path}}에 Codex {{minimum}} 이상을 설치한 다음 다시 시도하세요.",
+      "updatedRetry": "Codex가 업데이트되었습니다. 다시 시도하세요.",
+      "installFailed": "Codex를 설치하지 못했습니다. 다시 시도하세요.",
+      "updateFailed": "Codex를 업데이트하지 못했습니다. 다시 시도하세요.",
+      "runCommand": "{{command}}을 실행하세요."
     }
   }
 }

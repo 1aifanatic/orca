@@ -17851,8 +17851,8 @@
         "couldNotStart": "{{agent}} n'a pas pu démarrer.",
         "editSavedArguments": "Modifiez-les dans Paramètres > Agents > Arguments.",
         "couldNotRestart": "{{agent}} n'a pas pu redémarrer.",
-        "codexCliMissing": "Codex n’est pas installé sur cet hôte. Les chats nécessitent Codex {{minimumVersion}} ou ultérieur. Vérifiez la commande Codex sélectionnée dans Paramètres → Agents, installez-le sur cet hôte, puis réessayez.",
-        "codexCliTooOld": "Codex {{installedVersion}} est trop ancien pour les chats. Mettez à jour l’installation sélectionnée vers {{minimumVersion}} ou ultérieur sur cet hôte depuis Paramètres → Agents, puis réessayez.",
+        "codexCliMissing": "Codex n’est pas installé.",
+        "codexCliTooOld": "Codex {{installedVersion}} est trop ancien pour les conversations. Mettez-le à jour vers {{minimumVersion}} ou une version ultérieure.",
         "notSignedIn": "{{agent}} n'est pas connecté avec le compte sélectionné.",
         "signInFirst": "Connectez-vous d'abord.",
         "signInThenRunCommand": "Connectez-vous, puis relancez /{{command}}.",
@@ -19474,14 +19474,14 @@
       "install": "Installer Codex",
       "missingTitle": "Codex non installé",
       "unsupportedTitle": "Mise à jour de Codex requise",
-      "missingReason": "Installez Codex avant de démarrer une conversation.",
-      "unsupportedReason": "Version installée : {{installed}} ; la version {{minimum}} ou ultérieure est requise.",
-      "notInstalled": "Non installé",
-      "settingsRequired": "Mise à jour requise (version installée : {{installed}}, requise : {{minimum}})",
       "exitCode": "La commande s’est terminée avec le code {{code}}",
-      "logTitle": "Journal d’installation de Codex",
+      "logTitle": "Journal de configuration de Codex",
       "copyLog": "Copier le journal",
-      "manualUpdate": "Installez ou mettez à jour Codex à {{path}} vers la version {{minimum}} ou ultérieure, puis réessayez."
+      "manualUpdate": "Installez Codex {{minimum}} ou une version ultérieure dans {{path}}, puis réessayez.",
+      "updatedRetry": "Codex est à jour. Réessayez.",
+      "installFailed": "Codex n’a pas pu être installé. Réessayez.",
+      "updateFailed": "Codex n’a pas pu être mis à jour. Réessayez.",
+      "runCommand": "Exécutez {{command}}."
     }
   }
 }

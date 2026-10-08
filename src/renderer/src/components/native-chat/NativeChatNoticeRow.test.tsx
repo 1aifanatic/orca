@@ -27,7 +27,7 @@ function renderStatus(
   body: AgentJournalStatusItem,
   hostLabel: string | null = null,
   continueAvailable = false,
-  maintenanceAction?: NativeChatComposerNotice['action']
+  maintenanceNotice?: NativeChatComposerNotice
 ) {
   const [message] = projectStructuredItemsToNativeChat([
     {
@@ -42,7 +42,7 @@ function renderStatus(
   const view = orcaStopView(hostLabel, continueAvailable)
   return render(
     <NativeChatOrcaStopContext.Provider value={view}>
-      <NativeChatCodexMaintenanceContext.Provider value={maintenanceAction}>
+      <NativeChatCodexMaintenanceContext.Provider value={maintenanceNotice ?? null}>
         <MessageRow message={message!} expandSignal={false} onScrollMessageToTop={vi.fn()} />
       </NativeChatCodexMaintenanceContext.Provider>
     </NativeChatOrcaStopContext.Provider>
@@ -152,7 +152,14 @@ describe('notice rows', () => {
         },
         null,
         false,
-        { label, onClick }
+        {
+          key: 'codex',
+          kind: 'error',
+          text: installedVersion
+            ? 'Codex 0.135.0 is too old for chats. Update to 0.136.0 or newer.'
+            : "Codex isn't installed.",
+          action: { label, onClick }
+        }
       )
       expect(onClick).not.toHaveBeenCalled()
       fireEvent.click(screen.getByRole('button', { name: label }))

@@ -105,8 +105,6 @@ describe('configured Codex invocation ownership', () => {
     })
     expect(result.spec).toBeNull()
     expect(result.action).toMatchObject({ kind: 'update', installationPath: command, manual: true })
-    expect(result.action?.command).toBe(
-      `Install or update Codex at ${command} to 0.136.0 or newer, then try again.`
-    )
+    expect(result.action?.command).toBe(`Install Codex 0.136.0 or newer at ${command}, then retry.`)
   })
 })

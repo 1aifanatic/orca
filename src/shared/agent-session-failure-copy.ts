@@ -22,10 +22,9 @@ export const AGENT_SESSION_FAILURE_COPY = {
   sendAgainToTryOnceMore: 'Send your message again to try once more.',
   couldNotStart: "{{agent}} couldn't start.",
   couldNotRestart: "{{agent}} couldn't restart.",
-  codexCliMissing:
-    'Codex is not installed on this host. Chats require Codex {{minimumVersion}} or newer. Check the selected Codex command in Settings → Agents, then install it on this host and try again.',
+  codexCliMissing: "Codex isn't installed.",
   codexCliTooOld:
-    'Codex {{installedVersion}} is too old for chats. Update the selected installation to {{minimumVersion}} or newer on this host using Settings → Agents, then try again.',
+    'Codex {{installedVersion}} is too old for chats. Update to {{minimumVersion}} or newer.',
   argumentsUnsupportedOption: 'Saved Arguments contain an unsupported option ({{option}}).',
   argumentsMissingValue: 'Saved Arguments need a value for {{option}}.',
   argumentsMultipleValues: 'Saved Arguments give {{option}} more than one value.',

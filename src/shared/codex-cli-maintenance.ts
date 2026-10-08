@@ -123,7 +123,7 @@ export function codexMaintenanceManualAction(
 ): CodexMaintenanceAction {
   return {
     kind,
-    command: `Install or update Codex at ${path} to ${minimum} or newer, then try again.`,
+    command: `Install Codex ${minimum} or newer at ${path}, then retry.`,
     manual: true,
     installationPath: path
   }

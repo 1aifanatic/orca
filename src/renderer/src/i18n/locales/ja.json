@@ -17785,8 +17785,8 @@
         "couldNotStart": "{{agent}} を起動できませんでした。",
         "editSavedArguments": "設定 > Agent > 引数で編集してください。",
         "couldNotRestart": "{{agent}} を再起動できませんでした。",
-        "codexCliMissing": "このホストに Codex がインストールされていません。チャットには Codex {{minimumVersion}} 以降が必要です。設定 → Agents で選択した Codex コマンドを確認し、このホストにインストールしてから再試行してください。",
-        "codexCliTooOld": "Codex {{installedVersion}} はチャットには古すぎます。設定 → Agents から、このホストで選択したインストールを {{minimumVersion}} 以降に更新して再試行してください。",
+        "codexCliMissing": "Codex がインストールされていません。",
+        "codexCliTooOld": "Codex {{installedVersion}} はチャットには古すぎます。{{minimumVersion}} 以降に更新してください。",
         "notSignedIn": "{{agent}} は選択したアカウントでサインインしていません。",
         "signInFirst": "先にサインインしてください。",
         "signInThenRunCommand": "サインインしてから、/{{command}} をもう一度実行してください。",
@@ -19474,14 +19474,14 @@
       "install": "Codex をインストール",
       "missingTitle": "Codex が未インストールです",
       "unsupportedTitle": "Codex の更新が必要です",
-      "missingReason": "チャットを開始する前に Codex をインストールしてください。",
-      "unsupportedReason": "インストール済み: {{installed}}。バージョン {{minimum}} 以降が必要です。",
-      "notInstalled": "未インストール",
-      "settingsRequired": "更新が必要です（インストール済み: {{installed}}、必要: {{minimum}}）",
       "exitCode": "コマンドが終了コード {{code}} で終了しました",
-      "logTitle": "Codex のインストールログ",
+      "logTitle": "Codex セットアップログ",
       "copyLog": "ログをコピー",
-      "manualUpdate": "{{path}} に Codex {{minimum}} 以降をインストールまたは更新して、もう一度お試しください。"
+      "manualUpdate": "{{path}} に Codex {{minimum}} 以降をインストールして、再試行してください。",
+      "updatedRetry": "Codex は更新済みです。再試行してください。",
+      "installFailed": "Codex をインストールできませんでした。再試行してください。",
+      "updateFailed": "Codex を更新できませんでした。再試行してください。",
+      "runCommand": "{{command}} を実行してください。"
     }
   }
 }
