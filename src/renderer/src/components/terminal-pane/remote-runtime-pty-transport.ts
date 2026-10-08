@@ -85,7 +85,14 @@ import {
   ptyReplayHandlers,
   ptyShutdownLifecycleHandlers
 } from './pty-shutdown-data-suspension'
-import { getRuntimeEnvironmentRevision } from '@/runtime/runtime-environment-revision'
+import {
+  getRuntimeEnvironmentRevision,
+  resolveContinuedRuntimeEnvironmentRevision
+} from '@/runtime/runtime-environment-revision'
+import {
+  isRuntimeEnvironmentPairingChangedError,
+  refreshRuntimeEnvironmentsAfterPairingChange
+} from '@/runtime/runtime-environment-pairing-refresh'
 
 const REMOTE_TERMINAL_INPUT_FLUSH_MS = 8
 const REMOTE_TERMINAL_VIEWPORT_FLUSH_MS = 33
@@ -142,6 +149,15 @@ function isRetryableUnboundAttachError(error: unknown): boolean {
     isRecoverableRemoteRuntimeConnectionError(clientError) ||
     isRuntimeRpcQueueOverloadError(clientError) ||
     isRemoteTerminalStaleMessage(runtimeTerminalErrorMessage(error))
+  )
+}
+
+// Why: main refuses a stale pairing before dispatch (a managed server update re-pairs it), so the
+// terminal is untouched and only the binding must retry on the re-read pairing.
+function isRecoverablePaneBindingError(error: unknown): boolean {
+  return (
+    isRecoverableRemoteRuntimeConnectionError(toRemoteRuntimeClientErrorLike(error)) ||
+    isRuntimeEnvironmentPairingChangedError(error)
   )
 }
 
@@ -203,7 +219,20 @@ export function createRemoteRuntimePtyTransport(
   let authoritativeHostPlatform: NodeJS.Platform | null = null
   let authoritativePtyIncarnationId: string | null = null
   let currentRuntimeEnvironmentId = runtimeEnvironmentId
-  const runtimeEnvironmentPairingRevision = getRuntimeEnvironmentRevision(runtimeEnvironmentId)
+  // Why: the pane belongs to the machine it was opened on; it may follow that machine's own
+  // re-pair (a server update) but never a same-id re-pair to another or unverified machine.
+  const pairingRevisionByEnvironmentId = new Map<string, number | undefined>()
+  function paneRuntimeEnvironmentRevision(environmentId: string): number | undefined {
+    const revision = resolveContinuedRuntimeEnvironmentRevision(
+      environmentId,
+      pairingRevisionByEnvironmentId.has(environmentId)
+        ? pairingRevisionByEnvironmentId.get(environmentId)
+        : getRuntimeEnvironmentRevision(environmentId)
+    )
+    pairingRevisionByEnvironmentId.set(environmentId, revision)
+    return revision
+  }
+  paneRuntimeEnvironmentRevision(runtimeEnvironmentId)
   let multiplexedStream: RemoteRuntimeMultiplexedTerminal | null = null
   let multiplexedStreamHandle: string | null = null
   let desiredOutputPaused = false
@@ -775,10 +804,7 @@ export function createRemoteRuntimePtyTransport(
         }
         return hostHandle
       } catch (error) {
-        if (
-          !isRecoverableRemoteRuntimeConnectionError(toRemoteRuntimeClientErrorLike(error)) ||
-          !isCurrent()
-        ) {
+        if (!isRecoverablePaneBindingError(error) || !isCurrent()) {
           throw error
         }
         if (recoveryEpoch !== undefined && !recovery.isCurrent(recoveryEpoch)) {
@@ -1062,9 +1088,15 @@ export function createRemoteRuntimePtyTransport(
       method,
       params,
       timeoutMs,
-      expectedEnvironmentPairingRevision: runtimeEnvironmentPairingRevision
+      expectedEnvironmentPairingRevision: paneRuntimeEnvironmentRevision(environmentId)
     })
-    return unwrapRuntimeRpcResult(response as RuntimeRpcResponse<TResult>)
+    try {
+      return unwrapRuntimeRpcResult(response as RuntimeRpcResponse<TResult>)
+    } catch (error) {
+      // Why await: the caller's retry must read the new revision, not race the catalog re-read.
+      await refreshRuntimeEnvironmentsAfterPairingChange(error)
+      throw error
+    }
   }
 
   async function callRuntime<TResult>(
@@ -1793,7 +1825,7 @@ export function createRemoteRuntimePtyTransport(
       scheduleCapacityPressureRetry()
       return
     }
-    if (isRecoverableRemoteRuntimeConnectionError(clientError)) {
+    if (isRecoverablePaneBindingError(error)) {
       // Why: a partition is attachment state, not a terminal failure; keep the red error surface for actionable fatal errors.
       scheduleResubscribeAfterTransportClose()
       return
@@ -1816,7 +1848,7 @@ export function createRemoteRuntimePtyTransport(
       closeMultiplexedStream()
     }
     clearPendingViewportClaim()
-    if (!isRecoverableRemoteRuntimeConnectionError(toRemoteRuntimeClientErrorLike(error))) {
+    if (!isRecoverablePaneBindingError(error)) {
       return false
     }
     if (recovery.currentPhase === 'disconnected') {
@@ -1987,8 +2019,7 @@ export function createRemoteRuntimePtyTransport(
       .catch((error) => {
         if (!destroyed && connected && handle && recovery.isCurrent(recoveryEpoch)) {
           clearPendingViewportClaim()
-          const clientError = toRemoteRuntimeClientErrorLike(error)
-          if (isRecoverableRemoteRuntimeConnectionError(clientError)) {
+          if (isRecoverablePaneBindingError(error)) {
             retryScheduled = recovery.schedule(recoveryEpoch, (nextEpoch) => {
               const currentReplacementPolicy = handle
                 ? getRecoveryReplacementPolicy(handle)
@@ -2062,6 +2093,11 @@ export function createRemoteRuntimePtyTransport(
       generation === subscriptionGeneration &&
       (expectedRecoveryEpoch === undefined || recovery.ownsEpoch(expectedRecoveryEpoch)) &&
       isCurrentRemoteTerminal(subscribedHandle, subscribedPtyId)
+    const paneRevision = paneRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)
+    if (paneRevision !== getRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)) {
+      // Why local: the shared stream would subscribe on a pairing not proven to be this pane's machine.
+      throw new Error('Runtime environment pairing changed; refresh and try again')
+    }
     const nextStream = await getRemoteRuntimeTerminalMultiplexer(
       currentRuntimeEnvironmentId
     ).subscribeTerminal({
@@ -2606,7 +2642,7 @@ export function createRemoteRuntimePtyTransport(
           })
           // Snapshot parity must not delay attachment to a terminal the host already created.
           void refreshWebRuntimeSessionTabsSnapshot(createEnvironmentId, worktreeId, {
-            expectedEnvironmentPairingRevision: runtimeEnvironmentPairingRevision,
+            expectedEnvironmentPairingRevision: paneRuntimeEnvironmentRevision(createEnvironmentId),
             acceptCurrentSnapshot: true,
             confirmAgentSessionHandoff: {
               provisionalTabId: tabId,
@@ -2668,9 +2704,7 @@ export function createRemoteRuntimePtyTransport(
           if (isRemoteTerminalGoneMessage(message)) {
             recovery.cancel()
             handleRemoteTerminalError(error)
-          } else if (
-            isRecoverableRemoteRuntimeConnectionError(toRemoteRuntimeClientErrorLike(error))
-          ) {
+          } else if (isRecoverablePaneBindingError(error)) {
             scheduleConnectRetryAfterRecoverableFailure()
           } else {
             recovery.cancel()
