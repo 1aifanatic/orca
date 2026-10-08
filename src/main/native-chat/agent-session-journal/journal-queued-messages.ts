@@ -123,6 +123,8 @@ export class JournalQueuedMessages {
       fingerprint: string
       hostInstance: string
       carriedFrom?: string
+      /** A carried reopen hold keeps its original position against the destination reopen. */
+      queuedAt?: AgentJournalCursor
       requireAttachments?: true
       holdReason?: QueuedMessageHoldReason
     },
@@ -145,7 +147,7 @@ export class JournalQueuedMessages {
         const row = insertQueuedMessage(db, {
           ...draft,
           sessionId,
-          queuedAt: { epoch, sequence: lastSequence },
+          queuedAt: input.queuedAt ?? { epoch, sequence: lastSequence },
           now: this.deps.now()
         })
         receipt?.write(db)

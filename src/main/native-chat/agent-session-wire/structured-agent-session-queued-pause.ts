@@ -40,10 +40,11 @@ export async function markStructuredQueueReopen(
   journal: Pick<AgentSessionJournal, 'markQueueReopen'>,
   fence: number,
   logger: StructuredAgentSessionLogger,
-  since?: number
+  since?: number,
+  pendingCarry?: true
 ): Promise<void> {
   try {
-    await journal.markQueueReopen(fence, since)
+    await journal.markQueueReopen(fence, since, pendingCarry)
   } catch (error) {
     logger.warn('marking a reopened queue failed', {
       scope: 'queue-reopen-mark',

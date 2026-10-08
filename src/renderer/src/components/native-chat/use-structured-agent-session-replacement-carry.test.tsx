@@ -15,7 +15,14 @@ import {
   readNativeChatDraftCache,
   writeNativeChatDraftCache
 } from './native-chat-draft-cache'
-import { structuredAgentSessionDraftScopeKey as scope } from './native-chat-composer-draft-store'
+import {
+  hydrateNativeChatComposerDrafts,
+  structuredAgentSessionDraftScopeKey as scope
+} from './native-chat-composer-draft-store'
+import {
+  createMemoryNativeChatComposerDraftStorage,
+  setNativeChatComposerDraftStorageForTests
+} from './native-chat-composer-draft-storage'
 import { useStructuredAgentSessionReplacementCarry } from './use-structured-agent-session-replacement-carry'
 import {
   resetStructuredAgentSessionSendsForTests,
@@ -42,16 +49,19 @@ function pane(replacesSessionId: string | undefined = 'old', cards: readonly str
   )
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
+  setNativeChatComposerDraftStorageForTests(createMemoryNativeChatComposerDraftStorage())
+  await hydrateNativeChatComposerDrafts()
   resetStructuredAgentSessionSendsForTests()
   noteStructuredAgentSessionFence('old', 1)
   mocks.outline.mockResolvedValue({ entries: [], omittedEntries: 0 })
 })
 afterEach(() => {
   cleanup()
+  clearNativeChatDraftCacheForTests()
   resetStructuredAgentSessionSendsForTests()
 })
 
@@ -73,7 +83,32 @@ describe('a cleared chat follows its replacement without another send', () => {
     expect(readNativeChatDraftCache(scope('old'))).toBe('')
   })
 
+  it('waits for saved drafts to load before carrying them into the new composer', async () => {
+    clearNativeChatDraftCacheForTests()
+    const storage = createMemoryNativeChatComposerDraftStorage()
+    storage.drafts.set(scope('old'), { text: 'saved draft', images: [], savedAt: 1 })
+    let release: () => void = () => {}
+    const loading = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    storage.loadAll = async () => {
+      await loading
+      return new Map(storage.drafts)
+    }
+    setNativeChatComposerDraftStorageForTests(storage)
+    const hydrated = hydrateNativeChatComposerDrafts()
+    pane()
+    expect(readNativeChatDraftCache(scope('new'))).toBe('')
+    await act(async () => {
+      release()
+      await hydrated
+    })
+    await waitFor(() => expect(readNativeChatDraftCache(scope('new'))).toBe('saved draft'))
+    expect(readNativeChatDraftCache(scope('old'))).toBe('')
+  })
+
   it('keeps a reopened old chat independent while its tab is shown', () => {
+    const initialProps: { link: string | undefined } = { link: undefined }
     const { rerender } = renderHook(
       ({ link }: { link: string | undefined }) =>
         useStructuredAgentSessionReplacementCarry({
@@ -85,7 +120,7 @@ describe('a cleared chat follows its replacement without another send', () => {
           submissions: NO_ROWS,
           queuedMessageIds: NO_CARDS
         }),
-      { initialProps: { link: undefined } }
+      { initialProps }
     )
     act(() => writeNativeChatDraftCache(scope('old'), 'typed in history'))
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
@@ -186,7 +221,9 @@ describe('a cleared chat follows its replacement without another send', () => {
       target,
       text: 'carried by host'
     })
-    if (!sent) throw new Error('send refused')
+    if (!sent) {
+      throw new Error('send refused')
+    }
     const { result } = pane('old', [sent.clientMessageId])
     expect(await sent.outcome).toBe('recorded')
     expect(result.current).toEqual([])

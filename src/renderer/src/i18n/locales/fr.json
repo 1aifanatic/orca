@@ -18490,7 +18490,6 @@
         "sendConfirmClear": "Vider la file d'attente",
         "sendConfirmSend": "Envoyer le message",
         "from": "De {{names}}",
-        "pausedKeptWaiting": "Pas encore envoyé. Quand l'agent aura terminé, appuyez sur Envoyer pour l'envoyer.",
         "waitingForBackgroundTasks": "En attente de la fin des tâches en arrière-plan",
         "pausedSendFailedWaiting": "Envoi impossible. Quand l'agent aura terminé, appuyez sur Envoyer pour réessayer."
       },

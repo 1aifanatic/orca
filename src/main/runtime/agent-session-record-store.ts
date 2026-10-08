@@ -351,10 +351,7 @@ export class AgentSessionRecordStore {
     return () => this.leaseListeners.deathEvidence.delete(listener)
   }
   /** A session's lease handoff ended: what waited on it may run. */
-  onHandoffEnded(listener: (sessionId: string) => void): () => void {
-    this.leaseListeners.handoffEnded.add(listener)
-    return () => this.leaseListeners.handoffEnded.delete(listener)
-  }
+  onHandoffEnded = this.leaseListeners.onHandoffEnded
 
   /** Told, once committed, when the store records its first chat. Must not throw. */
   onFirstRecord(listener: () => void): () => void {

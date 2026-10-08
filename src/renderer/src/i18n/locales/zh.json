@@ -18389,7 +18389,6 @@
         "sendConfirmClear": "清空队列",
         "sendConfirmSend": "发送消息",
         "from": "来自 {{names}}",
-        "pausedKeptWaiting": "尚未发送。智能体完成后，点按发送即可发送。",
         "waitingForBackgroundTasks": "正在等待后台任务完成",
         "pausedSendFailedWaiting": "无法发送。智能体完成后，点按发送以重试。"
       },

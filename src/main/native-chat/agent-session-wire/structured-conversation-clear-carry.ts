@@ -1,6 +1,7 @@
 // /clear's carry of the source's drafts to its replacement, and the re-derivation that finishes a
 // carry a failure or a crash cut short.
 
+import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../shared/agent-session-wire'
 import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -10,6 +11,8 @@ import {
 } from '../agent-session-journal/queued-message-table'
 import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { unsettledQueuedMessages } from './structured-agent-session-queued-stop'
+import { queuePauseHolding } from '../agent-session-journal/queued-message-pause'
+import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 
 export const STRUCTURED_AGENT_SESSION_CLEAR_COMMAND = 'clear'
@@ -61,11 +64,12 @@ export function clearCarryOwed(
  * a card follows is derived from the /clear card the clear ran from, if any (its id is the clear's
  * `operationId`):
  *   - sent after that card: carried in order and unpaused, commands too. They were written for
- *     the fresh chat, so they run there as they would have here.
+ *     the fresh chat, so they run there as they would have here unless a reopen holds them.
  *   - sent before the clear (an immediate /clear over a paused queue): a message card carries
  *     over paused ('cleared', lifted like a Stop's), since it was written for the context the
- *     clear discarded; a command card, kept or not, is withdrawn without a copy.
- * A card whose conversion failed keeps that hold wherever it lands.
+ *     clear discarded; a command card is withdrawn without a copy.
+ * A card whose conversion failed keeps that hold wherever it lands. A reopen
+ * still holding a source card carries it paused until the replacement accepts a turn or Resume.
  * Runs after the clear commits, opening the replacement only when there is something to carry;
  * the source rows, the /clear card included, are tombstoned last, so a cut-short carry still
  * finds the card that orders it. Bookkeeping around the clear: a failure is reported, never gates
@@ -87,6 +91,9 @@ export async function carryQueuedMessagesToClearReplacement(
     if (rows.length === 0) {
       return
     }
+    const reopened = structuredQueuePauses(ctx.journal).filter(
+      (pause) => pause.reason === 'restarted'
+    )
     const clearCard = ctx.journal.queuedMessages.get(input.operationId)
     const behind = clearCard && isQueuedClearCard(clearCard) ? clearCard.position : Infinity
     const carried = rows.filter(
@@ -105,10 +112,15 @@ export async function carryQueuedMessagesToClearReplacement(
           messageId: row.messageId,
           body: row.body,
           fingerprint: agentSessionSendBodyFingerprint(input.replacementSessionId, row.body),
-          // Its own: a card a process that has since died wrote keeps that restart's pause.
+          // Kept for older hosts that still derive their reopen hold from the instance stamp.
           hostInstance: row.hostInstance,
           ...(row.position > behind ? {} : { carriedFrom: ctx.sessionId }),
-          ...(row.holdReason ? { holdReason: row.holdReason } : {})
+          ...(queuePauseHolding(reopened, row)
+            ? { queuedAt: row.queuedAt ?? ctx.journal.cursor() }
+            : {}),
+          ...(row.holdReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
+            ? { holdReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED }
+            : {})
         })
       }
     }

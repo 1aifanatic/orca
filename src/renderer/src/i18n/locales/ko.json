@@ -18424,7 +18424,6 @@
         "sendConfirmClear": "대기열 지우기",
         "sendConfirmSend": "메시지 보내기",
         "from": "보낸 사람: {{names}}",
-        "pausedKeptWaiting": "아직 보내지 않았습니다. 에이전트가 끝나면 보내기를 눌러 보내세요.",
         "waitingForBackgroundTasks": "백그라운드 작업이 끝나기를 기다리는 중",
         "pausedSendFailedWaiting": "보낼 수 없습니다. 에이전트가 끝나면 보내기를 눌러 다시 시도하세요."
       },

@@ -16,7 +16,10 @@ import type { AgentMessageSource } from '../../../shared/agent-session-message-s
 import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
-import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
+import {
+  rotateStructuredAgentSessionHostInstanceForTests,
+  structuredQueuePauses
+} from './structured-agent-session-queued-pause'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -687,29 +690,6 @@ describe('/clear', () => {
         )
       ).toBe(true)
     )
-  })
-
-  it('a carry whose insert fails is finished from the source, still paused as a carry', async () => {
-    await pausedDrafts()
-    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const insert = vi
-      .spyOn(JournalQueuedMessages.prototype, 'insert')
-      .mockRejectedValueOnce(new Error('disk full'))
-    let replacementId: string | undefined
-    try {
-      const cleared = await clear(hostTestOperationId())
-      replacementId = cleared.ok ? cleared.value.replacementSessionId : undefined
-    } finally {
-      insert.mockRestore()
-      warned.mockRestore()
-    }
-    if (!replacementId) {
-      throw new Error('expected a replacement session')
-    }
-    // The source still owes the carry, so its drain finishes it: nothing stays stranded there.
-    await eventually(async () => expect(await drafts(replacementId)).toHaveLength(2))
-    expect(await drafts()).toEqual([])
-    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
   })
 
   it('a returned card carries over as a plain waiting draft on the paused replacement', async () => {

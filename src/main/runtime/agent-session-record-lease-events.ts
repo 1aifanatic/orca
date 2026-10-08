@@ -7,7 +7,12 @@ type Lease = AgentSessionRecord['lease']
 /** Listeners keyed by event, each told the session the event happened to. */
 export class AgentSessionLeaseEventListeners {
   readonly deathEvidence = new Set<(sessionId: string) => void>()
-  readonly handoffEnded = new Set<(sessionId: string) => void>()
+  private readonly handoffEnded = new Set<(sessionId: string) => void>()
+
+  onHandoffEnded = (listener: (sessionId: string) => void): (() => void) => {
+    this.handoffEnded.add(listener)
+    return () => this.handoffEnded.delete(listener)
+  }
 
   get empty(): boolean {
     return this.deathEvidence.size === 0 && this.handoffEnded.size === 0

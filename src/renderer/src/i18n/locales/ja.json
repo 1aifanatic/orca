@@ -18424,7 +18424,6 @@
         "sendConfirmClear": "キューを消去",
         "sendConfirmSend": "メッセージを送信",
         "from": "送信元: {{names}}",
-        "pausedKeptWaiting": "まだ送信されていません。Agent の処理が終わったら「送信」を押すと送信されます。",
         "waitingForBackgroundTasks": "バックグラウンドタスクの完了を待っています",
         "pausedSendFailedWaiting": "送信できませんでした。Agent の処理が終わったら「送信」を押して再試行してください。"
       },

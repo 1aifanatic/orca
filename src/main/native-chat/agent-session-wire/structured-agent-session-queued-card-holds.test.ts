@@ -412,6 +412,7 @@ describe('after a restart, nothing sends by itself', () => {
     // A turn happened in this chat before, so the new epoch restates a lift.
     await rig.settleAccepted(await rig.workingSend(), 'earlier')
     const { first, second } = await restartedWithCards()
+    await rig.host.journalSnapshot(HOST_TEST_SESSION)
     const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
     if (!journal) {
       throw new Error('expected the conversation open')
@@ -547,6 +548,7 @@ describe('where the host would refuse the send', () => {
       ...fields
     })
     expect(cleared).toMatchObject({ ok: true })
+    await rig.host.journalSnapshot(HOST_TEST_SESSION)
     const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
     if (!journal) {
       throw new Error('expected the source open')

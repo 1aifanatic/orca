@@ -15,6 +15,7 @@ import {
   sendQueuedStructuredAgentMessage
 } from './structured-agent-session-queued-mutations'
 import { deferredStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { markStructuredQueueReopen } from './structured-agent-session-queued-pause'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import {
@@ -86,26 +87,41 @@ export function wireStructuredAgentSessionQueuedMessages(
    *  with nothing owed is never opened. */
   const finishCarriesInto = (replacementSessionId: string): void => {
     const { store, journalDatabase } = context().deps
-    for (const record of store.listRecords()) {
+    const sources = store.listRecords().filter((record) => {
       const marker = committedClearOf(record)
-      if (
-        marker?.replacementSessionId !== replacementSessionId ||
-        !listQueuedMessages(journalDatabase.db, record.sessionId).some(isUnsettledQueuedMessage)
-      ) {
-        continue
-      }
-      void context()
-        .conversation(record.sessionId)
-        .then(() => drain.schedule(record.sessionId))
-        .catch((error: unknown) => {
-          context().deps.logger.warn("finishing a /clear's carry failed", {
-            scope: 'clear-queued-carry',
-            sessionId: record.sessionId,
-            error
-          })
-        })
+      return (
+        marker?.replacementSessionId === replacementSessionId &&
+        listQueuedMessages(journalDatabase.db, record.sessionId).some(isUnsettledQueuedMessage)
+      )
+    })
+    const journal = sessions.get(replacementSessionId)?.journal
+    if (sources.length === 0 || !journal) {
+      return
     }
+    // The destination can open empty while a crashed source still owes its cards.
+    void markStructuredQueueReopen(
+      replacementSessionId,
+      journal,
+      structuredAgentSessionConversationFence(store, replacementSessionId),
+      context().deps.logger,
+      undefined,
+      true
+    ).then(() => {
+      for (const record of sources) {
+        void context()
+          .conversation(record.sessionId)
+          .then(() => drain.schedule(record.sessionId))
+          .catch((error: unknown) => {
+            context().deps.logger.warn("finishing a /clear's carry failed", {
+              scope: 'clear-queued-carry',
+              sessionId: record.sessionId,
+              error
+            })
+          })
+      }
+    })
   }
+
   /** A card's Send that ran its /clear: the same follow-up as the drain's. */
   const clearedByCard = (sessionId: string, messageId: string): boolean =>
     committedClearOf(context().deps.store.getRecord(sessionId))?.operationId === messageId

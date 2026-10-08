@@ -18642,7 +18642,6 @@
         "sendConfirmClear": "Clear queue",
         "sendConfirmSend": "Send message",
         "from": "From {{names}}",
-        "pausedKeptWaiting": "Not sent yet — press Send to send it once the agent finishes.",
         "waitingForBackgroundTasks": "Waiting for background tasks to finish",
         "pausedSendFailedWaiting": "Couldn't send — press Send to retry once the agent finishes."
       },

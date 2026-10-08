@@ -307,9 +307,9 @@ export class AgentSessionJournal {
 
   /** Marks the reopen when a card waits or is mid-hand-off (it may come back to waiting), from
    *  `since` when the chat stopped before now; a failed write leaves where the mark would have gone
-   *  as the pause's start (`reopenFloor`), and throws. */
-  async markQueueReopen(fence: number, since?: number): Promise<void> {
-    if (this.queuedMessages.awaitReopenMark()) {
+   *  as the pause's start (`reopenFloor`), and throws. A pending carry marks before its cards arrive. */
+  async markQueueReopen(fence: number, since?: number, pendingCarry?: true): Promise<void> {
+    if (pendingCarry || this.queuedMessages.awaitReopenMark()) {
       const sequence = since ?? this.state.lastSequence + 1
       this.reopenUnmarked = { epoch: this.state.epoch, sequence }
       await this.appendQueueReopen(fence, since)

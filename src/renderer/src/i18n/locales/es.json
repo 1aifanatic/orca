@@ -18253,7 +18253,6 @@
         "sendConfirmClear": "Vaciar cola",
         "sendConfirmSend": "Enviar mensaje",
         "from": "De {{names}}",
-        "pausedKeptWaiting": "Aún no se ha enviado. Cuando el agente termine, pulsa Enviar para enviarlo.",
         "waitingForBackgroundTasks": "Esperando a que terminen las tareas en segundo plano",
         "pausedSendFailedWaiting": "No se pudo enviar. Cuando el agente termine, pulsa Enviar para reintentar."
       },
