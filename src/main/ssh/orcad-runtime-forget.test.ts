@@ -10,13 +10,16 @@ import { orcadMigrationCutoverFixture } from './orcad-migration-cutover-fixture'
 import { createManagedLifecycleHarness } from './orcad-managed-lifecycle-test-fixture'
 import { isManagedOrcadSshTarget } from './ssh-connection-store'
 
-const mocks = vi.hoisted(() => ({
-  state: { store: null as unknown },
-  connect: vi.fn(),
-  resolveContext: vi.fn(),
-  closeTunnel: vi.fn(),
-  retire: vi.fn()
-}))
+const mocks = vi.hoisted(() => {
+  const state: { store: unknown } = { store: null }
+  return {
+    state,
+    connect: vi.fn(),
+    resolveContext: vi.fn(),
+    closeTunnel: vi.fn(),
+    retire: vi.fn()
+  }
+})
 
 vi.mock('./ssh-target-registry', () => ({
   getSshConnectionManager: () => ({ connect: mocks.connect }),
