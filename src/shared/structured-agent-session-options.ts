@@ -5,8 +5,7 @@ import type {
 } from './agent-session-option-catalog'
 import {
   buildNativeChatSessionOptionSnapshot,
-  resolveEffectiveNativeChatModelId,
-  withTrackedNativeChatModel
+  resolveEffectiveNativeChatModelId
 } from './native-chat-session-option-snapshot'
 import {
   applyNativeChatReportedSessionOptions,
@@ -202,8 +201,7 @@ export function structuredAgentSessionOptionSnapshot(
   }
   return buildNativeChatSessionOptionSnapshot({
     catalog: state.catalog,
-    // A seeded default can name a model the static seed does not list yet.
-    models: withTrackedNativeChatModel(state.catalog, state.catalog.models, state.record),
+    models: state.catalog.models,
     record: state.record,
     mode: 'live',
     modelLabel: 'Model',

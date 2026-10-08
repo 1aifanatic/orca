@@ -85,9 +85,7 @@ describe('buildNativeChatSessionOptionSnapshot', () => {
     expect(snapshot[0]).toMatchObject({ valueSource: 'dispatched' })
   })
 
-  it('renders exactly the models it is given, without self-healing the tracked one', () => {
-    // The builder no longer appends the tracked model itself — reconciling it is
-    // the caller's job (withTrackedNativeChatModel), so every row is a real choice.
+  it('reconciles the tracked model at the shared snapshot boundary', () => {
     const record = claudeRecord()
     record.model = { value: 'experimental-model', source: 'reported' }
     const snapshot = buildNativeChatSessionOptionSnapshot({
@@ -102,9 +100,10 @@ describe('buildNativeChatSessionOptionSnapshot', () => {
     if (model.kind.type !== 'select') {
       throw new Error('model descriptor must be a select')
     }
-    expect(model.kind.choices.map((choice) => choice.value)).toEqual(
-      CLAUDE_SESSION_OPTION_CATALOG.models.map((catalogModel) => catalogModel.id)
-    )
+    expect(model.kind.choices.map((choice) => choice.value)).toEqual([
+      ...CLAUDE_SESSION_OPTION_CATALOG.models.map((catalogModel) => catalogModel.id),
+      'experimental-model'
+    ])
   })
 
   it('is empty when the model list is empty', () => {
@@ -190,7 +189,7 @@ describe('buildNativeChatSessionOptionSnapshot', () => {
       expect(reconciled.at(-1)).toEqual({
         id: 'experimental-model',
         label: 'experimental-model',
-        options: []
+        options: CLAUDE_SESSION_OPTION_CATALOG.unknownModelOptions
       })
     })
 

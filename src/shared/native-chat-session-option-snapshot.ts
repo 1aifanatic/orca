@@ -161,12 +161,7 @@ export function sortNativeChatSessionOptions(
     })
 }
 
-/**
- * Why: the tracked model can sit outside the active list — a persisted default,
- * or an alias this host's CLI no longer lists. Keeping a row for it preserves
- * the labelled selection and the model's own options instead of blanking both.
- * Shared so mobile satisfies the same caller contract the desktop surface does.
- */
+/** Keeps an unlisted selection visible; missing Claude rows carry unknown capabilities. */
 export function withTrackedNativeChatModel(
   catalog: AgentSessionOptionCatalog,
   models: readonly CatalogModel[],
@@ -177,6 +172,18 @@ export function withTrackedNativeChatModel(
     return [...models]
   }
   const seeded = catalog.models.find((model) => model.id === trackedId)
+  // An absent Claude row proves no capabilities; a live child's explicit row still wins above.
+  if (record.agent === 'claude') {
+    return [
+      ...models,
+      {
+        ...seeded,
+        id: trackedId,
+        label: seeded?.label ?? trackedId,
+        options: catalog.unknownModelOptions ?? []
+      }
+    ]
+  }
   return [...models, seeded ?? { id: trackedId, label: trackedId, options: [] }]
 }
 
@@ -214,14 +221,13 @@ export function buildNativeChatSessionOptionSnapshot(args: {
    *  producer that must state its lane here cannot silently inherit the other's. */
   liveTransport: NativeChatLiveOptionTransport
 }): SessionOptionDescriptor[] {
-  const { catalog, models, record, mode, modelLabel, liveTransport } = args
+  const { catalog, record, mode, modelLabel, liveTransport } = args
+  const models = withTrackedNativeChatModel(catalog, args.models, record)
   if (models.length === 0) {
     return []
   }
   const modelTracked = record.model
-  // Why: callers reconcile the tracked model into `models` (see
-  // withTrackedNativeChatModel), so every listed row is a real choice and the
-  // trigger never shows a value without one.
+  // Reconciliation keeps the selected model and its options on every picker surface.
   const modelChoices = models.map(({ id, label, description }) => ({
     value: id,
     label,

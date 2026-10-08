@@ -135,8 +135,7 @@ export function useMobileNativeChatSessionOptions(args: {
     const record = getScopedRecord(scopeKey, agent)
     return buildNativeChatSessionOptionSnapshot({
       catalog,
-      // The snapshot no longer self-heals an unlisted tracked model; every caller
-      // reconciles it in, so a value the seed dropped keeps its row and options.
+      // Shared shaping preserves tracked selections even when this list omits them.
       models: withTrackedNativeChatModel(catalog, catalog.models, record),
       record,
       mode: 'live',

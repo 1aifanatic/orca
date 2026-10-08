@@ -31,7 +31,15 @@ describe('Claude picker before the provider starts', () => {
     ['paired', true, 'sonnet'],
     ['local', false, 'sonnet'],
     ['local', true, 'unlisted-launch-model'],
-    ['paired', true, 'unlisted-launch-model']
+    ['paired', true, 'unlisted-launch-model'],
+    ['local', true, 'opus'],
+    ['paired', true, 'opus'],
+    ['local', false, 'opus'],
+    ['paired', false, 'opus'],
+    ['local', true, 'new-account-model'],
+    ['paired', true, 'new-account-model'],
+    ['local', false, 'new-account-model'],
+    ['paired', false, 'new-account-model']
   ] as const)(
     'keeps effort choices usable on %s with saved catalog %s and launch model %s after discovery fails',
     async (host, saved, launchModel) => {
@@ -72,7 +80,7 @@ describe('Claude picker before the provider starts', () => {
       record.options = { model: launchModel, effort: 'high' }
       const service = createAgentModelCatalogService({
         store,
-        getRecord: () => (launchModel === 'sonnet' ? undefined : record),
+        getRecord: () => (launchModel === 'unlisted-launch-model' ? record : undefined),
         drivesRecord: () => true,
         agents: { definition: () => CLAUDE_STRUCTURED_AGENT },
         resolveAccountHome: async () => home
@@ -125,7 +133,8 @@ describe('Claude picker before the provider starts', () => {
         expect(
           result.current.optionSnapshot.find((row) => row.id === 'effort')?.kind
         ).toMatchObject({
-          currentValue: 'high'
+          currentValue: 'high',
+          choices: expect.arrayContaining([{ value: 'xhigh', label: 'Extra high' }])
         })
         let accepted = false
         await act(async () => {

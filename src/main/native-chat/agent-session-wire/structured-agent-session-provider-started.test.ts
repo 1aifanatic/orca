@@ -34,8 +34,22 @@ let root: string
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let adapter: ClaudeStructuredSessionAdapter
+let settings: ReturnType<typeof startupSettings>
 let lifecycle: Promise<void>[]
 let statuses: AgentSessionStatusEvent[]
+
+function startupSettings() {
+  const effective: Record<string, unknown> = {
+    model: 'claude-opus-9',
+    effortLevel: 'high',
+    env: {}
+  }
+  return {
+    applied: { model: 'claude-opus-9', effort: 'high', advisor: null, ultracode: false },
+    effective,
+    sources: {}
+  }
+}
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-provider-started-'))
@@ -44,14 +58,11 @@ beforeEach(async () => {
   statuses = []
   // A CLI whose own default is not the catalog's: startup reports it through get_settings,
   // since system/init arrives only with the first command.
+  settings = startupSettings()
   const claude = fakeClaude({
     initDelayMs: INIT_DELAY_MS,
     initModel: 'claude-opus-9',
-    settings: {
-      applied: { model: 'claude-opus-9', effort: 'high', advisor: null, ultracode: false },
-      effective: { model: 'claude-opus-9', effortLevel: 'high', env: {} },
-      sources: {}
-    }
+    settings
   })
   adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
@@ -112,6 +123,39 @@ function lastPhase(): string | undefined {
 }
 
 describe('a publish-first Claude create whose init is slow', () => {
+  it('shows applied effort without persisting it through either startup report or a reopen', async () => {
+    settings.effective = {}
+    await host.attach(CALLER, claudeParams())
+    await claudeStartupSettled(adapter, SESSION)
+    await Promise.all(lifecycle)
+
+    expect(
+      (
+        await adapter.readOptions({
+          sessionId: SESSION,
+          fence: store.getRecord(SESSION)?.lease.runtimeFence ?? 0
+        })
+      ).current.effort
+    ).toBe('high')
+    expect(store.getRecord(SESSION)?.options).toEqual({ model: 'claude-opus-9' })
+    await host.close(SESSION, 'evict')
+    const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
+    settings.applied.effort = 'medium'
+    await host.attach(CALLER, claudeParams(fence))
+    await claudeStartupSettled(adapter, SESSION)
+    await Promise.all(lifecycle)
+
+    expect(
+      (
+        await adapter.readOptions({
+          sessionId: SESSION,
+          fence: store.getRecord(SESSION)?.lease.runtimeFence ?? 0
+        })
+      ).current.effort
+    ).toBe('medium')
+    expect(store.getRecord(SESSION)?.options).toEqual({ model: 'claude-opus-9' })
+  })
+
   it('never persists the catalog default, and persists the reported model once started', async () => {
     await expect(host.attach(CALLER, claudeParams())).resolves.toMatchObject({ ok: true })
 
