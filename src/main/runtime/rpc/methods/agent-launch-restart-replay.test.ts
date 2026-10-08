@@ -516,7 +516,7 @@ describe('a caller cannot claim an identity', () => {
   })
 })
 
-describe('the ledger stays bounded', () => {
+describe('one row per launch, with no limit on how many a caller holds', () => {
   it('keeps one row per launch, retained from admission, across both writes', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
     deliverTerminalPrompt.mockImplementationOnce(
