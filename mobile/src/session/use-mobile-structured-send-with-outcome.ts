@@ -9,7 +9,7 @@ import { pendingPromptsAllUnanswerableHere } from '../../../src/shared/agent-ses
 import {
   structuredAgentSessionSendBody,
   type StructuredAgentSessionAttachment
-} from '../../../src/shared/structured-agent-session-outbox'
+} from '../../../src/shared/structured-agent-session-send-mutation'
 import type { StructuredAgentSessionComposerOptions } from '../../../src/shared/structured-agent-session-composer'
 import type { StructuredAgentSessionState } from '../../../src/shared/structured-agent-session-reducer'
 import type { RpcClient } from '../transport/rpc-client'
@@ -33,15 +33,12 @@ export function mobileStructuredSendQueues(
 
 export type StructuredMobileSendAttachment = StructuredAgentSessionAttachment & {
   id?: string
-  contentFingerprint?: string
 }
 
 export function useMobileStructuredSendWithOutcome(args: {
   agent: string | null
-  callerIdentity: string
   client: RpcClient | null
   sessionId: string | null
-  sessionKey: string
   enabled: boolean
   queueCapable: boolean
   stateRef: { readonly current: StructuredAgentSessionState }
@@ -59,7 +56,6 @@ export function useMobileStructuredSendWithOutcome(args: {
 ) => Promise<MobileNativeChatSendOutcome> {
   const {
     agent,
-    callerIdentity,
     client,
     commandPending,
     controller,
@@ -67,7 +63,6 @@ export function useMobileStructuredSendWithOutcome(args: {
     onSendError,
     queueCapable,
     sessionId,
-    sessionKey,
     stateRef
   } = args
   return useCallback(
@@ -121,8 +116,6 @@ export function useMobileStructuredSendWithOutcome(args: {
       return sendMobileStructuredAgentSessionMessage({
         client,
         sessionId,
-        sessionKey,
-        callerIdentity,
         expectedRuntimeFence: currentFence,
         text,
         attachments: sendAttachments,
@@ -135,7 +128,6 @@ export function useMobileStructuredSendWithOutcome(args: {
     },
     [
       agent,
-      callerIdentity,
       client,
       commandPending,
       controller,
@@ -143,7 +135,6 @@ export function useMobileStructuredSendWithOutcome(args: {
       onSendError,
       queueCapable,
       sessionId,
-      sessionKey,
       stateRef
     ]
   )

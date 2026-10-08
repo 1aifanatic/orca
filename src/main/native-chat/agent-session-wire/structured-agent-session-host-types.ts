@@ -25,6 +25,7 @@ import type { AgentModelCatalogService } from '../agent-model-catalog/agent-mode
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
+import type { StructuredAgentSessionStartupLimits } from './structured-agent-session-startup-attempt-contract'
 
 export type StructuredAgentSessionCaller = { callerKey: string }
 
@@ -52,6 +53,8 @@ export type StructuredAgentSessionProviderChildIdentity = {
 export type StructuredAgentSessionChildClose = {
   /** The first stop's, which the child's end keeps however many asks join it. */
   readonly cause: StructuredAgentSessionStopCause
+  /** Asked for by quit, whose leftovers the next open settles as a crash's. */
+  readonly quit?: true
   readonly reason: string | null
   /** The Stop event that stop wrote, folded before the work it ends is settled, with the settle a
    *  person's close that named no turn opens; a repeated ask reopens it. */
@@ -107,6 +110,8 @@ export type StructuredAgentSessionHostSession = {
    *  observed exit. */
   child: StructuredAgentSessionProviderChild | null
   lastEndedChild?: StructuredAgentSessionEndedChild
+  /** Owned by one live restart action, so another caller cannot replace its progress. */
+  restartResume?: NonNullable<AgentSessionStatusSummary['restartResume']> & { operationId: string }
 }
 
 export type StructuredAgentSessionHostDeps = {
@@ -139,6 +144,9 @@ export type StructuredAgentSessionHostDeps = {
   now?: () => number
   /** The idle sweep's period and window. Tests drive these; production takes the defaults. */
   idleSweep?: { intervalMs?: number; idleMs?: number }
+  /** How long a start may stay silent, and its ceiling. Tests drive these; production takes the
+   *  host constants. */
+  startupLimits?: Partial<StructuredAgentSessionStartupLimits>
   /** Whether an orchestration dispatch still owns this session's worker; absent answers no. */
   hasOpenDispatch?: (record: AgentSessionRecord) => boolean
   /** A chat tab left the screen: closed, or its workspace removed. Advisory; a throw is logged. */

@@ -21,7 +21,7 @@ import {
   nativeChatComposerPrimaryAction,
   type NativeChatComposerPrimaryAction
 } from '../../../renderer/src/components/native-chat/native-chat-composer-primary-action'
-import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
+import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   readQueuePublication,
   structuredQueueSendGate
@@ -385,16 +385,13 @@ describe('after a restart, nothing sends by itself', () => {
     await rig.settleAccepted(working, 'stopped')
     // The agent at rest goes; Resume's hand-off of A must start a new one, which never starts.
     await rig.host.collaboratorsForTests().lifetime.idleSweep.tick()
-    let release: () => void = () => undefined
-    rig.awaitStarted.mockImplementation(
-      () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
-    )
+    // The hand-off is recorded, never handed over: the new child stays in its spawn.
+    const release = rig.holdNextStart()
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
     await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
     const cutShort = await rig.handoffId(first)
     expect((await rig.handoff(first))?.handedOverAt).toBeUndefined()
     rig.crashRestartHostProcess()
-    rig.awaitStarted.mockImplementation(async () => undefined)
     release()
     await published()
     // The new host refuses the leftover hand-off, and A waits again in its own place.
@@ -515,11 +512,17 @@ describe("the queue's next card on a history page", () => {
     const card = await queuedDraft('held, then released')
     await rig.stop()
     await rig.settleAccepted(working, 'stopped')
-    // The Resume row is written; its adoption, and so the drain behind it, waits.
+    // The Resume row is written; the Resume itself, and so the drain behind it, waits.
     let release: () => void = () => undefined
-    const adopt = vi
-      .spyOn(JournalQueuedMessages.prototype, 'adopt')
-      .mockImplementationOnce(() => new Promise((resolve) => (release = () => resolve(false))))
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const write = AgentSessionJournal.prototype.appendQueueResume
+    const resume = vi
+      .spyOn(AgentSessionJournal.prototype, 'appendQueueResume')
+      .mockImplementationOnce(async function (this: AgentSessionJournal, fence: number) {
+        const cursor = await write.call(this, fence)
+        await held
+        return cursor
+      })
     const resumed = rig.resume()
     try {
       await eventually(async () => {
@@ -528,7 +531,7 @@ describe("the queue's next card on a history page", () => {
       })
     } finally {
       release()
-      adopt.mockRestore()
+      resume.mockRestore()
     }
     expect(await resumed).toMatchObject({ ok: true, value: { resumed: true } })
   })

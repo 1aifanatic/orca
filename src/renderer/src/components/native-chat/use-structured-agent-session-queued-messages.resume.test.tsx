@@ -306,7 +306,7 @@ function renderRevealingController(sessionId = 'session-1', fence: number | null
     ({ isVisible }) => {
       const queue = useQueue(sessionId, fence)
       const submits = useStructuredNativeChatSubmitReveal(
-        { queuedMessages: queue, respond: async () => null, retry: vi.fn() },
+        { queuedMessages: queue, respond: async () => null },
         vi.fn()
       )
       const scrollRef = useRef(document.createElement('div'))
@@ -327,6 +327,7 @@ function renderRevealingController(sessionId = 'session-1', fence: number | null
         showsTailRow: false,
         isVisible,
         alignToViewportTop: vi.fn(),
+        isAlignPending: () => false,
         scrollToEnd,
         restoreScrollOffset,
         consumeProgrammaticScroll: () => false,
