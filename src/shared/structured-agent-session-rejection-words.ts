@@ -1,18 +1,19 @@
-// The words for a message the host rejected, shared by the desktop and the phone.
+// The words for a message the host rejected, shared by the desktop, the phone and the queue's
+// returned cards.
 
-import {
-  readWholeAgentSessionFailureFact,
-  type AgentSessionFailureFact
-} from './agent-session-failure'
-import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
-import type { AgentJournalSubmission } from './agent-session-journal-types'
 import {
   agentSessionWriteNoticeEnglish,
   agentSessionWriteNotDoneParts
 } from './agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from './agent-session-write-notice-copy'
-import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import {
+  readWholeAgentSessionFailureFact,
+  type AgentSessionFailureFact
+} from './agent-session-failure'
+import type { AgentJournalSubmission } from './agent-session-journal-types'
 import { agentSessionFailureStatedByStartRow } from './structured-agent-session-start-failure-facts'
+import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
+import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 
 /**
  * What to put on screen for a rejection.
@@ -28,7 +29,7 @@ import { agentSessionFailureStatedByStartRow } from './structured-agent-session-
  * The null default claims no cause and no next step, because at that point we know
  * neither: all it asserts is the one thing every rejection shares.
  *
- * Exported because a client without an outbox needs the same copy: the rule about
+ * Exported because the phone needs the same copy: the rule about
  * which reasons a person may read is a property of the reason, not of the queue.
  */
 export function structuredAgentSessionRejectionNotice(
@@ -73,6 +74,16 @@ function rejectionFactParts(
   return kind
     ? [{ failure: { ...fact, kind }, surface: 'rejection', context }]
     : agentSessionWriteNotDoneParts(write)
+}
+
+/** What a returned queue card says about why the host rejected its message. */
+export function structuredAgentSessionAttemptFailureParts(
+  failure: { kind: 'rejected'; reason: string | null },
+  context: AgentSessionFailureWordsContext = {},
+  /** The journal's whole fact for the rejection, when the host sent one this build can read. */
+  recorded?: AgentSessionFailureFact
+): AgentSessionWriteNoticePart[] {
+  return structuredAgentSessionRejectionParts(failure.reason, 'send', recorded, context)
 }
 
 /** The line under a message the host recorded and then rejected, in the host's terms. A failed
