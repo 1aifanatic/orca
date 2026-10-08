@@ -260,7 +260,7 @@ export function createCodexJournalTranslator(
         const admission = genericFrames.appendFrameRow(event.threadId, event.params, {
           body: retrying
             ? codexProviderRetryRowBody(event.params)
-            : codexProviderFinalErrorRowBody(event.params),
+            : codexProviderFinalErrorRowBody(event.params, deps.account?.()),
           classification: 'error-surface'
         })
         if (admission.accepted && !retrying) {

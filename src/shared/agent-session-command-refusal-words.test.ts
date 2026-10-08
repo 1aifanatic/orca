@@ -52,6 +52,31 @@ describe('commands whose recorded refusal decides the next step', () => {
     )
   })
 
+  it.each([
+    ['turnActive', "Codex is still working. Run /compact when it's done."],
+    ['messagesUnsettled', "Codex is still working. Run /compact when it's done."],
+    ['promptPending', "Answer Codex's question or approval, then run /compact."],
+    [
+      'backgroundTasksRunning',
+      'Codex still has background tasks running. Wait for the background tasks to finish. Run /compact again.'
+    ],
+    [
+      'handoffInFlight',
+      'Codex is still starting. Wait for Codex to finish starting. Run /compact again.'
+    ]
+  ] as const)('keeps the command action and agent name for %s', (reason, expected) => {
+    expect(
+      agentSessionFailureSentence(
+        {
+          kind: 'commandRefused',
+          refusal: { code: 'agent_session_operation_invalid', details: { reason } }
+        },
+        'row',
+        { agentName: 'Codex', command: 'compact' }
+      )
+    ).toBe(expected)
+  })
+
   it('does not invent a retry action when an old host recorded no reason', () => {
     expect(
       agentSessionFailureSentence({ kind: 'commandRefused' }, 'rejection', { agentName: 'Codex' })

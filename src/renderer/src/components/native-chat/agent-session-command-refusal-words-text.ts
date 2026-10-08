@@ -11,6 +11,36 @@ export const COMMAND_REFUSAL_PIECES: Record<
   CommandCopyId,
   (values: AgentSessionFailureCopyValues) => string
 > = {
+  commandAfterAnswer: (values) =>
+    translate(
+      'components.native-chat.failureWords.commandAfterAnswer',
+      COPY.commandAfterAnswer,
+      values
+    ),
+  commandBackgroundTasksRunning: (values) =>
+    translate(
+      'components.native-chat.failureWords.commandBackgroundTasksRunning',
+      COPY.commandBackgroundTasksRunning,
+      values
+    ),
+  commandAfterSending: (values) =>
+    translate(
+      'components.native-chat.failureWords.commandAfterSending',
+      COPY.commandAfterSending,
+      values
+    ),
+  commandWaitForPendingWork: (values) =>
+    translate(
+      'components.native-chat.failureWords.commandWaitForPendingWork',
+      COPY.commandWaitForPendingWork,
+      values
+    ),
+  commandStillWorking: (values) =>
+    translate(
+      'components.native-chat.failureWords.commandStillWorking',
+      COPY.commandStillWorking,
+      values
+    ),
   commandRefused: (values) =>
     translate('components.native-chat.failureWords.commandRefused', COPY.commandRefused, values),
   commandUnsupported: (values) =>

@@ -11,6 +11,7 @@ import {
 } from './mobile-structured-agent-session-rpc'
 import { structuredSessionOperationId } from './structured-session-operation-id'
 import { mobileStructuredSendDelivery } from './mobile-structured-send-delivery'
+import type { MobileNativeChatSendErrorReporter } from './use-mobile-native-chat-send-error'
 
 /** The current Send's id lets temporary text/photo rows settle against the host record. */
 export type MobileStructuredSendResult = {
@@ -32,7 +33,7 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   /** Sent only when the host advertises `agent-session.queued-messages.v1`. */
   delivery?: 'queue-if-active'
   deadline?: number
-  onError: (message: string) => void
+  onError: MobileNativeChatSendErrorReporter
 }): Promise<MobileStructuredSendResult> {
   const timeoutMs = timeoutForDeadline(input.deadline)
   if (timeoutMs === null) {
@@ -56,7 +57,11 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   })
   const outcome = mobileStructuredSendDelivery(result)
   if (outcome.error !== null) {
-    input.onError(outcome.error)
+    if (outcome.failure) {
+      input.onError(outcome.error, { failure: outcome.failure })
+    } else {
+      input.onError(outcome.error)
+    }
   }
   return { outcome: outcome.outcome, clientMessageId }
 }

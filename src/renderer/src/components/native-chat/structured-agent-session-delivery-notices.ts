@@ -14,6 +14,11 @@ import type { StructuredAgentSessionPendingSend } from './structured-agent-sessi
 const STRUCTURED_AGENT_SESSION_DELIVERY_SENDING: NativeChatDeliveryNotice = { sending: true }
 const NO_COMMANDS: ReadonlySet<string> = new Set()
 
+export {
+  agentSessionVisibleFailureFacts as structuredAgentSessionStartFailureFacts,
+  agentSessionFailureStatedByRow as agentSessionFailureStatedByStartRow,
+  sameAgentSessionFailureFact
+} from '../../../../shared/agent-session-visible-failures'
 /**
  * Keyed by the message id the transcript renders each message under; `agentName` is the chat's
  * agent, for the words. A message on its way says so quietly, and one the host rejected is worded

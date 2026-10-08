@@ -54,6 +54,101 @@ describe('mobileQueuedMessageCards', () => {
     }
   )
 
+  it.each([
+    ['Claude', 'claude auth login'],
+    ['Codex', 'codex login'],
+    ['Grok', 'grok login'],
+    ['OpenCode', 'opencode auth login'],
+    ['Pi', '/login'],
+    ['OMP', 'Sign in to OMP.']
+  ])('keeps %s identity and its sign-in action on returned cards', (agentName, guidance) => {
+    const [card] = mobileQueuedMessageCards(
+      [draft({ messageId: 'auth', ...returnedAs(agentSessionFailureFact('notSignedIn')) })],
+      [],
+      { pendingPrompt: false, agentName }
+    )
+    expect(card?.caption).toContain(agentName)
+    expect(card?.caption).toContain(guidance)
+    expect(card?.caption).not.toContain('send your message again')
+    expect(card?.needsAttention).toBe(true)
+  })
+
+  it.each(['Claude', 'Codex'])(
+    'keeps %s managed guidance unless a row already explains it',
+    (agentName) => {
+      const fact = agentSessionFailureFact('notSignedIn', { account: 'managed' })
+      const drafts = [draft({ messageId: 'auth', ...returnedAs(fact) })]
+      const [card] = mobileQueuedMessageCards(drafts, [], { pendingPrompt: false, agentName })
+      expect(card?.caption).toBe(
+        `This ${agentName} account isn't signed in. Sign in again in ${agentName} Accounts settings.`
+      )
+      const [stated] = mobileQueuedMessageCards(drafts, [], {
+        pendingPrompt: false,
+        agentName,
+        statedFailures: [fact]
+      })
+      expect(stated?.caption).toBe('Your message was not sent.')
+    }
+  )
+
+  it('marks a /compact card as a command, its text as typed', () => {
+    const [card] = mobileQueuedMessageCards(
+      [
+        draft({
+          messageId: 'c',
+          body: {
+            kind: 'message',
+            role: 'user',
+            blocks: [{ type: 'text', text: '/compact' }],
+            command: { name: 'compact' }
+          }
+        })
+      ],
+      [],
+      { pendingPrompt: false }
+    )
+    expect(card).toMatchObject({ text: '/compact', command: true, caption: null })
+    expect(card).not.toHaveProperty('waitsForAgent')
+    expect(
+      mobileQueuedMessageCards([draft({ messageId: 'a' })], [], { pendingPrompt: false })[0]
+    ).not.toHaveProperty('command')
+    const compact = draft({
+      messageId: 'c',
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    })
+    expect(
+      mobileQueuedMessageCards([compact], [], { pendingPrompt: false, agentWorking: true })[0]
+    ).toMatchObject({ command: true, waitsForAgent: true })
+  })
+
+  it("a send-failed command card's caption names Send only when Send is there", () => {
+    const failed = draft({
+      messageId: 'c',
+      paused: true,
+      pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    })
+    expect(
+      mobileQueuedMessageCards([failed], [], { pendingPrompt: false, agentWorking: true })[0]
+        ?.caption
+    ).toBe(
+      "The agent couldn't receive this message. Use Send to try again once The agent finishes."
+    )
+    expect(mobileQueuedMessageCards([failed], [], { pendingPrompt: false })[0]?.caption).toBe(
+      "The agent couldn't receive this message. Use Send to try again."
+    )
+  })
+
   it('renders nothing without a published list', () => {
     expect(mobileQueuedMessageCards(null, [], { pendingPrompt: false })).toEqual([])
     expect(mobileQueuedMessageCards([], [], { pendingPrompt: false })).toEqual([])
@@ -100,7 +195,10 @@ describe('mobileQueuedMessageCards', () => {
       [],
       { pendingPrompt: true, queuePaused: true }
     )
-    expect(cards.map((card) => card.caption)).toEqual(["Couldn't send — tap Send to retry", null])
+    expect(cards.map((card) => card.caption)).toEqual([
+      "The agent couldn't receive this message. Use Send to try again.",
+      null
+    ])
     expect(cards[0]?.paused).toBe(true)
   })
 
@@ -292,7 +390,7 @@ describe('mobileQueuedMessageCards', () => {
       { pendingPrompt: false }
     )
     expect(cards.map((card) => card.caption)).toEqual([
-      "Couldn't send — tap Send to retry",
+      "The agent couldn't receive this message. Use Send to try again.",
       'Paused'
     ])
     // Only a failed send alerts; a plain pause is not the card's fault.

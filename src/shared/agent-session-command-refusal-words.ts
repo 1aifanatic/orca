@@ -17,7 +17,8 @@ const NAMED_CAUSES: Partial<Record<AgentSessionWriteNoticeSentence, AgentSession
   agentRefused: 'commandAgentRefused',
   ownerUnproven: 'commandOwnerUnproven',
   goalsUnsupported: 'commandGoalsUnsupported',
-  optionRejected: 'commandOptionRejected'
+  optionRejected: 'commandOptionRejected',
+  backgroundTasksRunning: 'commandBackgroundTasksRunning'
 }
 
 /** A refused command keeps the refusal's action; repeating it cannot clear every refusal. */
@@ -36,6 +37,26 @@ export function agentSessionCommandRefusalWords(
     return say('commandUnsupported', agent)
   }
   const lead = say('commandRefused', agent)
+  const reason = fact.refusal?.details?.reason
+  if (context.command) {
+    const values = { ...agent, command: context.command }
+    if (reason === 'turnActive' || reason === 'messagesUnsettled') {
+      return joinSentences([say('commandStillWorking', agent), say('runCommandWhenDone', values)])
+    }
+    if (reason === 'promptPending') {
+      if (!context.agentName) {
+        return sayNotice(context.command === 'clear' ? 'clearAfterAnswer' : 'compactAfterAnswer')
+      }
+      return say('commandAfterAnswer', values)
+    }
+    if (reason === 'backgroundTasksRunning' || reason === 'handoffInFlight') {
+      return joinSentences([
+        notice(reason === 'handoffInFlight' ? 'agentStarting' : 'backgroundTasksRunning'),
+        notice(reason === 'handoffInFlight' ? 'waitForStart' : 'waitForBackgroundTasks'),
+        say('runCommandAgain', values)
+      ])
+    }
+  }
   const words = fact.refusal
     ? agentSessionRefusalReasonWords({ kind: 'refused', ...fact.refusal })
     : undefined

@@ -394,8 +394,7 @@ it('refuses the command at handover when the provider opened a turn meanwhile (B
     ok: true,
     value: {
       state: 'completed',
-      error:
-        "Codex didn't run this command. Codex is still responding. Wait for it to finish, or stop it.",
+      error: "Codex is still working. Run /compact when it's done.",
       failure: refused
     }
   })
@@ -407,8 +406,7 @@ it('refuses the command at handover when the provider opened a turn meanwhile (B
     )
   ).toMatchObject({
     dispatchState: 'rejected',
-    reason:
-      "Codex didn't run this command. Codex is still responding. Wait for it to finish, or stop it.",
+    reason: "Codex is still working. Run /compact when it's done.",
     rejection: refused
   })
 })

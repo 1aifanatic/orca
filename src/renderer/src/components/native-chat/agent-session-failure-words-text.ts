@@ -119,16 +119,6 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         'components.native-chat.failureWords.historyInOtherAccount',
         COPY.historyInOtherAccount
       ),
-    claudeAccountFolderMissing: () =>
-      translate(
-        'components.native-chat.failureWords.claudeAccountFolderMissing',
-        COPY.claudeAccountFolderMissing
-      ),
-    claudeAccountSetupFailed: () =>
-      translate(
-        'components.native-chat.failureWords.claudeAccountSetupFailed',
-        COPY.claudeAccountSetupFailed
-      ),
     agentCommandNotRunnable: (values) =>
       translate(
         'components.native-chat.failureWords.agentCommandNotRunnable',
@@ -192,11 +182,25 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         'components.native-chat.failureWords.notDeliveredSendAgain',
         COPY.notDeliveredSendAgain
       ),
+    queueSendRetryWhenDone: (values) =>
+      translate(
+        'components.native-chat.failureWords.queueSendRetryWhenDone',
+        COPY.queueSendRetryWhenDone,
+        values
+      ),
+    queueSendRetry: () =>
+      translate('components.native-chat.failureWords.queueSendRetry', COPY.queueSendRetry),
     ...COMMAND_REFUSAL_PIECES,
     compactionFailed: (values) =>
       translate(
         'components.native-chat.failureWords.compactionFailed',
         COPY.compactionFailed,
+        values
+      ),
+    runCommandWhenDone: (values) =>
+      translate(
+        'components.native-chat.failureWords.runCommandWhenDone',
+        COPY.runCommandWhenDone,
         values
       ),
     compactionFailedQuoted: (values) =>

@@ -46,6 +46,8 @@ const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> =
   answer: 'notDoneAnswer',
   option: 'notDoneOption',
   command: 'notDoneCommand',
+  clear: 'notDoneCommand',
+  compact: 'notDoneCommand',
   goal: 'notDoneGoal'
 }
 
@@ -91,6 +93,24 @@ function reasonParts(
         failure: { kind: 'startFailed', argumentProblem },
         surface: 'rejection',
         context: { ...context, agentName: argumentProblem.agent }
+      }
+    ]
+  }
+  if (
+    failure.code === 'agent_session_operation_invalid' &&
+    (write === 'clear' || write === 'compact') &&
+    (failure.details?.reason === 'turnActive' ||
+      failure.details?.reason === 'messagesUnsettled' ||
+      failure.details?.reason === 'promptPending')
+  ) {
+    return [
+      {
+        failure: {
+          kind: 'commandRefused',
+          refusal: { code: failure.code, details: failure.details }
+        },
+        surface: 'row',
+        context: { ...context, command: write }
       }
     ]
   }
@@ -167,10 +187,10 @@ export function agentSessionWriteNoticeParts(
     case 'agent_session_ownership_unknown':
     case 'execution_owner_reconciling':
       return agentSessionWriteNotDoneParts(write)
-    // Counted across every chat and freed only as a day's requests age out, so trying again now
-    // would likely be refused again.
+    // Only an older Orca host (one that capped its operation records) refuses this way; updating
+    // it is the fix, since retrying soon would be refused again.
     case 'agent_session_operation_capacity':
-      return ['capacity', notDone]
+      return [notDone, 'capacity']
     // The phone resends under the same id, which the host refuses the same way again. The rest
     // stand for reasons the code does not name (a cleared conversation, a pending question, a
     // provider's own rejection...), so any cause or next step could be false.
@@ -226,10 +246,11 @@ export function agentSessionWriteNoticeEnglish(
  *  message is not read. */
 export function agentSessionRefusalNotice(
   refusal: Pick<AgentSessionWireRefusal, 'code' | 'message' | 'details'>,
-  write: AgentSessionWriteKind
+  write: AgentSessionWriteKind,
+  context: AgentSessionFailureWordsContext = {}
 ): string {
   return agentSessionWriteNoticeEnglish(
-    agentSessionWriteNoticeParts(agentSessionRefusalFailure(refusal), write)
+    agentSessionWriteNoticeParts(agentSessionRefusalFailure(refusal), write, context)
   )
 }
 

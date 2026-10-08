@@ -5,6 +5,8 @@ import {
   providerDiagnostic,
   readProviderRetry
 } from '../../shared/agent-session-failure'
+import { codexAuthenticationFailure } from './codex-authentication-failure'
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
 import type { AgentJournalStatusItem } from '../../shared/agent-session-journal-types'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
@@ -32,13 +34,17 @@ export function codexProviderRetryRowBody(payload: unknown): AgentJournalStatusI
   return codexProviderErrorRowBody(payload, 'providerRetrying')
 }
 
-export function codexProviderFinalErrorRowBody(payload: unknown): AgentJournalStatusItem {
-  return codexProviderErrorRowBody(payload, 'providerError')
+export function codexProviderFinalErrorRowBody(
+  payload: unknown,
+  account?: AgentSessionAccountKind
+): AgentJournalStatusItem {
+  return codexProviderErrorRowBody(payload, 'providerError', account)
 }
 
 function codexProviderErrorRowBody(
   payload: unknown,
-  kind: 'providerRetrying' | 'providerError'
+  kind: 'providerRetrying' | 'providerError',
+  account?: AgentSessionAccountKind
 ): AgentJournalStatusItem {
   const message = readCodexErrorMessage(payload)
   const info = readCodexErrorInfo(payload)
@@ -47,10 +53,11 @@ function codexProviderErrorRowBody(
   const detail = message ? providerDiagnostic(message, audience) : undefined
   const retry = kind === 'providerRetrying' ? readProviderRetry(info) : undefined
   const words = agentSessionFailureWords(
-    agentSessionFailureFact(kind, {
-      ...(detail ? { detail } : {}),
-      ...(retry ? { retry } : {})
-    }),
+    (kind === 'providerError' ? codexAuthenticationFailure(payload, account) : null) ??
+      agentSessionFailureFact(kind, {
+        ...(detail ? { detail } : {}),
+        ...(retry ? { retry } : {})
+      }),
     { surface: 'row', agentName: TUI_AGENT_DISPLAY_NAMES.codex }
   )
   return {
