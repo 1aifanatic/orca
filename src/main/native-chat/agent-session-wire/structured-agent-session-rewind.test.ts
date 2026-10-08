@@ -36,6 +36,7 @@ import { openTestJournalHostDatabase } from '../agent-session-journal/journal-ho
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
+import { startsWhenPublished } from './structured-agent-session-instant-start.test-support'
 
 const caller = { callerKey: 'desktop' }
 let clock = HOST_TEST_NOW
@@ -64,42 +65,45 @@ beforeEach(async () => {
   acquires = []
   directory = await mkdtemp(join(tmpdir(), 'orca-rewind-'))
   store = await openTestAgentSessionRecordStore(directory)
-  adapter = {
-    supportsCreate: (_location, agent) => agent === 'codex',
-    supportsLocation: () => true,
-    acquire: async (input) => {
-      acquires.push(input)
-      sink = input.events!
-      return {
-        process: {
-          hostId: 'local',
-          pid: 4000 + acquires.length,
-          processStartTimeMs: HOST_TEST_NOW,
-          spawnToken: input.spawnToken
-        },
-        acquisitionGeneration: `generation-${acquires.length}`,
-        link: {
-          linkId: `link-${acquires.length}`,
-          mintedAtFence: input.fence,
-          observedAt: HOST_TEST_NOW,
-          origin: acquires.length === 1 ? 'created' : 'resumed',
-          handle: codexProviderHandle(HOST_TEST_THREAD)
+  adapter = startsWhenPublished(
+    {
+      supportsCreate: (_location, agent) => agent === 'codex',
+      supportsLocation: () => true,
+      acquire: async (input) => {
+        acquires.push(input)
+        sink = input.events!
+        return {
+          process: {
+            hostId: 'local',
+            pid: 4000 + acquires.length,
+            processStartTimeMs: HOST_TEST_NOW,
+            spawnToken: input.spawnToken
+          },
+          acquisitionGeneration: `generation-${acquires.length}`,
+          link: {
+            linkId: `link-${acquires.length}`,
+            mintedAtFence: input.fence,
+            observedAt: HOST_TEST_NOW,
+            origin: acquires.length === 1 ? 'created' : 'resumed',
+            handle: codexProviderHandle(HOST_TEST_THREAD)
+          }
         }
-      }
+      },
+      dispatch: vi.fn(async (): Promise<AgentSessionDispatchOutcome> => ({
+        state: 'unknown',
+        reason: 'test'
+      })),
+      cancelTurn: async () => ({ cancelled: false }),
+      answerPrompt: async () => {},
+      setOption: async () => {},
+      rewindSupport: () => ({ supported: true }),
+      rewind,
+      recoverRewind,
+      releaseAcquisition: async () => true,
+      closeSession: async () => true
     },
-    dispatch: vi.fn(async (): Promise<AgentSessionDispatchOutcome> => ({
-      state: 'unknown',
-      reason: 'test'
-    })),
-    cancelTurn: async () => ({ cancelled: false }),
-    answerPrompt: async () => {},
-    setOption: async () => {},
-    rewindSupport: () => ({ supported: true }),
-    rewind,
-    recoverRewind,
-    releaseAcquisition: async () => true,
-    closeSession: async () => true
-  }
+    () => host
+  )
   host = new StructuredAgentSessionHost({
     agents: claudeAndCodexDeclared(),
     logger: createStructuredAgentSessionLogger(),

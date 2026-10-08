@@ -20,12 +20,13 @@ import type { CodexDispatchEchoes } from './codex-structured-dispatch-echo'
 import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
 import type { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import type { CodexJournalTranslator } from './codex-structured-journal-translation'
-import type { StructuredAgentSessionEndedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
 import type {
   AgentModelCatalogSessionAccess,
   AgentModelCatalogStore
 } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import type { CodexStartingChild } from './codex-structured-starting-child'
 import type { NativeChatVisualsLaunch } from '../native-chat/native-chat-visuals-delivery'
 
 export type CodexSessionCatalogAccess = AgentModelCatalogSessionAccess
@@ -81,7 +82,7 @@ export type CodexStructuredSessionEvent =
       codexItemId: string
       promptKey: string
     }
-  | StructuredAgentSessionEndedEvent
+  | StructuredAgentSessionLifecycleEvent
   /** Translator-only compatibility for callers that do not participate in host recovery. */
   | { type: 'ended'; sessionId: string; reason: string; observedAt?: number }
 
@@ -120,6 +121,7 @@ export type CodexStructuredSessionAdapterDeps = {
 
 export type CodexSession = {
   connection: CodexAppServerConnection
+  startingChild?: CodexStartingChild
   ended: boolean
   /** First observed child exit survives rejected settlement admission. */
   exitObservedAt?: number
@@ -198,7 +200,9 @@ export function requireLiveCodexSession(
 
 export type CodexAcquisitionAttempt = {
   window: CodexAcquisitionWindow
+  startingChild?: CodexStartingChild
   cancelled: boolean
+  requestedClose?: boolean
   exitProven: boolean
   finished: Promise<void>
   finish: () => void
@@ -284,17 +288,24 @@ export class CodexAcquisitionRegistry {
 }
 
 export async function cancelCodexAcquisitionAttempt(
-  attempt: CodexAcquisitionAttempt | undefined
+  attempt: CodexAcquisitionAttempt | undefined,
+  requestedClose = true
 ): Promise<boolean> {
   if (!attempt) {
     return true
   }
-  return cancelProcessAcquisition({
+  const closed = await cancelProcessAcquisition({
     cancel: () => {
       attempt.cancelled = true
+      attempt.requestedClose = requestedClose
     },
     connection: () => attempt.window.connection,
     exitProven: () => attempt.exitProven,
     finished: attempt.finished
   })
+  if (closed) {
+    attempt.exitProven = true
+    attempt.startingChild?.end(new Error('codex session closed'), requestedClose)
+  }
+  return closed
 }

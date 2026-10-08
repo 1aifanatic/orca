@@ -1,3 +1,4 @@
+import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
 // A Codex session's frames, through the real adapter, into the host's child records: the order the
 // host receives them in, and the parent row they fold to, written out step by step.
 
@@ -135,7 +136,7 @@ async function producer() {
       moment()
     }
   }
-  await adapter.acquire({
+  await acquireReadyCodexForTest(adapter, {
     identity: identityFor('session-1'),
     fence: 7,
     spawnToken: 'spawn-9',

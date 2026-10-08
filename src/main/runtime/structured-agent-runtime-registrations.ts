@@ -146,8 +146,11 @@ function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredA
     onPrimaryThreadStoppedRunning: followUps.releaseUnansweredDispatches,
     logger: deps.logger,
     onEvent: (event) => {
-      // Every exit, expected or not: the host ends that child's record.
-      if (event.type === 'ended' && 'cause' in event) {
+      if (
+        event.type === 'started' ||
+        event.type === 'options-reported' ||
+        (event.type === 'ended' && 'cause' in event)
+      ) {
         context.deliverLifecycle(event)
       }
     }
@@ -217,6 +220,9 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
         resolveLaunch: createAcpStructuredLaunchResolver(spec, {
           store,
           readJournal,
+          ...(deps.openAcpConnection
+            ? { resolveCommand: () => 'scripted-acp-agent', probeVersion: async () => true }
+            : {}),
           resolveWorkspacePath: deps.resolveWorkspacePath,
           resolveEnvironment: context.environment.resolveBaseEnvironment,
           ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
@@ -225,16 +231,11 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
             : {}),
           ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
         }),
-        connect: (launch, options) => createAcpAgentConnection(launch, options),
+        connect: deps.openAcpConnection ?? createAcpAgentConnection,
         ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
         onDispatchSettledLate: followUps.onDispatchSettledLate,
         logger: deps.logger,
-        // Every exit, expected or not: the host ends that child's record.
-        onEvent: (event) => {
-          if (event.type === 'ended') {
-            context.deliverLifecycle(event)
-          }
-        }
+        onEvent: context.deliverLifecycle
       })
     }
   }

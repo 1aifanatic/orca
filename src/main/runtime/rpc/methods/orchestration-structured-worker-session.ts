@@ -3,8 +3,10 @@
  *
  * Three things make this different from the PTY worker path, and all three live here:
  *
- * - The session is created directly as structured, so readiness is the attach returning ok. There
- *   is no boot-to-idle gap to wait on and no `tui-idle` edge to read.
+ * - The session is created directly as structured. Its attach returns while the agent is still
+ *   starting, so attachment is not readiness: the preamble goes through the host's hold
+ *   (`sendAgentTurn` waits the start out), and the worker is ready once its agent took it. There
+ *   is no `tui-idle` edge to read.
  * - Nothing here keeps its agent running. The idle sweep leaves it running while its dispatch is
  *   open, reading that from the orchestration database; once the dispatch settles the agent rests
  *   like any chat's, and the next mail starts it.

@@ -4,6 +4,7 @@ import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-ses
 import type { AgentSessionSendResult } from '../../../shared/agent-session-wire'
 import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
+import { STRUCTURED_AGENT_SESSION_STARTUP_CEILING_MS } from '../../native-chat/agent-session-wire/structured-agent-session-startup-attempt-contract'
 import { dispatchPreambleSendOptions } from './preamble'
 import {
   sendAgentTurn,
@@ -133,6 +134,37 @@ describe('sendAgentTurn to a structured session', () => {
     expect(fake.waitForSendSettlement).toHaveBeenCalledWith('s1', 'op-1', {
       budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
     })
+  })
+
+  it('waits out the start of an agent still starting before its answer wait begins', async () => {
+    const fake = structuredHost(
+      accepted({ clientMessageId: 'op-1', submission: submissionOf('pending') }),
+      submissionOf('accepted')
+    )
+    const host: StructuredAgentTurnHost = {
+      ...fake.host,
+      readStatusSummary: (sessionId) => ({
+        sessionId,
+        workspaceId: 'w1',
+        agent: 'codex' as const,
+        status: null,
+        latestPrompt: '',
+        updatedAt: 0,
+        hostExecutionOwned: true,
+        hostExecutionPhase: 'starting'
+      })
+    }
+    await expect(sendAgentTurn(structured(host))).resolves.toMatchObject({
+      submission: { dispatchState: 'accepted' }
+    })
+    expect(fake.waitForSendSettlement.mock.calls).toEqual([
+      [
+        's1',
+        'op-1',
+        { until: 'handed-over', budgetMs: STRUCTURED_AGENT_SESSION_STARTUP_CEILING_MS }
+      ],
+      ['s1', 'op-1', { budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS }]
+    ])
   })
 
   it('keeps the first answer when the wait runs out or fails', async () => {

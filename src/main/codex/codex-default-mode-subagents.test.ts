@@ -1,3 +1,4 @@
+import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
 // Codex's default multi-agent mode announces a helper only by the `collabAgentToolCall` items that
 // spawn, message, wait on or close it. These frames, through the real adapter, must register that
 // helper the same way a `subAgentActivity` does: one child in the strip, the host's records and
@@ -161,7 +162,7 @@ async function session() {
     appendTombstone: () => {},
     publish: () => {}
   }
-  await adapter.acquire({
+  await acquireReadyCodexForTest(adapter, {
     identity: identityFor('session-1'),
     fence: 7,
     spawnToken: 'spawn-9',

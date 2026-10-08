@@ -174,23 +174,27 @@ export async function setStructuredAgentSessionOption(
   caller: StructuredAgentSessionCaller,
   params: { envelope: AgentSessionMutationEnvelope; key: string; value: string }
 ): Promise<AgentSessionMutationResult<AgentSessionOptionResult>> {
-  // Outside the queue: a pick made while the provider starts then queues behind what its start persists.
-  await context.deps.adapter.awaitOptionWritable?.(params.envelope.sessionId)
   const plan = setOptionPlan(params)
-  const atRest = () => !context.sessions.get(params.envelope.sessionId)?.child
+  // With no child, or one still starting, the pick is intent: the next start replays it, and a
+  // starting child takes it before it is handed anything. Never a write the pick waits on.
+  const recordsIntent = () => {
+    const child = context.sessions.get(params.envelope.sessionId)?.child
+    return !child || child.phase === 'starting'
+  }
   return mutateStructuredAgentSession(
     context,
     caller,
     params.envelope,
     {
       ...plan,
-      // Read as the call is admitted: with no child running, the pick is a conversation write —
-      // intent the next start replays. A running child's pick is still its owner's to make.
+      // Read as the call is admitted; a ready child's pick is still its owner's to make.
       get conversationWrite() {
-        return atRest() ? (true as const) : undefined
+        return recordsIntent() ? (true as const) : undefined
       },
       run: async (ctx) => {
-        if (atRest()) {
+        if (recordsIntent()) {
+          // A report the starting child read before this pick is out of date.
+          context.optionRevisions.advance(params.envelope.sessionId)
           return recordStructuredAgentSessionOptionIntent(context.deps, ctx, params)
         }
         // Held where a start is, so a close, a Stop admitted now or quit ends the wait from outside.

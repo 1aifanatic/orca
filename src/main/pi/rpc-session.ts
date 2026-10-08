@@ -1,7 +1,8 @@
-import type {
-  AgentSessionOptionsResult,
-  AgentSessionSlashCommand
-} from '../../shared/agent-session-wire'
+import {
+  agentSessionFailureFact,
+  providerDiagnostic,
+  providerDiagnosticOf
+} from '../../shared/agent-session-failure'
 import type {
   StructuredAgentSessionAcquireInput,
   StructuredAgentSessionLifecycleEvent,
@@ -15,10 +16,11 @@ import {
   type JsonlRpcAgentConnectionOptions
 } from '../jsonl-rpc/agent-connection'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
+import { JsonlRpcResponseError } from '../jsonl-rpc/peer'
 import { PiRpcTurns } from './rpc-turns'
 import { PiRpcDialogCallbacks } from './rpc-dialog-callbacks'
-import { piRpcStateSchema } from './rpc-protocol'
-import { applyPiRpcSessionOption, readPiRpcCommands, readPiRpcSessionOptions } from './rpc-options'
+import type { PiRpcResolvedLaunch } from './rpc-launch-resolution'
+import { PiRpcSessionStartup } from './rpc-session-startup'
 
 export type PiRpcConnection = Pick<
   JsonlRpcAgentConnection,
@@ -57,9 +59,7 @@ export class PiRpcSession {
   readonly turns: PiRpcTurns
   readonly dialogs: PiRpcDialogCallbacks
   readonly selected = new Map<string, string>()
-  readonly skipped: string[] = []
-  commands?: AgentSessionSlashCommand[]
-  options?: AgentSessionOptionsResult
+  readonly startup: PiRpcSessionStartup
   requestedClose = false
   private publishedExit = false
   private failedCause?: Error
@@ -137,43 +137,35 @@ export class PiRpcSession {
           .finally(() => this.releaseAfterExit?.())
       }
     })
+    this.startup = new PiRpcSessionStartup(
+      input,
+      generation,
+      this.connection,
+      this.selected,
+      deps,
+      (state) => {
+        this.lane.apply(this.turns.context.setModel(state.model ?? undefined, Date.now()))
+      }
+    )
   }
 
-  async start(): Promise<string> {
-    const state = piRpcStateSchema.parse(await this.connection.request('get_state'))
-    this.lane.apply(this.turns.context.setModel(state.model ?? undefined, Date.now()))
-    for (const [key, value] of Object.entries(this.input.options ?? {})) {
-      if (!['model', 'effort'].includes(key)) {
-        this.skipped.push(key)
-        continue
-      }
-      try {
-        await applyPiRpcSessionOption(this.connection, this.selected, key, value)
-      } catch (error) {
-        this.skipped.push(key)
-        this.deps.logger.warn('Pi rejected a saved option', {
-          scope: 'pi-option-restore',
-          sessionId: this.input.identity.sessionId,
-          key,
-          error
-        })
-      }
-    }
-    this.options = await readPiRpcSessionOptions(this.connection)
+  async start(launch: PiRpcResolvedLaunch, retainFailed: () => void): Promise<void> {
     try {
-      this.commands = (await readPiRpcCommands(this.connection)).commands
+      await this.startup.run(launch)
     } catch (error) {
-      this.deps.logger.warn('Pi commands could not be read', {
-        scope: 'pi-commands',
-        sessionId: this.input.identity.sessionId,
-        error
-      })
+      if (!this.requestedClose) {
+        this.failedCause ??= error instanceof Error ? error : new Error(String(error))
+      }
+      const result = await this.close(false).catch(() => null)
+      if (result?.root !== 'exited') {
+        retainFailed()
+      }
     }
-    return state.sessionFile
   }
 
   async close(requested = true): ReturnType<PiRpcConnection['close']> {
     this.requestedClose ||= requested
+    this.startup.stop()
     this.dialogs.cancelAll()
     return this.connection.close()
   }
@@ -227,6 +219,8 @@ export class PiRpcSession {
       return
     }
     this.publishedExit = true
+    this.failedCause ??= error
+    this.startup?.stop()
     this.dialogs.cancelAll()
     this.turns.end()
     this.lane.finalize()
@@ -252,6 +246,7 @@ export class PiRpcSession {
     } finally {
       clearTimeout(timer)
     }
+    const cause = this.failedCause ?? error
     this.deps.onLifecycle({
       type: 'ended',
       sessionId: this.input.identity.sessionId,
@@ -259,7 +254,20 @@ export class PiRpcSession {
       acquisitionGeneration: this.generation,
       observedAt: Date.now(),
       cause: this.requestedClose ? 'requested-close' : 'unexpected-exit',
-      reason: (this.failedCause ?? error).message
+      reason: cause.message,
+      failure: agentSessionFailureFact(
+        this.startup.started ? 'providerExited' : 'providerStartFailed',
+        {
+          detail:
+            providerDiagnosticOf(cause) ??
+            providerDiagnosticOf(error) ??
+            (cause instanceof JsonlRpcResponseError
+              ? providerDiagnostic(cause.message, 'person')
+              : undefined)
+        }
+      ),
+      ...(this.startup.started ? {} : { startupUnproven: true }),
+      ...(this.startup.answered ? {} : { startupUnanswered: true })
     })
   }
 

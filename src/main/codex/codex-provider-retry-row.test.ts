@@ -1,3 +1,4 @@
+import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
 // A Codex stream error it is about to retry is a warning row per attempt, never a red row: the
 // journal keeps every attempt, and the transcript draws only the latest of a run.
 import { readFileSync } from 'node:fs'
@@ -171,7 +172,7 @@ describe('a Codex stream error it is about to retry', () => {
       publish: () => undefined
     }
     for (const fence of [7, 8]) {
-      await adapter.acquire({
+      await acquireReadyCodexForTest(adapter, {
         identity: identityFor('session-1'),
         fence,
         spawnToken: `spawn-${fence}`,

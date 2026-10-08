@@ -20,6 +20,8 @@ import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { structuredAgentSessionMessageSendMutation } from '../../../shared/structured-agent-session-send-mutation'
 import type { StructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-host'
+import type { SendSettlementWaitOptions } from '../../native-chat/agent-session-wire/structured-agent-session-send-settlement'
+import { STRUCTURED_AGENT_SESSION_STARTUP_CEILING_MS } from '../../native-chat/agent-session-wire/structured-agent-session-startup-attempt-contract'
 import { dispatchPreambleSendOptions, type DispatchPreambleSendOptions } from './preamble'
 
 /**
@@ -32,7 +34,8 @@ export type AgentTurnDelivery = 'queue' | 'now'
 export type StructuredAgentTurnHost = Pick<
   StructuredAgentSessionHost,
   'send' | 'waitForSendSettlement'
->
+> &
+  Partial<Pick<StructuredAgentSessionHost, 'readStatusSummary'>>
 
 export type StructuredSessionTurn = {
   /** Carries its sender as `from`, which the chat shows and no fingerprint covers. */
@@ -147,11 +150,16 @@ async function sendStructuredSessionTurn(
   }
   // The submission's own id: a replayed `queue` turn whose draft went out answers with the
   // hand-off, which the queue sent under a fresh id.
-  const settled = await send.host
-    .waitForSendSettlement(send.sessionId, answered.clientMessageId, {
-      budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
-    })
-    .catch(() => undefined)
+  const wait = (options: SendSettlementWaitOptions) =>
+    send.host
+      .waitForSendSettlement(send.sessionId, answered.clientMessageId, options)
+      .catch(() => undefined)
+  // The host holds what it takes for an agent still starting until that start ends, which its
+  // startup limit always brings about; the wait for the agent's answer begins only then.
+  if (send.host.readStatusSummary?.(send.sessionId)?.hostExecutionPhase === 'starting') {
+    await wait({ until: 'handed-over', budgetMs: STRUCTURED_AGENT_SESSION_STARTUP_CEILING_MS })
+  }
+  const settled = await wait({ budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS })
   return {
     kind: 'sent',
     clientMessageId,

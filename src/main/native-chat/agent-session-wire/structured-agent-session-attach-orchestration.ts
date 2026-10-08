@@ -208,9 +208,7 @@ async function runAttachUnderAbort(
       optionRevision: () => context.runtimeState.optionRevisions.current(sessionId),
       ...(options.onAcquisitionFailed ? { onAcquisitionFailed: options.onAcquisitionFailed } : {}),
       openConversation: async (record) => {
-        const conversation = await context.openConversation(record.sessionId, {
-          acquisition: true
-        })
+        const conversation = await context.openConversation(record.sessionId, { acquisition: true })
         if (!conversation) {
           throw new Error('agent_session_identity_required')
         }
@@ -219,15 +217,16 @@ async function runAttachUnderAbort(
       // The cleanup released the acquisition, which for a re-attach is the live child itself.
       onAcquisitionReleased: (cause, verdict) =>
         endReleasedChild(context, sessionId, cause, verdict),
-      onAttached: async (attached, acquisitionGeneration, acquiredOwner, providerChildPhase) => {
+      onAttached: async (attached, acquisitionGeneration, owner) => {
         const fence = structuredAgentSessionConversationFence(context.deps.store, sessionId)
         const current = context.sessions.get(sessionId)?.child ?? null
-        const startedFor = acquiredOwner ? options.startedFor : current?.startedFor
+        const startedFor = owner === 'acquired' ? options.startedFor : current?.startedFor
         // A re-attach to a live child keeps the sink that child already writes through.
-        const eventSink = acquiredOwner
-          ? attemptSink
-          : (context.runtimeState.currentEventSink(sessionId) ?? attemptSink)
-        if (acquiredOwner) {
+        const eventSink =
+          owner === 'acquired'
+            ? attemptSink
+            : (context.runtimeState.currentEventSink(sessionId) ?? attemptSink)
+        if (owner === 'acquired') {
           // Before the drain: the buffered events are the new child's, never a stale row's.
           await settleStaleStructuredAgentSessionState({
             journal: attached.journal,
@@ -241,14 +240,17 @@ async function runAttachUnderAbort(
         await bindAndDrain(eventSink, attached.journal, fence, (activity) =>
           context.subscribers.publish(sessionId, attached.journal, activity)
         )
-        attempt.candidate = {
-          sink: eventSink,
-          child: {
-            generation: acquisitionGeneration ?? current?.generation ?? null,
-            fence,
-            // A re-attach to a live child keeps what that child already proved, and its cause.
-            phase: acquiredOwner ? providerChildPhase : (current?.phase ?? 'ready'),
-            ...(startedFor === undefined ? {} : { startedFor })
+        // A replayed create over a chat at rest has no child to index.
+        if (owner !== 'none') {
+          attempt.candidate = {
+            sink: eventSink,
+            child: {
+              generation: acquisitionGeneration ?? current?.generation ?? null,
+              fence,
+              // Every acquired child starts unproven; a re-attach keeps what its child already proved.
+              phase: owner === 'acquired' ? 'starting' : (current?.phase ?? 'ready'),
+              ...(startedFor === undefined ? {} : { startedFor })
+            }
           }
         }
         await recoverStructuredRewind(

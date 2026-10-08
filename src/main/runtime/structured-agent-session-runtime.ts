@@ -10,7 +10,9 @@
 // A process whose journal will not open installs none and answers every
 // structured request with the refusal that says why.
 
+import type { AcpStructuredSessionAdapterDeps } from '../acp/acp-structured-session-adapter-deps'
 import type { PiRpcSessionDeps } from '../pi/rpc-session'
+import type { PiRpcSessionAdapterDeps } from '../pi/rpc-session-adapter'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
@@ -101,6 +103,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
   openPiConnection?: PiRpcSessionDeps['openConnection']
+  /** Scripted Pi children resolve their launch here, so no test reaches a real Pi binary. */
+  resolvePiLaunch?: PiRpcSessionAdapterDeps['resolveLaunch']
   /** Which version-gated flags a Claude CLI takes; absent never passes one. */
   claudeCliFlags?: ClaudeCliFlagSupport
   /** Gives each chat a visuals folder and the skill that teaches it, and sweeps folders whose chat
@@ -112,6 +116,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   }
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
+  /** Overrides the ACP transport with a scripted child in runtime tests. */
+  openAcpConnection?: AcpStructuredSessionAdapterDeps['connect']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
   /** Scripted app-servers carry fake pids the real start-time read cannot answer for. */
   readProcessStartTime?: CodexStructuredSessionAdapterDeps['readProcessStartTime']

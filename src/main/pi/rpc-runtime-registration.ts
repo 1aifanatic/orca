@@ -19,17 +19,19 @@ import { PiRpcSessionAdapter } from './rpc-session-adapter'
 function createPiRpcAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
   const { deps } = context
   return new PiRpcSessionAdapter({
-    resolveLaunch: createPiRpcLaunchResolver({
-      store: context.store,
-      resolveWorkspacePath: deps.resolveWorkspacePath,
-      resolveEnvironment: async () => ({
-        ...(await context.environment.resolveBaseEnvironment()),
-        ...deps.resolveAgentLaunchEnv?.('pi')
+    resolveLaunch:
+      deps.resolvePiLaunch ??
+      createPiRpcLaunchResolver({
+        store: context.store,
+        resolveWorkspacePath: deps.resolveWorkspacePath,
+        resolveEnvironment: async () => ({
+          ...(await context.environment.resolveBaseEnvironment()),
+          ...deps.resolveAgentLaunchEnv?.('pi')
+        }),
+        ...(deps.resolveAgentCommandSettings
+          ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
+          : {})
       }),
-      ...(deps.resolveAgentCommandSettings
-        ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
-        : {})
-    }),
     ...(deps.openPiConnection ? { openConnection: deps.openPiConnection } : {}),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
     onLifecycle: context.deliverLifecycle,

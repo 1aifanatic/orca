@@ -1,15 +1,17 @@
 // The host's half of a provider child proving its start.
 //
-// A publish-first acquire hands the host a child that has answered nothing yet, so the record
-// keeps only the saved options the reservation carried, and the delivery loop hands it nothing.
-// This is where the host learns the start landed: the child turns `ready`, its startup attempt
-// ends, and the loop wakes to hand over what was queued meanwhile. Only once that handover is done
-// is what the child reports persisted, in a step of its own, so bookkeeping never sits between a
-// ready child and the user's first message; a failed write is reported, never thrown. Every report
-// is persisted only if no pick or later report came after its read (`option-revisions`).
+// Every acquire hands the host a child that has answered nothing yet, so the record keeps only the
+// saved options the reservation carried, and the delivery loop hands it nothing. This is where the
+// host learns the start landed: the provider handle the child answered with is recorded (a resume
+// needs it), picks made meanwhile are applied, the child turns `ready`, its startup attempt ends,
+// and the loop wakes to hand over what was queued. A handle that cannot be recorded fails the start.
+// Only once that handover is done is what the child reports persisted, in a step of its own, so
+// bookkeeping never sits between a ready child and the user's first message; a failed write is
+// reported, never thrown. Every report is persisted only if no pick or later report came after its
+// read (`option-revisions`).
 //
-// These run under the session's own serialized steps, which its close and sends wait on, so they
-// ask the provider nothing: the event carries what the child proved.
+// These run under the session's own serialized steps, which its close and sends wait on, so the
+// only provider calls here are the picks the user made while the child started.
 
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import type {
@@ -28,6 +30,10 @@ import {
 } from './structured-agent-session-provider-child'
 import type { StructuredAgentSessionOptionRevisions } from './structured-agent-session-option-revisions'
 import type { StructuredAgentSessionStartupAttempts } from './structured-agent-session-startup-attempt'
+import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
+import type { StructuredAgentSessionProviderChildIdentity } from './structured-agent-session-host-types'
+import { recordAgentSessionProviderHandle } from '../../runtime/agent-session-provider-handle-transition'
+import { applyStructuredAgentSessionStartupIntent } from './structured-agent-session-startup-intent'
 
 export type StructuredAgentSessionProviderStartedContext = {
   deps: StructuredAgentSessionHostDeps
@@ -36,7 +42,8 @@ export type StructuredAgentSessionProviderStartedContext = {
   now: () => number
   publishStatus?: (sessionId: string) => void
   runtimeState: {
-    startupAttempts: Pick<StructuredAgentSessionStartupAttempts, 'ready'>
+    startupAttempts: Pick<StructuredAgentSessionStartupAttempts, 'ready' | 'launchedOptions'>
+    acquireAborts: Pick<StructuredAgentSessionAcquireAborts, 'begin'>
     optionRevisions: Pick<
       StructuredAgentSessionOptionRevisions,
       'admitReport' | 'advance' | 'isNewest'
@@ -45,6 +52,8 @@ export type StructuredAgentSessionProviderStartedContext = {
   /** The barrier lifts: what was accepted while the child started is handed over now. Settles once
    *  the loop has handed over all it can. */
   wakeDelivery: (sessionId: string) => Promise<void>
+  /** Ends a starting child whose start cannot be completed, as its startup limit would. */
+  stopStartingChild: (sessionId: string, child: StructuredAgentSessionProviderChildIdentity) => void
 }
 
 type ReportedOptions = Omit<StructuredAgentSessionOptionsReportedEvent, 'type'>
@@ -60,7 +69,32 @@ export async function settleStructuredAgentSessionProviderStarted(
     const session = context.sessions.get(event.sessionId)
     const child = { generation: event.acquisitionGeneration, fence: event.fence }
     // A stale child's proof starts nothing: the barrier stays on the child the host holds.
-    if (!session || !markProviderChildStarted(session, child)) {
+    if (
+      !session?.child ||
+      session.child.phase !== 'starting' ||
+      !sameProviderChild(session.child, child)
+    ) {
+      return null
+    }
+    if (!(await recordStartedHandle(context, event))) {
+      context.stopStartingChild(event.sessionId, child)
+      return null
+    }
+    const launched = context.runtimeState.startupAttempts.launchedOptions(event.sessionId, child)
+    if (launched) {
+      await applyStructuredAgentSessionStartupIntent(
+        {
+          deps: context.deps,
+          acquireAborts: context.runtimeState.acquireAborts,
+          optionRevisions: context.runtimeState.optionRevisions
+        },
+        event.sessionId,
+        child,
+        launched
+      )
+    }
+    // A close or Stop that ran while the picks applied leaves nothing to start.
+    if (!markProviderChildStarted(session, child)) {
       return null
     }
     context.runtimeState.startupAttempts.ready(event.sessionId, child)
@@ -73,6 +107,33 @@ export async function settleStructuredAgentSessionProviderStarted(
   }
   // Not awaited: the adapter's next event may be what the handover itself waits on.
   void started.delivered.then(() => persistReportedOptions(context, event, admitted))
+}
+
+/** The handle the child's protocol session answered with, recorded before it is handed anything:
+ *  without it a later start could not resume what this child ran. False when there is none. */
+async function recordStartedHandle(
+  context: StructuredAgentSessionProviderStartedContext,
+  event: StructuredAgentSessionStartedEvent
+): Promise<boolean> {
+  const { store, logger } = context.deps
+  const { link } = event
+  if (!link) {
+    // Only an acquisition that already held its handle may prove its start without one.
+    return store.getRecord(event.sessionId)?.lease.provenHandleLinkId != null
+  }
+  try {
+    await store.transitionHandoff(event.sessionId, (record) =>
+      recordAgentSessionProviderHandle({ record, fence: event.fence, link, now: context.now() })
+    )
+    return true
+  } catch (error) {
+    logger.warn('recording the handle a started provider answered with failed', {
+      scope: 'provider-started-handle',
+      sessionId: event.sessionId,
+      error
+    })
+    return false
+  }
 }
 
 /** What a ready child reports later, such as a read that came after its start: persisted as the

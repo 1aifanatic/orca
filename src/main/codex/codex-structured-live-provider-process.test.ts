@@ -1,3 +1,4 @@
+import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
 import { describe, expect, it } from 'vitest'
 import { adapterFor, fakeCodex, identityFor } from './codex-structured-session-adapter-fixture'
 
@@ -5,7 +6,7 @@ describe('Codex adapter liveness for lease renewal', () => {
   it('holds its acquisition until the connection reports the root exit', async () => {
     const codex = fakeCodex()
     const adapter = adapterFor(codex)
-    const { acquisitionGeneration } = await adapter.acquire({
+    const { acquisitionGeneration } = await acquireReadyCodexForTest(adapter, {
       identity: identityFor('session-1'),
       fence: 7,
       spawnToken: 'spawn-9'

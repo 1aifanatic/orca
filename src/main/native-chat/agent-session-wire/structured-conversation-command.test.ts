@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionConversationCommand } from '../../../shared/agent-session-conversation-command'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
+import type { AgentSessionOptionsResult } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -37,6 +38,8 @@ let hosts: StructuredAgentSessionHost[]
 let adapter: StructuredAgentSessionAdapter
 const compact = vi.fn<NonNullable<StructuredAgentSessionAdapter['compact']>>()
 let acquisitions = 0
+/** What a started child reports; null reports nothing. */
+let startReport: AgentSessionOptionsResult['current'] | null
 
 function envelope(method: string, fields: Record<string, unknown>) {
   return {
@@ -97,6 +100,7 @@ beforeEach(async () => {
   resetHostTestOperationIds()
   ownerProbe = { outcome: 'pid-absent' }
   acquisitions = 0
+  startReport = null
   generation = 0
   clock = HOST_TEST_NOW
   hosts = []
@@ -107,7 +111,25 @@ beforeEach(async () => {
       location.executionHostId === 'local' && location.wslDistro === null,
     acquire: vi.fn(async (input) => {
       acquisitions++
+      const acquisitionGeneration = `acquisition-${acquisitions}`
+      const starter = host
+      // The handshake answers at once, reporting what the child runs with.
+      void starter.handleAdapterEvent({
+        type: 'started',
+        sessionId: input.identity.sessionId,
+        fence: input.fence,
+        acquisitionGeneration,
+        reportedOptions: startReport ?? { model: '' },
+        restoreSkippedOptions: [],
+        optionRevision: startReport
+          ? starter
+              .collaboratorsForTests()
+              .runtimeState.optionRevisions.current(input.identity.sessionId)
+          : // Never admitted, so an empty report persists nothing.
+            -1
+      })
       return {
+        acquisitionGeneration,
         process: {
           hostId: 'local',
           pid: 4000 + acquisitions,
@@ -516,10 +538,7 @@ describe("the replacement's first send", () => {
       options: { model: 'test-model', effort: 'low' },
       now: HOST_TEST_NOW
     })
-    adapter.readOptions = async () => ({
-      models: [],
-      current: { model: 'test-model', effort: 'low', fastMode: false }
-    })
+    startReport = { model: 'test-model', effort: 'low', fastMode: false }
     const replacement = await clearCommits()
     expect(await sendTo(replacement, 'first message')).toMatchObject({ ok: true })
     await vi.waitFor(() => expect(startsFor(replacement)).toBe(1))

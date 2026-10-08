@@ -387,7 +387,9 @@ export function isPersistedAgentSessionRecord(
     ) &&
     (validated.lease.claimStatus !== 'live' ||
       (validated.lease.ownerProcess !== null &&
-        head?.linkId === validated.lease.provenHandleLinkId &&
-        head.mintedAtFence === validated.lease.runtimeFence))
+        // Null: the owner's process is live and its provider has not answered with a handle yet.
+        (validated.lease.provenHandleLinkId === null ||
+          (head?.linkId === validated.lease.provenHandleLinkId &&
+            head.mintedAtFence === validated.lease.runtimeFence))))
   )
 }

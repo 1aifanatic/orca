@@ -1,3 +1,4 @@
+import { acquireReadyCodexForTest } from './codex-structured-session-adapter-fixture'
 // Default-mode collab frames as a live session sent them, and the journal rows the real adapter
 // publishes for them: what a client reads.
 
@@ -114,7 +115,7 @@ export async function publishedRows(frames: Frame[]): Promise<AgentJournalRender
     appendTombstone: () => {},
     publish: () => {}
   }
-  await adapter.acquire({
+  await acquireReadyCodexForTest(adapter, {
     identity: identityFor('session-1'),
     fence: 7,
     spawnToken: 'spawn-9',
