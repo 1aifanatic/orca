@@ -14,9 +14,9 @@ import {
   lockedStructuredAgentSessionOptionSnapshot,
   structuredAgentSessionOptionPicks,
   structuredAgentSessionOptionSnapshot,
-  structuredAgentSessionOptionView,
   type StructuredAgentSessionOptionState
 } from '../../../../shared/structured-agent-session-options'
+import { structuredAgentSessionOptionView } from '../../../../shared/structured-agent-session-option-view'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { enqueueSessionOptionSettingsWrite } from './native-chat-session-option-settings-write'
@@ -80,6 +80,9 @@ export function useStructuredAgentSessionOptions(args: {
     fence,
     sessionId,
     target,
+    newLaunch: launch?.kind === 'new',
+    ...(launch?.worktree ? { worktree: launch.worktree } : {}),
+    seedsModel: launchSeedOptions?.model !== undefined,
     providerVisible,
     providerStarting: args.providerStarting ?? false,
     // A new chat's host knows nothing of its model before the provider starts; a resumed one's

@@ -8,10 +8,12 @@ import type { AgentType } from '../../../../shared/agent-status-types'
 import type { AgentSessionOptionCatalog } from '../../../../shared/agent-session-option-catalog'
 import {
   applyStructuredAgentSessionModelCatalog,
+  settleStructuredAgentSessionBuiltinCatalog,
   type StructuredAgentSessionOptionState
 } from '../../../../shared/structured-agent-session-options'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import { recordHostModelCatalogSnapshot } from '@/runtime/host-model-catalog-snapshots'
 import { structuredAgentSessionHostKey } from '@/runtime/structured-agent-session-host-capability'
 import type { NativeChatSessionOptionRecord } from '../../../../shared/native-chat-session-option-state'
 import {
@@ -20,16 +22,17 @@ import {
 } from './host-model-listing-waits'
 
 /**
- * Upgrades the static seed with the host's stored catalog without waiting on
- * attach. A record-less read (no session yet) resolves the account a launch
- * would pin, so the picker warms during create. An older host answers
- * `forbidden` or `method_not_found` — both mean "no such surface", so the seed
- * stands until the live read lands.
+ * Replaces the quiet placeholder with the host's stored catalog without waiting on
+ * attach, and keeps a new chat's answer for the next chat's first frame. A record-less
+ * read (no session yet) resolves the account a launch would pin, so the picker warms
+ * during create. An older host answers `forbidden` or `method_not_found` — both mean
+ * "no such surface" — and the built-in list becomes usable until the live read lands.
  *
  * When the host says its first listing for the account is running, one more
  * read waits for it — one per chat, joined by every later run and remount —
  * so the list updates in place. The picker never waits on it: it stays usable
- * on the seed meanwhile, and a pick made then stays an intent the session checks.
+ * on the built-in list meanwhile, naming no model, and a pick made then stays
+ * an intent the session checks.
  * Reports why the host's latest answer says no chat can start (kept until the
  * next answer replaces it; a failed read is unknown). Only while it says so,
  * the window gaining focus or a turn starting or ending reads again: the host
@@ -108,15 +111,18 @@ export function useHostModelCatalogUpgrade(args: {
           ? current
           : { key: waitKey, unavailable: next }
       })
-      if (!catalog) {
-        return
+      // A new chat's answer is the account's a new chat pins, so the next chat starts from it.
+      if (catalog && newLaunch) {
+        recordHostModelCatalogSnapshot(target, agent, worktree ?? '', catalog)
       }
       updateOptionState((current) =>
-        current.record === activeOptionRecordRef.current
-          ? applyStructuredAgentSessionModelCatalog(current, optionCatalog, catalog, {
-              newLaunch
-            })
-          : current
+        current.record !== activeOptionRecordRef.current
+          ? current
+          : catalog
+            ? applyStructuredAgentSessionModelCatalog(current, optionCatalog, catalog, {
+                newLaunch
+              })
+            : settleStructuredAgentSessionBuiltinCatalog(current)
       )
     }
     let leave: (() => void) | null = null
@@ -124,6 +130,12 @@ export function useHostModelCatalogUpgrade(args: {
       leave = joinHostModelListingWait(waitKey, () => read(true), apply)
     }
     if (isHostModelListingWaitInFlight(waitKey)) {
+      // The host already answered that its listing is running: the built-in list stands meanwhile.
+      updateOptionState((current) =>
+        current.record === activeOptionRecordRef.current
+          ? settleStructuredAgentSessionBuiltinCatalog(current)
+          : current
+      )
       waitForListing()
     } else {
       void read(false)

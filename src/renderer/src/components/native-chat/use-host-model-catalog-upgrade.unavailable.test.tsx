@@ -23,6 +23,7 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
+import { resetHostModelCatalogSnapshotsForTests } from '@/runtime/host-model-catalog-snapshots'
 
 // The host's sign-in verdict as a chat holds it: kept until the next answer replaces it, read
 // again on window focus only while it is said, and cleared by a failed read.
@@ -31,7 +32,11 @@ const LOCAL_TARGET = { kind: 'local' } as const
 const SIGNED_OUT = { reason: 'notSignedIn', account: 'system' } as const
 const HOST_CATALOG = {
   origin: 'probe',
-  models: [{ id: 'gpt-hosted', label: 'GPT Hosted', isDefault: true, efforts: [] }],
+  models: [
+    { id: 'gpt-hosted', label: 'GPT Hosted', isDefault: true, efforts: [] },
+    // The launch seed's model: a saved pick no host list names shows only the placeholder.
+    { id: 'gpt-5.5', label: 'GPT-5.5', efforts: [] }
+  ],
   fetchedAt: 1_000
 }
 
@@ -112,6 +117,7 @@ const focusWindow = (): Promise<void> =>
 describe("a chat's sign-in verdict", () => {
   beforeEach(() => {
     mocks.call.mockReset()
+    resetHostModelCatalogSnapshotsForTests()
     sessionCount += 1
     sessionId = `verdict-session-${sessionCount}`
   })

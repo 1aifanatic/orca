@@ -23,13 +23,18 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
+import { resetHostModelCatalogSnapshotsForTests } from '@/runtime/host-model-catalog-snapshots'
 
 const PAIRED_TARGET = { kind: 'environment', environmentId: 'server-1' } as const
 const UNKNOWN = { origin: 'unknown' }
 const LISTING = { origin: 'unknown', listingInProgress: true }
 const HOST_CATALOG = {
   origin: 'probe',
-  models: [{ id: 'gpt-hosted', label: 'GPT Hosted', isDefault: true, efforts: [] }],
+  models: [
+    { id: 'gpt-hosted', label: 'GPT Hosted', isDefault: true, efforts: [] },
+    // The launch seed's model, so the saved pick is one the host list names.
+    { id: 'gpt-5.5', label: 'GPT-5.5', efforts: [] }
+  ],
   fetchedAt: 1_000
 }
 
@@ -116,24 +121,30 @@ const flush = (): Promise<void> => act(async () => {})
 describe('host model catalog read', () => {
   beforeEach(() => {
     mocks.call.mockReset()
+    resetHostModelCatalogSnapshotsForTests()
     sessionCount += 1
     sessionId = `session-${sessionCount}`
   })
 
-  it('reads a warm catalog once and never holds the picker', async () => {
+  it('reads a warm catalog once, showing the quiet placeholder only until it answers', async () => {
     const first = deferred()
     answerCatalog([() => first.promise])
     const { result, unmount } = renderOptions()
     await flush()
-    expect(usable(result.current.optionSnapshot)).toBe(true)
+    // No built-in label the host's list could replace.
+    expect(modelChoices(result.current.optionSnapshot)).toEqual([])
+    expect(model(result.current.optionSnapshot).settable).toBe(false)
     first.resolve(HOST_CATALOG)
     await flush()
     expect(catalogReads()).toEqual([{ agent: 'codex', sessionId }])
     expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
+    const named = model(result.current.optionSnapshot)
+    expect(named.kind.type === 'select' ? named.kind.currentValue : null).toBe('gpt-5.5')
+    expect(usable(result.current.optionSnapshot)).toBe(true)
     unmount()
   })
 
-  it('a new Codex chat on a cold catalog shows a usable built-in list, then the listing in place', async () => {
+  it('a new Codex chat on a cold catalog shows a usable unnamed built-in list, then the listing', async () => {
     const waited = deferred()
     answerCatalog([() => Promise.resolve(LISTING), () => waited.promise])
     const { result, unmount } = renderOptions()
@@ -142,10 +153,11 @@ describe('host model catalog read', () => {
       { agent: 'codex', sessionId },
       { agent: 'codex', sessionId, waitForListing: true }
     ])
-    // First frame: the built-in list, open to a pick, naming the launch's model.
+    // Once the host says it has none: the built-in list, open to a pick, naming nothing it
+    // could replace.
     const first = model(result.current.optionSnapshot)
     expect(usable(result.current.optionSnapshot)).toBe(true)
-    expect(first.kind.type === 'select' ? first.kind.currentValue : null).toBe('gpt-5.5')
+    expect(first.kind.type === 'select' ? first.kind.currentValue : null).toBeUndefined()
     expect(modelChoices(result.current.optionSnapshot)).not.toContain('gpt-hosted')
     await act(async () => {
       expect(await result.current.setStructuredOption('model', 'gpt-5.5')).toBe(true)

@@ -4,6 +4,7 @@ import type { AgentSessionOptionCatalog } from '../../../src/shared/agent-sessio
 import type { NativeChatSessionOptionRecord } from '../../../src/shared/native-chat-session-option-state'
 import {
   applyStructuredAgentSessionModelCatalog,
+  settleStructuredAgentSessionBuiltinCatalog,
   type StructuredAgentSessionOptionState
 } from '../../../src/shared/structured-agent-session-options'
 import type { RpcClient } from '../transport/rpc-client'
@@ -14,9 +15,10 @@ const LISTING_WAIT_TIMEOUT_MS = 45_000
 
 /**
  * The desktop's host-catalog upgrade on the phone: the picker lists the account's models from the
- * host store while the session's own options read may still wait on its attach. It never holds the
- * picker: a first listing still running lands in place. An older host refuses the method, and the
- * seed stands until the options read lands.
+ * host store while the session's own options read may still wait on its attach. Until the host
+ * answers it shows the quiet placeholder; it never waits on a listing: a first listing still
+ * running lands in place. An older host refuses the method, and the built-in list stands, naming
+ * nothing, until the options read lands.
  */
 export function useMobileHostModelCatalogUpgrade(args: {
   agent: string | null
@@ -72,13 +74,27 @@ export function useMobileHostModelCatalogUpgrade(args: {
           : current
       )
     }
+    // A refused or failed read is no list: the built-in one becomes usable, naming nothing.
+    const settleBuiltin = (): void => {
+      if (!stale) {
+        updateOptionState((current) =>
+          current.record === activeOptionRecordRef.current
+            ? settleStructuredAgentSessionBuiltinCatalog(current)
+            : current
+        )
+      }
+    }
     void read(false)
-      .then((catalog) =>
-        catalog.origin === 'unknown' && catalog.listingInProgress === true && !stale
-          ? read(true).then(apply)
-          : apply(catalog)
-      )
-      .catch(() => undefined)
+      .then((catalog) => {
+        if (catalog.origin === 'unknown' && catalog.listingInProgress === true && !stale) {
+          // Usable on the built-in list while the listing runs; it lands in place.
+          apply(catalog)
+          return read(true).then(apply)
+        }
+        apply(catalog)
+        return undefined
+      })
+      .catch(settleBuiltin)
     return () => {
       stale = true
     }

@@ -81,8 +81,18 @@ export function useMobileStructuredAgentOptions(args: {
     commands: readonly AgentSessionConversationCommand[]
   } | null>(null)
 
+  const optionIdentityRef = useRef(`${agent}:${sessionId}`)
   useEffect(() => {
-    const next = createStructuredAgentSessionOptionState(agent ?? 'codex', optionCatalog)
+    const identity = `${agent}:${sessionId}`
+    const sameSession = optionIdentityRef.current === identity
+    optionIdentityRef.current = identity
+    const previous = optionStateRef.current
+    const seeded = createStructuredAgentSessionOptionState(agent ?? 'codex', optionCatalog)
+    // A host answer is the account's, not the fence's: keep it rather than fall back to the placeholder.
+    const next =
+      sameSession && (previous.catalogSource === 'host' || previous.catalogSource === 'builtin')
+        ? { ...seeded, catalog: previous.catalog, catalogSource: previous.catalogSource }
+        : seeded
     optionMutationGeneration.current += 1
     pendingOptionRef.current = null
     optionStateRef.current = next
