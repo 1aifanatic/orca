@@ -20,7 +20,12 @@ const STDERR_DETAIL_MAX_CHARS = 400
 const UNSUPERVISED_GRACEFUL_EXIT_MS = 1_500
 const FORCED_EXIT_MS = 1_000
 
-export type AgentModelCatalogProbeFailure = 'timeout' | 'output-overflow' | 'exit' | 'spawn'
+export type AgentModelCatalogProbeFailure =
+  | 'timeout'
+  | 'output-overflow'
+  | 'exit'
+  | 'spawn'
+  | 'stopped'
 
 export class AgentModelCatalogProbeError extends Error {
   constructor(
@@ -50,6 +55,8 @@ export type AgentModelCatalogRunnerOptions = {
   site: string
   timeoutMs?: number
   maxOutputBytes?: number
+  /** Stops the listing and its child, as the deadline would. */
+  signal?: AbortSignal
   /** Test seams. */
   spawnImpl?: typeof spawnProcess
   platform?: NodeJS.Platform
@@ -63,6 +70,7 @@ export async function runAgentModelCatalogListing(
   options: AgentModelCatalogRunnerOptions
 ): Promise<string> {
   const timeoutMs = options.timeoutMs ?? AGENT_MODEL_CATALOG_PROBE_TIMEOUT_MS
+  throwIfStopped(options.signal, launch.command)
   const managed = spawnManagedProviderProcess(launch, {
     site: options.site,
     // A listing's stdin end is the end of its request, not a stop.
@@ -79,10 +87,13 @@ export async function runAgentModelCatalogListing(
   const stderrDetail = (): string =>
     providerStderrForDisplay(managed.stderrTail()).trim().slice(0, STDERR_DETAIL_MAX_CHARS)
   let timer: ReturnType<typeof setTimeout> | undefined
+  let onAbort = (): void => {}
   try {
     return await new Promise<string>((resolve, reject) => {
       const fail = (message: string, reason: AgentModelCatalogProbeFailure): void =>
         reject(new AgentModelCatalogProbeError(message, reason))
+      onAbort = () => fail(`${launch.command} listing stopped`, 'stopped')
+      options.signal?.addEventListener('abort', onAbort, { once: true })
       timer = setTimeout(
         () => fail(`${launch.command} did not list models within ${timeoutMs}ms`, 'timeout'),
         timeoutMs
@@ -125,7 +136,14 @@ export async function runAgentModelCatalogListing(
     })
   } finally {
     clearTimeout(timer)
+    options.signal?.removeEventListener('abort', onAbort)
     await managed.close()
+  }
+}
+
+function throwIfStopped(signal: AbortSignal | undefined, label: string): void {
+  if (signal?.aborted) {
+    throw new AgentModelCatalogProbeError(`${label} listing stopped`, 'stopped')
   }
 }
 
@@ -136,12 +154,17 @@ export type AgentModelCatalogProbeConnection = { close(): Promise<unknown> }
 export async function runAgentModelCatalogSession<C extends AgentModelCatalogProbeConnection, T>(
   open: () => C,
   body: (connection: C) => Promise<T>,
-  options: { label: string; timeoutMs?: number }
+  options: { label: string; timeoutMs?: number; signal?: AbortSignal }
 ): Promise<T> {
   const timeoutMs = options.timeoutMs ?? AGENT_MODEL_CATALOG_PROBE_TIMEOUT_MS
+  throwIfStopped(options.signal, options.label)
   const connection = open()
   let timer: ReturnType<typeof setTimeout> | undefined
+  let onAbort = (): void => {}
   const deadline = new Promise<never>((_resolve, reject) => {
+    onAbort = () =>
+      reject(new AgentModelCatalogProbeError(`${options.label} listing stopped`, 'stopped'))
+    options.signal?.addEventListener('abort', onAbort, { once: true })
     timer = setTimeout(
       () =>
         reject(
@@ -157,6 +180,7 @@ export async function runAgentModelCatalogSession<C extends AgentModelCatalogPro
     return await Promise.race([body(connection), deadline])
   } finally {
     clearTimeout(timer)
+    options.signal?.removeEventListener('abort', onAbort)
     await connection.close().catch(() => undefined)
   }
 }

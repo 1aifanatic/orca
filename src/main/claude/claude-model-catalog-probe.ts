@@ -31,7 +31,7 @@ export type ClaudeModelCatalogProbeDeps = Pick<
 export function createClaudeModelCatalogProbe(
   deps: ClaudeModelCatalogProbeDeps
 ): AgentModelCatalogProbe {
-  return async (accountHome): Promise<AgentModelCatalogSuccess> => {
+  return async (accountHome, options): Promise<AgentModelCatalogSuccess> => {
     const accountHomePath = requireLegacyAgentSessionAccountHome(accountHome).path
     // Same pin rule as the session spawn: naming the CLI's default dir would move
     // it off the default Keychain item and list under another identity.
@@ -41,7 +41,7 @@ export function createClaudeModelCatalogProbe(
     }))
     const stdout = await (deps.runListing ?? runAgentModelCatalogListing)(
       { command, args: [...CLAUDE_MODEL_LIST_ARGS], stdin: CLAUDE_MODEL_LIST_STDIN },
-      { site: 'claude-model-catalog-probe', inheritedEnv: env }
+      { site: 'claude-model-catalog-probe', inheritedEnv: env, signal: options?.signal }
     )
     // A CLI that predates the request answers a control error: no models, so no catalog.
     const listed = parseClaudeModels(stdout)

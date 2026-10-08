@@ -41,7 +41,7 @@ export function createAcpModelCatalogProbe(
   spec: AcpLaunchSpec,
   deps: AcpModelCatalogProbeDeps
 ): AgentModelCatalogProbe {
-  return async (accountHome): Promise<AgentModelCatalogSuccess> => {
+  return async (accountHome, options): Promise<AgentModelCatalogSuccess> => {
     const discovery = spec.modelDiscovery
     // Registered as unavailable instead (`acpModelCatalogDiscovery`); never built for one.
     if (discovery.kind === 'unavailable') {
@@ -63,7 +63,7 @@ export function createAcpModelCatalogProbe(
     if (discovery.kind === 'command') {
       const stdout = await (deps.runListing ?? runAgentModelCatalogListing)(
         { command, args: [...discovery.args], cwd, env, envToDelete },
-        { site: `${spec.agent}-model-catalog-probe` }
+        { site: `${spec.agent}-model-catalog-probe`, signal: options?.signal }
       )
       models = discovery.parse(stdout)
     } else {
@@ -71,7 +71,7 @@ export function createAcpModelCatalogProbe(
       models = await runAgentModelCatalogSession(
         () => (deps.connect ?? createAcpAgentConnection)(launch),
         async (connection) => discovery.read(await connection.initialize(), connection),
-        { label: spec.agent }
+        { label: spec.agent, signal: options?.signal }
       )
     }
     if (models.length === 0) {

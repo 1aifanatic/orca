@@ -38,7 +38,7 @@ export function piModelCatalogFromListing(stdout: string): AgentModelCatalogSucc
 
 /** Lists Pi's models with `pi --list-models`, under the binary and environment its chats run. */
 export function createPiModelCatalogProbe(deps: PiModelCatalogProbeDeps): AgentModelCatalogProbe {
-  return async (accountHome): Promise<AgentModelCatalogSuccess> => {
+  return async (accountHome, options): Promise<AgentModelCatalogSuccess> => {
     const env: Record<string, string> = {}
     for (const [key, value] of Object.entries(await deps.resolveEnvironment())) {
       if (value !== undefined) {
@@ -55,7 +55,7 @@ export function createPiModelCatalogProbe(deps: PiModelCatalogProbeDeps): AgentM
     const launch = buildPiRpcLaunch({ command, cwd, env, fullAccess: true })
     const stdout = await (deps.runListing ?? runAgentModelCatalogListing)(
       { ...launch, args: ['--list-models'] },
-      { site: 'pi-model-catalog-probe' }
+      { site: 'pi-model-catalog-probe', signal: options?.signal }
     )
     const models = piModelCatalogFromListing(stdout)
     if (models.length === 0) {

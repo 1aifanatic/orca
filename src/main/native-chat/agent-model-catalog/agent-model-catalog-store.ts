@@ -7,6 +7,9 @@ import type { AgentModelCatalogPersistence } from './agent-model-catalog-persist
 import { startSpan } from '../../observability/tracer'
 import {
   agentModelCatalogEntry,
+  agentModelCatalogListingKey,
+  entryWithConfiguredDefault,
+  type AgentModelCatalogConfiguredChoice,
   type AgentModelCatalogEntry,
   type AgentModelCatalogListing
 } from './agent-model-catalog-entry'
@@ -48,9 +51,11 @@ export type AgentModelCatalogSuccess = {
   launchOnlyModelId?: string
 }
 
-/** Lists an agent's models without a session, under the account a launch would pin. */
+/** Lists an agent's models without a session, under the account a launch would pin. `signal`
+ *  stops the listing and its child once the host that asked is going away. */
 export type AgentModelCatalogProbe = (
-  accountHome: AgentSessionAccountHome
+  accountHome: AgentSessionAccountHome,
+  options?: { signal?: AbortSignal }
 ) => Promise<AgentModelCatalogSuccess>
 
 /** Who lists, by identity: a live session's per-spawn handle, or the session-less probe. */
@@ -67,21 +72,6 @@ export type AgentModelCatalogSessionAccess = {
   store: AgentModelCatalogStore
   fingerprint: string
   accountHomePath: string
-}
-
-function tierRecord(tiers: ReadonlyMap<string, string>): Record<string, string> {
-  return Object.fromEntries(tiers.entries())
-}
-
-function listingKey(entry: AgentModelCatalogEntry): string {
-  const facts = (listing: AgentModelCatalogListing | null): unknown =>
-    listing && [
-      listing.origin,
-      listing.models,
-      listing.fastModeSupport ?? null,
-      listing.fastModeTierByModel
-    ]
-  return JSON.stringify([facts(entry.discovered), facts(entry.live), entry.configured?.modelId])
 }
 
 export class AgentModelCatalogStore {
@@ -122,6 +112,16 @@ export class AgentModelCatalogStore {
     this.entries.delete(fingerprint)
     this.entries.set(fingerprint, entry)
     return entry
+  }
+
+  /** Whether any account's catalog of `agent` is saved here. */
+  hasEntryForAgent(agent: string): boolean {
+    for (const entry of this.entries.values()) {
+      if (entry.agent === agent) {
+        return true
+      }
+    }
+    return false
   }
 
   /** Only a discovery ages: live saves never postpone the next account-level listing. */
@@ -178,7 +178,7 @@ export class AgentModelCatalogStore {
     const listing: AgentModelCatalogListing = {
       models: models.map((model) => ({ ...model })),
       ...(success.fastModeSupport ? { fastModeSupport: success.fastModeSupport } : {}),
-      fastModeTierByModel: tierRecord(success.fastModeTierByModel),
+      fastModeTierByModel: Object.fromEntries(success.fastModeTierByModel.entries()),
       origin: success.origin,
       at: this.now()
     }
@@ -194,20 +194,15 @@ export class AgentModelCatalogStore {
         )
   }
 
-  /** Records which model the account's own config resolves to, for an agent whose listing names
-   *  none. Superseded by the next chat that resolves it; never creates an entry on its own. */
-  recordConfiguredDefault(fingerprint: string, modelId: string): void {
+  /** Records which model and effort the account's own config resolves to, for an agent whose
+   *  listing names none; null forgets a default that config no longer resolves to. Superseded by
+   *  the next chat that resolves it; never creates an entry on its own. */
+  recordConfiguredDefault(
+    fingerprint: string,
+    choice: AgentModelCatalogConfiguredChoice | null
+  ): void {
     const previous = this.entries.get(fingerprint)
-    if (!previous || previous.configured?.modelId === modelId) {
-      return
-    }
-    const entry = agentModelCatalogEntry(
-      previous.agent,
-      fingerprint,
-      previous.discovered,
-      previous.live,
-      { modelId, at: this.now() }
-    )
+    const entry = previous && entryWithConfiguredDefault(previous, choice, this.now())
     if (!entry) {
       return
     }
@@ -238,7 +233,7 @@ export class AgentModelCatalogStore {
     }
     this.evictOverCap()
     // Live sessions re-list every turn; an unchanged listing only refreshes the in-memory age.
-    if (!previous || listingKey(previous) !== listingKey(entry)) {
+    if (!previous || agentModelCatalogListingKey(previous) !== agentModelCatalogListingKey(entry)) {
       this.persistence?.save([...this.entries.values()])
     }
     return entry

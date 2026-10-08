@@ -68,7 +68,7 @@ describe('agent model catalog service', () => {
     // record-scoped read probes the RECORD's pinned home, not the selection.
     await service.read({ agent: 'codex', sessionId: 'session-1' })
     expect(probe).toHaveBeenCalledTimes(1)
-    expect(probe).toHaveBeenCalledWith(CODEX_HOME('/homes/a'))
+    expect(probe).toHaveBeenCalledWith(CODEX_HOME('/homes/a'), { signal: expect.any(AbortSignal) })
     await vi.waitFor(async () => {
       const result = await service.read({ agent: 'codex', sessionId: 'session-1' })
       expect(result.origin).toBe('probe')
@@ -92,7 +92,9 @@ describe('agent model catalog service', () => {
     await service.read({ agent: 'codex', sessionId: 'session-1' })
 
     expect(drivesRecord).toHaveBeenCalledWith(pinned)
-    expect(probe).toHaveBeenCalledExactlyOnceWith(CODEX_HOME('/homes/selected'))
+    expect(probe).toHaveBeenCalledExactlyOnceWith(CODEX_HOME('/homes/selected'), {
+      signal: expect.any(AbortSignal)
+    })
   })
 
   it('an account switch with no record reads and prewarms the NEW account, never the old entry', async () => {
@@ -113,7 +115,9 @@ describe('agent model catalog service', () => {
       origin: 'unknown',
       listingInProgress: true
     })
-    expect(probe).toHaveBeenCalledWith(CODEX_HOME('/homes/new'))
+    expect(probe).toHaveBeenCalledWith(CODEX_HOME('/homes/new'), {
+      signal: expect.any(AbortSignal)
+    })
     await vi.waitFor(async () => {
       const result = await service.read({ agent: 'codex' })
       expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-new')

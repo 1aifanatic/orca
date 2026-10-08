@@ -4,7 +4,10 @@ import type {
   AgentSessionFastModeSupport,
   AgentSessionOptionsResult
 } from '../../shared/agent-session-wire'
-import type { AgentModelCatalogLiveListing } from '../native-chat/agent-model-catalog/agent-model-catalog-entry'
+import type {
+  AgentModelCatalogConfiguredChoice,
+  AgentModelCatalogLiveListing
+} from '../native-chat/agent-model-catalog/agent-model-catalog-entry'
 import type { ListedModel } from './claude-structured-model-catalog'
 import type { ClaudeSession } from './claude-structured-session-state'
 
@@ -46,22 +49,6 @@ export function wireClaudeModels(models: readonly ListedModel[]): WireClaudeMode
   return models.map(wireClaudeModel)
 }
 
-/** The listing, with what the CLI runs when no effort is sent on each model the child applies —
- *  a default only a running child knows, and only while this session has no effort pick. */
-function catalogClaudeModels(session: ClaudeSession, discovered: ListedModel[]): WireClaudeModel[] {
-  const applied = session.options.has('effort') ? undefined : session.appliedOptions
-  return discovered.map((listed) => {
-    const model = wireClaudeModel(listed)
-    const effort = applied?.effort
-    const runsApplied =
-      applied?.model !== undefined &&
-      (listed.id === applied.model || listed.resolvedModel === applied.model)
-    return effort && runsApplied && model.efforts.some((choice) => choice.value === effort)
-      ? { ...model, defaultEffort: effort }
-      : model
-  })
-}
-
 /** The account-level facts of a provider listing, for the host to save: this session's disabled
  *  reason and its unlisted current model stay out, so another surface never inherits session state
  *  as a catalog. A child launched with `--model X` lists X itself (Claude Code 2.1.280 adds a row
@@ -78,21 +65,44 @@ export function claudeCatalogListing(
   const launchOnly =
     launched !== null && discovered.some((row) => row.id === launched && row.label === row.id)
   const support = claudeFastModeSupport(discovered, undefined)
-  const configured = configuredClaudeModel(session, discovered)
+  const configured = configuredClaudeDefault(session, discovered)
   return {
-    models: catalogClaudeModels(session, discovered),
+    // No default effort here: the CLI's effort is a config fact, saved with the configured model.
+    models: wireClaudeModels(discovered),
     ...(support ? { fastModeSupport: support } : {}),
     ...(launchOnly ? { launchOnlyModelId: launched } : {}),
-    ...(configured ? { configuredModelId: configured } : {})
+    ...(configured !== undefined ? { configuredDefault: configured } : {})
   }
 }
 
-/** With no model sent at launch or since, the model the CLI says it applies is its own resolution
- *  of env over settings over its default: the configured model for this session's config scope. */
-function configuredClaudeModel(session: ClaudeSession, discovered: ListedModel[]): string | null {
-  const applied = session.appliedOptions?.model
+/** With no model sent at launch or since, the model and effort the CLI says it applies are its own
+ *  resolution of env over settings over its default: the configured default for this session's
+ *  config scope. Null when that resolution names no listed model; undefined when the session
+ *  picked its own model or never read its settings back. */
+function configuredClaudeDefault(
+  session: ClaudeSession,
+  discovered: ListedModel[]
+): AgentModelCatalogConfiguredChoice | null | undefined {
+  const applied = session.appliedOptions
   if (session.launchedModel !== null || session.options.has('model') || !applied) {
+    return undefined
+  }
+  const row = applied.model
+    ? discovered.find(
+        (entry) => entry.id === applied.model || entry.resolvedModel === applied.model
+      )
+    : undefined
+  if (!row) {
     return null
   }
-  return discovered.find((row) => row.id === applied || row.resolvedModel === applied)?.id ?? null
+  const runs = row.resolvedModel ?? row.id
+  const sameModelIds = discovered
+    .filter((entry) => entry !== row && (entry.resolvedModel ?? entry.id) === runs)
+    .map((entry) => entry.id)
+  return {
+    modelId: row.id,
+    ...(sameModelIds.length > 0 ? { sameModelIds } : {}),
+    // An effort this session picked is its own and says nothing of the config's.
+    ...(session.options.has('effort') ? {} : { effort: applied.effort ?? null })
+  }
 }

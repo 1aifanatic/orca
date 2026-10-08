@@ -114,13 +114,22 @@ function parseEntry(value: unknown): AgentModelCatalogEntry | null {
   }
   const configured = asRecord(row.configured)
   const configuredModelId = text(configured?.modelId)
+  const configuredEffort = text(configured?.effort)
+  const sameModelIds = Array.isArray(configured?.sameModelIds)
+    ? configured.sameModelIds.filter((id): id is string => typeof id === 'string')
+    : []
   return agentModelCatalogEntry(
     row.agent,
     row.fingerprint,
     parseListing(row.discovered),
     parseListing(row.live),
     configuredModelId && typeof configured?.at === 'number'
-      ? { modelId: configuredModelId, at: configured.at }
+      ? {
+          modelId: configuredModelId,
+          ...(sameModelIds.length > 0 ? { sameModelIds } : {}),
+          ...(configuredEffort ? { effort: configuredEffort } : {}),
+          at: configured.at
+        }
       : null
   )
 }

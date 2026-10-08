@@ -1,5 +1,5 @@
-// A Claude chat at rest shows the effort its next start will run: a live child teaches the host
-// catalog what the CLI runs for each model when no effort is sent, and the resting read answers it.
+// A Claude chat at rest shows the effort its next start will run: a live child with nothing picked
+// teaches the host catalog the configured model and effort, and the resting read answers it.
 
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
@@ -125,6 +125,8 @@ async function startChild(
   const { catalogListing } = await adapter.readOptions({ sessionId: SESSION, fence: 7 })
   if (catalogListing) {
     catalogService(store, restingRecord({})).recordLiveListing(SESSION, catalogListing)
+    // The configured default lands after the workspace check.
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
   return adapter
 }
@@ -151,7 +153,10 @@ function catalogService(store: AgentModelCatalogStore, record: AgentSessionRecor
     store,
     getRecord: () => record,
     drivesRecord: () => true,
-    resolveAccountHome: async () => ({ variable: 'CLAUDE_CONFIG_DIR', path: ACCOUNT_HOME })
+    resolveAccountHome: async () => ({ variable: 'CLAUDE_CONFIG_DIR', path: ACCOUNT_HOME }),
+    // The chat ran in a workspace with no Claude settings of its own: its config is the account's.
+    recordWorkspacePath: async () => '/work/repo',
+    workspaceMayOverrideDefaultModel: async () => false
   })
 }
 

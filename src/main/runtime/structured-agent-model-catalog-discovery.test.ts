@@ -1,9 +1,28 @@
-import { describe, expect, it } from 'vitest'
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
 import { STRUCTURED_AGENT_RUNTIME_REGISTRATIONS } from './structured-agent-runtime-registrations'
+import { resolveStructuredAgentCommand } from '../native-chat/structured-agent-command-resolution'
 import { registeredModelCatalogDiscovery } from './structured-agent-model-catalog-wiring'
 import { acpModelCatalogDiscovery } from './structured-agent-model-catalog-discovery'
 import { acpLaunchSpecFor } from '../acp/acp-launch-specs'
 import type { StructuredAgentModelCatalogContext } from './structured-agent-runtime-registrations'
+
+// What each probe would have spawned; nothing is.
+const spawned = vi.hoisted(() => ({ commands: [] as string[] }))
+vi.mock('../provider-process/managed-provider-process', () => ({
+  spawnManagedProviderProcess: (launch: { command: string }) => {
+    spawned.commands.push(launch.command)
+    throw new Error('no spawn in this test')
+  }
+}))
+vi.mock('../agent-cli-version-probe', () => ({
+  probeAgentCliVersion: async (input: { program: string }) => {
+    spawned.commands.push(input.program)
+    throw new Error('no spawn in this test')
+  }
+}))
 
 function context(): StructuredAgentModelCatalogContext {
   const unused = async (): Promise<never> => {
@@ -68,5 +87,46 @@ describe('the model catalog contract on every registration', () => {
       context()
     )
     expect(discovery).toEqual({ kind: 'unavailable', reason: 'no listing without a session' })
+  })
+
+  it('lists through the command each agent is set to run, never a bare name', async () => {
+    const rig = mkdtempSync(join(tmpdir(), 'orca-catalog-overrides-'))
+    const home = join(rig, 'home')
+    const standIn = (agent: string): string => join(rig, `${agent}-standin`)
+    for (const agent of ['claude', 'codex', 'grok']) {
+      // Never run: the spawn is mocked; the override must only be a runnable file.
+      writeFileSync(standIn(agent), '#!/bin/sh\nexit 1\n')
+      chmodSync(standIn(agent), 0o755)
+    }
+    const settings = {
+      agentCmdOverrides: {
+        claude: standIn('claude'),
+        codex: standIn('codex'),
+        grok: standIn('grok')
+      }
+    }
+    const env = async () => ({ PATH: '/usr/bin' })
+    const { probes } = registeredModelCatalogDiscovery(STRUCTURED_AGENT_RUNTIME_REGISTRATIONS, {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a probe reads only the command, env and auth resolvers given here.
+      deps: {
+        stateDirectory: '/state',
+        resolveClaudeCommand: () => resolveStructuredAgentCommand('claude', settings),
+        resolveCodexCommand: (options) => resolveStructuredAgentCommand('codex', settings, options),
+        resolveClaudeAuthPolicy: () => ({ stripAuthEnv: false }),
+        resolveAgentCommandSettings: () => settings
+      } as StructuredAgentModelCatalogContext['deps'],
+      environment: {
+        resolveBaseEnvironment: env,
+        resolveCodexEnvironment: env,
+        resolveClaudeInheritedEnv: env
+      }
+    })
+    const variables = { claude: 'CLAUDE_CONFIG_DIR', codex: 'CODEX_HOME', grok: 'GROK_HOME' }
+    for (const [agent, variable] of Object.entries(variables)) {
+      spawned.commands.length = 0
+      await expect(probes[agent]!({ variable, path: home })).rejects.toThrow()
+      expect(spawned.commands, agent).toEqual([standIn(agent)])
+    }
+    rmSync(rig, { recursive: true, force: true })
   })
 })

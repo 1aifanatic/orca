@@ -16,7 +16,8 @@ describe('a live Grok listing', () => {
     const modelCatalog: AgentModelCatalogService = {
       read: vi.fn(async () => ({ origin: 'unknown' as const })),
       recordLiveListing: vi.fn(),
-      prewarm: vi.fn(async () => {})
+      prewarm: vi.fn(async () => {}),
+      stop: vi.fn()
     }
     const { host } = await openAttachedHostRig({}, modelCatalog)
 

@@ -344,6 +344,9 @@ async function installOnJournal(
     })
   }
   setStructuredAgentSessionHost(host)
+  // The host starts with its runtime, local or remote, so this is the runtime-start listing.
+  const modelCatalog = host.deps.modelCatalog
+  void modelCatalog?.prewarm()
   installAgentSessionAttachments({
     stateDirectory: deps.stateDirectory,
     store,
@@ -364,6 +367,9 @@ async function installOnJournal(
     adapter,
     journalDatabase,
     waitForRecovery: lifecycle.drain,
-    ...(stopVisualsSweep ? { stopBackgroundWork: stopVisualsSweep } : {})
+    stopBackgroundWork: () => {
+      stopVisualsSweep?.()
+      modelCatalog?.stop()
+    }
   }
 }

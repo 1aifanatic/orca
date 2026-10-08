@@ -392,11 +392,11 @@ describe('agent model catalog store', () => {
     const store = new AgentModelCatalogStore()
     await store.attachPersistence(createAgentModelCatalogFilePersistence(directory))
     // Never on its own: there is no catalog to name a default in yet.
-    store.recordConfiguredDefault('fp', 'sonnet')
+    store.recordConfiguredDefault('fp', { modelId: 'sonnet' })
     expect(store.get('fp')).toBeNull()
 
     store.recordSuccess('fp', 'claude', success('opus', 'sonnet'), 'live')
-    store.recordConfiguredDefault('fp', 'sonnet')
+    store.recordConfiguredDefault('fp', { modelId: 'sonnet', effort: 'high' })
     store.recordSuccess(
       'fp',
       'claude',
@@ -410,8 +410,19 @@ describe('agent model catalog store', () => {
     await store.flushPersistence()
     const restarted = new AgentModelCatalogStore()
     await restarted.attachPersistence(createAgentModelCatalogFilePersistence(directory))
-    expect(restarted.get('fp')?.configured?.modelId).toBe('sonnet')
+    expect(restarted.get('fp')?.configured).toMatchObject({
+      modelId: 'sonnet',
+      effort: 'high'
+    })
     expect(named(restarted.get('fp'))).toEqual(['sonnet'])
+    const sonnet = restarted.get('fp')?.models.find((model) => model.id === 'sonnet')
+    expect(sonnet?.defaultEffort).toBe('high')
+
+    restarted.recordConfiguredDefault('fp', null)
+    expect(restarted.get('fp')?.configured).toBeNull()
+    expect(restarted.get('fp')?.models.find((model) => model.id === 'sonnet')).not.toHaveProperty(
+      'defaultEffort'
+    )
   })
 
   it('persists successes only and hydrates them across a restart', async () => {

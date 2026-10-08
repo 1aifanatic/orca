@@ -40,7 +40,7 @@ function definedEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> 
 export function createCodexModelCatalogProbe(
   deps: CodexModelCatalogProbeDeps
 ): AgentModelCatalogProbe {
-  return async (accountHome): Promise<AgentModelCatalogSuccess> => {
+  return async (accountHome, options): Promise<AgentModelCatalogSuccess> => {
     const accountHomePath = requireLegacyAgentSessionAccountHome(accountHome).path
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
     const run = deps.runSession ?? runCodexAppServerSession
@@ -50,7 +50,8 @@ export function createCodexModelCatalogProbe(
         args: [...CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS],
         cliPath: command,
         env: { ...definedEnv(environment), CODEX_HOME: accountHomePath },
-        timeoutMs: AGENT_MODEL_CATALOG_PROBE_TIMEOUT_MS
+        timeoutMs: AGENT_MODEL_CATALOG_PROBE_TIMEOUT_MS,
+        ...(options?.signal ? { signal: options.signal } : {})
       },
       (rpc) => fetchCodexModelCatalogListing({ connection: rpc })
     )

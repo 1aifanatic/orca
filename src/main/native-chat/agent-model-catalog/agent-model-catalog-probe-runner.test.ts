@@ -77,6 +77,34 @@ describe('the shared catalog probe runner', () => {
     await vi.waitFor(() => expect(isAlive(pid)).toBe(false), { timeout: 5_000 })
   }, 20_000)
 
+  it('stops a running listing, and starts none, once its host stops it', async () => {
+    const file = pidFile()
+    const stop = new AbortController()
+    const run = runAgentModelCatalogListing(
+      {
+        ...node(
+          `require('fs').writeFileSync(${JSON.stringify(file)}, String(process.pid));setInterval(()=>{},1000)`
+        ),
+        env: NODE_ENV
+      },
+      { site: 'test-listing', signal: stop.signal }
+    )
+    await vi.waitFor(() => expect(readFileSync(file, 'utf8')).not.toBe(''), { timeout: 5_000 })
+    stop.abort()
+    await expect(run).rejects.toMatchObject({ reason: 'stopped' })
+    const pid = Number(readFileSync(file, 'utf8'))
+    await vi.waitFor(() => expect(isAlive(pid)).toBe(false), { timeout: 5_000 })
+
+    const never = pidFile()
+    await expect(
+      runAgentModelCatalogListing(
+        { ...node(`require('fs').writeFileSync(${JSON.stringify(never)}, 'ran')`), env: NODE_ENV },
+        { site: 'test-listing', signal: stop.signal }
+      )
+    ).rejects.toMatchObject({ reason: 'stopped' })
+    expect(() => readFileSync(never, 'utf8')).toThrow()
+  }, 20_000)
+
   it('stops a listing whose output overflows the cap', async () => {
     const file = pidFile()
     const run = runAgentModelCatalogListing(
@@ -127,6 +155,13 @@ describe('the shared catalog probe runner', () => {
         timeoutMs: 20
       })
     ).rejects.toMatchObject({ reason: 'timeout' })
-    expect(closes).toEqual(['ok', 'crash', 'hang'])
+    const stop = new AbortController()
+    const stopped = runAgentModelCatalogSession(open('stopped'), () => new Promise(() => {}), {
+      label: 'a',
+      signal: stop.signal
+    })
+    stop.abort()
+    await expect(stopped).rejects.toMatchObject({ reason: 'stopped' })
+    expect(closes).toEqual(['ok', 'crash', 'hang', 'stopped'])
   })
 })

@@ -51,16 +51,18 @@ const CATALOG = [
 ]
 
 /** The user's settings pick Sonnet over the listing's recommended Opus; the CLI applies Sonnet. */
-async function liveListing(options?: Record<string, string>) {
-  const applied = 'claude-sonnet-5'
+async function liveListing(
+  options?: Record<string, string>,
+  applied: string | null = 'claude-sonnet-5'
+) {
   const claude = fakeClaude({
     initProof: 'session-start',
-    initModel: applied,
+    initModel: applied ?? 'claude-opus-5-5',
     initModels: CATALOG,
     settings: {
       effective: {},
       sources: [],
-      applied: { model: applied, effort: 'high', advisor: null, ultracode: false }
+      applied: { model: applied, effort: applied ? 'high' : null, advisor: null, ultracode: false }
     },
     routes: { list_models: () => CATALOG }
   })
@@ -138,7 +140,9 @@ describe('Claude configured default', () => {
     const store = new AgentModelCatalogStore()
     const listing = await liveListing()
     // Sonnet, as the user's settings pick it — not the listing's recommended Opus.
-    expect(listing?.configuredModelId).toBe('sonnet')
+    expect(listing?.configuredDefault).toEqual({ modelId: 'sonnet', effort: 'high' })
+    // The effort travels with the configured model, never as a live row's own default.
+    expect(listing?.models.some((model) => model.defaultEffort !== undefined)).toBe(false)
     service(store, false).recordLiveListing(SESSION, listing!)
 
     await vi.waitFor(async () =>
@@ -159,12 +163,55 @@ describe('Claude configured default', () => {
     const frame = await firstFrame(store, '/work/other')
     expect(frame.answer).toMatchObject({ listingNamesConfiguredModel: false })
     expect(frame.model).toBeUndefined()
+    // The project's effort stays out of the account's catalog too.
+    const entry = store.get(agentModelCatalogFingerprintForRecord(record()))
+    expect(entry?.configured).toBeNull()
+    expect(entry?.models.some((model) => model.defaultEffort !== undefined)).toBe(false)
+  })
+
+  it('forgets a saved default once the config resolves to no listed model, for good', async () => {
+    const store = new AgentModelCatalogStore()
+    const fingerprint = agentModelCatalogFingerprintForRecord(record())
+    service(store, false).recordLiveListing(SESSION, (await liveListing())!)
+    await vi.waitFor(() => expect(store.get(fingerprint)?.configured?.modelId).toBe('sonnet'))
+
+    // The user's settings now pick a model the account no longer lists.
+    const unlisted = await liveListing(undefined, 'claude-retired-1')
+    expect(unlisted?.configuredDefault).toBeNull()
+    service(store, false).recordLiveListing(SESSION, unlisted!)
+    await vi.waitFor(() => expect(store.get(fingerprint)?.configured).toBeNull())
+
+    // A later background listing keeps it forgotten.
+    store.recordSuccess(
+      fingerprint,
+      'claude',
+      {
+        models: CATALOG.map((row) => ({
+          id: row.value,
+          label: row.displayName,
+          isDefault: row.value === 'default',
+          efforts: EFFORTS.map((value) => ({ value, label: value }))
+        })),
+        fastModeTierByModel: new Map(),
+        origin: 'probe'
+      },
+      'discovery'
+    )
+    const frame = await firstFrame(store, '/work/other')
+    expect(store.get(fingerprint)?.configured).toBeNull()
+    expect(frame.answer).toMatchObject({ listingNamesConfiguredModel: false })
+    expect(frame.model).toBeUndefined()
+  })
+
+  it('forgets a saved default when the config resolves to no model at all', async () => {
+    const listing = await liveListing(undefined, null)
+    expect(listing?.configuredDefault).toBeNull()
   })
 
   it('learns nothing from a chat launched with a model pick', async () => {
     const listing = await liveListing({ model: 'sonnet' })
     expect(listing).toBeDefined()
-    expect(listing?.configuredModelId).toBeUndefined()
+    expect(listing?.configuredDefault).toBeUndefined()
   })
 
   it('names nothing in a workspace whose own Claude settings could pick another model', async () => {

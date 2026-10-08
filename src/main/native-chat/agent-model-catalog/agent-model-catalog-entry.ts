@@ -21,14 +21,29 @@ export type AgentModelCatalogLiveListing = {
   /** A row only this session's launch added (its own `--model`): kept only once the account's
    *  catalog already lists that model. */
   launchOnlyModelId?: string
-  /** The model the agent's own config resolution picked for a session launched with no model
-   *  pick: the configured default for that session's config scope. */
-  configuredModelId?: string
+  /** What the agent's own config resolution picked for a session launched with no model pick:
+   *  the configured default for that session's config scope. Null when that resolution names no
+   *  listed model, so a saved default is stale; absent when this session can't say. */
+  configuredDefault?: AgentModelCatalogConfiguredChoice | null
+}
+
+/** A configured model as one session resolved it. `effort` is null when the config sends none
+ *  and absent when the session picked its own, which says nothing about the config. */
+export type AgentModelCatalogConfiguredChoice = {
+  modelId: string
+  /** Other listed rows that run the same model, and so the same effort. */
+  sameModelIds?: string[]
+  effort?: string | null
 }
 
 /** The account's configured default as an agent's CLI resolved it for a chat with no model pick,
  *  in a workspace with no config of its own; for agents whose listing names none. */
-export type AgentModelCatalogConfiguredDefault = { modelId: string; at: number }
+export type AgentModelCatalogConfiguredDefault = {
+  modelId: string
+  sameModelIds?: string[]
+  effort?: string
+  at: number
+}
 
 /** A live options answer whose model rows are the account's listing as the child reported it. */
 export function withLiveCatalogListing<
@@ -57,9 +72,9 @@ export type AgentModelCatalogEntry = {
   fetchedAt: number
 }
 
-/** Which models exist and their menus follow the newer listing; the configured default and
- *  default efforts are discovery's (or the CLI-resolved default), else what a live child reported
- *  while its model offers it. */
+/** Which models exist and their menus follow the newer listing; the default model and effort are
+ *  the CLI-resolved configured default's, else discovery's, else what a live child reported while
+ *  its model offers it. */
 function mergedModels(
   discovered: AgentModelCatalogListing | null,
   live: AgentModelCatalogListing | null,
@@ -75,7 +90,10 @@ function mergedModels(
       model.efforts.length > 0
         ? model.efforts
         : (older?.models.find((entry) => entry.id === model.id)?.efforts ?? [])
-    const defaultEffort = [listed?.defaultEffort, reported?.defaultEffort].find(
+    const runsConfigured =
+      configured?.modelId === model.id || configured?.sameModelIds?.includes(model.id) === true
+    const configuredEffort = runsConfigured ? configured?.effort : undefined
+    const defaultEffort = [configuredEffort, listed?.defaultEffort, reported?.defaultEffort].find(
       (effort) => effort !== undefined && efforts.some((choice) => choice.value === effort)
     )
     const { defaultEffort: _own, ...rest } = model
@@ -121,4 +139,61 @@ export function agentModelCatalogEntry(
     origin: newer.origin,
     fetchedAt: newer.at
   }
+}
+
+/** A choice as the store keeps it: one that says nothing of effort keeps the saved effort of the
+ *  same model, since only the session's own pick hid it. */
+function configuredDefaultFacts(
+  choice: AgentModelCatalogConfiguredChoice | null,
+  previous: AgentModelCatalogConfiguredDefault | null = null
+): Omit<AgentModelCatalogConfiguredDefault, 'at'> | null {
+  if (!choice) {
+    return null
+  }
+  const effort =
+    choice.effort === undefined
+      ? previous?.modelId === choice.modelId
+        ? previous.effort
+        : undefined
+      : (choice.effort ?? undefined)
+  return {
+    modelId: choice.modelId,
+    ...(choice.sameModelIds?.length ? { sameModelIds: [...choice.sameModelIds] } : {}),
+    ...(effort ? { effort } : {})
+  }
+}
+
+/** `entry` with `choice` as its configured default (null forgets it); null when nothing changes. */
+export function entryWithConfiguredDefault(
+  entry: AgentModelCatalogEntry,
+  choice: AgentModelCatalogConfiguredChoice | null,
+  at: number
+): AgentModelCatalogEntry | null {
+  const next = configuredDefaultFacts(choice, entry.configured)
+  if (JSON.stringify(next) === JSON.stringify(configuredDefaultFacts(entry.configured))) {
+    return null
+  }
+  return agentModelCatalogEntry(
+    entry.agent,
+    entry.fingerprint,
+    entry.discovered,
+    entry.live,
+    next && { ...next, at }
+  )
+}
+
+/** What a saved entry says, without its clocks: an unchanged key needs no write to disk. */
+export function agentModelCatalogListingKey(entry: AgentModelCatalogEntry): string {
+  const facts = (listing: AgentModelCatalogListing | null): unknown =>
+    listing && [
+      listing.origin,
+      listing.models,
+      listing.fastModeSupport ?? null,
+      listing.fastModeTierByModel
+    ]
+  return JSON.stringify([
+    facts(entry.discovered),
+    facts(entry.live),
+    configuredDefaultFacts(entry.configured)
+  ])
 }

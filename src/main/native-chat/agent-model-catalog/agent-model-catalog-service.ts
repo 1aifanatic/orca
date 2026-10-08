@@ -8,11 +8,13 @@ import {
   agentModelCatalogFingerprint,
   agentModelCatalogFingerprintForRecord
 } from './agent-model-catalog-fingerprint'
+import type { AgentModelCatalogConfiguredChoice } from './agent-model-catalog-entry'
 import type {
   AgentModelCatalogEntry,
   AgentModelCatalogLiveListing,
   AgentModelCatalogProbe,
-  AgentModelCatalogStore
+  AgentModelCatalogStore,
+  AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
 
 export type AgentModelCatalogServiceDeps = {
@@ -37,6 +39,8 @@ export type AgentModelCatalogServiceDeps = {
     workspacePath: string
     accountHomePath: string
   }) => Promise<boolean>
+  /** Whether this host keeps any chat of the agent; with a saved catalog, what marks it in use. */
+  hasChatRecords?: (agent: string) => boolean
 }
 
 export type AgentModelCatalogService = {
@@ -50,9 +54,12 @@ export type AgentModelCatalogService = {
   }) => Promise<AgentSessionModelCatalogResult>
   /** Saves what a running session listed as its account's catalog, so the next chat starts warm. */
   recordLiveListing: (sessionId: string, listing: AgentModelCatalogLiveListing) => void
-  /** Lists, in the background, every agent whose catalog for the account a new chat would pin is
-   *  missing or old, so a picker never meets a cold catalog. Resolves once those listings settle. */
+  /** Lists, in the background, every agent the user has used here (a saved catalog or a chat)
+   *  whose catalog for the account a new chat would pin is missing or old, so a picker never meets
+   *  a cold catalog. Resolves once those listings settle. */
   prewarm: () => Promise<void>
+  /** The host is going away: start no listing, and stop the ones running. */
+  stop: () => void
 }
 
 // At most this many agents list at once: each listing spawns that agent's CLI.
@@ -114,13 +121,14 @@ async function newChatCatalogKey(
   }
 }
 
-/** A session launched with no model pick resolved its config scope's default; when that scope
- *  is the account's (a native workspace with no config of its own), it is the account's default. */
+/** A session launched with no model pick resolved its config scope's default model and effort;
+ *  when that scope is the account's (a native workspace with no config of its own), they are the
+ *  account's default, and a resolution naming no listed model retires the saved one. */
 async function recordConfiguredDefault(
   deps: AgentModelCatalogServiceDeps,
   record: AgentSessionRecord,
   fingerprint: string,
-  modelId: string
+  choice: AgentModelCatalogConfiguredChoice | null
 ): Promise<void> {
   const accountHome = record.accountHome
   if (
@@ -142,17 +150,18 @@ async function recordConfiguredDefault(
   ) {
     return
   }
-  deps.store.recordConfiguredDefault(fingerprint, modelId)
+  deps.store.recordConfiguredDefault(fingerprint, choice)
 }
 
 async function runBounded<T>(
   items: readonly T[],
   limit: number,
+  stopped: AbortSignal,
   run: (item: T) => Promise<unknown>
 ): Promise<void> {
   const queue = [...items]
   const worker = async (): Promise<void> => {
-    for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+    for (let item = queue.shift(); item !== undefined && !stopped.aborted; item = queue.shift()) {
       await run(item).catch(() => {})
     }
   }
@@ -172,6 +181,12 @@ async function runBounded<T>(
 export function createAgentModelCatalogService(
   deps: AgentModelCatalogServiceDeps
 ): AgentModelCatalogService {
+  // One per host: stopping it ends every listing this service started.
+  const lifetime = new AbortController()
+  const listWith =
+    (probe: AgentModelCatalogProbe, home: AgentSessionAccountHome) =>
+    (): Promise<AgentModelCatalogSuccess> =>
+      probe(home, { signal: lifetime.signal })
   return {
     async read(params) {
       const record = params.sessionId ? deps.getRecord(params.sessionId) : undefined
@@ -199,11 +214,11 @@ export function createAgentModelCatalogService(
       const home = probeHome
       // Without an entry, answer from any running listing instead of starting a second one.
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
-      if (probe && home) {
+      if (probe && home && !lifetime.signal.aborted) {
         if (entry && deps.store.shouldRefresh(fingerprint)) {
-          void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+          void deps.store.refresh(fingerprint, params.agent, probe, listWith(probe, home))
         } else if (!entry && !listing && !deps.store.hasActiveFailure(fingerprint)) {
-          void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+          void deps.store.refresh(fingerprint, params.agent, probe, listWith(probe, home))
           listing = deps.store.pendingListing(fingerprint)
         }
       }
@@ -238,28 +253,40 @@ export function createAgentModelCatalogService(
       }
       // The record's pinned account and host: the account this child listed under.
       const fingerprint = agentModelCatalogFingerprintForRecord(record)
-      const { configuredModelId, ...listed } = listing
+      const { configuredDefault, ...listed } = listing
       const saved = deps.store.recordSuccess(
         fingerprint,
         record.provider,
         { ...listed, fastModeTierByModel: new Map(), origin: 'live-session' },
         'live'
       )
-      if (saved && configuredModelId) {
-        void recordConfiguredDefault(deps, record, fingerprint, configuredModelId).catch(() => {})
+      if (saved && configuredDefault !== undefined) {
+        void recordConfiguredDefault(deps, record, fingerprint, configuredDefault).catch(() => {})
       }
     },
     async prewarm() {
       const probes = deps.probes ?? {}
-      await runBounded(Object.keys(probes), PREWARM_CONCURRENCY, async (agent) => {
+      // An agent never used here waits for its first chat, which shows the quiet placeholder.
+      const used = Object.keys(probes).filter(
+        (agent) => deps.store.hasEntryForAgent(agent) || deps.hasChatRecords?.(agent) === true
+      )
+      await runBounded(used, PREWARM_CONCURRENCY, lifetime.signal, async (agent) => {
         const probe = probes[agent]
         const key = probe ? await newChatCatalogKey(deps, agent) : null
         // A fresh entry, a listing already running, or a recent failure each mean nothing to do.
-        if (!probe || !key || !deps.store.shouldRefresh(key.fingerprint)) {
+        if (
+          !probe ||
+          !key ||
+          lifetime.signal.aborted ||
+          !deps.store.shouldRefresh(key.fingerprint)
+        ) {
           return
         }
-        await deps.store.refresh(key.fingerprint, agent, probe, () => probe(key.accountHome))
+        await deps.store.refresh(key.fingerprint, agent, probe, listWith(probe, key.accountHome))
       })
+    },
+    stop() {
+      lifetime.abort()
     }
   }
 }

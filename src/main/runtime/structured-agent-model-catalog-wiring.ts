@@ -67,7 +67,7 @@ export function registeredModelCatalogDiscovery(
  * `unknown` rather than guessing a key.
  */
 export async function modelCatalogHostDeps(input: {
-  store: Pick<AgentSessionRecordStore, 'getRecord'>
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords'>
   agents: Pick<StructuredAgentRegistry, 'definition'>
   registrations: readonly CatalogRegistration[]
   deps: StructuredAgentModelCatalogContext['deps']
@@ -87,13 +87,13 @@ export async function modelCatalogHostDeps(input: {
       record.launchDirectory ??
       (await deps.resolveWorkspacePath(record.location.workspaceId).catch(() => null)),
     workspaceMayOverrideDefaultModel,
+    hasChatRecords: (agent) =>
+      input.store.listRecords().some((record) => record.provider === agent),
     ...registeredModelCatalogDiscovery(input.registrations, {
       deps,
       environment: input.environment
     })
   })
-  // The host starts with its runtime, local or remote, so this is the runtime-start listing.
-  void modelCatalog.prewarm()
   return { modelCatalog }
 }
 

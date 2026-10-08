@@ -92,7 +92,8 @@ beforeEach(async () => {
     modelCatalog: {
       read: async () => ({ origin: 'unknown' }),
       recordLiveListing: (sessionId, listing) => savedListings.push({ sessionId, listing }),
-      prewarm: async () => {}
+      prewarm: async () => {},
+      stop: () => {}
     },
     now: () => NOW
   })
