@@ -16150,7 +16150,6 @@
             "deb5293610": "Anotaciones del navegador no disponibles en runtime remoto",
             "90d021f2ad": "Agregar",
             "0cb3bd6221": "Intención de anotación",
-            "8f87e6c2e5": "Intención",
             "532bac48c5": "Describe aquí lo que el agente debería cambiar...",
             "d2a7092e6e": "Comentario de anotación",
             "b472c5fe03": "Agregar anotación del navegador",
@@ -16849,6 +16848,16 @@
         "runHistory": {
           "occurrencesWithLatest": "{{times}} veces, la más reciente {{date}}",
           "occurrences": "{{times}} veces"
+        },
+        "extraAgentArgs": {
+          "advanced": "Avanzado",
+          "clear": "Borrar argumentos",
+          "unsupported": "Este agente aún no admite argumentos adicionales.",
+          "label": "Argumentos adicionales del agente",
+          "needsFreshSession": "Los argumentos adicionales requieren una sesión nueva en cada ejecución.",
+          "useFreshSessions": "Usar sesiones nuevas",
+          "helper": "Se añaden a los argumentos predeterminados de este host en cada sesión nueva.",
+          "detailLabel": "Argumentos adicionales"
         }
       },
       "agent": {

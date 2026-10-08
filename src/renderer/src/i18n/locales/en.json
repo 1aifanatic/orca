@@ -16379,7 +16379,6 @@
             "deb5293610": "Browser annotations unavailable in remote runtime",
             "90d021f2ad": "Add",
             "0cb3bd6221": "Annotation intent",
-            "8f87e6c2e5": "Intent",
             "532bac48c5": "Describe what the agent should change here...",
             "d2a7092e6e": "Annotation comment",
             "b472c5fe03": "Add browser annotation",
@@ -17078,6 +17077,16 @@
         "AutomationsPageBreadcrumb": {
           "ariaLabel": "Automations breadcrumb",
           "runDetails": "Run details"
+        },
+        "extraAgentArgs": {
+          "advanced": "Advanced",
+          "clear": "Clear arguments",
+          "unsupported": "Extra arguments aren't supported for this agent yet.",
+          "label": "Extra agent arguments",
+          "needsFreshSession": "Extra arguments require a fresh session for every run.",
+          "useFreshSessions": "Use fresh sessions",
+          "helper": "Added to this host's default arguments for each fresh session.",
+          "detailLabel": "Extra arguments"
         }
       },
       "agent": {

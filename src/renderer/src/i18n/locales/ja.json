@@ -16150,7 +16150,6 @@
             "deb5293610": "ブラウザの注釈はリモートランタイムでは使用できません",
             "90d021f2ad": "追加",
             "0cb3bd6221": "注釈の意図",
-            "8f87e6c2e5": "意図",
             "532bac48c5": "Agent がここで何を変更する必要があるかを説明してください…",
             "d2a7092e6e": "注釈コメント",
             "b472c5fe03": "ブラウザの注釈を追加する",
@@ -16849,6 +16848,16 @@
         "runHistory": {
           "occurrencesWithLatest": "{{times}} 回、最近では {{date}}",
           "occurrences": "{{times}}回"
+        },
+        "extraAgentArgs": {
+          "advanced": "詳細設定",
+          "clear": "引数をクリア",
+          "unsupported": "この Agent は追加の引数にまだ対応していません。",
+          "label": "追加の Agent 引数",
+          "needsFreshSession": "追加の引数を使うには、実行ごとに新しいセッションが必要です。",
+          "useFreshSessions": "新しいセッションを使用",
+          "helper": "新しいセッションごとに、このホストのデフォルト引数に追加されます。",
+          "detailLabel": "追加の引数"
         }
       },
       "agent": {
