@@ -91,7 +91,15 @@ export function ResumeTreeRow({
                     { value0: name }
                   )
             }
-            onClick={() => onExpandedChange?.(!expanded)}
+            onClick={(event) => {
+              onExpandedChange?.(!expanded)
+              // A pointer press focuses the arrow, where no tree key works; hand focus to the
+              // row's checkbox, or to the tree when that is disabled.
+              const row = event.currentTarget.closest('[role="treeitem"]')
+              const box = row?.querySelector<HTMLElement>('[role="checkbox"]:not(:disabled)')
+              const next = box ?? row?.closest<HTMLElement>('[role="tree"]')
+              next?.focus()
+            }}
             className="group/disclosure absolute top-1/2 flex size-4.5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/8"
             style={{ left: RESUME_TREE_CHECKBOX_COLUMN_PX + indent }}
           >

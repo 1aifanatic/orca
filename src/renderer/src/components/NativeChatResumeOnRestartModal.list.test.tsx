@@ -249,3 +249,53 @@ it('moves between the list’s checkboxes with the arrow keys', async () => {
   await press('ArrowUp')
   expect(document.activeElement).toBe(order[2])
 })
+
+async function pressOn(element: Element, key: string): Promise<void> {
+  await act(async () => {
+    element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+  })
+}
+
+// Tab lands on the tree itself; its arrows must lead into the rows from there.
+it('enters the tree from its own Tab stop with the arrow, Home and End keys', async () => {
+  rpc.mockResolvedValue({ sessions: offered })
+  await mount(<NativeChatResumeOnRestartModal />)
+  const tree = document.querySelector<HTMLElement>('[role="tree"]')!
+  const first = namedBox('Select all chats')
+  const last = chatBox('b')
+
+  for (const [key, expected] of [
+    ['ArrowDown', first],
+    ['Home', first],
+    ['ArrowUp', last],
+    ['End', last]
+  ] as const) {
+    tree.focus()
+    await pressOn(tree, key)
+    expect(document.activeElement).toBe(expected)
+  }
+  // From a row, Home and End jump to the ends too.
+  await pressOn(last, 'Home')
+  expect(document.activeElement).toBe(first)
+  await pressOn(first, 'End')
+  expect(document.activeElement).toBe(last)
+})
+
+// Chromium focuses a pressed button; the keyboard must not be stranded on the arrow.
+it('hands focus from a pressed arrow to its row’s checkbox', async () => {
+  rpc.mockResolvedValue({ sessions: offered })
+  await mount(<NativeChatResumeOnRestartModal />)
+  const workspace = namedBox('Select all chats in workspace')
+  const arrow = workspace
+    .closest('[role="treeitem"]')!
+    .querySelector<HTMLButtonElement>('button[aria-expanded]')!
+
+  arrow.focus()
+  await act(async () => arrow.click())
+  expect(arrow.getAttribute('aria-expanded')).toBe('false')
+  expect(document.activeElement).toBe(workspace)
+  await pressOn(workspace, 'ArrowRight')
+  expect(arrow.getAttribute('aria-expanded')).toBe('true')
+  await pressOn(workspace, 'ArrowDown')
+  expect(document.activeElement).toBe(chatBox('a'))
+})
