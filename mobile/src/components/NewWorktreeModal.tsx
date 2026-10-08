@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Keyboard } from 'react-native'
 import { getComposerRepoWorktreeBranches } from '../../../src/shared/composer-branch-selection'
+import { getRepoExecutionHostId } from '../../../src/shared/execution-host'
 import { getProjectIdentityKey } from '../../../src/shared/project-host-setup-projection'
 import { shouldPreserveWorkspaceSourceOnRepoChange } from '../../../src/shared/new-workspace/workspace-source'
 import type { SmartModeAvailabilityInput } from '../tasks/mobile-smart-source-modes'
@@ -57,7 +58,8 @@ export function NewWorktreeModal(props: NewWorktreeModalProps) {
 function NewWorktreeModalContent(props: NewWorktreeModalProps) {
   const {
     visible,
-    client,
+    client: desktopClient,
+    serverClients,
     hostId,
     existingWorktreePaths,
     existingWorktrees,
@@ -66,16 +68,25 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
     onClose
   } = props
   const { repos, selectedRepo, setSelectedRepo, loading } = useNewWorkspaceRepositories({
-    client,
+    client: desktopClient,
+    serverClients,
     hostId,
     visible
   })
+  // Why: everything about the picked repo runs where it does; the routing table keeps the
+  // desktop's own concerns (settings, accounts) on the desktop.
+  const repoHost = selectedRepo ? getRepoExecutionHostId(selectedRepo) : null
+  const repoServer = repoHost?.startsWith('runtime:') ? repoHost : undefined
+  const client = repoServer ? (serverClients?.get(repoServer) ?? null) : desktopClient
   const navigation = useNewWorktreeDrawerNavigation(visible)
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const runtime = useNewWorkspaceRuntimeContext(client, visible, hostId)
-  const { tasksSupported, hostPlatform, getWorktreeCreateCutoverSupport, getAgentLaunchSupport } =
-    useNewWorktreeRuntimeCapabilities(client, visible)
+  const repoRuntime = useNewWorktreeRuntimeCapabilities(client, visible)
+  const { tasksSupported, getWorktreeCreateCutoverSupport, getAgentLaunchSupport } = repoRuntime
+  // The desktop's own run target is named for the desktop, whichever host the picked repo is on.
+  const desktopRuntime = useNewWorktreeRuntimeCapabilities(desktopClient, visible && !!repoServer)
+  const hostPlatform = repoServer ? desktopRuntime.hostPlatform : repoRuntime.hostPlatform
   const selectedRepoConnectionId = selectedRepo?.connectionId ?? null
   const executionTarget = useNewWorkspaceExecutionTarget({
     client,
@@ -132,7 +143,7 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
     getAgentLaunchSupport,
     transitionDrawer: navigation.transitionDrawer,
     setError,
-    onCreated,
+    onCreated: (worktreeId, name, warning) => onCreated(worktreeId, name, warning, repoServer),
     onClose
   })
 

@@ -306,6 +306,73 @@ describe('NewWorktreeModal project targets', () => {
     expect(sendRequest).not.toHaveBeenCalledWith('ssh.getState', expect.anything())
   })
 
+  it("creates a server repo's workspace on that server and names it for the route", async () => {
+    const serverRepo = { ...repos[0]!, id: 'server-repo', path: '/srv/orca' }
+    const serverSshRepo = { ...serverRepo, id: 'server-ssh', connectionId: 'its-own-ssh' }
+    const reply = (method: string, listed: unknown[], hostPlatform: string) => {
+      if (method === 'repo.list') {
+        return Promise.resolve({ ok: true, result: { repos: listed } })
+      }
+      if (method === 'status.get') {
+        return Promise.resolve({ ok: true, result: { hostPlatform } })
+      }
+      if (method === 'worktree.create') {
+        return Promise.resolve({
+          ok: true,
+          result: { worktree: { id: 'srv-wt', displayName: 'srv-wt', path: '/srv/orca-wt' } }
+        })
+      }
+      if (method === 'settings.get') {
+        return Promise.resolve({ ok: true, result: { settings: {} } })
+      }
+      return Promise.resolve({ ok: true, result: {} })
+    }
+    const desktop = vi.fn((method: string) => reply(method, repos, 'darwin'))
+    const server = vi.fn((method: string) => reply(method, [serverRepo, serverSshRepo], 'linux'))
+    const onCreated = vi.fn()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the modal only sends requests.
+    const requestsOnly = (sendRequest: unknown) => ({ sendRequest }) as unknown as RpcClient
+
+    await act(async () => {
+      renderer = create(
+        createElement(NewWorktreeModal, {
+          visible: true,
+          client: requestsOnly(desktop),
+          serverClients: new Map([['runtime:env-1', requestsOnly(server)]]),
+          hostId: 'host-1',
+          onCreated,
+          onClose: () => {}
+        })
+      )
+    })
+    await flushUpdates()
+
+    const runTargets = pickerItems(renderer, 'Run on')
+    expect(runTargets.map((item) => item.detail)).toEqual(['/src/orca', '/srv/orca'])
+    const serverTarget = renderer.root
+      .findAll((node) => node.type === 'PickerListDrawer')
+      .find((node) => node.props.title === 'Run on')!
+    await act(async () => serverTarget.props.onSelect(serverTarget.props.items[1]))
+    await flushUpdates()
+    expect(pickerItems(renderer, 'Run on')[0]?.label).toBe(LOCAL_HOST_LABEL)
+    act(() => sourceInputs(renderer)[0]!.props.onChangeText('srv-wt'))
+    const form = renderer.root.find((node) => typeof node.props.onCreate === 'function')
+    await act(async () => form.props.onCreate())
+    await flushUpdates()
+
+    expect(server).toHaveBeenCalledWith(
+      'worktree.create',
+      expect.objectContaining({ repo: 'id:server-repo' }),
+      expect.anything()
+    )
+    expect(desktop).not.toHaveBeenCalledWith(
+      'worktree.create',
+      expect.anything(),
+      expect.anything()
+    )
+    expect(onCreated).toHaveBeenCalledWith('srv-wt', expect.any(String), undefined, 'runtime:env-1')
+  })
+
   it('ignores a stale repo list after the client changes', async () => {
     let resolveOldList: ((value: unknown) => void) | undefined
     const oldList = new Promise((resolve) => {

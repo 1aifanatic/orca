@@ -97,6 +97,7 @@ type Screen = {
   notice: () => string | null
   catalogError: () => string | null
   pin: (worktreeId: string) => void
+  sleep: (worktreeId: string) => void
   serverWorkspaces: () => unknown
   swapClient: (next: FakeSession) => Promise<void>
   navigations: string[]
@@ -171,6 +172,10 @@ async function mountScreen(first: FakeSession, hostCapabilities: string[]): Prom
     pin: (worktreeId) =>
       act(() => {
         held.actions?.togglePin(held.rows.find((entry) => entry.worktreeId === worktreeId)!)
+      }),
+    sleep: (worktreeId) =>
+      act(() => {
+        held.actions?.sleepWorktree(held.rows.find((entry) => entry.worktreeId === worktreeId)!)
       }),
     serverWorkspaces: () => held.state?.serverWorkspaces,
     swapClient: async (next) => {
@@ -310,6 +315,18 @@ describe("a desktop's server workspaces on the phone", () => {
       { executionHost: 'runtime:vm' }
     )
     expect(screen.rows().find((entry) => entry.worktreeId === 'runtime:vm-wt')?.isPinned).toBe(true)
+  })
+
+  it('sleeps a server workspace through the desktop, whose renderer runs the sleep', async () => {
+    const client = desktop()
+    const screen = await mountScreen(client, RELAYS)
+    screen.sleep('runtime:vm-wt')
+    screen.sleep('mac-wt')
+    const sleeps = client.sendRequest.mock.calls.filter(([method]) => method.includes('leep'))
+    expect(sleeps.map(([method, params]) => [method, params])).toEqual([
+      ['mobileRelay.hosts.sleepWorktree', { hostId: 'runtime:vm', worktreeId: 'runtime:vm-wt' }],
+      ['worktree.sleep', { worktree: 'id:mac-wt' }]
+    ])
   })
 
   it('reads a replaced client\u2019s servers at once, and keeps an unchanged poll\u2019s list', async () => {
