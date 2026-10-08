@@ -2352,6 +2352,7 @@ export function createRemoteRuntimePtyTransport(
     clearPendingViewportClaim()
     closeMultiplexedStream()
     if (!nextHandle) {
+      // Why: an empty parsed handle ('remote:') is falsy but not null; shouldHoldInput keys on null.
       handle = null
       connecting = false
       emitRecoveryState()
@@ -2360,12 +2361,8 @@ export function createRemoteRuntimePtyTransport(
     }
     const persistedHandle = nextHandle
     void (async () => {
-      if (isWebTerminalSurfaceTabId(tabId ?? '')) {
-        await attachHostSessionMirror(options, false, generation, attachLifecycleEpoch)
-        return
-      }
-      if (!tabId || !leafId || !worktreeId) {
-        await adoptResolvedHostPane(
+      const adoptPersistedHandle = () =>
+        adoptResolvedHostPane(
           {
             handle: persistedHandle,
             tabId: tabId ?? '',
@@ -2377,6 +2374,12 @@ export function createRemoteRuntimePtyTransport(
           false,
           generation
         )
+      if (isWebTerminalSurfaceTabId(tabId ?? '')) {
+        await attachHostSessionMirror(options, false, generation, attachLifecycleEpoch)
+        return
+      }
+      if (!tabId || !leafId || !worktreeId) {
+        await adoptPersistedHandle()
         return
       }
       const resolution = await resolvePersistedHostPane()
@@ -2388,18 +2391,7 @@ export function createRemoteRuntimePtyTransport(
         return
       }
       if (resolvePaneUnavailable && persistedEnvironmentId === currentRuntimeEnvironmentId) {
-        await adoptResolvedHostPane(
-          {
-            handle: persistedHandle,
-            tabId: tabId ?? '',
-            leafId: leafId ?? '',
-            ptyId: null,
-            worktreeId
-          },
-          options,
-          false,
-          generation
-        )
+        await adoptPersistedHandle()
         return
       }
       surfaceErrorMessage('Remote terminal was closed.')
