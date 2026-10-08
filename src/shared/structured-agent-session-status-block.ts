@@ -1,4 +1,4 @@
-import { readAgentSessionFailureFact } from './agent-session-failure'
+import { readWholeAgentSessionFailureFact } from './agent-session-failure'
 import type { AgentJournalStatusItem, AgentJournalTurnScope } from './agent-session-journal-types'
 import { readAgentSessionOrcaStop } from './agent-session-orca-stop'
 import type { NativeChatTextBlock } from './native-chat-types'
@@ -8,7 +8,7 @@ export function structuredAgentSessionStatusBlock(
   body: AgentJournalStatusItem,
   turnScope?: AgentJournalTurnScope
 ): NativeChatTextBlock {
-  const failure = readAgentSessionFailureFact(body.failure)
+  const failure = readWholeAgentSessionFailureFact(body.failure)
   const orcaStop = readAgentSessionOrcaStop(body.orcaStop)
   return {
     type: 'text',

@@ -282,6 +282,7 @@ function runReplaySafeAgentLaunch(
 export const AGENT_LAUNCH_METHODS = [
   defineMethod({
     name: 'agent.launchReplay',
+    permission: 'workspace',
     params: AgentLaunchReplay,
     handler: async (params, context): Promise<AgentLaunchResult> => {
       if (!supportsAgentLaunch(context)) {
@@ -311,6 +312,7 @@ export const AGENT_LAUNCH_METHODS = [
   }),
   defineMethod({
     name: 'agent.launch',
+    permission: 'workspace',
     params: AgentLaunch,
     handler: async (params, context): Promise<AgentLaunchResult> => {
       if (!supportsAgentLaunch(context)) {
