@@ -196,9 +196,14 @@ describe('workspace pane normalization tab index', () => {
       ptyIdsByLeafId: { [STABLE_LEAF_ID]: 'pty-1', [second]: 'pty-1' }
     }
 
-    const result = normalizeWorkspaceSessionPaneIdentities(
-      workspaceSession({ wt: [terminalTab('tab', 'wt', 'pty-1')] }, { tab: layout })
-    )
+    const result = normalizeWorkspaceSessionPaneIdentities({
+      ...workspaceSession({ wt: [terminalTab('tab', 'wt', 'pty-1')] }, { tab: layout }),
+      terminalPtyIncarnationsByPaneKey: {
+        [`tab:${STABLE_LEAF_ID}`]: 'incarnation-dropped',
+        [`tab:${second}`]: 'incarnation-kept',
+        'unlaid:leaf': 'incarnation-of-a-tab-without-layout'
+      }
+    })
 
     expect(result.changed).toBe(true)
     expect(result.session.terminalLayoutsByTabId.tab).toEqual({
@@ -206,6 +211,11 @@ describe('workspace pane normalization tab index', () => {
       activeLeafId: second,
       expandedLeafId: null,
       ptyIdsByLeafId: { [second]: 'pty-1' }
+    })
+    // The dropped pane's incarnation goes with it, as a save used to prune it.
+    expect(result.session.terminalPtyIncarnationsByPaneKey).toEqual({
+      [`tab:${second}`]: 'incarnation-kept',
+      'unlaid:leaf': 'incarnation-of-a-tab-without-layout'
     })
   })
 })

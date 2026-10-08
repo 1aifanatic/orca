@@ -72,3 +72,16 @@ export function remapActivityClearedAtPaneKeys(
   const result = remapPaneKeys(cutoffs, leafIdByInputLeafIdByTabId)
   return { cutoffs: result.values, changed: result.changed }
 }
+
+/** Acknowledgement keys lack host metadata, so an already-mapped tab keeps its mapping. */
+export function mergeAcknowledgementLeafIdMapsByTabId(
+  target: Map<string, Map<string, string>>,
+  source: Map<string, Map<string, string>>
+): Map<string, Map<string, string>> {
+  const merged = new Map(target)
+  for (const [tabId, leafIds] of source) {
+    const existing = merged.get(tabId)
+    merged.set(tabId, existing ? new Map([...leafIds, ...existing]) : new Map(leafIds))
+  }
+  return merged
+}

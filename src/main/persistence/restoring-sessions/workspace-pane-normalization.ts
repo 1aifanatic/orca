@@ -17,6 +17,7 @@ import {
   type PaneAliasNormalizationOptions
 } from './pane-identity-migration'
 import { normalizeTerminalLayoutSnapshotForPersistence } from './terminal-layout-normalization'
+import { withKeptPaneIncarnations } from './normalized-pane-incarnations'
 import {
   legacyMigrationUnsupportedRowsToAliasEntries,
   legacyPaneKeyAliasEntriesEqual,
@@ -25,6 +26,7 @@ import {
   normalizeLegacyPaneKeyAliasEntries
 } from './pane-alias-normalization'
 import {
+  mergeAcknowledgementLeafIdMapsByTabId,
   remapAcknowledgedAgentPaneKeys,
   remapActivityClearedAtPaneKeys,
   remapManuallyUnreadTurnPaneKeys
@@ -103,7 +105,7 @@ export function normalizeWorkspaceSessionPaneIdentities(
     changed ||= normalized.changed
   }
   return {
-    session: changed ? { ...session, terminalLayoutsByTabId } : session,
+    session: changed ? withKeptPaneIncarnations(session, terminalLayoutsByTabId) : session,
     changed,
     leafIdByInputLeafIdByTabId,
     leafIdByPtyIdByTabId,
@@ -159,19 +161,6 @@ export function remapSshRemotePtyLeaseLeafIds(
     return next
   })
   return { leases: nextLeases, changed }
-}
-
-/** Acknowledgement keys lack host metadata, so an already-mapped tab keeps its mapping. */
-function mergeAcknowledgementLeafIdMapsByTabId(
-  target: Map<string, Map<string, string>>,
-  source: Map<string, Map<string, string>>
-): Map<string, Map<string, string>> {
-  const merged = new Map(target)
-  for (const [tabId, leafIds] of source) {
-    const existing = merged.get(tabId)
-    merged.set(tabId, existing ? new Map([...leafIds, ...existing]) : new Map(leafIds))
-  }
-  return merged
 }
 
 export function normalizePersistedPaneIdentityState(
