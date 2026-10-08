@@ -22,6 +22,8 @@ const {
   emitOutput,
   emitSnapshot,
   latestFrameForOpcode,
+  inputFrameTexts,
+  subscribeFrameCount,
   resetRemoteRuntimeTransport
 } = createRemoteRuntimeTransportMocks({
   getCallbacks: () => subscriptionCallbacks,
@@ -33,15 +35,6 @@ const {
     resolvedPaneHandle = handle
   }
 })
-
-function inputFrameTexts(): string[] {
-  return subscriptionSendBinary.mock.calls.flatMap(([bytes]) => {
-    const frame = decodeTerminalStreamFrame(bytes)
-    return frame?.opcode === TerminalStreamOpcode.Input
-      ? [decodeTerminalStreamText(frame.payload)]
-      : []
-  })
-}
 
 describe('createRemoteRuntimePtyTransport', () => {
   beforeEach(() => {
@@ -214,13 +207,7 @@ describe('createRemoteRuntimePtyTransport', () => {
 
     subscriptionCallbacks?.onClose?.()
     await vi.waitFor(() => expect(runtimeSubscribe).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() =>
-      expect(
-        subscriptionSendBinary.mock.calls
-          .map((call) => decodeTerminalStreamFrame(call[0]))
-          .filter((frame) => frame?.opcode === TerminalStreamOpcode.Subscribe)
-      ).toHaveLength(2)
-    )
+    await vi.waitFor(() => expect(subscribeFrameCount()).toBe(2))
     const reconnectStreamId = latestSubscribePayload().streamId
     emitSnapshot(reconnectStreamId, 'RECONNECT_SNAPSHOT')
     subscriptionCallbacks?.onResponse({
@@ -284,13 +271,7 @@ describe('createRemoteRuntimePtyTransport', () => {
 
     subscriptionCallbacks?.onClose?.()
     await vi.waitFor(() => expect(runtimeSubscribe).toHaveBeenCalledTimes(2))
-    await vi.waitFor(() =>
-      expect(
-        subscriptionSendBinary.mock.calls
-          .map((call) => decodeTerminalStreamFrame(call[0]))
-          .filter((frame) => frame?.opcode === TerminalStreamOpcode.Subscribe)
-      ).toHaveLength(2)
-    )
+    await vi.waitFor(() => expect(subscribeFrameCount()).toBe(2))
     const reconnectStreamId = latestSubscribePayload().streamId
     // An exited-but-preserved pane has nothing to push and will never emit live bytes,
     // so without the re-arm the pane stays blank until a visibility flip.
@@ -309,13 +290,7 @@ describe('createRemoteRuntimePtyTransport', () => {
 
     subscriptionCallbacks?.onClose?.()
     await vi.waitFor(() => expect(runtimeSubscribe).toHaveBeenCalledTimes(3))
-    await vi.waitFor(() =>
-      expect(
-        subscriptionSendBinary.mock.calls
-          .map((call) => decodeTerminalStreamFrame(call[0]))
-          .filter((frame) => frame?.opcode === TerminalStreamOpcode.Subscribe)
-      ).toHaveLength(3)
-    )
+    await vi.waitFor(() => expect(subscribeFrameCount()).toBe(3))
     const populatedReconnectStreamId = latestSubscribePayload().streamId
     emitSnapshot(populatedReconnectStreamId, 'RECOVERY_SNAPSHOT')
     subscriptionCallbacks?.onResponse({
@@ -562,12 +537,7 @@ describe('createRemoteRuntimePtyTransport', () => {
       expect(transport.retryRecovery?.()).toBe(true)
       expect(transport.retryRecovery?.()).toBe(false)
       await vi.waitFor(() => expect(runtimeSubscribe).toHaveBeenCalledTimes(callsAtCutoff + 1))
-      await vi.waitFor(() => {
-        const subscribeFrames = subscriptionSendBinary.mock.calls
-          .map((call) => decodeTerminalStreamFrame(call[0]))
-          .filter((frame) => frame?.opcode === TerminalStreamOpcode.Subscribe)
-        expect(subscribeFrames).toHaveLength(2)
-      })
+      await vi.waitFor(() => expect(subscribeFrameCount()).toBe(2))
       const manualStream = latestSubscribePayload()
       expect(manualStream.terminal).toBe('terminal-1')
       emitSnapshot(manualStream.streamId, 'after manual reconnect')

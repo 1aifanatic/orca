@@ -1,6 +1,10 @@
 import { createAgentSessionKeyboardOptions } from '@/runtime/agent-session-keyboard-capability'
 import { withRemoteReattachInputBuffer } from './remote-reattach-input-buffer'
-import { createRemoteRuntimeRecoveryInputHold } from './remote-runtime-recovery-input-hold'
+import {
+  createRemoteRuntimeRecoveryInputHold,
+  type RemoteRuntimeInputEndpoint
+} from './remote-runtime-recovery-input-hold'
+import type { TerminalInputKind } from '../../../../shared/terminal-input-kind'
 /* eslint-disable max-lines -- Why: remote PTY transport keeps lifecycle, JSON fallback, and binary stream wiring together so reconnect/destroy ordering stays testable as one behavior surface. */
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import {
@@ -91,7 +95,8 @@ import {
 } from '@/runtime/runtime-environment-revision'
 import {
   isRuntimeEnvironmentPairingChangedError,
-  refreshRuntimeEnvironmentsAfterPairingChange
+  refreshRuntimeEnvironmentsAfterPairingChange,
+  runtimeEnvironmentPairingChangedError
 } from '@/runtime/runtime-environment-pairing-refresh'
 
 const REMOTE_TERMINAL_INPUT_FLUSH_MS = 8
@@ -218,21 +223,18 @@ export function createRemoteRuntimePtyTransport(
   let authoritativeExecutionHostId: ExecutionHostId | null = executionHostId ?? null
   let authoritativeHostPlatform: NodeJS.Platform | null = null
   let authoritativePtyIncarnationId: string | null = null
-  let currentRuntimeEnvironmentId = runtimeEnvironmentId
+  // Why: never adopts a persisted existingPtyId's environment; the worktree owner chose this transport.
+  const currentRuntimeEnvironmentId = runtimeEnvironmentId
   // Why: the pane belongs to the machine it was opened on; it may follow that machine's own
   // re-pair (a server update) but never a same-id re-pair to another or unverified machine.
-  const pairingRevisionByEnvironmentId = new Map<string, number | undefined>()
-  function paneRuntimeEnvironmentRevision(environmentId: string): number | undefined {
-    const revision = resolveContinuedRuntimeEnvironmentRevision(
-      environmentId,
-      pairingRevisionByEnvironmentId.has(environmentId)
-        ? pairingRevisionByEnvironmentId.get(environmentId)
-        : getRuntimeEnvironmentRevision(environmentId)
-    )
-    pairingRevisionByEnvironmentId.set(environmentId, revision)
-    return revision
+  let paneRevision = resolveContinuedRuntimeEnvironmentRevision(
+    runtimeEnvironmentId,
+    getRuntimeEnvironmentRevision(runtimeEnvironmentId)
+  )
+  function currentPaneRevision(): number | undefined {
+    paneRevision = resolveContinuedRuntimeEnvironmentRevision(runtimeEnvironmentId, paneRevision)
+    return paneRevision
   }
-  paneRuntimeEnvironmentRevision(runtimeEnvironmentId)
   let multiplexedStream: RemoteRuntimeMultiplexedTerminal | null = null
   let multiplexedStreamHandle: string | null = null
   let desiredOutputPaused = false
@@ -1088,7 +1090,7 @@ export function createRemoteRuntimePtyTransport(
       method,
       params,
       timeoutMs,
-      expectedEnvironmentPairingRevision: paneRuntimeEnvironmentRevision(environmentId)
+      expectedEnvironmentPairingRevision: currentPaneRevision()
     })
     try {
       return unwrapRuntimeRpcResult(response as RuntimeRpcResponse<TResult>)
@@ -1469,6 +1471,18 @@ export function createRemoteRuntimePtyTransport(
       handle: targetHandle,
       incarnationId: authoritativePtyIncarnationId
     }
+  }
+
+  // Why: releases a stale hold first, so the hold check reads the handle that release left bound.
+  function releaseThenHoldEndpoint(
+    inputKind: TerminalInputKind
+  ): RemoteRuntimeInputEndpoint | null {
+    if (recoveryInputHold.isHolding()) {
+      releaseHeldInput()
+    }
+    return handle && inputKind !== 'query-reply' && shouldHoldInput()
+      ? heldInputEndpoint(handle)
+      : null
   }
 
   function releaseHeldInput(): void {
@@ -2093,10 +2107,9 @@ export function createRemoteRuntimePtyTransport(
       generation === subscriptionGeneration &&
       (expectedRecoveryEpoch === undefined || recovery.ownsEpoch(expectedRecoveryEpoch)) &&
       isCurrentRemoteTerminal(subscribedHandle, subscribedPtyId)
-    const paneRevision = paneRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)
-    if (paneRevision !== getRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)) {
+    if (currentPaneRevision() !== getRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)) {
       // Why local: the shared stream would subscribe on a pairing not proven to be this pane's machine.
-      throw new Error('Runtime environment pairing changed; refresh and try again')
+      throw runtimeEnvironmentPairingChangedError()
     }
     const nextStream = await getRemoteRuntimeTerminalMultiplexer(
       currentRuntimeEnvironmentId
@@ -2323,8 +2336,6 @@ export function createRemoteRuntimePtyTransport(
     terminalEnded = false
     connecting = true
     emitRecoveryState(true)
-    // Why: persisted ids are untrusted cache state; the worktree owner selected this transport and must remain authoritative.
-    currentRuntimeEnvironmentId = runtimeEnvironmentId
     const previousHandle = handle
     const previousPtyId = remotePtyId
     const nextHandle = getRemoteRuntimeTerminalHandle(options.existingPtyId)
@@ -2341,6 +2352,7 @@ export function createRemoteRuntimePtyTransport(
     clearPendingViewportClaim()
     closeMultiplexedStream()
     if (!nextHandle) {
+      // Why: an empty parsed handle ('remote:') is falsy but not null; shouldHoldInput keys on null.
       handle = null
       connecting = false
       emitRecoveryState()
@@ -2349,12 +2361,8 @@ export function createRemoteRuntimePtyTransport(
     }
     const persistedHandle = nextHandle
     void (async () => {
-      if (isWebTerminalSurfaceTabId(tabId ?? '')) {
-        await attachHostSessionMirror(options, false, generation, attachLifecycleEpoch)
-        return
-      }
-      if (!tabId || !leafId || !worktreeId) {
-        await adoptResolvedHostPane(
+      const adoptPersistedHandle = () =>
+        adoptResolvedHostPane(
           {
             handle: persistedHandle,
             tabId: tabId ?? '',
@@ -2366,6 +2374,12 @@ export function createRemoteRuntimePtyTransport(
           false,
           generation
         )
+      if (isWebTerminalSurfaceTabId(tabId ?? '')) {
+        await attachHostSessionMirror(options, false, generation, attachLifecycleEpoch)
+        return
+      }
+      if (!tabId || !leafId || !worktreeId) {
+        await adoptPersistedHandle()
         return
       }
       const resolution = await resolvePersistedHostPane()
@@ -2377,18 +2391,7 @@ export function createRemoteRuntimePtyTransport(
         return
       }
       if (resolvePaneUnavailable && persistedEnvironmentId === currentRuntimeEnvironmentId) {
-        await adoptResolvedHostPane(
-          {
-            handle: persistedHandle,
-            tabId: tabId ?? '',
-            leafId: leafId ?? '',
-            ptyId: null,
-            worktreeId
-          },
-          options,
-          false,
-          generation
-        )
+        await adoptPersistedHandle()
         return
       }
       surfaceErrorMessage('Remote terminal was closed.')
@@ -2642,7 +2645,7 @@ export function createRemoteRuntimePtyTransport(
           })
           // Snapshot parity must not delay attachment to a terminal the host already created.
           void refreshWebRuntimeSessionTabsSnapshot(createEnvironmentId, worktreeId, {
-            expectedEnvironmentPairingRevision: paneRuntimeEnvironmentRevision(createEnvironmentId),
+            expectedEnvironmentPairingRevision: currentPaneRevision(),
             acceptCurrentSnapshot: true,
             confirmAgentSessionHandoff: {
               provisionalTabId: tabId,
@@ -2781,14 +2784,11 @@ export function createRemoteRuntimePtyTransport(
       storedCallbacks = {}
     },
 
-    // Why no kind: terminal.send has no launch kind, and its query-reply kind is for mobile
-    // clients, so the host classifies a desktop's bytes itself.
+    // Why: the kind only gates the local hold; terminal.send gets no kind, so the host classifies desktop bytes itself.
     sendInput(data, inputKind): boolean {
-      if (recoveryInputHold.isHolding()) {
-        releaseHeldInput()
-      }
-      if (handle && inputKind !== 'query-reply' && shouldHoldInput()) {
-        return !data || recoveryInputHold.enqueue(heldInputEndpoint(handle), data, inputKind)
+      const held = releaseThenHoldEndpoint(inputKind)
+      if (held) {
+        return !data || recoveryInputHold.enqueue(held, data, inputKind)
       }
       return sendInputNow(data)
     },
@@ -2797,22 +2797,16 @@ export function createRemoteRuntimePtyTransport(
     sendInputImmediate: (data: string): boolean => sendInputImmediateNow(data),
 
     sendInputAccepted(data, inputKind) {
-      if (recoveryInputHold.isHolding()) {
-        releaseHeldInput()
-      }
-      if (handle && data && inputKind !== 'query-reply' && shouldHoldInput()) {
-        return recoveryInputHold.enqueueAccepted(heldInputEndpoint(handle), data, inputKind)
+      const held = releaseThenHoldEndpoint(inputKind)
+      if (held && data) {
+        return recoveryInputHold.enqueueAccepted(held, data, inputKind)
       }
       return sendInputAcceptedToRuntime(data)
     },
 
     // Why: a transport with an armed retry or a parked one owns this pane's recovery; a remount would race it (#21195).
     ownsRecovery() {
-      return (
-        !destroyed &&
-        !terminalEnded &&
-        (recovery.isActive || recovery.currentPhase === 'disconnected')
-      )
+      return !destroyed && !terminalEnded && recoveryBlocksIo()
     },
 
     claimViewport(cols: number, rows: number): boolean {
