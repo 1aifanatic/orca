@@ -1,4 +1,5 @@
 import type { Repo } from '../../../../shared/repo-types'
+import type { Tab } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { DetectedWorktreeListResult, Worktree } from '../../../../shared/worktree/types'
 import type { AppState } from '@/store/types'
@@ -19,6 +20,28 @@ export function terminalTabFixture(
     color: null,
     sortOrder: 0,
     createdAt: 0,
+    ...overrides
+  }
+}
+
+export function agentSessionTabFixture(
+  id: string,
+  worktreeId: string,
+  overrides: Partial<Tab> = {}
+): Tab {
+  return {
+    id,
+    worktreeId,
+    groupId: 'group',
+    contentType: 'agent-session',
+    entityId: `session-${id}`,
+    label: 'Chat',
+    customLabel: null,
+    color: null,
+    sortOrder: 0,
+    createdAt: 0,
+    isPinned: false,
+    agentSessionAgent: 'codex',
     ...overrides
   }
 }

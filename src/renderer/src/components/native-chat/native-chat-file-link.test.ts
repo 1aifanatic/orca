@@ -100,13 +100,6 @@ describe('resolveNativeChatFileLinkContext', () => {
     ).toEqual(context)
   })
 
-  it('builds the whole result from the supplied snapshot, never a live catalog getter', () => {
-    const snapshot = Object.assign(state(), {
-      getKnownWorktreeById: () => worktreeFixture('wt-1', '/newer-snapshot')
-    })
-    expect(resolveNativeChatFileLinkContext(snapshot, 'tab-1')?.worktreePath).toBe('/repo/worktree')
-  })
-
   it('resolves a detected-only workspace from the supplied snapshot catalog', () => {
     expect(
       resolveNativeChatFileLinkContext(

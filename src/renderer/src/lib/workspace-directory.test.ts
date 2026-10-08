@@ -4,9 +4,10 @@ import {
   detectedListingFixture,
   worktreeFixture
 } from '../components/native-chat/native-chat-workspace-test-fixtures'
-import { resolveWorkspaceDirectory, type KnownWorkspaceCatalogState } from './workspace-directory'
+import { makeFolderWorkspace } from '@/store/slices/worktrees-slice-test-fixtures'
+import { resolveWorkspaceDirectory, type WorkspaceDirectoryState } from './workspace-directory'
 
-function catalog(overrides: Partial<KnownWorkspaceCatalogState> = {}): KnownWorkspaceCatalogState {
+function catalog(overrides: Partial<WorkspaceDirectoryState> = {}): WorkspaceDirectoryState {
   return {
     detectedWorktreesByRepo: {},
     floatingWorkspacePath: null,
@@ -89,5 +90,21 @@ describe('resolveWorkspaceDirectory', () => {
         'local'
       )
     ).toBeNull()
+  })
+
+  it('applies the same host rules when the caller passes no detected rows', () => {
+    const folderKey = folderWorkspaceKey('folder-1')
+    const state: WorkspaceDirectoryState = {
+      floatingWorkspacePath: null,
+      folderWorkspaces: [
+        makeFolderWorkspace({ folderPath: '/workspace/remote', connectionId: 'box-1' })
+      ],
+      worktreesByRepo: { repo: [worktreeFixture('wt-1', '/visible')] }
+    }
+
+    // Why: an unhosted row is a local row, and a folder on another host is not this one.
+    expect(resolveWorkspaceDirectory(state, 'wt-1', 'local')).toBe('/visible')
+    expect(resolveWorkspaceDirectory(state, folderKey, 'local')).toBeNull()
+    expect(resolveWorkspaceDirectory(state, folderKey, 'ssh:box-1')).toBe('/workspace/remote')
   })
 })

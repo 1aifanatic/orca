@@ -15,9 +15,8 @@ afterEach(() => {
 })
 
 describe('resolveNativeChatModelDiscoveryContext', () => {
-  it('uses the current catalog snapshot instead of a getter that closes over another snapshot', () => {
+  it("resolves the tab's worktree path and its owner's runtime, not the selected runtime", () => {
     useAppStore.setState({
-      getKnownWorktreeById: () => worktreeFixture('wt-local', '/newer-snapshot'),
       settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: 'env-selected' },
       repos: [repoFixture({ connectionId: null, executionHostId: 'local' })],
       tabsByWorktree: { 'wt-local': [terminalTabFixture('tab-1', 'wt-local')] },

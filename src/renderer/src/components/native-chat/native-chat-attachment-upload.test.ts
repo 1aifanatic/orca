@@ -111,20 +111,6 @@ describe('resolveNativeChatAttachmentOwner', () => {
     })
   })
 
-  it('resolves a direct SSH owner from the supplied catalog snapshot', () => {
-    const snapshot = Object.assign(
-      state({
-        repos: [{ id: 'repo', connectionId: 'conn-1' }] as never,
-        sshConnectionStates: new Map([['conn-1', { connectionGeneration: 4 } as never]])
-      }),
-      { getKnownWorktreeById: () => worktreeFixture('wt-1', '/newer-snapshot') }
-    )
-    expect(resolveNativeChatAttachmentOwnerForWorktree(snapshot, 'wt-1')).toMatchObject({
-      kind: 'ssh',
-      worktreePath: '/repo/worktree'
-    })
-  })
-
   it('resolves an SSH repo worktree to ssh with the worktree path', () => {
     expect(
       resolveNativeChatAttachmentOwner(

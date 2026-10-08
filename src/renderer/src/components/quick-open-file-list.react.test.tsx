@@ -14,7 +14,6 @@ import {
   initialAppState,
   makeProjectGroup,
   makeFolderWorkspace,
-  makeRemoteWorktree,
   seedRemoteWorktree,
   HookProbe,
   flushEffects,
@@ -32,21 +31,6 @@ vi.mock('@/runtime/runtime-file-client', async () => {
 })
 
 describe('useRuntimeFileListForWorktree', () => {
-  it('lists from the selected catalog snapshot instead of a live store getter', async () => {
-    seedRemoteWorktree()
-    useAppStore.setState({
-      getKnownWorktreeById: () => ({ ...makeRemoteWorktree(), path: '/newer-snapshot' })
-    })
-
-    await renderProbe({ enabled: true, states: [], worktreeId: 'wt-remote' })
-    await waitForListRuntimeFilesCall()
-
-    expect(listRuntimeFilesMock).toHaveBeenCalledWith(
-      expect.objectContaining({ worktreeId: 'wt-remote', worktreePath: '/srv/remote' }),
-      expect.anything()
-    )
-  })
-
   it('settles a Windows folder listing failure and recovers after reopening', async () => {
     const workspaceKey = folderWorkspaceKey('folder-workspace-1')
     useAppStore.setState({

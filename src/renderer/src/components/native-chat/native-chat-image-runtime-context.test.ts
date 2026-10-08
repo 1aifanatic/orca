@@ -68,17 +68,6 @@ describe('resolveNativeChatImageRuntimeContext', () => {
     expect(shallow(second, first)).toBe(true)
   })
 
-  it('uses the selected snapshot catalog instead of a getter that closes over newer state', () => {
-    const context = resolveNativeChatImageRuntimeContext(
-      state({
-        getKnownWorktreeById: () => worktreeFixture('wt-1', '/newer-snapshot')
-      }),
-      'tab-1'
-    )
-
-    expect(context?.worktreePath).toBe('/repo/worktree')
-  })
-
   it('derives a runtime host from an owner-only route during paired hydration', () => {
     const storeState = state()
     const ownerOnlyWorktree = {
