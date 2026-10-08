@@ -95,6 +95,7 @@ describe('composer preview ownership', () => {
     const retiredApi = owner.api()
     owner.unmount()
     retiredApi.setPreview('late', 'blob:late')
+    expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:late')
     retiredApi.releasePreview('late')
     expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:late')
   })
