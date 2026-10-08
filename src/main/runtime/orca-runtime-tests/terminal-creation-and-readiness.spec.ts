@@ -230,21 +230,24 @@ describe('OrcaRuntimeService', () => {
     expect(spawn).not.toHaveBeenCalled()
   })
 
-  it('ends the launch with its agent when the launched command finishes', async () => {
+  it("ends the launch's authority, and the agent its command ran, when it finishes", async () => {
     const spawn = vi.fn().mockResolvedValue({ id: 'pty-authority', incarnationId: 'process-1' })
     const endLaunch = vi.fn()
+    const endCommand = vi.fn()
+    let foreground: string | null = null
     const runtime = new OrcaRuntimeService(store, undefined, {
       attestAgentHookCompatibilityAuthority: (candidate) => ({
         paneKey: candidate.paneKey,
         source: 'current_hook'
       }),
-      endAgentHookLaunch: endLaunch
+      endAgentHookLaunch: endLaunch,
+      endAgentHookCommand: endCommand
     })
     runtime.setPtyController({
       spawn,
       write: () => true,
       kill: () => true,
-      getForegroundProcess: async () => null
+      getForegroundProcess: async () => foreground
     })
     runtime.setNotifier({
       worktreesChanged: vi.fn(),
@@ -281,9 +284,21 @@ describe('OrcaRuntimeService', () => {
       expect.objectContaining({ handle: terminal.handle, agentIdentity: 'codex' })
     ])
 
+    runtime.onPtyData('pty-authority', '\x1b]133;C\x07', 90)
+    foreground = 'codex'
+    runtime.observeAgentActivityForPaneKey(spawnEnv.ORCA_PANE_KEY)
+    await vi.waitFor(() => expect(foreground).toBe('codex'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    foreground = null
     runtime.onPtyData('pty-authority', '\x1b]133;D;0\x07', 100)
 
-    expect(endLaunch).toHaveBeenCalledWith(spawnEnv.ORCA_PANE_KEY, 'codex')
+    expect(endLaunch).toHaveBeenCalledWith(spawnEnv.ORCA_PANE_KEY)
+    await vi.waitFor(() =>
+      expect(endCommand).toHaveBeenCalledWith(
+        spawnEnv.ORCA_PANE_KEY,
+        expect.objectContaining({ foreground: { kind: 'agent', agent: 'codex' } })
+      )
+    )
     expect(runtime.verifyOrchestrationCompatibilityCaller(evidence)).toBeNull()
     expect((await runtime.listTerminals()).terminals).toEqual([
       expect.not.objectContaining({ agentIdentity: expect.anything() })
@@ -345,7 +360,7 @@ describe('OrcaRuntimeService', () => {
     runtime.onPtyExit('pty-restored-exit', 0, 'restored-exit')
     runtime.onPtyExit('pty-ordinary-shell', 0, 'ordinary-shell')
 
-    expect(endLaunch).toHaveBeenCalledWith(firstPane, null)
+    expect(endLaunch).toHaveBeenCalledWith(firstPane)
     expect(endLaunch).toHaveBeenCalledTimes(1)
     expect(retireAuthority).toHaveBeenCalledWith(secondPane)
     expect(retireAuthority).toHaveBeenCalledTimes(1)

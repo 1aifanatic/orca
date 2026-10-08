@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer } from '../agent-hooks/server'
 import { OrcaRuntimeService } from './orca-runtime'
 import { makeStore } from './runtime-rpc-worktree-store-fixtures'
+import type { FinishedCommand } from '../../shared/command-foreground-tracker'
 
 // STA-4557: #14866 deferred command-finished retirement for OpenCode panes behind an
 // async "is the foreground still OpenCode?" read. These pin the two ways a finished
@@ -53,7 +54,8 @@ type LaunchedOpenCodePane = {
 async function launchOpenCodePane(options: {
   ptyId: string
   getForegroundProcess: () => Promise<string | null>
-  retireAgentHookCompatibilityAuthority?: (paneKey: string) => void
+  /** The hook server the runtime retires and ends launch authority in. */
+  hookServer?: AgentHookServer
   attestAgentHookCompatibilityAuthority?: OrcaRuntimeServiceDeps['attestAgentHookCompatibilityAuthority']
 }): Promise<LaunchedOpenCodePane> {
   const spawn = vi.fn().mockResolvedValue({ id: options.ptyId, incarnationId: 'incarnation-1' })
@@ -61,8 +63,14 @@ async function launchOpenCodePane(options: {
     attestAgentHookCompatibilityAuthority:
       options.attestAgentHookCompatibilityAuthority ??
       ((candidate) => ({ paneKey: candidate.paneKey, source: 'current_hook' as const })),
-    ...(options.retireAgentHookCompatibilityAuthority
-      ? { retireAgentHookCompatibilityAuthority: options.retireAgentHookCompatibilityAuthority }
+    ...(options.hookServer
+      ? {
+          retireAgentHookCompatibilityAuthority: (paneKey: string) =>
+            options.hookServer?.retirePaneAuthority(paneKey),
+          endAgentHookLaunch: (paneKey: string) => options.hookServer?.endLaunchAuthority(paneKey),
+          endAgentHookCommand: (paneKey: string, command: FinishedCommand) =>
+            options.hookServer?.endCommand(paneKey, command)
+        }
       : {})
   })
   runtime.setPtyController({
@@ -174,7 +182,7 @@ describe('OpenCode finished-session launch authority (STA-4557)', () => {
       ptyId: 'pty-opencode-reuse',
       // OpenCode is a TUI: it is still the foreground process when its command completes.
       getForegroundProcess: async () => 'opencode',
-      retireAgentHookCompatibilityAuthority: (paneKey) => server.retirePaneAuthority(paneKey),
+      hookServer: server,
       attestAgentHookCompatibilityAuthority: (candidate) =>
         server.attestCompatibilityAuthority(candidate)
     })
@@ -233,7 +241,7 @@ describe('OpenCode finished-session launch authority (STA-4557)', () => {
     const pane = await launchOpenCodePane({
       ptyId: 'pty-opencode-session-boundary',
       getForegroundProcess: () => foreground,
-      retireAgentHookCompatibilityAuthority: (paneKey) => server.retirePaneAuthority(paneKey),
+      hookServer: server,
       attestAgentHookCompatibilityAuthority: (candidate) =>
         server.attestCompatibilityAuthority(candidate)
     })
@@ -287,7 +295,7 @@ describe('OpenCode finished-session launch authority (STA-4557)', () => {
     const pane = await launchOpenCodePane({
       ptyId: 'pty-opencode-restart',
       getForegroundProcess: async () => 'opencode',
-      retireAgentHookCompatibilityAuthority: (paneKey) => first.retirePaneAuthority(paneKey)
+      hookServer: first
     })
     const hookEnv = first.buildPtyEnv()
     await fetch(`http://127.0.0.1:${hookEnv.ORCA_AGENT_HOOK_PORT}/hook/opencode`, {

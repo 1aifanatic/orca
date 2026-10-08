@@ -5,9 +5,18 @@ import { encodeJsonRpcFrame } from './protocol'
 import { PtyHandler } from './pty-handler'
 import { TEST_PTY_ID_MINT_EPOCH } from './pty-handler-test-harness'
 import { makePaneKey } from '../shared/stable-pane-id'
+import type * as PtyShellUtils from './pty-shell-utils'
+import type { FinishedCommand } from '../shared/command-foreground-tracker'
 
-const { mockPtySpawn } = vi.hoisted(() => ({ mockPtySpawn: vi.fn() }))
+const { mockPtySpawn, foreground } = vi.hoisted(() => {
+  const current: { current: string | null } = { current: 'zsh' }
+  return { mockPtySpawn: vi.fn(), foreground: current }
+})
 vi.mock('node-pty', () => ({ spawn: mockPtySpawn }))
+vi.mock('./pty-shell-utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof PtyShellUtils>()),
+  getForegroundProcessName: vi.fn(async () => foreground.current)
+}))
 
 const identity: RelayClientSessionIdentity = {
   principal: 'endpoint-principal',
@@ -16,13 +25,14 @@ const identity: RelayClientSessionIdentity = {
   authenticationKind: 'endpoint-credential'
 }
 const paneKey = makePaneKey('tab-1', '11111111-1111-4111-8111-111111111111')
-const COMMAND_DONE = '\x1b]133;C\x07\x1b]133;D;0\x07$ '
+const COMMAND_START = '\x1b]133;C\x07'
+const COMMAND_DONE = '\x1b]133;D;0\x07$ '
 
-describe('PtyHandler: a launched agent command finishing', () => {
+describe('PtyHandler: a command finishing', () => {
   let dispatcher: RelayDispatcher
   let handler: PtyHandler
   let emitData: (data: string) => void
-  let launchEnd: ReturnType<typeof vi.fn<(paneKey: string, agent: string) => void>>
+  let commandEnd: ReturnType<typeof vi.fn<(paneKey: string, command: FinishedCommand) => void>>
   let presence: ReturnType<typeof vi.fn<(paneKey: string) => void>>
 
   beforeEach(() => {
@@ -49,9 +59,10 @@ describe('PtyHandler: a launched agent command finishing', () => {
       identity
     )
     handler = new PtyHandler(dispatcher, undefined, TEST_PTY_ID_MINT_EPOCH)
-    launchEnd = vi.fn()
+    commandEnd = vi.fn()
+    foreground.current = 'zsh'
     presence = vi.fn()
-    handler.setAgentLaunchEndListener(launchEnd)
+    handler.setAgentCommandEndListener(commandEnd)
     handler.setAgentPresenceTrigger(presence)
   })
 
@@ -77,18 +88,30 @@ describe('PtyHandler: a launched agent command finishing', () => {
     await vi.advanceTimersByTimeAsync(0)
   }
 
-  it('ends the launch once, on its first command finish, and rechecks every time', async () => {
-    await spawn({ launchAgent: 'codex' })
+  it('reports the agent its command ran in the foreground, and rechecks the owner', async () => {
+    await spawn({})
+    emitData(COMMAND_START)
+    foreground.current = 'codex'
+    // Why: the relay reads on live reports only; an agent report during the command reads Codex.
+    handler.observeAgentActivity(paneKey)
+    await vi.advanceTimersByTimeAsync(0)
+    foreground.current = 'zsh'
     emitData(COMMAND_DONE)
-    emitData(COMMAND_DONE)
-    expect(launchEnd.mock.calls).toEqual([[paneKey, 'codex']])
-    expect(presence).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(commandEnd).toHaveBeenCalledOnce()
+    expect(commandEnd.mock.calls[0]).toEqual([
+      paneKey,
+      expect.objectContaining({ foreground: { kind: 'agent', agent: 'codex' } })
+    ])
+    expect(presence).toHaveBeenCalledOnce()
   })
 
-  it('ends nothing in a pane Orca launched no agent in', async () => {
+  it('reports nothing for a command end a nested shell leaked while the agent runs', async () => {
     await spawn({})
+    emitData(COMMAND_START)
+    foreground.current = 'codex'
     emitData(COMMAND_DONE)
-    expect(launchEnd).not.toHaveBeenCalled()
-    expect(presence).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(commandEnd).not.toHaveBeenCalled()
   })
 })
