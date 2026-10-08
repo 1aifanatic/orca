@@ -21,7 +21,6 @@ export type StoreSessionMockApi = {
   repos: {
     list: Mock
     add: Mock
-    remove: Mock
     removeForHost: Mock
     update: Mock
     pickFolder: Mock
@@ -48,7 +47,6 @@ export function createStoreSessionMockApi(): StoreSessionMockApi {
     repos: {
       list: vi.fn().mockResolvedValue([]),
       add: vi.fn().mockResolvedValue({}),
-      remove: vi.fn().mockResolvedValue(undefined),
       removeForHost: vi.fn().mockResolvedValue(undefined),
       update: vi.fn().mockResolvedValue({}),
       pickFolder: vi.fn().mockResolvedValue(null)

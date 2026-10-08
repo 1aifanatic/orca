@@ -337,34 +337,23 @@ if (graphErrors.length > 0) {
   }
 }
 
-try {
-  await smokeProfileStateWorkers(OUT_DIR)
-  if (nodeRuntimePath) {
-    await smokeProfileStateWorkers(OUT_DIR, { runtimePath: nodeRuntimePath })
+/** @type {{ label: string, smoke: (outDir: string, options?: { runtimePath?: string }) => unknown }[]} */
+const workerSmokes = [
+  { label: 'profile state worker', smoke: smokeProfileStateWorkers },
+  { label: 'foreign SQLite reader worker', smoke: smokeForeignSqliteReaderWorker },
+  { label: 'session scanner service', smoke: smokeSessionScannerService }
+]
+// Each shipped child is checked under the build's Node and, when set, the pinned runtime.
+for (const { label, smoke } of workerSmokes) {
+  try {
+    await smoke(OUT_DIR)
+    if (nodeRuntimePath) {
+      await smoke(OUT_DIR, { runtimePath: nodeRuntimePath })
+    }
+  } catch (error) {
+    console.error(`[build-orcad] ${label} check failed:`, error)
+    process.exitCode = 1
   }
-} catch (error) {
-  console.error('[build-orcad] profile state worker check failed:', error)
-  process.exitCode = 1
-}
-
-try {
-  smokeForeignSqliteReaderWorker(OUT_DIR)
-  if (nodeRuntimePath) {
-    smokeForeignSqliteReaderWorker(OUT_DIR, { runtimePath: nodeRuntimePath })
-  }
-} catch (error) {
-  console.error('[build-orcad] foreign SQLite reader worker check failed:', error)
-  process.exitCode = 1
-}
-
-try {
-  smokeSessionScannerService(OUT_DIR)
-  if (nodeRuntimePath) {
-    smokeSessionScannerService(OUT_DIR, { runtimePath: nodeRuntimePath })
-  }
-} catch (error) {
-  console.error('[build-orcad] session scanner service check failed:', error)
-  process.exitCode = 1
 }
 
 // Why a content hash and not ORCAD_VERSION alone: the remote install directory is keyed on

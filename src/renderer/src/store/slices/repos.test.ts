@@ -18,7 +18,6 @@ import {
   reposCloneRemote,
   reposList,
   reposPickFolder,
-  reposRemove,
   reposRemoveForHost,
   reposReorder,
   reposUpdate,
@@ -672,7 +671,7 @@ describe('repo slice runtime routing', () => {
       params: { repo: remoteRepo.id },
       timeoutMs: 15_000
     })
-    expect(reposRemove).not.toHaveBeenCalled()
+    expect(reposRemoveForHost).not.toHaveBeenCalled()
   })
 
   it('removes SSH-owned repos through local IPC even when a runtime is focused', async () => {
@@ -745,7 +744,7 @@ describe('repo slice runtime routing', () => {
       params: { repo: remoteRepo.id },
       timeoutMs: 15_000
     })
-    expect(reposRemove).not.toHaveBeenCalled()
+    expect(reposRemoveForHost).not.toHaveBeenCalled()
   })
 
   it('evicts GitHub caches for removed repos using repo id and legacy path keys', async () => {
