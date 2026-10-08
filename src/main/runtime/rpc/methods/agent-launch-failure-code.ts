@@ -13,6 +13,7 @@ import {
   AGENT_LAUNCH_SESSION_ALREADY_EXISTS_CODE
 } from '../../../../shared/agent-launch-session-already-exists'
 import type { TerminalSpawnDispatch } from '../../../agent-launch/agent-launch-not-started'
+import { AgentLaunchExecutionError } from './agent-launch-execution-outcome'
 
 /** Long enough for every code this path raises, with room for one a later guard adds. */
 const LAUNCH_FAILURE_CODE_MAX_LENGTH = 128
@@ -43,6 +44,9 @@ export function launchFailureWithoutEffectsCode(
   targetKind: AgentLaunchTarget['kind'],
   terminalSpawn: TerminalSpawnDispatch
 ): string | null {
+  if (error instanceof AgentLaunchExecutionError) {
+    return error.failedWithoutEffects ? agentLaunchFailureCode(error.cause) : null
+  }
   if (error instanceof WorktreeCreateCollisionError) {
     return WORKTREE_CREATE_COLLISION_CODE
   }

@@ -11,6 +11,9 @@ import {
 import type { RpcContext } from '../core'
 import { readsAgentLaunchTabClosed } from './agent-launch-replay'
 import type { EarlyAgentLaunchTab } from './agent-launch-tab-publication'
+import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
+import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
+import { closeStructuredAgentSessionSurface } from '../../structured-agent-session-surface-close'
 
 export class AgentLaunchExecutionError extends Error {
   constructor(
@@ -22,6 +25,16 @@ export class AgentLaunchExecutionError extends Error {
   }
 }
 
+/** Both surfaces ask the same owner immediately before their next effect. */
+export function assertAgentLaunchSurfaceOwnerOpen(
+  early: Pick<EarlyAgentLaunchTab, 'closedByUser'> | null,
+  failedWithoutEffects: boolean
+): void {
+  if (early?.closedByUser()) {
+    throw new AgentLaunchExecutionError(new AgentLaunchTabClosedError(), failedWithoutEffects)
+  }
+}
+
 /** Optional identity keeps its original errors; desktop input never retries an ambiguous effect. */
 export function throwOptionalAgentLaunchFailure(
   error: unknown,
@@ -29,12 +42,13 @@ export function throwOptionalAgentLaunchFailure(
   desktop: boolean
 ): never {
   if (error instanceof AgentLaunchExecutionError) {
+    if (error.cause instanceof AgentLaunchTabClosedError) {
+      throw agentLaunchTabClosedAnswer(context)
+    }
     if (desktop && !error.failedWithoutEffects) {
       throw new Error('agent_session_operation_unknown', { cause: error.cause })
     }
-    throw error.cause instanceof AgentLaunchTabClosedError
-      ? agentLaunchTabClosedAnswer(context)
-      : error.cause
+    throw error.cause
   }
   throw error
 }
@@ -66,20 +80,48 @@ export function agentLaunchTabClosedAnswer(context: RpcContext): Error {
     : new Error('agent_session_operation_unknown')
 }
 
-/** A launch whose tab the user closed while it started ends as exactly that: its agent, if one
- *  spawned, is stopped, and the record answers `agent_launch_tab_closed` to this caller and every
- *  retry. Throws that answer. */
+/** Close the known surface; only a proven pre-effect close may overwrite the operation as failed. */
 export async function settleLaunchWhoseTabWasClosed(
   context: RpcContext,
   early: EarlyAgentLaunchTab,
-  admission?: { fail: (code: string) => Promise<void> }
+  evidence: {
+    failedWithoutEffects: boolean
+    error?: unknown
+    result?: AgentLaunchResult
+    admission?: {
+      fail: (code: string) => Promise<void>
+      settle: (result: AgentLaunchResult) => Promise<void>
+    }
+  }
 ): Promise<never> {
-  const handle = context.runtime.getTerminalHandleForPaneKey(early.paneKey)
-  if (handle) {
-    await context.runtime.closeTerminal(handle).catch(() => {})
+  const { result, admission, failedWithoutEffects, error } = evidence
+  if (result?.outcome.kind === 'structured') {
+    await closeStructuredAgentSessionSurface(
+      context.runtime,
+      getStructuredAgentSessionHost(),
+      result.outcome.sessionId,
+      'user-close'
+    ).catch((error: unknown) =>
+      console.warn('[agent-launch] closing the created chat failed', error)
+    )
+  } else {
+    const handle =
+      result?.outcome.handle ?? context.runtime.getTerminalHandleForPaneKey(early.paneKey)
+    if (handle) {
+      await context.runtime.closeTerminal(handle).catch(() => {})
+    }
   }
-  if (admission) {
+  if (admission && failedWithoutEffects) {
     await settleQuietly(admission.fail(AGENT_LAUNCH_TAB_CLOSED_CODE))
+  } else if (admission && result) {
+    await settleQuietly(admission.settle(result))
   }
-  throw new AgentLaunchExecutionError(new AgentLaunchTabClosedError(), true)
+  const confirmedClose =
+    result !== undefined ||
+    failedWithoutEffects ||
+    (error instanceof AgentLaunchExecutionError && error.cause instanceof AgentLaunchTabClosedError)
+  throw new AgentLaunchExecutionError(
+    confirmedClose ? new AgentLaunchTabClosedError() : error,
+    failedWithoutEffects
+  )
 }

@@ -42,11 +42,14 @@ export function runDesktopCapacityFallback(
     try {
       result = await execute(intent, terminalSpawn)
     } catch (error) {
+      const code = launchFailureWithoutEffectsCode(error, intent.target.kind, terminalSpawn)
       if (view.early?.closedByUser()) {
         view.early.finish({ kind: 'withdrawn' })
-        await settleLaunchWhoseTabWasClosed(context, view.early)
+        await settleLaunchWhoseTabWasClosed(context, view.early, {
+          failedWithoutEffects: code !== null,
+          error
+        })
       }
-      const code = launchFailureWithoutEffectsCode(error, intent.target.kind, terminalSpawn)
       const verdict: AgentLaunchPaneVerdict = code
         ? { kind: 'not-started', code }
         : { kind: 'unconfirmed' }
@@ -55,7 +58,10 @@ export function runDesktopCapacityFallback(
     }
     if (view.early?.closedByUser()) {
       view.early.finish({ kind: 'withdrawn' })
-      await settleLaunchWhoseTabWasClosed(context, view.early)
+      await settleLaunchWhoseTabWasClosed(context, view.early, {
+        failedWithoutEffects: false,
+        result
+      })
     }
     return { ...result, recorded: false }
   })

@@ -39,7 +39,8 @@ import {
   trackTerminalSpawnDispatch,
   type TerminalSpawnDispatch
 } from '../../../agent-launch/agent-launch-not-started'
-import { AgentLaunchTabClosedError } from '../../../../shared/agent-launch-tab-closed'
+import { assertAgentLaunchSurfaceOwnerOpen } from './agent-launch-execution-outcome'
+import { closeStructuredAgentSessionSurface } from '../../structured-agent-session-surface-close'
 import {
   agentLaunchMovesHostWindow,
   type AgentLaunchView,
@@ -94,7 +95,8 @@ export function agentLaunchSurfaceFactory(
         ...(seeded ? { options: seeded } : {}),
         ...(tabId ? { tabId } : {}),
         // The user asked for this chat, so it takes the surface — unlike a dispatched worker.
-        activate: !callerPresentsSurface
+        activate: !callerPresentsSurface,
+        authorizeEffect: (created) => assertAgentLaunchSurfaceOwnerOpen(earlyTab, !created)
       })
       if (!created.ok) {
         // The caller named this session, so a taken id is its answer, not an opaque refusal; and not
@@ -114,16 +116,31 @@ export function agentLaunchSurfaceFactory(
         ...(created.value.tabId ? { tabId: created.value.tabId } : {})
       }
     },
-    deliverStructuredPrompt: async ({ sessionId, fence, prompt }) =>
-      commitStructuredAgentSessionLaunchPrompt({
-        host: getStructuredAgentSessionHost(),
+    deliverStructuredPrompt: async ({ sessionId, fence, prompt }) => {
+      const host = getStructuredAgentSessionHost()
+      try {
+        assertAgentLaunchSurfaceOwnerOpen(earlyTab, false)
+      } catch (error) {
+        await closeStructuredAgentSessionSurface(
+          context.runtime,
+          host,
+          sessionId,
+          'user-close'
+        ).catch((closeError: unknown) =>
+          console.warn('[agent-launch] closing the created chat failed', closeError)
+        )
+        throw error
+      }
+      return commitStructuredAgentSessionLaunchPrompt({
+        host,
         caller: operationCallerKey
           ? { callerKey: operationCallerKey }
           : structuredCallerFor(context),
         sessionId,
         fence,
         text: prompt.text
-      }),
+      })
+    },
     createTerminalAgent: async ({
       worktreeId,
       agent,
@@ -138,10 +155,7 @@ export function agentLaunchSurfaceFactory(
     }) => {
       const launchPreferences = toAgentLaunchPreferences(options)
       let promptRodeLaunchCommand = false
-      if (earlyTab?.closedByUser()) {
-        // The user closed its tab while it waited: nothing is spawned, and that is the answer.
-        terminalSpawn.rethrow(new AgentLaunchTabClosedError())
-      }
+      assertAgentLaunchSurfaceOwnerOpen(earlyTab, true)
       const created = context.runtime.createTerminal(`id:${worktreeId}`, {
         // The agent id is not a shell command — `cursor` is the desktop app, its CLI is
         // `cursor-agent` — so the runtime builds the configured launcher.
@@ -187,11 +201,11 @@ export function agentLaunchSurfaceFactory(
         onPtySpawnDispatched: terminalSpawn.onPtySpawnDispatched
       })
       const terminal = await created.catch(terminalSpawn.rethrow)
-      if (earlyTab?.closedByUser()) {
-        // Closed while its terminal was being created: stopped before any prompt is pasted. A prompt
-        // that rode the command line reached the agent, which is stopped a moment after it starts.
+      try {
+        assertAgentLaunchSurfaceOwnerOpen(earlyTab, false)
+      } catch (error) {
         await context.runtime.closeTerminal(terminal.handle).catch(() => {})
-        throw new AgentLaunchTabClosedError()
+        throw error
       }
       return {
         handle: terminal.handle,

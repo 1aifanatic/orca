@@ -2,6 +2,8 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
+import type { AgentSessionAttachResult } from '../../src/shared/agent-session-wire'
 import type * as AgentStatusModule from '../../src/renderer/src/lib/agent-status'
 import { RuntimeRpcCallError } from '../../src/renderer/src/runtime/runtime-rpc-result'
 import { mapRuntimeError } from '../../src/main/runtime/rpc/errors'
@@ -34,6 +36,8 @@ import {
 import { DESKTOP_RPC_CALLER } from '../../src/main/runtime/rpc/rpc-caller-identity'
 import { activeAgentLaunchesFor } from '../../src/main/runtime/rpc/methods/agent-launch-active-operations'
 import { makePaneKey } from '../../src/shared/stable-pane-id'
+import { setStructuredAgentSessionHost } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
+import { installDesktopStructuredTestHost } from './desktop-agent-launch-structured-test-host'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }))
 vi.mock('../../src/renderer/src/lib/agent-status', async (original) => ({
@@ -89,6 +93,8 @@ function deferred<T>() {
 
 let store: ReturnType<typeof createTestStore>
 let record: Awaited<ReturnType<typeof openTestAgentSessionRecordStore>>
+let directory: string
+let structured: ReturnType<typeof installDesktopStructuredTestHost> | undefined
 
 beforeEach(async () => {
   vi.stubGlobal('requestAnimationFrame', () => 0)
@@ -98,9 +104,8 @@ beforeEach(async () => {
   store.getState().createTab(WT)
   callRuntimeRpc.mockReset()
   deliver.mockClear()
-  const directory = await mkdtemp(
-    join(process.env.ORCA_STEP4_TEST_STATE_DIR ?? tmpdir(), 'b-capacity-')
-  )
+  vi.mocked(toast.error).mockClear()
+  directory = await mkdtemp(join(process.env.ORCA_STEP4_TEST_STATE_DIR ?? tmpdir(), 'b-capacity-'))
   record = await openTestAgentSessionRecordStore(directory)
   const now = Date.now()
   await record.transactOperations((draft) => {
@@ -116,7 +121,10 @@ beforeEach(async () => {
   setAgentLaunchRecordStore(record)
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await structured?.host.flushAllStreamedEvents()
+  structured = undefined
+  setStructuredAgentSessionHost(null)
   resetAgentLaunchPanesForTests()
   setAgentLaunchRecordStore(null)
 })
@@ -130,6 +138,7 @@ function rig(
     activate?: boolean
     canPublish?: boolean
     workspaceError?: boolean
+    rootCwd?: boolean
   } = {}
 ) {
   const start = deferred<void>()
@@ -272,7 +281,7 @@ function rig(
     desktopPrompt: PROMPT,
     activate: options.activate ?? false,
     agentArgs: null,
-    cwd: '/tmp/wt-7/src',
+    cwd: options.rootCwd ? '/tmp/wt-7' : '/tmp/wt-7/src',
     sessionOptions: { model: 'chosen', thinking: true }
   } as const
   const launch = () => launchAgentThroughHost(launchArgs)
@@ -301,6 +310,235 @@ function tab(tabId: string) {
 }
 
 describe('desktop capacity fallback keeps the original published pane', () => {
+  it.each(['attach', 'publication', 'send', 'lost-attach'] as const)(
+    'settles a close during structured %s honestly without another launch',
+    async (waitAt) => {
+      await record.transactOperations((draft) => draft.operations.clear())
+      const r = rig({ deferWorkspace: true, rootCwd: true })
+      const s = installDesktopStructuredTestHost(r.runtime, record, directory)
+      structured = s
+      const created = deferred<AgentSessionAttachResult>()
+      const entered = deferred<void>()
+      const release = deferred<void>()
+      const attach = s.attachOriginal
+      s.attach.mockImplementationOnce(async (...args) => {
+        const result = await attach(...args)
+        if (!result.ok) {
+          throw new Error('fixture attachment was refused')
+        }
+        created.resolve(result.value)
+        if (waitAt === 'attach' || waitAt === 'lost-attach') {
+          entered.resolve()
+          await release.promise
+          if (waitAt === 'lost-attach') {
+            throw new Error('attach answer lost')
+          }
+        }
+        return result
+      })
+      if (waitAt === 'publication') {
+        const publish = s.publish.getMockImplementation()!
+        s.publish.mockImplementationOnce(async (input) => {
+          await publish(input)
+          entered.resolve()
+          await release.promise
+        })
+      } else if (waitAt === 'send') {
+        const send = s.sendOriginal
+        s.send.mockImplementationOnce(async (...args) => {
+          const result = await send(...args)
+          entered.resolve()
+          await release.promise
+          return result
+        })
+      }
+      r.admission.resolve()
+      const { tabId, promptDeliveryResult } = r.launchPrompt()
+      await r.workspaceRequested.promise
+      r.runtime.getClientSettings.mockReturnValue({
+        experimentalNativeChat: true,
+        experimentalStructuredNativeChat: true,
+        openAgentTabsInChatByDefault: true
+      })
+      r.workspace.resolve()
+      await Promise.race([
+        entered.promise,
+        promptDeliveryResult.then(async () => {
+          throw new Error(
+            `fixture did not reach ${waitAt}: ${JSON.stringify(await s.attach.mock.results[0]?.value)}`
+          )
+        })
+      ])
+      const session = await created.promise
+      markAgentLaunchesClosedByUser(WT, { kind: 'tab', tabId })
+      store.getState().closeTab(tabId)
+      release.resolve()
+      const request = callRuntimeRpc.mock.results[0]?.value
+      if (!request) {
+        throw new Error('missing launch request')
+      }
+      await expect(promptDeliveryResult).resolves.toMatchObject({ delivered: false })
+      if (waitAt === 'lost-attach') {
+        await expect(request).rejects.toMatchObject({ code: 'agent_session_operation_unknown' })
+        expect(s.close).not.toHaveBeenCalled()
+      } else {
+        await expect(request).rejects.toMatchObject({ code: 'agent_launch_tab_closed' })
+        expect(s.close).toHaveBeenCalledWith(session.sessionId, 'user-close')
+        expect(s.retire).toHaveBeenCalledWith(session.sessionId)
+        expect(s.visible.has(session.sessionId)).toBe(false)
+        expect(record.getVisibleSessionTabIndex().sessionIds).not.toContain(session.sessionId)
+      }
+      const operationId = r.requests[0]?.operationId
+      const row = record.listOperationRows().find((item) => item.operationId === operationId)
+      expect(row?.outcome.status).not.toBe('failed')
+      if (waitAt === 'send') {
+        expect(row?.outcome).toMatchObject({
+          status: 'succeeded',
+          launch: { prompt: { outcome: 'journaled' } }
+        })
+        expect(await s.host.journalSnapshot(session.sessionId)).toMatchObject({
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              body: expect.objectContaining({ blocks: [{ type: 'text', text: PROMPT.text }] })
+            })
+          ])
+        })
+      } else {
+        expect(s.send).not.toHaveBeenCalled()
+      }
+      if (waitAt === 'attach' || waitAt === 'lost-attach') {
+        expect(s.publish).not.toHaveBeenCalled()
+      }
+      expect(s.attach).toHaveBeenCalledOnce()
+      expect(r.runtime.createTerminal).not.toHaveBeenCalled()
+      expect(deliver).not.toHaveBeenCalled()
+      expect(callRuntimeRpc).toHaveBeenCalledOnce()
+      expect(tab(tabId)).toBeUndefined()
+      if (waitAt === 'lost-attach') {
+        expect(toast.error).toHaveBeenCalledOnce()
+      } else {
+        expect(toast.error).not.toHaveBeenCalled()
+      }
+      expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
+      expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(false)
+    }
+  )
+
+  it('an open owner permits the current chat default and journals the exact original prompt once', async () => {
+    await record.transactOperations((draft) => draft.operations.clear())
+    const r = rig({ deferWorkspace: true, rootCwd: true })
+    const s = installDesktopStructuredTestHost(r.runtime, record, directory)
+    structured = s
+    r.admission.resolve()
+    const { outcome } = r.launch()
+    await r.workspaceRequested.promise
+    r.runtime.getClientSettings.mockReturnValue({
+      experimentalNativeChat: true,
+      experimentalStructuredNativeChat: true,
+      openAgentTabsInChatByDefault: true
+    })
+    r.workspace.resolve()
+    await expect(outcome).resolves.toEqual({ kind: 'pane-says' })
+    await expect(callRuntimeRpc.mock.results[0]?.value).resolves.toMatchObject({
+      outcome: { kind: 'structured' },
+      prompt: { outcome: 'journaled' }
+    })
+    expect(s.attach).toHaveBeenCalledOnce()
+    expect(s.publish).toHaveBeenCalledOnce()
+    expect(s.send).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      expect.objectContaining({
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: PROMPT.text }] }
+      })
+    )
+    expect(r.runtime.createTerminal).not.toHaveBeenCalled()
+    expect(s.close).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { activate: false, capacity: true },
+    { activate: true, capacity: true },
+    { activate: false, capacity: false },
+    { activate: true, capacity: false }
+  ])(
+    'closed owner prevents effects when chat default changes during workspace lookup (%j)',
+    async (options) => {
+      if (!options.capacity) {
+        await record.transactOperations((draft) => draft.operations.clear())
+      }
+      const r = rig({ ...options, deferWorkspace: true, rootCwd: true })
+      structured = installDesktopStructuredTestHost(r.runtime, record, directory)
+      r.admission.resolve()
+      const { tabId, promptDeliveryResult } = r.launchPrompt()
+      await r.workspaceRequested.promise
+      markAgentLaunchesClosedByUser(WT, { kind: 'tab', tabId })
+      store.getState().closeTab(tabId)
+      r.runtime.getClientSettings.mockReturnValue({
+        experimentalNativeChat: true,
+        experimentalStructuredNativeChat: true,
+        openAgentTabsInChatByDefault: true
+      })
+      r.start.resolve()
+      r.workspace.resolve()
+      await expect(promptDeliveryResult).resolves.toMatchObject({ delivered: false })
+      expect(structured.attach).not.toHaveBeenCalled()
+      expect(structured.publish).not.toHaveBeenCalled()
+      expect(structured.send).not.toHaveBeenCalled()
+      expect(structured.acquire).not.toHaveBeenCalled()
+      expect(r.runtime.createTerminal).not.toHaveBeenCalled()
+      expect(deliver).not.toHaveBeenCalled()
+      expect(tab(tabId)).toBeUndefined()
+      expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
+      expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(false)
+      expect(callRuntimeRpc).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.each(['intent', 'host'] as const)(
+    'close during structured %s preparation prevents attachment',
+    async (waitAt) => {
+      await record.transactOperations((draft) => draft.operations.clear())
+      const r = rig({ deferWorkspace: true, rootCwd: true })
+      structured = installDesktopStructuredTestHost(r.runtime, record, directory)
+      const entered = deferred<void>()
+      const release = deferred<void>()
+      if (waitAt === 'intent') {
+        const resolve = structured.resolve.getMockImplementation()!
+        structured.resolve.mockImplementationOnce(async (input) => {
+          entered.resolve()
+          await release.promise
+          return resolve(input)
+        })
+      } else {
+        r.runtime.ensureStructuredAgentSessionHost.mockImplementationOnce(async () => {
+          entered.resolve()
+          await release.promise
+        })
+      }
+      r.admission.resolve()
+      const { tabId, promptDeliveryResult } = r.launchPrompt()
+      await r.workspaceRequested.promise
+      r.runtime.getClientSettings.mockReturnValue({
+        experimentalNativeChat: true,
+        experimentalStructuredNativeChat: true,
+        openAgentTabsInChatByDefault: true
+      })
+      r.workspace.resolve()
+      await entered.promise
+      markAgentLaunchesClosedByUser(WT, { kind: 'tab', tabId })
+      store.getState().closeTab(tabId)
+      release.resolve()
+      await expect(promptDeliveryResult).resolves.toMatchObject({ delivered: false })
+      expect(structured.attach).not.toHaveBeenCalled()
+      expect(structured.publish).not.toHaveBeenCalled()
+      expect(structured.send).not.toHaveBeenCalled()
+      expect(structured.acquire).not.toHaveBeenCalled()
+      expect(r.runtime.createTerminal).not.toHaveBeenCalled()
+      expect(tab(tabId)).toBeUndefined()
+      expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(false)
+    }
+  )
+
   it.each([
     { activate: false, capacity: true },
     { activate: true, capacity: true },

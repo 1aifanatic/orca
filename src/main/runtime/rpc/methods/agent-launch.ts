@@ -248,14 +248,18 @@ async function executeAdmittedAgentLaunch(
       beginPromptWrite: admission.beginPromptWrite
     })
   } catch (error) {
-    if (view.early?.closedByUser()) {
-      await settleLaunchWhoseTabWasClosed(context, view.early, admission)
-    }
     const failedWithoutEffects = launchFailureWithoutEffectsCode(
       error,
       intent.target.kind,
       terminalSpawn
     )
+    if (view.early?.closedByUser()) {
+      await settleLaunchWhoseTabWasClosed(context, view.early, {
+        failedWithoutEffects: failedWithoutEffects !== null,
+        error,
+        admission
+      })
+    }
     if (failedWithoutEffects) {
       await settleQuietly(admission.fail(failedWithoutEffects))
     }
@@ -263,7 +267,11 @@ async function executeAdmittedAgentLaunch(
   }
   if (view.early?.closedByUser()) {
     // The user closed its tab after the spawn left: the agent stops, as any closed tab's does.
-    await settleLaunchWhoseTabWasClosed(context, view.early, admission)
+    await settleLaunchWhoseTabWasClosed(context, view.early, {
+      failedWithoutEffects: false,
+      result,
+      admission
+    })
   }
   // Bookkeeping: a failure leaves the first write, whose owed prompt replays as `unconfirmed` (or as
   // `unknown` to a caller that cannot read it), never as `not-delivered`.
@@ -341,10 +349,7 @@ export const AGENT_LAUNCH_METHODS = [
         return runLegacyAgentLaunch(params, context)
       }
       return runReplaySafeAgentLaunch(
-        {
-          ...params,
-          operationId: params.operationId
-        },
+        { ...params, operationId: params.operationId },
         context,
         isDesktopNewTabPrompt(params.prompt)
       ).catch((error: unknown) =>

@@ -32,6 +32,7 @@ import {
   resolveUncommittedStructuredCreate,
   type StructuredCreateRefused
 } from './structured-agent-session-precommit-refusal'
+import { closeStructuredAgentSessionSurface } from '../../structured-agent-session-surface-close'
 
 export type PreparedStructuredAgentSessionCreate = {
   host: StructuredAgentSessionHost
@@ -134,14 +135,23 @@ export async function commitStructuredAgentSessionCreate(args: {
   caller: StructuredAgentSessionCaller
   prepared: PreparedStructuredAgentSessionCreate
   activate: boolean
+  authorizeEffect?: (created?: AgentSessionAttachResult) => void
 }): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
   const { prepared } = args
+  args.authorizeEffect?.()
   const result = prepared.hostLaunchDirectory
     ? await prepared.host.attach(args.caller, prepared.attachParams, {
         hostLaunchDirectory: prepared.hostLaunchDirectory
       })
     : await prepared.host.attach(args.caller, prepared.attachParams)
-  if (!result.ok || !prepared.tab) {
+  if (!result.ok) {
+    return result
+  }
+  const cancelled = authorizeCreatedStructuredSession(args, result.value)
+  if (cancelled) {
+    return cancelled
+  }
+  if (!prepared.tab) {
     return result
   }
   const surfaceTabId = prepared.attachParams.surfaceTabId
@@ -154,6 +164,10 @@ export async function commitStructuredAgentSessionCreate(args: {
       ...(surfaceTabId ? { tabId: surfaceTabId } : {})
     })
   } catch (error) {
+    const cancelled = authorizeCreatedStructuredSession(args, result.value)
+    if (cancelled) {
+      return cancelled
+    }
     prepared.host.deps.logger.warn('publishing the tab of a created chat failed', {
       scope: 'create-tab-publication',
       sessionId: result.value.sessionId,
@@ -168,9 +182,44 @@ export async function commitStructuredAgentSessionCreate(args: {
       )
     }
   }
+  const closedAfterPublication = authorizeCreatedStructuredSession(args, result.value)
+  if (closedAfterPublication) {
+    return closedAfterPublication
+  }
   // Read after publishing, which is what gives the chat its tab.
   const tabId = prepared.host.getSessionTabId?.(result.value.sessionId)
   return tabId ? { ...result, value: { ...result.value, tabId } } : result
+}
+
+function authorizeCreatedStructuredSession(
+  args: {
+    runtime: OrcaRuntimeService
+    prepared: PreparedStructuredAgentSessionCreate
+    authorizeEffect?: (created?: AgentSessionAttachResult) => void
+  },
+  created: AgentSessionAttachResult
+): Promise<never> | undefined {
+  try {
+    args.authorizeEffect?.(created)
+  } catch (error) {
+    return closeStructuredAgentSessionSurface(
+      args.runtime,
+      args.prepared.host,
+      created.sessionId,
+      'user-close'
+    )
+      .catch((closeError: unknown) => {
+        args.prepared.host.deps.logger.warn('closing the cancelled created chat failed', {
+          scope: 'create-owner-close',
+          sessionId: created.sessionId,
+          error: closeError
+        })
+      })
+      .then(() => {
+        throw error
+      })
+  }
+  return undefined
 }
 
 export async function createStructuredAgentSessionForWorktree(args: {
@@ -183,6 +232,7 @@ export async function createStructuredAgentSessionForWorktree(args: {
   activate: boolean
   options?: Readonly<Record<string, string>>
   tabId?: string
+  authorizeEffect?: (created?: AgentSessionAttachResult) => void
 }): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
   const prepared: PreparedStructuredAgentSessionCreate | StructuredCreateRefused =
     await resolveUncommittedStructuredCreate(() =>
@@ -195,6 +245,7 @@ export async function createStructuredAgentSessionForWorktree(args: {
     runtime: args.runtime,
     caller: args.caller,
     prepared,
-    activate: args.activate
+    activate: args.activate,
+    ...(args.authorizeEffect ? { authorizeEffect: args.authorizeEffect } : {})
   })
 }
