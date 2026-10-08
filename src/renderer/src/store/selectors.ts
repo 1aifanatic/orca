@@ -17,6 +17,7 @@ import {
   getIndexedWorktreeMap as getCachedWorktreeMap,
   getIndexedWorktreesById as getCachedWorktreesById
 } from './worktree-repo-index'
+import { findKnownWorktreeById } from './slices/worktrees/listing/detected-worktree-meta'
 
 export { getProjectHostSetupProjectionFromState } from './project-host-setup-selector'
 export {
@@ -240,6 +241,9 @@ export const useWorktreeById = (worktreeId: string | null, executionHostId?: Exe
         ) ?? null)
       : null
   )
+/** Host-unqualified catalog row (including folder and floating workspaces) from this snapshot. */
+export const useKnownWorktreeById = (worktreeId: string | null) =>
+  useAppStore((s) => (worktreeId ? (findKnownWorktreeById(s, worktreeId) ?? null) : null))
 export const useActiveWorktree = () => {
   const activeWorktreeId = useActiveWorktreeId()
   return useAppStore((s) =>

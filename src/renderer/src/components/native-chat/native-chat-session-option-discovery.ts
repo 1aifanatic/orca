@@ -27,6 +27,7 @@ import type {
   AgentSessionModelOption
 } from '../../../../shared/agent-session-wire'
 import { useAppStore } from '@/store'
+import { findKnownWorktreeById } from '@/store/slices/worktrees/listing/detected-worktree-meta'
 
 export type NativeChatModelDiscoveryContext = {
   hostKey: string
@@ -63,7 +64,7 @@ export function resolveNativeChatModelDiscoveryContext(
     return null
   }
   const settings = getSettingsForAgentTabRuntimeOwner(terminalTabId)
-  const worktreePath = worktreeId ? (state.getKnownWorktreeById?.(worktreeId)?.path ?? '') : ''
+  const worktreePath = worktreeId ? (findKnownWorktreeById(state, worktreeId)?.path ?? '') : ''
   const scope = getRuntimeGitScope(settings, connectionId)
   return {
     hostKey: resolveNativeChatModelDiscoveryHostKey(state, worktreeId, worktreePath, scope),
