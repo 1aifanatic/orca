@@ -13,6 +13,7 @@
 // (`src/main/rate-limits/codex-pty-rate-limit-probe.ts`) does omit the option and so does run this
 // hunk, but no user-visible pane does. The divergence pinned below is about which
 // branch each host runs for terminals -- not about a regression in the panes users open.
+import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -135,6 +136,48 @@ describe('Windows SSH relay node-pty ConPTY teardown patch', () => {
     patchNodePtyWindowsTeardown(fixture.root)
     expect(PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))).toEqual(
       once
+    )
+  })
+
+  it('upgrades the exact previous Windows terminal patch without changing relay agent ordering', () => {
+    const fixture = writeNodePtyFixture('1.1.0')
+    const asset = readFileSync(
+      join(projectDir, 'config', 'relay-assets', 'node-pty-1.1.0-windows-pty-teardown-patch.cjs'),
+      'utf8'
+    )
+    const { PATCH_TARGETS } = loadPatchTargets(asset)
+    const target = PATCH_TARGETS.find((entry) => entry.relativePath.at(-1) === 'windowsTerminal.js')
+    const publishedPath = join(fixture.libDir, 'windowsTerminal.js')
+    const publishedTerminal = readFileSync(publishedPath, 'utf8')
+    patchNodePtyWindowsTeardown(fixture.root)
+    const relayAgentPath = join(fixture.libDir, 'windowsPtyAgent.js')
+    const relayAgent = readFileSync(relayAgentPath, 'utf8')
+    expect(createHash('sha256').update(relayAgent).digest('hex')).toBe(
+      '1e23ef480569e73706e3ab4f5482c7e553c76f51414ae8e7b0bdcc2fd75f7280'
+    )
+    let legacy = publishedTerminal
+    const priorReplacements = target.replacements.slice(
+      0,
+      target.replacements.length - target.previousReplacements.length
+    )
+    for (const [from, to] of priorReplacements) {
+      expect(legacy.split(from).length - 1).toBe(1)
+      legacy = legacy.replace(from, to)
+    }
+    expect(createHash('sha256').update(legacy).digest('hex')).toBe(
+      '8247ecd69be8b18257050fb026b290024612c5ffc6d492ff1d46f81e613be2cf'
+    )
+    writeFileSync(publishedPath, legacy)
+    patchNodePtyWindowsTeardown(fixture.root)
+    expect(readFileSync(relayAgentPath, 'utf8')).toBe(relayAgent)
+    expect(() => assertPatchedNodePtyWindowsTeardown(fixture.root)).not.toThrow()
+    expect(readFileSync(publishedPath, 'utf8')).toBe(
+      readFileSync(desktopPath('windowsTerminal.js'), 'utf8')
+    )
+    const installed = PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))
+    patchNodePtyWindowsTeardown(fixture.root)
+    expect(PATCHED_FILES.map((file) => readFileSync(join(fixture.libDir, file), 'utf8'))).toEqual(
+      installed
     )
   })
 

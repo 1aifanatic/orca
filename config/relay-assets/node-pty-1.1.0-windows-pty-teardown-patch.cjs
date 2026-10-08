@@ -97,6 +97,29 @@ const { join, resolve } = require('node:path')
 
 const EXPECTED_NODE_PTY_VERSION = '1.1.0'
 
+const WINDOWS_TERMINAL_TEARDOWN_REPLACEMENTS = [
+  [
+    '        var parsedEnv = _this._parseEnv(env);\n        // If the terminal is ready\n        _this._isReady = false;\n        // Functions that need to run after `ready` event is emitted.\n        _this._deferreds = [];\n        // Create new termal.\n',
+    '        var parsedEnv = _this._parseEnv(env);\n        // If the terminal is ready\n        _this._isReady = false;\n        _this._killRequested = false;\n        _this._killComplete = false;\n        _this._isPipeReady = false;\n        // Functions that need to run after `ready` event is emitted.\n        _this._deferreds = [];\n        // Create new termal.\n'
+  ],
+  [
+    "        _this._pid = _this._agent.innerPid;\n        _this._fd = _this._agent.fd;\n        _this._pty = _this._agent.pty;\n        // The forked windows terminal is not available until `ready` event is\n        // emitted.\n        _this._socket.on('ready_datapipe', function () {\n            // Run deferreds and set ready state once the first data event is received.\n            _this._socket.once('data', function () {\n                // Wait until the first data event is fired then we can run deferreds.\n                if (!_this._isReady) {\n                    // Terminal is now ready and we can avoid having to defer method\n                    // calls.\n                    _this._isReady = true;\n",
+    "        _this._pid = _this._agent.innerPid;\n        _this._fd = _this._agent.fd;\n        _this._pty = _this._agent.pty;\n        // A pre-output teardown must still publish the actual pipe close.\n        _this._socket.once('close', function () {\n            if (_this._isPipeReady) {\n                _this.emit('exit', _this._agent.exitCode);\n            }\n            _this._close();\n        });\n        // The forked windows terminal is not available until `ready` event is\n        // emitted.\n        _this._socket.on('ready_datapipe', function () {\n            _this._isPipeReady = true;\n            if (_this._killRequested) {\n                _this.kill();\n                return;\n            }\n            // Run deferreds and set ready state once the first data event is received.\n            _this._socket.once('data', function () {\n                // Wait until the first data event is fired then we can run deferreds.\n                if (!_this._isReady && !_this._killRequested) {\n                    // Terminal is now ready and we can avoid having to defer method\n                    // calls.\n                    _this._isReady = true;\n"
+  ],
+  [
+    "                    _this._deferreds = [];\n                }\n            });\n            // Cleanup after the socket is closed.\n            _this._socket.on('close', function () {\n                _this.emit('exit', _this._agent.exitCode);\n                _this._close();\n            });\n        });\n        _this._file = file;\n        _this._name = name;\n",
+    '                    _this._deferreds = [];\n                }\n            });\n        });\n        _this._file = file;\n        _this._name = name;\n'
+  ],
+  [
+    "        });\n    };\n    WindowsTerminal.prototype.destroy = function () {\n        var _this = this;\n        this._deferNoArgs(function () {\n            _this.kill();\n        });\n    };\n    WindowsTerminal.prototype.kill = function (signal) {\n        var _this = this;\n        this._deferNoArgs(function () {\n            if (signal) {\n                throw new Error('Signals not supported on windows.');\n            }\n            _this._close();\n            _this._agent.kill();\n        });\n    };\n    WindowsTerminal.prototype._deferNoArgs = function (deferredFn) {\n        var _this = this;\n        // If the terminal is ready, execute.\n        if (this._isReady) {\n",
+    "        });\n    };\n    WindowsTerminal.prototype.destroy = function () {\n        this.kill();\n    };\n    WindowsTerminal.prototype.kill = function (signal) {\n        if (signal) {\n            throw new Error('Signals not supported on windows.');\n        }\n        // Retire input now; native close requires the forwarding pipe, not first output.\n        this._killRequested = true;\n        this._deferreds = [];\n        this._close();\n        if (!this._isPipeReady || this._killComplete) {\n            return;\n        }\n        this._agent.kill();\n        this._killComplete = true;\n    };\n    WindowsTerminal.prototype._deferNoArgs = function (deferredFn) {\n        if (this._killRequested) {\n            return;\n        }\n        var _this = this;\n        // If the terminal is ready, execute.\n        if (this._isReady) {\n"
+  ],
+  [
+    '        });\n    };\n    WindowsTerminal.prototype._defer = function (deferredFn, arg) {\n        var _this = this;\n        // If the terminal is ready, execute.\n        if (this._isReady) {\n',
+    '        });\n    };\n    WindowsTerminal.prototype._defer = function (deferredFn, arg) {\n        if (this._killRequested) {\n            return;\n        }\n        var _this = this;\n        // If the terminal is ready, execute.\n        if (this._isReady) {\n'
+  ]
+]
+
 /** Each entry is one published file, its patched form, and the edits between them. */
 const PATCH_TARGETS = [
   {
@@ -113,7 +136,9 @@ const PATCH_TARGETS = [
   {
     relativePath: ['lib', 'windowsTerminal.js'],
     originalSha256: 'c3a65716f53fed0135a8a633373d5f9c2ab092544d651f27ef0a67096dd3bcd9',
-    patchedSha256: '8247ecd69be8b18257050fb026b290024612c5ffc6d492ff1d46f81e613be2cf',
+    patchedSha256: '3060c6514a8e9e3285f91b9b549930e7d25d59d4cf7e1ed3a25b9a680dd1ded5',
+    previousPatchedSha256: '8247ecd69be8b18257050fb026b290024612c5ffc6d492ff1d46f81e613be2cf',
+    previousReplacements: WINDOWS_TERMINAL_TEARDOWN_REPLACEMENTS,
     replacements: [
       [
         '        _this._agent = new windowsPtyAgent_1.WindowsPtyAgent(file, args, parsedEnv, cwd, _this._cols, _this._rows, false, opt.useConpty, opt.useConptyDll, opt.conptyInheritCursor);\n        _this._socket = _this._agent.outSocket;\n        // Not available until `ready` event emitted.\n        _this._pid = _this._agent.innerPid;',
@@ -130,7 +155,8 @@ const PATCH_TARGETS = [
       [
         'exports.WindowsTerminal = WindowsTerminal;\n//# sourceMappingURL=windowsTerminal.js.map',
         'exports.WindowsTerminal = WindowsTerminal;\n//# sourceMappingURL=windowsTerminal.js.map\n'
-      ]
+      ],
+      ...WINDOWS_TERMINAL_TEARDOWN_REPLACEMENTS
     ]
   }
 ]
@@ -165,19 +191,30 @@ function patchNodePtyWindowsTeardown(relayDir = process.cwd()) {
     if (sourceHash === target.patchedSha256) {
       continue
     }
-    if (sourceHash !== target.originalSha256) {
+    const replacements =
+      sourceHash === target.originalSha256
+        ? target.replacements
+        : sourceHash === target.previousPatchedSha256
+          ? target.previousReplacements
+          : undefined
+    if (!replacements) {
       throw new Error(
         `Refusing to patch unexpected node-pty source in ${target.relativePath.join('/')}`
       )
     }
     let patchedSource = inspected.source
-    for (const [from, to] of target.replacements) {
+    for (const [from, to] of replacements) {
       // Why the count check: an anchor that matched twice would patch the wrong site silently, and
       // the hash below would then reject a tree this script had already rewritten.
       if (patchedSource.split(from).length - 1 !== 1) {
         throw new Error(`Refusing to patch ${target.relativePath.join('/')}; anchor is not unique`)
       }
       patchedSource = patchedSource.replace(from, to)
+    }
+    if (sourceSha256(patchedSource) !== target.patchedSha256) {
+      throw new Error(
+        `Refusing to install unexpected patched node-pty source in ${target.relativePath.join('/')}`
+      )
     }
     const temporaryPath = `${inspected.filePath}.orca-patch-${process.pid}`
     // Why: a terminated remote install must leave either known source version recoverable on reconnect.
