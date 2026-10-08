@@ -4,15 +4,18 @@ import { buildBody, PANE, postHookEvent } from './server.test-fixtures'
 
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: () => ({}) }))
-vi.mock('../../shared/agent-process-presence-probe', () => ({
-  probeAgentProcessPresence: vi.fn(async () => 'live')
-}))
+const probe = vi.hoisted(() =>
+  vi.fn(async (): Promise<'live' | 'unverifiable' | 'exited'> => 'live')
+)
+vi.mock('../../shared/agent-process-presence-probe', () => ({ probeAgentProcessPresence: probe }))
 
 const servers: AgentHookServer[] = []
 afterEach(() => {
   for (const server of servers.splice(0)) {
     server.stop()
   }
+  probe.mockReset()
+  probe.mockResolvedValue('live')
 })
 
 async function createServer(): Promise<AgentHookServer> {
@@ -45,43 +48,68 @@ function row(server: AgentHookServer) {
   return server.getStatusSnapshot().find((entry) => entry.paneKey === PANE)
 }
 
+const toolUse = { tool_name: 'Bash', tool_input: { command: 'ls' } }
+
 describe('ending a launched agent command', () => {
-  it('keeps an owner the launch handed the pane to, and admits its later events', async () => {
+  it('hands the pane to the held guest when the command ends before any check', async () => {
     const server = await createServer()
     await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
-    await claude(server, 'SessionEnd', { reason: 'prompt_input_exit' })
     await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce())
+    expect(row(server)).toMatchObject({ agentType: 'claude' })
     server.endLaunchAuthority(PANE, 'claude')
     expect(row(server)).toMatchObject({ agentType: 'codex', prompt: 'codex task' })
-    await codex(server, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } })
+    await codex(server, 'PreToolUse', toolUse)
     expect(row(server)).toMatchObject({ agentType: 'codex', toolName: 'Bash' })
   })
 
-  it("keeps the launch's resume remnant but fences its late events", async () => {
+  it('keeps an owner the launch already handed the pane to, and admits its later events', async () => {
     const server = await createServer()
     await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
-    await claude(server, 'SessionEnd', { reason: 'prompt_input_exit' })
+    probe.mockResolvedValue('exited')
+    await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
+    await vi.waitFor(() => expect(row(server)).toMatchObject({ agentType: 'codex' }))
     server.endLaunchAuthority(PANE, 'claude')
-    expect(row(server)).toMatchObject({
-      providerSessionOnly: true,
-      agentType: 'claude',
-      providerSession: { id: 'claude-a' }
-    })
-    await codex(server, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } })
-    expect(row(server)?.providerSessionOnly).toBe(true)
+    await codex(server, 'PreToolUse', toolUse)
+    expect(row(server)).toMatchObject({ agentType: 'codex', toolName: 'Bash' })
   })
 
   it.each([['claude'], [null]])(
-    "wipes and fences the launch's own row (launch agent %s)",
+    "ends the launch's ownership into its resume remnant (launch agent %s)",
     async (launchAgent) => {
       const server = await createServer()
       await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
       server.endLaunchAuthority(PANE, launchAgent)
-      expect(row(server)).toBeUndefined()
-      await claude(server, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } })
-      expect(row(server)).toBeUndefined()
-      await claude(server, 'UserPromptSubmit', { prompt: 'next task' })
-      expect(row(server)).toMatchObject({ state: 'working', prompt: 'next task' })
+      const remnant = { providerSessionOnly: true, providerSession: { id: 'claude-a' } }
+      expect(row(server)).toMatchObject(remnant)
+      // Why: a late hook from the ended process never revives the pane.
+      await claude(server, 'PreToolUse', toolUse)
+      expect(row(server)).toMatchObject(remnant)
     }
   )
+
+  it('keeps the remnant of a launch that already exited, in place', async () => {
+    const server = await createServer()
+    await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
+    await claude(server, 'SessionEnd', { reason: 'prompt_input_exit' })
+    const remnant = row(server)
+    server.endLaunchAuthority(PANE, 'claude')
+    expect(row(server)).toEqual(remnant)
+  })
+
+  it('resets a pane whose row has no owner record, as before', async () => {
+    const server = await createServer()
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      payload: { state: 'working', prompt: '', agentType: 'claude' }
+    })
+    server.endLaunchAuthority(PANE, 'claude')
+    expect(row(server)).toBeUndefined()
+    await codex(server, 'PreToolUse', toolUse)
+    expect(row(server)).toBeUndefined()
+    await codex(server, 'UserPromptSubmit', { prompt: 'next task' })
+    expect(row(server)).toMatchObject({ agentType: 'codex', prompt: 'next task' })
+  })
 })
