@@ -87,6 +87,7 @@ export const NODE_RUNTIME_INCLUDE = [
   // Bun's built-in ws ignores the `agent` option that Electron's Node honours.
   'src/main/network/session-proxy-agent.test.ts',
   'src/main/runtime/relay/relay-websocket-proxy-agent.test.ts',
+  'src/main/ipc/filesystem-watcher-ignore-real.test.ts',
   'src/main/ipc/runtime-environment-preference.test.ts',
   'src/main/ipc/runtime-environment-transport-routing-tailscale-hint.test.ts',
   'src/renderer/src/components/emulator-pane/emulator-device-frame-visibility.test.tsx',
