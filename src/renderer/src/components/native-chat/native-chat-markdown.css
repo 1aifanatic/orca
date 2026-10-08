@@ -1,7 +1,7 @@
 /* Shared markdown also renders sidebar comments, so chat styling stays opt-in. */
 @media (prefers-reduced-motion: no-preference) {
   .native-chat-markdown[data-streaming] > * {
-    transition: opacity 600ms ease-out;
+    transition: opacity 400ms ease-out;
 
     @starting-style {
       opacity: 0;
