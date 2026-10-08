@@ -32,7 +32,9 @@ import {
 } from '../../shared/remote-runtime-client'
 import { claudeSessionIdForOrcaSession } from '../claude/claude-structured-session-id'
 import { shellEscape } from '../ssh/ssh-connection-utils'
+import { materializeOrcadArtifact } from '../ssh/orcad-artifact-materializer'
 import {
+  hostServerTarget,
   installPackagedOrcadSlotForTests,
   locatePinnedNodeForTests,
   skipForMissingInputs
@@ -45,9 +47,10 @@ import {
 import { packagedClaudeChatScenario } from './orcad-structured-chat-scenario'
 
 const pinnedNode = locatePinnedNodeForTests()
+const templateDir = process.env.ORCA_ORCAD_TEMPLATE_PATH ?? resolve('out/orcad-template')
 const missing = [
   ...(!pinnedNode ? ['a pinned Node runtime'] : []),
-  ...(!existsSync(resolve('out/orcad/orcad.js')) ? ['out/orcad/orcad.js'] : [])
+  ...(!existsSync(templateDir) ? [templateDir] : [])
 ]
 const skip = skipForMissingInputs('artifact', missing)
 const capabilities = [
@@ -172,7 +175,15 @@ describe.skipIf(skip || process.platform === 'win32')('packaged plain-Node struc
     const userData = join(root, 'data')
     mkdirSync(home)
     mkdirSync(userData)
-    const { slotDir, runtime } = installPackagedOrcadSlotForTests(root, pinnedNode)
+    const materializedSlot = await materializeOrcadArtifact(hostServerTarget(), {
+      templateDir,
+      cacheRoot: join(root, 'artifacts')
+    })
+    const { slotDir, runtime } = installPackagedOrcadSlotForTests(
+      root,
+      pinnedNode,
+      materializedSlot
+    )
     const script = join(root, 'claude-scripted.mjs')
     const fakeCli = join(root, 'claude')
     writeFileSync(
@@ -187,9 +198,12 @@ describe.skipIf(skip || process.platform === 'win32')('packaged plain-Node struc
     const sessionId = randomUUID()
     const scenarioPath = join(root, 'scenario.json')
     const reportPath = join(root, 'provider-report.json')
+    const partialReplyAckPath = join(root, 'partial-reply-observed')
     writeFileSync(
       scenarioPath,
-      JSON.stringify(packagedClaudeChatScenario(claudeSessionIdForOrcaSession(sessionId)))
+      JSON.stringify(
+        packagedClaudeChatScenario(claudeSessionIdForOrcaSession(sessionId), partialReplyAckPath)
+      )
     )
     const state = getDefaultPersistedState(home)
     state.settings = {
@@ -258,6 +272,9 @@ describe.skipIf(skip || process.platform === 'win32')('packaged plain-Node struc
                 observedText.push(
                   row.body.blocks.map((block) => (block.type === 'text' ? block.text : '')).join('')
                 )
+                if (observedText.at(-1) === 'Packaged server ') {
+                  writeFileSync(partialReplyAckPath, '')
+                }
               }
             }
           },

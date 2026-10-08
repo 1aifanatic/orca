@@ -8,14 +8,16 @@
 //     { steps: Step[], controlResponses?: { [subtype]: <response> },
 //       controlResponseLeadingFrames?: { [subtype]: <frame>[] } } where a Step is
 //     { emit: <frame> } | { awaitUserMessage: true } | { stderr: <text> } |
-//     { awaitControlResponse: <request_id> } | { delayMs: <n> } | { exit: <code> }
+//     { awaitControlResponse: <request_id> } | { awaitFile: { path, timeoutMs } } |
+//     { delayMs: <n> } | { exit: <code> }
 //   ORCA_SDK_CONTRACT_REPORT_PATH — where argv/env observations are written
 //   ORCA_SDK_CONTRACT_IGNORE_SIGTERM — trap SIGTERM/SIGINT and outlive stdin close
 //   ORCA_SDK_CONTRACT_IGNORE_CONTROL_REQUESTS — record control requests but never answer
 //   ORCA_SDK_CONTRACT_DESCENDANT — fork an idle grandchild and report its pid
 import { spawn } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
+import { setTimeout as delay } from 'node:timers/promises'
 
 if (process.argv.includes('--version')) {
   process.stdout.write('2.1.258 (Claude Code)\n')
@@ -148,6 +150,14 @@ for (const step of scenario.steps) {
     await waitFor('user')
   } else if (step.awaitControlResponse !== undefined) {
     await waitFor('control_response', step.awaitControlResponse)
+  } else if (step.awaitFile) {
+    const deadline = Date.now() + step.awaitFile.timeoutMs
+    while (!existsSync(step.awaitFile.path)) {
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for test acknowledgement: ${step.awaitFile.path}`)
+      }
+      await delay(10)
+    }
   } else if (step.delayMs) {
     await new Promise((resolve) => setTimeout(resolve, step.delayMs))
   } else if (step.exit !== undefined) {

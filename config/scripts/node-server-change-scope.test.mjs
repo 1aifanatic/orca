@@ -298,7 +298,7 @@ it('builds server glibc slots on glibc 2.28 and the compat slot on glibc 2.17 (d
   )
 })
 
-it('runs a real packaged structured chat on Linux after the package is built', () => {
+it('runs a real structured chat on Linux from the built desktop template', () => {
   const workflow = parse(readFileSync('.github/workflows/node-server-tests.yml', 'utf8'))
   const steps = workflow.jobs.persistence.steps
   const chat = steps.find((step) =>
@@ -306,11 +306,18 @@ it('runs a real packaged structured chat on Linux after the package is built', (
   )
   expect(chat.if).toBe("runner.os == 'Linux'")
   expect(chat.run).toBe(
-    'pnpm test:node-server --artifact src/main/orcad/orcad-packaged-structured-chat.integration.test.ts'
+    'pnpm test:node-server --artifact src/main/orcad/orcad-packaged-structured-chat.integration.test.ts --maxWorkers=2'
   )
-  expect(steps.indexOf(chat)).toBeGreaterThan(
+  const template = steps.find((step) => step.run?.includes('build-orcad-template.mjs --targets'))
+  expect(template.if).toBe("runner.os == 'Linux'")
+  expect(template.run).toBe(
+    "node config/scripts/build-orcad-template.mjs --targets linux-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-glibc"
+  )
+  expect(steps.indexOf(template)).toBeGreaterThan(
     steps.findIndex((step) => step.run === 'pnpm build:orcad')
   )
+  expect(steps.indexOf(chat)).toBeGreaterThan(steps.indexOf(template))
+  expect(template['continue-on-error']).toBeUndefined()
   expect(chat['continue-on-error']).toBeUndefined()
 })
 

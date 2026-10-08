@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 /** A credential-free reply in the real CLI's partial-message cadence. */
-export function packagedClaudeChatScenario(providerSessionId: string) {
+export function packagedClaudeChatScenario(providerSessionId: string, partialReplyAckPath: string) {
   const frame = (fields: Record<string, unknown>) => ({
     uuid: randomUUID(),
     session_id: providerSessionId,
@@ -38,8 +38,7 @@ export function packagedClaudeChatScenario(providerSessionId: string) {
           delta: { type: 'text_delta', text: 'Packaged server ' }
         })
       },
-      // Let the host publish a partial reply before the final block arrives.
-      { delayMs: 150 },
+      { awaitFile: { path: partialReplyAckPath, timeoutMs: 10_000 } },
       {
         emit: event({
           type: 'content_block_delta',
