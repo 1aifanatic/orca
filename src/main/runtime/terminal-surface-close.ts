@@ -77,7 +77,7 @@ function readLayoutOwnerLeafIds(copies: TerminalCloseLayoutCopies): readonly str
 /**
  * The only place main turns a pane close into its tab's close: `last-pane` sends callers down
  * the tab path (and its renderer pin guard); anything else closes that pane or nothing.
- * D1 (main as the single layout writer) collapses the owner read to main's session layout alone.
+ * Main is the only layout writer, so the owner's copy is main's session layout alone.
  */
 export function resolveTerminalCloseTarget(
   target: TerminalSurfaceCloseTarget,
@@ -164,8 +164,7 @@ export type TerminalSurfaceCloseOptions = {
   allowMissing?: boolean
   force?: boolean
   reason?: RuntimeSessionTabCloseReason
-  /** The desktop renderer's own close: its layout owner already removed the tab. Goes away with
-   *  D1, once main owns the terminal layout. */
+  /** The desktop renderer's own close: its layout owner already removed the tab. */
   closedByLayoutOwner?: boolean
 }
 

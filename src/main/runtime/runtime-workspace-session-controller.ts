@@ -14,6 +14,8 @@ import { isTerminalOwnerPartition } from '../persistence/terminal-topology/termi
 import type { RuntimeStore } from './runtime-store-contract'
 import type { TerminalTopologyOwners } from './terminal-topology-publisher'
 
+const FOLDER_WORKSPACE_CONNECTION_AMBIGUOUS = 'folder_workspace_connection_ambiguous'
+
 type RuntimeWorkspaceSessionDependencies = {
   getStore: () => RuntimeStore | null
   resolveFolderConnectionId: (workspace: FolderWorkspace) => string | null
@@ -55,12 +57,15 @@ export class RuntimeWorkspaceSessionController {
       : LOCAL_EXECUTION_HOST_ID
   }
 
-  /** An ambiguous folder throws; its owner is unverifiable, not absent. */
+  /** An ambiguous folder's owner is unverifiable, not absent; any other failure propagates. */
   private tryGetPreferredHostId(worktreeId: string, store: RuntimeStore): ExecutionHostId | null {
     try {
       return this.getPreferredHostId(worktreeId, store)
-    } catch {
-      return null
+    } catch (error) {
+      if (error instanceof Error && error.message === FOLDER_WORKSPACE_CONNECTION_AMBIGUOUS) {
+        return null
+      }
+      throw error
     }
   }
 

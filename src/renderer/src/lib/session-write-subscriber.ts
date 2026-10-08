@@ -285,7 +285,7 @@ export function createSessionWriteSubscriber({
       return
     }
     prev = next
-    // Why: main already holds what a mirror apply wrote; saving it back would echo (D8).
+    // Why: main already holds what a mirror apply wrote; saving it back would only echo it.
     if (mirrored) {
       return
     }

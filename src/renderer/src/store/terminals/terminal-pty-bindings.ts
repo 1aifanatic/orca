@@ -82,7 +82,7 @@ export function createTerminalPtyBindingActions(
           : existingPtyIds.includes(ptyId)
             ? existingPtyIds
             : [...existingPtyIds, ptyId]
-        // Liveness only: a local or SSH pane's binding is main's, mirrored into the layout (D1).
+        // Liveness only: main owns a local or SSH pane's binding and mirrors it into the layout.
         const rotatedLayout =
           replacementPtyId && isRemoteRuntimePtyId(replacementPtyId)
             ? rotateRemotePaneBinding(s.terminalLayoutsByTabId[tabId], replacementPtyId, ptyId)

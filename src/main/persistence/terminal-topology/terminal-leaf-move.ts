@@ -134,8 +134,8 @@ function moveLeafInPartition(
 /**
  * Moves one leaf and its binding into a new tab in the worktree's home partition, in a single
  * session write (STA-9259). The leaf id and the PTY are kept; only the tab half of the pane key
- * changes, so every pane-keyed record follows it here instead of being rebuilt later by a renderer
- * save that main's membership rebase would discard. `session` is null when nothing changes.
+ * changes, so every pane-keyed record follows it in this write; a window save carries presentation
+ * only and never rebuilds them. `session` is null when nothing changes.
  */
 export function planTerminalLeafMove(
   home: WorkspaceSessionState,

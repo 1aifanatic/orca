@@ -23,7 +23,7 @@ import {
 
 /**
  * Main's row fields replace the window's; presentation stays, and so does `ptyId`. In the window it
- * is the PTY the tab is attached to now (liveness, D1), not main's persisted binding.
+ * is the PTY the tab is attached to now (liveness), not main's persisted binding.
  */
 function mirrorTabRow(current: TerminalTab, row: TerminalTopologyTabRow): TerminalTab {
   const next = withTopologyRow(current, { ...row, ptyId: current.ptyId })

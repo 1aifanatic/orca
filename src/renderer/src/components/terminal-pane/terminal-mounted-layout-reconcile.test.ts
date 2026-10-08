@@ -171,7 +171,7 @@ describe('reconcileMountedTerminalLayout', () => {
   it('rebuilds nothing when main publishes the tree a local split proposed', () => {
     const view = mount([A, B])
     view.manager.splitPane(view.manager.getNumericIdForLeaf(B)!, 'horizontal', { leafId: NEW })
-    // Main keeps the split's proposedRoot verbatim (C1), so its push names the DOM's own tree.
+    // Main keeps the split's proposedRoot verbatim, so its push names the DOM's own tree.
     const published = tree(view)!
     const panes = view.manager.getPanes().map((pane) => [pane.id, pane.container])
     const observer = new MutationObserver(() => {})

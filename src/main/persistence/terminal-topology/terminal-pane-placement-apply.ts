@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from 'node:util'
 import type { TerminalPanePlacement } from '../../../shared/terminal-pane-placement'
 import type {
   TerminalPaneLayoutNode,
@@ -6,10 +5,8 @@ import type {
   TerminalTab
 } from '../../../shared/terminal-tab-types'
 import { omitUndefinedValues } from '../../../shared/rpc-contract/ui-update-value-tolerance-params'
-import {
-  cloneLayoutNode,
-  collectLayoutLeafIdsInOrder
-} from '../restoring-sessions/terminal-layout-normalization'
+import { cloneLayoutNode } from '../restoring-sessions/terminal-layout-normalization'
+import { sameTerminalLeafSet } from './terminal-layout-set'
 
 type SplitPlacement = Extract<TerminalPanePlacement, { kind: 'split' }>
 
@@ -37,11 +34,10 @@ export function placedSplitRoot(
   leafId: string,
   { parentLeafId, direction, ratio, proposedRoot }: SplitPlacement
 ): TerminalPaneLayoutNode {
-  const expectedLeaves = [...collectLayoutLeafIdsInOrder(root), leafId].sort()
-  return proposedRoot &&
-    isDeepStrictEqual(collectLayoutLeafIdsInOrder(proposedRoot).sort(), expectedLeaves)
+  const split = splitLayoutLeaf(root, parentLeafId, leafId, direction, ratio)
+  return proposedRoot && sameTerminalLeafSet(proposedRoot, split)
     ? cloneLayoutNode(proposedRoot)
-    : splitLayoutLeaf(root, parentLeafId, leafId, direction, ratio)
+    : split
 }
 
 /** Replaces `parentLeafId` with a split whose second child is the new leaf. */

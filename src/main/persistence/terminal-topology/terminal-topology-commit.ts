@@ -29,9 +29,9 @@ import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-l
 import { planTerminalLayoutSet } from './terminal-layout-set'
 import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
 
-// The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings, sleeping agents).
-// Wraps the close and the pane move; the close transform still lives in runtime/ and other writers
-// move here later.
+// The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings, sleeping agents):
+// every window-requested topology change commits and is traced here. A spawn's binding commits
+// through `persistPtyBinding`, which `bindLeaf` also uses.
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
 type TerminalTopologyCommitKind =
