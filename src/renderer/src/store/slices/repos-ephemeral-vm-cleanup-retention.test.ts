@@ -6,7 +6,7 @@ import {
   ephemeralVmCleanup,
   ephemeralVmListRuntimes,
   installReposRuntimeRoutingHarness,
-  reposRemove,
+  reposRemoveForHost,
   sshRepo
 } from './repos-runtime-routing-fixture'
 import { createTestStore } from './store-test-helpers'
@@ -45,7 +45,7 @@ it('retains a runtime-owned SSH project when VM cleanup fails', async () => {
   })
 
   expect(store.getState().repos).toEqual([runtimeRepo])
-  expect(reposRemove).not.toHaveBeenCalled()
+  expect(reposRemoveForHost).not.toHaveBeenCalled()
   expect(toast.error).toHaveBeenCalledWith(
     expect.any(String),
     expect.objectContaining({ description: expect.stringContaining('Retry cleanup') })

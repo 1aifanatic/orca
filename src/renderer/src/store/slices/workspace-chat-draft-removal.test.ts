@@ -24,7 +24,7 @@ vi.mock('@/lib/agent-status', async (importOriginal) => {
 
 const mockApi = {
   worktrees: { list: vi.fn(), remove: vi.fn(), updateMeta: vi.fn().mockResolvedValue({}) },
-  repos: { remove: vi.fn(), removeForHost: vi.fn() },
+  repos: { removeForHost: vi.fn() },
   folderWorkspaces: { delete: vi.fn() },
   pty: { kill: vi.fn() },
   runtimeEnvironments: { call: vi.fn().mockResolvedValue({ ok: true, result: {} }) }
