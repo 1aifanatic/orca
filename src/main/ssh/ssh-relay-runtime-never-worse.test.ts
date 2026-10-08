@@ -83,7 +83,7 @@ function ladderOutcome(host: HostCase): Outcome {
     if (answer === 'launch') {
       return { kind: 'relay', rung: step }
     }
-    step = relayRuntimeStepAfterRefusal(ladder, step, answer, false, { hostOs: host.os })
+    step = relayRuntimeStepAfterRefusal(ladder, step, answer, false)
   }
   throw new Error(`ladder did not settle for ${host.id}`)
 }

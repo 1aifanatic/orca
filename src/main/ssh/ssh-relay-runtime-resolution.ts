@@ -91,8 +91,6 @@ export class RelayRuntimeLadderRun {
   noexecRemembered = false
   /** A rung refused because this client lacked Orca's artifacts; nothing it proves is the host's. */
   clientArtifactGap = false
-  /** The ladder fell back to host Node, so a host with no Node lands on D, not a failed connect. */
-  hostNodeFallback = false
   /** The Node the fallback's strict probe found, reused by the launch. */
   hostNodePath: string | null = null
   /** This step issued its relay launch; failures after it never step down. */
@@ -105,7 +103,9 @@ export class RelayRuntimeLadderRun {
 
   constructor(
     readonly targetId: string,
-    private readonly store: RelayRuntimeDecisionStore | null
+    private readonly store: RelayRuntimeDecisionStore | null,
+    /** A laddered legacy step is the host-Node fallback, so a host with no Node lands on D. */
+    readonly laddered: boolean
   ) {}
 
   persistedPinnedRefusal(facts: OrcadDeploymentTargetFacts): PinnedRuntimeRefusal | null {

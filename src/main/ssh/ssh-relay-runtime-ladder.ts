@@ -1,16 +1,15 @@
 /**
  * The design D6 fallback ladder for the relay runtime, as data plus a pure step function:
  *
- *   A  Orca's pinned Node + slot prebuilds
- *   B  a compat pinned Node + compat addons (chosen only when a compat runtime exists)
- *   C  the host's Node >= 18 + Orca's N-API prebuilds, no npm
- *   D  nothing runs: plain SSH terminals and SFTP, recording the classified reason
+ *   A       Orca's pinned Node + slot prebuilds
+ *   B       a compat pinned Node + compat addons (chosen only when a compat runtime exists)
+ *   C       the host's Node >= 18 + Orca's N-API prebuilds, no npm
+ *   legacy  the host's Node + npm install, unsupported; the only rung when the user opts in
+ *   D       nothing runs: plain SSH terminals and SFTP, recording the classified reason
  *
- * The host's Node + npm install (`legacy`) sits outside the ladder, reached by opting in, or as
- * the fallback past a refused ladder (see `relayRuntimeStepAfterRefusal`).
- *
- * The ladder steps down only on a classified refusal (a `PinnedRelayFallbackError`); an
- * unverifiable probe or self-test throws and the next connect retries the same rung.
+ * The ladder steps down on a classified refusal (a `PinnedRelayFallbackError`), including an
+ * answered host failure the deploy wraps as `install_failed`; an unverifiable probe or self-test
+ * throws and the next connect retries the same rung.
  */
 import {
   COMPAT_SERVER_TARGET_BASES,
@@ -53,8 +52,8 @@ export const COMPAT_RELAY_RUNTIMES: readonly CompatRelayRuntime[] = [
 ]
 
 export function relayRuntimeLadder(runtime: SshRemoteRuntime): readonly RelayRuntimeStep[] {
-  // Why no legacy rung: a host npm install needs a compiler or network the ladder exists to avoid.
-  return runtime === 'pinned-node' ? ['A', 'B', 'C', 'D'] : ['legacy']
+  // Why legacy before D: the unsupported host-npm fallback keeps the never-worse invariant.
+  return runtime === 'pinned-node' ? ['A', 'B', 'C', 'legacy', 'D'] : ['legacy']
 }
 
 export function compatRelayRuntimeFor(
@@ -125,51 +124,24 @@ export function relayRuntimeStorePins(
 export type RelayRuntimeStepReason = RelayRuntimeFallbackReason
 
 /**
- * noexec defeats every rung, because each loads addons from the same `~/.orca-remote` tree.
- * A remembered refusal only skips its own rung: the mount may have changed since it was proved.
- */
-export function nextRelayRuntimeStep(
-  ladder: readonly RelayRuntimeStep[],
-  current: RelayRuntimeStep,
-  reason: RelayRuntimeStepReason,
-  remembered = false
-): RelayRuntimeStep {
-  if (reason === 'noexec' && !remembered) {
-    return 'D'
-  }
-  const index = ladder.indexOf(current)
-  return ladder[index + 1] ?? 'D'
-}
-
-/** What a ladder pass knows beyond the refusal it is stepping past. */
-export type RelayRuntimeStepContext = { hostOs: RemoteOperatingSystem | null }
-
-/**
  * The invariant: no host does worse than the pre-ladder default. A, B and C are tried first
  * (no host compile where Orca's runtime works); any refusal past them falls back to exactly
  * that default, the host-Node relay (`legacy`, marked unsupported). D is reached only when that
  * fallback itself answered with a failure, so D is a superset of the default's outcome. Windows
- * has no B or C yet, so it falls back straight after A.
+ * reaches legacy because B and C refuse there before any host I/O.
  */
 export function relayRuntimeStepAfterRefusal(
   ladder: readonly RelayRuntimeStep[],
   current: RelayRuntimeStep,
   reason: RelayRuntimeStepReason,
-  remembered: boolean,
-  context: RelayRuntimeStepContext
+  remembered: boolean
 ): RelayRuntimeStep {
-  if (current === 'legacy') {
-    return 'D'
-  }
-  if (context.hostOs === 'win32') {
-    return 'legacy'
-  }
   // Why noexec skips B and C: they load addons from the same tree; only the fallback can disprove it.
-  if (reason === 'noexec' && !remembered) {
+  // A remembered noexec only skips its own rung: the mount may have changed since it was proved.
+  if (reason === 'noexec' && !remembered && current !== 'legacy') {
     return 'legacy'
   }
-  const next = nextRelayRuntimeStep(ladder, current, reason, remembered)
-  return next === 'D' ? 'legacy' : next
+  return ladder[ladder.indexOf(current) + 1] ?? 'D'
 }
 
 /** The machine-readable part of a rung D failure; the message is what the user reads. */
@@ -247,7 +219,7 @@ export function remoteRuntimeUnavailableMessage(
   reason: RemoteRuntimeUnavailableReason,
   refusal: RelayRuntimeStepReason | null,
   noexecRemembered = false,
-  /** Rung C's refusal: the last rung before D. */
+  /** The last refusal before D: the host-Node fallback's. */
   hostNodeRefusal: RelayRuntimeStepReason | null = null,
   hostOs: RemoteOperatingSystem | null = null
 ): string {

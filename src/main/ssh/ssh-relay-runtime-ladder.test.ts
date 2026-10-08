@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { NODE_RUNTIME_ASSETS, NODE_RUNTIME_COMPAT_ASSETS } from '../../shared/node-runtime-pin'
 import {
   compatRelayRuntimeFor,
-  nextRelayRuntimeStep,
   pinnedRuntimeTargetForHost,
   relayRuntimeLadder,
   relayRuntimeStepAfterRefusal,
@@ -16,80 +15,53 @@ import { resolveSshRemoteRuntime } from './ssh-relay-pinned-node'
 const COMPAT_SHA = NODE_RUNTIME_COMPAT_ASSETS['linux-x64-glibc217'].executableSha256
 
 describe('relay runtime ladder (design D6)', () => {
-  it('keeps the host-npm path alone for Host Node, and a ladder without it for Auto', () => {
+  it('keeps the host-npm path alone for Host Node, and before D in the Auto ladder', () => {
+    const auto = ['A', 'B', 'C', 'legacy', 'D']
     expect(relayRuntimeLadder('legacy')).toEqual(['legacy'])
-    expect(relayRuntimeLadder('pinned-node')).toEqual(['A', 'B', 'C', 'D'])
-    expect(relayRuntimeLadder(resolveSshRemoteRuntime(undefined, {}))).toEqual(['A', 'B', 'C', 'D'])
+    expect(relayRuntimeLadder('pinned-node')).toEqual(auto)
+    expect(relayRuntimeLadder(resolveSshRemoteRuntime(undefined, {}))).toEqual(auto)
   })
 
   it('steps to the next rung on an ordinary refusal', () => {
     const ladder = relayRuntimeLadder('pinned-node')
-    expect(nextRelayRuntimeStep(ladder, 'A', 'libc_floor')).toBe('B')
-    expect(nextRelayRuntimeStep(ladder, 'B', 'runtime_unavailable')).toBe('C')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'libc_floor', false)).toBe('B')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'B', 'runtime_unavailable', false)).toBe('C')
   })
 
-  it('steps from a refused rung C to D, never to a host npm install', () => {
+  it('walks a Windows host from a refused A through B and C, which refuse there, to host Node', () => {
     const ladder = relayRuntimeLadder('pinned-node')
-    for (const reason of [
-      'missing_lib',
-      'libc_floor',
-      'windows_host_unsupported',
-      'artifacts_unavailable',
-      'target_unresolved',
-      'host_node_missing'
-    ] as const) {
-      expect(nextRelayRuntimeStep(ladder, 'C', reason)).toBe('D')
-    }
-  })
-
-  it('goes straight to D on noexec, which defeats every rung in the same tree', () => {
-    const ladder = relayRuntimeLadder('pinned-node')
-    expect(nextRelayRuntimeStep(ladder, 'A', 'noexec')).toBe('D')
-    expect(nextRelayRuntimeStep(ladder, 'C', 'noexec')).toBe('D')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'security_software', false)).toBe('B')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'missing_lib', true)).toBe('B')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'B', 'runtime_unavailable', false)).toBe('C')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'windows_host_unsupported', false)).toBe(
+      'legacy'
+    )
   })
 
   it('lets a remembered noexec skip only its own rung, so a remounted home is re-proved', () => {
     const ladder = relayRuntimeLadder('pinned-node')
-    expect(nextRelayRuntimeStep(ladder, 'A', 'noexec', true)).toBe('B')
-  })
-
-  it('keeps a Windows host on host Node after any rung A refusal, since B and C do not exist there', () => {
-    const ladder = relayRuntimeLadder('pinned-node')
-    const windows = { hostOs: 'win32' as const }
-    for (const reason of [
-      'missing_lib',
-      'security_software',
-      'noexec',
-      'target_unresolved'
-    ] as const) {
-      expect(relayRuntimeStepAfterRefusal(ladder, 'A', reason, false, windows)).toBe('legacy')
-    }
-    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'missing_lib', true, windows)).toBe('legacy')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'noexec', true)).toBe('B')
   })
 
   it('falls back past a refused ladder to host Node, and to D only on proof', () => {
     const ladder = relayRuntimeLadder('pinned-node')
-    const linux = { hostOs: 'linux' as const }
-    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'artifacts_unavailable', false, linux)).toBe(
-      'B'
-    )
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'artifacts_unavailable', false)).toBe('B')
     for (const reason of [
       'artifacts_unavailable',
       'host_node_missing',
       'libc_floor',
       'target_unresolved'
     ] as const) {
-      expect(relayRuntimeStepAfterRefusal(ladder, 'C', reason, false, linux)).toBe('legacy')
+      expect(relayRuntimeStepAfterRefusal(ladder, 'C', reason, false)).toBe('legacy')
     }
     // A noexec skips B and C (same tree) but still gets the fallback: exec denial can be per binary.
-    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'noexec', false, linux)).toBe('legacy')
-    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'noexec', false, linux)).toBe('legacy')
-    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'install_failed', false, linux)).toBe('B')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'noexec', false)).toBe('legacy')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'noexec', false)).toBe('legacy')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'install_failed', false)).toBe('B')
     // Only the fallback itself proving no host Node lands on D.
-    expect(relayRuntimeStepAfterRefusal(ladder, 'legacy', 'host_node_missing', false, linux)).toBe(
-      'D'
-    )
-    expect(relayRuntimeStepAfterRefusal(ladder, 'legacy', 'install_failed', false, linux)).toBe('D')
+    for (const reason of ['host_node_missing', 'install_failed', 'noexec'] as const) {
+      expect(relayRuntimeStepAfterRefusal(ladder, 'legacy', reason, false)).toBe('D')
+    }
   })
 
   it('chooses rung B only when a listed compat runtime serves the host', () => {

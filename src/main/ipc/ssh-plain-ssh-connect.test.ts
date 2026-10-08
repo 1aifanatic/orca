@@ -33,7 +33,7 @@ import { createSshIpcHarness } from './ssh-ipc-test-harness'
 const { mockSshStore, mockConnectionManager, mockDeployAndLaunchRelay } = mocks
 
 function noexecHome(): RemoteRuntimeUnavailableError {
-  const run = new RelayRuntimeLadderRun('ssh-1', null)
+  const run = new RelayRuntimeLadderRun('ssh-1', null, true)
   run.refused('A', 'noexec')
   return new RemoteRuntimeUnavailableError('home_noexec', run)
 }
