@@ -7,6 +7,7 @@ import { useAppStore } from '@/store'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { AgentSessionStatusEvent } from '../../../../shared/agent-session-wire'
 import type { AgentMessageSource } from '../../../../shared/agent-session-message-source'
+import { testOrcaSessionId } from '../../../../shared/orca-session-address-test-fixture'
 import type { Tab } from '../../../../shared/tab-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import {
@@ -65,7 +66,7 @@ import {
 } from '@/runtime/structured-agent-session-status-feed'
 
 const WORKSPACE = 'shared-workspace'
-const ROOT = 'root-chat'
+const ROOT = testOrcaSessionId('root-chat')
 const CURRENT = 'current-chat'
 const initial = useAppStore.getInitialState()
 const previousApi = Object.getOwnPropertyDescriptor(window, 'api')

@@ -119,7 +119,7 @@ function chatTab(customLabel: string | null, label: string) {
   return { contentType: 'agent-session' as const, entityId: CHAT, customLabel, label }
 }
 
-function providerTitleTab() {
+function providerTitleTab(): NonNullable<Session['tabsByWorktree']>[string][number] {
   return {
     id: 'tab_term_plain',
     title: '',
