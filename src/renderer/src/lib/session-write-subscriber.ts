@@ -6,6 +6,12 @@ import { buildWorkspaceSessionPatch } from './workspace-session-patch'
 import { createWorktreeTabBucketProjection } from './worktree-tab-bucket-projection'
 
 type SessionRelevantField = (typeof SESSION_RELEVANT_FIELDS)[number]
+
+const MAIN_AUTHORED_SESSION_FIELDS = new Set<SessionRelevantField>([
+  'tabsByWorktree',
+  'terminalLayoutsByTabId',
+  'sleepingAgentSessionsByPaneKey'
+])
 type TabsByWorktree = AppState['tabsByWorktree']
 type TerminalTab = TabsByWorktree[string][number]
 type UnifiedTabsByWorktree = AppState['unifiedTabsByWorktree']
@@ -285,11 +291,14 @@ export function createSessionWriteSubscriber({
       return
     }
     prev = next
-    // Why: main already holds what a mirror apply wrote; saving it back would only echo it.
-    if (mirrored) {
+    // Main already holds the topology a mirror apply wrote; the tab-bar placement it made is ours.
+    const owedFields = mirrored
+      ? changedFields.filter((field) => !MAIN_AUTHORED_SESSION_FIELDS.has(field))
+      : changedFields
+    if (mirrored && owedFields.length === 0) {
       return
     }
-    for (const field of changedFields) {
+    for (const field of owedFields) {
       pendingChangedFields.add(field)
     }
     if (shouldSchedulePersist && !shouldSchedulePersist()) {

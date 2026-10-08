@@ -252,7 +252,15 @@ describe('applyTerminalTopologySlices', () => {
     vi.advanceTimersByTime(1_000)
     persist.mockClear()
 
-    apply(slice(2, { tabs: [row('a')], layouts: { a: slice(2).layouts.a } }))
+    apply(
+      slice(2, {
+        tabs: [row('a', { launchAgent: 'codex' }), row('b')],
+        layouts: {
+          ...slice(2).layouts,
+          b: { root: { type: 'leaf', leafId: LEAF_B }, ptyIdsByLeafId: { [LEAF_B]: 'pty-b2' } }
+        }
+      })
+    )
     vi.advanceTimersByTime(1_000)
     expect(persist).not.toHaveBeenCalled()
 
@@ -260,6 +268,32 @@ describe('applyTerminalTopologySlices', () => {
     state().setTabCustomTitle('a', 'renamed')
     vi.advanceTimersByTime(1_000)
     expect(persist).toHaveBeenCalledTimes(1)
+    dispose()
+  })
+
+  // A hard kill must not rebuild a tab main created somewhere else in the tab bar.
+  it('saves the tab-bar entry it gives a tab main created, and nothing main holds', () => {
+    vi.useFakeTimers()
+    useAppStore.setState({ workspaceSessionReady: true, hydrationSucceeded: true })
+    const persist = vi.fn()
+    const dispose = createSessionWriteSubscriber({ store: useAppStore, persist })
+    vi.advanceTimersByTime(1_000)
+    persist.mockClear()
+
+    apply(slice(2, { tabs: [...slice(2).tabs, row('c')] }))
+    vi.advanceTimersByTime(1_000)
+
+    expect(persist).toHaveBeenCalledTimes(1)
+    const { patch } = persist.mock.calls[0][0]
+    expect(patch.unifiedTabs[WT].map((tab: Tab) => tab.id)).toEqual([
+      'a',
+      'b',
+      '/wt/readme.md',
+      'c'
+    ])
+    expect(patch.tabGroups[WT][0].tabOrder).toEqual(['a', 'b', '/wt/readme.md', 'c'])
+    expect(patch).not.toHaveProperty('tabsByWorktree')
+    expect(patch).not.toHaveProperty('terminalLayoutsByTabId')
     dispose()
   })
 
