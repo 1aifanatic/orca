@@ -7,26 +7,35 @@ import { StructuredAgentArgumentsError } from '../../native-chat/structured-agen
 
 type LaunchPlan = { root: string[]; agent: string[]; models: number }
 
-type OptionRule =
-  | { takesValue: boolean; apply?: (plan: LaunchPlan, option: string, value: string) => void }
-  | 'refuse'
+type Apply = (plan: LaunchPlan, option: string, value: string, joined: boolean) => void
 
-const root = (plan: LaunchPlan, option: string, value: string): void => {
-  plan.root.push(option, ...(value ? [value] : []))
+type OptionRule = { takesValue: boolean; apply?: Apply } | 'refuse'
+
+/** A value written joined (`--opt=value`) stays joined: Grok's parser takes a separate value only
+ *  when it doesn't start with `-`. */
+function spelled(name: string, value: string, joined: boolean): string[] {
+  if (!value) {
+    return [name]
+  }
+  return joined ? [`${name}=${value}`] : [name, value]
+}
+
+const root: Apply = (plan, option, value, joined) => {
+  plan.root.push(...spelled(option, value, joined))
 }
 
 const agentOption =
-  (name: string) =>
-  (plan: LaunchPlan, _option: string, value: string): void => {
-    plan.agent.push(name, ...(value ? [value] : []))
+  (name: string): Apply =>
+  (plan, _option, value, joined) => {
+    plan.agent.push(...spelled(name, value, joined))
   }
 
-const model = (plan: LaunchPlan, option: string, value: string): void => {
+const model: Apply = (plan, option, value, joined) => {
   // `agent --model` takes one value; a second is the parser's error in a terminal too.
   if (++plan.models > 1) {
     throw new StructuredAgentArgumentsError('Grok', option, 'multipleValues')
   }
-  agentOption('--model')(plan, option, value)
+  agentOption('--model')(plan, option, value, joined)
 }
 
 const VALUE = { takesValue: true }
@@ -53,7 +62,8 @@ const RULES: Record<string, OptionRule> = {
   '--reasoning-effort': EFFORT,
   // A root `--no-leader` is an error beside `agent`; the agent takes its own.
   '--no-leader': { takesValue: false, apply: agentOption('--no-leader') },
-  // Never from Arguments: Agent Permissions grants full access, else Grok's own config decides.
+  // A typed permission mode never applies. Full access is Agent Permissions' bypass flag, which it
+  // keeps in these Arguments and reads on its own; otherwise Grok's own config decides (STA-9763).
   '--permission-mode': VALUE,
   '--always-approve': SWITCH,
   '--yolo': SWITCH,
@@ -74,6 +84,9 @@ const RULES: Record<string, OptionRule> = {
   '-v': SWITCH,
   '-V': SWITCH,
   '--version': SWITCH,
+  // The terminal's own sign-in screen; `grok agent` never reads them.
+  '--oauth': SWITCH,
+  '--force-login': SWITCH,
   // The session and its output are the chat's own.
   '-r': { takesValue: false },
   '--resume': { takesValue: false },
@@ -146,8 +159,10 @@ function grokLaunchArgs(tokens: readonly string[]): { root: string[]; agent: str
       throw new StructuredAgentArgumentsError('Grok', option, 'unsupportedOption')
     }
     let value = ''
+    let joined = false
     if (rule.takesValue) {
       const inline = inlineValue(token, option)
+      joined = inline !== undefined
       value = inline ?? tokens[++index] ?? ''
       if (!value || value === '--' || (value.startsWith('-') && inline === undefined)) {
         throw new StructuredAgentArgumentsError('Grok', option, 'missingValue')
@@ -163,7 +178,7 @@ function grokLaunchArgs(tokens: readonly string[]): { root: string[]; agent: str
     } else if (token !== option) {
       throw new StructuredAgentArgumentsError('Grok', option, 'unsupportedOption')
     }
-    rule.apply?.(plan, option, value)
+    rule.apply?.(plan, option, value, joined)
   }
   return { root: plan.root, agent: plan.agent }
 }

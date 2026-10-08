@@ -24,12 +24,10 @@ describe('grokAgentArgv', () => {
       '--debug',
       '--debug-file',
       '/tmp/grok.log',
-      '--leader-socket',
-      '/tmp/leader.sock',
+      '--leader-socket=/tmp/leader.sock',
       '--disable-web-search',
       '--no-auto-update',
-      '--compaction-mode',
-      'auto',
+      '--compaction-mode=auto',
       '--compaction-detail',
       'brief',
       '--log-sampling',
@@ -43,21 +41,30 @@ describe('grokAgentArgv', () => {
     expect(argv(['-mgrok-4', '--effort', 'high', '--reasoning-effort=low', '--no-leader'])).toEqual(
       [
         'agent',
-        '--model',
-        'grok-4',
+        '--model=grok-4',
         '--reasoning-effort',
         'high',
-        '--reasoning-effort',
-        'low',
+        '--reasoning-effort=low',
         '--no-leader',
         'stdio'
       ]
     )
-    expect(argv(['--model=grok-4'], true)).toEqual([
+    expect(argv(['--model', 'grok-4'], true)).toEqual([
       'agent',
       '--model',
       'grok-4',
       '--always-approve',
+      'stdio'
+    ])
+  })
+
+  // Grok's parser reads a separate `-x` as an option, never a value; joined, it's the value.
+  it('keeps a joined value joined, so one that starts with a dash stays a value', () => {
+    expect(argv(['--debug-file=-grok.log', '-m-x', '--compaction-mode=-y'])).toEqual([
+      '--debug-file=-grok.log',
+      '--compaction-mode=-y',
+      'agent',
+      '--model=-x',
       'stdio'
     ])
   })
@@ -70,6 +77,8 @@ describe('grokAgentArgv', () => {
         '--always-approve',
         '--yolo',
         '--dangerously-skip-permissions',
+        '--oauth',
+        '--force-login',
         '--allow',
         'Bash(git:*)',
         '--allowedTools=Edit',
@@ -121,8 +130,6 @@ describe('grokAgentArgv', () => {
     },
     { configured: ['--tools', 'private'], option: '--tools', problem: 'unsupportedOption' },
     { configured: ['--future=private'], option: '--future', problem: 'unsupportedOption' },
-    { configured: ['--oauth'], option: '--oauth', problem: 'unsupportedOption' },
-    { configured: ['--force-login'], option: '--force-login', problem: 'unsupportedOption' },
     { configured: ['--debug=private'], option: '--debug', problem: 'unsupportedOption' },
     { configured: ['-m', 'a', '--model', 'private'], option: '--model', problem: 'multipleValues' },
     { configured: ['-m'], option: '-m', problem: 'missingValue' },
