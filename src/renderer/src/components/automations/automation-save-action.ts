@@ -9,13 +9,8 @@ import { acceptsAutomationDraftSchedule } from './automation-schedule-input-gate
 import {
   draftExtraAgentArgsNeedFreshSession,
   getDraftExtraAgentArgsError,
-  getDraftExtraAgentArgsShell,
   parseDraftTime
 } from './automation-draft-model'
-import {
-  EXTRA_AGENT_ARGS_HOST_UPDATE_REQUIRED,
-  hasExtraAgentArgs
-} from '../../../../shared/automation-extra-agent-args'
 import { saveHermesAutomation } from './automation-hermes-save'
 import { saveOrcaAutomation } from './automation-orca-save'
 import type { AutomationSaveContext } from './automation-save-context'
@@ -31,8 +26,7 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
       createTarget,
       editingExternalTarget,
       setIsSaving,
-      setEditorNotice,
-      setDraft
+      setEditorNotice
     } = local
     const isHermesSave =
       editingAutomationId === null && (createTarget === 'hermes' || editingExternalTarget !== null)
@@ -92,19 +86,12 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
       return
     }
     if (!isHermesSave) {
-      // A prior host refusal is retried, since the host may have been updated since.
       const extrasError = draftExtraAgentArgsNeedFreshSession(draft)
         ? translate(
             'auto.components.automations.extraAgentArgs.needsFreshSession',
             'Extra arguments require a fresh session for every run.'
           )
-        : getDraftExtraAgentArgsError(
-            { ...draft, extraAgentArgsHostError: null },
-            getDraftExtraAgentArgsShell(
-              store.repos.find((repo) => repo.id === draft.projectId),
-              settings
-            )
-          )
+        : getDraftExtraAgentArgsError(draft)
       if (extrasError) {
         toast.error(extrasError)
         return
@@ -137,18 +124,6 @@ export function createAutomationSaveAction(context: AutomationSaveContext) {
     } catch (error) {
       if (isHermesSave) {
         await context.pageRefresh.refresh().catch(() => undefined)
-      }
-      const message = error instanceof Error ? error.message : ''
-      if (
-        !isHermesSave &&
-        hasExtraAgentArgs(draft.extraAgentArgs) &&
-        message.includes(EXTRA_AGENT_ARGS_HOST_UPDATE_REQUIRED)
-      ) {
-        // Keeps the draft and attaches the refusal to the field it concerns.
-        setDraft((current) => ({
-          ...current,
-          extraAgentArgsHostError: EXTRA_AGENT_ARGS_HOST_UPDATE_REQUIRED
-        }))
       }
       toast.error(
         error instanceof Error

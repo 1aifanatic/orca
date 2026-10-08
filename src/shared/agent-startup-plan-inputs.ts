@@ -45,7 +45,7 @@ export function resolveAgentStartupPlanInputs(args: {
   /** Replaces the configured default args for this launch; `null` is "no arguments". */
   agentArgs?: string | null
   /** An automation's saved extras, merged over the resolved args; invalid extras throw. */
-  extraAgentArgs?: string | null
+  extraAgentArgs?: string
   /** A requested shell is the one this PTY will be, so it owns the quoting family. */
   windowsShellOverride?: string | null
   sessionOptions?: Record<string, SessionOptionValue> | undefined

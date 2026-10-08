@@ -36,7 +36,7 @@ type StartupEnvironment = {
   /** Replaces the configured arguments for this launch; `null` means none. */
   agentArgs?: string | null
   /** An automation's saved extras, merged over the launch's arguments. */
-  extraAgentArgs?: string | null
+  extraAgentArgs?: string
   /** Caller-supplied telemetry attribution, validated leniently at the host boundary. */
   launchSource?: string
 }
@@ -212,7 +212,7 @@ export function resolveWorktreeCreateAgentStartup(
     preferences: AgentLaunchPreferences | undefined,
     inputs: {
       agentArgs?: string | null
-      extraAgentArgs?: string | null
+      extraAgentArgs?: string
       launchSource?: string
       onPromptCarry?: (carried: boolean) => void
     }

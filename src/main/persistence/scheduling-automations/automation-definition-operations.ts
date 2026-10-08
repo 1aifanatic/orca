@@ -10,7 +10,6 @@ import type { PersistedState } from '../../../shared/persisted-state-types'
 import { normalizeAutomationPrecheck } from '../../../shared/automation-precheck'
 import {
   assertAutomationExtraAgentArgs,
-  automationSaveStartupShell,
   storedExtraAgentArgs
 } from '../../../shared/automation-extra-agent-args-record'
 import { nextAutomationOccurrenceAfter } from '../../../shared/automation-schedule-occurrences'
@@ -45,17 +44,6 @@ export type AutomationDefinitionOperations = {
   flush: () => void
   recordCreated: () => void
   recordAutomationRunsMutation?: (runs: readonly AutomationRun[]) => void
-}
-
-function assertExtraAgentArgsForSave(state: PersistedState, automation: Automation): void {
-  assertAutomationExtraAgentArgs(
-    automation,
-    automationSaveStartupShell({
-      platform: process.platform,
-      executionTargetType: automation.executionTargetType,
-      terminalWindowsShell: state.settings?.terminalWindowsShell
-    })
-  )
 }
 
 export function listAutomations(state: PersistedState): Automation[] {
@@ -132,7 +120,7 @@ export function createAutomation(
     createdAt: now,
     updatedAt: now
   }
-  assertExtraAgentArgsForSave(operations.state, automation)
+  assertAutomationExtraAgentArgs(automation)
   operations.state.automations = [...(operations.state.automations ?? []), automation]
   operations.recordCreated()
   operations.flush()
@@ -246,7 +234,7 @@ export function updateAutomation(
   } else {
     merged.extraAgentArgs = extraAgentArgs
   }
-  assertExtraAgentArgsForSave(operations.state, merged)
+  assertAutomationExtraAgentArgs(merged)
   const previousPin = automationWorkspaceSshPin(operations.state, current.workspaceId)
   const workspaceSshPin = automationWorkspaceSshPin(operations.state, merged.workspaceId)
   const workspaceSshPinMoved = previousPin?.targetId !== workspaceSshPin?.targetId

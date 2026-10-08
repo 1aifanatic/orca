@@ -161,7 +161,7 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     launchPreferences?: AgentLaunchPreferences,
     launchInputs?: {
       agentArgs?: string | null
-      extraAgentArgs?: string | null
+      extraAgentArgs?: string
       launchSource?: string
       onPromptCarry?: (carried: boolean) => void
     }

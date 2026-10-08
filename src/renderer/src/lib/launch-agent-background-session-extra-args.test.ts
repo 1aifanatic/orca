@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createAgentBackgroundSessionTestState,
-  resetAgentBackgroundSessionTestHarness
+  resetAgentBackgroundSessionTestHarness,
+  useRemoteAgentBackgroundRuntime
 } from '@/lib/agent-background-session-test-state'
 
 const mockSpawn = vi.fn()
@@ -116,6 +117,23 @@ describe('launchAgentBackgroundSession with automation extras', () => {
     ).rejects.toThrow('"--permission-mode"')
     expect(mockSpawn).not.toHaveBeenCalled()
     expect(mockCreateTab).not.toHaveBeenCalled()
+    expect(mockRegisterAgentLaunchConfig).not.toHaveBeenCalled()
+  })
+
+  it('refuses a client-side launch that would drop extras on a paired server', async () => {
+    const { launchAgentBackgroundSession } = await import('./launch-agent-background-session')
+    useRemoteAgentBackgroundRuntime(state)
+
+    await expect(
+      launchAgentBackgroundSession({
+        agent: 'claude',
+        worktreeId: 'wt-1',
+        prompt: 'run the automation',
+        extraAgentArgs: '--model opus'
+      })
+    ).rejects.toThrow("Extra arguments can't be applied to a paired server's workspace from here.")
+    expect(mockRuntimeEnvironmentCall).not.toHaveBeenCalled()
+    expect(mockSpawn).not.toHaveBeenCalled()
     expect(mockRegisterAgentLaunchConfig).not.toHaveBeenCalled()
   })
 })

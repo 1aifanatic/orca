@@ -1,11 +1,13 @@
 import { agentArgTerminatorIndex } from './agent-session-option-agent-args'
 import { getAgentSessionOptionLaunchCatalog } from './agent-session-option-launch'
+import { findOptionOccurrence } from './command-option-occurrence'
 import {
   quoteStartupArg,
   tokenizeStartupCommand,
   type AgentStartupShell
 } from './tui-agent-startup-shell'
 import type { TuiAgent } from './tui-agent'
+import { TUI_AGENT_DISPLAY_NAMES } from './tui-agent-display-names'
 
 export const EXTRA_AGENT_ARGS_MAX_BYTES = 4096
 export const EXTRA_AGENT_ARGS_HOST_UPDATE_REQUIRED =
@@ -44,15 +46,6 @@ const EXTRA_AGENT_ARG_OPTIONS: Partial<Record<TuiAgent, readonly ExtraAgentArgOp
   omp: [MODEL_OPTION]
 }
 
-const AGENT_LABELS: Partial<Record<TuiAgent, string>> = {
-  claude: 'Claude',
-  codex: 'Codex',
-  codebuddy: 'CodeBuddy',
-  cursor: 'Cursor',
-  grok: 'Grok',
-  omp: 'OMP'
-}
-
 // C0, DEL, C1, and the Unicode line/paragraph separators.
 function hasControlCharacter(value: string): boolean {
   for (const char of value) {
@@ -70,10 +63,6 @@ export type ParsedExtraAgentArgs =
 
 export type MergedAgentArgs = { ok: true; agentArgs: string } | { ok: false; error: string }
 
-export function automationAgentSupportsExtraArgs(agent: TuiAgent): boolean {
-  return EXTRA_AGENT_ARG_OPTIONS[agent] !== undefined
-}
-
 /** Saved extras as the launch sees them; whitespace-only text means none. */
 export function hasExtraAgentArgs(value: string | null | undefined): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -90,21 +79,13 @@ function allowedOptionList(options: readonly ExtraAgentArgOption[]): string {
 }
 
 function matchOption(
-  token: string,
+  tokens: readonly string[],
   options: readonly ExtraAgentArgOption[]
-): { option: ExtraAgentArgOption; attached?: string } | null {
+): { option: ExtraAgentArgOption; value?: string; consumed: number } | null {
   for (const option of options) {
-    for (const alias of option.aliases) {
-      if (token === alias) {
-        return { option }
-      }
-      if (token.startsWith(`${alias}=`)) {
-        return { option, attached: token.slice(alias.length + 1) }
-      }
-      // Clap-style attached short values, e.g. `-mgpt-5`.
-      if (!alias.startsWith('--') && token.startsWith(alias) && token.length > alias.length) {
-        return { option, attached: token.slice(alias.length) }
-      }
+    const occurrence = findOptionOccurrence(tokens, option.aliases, false)
+    if (occurrence?.index === 0) {
+      return { option, value: occurrence.value, consumed: occurrence.consumed }
     }
   }
   return null
@@ -115,11 +96,10 @@ function optionName(token: string): string {
   return equals > 0 ? token.slice(0, equals) : token
 }
 
-/** Validates saved extras for one agent and shell; launch re-runs this on the executing host. */
+/** Saved extras use one quoting grammar, independent of the client and execution host. */
 export function parseExtraAgentArgs(args: {
   agent: TuiAgent
   extraAgentArgs: string
-  shell: AgentStartupShell
 }): ParsedExtraAgentArgs {
   const options = EXTRA_AGENT_ARG_OPTIONS[args.agent]
   if (!options) {
@@ -132,11 +112,11 @@ export function parseExtraAgentArgs(args: {
     return { ok: false, error: 'Extra arguments cannot contain control characters or line breaks.' }
   }
   const text = args.extraAgentArgs.trim()
-  const tokenized = tokenizeStartupCommand(text, args.shell)
+  const tokenized = tokenizeStartupCommand(text, 'posix')
   if (!tokenized.ok) {
     return { ok: false, error: `Extra arguments are invalid: ${tokenized.error}` }
   }
-  // Why: operators, substitutions, and escapes this shell's tokenizer can't model.
+  // Reject command syntax instead of silently turning it into literal argument text.
   const divergent = tokenized.spans.find((span) => span.divergesFromShell)
   if (divergent) {
     return {
@@ -144,7 +124,7 @@ export function parseExtraAgentArgs(args: {
       error: `${text.slice(divergent.start, divergent.end)} uses shell syntax that extra arguments don't allow.`
     }
   }
-  const label = AGENT_LABELS[args.agent] ?? args.agent
+  const label = TUI_AGENT_DISPLAY_NAMES[args.agent]
   const allowed = allowedOptionList(options)
   const kinds = new Set<ExtraAgentArgKind>()
   const { tokens } = tokenized
@@ -159,23 +139,15 @@ export function parseExtraAgentArgs(args: {
         error: `"${token}" isn't an option. Extra arguments for ${label} accept only: ${allowed}.`
       }
     }
-    const match = matchOption(token, options)
+    const match = matchOption(tokens.slice(index, index + 2), options)
     if (!match) {
       return {
         ok: false,
         error: `"${optionName(token)}" isn't allowed in extra arguments for ${label}. Allowed: ${allowed}.`
       }
     }
-    const name = match.attached === undefined ? token : optionName(token)
-    let value = match.attached
-    if (value === undefined) {
-      const next = tokens[index + 1]
-      // Matches the removers' grammar, which never consumes a dash-leading value.
-      if (next !== undefined && !next.startsWith('-')) {
-        value = next
-        index += 1
-      }
-    }
+    const name = optionName(token)
+    const { value } = match
     if (!value) {
       return { ok: false, error: `"${name}" needs a value.` }
     }
@@ -190,6 +162,7 @@ export function parseExtraAgentArgs(args: {
       return { ok: false, error: `Extra arguments set the ${kind} more than once.` }
     }
     kinds.add(kind)
+    index += match.consumed - 1
   }
   return { ok: true, tokens, kinds }
 }
@@ -224,7 +197,7 @@ function removeDefaultsFor(
 export function mergeExtraAgentArgs(args: {
   agent: TuiAgent
   defaultArgs: string | null | undefined
-  extraAgentArgs: string | null | undefined
+  extraAgentArgs: string | undefined
   shell: AgentStartupShell
 }): MergedAgentArgs {
   const defaultArgs = args.defaultArgs ?? ''
@@ -233,8 +206,7 @@ export function mergeExtraAgentArgs(args: {
   }
   const extras = parseExtraAgentArgs({
     agent: args.agent,
-    extraAgentArgs: args.extraAgentArgs,
-    shell: args.shell
+    extraAgentArgs: args.extraAgentArgs
   })
   if (!extras.ok) {
     return extras

@@ -13,7 +13,6 @@ const AUTOMATION_TARGET_FLAGS = [
 ]
 const AUTOMATION_SCHEDULE_FLAGS = ['trigger', 'schedule', 'time', 'day', 'timezone']
 const AUTOMATION_PRECHECK_FLAGS = ['precheck', 'precheck-timeout']
-const AUTOMATION_AGENT_FLAGS = ['extra-agent-args']
 const AUTOMATION_STATE_FLAGS = [
   'enabled',
   'disabled',
@@ -48,7 +47,7 @@ export const AUTOMATION_COMMAND_SPECS: CommandSpec[] = [
       'name',
       'prompt',
       'provider',
-      ...AUTOMATION_AGENT_FLAGS,
+      'extra-agent-args',
       ...AUTOMATION_PRECHECK_FLAGS,
       ...AUTOMATION_TARGET_FLAGS,
       ...AUTOMATION_SCHEDULE_FLAGS,
@@ -82,7 +81,7 @@ export const AUTOMATION_COMMAND_SPECS: CommandSpec[] = [
       'name',
       'prompt',
       'provider',
-      ...AUTOMATION_AGENT_FLAGS,
+      'extra-agent-args',
       ...AUTOMATION_PRECHECK_FLAGS,
       ...AUTOMATION_TARGET_FLAGS,
       ...AUTOMATION_SCHEDULE_FLAGS,

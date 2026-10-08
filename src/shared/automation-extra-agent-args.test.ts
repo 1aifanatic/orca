@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  automationAgentSupportsExtraArgs,
-  mergeExtraAgentArgs,
-  parseExtraAgentArgs
-} from './automation-extra-agent-args'
+import { mergeExtraAgentArgs, parseExtraAgentArgs } from './automation-extra-agent-args'
 import { buildAgentStartupPlan } from './tui-agent-startup'
 import { tokenizeStartupCommand, type AgentStartupShell } from './tui-agent-startup-shell'
 import type { TuiAgent } from './tui-agent'
@@ -25,8 +21,8 @@ function merged(
   return tokens.tokens
 }
 
-function rejection(agent: TuiAgent, extraAgentArgs: string, shell: AgentStartupShell = 'posix') {
-  const result = parseExtraAgentArgs({ agent, extraAgentArgs, shell })
+function rejection(agent: TuiAgent, extraAgentArgs: string) {
+  const result = parseExtraAgentArgs({ agent, extraAgentArgs })
   return result.ok ? null : result.error
 }
 
@@ -193,16 +189,7 @@ describe('parseExtraAgentArgs rejections', () => {
   })
 
   it('refuses agents without modeled options', () => {
-    expect(automationAgentSupportsExtraArgs('gemini')).toBe(false)
     expect(rejection('gemini', '-m gemini-2.5-pro')).toContain("aren't supported")
-    for (const agent of ['claude', 'codex', 'codebuddy', 'cursor', 'grok', 'omp'] as const) {
-      expect(automationAgentSupportsExtraArgs(agent)).toBe(true)
-    }
-  })
-
-  // The PowerShell tokenizer treats a backtick as an escape even inside single quotes.
-  it('refuses PowerShell backticks it cannot model', () => {
-    expect(rejection('claude', "--add-dir 'tick`tock'", 'powershell')).toContain('shell syntax')
   })
 
   it('accepts repeatable options', () => {
@@ -210,7 +197,7 @@ describe('parseExtraAgentArgs rejections', () => {
   })
 })
 
-// [typed value, argv token] per shell; each shell quotes differently.
+// Saved text uses one grammar; each execution shell must preserve the resulting argv.
 const ROUND_TRIP_FIXTURES: Record<AgentStartupShell, readonly (readonly [string, string])[]> = {
   posix: [
     ["'docs/my specs'", 'docs/my specs'],
@@ -225,23 +212,30 @@ const ROUND_TRIP_FIXTURES: Record<AgentStartupShell, readonly (readonly [string,
     ["'docs/my specs'", 'docs/my specs'],
     ["'a$b'", 'a$b'],
     ["'%PATH%'", '%PATH%'],
-    ["'it''s'", "it's"],
+    ['"it\'s"', "it's"],
     ["'C:\\dir\\'", 'C:\\dir\\'],
     ["'日本語 🚀'", '日本語 🚀']
   ],
   cmd: [
     ['"docs/my specs"', 'docs/my specs'],
     ['"a$b"', 'a$b'],
-    ['"tick`tock"', 'tick`tock'],
+    ["'tick`tock'", 'tick`tock'],
     ['"%PATH%"', '%PATH%'],
     ['"it\'s"', "it's"],
-    ['"C:\\dir"', 'C:\\dir'],
+    ["'C:\\dir'", 'C:\\dir'],
     ['"日本語 🚀"', '日本語 🚀']
   ]
 }
 
 describe.each(['posix', 'powershell', 'cmd'] as const)('round trip on %s', (shell) => {
-  const quoted = (value: string) => (shell === 'cmd' ? `"${value}"` : `'${value}'`)
+  it('uses the same saved quoting for every execution shell', () => {
+    expect(merged('claude', '', "--add-dir 'C:\\work\\my docs' --model opus", shell)).toEqual([
+      '--add-dir',
+      'C:\\work\\my docs',
+      '--model',
+      'opus'
+    ])
+  })
 
   it.each(ROUND_TRIP_FIXTURES[shell])('keeps %s', (typed, token) => {
     expect(
@@ -258,7 +252,7 @@ describe.each(['posix', 'powershell', 'cmd'] as const)('round trip on %s', (shel
     const agentArgs = mergeExtraAgentArgs({
       agent: 'claude',
       defaultArgs: '--dangerously-skip-permissions --model sonnet',
-      extraAgentArgs: `--model opus --add-dir ${quoted('a b')}`,
+      extraAgentArgs: "--model opus --add-dir 'a b'",
       shell
     })
     if (!agentArgs.ok) {

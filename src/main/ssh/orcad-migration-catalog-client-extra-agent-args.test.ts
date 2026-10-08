@@ -4,6 +4,7 @@ import {
   type OrcadMigrationManifest
 } from '../../shared/orcad-migration-manifest'
 import { computeOrcadMigrationManifestSha256 } from '../orcad/orcad-migration-manifest-digest'
+import { DORMANT_AUTOMATION } from '../persistence-orcad-migration-catalog-fixture'
 import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../shared/pairing'
 import { AUTOMATION_EXTRA_AGENT_ARGS_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 
@@ -59,10 +60,7 @@ function manifest(extraAgentArgs?: string): OrcadMigrationManifest {
         sparsePresets: [],
         retiredWorktreeNames: [],
         retiredWorktreeNamespaces: [],
-        automations: [
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the guard reads only extraAgentArgs.
-          { id: 'auto-1', ...(extraAgentArgs ? { extraAgentArgs } : {}) } as never
-        ]
+        automations: [{ ...DORMANT_AUTOMATION, ...(extraAgentArgs ? { extraAgentArgs } : {}) }]
       }
     }
   }

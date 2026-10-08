@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
 import { tuiAgentToAgentKind } from '../../shared/agent-kind'
+import { getDefaultSettings } from '../../shared/constants'
+import type { RuntimeManagedWorktreeCreateArgs } from './runtime-managed-worktree-create-types'
 
 const mocks = vi.hoisted(() => ({
   detectRemoteAgents: vi.fn(),
@@ -21,22 +23,24 @@ import {
 function makeRepo(fields: Partial<Repo>): Repo {
   return {
     id: 'repo-1',
-    name: 'repo',
+    displayName: 'repo',
+    badgeColor: '#737373',
+    addedAt: 0,
     path: '/srv/repo',
     connectionId: null,
     executionHostId: null,
     ...fields
-  } as Repo
+  }
 }
 
 const settings = {
+  ...getDefaultSettings('/tmp'),
   agentCmdOverrides: {},
   agentDefaultArgs: {},
   agentDefaultEnv: {},
   disabledTuiAgents: [],
-  defaultTuiAgent: undefined,
-  terminalWindowsShell: null
-} as never
+  defaultTuiAgent: null
+}
 
 /** The launched CLI name is the whole decision: `orca` is the relay shim, `orca-ide` is local. */
 function launchCliNameFor(repo: Repo): string {
@@ -207,20 +211,14 @@ describe('buildWorktreeStartupForDraft agent detection', () => {
   )
 })
 
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the startup build reads only these settings fields.
-const settingsWithDefaultArgs = {
-  agentCmdOverrides: {},
-  agentDefaultArgs: { claude: '--dangerously-skip-permissions --model sonnet' },
-  agentDefaultEnv: {},
-  disabledTuiAgents: [],
-  terminalWindowsShell: null
-} as never
-
 describe('buildWorktreeStartupForAgent extra agent args', () => {
   it("merges an automation's extras over the host defaults", () => {
     const result = buildWorktreeStartupForAgent({
       repo: makeRepo({}),
-      settings: settingsWithDefaultArgs,
+      settings: {
+        ...settings,
+        agentDefaultArgs: { claude: '--dangerously-skip-permissions --model sonnet' }
+      },
       agent: 'claude',
       prompt: 'go',
       extraAgentArgs: '--model opus',
@@ -252,16 +250,14 @@ describe('buildWorktreeStartupForAgent extra agent args', () => {
       agent: 'claude' as const,
       startup: { command: 'claude' }
     }))
-    const createArgs = {
+    const createArgs: RuntimeManagedWorktreeCreateArgs = {
+      repoSelector: 'repo-1',
+      name: 'Review',
       startupAgent: 'claude',
       startupPrompt: 'go',
       startupExtraAgentArgs: '--effort high'
     }
-    resolveWorktreeCreateAgentStartup(
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: resolution reads only the startup fields.
-      createArgs as never,
-      build
-    )
+    resolveWorktreeCreateAgentStartup(createArgs, build)
 
     expect(build).toHaveBeenCalledWith('claude', 'go', undefined, {
       extraAgentArgs: '--effort high'

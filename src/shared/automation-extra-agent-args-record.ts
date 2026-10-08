@@ -4,8 +4,6 @@ import {
   hasExtraAgentArgs,
   parseExtraAgentArgs
 } from './automation-extra-agent-args'
-import { resolveStartupShell, type AgentStartupShell } from './tui-agent-startup-shell'
-import { resolveLocalWindowsAgentStartupShell } from './windows-terminal-shell'
 
 /** Stored form of an extras input: the text unchanged, or `undefined` when it holds no extras. */
 export function storedExtraAgentArgs(value: unknown): string | undefined {
@@ -18,29 +16,9 @@ export function storedExtraAgentArgs(value: unknown): string | undefined {
   return hasExtraAgentArgs(value) ? value : undefined
 }
 
-/** The shell save-time validation assumes; launch re-validates against the PTY's real shell. */
-export function automationSaveStartupShell(args: {
-  platform: NodeJS.Platform
-  executionTargetType: Automation['executionTargetType']
-  terminalWindowsShell?: string | null
-}): AgentStartupShell {
-  if (args.executionTargetType === 'ssh') {
-    return 'posix'
-  }
-  return resolveStartupShell(
-    args.platform,
-    resolveLocalWindowsAgentStartupShell({
-      platform: args.platform,
-      isRemote: false,
-      terminalWindowsShell: args.terminalWindowsShell
-    })
-  )
-}
-
 /** Validates a whole record, so a patch that only enables Reuse still sees stored extras. */
 export function assertAutomationExtraAgentArgs(
-  automation: Pick<Automation, 'agentId' | 'extraAgentArgs' | 'reuseSession'>,
-  shell: AgentStartupShell
+  automation: Pick<Automation, 'agentId' | 'extraAgentArgs' | 'reuseSession'>
 ): void {
   if (!hasExtraAgentArgs(automation.extraAgentArgs)) {
     return
@@ -50,8 +28,7 @@ export function assertAutomationExtraAgentArgs(
   }
   const parsed = parseExtraAgentArgs({
     agent: automation.agentId,
-    extraAgentArgs: automation.extraAgentArgs,
-    shell
+    extraAgentArgs: automation.extraAgentArgs
   })
   if (!parsed.ok) {
     throw new Error(parsed.error)

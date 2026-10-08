@@ -40,8 +40,6 @@ export type AutomationDraft = {
   agentId: TuiAgent
   /** Saved as-is; empty means none. */
   extraAgentArgs: string
-  /** A host's refusal of the extras, shown on the field until the text changes. */
-  extraAgentArgsHostError?: string | null
   projectId: string
   workspaceMode: AutomationWorkspaceMode
   workspaceId: string

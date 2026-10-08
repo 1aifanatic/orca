@@ -6,7 +6,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
 import { hasExtraAgentArgs } from '../../../../shared/automation-extra-agent-args'
-import type { AgentStartupShell } from '../../../../shared/tui-agent-startup-shell'
 import { AUTOMATION_EDITOR_SECTION_LABEL_CLASS } from './automation-page-parts'
 import {
   draftExtraAgentArgsNeedFreshSession,
@@ -16,18 +15,16 @@ import type { AutomationDraft } from './AutomationEditorDialog'
 
 type AutomationExtraAgentArgsFieldProps = {
   draft: AutomationDraft
-  shell: AgentStartupShell
   onDraftChange: (updater: (current: AutomationDraft) => AutomationDraft) => void
 }
 
 export function AutomationExtraAgentArgsField({
   draft,
-  shell,
   onDraftChange
 }: AutomationExtraAgentArgsFieldProps): React.JSX.Element {
   const hasExtras = hasExtraAgentArgs(draft.extraAgentArgs)
   const [open, setOpen] = useState(hasExtras)
-  const error = getDraftExtraAgentArgsError(draft, shell)
+  const error = getDraftExtraAgentArgsError(draft)
   const needsFreshSession = draftExtraAgentArgsNeedFreshSession(draft)
   // Why: a problem the user must fix can't hide behind a collapsed section.
   const expanded = open || Boolean(error) || needsFreshSession
@@ -69,8 +66,7 @@ export function AutomationExtraAgentArgsField({
             onChange={(event) =>
               onDraftChange((current) => ({
                 ...current,
-                extraAgentArgs: event.target.value,
-                extraAgentArgsHostError: null
+                extraAgentArgs: event.target.value
               }))
             }
             className="min-h-14 resize-none"

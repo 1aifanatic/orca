@@ -7,10 +7,7 @@ import type {
 import { tuiAgentToAgentKind } from '@/lib/telemetry'
 import { scheduleAgentBackgroundDraft } from '@/lib/agent-background-draft-delivery'
 import { requestBackgroundTerminalWorktreeMount } from '@/components/terminal/background-terminal-worktree-mount'
-import {
-  resolveTuiAgentLaunchArgs,
-  resolveTuiAgentLaunchEnv
-} from '../../../shared/tui-agent-launch-defaults'
+import { resolveAgentStartupPlanInputs } from '../../../shared/agent-startup-plan-inputs'
 import { requireTuiAgentConfig } from '../../../shared/require-tui-agent-config'
 import { resolveAgentBackgroundLaunchHost } from '@/lib/agent-background-session-launch-host'
 import { makePaneKey } from '../../../shared/stable-pane-id'
@@ -29,9 +26,7 @@ import {
   toRemoteRuntimePtyId
 } from '@/runtime/runtime-terminal-stream'
 import { isMainTerminalSideEffectAuthorityForPty } from '@/components/terminal-pane/terminal-side-effect-facts-handler'
-import { resolveLocalWindowsAgentStartupShell } from '../../../shared/windows-terminal-shell'
-import { resolveStartupShell } from '../../../shared/tui-agent-startup-shell'
-import { hasExtraAgentArgs, mergeExtraAgentArgs } from '../../../shared/automation-extra-agent-args'
+import { hasExtraAgentArgs } from '../../../shared/automation-extra-agent-args'
 import { runBestEffortAgentBackgroundCleanups } from '@/lib/agent-background-session-cleanup'
 import type { bindAutomationTerminal } from '@/lib/automation-terminal-ownership'
 import {
@@ -53,9 +48,6 @@ export async function launchAgentBackgroundSession(
   if (!worktree) {
     throw new Error('The target workspace is no longer available.')
   }
-  const cmdOverrides = store.settings?.agentCmdOverrides ?? {}
-  const defaultAgentArgs = resolveTuiAgentLaunchArgs(agent, store.settings?.agentDefaultArgs)
-  const agentEnv = resolveTuiAgentLaunchEnv(agent, store.settings?.agentDefaultEnv)
   // Folder launch ownership cannot be derived from a repo row (#2989).
   const launchHost = resolveAgentBackgroundLaunchHost({
     store,
@@ -64,11 +56,6 @@ export async function launchAgentBackgroundSession(
     repo
   })
   const { platform: launchPlatform, isRemote } = launchHost
-  const startupShell = resolveLocalWindowsAgentStartupShell({
-    platform: launchPlatform,
-    isRemote,
-    terminalWindowsShell: store.settings?.terminalWindowsShell
-  })
   // Route by the worktree's owner host, not the focused runtime.
   const runtimeTarget = getActiveRuntimeTarget(
     getSettingsForWorktreeRuntimeOwner(store, worktreeId)
@@ -78,30 +65,21 @@ export async function launchAgentBackgroundSession(
     throw new Error("Extra arguments can't be applied to a paired server's workspace from here.")
   }
   // Why before any tab or PTY: an invalid launch must fail the run without creating a terminal.
-  const mergedArgs = mergeExtraAgentArgs({
+  const planInputs = resolveAgentStartupPlanInputs({
     agent,
-    defaultArgs: defaultAgentArgs,
-    extraAgentArgs: args.extraAgentArgs,
-    shell: resolveStartupShell(launchPlatform, startupShell)
+    settings: store.settings ?? {},
+    platform: launchPlatform,
+    isRemote,
+    extraAgentArgs: args.extraAgentArgs
   })
-  if (!mergedArgs.ok) {
-    throw new Error(mergedArgs.error)
-  }
-  const agentArgs = mergedArgs.agentArgs
   const trimmedPrompt = prompt?.trim() ?? ''
   const hasPrompt = trimmedPrompt.length > 0
   const isFollowupPath = requireTuiAgentConfig(agent).promptInjectionMode === 'stdin-after-start'
 
   const pasteDraftAfterLaunch = hasPrompt && isFollowupPath ? trimmedPrompt : null
   const startupPlan = buildAgentStartupPlan({
-    agent,
+    ...planInputs,
     prompt: hasPrompt && !isFollowupPath ? trimmedPrompt : '',
-    cmdOverrides,
-    agentArgs,
-    agentEnv,
-    platform: launchPlatform,
-    shell: startupShell,
-    isRemote,
     allowEmptyPromptLaunch: !hasPrompt || isFollowupPath
   })
   if (!startupPlan) {
