@@ -6,6 +6,7 @@ import type {
   RuntimeCreateAgentSessionResult
 } from '../../shared/agent-session-host-authority'
 import {
+  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS,
   parseAgentSessionOperationTimestamp
 } from '../../shared/agent-session-host-authority'
@@ -14,8 +15,12 @@ import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { buildExecutionHostAgentStartupPlan } from '../opencode/opencode-model-startup-plan'
 import { deterministicAgentSessionUuid } from './runtime-agent-launch-resolution'
-import { executeAgentSessionCreate } from './agent-session-create-execution'
-import type { AgentSessionCreateReceipt } from './agent-session-create-receipt'
+import {
+  executeAgentSessionCreate,
+  type PreparedAgentSessionCreate
+} from './agent-session-create-execution'
+import { toAgentSessionCreateTerminalTarget } from './agent-session-create-terminal-target'
+import type { AgentSessionCreateOperation } from './runtime-terminal-contracts'
 import { LOCAL_EXECUTION_HOST_ID, toSshExecutionHostId } from '../../shared/execution-host'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
 
@@ -63,66 +68,64 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
       if (existing.fingerprint !== requestFingerprint) {
         throw new Error('agent_session_operation_conflict')
       }
-      return { ...(await existing.promise), disposition: 'replayed' }
-    }
-    const operation = Promise.resolve().then(async () => {
-      const store = await this.openAgentSessionRecordStore()
-      return executeAgentSessionCreate({
-        store,
-        callerKey,
-        operationId: request.clientOperationId,
-        fingerprint: requestFingerprint,
-        now,
-        prepare: () => this.prepareAgentSessionCreate(request, caller, operationKey),
-        spawn: async (receipt, dispatched) => {
-          const workspace = await this.resolveTerminalWorkspaceLaunchScope(
-            `id:${receipt.worktreeId}`
-          )
-          if (
-            workspace.path !== receipt.workspacePath ||
-            (workspace.connectionId ?? null) !== receipt.connectionId
-          ) {
-            throw new Error('execution_owner_unavailable')
-          }
-          const resolved = receipt.resolvedRequest
-          return this.createTerminal(`id:${receipt.worktreeId}`, {
-            command: receipt.startup.launchCommand,
-            env: receipt.startup.env,
-            launchConfig: receipt.startup.launchConfig,
-            launchAgent: resolved.agent,
-            terminalKittyKeyboardProtocol: resolved.terminalKittyKeyboardProtocol,
-            startupCommandDelivery: receipt.startup.startupCommandDelivery,
-            telemetry: agentStartedTelemetry(resolved.agent, undefined),
-            cwd: resolved.startupCwd,
-            presentation: resolved.presentation ?? 'background',
-            tabId: receipt.tabId,
-            leafId: receipt.leafId,
-            preAllocatedHandle: receipt.terminalHandle,
-            viewMode: resolved.viewMode,
-            agentSessionCreateOperationId: receipt.executionOperationId,
-            signal: caller.signal,
-            onPtySpawnDispatched: dispatched,
-            onPtySpawnCommitted: dispatched
-          })
-        },
-        reconcile: (receipt) =>
-          this.reconcileRemoteTerminalCreate(
-            receipt.worktreeId,
-            receipt.terminalHandle,
-            receipt.connectionId
-          )
-      })
-    })
-    this.agentSessionCreateOperations.set(operationKey, {
-      fingerprint: requestFingerprint,
-      promise: operation
-    })
-    try {
-      return await operation
-    } finally {
-      if (this.agentSessionCreateOperations.get(operationKey)?.promise === operation) {
-        this.agentSessionCreateOperations.delete(operationKey)
+      try {
+        return { ...(await existing.promise), disposition: 'replayed' }
+      } catch (error) {
+        if (existing.fencedInMemory) {
+          throw error
+        }
+        // Why: the first caller's failure (even its own socket's abort) is not this retry's answer;
+        // the durable row is. Terminates: each pass owns an attempt or joins a newer one.
+        this.forgetAgentSessionCreateOperation(operationKey, existing)
+        return this.createAgentSession(request, caller)
       }
+    }
+    const entry: AgentSessionCreateOperation = {
+      fingerprint: requestFingerprint,
+      fencedInMemory: false,
+      promise: Promise.resolve().then(() =>
+        executeAgentSessionCreate({
+          openStore: () => this.openAgentSessionRecordStore(),
+          callerKey,
+          operationId: request.clientOperationId,
+          fingerprint: requestFingerprint,
+          now,
+          prepare: () => this.prepareAgentSessionCreate(request, caller, operationKey),
+          reconcile: (target) =>
+            this.reconcileRemoteTerminalCreate(
+              target.worktreeId,
+              target.terminalHandle,
+              target.connectionId
+            ),
+          fenceInMemory: () => {
+            entry.fencedInMemory = true
+          }
+        })
+      )
+    }
+    this.agentSessionCreateOperations.set(operationKey, entry)
+    try {
+      return await entry.promise
+    } finally {
+      if (entry.fencedInMemory) {
+        const expiresAt = Math.max(now, operationTimestamp) + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS
+        const timer = setTimeout(
+          () => this.forgetAgentSessionCreateOperation(operationKey, entry),
+          Math.max(1, expiresAt - Date.now())
+        )
+        timer.unref?.()
+      } else {
+        this.forgetAgentSessionCreateOperation(operationKey, entry)
+      }
+    }
+  }
+
+  private forgetAgentSessionCreateOperation(
+    operationKey: string,
+    entry: AgentSessionCreateOperation
+  ): void {
+    if (this.agentSessionCreateOperations.get(operationKey) === entry) {
+      this.agentSessionCreateOperations.delete(operationKey)
     }
   }
 
@@ -130,7 +133,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
     request: RuntimeCreateAgentSessionRequest,
     caller: RuntimeAgentSessionRpcCaller,
     operationKey: string
-  ): Promise<AgentSessionCreateReceipt> {
+  ): Promise<PreparedAgentSessionCreate> {
     const workspace = await this.resolveTerminalWorkspaceLaunchScope(request.worktree)
     if (
       !(await this.executionOwnerSupportsAgentSessionOperation(workspace, 'create', caller.signal))
@@ -207,23 +210,35 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
       request.placement?.leafId ?? deterministicAgentSessionUuid(`${executionOperationId}:leaf`)
     const operationHandle = `term_${deterministicAgentSessionUuid(`${executionOperationId}:handle`)}`
     return {
-      version: 1,
-      executionOperationId,
-      worktreeId: workspace.id,
-      workspacePath: workspace.path,
-      hostId: workspace.connectionId
-        ? toSshExecutionHostId(workspace.connectionId)
-        : LOCAL_EXECUTION_HOST_ID,
-      connectionId: workspace.connectionId ?? null,
-      terminalHandle: operationHandle,
-      tabId: operationTabId,
-      leafId: operationLeafId,
-      resolvedRequest: {
-        ...request,
-        worktree: `id:${workspace.id}`,
-        ...(startupCwd ? { startupCwd } : {})
-      },
-      startup
+      target: toAgentSessionCreateTerminalTarget({
+        executionOperationId,
+        worktreeId: workspace.id,
+        connectionId: workspace.connectionId ?? null,
+        terminalHandle: operationHandle,
+        tabId: operationTabId,
+        leafId: operationLeafId
+      }),
+      launch: (dispatched) =>
+        this.createTerminal(`id:${workspace.id}`, {
+          command: startup.launchCommand,
+          env: startup.env,
+          launchConfig: startup.launchConfig,
+          launchAgent: request.agent,
+          terminalKittyKeyboardProtocol: request.terminalKittyKeyboardProtocol,
+          startupCommandDelivery: startup.startupCommandDelivery,
+          // A fresh agent this host built; the request has no surface field, so it counts as `unknown`.
+          telemetry: agentStartedTelemetry(request.agent, undefined),
+          cwd: startupCwd,
+          presentation: request.presentation ?? 'background',
+          tabId: operationTabId,
+          leafId: operationLeafId,
+          preAllocatedHandle: operationHandle,
+          viewMode: request.viewMode,
+          agentSessionCreateOperationId: executionOperationId,
+          signal: caller.signal,
+          onPtySpawnDispatched: dispatched,
+          onPtySpawnCommitted: dispatched
+        })
     }
   }
 }

@@ -6,10 +6,11 @@ import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import { closeTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import {
   openTestAgentSessionRecordStore,
-  editPersistedTestAgentSessionStore
+  editPersistedTestAgentSessionStore,
+  readPersistedTestAgentSessionStore,
+  seedTestAgentSessionStoreFromNewerBuild
 } from './agent-session-record-store-test-harness'
 import { OrcaRuntimeService } from './orca-runtime'
-import { AgentSessionCreateReceiptSchema } from './agent-session-create-receipt'
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS,
@@ -38,19 +39,23 @@ function request(): RuntimeCreateAgentSessionRequest {
   }
 }
 
+function settings(disabledTuiAgents: string[] = []) {
+  return {
+    getSettings: () => ({
+      disabledTuiAgents,
+      agentCmdOverrides: {},
+      agentDefaultArgs: {},
+      agentDefaultEnv: { codex: { OPENAI_API_KEY: 'sk-secret-123' } }
+    })
+  }
+}
+
 async function runtime() {
   const service = new OrcaRuntimeService(null)
   const store = await openTestAgentSessionRecordStore(directory)
   const reconcile = vi.fn<() => Promise<RuntimeTerminalCreate | null>>(async () => null)
   Object.assign(service, {
-    store: {
-      getSettings: () => ({
-        disabledTuiAgents: [],
-        agentCmdOverrides: {},
-        agentDefaultArgs: {},
-        agentDefaultEnv: {}
-      })
-    },
+    store: settings(),
     resolveTerminalWorkspaceLaunchScope: async () => ({
       id: 'folder-1',
       path: directory,
@@ -89,14 +94,14 @@ describe('terminal agent creation across a runtime restart', () => {
     const duplicate = vi
       .spyOn(restarted.service, 'createTerminal')
       .mockResolvedValue(terminal('duplicate'))
-    restarted.reconcile.mockResolvedValue(original.terminal)
+    const write = vi.spyOn(restarted.store, 'recordOperationOutcome')
     await expect(
       restarted.service.createAgentSession(action, { clientId: 'paired-device' })
-    ).resolves.toMatchObject({
-      disposition: 'replayed',
-      terminal: { handle: original.terminal.handle }
-    })
+    ).resolves.toEqual({ disposition: 'replayed', terminal: original.terminal })
     expect(duplicate).not.toHaveBeenCalled()
+    // A recorded answer needs neither an inventory listing nor a rewrite.
+    expect(restarted.reconcile).not.toHaveBeenCalled()
+    expect(write).not.toHaveBeenCalled()
   })
 
   it('adopts a surviving spawn when its response was lost before the restart', async () => {
@@ -124,26 +129,27 @@ describe('terminal agent creation across a runtime restart', () => {
     expect(duplicate).not.toHaveBeenCalled()
   })
 
-  it('records the resolved launch, stable identity and host before dispatch', async () => {
+  it('records only the terminal identity before dispatch, never the launch plan', async () => {
     const first = await runtime()
     const action = request()
     vi.spyOn(first.service, 'createTerminal').mockImplementation(async (_scope, options) => {
       const row = first.store.getOperationRow('trusted-local:runtime', action.clientOperationId)
       expect(row?.outcome.status).toBe('unknown')
-      const receipt = AgentSessionCreateReceiptSchema.parse(row?.terminalCreate)
-      expect(receipt).toMatchObject({
-        hostId: 'local',
-        connectionId: null,
-        worktreeId: 'folder-1',
-        workspacePath: directory,
-        terminalHandle: options?.preAllocatedHandle,
+      expect(row?.terminalTarget).toEqual({
+        version: 1,
         executionOperationId: options?.agentSessionCreateOperationId,
-        startup: { launchCommand: options?.command },
-        resolvedRequest: { worktree: 'id:folder-1', prompt: action.prompt }
+        worktreeId: 'folder-1',
+        connectionId: null,
+        terminalHandle: options?.preAllocatedHandle,
+        tabId: options?.tabId,
+        leafId: options?.leafId
       })
-      return terminal(receipt.terminalHandle)
+      return terminal(options?.preAllocatedHandle ?? '')
     })
     await first.service.createAgentSession(action)
+    const persisted = JSON.stringify(await readPersistedTestAgentSessionStore(directory))
+    expect(persisted).not.toContain(action.prompt)
+    expect(persisted).not.toContain('sk-secret-123')
   })
 
   it('re-derives an uncertain result when the host becomes reachable', async () => {
@@ -190,7 +196,7 @@ describe('terminal agent creation across a runtime restart', () => {
     expect(duplicate).not.toHaveBeenCalled()
   })
 
-  it('retries a proven pre-dispatch failure with the recorded plan after restart', async () => {
+  it('re-runs every launch check for a proven pre-dispatch failure after restart', async () => {
     const first = await runtime()
     const create = vi
       .spyOn(first.service, 'createTerminal')
@@ -200,16 +206,15 @@ describe('terminal agent creation across a runtime restart', () => {
     const original = create.mock.calls[0]?.[1]
     closeTestJournalHostDatabase(directory)
     const restarted = await runtime()
-    Object.assign(restarted.service, {
-      store: {
-        getSettings: () => {
-          throw new Error('do not rebuild a recorded plan')
-        }
-      }
-    })
     const retry = vi
       .spyOn(restarted.service, 'createTerminal')
       .mockResolvedValue(terminal(original?.preAllocatedHandle ?? ''))
+    Object.assign(restarted.service, { store: settings(['codex']) })
+    await expect(restarted.service.createAgentSession(action)).rejects.toThrow(
+      'Selected agent is disabled'
+    )
+    expect(retry).not.toHaveBeenCalled()
+    Object.assign(restarted.service, { store: settings() })
     await expect(restarted.service.createAgentSession(action)).resolves.toMatchObject({
       disposition: 'created'
     })
@@ -291,39 +296,202 @@ describe('terminal agent creation across a runtime restart', () => {
     expect(create).not.toHaveBeenCalled()
   })
 
-  it('keeps an unreadable create receipt fenced after restart', async () => {
+  it('replays a recorded success whose terminal target is unreadable', async () => {
     const first = await runtime()
     vi.spyOn(first.service, 'createTerminal').mockResolvedValue(terminal('original'))
     const action = request()
     await first.service.createAgentSession(action)
     await editPersistedTestAgentSessionStore(directory, (persisted) => {
       for (const row of Object.values(persisted.operations)) {
-        row.terminalCreate = { version: 999 }
+        row.terminalTarget = { version: 999 }
       }
     })
     closeTestJournalHostDatabase(directory)
     const restarted = await runtime()
     const create = vi.spyOn(restarted.service, 'createTerminal')
-    await expect(restarted.service.createAgentSession(action)).rejects.toThrow(
-      'agent_session_operation_unknown'
-    )
+    await expect(restarted.service.createAgentSession(action)).resolves.toMatchObject({
+      disposition: 'replayed',
+      terminal: { handle: 'original' }
+    })
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('keeps an unknown create fenced when its terminal target is unreadable', async () => {
+    const first = await runtime()
+    vi.spyOn(first.service, 'createTerminal').mockImplementation(async (_scope, options) => {
+      options?.onPtySpawnDispatched?.()
+      throw new Error('connection lost')
+    })
+    const action = request()
+    await expect(first.service.createAgentSession(action)).rejects.toThrow('connection lost')
+    await editPersistedTestAgentSessionStore(directory, (persisted) => {
+      for (const row of Object.values(persisted.operations)) {
+        row.terminalTarget = { version: 999 }
+      }
+    })
+    closeTestJournalHostDatabase(directory)
+    const restarted = await runtime()
+    const create = vi.spyOn(restarted.service, 'createTerminal')
+    await expect(restarted.service.createAgentSession(action)).rejects.toThrow('connection lost')
+    expect(restarted.reconcile).not.toHaveBeenCalled()
     expect(create).not.toHaveBeenCalled()
     expect(restarted.store.listOperationRows()).toHaveLength(1)
   })
 
-  it('never dispatches without a durable claim and permits a later retry', async () => {
+  it('adopts an uncertain spawn under the recorded pane, not the listing placeholders', async () => {
     const first = await runtime()
-    const claim = vi
-      .spyOn(first.store, 'admitAndClaimOperation')
-      .mockRejectedValueOnce(new Error('disk unavailable'))
-    const create = vi.spyOn(first.service, 'createTerminal').mockResolvedValue(terminal('original'))
+    const create = vi
+      .spyOn(first.service, 'createTerminal')
+      .mockImplementation(async (_scope, options) => {
+        options?.onPtySpawnDispatched?.()
+        throw new Error('connection lost')
+      })
     const action = request()
-    await expect(first.service.createAgentSession(action)).rejects.toThrow('disk unavailable')
-    expect(create).not.toHaveBeenCalled()
+    await expect(first.service.createAgentSession(action)).rejects.toThrow('connection lost')
+    const launched = create.mock.calls[0]?.[1]
+    first.reconcile.mockResolvedValue(terminal(launched?.preAllocatedHandle ?? ''))
+    const adopted = await first.service.createAgentSession(action)
+    expect(adopted).toMatchObject({
+      disposition: 'replayed',
+      terminal: {
+        handle: launched?.preAllocatedHandle,
+        tabId: launched?.tabId,
+        paneKey: `${launched?.tabId}:${launched?.leafId}`
+      }
+    })
+    first.reconcile.mockClear()
+    await expect(first.service.createAgentSession(action)).resolves.toEqual(adopted)
+    expect(first.reconcile).not.toHaveBeenCalled()
+  })
+})
+
+describe('terminal agent creation when its record cannot be written', () => {
+  it('still starts the agent when the claim cannot be recorded, and replays it in process', async () => {
+    const first = await runtime()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(first.store, 'admitAndClaimOperation').mockRejectedValue(new Error('disk unavailable'))
+    const create = vi
+      .spyOn(first.service, 'createTerminal')
+      .mockImplementation(async (_scope, options) => terminal(options?.preAllocatedHandle ?? ''))
+    const action = request()
+    const created = await first.service.createAgentSession(action)
+    expect(created.disposition).toBe('created')
+    await expect(first.service.createAgentSession(action)).resolves.toEqual({
+      ...created,
+      disposition: 'replayed'
+    })
+    expect(create).toHaveBeenCalledOnce()
+  })
+
+  it('still starts the agent when the store cannot be opened, and replays it in process', async () => {
+    const first = await runtime()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(first.service.openAgentSessionRecordStore).mockRejectedValue(
+      new Error('agent_session_journal_unreadable')
+    )
+    const create = vi
+      .spyOn(first.service, 'createTerminal')
+      .mockImplementation(async (_scope, options) => terminal(options?.preAllocatedHandle ?? ''))
+    const action = request()
     await expect(first.service.createAgentSession(action)).resolves.toMatchObject({
       disposition: 'created'
     })
-    expect(claim).toHaveBeenCalledTimes(2)
+    await expect(first.service.createAgentSession(action)).resolves.toMatchObject({
+      disposition: 'replayed'
+    })
     expect(create).toHaveBeenCalledOnce()
+  })
+
+  it('replays recorded creates from a store a newer Orca wrote, and starts new ones', async () => {
+    const first = await runtime()
+    vi.spyOn(first.service, 'createTerminal').mockResolvedValue(terminal('before-downgrade'))
+    const recorded = request()
+    await first.service.createAgentSession(recorded)
+    closeTestJournalHostDatabase(directory)
+    await seedTestAgentSessionStoreFromNewerBuild(directory)
+    const downgraded = await runtime()
+    expect(downgraded.store.readOnly).toBe(true)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const create = vi
+      .spyOn(downgraded.service, 'createTerminal')
+      .mockImplementationOnce(async (_scope, options) =>
+        terminal(options?.preAllocatedHandle ?? '')
+      )
+      .mockImplementationOnce(async (_scope, options) => {
+        options?.onPtySpawnDispatched?.()
+        throw new Error('connection lost')
+      })
+    await expect(downgraded.service.createAgentSession(recorded)).resolves.toMatchObject({
+      disposition: 'replayed',
+      terminal: { handle: 'before-downgrade' }
+    })
+    const fresh = { ...request(), clientOperationId: `${Date.now()}-${'b'.repeat(32)}` }
+    await expect(downgraded.service.createAgentSession(fresh)).resolves.toMatchObject({
+      disposition: 'created'
+    })
+    await expect(downgraded.service.createAgentSession(fresh)).resolves.toMatchObject({
+      disposition: 'replayed'
+    })
+    const uncertain = { ...request(), clientOperationId: `${Date.now()}-${'c'.repeat(32)}` }
+    await expect(downgraded.service.createAgentSession(uncertain)).rejects.toThrow(
+      'connection lost'
+    )
+    await expect(downgraded.service.createAgentSession(uncertain)).rejects.toThrow(
+      'connection lost'
+    )
+    expect(create).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('a retry that joins an in-flight create', () => {
+  it('adopts the spawn the first caller lost instead of taking its failure', async () => {
+    const { service, reconcile } = await runtime()
+    let handle = ''
+    let release = (): void => {}
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const create = vi.spyOn(service, 'createTerminal').mockImplementation(async (_s, options) => {
+      handle = options?.preAllocatedHandle ?? ''
+      options?.onPtySpawnDispatched?.()
+      await gate
+      throw Object.assign(new Error('client_disconnected'), {
+        agentSessionOperationOutcome: 'unknown'
+      })
+    })
+    const action = request()
+    const first = service.createAgentSession(action, { clientId: 'device-a' })
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce())
+    const retry = service.createAgentSession(action, { clientId: 'device-a' })
+    reconcile.mockImplementation(async () => terminal(handle))
+    release()
+    await expect(first).rejects.toThrow('client_disconnected')
+    await expect(retry).resolves.toMatchObject({ disposition: 'replayed', terminal: { handle } })
+    expect(create).toHaveBeenCalledOnce()
+  })
+
+  it('starts the agent under its own connection when the first one dropped before dispatch', async () => {
+    const { service } = await runtime()
+    let release = (): void => {}
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const create = vi
+      .spyOn(service, 'createTerminal')
+      .mockImplementationOnce(async () => {
+        await gate
+        throw new Error('client_disconnected')
+      })
+      .mockImplementation(async (_s, options) => terminal(options?.preAllocatedHandle ?? ''))
+    const action = request()
+    const firstSignal = new AbortController().signal
+    const retrySignal = new AbortController().signal
+    const first = service.createAgentSession(action, { clientId: 'device-a', signal: firstSignal })
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce())
+    const retry = service.createAgentSession(action, { clientId: 'device-a', signal: retrySignal })
+    const joined = service.createAgentSession(action, { clientId: 'device-a' })
+    release()
+    await expect(first).rejects.toThrow('client_disconnected')
+    const [retried, alsoJoined] = await Promise.all([retry, joined])
+    expect(retried.disposition).toBe('created')
+    expect(alsoJoined).toEqual({ ...retried, disposition: 'replayed' })
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create.mock.calls[1]?.[1]?.signal).toBe(retrySignal)
   })
 })

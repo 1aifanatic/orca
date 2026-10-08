@@ -82,8 +82,12 @@ export type AgentSessionOperationRow = {
    * malformed value costs that pane its verdict, never the row.
    */
   ownedPane?: AgentSessionOperationOwnedPane
-  /** Read at replay, never during row validation: an unreadable plan must retain its fence. */
-  terminalCreate?: unknown
+  /**
+   * The terminal a `terminal.createAgentSession` launches on its execution host, written with the
+   * claim so a retry after a restart can find it. Read at replay, never during row validation: an
+   * unreadable value must keep the row's fence.
+   */
+  terminalTarget?: unknown
 }
 
 /** Unexpired rows naming this pane as theirs. */
@@ -199,7 +203,7 @@ export function claimAgentSessionOperation(
     callerKey: string
     operationId: string
     ownedPane?: AgentSessionOperationOwnedPane
-    terminalCreate?: unknown
+    terminalTarget?: unknown
   }
 ): { rows: Map<string, AgentSessionOperationRow>; claim: AgentSessionOperationClaim } {
   const key = agentSessionOperationKey(args.callerKey, args.operationId)
@@ -214,7 +218,7 @@ export function claimAgentSessionOperation(
     ...existing,
     outcome: { status: 'unknown' },
     ...(args.ownedPane ? { ownedPane: args.ownedPane } : {}),
-    ...(args.terminalCreate !== undefined ? { terminalCreate: args.terminalCreate } : {})
+    ...(args.terminalTarget !== undefined ? { terminalTarget: args.terminalTarget } : {})
   }
   const next = new Map(rows)
   next.set(key, claimed)

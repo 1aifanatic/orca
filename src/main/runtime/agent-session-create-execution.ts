@@ -3,64 +3,71 @@ import {
   parseAgentSessionOperationTimestamp,
   type RuntimeCreateAgentSessionResult
 } from '../../shared/agent-session-host-authority'
-import type { AgentSessionOperationRow } from '../../shared/agent-session-operation-ledger'
+import type {
+  AgentSessionOperationOutcome,
+  AgentSessionOperationRow
+} from '../../shared/agent-session-operation-ledger'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import {
-  AgentSessionCreateReceiptSchema,
   readAgentSessionCreatedTerminal,
-  type AgentSessionCreateReceipt
-} from './agent-session-create-receipt'
+  readAgentSessionCreateTerminalTarget,
+  type AgentSessionCreateTerminalTarget
+} from './agent-session-create-terminal-target'
 import { isAgentSessionOperationOutcomeUnknown } from './runtime-agent-launch-resolution'
 
+/** What one attempt launches; derived fresh by every attempt that may spawn. */
+export type PreparedAgentSessionCreate = {
+  target: AgentSessionCreateTerminalTarget
+  launch: (dispatched: () => void) => Promise<RuntimeTerminalCreate>
+}
+
 type CreateExecution = {
-  store: AgentSessionRecordStore
+  openStore: () => Promise<AgentSessionRecordStore>
   callerKey: string
   operationId: string
   fingerprint: string
   now: number
-  prepare: () => Promise<AgentSessionCreateReceipt>
-  spawn: (
-    receipt: AgentSessionCreateReceipt,
-    dispatched: () => void
-  ) => Promise<RuntimeTerminalCreate>
-  reconcile: (receipt: AgentSessionCreateReceipt) => Promise<RuntimeTerminalCreate | null>
+  prepare: () => Promise<PreparedAgentSessionCreate>
+  reconcile: (target: AgentSessionCreateTerminalTarget) => Promise<RuntimeTerminalCreate | null>
+  /** No durable row holds this create's answer, so the caller's in-memory entry must replay it. */
+  fenceInMemory: () => void
 }
 
-function readReceipt(row: AgentSessionOperationRow): AgentSessionCreateReceipt {
-  const parsed = AgentSessionCreateReceiptSchema.safeParse(row.terminalCreate)
-  if (!parsed.success) {
-    throw new Error('agent_session_operation_unknown')
-  }
-  return parsed.data
+function warnUnrecorded(error: unknown): void {
+  console.warn('[agent-session-create] starting without a durable record', error)
 }
 
 async function replayCreate(
   args: CreateExecution,
+  store: AgentSessionRecordStore,
   row: AgentSessionOperationRow
 ): Promise<RuntimeCreateAgentSessionResult> {
-  const receipt = readReceipt(row)
   const { outcome } = row
   const recorded =
     outcome.status === 'succeeded' ? readAgentSessionCreatedTerminal(outcome.terminalCreate) : null
+  if (recorded) {
+    return { terminal: recorded, disposition: 'replayed' }
+  }
+  const target = readAgentSessionCreateTerminalTarget(row.terminalTarget)
   let adopted: RuntimeTerminalCreate | null = null
   try {
-    adopted = await args.reconcile(receipt)
+    adopted = target ? await args.reconcile(target) : null
   } catch {
     // Contact loss never grants another spawn.
   }
-  if (adopted) {
+  if (target && adopted) {
     const terminal = {
-      ...recorded,
       ...adopted,
-      tabId: receipt.tabId,
-      paneKey: `${receipt.tabId}:${receipt.leafId}`
+      tabId: target.tabId,
+      paneKey: `${target.tabId}:${target.leafId}`
     }
-    await recordOutcome(args, { status: 'succeeded', sessionId: '', terminalCreate: terminal })
+    await recordOutcome(args, store, {
+      status: 'succeeded',
+      sessionId: '',
+      terminalCreate: terminal
+    })
     return { terminal, disposition: 'replayed' }
-  }
-  if (recorded) {
-    return { terminal: recorded, disposition: 'replayed' }
   }
   throw new Error(
     outcome.status === 'failed'
@@ -71,36 +78,88 @@ async function replayCreate(
   )
 }
 
+/** Best-effort: the claim already fences replay. False when nothing was written. */
 async function recordOutcome(
   args: CreateExecution,
-  outcome: Parameters<AgentSessionRecordStore['recordOperationOutcome']>[0]['outcome']
-): Promise<void> {
+  store: AgentSessionRecordStore,
+  outcome: AgentSessionOperationOutcome
+): Promise<boolean> {
   try {
-    await args.store.recordOperationOutcome({
+    await store.recordOperationOutcome({
       callerKey: args.callerKey,
       operationId: args.operationId,
       outcome
     })
+    return true
   } catch (error) {
-    // The durable claim still fences replay when settlement fails.
     console.warn('[agent-session-create] could not record outcome', error)
+    return false
   }
 }
 
+/** `claimed` before a durable spawn, `unrecorded` when the write failed, or the row to replay. */
+async function claimCreate(
+  args: CreateExecution,
+  store: AgentSessionRecordStore,
+  terminalTarget: AgentSessionCreateTerminalTarget
+): Promise<'claimed' | 'unrecorded' | AgentSessionOperationRow> {
+  let admitted: Awaited<ReturnType<AgentSessionRecordStore['admitAndClaimOperation']>>
+  try {
+    admitted = await store.admitAndClaimOperation(
+      {
+        callerKey: args.callerKey,
+        operationId: args.operationId,
+        fingerprint: args.fingerprint,
+        now: args.now,
+        terminalTarget
+      },
+      (decision) =>
+        decision.decision === 'admit' ||
+        (decision.decision === 'replay' && decision.row.outcome.status === 'pending')
+    )
+  } catch (error) {
+    warnUnrecorded(error)
+    return 'unrecorded'
+  }
+  const { decision, claim } = admitted
+  if (decision.decision === 'refused') {
+    throw new Error(decision.code)
+  }
+  if (claim?.claim === 'won') {
+    return 'claimed'
+  }
+  if (claim?.claim === 'lost') {
+    return claim.row
+  }
+  if (decision.decision === 'replay') {
+    return decision.row
+  }
+  throw new Error('agent_session_operation_unknown')
+}
+
+/**
+ * Bookkeeping never gates the user's start: when the store cannot be opened or written, the create
+ * still runs, fenced in this process only, and loses nothing but its replay across a restart.
+ */
 export async function executeAgentSessionCreate(
   args: CreateExecution
 ): Promise<RuntimeCreateAgentSessionResult> {
-  const found = args.store.getOperationRow(args.callerKey, args.operationId)
+  let store: AgentSessionRecordStore | null = null
+  try {
+    store = await args.openStore()
+  } catch (error) {
+    warnUnrecorded(error)
+  }
+  const found = store?.getOperationRow(args.callerKey, args.operationId)
   const existing = found && found.expiresAt > args.now ? found : null
-  if (existing) {
+  if (existing && store) {
     if (existing.fingerprint !== args.fingerprint) {
       throw new Error('agent_session_operation_conflict')
     }
     if (existing.outcome.status !== 'pending') {
-      return replayCreate(args, existing)
+      return replayCreate(args, store, existing)
     }
-  }
-  if (!existing) {
+  } else {
     const timestamp = parseAgentSessionOperationTimestamp(args.operationId)
     if (timestamp === null) {
       throw new Error('agent_session_operation_invalid')
@@ -109,46 +168,37 @@ export async function executeAgentSessionCreate(
       throw new Error('agent_session_operation_expired')
     }
   }
-  const receipt = existing ? readReceipt(existing) : await args.prepare()
-  const { decision, claim } = await args.store.admitAndClaimOperation(
-    {
-      callerKey: args.callerKey,
-      operationId: args.operationId,
-      fingerprint: args.fingerprint,
-      now: args.now,
-      terminalCreate: receipt
-    },
-    (admitted) =>
-      admitted.decision === 'admit' ||
-      (admitted.decision === 'replay' && admitted.row.outcome.status === 'pending')
-  )
-  if (decision.decision === 'refused') {
-    throw new Error(decision.code)
-  }
-  if (!claim || claim.claim === 'absent') {
-    if (decision.decision === 'replay') {
-      return replayCreate(args, decision.row)
+  // Why: a pending row proves nothing was dispatched, so its retry re-runs every check a first attempt does.
+  const prepared = await args.prepare()
+  let durable: AgentSessionRecordStore | null = null
+  if (store) {
+    const claim = await claimCreate(args, store, prepared.target)
+    if (typeof claim === 'object') {
+      return replayCreate(args, store, claim)
     }
-    throw new Error('agent_session_operation_unknown')
+    durable = claim === 'claimed' ? store : null
   }
-  if (claim.claim === 'lost') {
-    return replayCreate(args, claim.row)
+  const settle = async (outcome: AgentSessionOperationOutcome): Promise<void> => {
+    if (!durable || !(await recordOutcome(args, durable, outcome))) {
+      args.fenceInMemory()
+    }
   }
   let dispatched = false
   try {
-    const terminal = await args.spawn(receipt, () => {
+    const terminal = await prepared.launch(() => {
       dispatched = true
     })
-    await recordOutcome(args, { status: 'succeeded', sessionId: '', terminalCreate: terminal })
+    await settle({ status: 'succeeded', sessionId: '', terminalCreate: terminal })
     return { terminal, disposition: 'created' }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    await recordOutcome(
-      args,
-      dispatched || isAgentSessionOperationOutcomeUnknown(error)
-        ? { status: 'unknown', message }
-        : { status: 'pending' }
-    )
+    if (dispatched || isAgentSessionOperationOutcomeUnknown(error)) {
+      await settle({
+        status: 'unknown',
+        message: error instanceof Error ? error.message : String(error)
+      })
+    } else if (durable) {
+      await recordOutcome(args, durable, { status: 'pending' })
+    }
     throw error
   }
 }
