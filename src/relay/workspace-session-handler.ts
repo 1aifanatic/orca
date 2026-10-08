@@ -55,6 +55,7 @@ function sanitizeClientId(value: string): string {
 
 export class WorkspaceSessionHandler {
   private readonly clientsByNamespace = new Map<string, Map<string, ConnectedClient>>()
+  private closed = false
 
   constructor(
     private dispatcher: RelayDispatcher,
@@ -125,7 +126,19 @@ export class WorkspaceSessionHandler {
     return this.read(sanitizeNamespace(params.namespace))
   }
 
+  /** Refuses patches while the relay shuts down; a deferred shutdown reopens. */
+  close(): void {
+    this.closed = true
+  }
+
+  reopen(): void {
+    this.closed = false
+  }
+
   private async patch(params: Record<string, unknown>): Promise<PatchResult> {
+    if (this.closed) {
+      return { ok: false, reason: 'unavailable', message: 'Relay is shutting down' }
+    }
     const namespace = sanitizeNamespace(params.namespace)
     const current = this.read(namespace)
     const baseRevision = Number(params.baseRevision)

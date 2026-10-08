@@ -1,5 +1,6 @@
 import type { Store } from '../persistence'
 import type { SshTarget } from '../../shared/ssh-types'
+import type { SshChannelMultiplexer } from '../ssh/ssh-channel-multiplexer'
 import type {
   RemoteWorkspaceExportAuthority,
   RemoteWorkspaceObservedPatchResult,
@@ -24,8 +25,16 @@ import {
 } from './remote-workspace-snapshot-cache'
 import { remoteWorkspaceSessionsMatch } from './remote-workspace-snapshot-normalization'
 
-/** What this desktop and a host agree the host holds; null when the host's copy is unknown. */
-type HostAgreement = RemoteWorkspaceExportAuthority & { session: RemoteWorkspaceSession | null }
+/**
+ * What this desktop and a host agree the host holds; null when the host's copy is unknown. It holds
+ * only over the connection it was reached on: after a reconnect the host may have moved on, and
+ * this desktop's own writes in the gap (exits retired by a relay's death) are not the host's news.
+ */
+type HostAgreement = {
+  authority: RemoteWorkspaceExportAuthority
+  session: RemoteWorkspaceSession | null
+  connection: SshChannelMultiplexer | undefined
+}
 
 export type RemoteWorkspaceExports = {
   /** Records a window's pull; the import's own writes must already be in the store. */
@@ -65,20 +74,21 @@ export function createRemoteWorkspaceExports(
   ): Promise<void> => {
     if (
       agreements.get(target.id) !== agreement ||
+      agreement.connection !== getActiveMultiplexer(target.id) ||
       (agreement.session && remoteWorkspaceSessionsMatch(session, agreement.session))
     ) {
       return
     }
     let result: RemoteWorkspaceObservedPatchResult | null
     try {
-      result = await patchUnderAgreement(target, session, agreement)
+      result = await patchUnderAgreement(target, session, agreement.authority)
     } catch (error) {
       if (agreements.get(target.id) !== agreement) {
         return
       }
       sendPushStatus({
         targetId: target.id,
-        authority: agreement,
+        authority: agreement.authority,
         result: null,
         error: error instanceof Error ? error.message : 'Workspace upload failed'
       })
@@ -90,12 +100,16 @@ export function createRemoteWorkspaceExports(
     }
     if (result?.ok) {
       const { revision, hostObservationToken } = result.snapshot
-      agreements.set(target.id, { revision, hostObservationToken, session })
+      agreements.set(target.id, {
+        ...agreement,
+        authority: { revision, hostObservationToken },
+        session
+      })
     } else if (result?.reason === 'stale-revision') {
       // The host moved on; the window's next pull agrees again.
       agreements.delete(target.id)
     }
-    sendPushStatus({ targetId: target.id, authority: agreement, result })
+    sendPushStatus({ targetId: target.id, authority: agreement.authority, result })
   }
 
   const exportAll = async (): Promise<void> => {
@@ -149,7 +163,11 @@ export function createRemoteWorkspaceExports(
       outcome === 'kept-local'
         ? (getCachedRemoteWorkspaceSnapshot(targetId)?.session ?? null)
         : sessionForTarget(readWorktreeOwners(), targetId)
-    agreements.set(targetId, { revision, hostObservationToken, session })
+    agreements.set(targetId, {
+      authority: { revision, hostObservationToken },
+      session,
+      connection: getActiveMultiplexer(targetId)
+    })
     exportChanged()
   }
 
@@ -160,13 +178,13 @@ export function createRemoteWorkspaceExports(
 async function patchUnderAgreement(
   target: SshTarget,
   session: RemoteWorkspaceSession,
-  agreement: HostAgreement
+  authority: RemoteWorkspaceExportAuthority
 ): Promise<RemoteWorkspaceObservedPatchResult | null> {
   const current = getCachedRemoteWorkspaceSnapshot(target.id) ?? (await getRemoteSnapshot(target))
   if (
     !current ||
-    current.hostObservationToken !== agreement.hostObservationToken ||
-    !cachedRemoteWorkspaceSnapshotAuthorizesRevision(target.id, agreement.revision)
+    current.hostObservationToken !== authority.hostObservationToken ||
+    !cachedRemoteWorkspaceSnapshotAuthorizesRevision(target.id, authority.revision)
   ) {
     const latest = getCachedRemoteWorkspaceSnapshot(target.id) ?? current
     return latest ? { ok: false, reason: 'stale-revision', snapshot: latest } : null
