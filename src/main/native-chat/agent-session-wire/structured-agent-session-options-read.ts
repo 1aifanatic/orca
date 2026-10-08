@@ -43,14 +43,22 @@ async function readStructuredAgentSessionOptionsAtRest(
   const catalog = (await deps.modelCatalog
     ?.read({ agent: record.provider, sessionId })
     .catch(() => null)) ?? { origin: 'unknown' as const }
-  // With no catalog for the account, the list a running child of this agent falls back to.
-  const listed = catalog.origin === 'unknown' ? (rules?.fallbackModels() ?? null) : catalog.models
-  const models = listed ?? []
   const saved = record.options ?? {}
   const fastMode =
     saved.fastMode === undefined
       ? null
       : decodeStructuredAgentSessionOptionValue('fastMode', saved.fastMode)
+  const current = {
+    model: saved.model ?? '',
+    ...(saved.effort ? { effort: saved.effort } : {}),
+    ...(typeof fastMode === 'boolean' ? { fastMode } : {})
+  }
+  if (rules?.projectOptions) {
+    return rules.projectOptions(catalog, current)
+  }
+  // Agents without a saved-catalog projection retain their own default/capability policy.
+  const listed = catalog.origin === 'unknown' ? (rules?.fallbackModels() ?? null) : catalog.models
+  const models = listed ?? []
   // An unknown model is one the client already treats as unconfirmed. Only a real listing names the
   // account's default; a built-in list's default is a guess, so with none the client keeps its own.
   const model =

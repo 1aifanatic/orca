@@ -4,19 +4,15 @@ import type {
   AgentSessionOptionsResult
 } from '../../shared/agent-session-wire'
 import {
-  claudeFallbackModelOption,
-  currentModelId,
   listedModels,
   matchListedModel,
   record,
-  savedOrSeedModels,
+  projectClaudeSessionModelOptions,
   text,
   wireClaudeModel,
-  wireClaudeModels,
   type ListedModel
 } from './claude-structured-model-catalog'
 import type { ClaudeSession } from './claude-structured-session-state'
-import { structuredAgentSessionOptionModels } from '../native-chat/agent-session-wire/structured-agent-session-option-models'
 import { claudeCatalogRowsOfAccount } from './claude-structured-retired-model'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
 
@@ -233,7 +229,7 @@ type WireClaudeModel = AgentSessionOptionsResult['models'][number]
 /** The built-in models a running child lists when the CLI gives it none; a chat at rest with no
  *  catalog lists the same. */
 export function claudeFallbackModelOptions(): WireClaudeModel[] {
-  return wireClaudeModels(savedOrSeedModels(undefined))
+  return projectClaudeSessionModelOptions({ current: { model: '' } }).models
 }
 
 /** The listing, with what the CLI runs when no effort is sent on each model the child applies —
@@ -323,12 +319,13 @@ export function claudeStructuredSessionOptionsFrom(
 ): AgentSessionOptionsResult {
   const discovered = listedModels(catalog ? { models: catalog } : null)
   writeClaudeCatalogThrough(session, discovered)
-  const listed = discovered.length > 0 ? discovered : savedOrSeedModels(session.catalogAccess)
   const current = readClaudeCurrentModel(session)
-  const model = currentModelId(listed, current.id)
-  const models = structuredAgentSessionOptionModels(listed, model, (row) =>
-    discovered.length > 0 ? { ...row, resolvedModel: null } : claudeFallbackModelOption(row)
-  )
+  const projected = projectClaudeSessionModelOptions({
+    liveModels: discovered,
+    savedModels: session.catalogAccess?.store.get(session.catalogAccess.fingerprint)?.models,
+    current: { model: current.id ?? '' }
+  })
+  const model = projected.current.model
   const effort =
     session.options.get('effort') ??
     session.reportedOptions.effort ??
@@ -363,9 +360,7 @@ export function claudeStructuredSessionOptionsFrom(
       : [])
   ]
   return {
-    models: wireClaudeModels(
-      current.id === undefined ? models.map((row) => ({ ...row, isDefault: false })) : models
-    ),
+    models: projected.models,
     ...(support ? { fastModeSupport: support } : {}),
     current: {
       model,

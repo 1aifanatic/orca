@@ -1,10 +1,11 @@
 import type {
   AgentSessionModelOption,
-  AgentSessionOptionChoice
+  AgentSessionOptionChoice,
+  AgentSessionOptionsResult
 } from '../../shared/agent-session-wire'
 import { CLAUDE_SESSION_OPTION_CATALOG } from '../../shared/agent-session-option-catalog-claude-codex'
 import type { CatalogOption } from '../../shared/agent-session-option-catalog-types'
-import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { structuredAgentSessionOptionModels } from '../native-chat/agent-session-wire/structured-agent-session-option-models'
 
 export type ListedModel = AgentSessionModelOption & { resolvedModel: string | null }
 
@@ -84,7 +85,7 @@ function seedEfforts(options: readonly CatalogOption[]): AgentSessionOptionChoic
   return effort?.kind.type === 'select' ? effort.kind.choices : []
 }
 
-export function seedModels(): ListedModel[] {
+function seedModels(): ListedModel[] {
   return CLAUDE_SESSION_OPTION_CATALOG.models.map((model) => ({
     id: model.id,
     label: model.label,
@@ -95,8 +96,7 @@ export function seedModels(): ListedModel[] {
   }))
 }
 
-/** Saved names remain choices; only this child's listing can restrict capabilities. */
-export function claudeFallbackModelOption(model: AgentSessionModelOption): ListedModel {
+function claudeFallbackModelOption(model: AgentSessionModelOption): ListedModel {
   return {
     id: model.id,
     label: model.label,
@@ -107,14 +107,7 @@ export function claudeFallbackModelOption(model: AgentSessionModelOption): Liste
   }
 }
 
-export function savedOrSeedModels(
-  access: AgentModelCatalogSessionAccess | undefined
-): ListedModel[] {
-  const saved = access?.store.get(access.fingerprint)
-  return saved?.models.map(claudeFallbackModelOption) ?? seedModels()
-}
-
-export function currentModelId(models: ListedModel[], reportedModel: string | undefined): string {
+function currentModelId(models: readonly ListedModel[], reportedModel: string | undefined): string {
   const matched = reportedModel
     ? models.find(
         (model) =>
@@ -141,4 +134,25 @@ export function wireClaudeModel(entry: ListedModel): AgentSessionModelOption {
 
 export function wireClaudeModels(models: readonly ListedModel[]): AgentSessionModelOption[] {
   return models.map(wireClaudeModel)
+}
+
+/** Saved rows offer names, never selection or capability evidence, whether live or at rest. */
+export function projectClaudeSessionModelOptions(input: {
+  liveModels?: readonly ListedModel[]
+  savedModels?: readonly AgentSessionModelOption[]
+  current: AgentSessionOptionsResult['current']
+}): Pick<AgentSessionOptionsResult, 'models' | 'current'> {
+  const live = input.liveModels ?? []
+  const listed =
+    live.length > 0 ? live : (input.savedModels ?? seedModels()).map(claudeFallbackModelOption)
+  const model = currentModelId(listed, input.current.model || undefined)
+  const models = structuredAgentSessionOptionModels(listed, model, (row) =>
+    live.length > 0 ? { ...row, resolvedModel: null } : claudeFallbackModelOption(row)
+  )
+  return {
+    models: wireClaudeModels(
+      input.current.model ? models : models.map((row) => ({ ...row, isDefault: false }))
+    ),
+    current: { ...input.current, model }
+  }
 }

@@ -204,7 +204,7 @@ describe('structured agent definitions', () => {
     const codex = CODEX_STRUCTURED_AGENT.restingOptions
     expect(claude.fallbackModels()?.length).toBeGreaterThan(0)
     expect(codex.fallbackModels()).toBeNull()
-    expect(claude.effortDefaultsToModel).toBe(true)
+    expect(claude.effortDefaultsToModel).toBe(false)
     expect(codex.effortDefaultsToModel).toBe(false)
     expect(claude.acceptsKey('model')).toBe(true)
     expect(codex.acceptsKey('model')).toBe(true)

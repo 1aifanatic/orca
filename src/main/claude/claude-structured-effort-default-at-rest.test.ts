@@ -1,5 +1,4 @@
-// A Claude chat at rest shows the effort its next start will run: a live child teaches the host
-// catalog what the CLI runs for each model when no effort is sent, and the resting read answers it.
+// Saved catalog defaults do not establish what a later Claude child will run.
 
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
@@ -191,14 +190,14 @@ describe('Claude effort default at rest', () => {
     expect(catalogDefault(store, 'sonnet')).toBeUndefined()
   })
 
-  it('shows that default in the picker of a chat at rest', async () => {
+  it('leaves an unpicked effort unknown at rest despite a saved default', async () => {
     const store = new AgentModelCatalogStore()
     await startChild(store)
 
     const result = await readAtRest(store, restingRecord({ model: 'opus[1m]' }))
 
-    expect(result.current).toMatchObject({ model: 'opus[1m]', effort: 'medium' })
-    expect(pickerEffort(result)).toBe('medium')
+    expect(result.current).toEqual({ model: 'opus[1m]' })
+    expect(pickerEffort(result)).toBeUndefined()
   })
 
   it("shows the user's pick at rest over the default", async () => {
@@ -224,7 +223,7 @@ describe('Claude effort default at rest', () => {
     expect(catalogDefault(other, 'opus[1m]')).toBe('medium')
   })
 
-  it('offers no effort for a model the catalog does not list, at rest as live', async () => {
+  it('constrains an unlisted model only while a live catalog supplies evidence', async () => {
     const store = new AgentModelCatalogStore()
     const unlisted = { model: 'claude-unlisted-9', effort: 'medium' }
     // The CLI runs a model its own catalog does not list, as a newer or pinned model can be.
@@ -236,9 +235,9 @@ describe('Claude effort default at rest', () => {
     const row = (result: typeof resting) =>
       result.models.find((entry) => entry.id === unlisted.model)
     expect(row(live)).toEqual(expect.objectContaining({ id: unlisted.model, efforts: [] }))
-    expect(row(resting)).toEqual(row(live))
+    expect(row(resting)?.efforts.map((choice) => choice.value)).toEqual(EFFORTS)
     expect(pickerEffort(live)).toBeUndefined()
-    expect(pickerEffort(resting)).toBeUndefined()
+    expect(pickerEffort(resting)).toBe('medium')
   })
 
   it('lists an unlisted Codex model at rest exactly as its live child does', async () => {
@@ -364,7 +363,7 @@ describe('Claude effort default at rest', () => {
     expect(result.current).toEqual({ model: 'gpt-5.5' })
   })
 
-  it("never saves the applied effort as the chat's pick, yet shows it at rest", async () => {
+  it("never saves or reports the previous child's applied effort as a resting pick", async () => {
     const store = new AgentModelCatalogStore()
     const events: ClaudeStructuredSessionEvent[] = []
     await startChild(store, undefined, events)
@@ -377,7 +376,7 @@ describe('Claude effort default at rest', () => {
       nativeSessionOptionsFromReport({ reported: reported!, restoreSkipped: [] })
     )
     expect(record.options).toEqual({ model: 'opus[1m]' })
-    expect((await readAtRest(store, record)).current.effort).toBe('medium')
+    expect((await readAtRest(store, record)).current.effort).toBeUndefined()
     expect(record.options).toEqual({ model: 'opus[1m]' })
   })
 })

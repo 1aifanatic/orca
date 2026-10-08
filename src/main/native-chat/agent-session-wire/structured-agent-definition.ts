@@ -6,7 +6,11 @@
 
 import type { AgentSessionCapabilities } from '../../../shared/agent-session-capabilities'
 import type { AgentSessionStoredAgent } from '../../../shared/agent-session-stored-agent'
-import type { AgentSessionModelOption } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionModelCatalogResult,
+  AgentSessionModelOption,
+  AgentSessionOptionsResult
+} from '../../../shared/agent-session-wire'
 
 /** `agent` names the Orca agent whose sessions this describes; the storage fields bound its records. */
 export type StructuredAgentDefinition = AgentSessionStoredAgent & {
@@ -19,6 +23,11 @@ export type StructuredAgentDefinition = AgentSessionStoredAgent & {
     fallbackModels: () => AgentSessionModelOption[] | null
     /** An unpicked effort reads as the model's default effort, as a running child reports it. */
     effortDefaultsToModel: boolean
+    /** Uses the agent's live picker projection when saved catalogs cannot establish capabilities. */
+    projectOptions?: (
+      catalog: AgentSessionModelCatalogResult,
+      current: AgentSessionOptionsResult['current']
+    ) => Pick<AgentSessionOptionsResult, 'models' | 'fastModeSupport' | 'current'>
   }
 }
 
