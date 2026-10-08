@@ -105,12 +105,17 @@ describe('getWorktreeHostContextLabels', () => {
     expect(unhealthy.map((row) => [row.hostContextLabel, row.hostContextHealthLabel])).toEqual([
       ['openclaw', 'Connecting']
     ])
-    const healthy = { ...sources, hostHealthById: new Map([[sshHostId, 'available']]) }
-    expect(applyWorktreeHostContextLabels(rows, healthy)).toBe(rows)
-    const otherHostUnhealthy = { ...sources, hostHealthById: new Map([['ssh:x', 'error']]) }
-    expect(applyWorktreeHostContextLabels(rows, otherHostUnhealthy)[0].hostContextLabel).toBe(
-      undefined
-    )
+    expect(
+      applyWorktreeHostContextLabels(rows, {
+        ...sources,
+        hostHealthById: new Map([[sshHostId, 'available']])
+      })
+    ).toBe(rows)
+    const otherHostUnhealthy = applyWorktreeHostContextLabels(rows, {
+      ...sources,
+      hostHealthById: new Map([['ssh:x', 'error']])
+    })
+    expect(otherHostUnhealthy[0].hostContextLabel).toBeUndefined()
   })
 
   it('names every row by host once the list spans hosts', () => {
