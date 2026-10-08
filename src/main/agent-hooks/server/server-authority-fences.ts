@@ -1,5 +1,5 @@
 import { clearPaneCacheState } from '../../../shared/agent-hook-listener/listener-state'
-import { currentOwner } from '../../../shared/agent-hook-presence-transition'
+import { currentOwner, ownerEndedByLaunch } from '../../../shared/agent-hook-presence-transition'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import { AgentHookServerAuthorityAliases } from './server-authority-aliases'
 import type {
@@ -26,14 +26,16 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       this.scheduleStatusPersist()
       this.notifyStatusChangeListeners()
     }
-    if (!owner || row?.connectionId !== null || !launchAgent || owner.agent !== launchAgent) {
+    // Why: a relayed row's launch is ended by its relay, which runs the same rule.
+    const ended = row?.connectionId === null ? ownerEndedByLaunch(row, launchAgent) : undefined
+    if (!ended) {
       return
     }
     this.reconcileEndedProcessForPaneKeys([ownerPaneKey], {
       preserveResumeIdentity: true,
-      endedPresence: { ...owner, ended: true }
+      endedPresence: { ...ended, ended: true }
     })
-    this.paneOwnerProbes.ownerEnded(ownerPaneKey, owner.process)
+    this.paneOwnerProbes.ownerEnded(ownerPaneKey, ended.process)
     // Why: an owner with no session to resume leaves no ended record, so fence its late hooks as before.
     if (!this.state.lastStatusByPaneKey.has(ownerPaneKey)) {
       this.retirePaneAuthority(paneKey)

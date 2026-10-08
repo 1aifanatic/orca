@@ -32,6 +32,16 @@ export function currentOwner(
     : undefined
 }
 
+/** The owner a launched agent command's end ends: the pane's owner when it is the launched agent.
+ *  Each execution host (main locally, the relay over SSH) applies it to the panes it runs. */
+export function ownerEndedByLaunch(
+  row: AgentHookEventPayload | undefined,
+  launchAgent: string | null | undefined
+): AgentProcessPresence | undefined {
+  const owner = currentOwner(row)
+  return owner && launchAgent && owner.agent === launchAgent ? owner : undefined
+}
+
 function readHookProducer(incoming: AgentHookEventPayload): HookProducer {
   const agent = incoming.agentPresence?.agent ?? incoming.payload.agentType
   return {
