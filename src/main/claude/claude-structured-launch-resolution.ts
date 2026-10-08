@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto'
-import { join } from 'node:path'
+import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
+import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import type {
   Options as ClaudeAgentSdkOptions,
   PermissionMode
@@ -28,7 +28,6 @@ import {
   structuredClaudeMatchesActiveManagedAccount,
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
-import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import {
   claudeChildEnv,
   claudeProbeEnv,
@@ -37,10 +36,22 @@ import {
   type ClaudeEnvDeps
 } from './claude-structured-child-env'
 import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
-import type { ClaudeThinkingDisplaySupport } from './claude-thinking-display-support'
+import type { ClaudeCliFlagSupport } from './claude-cli-flag-support'
+import { resolveClaudeLaunchFlags } from './claude-structured-launch-flags'
+import {
+  withNativeChatVisualsEnv,
+  type PrepareNativeChatVisuals
+} from '../native-chat/native-chat-visuals-delivery'
+import {
+  claudeLaunchResumesTranscript,
+  resolveClaudeStructuredLaunchHome
+} from './claude-structured-launch-home'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 import { CLAUDE_STRUCTURED_AGENT } from './claude-structured-agent-definition'
+import { claudeSessionIdForOrcaSession } from './claude-structured-session-id'
+
+export { claudeSessionIdForOrcaSession }
 
 export const CLAUDE_DEFAULT_SETTING_SOURCES = ['user', 'project', 'local'] as const
 export const CLAUDE_SESSION_STATE_EVENTS_ENV = 'CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS'
@@ -53,6 +64,7 @@ export type ClaudeStructuredSdkOptions = Pick<
   | 'supportedDialogKinds'
   | 'extraArgs'
   | 'additionalDirectories'
+  | 'plugins'
   | 'model'
   | 'effort'
   | 'permissionMode'
@@ -132,23 +144,18 @@ export type ClaudeStructuredLaunchResolverDeps = {
   authSwitchSettleTimeoutMs?: number
   /** Account state for the managed-account gate; null when it cannot be read, which refuses. */
   readManagedAccountGate?: () => ClaudeManagedAccountGateSettings | null
-  /** Whether this CLI takes the thinking-display flag. Absent ⇒ the flag is never passed. */
-  thinkingDisplay?: Pick<ClaudeThinkingDisplaySupport, 'argsFor'>
+  /** The host's chat attachment store: files a client attached live there, outside the workspace,
+   *  and the agent reads them without asking. */
+  attachmentDirectory?: string
+  /** Which version-gated flags this CLI takes. Absent ⇒ none is ever passed. */
+  cliFlags?: Pick<ClaudeCliFlagSupport, 'supports'>
+  /** This chat's visuals folder and skill; absent or null ⇒ the chat gets neither. */
+  prepareVisuals?: PrepareNativeChatVisuals
   /** Whether Claude wrote a transcript for this id; defaults to the transcript resolver. */
   hasTranscript?: (input: {
     providerSessionId: string
     claudeConfigDir: string
   }) => Promise<boolean>
-}
-
-async function claudeTranscriptExists(input: {
-  providerSessionId: string
-  claudeConfigDir: string
-}): Promise<boolean> {
-  const path = await resolveSessionFilePath('claude', input.providerSessionId, {
-    claudeProjectsDir: join(input.claudeConfigDir, 'projects')
-  })
-  return path !== null
 }
 
 export type ClaudeStructuredInvocation = { command: string; env: Record<string, string> }
@@ -205,14 +212,6 @@ export async function assertClaudeAuthSwitchSettled(
   }
 }
 
-export function claudeSessionIdForOrcaSession(sessionId: string): string {
-  const bytes = createHash('sha256').update(`orca-claude:${sessionId}`).digest().subarray(0, 16)
-  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40
-  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80
-  const hex = bytes.toString('hex')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-}
-
 export function createClaudeStructuredLaunchResolver(
   deps: ClaudeStructuredLaunchResolverDeps
 ): (input: { identity: AgentSessionJournalIdentity }) => Promise<ClaudeStructuredLaunch> {
@@ -233,14 +232,16 @@ export function createClaudeStructuredLaunchResolver(
         `claude structured sessions run on the local host, not ${record.location.executionHostId}`
       )
     }
+    const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
     const pinned = CLAUDE_STRUCTURED_AGENT.accountHomeVariable
-    if (record.accountHome.variable !== pinned) {
-      throw new Error(`claude sessions pin ${pinned}, not ${record.accountHome.variable}`)
+    if (accountHome.variable !== pinned) {
+      throw new Error(`claude sessions pin ${pinned}, not ${accountHome.variable}`)
     }
     // Every acquisition, not just the first: the account state can change under a live session, and
     // a reacquire after an unexpected exit would otherwise spawn under whatever it has become.
     // Codex has no gate here — it resolves its account on a different path.
-    const gate = deps.readManagedAccountGate?.()
+    const router = getClaudeProfileRouter()
+    const gate = router ? undefined : deps.readManagedAccountGate?.()
     if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
       // Unreadable account state names no situation a person can act on, so only the log reads it.
       throw new AgentSessionPreSpawnError(
@@ -265,44 +266,59 @@ export function createClaudeStructuredLaunchResolver(
     const cwd = await resolveAgentSessionLaunchDirectory(deps, record)
     const sources = await resolveClaudeChildEnvSources(deps)
     // Asked as soon as the spawn's cwd and PATH are known, so it overlaps what is left to resolve.
-    const thinkingDisplay = deps.thinkingDisplay?.argsFor({
-      command: sources.command,
-      cwd,
-      env: claudeProbeEnv(sources)
-    })
-    // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
-    // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
-    const resumesTranscript =
-      head !== null &&
-      (claudeProviderHandleLeafUuid(head) !== null ||
-        (await (deps.hasTranscript ?? claudeTranscriptExists)({
-          providerSessionId,
-          claudeConfigDir: record.accountHome.path
-        })))
+    const probeLaunch = { command: sources.command, cwd, env: claudeProbeEnv(sources) }
+    const launchFlags = resolveClaudeLaunchFlags(deps, record.sessionId, probeLaunch)
     const configured = claudeStructuredLaunchArgs(await deps.resolveLaunchArgs())
-    const { additionalDirectories } = configured
+    const { thinkingDisplayArgs, visuals } = await launchFlags
+    const additionalDirectories = [
+      ...configured.additionalDirectories,
+      ...(deps.attachmentDirectory ? [deps.attachmentDirectory] : []),
+      ...(visuals ? [visuals.visuals.folder] : [])
+    ]
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const thinkingDisplayArgs = (await thinkingDisplay) ?? {}
+    // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
+    // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
+    const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null
+    const resumes = async (claudeConfigDir: string): Promise<boolean> =>
+      head !== null &&
+      (await claudeLaunchResumesTranscript({
+        router,
+        leafUuid,
+        providerSessionId,
+        claudeConfigDir,
+        hasTranscript: deps.hasTranscript
+      }))
+    // Why: without a router the home is fixed, so check it before the recheck that must stay last.
+    const resumedWithoutRouter = router ? undefined : await resumes(accountHome.path)
     // Last: it rechecks the account switch, which may have begun during any await above.
     const { command, env } = await resolveClaudeStructuredInvocation(
       deps,
       (base) =>
         // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
-        structuredSessionChildIdentityEnv(record.sessionId, {
-          ...base,
-          // The turn translator relies on Claude's authoritative idle frame when no result arrives.
-          [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
-        }),
+        structuredSessionChildIdentityEnv(
+          record.sessionId,
+          withNativeChatVisualsEnv(
+            {
+              ...base,
+              // The turn translator relies on Claude's authoritative idle frame when no result arrives.
+              [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
+            },
+            visuals?.visuals ?? null
+          )
+        ),
       sources
     )
+    const launchHome = await resolveClaudeStructuredLaunchHome(router, env, accountHome.path)
+    const resumesTranscript = resumedWithoutRouter ?? (await resumes(launchHome))
     return {
       pathToClaudeCodeExecutable: command,
       options: {
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         ...permission,
         ...(additionalDirectories.length ? { additionalDirectories } : {}),
+        ...(visuals?.pluginDir ? { plugins: [{ type: 'local', path: visuals.pluginDir }] } : {}),
         extraArgs: {
           ...configured.extraArgs,
           ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs,
@@ -314,9 +330,9 @@ export function createClaudeStructuredLaunchResolver(
       },
       cwd,
       env,
-      claudeConfigDir: record.accountHome.path,
+      claudeConfigDir: launchHome,
       providerSessionId,
-      resumeLeafUuid: resumesTranscript && head ? claudeProviderHandleLeafUuid(head) : null,
+      resumeLeafUuid: resumesTranscript ? leafUuid : null,
       resumesTranscript,
       continuesChain
     }

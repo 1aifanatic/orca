@@ -22,6 +22,7 @@ import {
 } from './structured-agent-session-runtime-teardown'
 import { AgentSessionRecoveryCapsule } from './agent-session-recovery-capsule'
 import type { CodexStructuredPermissionPolicy } from '../codex/codex-structured-permission-policy'
+import type { StructuredAgentCommandSettings } from '../native-chat/structured-agent-command-resolution'
 import type { CodexStructuredSessionAdapterDeps } from '../codex/codex-structured-session-adapter'
 import type { ClaudeStructuredSessionAdapterDeps } from '../claude/claude-structured-session-adapter'
 import {
@@ -33,11 +34,14 @@ import { StructuredAgentRegistry } from '../native-chat/agent-session-wire/struc
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import {
+  installAgentSessionAttachments,
+  stopAgentSessionAttachments
+} from './structured-agent-session-attachment-wiring'
+import {
   openAgentSessionRecordStoreOnce,
   releaseAgentSessionRecordStore,
   type OpenedAgentSessionRecordStore
 } from './agent-session-record-store-slot'
-import { legacyAgentSessionStorePath } from './agent-session-record-store-file'
 import { journalDatabasePath } from '../native-chat/agent-session-journal/journal-host-database'
 import { journalDatabaseHoldsAgentSessions } from '../native-chat/agent-session-journal/journal-database'
 import {
@@ -62,28 +66,27 @@ import {
   modelCatalogHostDeps,
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
-import type { ClaudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
+import type { ClaudeCliFlagSupport } from '../claude/claude-cli-flag-support'
+import {
+  scheduleNativeChatVisualsSweep,
+  type NativeChatVisualsSweepDeps
+} from '../native-chat/native-chat-visuals-sweep'
 
-/** Whether this profile holds a structured chat: a record or tab in the journal database, or the
- *  records file a profile from before it carries while the database still owes its copy. */
+/** Whether this profile holds a structured chat: a record or tab in the journal database. */
 export function hasPersistedStructuredAgentSessionStore(
   stateDirectory: string,
   fileExists: (path: string) => boolean = existsSync
 ): boolean {
   const databasePath = journalDatabasePath(stateDirectory)
-  if (fileExists(databasePath)) {
-    try {
-      const holds = journalDatabaseHoldsAgentSessions(databasePath)
-      if (holds !== undefined) {
-        return holds
-      }
-    } catch {
-      // A database that cannot be read cannot say it is empty.
-      return true
-    }
+  if (!fileExists(databasePath)) {
+    return false
   }
-  const filePath = legacyAgentSessionStorePath(stateDirectory)
-  return fileExists(filePath) || fileExists(`${filePath}.bak`)
+  try {
+    return journalDatabaseHoldsAgentSessions(databasePath)
+  } catch {
+    // A database that cannot be read cannot say it is empty.
+    return true
+  }
 }
 
 export type StructuredAgentSessionRuntimeDeps = {
@@ -97,8 +100,13 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
-  /** Whether a Claude CLI takes the thinking-display flag; absent never passes it. */
-  claudeThinkingDisplay?: ClaudeThinkingDisplaySupport
+  /** Which version-gated flags a Claude CLI takes; absent never passes one. */
+  claudeCliFlags?: ClaudeCliFlagSupport
+  /** Gives each chat a visuals folder and the skill that teaches it, and sweeps folders whose chat
+   *  is gone. Wired by the real hosts only, so a test runtime never loads the bundled skill. */
+  nativeChatVisuals?: {
+    workspaceVerdicts: NonNullable<NativeChatVisualsSweepDeps['workspaceVerdicts']>
+  }
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
@@ -115,6 +123,12 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
   /** The same setting for Codex, as app-server thread policy. */
   resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
+  resolveAgentFullAccess?: (agent: string) => boolean
+  /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
+  resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
+  /** The settings a per-agent Command override is read from, for the same agents. */
+  resolveAgentCommandSettings?: () => StructuredAgentCommandSettings
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
   getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
@@ -197,6 +211,7 @@ export async function stopStructuredAgentSessionRuntime(options?: {
   const pending = installing
   installing = null
   setStructuredAgentSessionHost(null)
+  stopAgentSessionAttachments()
   const outstanding = [...pendingTeardown]
   pendingTeardown.clear()
   const installed = pending ? await pending.catch(() => null) : null
@@ -272,6 +287,7 @@ async function installOnJournal(
   const context: StructuredAgentAdapterContext = {
     deps,
     store,
+    journalDatabase,
     environment: envResolvers,
     deliverLifecycle: lifecycle.deliver,
     followUps: createStructuredAgentSessionDispatchFollowUps({
@@ -323,10 +339,26 @@ async function installOnJournal(
     })
   }
   setStructuredAgentSessionHost(host)
+  installAgentSessionAttachments({
+    stateDirectory: deps.stateDirectory,
+    store,
+    journalDatabase,
+    logger: deps.logger
+  })
+  const stopVisualsSweep = deps.nativeChatVisuals
+    ? scheduleNativeChatVisualsSweep({
+        stateDirectory: deps.stateDirectory,
+        listHeldSessionIds: () => (store.readOnly ? null : store.listHeldSessionIds()),
+        locationOf: (sessionId) => store.getRecord(sessionId)?.location ?? null,
+        workspaceVerdicts: deps.nativeChatVisuals.workspaceVerdicts,
+        logger: deps.logger
+      })
+    : undefined
   return {
     host,
     adapter,
     journalDatabase,
-    waitForRecovery: lifecycle.drain
+    waitForRecovery: lifecycle.drain,
+    ...(stopVisualsSweep ? { stopBackgroundWork: stopVisualsSweep } : {})
   }
 }

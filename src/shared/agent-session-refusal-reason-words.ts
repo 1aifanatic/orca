@@ -66,6 +66,7 @@ const REASON_WORDS = {
     // Settled under that id, so the control's retry goes out under a new one.
     operationRefusedEarlier: codeWords('retry'),
     journalWriteFailed: causeWords('recordFailed', 'retry'),
+    attachmentExpired: causeWords('attachmentExpired', 'actFirst', 'reattachFile'),
     conversationCleared: causeWords(
       'conversationCleared',
       'goElsewhere',
@@ -97,6 +98,7 @@ const REASON_WORDS = {
     accountSwitchInProgress: { fact: 'accountSwitchInProgress', action: 'wait' },
     managedAccountUnsupported: { fact: 'managedAccountUnsupported', action: 'actFirst' },
     launchFolderMissing: { fact: 'launchFolderMissing', action: 'actFirst' },
+    historyInOtherAccount: { fact: 'historyInOtherAccount', action: 'actFirst' },
     agentCommandNotRunnable: { fact: 'agentCommandNotRunnable', action: 'actFirst' },
     attachFailed: codeWords('retry')
   },
