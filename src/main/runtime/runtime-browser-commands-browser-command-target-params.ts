@@ -65,6 +65,7 @@ export type ActiveBrowserScreencastSubscriber = {
   viewport: BrowserScreencastViewport
   budget: BrowserScreencastFrameBudget
   pendingFrame: Uint8Array<ArrayBufferLike> | null
+  pendingFrameRetry: ReturnType<typeof setTimeout> | null
   // Why: identifies the viewer across reconnects, which the RPC connectionId cannot — a new
   // socket never reuses the old id, so a reconnecting device would stack a second subscription.
   pairedDeviceId?: string

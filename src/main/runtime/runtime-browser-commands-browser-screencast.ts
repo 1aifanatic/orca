@@ -18,10 +18,9 @@ import { BrowserError } from '../browser/browser-error'
 import { randomUUID } from 'node:crypto'
 import { startBrowserScreencast } from '../browser/browser-screencast-stream'
 import { rendererPublicationThrottle } from '../window/renderer-publication-throttle'
-import { sendRemoteBrowserScreencastFrame } from './remote-browser-screencast-frame-admission'
+import { deliverScreencastSubscriberFrame } from './browser-screencast-subscriber-frame-delivery'
 import {
   INITIAL_SCREENCAST_SUBSCRIBER_DELIVERY,
-  recordScreencastSubscriberSend,
   screencastSubscriberIsGhost
 } from './browser-screencast-ghost-subscriber-eviction'
 import type { BrowserScreencastSession } from '../browser/browser-screencast-stream-types'
@@ -80,11 +79,12 @@ export class RuntimeBrowserCommandsWithBrowserScreencast extends RuntimeBrowserC
         onFrame: (bytes) => {
           const ghosts: string[] = []
           for (const [subscriptionId, subscriber] of record.subscribers) {
-            // A slow viewer drops this frame without stalling every other viewer, but the
-            // newest refusal is retained so a gate that opens later can still be filled.
-            const delivered = sendRemoteBrowserScreencastFrame(subscriber.sendBinary, bytes)
-            subscriber.pendingFrame = delivered ? null : bytes
-            subscriber.delivery = recordScreencastSubscriberSend(subscriber.delivery, delivered)
+            // A slow viewer drops this frame without stalling every other viewer.
+            deliverScreencastSubscriberFrame(
+              subscriber,
+              bytes,
+              () => record.subscribers.get(subscriptionId) === subscriber
+            )
             if (screencastSubscriberIsGhost(subscriber.delivery)) {
               ghosts.push(subscriptionId)
             }
@@ -142,6 +142,7 @@ export class RuntimeBrowserCommandsWithBrowserScreencast extends RuntimeBrowserC
       viewport,
       budget,
       pendingFrame: null,
+      pendingFrameRetry: null,
       pairedDeviceId: stream.pairedDeviceId,
       delivery: INITIAL_SCREENCAST_SUBSCRIBER_DELIVERY
     })
@@ -183,11 +184,13 @@ export class RuntimeBrowserCommandsWithBrowserScreencast extends RuntimeBrowserC
         if (!subscriber || !bytes) {
           return
         }
-        const delivered = sendRemoteBrowserScreencastFrame(subscriber.sendBinary, bytes)
-        subscriber.pendingFrame = delivered ? null : bytes
         // The replay is this subscriber's first chance to reach its socket, so it is also where
         // an eviction-eligible delivery history starts.
-        subscriber.delivery = recordScreencastSubscriberSend(subscriber.delivery, delivered)
+        deliverScreencastSubscriberFrame(
+          subscriber,
+          bytes,
+          () => active.subscribers.get(subscriptionId) === subscriber
+        )
       },
       session: {
         done: subscriberDone,
