@@ -5,7 +5,8 @@ import {
   LOCAL_HTTPS_TEST_CERTIFICATE,
   LOCAL_HTTPS_TEST_PRIVATE_KEY
 } from '../../src/main/browser/browser-local-https-test-certificate'
-import { test, expect } from './helpers/orca-app'
+import { test as base, expect } from './helpers/orca-app'
+import type { Page } from '@stablyai/playwright-test'
 import { waitForSessionReady } from './helpers/store'
 
 // Why: these hosts resolve nowhere, so the relay reaches them only through the proxy below.
@@ -15,6 +16,7 @@ const CELL_HOST = 'cell.relay-e2e.test'
 
 type Lab = {
   proxyUrl: string
+  pacUrl: string
   tunnels: string[]
   backendRequests: string[]
   close: () => Promise<void>
@@ -68,7 +70,18 @@ async function startLab(): Promise<Lab> {
   )
   const listeningBackend = await listen(backend)
 
-  const proxy = createHttpServer((_request, response) => response.writeHead(502).end())
+  let proxyAuthority = ''
+  // Chromium fetches the PAC file directly; it sends only the relay hosts to the proxy.
+  const proxy = createHttpServer((request, response) => {
+    if (request.url !== '/proxy.pac') {
+      response.writeHead(502).end()
+      return
+    }
+    response.writeHead(200, { 'content-type': 'application/x-ns-proxy-autoconfig' })
+    response.end(
+      `function FindProxyForURL(url, host) { return dnsDomainIs(host, '.relay-e2e.test') ? 'PROXY ${proxyAuthority}' : 'DIRECT' }`
+    )
+  })
   proxy.on('connect', (request, client, head) => {
     const authority = request.url ?? ''
     tunnels.push(authority)
@@ -87,9 +100,11 @@ async function startLab(): Promise<Lab> {
     client.on('error', () => upstream.destroy())
   })
   const listeningProxy = await listen(proxy)
+  proxyAuthority = `127.0.0.1:${listeningProxy.port}`
 
   return {
-    proxyUrl: `http://127.0.0.1:${listeningProxy.port}`,
+    proxyUrl: `http://${proxyAuthority}`,
+    pacUrl: `http://${proxyAuthority}/proxy.pac`,
     tunnels,
     backendRequests,
     close: async () => {
@@ -99,6 +114,24 @@ async function startLab(): Promise<Lab> {
   }
 }
 
+// Why a fixture: the lab must listen before the app launches so a PAC URL can name it.
+const test = base.extend<{ lab: Lab; usePacFile: boolean }>({
+  usePacFile: [false, { option: true }],
+  // oxlint-disable-next-line no-empty-pattern -- Playwright fixture callbacks require object destructuring here.
+  lab: async ({}, provide) => {
+    const lab = await startLab()
+    await provide(lab)
+    await lab.close()
+  },
+  orcaAppExtraArgs: async ({ lab, usePacFile }, provide) => {
+    // Chromium (net.fetch) must accept the fake backend's localhost certificate.
+    await provide([
+      '--ignore-certificate-errors',
+      ...(usePacFile ? [`--proxy-pac-url=${lab.pacUrl}`] : [])
+    ])
+  }
+})
+
 test.use({
   orcaAppExtraEnv: {
     ORCA_CLOUD_API_URL: `https://${CLOUD_HOST}`,
@@ -106,52 +139,50 @@ test.use({
     ORCA_RELAY_URL: `https://${DIRECTOR_HOST}`,
     ORCA_CLOUD_DEV_AUTH: '1',
     ORCA_CLOUD_ALLOW_PLAINTEXT_SESSION: '1'
-  },
-  // Chromium (net.fetch) must accept the fake backend's localhost certificate.
-  orcaAppExtraArgs: ['--ignore-certificate-errors']
+  }
 })
 
-test.describe('Orca Relay and Orca Cloud proxy setting', () => {
-  let lab: Lab
+async function signInAndEnable(page: Page, proxyUrl: string): Promise<void> {
+  await waitForSessionReady(page)
+  // The fixture seeds an existing-install profile, so the setting starts off.
+  expect(
+    await page.evaluate(async () => (await window.api.settings.get()).relayAndCloudUseProxy)
+  ).toBe(false)
+  await page.evaluate(async (httpProxyUrl) => {
+    await window.api.settings.set({ httpProxyUrl, relayAndCloudUseProxy: true })
+    await window.api.orcaProfiles.connectCurrent()
+  }, proxyUrl)
+}
 
-  test.beforeEach(async () => {
-    lab = await startLab()
-  })
+function requestPairing(page: Page): Promise<unknown> {
+  return page.evaluate(() =>
+    window.api.mobile.getPairingQR({ connectionMode: 'automatic' }).catch(() => null)
+  )
+}
 
-  test.afterEach(async () => {
-    await lab.close()
-  })
-
-  test('routes relay HTTP and the relay websocket through the proxy only while on', async ({
-    orcaPage
-  }) => {
-    await waitForSessionReady(orcaPage)
-    // The fixture seeds an existing-install profile, so the setting starts off.
-    expect(
-      await orcaPage.evaluate(async () => (await window.api.settings.get()).relayAndCloudUseProxy)
-    ).toBe(false)
-    await orcaPage.evaluate(async (proxyUrl) => {
-      await window.api.settings.set({ httpProxyUrl: proxyUrl, relayAndCloudUseProxy: true })
-      await window.api.orcaProfiles.connectCurrent()
-    }, lab.proxyUrl)
-
-    const requestPairing = (): Promise<unknown> =>
-      orcaPage.evaluate(() =>
-        window.api.mobile.getPairingQR({ connectionMode: 'automatic' }).catch(() => null)
-      )
-    // On: token exchange, assignment, and the control websocket all tunnel through the proxy.
-    void requestPairing()
-    await expect
-      .poll(() => lab.tunnels, { timeout: 30_000 })
-      .toEqual(
-        expect.arrayContaining([`${CLOUD_HOST}:443`, `${DIRECTOR_HOST}:443`, `${CELL_HOST}:443`])
-      )
-    expect(lab.backendRequests).toEqual(
-      expect.arrayContaining([
-        `POST ${CLOUD_HOST}/v1/desktop/auth/relay-token`,
-        `POST ${DIRECTOR_HOST}/v1/assign`
-      ])
+// On: token exchange, assignment, and the control websocket all tunnel through the proxy.
+async function expectRelayTrafficProxied(page: Page, lab: Lab): Promise<void> {
+  void requestPairing(page)
+  await expect
+    .poll(() => lab.tunnels, { timeout: 30_000 })
+    .toEqual(
+      expect.arrayContaining([`${CLOUD_HOST}:443`, `${DIRECTOR_HOST}:443`, `${CELL_HOST}:443`])
     )
+  expect(lab.backendRequests).toEqual(
+    expect.arrayContaining([
+      `POST ${CLOUD_HOST}/v1/desktop/auth/relay-token`,
+      `POST ${DIRECTOR_HOST}/v1/assign`
+    ])
+  )
+}
+
+test.describe('Orca Relay and Orca Cloud proxy setting', () => {
+  test('routes relay HTTP and the relay websocket through the proxy only while on', async ({
+    orcaPage,
+    lab
+  }) => {
+    await signInAndEnable(orcaPage, lab.proxyUrl)
+    await expectRelayTrafficProxied(orcaPage, lab)
 
     // Off: the same relay attempt goes direct, so nothing reaches the proxy or the backend.
     await orcaPage.evaluate(() => window.api.settings.set({ relayAndCloudUseProxy: false }))
@@ -176,5 +207,17 @@ test.describe('Orca Relay and Orca Cloud proxy setting', () => {
     expect(offAttempt.statuses).toContain('connecting')
     expect(lab.tunnels.filter((authority) => authority.endsWith('.relay-e2e.test:443'))).toEqual([])
     expect(lab.backendRequests).toEqual([])
+  })
+
+  test.describe('with a PAC file (the system-proxy resolver)', () => {
+    test.use({ usePacFile: true })
+
+    test('follows the PAC answer when Orca has no proxy URL of its own', async ({
+      orcaPage,
+      lab
+    }) => {
+      await signInAndEnable(orcaPage, '')
+      await expectRelayTrafficProxied(orcaPage, lab)
+    })
   })
 })
