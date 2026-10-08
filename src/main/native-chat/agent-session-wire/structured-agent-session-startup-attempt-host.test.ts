@@ -536,6 +536,45 @@ describe('what a started child reports', () => {
 
     expect(store.getRecord(SESSION)?.options).toEqual({ model: 'from-settings' })
   })
+
+  it('keeps a settings read stamped before the host took the start’s report', async () => {
+    await restartWith(publishFirst)
+    await heldBehindStart('hello')
+    // Both reads are stamped before the host takes either report, as a delivery that lags would.
+    const started = { ...startedEvent(), reportedOptions: { model: 'at-start' } }
+    const settings = {
+      ...started,
+      type: 'options-reported' as const,
+      reportedOptions: { model: 'from-settings' }
+    }
+
+    await host.handleAdapterEvent(started)
+    await host.handleAdapterEvent(settings)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await host.flushStreamedEvents(SESSION)
+
+    expect(store.getRecord(SESSION)?.options).toEqual({ model: 'from-settings' })
+  })
+
+  it('takes a report read after a pick that failed', async () => {
+    await restartWith(publishFirst)
+    const id = await heldBehindStart('hello')
+    await host.handleAdapterEvent(startedEvent())
+    await eventually(async () => expect((await submission(id))?.dispatchState).toBe('accepted'))
+    await eventually(() => expect(store.getRecord(SESSION)?.options).toEqual({ model: 'default' }))
+    setOption.mockRejectedValueOnce(new Error('the provider refused the model'))
+    await expect(pick('refused')).rejects.toThrow('the provider refused the model')
+
+    await host.handleAdapterEvent({
+      ...startedEvent(),
+      type: 'options-reported',
+      reportedOptions: { model: 'from-settings' }
+    })
+
+    await eventually(() =>
+      expect(store.getRecord(SESSION)?.options).toEqual({ model: 'from-settings' })
+    )
+  })
 })
 
 function startupAttemptOpen(): boolean {
@@ -556,6 +595,8 @@ describe('the attempt an acquire runs under', () => {
     expect(input.onOutput).toEqual(expect.any(Function))
     expect(input.attemptId).toEqual(expect.any(String))
     expect(input.signal).toBeInstanceOf(AbortSignal)
-    expect(input.optionRevision).toEqual(expect.any(Function))
+    expect(input.optionRevision!()).toBe(
+      host.collaboratorsForTests().runtimeState.optionRevisions.current(SESSION)
+    )
   })
 })

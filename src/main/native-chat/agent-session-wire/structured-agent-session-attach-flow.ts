@@ -71,7 +71,7 @@ export type AttachFlowInput = {
     attempt: StructuredAgentSessionStartupAttempt
   ) => StructuredAgentSessionStartupProgress
   /** The conversation's option revision, which the child's reports are stamped with. */
-  optionRevision?: () => number
+  optionRevision: () => number
   /** Publishes the journal before clients can send against the new owner. `acquiredOwner` is
    *  true only when this attach spawned the provider child, so a re-attach to a live one is not
    *  mistaken for a cold acquire. */

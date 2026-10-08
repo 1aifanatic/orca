@@ -34,7 +34,8 @@ function mint() {
       agent: 'codex',
       providerHandle: null
     },
-    spawnToken: 'spawn-1'
+    spawnToken: 'spawn-1',
+    optionRevision: () => 0
   })
 }
 

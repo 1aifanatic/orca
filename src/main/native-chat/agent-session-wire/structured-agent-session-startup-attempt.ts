@@ -28,7 +28,7 @@ export function mintStructuredAgentSessionStartupAttempt(input: {
   spawnToken: string
   events?: StructuredAgentSessionEventSink
   signal?: AbortSignal
-  optionRevision?: () => number
+  optionRevision: () => number
 }): StructuredAgentSessionStartupAttempt {
   const { record } = input
   return {
@@ -44,7 +44,7 @@ export function mintStructuredAgentSessionStartupAttempt(input: {
     ...(record.options ? { options: record.options } : {}),
     ...(input.events ? { events: input.events } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
-    ...(input.optionRevision ? { optionRevision: input.optionRevision } : {})
+    optionRevision: input.optionRevision
   }
 }
 

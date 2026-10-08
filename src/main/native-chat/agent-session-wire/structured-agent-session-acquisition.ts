@@ -57,7 +57,7 @@ export async function acquireOwner(
       spawnToken,
       ...(input.eventSink ? { events: input.eventSink } : {}),
       ...(input.acquireSignal ? { signal: input.acquireSignal } : {}),
-      ...(input.optionRevision ? { optionRevision: input.optionRevision } : {})
+      optionRevision: input.optionRevision
     })
     const progress = input.onStartupAttempt?.(attempt)
     const acquired = await input.adapter.acquire({

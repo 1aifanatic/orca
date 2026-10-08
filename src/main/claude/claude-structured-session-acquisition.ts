@@ -281,6 +281,7 @@ export async function acquireClaudeSession({
         isCurrent: () => sessions.get(sessionId) === session,
         fault: (error) => callbacks.handleExit(sessionId, attempt, error),
         diagnose: (diagnostic) => emit({ type: 'auth-diagnostic', sessionId, diagnostic }),
+        // The host's minted attempt always carries it; only adapter tests that pass less omit it.
         optionRevision: () => input.optionRevision?.() ?? 0,
         report: (event) =>
           emit({

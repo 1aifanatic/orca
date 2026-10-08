@@ -39,7 +39,7 @@ export type StructuredAgentSessionProviderStartedContext = {
     startupAttempts: Pick<StructuredAgentSessionStartupAttempts, 'ready'>
     optionRevisions: Pick<
       StructuredAgentSessionOptionRevisions,
-      'admitReport' | 'advance' | 'current'
+      'admitReport' | 'advance' | 'isNewest'
     >
   }
   /** The barrier lifts: what was accepted while the child started is handed over now. Settles once
@@ -114,7 +114,11 @@ function persistReportedOptions(
         !record ||
         record.lease.runtimeFence !== event.fence ||
         !agentSessionLeaseAdmitsWriter(record.lease) ||
-        context.runtimeState.optionRevisions.current(event.sessionId) !== admitted
+        !context.runtimeState.optionRevisions.isNewest(
+          event.sessionId,
+          event.optionRevision,
+          admitted
+        )
       ) {
         return
       }

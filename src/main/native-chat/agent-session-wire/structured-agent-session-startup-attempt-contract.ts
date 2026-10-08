@@ -39,5 +39,5 @@ export type StructuredAgentSessionStartupAttempt = {
   /** Any stdout frame or stderr line from the child: proof the start is still moving. */
   readonly onOutput?: () => void
   /** The conversation's option revision now; a report stamps it as its read begins. */
-  readonly optionRevision?: () => number
+  readonly optionRevision: () => number
 }

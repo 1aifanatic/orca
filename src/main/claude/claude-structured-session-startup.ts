@@ -258,6 +258,7 @@ async function settleClaudeStartupSettings(
 ): Promise<void> {
   const { session } = input
   const sequence = session.optionMutationSequence
+  // Only a pick moves it, so this stamp holds however late the host takes `started`.
   const optionRevision = input.optionRevision()
   const settings = await input.readSettings()
   if (!input.isCurrent()) {
