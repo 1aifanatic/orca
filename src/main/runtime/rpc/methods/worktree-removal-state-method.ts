@@ -7,6 +7,7 @@ export const WORKTREE_REMOVAL_STATE_METHODS = [
   // no connection or long-poll slot while Git works.
   defineMethod({
     name: 'worktree.removalState',
+    permission: 'workspace',
     params: WorktreeRemovalStateParams,
     handler: async (params, { runtime }) =>
       runtime.readWorktreeRemovalState(
