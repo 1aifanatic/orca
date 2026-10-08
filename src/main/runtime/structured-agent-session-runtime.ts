@@ -11,6 +11,7 @@
 // structured request with the refusal that says why.
 
 import type { AcpStructuredSessionAdapterDeps } from '../acp/acp-structured-session-adapter-deps'
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import type { PiRpcSessionDeps } from '../pi/rpc-session'
 import type { PiRpcSessionAdapterDeps } from '../pi/rpc-session-adapter'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
@@ -152,6 +153,9 @@ export type StructuredAgentSessionRuntimeDeps = {
   statusSink?: StructuredAgentSessionHostDeps['statusSink']
   /** See `StructuredAgentSessionHostDeps.hasOpenDispatch`. */
   hasOpenDispatch?: StructuredAgentSessionHostDeps['hasOpenDispatch']
+  resolveCodexAccountKind?: (home: string) => AgentSessionAccountKind | undefined
+  /** Launch prep's sync for a probed home; see `CodexModelCatalogProbeDeps.prepareHome`. */
+  prepareCodexCatalogProbeHome?: (homePath: string) => void
   /** See `StructuredAgentSessionHostDeps.onSessionTabHidden`. */
   onSessionTabHidden?: StructuredAgentSessionHostDeps['onSessionTabHidden']
   /** Host-owned phone delivery and reconciliation from the current journal projection. */

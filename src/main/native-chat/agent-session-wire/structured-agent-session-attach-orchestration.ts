@@ -1,4 +1,3 @@
-import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { recoverStructuredRewind } from './structured-rewind-recovery'
 // The host's attach, lifted out of the host class.
 //
@@ -16,6 +15,7 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import { performAttach, type AttachFlowInput } from './structured-agent-session-attach-flow'
+import { endStructuredAgentSessionReleasedChild } from './structured-agent-session-attach-failure'
 import { stampFailedCreateOwnerVerdict } from './structured-agent-session-failed-create-refusal'
 import {
   pinnedAgentSessionLaunchArgs,
@@ -25,12 +25,8 @@ import { refuseAgentSessionMutation } from './structured-agent-session-mutation-
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
-import type {
-  StructuredAgentSessionProviderChild,
-  StructuredAgentSessionStopVerdict
-} from './structured-agent-session-host-types'
+import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
 import {
-  endProviderChild,
   indexProviderChild,
   structuredAgentSessionConversationFence
 } from './structured-agent-session-provider-child'
@@ -216,7 +212,7 @@ async function runAttachUnderAbort(
       },
       // The cleanup released the acquisition, which for a re-attach is the live child itself.
       onAcquisitionReleased: (cause, verdict) =>
-        endReleasedChild(context, sessionId, cause, verdict),
+        endStructuredAgentSessionReleasedChild(context, sessionId, cause, verdict),
       onAttached: async (attached, acquisitionGeneration, owner) => {
         const fence = structuredAgentSessionConversationFence(context.deps.store, sessionId)
         const current = context.sessions.get(sessionId)?.child ?? null
@@ -293,38 +289,6 @@ async function runAttachUnderAbort(
 type AttachCandidate = {
   child: StructuredAgentSessionProviderChild
   sink: DeferredStructuredAgentSessionEventSink
-}
-
-function endReleasedChild(
-  context: StructuredAgentSessionAttachContext,
-  sessionId: string,
-  cause: unknown,
-  verdict: StructuredAgentSessionStopVerdict
-): void {
-  const session = context.sessions.get(sessionId)
-  const child = session?.child
-  if (child) {
-    context.runtimeState.startupAttempts.childEnded(sessionId, child)
-  }
-  if (
-    !session ||
-    !child ||
-    !endProviderChild(session, {
-      generation: child.generation,
-      fence: child.fence,
-      cause: 'attach-failed',
-      reason: cause instanceof Error ? cause.message : String(cause),
-      // Orca failed to attach; the provider said nothing.
-      failure: agentSessionFailureFact('hostFault'),
-      duringStartup: child.phase === 'starting',
-      ...verdict
-    })
-  ) {
-    return
-  }
-  context.runtimeState.currentEventSink(sessionId)?.close()
-  context.runtimeState.discardEventSink(sessionId)
-  context.publishStatus?.(sessionId)
 }
 
 /** Binds the sink to the journal and waits for the barrier the host publishes

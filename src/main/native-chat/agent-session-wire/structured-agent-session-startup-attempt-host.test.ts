@@ -47,6 +47,7 @@ let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
 let setOption: Mock<StructuredAgentSessionAdapter['setOption']>
 let startupLimits: Partial<StructuredAgentSessionStartupLimits> | undefined
+const providerStarted = vi.fn()
 
 function acquisition(input: StructuredAgentSessionAcquireInput): AgentSessionAcquisition {
   return {
@@ -84,6 +85,7 @@ async function startHost(): Promise<void> {
       answerPrompt: vi.fn(async () => undefined),
       setOption
     },
+    modelCatalog: { read: vi.fn(), providerStarted },
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => `spawn-${acquire.mock.calls.length}`,
@@ -106,6 +108,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-startup-attempt-'))
   resetHostTestOperationIds()
   startupLimits = undefined
+  providerStarted.mockReset()
   acquire = vi.fn(async (input) => acquisition(input))
   dispatch = vi.fn(async () => ({
     state: 'accepted' as const,
@@ -265,6 +268,22 @@ describe('a send while the agent starts', () => {
     expect((await host.readStatusSummary(SESSION))?.hostExecutionPhase).toBe('starting')
     await host.handleAdapterEvent(startedEvent())
     await eventually(async () => expect((await submission(id))?.dispatchState).toBe('accepted'))
+  })
+
+  it('tells the model catalog once the start proves itself, never for a child it no longer holds', async () => {
+    await restartWith(publishFirst)
+    providerStarted.mockClear()
+    const id = await heldBehindStart('hello')
+    expect(providerStarted).not.toHaveBeenCalled()
+
+    await host.handleAdapterEvent(startedEvent('generation-stale'))
+    await host.flushStreamedEvents(SESSION)
+    expect(providerStarted).not.toHaveBeenCalled()
+
+    await host.handleAdapterEvent(startedEvent())
+    await eventually(async () => expect((await submission(id))?.dispatchState).toBe('accepted'))
+    expect(providerStarted).toHaveBeenCalledTimes(1)
+    expect(providerStarted.mock.calls[0]?.[0]).toMatchObject({ sessionId: SESSION })
   })
 })
 

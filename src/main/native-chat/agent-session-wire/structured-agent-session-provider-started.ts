@@ -99,6 +99,7 @@ export async function settleStructuredAgentSessionProviderStarted(
     }
     context.runtimeState.startupAttempts.ready(event.sessionId, child)
     const delivered = context.wakeDelivery(event.sessionId)
+    noteStructuredAgentSessionProviderStarted(context.deps, event.sessionId)
     context.publishStatus?.(event.sessionId)
     return { delivered }
   })
@@ -133,6 +134,18 @@ async function recordStartedHandle(
       error
     })
     return false
+  }
+}
+
+/** A proven start shows the agent's program exists and may mean a sign-in was fixed, so the
+ *  catalog's held reason is re-checked by the next read's probe sooner; the probe decides. */
+export function noteStructuredAgentSessionProviderStarted(
+  deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'modelCatalog'>,
+  sessionId: string
+): void {
+  const record = deps.store.getRecord(sessionId)
+  if (record) {
+    deps.modelCatalog?.providerStarted(record)
   }
 }
 
