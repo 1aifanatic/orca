@@ -25,6 +25,7 @@ import { useCodexSharedSettingsNotice } from '../components/terminal-pane/codex-
 import { useClaudeAccountSignInNotice } from '../lib/claude-account-sign-in-notice'
 import { useVisibleReviewRefreshReporting } from './use-visible-review-refresh-reporting'
 import { useVisibleHostedReviewRefresh } from './use-visible-hosted-review-refresh'
+import { useProfileStateSaveDelayNotice } from './use-profile-state-save-delay-notice'
 
 /**
  * App-level subscriptions that must outlive any individual surface. Each one is here because
@@ -45,6 +46,7 @@ export function useAppShellServices(): void {
   useHostStructuredAgentsSync()
   // Subscribe to IPC push events
   useIpcEvents()
+  useProfileStateSaveDelayNotice()
   useRemoteRuntimeRecoveryTriggers()
   useVisibleReviewRefreshReporting()
   useVisibleHostedReviewRefresh({ enabled: workspaceSessionReady })

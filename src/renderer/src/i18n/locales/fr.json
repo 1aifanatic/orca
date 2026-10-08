@@ -1,5 +1,9 @@
 {
   "app": {
+    "saving": {
+      "delayedTitle": "L’enregistrement prend plus de temps que d’habitude",
+      "delayedDescription": "L’enregistrement des modifications récentes n’a pas encore été confirmé. Orca continue d’essayer."
+    },
     "recoverableError": {
       "rootTitle": "Orca a rencontré une erreur de rendu.",
       "rootDescription": "Le shell de l'application n'a pas pu terminer son rendu. Réessayez pour le remonter, ou relancez Orca si l'erreur persiste.",

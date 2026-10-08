@@ -106,6 +106,7 @@ function createClient({ holdReplies = false, holdExit = false } = {}) {
   }
   const clock = { now: 0 }
   const onFailure = vi.fn()
+  const onSaveDelayChanged = vi.fn()
   // The fixture worker reads its shared gates from workerData alongside the protocol fields.
   const initialization = {
     databasePath: join(root, 'unused.db'),
@@ -116,11 +117,13 @@ function createClient({ holdReplies = false, holdExit = false } = {}) {
   const client = new ProfileStateWriteWorkerClient(initialization, {
     workerPath,
     onFailure,
+    onSaveDelayChanged,
     clock: () => clock.now
   })
   const fixture = {
     client,
     onFailure,
+    onSaveDelayChanged,
     root,
     workerStarts: () => Atomics.load(shared, STARTS),
     /** Hold every reply not yet posted. */
@@ -169,7 +172,7 @@ async function isSettled(promise: Promise<unknown>): Promise<boolean> {
 }
 
 it('accepts an acknowledgment queued behind an overdue warning timer', async () => {
-  const { client, onFailure, awaitQueuedReply, stall, run } = createClient()
+  const { client, onFailure, onSaveDelayChanged, awaitQueuedReply, stall, run } = createClient()
   await client.ready
   useFakeTimers()
   const write = client.writeSerializedDomains([])
@@ -178,6 +181,7 @@ it('accepts an acknowledgment queued behind an overdue warning timer', async () 
   stall(3 * 60 * 60 * 1000)
   run(WARNING_MS)
   expect(await write).toBe(2)
+  expect(onSaveDelayChanged.mock.calls).toEqual([[true], [false]])
   await expect(client.writeSerializedDomains([])).resolves.toBe(3)
   expect(onFailure).not.toHaveBeenCalled()
   // Only codes, counters, and timings: no payloads, paths, or profile ids.
@@ -192,7 +196,7 @@ it('accepts an acknowledgment queued behind an overdue warning timer', async () 
 })
 
 it('clears the warning when the reply arrives first so a stale timer cannot warn', async () => {
-  const { client, onFailure, run } = createClient()
+  const { client, onFailure, onSaveDelayChanged, run } = createClient()
   await client.ready
   useFakeTimers()
   await expect(client.writeSerializedDomains([])).resolves.toBe(2)
@@ -200,13 +204,16 @@ it('clears the warning when the reply arrives first so a stale timer cannot warn
   run(WARNING_MS * 2)
   expect(diagnostics.slow).not.toHaveBeenCalled()
   expect(onFailure).not.toHaveBeenCalled()
+  expect(onSaveDelayChanged).not.toHaveBeenCalled()
 })
 
 it('keeps initialization pending past the warning and admits the same worker', async () => {
   useFakeTimers()
-  const { client, onFailure, run, releaseReplies, workerStarts } = createClient({
-    holdReplies: true
-  })
+  const { client, onFailure, onSaveDelayChanged, run, releaseReplies, workerStarts } = createClient(
+    {
+      holdReplies: true
+    }
+  )
   run(WARNING_MS * 3)
   expect(await isSettled(client.ready)).toBe(false)
   releaseReplies()
@@ -217,10 +224,23 @@ it('keeps initialization pending past the warning and admits the same worker', a
   )
   expect(workerStarts()).toBe(1)
   expect(onFailure).not.toHaveBeenCalled()
+  expect(onSaveDelayChanged).not.toHaveBeenCalled()
 })
 
 it.each([
   ['write-domains', (client: ProfileStateWriteWorkerClient) => client.writeSerializedDomains([])],
+  [
+    'write-state',
+    (client: ProfileStateWriteWorkerClient) => client.writeSerializedState(Buffer.from('{}'))
+  ],
+  [
+    'write-complete',
+    (client: ProfileStateWriteWorkerClient) => client.writeCompleteSerializedDomains([])
+  ],
+  [
+    'write-automation',
+    (client: ProfileStateWriteWorkerClient) => client.writeSerializedAutomationRuns([], [])
+  ],
   ['assert-revision', (client: ProfileStateWriteWorkerClient) => client.assertCurrentRevision()],
   [
     'export-json',
@@ -231,7 +251,7 @@ it.each([
   'accepts a delayed %s reply after the warning and keeps the same worker',
   async (command, start) => {
     const fixture = createClient()
-    const { client, onFailure, root, run, workerStarts } = fixture
+    const { client, onFailure, onSaveDelayChanged, root, run, workerStarts } = fixture
     await client.ready
     useFakeTimers()
     fixture.holdReplies()
@@ -249,13 +269,16 @@ it.each([
     await expect(client.writeSerializedDomains([])).resolves.toBeGreaterThan(1)
     expect(workerStarts()).toBe(1)
     expect(onFailure).not.toHaveBeenCalled()
+    expect(onSaveDelayChanged.mock.calls).toEqual(
+      command.startsWith('write-') ? [[true], [false]] : []
+    )
     expect(vi.getTimerCount()).toBe(0)
   }
 )
 
 it('warns once for a never-replying request without faulting or replacing the worker', async () => {
   const fixture = createClient()
-  const { client, onFailure, run, workerStarts } = fixture
+  const { client, onFailure, onSaveDelayChanged, run, workerStarts } = fixture
   await client.ready
   useFakeTimers()
   fixture.holdReplies()
@@ -267,6 +290,7 @@ it('warns once for a never-replying request without faulting or replacing the wo
   expect(await isSettled(write)).toBe(false)
   expect(diagnostics.slow).toHaveBeenCalledOnce()
   expect(onFailure).not.toHaveBeenCalled()
+  expect(onSaveDelayChanged).toHaveBeenCalledExactlyOnceWith(true)
   expect(workerStarts()).toBe(1)
   expect(vi.getTimerCount()).toBe(0)
   // Explicit abort keeps the existing fault path and its exit wait.
@@ -279,6 +303,33 @@ it('warns once for a never-replying request without faulting or replacing the wo
   await aborting
   await rejected
   expect(diagnostics.slow).toHaveBeenCalledOnce()
+  expect(onSaveDelayChanged.mock.calls).toEqual([[true], [false]])
+})
+
+it('keeps saving if the delayed-save observer throws and clears each delayed request', async () => {
+  const fixture = createClient()
+  const { client, onSaveDelayChanged, onFailure, run } = fixture
+  await client.ready
+  useFakeTimers()
+  onSaveDelayChanged.mockImplementation(() => {
+    throw new Error('renderer unavailable')
+  })
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    for (let revision = 2; revision <= 3; revision += 1) {
+      fixture.holdReplies()
+      const write = client.writeSerializedDomains([])
+      run(WARNING_MS)
+      fixture.releaseReplies()
+      expect(await write).toBe(revision)
+    }
+    expect(onSaveDelayChanged.mock.calls).toEqual([[true], [false], [true], [false]])
+    expect(onFailure).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalledTimes(4)
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    consoleError.mockRestore()
+  }
 })
 
 it('keeps saving when the diagnostics sink throws', async () => {

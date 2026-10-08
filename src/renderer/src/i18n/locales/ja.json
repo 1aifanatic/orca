@@ -1,5 +1,9 @@
 {
   "app": {
+    "saving": {
+      "delayedTitle": "保存に通常より時間がかかっています",
+      "delayedDescription": "最近の変更が保存されたことをまだ確認できていません。Orca は引き続き保存を試みています。"
+    },
     "recoverableError": {
       "rootTitle": "Orca でレンダラーエラーが発生しました。",
       "rootDescription": "アプリシェルのレンダリングを完了できませんでした。再マウントを試すか、エラーが解決しない場合は Orca を再起動してください。",

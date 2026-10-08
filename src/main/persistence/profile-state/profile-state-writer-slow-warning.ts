@@ -12,17 +12,20 @@ export type ProfileStateWriterSlowWarningOptions = {
   request: ProfileStateWriterDiagnosticRequest
   /** Monotonic milliseconds; tests replace it to model a stalled main loop. */
   now?: () => number
+  onSlow?: () => void
 }
 
-/** Elapsed time cannot prove failure; a slow operation only gets one breadcrumb. */
+/** Elapsed time cannot prove failure; warn once without settling the request. */
 export function startProfileStateWriterSlowWarning({
   warningMs,
   phase,
   request,
-  now = () => performance.now()
+  now = () => performance.now(),
+  onSlow
 }: ProfileStateWriterSlowWarningOptions): () => void {
   const startedAt = now()
   const timer = setTimeout(() => {
+    onSlow?.()
     try {
       recordProfileStateWriterSlow({
         ...request,

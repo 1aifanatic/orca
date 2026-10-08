@@ -44,6 +44,10 @@
     }
   },
   "app": {
+    "saving": {
+      "delayedTitle": "Saving is taking longer than usual",
+      "delayedDescription": "Recent changes haven’t been confirmed saved yet. Orca is still trying."
+    },
     "recoverableError": {
       "rootTitle": "Orca hit a renderer error.",
       "rootDescription": "The app shell could not finish rendering. Retry to remount it, or relaunch Orca if the error persists.",
