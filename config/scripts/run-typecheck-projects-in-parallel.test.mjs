@@ -1,7 +1,10 @@
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import {
   TYPECHECK_PROJECTS,
   admissibleHeapGib,
+  checkProject,
   planTypecheckBatches,
   runTypecheckProjects,
   typecheckInvocation
@@ -76,6 +79,37 @@ describe('typecheck project admission', () => {
 })
 
 describe('typecheck compiler execution', () => {
+  it.each(['stdin', 'stdout', 'stderr'])('waits for exit after a %s pipe error', async (name) => {
+    const child = new EventEmitter()
+    child.stdin = new PassThrough()
+    child.stdout = new PassThrough()
+    child.stderr = new PassThrough()
+    const failure = new Error('compiler pipe failed')
+    let settled = false
+    const checking = checkProject('tsconfig.node.json', () => child)
+    checking.then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      }
+    )
+    try {
+      child[name].emit('error', failure)
+      await Promise.resolve()
+      expect(settled).toBe(false)
+      child.emit('close', 0, null)
+      await expect(checking).rejects.toBe(failure)
+    } finally {
+      child.stdout.unpipe(process.stdout)
+      child.stderr.unpipe(process.stderr)
+      for (const stream of [child.stdin, child.stdout, child.stderr]) {
+        stream.destroy()
+      }
+    }
+  })
+
   it('keeps incremental TypeScript as the default for every project', () => {
     for (const { config } of TYPECHECK_PROJECTS) {
       const invocation = typecheckInvocation(config, '')

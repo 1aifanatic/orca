@@ -65,20 +65,29 @@ export function typecheckInvocation(project, bunPath = process.env.ORCA_TYPECHEC
     : { program: process.execPath, args: [tsc, '--noEmit', '-p', config] }
 }
 
-function checkProject(project) {
+export function checkProject(project, startCompiler = spawnProcess) {
   return new Promise((resolve, reject) => {
-    const child = spawnProcess({
+    const child = startCompiler({
       ...typecheckInvocation(project),
       cwd: repoRoot,
       env: process.env
     })
+    let streamFailure
+    for (const stream of [child.stdin, child.stdout, child.stderr]) {
+      // Keep the batch occupied until close even when a compiler pipe fails.
+      stream.on('error', (error) => {
+        streamFailure ??= error
+      })
+    }
     child.stdout.pipe(process.stdout)
     child.stderr.pipe(process.stderr)
     child.stdin.end()
 
     child.on('error', reject)
     child.on('close', (code, signal) => {
-      if (signal) {
+      if (streamFailure) {
+        reject(streamFailure)
+      } else if (signal) {
         reject(new Error(`typecheck ${project} exited with signal ${signal}`))
       } else if (code !== 0) {
         reject(new Error(`typecheck ${project} exited with code ${code}`))
