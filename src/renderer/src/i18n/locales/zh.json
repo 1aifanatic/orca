@@ -18148,6 +18148,7 @@
       },
       "receipt": {
         "unavailable": "所选答案不可用",
+        "emptyAnswer": "空回答",
         "cancelled": "取消",
         "resolved": "已解决",
         "resolver": "回复于 {{device}}",
@@ -18294,6 +18295,10 @@
       "messageNotSent": "消息未发送",
       "deliveryUnconfirmed": "无法确认送达 — 重试前请检查聊天",
       "messageSending": "正在发送…",
+      "userMessage": {
+        "showFull": "显示完整消息",
+        "showLess": "收起"
+      },
       "queuedMessages": {
         "alreadySent": "此消息已发送。",
         "editAlreadySent": "已发送 — 你的文本仍在输入框中。",
