@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { withDurableRuntimeStore } from '../../../runtime/runtime-durable-store-fixture'
 import { getDefaultWorkspaceSession } from '../../../../shared/constants'
+import type { TerminalPaneLayoutNode, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
 import { SessionNotFoundError } from '../../../daemon/daemon-errors'
 import type { Store } from '../../../persistence'
@@ -19,17 +20,28 @@ const SHELL_LEAF = '1b3f2c4d-5e6a-4b7c-8d9e-0f1a2b3c4d5e'
 const AGENT_LEAF = '2c4d3e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f'
 const SHELL_PTY = `${WORKTREE}@@aaaa0001`
 const AGENT_PTY = `${WORKTREE}@@aaaa0002`
-const SPLIT = {
+const SPLIT: TerminalPaneLayoutNode = {
   type: 'split',
   direction: 'vertical',
   first: { type: 'leaf', leafId: SHELL_LEAF },
   second: { type: 'leaf', leafId: AGENT_LEAF }
 }
 
+const ROW: TerminalTab = {
+  id: TAB,
+  worktreeId: WORKTREE,
+  ptyId: SHELL_PTY,
+  title: 'Terminal',
+  customTitle: null,
+  color: null,
+  sortOrder: 0,
+  createdAt: 0
+}
+
 function sleptSplit(): { store: Store; read: () => WorkspaceSessionState } {
-  let session = {
+  let session: WorkspaceSessionState = {
     ...getDefaultWorkspaceSession(),
-    tabsByWorktree: { [WORKTREE]: [{ id: TAB, worktreeId: WORKTREE, ptyId: SHELL_PTY }] },
+    tabsByWorktree: { [WORKTREE]: [ROW] },
     terminalLayoutsByTabId: {
       [TAB]: {
         root: SPLIT,
@@ -38,7 +50,7 @@ function sleptSplit(): { store: Store; read: () => WorkspaceSessionState } {
         ptyIdsByLeafId: { [SHELL_LEAF]: SHELL_PTY, [AGENT_LEAF]: AGENT_PTY }
       }
     }
-  } as unknown as WorkspaceSessionState
+  }
   return {
     read: () => session,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This fixture supplies the persistence and catalog reads stable-pane adoption and exit bookkeeping use.
@@ -124,8 +136,6 @@ describe('a stable pane respawned over an absent process', () => {
 
     expect(read().terminalLayoutsByTabId).toEqual(before.terminalLayoutsByTabId)
     // The row named the shell's gone process; the first pane to bind takes it.
-    expect(read().tabsByWorktree[WORKTREE]).toEqual([
-      { id: TAB, worktreeId: WORKTREE, ptyId: null }
-    ])
+    expect(read().tabsByWorktree[WORKTREE]).toEqual([{ ...ROW, ptyId: null }])
   })
 })
