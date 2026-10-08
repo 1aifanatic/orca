@@ -4,7 +4,7 @@ import {
   spawnManagedProviderProcess,
   type ManagedProviderProcess
 } from '../provider-process/managed-provider-process'
-import { claudeChildClosePolicy } from './claude-child-exit-proof-ladder'
+import { claudeChildClosePolicy, claudeChildCloseProven } from './claude-child-exit-proof-ladder'
 
 /** Derived rather than imported: only src/shared/child-process may name node:child_process. */
 type ClaudeCodeChild = ReturnType<typeof spawnProcess>
@@ -46,7 +46,8 @@ function definedEnv(env: Record<string, string | undefined>): Record<string, str
  */
 export function createClaudeCodeProcessSpawn(
   spawnImpl: typeof spawnProcess = spawnProcess,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  onOutput?: () => void
 ): ClaudeCodeProcessSpawn {
   let managed: ManagedProviderProcess | null = null
   return {
@@ -63,8 +64,9 @@ export function createClaudeCodeProcessSpawn(
           platform,
           inheritedEnv: definedEnv(options.env),
           site: 'claude-stream-json-teardown',
-          policy: claudeChildClosePolicy,
-          acceptClose: (result) => result.root === 'exited' && result.tree === 'exited'
+          policy: (supervised) => claudeChildClosePolicy(supervised, platform),
+          acceptClose: claudeChildCloseProven,
+          ...(onOutput ? { onOutput } : {})
         }
       )
       // The SDK drains stderr only for its own local spawn; the managed process drains it here.

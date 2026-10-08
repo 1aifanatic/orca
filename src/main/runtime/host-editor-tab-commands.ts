@@ -117,11 +117,12 @@ export function openHostDiffTab(
   return record.tabId
 }
 
-/** Closes a host editor tab; closing never writes the file. */
+/** Closes a host editor tab; closing never writes the file. `force` discards a desktop draft. */
 export function closeHostEditorTab(
   runtime: HostEditorTabsRuntime,
   worktreeId: string,
-  tab: RuntimeMobileSessionMarkdownTab | RuntimeMobileSessionFileTab
+  tab: RuntimeMobileSessionMarkdownTab | RuntimeMobileSessionFileTab,
+  force = false
 ): void {
   assertHostEditorAuthority(runtime)
   const state = getHostEditorTabState(runtime)
@@ -146,8 +147,8 @@ export function closeHostEditorTab(
   // Why: the host cannot arbitrate a desktop draft (even an empty one); closing would destroy it.
   // A read-only row's draft is ignored everywhere else, so it must not pin the tab open either.
   if (
-    (record.file.readOnly !== true && record.file.dirtyDraftContent !== undefined) ||
-    tab.isDirty
+    !force &&
+    ((record.file.readOnly !== true && record.file.dirtyDraftContent !== undefined) || tab.isDirty)
   ) {
     publishHostEditorTabs(runtime, worktreeId)
     throw new Error(HOST_EDITOR_DRAFT_CLOSE_REFUSAL)

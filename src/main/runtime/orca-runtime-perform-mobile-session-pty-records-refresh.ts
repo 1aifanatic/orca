@@ -3,6 +3,7 @@ import { OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs } from './orca-run
 import { assertEditorAuthorityAvailable, resolveEditorAuthority } from './editor-authority'
 import { activateHostEditorTab, releaseHostEditorFocus } from './host-editor-tab-commands'
 import type { PtyControllerInventory } from './runtime-pty-controller-contract'
+import { isAgentLaunchRunningIn } from '../agent-launch/agent-launch-pane-attachment'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type { TabActivationIntent } from '../../shared/tab-activation-intent'
@@ -155,6 +156,12 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
         // (#11598), so only a background probe may be refused for one.
         (!isAutomaticTabActivation(opts.intent) ||
           !this.isDeliberatelyParkedPane(worktreeId, tab)) &&
+        // Why: a launch's early tab is listed before its agent spawns; that launch's spawn fills it.
+        !isAgentLaunchRunningIn(worktreeId, {
+          kind: 'pane',
+          tabId: tab.parentTabId,
+          leafId: tab.leafId
+        }) &&
         (!targetsHost ||
           !this.notifier?.focusTerminal ||
           this.shouldMaterializeHeadlessMobileSessionTab(snapshot!, tab))

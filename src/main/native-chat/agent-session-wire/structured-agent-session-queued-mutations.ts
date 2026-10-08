@@ -22,10 +22,8 @@ import {
 } from '../agent-session-journal/journal-open-failure'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
-import {
-  queuedMessageFingerprint,
-  structuredQueueHold
-} from './structured-agent-session-queued-messages'
+import { structuredQueueHold } from './structured-agent-session-queued-messages'
+import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import {
   resumeStructuredQueue,
   structuredAgentSessionHostInstance
@@ -84,7 +82,8 @@ export async function withdrawQueuedMessagesForOperation(
  * came from, which IS that pause, so the drain never sees a carried card unpaused
  * and no pause outlives the cards. Runs after the clear commits, opening the
  * replacement's conversation only when there are drafts to carry; the source
- * rows are then tombstoned. Bookkeeping around the clear: a failure, or a crash
+ * rows are then tombstoned. A command card (a waiting /compact) is tombstoned
+ * without a copy. Bookkeeping around the clear: a failure, or a crash
  * before the carry, leaves the cards on the superseded source — whose
  * supersession fence already blocks the drain — reported, never gating the
  * clear. A crash between the copy and the tombstone leaves both, which the
@@ -104,22 +103,25 @@ export async function carryQueuedMessagesToClearReplacement(
     if (rows.length === 0) {
       return
     }
-    const replacement = await input.openReplacementJournal()
-    if (!replacement) {
-      throw new Error('the replacement journal is not open')
-    }
-    for (const row of rows) {
-      // A returned card carries over as a plain waiting draft — its refusal
-      // belonged to the source's submissions. The fingerprint is re-scoped to the
-      // replacement, or its echo could never alias the sent bubble.
-      await replacement.queuedMessages.insert({
-        messageId: row.messageId,
-        body: row.body,
-        fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
-        hostInstance: structuredAgentSessionHostInstance(),
-        carriedFrom: ctx.sessionId,
-        source: row.source
-      })
+    // A command belongs to the discarded context, so it is withdrawn instead of carried.
+    const carried = rows.filter((row) => !row.body.command)
+    if (carried.length > 0) {
+      const replacement = await input.openReplacementJournal()
+      if (!replacement) {
+        throw new Error('the replacement journal is not open')
+      }
+      for (const row of carried) {
+        // A returned card carries over as a plain waiting draft — its refusal
+        // belonged to the source's submissions. The fingerprint is re-scoped to the
+        // replacement, or its echo could never alias the sent bubble.
+        await replacement.queuedMessages.insert({
+          messageId: row.messageId,
+          body: row.body,
+          fingerprint: agentSessionSendBodyFingerprint(input.replacementSessionId, row.body),
+          hostInstance: structuredAgentSessionHostInstance(),
+          carriedFrom: ctx.sessionId
+        })
+      }
     }
     await withdrawQueuedMessagesForOperation(ctx.journal, {
       sessionId: ctx.sessionId,
@@ -217,12 +219,17 @@ export function sendQueuedStructuredAgentMessage(
           ? { ok: true, value: { clientMessageId: submission.clientMessageId, submission } }
           : invalid('This queued message was already sent.')
       }
+      // A command never steers: handed over mid-turn it would only be refused. Clients offer its
+      // Send only while the agent is idle; this answers an older one that offers it mid-turn.
+      if (hold === 'working' && row.body.command) {
+        return invalid("A command can't be sent while the agent is working.")
+      }
       const submissionId = operationId
       try {
         await ctx.journal.appendSubmission(
           {
             clientMessageId: submissionId,
-            // The person asked for this turn, so it ends a Stop's pause once it starts.
+            // The person asked for this turn: a restart or a close keeps it as a card.
             origin: 'client',
             payloadFingerprint: row.fingerprint,
             body: row.body,
@@ -314,7 +321,7 @@ export function deleteQueuedStructuredAgentMessage(
 
 /** Resume: ends the queue's pause — a Stop's, or a restart's — so the cards send
  *  again, oldest first, as the session goes idle. A no-op when nothing is paused,
- *  and a per-card `send_failed` hold stays for its own Send. */
+ *  and a per-card hold (`send_failed`, `kept`) stays for its own Send. */
 export function resumeStructuredAgentQueue(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,

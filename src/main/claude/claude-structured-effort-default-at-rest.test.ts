@@ -25,7 +25,8 @@ import {
   PROVIDER_SESSION_ID,
   fakeClaude,
   identityFor,
-  recordingJournalSink
+  recordingJournalSink,
+  claudeStartupSettled
 } from './claude-structured-session-test-support'
 
 const SESSION = 'session-1'
@@ -120,7 +121,7 @@ async function startChild(
     events: recordingJournalSink(),
     ...(options ? { options } : {})
   })
-  await adapter.awaitStarted(SESSION)
+  await claudeStartupSettled(adapter, SESSION)
   return adapter
 }
 
@@ -144,6 +145,7 @@ function readAtRest(store: AgentModelCatalogStore, record: AgentSessionRecord) {
   const modelCatalog = createAgentModelCatalogService({
     store,
     getRecord: () => record,
+    drivesRecord: () => true,
     resolveAccountHome: async () => ({ variable: 'CLAUDE_CONFIG_DIR', path: ACCOUNT_HOME })
   })
   const resting = {

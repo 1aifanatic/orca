@@ -309,11 +309,10 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
       )
     } else if (editorAuthorityAtStart !== 'window') {
       // Why: no window owns editors, so the host closes the tab in the session it persists.
-      closeHostEditorTab(this, worktreeId, tab)
+      closeHostEditorTab(this, worktreeId, tab, options.force)
+    } else if (!this.notifier?.closeSessionTab) {
+      throw new Error('runtime_unavailable')
     } else {
-      if (!this.notifier?.closeSessionTab) {
-        throw new Error('runtime_unavailable')
-      }
       await this.notifier.closeSessionTab(tab.id, worktreeId)
     }
     return finishCommittedClose()

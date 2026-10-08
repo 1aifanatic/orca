@@ -19,14 +19,14 @@ import {
 } from './structured-session-pointer-delivery'
 import { sendAgentTurn } from './send-agent-turn'
 
-/** Per-dispatch so one worker's nudges cannot exhaust the shared runtime operation-ledger budget. */
+/** Names the dispatch a nudge belongs to on the operation row it writes. */
 export function structuredPointerCallerKey(dispatchId: string): string {
   return `trusted-local:orchestration:${dispatchId}`
 }
 
 /**
- * The same budget for direct peer mail, which is addressed to the worker's own handle and has no
- * dispatch to scope to.
+ * The caller key for direct peer mail, which is addressed to the worker's own handle and has no
+ * dispatch to name.
  *
  * A separate key rather than a reshaped one: the ledger is keyed on (callerKey, operationId), so
  * changing the dispatch key's shape would orphan every nudge already in flight under the old one.
@@ -103,7 +103,6 @@ export function createStructuredMailboxPointerHost(): StructuredMailboxPointerHo
           body: input.body,
           // As a person's message is: a busy chat queues it as a card, sent when the turn ends.
           delivery: 'queue',
-          source: input.source,
           operationId: input.operationId,
           expectedRuntimeFence: input.expectedRuntimeFence
         }

@@ -114,14 +114,14 @@ describe('structured mailbox pointer host', () => {
         body: { kind: 'message', role: 'user', blocks: [] }
       } as never)
     ).resolves.toEqual({ kind: 'sent', state: expected })
-    // Per-dispatch, so one worker's nudges cannot exhaust the shared operation-ledger budget.
+    // Per-dispatch caller key: names the dispatch the nudge is for.
     expect(send.mock.calls[0]![0]).toEqual({ callerKey: structuredPointerCallerKey('d1') })
     expect(send.mock.calls[0]![1]!.retryUnknown).toBeUndefined()
   })
 
   it('asks a busy chat to queue the pointer as a card, with who it is from', async () => {
     const send = vi.fn(
-      async (_caller: unknown, _payload: { delivery?: string; source?: unknown }) => ({
+      async (_caller: unknown, _payload: { delivery?: string; body?: unknown }) => ({
         ok: true,
         value: {
           clientMessageId: 'op1',
@@ -136,13 +136,12 @@ describe('structured mailbox pointer host', () => {
         dispatchId: 'd1',
         operationId: 'op1',
         expectedRuntimeFence: 1,
-        body: { kind: 'message', role: 'user', blocks: [] },
-        source: NOTICE_SOURCE
+        body: { kind: 'message', role: 'user', blocks: [], from: NOTICE_SOURCE }
       })
     ).resolves.toEqual({ kind: 'queued' })
     expect(send.mock.calls[0]![1]).toMatchObject({
       delivery: 'queue-if-active',
-      source: NOTICE_SOURCE
+      body: { from: NOTICE_SOURCE }
     })
   })
 

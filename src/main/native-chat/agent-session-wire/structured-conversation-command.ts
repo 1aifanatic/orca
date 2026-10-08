@@ -22,7 +22,7 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import { carryQueuedMessagesToClearReplacement } from './structured-agent-session-queued-mutations'
-import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
 
 /** A command's `error` is the sentence its row shows. */
 export function conversationCommandFailure(
@@ -39,12 +39,16 @@ export function conversationCommandFailure(
 export type ConversationCommandParams = {
   envelope: AgentSessionMutationEnvelope
   command: AgentSessionConversationCommand
+  /** /compact only: wait as a card while the agent works, as a queued send does. */
+  delivery?: 'queue-if-active'
+  /** Host-local, set by the client-facing command RPC as for an ordinary send. */
+  userSend?: true
 }
 export type ConversationReplacement = {
   sourceSessionId: string
   sessionId: string
   workspaceId: string
-  agent: AgentSessionHandleProvider
+  agent: StructuredAgentId
 }
 
 const clearFingerprintOf = (sessionId: string) =>
@@ -111,7 +115,7 @@ export function runStructuredConversationCommand(
       callerKey: caller.callerKey,
       envelope,
       // Starts the agent only to settle a rewind in doubt, as a send does; a /clear itself starts nothing.
-      prepareSession: sendPreparation(context, envelope),
+      prepareSession: sendPreparation(context, envelope, { refusesInRun: true }),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
       now: context.now,
