@@ -7,6 +7,7 @@ import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults
 import { agentLaunchSettingsMutationUpdates } from '../../shared/agent-launch-settings'
 import { AgentLaunchSettingsMutation } from '../../shared/rpc-contract/agent-launch-settings-params'
 import { MOBILE_RPC_METHOD_ALLOWLIST } from './runtime-rpc/runtime-rpc-mobile-method-allowlist'
+import type { RuntimeStore } from './runtime-store-contract'
 
 vi.mock('../agent-hooks/managed-agent-hook-controls', () => ({
   applyAgentStatusHooksEnabled: vi.fn(async () => {})
@@ -20,9 +21,12 @@ function fixture() {
     agentCmdOverrides: { codex: '/host/codex' }
   })
   const updateSettings = vi.fn((updates: Partial<GlobalSettings>) => Object.assign(host, updates))
+  const runDurableMutation: NonNullable<RuntimeStore['runDurableMutation']> = async (mutate) =>
+    mutate().value
   const controller = new RuntimeClientSettingsController({
     getSettings: () => host,
-    updateSettings
+    updateSettings,
+    runDurableMutation
   })
   return { host, updateSettings, controller }
 }

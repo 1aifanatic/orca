@@ -30,6 +30,7 @@ import {
   type AgentLaunchSettings,
   type AgentLaunchSettingsMutation
 } from '../../shared/agent-launch-settings'
+import { agentLaunchSettingsRollbackUpdates } from './agent-launch-settings-rollback'
 
 export type RuntimeClientSettings = Pick<
   GlobalSettings,
@@ -102,7 +103,10 @@ export class RuntimeClientSettingsController {
   private reconciliationTail: Promise<void> = Promise.resolve()
 
   constructor(
-    private readonly store: Pick<RuntimeStore, 'getSettings' | 'updateSettings'> | null,
+    private readonly store: Pick<
+      RuntimeStore,
+      'getSettings' | 'updateSettings' | 'runDurableMutation'
+    > | null,
     private readonly notifyReposChanged: (() => void) | undefined = undefined
   ) {}
 
@@ -194,16 +198,40 @@ export class RuntimeClientSettingsController {
   }
 
   async mutateAgentLaunch(mutation: AgentLaunchSettingsMutation): Promise<AgentLaunchSettings> {
-    if (!this.store?.getSettings || !this.store.updateSettings) {
+    const store = this.store
+    if (!store?.getSettings || !store.updateSettings || !store.runDurableMutation) {
       throw new Error('runtime_unavailable')
     }
-    const updates = agentLaunchSettingsMutationUpdates(
-      this.store.getSettings(),
-      mutation,
-      process.platform
-    )
-    await this.update(updates)
-    return this.getAgentLaunch()
+    const applySettings = store.updateSettings.bind(store)
+    const committed = await store.runDurableMutation(() => {
+      const before = store.getSettings()
+      const updates = agentLaunchSettingsMutationUpdates(before, mutation, process.platform)
+      applySettings(updates, { notifyListeners: true })
+      const applied = store.getSettings()
+      return {
+        value: {
+          settings: projectAgentLaunchSettings(applied),
+          reconcileHooks:
+            updates.disabledTuiAgents !== undefined &&
+            !haveSameDisabledTuiAgents(before.disabledTuiAgents, applied.disabledTuiAgents)
+        },
+        rollback: () => {
+          const rollback = agentLaunchSettingsRollbackUpdates(
+            before,
+            applied,
+            store.getSettings(),
+            updates
+          )
+          if (Object.keys(rollback).length > 0) {
+            applySettings(rollback, { notifyListeners: true })
+          }
+        }
+      }
+    })
+    if (committed.reconcileHooks) {
+      await this.reconcileManagedAgentHooks()
+    }
+    return committed.settings
   }
 
   updateTerminalQuickCommands(mutation: TerminalQuickCommandMutation): TerminalQuickCommand[] {
