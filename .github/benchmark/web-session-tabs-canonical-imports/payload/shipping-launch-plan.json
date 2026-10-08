@@ -1,0 +1,1010 @@
+{
+  "sourceHead": "8b20d21138b2929623366c653f6359827c898930",
+  "sourceHashes": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/ensure-native-runtime.mjs": "ba33bac7159cc8cd9375f20617d662a7ab5ef85120f94ea3b4f0877569f97365",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "2ec999d585da35017fd799f12bef021601a14acae0eb561135544d6c585f593c",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "docs/STYLEGUIDE.md": "9b23f7469ca1fc8a3643d1168f729e4642e98939a64db0455c8201f855624048",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "notes/bun-migration/performance/qualify-fixture-reuse.py": "89dc7af36d69123bf58bb51e9c93f1ce10a129e684fbc048a5caf1ad1a97199e",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "src/renderer/src/components/native-chat/StructuredAgentSessionAttentionBridge.test.tsx": "e55505cd82df834d72182a9f0698ab17d81896ec5847a3eecda49b59c0b79b43",
+    "src/renderer/src/components/sidebar/worktree-agent-remote-attribution.test.ts": "1866831e074257fcaba47a64984fdc7df91b9f3688af3b46f779c0a7b5ea1d5f",
+    "src/renderer/src/runtime/host-session-mirror-empty-inventory-settle.test.ts": "09d906efa346d15c5c9353d6c7cf346c8e4c891146083368af98aa973b2f915e",
+    "src/renderer/src/runtime/host-session-mirror-hydration-frame-ordering.test.tsx": "6a152da238acdf6749ff6b5333263f0aeb9f8fb2931767a71f7dbd7bd5fd960d",
+    "src/renderer/src/runtime/host-session-mirror-settle-receipt-frames.test.tsx": "c49aeeac390c67a97c751b40c50a73ec9b4b93904814ce50b0ab08dee670f888",
+    "src/renderer/src/runtime/local-structured-session-tabs-host-isolation.test.ts": "01bef365b6e810e34ea1f687af5c165e73a530ef56a9c209805d7a8d92621368",
+    "src/renderer/src/runtime/mirrored-agent-status-clock-skew.test.ts": "1bd0d0a3ab422038c11f83b0381075359774f8d4520f6e4c2b1d51fbb7cf9f96",
+    "src/renderer/src/runtime/paired-agent-row-turn-outcome-arms.test.ts": "8431671201dd621f74db7f153cebee045ff878f03d24491871fd18c560f9d7aa",
+    "src/renderer/src/runtime/paired-reconnect-sidebar-agent-count.test.ts": "53e117f43c23e919b841bd1a153aad6ce57fb16e5c345984a6b195fb2345f6d7",
+    "src/renderer/src/runtime/remote-agent-row-last-assistant-message.test.ts": "362cf71de5dbfa0e1d090916e0e942a36312f02117752910f52f0005bfc9c66a",
+    "src/renderer/src/runtime/remote-server-parity.test.ts": "99fded867281515aee1107a21fad0d2af40b68cfaa0ef6a235b58a284cbfccf0",
+    "src/renderer/src/runtime/structured-conversation-tab-replacement.test.ts": "600d1b4db5624c4c5ae3c8cf554d77c3225264db1d1483680404acced6dffb83",
+    "src/renderer/src/runtime/use-runtime-session-mirror-environment-key.test.ts": "e4b3a5ce13871ad1a17638b25f06670ce6cd4a4e4a6e165a0445a87a06e0bbbf",
+    "src/renderer/src/runtime/web-runtime-browser-creation-e2e-fault.ts": "d9c2395e0f0ce6b39789d5cc6ea664238154bff2aa07235c3fcce69ae6f4dbc2",
+    "src/renderer/src/runtime/web-runtime-browser-creation-placement.test.ts": "e142a8d7c54b5f0dc0946aef500235cc6ea7e7eb6b46975f04a790a38f977e94",
+    "src/renderer/src/runtime/web-runtime-browser-creation.ts": "c4b0001f8cc779447cfd4b4fd2bc187d92552d186ec4aa14a4a64413e025cee6",
+    "src/renderer/src/runtime/web-session-focus-intent-visible-tab.test.ts": "ab4202b9c95fddfad81c6d93516ec1a5f8cddbb59442ae7e1a9fa665cd274ae1",
+    "src/renderer/src/runtime/web-session-open-files-batch-equivalence.test.ts": "c609858e939f5c425f00a132874b8fc2456f016585d8e65307d583670ef2dd99",
+    "src/renderer/src/runtime/web-session-split-pane-retirement-fences.test.ts": "ebe75bffdcf24236add26841c311f5c8a60bea499ad76b88b3999f5a5ddba14a",
+    "src/renderer/src/runtime/web-session-structured-tab-focus.test.ts": "9ae4c4fdc11abb7fa4f203ce33521adf872ce22934432faab58620181a0df0c0",
+    "src/renderer/src/runtime/web-session-tabs-agent-completion-notifications.test.ts": "dd86569a4733137998c1597a8d4d2bc3affcb46bce13ea458d9943253c982635",
+    "src/renderer/src/runtime/web-session-tabs-late-merged-predecessor-lockout.test.ts": "4722bad364162e4327038db71b25c43d97ed2b51bba267090ae50c19d1a6bd98",
+    "src/renderer/src/runtime/web-session-tabs-publisher-identity-lineage.test.ts": "a41954ba2da393aa10cfb4329240486ad19d9d4e9c3c06d16ad01da3c8c2ed37",
+    "src/renderer/src/runtime/web-session-tabs-removed-frame-retires-live-publisher.test.ts": "71cf4020020c8c781bd741a2b3b03a78c64dede5aa9dc75edffcbf8c4f38a677",
+    "src/renderer/src/runtime/web-session-tabs-sync-agent-handoff.test.ts": "5888e168e251b0514cc13197de28a8df68446c91d57a60f44e934087e7402f4d",
+    "src/renderer/src/runtime/web-session-tabs-sync-agent-status.test.ts": "073109fc369e41d16f167daaeb3af01cbc4f9afc107eba2791dc2a8af251468d",
+    "src/renderer/src/runtime/web-session-tabs-sync-browser-tabs.test.ts": "db6518a1cbe9014c62aeb63c8cc54c26544cd7e84e624be87e238339d7f0b6ac",
+    "src/renderer/src/runtime/web-session-tabs-sync-client-owned-page-content.test.ts": "ab20b3aaf964ffd6ca4a36a0560ab0b57d489f5b021b1971ef9bc2193dc93cef",
+    "src/renderer/src/runtime/web-session-tabs-sync-client-owned-placement.test.ts": "61e0738f809a3ea1a74adbdc7591b446a2268a3b5b3c1307780c59cd98b31983",
+    "src/renderer/src/runtime/web-session-tabs-sync-diff-focus-steal.test.ts": "90e19df13b13da75d3e9d4a8dccfca21c855e9c40e5b14ee4d9e4e6c2b3fc88b",
+    "src/renderer/src/runtime/web-session-tabs-sync-editor-tabs.test.ts": "054f1eb3fa6dc978e3cc8e43a2291ff92703a49156f98d29e168fe3a1efef876",
+    "src/renderer/src/runtime/web-session-tabs-sync-emptied-workspace-tombstone.test.ts": "9d22ae7a1e341e4879212fe2c0abcdaaa6a63a2741ff2c95b6806ef922d7feeb",
+    "src/renderer/src/runtime/web-session-tabs-sync-focus-intent.test.ts": "7eb8e12428f8b48c544ae564d021f35b359ce4c7ea1c433547c975775e34b1db",
+    "src/renderer/src/runtime/web-session-tabs-sync-host-restart-browser-rows.test.ts": "c5b9f1ecee76b668fc186cf071809104f915461d6f80b74d7f139ac4b56a6ca3",
+    "src/renderer/src/runtime/web-session-tabs-sync-host-tab-retraction-ghost-rows.test.ts": "19f81dc5c23a5da2441dede5a760521fe6ef8ffe531c8f2c40cd6596e9bd44b5",
+    "src/renderer/src/runtime/web-session-tabs-sync-html-preview-focus.test.ts": "347dc34229b65a8d53d89afde8cca1f1065f16154decd71d2ca3ca112672d038",
+    "src/renderer/src/runtime/web-session-tabs-sync-initial-terminal-relaunch.test.tsx": "aa5cebc725c263715b3543d1c9c89679e3d6035c32cf6ff5ebe1a8c851041f6f",
+    "src/renderer/src/runtime/web-session-tabs-sync-layout-duplicate-groups.test.ts": "85a3bc82354969dcf9e4446be340009236a7d2d81d2b84d8ec025951923222a0",
+    "src/renderer/src/runtime/web-session-tabs-sync-layout-groups.test.ts": "be2f8ce564def3b2e9a15de5d6a95464a02274327d0d7ec45b684abd26bd3779",
+    "src/renderer/src/runtime/web-session-tabs-sync-mirror-identity.test.ts": "4dcc41fc684e15817569d3a753539ba02979481845d1c962b07f4a692368663a",
+    "src/renderer/src/runtime/web-session-tabs-sync-mirrored-draft-close.test.ts": "ff50266775f906b6c6c7682856ffaceca9eef079572c3a020809ec221d5c593a",
+    "src/renderer/src/runtime/web-session-tabs-sync-reconnect-resubscribe.test.tsx": "8200f3b4fee2df47cdeb4f1ae5df8e6d9d5e9d101e186184392573d80c389155",
+    "src/renderer/src/runtime/web-session-tabs-sync-remote-main-agent-verdict.test.ts": "c91ea2dc38ce6697680cc0d53ec9bc50f0eef3721498dd9214b9e50e75d998ef",
+    "src/renderer/src/runtime/web-session-tabs-sync-remote-status-title-flap.test.ts": "cde1afc2f8fbaec5dc0c42365651d0f113ef0c4efa2a1471ca29762365855e0e",
+    "src/renderer/src/runtime/web-session-tabs-sync-restored-browser-rows.test.ts": "d8f2348d59f7f0d698d9476c1ef50a3d173c3526e254bd1ba2539022d4eed7bb",
+    "src/renderer/src/runtime/web-session-tabs-sync-snapshot-batch.test.ts": "79e1db9f243178446d7c11483f969cc27e65aa8a8ed4faa53380b775efd62e82",
+    "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-adoption.test.ts": "fb183e97791682310121f2a2c120782eff9b25e652419447ca427c4ed3cfe078",
+    "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-authority.test.ts": "171b17864c4c426542332b09cbd50c0a2615d3e0cb1c8293811ed294b9a5be80",
+    "src/renderer/src/runtime/web-session-tabs-sync-terminal-bootstrap.test.ts": "1d3ff0e4cdf0423f35da4c9bb2ca141a74679b0a219412a2bdd51aadda1e85e1",
+    "src/renderer/src/runtime/web-session-tabs-sync-terminal-mirroring.test.ts": "fd476c393b45de838e9ccf47d8d6afc5a1962e35adf1dfd014efa4f27d8f14ef",
+    "src/renderer/src/runtime/web-session-tabs-sync-test-harness.ts": "a86ed162ad279ce417152fa78cedddcf5509f40cf928c6915df8cc69aef6242e",
+    "src/renderer/src/runtime/web-session-tabs-sync-tracking-teardown.test.ts": "f3adc6a752d1228c32221c250d4e4fd263109ef19f7630b4cfef7fb84c00b512",
+    "src/renderer/src/runtime/web-session-tabs-sync-unverifiable-host.test.tsx": "77474e55dffca37c655c13251e05a1f73a043dc005c43054d866ca3cf3280e31",
+    "src/renderer/src/runtime/web-session-tabs-sync-visibility-collision.test.tsx": "6c1ca48b397a69cfb9d58c7b5543e00b61c2b38329e1979449240ec9747775a6",
+    "src/renderer/src/runtime/web-session-tabs-sync-window-visibility.test.tsx": "bdd8137af3d7b5692b2443cd9136579adc5483cc0a2508d95a775c2dfc968aa1",
+    "src/renderer/src/runtime/web-session-tabs-sync.test.ts": "0167dd89d4427e345ae5c4457b2f2158c98e64c43766240fc5d6c93b3a88415e",
+    "src/renderer/src/runtime/web-session-tabs-sync.ts": "fbf33db21ebc99435fc7f3aa06fa8fdea904463a92f0d7945a92817a94f3127e",
+    "src/renderer/src/runtime/web-session-tabs-sync/mirror-settle.ts": "753ac414994d03eab5db6fb88e9a45ff1020e2437f2915ee3e7ceb2830ac6421",
+    "src/renderer/src/runtime/web-session-tabs-sync/mirrored-status-tab-retractions.test.ts": "120f877596784899d1c17330f3fb31bdcaf260678109e3bc0f55cf5d4684bdd8",
+    "src/renderer/src/runtime/web-session-tabs-sync/retraction-pane-ownership.test.ts": "3306dfd55dcd640166098810f9421495827d025118c01aacdf677fc6f21aaca2",
+    "src/renderer/src/runtime/web-session-tabs-sync/snapshot-api.ts": "b748bd0d8b99a23be6b8f7ab413d4f2b934e580739a6270541539d6049b5f0ba",
+    "src/renderer/src/runtime/web-session-tabs-sync/state.ts": "580e7ede30bebd79bc417972e39af8b694049c47afbc752d4085da68deeeb83e",
+    "src/renderer/src/runtime/web-session-tabs-sync/store-patch.ts": "7a481097a0ce23ab488519bb6c4d4ca1301f21d70914bcb918c7ae3cc8d4dd66",
+    "src/renderer/src/runtime/web-session-tabs-sync/tracking-decisions.ts": "d6a75072971a15b7dad2a6b607be68ead9ca4d43e93ec837a0aa8e583001f49d",
+    "src/renderer/src/runtime/web-session-tabs-sync/tracking-lifecycle.ts": "ca8e983cecbbc86a75d963eade900e322ef2e3e710b3614634b9263cd4c560e3",
+    "src/renderer/src/runtime/web-session-tabs-sync/tracking-mappings.ts": "a092d3f98a74de9406b9b3e36e21d4404f93bb81acf4ac1b02d37d28a4618cfc",
+    "src/renderer/src/runtime/web-session-terminal-orphan-inventory-retry.test.ts": "e9f12f96bc0a926a7fba79466e0ec388b5a63a1e3845cdc891da8172994a8b86",
+    "src/renderer/src/runtime/web-session-terminal-orphan-mixed-version.test.ts": "84ce320eefd6f53f39a1ffa72898cfc2bd307338c42c6649b32e91dd76c4c545",
+    "src/renderer/src/runtime/web-session-terminal-orphan-recovery-adoption-regressions.test.ts": "ff42132d5dcf1ed0ca9babaf6b549d249e30ff841eb58da2754622925edf4dda",
+    "src/renderer/src/store/slices/browser/paired-browser-tab-creator.ts": "bceea6b889f45b32a78a6e9c3b7e0ccd1c0450c9911d38ae7c736b19a9e0c319",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "tests/e2e/omp-risk-remote-review.unit.test.ts": "bf893dfa684cfacb65dfb16e1304630338d095996a5506445faffa3610971daa",
+    "tests/e2e/remote-terminal-tab-retirement.unit.test.ts": "72b1f815958e90f2ded05b50efc30edb131403fd29d7afdfc82fddadb70a40f1",
+    "tests/e2e/session-tabs-decorative-title-fanout.unit.test.ts": "1dd8556059ad48e344450856559450843916ecc7018a7d1e445057cc19fa8e86",
+    "tests/e2e/session-tabs-empty-inventory-daemon-oracle.unit.test.ts": "64fdb1d40ad55499ac3ec12d638efff950724ebaab88bee899611fd1e19dfb59"
+  },
+  "controllerSha256": "89dc7af36d69123bf58bb51e9c93f1ce10a129e684fbc048a5caf1ad1a97199e",
+  "reporterSha256": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+  "patch": "notes/bun-migration/performance/web-session-tabs-canonical-imports-ci-8b20/shipping.patch",
+  "patchSha256": "5fc2561b7a75509ac0a8054fd82ab97de76e5e690de17205339127b0c396bae1",
+  "patchTargets": {
+    "src/renderer/src/components/native-chat/StructuredAgentSessionAttentionBridge.test.tsx": {
+      "beforeSha256": "e55505cd82df834d72182a9f0698ab17d81896ec5847a3eecda49b59c0b79b43",
+      "afterSha256": "cf10ab39ed7e6240deacf93f96266cdd7a7b2d70e86e697b2fde1408e0a98e1e"
+    },
+    "src/renderer/src/components/sidebar/worktree-agent-remote-attribution.test.ts": {
+      "beforeSha256": "1866831e074257fcaba47a64984fdc7df91b9f3688af3b46f779c0a7b5ea1d5f",
+      "afterSha256": "35d4e481ba405cb60a7c8e5b86c8765067673936b526e81c3e7734ef5556c1b8"
+    },
+    "src/renderer/src/runtime/host-session-mirror-empty-inventory-settle.test.ts": {
+      "beforeSha256": "09d906efa346d15c5c9353d6c7cf346c8e4c891146083368af98aa973b2f915e",
+      "afterSha256": "5853a6aa11c92e5798a1b8cdc896b7890f09e9da60ab0f1e5ad7fb5db65bc941"
+    },
+    "src/renderer/src/runtime/mirrored-agent-status-clock-skew.test.ts": {
+      "beforeSha256": "1bd0d0a3ab422038c11f83b0381075359774f8d4520f6e4c2b1d51fbb7cf9f96",
+      "afterSha256": "b75443434977029e2cdd6cc29d093d596a2985e76bf208fffd4d60cd57ab000d"
+    },
+    "src/renderer/src/runtime/paired-agent-row-turn-outcome-arms.test.ts": {
+      "beforeSha256": "8431671201dd621f74db7f153cebee045ff878f03d24491871fd18c560f9d7aa",
+      "afterSha256": "7f28383e757da1a2ab10b1c6ad25e7ba7fc8361345ce2bac9d8ee5a271a5ba1a"
+    },
+    "src/renderer/src/runtime/paired-reconnect-sidebar-agent-count.test.ts": {
+      "beforeSha256": "53e117f43c23e919b841bd1a153aad6ce57fb16e5c345984a6b195fb2345f6d7",
+      "afterSha256": "9af3b1a00de90620670fc59a3bdddbe5e76d2e184bbe8f24603899ef28204e92"
+    },
+    "src/renderer/src/runtime/remote-agent-row-last-assistant-message.test.ts": {
+      "beforeSha256": "362cf71de5dbfa0e1d090916e0e942a36312f02117752910f52f0005bfc9c66a",
+      "afterSha256": "9b726967de15d0c3aef40172156d6b188aa09c70098c80a67ed144b5863ac62b"
+    },
+    "src/renderer/src/runtime/remote-server-parity.test.ts": {
+      "beforeSha256": "99fded867281515aee1107a21fad0d2af40b68cfaa0ef6a235b58a284cbfccf0",
+      "afterSha256": "085a59037bbc9fe29817736174b9966b2a4dc08b2b6fac3f4e352c3e630ab931"
+    },
+    "src/renderer/src/runtime/structured-conversation-tab-replacement.test.ts": {
+      "beforeSha256": "600d1b4db5624c4c5ae3c8cf554d77c3225264db1d1483680404acced6dffb83",
+      "afterSha256": "d01bf6e835ecec7708c356d8ccec86c3999ff5dd7c4f9fd17931b65c9e9e2f44"
+    },
+    "src/renderer/src/runtime/web-session-open-files-batch-equivalence.test.ts": {
+      "beforeSha256": "c609858e939f5c425f00a132874b8fc2456f016585d8e65307d583670ef2dd99",
+      "afterSha256": "6ae905542cebee1fc72d9e7bef490399b3cc2e3330eda64d73268970a4ee9e1d"
+    },
+    "src/renderer/src/runtime/web-session-split-pane-retirement-fences.test.ts": {
+      "beforeSha256": "ebe75bffdcf24236add26841c311f5c8a60bea499ad76b88b3999f5a5ddba14a",
+      "afterSha256": "a8c9608f314109ac7abb6432b60c1a2dfb16e80b4c0fe11f905cdf53247f65b9"
+    },
+    "src/renderer/src/runtime/web-session-structured-tab-focus.test.ts": {
+      "beforeSha256": "9ae4c4fdc11abb7fa4f203ce33521adf872ce22934432faab58620181a0df0c0",
+      "afterSha256": "cd5922125487786b1c3d660e59587f4a645b6af88f36bd488e3f1f3ac2d4ae6e"
+    },
+    "src/renderer/src/runtime/web-session-tabs-agent-completion-notifications.test.ts": {
+      "beforeSha256": "dd86569a4733137998c1597a8d4d2bc3affcb46bce13ea458d9943253c982635",
+      "afterSha256": "d78436e72a8492e2ed20b61405a6409fd3ac042ffa73b744f7bfdaf0c5f2803f"
+    },
+    "src/renderer/src/runtime/web-session-tabs-late-merged-predecessor-lockout.test.ts": {
+      "beforeSha256": "4722bad364162e4327038db71b25c43d97ed2b51bba267090ae50c19d1a6bd98",
+      "afterSha256": "f66411fce1bf1289e3ecabe5d966a930b870d0abc1b1c0e1af7bd3533c8416ac"
+    },
+    "src/renderer/src/runtime/web-session-tabs-publisher-identity-lineage.test.ts": {
+      "beforeSha256": "a41954ba2da393aa10cfb4329240486ad19d9d4e9c3c06d16ad01da3c8c2ed37",
+      "afterSha256": "cc74ea5141f6f8808b4b3d86fe1ce2f645dd5e97db25fbba8cf07d5ce4f58174"
+    },
+    "src/renderer/src/runtime/web-session-tabs-removed-frame-retires-live-publisher.test.ts": {
+      "beforeSha256": "71cf4020020c8c781bd741a2b3b03a78c64dede5aa9dc75edffcbf8c4f38a677",
+      "afterSha256": "b4ee38a5267f0e64e76c3af029ec6362a043e6199511626e763f5aa36800a1e2"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-agent-handoff.test.ts": {
+      "beforeSha256": "5888e168e251b0514cc13197de28a8df68446c91d57a60f44e934087e7402f4d",
+      "afterSha256": "1a8a2698970217e54cdac4bf5edab7001883d0c5e2707585f60e97689612370b"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-agent-status.test.ts": {
+      "beforeSha256": "073109fc369e41d16f167daaeb3af01cbc4f9afc107eba2791dc2a8af251468d",
+      "afterSha256": "adc23bd80b6692af76efa8da15444fd15e115c0ae930f404d42e0f482bd5a20c"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-browser-tabs.test.ts": {
+      "beforeSha256": "db6518a1cbe9014c62aeb63c8cc54c26544cd7e84e624be87e238339d7f0b6ac",
+      "afterSha256": "1d0348702e5d659d64d0c009f5b63925571615f9fcd912833d12919da3f74758"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-client-owned-page-content.test.ts": {
+      "beforeSha256": "ab20b3aaf964ffd6ca4a36a0560ab0b57d489f5b021b1971ef9bc2193dc93cef",
+      "afterSha256": "a3fed6fe684010e474318af52c4923b0061f366d51d1132c95ecf32421e8b94e"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-client-owned-placement.test.ts": {
+      "beforeSha256": "61e0738f809a3ea1a74adbdc7591b446a2268a3b5b3c1307780c59cd98b31983",
+      "afterSha256": "a960565590f34d7499862ad5c3c0de4df1b0233d345eaad19e140006e4d69af6"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-diff-focus-steal.test.ts": {
+      "beforeSha256": "90e19df13b13da75d3e9d4a8dccfca21c855e9c40e5b14ee4d9e4e6c2b3fc88b",
+      "afterSha256": "c552900ab5193e7d031fb61745a8c8d11c78ce2a32beca9a08875ebe1f2d3add"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-editor-tabs.test.ts": {
+      "beforeSha256": "054f1eb3fa6dc978e3cc8e43a2291ff92703a49156f98d29e168fe3a1efef876",
+      "afterSha256": "59ec682a4a3d90d0ddf891decb62fceac936c04028cffe34e7b862b47be57509"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-emptied-workspace-tombstone.test.ts": {
+      "beforeSha256": "9d22ae7a1e341e4879212fe2c0abcdaaa6a63a2741ff2c95b6806ef922d7feeb",
+      "afterSha256": "b39a84f5039236bd9c788112e30e0f9c2601c50167a4df214b05ab607b92322c"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-focus-intent.test.ts": {
+      "beforeSha256": "7eb8e12428f8b48c544ae564d021f35b359ce4c7ea1c433547c975775e34b1db",
+      "afterSha256": "987c5fafb2cb9133cbd34cc34d022f4b115800edb67c8fa07f2af6fa1fa42003"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-host-restart-browser-rows.test.ts": {
+      "beforeSha256": "c5b9f1ecee76b668fc186cf071809104f915461d6f80b74d7f139ac4b56a6ca3",
+      "afterSha256": "596b2fb81c9bbb31bd1f0b726454bde9c049286d3cc89e2f382a87f5e07cee40"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-host-tab-retraction-ghost-rows.test.ts": {
+      "beforeSha256": "19f81dc5c23a5da2441dede5a760521fe6ef8ffe531c8f2c40cd6596e9bd44b5",
+      "afterSha256": "7ac068e760dcc979f38ae3c9a231e27a8788af1be1ea77c8c492da4ef3c32dd9"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-html-preview-focus.test.ts": {
+      "beforeSha256": "347dc34229b65a8d53d89afde8cca1f1065f16154decd71d2ca3ca112672d038",
+      "afterSha256": "c8ba35fa058d7de8a1250ebabfea7fa5125cec9ec76f07a0fd9ef1e871a47e4b"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-layout-duplicate-groups.test.ts": {
+      "beforeSha256": "85a3bc82354969dcf9e4446be340009236a7d2d81d2b84d8ec025951923222a0",
+      "afterSha256": "635027af546244e4f5271602073f1b626f9fd5f0d6271362bef6fe7895caafc2"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-layout-groups.test.ts": {
+      "beforeSha256": "be2f8ce564def3b2e9a15de5d6a95464a02274327d0d7ec45b684abd26bd3779",
+      "afterSha256": "6650ab642475f2bd0932fdd7a9127967050a71edc1fc2103d85e210cd02c1a68"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-mirror-identity.test.ts": {
+      "beforeSha256": "4dcc41fc684e15817569d3a753539ba02979481845d1c962b07f4a692368663a",
+      "afterSha256": "394403ee1e83e2be199d5d63cd0c6bce82f20c51d5fa8d3a068784b6ec629aa6"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-remote-main-agent-verdict.test.ts": {
+      "beforeSha256": "c91ea2dc38ce6697680cc0d53ec9bc50f0eef3721498dd9214b9e50e75d998ef",
+      "afterSha256": "be5b06cd33f3237c69ca58f82503dfb176198a57e0aebe82277fe44a3753175d"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-remote-status-title-flap.test.ts": {
+      "beforeSha256": "cde1afc2f8fbaec5dc0c42365651d0f113ef0c4efa2a1471ca29762365855e0e",
+      "afterSha256": "84b3eadd40b856cb8fdd5ef7cbc63bcae78ca6083e4667b50c0c17485da89f76"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-restored-browser-rows.test.ts": {
+      "beforeSha256": "d8f2348d59f7f0d698d9476c1ef50a3d173c3526e254bd1ba2539022d4eed7bb",
+      "afterSha256": "eb7d452d6f5f64c190f64f85da93a16da8964183b0b762458b9f3456382055c3"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-snapshot-batch.test.ts": {
+      "beforeSha256": "79e1db9f243178446d7c11483f969cc27e65aa8a8ed4faa53380b775efd62e82",
+      "afterSha256": "3037414430e7bfed69f8a726efb76e3951748c370601401ec10292e635b811d6"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-adoption.test.ts": {
+      "beforeSha256": "fb183e97791682310121f2a2c120782eff9b25e652419447ca427c4ed3cfe078",
+      "afterSha256": "7bd65c4b4532a541cdca1831b16a532a846a40ca7c1cf0a0cb3dedd815ae8b31"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-authority.test.ts": {
+      "beforeSha256": "171b17864c4c426542332b09cbd50c0a2615d3e0cb1c8293811ed294b9a5be80",
+      "afterSha256": "15fd68ae22ea4a89bd08199279dd3d3dcaa5c3f1e746af9c9447a623772edfe3"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-terminal-bootstrap.test.ts": {
+      "beforeSha256": "1d3ff0e4cdf0423f35da4c9bb2ca141a74679b0a219412a2bdd51aadda1e85e1",
+      "afterSha256": "21a4eb4bda88a398a5cf4593632ca91c93f0322d898b9517be6007d7dfe64fcd"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-terminal-mirroring.test.ts": {
+      "beforeSha256": "fd476c393b45de838e9ccf47d8d6afc5a1962e35adf1dfd014efa4f27d8f14ef",
+      "afterSha256": "f11bede161029a205b226d877a598a1763473e07df59119ec95d87d8071621b4"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-test-harness.ts": {
+      "beforeSha256": "a86ed162ad279ce417152fa78cedddcf5509f40cf928c6915df8cc69aef6242e",
+      "afterSha256": "1c9ef711f99fd338ccf40a1c45ea0c872395905a40fb7ca646e2102c098ae9b1"
+    },
+    "src/renderer/src/runtime/web-session-tabs-sync-tracking-teardown.test.ts": {
+      "beforeSha256": "f3adc6a752d1228c32221c250d4e4fd263109ef19f7630b4cfef7fb84c00b512",
+      "afterSha256": "6c063de8753f0777c388f39ddb6f426c616c3a013e70d524e4734d96c47a25cb"
+    },
+    "src/renderer/src/runtime/web-session-terminal-orphan-inventory-retry.test.ts": {
+      "beforeSha256": "e9f12f96bc0a926a7fba79466e0ec388b5a63a1e3845cdc891da8172994a8b86",
+      "afterSha256": "898a79947531763ac22f74990eed0aad022dad2c15b78c9dd9ccff703f0bb03b"
+    },
+    "src/renderer/src/runtime/web-session-terminal-orphan-mixed-version.test.ts": {
+      "beforeSha256": "84ce320eefd6f53f39a1ffa72898cfc2bd307338c42c6649b32e91dd76c4c545",
+      "afterSha256": "1a88c64da8588a479c8c11a0eb3eb40058876da5fea7d669b9f7765fca5733a6"
+    },
+    "src/renderer/src/runtime/web-session-terminal-orphan-recovery-adoption-regressions.test.ts": {
+      "beforeSha256": "ff42132d5dcf1ed0ca9babaf6b549d249e30ff841eb58da2754622925edf4dda",
+      "afterSha256": "d6373598a90a3aa13d0fdad7ed0e12c9931c7f508c15cb04d90f7ccc15b5f4b4"
+    },
+    "tests/e2e/omp-risk-remote-review.unit.test.ts": {
+      "beforeSha256": "bf893dfa684cfacb65dfb16e1304630338d095996a5506445faffa3610971daa",
+      "afterSha256": "4fd0bfb392fe941ca8f11318a4cfc7f9e0dac87e71fd9cd67d1d56c999d7974a"
+    },
+    "tests/e2e/remote-terminal-tab-retirement.unit.test.ts": {
+      "beforeSha256": "72b1f815958e90f2ded05b50efc30edb131403fd29d7afdfc82fddadb70a40f1",
+      "afterSha256": "71944919e743ceb9d63ab98236b92c0defc2af238d7268993035365fb729c89d"
+    },
+    "tests/e2e/session-tabs-decorative-title-fanout.unit.test.ts": {
+      "beforeSha256": "1dd8556059ad48e344450856559450843916ecc7018a7d1e445057cc19fa8e86",
+      "afterSha256": "2ad099eeabe74e721989f485d5fa83a609fa6939a457c954b663f23cb573c904"
+    },
+    "tests/e2e/session-tabs-empty-inventory-daemon-oracle.unit.test.ts": {
+      "beforeSha256": "64fdb1d40ad55499ac3ec12d638efff950724ebaab88bee899611fd1e19dfb59",
+      "afterSha256": "1211bd690fd98f0b6e6f118ff7700c44de9b45a6682b19441b07028da05943b9"
+    }
+  },
+  "files": [
+    "src/renderer/src/components/native-chat/StructuredAgentSessionAttentionBridge.test.tsx",
+    "src/renderer/src/components/sidebar/worktree-agent-remote-attribution.test.ts",
+    "src/renderer/src/runtime/host-session-mirror-empty-inventory-settle.test.ts",
+    "src/renderer/src/runtime/host-session-mirror-hydration-frame-ordering.test.tsx",
+    "src/renderer/src/runtime/host-session-mirror-settle-receipt-frames.test.tsx",
+    "src/renderer/src/runtime/local-structured-session-tabs-host-isolation.test.ts",
+    "src/renderer/src/runtime/mirrored-agent-status-clock-skew.test.ts",
+    "src/renderer/src/runtime/paired-agent-row-turn-outcome-arms.test.ts",
+    "src/renderer/src/runtime/paired-reconnect-sidebar-agent-count.test.ts",
+    "src/renderer/src/runtime/remote-agent-row-last-assistant-message.test.ts",
+    "src/renderer/src/runtime/remote-server-parity.test.ts",
+    "src/renderer/src/runtime/structured-conversation-tab-replacement.test.ts",
+    "src/renderer/src/runtime/use-runtime-session-mirror-environment-key.test.ts",
+    "src/renderer/src/runtime/web-runtime-browser-creation-placement.test.ts",
+    "src/renderer/src/runtime/web-session-focus-intent-visible-tab.test.ts",
+    "src/renderer/src/runtime/web-session-open-files-batch-equivalence.test.ts",
+    "src/renderer/src/runtime/web-session-split-pane-retirement-fences.test.ts",
+    "src/renderer/src/runtime/web-session-structured-tab-focus.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-agent-completion-notifications.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-late-merged-predecessor-lockout.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-publisher-identity-lineage.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-removed-frame-retires-live-publisher.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-agent-handoff.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-agent-status.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-browser-tabs.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-client-owned-page-content.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-client-owned-placement.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-diff-focus-steal.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-editor-tabs.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-emptied-workspace-tombstone.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-focus-intent.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-host-restart-browser-rows.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-host-tab-retraction-ghost-rows.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-html-preview-focus.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-initial-terminal-relaunch.test.tsx",
+    "src/renderer/src/runtime/web-session-tabs-sync-layout-duplicate-groups.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-layout-groups.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-mirror-identity.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-mirrored-draft-close.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-reconnect-resubscribe.test.tsx",
+    "src/renderer/src/runtime/web-session-tabs-sync-remote-main-agent-verdict.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-remote-status-title-flap.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-restored-browser-rows.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-snapshot-batch.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-adoption.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-authority.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-terminal-bootstrap.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-terminal-mirroring.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-tracking-teardown.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync-unverifiable-host.test.tsx",
+    "src/renderer/src/runtime/web-session-tabs-sync-visibility-collision.test.tsx",
+    "src/renderer/src/runtime/web-session-tabs-sync-window-visibility.test.tsx",
+    "src/renderer/src/runtime/web-session-tabs-sync.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync/mirrored-status-tab-retractions.test.ts",
+    "src/renderer/src/runtime/web-session-tabs-sync/retraction-pane-ownership.test.ts",
+    "src/renderer/src/runtime/web-session-terminal-orphan-inventory-retry.test.ts",
+    "src/renderer/src/runtime/web-session-terminal-orphan-mixed-version.test.ts",
+    "src/renderer/src/runtime/web-session-terminal-orphan-recovery-adoption-regressions.test.ts",
+    "tests/e2e/omp-risk-remote-review.unit.test.ts",
+    "tests/e2e/remote-terminal-tab-retirement.unit.test.ts",
+    "tests/e2e/session-tabs-decorative-title-fanout.unit.test.ts",
+    "tests/e2e/session-tabs-empty-inventory-daemon-oracle.unit.test.ts"
+  ],
+  "timedFiles": [],
+  "caseCount": null,
+  "runtimeManifestPending": true,
+  "expectedRoutes": {
+    "bun": [
+      {
+        "file": "src/renderer/src/components/native-chat/StructuredAgentSessionAttentionBridge.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/sidebar/worktree-agent-remote-attribution.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/host-session-mirror-empty-inventory-settle.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/host-session-mirror-hydration-frame-ordering.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/host-session-mirror-settle-receipt-frames.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/local-structured-session-tabs-host-isolation.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/mirrored-agent-status-clock-skew.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/paired-agent-row-turn-outcome-arms.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/paired-reconnect-sidebar-agent-count.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/remote-agent-row-last-assistant-message.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/remote-server-parity.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/structured-conversation-tab-replacement.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/use-runtime-session-mirror-environment-key.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-runtime-browser-creation-placement.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-focus-intent-visible-tab.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-open-files-batch-equivalence.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-split-pane-retirement-fences.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-structured-tab-focus.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-agent-completion-notifications.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-late-merged-predecessor-lockout.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-publisher-identity-lineage.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-removed-frame-retires-live-publisher.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-agent-handoff.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-agent-status.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-browser-tabs.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-client-owned-page-content.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-client-owned-placement.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-diff-focus-steal.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-editor-tabs.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-emptied-workspace-tombstone.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-focus-intent.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-host-restart-browser-rows.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-host-tab-retraction-ghost-rows.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-html-preview-focus.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-initial-terminal-relaunch.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-layout-duplicate-groups.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-layout-groups.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-mirror-identity.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-mirrored-draft-close.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-reconnect-resubscribe.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-remote-main-agent-verdict.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-remote-status-title-flap.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-restored-browser-rows.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-snapshot-batch.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-adoption.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-authority.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-terminal-bootstrap.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-terminal-mirroring.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-tracking-teardown.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-unverifiable-host.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-visibility-collision.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-window-visibility.test.tsx",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync/mirrored-status-tab-retractions.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync/retraction-pane-ownership.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-terminal-orphan-inventory-retry.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-terminal-orphan-mixed-version.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-terminal-orphan-recovery-adoption-regressions.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "tests/e2e/omp-risk-remote-review.unit.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "tests/e2e/remote-terminal-tab-retirement.unit.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "tests/e2e/session-tabs-decorative-title-fanout.unit.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      },
+      {
+        "file": "tests/e2e/session-tabs-empty-inventory-daemon-oracle.unit.test.ts",
+        "project": "bun",
+        "pool": "forks"
+      }
+    ],
+    "node": [
+      {
+        "file": "src/renderer/src/components/native-chat/StructuredAgentSessionAttentionBridge.test.tsx",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/components/sidebar/worktree-agent-remote-attribution.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/host-session-mirror-empty-inventory-settle.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/host-session-mirror-hydration-frame-ordering.test.tsx",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/host-session-mirror-settle-receipt-frames.test.tsx",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/local-structured-session-tabs-host-isolation.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/mirrored-agent-status-clock-skew.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/paired-agent-row-turn-outcome-arms.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/paired-reconnect-sidebar-agent-count.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/remote-agent-row-last-assistant-message.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/remote-server-parity.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/structured-conversation-tab-replacement.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/use-runtime-session-mirror-environment-key.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-runtime-browser-creation-placement.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-focus-intent-visible-tab.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-open-files-batch-equivalence.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-split-pane-retirement-fences.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-structured-tab-focus.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-agent-completion-notifications.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-late-merged-predecessor-lockout.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-publisher-identity-lineage.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-removed-frame-retires-live-publisher.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-agent-handoff.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-agent-status.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-browser-tabs.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-client-owned-page-content.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-client-owned-placement.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-diff-focus-steal.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-editor-tabs.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-emptied-workspace-tombstone.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-focus-intent.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-host-restart-browser-rows.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-host-tab-retraction-ghost-rows.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-html-preview-focus.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-initial-terminal-relaunch.test.tsx",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-layout-duplicate-groups.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-layout-groups.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-mirror-identity.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-mirrored-draft-close.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-reconnect-resubscribe.test.tsx",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-remote-main-agent-verdict.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-remote-status-title-flap.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-restored-browser-rows.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-snapshot-batch.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-adoption.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-staged-browser-authority.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-terminal-bootstrap.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-terminal-mirroring.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-tracking-teardown.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-unverifiable-host.test.tsx",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-visibility-collision.test.tsx",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync-window-visibility.test.tsx",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync/mirrored-status-tab-retractions.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-tabs-sync/retraction-pane-ownership.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-terminal-orphan-inventory-retry.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-terminal-orphan-mixed-version.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "src/renderer/src/runtime/web-session-terminal-orphan-recovery-adoption-regressions.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "tests/e2e/omp-risk-remote-review.unit.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "tests/e2e/remote-terminal-tab-retirement.unit.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "tests/e2e/session-tabs-decorative-title-fanout.unit.test.ts",
+        "project": "node",
+        "pool": "forks"
+      },
+      {
+        "file": "tests/e2e/session-tabs-empty-inventory-daemon-oracle.unit.test.ts",
+        "project": "node",
+        "pool": "forks"
+      }
+    ]
+  },
+  "scope": "Eight isolated CI correctness commands; 62 original physical modules; counts/identities derived from raw reports. No time or full-suite claim.",
+  "expectedCiPins": {
+    "node": "24.21.0",
+    "bun": "1.4.2",
+    "vitest": "5.0.3"
+  },
+  "shuffleSeeds": [
+    104729,
+    130363
+  ],
+  "isolatedDirectory": "notes/bun-migration/performance/web-session-tabs-canonical-imports-ci-8b20",
+  "sourceFinalSha256": "58e3b143be153551ef33823313050b78a91672c9ec0906cbf47deb0b3e1457fc",
+  "adoptionSourceException": "Qualification is pinned8b20; later catalog repair changes two English JSON keys only and is NOT silently evaluated in this epoch. Fresh integrated shipping qualification/source proof required before adoption."
+}

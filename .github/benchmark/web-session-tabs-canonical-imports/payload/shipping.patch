@@ -1,0 +1,684 @@
+--- a/src/renderer/src/components/native-chat/StructuredAgentSessionAttentionBridge.test.tsx
++++ b/src/renderer/src/components/native-chat/StructuredAgentSessionAttentionBridge.test.tsx
+@@ -66,7 +66,7 @@
+ }))
+ 
+ import { StructuredAgentSessionAttentionBridge } from './StructuredAgentSessionAttentionBridge'
+-import { applyWebSessionTabsSnapshot } from '@/runtime/web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from '@/runtime/web-session-tabs-sync/snapshot-api'
+ import { resolveNotificationTabOwner } from '@/attention/notification-subject-owner'
+ import { resetStructuredAgentSessionTurnCompletionFeedsForTests } from '@/runtime/structured-agent-session-turn-completion-feed'
+ import {
+--- a/src/renderer/src/components/sidebar/worktree-agent-remote-attribution.test.ts
++++ b/src/renderer/src/components/sidebar/worktree-agent-remote-attribution.test.ts
+@@ -2,7 +2,7 @@
+ import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
+ import { makePaneKey } from '../../../../shared/stable-pane-id'
+ import { toWebTerminalSurfaceTabId } from '../../../../shared/terminal-surface-id'
+-import { applyWebSessionTabsSnapshot } from '../../runtime/web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from '../../runtime/web-session-tabs-sync/snapshot-api'
+ import {
+   ENV,
+   LEAF_ID,
+--- a/src/renderer/src/runtime/host-session-mirror-empty-inventory-settle.test.ts
++++ b/src/renderer/src/runtime/host-session-mirror-empty-inventory-settle.test.ts
+@@ -42,11 +42,11 @@
+   clearHostLiveTerminalProbesForTests,
+   probeHostLiveTerminals
+ } from './host-live-terminal-probe'
++import { applyWebSessionTabsStorePatch } from './web-session-tabs-sync/store-patch'
+ import {
+-  applyWebSessionTabsStorePatch,
+-  clearWebSessionTabsTrackingForEnvironment,
+-  type HostSessionMirrorSettle
+-} from './web-session-tabs-sync'
++  clearWebSessionTabsTrackingForEnvironment
++} from './web-session-tabs-sync/tracking-lifecycle'
++import { type HostSessionMirrorSettle } from './web-session-tabs-sync/mirror-settle'
+ 
+ const WORKTREE = 'repo1::/path/wt1'
+ 
+--- a/src/renderer/src/runtime/mirrored-agent-status-clock-skew.test.ts
++++ b/src/renderer/src/runtime/mirrored-agent-status-clock-skew.test.ts
+@@ -24,10 +24,10 @@
+ import type { AppState } from '../store/types'
+ import { createTestStore, makeWorktree, seedStore } from '../store/slices/store-test-helpers'
+ import { resetRendererOwnedAgentStatusPanesForTests } from '../components/terminal-pane/renderer-owned-agent-status-registry'
++import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import {
+-  applyFreshWebSessionTabsSnapshot,
+   resetWebSessionTabsSnapshotFreshnessForTests
+-} from './web-session-tabs-sync'
++} from './web-session-tabs-sync/tracking-lifecycle'
+ 
+ const WT = 'repo1::/path/wt1'
+ const ENV = 'web-env-1'
+--- a/src/renderer/src/runtime/paired-agent-row-turn-outcome-arms.test.ts
++++ b/src/renderer/src/runtime/paired-agent-row-turn-outcome-arms.test.ts
+@@ -14,10 +14,10 @@
+ import { getDefaultSettings } from '../../../shared/constants'
+ import { createTestStore, makeWorktree, seedStore } from '../store/slices/store-test-helpers'
+ import { resetRendererOwnedAgentStatusPanesForTests } from '../components/terminal-pane/renderer-owned-agent-status-registry'
++import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import {
+-  applyFreshWebSessionTabsSnapshot,
+   resetWebSessionTabsSnapshotFreshnessForTests
+-} from './web-session-tabs-sync'
++} from './web-session-tabs-sync/tracking-lifecycle'
+ import { buildWorktreeAgentRows } from '../components/sidebar/worktree-agent-rows'
+ import {
+   selectLiveAgentStatusEntriesForWorktree,
+--- a/src/renderer/src/runtime/paired-reconnect-sidebar-agent-count.test.ts
++++ b/src/renderer/src/runtime/paired-reconnect-sidebar-agent-count.test.ts
+@@ -32,10 +32,10 @@
+   registerRendererOwnedAgentStatusPane,
+   resetRendererOwnedAgentStatusPanesForTests
+ } from '../components/terminal-pane/renderer-owned-agent-status-registry'
++import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import {
+-  applyFreshWebSessionTabsSnapshot,
+   resetWebSessionTabsSnapshotFreshnessForTests
+-} from './web-session-tabs-sync'
++} from './web-session-tabs-sync/tracking-lifecycle'
+ import { buildWorktreeAgentRows } from '../components/sidebar/worktree-agent-rows'
+ import {
+   selectLiveAgentStatusEntriesForWorktree,
+--- a/src/renderer/src/runtime/remote-agent-row-last-assistant-message.test.ts
++++ b/src/renderer/src/runtime/remote-agent-row-last-assistant-message.test.ts
+@@ -30,10 +30,10 @@
+   registerRendererOwnedAgentStatusPane,
+   resetRendererOwnedAgentStatusPanesForTests
+ } from '../components/terminal-pane/renderer-owned-agent-status-registry'
++import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import {
+-  applyFreshWebSessionTabsSnapshot,
+   resetWebSessionTabsSnapshotFreshnessForTests
+-} from './web-session-tabs-sync'
++} from './web-session-tabs-sync/tracking-lifecycle'
+ import { buildWorktreeAgentRows } from '../components/sidebar/worktree-agent-rows'
+ import {
+   selectLiveAgentStatusEntriesForWorktree,
+--- a/src/renderer/src/runtime/remote-server-parity.test.ts
++++ b/src/renderer/src/runtime/remote-server-parity.test.ts
+@@ -18,10 +18,12 @@
+ import type { Tab } from '../../../shared/tab-types'
+ import {
+   applyFreshWebSessionTabsSnapshot,
+-  applyWebSessionTabsSnapshot,
+-  resetWebSessionTabsSnapshotFreshnessForTests,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++  applyWebSessionTabsSnapshot
++} from './web-session-tabs-sync/snapshot-api'
++import {
++  resetWebSessionTabsSnapshotFreshnessForTests
++} from './web-session-tabs-sync/tracking-lifecycle'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   recordWebSessionFocusIntent,
+   resetWebSessionFocusIntentForTests
+--- a/src/renderer/src/runtime/structured-conversation-tab-replacement.test.ts
++++ b/src/renderer/src/runtime/structured-conversation-tab-replacement.test.ts
+@@ -1,7 +1,7 @@
+ // @vitest-environment happy-dom
+ import { beforeEach, describe, expect, it } from 'vitest'
+ import { buildMirroredAgentTabs } from './web-session-tabs-sync/terminal-surfaces'
+-import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import {
+   makeSnapshot,
+   makeState,
+--- a/src/renderer/src/runtime/web-session-open-files-batch-equivalence.test.ts
++++ b/src/renderer/src/runtime/web-session-open-files-batch-equivalence.test.ts
+@@ -10,10 +10,12 @@
+ import { resetWebAgentSessionHandoffsForTests } from './web-agent-session-handoff'
+ import {
+   applyWebSessionTabsSnapshot,
+-  applyWebSessionTabsSnapshots,
+-  resetWebSessionTabsSnapshotFreshnessForTests,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++  applyWebSessionTabsSnapshots
++} from './web-session-tabs-sync/snapshot-api'
++import {
++  resetWebSessionTabsSnapshotFreshnessForTests
++} from './web-session-tabs-sync/tracking-lifecycle'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ 
+ vi.mock('../store', () => ({ useAppStore: { setState: vi.fn() } }))
+ 
+--- a/src/renderer/src/runtime/web-session-split-pane-retirement-fences.test.ts
++++ b/src/renderer/src/runtime/web-session-split-pane-retirement-fences.test.ts
+@@ -6,7 +6,7 @@
+   selectRetiredPaneIds,
+   trackRetiredLeafIds
+ } from '../components/terminal-pane/terminal-live-layout-reconciliation'
+-import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync'
++import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import {
+   clearWebSessionTerminalOrphanRecoveryForTests,
+   recoverWebSessionTerminalOrphansBeforeApply
+--- a/src/renderer/src/runtime/web-session-structured-tab-focus.test.ts
++++ b/src/renderer/src/runtime/web-session-structured-tab-focus.test.ts
+@@ -1,7 +1,8 @@
+ import { describe, expect, it } from 'vitest'
+ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+ import type { Tab } from '../../../shared/tab-types'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ 
+ const WORKTREE_ID = 'repo-1::/worktree'
+ const GROUP_ID = 'group-1'
+--- a/src/renderer/src/runtime/web-session-tabs-agent-completion-notifications.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-agent-completion-notifications.test.ts
+@@ -22,12 +22,12 @@
+   registerRendererOwnedAgentStatusPane,
+   resetRendererOwnedAgentStatusPanesForTests
+ } from '@/components/terminal-pane/renderer-owned-agent-status-registry'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { applyWebSessionTabsStorePatch } from './web-session-tabs-sync/store-patch'
++import { decideWebSessionTabsSnapshot } from './web-session-tabs-sync/tracking-decisions'
+ import {
+-  applyWebSessionTabsSnapshot,
+-  applyWebSessionTabsStorePatch,
+-  decideWebSessionTabsSnapshot,
+   resetWebSessionTabsSnapshotFreshnessForTests
+-} from './web-session-tabs-sync'
++} from './web-session-tabs-sync/tracking-lifecycle'
+ 
+ const ENVIRONMENT_ID = 'web-env-1'
+ const WORKTREE_ID = 'repo::/worktree'
+--- a/src/renderer/src/runtime/web-session-tabs-late-merged-predecessor-lockout.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-late-merged-predecessor-lockout.test.ts
+@@ -1,6 +1,6 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+-import { decideWebSessionTabsSnapshot } from './web-session-tabs-sync'
++import { decideWebSessionTabsSnapshot } from './web-session-tabs-sync/tracking-decisions'
+ import {
+   recordReceivedWebSessionTabsSnapshot,
+   shouldApplyRecoveredWebSessionTabsSnapshot
+--- a/src/renderer/src/runtime/web-session-tabs-publisher-identity-lineage.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-publisher-identity-lineage.test.ts
+@@ -1,6 +1,6 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+-import { decideWebSessionTabsSnapshot } from './web-session-tabs-sync'
++import { decideWebSessionTabsSnapshot } from './web-session-tabs-sync/tracking-decisions'
+ import {
+   recordReceivedWebSessionTabsSnapshot,
+   shouldApplyRecoveredWebSessionTabsSnapshot
+--- a/src/renderer/src/runtime/web-session-tabs-removed-frame-retires-live-publisher.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-removed-frame-retires-live-publisher.test.ts
+@@ -1,6 +1,6 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+-import { decideWebSessionTabsSnapshot } from './web-session-tabs-sync'
++import { decideWebSessionTabsSnapshot } from './web-session-tabs-sync/tracking-decisions'
+ import {
+   recordReceivedWebSessionTabsRemoval,
+   recordReceivedWebSessionTabsSnapshot,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-agent-handoff.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-agent-handoff.test.ts
+@@ -7,11 +7,9 @@
+   recordWebAgentSessionHandoff,
+   resolveWebAgentSessionHandoff
+ } from './web-agent-session-handoff'
+-import {
+-  applyWebSessionTabsSnapshot,
+-  resolveHostSessionTabIdForWebSessionTab,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { resolveHostSessionTabIdForWebSessionTab } from './web-session-tabs-sync/tracking-mappings'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   HOST_SURFACE_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-agent-status.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-agent-status.test.ts
+@@ -1,6 +1,7 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import { makePaneKey } from '../../../shared/stable-pane-id'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   HOST_SURFACE_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-browser-tabs.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-browser-tabs.test.ts
+@@ -7,13 +7,13 @@
+   recordWebSessionBrowserPlacement,
+   takeWebSessionBrowserPlacementGroup
+ } from './web-session-browser-placement'
++import { acceptReplayedWebSessionTabsSnapshot } from './web-session-tabs-sync/tracking-lifecycle'
+ import {
+-  acceptReplayedWebSessionTabsSnapshot,
+   applyFreshWebSessionTabsSnapshot,
+-  applyWebSessionTabsSnapshot,
+-  resolveHostSessionTabIdForWebSessionTab,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++  applyWebSessionTabsSnapshot
++} from './web-session-tabs-sync/snapshot-api'
++import { resolveHostSessionTabIdForWebSessionTab } from './web-session-tabs-sync/tracking-mappings'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   HOST_SURFACE_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-client-owned-page-content.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-client-owned-page-content.test.ts
+@@ -3,11 +3,9 @@
+ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+ import type { Tab } from '../../../shared/tab-types'
+ import type { RuntimeBrowserClientPlacement } from '../../../shared/runtime-browser-placement'
+-import {
+-  applyWebSessionTabsSnapshot,
+-  resolveHostSessionTabIdForWebSessionTab,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { resolveHostSessionTabIdForWebSessionTab } from './web-session-tabs-sync/tracking-mappings'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import { resetBrowserClientHostIdForTests } from './browser-client-host-identity'
+ import {
+   ENV,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-client-owned-placement.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-client-owned-placement.test.ts
+@@ -12,7 +12,8 @@
+   recordWebSessionTerminalPlacement,
+   resetWebSessionTerminalPlacementsForTests
+ } from './web-session-terminal-placement'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import { reconcileClientOwnedTabPlacement } from './web-session-client-owned-tab-placement'
+ import {
+   ENV,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-diff-focus-steal.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-diff-focus-steal.test.ts
+@@ -1,7 +1,8 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import { toWebTerminalSurfaceTabId } from '../../../shared/terminal-surface-id'
+ import type { Tab } from '../../../shared/tab-types'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   LEAF_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-editor-tabs.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-editor-tabs.test.ts
+@@ -3,7 +3,8 @@
+ import type { BrowserPage, BrowserWorkspace } from '../../../shared/browser-workspace-types'
+ import type { Tab } from '../../../shared/tab-types'
+ import type { OpenFile } from '../store/slices/editor'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   HOST_SURFACE_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-emptied-workspace-tombstone.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-emptied-workspace-tombstone.test.ts
+@@ -4,7 +4,8 @@
+   type RuntimeMobileSessionTabsRemovedResult
+ } from '../../../shared/runtime-types'
+ import type { TerminalTab } from '../../../shared/terminal-tab-types'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   HOST_SURFACE_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-focus-intent.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-focus-intent.test.ts
+@@ -3,12 +3,12 @@
+ import { recordWebSessionFocusIntent } from './web-session-focus-intent'
+ import type { Tab } from '../../../shared/tab-types'
+ import type { OpenFile } from '../store/slices/editor'
++import { acceptReplayedWebSessionTabsSnapshot } from './web-session-tabs-sync/tracking-lifecycle'
+ import {
+-  acceptReplayedWebSessionTabsSnapshot,
+   applyFreshWebSessionTabsSnapshot,
+-  applyWebSessionTabsSnapshot,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++  applyWebSessionTabsSnapshot
++} from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   LEAF_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-host-restart-browser-rows.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-host-restart-browser-rows.test.ts
+@@ -6,7 +6,8 @@
+ } from '../../../shared/runtime-types'
+ import type { Tab } from '../../../shared/tab-types'
+ import { hostSnapshotAffirmsWorktreeContents } from './host-session-snapshot-authority'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   NOW,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-host-tab-retraction-ghost-rows.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-host-tab-retraction-ghost-rows.test.ts
+@@ -38,9 +38,11 @@
+ } from '../components/terminal-pane/renderer-owned-agent-status-registry'
+ import {
+   applyFreshWebSessionTabsSnapshot,
+-  applyFreshWebSessionTabsSnapshots,
++  applyFreshWebSessionTabsSnapshots
++} from './web-session-tabs-sync/snapshot-api'
++import {
+   resetWebSessionTabsSnapshotFreshnessForTests
+-} from './web-session-tabs-sync'
++} from './web-session-tabs-sync/tracking-lifecycle'
+ import {
+   buildRetainedAgentsSyncSnapshot,
+   collectRetainedAgentsOnDisappear
+--- a/src/renderer/src/runtime/web-session-tabs-sync-html-preview-focus.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-html-preview-focus.test.ts
+@@ -3,7 +3,8 @@
+ import type { OpenFile } from '../store/slices/editor'
+ import type { Tab } from '../../../shared/tab-types'
+ import { recordWebSessionBrowserPlacement } from './web-session-browser-placement'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   LEAF_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-layout-duplicate-groups.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-layout-duplicate-groups.test.ts
+@@ -1,6 +1,7 @@
+ import { describe, expect, it, beforeEach, vi } from 'vitest'
+ import type { Tab, TabGroup } from '../../../shared/tab-types'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   NOW,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-layout-groups.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-layout-groups.test.ts
+@@ -3,7 +3,8 @@
+ import type { BrowserPage, BrowserWorkspace } from '../../../shared/browser-workspace-types'
+ import type { Tab } from '../../../shared/tab-types'
+ import type { TerminalTab } from '../../../shared/terminal-tab-types'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   HOST_SURFACE_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-mirror-identity.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-mirror-identity.test.ts
+@@ -11,10 +11,12 @@
+ import {
+   applyWebSessionTabsSnapshot,
+   applyWebSessionTabsSnapshots,
+-  applyFreshWebSessionTabsSnapshot,
+-  resetWebSessionTabsSnapshotFreshnessForTests,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++  applyFreshWebSessionTabsSnapshot
++} from './web-session-tabs-sync/snapshot-api'
++import {
++  resetWebSessionTabsSnapshotFreshnessForTests
++} from './web-session-tabs-sync/tracking-lifecycle'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ 
+ const ENVIRONMENT_ID = 'web-env-1'
+ const NOW = 1_700_000_000_000
+--- a/src/renderer/src/runtime/web-session-tabs-sync-remote-main-agent-verdict.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-remote-main-agent-verdict.test.ts
+@@ -12,10 +12,10 @@
+ import { getDefaultSettings } from '../../../shared/constants'
+ import { createTestStore, makeWorktree, seedStore } from '../store/slices/store-test-helpers'
+ import { resetRendererOwnedAgentStatusPanesForTests } from '../components/terminal-pane/renderer-owned-agent-status-registry'
++import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import {
+-  applyFreshWebSessionTabsSnapshot,
+   resetWebSessionTabsSnapshotFreshnessForTests
+-} from './web-session-tabs-sync'
++} from './web-session-tabs-sync/tracking-lifecycle'
+ import { selectWorktreeAgentActivitySummary } from '../components/sidebar/worktree-agent-activity-summary'
+ 
+ // Why: web-session-tabs-sync imports the app-level store singleton; this
+--- a/src/renderer/src/runtime/web-session-tabs-sync-remote-status-title-flap.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-remote-status-title-flap.test.ts
+@@ -58,11 +58,11 @@
+   registerRendererOwnedAgentStatusPane,
+   resetRendererOwnedAgentStatusPanesForTests
+ } from '../components/terminal-pane/renderer-owned-agent-status-registry'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import {
+-  applyWebSessionTabsSnapshot,
+-  resetWebSessionTabsSnapshotFreshnessForTests,
+-  shouldApplyWebSessionTabsSnapshot
+-} from './web-session-tabs-sync'
++  resetWebSessionTabsSnapshotFreshnessForTests
++} from './web-session-tabs-sync/tracking-lifecycle'
++import { shouldApplyWebSessionTabsSnapshot } from './web-session-tabs-sync/tracking-decisions'
+ 
+ // Why: web-session-tabs-sync imports the app-level store singleton; this
+ // harness drives a createTestStore instance instead, like the sibling suite.
+--- a/src/renderer/src/runtime/web-session-tabs-sync-restored-browser-rows.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-restored-browser-rows.test.ts
+@@ -6,7 +6,8 @@
+   RuntimeMobileSessionTabsResult
+ } from '../../../shared/runtime-types'
+ import type { Tab } from '../../../shared/tab-types'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   NOW,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-snapshot-batch.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-snapshot-batch.test.ts
+@@ -5,10 +5,12 @@
+ import type { OpenFile } from '../store/slices/editor'
+ import {
+   applyWebSessionTabsSnapshot,
+-  applyWebSessionTabsSnapshots,
+-  resetWebSessionTabsSnapshotFreshnessForTests,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++  applyWebSessionTabsSnapshots
++} from './web-session-tabs-sync/snapshot-api'
++import {
++  resetWebSessionTabsSnapshotFreshnessForTests
++} from './web-session-tabs-sync/tracking-lifecycle'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   HOST_SURFACE_ID,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-staged-browser-adoption.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-staged-browser-adoption.test.ts
+@@ -2,7 +2,8 @@
+ import type { BrowserPage, BrowserWorkspace } from '../../../shared/browser-workspace-types'
+ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+ import type { Tab } from '../../../shared/tab-types'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   NOW,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-staged-browser-authority.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-staged-browser-authority.test.ts
+@@ -6,7 +6,8 @@
+   recordWebSessionBrowserPlacement,
+   resetWebSessionBrowserPlacementsForTests
+ } from './web-session-browser-placement'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   NOW,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-terminal-bootstrap.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-terminal-bootstrap.test.ts
+@@ -5,7 +5,7 @@
+   shouldBootstrapInitialWebRuntimeTerminal,
+   shouldRespawnWebRuntimeTerminalAfterWake,
+   shouldSyncRuntimeSessionTabs
+-} from './web-session-tabs-sync'
++} from './web-session-tabs-sync/tracking-decisions'
+ import { UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH } from '../../../shared/runtime-types'
+ import {
+   ENV,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-terminal-mirroring.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-terminal-mirroring.test.ts
+@@ -2,7 +2,8 @@
+ import { makePaneKey } from '../../../shared/stable-pane-id'
+ import { toWebTerminalSurfaceTabId } from '../../../shared/terminal-surface-id'
+ import type { TerminalTab } from '../../../shared/terminal-tab-types'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import { finalizeHostTerminalSnapshot } from './__fixtures__/web-session-terminal-host-finalization'
+ import {
+   ENV,
+--- a/src/renderer/src/runtime/web-session-tabs-sync-test-harness.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-test-harness.ts
+@@ -6,9 +6,10 @@
+ import { resetWebAgentSessionHandoffsForTests } from './web-agent-session-handoff'
+ import { resetWebRuntimeInitialTerminalBootstrapForTests } from './web-runtime-initial-terminal-bootstrap'
+ import {
+-  resetWebSessionTabsSnapshotFreshnessForTests,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++  resetWebSessionTabsSnapshotFreshnessForTests
++} from './web-session-tabs-sync/tracking-lifecycle'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
++import './web-runtime-browser-creation'
+ 
+ export const WT = 'repo::/worktree'
+ export const ENV = 'web-env-1'
+--- a/src/renderer/src/runtime/web-session-tabs-sync-tracking-teardown.test.ts
++++ b/src/renderer/src/runtime/web-session-tabs-sync-tracking-teardown.test.ts
+@@ -5,11 +5,11 @@
+ import type { Tab } from '../../../shared/tab-types'
+ import {
+   _getWebSessionTabsTrackingCountsForTest,
+-  applyFreshWebSessionTabsSnapshot,
+-  clearWebSessionTabsTrackingForEnvironment,
+-  resolveHostSessionTabIdForWebSessionTab,
+-  type WebSessionTabsSyncState
+-} from './web-session-tabs-sync'
++  clearWebSessionTabsTrackingForEnvironment
++} from './web-session-tabs-sync/tracking-lifecycle'
++import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { resolveHostSessionTabIdForWebSessionTab } from './web-session-tabs-sync/tracking-mappings'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   ENV,
+   HOST_SURFACE_ID,
+--- a/src/renderer/src/runtime/web-session-terminal-orphan-inventory-retry.test.ts
++++ b/src/renderer/src/runtime/web-session-terminal-orphan-inventory-retry.test.ts
+@@ -11,7 +11,8 @@
+   clearWebSessionTerminalOrphanRecoveryForTests,
+   recoverWebSessionTerminalOrphansBeforeApply
+ } from './web-session-terminal-orphan-recovery'
+-import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { type WebSessionTabsSyncState } from './web-session-tabs-sync/state'
+ import {
+   makeState as makeTabsSyncState,
+   resetWebSessionTabsSyncTestState
+--- a/src/renderer/src/runtime/web-session-terminal-orphan-mixed-version.test.ts
++++ b/src/renderer/src/runtime/web-session-terminal-orphan-mixed-version.test.ts
+@@ -1,7 +1,8 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import { toRemoteRuntimePtyId } from './runtime-terminal-stream'
+ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+-import { applyWebSessionTabsSnapshot, decideWebSessionTabsSnapshot } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
++import { decideWebSessionTabsSnapshot } from './web-session-tabs-sync/tracking-decisions'
+ import {
+   recordReceivedWebSessionTabsSnapshot,
+   shouldApplyRecoveredWebSessionTabsSnapshot
+--- a/src/renderer/src/runtime/web-session-terminal-orphan-recovery-adoption-regressions.test.ts
++++ b/src/renderer/src/runtime/web-session-terminal-orphan-recovery-adoption-regressions.test.ts
+@@ -1,6 +1,6 @@
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+-import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync'
++import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync/snapshot-api'
+ import { toRemoteRuntimePtyId } from './runtime-terminal-stream'
+ import { finalizeHostTerminalSnapshot } from './__fixtures__/web-session-terminal-host-finalization'
+ import {
+--- a/tests/e2e/omp-risk-remote-review.unit.test.ts
++++ b/tests/e2e/omp-risk-remote-review.unit.test.ts
+@@ -4,7 +4,7 @@
+ import {
+   applyWebSessionTabsSnapshot,
+   applyWebSessionTabsSnapshots
+-} from '../../src/renderer/src/runtime/web-session-tabs-sync'
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/snapshot-api'
+ import {
+   makeState,
+   makeSnapshot,
+--- a/tests/e2e/remote-terminal-tab-retirement.unit.test.ts
++++ b/tests/e2e/remote-terminal-tab-retirement.unit.test.ts
+@@ -4,11 +4,17 @@
+ import type { WorkspaceSessionState } from '../../src/shared/workspace-session-state-types'
+ import {
+   acceptReplayedWebSessionTabsSnapshot,
+-  applyWebSessionTabsSnapshot,
+-  resetWebSessionTabsSnapshotFreshnessForTests,
+-  shouldApplyWebSessionTabsSnapshot,
++  resetWebSessionTabsSnapshotFreshnessForTests
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/tracking-lifecycle'
++import {
++  applyWebSessionTabsSnapshot
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/snapshot-api'
++import {
++  shouldApplyWebSessionTabsSnapshot
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/tracking-decisions'
++import {
+   type WebSessionTabsSyncState
+-} from '../../src/renderer/src/runtime/web-session-tabs-sync'
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/state'
+ import { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
+ import { withDurableRuntimeStore } from '../../src/main/runtime/runtime-durable-store-fixture'
+ 
+--- a/tests/e2e/session-tabs-decorative-title-fanout.unit.test.ts
++++ b/tests/e2e/session-tabs-decorative-title-fanout.unit.test.ts
+@@ -12,10 +12,14 @@
+   SESSION_TABS_AGENT_STATUS_HEARTBEAT_SPACING_MS
+ } from '../../src/main/runtime/mobile-session-tabs-agent-status-heartbeat'
+ import {
+-  applyFreshWebSessionTabsSnapshot,
+-  resetWebSessionTabsSnapshotFreshnessForTests,
++  applyFreshWebSessionTabsSnapshot
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/snapshot-api'
++import {
++  resetWebSessionTabsSnapshotFreshnessForTests
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/tracking-lifecycle'
++import {
+   type WebSessionTabsSyncState
+-} from '../../src/renderer/src/runtime/web-session-tabs-sync'
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/state'
+ import { makeAgentStatusStoreWiring } from '../../src/main/runtime/agent-status-store-wiring.test-fixture'
+ 
+ vi.mock('../../src/renderer/src/store', () => ({
+--- a/tests/e2e/session-tabs-empty-inventory-daemon-oracle.unit.test.ts
++++ b/tests/e2e/session-tabs-empty-inventory-daemon-oracle.unit.test.ts
+@@ -18,7 +18,9 @@
+ } from '../../src/renderer/src/runtime/host-session-mirror-hydration'
+ import { clearHostLiveTerminalProbesForTests } from '../../src/renderer/src/runtime/host-live-terminal-probe'
+ import { replaceRuntimeEnvironmentRevisions } from '../../src/renderer/src/runtime/runtime-environment-revision'
+-import { applyWebSessionTabsStorePatch } from '../../src/renderer/src/runtime/web-session-tabs-sync'
++import {
++  applyWebSessionTabsStorePatch
++} from '../../src/renderer/src/runtime/web-session-tabs-sync/store-patch'
+ 
+ const ENVIRONMENT_ID = 'env-live-unpublished'
+ const WORKTREE = 'repo1::/path/wt1'
