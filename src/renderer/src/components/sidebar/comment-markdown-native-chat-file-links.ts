@@ -6,11 +6,7 @@ import {
   formatFileLinkLocation,
   parseFileLinkLocation
 } from '../../../../shared/file-link-location'
-import {
-  extractTerminalFileLinkCandidates,
-  extractTerminalFileLinks,
-  type ParsedTerminalFileLink
-} from '@/lib/terminal-links'
+import { extractTerminalFileLinks, type ParsedTerminalFileLink } from '@/lib/terminal-links'
 import { preferLongestNonOverlappingMatches } from '@/lib/longest-non-overlapping-matches'
 
 type MarkdownNode = {
@@ -25,18 +21,28 @@ const ROOTED_PATH_PREFIX_PATTERN = /^(?:~[\\/]|\.{1,2}[\\/]|[\\/]|[A-Za-z]:[\\/]
 /** Whether a detected path names a file on the chat's host; the terminal's own check. */
 export type FileLinkExists = (link: ParsedTerminalFileLink) => boolean
 
-function isFileHrefText(link: ParsedTerminalFileLink): boolean {
-  return routeNativeChatHref(link.displayText).kind === 'file'
+// Why: a link is underlined only when it names a path; a bare `name.md` resolves nowhere
+// reliable, so underlining it promises a click that cannot open anything.
+function isLinkifiableFile(link: ParsedTerminalFileLink, isProse: boolean): boolean {
+  const hasRootedPrefix = ROOTED_PATH_PREFIX_PATTERN.test(link.pathText)
+  const hasLineSuffix = link.line !== null || link.column !== null
+  const hasAlphabeticExtension = /\.[\p{L}][\p{L}\p{N}\p{M}_+-]*$/u.test(link.pathText)
+  const hasPathExtension = /\.[\p{L}\p{N}][\p{L}\p{N}\p{M}_+-]*$/u.test(link.pathText)
+  return (
+    /[\\/]/.test(link.pathText) &&
+    (hasRootedPrefix || hasLineSuffix || (isProse ? hasPathExtension : hasAlphabeticExtension)) &&
+    routeNativeChatHref(link.displayText).kind === 'file'
+  )
 }
 
-// Why: like terminal links, only a path the host confirms is underlined; overlapping
-// candidates (a spaced span vs. its tokens) resolve to the longest that exists.
+// Why: path-shaped candidates are underlined only once the host confirms them; overlapping
+// candidates (a rooted spaced span vs. its tokens) resolve to the longest that exists.
 function selectExistingLinks(
   candidates: ParsedTerminalFileLink[],
   exists: FileLinkExists
 ): ParsedTerminalFileLink[] {
   return preferLongestNonOverlappingMatches(
-    candidates.filter((link) => isFileHrefText(link) && exists(link)),
+    candidates.filter((link) => exists(link)),
     {
       length: (link) => link.endIndex - link.startIndex,
       overlaps: (left, right) =>
@@ -99,31 +105,46 @@ function createFileLinkNode(link: ParsedTerminalFileLink, child: MarkdownNode): 
   }
 }
 
-// Why: the terminal extractor spans "src/a.ts and src/b.ts" as one spaced path, so
-// each token is also a candidate; a spaced folder name that exists still wins as longest.
-function withProseJoinedTokens(link: ParsedTerminalFileLink): ParsedTerminalFileLink[] {
-  if (ROOTED_PATH_PREFIX_PATTERN.test(link.pathText) || !/\s/.test(link.displayText)) {
-    return [link]
-  }
-  const links = [link]
+function linkableTokens(link: ParsedTerminalFileLink): ParsedTerminalFileLink[] {
+  const tokenLinks: ParsedTerminalFileLink[] = []
   for (const match of link.displayText.matchAll(/\S+/g)) {
     const token = match[0]
     const exactLink = extractTerminalFileLinks(token).find(
       (candidate) => candidate.startIndex === 0 && candidate.endIndex === token.length
     )
-    if (exactLink) {
+    if (exactLink && isLinkifiableFile(exactLink, true)) {
       const startIndex = link.startIndex + (match.index ?? 0)
-      links.push({ ...exactLink, startIndex, endIndex: startIndex + token.length })
+      tokenLinks.push({ ...exactLink, startIndex, endIndex: startIndex + token.length })
     }
   }
-  return links
+  return tokenLinks
+}
+
+// Why: the terminal extractor spans "src/a.ts and src/b.ts" as one spaced path.
+// An unrooted span holding a bare word or several linkable tokens is prose
+// joining paths, so link the tokens on their own; a spaced folder name keeps
+// every token path-shaped and stays one link. A rooted span also offers its
+// tokens: a real spaced path still wins as the longest that exists.
+function splitProseJoinedLinks(link: ParsedTerminalFileLink): ParsedTerminalFileLink[] {
+  if (!/\s/.test(link.displayText)) {
+    return [link]
+  }
+  const tokenLinks = linkableTokens(link)
+  if (ROOTED_PATH_PREFIX_PATTERN.test(link.pathText)) {
+    return [link, ...tokenLinks]
+  }
+  const hasBareWord = Array.from(link.displayText.matchAll(/\S+/g)).some(
+    (match) => !/[\\/.]/.test(match[0])
+  )
+  return hasBareWord || tokenLinks.length > 1 ? tokenLinks : [link]
 }
 
 function splitTextSegment(value: string, exists: FileLinkExists): MarkdownNode[] {
   const links = selectExistingLinks(
-    extractTerminalFileLinkCandidates(value)
+    extractTerminalFileLinks(value)
       .filter((link) => !hasPartialPathBoundary(value, link))
-      .flatMap(withProseJoinedTokens),
+      .filter((link) => isLinkifiableFile(link, true))
+      .flatMap(splitProseJoinedLinks),
     exists
   )
   if (links.length === 0) {
@@ -165,11 +186,11 @@ function splitUnquotedText(value: string, exists: FileLinkExists): MarkdownNode[
 }
 
 function exactFileLink(value: string, exists: FileLinkExists): ParsedTerminalFileLink | null {
-  const exactLink = extractTerminalFileLinkCandidates(value).find(
+  const exactLink = extractTerminalFileLinks(value).find(
     (link) => link.startIndex === 0 && link.endIndex === value.length
   )
-  if (exactLink && selectExistingLinks([exactLink], exists).length > 0) {
-    return exactLink
+  if (exactLink && isLinkifiableFile(exactLink, false)) {
+    return exists(exactLink) ? exactLink : null
   }
   if (!/\s/.test(value)) {
     return null
@@ -178,7 +199,6 @@ function exactFileLink(value: string, exists: FileLinkExists): ParsedTerminalFil
   if (!parsed) {
     return null
   }
-  // Why: a spaced code span is usually a command; only path-shaped ones are worth asking the host about.
   const looksLikePath =
     ROOTED_PATH_PREFIX_PATTERN.test(parsed.pathText) ||
     /[\\/]/.test(parsed.pathText) ||
@@ -192,7 +212,7 @@ function exactFileLink(value: string, exists: FileLinkExists): ParsedTerminalFil
     endIndex: value.length,
     displayText: value
   }
-  return selectExistingLinks([explicitLink], exists).length > 0 ? explicitLink : null
+  return isLinkifiableFile(explicitLink, false) && exists(explicitLink) ? explicitLink : null
 }
 
 function splitTextNode(value: string, exists: FileLinkExists): MarkdownNode[] {

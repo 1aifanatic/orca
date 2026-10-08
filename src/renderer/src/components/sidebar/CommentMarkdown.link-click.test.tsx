@@ -292,7 +292,7 @@ describe('CommentMarkdown link click handler', () => {
     expect(onLinkClick).toHaveBeenCalledOnce()
   })
 
-  it('leaves slash tokens and versions unlinked when the host has no such file', () => {
+  it('leaves prose-shaped slash tokens and numeric versions unlinked even when they exist', () => {
     const proseFalsePositives = ['and/or', 'TCP/IP', '24/7', 'N/A', 'km/h', 'A/B test']
     const inlineCodeFalsePositives = ['origin/main', 'v1.2.3', '1.0']
     const quotedFalsePositives = ['"and/or"', '"A/B test"']
@@ -306,7 +306,7 @@ describe('CommentMarkdown link click handler', () => {
           variant="document"
           content={`${proseFalsePositives.join(', ')}; ${inlineCodeFalsePositives.map((value) => `\`${value}\``).join(', ')}; ${quotedFalsePositives.join(', ')}`}
           onLinkClick={vi.fn()}
-          fileLinkExists={filesAt()}
+          fileLinkExists={everyPathExists}
         />
       )
     })
@@ -348,7 +348,7 @@ describe('CommentMarkdown link click handler', () => {
     expect(example?.closest('a')).toBeNull()
   })
 
-  it('links a bare file name that exists, as terminal output does', () => {
+  it('does not underline a bare file name or a folder, even when it exists', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -357,15 +357,55 @@ describe('CommentMarkdown link click handler', () => {
       root?.render(
         <CommentMarkdown
           variant="document"
-          content="Updated package.json and notes.md."
+          content="Updated package.json and `notes.md`; look in src/components for the button, or `src/renderer`."
           onLinkClick={vi.fn()}
-          fileLinkExists={filesAt('package.json')}
+          fileLinkExists={everyPathExists}
+        />
+      )
+    })
+
+    expect(container.querySelectorAll('a')).toHaveLength(0)
+  })
+
+  it('links a rooted path and a later relative path in one sentence', () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+
+    act(() => {
+      root?.render(
+        <CommentMarkdown
+          variant="document"
+          content="I changed /Users/me/repo/src/x.ts to use src/app.ts."
+          onLinkClick={vi.fn()}
+          fileLinkExists={filesAt('/Users/me/repo/src/x.ts', 'src/app.ts')}
         />
       )
     })
 
     expect(Array.from(container.querySelectorAll('a')).map((anchor) => anchor.textContent)).toEqual(
-      ['package.json']
+      ['/Users/me/repo/src/x.ts', 'src/app.ts']
+    )
+  })
+
+  it('links a spaced rooted path as one link when it and its pieces all exist', () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+
+    act(() => {
+      root?.render(
+        <CommentMarkdown
+          variant="document"
+          content="Open /Users/A/Foo Bar/file.ts for details."
+          onLinkClick={vi.fn()}
+          fileLinkExists={filesAt('/Users/A/Foo Bar/file.ts', '/Users/A/Foo', 'Bar/file.ts')}
+        />
+      )
+    })
+
+    expect(Array.from(container.querySelectorAll('a')).map((anchor) => anchor.textContent)).toEqual(
+      ['/Users/A/Foo Bar/file.ts']
     )
   })
 
@@ -468,7 +508,7 @@ describe('CommentMarkdown link click handler', () => {
     expect(container.textContent).toContain('"John 3:16"')
   })
 
-  it('preserves line suffixes on spaced paths that exist', () => {
+  it('preserves line suffixes on valid spaced path shapes, but not on bare file names', () => {
     const content =
       'Open "My Folder/notes:12", `My Notes.md:7`, and "C:\\My Folder\\notes.txt:12:3".'
     container = document.createElement('div')
@@ -481,7 +521,11 @@ describe('CommentMarkdown link click handler', () => {
           variant="document"
           content={content}
           onLinkClick={vi.fn()}
-          fileLinkExists={filesAt('My Folder/notes', String.raw`C:\My Folder\notes.txt`)}
+          fileLinkExists={filesAt(
+            'My Folder/notes',
+            'My Notes.md',
+            String.raw`C:\My Folder\notes.txt`
+          )}
         />
       )
     })
@@ -634,6 +678,7 @@ describe('CommentMarkdown link click handler', () => {
   })
 
   it('keeps explicit markdown file links without asking the host, and leaves fenced paths as source text', () => {
+    const exists = vi.fn<FileLinkExists>(everyPathExists)
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -650,11 +695,12 @@ describe('CommentMarkdown link click handler', () => {
             '```'
           ].join('\n')}
           onLinkClick={vi.fn()}
-          fileLinkExists={filesAt()}
+          fileLinkExists={exists}
         />
       )
     })
 
+    expect(exists).not.toHaveBeenCalled()
     const anchors = container.querySelectorAll<HTMLAnchorElement>('a')
     expect(anchors).toHaveLength(1)
     expect(routeNativeChatHref(anchors[0]?.getAttribute('href'))).toEqual({
