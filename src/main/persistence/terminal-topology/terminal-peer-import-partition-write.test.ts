@@ -101,4 +101,40 @@ describe('a host pull into an SSH partition main has published nothing since', (
       [`host-tab:${LEAF}`]: 'host-incarnation'
     })
   })
+
+  // Two desktops on one SSH host: a tab this window created starts no fence, so the other's imports.
+  it("imports another desktop's new tab after this window created its own", async () => {
+    const store = openStore()
+    await store.createTerminalSurface(
+      {
+        worktreeId: WORKTREE_ID,
+        tabId: 'main-tab',
+        leafId: LEAF,
+        placement: { kind: 'new-tab', row: { title: 'Terminal', createdAt: 1 } }
+      },
+      HOST_ID
+    )
+    expect(
+      store.getWorkspaceSession(HOST_ID).tabsByWorktree[WORKTREE_ID]?.map((row) => row.id)
+    ).toEqual(['main-tab'])
+
+    importPeerTopology(
+      store,
+      'target-1',
+      {
+        tabsByWorktree: { [WORKTREE_ID]: [tab('main-tab'), tab('host-tab')] },
+        terminalLayoutsByTabId: {
+          'main-tab': leafLayout('main-tab'),
+          'host-tab': leafLayout('host-tab')
+        }
+      },
+      () => false
+    )
+
+    const saved = store.getWorkspaceSession(HOST_ID)
+    expect(saved.tabsByWorktree[WORKTREE_ID]?.map((row) => row.id)).toEqual([
+      'main-tab',
+      'host-tab'
+    ])
+  })
 })

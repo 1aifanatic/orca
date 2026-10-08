@@ -3,6 +3,7 @@ import type { WorkspaceSessionState } from '../../../shared/workspace-session-st
 import { getRepoIdFromWorktreeId } from '../../../shared/worktree/id'
 import { terminalPanePlacementAgreement } from '../terminal-topology/terminal-pane-placement-agreement'
 import { placeTerminalPane } from '../terminal-topology/terminal-pane-placement-apply'
+import { startsOrAdvancesTerminalFence } from '../terminal-topology/terminal-topology-membership'
 import { tabRowPtyIdAfterLeafBinding } from './terminal-tab-pty-ownership'
 import type { PersistPtyBindingArgs } from './pty-binding-persistence'
 
@@ -37,6 +38,7 @@ export function applyPtyBinding(
       delete session.terminalSurfaceTombstonesByPaneKey[paneKey]
     }
   }
+  const tabExisted = session.tabsByWorktree[bindingWorktreeId]?.some((t) => t.id === args.tabId)
   // A spawn can beat the window's creation commit, so the binding can create its pane too.
   const terminalMembershipChanged = placeTerminalPane(
     session,
@@ -57,7 +59,15 @@ export function applyPtyBinding(
       args.ptyId
     )
   }
-  if (reconciledIncarnation || terminalMembershipChanged) {
+  if (
+    reconciledIncarnation ||
+    (terminalMembershipChanged &&
+      startsOrAdvancesTerminalFence(
+        session,
+        bindingWorktreeId,
+        args.expectedSourceBinding !== undefined || !tabExisted
+      ))
+  ) {
     const repoId = getRepoIdFromWorktreeId(bindingWorktreeId)
     session.terminalTopologyRevisionByRepoId = {
       ...session.terminalTopologyRevisionByRepoId,

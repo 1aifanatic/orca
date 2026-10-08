@@ -23,6 +23,22 @@ export function advanceTerminalTopologyRevision(
 }
 
 /**
+ * Whether a membership change moves the repo's fence, as main's did: once a fence exists, any;
+ * before, only a split or a tab main itself admitted, so a window's own tabs keep a peer's pull
+ * importable.
+ */
+export function startsOrAdvancesTerminalFence(
+  session: WorkspaceSessionState,
+  worktreeId: string,
+  hostAdmitted: boolean
+): boolean {
+  return (
+    hostAdmitted ||
+    (session.terminalTopologyRevisionByRepoId?.[getRepoIdFromWorktreeId(worktreeId)] ?? 0) > 0
+  )
+}
+
+/**
  * The tab whose live layout holds this leaf. Only the leaf half of a pane key is remint-stable —
  * `detachTerminalPaneToTab` moves a live pane into a new tab, so a stored tabId names the tab the
  * pane left. Callers fencing on location must resolve it here rather than trust a frozen tabId.

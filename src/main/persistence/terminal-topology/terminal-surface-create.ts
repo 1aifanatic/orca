@@ -7,7 +7,10 @@ import type { WorkspaceSessionState } from '../../../shared/workspace-session-st
 import { cloneWorkspaceSessionState } from '../restoring-sessions/session-owner-fields'
 import { layoutContainsLeafId } from '../restoring-sessions/terminal-layout-normalization'
 import { placeTerminalPane } from './terminal-pane-placement-apply'
-import { advanceTerminalTopologyRevision } from './terminal-topology-membership'
+import {
+  advanceTerminalTopologyRevision,
+  startsOrAdvancesTerminalFence
+} from './terminal-topology-membership'
 
 /**
  * Records a tab or pane the window created in the worktree's home partition, unbound; its spawn
@@ -46,6 +49,8 @@ export function planTerminalSurfaceCreate(
   placeTerminalPane(session, { worktreeId, tabId, leafId }, placement)
   return {
     result: { status: 'committed' },
-    session: advanceTerminalTopologyRevision(session, worktreeId)
+    session: startsOrAdvancesTerminalFence(home, worktreeId, false)
+      ? advanceTerminalTopologyRevision(session, worktreeId)
+      : session
   }
 }
