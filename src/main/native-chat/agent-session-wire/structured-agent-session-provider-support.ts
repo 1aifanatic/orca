@@ -65,3 +65,15 @@ export function hostCanStartRecord(
     agentDrivesSession(deps.agents, record)
   )
 }
+
+export function knownAgentIds(deps: {
+  agents: Pick<StructuredAgentRegistry, 'definitions'>
+  store: { listRecords(): readonly AgentSessionRecord[] }
+}): readonly string[] {
+  return [
+    ...new Set([
+      ...deps.agents.definitions().map(({ agent }) => agent),
+      ...deps.store.listRecords().map(({ provider }) => provider)
+    ])
+  ]
+}

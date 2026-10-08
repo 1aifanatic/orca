@@ -141,8 +141,10 @@ describe('Windows liveness script', () => {
 
 describe('Windows stop script', () => {
   const requestFile = () => join(dir, ORCAD_STOP_REQUEST_FILENAME)
-  const stop = async (justLaunched: boolean, waitSeconds = 5) =>
-    (await runOp('stop', [dir, String(waitSeconds), justLaunched ? '1' : '0'])).stdout
+  const stop = async (justLaunched: boolean, waitSeconds = 5, user = true) =>
+    (
+      await runOp('stop', [dir, String(waitSeconds), justLaunched ? '1' : '0', user ? '1' : '0'])
+    ).stdout
       .trim()
       .split(/\r?\n/u)
       .at(-1)
@@ -168,8 +170,11 @@ describe('Windows stop script', () => {
     const pid = fakeOrcad()
     stageAddon({ [pid]: 1000 })
     recordProcess(pid, 1000)
-    writeFileSync(join(dir, ORCAD_READINESS_FILENAME), readyLine({ pid, stopRequests: 1 }))
-    expect(await stop(false)).toBe('STOPPED')
+    writeFileSync(
+      join(dir, ORCAD_READINESS_FILENAME),
+      readyLine({ pid, stopRequests: 1, structuredWorkProtection: 1 })
+    )
+    expect(await stop(false, 5, false)).toBe('STOPPED')
   })
 
   it('writes the request for a just-launched candidate that has not published readiness', async () => {
@@ -177,6 +182,17 @@ describe('Windows stop script', () => {
     stageAddon({ [pid]: 1000 })
     recordProcess(pid, 1000)
     expect(await stop(true)).toBe('STOPPED')
+  })
+
+  it('refuses an automatic stop when an older server cannot protect chats', async () => {
+    stageAddon({ [process.pid]: 1000 })
+    recordProcess(process.pid, 1000)
+    writeFileSync(
+      join(dir, ORCAD_READINESS_FILENAME),
+      readyLine({ pid: process.pid, stopRequests: 1 })
+    )
+    expect(await stop(false, 0, false)).toBe('UNKNOWN')
+    expect(existsSync(requestFile())).toBe(false)
   })
 
   it('refuses a build that cannot be asked, without writing anything', async () => {

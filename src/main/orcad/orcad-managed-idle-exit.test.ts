@@ -23,6 +23,7 @@ function idlePorts(): OrcadManagedIdleExitPorts {
     countDaemonSessions: async () => 0,
     hasDaemon: () => true,
     agentStates: () => [{ state: 'done' }],
+    readStructuredWork: () => 0,
     hasStagedMigration: () => false,
     automationsBusy: () => false,
     activationFenceExists: async () => false
@@ -73,6 +74,7 @@ describe('createOrcadIdleProbes', () => {
       clients: 'idle',
       terminals: 'idle',
       agents: 'idle',
+      'structured-work': 'idle',
       migration: 'idle',
       automations: 'idle',
       activation: 'idle'

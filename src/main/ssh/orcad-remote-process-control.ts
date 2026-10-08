@@ -9,7 +9,8 @@ import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './
 import { ORCAD_READINESS_FILENAME } from './orcad-remote-launch'
 import {
   ORCAD_STOP_REQUEST_FILENAME,
-  ORCAD_STOP_REQUESTS_CAPABILITY
+  ORCAD_STOP_REQUESTS_CAPABILITY,
+  ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY
 } from '../../shared/orcad-stop-request'
 import { selectOrcadSlotRuntimeCommand } from './orcad-remote-runtime'
 import { ORCAD_PID_FILENAME, posixProcessAliveShellFunction } from './orcad-remote-host-support'
@@ -27,15 +28,16 @@ import { windowsStopOrcadCommand } from './orcad-remote-process-control-windows'
 export function stopOrcadCommand(
   host: RemoteHostPlatform,
   remoteInstallDir: string,
-  options: { waitSeconds: number } & (
-    | { justLaunched: true }
+  options: { waitSeconds: number; user?: boolean } & (
+    | { justLaunched: true; nodePath?: string }
     | { justLaunched?: false; nodePath: string }
   )
 ): string {
   if (isWindowsRemoteHost(host)) {
     return windowsStopOrcadCommand(host, remoteInstallDir, {
       waitSeconds: options.waitSeconds,
-      justLaunched: options.justLaunched === true
+      justLaunched: options.justLaunched === true,
+      user: options.user
     })
   }
   const pidFile = shellEscape(joinRemotePath(host, remoteInstallDir, ORCAD_PID_FILENAME))
@@ -47,6 +49,11 @@ export function stopOrcadCommand(
     `const r = JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'));`,
     `const pid = r?.type === 'orca_server_ready' ? r.health?.pid : null;`,
     `if (!Number.isSafeInteger(pid) || pid <= 1) process.exit(1);`,
+    ...(options.user
+      ? []
+      : [
+          `if (r.health?.structuredWorkProtection !== ${ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY}) process.exit(1);`
+        ]),
     `const mode = r.health?.stopRequests === ${ORCAD_STOP_REQUESTS_CAPABILITY} ? 'request' : 'signal';`,
     `process.stdout.write(String(pid) + ':' + mode);`
   ].join(' ')
@@ -56,17 +63,17 @@ export function stopOrcadCommand(
     'case "$pid" in "" | *[!0-9]* ) echo NO_PID; exit 0;; esac;',
     'stop_mode=signal;',
     // Older launchers recorded a waiting shell, whose exit does not prove runtime exit.
-    ...(options.justLaunched
+    ...(options.justLaunched && options.user
       ? []
       : [
-          `runtime_answer=$(${selectOrcadSlotRuntimeCommand(host, remoteInstallDir, options.nodePath)}; ` +
+          `runtime_answer=$(${selectOrcadSlotRuntimeCommand(host, remoteInstallDir, options.nodePath ?? 'node')}; ` +
             `"$orcad_runtime" -e ${shellEscape(readRuntimePid)} ${readiness} 2>/dev/null) || { echo UNKNOWN; exit 0; };`,
           '[ "$pid" = "${runtime_answer%%:*}" ] || { echo UNKNOWN; exit 0; };',
           'stop_mode=${runtime_answer#*:};'
         ]),
     'orcad_alive "$pid" || { echo ALREADY_EXITED; exit 0; };',
     'if [ "$stop_mode" = request ]; then',
-    `( umask 077; : > ${requestFile} ) 2>/dev/null || { echo SIGNAL_FAILED; exit 0; };`,
+    `( umask 077; printf %s ${shellEscape(options.user ? '{"intent":"user"}' : '')} > ${requestFile} ) 2>/dev/null || { echo SIGNAL_FAILED; exit 0; };`,
     'else kill -TERM "$pid" 2>/dev/null || { echo SIGNAL_FAILED; exit 0; }; fi;',
     // Past here the stop may be under way, so a lost or unknown answer must keep the fence.
     'echo SIGNALED;',

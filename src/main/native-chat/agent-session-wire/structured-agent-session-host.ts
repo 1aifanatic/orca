@@ -1,6 +1,7 @@
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
+import { createStructuredAgentSessionServerLifetime } from './structured-agent-session-server-lifetime'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
 // Mutations share one durable admission path and serialize per session. A conversation is reached
 // only through `conversation`, which opens it at rest; an agent is started only by work that needs
@@ -83,6 +84,13 @@ export class StructuredAgentSessionHost {
   )
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
+  readonly serverRetirement = createStructuredAgentSessionServerLifetime({
+    context: () => this.lifetimeContext(),
+    tasks: this.tasks,
+    deliveryActive: (id) => this.conversationDelivery.loop.isRunning(id),
+    childWork: (id) => this.clientDelivery.readChildWork(id),
+    stopDelivery: () => this.stopDelivery()
+  })
   private readonly runtimeState: StructuredAgentSessionHostRuntimeState
   private readonly reconcileLeases: ReturnType<typeof createRestartReconciler>
   private readonly restore: ReturnType<typeof reveal.createStructuredAgentSessionHostRestore>
@@ -211,12 +219,7 @@ export class StructuredAgentSessionHost {
   agentDefinitions = () => this.deps.agents.definitions()
 
   /** Saved chats can outlive their registration; both vocabularies bound a client's audience. */
-  knownAgentIds = (): readonly string[] => [
-    ...new Set([
-      ...this.deps.agents.definitions().map(({ agent }) => agent),
-      ...this.deps.store.listRecords().map(({ provider }) => provider)
-    ])
-  ]
+  knownAgentIds = (): readonly string[] => providerSupport.knownAgentIds(this.deps)
 
   private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
     this,
@@ -269,7 +272,7 @@ export class StructuredAgentSessionHost {
       idleSweep: this.lifetime,
       tasks: this.tasks,
       restartResume: this.restartResume,
-      serialize: this.serialize,
+      serialize: (id, task) => this.tasks.serializeDuringShutdown(id, task),
       trigger: options?.trigger ?? 'quit'
     }).finally(() => this.clientDelivery.closeAll())
   }

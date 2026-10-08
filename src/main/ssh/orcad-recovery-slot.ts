@@ -36,6 +36,8 @@ export type OrcadSlotOptions = OrcadRemoteExecTarget & {
   userDataDir: string
   bindHost: string
   port: number
+  /** Only an explicit update-now request may interrupt structured work. */
+  force?: boolean
   readinessTimeoutMs?: number
   sleep?: (ms: number) => Promise<void>
 }
@@ -115,8 +117,17 @@ export async function stopOrcadSlot(
         options.host,
         remoteDir,
         justLaunched
-          ? { waitSeconds: ORCAD_SLOT_STOP_WAIT_SECONDS, justLaunched: true }
-          : { waitSeconds: ORCAD_SLOT_STOP_WAIT_SECONDS, nodePath: options.nodePath }
+          ? {
+              waitSeconds: ORCAD_SLOT_STOP_WAIT_SECONDS,
+              justLaunched: true,
+              nodePath: options.nodePath,
+              user: options.force === true
+            }
+          : {
+              waitSeconds: ORCAD_SLOT_STOP_WAIT_SECONDS,
+              nodePath: options.nodePath,
+              user: options.force === true
+            }
       )
     )
   )

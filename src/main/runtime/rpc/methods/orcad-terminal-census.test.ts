@@ -1,12 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../../orcad/orcad-structured-work-boundary', () => ({
+  observeOrcadStructuredWork: async () => 0
+}))
+
 const collect = vi.hoisted(() => vi.fn())
 vi.mock('../../../orcad/orcad-terminal-census', () => ({ collectOrcadTerminalCensus: collect }))
 
 import { ORCAD_TERMINAL_CENSUS_METHODS } from './orcad-terminal-census'
 
 const handler = ORCAD_TERMINAL_CENSUS_METHODS[0]!.handler
-const idle = { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 7 }
+const idle = {
+  structuredWork: 0,
+  liveSessions: 0,
+  startedSinceActivation: 0,
+  daemonProtocolVersion: 7
+}
 
 function call(params: Record<string, unknown>, released: number) {
   const runtime = { releaseFinishedAutomationRunTerminals: vi.fn(async () => released) }

@@ -23,7 +23,8 @@ import {
 } from '../../shared/orcad-artifacts'
 import {
   ORCAD_STOP_REQUEST_FILENAME,
-  ORCAD_STOP_REQUESTS_CAPABILITY
+  ORCAD_STOP_REQUESTS_CAPABILITY,
+  ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY
 } from '../../shared/orcad-stop-request'
 import { ORCAD_STDIO_BRIDGE_FUNCTION } from './orcad-stdio-bridge-script'
 import {
@@ -144,7 +145,7 @@ const ops = {
   },
 
   // Never a signal: on Windows that is TerminateProcess, which skips the durable shutdown.
-  stop(dir, waitArg, launchedArg) {
+  stop(dir, waitArg, launchedArg, userArg) {
     const record = orcadRecord(dir)
     if (!record) return answer('NO_PID')
     const ready = readiness(dir)
@@ -153,14 +154,15 @@ const ops = {
       // The readiness PID must corroborate the launcher's, so a reused PID is never addressed.
       if (health.pid !== record.pid) return answer('UNKNOWN')
       if (health.stopRequests !== ${ORCAD_STOP_REQUESTS_CAPABILITY}) return answer('UNSUPPORTED')
-    } else if (launchedArg !== '1') {
+      if (userArg !== '1' && health.structuredWorkProtection !== ${ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY}) return answer('UNKNOWN')
+    } else if (launchedArg !== '1' || userArg !== '1') {
       return answer('UNKNOWN')
     }
     // A just-launched candidate's listener consumes a request written before it started.
     const first = orcadState(dir, record)
     if (first === 'dead') return answer('ALREADY_EXITED')
     if (first !== 'alive') return answer('UNKNOWN')
-    try { fs.writeFileSync(path.join(dir, ${text(ORCAD_STOP_REQUEST_FILENAME)}), '', { mode: 0o600 }) } catch { return answer('SIGNAL_FAILED') }
+    try { fs.writeFileSync(path.join(dir, ${text(ORCAD_STOP_REQUEST_FILENAME)}), userArg === '1' ? '{"intent":"user"}' : '', { mode: 0o600 }) } catch { return answer('SIGNAL_FAILED') }
     process.stdout.write('SIGNALED\\n')
     const end = Date.now() + Number(waitArg) * 1000
     const tick = () => {

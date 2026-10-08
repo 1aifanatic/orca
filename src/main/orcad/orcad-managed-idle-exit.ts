@@ -46,6 +46,7 @@ export type OrcadManagedIdleExitPorts = {
   countDaemonSessions: () => Promise<number | null>
   hasDaemon: () => boolean
   agentStates: () => readonly { state: string }[]
+  readStructuredWork: () => number | null | Promise<number | null>
   hasStagedMigration: () => boolean
   /** An enabled schedule or an unsettled run; nothing would fire either once the host exits. */
   automationsBusy: () => boolean
@@ -59,6 +60,13 @@ export function createOrcadIdleProbes(
 ): OrcadIdleProbe[] {
   const verdict = (busy: boolean): OrcadIdleVerdict => (busy ? 'busy' : 'idle')
   return [
+    {
+      name: 'structured-work',
+      read: async () => {
+        const work = await ports.readStructuredWork()
+        return work === null ? 'unverifiable' : verdict(work > 0)
+      }
+    },
     {
       name: 'clients',
       read: () => {
@@ -110,7 +118,7 @@ export function installOrcadManagedIdleExit(input: {
   config: OrcadManagedIdleExitConfig
   ports: OrcadManagedIdleExitPorts
   /** Records the clean stop, then runs the same graceful shutdown as SIGTERM. */
-  stop: (evidence: OrcadIdleExitEvidence) => void
+  stop: (evidence: OrcadIdleExitEvidence) => void | false
 }): () => void {
   const monitor = new OrcadIdleExitMonitor({
     timeoutMs: input.config.timeoutMs,

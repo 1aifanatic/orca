@@ -13,6 +13,10 @@ import {
   writeOrcadIdleStopRecord
 } from './orcad-idle-stop-record'
 import type { OrcadShutdownTrigger } from './orcad-lifecycle'
+import {
+  expireOrcadUnansweredPrompts,
+  admitOrcadAutomaticStop
+} from './orcad-structured-work-boundary'
 import type { OrcadIdleStopRecord } from '../../shared/orcad-idle-exit'
 
 let requestIdleShutdown: OrcadShutdownTrigger | null = null
@@ -74,14 +78,19 @@ async function startOrcadManagedIdleExit(
       countDaemonSessions: countLiveOrcadDaemonSessions,
       hasDaemon: () => getDaemonEndpointFacts() !== null,
       agentStates: input.agentStates,
+      readStructuredWork: expireOrcadUnansweredPrompts,
       hasStagedMigration: input.hasStagedMigration,
       automationsBusy: input.automationsBusy,
       activationFenceExists
     },
     stop: (evidence) => {
+      if (!admitOrcadAutomaticStop(() => true)) {
+        return false
+      }
       void stopForIdle(input, evidence, retireOrcadDaemonIfIdle).finally(() =>
         idleRecord.requestShutdown(requestIdleShutdown)
       )
+      return undefined
     }
   })
   input.registerCleanup(() => {

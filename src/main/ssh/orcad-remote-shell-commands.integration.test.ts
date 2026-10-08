@@ -127,7 +127,7 @@ async function launchTestRuntime(
           ]
         : []),
       `console.log(JSON.stringify({type: 'orca_server_ready', health: {pid: process.pid${
-        stopRequests ? ', stopRequests: 1' : ''
+        stopRequests ? ', stopRequests: 1, structuredWorkProtection: 1' : ''
       }}}));`,
       `setTimeout(() => process.exit(1), 10_000);`
     ].join('\n')
@@ -166,7 +166,10 @@ async function launchTestRuntime(
   return { runtimePid, recordedPid, terminatedFile }
 }
 
-function stopTestRuntime(justLaunched = false): ReturnType<typeof parseOrcadStopOutcome> {
+function stopTestRuntime(
+  justLaunched = false,
+  user = true
+): ReturnType<typeof parseOrcadStopOutcome> {
   return parseOrcadStopOutcome(
     execFileSync(
       '/bin/sh',
@@ -174,6 +177,7 @@ function stopTestRuntime(justLaunched = false): ReturnType<typeof parseOrcadStop
         '-c',
         stopOrcadCommand(host, versionDir, {
           waitSeconds: 3,
+          user,
           ...(justLaunched ? { justLaunched: true as const } : { nodePath: process.execPath })
         })
       ],
@@ -408,6 +412,22 @@ describe('liveness and stop commands, run for real', () => {
     expect(existsSync(join(versionDir, ORCAD_STOP_REQUEST_FILENAME))).toBe(false)
   })
 
+  it('refuses an automatic stop of an older server with no structured protection', async () => {
+    const { runtimePid, terminatedFile } = await launchTestRuntime()
+    expect(stopTestRuntime(false, false)).toBe('unknown')
+    expect(() => process.kill(runtimePid, 0)).not.toThrow()
+    expect(existsSync(terminatedFile)).toBe(false)
+    expect(existsSync(join(versionDir, ORCAD_STOP_REQUEST_FILENAME))).toBe(false)
+  })
+
+  it('never signals an automatic candidate cleanup before readiness proves protection', async () => {
+    const { runtimePid, terminatedFile } = await launchTestRuntime()
+    rmSync(join(versionDir, ORCAD_READINESS_FILENAME))
+    expect(stopTestRuntime(true, false)).toBe('unknown')
+    expect(() => process.kill(runtimePid, 0)).not.toThrow()
+    expect(existsSync(terminatedFile)).toBe(false)
+  })
+
   it('clears a stop request the previous process never consumed before launching', async () => {
     writeFileSync(join(versionDir, ORCAD_STOP_REQUEST_FILENAME), '')
     const { runtimePid } = await launchTestRuntime(false, true)
@@ -452,7 +472,7 @@ describe('liveness and stop commands, run for real', () => {
     }
   )
 
-  it('can stop a candidate just launched with exec without readiness', async () => {
+  it('can explicitly stop a candidate just launched with exec without readiness', async () => {
     const { runtimePid, recordedPid, terminatedFile } = await launchTestRuntime()
     expect(recordedPid).toBe(runtimePid)
     rmSync(join(versionDir, ORCAD_READINESS_FILENAME))
@@ -474,6 +494,7 @@ describe('liveness and stop commands, run for real', () => {
       sh(
         `${deniedProbe} ${stopOrcadCommand(host, versionDir, {
           waitSeconds: 1,
+          user: true,
           nodePath: process.execPath
         })}`
       )
@@ -549,7 +570,13 @@ describe('liveness and stop commands, run for real', () => {
         )
         expect(
           parseOrcadStopOutcome(
-            sh(stopOrcadCommand(host, versionDir, { waitSeconds: 10, justLaunched: true }))
+            sh(
+              stopOrcadCommand(host, versionDir, {
+                waitSeconds: 10,
+                justLaunched: true,
+                user: true
+              })
+            )
           )
         ).toBe('stopped')
         expect(await exited).toBe('SIGTERM')
@@ -574,7 +601,7 @@ describe('liveness and stop commands, run for real', () => {
       expect(parseOrcadLiveness(sh(orcadLivenessProbeCommand(host, versionDir)))).toBe('DEAD')
       expect(
         parseOrcadStopOutcome(
-          sh(stopOrcadCommand(host, versionDir, { waitSeconds: 1, justLaunched: true }))
+          sh(stopOrcadCommand(host, versionDir, { waitSeconds: 1, justLaunched: true, user: true }))
         )
       ).toBe('already-exited')
     } finally {
@@ -587,7 +614,7 @@ describe('liveness and stop commands, run for real', () => {
     writeFileSync(join(versionDir, ORCAD_PID_FILENAME), String(exited))
     expect(
       parseOrcadStopOutcome(
-        sh(stopOrcadCommand(host, versionDir, { waitSeconds: 1, justLaunched: true }))
+        sh(stopOrcadCommand(host, versionDir, { waitSeconds: 1, justLaunched: true, user: true }))
       )
     ).toBe('already-exited')
   })

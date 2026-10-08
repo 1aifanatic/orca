@@ -106,8 +106,7 @@ export function probeManagedOrcadReadiness(
   )
 }
 
-// Why only this code: deploy never has a session count to force past, so forcing an unknown
-// census lands on the daemon-protocol deferral, which force cannot clear.
+// Unknown terminal protocol still cannot be forced; explicit chat interruption needs no protocol.
 export function isForceableOrcadDeferral(code: string): boolean {
-  return code === 'orcad_update_terminals_running'
+  return code === 'orcad_update_terminals_running' || code === 'orcad_update_structured_work'
 }

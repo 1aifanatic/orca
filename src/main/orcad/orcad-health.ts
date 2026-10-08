@@ -18,7 +18,10 @@ import {
   readDaemonPidRecord
 } from '../daemon/daemon-init'
 import type { OrcadProfileStateAuthoritySelection } from './orcad-profile-state-telemetry'
-import { ORCAD_STOP_REQUESTS_CAPABILITY } from '../../shared/orcad-stop-request'
+import {
+  ORCAD_STOP_REQUESTS_CAPABILITY,
+  ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY
+} from '../../shared/orcad-stop-request'
 import type { OrcadIdleStopRecord } from '../../shared/orcad-idle-exit'
 
 /**
@@ -74,6 +77,7 @@ export type OrcadHealth = {
    * Absent on older builds, which a client must keep stopping with SIGTERM.
    */
   stopRequests?: typeof ORCAD_STOP_REQUESTS_CAPABILITY
+  structuredWorkProtection?: typeof ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY
   /**
    * Managed launches only: how the previous run ended if it stopped for idleness, else null
    * (a crash, a signal, or a first start). Absent on user-started and older builds.
@@ -183,6 +187,7 @@ export async function collectOrcadHealth(
     terminalDaemon: await collectTerminalDaemonHealth(),
     ...(profileStateAuthority ? { profileStateAuthority } : {}),
     stopRequests: ORCAD_STOP_REQUESTS_CAPABILITY,
+    structuredWorkProtection: ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY,
     ...(previousIdleStop !== undefined ? { previousIdleStop } : {})
   }
 }

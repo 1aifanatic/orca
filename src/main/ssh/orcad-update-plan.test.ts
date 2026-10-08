@@ -35,7 +35,12 @@ describe('planOrcadUpdate', () => {
       candidateDaemonProtocol: PROTOCOL,
       record: record(),
       candidateVersion: '0.2.0+bb01',
-      census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 3 }
+      census: {
+        structuredWork: 0,
+        liveSessions: 0,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      }
     })
     expect(plan).toMatchObject({ action: 'noop' })
   })
@@ -45,7 +50,12 @@ describe('planOrcadUpdate', () => {
       candidateDaemonProtocol: PROTOCOL,
       record: record(),
       candidateVersion: '0.3.0+cc01',
-      census: { liveSessions: 3, startedSinceActivation: 1, daemonProtocolVersion: 3 }
+      census: {
+        structuredWork: 0,
+        liveSessions: 3,
+        startedSinceActivation: 1,
+        daemonProtocolVersion: 3
+      }
     })
     expect(plan).toMatchObject({ action: 'defer', code: 'orcad_update_terminals_running' })
     expect(plan.action === 'defer' && plan.reason).toContain('would not kill them')
@@ -56,7 +66,12 @@ describe('planOrcadUpdate', () => {
       candidateDaemonProtocol: PROTOCOL,
       record: record(),
       candidateVersion: '0.3.0+cc01',
-      census: { liveSessions: null, startedSinceActivation: null, daemonProtocolVersion: 3 }
+      census: {
+        structuredWork: 0,
+        liveSessions: null,
+        startedSinceActivation: null,
+        daemonProtocolVersion: 3
+      }
     })
     expect(plan).toMatchObject({
       action: 'defer',
@@ -69,7 +84,12 @@ describe('planOrcadUpdate', () => {
       candidateDaemonProtocol: PROTOCOL,
       record: record(),
       candidateVersion: '0.3.0+cc01',
-      census: { liveSessions: null, startedSinceActivation: null, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: null,
+        startedSinceActivation: null,
+        daemonProtocolVersion: 3
+      },
       force: true
     })
     expect(plan).toMatchObject({ action: 'proceed', preservesLiveDaemon: true })
@@ -80,7 +100,12 @@ describe('planOrcadUpdate', () => {
       candidateDaemonProtocol: PROTOCOL,
       record: record(),
       candidateVersion: '0.3.0+cc01',
-      census: { liveSessions: 2, startedSinceActivation: 0, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 2,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      },
       force: true
     })
     expect(plan).toMatchObject({ action: 'proceed', preservesLiveDaemon: true })
@@ -106,7 +131,7 @@ describe('planOrcadUpdate', () => {
         candidateDaemonProtocol: PROTOCOL,
         record: record(),
         candidateVersion: '0.3.0+cc01',
-        census,
+        census: { ...census, structuredWork: 0 },
         force
       })
       expect(plan).toMatchObject({
@@ -127,7 +152,7 @@ describe('planOrcadUpdate', () => {
       candidateDaemonProtocol: PROTOCOL,
       record: record(),
       candidateVersion: '0.3.0+cc01',
-      census,
+      census: { ...census, structuredWork: 0 },
       force: true
     })
     expect(plan).toMatchObject({ action: 'defer', code: 'orcad_update_ends_in_process_terminals' })
@@ -138,7 +163,12 @@ describe('planOrcadUpdate', () => {
       candidateDaemonProtocol: PROTOCOL,
       record: record(),
       candidateVersion: '0.3.0+cc01',
-      census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 3 }
+      census: {
+        structuredWork: 0,
+        liveSessions: 0,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      }
     })
     expect(plan).toMatchObject({ action: 'proceed', preservesLiveDaemon: false })
   })
@@ -150,7 +180,12 @@ describe('assessOrcadRollback', () => {
       targetDaemonProtocol: PROTOCOL,
       record: record(),
       snapshotPresent: true,
-      census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 0,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      },
       stateWritesSinceActivation: false
     })
     expect(safety).toMatchObject({ safety: 'clean', target: '0.1.0+aa01' })
@@ -161,7 +196,12 @@ describe('assessOrcadRollback', () => {
       targetDaemonProtocol: PROTOCOL,
       record: record(),
       snapshotPresent: true,
-      census: { liveSessions: 1, startedSinceActivation: 0, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 1,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      },
       stateWritesSinceActivation: true
     })
     expect(safety).toMatchObject({ safety: 'lossy', target: '0.1.0+aa01' })
@@ -173,7 +213,12 @@ describe('assessOrcadRollback', () => {
       targetDaemonProtocol: PROTOCOL,
       record: record(),
       snapshotPresent: true,
-      census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 0,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      },
       stateWritesSinceActivation: null
     })
     expect(safety).toMatchObject({ safety: 'lossy' })
@@ -185,7 +230,12 @@ describe('assessOrcadRollback', () => {
       targetDaemonProtocol: PROTOCOL,
       record: record(),
       snapshotPresent: true,
-      census: { liveSessions: 4, startedSinceActivation: 1, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 4,
+        startedSinceActivation: 1,
+        daemonProtocolVersion: 3
+      },
       stateWritesSinceActivation: true
     })
     expect(safety).toMatchObject({
@@ -200,7 +250,12 @@ describe('assessOrcadRollback', () => {
       targetDaemonProtocol: PROTOCOL,
       record: record(),
       snapshotPresent: false,
-      census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 0,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      },
       stateWritesSinceActivation: false
     })
     expect(safety).toMatchObject({ safety: 'unsafe', code: 'orcad_rollback_snapshot_missing' })
@@ -212,7 +267,12 @@ describe('assessOrcadRollback', () => {
       targetDaemonProtocol: PROTOCOL,
       record: record({ snapshot: null }),
       snapshotPresent: true,
-      census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 0,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      },
       stateWritesSinceActivation: false
     })
     expect(safety).toMatchObject({ safety: 'unsafe', code: 'orcad_rollback_snapshot_missing' })
@@ -223,7 +283,12 @@ describe('assessOrcadRollback', () => {
       targetDaemonProtocol: PROTOCOL,
       record: record(),
       snapshotPresent: true,
-      census: { liveSessions: 2, startedSinceActivation: null, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 2,
+        startedSinceActivation: null,
+        daemonProtocolVersion: 3
+      },
       stateWritesSinceActivation: false
     })
     expect(safety).toMatchObject({ safety: 'unsafe', code: 'orcad_rollback_census_unavailable' })
@@ -234,7 +299,12 @@ describe('assessOrcadRollback', () => {
       targetDaemonProtocol: PROTOCOL,
       record: record({ previous: null }),
       snapshotPresent: true,
-      census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 3 },
+      census: {
+        structuredWork: 0,
+        liveSessions: 0,
+        startedSinceActivation: 0,
+        daemonProtocolVersion: 3
+      },
       stateWritesSinceActivation: false
     })
     expect(safety).toMatchObject({ safety: 'unsafe', code: 'orcad_rollback_no_target' })
@@ -243,6 +313,7 @@ describe('assessOrcadRollback', () => {
 
 describe('D7 daemon protocol crossing', () => {
   const census = (daemonProtocolVersion: number | null, liveSessions: number | null = 2) => ({
+    structuredWork: 0,
     liveSessions,
     startedSinceActivation: 0,
     daemonProtocolVersion

@@ -91,6 +91,18 @@ describe('OrcadIdleExitMonitor', () => {
     expect(await h.monitor.check()).toBe(true)
   })
 
+  it('restarts the quiet window when the final host boundary defers a racing send', async () => {
+    const h = harness()
+    h.onIdle.mockReturnValueOnce(false)
+    await h.monitor.check()
+    h.advance(100)
+    expect(await h.monitor.check()).toBe(false)
+    expect(await h.monitor.check()).toBe(false)
+    h.advance(100)
+    expect(await h.monitor.check()).toBe(true)
+    expect(h.onIdle).toHaveBeenCalledTimes(2)
+  })
+
   it('does not fire after it was stopped', async () => {
     const h = harness()
     await h.monitor.check()

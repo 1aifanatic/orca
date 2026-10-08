@@ -38,6 +38,7 @@ export type OrcadUpdateDecision =
   | { action: 'defer'; code: OrcadUpdateDeferCode; reason: string }
 
 export type OrcadUpdateDeferCode =
+  | 'orcad_update_structured_work'
   | 'orcad_update_terminals_running'
   | 'orcad_update_terminal_census_unavailable'
   | 'orcad_update_strands_live_terminals'
@@ -64,6 +65,14 @@ export function planOrcadUpdate(input: {
     return {
       action: 'noop',
       reason: `${input.candidateVersion} is already the active version; nothing to restart.`
+    }
+  }
+  if (input.record.active && !input.force && input.census.structuredWork !== 0) {
+    return {
+      action: 'defer',
+      code: 'orcad_update_structured_work',
+      reason:
+        'Chat work is still running or could not be verified. Update when it finishes, or choose Update now to interrupt it.'
     }
   }
   const inProcess = input.census.inProcessSessions ?? 0
@@ -167,6 +176,7 @@ export type OrcadRollbackSafety =
   | { safety: 'unsafe'; code: OrcadRollbackUnsafeCode; reason: string }
 
 export type OrcadRollbackUnsafeCode =
+  | 'orcad_rollback_structured_work'
   | 'orcad_rollback_no_target'
   | 'orcad_rollback_snapshot_missing'
   | 'orcad_rollback_orphans_live_terminals'
@@ -206,6 +216,14 @@ export function assessOrcadRollback(input: {
    */
   stateWritesSinceActivation: boolean | null
 }): OrcadRollbackSafety {
+  if (input.census.structuredWork !== 0) {
+    return {
+      safety: 'unsafe',
+      code: 'orcad_rollback_structured_work',
+      reason:
+        'Chat work is still running or could not be verified. Nothing was stopped or restored.'
+    }
+  }
   const target = input.record.previous
   if (!target) {
     return {

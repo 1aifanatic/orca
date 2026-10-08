@@ -6,6 +6,7 @@
  * root, which is validated and kept as evidence until the completion command proves exit.
  */
 import { unlinkSync, watch, type FSWatcher } from 'node:fs'
+import { readNodeFileSyncWithinLimit } from '../../shared/node-bounded-file-reader'
 import { basename, dirname, join } from 'node:path'
 import {
   ORCAD_STOP_REQUEST_FILENAME,
@@ -16,9 +17,13 @@ import {
   orcadManagedStopRequestPath,
   validateOrcadManagedStopRequest
 } from './orcad-managed-stop-request'
-import { claimOrcadManagedStopDecision } from './orcad-managed-stop-decision'
+import {
+  claimOrcadManagedStopDecision,
+  readOrcadManagedStopDecision
+} from './orcad-managed-stop-decision'
 import { withdrawOrcadManagedStopRequest } from './orcad-managed-stop-cancellation'
 import { hasErrorCode } from '../daemon/daemon-process-inspection'
+import { orcadManagedStopIsUserRequested } from './orcad-managed-stop-intent'
 
 export type OrcadStopRequestListener = { close(): void }
 
@@ -92,6 +97,8 @@ export function installOrcadStopRequestListeners(
   options: {
     installRoot: string
     managedStop?: OrcadManagedStopContext
+    /** Commits only after a host observation proves no work, then closes chat admission. */
+    admitAutomaticStop: (commit: () => boolean) => boolean
     /** Runs once for a validated managed request before the stop; it cannot prevent it. */
     beforeManagedStop?: (request: OrcadManagedStopRequest) => Promise<void>
     pollIntervalMs?: number
@@ -109,8 +116,14 @@ export function installOrcadStopRequestListeners(
     listenForRequest(
       join(options.installRoot, ORCAD_STOP_REQUEST_FILENAME),
       (path) => {
-        unlinkSync(path)
-        return true
+        const user =
+          readNodeFileSyncWithinLimit(path, 1024).buffer.toString('utf8').trim() ===
+          '{"intent":"user"}'
+        const consume = (): boolean => {
+          unlinkSync(path)
+          return true
+        }
+        return user ? consume() : options.admitAutomaticStop(consume) ? true : null
       },
       () => onRequest(),
       pollIntervalMs
@@ -124,13 +137,21 @@ export function installOrcadStopRequestListeners(
         orcadManagedStopRequestPath(managedStop.instance),
         (path) => {
           const request = validateOrcadManagedStopRequest(managedStop, path)
-          // A cancelled request is never acted on; keep listening for the next transaction.
-          if (claimOrcadManagedStopDecision(request, 'dispatched') === 'canceled') {
-            // A cancelled request left behind would block every later transaction's request.
+          if (readOrcadManagedStopDecision(request) === 'canceled') {
             withdrawOrcadManagedStopRequest(request)
             throw new Error('orcad_managed_stop_canceled')
           }
-          return request
+          const commit = (): boolean => {
+            if (claimOrcadManagedStopDecision(request, 'dispatched') === 'canceled') {
+              withdrawOrcadManagedStopRequest(request)
+              throw new Error('orcad_managed_stop_canceled')
+            }
+            return true
+          }
+          const admitted = orcadManagedStopIsUserRequested(request)
+            ? commit()
+            : options.admitAutomaticStop(commit)
+          return admitted ? request : null
         },
         (request) => {
           close()
