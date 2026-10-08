@@ -21,8 +21,10 @@ describe('prepareCodexAiVaultSessionResume', () => {
   let peerHome: string
   let selectedHome: string
   let peerRolloutPath: string
+  let preparePinnedLaunchHome: ReturnType<typeof vi.fn<(home: string) => Promise<void>>>
 
   beforeEach(() => {
+    preparePinnedLaunchHome = vi.fn(async () => undefined)
     root = mkdtempSync(join(tmpdir(), 'orca-codex-ai-vault-resume-'))
     peerHome = join(root, 'codex-accounts', 'account-a', 'home')
     selectedHome = join(root, 'codex-accounts', 'account-b', 'home')
@@ -67,25 +69,45 @@ describe('prepareCodexAiVaultSessionResume', () => {
 
   it('preserves deliberate no-selection behavior for a proven-untrusted home', async () => {
     await expect(prepare(() => null)).resolves.toEqual({ useRealCodexHome: false })
+    expect(preparePinnedLaunchHome).not.toHaveBeenCalled()
+  })
+
+  // A fork tab has no provider session, so no pane spawn readies the home it keeps.
+  it('readies the row home for a fork that keeps it', async () => {
+    await expect(prepare(() => null, () => false, true)).resolves.toEqual({
+      useRealCodexHome: false
+    })
+    expect(preparePinnedLaunchHome).toHaveBeenCalledExactlyOnceWith(peerHome)
+  })
+
+  it('leaves a repinned fork to the pane spawn, which readies the selected home', async () => {
+    await expect(prepare(() => selectedHome, () => false, true)).resolves.toEqual({
+      useRealCodexHome: false,
+      substituteCodexHome: selectedHome
+    })
+    expect(preparePinnedLaunchHome).not.toHaveBeenCalled()
   })
 
   function prepare(
     resolveSelectedHome: () => string | null,
-    isSystemDefaultRealHome: () => boolean = () => false
+    isSystemDefaultRealHome: () => boolean = () => false,
+    fork = false
   ) {
     return prepareCodexAiVaultSessionResume(
       {
         agent: 'codex',
         filePath: peerRolloutPath,
         codexHome: peerHome,
-        executionHostId: 'local'
+        executionHostId: 'local',
+        ...(fork ? { fork: true } : {})
       },
       {
         runtimeHome: {
           isHostSystemDefaultRealHomeSelected: isSystemDefaultRealHome,
           resolveSelectedHostAccountCodexHomePathForResume: resolveSelectedHome
         },
-        systemCodexHomePath: join(root, 'system-codex-home')
+        systemCodexHomePath: join(root, 'system-codex-home'),
+        preparePinnedLaunchHome
       }
     )
   }
