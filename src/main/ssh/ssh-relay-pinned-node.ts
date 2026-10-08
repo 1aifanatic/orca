@@ -42,6 +42,10 @@ import { remoteNodeRuntimeDir } from './orcad-remote-node-runtime'
 import { fileSha256, materializeNodeRuntimeArchive } from './pinned-runtime-materializer'
 import type { SshConnection } from './ssh-connection'
 import { PINNED_RUNTIME_REFUSALS, type PinnedRuntimeRefusal } from './ssh-relay-runtime-self-test'
+import {
+  recordPinnedRuntimeRefusal,
+  rememberedPinnedRuntimeRefusal
+} from './ssh-relay-pinned-refusal-cache'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 
 /** Content-keyed like ripgrep's refs, so runtime GC can find holders without a new concept (D5). */
@@ -206,30 +210,6 @@ export function isPinnedRuntimeRefusal(reason: string): reason is PinnedRuntimeR
   return PINNED_RUNTIME_REFUSALS.some((refusal) => refusal === reason)
 }
 
-// Why also in memory: the persisted decision is written only once the ladder settles.
-const refusals = new Map<string, PinnedRuntimeRefusal>()
-
-function refusalKey(targetId: string, target: NodeRuntimeTarget): string {
-  return `${targetId}\0${pinnedNodeRuntimeAsset(target).executableSha256}`
-}
-
-export function recordPinnedRuntimeRefusal(
-  targetId: string,
-  target: NodeRuntimeTarget,
-  refusal: PinnedRuntimeRefusal
-): void {
-  refusals.set(refusalKey(targetId, target), refusal)
-}
-
-/** Forgets a refusal a later rung has disproved, so the next connect retries rung A. */
-export function forgetPinnedRuntimeRefusal(targetId: string, target: NodeRuntimeTarget): void {
-  refusals.delete(refusalKey(targetId, target))
-}
-
-export function resetPinnedRuntimeRefusalsForTests(): void {
-  refusals.clear()
-}
-
 export function logPinnedRelayFallback(
   reason: RelayRuntimeFallbackReason,
   detail: string
@@ -282,7 +262,7 @@ export async function planPinnedNodeRelay(options: {
   const { glibc } = facts
   const { compat } = options
   const target: NodeRuntimeTarget = compat?.target ?? facts.target
-  const cached = refusals.get(refusalKey(options.targetId, target))
+  const cached = rememberedPinnedRuntimeRefusal(options.targetId, target)
   if (cached) {
     return { ...logPinnedRelayFallback(cached, 'refused earlier this session'), remembered: true }
   }

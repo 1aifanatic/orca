@@ -17,9 +17,9 @@ import {
   isPinnedRuntimeRefusal,
   PinnedRelayFallbackError,
   pinnedRelayNodePath,
-  recordPinnedRuntimeRefusal,
   type PinnedRelayPlan
 } from './ssh-relay-pinned-node'
+import { recordPinnedRuntimeRefusal } from './ssh-relay-pinned-refusal-cache'
 import type { PrebuiltRelayPlan } from './ssh-relay-host-node-addons'
 import type { RelayRuntimeLadderRun } from './ssh-relay-runtime-resolution'
 import {

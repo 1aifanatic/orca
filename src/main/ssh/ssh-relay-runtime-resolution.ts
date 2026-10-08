@@ -11,11 +11,11 @@ import type {
 } from '../../shared/ssh-types'
 import type { TerminalUnavailableCause } from '../../shared/terminal-unavailable-cause'
 import type { OrcadDeploymentTargetFacts } from './orcad-deployment-target'
+import { isPinnedRuntimeRefusal, type RelayRuntimeFallbackReason } from './ssh-relay-pinned-node'
 import {
   forgetPinnedRuntimeRefusal,
-  isPinnedRuntimeRefusal,
-  type RelayRuntimeFallbackReason
-} from './ssh-relay-pinned-node'
+  isMutablePinnedRuntimeRefusal
+} from './ssh-relay-pinned-refusal-cache'
 import {
   remoteRuntimeUnavailableMessage,
   remoteRuntimeUnavailableReason,
@@ -71,7 +71,11 @@ export function persistedPinnedRefusal(
   if (!decision?.pinnedRefusal || !sameKey(decision, relayRuntimeDecisionKey(facts))) {
     return null
   }
-  return isPinnedRuntimeRefusal(decision.pinnedRefusal) ? decision.pinnedRefusal : null
+  const refusal = decision.pinnedRefusal
+  // Why: records written before mutable refusals stopped persisting must not pin a repaired host.
+  return isPinnedRuntimeRefusal(refusal) && !isMutablePinnedRuntimeRefusal(refusal, facts.target)
+    ? refusal
+    : null
 }
 
 export class RelayRuntimeLadderRun {
@@ -85,6 +89,8 @@ export class RelayRuntimeLadderRun {
   noexecRemembered = false
   /** A rung refused because this client lacked Orca's artifacts; nothing it proves is the host's. */
   clientArtifactGap = false
+  /** The ladder chose host Node in place of D, so a host with no Node lands on D, not a failed connect. */
+  hostNodeFallback = false
   selfTest: RelayRuntimeSelfTestOutcome = 'not_run'
   runtimeTransfer: RelayRuntimeTransfer = 'none'
   hostNode: HostNodeVersion | null = null
@@ -131,8 +137,8 @@ export class RelayRuntimeLadderRun {
         forgetPinnedRuntimeRefusal(this.targetId, this.facts.target)
       }
     }
-    // Why: a host-Node landing forced by this client's missing artifacts is no decision about the host.
-    if (!(rung === 'legacy' && this.clientArtifactGap)) {
+    // Why: a pass shaped by this client's missing artifacts is no decision about the host.
+    if (!this.clientArtifactGap) {
       this.persist(rung)
     }
     this.track(rung, 'resolved')
@@ -170,9 +176,14 @@ export class RelayRuntimeLadderRun {
     if (!this.store || !this.facts) {
       return
     }
+    // Why only immutable refusals: a mutable one would outlive the host's repair across restarts.
+    const lasting =
+      this.pinnedRefusal && !isMutablePinnedRuntimeRefusal(this.pinnedRefusal, this.facts.target)
+        ? this.pinnedRefusal
+        : null
     const next: SshRemoteRuntimeResolution = {
       rung,
-      ...(this.pinnedRefusal ? { pinnedRefusal: this.pinnedRefusal } : {}),
+      ...(lasting ? { pinnedRefusal: lasting } : {}),
       ...relayRuntimeDecisionKey(this.facts)
     }
     const previous = this.store.read(this.targetId)

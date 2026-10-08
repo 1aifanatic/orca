@@ -12,9 +12,9 @@ import { ensurePinnedRelayRuntime, verifyPinnedRelayInstall } from './ssh-relay-
 import {
   PinnedRelayFallbackError,
   planPinnedNodeRelay,
-  resetPinnedRuntimeRefusalsForTests,
   type PinnedRelayPlan
 } from './ssh-relay-pinned-node'
+import { resetPinnedRuntimeRefusalsForTests } from './ssh-relay-pinned-refusal-cache'
 import { runPinnedRuntimeSelfTest } from './ssh-relay-runtime-self-test'
 import type { HostNodeAddonRelayPlan } from './ssh-relay-host-node-addons'
 import { RelayRuntimeLadderRun } from './ssh-relay-runtime-resolution'

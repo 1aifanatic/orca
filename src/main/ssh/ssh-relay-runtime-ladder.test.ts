@@ -67,16 +67,15 @@ describe('relay runtime ladder (design D6)', () => {
     expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'missing_lib', true, windows)).toBe('legacy')
   })
 
-  it('never settles D on a client artifact gap, unless the host proved noexec', () => {
+  it('never settles D on a client artifact gap, unless the host proved noexec or no Node', () => {
     const ladder = relayRuntimeLadder('pinned-node')
     const gap = { hostOs: 'linux' as const, clientArtifactGap: true }
     expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'artifacts_unavailable', false, gap)).toBe('B')
     expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'artifacts_unavailable', false, gap)).toBe(
       'legacy'
     )
-    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'host_node_missing', false, gap)).toBe(
-      'legacy'
-    )
+    // Rung C already proved there is no host Node to fall back to.
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'host_node_missing', false, gap)).toBe('D')
     expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'noexec', false, gap)).toBe('D')
     const noGap = { hostOs: 'linux' as const, clientArtifactGap: false }
     expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'host_node_missing', false, noGap)).toBe('D')

@@ -151,7 +151,8 @@ export type RelayRuntimeStepContext = {
 /**
  * `nextRelayRuntimeStep`, except where D would strand a host the ladder never judged: Windows,
  * where B and C don't exist yet, and a client missing Orca's artifacts. Both keep the host-Node
- * route they had before the ladder, marked unsupported. A proved noexec still lands on D.
+ * route they had before the ladder, marked unsupported. A proved noexec or missing host Node
+ * still lands on D, as does a host-Node fallback that finds no Node.
  */
 export function relayRuntimeStepAfterRefusal(
   ladder: readonly RelayRuntimeStep[],
@@ -164,7 +165,13 @@ export function relayRuntimeStepAfterRefusal(
     return 'legacy'
   }
   const next = nextRelayRuntimeStep(ladder, current, reason, remembered)
-  if (next === 'D' && context.clientArtifactGap && reason !== 'noexec') {
+  // Why not after host_node_missing: rung C already proved the host has no Node to fall back to.
+  if (
+    next === 'D' &&
+    context.clientArtifactGap &&
+    reason !== 'noexec' &&
+    reason !== 'host_node_missing'
+  ) {
     return 'legacy'
   }
   return next
@@ -222,6 +229,18 @@ const WINDOWS_HOST_MESSAGE =
   "builds terminal support with npm on the host, is an unsupported configuration; to opt in, set this host's " +
   'Runtime to Host Node in its SSH settings, then reconnect.'
 
+const WINDOWS_NO_HOST_NODE_MESSAGE =
+  "Orca can't run its remote runtime on this Windows host: its bundled Node.js could not run, " +
+  'and no Node.js 18 or newer with npm was found on the host to run on instead. Allow ' +
+  "Orca's Node.js through security software or application control, or install Node.js 18+ " +
+  'on the host, then reconnect.'
+
+// Why its own wording: the bundled Node never reached the host, so nothing about the host refused it.
+const CLIENT_ARTIFACTS_NO_HOST_NODE_MESSAGE =
+  "Orca can't run its remote runtime on this host: this copy of Orca could not prepare its bundled " +
+  'Node.js, and no Node.js 18 or newer was found on the host to run on instead. Install Node.js ' +
+  '18+ and npm on the host, or reconnect once Orca can fetch its runtime.'
+
 export function remoteRuntimeUnavailableMessage(
   reason: RemoteRuntimeUnavailableReason,
   refusal: RelayRuntimeStepReason | null,
@@ -230,8 +249,13 @@ export function remoteRuntimeUnavailableMessage(
   hostNodeRefusal: RelayRuntimeStepReason | null = null,
   hostOs: RemoteOperatingSystem | null = null
 ): string {
+  if (refusal === 'artifacts_unavailable' && hostNodeRefusal === 'host_node_missing') {
+    return `${CLIENT_ARTIFACTS_NO_HOST_NODE_MESSAGE} (Orca's Node: ${refusal})`
+  }
   if (hostOs === 'win32') {
-    return `${WINDOWS_HOST_MESSAGE} (Orca's Node: ${refusal ?? 'none'})`
+    const base =
+      hostNodeRefusal === 'host_node_missing' ? WINDOWS_NO_HOST_NODE_MESSAGE : WINDOWS_HOST_MESSAGE
+    return `${base} (Orca's Node: ${refusal ?? 'none'})`
   }
   if (reason === 'home_noexec') {
     return noexecRemembered

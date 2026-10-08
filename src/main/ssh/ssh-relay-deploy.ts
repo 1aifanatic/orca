@@ -440,6 +440,9 @@ async function deployAndLaunchRelayInner(
     deploySignal?.throwIfAborted()
     try {
       if (step === 'D') {
+        if (target) {
+          recordSshRelayRuntimeStep(target.id, false)
+        }
         run.settle('D')
         throw remoteRuntimeUnavailableError(run)
       }
@@ -460,15 +463,22 @@ async function deployAndLaunchRelayInner(
       }
       return result
     } catch (err) {
-      if (err instanceof PinnedRelayFallbackError && step !== 'legacy' && step !== 'D') {
+      const fallbackRefused = step === 'legacy' && run.hostNodeFallback
+      if (
+        err instanceof PinnedRelayFallbackError &&
+        (fallbackRefused || (step !== 'legacy' && step !== 'D'))
+      ) {
         console.warn(
           `[ssh-relay] Relay runtime rung ${step} unavailable (${err.reason}): ${err.detail}`
         )
         run.refused(step, err.reason, err.remembered)
-        step = relayRuntimeStepAfterRefusal(ladder, step, err.reason, err.remembered, {
-          hostOs: run.host?.os ?? null,
-          clientArtifactGap: run.clientArtifactGap
-        })
+        step = fallbackRefused
+          ? 'D'
+          : relayRuntimeStepAfterRefusal(ladder, step, err.reason, err.remembered, {
+              hostOs: run.host?.os ?? null,
+              clientArtifactGap: run.clientArtifactGap
+            })
+        run.hostNodeFallback = step === 'legacy'
         run.enter(step)
         continue
       }

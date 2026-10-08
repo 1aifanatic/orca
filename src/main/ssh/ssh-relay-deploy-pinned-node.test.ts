@@ -56,7 +56,8 @@ vi.mock('./ssh-relay-deploy-helpers', () => ({
   execCommand: vi.fn().mockResolvedValue('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
 }))
 
-vi.mock('./ssh-remote-node-resolution', () => ({
+vi.mock('./ssh-remote-node-resolution', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   resolveRemoteNodePath: vi.fn().mockResolvedValue('/usr/bin/node')
 }))
 
@@ -141,7 +142,7 @@ vi.mock('./remote-node-runtime-store-gc', () => ({
 import { deployAndLaunchRelay } from './ssh-relay-deploy'
 import { gcRemoteNodeRuntimeStore } from './remote-node-runtime-store-gc'
 import { execCommand } from './ssh-relay-deploy-helpers'
-import { resolveRemoteNodePath } from './ssh-remote-node-resolution'
+import { RemoteNodeNotFoundError, resolveRemoteNodePath } from './ssh-remote-node-resolution'
 import {
   finalizeInstall,
   gcOldRelayVersions,
@@ -150,10 +151,10 @@ import {
 import {
   PinnedRelayFallbackError,
   planPinnedNodeRelay,
-  resetPinnedRuntimeRefusalsForTests,
   resolvePinnedRelayTargetFacts,
   type PinnedRelayPlan
 } from './ssh-relay-pinned-node'
+import { resetPinnedRuntimeRefusalsForTests } from './ssh-relay-pinned-refusal-cache'
 import { ensurePinnedRelayRuntime, verifyPinnedRelayInstall } from './ssh-relay-pinned-node-install'
 import { planHostNodeAddonRelay, type HostNodeAddonRelayPlan } from './ssh-relay-host-node-addons'
 import {
@@ -430,6 +431,145 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
 
     expect(failure).toBeInstanceOf(RemoteRuntimeUnavailableError)
     expect(resolveRemoteNodePath).not.toHaveBeenCalled()
+  })
+
+  it('settles rung D, not a host-Node attempt, when rung C proved no host Node after a client gap', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+      kind: 'host-node',
+      fallbackReason: 'artifacts_unavailable'
+    })
+    vi.mocked(planHostNodeAddonRelay)
+      .mockReset()
+      .mockRejectedValueOnce(new PinnedRelayFallbackError('host_node_missing', 'no Node 18+'))
+    vi.mocked(execCommand).mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
+
+    const failure = await deployAndLaunchRelay(
+      makeConnection(),
+      undefined,
+      undefined,
+      'target-1'
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(RemoteRuntimeUnavailableError)
+    expect(String(failure)).toContain('could not prepare its bundled Node.js')
+    expect(terminalUnavailableCauseFromError(failure)).toMatchObject({ reason: 'no_runtime' })
+    expect(resolveRemoteNodePath).not.toHaveBeenCalled()
+  })
+
+  it('settles rung D when a host-Node fallback proves the host has no Node', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+      kind: 'host-node',
+      fallbackReason: 'artifacts_unavailable'
+    })
+    vi.mocked(planHostNodeAddonRelay)
+      .mockReset()
+      .mockRejectedValueOnce(new PinnedRelayFallbackError('artifacts_unavailable', 'no template'))
+    vi.mocked(resolveRemoteNodePath).mockRejectedValueOnce(
+      new RemoteNodeNotFoundError('Node.js not found on remote host.')
+    )
+    vi.mocked(execCommand).mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
+
+    const failure = await deployAndLaunchRelay(
+      makeConnection(),
+      undefined,
+      undefined,
+      'target-1'
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(RemoteRuntimeUnavailableError)
+    expect(vi.mocked(resolveRemoteNodePath).mock.calls[0]?.[2]).toMatchObject({ strict: true })
+    expect(isSshRelayOnHostNodeRuntime('target-1')).toBe(false)
+  })
+
+  function queueWindowsPlatformProbe(): SshConnection {
+    const conn = makeConnection()
+    Object.assign(conn, { writeFile: vi.fn().mockResolvedValue(undefined) })
+    vi.mocked(execCommand)
+      .mockRejectedValueOnce(new Error('uname not found'))
+      .mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Windows X64')
+    return conn
+  }
+
+  it('settles rung D with Windows wording when a Windows host has no Node to fall back to', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+      kind: 'host-node',
+      fallbackReason: 'security_software'
+    })
+    vi.mocked(resolveRemoteNodePath).mockRejectedValueOnce(
+      new RemoteNodeNotFoundError('Node.js not found on remote host.')
+    )
+
+    const failure = await deployAndLaunchRelay(
+      queueWindowsPlatformProbe(),
+      undefined,
+      300,
+      'target-1'
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(RemoteRuntimeUnavailableError)
+    expect(String(failure)).toContain('Windows host')
+    expect(String(failure)).toContain('install Node.js 18+')
+    expect(String(failure)).not.toContain('mounted noexec')
+    expect(terminalUnavailableCauseFromError(failure)).toMatchObject({
+      reason: 'no_runtime',
+      host: { platform: 'win32' }
+    })
+  })
+
+  it('keeps an unanswered host-Node probe a retryable failure, not rung D', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+      kind: 'host-node',
+      fallbackReason: 'security_software'
+    })
+    const lost = new Error('channel closed')
+    vi.mocked(resolveRemoteNodePath).mockRejectedValueOnce(lost)
+
+    await expect(
+      deployAndLaunchRelay(queueWindowsPlatformProbe(), undefined, 300, 'target-1')
+    ).rejects.toBe(lost)
+  })
+
+  it('retries rung A on a Windows host whose security-software refusal was persisted', async () => {
+    const winSha = NODE_RUNTIME_ASSETS['win32-x64'].executableSha256
+    const stored: Partial<SshTarget> = {
+      remoteRuntimeResolution: {
+        rung: 'legacy',
+        pinnedRefusal: 'security_software',
+        glibc: null,
+        runtimeSha256: winSha,
+        orcaMajor: 0
+      }
+    }
+    const registry = {
+      getTarget: vi.fn(() => ({ id: 'target-1', ...stored })),
+      updateTarget: vi.fn((_id: string, updates: Partial<SshTarget>) => {
+        Object.assign(stored, updates)
+        return null
+      })
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the ladder reads and writes only these two registry members.
+    vi.mocked(getSshTargetRegistryStore).mockReturnValue(registry as unknown as SshConnectionStore)
+    vi.mocked(resolvePinnedRelayTargetFacts).mockResolvedValue({ target: 'win32-x64', glibc: null })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+      kind: 'host-node',
+      fallbackReason: 'security_software'
+    })
+    vi.mocked(resolveRemoteNodePath).mockRejectedValueOnce(
+      new RemoteNodeNotFoundError('Node.js not found on remote host.')
+    )
+
+    await deployAndLaunchRelay(queueWindowsPlatformProbe(), undefined, 300, 'target-1').catch(
+      () => undefined
+    )
+
+    const persisted = vi.mocked(planPinnedNodeRelay).mock.calls[0]![0].persistedRefusal
+    expect(persisted?.({ target: 'win32-x64', glibc: null })).toBeNull()
+    expect(stored.remoteRuntimeResolution).not.toHaveProperty('pinnedRefusal')
   })
 
   it.each(['missing_lib', 'security_software', 'noexec', 'artifacts_unavailable'] as const)(
