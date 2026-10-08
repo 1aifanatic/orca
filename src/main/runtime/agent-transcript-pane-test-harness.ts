@@ -14,6 +14,8 @@ export type TranscriptPaneOptions = {
   foregroundProcess: string | null
   data: string
   launchAgent?: TuiAgent
+  /** The startup command the runtime spawns the pane with. */
+  command?: string
   /** Set for a pane whose PTY lives on an SSH host or WSL distro rather than locally. */
   connectionId?: string
   /** The remote host of a `connectionId` pane is Windows. */
@@ -107,7 +109,8 @@ export async function createTranscriptPane(
   const terminal = await runtime.createTerminal(`id:${worktreeId}`, {
     tabId: TRANSCRIPT_PANE_TAB_ID,
     leafId: TRANSCRIPT_PANE_LEAF_ID,
-    title: 'Terminal'
+    title: 'Terminal',
+    ...(options.command ? { command: options.command } : {})
   })
   runtime.attachWindow(1)
   runtime.syncWindowGraph(1, {

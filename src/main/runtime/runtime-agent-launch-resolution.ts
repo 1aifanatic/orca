@@ -4,9 +4,21 @@ import type { TuiAgent } from '../../shared/tui-agent'
 import type { SleepingAgentLaunchConfig } from '../../shared/agent-session-resume'
 import type { ClaudeAgentTeamsMode } from '../../shared/claude-agent-teams-tmux-compat'
 import type { ProjectExecutionRuntimeResolution } from '../../shared/project-execution-runtime'
+import type { TerminalCreateOptions } from './runtime-terminal-contracts'
+import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
-import { getTuiAgentLaunchCommand, TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import {
+  getTuiAgentLaunchCommand,
+  isTuiAgent,
+  TUI_AGENT_CONFIG
+} from '../../shared/tui-agent-config'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
+import {
+  normalizeProcessName,
+  recognizeAgentProcessFromCommandLine
+} from '../../shared/agent-process-recognition'
+import { tokenizeCommandLine } from '../../shared/agent-command-line-entrypoint'
+import { extractLeadingEnvAssignments } from '../../shared/command-environment'
 
 export function mergeTerminalEnvDeletionKeys(
   first: readonly string[] | undefined,
@@ -80,6 +92,62 @@ export function resolveBareAgentLaunchCommand(args: {
   }
 
   return null
+}
+
+type AgentLaunchCommandResolutionArgs = Parameters<typeof resolveBareAgentLaunchCommand>[0]
+
+function launchArgv(command: string): string[] {
+  return extractLeadingEnvAssignments(tokenizeCommandLine(command)).rest
+}
+
+/** An override's command words, without its flags: `npx pkg --x` must not claim every `npx`. */
+function overrideMatchesArgv(override: string, argv: readonly string[]): boolean {
+  const words = launchArgv(override)
+  const flagAt = words.findIndex((word) => word.startsWith('-'))
+  const commandWords = flagAt === -1 ? words : words.slice(0, flagAt)
+  return (
+    commandWords.length > 0 &&
+    normalizeProcessName(commandWords[0]) === normalizeProcessName(argv[0]) &&
+    commandWords.every((word, index) => index === 0 || word === argv[index])
+  )
+}
+
+/**
+ * The agent a launch command runs, read from its argv rather than the whole line, so
+ * `omp --thinking high` still names OMP. Identity only: unlike resolveBareAgentLaunchCommand,
+ * a match here must not let Orca rebuild the user's command.
+ */
+export function resolveAgentLaunchCommandIdentity(
+  args: AgentLaunchCommandResolutionArgs
+): TuiAgent | null {
+  const exact = resolveBareAgentLaunchCommand(args)
+  if (exact || !args.command) {
+    return exact
+  }
+  const argv = launchArgv(args.command)
+  if (argv.length === 0) {
+    return null
+  }
+  const enabled = (agent: TuiAgent): boolean =>
+    isTuiAgentEnabled(agent, args.settings.disabledTuiAgents)
+  for (const [agent, override] of Object.entries(args.settings.agentCmdOverrides ?? {})) {
+    if (isTuiAgent(agent) && enabled(agent) && override && overrideMatchesArgv(override, argv)) {
+      return agent
+    }
+  }
+  // Why requote: the recognizer re-tokenizes, and a quoted Windows path may hold spaces.
+  const recognized = recognizeAgentProcessFromCommandLine(
+    argv.map((word) => (/\s/.test(word) ? `"${word}"` : word)).join(' ')
+  )?.agent
+  return isTuiAgent(recognized) && enabled(recognized) ? recognized : null
+}
+
+export function recordPtyLaunchAgents(
+  pty: Pick<RuntimePtyWorktreeRecord, 'launchAgent' | 'launchCommandIdentity'>,
+  launch: Pick<TerminalCreateOptions, 'launchAgent' | 'launchCommandIdentity'>
+): void {
+  pty.launchAgent = launch.launchAgent ?? null
+  pty.launchCommandIdentity = launch.launchCommandIdentity
 }
 
 export function inferCapturedClaudeAgentTeamsMode(

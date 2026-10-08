@@ -43,6 +43,8 @@ export type TerminalCreateOptions = {
   resumeProviderSession?: AgentProviderSessionMetadata
   launchToken?: string
   launchAgent?: TuiAgent
+  /** Main-internal: see RuntimePtyWorktreeRecord.launchCommandIdentity. */
+  launchCommandIdentity?: { agent: TuiAgent | null }
   startupAgent?: TuiAgent
   /**
    * Initial text offered to `startupAgent`'s launch command, for an agent whose CLI takes a prompt

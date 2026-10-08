@@ -66,6 +66,9 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   launchToken: string | null
   launchIncarnationId: PtyIncarnationId | null
   launchAgent: TuiAgent | null
+  /** Set when this runtime spawned the PTY with a startup command; `agent` is the one its argv
+   *  names, or null. Readiness only: a flagged command is not Orca's launch to own. */
+  launchCommandIdentity?: { agent: TuiAgent | null }
   agentSessionOwners: AgentSessionOwnerBinding[]
   foregroundAgent: TerminalAgent | null
   connected: boolean

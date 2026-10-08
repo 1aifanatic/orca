@@ -80,6 +80,10 @@ export async function createDesktopTerminal(
     })
   })
   const handle = await runtime.waitForTerminalHandle(reply.tabId)
+  const pty = runtime.ptysById.get(runtime.handles.get(handle)?.ptyId)
+  if (pty && launchOpts.launchCommandIdentity) {
+    pty.launchCommandIdentity ??= launchOpts.launchCommandIdentity
+  }
   return {
     handle,
     tabId: reply.tabId,
