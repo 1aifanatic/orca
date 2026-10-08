@@ -34,3 +34,10 @@ export function structuredRunningChildWork(
     })
   )
 }
+
+/** Workspace summaries omit settled history and usage that belongs to an open chat. */
+export function agentChildWorkSummaryViews(
+  views: readonly AgentChildWorkView[]
+): AgentChildWorkView[] {
+  return structuredRunningChildWork(views).map(({ totalTokens: _totalTokens, ...view }) => view)
+}

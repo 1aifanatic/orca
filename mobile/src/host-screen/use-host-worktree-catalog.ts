@@ -39,6 +39,7 @@ export function useHostWorktreeCatalog(args: {
     fetchWorktreesInFlightRef,
     newWorktreeModalVisibleRef,
     setActionError,
+    setAgentClockOffsetMs,
     setCatalogError,
     setLastKnownWorktrees,
     setOptimisticActiveWorktreeIdentity,
@@ -87,6 +88,7 @@ export function useHostWorktreeCatalog(args: {
         // host truth over optimistic local edits regardless of payload size.
         const confirmed = worktreeCatalogRef.current.admit(fetched.pending)
         if (confirmed) {
+          setAgentClockOffsetMs(worktreeCatalogRef.current.hostClockOffsetMs)
           setCatalogError(null)
           // A confirmed list is the host answering, which is the evidence a transient action
           // failure was about a moment that has passed.

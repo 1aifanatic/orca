@@ -184,6 +184,9 @@ export function HostWorkspaceList({ controller }: { controller: HostScreenContro
               repoIcon={state.repoIconsByName.get(item.repo) ?? null}
               hideRepo={state.groupMode === 'repo'}
               onPress={actions.openWorktreeSession}
+              onAgentPress={actions.openWorktreeSession}
+              statusLive={connState === 'connected'}
+              hostClockOffsetMs={state.agentClockOffsetMs}
               onLongPress={
                 item.workspaceKind === 'folder-workspace' ? undefined : state.setActionTarget
               }

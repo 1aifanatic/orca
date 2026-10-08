@@ -29,10 +29,12 @@ export const WORKTREE_CATALOG_METHODS = [
         context,
         pendingAtScan
       )
-      // Why: callers that never send the field get the byte-exact legacy response.
-      return params.afterSnapshotId === undefined
-        ? result
-        : resolveWorktreeCatalogSnapshot(result, params.afterSnapshotId)
+      const snapshot =
+        params.afterSnapshotId === undefined
+          ? result
+          : resolveWorktreeCatalogSnapshot(result, params.afterSnapshotId)
+      // Clock sampling must not invalidate an otherwise unchanged catalog.
+      return { ...snapshot, observedAt: Date.now() }
     }
   }),
   defineMethod({

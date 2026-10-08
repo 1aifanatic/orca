@@ -28,6 +28,7 @@ function catalogHook(fetched: unknown, actionErrors: string[], catalogErrors: (s
     fetchWorktreesInFlightRef: { current: false },
     newWorktreeModalVisibleRef: { current: false },
     setActionError: (value: string) => actionErrors.push(value),
+    setAgentClockOffsetMs: () => {},
     setCatalogError: (value: string | null) => catalogErrors.push(value),
     setLastKnownWorktrees: () => {},
     setOptimisticActiveWorktreeIdentity: () => {},

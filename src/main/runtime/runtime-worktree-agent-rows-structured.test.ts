@@ -45,11 +45,15 @@ function summary(over: Partial<AgentSessionStatusSummary> = {}): AgentSessionSta
   } as AgentSessionStatusSummary
 }
 
-function attach(summaries: AgentSessionStatusSummary[]): RuntimeWorktreePsSummary {
+function attach(
+  summaries: AgentSessionStatusSummary[],
+  beforeRead?: (store: AgentHookServer) => void
+): RuntimeWorktreePsSummary {
   const store = new AgentHookServer()
   for (const entry of summaries) {
     store.ingestStructuredStatus(entry, SUBJECT)
   }
+  beforeRead?.(store)
   const row = {
     worktreeId: WORKTREE_ID,
     status: 'inactive',
@@ -82,6 +86,33 @@ beforeEach(() => {
 })
 
 describe('worktree ps reports structured sessions', () => {
+  it('projects native children from the same canonical store without creating extra parents', () => {
+    const row = attach([summary()], (store) => {
+      store.ingestStructuredChildWork(
+        SUBJECT,
+        [
+          {
+            type: 'live',
+            observedAt: 1_757_030_400_100,
+            child: {
+              handle: { idKind: 'task_id', id: 'native-child', runId: 'spawn' },
+              kind: 'agent',
+              residency: 'background',
+              state: 'working',
+              description: 'Review tests',
+              stoppable: false
+            }
+          }
+        ],
+        'claude'
+      )
+    })
+    expect(row.agents).toHaveLength(1)
+    expect(row.agents[0]?.children).toEqual([
+      expect.objectContaining({ providerId: 'native-child', description: 'Review tests' })
+    ])
+    expect(attach([summary()]).agents[0]?.children).toEqual([])
+  })
   it("lists a person's Stop still ending the turn, and drops it once the host does", () => {
     expect(attach([summary({ stopping: true })]).agents[0]).toMatchObject({
       state: 'working',

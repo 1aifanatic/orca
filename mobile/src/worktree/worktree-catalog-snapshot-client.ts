@@ -15,6 +15,7 @@ export type PendingWorktreeCatalog = {
   admission: WorktreeCatalogAdmission<Worktree>
   client: RpcClient
   hostId: string
+  hostClockOffsetMs?: number
 }
 
 // Why (STA-3123): a failed worktree.ps must stay distinguishable from an empty
@@ -63,6 +64,7 @@ export class WorktreeCatalogSnapshotClient {
   private hostId: string | null = null
   private snapshotId: string | null = null
   private confirmedWorktrees: Worktree[] | null = null
+  hostClockOffsetMs: number | undefined
 
   async fetch(client: RpcClient, hostId: string): Promise<WorktreeCatalogFetchResult> {
     if (this.client !== client || this.hostId !== hostId) {
@@ -70,12 +72,14 @@ export class WorktreeCatalogSnapshotClient {
       this.hostId = hostId
       this.snapshotId = null
       this.confirmedWorktrees = null
+      this.hostClockOffsetMs = undefined
     }
     const requestedSnapshotId = this.snapshotId
     const reply = await worktreeCatalogRead.request(client, {
       limit: WORKTREE_PS_FULL_LIMIT,
       afterSnapshotId: requestedSnapshotId
     })
+    const receivedAt = Date.now()
     const catalog = worktreeCatalogRead.interpret(reply)
     if (!catalog.accepted) {
       // The refusal code the caller reports lives on the envelope; no acceptance policy carries it.
@@ -91,7 +95,12 @@ export class WorktreeCatalogSnapshotClient {
       pending: {
         admission: admitWorktreeCatalogResponse<Worktree>(catalog.value, requestedSnapshotId),
         client,
-        hostId
+        hostId,
+        ...(catalog.value.observedAt !== undefined
+          ? {
+              hostClockOffsetMs: Math.round((receivedAt - catalog.value.observedAt) / 1_000) * 1_000
+            }
+          : {})
       }
     }
   }
@@ -112,6 +121,7 @@ export class WorktreeCatalogSnapshotClient {
     }
 
     this.snapshotId = pending.admission.snapshotId
+    this.hostClockOffsetMs = pending.hostClockOffsetMs
     if (pending.admission.kind === 'full') {
       this.confirmedWorktrees = pending.admission.worktrees
     }
