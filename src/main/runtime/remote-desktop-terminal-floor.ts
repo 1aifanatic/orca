@@ -190,6 +190,11 @@ export class RemoteDesktopTerminalFloor {
     return this.applyLayout(ptyId)
   }
 
+  // Why: host typing after a reap must cancel the orphan's resume, even though no fit override prompts a renderer claim.
+  noteHostInput(ptyId: string): void {
+    this.orphanedOwnerClientIds.delete(ptyId)
+  }
+
   unregisterViewers(ptyId: string, subscriptionKeys: Iterable<string>): Promise<boolean> {
     const viewers = this.viewers.get(ptyId)
     if (!viewers) {
