@@ -3,7 +3,8 @@ import { commitChangesRelay } from './git-handler-worktree-ops'
 import { encodeGitPathspecs } from '../shared/git-pathspec-stdin'
 import {
   parseGitStageWorktreeScope,
-  stageGitWorktreeScope
+  stageGitWorktreeScope,
+  type GitStageWorktreeScopeReceipt
 } from '../shared/git-stage-worktree-scope'
 
 export class GitHandlerWorktreeChangeOperations extends GitHandlerOperationContext {
@@ -41,25 +42,28 @@ export class GitHandlerWorktreeChangeOperations extends GitHandlerOperationConte
     }
   }
 
-  async bulkStage(params: Record<string, unknown>) {
+  async bulkStage(
+    params: Record<string, unknown>
+  ): Promise<GitStageWorktreeScopeReceipt | undefined> {
     this.clearGitMutationReadCaches()
     const worktreePath = params.worktreePath as string
     const filePaths = params.filePaths as string[]
-    // Why: optional so older clients keep the listed-paths behavior; older relays ignore it the same way.
+    // Why: optional so older clients keep the listed-paths behavior.
     const scope = parseGitStageWorktreeScope(params.scope)
     try {
       if (scope) {
-        await stageGitWorktreeScope(scope, (args, stdin) =>
+        // Why: the receipt is how the client tells this relay from an older one that ignored `scope`.
+        return await stageGitWorktreeScope(scope, (args, stdin) =>
           this.git(args, worktreePath, stdin === undefined ? undefined : { stdin })
         )
-        return
       }
       if (filePaths.length === 0) {
-        return
+        return undefined
       }
       await this.git(['add', '--pathspec-from-file=-', '--pathspec-file-nul'], worktreePath, {
         stdin: encodeGitPathspecs(filePaths.map((filePath) => this.literalPathspec(filePath)))
       })
+      return undefined
     } finally {
       this.clearGitMutationReadCaches()
     }

@@ -4,7 +4,10 @@ import type {
 } from '../../shared/git-diff-compare-types'
 import type { GitHistoryOptions, GitHistoryResult } from '../../shared/git-history'
 import type { GitConflictOperation } from '../../shared/git-status-types'
-import type { GitStageWorktreeScope } from '../../shared/git-stage-worktree-scope'
+import {
+  requireGitStageWorktreeScopeReceipt,
+  type GitStageWorktreeScope
+} from '../../shared/git-stage-worktree-scope'
 import type { GitAdmissionTier } from '../git/command-runner/git-exec-options'
 import { SshGitNoninteractiveProvider } from './ssh-git-noninteractive-provider'
 
@@ -57,11 +60,14 @@ export class SshGitWorkingTreeProvider extends SshGitNoninteractiveProvider {
     scope?: GitStageWorktreeScope
   ): Promise<void> {
     await this.runWithGitReadInvalidation(async () => {
-      await this.mux.request('git.bulkStage', {
+      const reply = await this.mux.request('git.bulkStage', {
         worktreePath,
         filePaths,
         ...(scope ? { scope } : {})
       })
+      if (scope) {
+        requireGitStageWorktreeScopeReceipt(reply, scope)
+      }
     })
   }
 

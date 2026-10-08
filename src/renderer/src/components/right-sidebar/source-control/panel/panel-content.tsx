@@ -38,6 +38,7 @@ export function SourceControlPanelContent(props: SourceControlPanelReadyProps) {
     handleStage,
     handleStageAllPaths,
     handleStageSectionPaths,
+    handleStageWorktreeChanges,
     handleUnstage,
     handleUnstagePaths,
     hasUncommittedEntries,
@@ -103,6 +104,8 @@ export function SourceControlPanelContent(props: SourceControlPanelReadyProps) {
         repositoryHuge={repositoryHuge}
         worktreeId={currentWorktreeId}
         onRetryStatus={refreshActiveGitStatus}
+        onStageAllChanges={handleStageWorktreeChanges}
+        isExecutingBulk={isExecutingBulk}
         showGenericEmptyState={showGenericEmptyState}
         normalizedFilter={normalizedFilter}
         branchBaseRef={branchSummary?.baseRef ?? null}

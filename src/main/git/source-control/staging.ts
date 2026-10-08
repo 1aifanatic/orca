@@ -6,8 +6,10 @@ import { literalPathspec } from './git-pathspec'
 import { encodeGitPathspecs } from '../../../shared/git-pathspec-stdin'
 import {
   stageGitWorktreeScope,
-  type GitStageWorktreeScope
+  type GitStageWorktreeScope,
+  type GitStageWorktreeScopeReceipt
 } from '../../../shared/git-stage-worktree-scope'
+import { findExistingWorktreeSymlinkPaths } from '../worktree-symlink-detection'
 
 /**
  * Stage a file.
@@ -75,13 +77,24 @@ export async function bulkStageFiles(
 export async function stageWorktreeChanges(
   worktreePath: string,
   scope: GitStageWorktreeScope,
-  options: GitRuntimeOptions = {}
-): Promise<void> {
+  options: GitRuntimeOptions & { sharedLinkPaths?: readonly string[] } = {}
+): Promise<GitStageWorktreeScopeReceipt> {
   invalidateGitReadCaches()
   try {
     const gitOptions = gitOptionsForWorktree(worktreePath, options)
-    await stageGitWorktreeScope(scope, (args, stdin) =>
-      gitExecFileAsync(args, stdin === undefined ? gitOptions : { ...gitOptions, stdin })
+    // Why: Git cannot ignore Orca's shared symlinks under a directory-only rule (`node_modules/`),
+    // so `add --all` would commit a machine-specific link the listing hides (see status-read).
+    const excludedUntrackedPaths =
+      scope === 'all' && options.sharedLinkPaths && options.sharedLinkPaths.length > 0
+        ? await findExistingWorktreeSymlinkPaths(worktreePath, options.sharedLinkPaths, {
+            wslDistro: options.wslDistro
+          })
+        : []
+    return await stageGitWorktreeScope(
+      scope,
+      (args, stdin) =>
+        gitExecFileAsync(args, stdin === undefined ? gitOptions : { ...gitOptions, stdin }),
+      { excludedUntrackedPaths }
     )
   } finally {
     invalidateGitReadCaches()

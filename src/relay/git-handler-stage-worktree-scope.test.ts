@@ -68,20 +68,25 @@ describe('GitHandler — bulkStage scope for a capped listing', () => {
   }
 
   it('stages only the listed paths without a scope, leaving the rest unstaged', async () => {
-    await callRequest('git.bulkStage', {
+    const reply = await callRequest('git.bulkStage', {
       worktreePath: tmpDir,
       filePaths: await listedPaths()
     })
+
+    expect(reply).toBeUndefined()
 
     expect(names(tmpDir, ['diff', '--name-only'])).toHaveLength(OVER_CAP - DEFAULT_GIT_STATUS_LIMIT)
   })
 
   it('stages every change for scope all, beyond the capped listing', async () => {
-    await callRequest('git.bulkStage', {
+    const reply = await callRequest('git.bulkStage', {
       worktreePath: tmpDir,
-      filePaths: await listedPaths(),
+      filePaths: [],
       scope: 'all'
     })
+
+    // The receipt is what tells a client this relay ran the scope rather than ignoring it.
+    expect(reply).toEqual({ stagedScope: 'all' })
 
     expect(names(tmpDir, ['diff', '--name-only'])).toEqual([])
     expect(names(tmpDir, ['diff', '--cached', '--name-only'])).toHaveLength(OVER_CAP + 1)

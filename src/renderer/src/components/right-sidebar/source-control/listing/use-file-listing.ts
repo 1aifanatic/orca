@@ -161,7 +161,8 @@ export function useSourceControlFileListing({
     handleStageAllPaths,
     handleStageSectionPaths,
     handleUnstagePaths,
-    handleStageAllPrimary
+    handleStageAllPrimary,
+    handleStageWorktreeChanges
   } = useSourceControlBulkActions({
     selectedKeys,
     flatEntriesByKey,
@@ -216,6 +217,7 @@ export function useSourceControlFileListing({
     handleStageAllPaths,
     handleStageAllPrimary,
     handleStageSectionPaths,
+    handleStageWorktreeChanges,
     handleUnstagePaths,
     isExecutingBulk,
     isGitHistoryVisible,

@@ -7,7 +7,11 @@ import {
   stageWorktreeChanges,
   unstageFile
 } from '../git/status'
-import type { GitStageWorktreeScope } from '../../shared/git-stage-worktree-scope'
+import type {
+  GitStageWorktreeScope,
+  GitStageWorktreeScopeReceipt
+} from '../../shared/git-stage-worktree-scope'
+import { getWorktreeSharedLinkPaths } from '../git/worktree-shared-directories'
 import {
   localGitOptionsForTarget,
   normalizeRuntimeGitRelativePath,
@@ -52,20 +56,22 @@ export class RuntimeGitStagingCommands {
     worktreeSelector: string,
     filePaths: string[],
     scope?: GitStageWorktreeScope
-  ): Promise<{ ok: true }> {
+  ): Promise<{ ok: true } & Partial<GitStageWorktreeScopeReceipt>> {
     const target = await this.host.resolveRuntimeGitTarget(worktreeSelector)
     const relativePaths = filePaths.map((path) => normalizeRuntimeGitRelativePath(path))
     const provider = requireRuntimeGitProvider(target)
     if (provider) {
+      // Why: the provider throws when its host did not run the scoped stage, so success is a receipt.
       await provider.bulkStageFiles(target.worktree.path, relativePaths, scope)
-      return { ok: true }
+      return scope ? { ok: true, stagedScope: scope } : { ok: true }
     }
     if (scope) {
-      await stageWorktreeChanges(target.worktree.path, scope, {
+      const receipt = await stageWorktreeChanges(target.worktree.path, scope, {
         ...localGitOptionsForTarget(target),
-        admissionTier: 'interactive'
+        admissionTier: 'interactive',
+        sharedLinkPaths: target.repo ? getWorktreeSharedLinkPaths(target.repo) : []
       })
-      return { ok: true }
+      return { ok: true, ...receipt }
     }
     await bulkStageFiles(target.worktree.path, relativePaths, {
       ...localGitOptionsForTarget(target),

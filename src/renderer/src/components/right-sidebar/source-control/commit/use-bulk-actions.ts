@@ -6,6 +6,7 @@ import { readIpcErrorMessage } from '@/lib/ipc-error'
 import {
   bulkStageRuntimeGitPaths,
   bulkUnstageRuntimeGitPaths,
+  stageRuntimeGitWorktreeScope,
   type RuntimeGitContext
 } from '@/runtime/runtime-git-client'
 import {
@@ -152,6 +153,7 @@ export function useSourceControlBulkActions({
     refreshActiveGitStatusAfterMutation
   ])
 
+  // Why: a scope replaces the paths; a capped listing cannot name every change, so the host resolves them.
   const stagePaths = useCallback(
     async (paths: readonly string[], scope?: GitStageWorktreeScope) => {
       if (!worktreePath || isExecutingBulk || (paths.length === 0 && !scope)) {
@@ -159,18 +161,16 @@ export function useSourceControlBulkActions({
       }
       setIsExecutingBulk(true)
       try {
-        const connectionId = getConnectionId(activeWorktreeId ?? null) ?? undefined
-        await bulkStageRuntimeGitPaths(
-          {
-            // Why: route staging by the repo OWNER host, not the focused runtime.
-            settings: activeRepoSettings,
-            worktreeId: activeWorktreeId,
-            worktreePath,
-            connectionId
-          },
-          [...paths],
-          scope
-        )
+        const context = {
+          // Why: route staging by the repo OWNER host, not the focused runtime.
+          settings: activeRepoSettings,
+          worktreeId: activeWorktreeId,
+          worktreePath,
+          connectionId: getConnectionId(activeWorktreeId ?? null) ?? undefined
+        }
+        await (scope
+          ? stageRuntimeGitWorktreeScope(context, scope)
+          : bulkStageRuntimeGitPaths(context, [...paths]))
         await refreshActiveGitStatusAfterMutation()
         clearSelection()
       } catch (error) {
@@ -243,9 +243,11 @@ export function useSourceControlBulkActions({
       ...getStageAllPaths(grouped.unstaged, 'unstaged'),
       ...getStageAllPaths(grouped.untracked, 'untracked')
     ]
-    // Why: the listed paths still ride along so a host without scope support stages what it can.
     await stagePaths(filePaths, isStatusTruncated ? 'all' : undefined)
   }, [grouped, isStatusTruncated, stagePaths])
+
+  // Why: once the capped prefix is all staged, no row or primary action can reach the hidden rest.
+  const handleStageWorktreeChanges = useCallback(() => stagePaths([], 'all'), [stagePaths])
 
   return {
     isExecutingBulk,
@@ -258,6 +260,7 @@ export function useSourceControlBulkActions({
     handleStageAllPaths,
     handleStageSectionPaths,
     handleUnstagePaths,
-    handleStageAllPrimary
+    handleStageAllPrimary,
+    handleStageWorktreeChanges
   }
 }

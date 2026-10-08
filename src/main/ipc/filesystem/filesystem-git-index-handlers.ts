@@ -13,7 +13,11 @@ import {
   SSH_GIT_PROVIDER_UNAVAILABLE_MESSAGE
 } from '../../providers/ssh-git-dispatch'
 import { resolveRegisteredWorktreePath } from '../registered-worktree-roots-cache'
-import { getLocalGitOptionsForRegisteredWorktree } from '../local-worktree-runtime-options'
+import {
+  getLocalGitOptionsForRegisteredWorktree,
+  getLocalRepoForRegisteredWorktree
+} from '../local-worktree-runtime-options'
+import { getWorktreeSharedLinkPaths } from '../../git/worktree-shared-directories'
 import { validateGitRelativeFilePath } from '../filesystem-path-containment'
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
 import { parseGitStageWorktreeScope } from '../../../shared/git-stage-worktree-scope'
@@ -141,9 +145,11 @@ export function registerFilesystemGitIndexHandlers(context: FilesystemHandlerCon
         worktreePath
       )
       if (scope) {
+        const repo = getLocalRepoForRegisteredWorktree(store, args.worktreePath, worktreePath)
         await stageWorktreeChanges(worktreePath, scope, {
           ...gitOptions,
-          admissionTier: 'interactive'
+          admissionTier: 'interactive',
+          sharedLinkPaths: repo ? getWorktreeSharedLinkPaths(repo) : []
         })
         return
       }

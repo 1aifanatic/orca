@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -140,5 +140,54 @@ describe('stageWorktreeChanges', () => {
     expect(names(repo, ['diff', '--cached', '--name-only', '--diff-filter=A'])).toEqual([
       'sub/new.txt'
     ])
+  })
+
+  describe('Orca shared symlinks', () => {
+    async function createSharedLinkWorktree(): Promise<{ repo: string; owner: string }> {
+      const repo = await createRepo()
+      const owner = await mkdtemp(path.join(tmpdir(), 'orca-stage-owner-'))
+      tempRoots.push(owner)
+      await mkdir(path.join(owner, 'node_modules'))
+      // Why directory-only: it matches the owner's real directory but never the worktree's link.
+      await writeFile(path.join(repo, '.gitignore'), 'node_modules/\n')
+      git(repo, ['add', '.'])
+      git(repo, ['commit', '-q', '-m', 'initial'])
+      await symlink(path.join(owner, 'node_modules'), path.join(repo, 'node_modules'))
+      await writeFile(path.join(repo, 'new.txt'), 'new\n')
+      return { repo, owner }
+    }
+
+    it('never stages the shared link for scope all', async () => {
+      const { repo } = await createSharedLinkWorktree()
+
+      const receipt = await stageWorktreeChanges(repo, 'all', { sharedLinkPaths: ['node_modules'] })
+
+      expect(receipt).toEqual({ stagedScope: 'all' })
+      expect(names(repo, ['diff', '--cached', '--name-only'])).toEqual(['new.txt'])
+      expect(names(repo, ['ls-files', '--others', '--exclude-standard'])).toEqual(['node_modules'])
+    })
+
+    it('never stages the shared link while a conflict is unresolved', async () => {
+      const repo = await createConflictRepo()
+      const owner = await mkdtemp(path.join(tmpdir(), 'orca-stage-owner-'))
+      tempRoots.push(owner)
+      await symlink(owner, path.join(repo, 'node_modules'))
+
+      await stageWorktreeChanges(repo, 'all', { sharedLinkPaths: ['node_modules'] })
+
+      expect(names(repo, ['diff', '--cached', '--name-only', '--diff-filter=A'])).toEqual([
+        'untracked.txt'
+      ])
+    })
+
+    it('still stages a regular file the user put at a shared name', async () => {
+      const repo = await createRepo()
+      git(repo, ['commit', '-q', '--allow-empty', '-m', 'initial'])
+      await writeFile(path.join(repo, 'node_modules'), 'not a link\n')
+
+      await stageWorktreeChanges(repo, 'all', { sharedLinkPaths: ['node_modules'] })
+
+      expect(names(repo, ['diff', '--cached', '--name-only'])).toEqual(['node_modules'])
+    })
   })
 })
