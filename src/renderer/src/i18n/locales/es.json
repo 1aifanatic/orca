@@ -3349,8 +3349,9 @@
             "copyPrompt": "Copiar prompt",
             "exitedDuringStart": "Se cerró mientras se iniciaba.",
             "notStarted": "El agente no pudo iniciarse.",
-            "unconfirmed": "No se pudo confirmar que el agente se iniciara. Revisa las pestañas de este espacio de trabajo antes de volver a iniciarlo.",
+            "unconfirmed": "No se pudo confirmar que el agente se iniciara.",
             "unconfirmedAgent": "No se pudo confirmar que {{agent}} se iniciara. Revisa las pestañas de este espacio de trabajo antes de volver a iniciarlo.",
+            "unconfirmedCheckTabs": "No se pudo confirmar que el agente se iniciara. Revisa las pestañas de este espacio de trabajo antes de volver a iniciarlo.",
             "workspaceGone": "Su espacio de trabajo ya no está disponible."
           }
         }

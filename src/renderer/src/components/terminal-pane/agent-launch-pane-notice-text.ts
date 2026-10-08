@@ -34,19 +34,26 @@ function notStartedReason(code: string): string | null {
   return null
 }
 
+/** `checkTabs` is for a toast only: inside the agent's own pane it would point away from it. */
 export function agentLaunchPaneNoticeText(
   refusal: AgentLaunchPaneOutcome,
-  agentLabel?: string
+  options: { agentLabel?: string; checkTabs?: boolean } = {}
 ): string {
   if (refusal.kind === 'unconfirmed') {
-    return agentLabel
+    if (!options.checkTabs) {
+      return translate(
+        'auto.components.terminal.pane.AgentLaunchPaneNotice.unconfirmed',
+        "Couldn't confirm the agent started."
+      )
+    }
+    return options.agentLabel
       ? translate(
           'auto.components.terminal.pane.AgentLaunchPaneNotice.unconfirmedAgent',
           "Couldn't confirm {{agent}} started. Check this workspace's tabs before starting it again.",
-          { agent: agentLabel }
+          { agent: options.agentLabel }
         )
       : translate(
-          'auto.components.terminal.pane.AgentLaunchPaneNotice.unconfirmed',
+          'auto.components.terminal.pane.AgentLaunchPaneNotice.unconfirmedCheckTabs',
           "Couldn't confirm the agent started. Check this workspace's tabs before starting it again."
         )
   }

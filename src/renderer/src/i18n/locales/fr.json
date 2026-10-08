@@ -3454,8 +3454,9 @@
             "copyPrompt": "Copier le prompt",
             "exitedDuringStart": "Il s'est arrêté pendant le démarrage.",
             "notStarted": "L'agent n'a pas pu démarrer.",
-            "unconfirmed": "Impossible de confirmer que l'agent a démarré. Vérifiez les onglets de cet espace de travail avant de le relancer.",
+            "unconfirmed": "Impossible de confirmer que l'agent a démarré.",
             "unconfirmedAgent": "Impossible de confirmer que {{agent}} a démarré. Vérifiez les onglets de cet espace de travail avant de le relancer.",
+            "unconfirmedCheckTabs": "Impossible de confirmer que l'agent a démarré. Vérifiez les onglets de cet espace de travail avant de le relancer.",
             "workspaceGone": "Son espace de travail n'est plus disponible."
           }
         }

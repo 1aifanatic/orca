@@ -265,9 +265,7 @@ describe('isExplainedTerminalError', () => {
   it("says an agent start couldn't be confirmed, without a code or an issue link", () => {
     const raw = 'agent_session_operation_unknown'
     expect(isExplainedTerminalError(raw)).toBe(true)
-    expect(humanizeTerminalError(raw)).toBe(
-      "Couldn't confirm the agent started. Check this workspace's tabs before starting it again."
-    )
+    expect(humanizeTerminalError(raw)).toBe("Couldn't confirm the agent started.")
     expect(isExplainedTerminalError('agent_session_operation_unknown_extra')).toBe(false)
   })
 

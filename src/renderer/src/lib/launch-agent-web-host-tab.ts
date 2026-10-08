@@ -109,7 +109,10 @@ export function launchAgentInWebHostTab(args: {
     if (outcome.status === 'failed') {
       toast.error(
         (outcome.code === 'agent_session_operation_unknown'
-          ? agentLaunchPaneNoticeText({ kind: 'unconfirmed' }, getAgentLabel(agent))
+          ? agentLaunchPaneNoticeText(
+              { kind: 'unconfirmed' },
+              { agentLabel: getAgentLabel(agent), checkTabs: true }
+            )
           : outcome.message) ||
           translate(
             'auto.lib.launch.agent.in.new.tab.11cce5cc77',
