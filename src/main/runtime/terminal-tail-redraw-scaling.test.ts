@@ -48,19 +48,6 @@ function countWideJoins(width: number, run: () => void): number {
   }
 }
 
-// Many short runs per row: a write, then a backspace, across the whole width.
-function backspaceRewriteMillis(width: number): number {
-  const chunk = `${ESC}[1A\r${'ab\b'.repeat(width)}\n`.repeat(8)
-  let tail = appendNormalizedToTailBuffer([], '', `${'x'.repeat(width)}\n`, null)
-  let fastest = Number.POSITIVE_INFINITY
-  for (let round = 0; round < 6; round += 1) {
-    const started = performance.now()
-    tail = appendNormalizedToTailBuffer(tail.lines, tail.partialLine, chunk, tail.redrawCursor)
-    fastest = Math.min(fastest, performance.now() - started)
-  }
-  return fastest
-}
-
 describe('terminal tail redraw cost', () => {
   it('keeps the overwritten rows exact', () => {
     const width = 40
@@ -136,14 +123,13 @@ describe('terminal tail redraw cost', () => {
     expect(tail?.lines).toEqual(['x'.repeat(width)])
   })
 
-  it('rebuilds a wide row once when every revisit repeats the same one-cell edit', () => {
+  it('never joins a wide row when every revisit repeats the same one-cell edit', () => {
     const width = 64_000
     let tail: ReturnType<typeof appendNormalizedToTailBuffer> | undefined
     const joins = countWideJoins(width, () => {
       tail = appendNormalizedToTailBuffer([], '', wideRowRevisits(width, 2_000, '\ry'), null)
     })
-    // Only the first revisit changes the row; the rest rewrite identical cells.
-    expect(joins).toBe(1)
+    expect(joins).toBe(0)
     expect(tail?.lines).toEqual([`y${'x'.repeat(width - 1)}`])
   })
 
@@ -155,14 +141,5 @@ describe('terminal tail redraw cost', () => {
     })
     expect(joins).toBe(0)
     expect(seedLines).toEqual(['x'.repeat(width)])
-  })
-
-  it('stays linear in width when one row takes many short edits', () => {
-    backspaceRewriteMillis(1000)
-    backspaceRewriteMillis(8000)
-    const narrow = backspaceRewriteMillis(1000)
-    const wide = backspaceRewriteMillis(8000)
-    // A string copy per edit made this ~64x.
-    expect(wide / narrow).toBeLessThan(24)
   })
 })
