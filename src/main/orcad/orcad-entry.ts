@@ -201,7 +201,10 @@ async function startOrcadRuntime(
   const { resolvePushGatewayOrigin } = await import('../runtime/push/push-gateway-origin')
 
   const runtimeUserDataPath = getAppEnvironment().getPath('userData')
-  await prepareOrcadCliLauncher()
+  // A missing `orca` command must never keep the server from starting.
+  await prepareOrcadCliLauncher().catch((error: unknown) => {
+    console.warn('[orcad] Could not prepare the profile CLI launcher', error)
+  })
   const idleExitStartup = beginOrcadIdleExit(runtimeUserDataPath)
   const { store: profileStore, authority: profileStateAuthority } =
     await createOrcadProfileStateStartup(runtimeUserDataPath)
