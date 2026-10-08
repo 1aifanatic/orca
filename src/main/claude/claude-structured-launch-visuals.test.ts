@@ -40,7 +40,6 @@ function launch(options: {
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
     resolveAuthPolicy: () => ({ stripAuthEnv: false }),
-    resolveLaunchArgs: () => options.launchArgs ?? [],
     resolveEnv: () => options.env ?? {},
     hasTranscript: async () => false,
     ...(options.attachmentDirectory ? { attachmentDirectory: options.attachmentDirectory } : {}),
