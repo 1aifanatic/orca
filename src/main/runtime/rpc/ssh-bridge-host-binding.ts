@@ -11,7 +11,7 @@ import type { OrcaRuntimeService } from '../orca-runtime'
 import {
   findSshBridgeOrchestrationViolation,
   isHostTerminal,
-  readStringParam,
+  parseSshBridgeSelectors,
   SSH_BRIDGE_ORCHESTRATION_METHODS
 } from './ssh-bridge-orchestration-binding'
 
@@ -47,20 +47,26 @@ export async function bindSshBridgeCall(
   params: unknown
 ): Promise<SshBridgeCallBinding> {
   const hostId = toSshExecutionHostId(targetId)
+  const selectors = parseSshBridgeSelectors(params)
   if (TERMINAL_HANDLE_METHODS.has(methodName)) {
-    const handle = readStringParam(params, 'terminal')
+    const handle = selectors.terminal
     return handle && (await isHostTerminal(runtime, hostId, handle))
       ? { kind: 'allowed' }
       : { kind: 'denied', message: outsideHostMessage(targetId, `terminal '${handle ?? ''}'`) }
   }
   if (SSH_BRIDGE_ORCHESTRATION_METHODS.has(methodName)) {
-    const violation = await findSshBridgeOrchestrationViolation(runtime, hostId, methodName, params)
+    const violation = await findSshBridgeOrchestrationViolation(
+      runtime,
+      hostId,
+      methodName,
+      selectors
+    )
     return violation
       ? { kind: 'denied', message: outsideHostMessage(targetId, violation) }
       : { kind: 'allowed' }
   }
   if (methodName === 'terminal.list') {
-    const worktree = readStringParam(params, 'worktree')
+    const worktree = selectors.worktree
     return {
       kind: 'allowed',
       filterResult: (result) => filterTerminalListToHost(result, targetId, worktree)
@@ -72,7 +78,7 @@ export async function bindSshBridgeCall(
 function filterTerminalListToHost(
   result: unknown,
   targetId: string,
-  worktreeSelector: string | null
+  worktreeSelector: string | undefined
 ): ReturnType<SshBridgeResultFilter> {
   const hostId = toSshExecutionHostId(targetId)
   if (!isTerminalListResult(result)) {

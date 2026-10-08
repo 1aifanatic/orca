@@ -33,31 +33,28 @@ export async function findSshBridgeOrchestrationViolation(
   runtime: OrcaRuntimeService,
   hostId: ExecutionHostId,
   methodName: string,
-  params: unknown
+  selectors: SshBridgeSelectors
 ): Promise<string | null> {
-  const callerKey = TERMINAL_CALLER_METHODS.has(methodName) ? 'terminal' : 'from'
-  const caller = readStringParam(params, callerKey)
+  const caller = selectors[TERMINAL_CALLER_METHODS.has(methodName) ? 'terminal' : 'from']
   if (!caller || !(await isHostTerminal(runtime, hostId, caller))) {
     return `terminal '${caller ?? ''}'`
   }
   const paneKey = runtime.getTerminalPaneKey(caller) ?? undefined
-  const claimedPane = readStringParam(
-    params,
-    methodName === 'orchestration.check' ? 'terminalPaneKey' : 'senderPaneKey'
-  )
+  const claimedPane =
+    selectors[methodName === 'orchestration.check' ? 'terminalPaneKey' : 'senderPaneKey']
   // Why: the pane key is the lifecycle identity, so it must be the caller's own, not a sibling's.
   if (claimedPane && claimedPane !== paneKey) {
     return `pane '${claimedPane}'`
   }
   const db = runtime.getOrchestrationDb()
   const ownDispatch = db.getActiveDispatchForIdentity(caller, paneKey)
-  const run = readStringParam(params, 'run')
+  const run = selectors.run
   if (run && ownDispatch?.run_id !== run && db.getRun(run)?.coordinator_handle !== caller) {
     return `run '${run}'`
   }
   const owned = resolveTerminalOwnedMailboxes(runtime, db, caller)
   if (methodName === 'orchestration.reply') {
-    const id = readStringParam(params, 'id') ?? ''
+    const id = selectors.id ?? ''
     const original = db.getMessageById(id)
     return original && owned.addresses.has(original.to_handle) && (!run || run === original.run_id)
       ? null
@@ -66,7 +63,7 @@ export async function findSshBridgeOrchestrationViolation(
   if (TERMINAL_CALLER_METHODS.has(methodName)) {
     return null
   }
-  const dispatchId = readPayloadDispatchId(params)
+  const dispatchId = readPayloadDispatchId(selectors)
   if (dispatchId) {
     const named = db.getDispatchContextById(dispatchId)
     const party =
@@ -78,7 +75,7 @@ export async function findSshBridgeOrchestrationViolation(
       return `dispatch '${dispatchId}'`
     }
   }
-  const to = readStringParam(params, 'to')
+  const to = selectors.to
   if (
     !to ||
     (ownDispatch?.creator_handle && to === ownDispatch.creator_handle) ||
@@ -131,13 +128,12 @@ async function resolveTerminalHost(
   }
 }
 
-function readPayloadDispatchId(params: unknown): string | null {
-  const payload = readStringParam(params, 'payload')
-  if (!payload) {
+function readPayloadDispatchId(selectors: SshBridgeSelectors): string | null {
+  if (!selectors.payload) {
     return null
   }
   try {
-    return readStringParam(JSON.parse(payload), 'dispatchId')
+    return parseSshBridgeSelectors(JSON.parse(selectors.payload)).dispatchId ?? null
   } catch {
     // Why: the handler owns malformed-payload errors; nothing here can name a Dispatch.
     return null
@@ -163,8 +159,8 @@ const SshBridgeCallSelectors = z
   })
   .catch({})
 
-export type SshBridgeCallSelectorKey = keyof z.infer<typeof SshBridgeCallSelectors>
+export type SshBridgeSelectors = z.infer<typeof SshBridgeCallSelectors>
 
-export function readStringParam(params: unknown, key: SshBridgeCallSelectorKey): string | null {
-  return SshBridgeCallSelectors.parse(params)[key] ?? null
+export function parseSshBridgeSelectors(params: unknown): SshBridgeSelectors {
+  return SshBridgeCallSelectors.parse(params)
 }
