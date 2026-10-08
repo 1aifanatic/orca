@@ -213,7 +213,8 @@ export class ProfileStateWriterConnection {
       now: this.options.clock,
       acknowledgedRevision: this.lastAcknowledgedRevision,
       onSlow: () => {
-        if (this.active?.id === id && command.startsWith('write-')) {
+        // Revision checks and exports occupy the same worker and can hold up later saves.
+        if (this.active?.id === id && command !== 'initialize' && command !== 'close') {
           this.reportSaveDelay(true)
         }
       }

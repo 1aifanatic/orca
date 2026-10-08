@@ -246,6 +246,11 @@ it.each([
     'export-json',
     (client: ProfileStateWriteWorkerClient, root: string) =>
       client.writeJsonExport(join(root, 'export.json'))
+  ],
+  [
+    'export-latest',
+    (client: ProfileStateWriteWorkerClient, root: string) =>
+      client.writeLatestJsonExport(join(root, 'export.json'))
   ]
 ])(
   'accepts a delayed %s reply after the warning and keeps the same worker',
@@ -258,6 +263,7 @@ it.each([
     const pending = start(client, root)
     run(WARNING_MS * 3)
     expect(await isSettled(pending)).toBe(false)
+    expect(onSaveDelayChanged).toHaveBeenCalledExactlyOnceWith(true)
     expect(() => client.assertWritable()).toThrow(
       expect.objectContaining({ code: 'profile-state-writer-busy' })
     )
@@ -269,9 +275,7 @@ it.each([
     await expect(client.writeSerializedDomains([])).resolves.toBeGreaterThan(1)
     expect(workerStarts()).toBe(1)
     expect(onFailure).not.toHaveBeenCalled()
-    expect(onSaveDelayChanged.mock.calls).toEqual(
-      command.startsWith('write-') ? [[true], [false]] : []
-    )
+    expect(onSaveDelayChanged.mock.calls).toEqual([[true], [false]])
     expect(vi.getTimerCount()).toBe(0)
   }
 )

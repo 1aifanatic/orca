@@ -14,7 +14,7 @@ import type { KeyboardLayoutSnapshot } from '../../shared/keyboard-layout-snapsh
 import type { KeyboardLayoutChangeEvent } from '../../shared/keyboard-layout-events'
 
 export type AppApi = {
-  /** Local profile writes that exceeded the slow-warning threshold and remain unacknowledged. */
+  /** A local profile storage operation is delayed and holds up subsequent saves. */
   isProfileStateSaveDelayed: () => Promise<boolean>
   onProfileStateSaveDelayChanged: (callback: (delayed: boolean) => void) => () => void
   /** Returns the app identity currently exposed to native chrome and the titlebar. */
