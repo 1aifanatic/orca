@@ -77,8 +77,7 @@ export function buildSnapshotReplayPreamble(
  */
 export function buildFoldedImageReplayWrites(
   data: string,
-  paneOnAlternateScreen: boolean,
-  keepScrollback = false
+  paneOnAlternateScreen: boolean
 ): { preamble: string; payload: string } {
   const split = paneOnAlternateScreen ? splitAtAlternateScreenEntry(data) : null
   if (split) {
@@ -91,11 +90,7 @@ export function buildFoldedImageReplayWrites(
     }
   }
   return {
-    preamble: buildSnapshotReplayPreamble({
-      targetAlternateScreen: false,
-      paneOnAlternateScreen,
-      keepScrollback
-    }),
+    preamble: buildSnapshotReplayPreamble({ targetAlternateScreen: false, paneOnAlternateScreen }),
     payload: data
   }
 }

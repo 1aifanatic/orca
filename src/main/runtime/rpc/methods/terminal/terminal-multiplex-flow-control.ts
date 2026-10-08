@@ -1,6 +1,7 @@
 import {
   TERMINAL_MULTIPLEX_ACK_STREAM_MAX_WINDOW_BYTES,
-  TERMINAL_MULTIPLEX_ACK_TOTAL_MAX_WINDOW_BYTES
+  TERMINAL_MULTIPLEX_ACK_TOTAL_MAX_WINDOW_BYTES,
+  TERMINAL_MULTIPLEX_RECOVERY_SCROLLBACK_ROWS
 } from '../../../../../shared/terminal-multiplex-flow-control'
 import { drainTerminalMultiplexRoundRobin } from '../../terminal-multiplex-round-robin'
 import {
@@ -32,8 +33,12 @@ export function installMultiplexFlowControl(
     stream.ackRecoverySnapshotInFlight = true
     let replacement: RemoteTerminalSourceRangeReplacementReservation | null = null
     try {
-      // Why screen-only: this client is already behind, and a 0-row image tells it to keep its own history.
-      const serialized = await serializeBudgetedRequestedSnapshot(runtime, stream.ptyId, 0)
+      // Why history: output was dropped, so the client's own history ends before this screen and must be replaced, not kept.
+      const serialized = await serializeBudgetedRequestedSnapshot(
+        runtime,
+        stream.ptyId,
+        TERMINAL_MULTIPLEX_RECOVERY_SCROLLBACK_ROWS
+      )
       if (state.closed || streams.get(stream.streamId) !== stream || stream.outputPaused) {
         return
       }

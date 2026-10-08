@@ -575,9 +575,7 @@ describe('remote runtime terminal multiplex ACK gate', () => {
       pendingEscapeTailAnsi: undefined,
       // The host's serialization grid; the restorer replays there, not at the pane's own.
       cols: 120,
-      rows: 40,
-      // No scrollbackRows: an older host's screen-only image.
-      keepsLocalScrollback: true
+      rows: 40
     })
     expect(onSubscribed).toHaveBeenCalledTimes(1)
 
@@ -598,8 +596,7 @@ describe('remote runtime terminal multiplex ACK gate', () => {
     expect(onSnapshot).toHaveBeenCalledWith(`\x1b[?2026l\x1b[2J\x1b[3J\x1b[H${'recovered state'}`, {
       pendingEscapeTailAnsi: undefined,
       cols: 120,
-      rows: 40,
-      keepsLocalScrollback: false
+      rows: 40
     })
     expect(onSubscribed).toHaveBeenCalledTimes(1)
 
@@ -615,12 +612,11 @@ describe('remote runtime terminal multiplex ACK gate', () => {
       },
       ''
     )
-    // A screen-only recovery (scrollbackRows absent or 0) keeps the pane's history (#14593).
-    expect(onSnapshot).toHaveBeenCalledWith('\x1b[?2026l\x1b[2J\x1b[H', {
+    // P2-5: a screen-only recovery (an older host) still drops the pane's history, which ends before the dropped output.
+    expect(onSnapshot).toHaveBeenCalledWith('\x1b[?2026l\x1b[2J\x1b[3J\x1b[H', {
       pendingEscapeTailAnsi: undefined,
       cols: 120,
-      rows: 40,
-      keepsLocalScrollback: true
+      rows: 40
     })
     expect(onSubscribed).toHaveBeenCalledTimes(1)
 
