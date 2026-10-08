@@ -34,12 +34,21 @@ function notStartedReason(code: string): string | null {
   return null
 }
 
-export function agentLaunchPaneNoticeText(refusal: AgentLaunchPaneOutcome): string {
+export function agentLaunchPaneNoticeText(
+  refusal: AgentLaunchPaneOutcome,
+  agentLabel?: string
+): string {
   if (refusal.kind === 'unconfirmed') {
-    return translate(
-      'auto.components.terminal.pane.AgentLaunchPaneNotice.unconfirmed',
-      "Couldn't confirm the agent started."
-    )
+    return agentLabel
+      ? translate(
+          'auto.components.terminal.pane.AgentLaunchPaneNotice.unconfirmedAgent',
+          "Couldn't confirm {{agent}} started. Check this workspace's tabs before starting it again.",
+          { agent: agentLabel }
+        )
+      : translate(
+          'auto.components.terminal.pane.AgentLaunchPaneNotice.unconfirmed',
+          "Couldn't confirm the agent started. Check this workspace's tabs before starting it again."
+        )
   }
   const lead = translate(
     'auto.components.terminal.pane.AgentLaunchPaneNotice.notStarted',

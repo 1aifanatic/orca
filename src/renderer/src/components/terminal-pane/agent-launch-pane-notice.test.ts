@@ -6,7 +6,11 @@ const CATALOG: Record<string, string> = {
   'auto.components.terminal.pane.AgentLaunchPaneNotice.exitedDuringStart': '它在启动时退出了。'
 }
 vi.mock('@/i18n/i18n', () => ({
-  translate: (key: string, fallback: string) => CATALOG[key] ?? fallback
+  translate: (key: string, fallback: string, values?: Record<string, string>) =>
+    (CATALOG[key] ?? fallback).replace(
+      /\{\{(\w+)\}\}/g,
+      (_match, name: string) => values?.[name] ?? ''
+    )
 }))
 
 const { agentLaunchPaneNoticeText, agentLaunchPaneOutcomeForLeaf } =
@@ -27,6 +31,12 @@ describe("the pane of a launch whose agent isn't running", () => {
 
   it("says it can't confirm, never that it failed, when nobody knows", () => {
     expect(agentLaunchPaneNoticeText({ kind: 'unconfirmed' })).toBe('无法确认智能体已启动。')
+  })
+
+  it('names the agent and says what to check when the caller knows which agent it was', () => {
+    expect(agentLaunchPaneNoticeText({ kind: 'unconfirmed' }, 'Codex')).toBe(
+      "Couldn't confirm Codex started. Check this workspace's tabs before starting it again."
+    )
   })
 })
 

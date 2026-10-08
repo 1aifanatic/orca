@@ -3349,7 +3349,8 @@
             "copyPrompt": "复制提示",
             "exitedDuringStart": "它在启动时退出了。",
             "notStarted": "智能体无法启动。",
-            "unconfirmed": "无法确认智能体已启动。",
+            "unconfirmed": "无法确认智能体已启动。再次启动前，请检查此工作区的标签页。",
+            "unconfirmedAgent": "无法确认 {{agent}} 已启动。再次启动前，请检查此工作区的标签页。",
             "workspaceGone": "其工作区已不可用。"
           }
         }

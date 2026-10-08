@@ -3349,7 +3349,8 @@
             "copyPrompt": "プロンプトをコピー",
             "exitedDuringStart": "起動中に終了しました。",
             "notStarted": "Agent を起動できませんでした。",
-            "unconfirmed": "Agent が起動したか確認できませんでした。",
+            "unconfirmed": "Agent が起動したか確認できませんでした。もう一度起動する前に、このワークスペースのタブを確認してください。",
+            "unconfirmedAgent": "{{agent}} が起動したか確認できませんでした。もう一度起動する前に、このワークスペースのタブを確認してください。",
             "workspaceGone": "ワークスペースは利用できなくなりました。"
           }
         }

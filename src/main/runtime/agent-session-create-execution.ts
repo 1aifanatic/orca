@@ -1,8 +1,10 @@
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
+  AGENT_SESSION_RPC_ERROR_CODES,
   parseAgentSessionOperationTimestamp,
   type RuntimeCreateAgentSessionResult
 } from '../../shared/agent-session-host-authority'
+import { RECOVERABLE_CODES } from '../../shared/remote-runtime-client-error-classification'
 import {
   agentSessionOperationKey,
   type AgentSessionOperationOutcome,
@@ -23,6 +25,8 @@ import {
   recordAgentSessionCreatedTerminal
 } from './agent-session-create-recorded-terminal'
 import { isAgentSessionOperationOutcomeUnknown } from './runtime-agent-launch-resolution'
+
+const REPLAYABLE_CODES: ReadonlySet<string> = new Set(AGENT_SESSION_RPC_ERROR_CODES)
 
 /** What one attempt launches; derived fresh by every attempt that may spawn. */
 export type PreparedAgentSessionCreate = {
@@ -95,12 +99,17 @@ async function replayCreate(
     await recordOutcome(args, ledger, succeeded(terminal))
     return { terminal, disposition: 'replayed' }
   }
-  throw new Error(
+  const stored =
     outcome.status === 'failed'
-      ? (outcome.message ?? outcome.code)
+      ? outcome.code
       : outcome.status === 'unknown'
-        ? (outcome.message ?? 'agent_session_operation_unknown')
-        : 'agent_session_operation_unknown'
+        ? outcome.message
+        : undefined
+  // Why: a replay can be hours old; raw first-attempt text (e.g. a dropped SSH link) no longer holds.
+  throw new Error(
+    stored && REPLAYABLE_CODES.has(stored) && !RECOVERABLE_CODES.has(stored)
+      ? stored
+      : 'agent_session_operation_unknown'
   )
 }
 

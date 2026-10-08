@@ -418,27 +418,35 @@ describe('agent-session create operation ledger', () => {
   })
 
   it.each([
-    ['controller admission fails', 'agent_session_exited_during_start'],
-    ['publication fails', 'post-spawn publication failure']
-  ])('retains a replay fence when %s after physical spawn commit', async (_case, message) => {
-    const runtime = createRuntime()
-    const failure = new Error(message)
-    const createTerminal = vi
-      .spyOn(runtime, 'createTerminal')
-      .mockImplementation(async (_worktree, opts) => {
-        opts?.onPtySpawnCommitted?.()
-        throw failure
-      })
-    const id = operationId()
+    [
+      'controller admission fails',
+      'agent_session_exited_during_start',
+      'agent_session_exited_during_start'
+    ],
+    // A replay can be hours old, so raw first-attempt text replays as unconfirmed.
+    ['publication fails', 'post-spawn publication failure', 'agent_session_operation_unknown']
+  ])(
+    'retains a replay fence when %s after physical spawn commit',
+    async (_case, message, replayed) => {
+      const runtime = createRuntime()
+      const failure = new Error(message)
+      const createTerminal = vi
+        .spyOn(runtime, 'createTerminal')
+        .mockImplementation(async (_worktree, opts) => {
+          opts?.onPtySpawnCommitted?.()
+          throw failure
+        })
+      const id = operationId()
 
-    await expect(runtime.createAgentSession(request(id), { clientId: 'device-a' })).rejects.toThrow(
-      failure.message
-    )
-    await expect(runtime.createAgentSession(request(id), { clientId: 'device-a' })).rejects.toThrow(
-      failure.message
-    )
-    expect(createTerminal).toHaveBeenCalledOnce()
-  })
+      await expect(
+        runtime.createAgentSession(request(id), { clientId: 'device-a' })
+      ).rejects.toThrow(failure.message)
+      await expect(
+        runtime.createAgentSession(request(id), { clientId: 'device-a' })
+      ).rejects.toThrow(replayed)
+      expect(createTerminal).toHaveBeenCalledOnce()
+    }
+  )
 
   it('reclaims a fenced remote spawn the host is still holding', async () => {
     const runtime = createRuntime()
@@ -529,7 +537,7 @@ describe('agent-session create operation ledger', () => {
     ]
     await expect(Promise.all(attempts)).rejects.toThrow(failure.message)
     await expect(runtime.createAgentSession(request(id), { clientId: 'device-a' })).rejects.toThrow(
-      failure.message
+      'agent_session_operation_unknown'
     )
     expect(createTerminal).toHaveBeenCalledOnce()
   })

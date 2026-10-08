@@ -176,8 +176,12 @@ describe('terminal agent creation across a runtime restart', () => {
     const restarted = await runtime()
     const duplicate = vi.spyOn(restarted.service, 'createTerminal')
     restarted.reconcile.mockRejectedValueOnce(new Error('host offline')).mockResolvedValueOnce(null)
-    await expect(restarted.service.createAgentSession(action)).rejects.toThrow('connection lost')
-    await expect(restarted.service.createAgentSession(action)).rejects.toThrow('connection lost')
+    await expect(restarted.service.createAgentSession(action)).rejects.toThrow(
+      'agent_session_operation_unknown'
+    )
+    await expect(restarted.service.createAgentSession(action)).rejects.toThrow(
+      'agent_session_operation_unknown'
+    )
     restarted.reconcile.mockResolvedValue(terminal(handle))
     await expect(restarted.service.createAgentSession(action)).resolves.toMatchObject({
       disposition: 'replayed',
@@ -187,6 +191,25 @@ describe('terminal agent creation across a runtime restart', () => {
     for (const call of restarted.reconcile.mock.calls) {
       expect(call).toEqual(['folder-1', handle, null])
     }
+    expect(duplicate).not.toHaveBeenCalled()
+  })
+
+  it('replays a stable refusal code after restart, never stale first-attempt text', async () => {
+    const first = await runtime()
+    vi.spyOn(first.service, 'createTerminal').mockImplementation(async (_scope, options) => {
+      options?.onPtySpawnDispatched?.()
+      throw new Error('agent_session_exited_during_start')
+    })
+    const action = request()
+    await expect(first.service.createAgentSession(action)).rejects.toThrow(
+      'agent_session_exited_during_start'
+    )
+    closeTestJournalHostDatabase(directory)
+    const restarted = await runtime()
+    const duplicate = vi.spyOn(restarted.service, 'createTerminal')
+    await expect(restarted.service.createAgentSession(action)).rejects.toThrow(
+      'agent_session_exited_during_start'
+    )
     expect(duplicate).not.toHaveBeenCalled()
   })
 
@@ -347,7 +370,9 @@ describe('terminal agent creation across a runtime restart', () => {
     closeTestJournalHostDatabase(directory)
     const restarted = await runtime()
     const create = vi.spyOn(restarted.service, 'createTerminal')
-    await expect(restarted.service.createAgentSession(action)).rejects.toThrow('connection lost')
+    await expect(restarted.service.createAgentSession(action)).rejects.toThrow(
+      'agent_session_operation_unknown'
+    )
     expect(restarted.reconcile).not.toHaveBeenCalled()
     expect(create).not.toHaveBeenCalled()
     expect(restarted.store.listOperationRows()).toHaveLength(1)
@@ -413,7 +438,9 @@ describe('terminal agent creation when its record cannot be written', () => {
     const action = request()
     await expect(service.createAgentSession(action)).rejects.toThrow('connection lost')
     const handle = create.mock.calls[0]?.[1]?.preAllocatedHandle ?? ''
-    await expect(service.createAgentSession(action)).rejects.toThrow('connection lost')
+    await expect(service.createAgentSession(action)).rejects.toThrow(
+      'agent_session_operation_unknown'
+    )
     reconcile.mockResolvedValue(terminal(handle))
     await expect(service.createAgentSession(action)).resolves.toMatchObject({
       disposition: 'replayed',
@@ -521,7 +548,7 @@ describe('terminal agent creation when its record cannot be written', () => {
       'connection lost'
     )
     await expect(downgraded.service.createAgentSession(uncertain)).rejects.toThrow(
-      'connection lost'
+      'agent_session_operation_unknown'
     )
     expect(create).toHaveBeenCalledTimes(2)
   })
