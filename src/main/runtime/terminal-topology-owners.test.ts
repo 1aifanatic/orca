@@ -10,6 +10,7 @@ const SSH_WT = 'repo-ssh::/remote/wt'
 const RUNTIME_WT = 'repo-runtime::/srv/wt'
 const AMBIGUOUS_FOLDER = 'folder:mixed'
 const SSH_FOLDER = 'folder:remote'
+const UNCATALOGUED_WT = 'repo-gone::/wt'
 
 function sessionWith(worktreeIds: string[]): WorkspaceSessionState {
   const session = getDefaultWorkspaceSession()
@@ -112,6 +113,19 @@ describe('terminal topology owners', () => {
         [AMBIGUOUS_FOLDER, null],
         [LOCAL_WT, { hostId: 'local', session: local }]
       ])
+    )
+  })
+
+  it('marks an uncatalogued repo with SSH rows unresolved, and keeps one with only local rows', () => {
+    const ssh = sessionWith([UNCATALOGUED_WT])
+    const controller = controllerFor(new Map([['ssh:c1', ssh]]))
+
+    expect(controller.getTerminalTopologyOwners()).toEqual(new Map([[UNCATALOGUED_WT, null]]))
+    expect(controller.getTerminalTopologyHomeHostId(UNCATALOGUED_WT)).toBeNull()
+
+    const local = sessionWith([UNCATALOGUED_WT])
+    expect(ownersFor(new Map([['local', local]]))).toEqual(
+      new Map([[UNCATALOGUED_WT, { hostId: 'local', session: local }]])
     )
   })
 

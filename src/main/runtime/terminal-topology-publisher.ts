@@ -20,6 +20,9 @@ export type TerminalTopologySink = (slice: TerminalTopologySlice) => void
  */
 export class TerminalTopologyPublisher {
   private readonly published = new Map<string, PublishedSlice>()
+  /** A withdrawn worktree's empty-slice seq, until it publishes again. */
+  private readonly withdrawn = new Map<string, number>()
+  private owners: TerminalTopologyOwners = new Map()
   private lastSeq = 0
   private dirty = false
   private failureLogged = false
@@ -56,11 +59,17 @@ export class TerminalTopologyPublisher {
 
   /**
    * A publishSeq whose push includes every write made before this call; none for a worktree main
-   * publishes no slice for, since no push will ever carry it.
+   * publishes no slice for, or whose owner is unresolved, since no push carries its writes.
    */
   settle(worktreeId?: string): number | undefined {
     this.flush()
-    return worktreeId === undefined ? this.lastSeq : this.published.get(worktreeId)?.publishSeq
+    if (worktreeId === undefined) {
+      return this.lastSeq
+    }
+    if (this.owners.get(worktreeId) === null) {
+      return undefined
+    }
+    return this.published.get(worktreeId)?.publishSeq ?? this.withdrawn.get(worktreeId)
   }
 
   /** Every current slice, for a window that loaded after pushes it never saw. */
@@ -73,6 +82,7 @@ export class TerminalTopologyPublisher {
 
   private reconcile(): void {
     const owners = this.readOwners()
+    this.owners = owners
     const changed: UnsequencedTerminalTopologySlice[] = []
     for (const [worktreeId, owner] of owners) {
       if (!owner) {
@@ -90,11 +100,14 @@ export class TerminalTopologyPublisher {
       }
     }
     for (const snapshot of removed) {
+      const publishSeq = ++this.lastSeq
       this.published.delete(snapshot.worktreeId)
-      this.sink(sequenced({ publishSeq: ++this.lastSeq, snapshot }))
+      this.withdrawn.set(snapshot.worktreeId, publishSeq)
+      this.sink(sequenced({ publishSeq, snapshot }))
     }
     for (const snapshot of changed) {
       const entry = { publishSeq: ++this.lastSeq, snapshot }
+      this.withdrawn.delete(snapshot.worktreeId)
       this.published.set(snapshot.worktreeId, entry)
       this.sink(sequenced(entry))
     }
