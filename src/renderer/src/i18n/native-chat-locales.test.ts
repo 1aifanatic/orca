@@ -45,7 +45,7 @@ describe('native chat locale copy', () => {
   })
 
   it.each(Object.entries(localizedCatalogs))(
-    '%s keeps provider-neutral copy localized',
+    '%s falls back to current Chat UI copy until it is translated',
     (_code, catalog) => {
       const setting = catalog.auto.components.settings.ChatPane
       const resumeModal = catalog.auto.components.NativeChatResumeOnRestartModal

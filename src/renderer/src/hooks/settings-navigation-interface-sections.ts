@@ -1,5 +1,6 @@
 import { getAppearancePaneSearchEntries } from '@/components/settings/appearance-search'
 import { getChatAppearanceSearchEntries } from '@/components/settings/chat-appearance-search'
+import { getChatInlineVisualsSearchEntry } from '@/components/settings/chat-inline-visuals-search'
 import { getChatNamingSearchEntry } from '@/components/settings/chat-naming-search'
 import { getChatUiSearchEntries } from '@/components/settings/chat-search'
 import { getInputPaneSearchEntries } from '@/components/settings/input-search'
@@ -51,7 +52,9 @@ export function buildInterfaceSettingsSections({
           includeEnabledRows: nativeChatEnabled || holdsStructuredChats
         }),
         ...getChatAppearanceSearchEntries(),
-        ...(showDesktopOnlySettings ? [getChatNamingSearchEntry()] : [])
+        ...(showDesktopOnlySettings
+          ? [getChatNamingSearchEntry(), getChatInlineVisualsSearchEntry()]
+          : [])
       ],
       group: 'interface'
     },

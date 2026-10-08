@@ -17,7 +17,7 @@ describe('OrcaRuntimeService', () => {
     expect(controller.get()).toMatchObject({
       experimentalNativeChat: enabled,
       experimentalStructuredNativeChat: enabled,
-      openAgentTabsInChatByDefault: enabled
+      openAgentTabsInChatByDefault: false
     })
   })
 

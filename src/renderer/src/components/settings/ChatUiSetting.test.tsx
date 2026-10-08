@@ -311,3 +311,13 @@ describe('ChatUiSetting', () => {
     expect(container.querySelector(CHAT_UI_TOGGLE)).not.toBeNull()
   })
 })
+
+describe('NativeChatExperimentalSetting inline visuals', () => {
+  it('leaves Inline visuals on the Chat page even while structured chat is enabled', () => {
+    const { queryByRole, getByRole } = renderSetting({
+      experimentalNativeChat: true
+    })
+    expect(getByRole('switch', { name: 'Toggle automatic resume after a restart' })).toBeTruthy()
+    expect(queryByRole('switch', { name: 'Toggle inline visuals' })).toBeNull()
+  })
+})

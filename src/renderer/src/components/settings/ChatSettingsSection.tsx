@@ -2,6 +2,7 @@ import { translate } from '@/i18n/i18n'
 import { AppearanceChatSection } from './AppearanceChatSection'
 import { ChatNamingSetting } from './ChatNamingSetting'
 import { ChatUiSetting } from './ChatUiSetting'
+import { NativeChatInlineVisualsSetting } from './NativeChatInlineVisualsSetting'
 import { SettingsSection } from './SettingsSection'
 import { SettingsSubsectionHeader } from './SettingsFormControls'
 import { matchesSettingsSearch } from './settings-search'
@@ -79,6 +80,13 @@ export function ChatSettingsSection({
                 </CardContent>
               </Card>
             </section>
+          ) : null}
+          {showDesktopOnlySettings ? (
+            <NativeChatInlineVisualsSetting
+              settings={settings}
+              updateSettings={updateSettings}
+              forceVisible={matchesSettingsSearch(query, [{ title }])}
+            />
           ) : null}
           {showDesktopOnlySettings ? (
             <ChatNamingSetting
