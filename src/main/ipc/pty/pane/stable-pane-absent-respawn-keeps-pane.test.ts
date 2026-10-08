@@ -1,15 +1,18 @@
 // Waking a slept split after a relaunch reattaches each pane to a process the sleep stopped. The
-// host answers absent and the pane spawns fresh, so main's copy must keep the pane and its binding
-// until the fresh spawn's bind swaps it: dropping the pane lets that spawn re-mint the tab and
-// reorder the split, and a pane shown unbound meanwhile reads as gone to the agent resume.
+// host answers absent and the pane spawns fresh, so main's copy must keep the pane, its binding and
+// the tab row until the fresh spawn's bind swaps them: dropping the pane lets that spawn re-mint
+// the tab and reorder the split, a pane shown unbound meanwhile reads as gone to the agent resume,
+// and a released row goes to whichever pane binds first.
 import { describe, expect, it, vi } from 'vitest'
 import { withDurableRuntimeStore } from '../../../runtime/runtime-durable-store-fixture'
 import { getDefaultWorkspaceSession } from '../../../../shared/constants'
+import { makePaneKey } from '../../../../shared/stable-pane-id'
 import type { TerminalPaneLayoutNode, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
 import { SessionNotFoundError } from '../../../daemon/daemon-errors'
 import type { Store } from '../../../persistence'
 import { clearReplacedPaneBinding } from '../../../persistence/loading-store/replaced-pane-binding'
+import { applyPtyBinding } from '../../../persistence/loading-store/pty-binding-session-update'
 import type { IPtyProvider } from '../../../providers/types'
 import { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import { spawnForStablePane } from './stable-owner'
@@ -59,11 +62,8 @@ function sleptSplit(): { store: Store; read: () => WorkspaceSessionState } {
       setWorkspaceSession: (next: WorkspaceSessionState) => {
         session = next
       },
-      // The store's host-side binding retirement, applying the change the caller names.
-      retirePtyBinding: async (
-        ...[binding, , retire = clearReplacedPaneBinding]: Parameters<Store['retirePtyBinding']>
-      ) => {
-        session = retire(session, { ...binding, parentTabId: binding.tabId })
+      retirePtyBinding: async (...[binding]: Parameters<Store['retirePtyBinding']>) => {
+        session = clearReplacedPaneBinding(session, { ...binding, parentTabId: binding.tabId })
         return true
       },
       flushOrThrow: () => {},
@@ -126,7 +126,7 @@ async function respawnOverAbsentProcess(
 }
 
 describe('a stable pane respawned over an absent process', () => {
-  it('keeps the panes and their bindings, releasing only the row of the gone process', async () => {
+  it('keeps the panes, their bindings and the row for the fresh binds to swap', async () => {
     const { store, read } = sleptSplit()
     const before = structuredClone(read())
     const runtime = wakingRuntime(store)
@@ -135,7 +135,27 @@ describe('a stable pane respawned over an absent process', () => {
     await respawnOverAbsentProcess(runtime, store, AGENT_LEAF, AGENT_PTY)
 
     expect(read().terminalLayoutsByTabId).toEqual(before.terminalLayoutsByTabId)
-    // The row named the shell's gone process; the first pane to bind takes it.
-    expect(read().tabsByWorktree[WORKTREE]).toEqual([{ ...ROW, ptyId: null }])
+    expect(read().tabsByWorktree[WORKTREE]).toEqual([ROW])
   })
+
+  it.each([
+    ['shell', SHELL_LEAF, AGENT_LEAF],
+    ['agent', AGENT_LEAF, SHELL_LEAF]
+  ])(
+    'moves the row to the fresh PTY of the pane it named, binding the %s first',
+    async (_, ...order) => {
+      const { store, read } = sleptSplit()
+      const runtime = wakingRuntime(store)
+      await respawnOverAbsentProcess(runtime, store, SHELL_LEAF, SHELL_PTY)
+      await respawnOverAbsentProcess(runtime, store, AGENT_LEAF, AGENT_PTY)
+      const session = structuredClone(read())
+      const fresh = { [SHELL_LEAF]: `${SHELL_PTY}-fresh`, [AGENT_LEAF]: `${AGENT_PTY}-fresh` }
+      for (const leafId of order) {
+        const binding = { worktreeId: WORKTREE, tabId: TAB, leafId, ptyId: fresh[leafId] }
+        applyPtyBinding(binding, session, WORKTREE, makePaneKey(TAB, leafId))
+      }
+
+      expect(session.tabsByWorktree[WORKTREE]).toEqual([{ ...ROW, ptyId: fresh[SHELL_LEAF] }])
+    }
+  )
 })

@@ -3,7 +3,6 @@ import { withDurableRuntimeStore } from '../runtime/runtime-durable-store-fixtur
 import { setupPtyIpcSuite } from './pty-ipc-test-harness'
 import { SessionNotFoundError } from '../daemon/daemon-errors'
 import { makePaneKey } from '../../shared/stable-pane-id'
-import { releaseTabRowPty } from '../persistence/loading-store/replaced-pane-binding'
 import { registerPtyHandlers, setLocalPtyProvider } from './pty'
 
 vi.mock('electron', () => import('./pty-ipc-mock-registry').then((m) => m.electronModuleMock()))
@@ -173,13 +172,9 @@ describe('registerPtyHandlers', () => {
       'inc-proven-absent-owner',
       { hostExitConfirmed: true }
     )
-    // The pane and its binding stay for the fresh spawn's bind to swap; only the row lets go.
+    // The pane, its binding and its row stay for the fresh spawn's bind to swap.
     expect(store.setWorkspaceSession).not.toHaveBeenCalled()
-    expect(store.retirePtyBinding).toHaveBeenCalledWith(
-      expect.objectContaining({ worktreeId, tabId, leafId, ptyId: 'pty-proven-absent-owner' }),
-      undefined,
-      releaseTabRowPty
-    )
+    expect(store.retirePtyBinding).not.toHaveBeenCalled()
   })
   it('does not poll after the routed provider confirms absence', async () => {
     const worktreeId = 'repo-1::/tmp/probe-blip-owner'

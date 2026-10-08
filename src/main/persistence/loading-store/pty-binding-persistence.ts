@@ -85,14 +85,10 @@ export class PtyBindingPersistenceOperations {
     this[ptyBindingPersistenceOperationsContext] = { runtime, sessions }
   }
 
-  /**
-   * Clears a stopped process's binding, keeping the pane; fenced on the id, which is dead in any
-   * incarnation. `retire` narrows the edit when a replacing spawn's bind will swap the binding.
-   */
+  /** Clears a stopped process's binding, keeping the pane; fenced on the id, which is dead in any incarnation. */
   async retirePtyBinding(
     binding: Pick<PersistPtyBindingArgs, 'worktreeId' | 'tabId' | 'leafId' | 'ptyId'>,
-    hostId?: string | null,
-    retire = clearReplacedPaneBinding
+    hostId?: string | null
   ): Promise<boolean> {
     const { runtime, sessions } = this[ptyBindingPersistenceOperationsContext]
     const resolved = resolveHostId(hostId)
@@ -123,7 +119,7 @@ export class PtyBindingPersistenceOperations {
         return { value: false, persist: false }
       }
       const before = cloneWorkspaceSessionState(session)
-      const retired = retire(session, { ...binding, parentTabId: binding.tabId })
+      const retired = clearReplacedPaneBinding(session, { ...binding, parentTabId: binding.tabId })
       // Host retirement must not run renderer snapshot repair, which would put the old binding back.
       publish(retired)
       const staged = cloneWorkspaceSessionState(retired)

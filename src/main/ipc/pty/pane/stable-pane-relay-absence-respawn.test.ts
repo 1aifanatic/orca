@@ -78,11 +78,8 @@ function sessionStore(leaves: string[]): { store: Store; read: () => WorkspaceSe
       setWorkspaceSession: (next: WorkspaceSessionState) => {
         session = next
       },
-      // The store's host-side binding retirement, applying the change the caller names.
-      retirePtyBinding: async (
-        ...[binding, , retire = clearReplacedPaneBinding]: Parameters<Store['retirePtyBinding']>
-      ) => {
-        session = retire(session, { ...binding, parentTabId: binding.tabId })
+      retirePtyBinding: async (...[binding]: Parameters<Store['retirePtyBinding']>) => {
+        session = clearReplacedPaneBinding(session, { ...binding, parentTabId: binding.tabId })
         return true
       },
       flushOrThrow: () => {}
@@ -161,14 +158,14 @@ describe('stable pane adoption after the relay reports the PTY absent', () => {
   })
 
   // Why a real store: "Reconnect lost every tab" is the regression this subsystem was reverted for
-  // twice. The fresh spawn takes the pane, so the absence leaves the tab, its layout and the
-  // bindings for that spawn's bind to swap; only the row lets go of the gone process.
+  // twice. The fresh spawn takes the pane, so the absence leaves the tab, its layout, the bindings
+  // and the row for that spawn's bind to swap.
   describe('with persistence actually reached', () => {
     it.each([[[LEAF, SIBLING_LEAF]], [[LEAF]]])(
       'keeps the tab, its panes and their bindings (leaves %j)',
       async (leaves) => {
         const { store, read } = sessionStore(leaves)
-        const layouts = structuredClone(read().terminalLayoutsByTabId)
+        const before = structuredClone(read())
         const { run, spawn } = spawnAfterAttachRejection(
           new SshPtyAbsentFromRelayError(`${SSH_SESSION_EXPIRED_ERROR}: pty-1`),
           { store, worktreeId: WORKTREE }
@@ -178,10 +175,7 @@ describe('stable pane adoption after the relay reports the PTY absent', () => {
 
         expect(spawn).toHaveBeenCalledTimes(2)
         expect(result.owner).toBeNull()
-        expect(read().terminalLayoutsByTabId).toEqual(layouts)
-        expect(read().tabsByWorktree[WORKTREE]).toEqual([
-          { id: 'tab-1', worktreeId: WORKTREE, ptyId: null }
-        ])
+        expect(read()).toEqual(before)
       }
     )
 
