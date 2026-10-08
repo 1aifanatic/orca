@@ -53,7 +53,7 @@ export type ProviderTimelineAssembler = {
   /** The host already wrote this command's running turn; the provider ends that same row. */
   beginCommand(command: StructuredAgentSessionCommandRun): void
   forgetCommand(turnId: string): void
-  apply(event: ProviderTimelineEvent): ProviderTimelineApplyResult
+  apply(event: ProviderTimelineEvent, providerObservedAt?: number): ProviderTimelineApplyResult
   /** The turn id of the open turn, as its row and a client's Stop name it. */
   readonly openTurnId: string | null
   /** Writes the text the coalescing window holds. */
@@ -103,11 +103,15 @@ export function createProviderTimelineAssembler(
     ...(deps.schedule ? { schedule: deps.schedule } : {})
   })
 
-  const textHost = (journal: ProviderTimelineTextHost['journal']): ProviderTimelineTextHost => ({
+  const textHost = (
+    journal: ProviderTimelineTextHost['journal'],
+    providerObservedAt: number
+  ): ProviderTimelineTextHost => ({
     sink: deps.sink,
     state,
     streams,
     journal,
+    providerObservedAt,
     admits: (hold) => admits(hold, journal)
   })
 
@@ -116,7 +120,8 @@ export function createProviderTimelineAssembler(
 
   const applyDecided = (
     event: ProviderTimelineDecidedEvent,
-    journal: ProviderTimelineTextHost['journal']
+    journal: ProviderTimelineTextHost['journal'],
+    providerObservedAt: number
   ): ProviderTimelineApplyResult => {
     const serials = state.serials()
     const decision = decideProviderTimelineEvent(
@@ -129,7 +134,7 @@ export function createProviderTimelineAssembler(
     if (decision.hold && !admits(decision.hold, journal)) {
       return { admission: PROVIDER_TIMELINE_OVER_BUDGET }
     }
-    const plan = new ProviderTimelinePlan()
+    const plan = new ProviderTimelinePlan(providerObservedAt)
     planProviderTimelineBarrier({ streams, state }, plan, event, decision)
     planProviderTimelineWrites(context, plan, decision, serials.next)
     plan.onAdmitted(() => {
@@ -151,26 +156,30 @@ export function createProviderTimelineAssembler(
    *  that stops its text and cancels its prompts; refused, the event that found it is refused with
    *  it and its retry finds it again. */
   const endSettledTurn = (
-    journal: NonNullable<ProviderTimelineTextHost['journal']>
+    journal: NonNullable<ProviderTimelineTextHost['journal']>,
+    providerObservedAt: number
   ): ProviderTimelineApplyResult | null => {
     const open = state.open
     if (state.ended || !open || providerTimelineTurnRowState(journal, open.itemId) !== 'settled') {
       return null
     }
-    return applyDecided({ type: 'turn.settled', turn: open }, journal)
+    return applyDecided({ type: 'turn.settled', turn: open }, journal, providerObservedAt)
   }
 
-  const apply = (event: ProviderTimelineEvent): ProviderTimelineApplyResult => {
+  const apply = (
+    event: ProviderTimelineEvent,
+    providerObservedAt = Date.now()
+  ): ProviderTimelineApplyResult => {
     const journal = deps.sink.journalItems()
-    const settled = journal ? endSettledTurn(journal) : null
+    const settled = journal ? endSettledTurn(journal, providerObservedAt) : null
     if (settled && !settled.admission.accepted) {
       return settled
     }
     switch (event.type) {
       case 'text.delta':
-        return applyProviderTimelineTextDelta(textHost(journal), event)
+        return applyProviderTimelineTextDelta(textHost(journal, providerObservedAt), event)
       case 'text.close':
-        return applyProviderTimelineTextClose(textHost(journal), event)
+        return applyProviderTimelineTextClose(textHost(journal, providerObservedAt), event)
       case 'activity': {
         const open = state.open
         if (state.ended || !open) {
@@ -192,7 +201,7 @@ export function createProviderTimelineAssembler(
       case 'context.usage':
       case 'provider.frame':
       case 'session.ended':
-        return applyDecided(event, journal)
+        return applyDecided(event, journal, providerObservedAt)
     }
   }
 

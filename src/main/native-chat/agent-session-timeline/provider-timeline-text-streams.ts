@@ -60,6 +60,8 @@ export type ProviderTimelineStream = {
   named: boolean
   channel: ProviderTimelineTextChannel
   producer: AgentJournalProducerLinkage | undefined
+  startedAt: number
+  providerObservedAt: number
   /** Whether any text was written; a whitespace-only stream completes nothing. */
   written: boolean
   bytes: number
@@ -135,6 +137,7 @@ export class ProviderTimelineTextStreams {
     channel: ProviderTimelineTextChannel
     producer: AgentJournalProducerLinkage | undefined
     state: ProviderTimelineState
+    providerObservedAt: number
     serial: number
   }): ProviderTimelineStream {
     const { rows } = this.deps.context
@@ -149,6 +152,8 @@ export class ProviderTimelineTextStreams {
       named,
       channel: input.channel,
       producer: input.producer,
+      startedAt: input.providerObservedAt,
+      providerObservedAt: input.providerObservedAt,
       written: false,
       bytes: providerTimelineEntryBytes({
         key: 'id' in input.item ? input.item.id : input.item.stream,
@@ -175,6 +180,7 @@ export class ProviderTimelineTextStreams {
         this.streams.set(stream.key, stream)
         this.byId.set(stream.id, stream)
       }
+      stream.providerObservedAt = Math.max(stream.providerObservedAt, plan.providerObservedAt)
       this.coalescer.append(stream.id, text)
     })
   }
@@ -242,7 +248,7 @@ export class ProviderTimelineTextStreams {
       }
     } else {
       const text = boundInlineText(finalText, DEFAULT_JOURNAL_PAYLOAD_LIMITS).text
-      this.planText(plan, stream, text, true)
+      this.planText(plan, stream, text, true, plan.providerObservedAt)
     }
     this.planRelease(plan, (each) => each === stream)
   }
@@ -264,7 +270,7 @@ export class ProviderTimelineTextStreams {
     if (!stream) {
       return true
     }
-    const plan = new ProviderTimelinePlan()
+    const plan = new ProviderTimelinePlan(stream.providerObservedAt)
     this.planText(plan, stream, text)
     const admission = plan.submit(this.deps.sink)
     // A failed or closed sink can never take it; the session's end owns what it leaves.
@@ -275,7 +281,8 @@ export class ProviderTimelineTextStreams {
     plan: ProviderTimelinePlan,
     stream: ProviderTimelineStream,
     text: string,
-    providerFinal = false
+    providerFinal = false,
+    providerObservedAt = stream.providerObservedAt
   ): void {
     const empty = providerFinal ? text.length === 0 : text.trim().length === 0
     if (!stream.written && empty) {
@@ -286,7 +293,12 @@ export class ProviderTimelineTextStreams {
     plan.item({
       reservedBytes: estimateStructuredAgentSessionItemBytes(stream.row.identity, body),
       resolve: (journal) => this.resolveText(stream, body, journal),
-      options: { ...stream.producer, turnScope: stream.scope }
+      options: {
+        ...stream.producer,
+        turnScope: stream.scope,
+        observedAt: stream.startedAt,
+        providerObservedAt
+      }
     })
     plan.onAdmitted(() => {
       stream.written = true

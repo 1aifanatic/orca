@@ -15,6 +15,7 @@ afterEach(async () => {
     lane.dispose()
   }
   vi.useRealTimers()
+  vi.restoreAllMocks()
   await closeProviderTimelineRigs()
 })
 
@@ -51,6 +52,33 @@ async function rig() {
 }
 
 describe('JSON-lines timeline admission', () => {
+  it('retains receipts on item and settlement steps held before admission', async () => {
+    const test = await rig()
+    const cursor = test.journal.journal.cursor()
+    vi.spyOn(Date, 'now').mockReturnValue(5_500)
+    test.lane.apply([
+      { type: 'turn.open', turn: 'run:1', at: 1_000 },
+      {
+        type: 'item.open',
+        item: 'tool',
+        body: { kind: 'tool-call', name: 'read', input: {}, state: 'running' }
+      },
+      { type: 'turn.end', at: 5_500, state: 'completed', outcome: 'success' }
+    ])
+    vi.spyOn(Date, 'now').mockReturnValue(60_000)
+    test.unblock()
+    test.lane.retry()
+    await test.journal.rows()
+    const replay = test.journal.journal.readSince(cursor)
+    if (!replay.ok) {
+      throw new Error('journal replay reset')
+    }
+    expect(replay.rows.filter((row) => row.kind === 'item')).toHaveLength(2)
+    expect(replay.rows.some((row) => row.kind === 'lifecycle-batch')).toBe(true)
+    expect(replay.rows.every((row) => row.providerObservedAt === 5_500)).toBe(true)
+    expect(test.journal.journal.lastProviderActivityAt(1)).toBe(5_500)
+  })
+
   it('admits the final tail with the host settlement budget when ordinary writes are full', async () => {
     const journal = await openProviderTimelineRig({ agent: 'pi' })
     const lane = new JsonlRpcTimelineLane({

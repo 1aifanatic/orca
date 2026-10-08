@@ -48,6 +48,7 @@ export type StructuredAgentSessionTransitionStep =
       kind: 'settlement'
       /** Unique per settlement: the journal applies one id once. */
       settlementId: string
+      providerObservedAt?: number
       /** Paces the queue only; the mutations are the journal's to choose. */
       reservedBytes: number
       /** Read at execution; none writes nothing. */
@@ -93,7 +94,7 @@ function transitionAppend(
       step.kind === 'item'
         ? {
             ...step,
-            options: providerObservedAppendOptions({ providerObservedAt, ...step.options })
+            options: providerObservedAppendOptions(step.options)
           }
         : step
     )
@@ -128,7 +129,7 @@ function transitionAppend(
                   batch: {
                     settlementId: step.settlementId,
                     fence,
-                    providerObservedAt,
+                    providerObservedAt: step.providerObservedAt ?? providerObservedAt,
                     resolve: () => step.resolve(journal)
                   }
                 }

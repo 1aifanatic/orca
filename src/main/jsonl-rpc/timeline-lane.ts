@@ -27,7 +27,11 @@ export type JsonlRpcTimelineLaneDeps = {
 export class JsonlRpcTimelineLane {
   private readonly assembler: ProviderTimelineAssembler
   private readonly identity: ReturnType<typeof createLegacyProviderTimelineIdentityScheme>
-  private readonly held: { event: ProviderTimelineEvent; bytes: number }[] = []
+  private readonly held: {
+    event: ProviderTimelineEvent
+    bytes: number
+    providerObservedAt: number
+  }[] = []
   private heldBytes = 0
   private draining = false
   private ended = false
@@ -66,6 +70,7 @@ export class JsonlRpcTimelineLane {
   }
 
   apply(events: readonly ProviderTimelineEvent[]): void {
+    const providerObservedAt = Date.now()
     if (this.ended) {
       return
     }
@@ -75,7 +80,7 @@ export class JsonlRpcTimelineLane {
         this.fail('Agent timeline queue capacity exceeded')
         return
       }
-      this.held.push({ event, bytes })
+      this.held.push({ event, bytes, providerObservedAt })
       this.heldBytes += bytes
       this.retry()
     }
@@ -91,7 +96,7 @@ export class JsonlRpcTimelineLane {
     try {
       while (this.held.length > 0 && !this.ended) {
         const entry = this.held[0]
-        const result = this.assembler.apply(entry.event)
+        const result = this.assembler.apply(entry.event, entry.providerObservedAt)
         if (!result.admission.accepted) {
           if (result.admission.reason !== 'backpressure') {
             this.fail(result.admission.reason)

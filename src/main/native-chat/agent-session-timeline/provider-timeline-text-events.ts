@@ -24,6 +24,7 @@ export type ProviderTimelineTextHost = {
   state: ProviderTimelineState
   streams: ProviderTimelineTextStreams
   journal: StructuredAgentSessionTransitionJournal | null
+  providerObservedAt: number
   admits(hold: ProviderTimelineHold): boolean
 }
 
@@ -37,7 +38,7 @@ export function applyProviderTimelineTextDelta(
   if (state.ended) {
     return { admission: ADMITTED, dropped: 'session-ended' }
   }
-  const plan = new ProviderTimelinePlan()
+  const plan = new ProviderTimelinePlan(host.providerObservedAt)
   const key = streams.key(event.item, event.join)
   let stream = streams.get(key)
   if (stream && !streams.continues(stream, event.channel, event.producer)) {
@@ -64,6 +65,7 @@ export function applyProviderTimelineTextDelta(
       channel: event.channel,
       producer: event.producer,
       state,
+      providerObservedAt: host.providerObservedAt,
       serial: serials.next()
     })
     if (!host.admits({ key: stream.key, bytes: stream.bytes })) {
@@ -105,7 +107,7 @@ export function applyProviderTimelineTextClose(
       dropped: streams.stoppedFor(key, event.join) ? 'turn-settled' : 'stream-unknown'
     }
   }
-  const plan = new ProviderTimelinePlan()
+  const plan = new ProviderTimelinePlan(host.providerObservedAt)
   streams.planFlush(plan, stream)
   streams.planClose(plan, stream, event.text)
   if (stream.named) {
