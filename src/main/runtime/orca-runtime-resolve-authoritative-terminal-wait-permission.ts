@@ -3,7 +3,7 @@ import { OrcaRuntimeWithAgentPromptRequestCorrelation } from './orca-runtime-age
 import type { RuntimeTerminalAgentStatusSnapshot } from './runtime-terminal-agent-status-query'
 import type { AgentStatus } from '../../shared/agent-detection'
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
-import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
+import { detectTerminalWaitBlockedReason, isKnownReadyPromptBody } from './terminal-wait-detection'
 import { isOpenCodeNativeTitle } from '../../shared/agent-detection'
 import type { AgentStatusEntry, AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
@@ -24,7 +24,6 @@ import {
   judgeBlockedAgainstLiveScreen,
   type LiveScreenBlockedEvidence
 } from './live-screen-blocked-judgement'
-import { isKnownReadyPromptBody } from './terminal-wait-detection'
 import { readsTrustedScreen } from './agent-state-rules/agent-state-rules-engine'
 
 export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends OrcaRuntimeWithAgentPromptRequestCorrelation {
