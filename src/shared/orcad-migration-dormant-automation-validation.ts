@@ -1,3 +1,4 @@
+import { assertAutomationExtraAgentArgs } from './automation-extra-agent-args-record'
 import { isTuiAgent } from './tui-agent-config'
 import type { Automation, AutomationRun } from './automations-types'
 import { getAutomationRunRepoId } from './automation-run-identity'
@@ -75,6 +76,12 @@ function parseAutomation(value: unknown): Automation {
   const copy = structuredClone(value)
   if (!isMigratedAutomation(copy)) {
     throw new Error('orcad_migration_dormant_automation_invalid')
+  }
+  // A disallowed flag or Reuse with extras would otherwise persist and fail every later run.
+  try {
+    assertAutomationExtraAgentArgs(copy)
+  } catch {
+    throw new Error('orcad_migration_dormant_automation_extra_agent_args_invalid')
   }
   return copy
 }
