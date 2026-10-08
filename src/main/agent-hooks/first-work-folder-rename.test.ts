@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Repo } from '../../shared/repo-types'
+import { getDefaultWorkspaceSession } from '../../shared/constants'
+import {
+  TerminalTopologyPublisher,
+  type TerminalTopologyOwners
+} from '../runtime/terminal-topology-publisher'
 import {
   renameWorktreeFolderOnFirstWork,
   type FirstWorkFolderRenameDeps
@@ -96,5 +101,53 @@ describe('renameWorktreeFolderOnFirstWork', () => {
     const deps = makeDeps({ getRepo: vi.fn(() => undefined) })
     expect(await renameWorktreeFolderOnFirstWork(OLD_ID, 'fix-auth', deps)).toBe(false)
     expect(deps.moveWorktree).not.toHaveBeenCalled()
+  })
+
+  it("tells the window about the rename before main pushes either id's topology", async () => {
+    const NEW_ID = 'repo1::/ws/worktree-creation-spinner'
+    const tab = (worktreeId: string) => ({
+      id: 'tab',
+      ptyId: 'pty',
+      worktreeId,
+      title: 'Terminal',
+      customTitle: null,
+      color: null,
+      sortOrder: 0,
+      createdAt: 1
+    })
+    const ownedBy = (worktreeId: string): TerminalTopologyOwners =>
+      new Map([
+        [
+          worktreeId,
+          {
+            hostId: 'local',
+            session: {
+              ...getDefaultWorkspaceSession(),
+              tabsByWorktree: { [worktreeId]: [tab(worktreeId)] }
+            }
+          }
+        ]
+      ])
+    let owners = ownedBy(OLD_ID)
+    const order: string[] = []
+    const publisher = new TerminalTopologyPublisher(
+      () => owners,
+      (slice) => order.push(`${slice.worktreeId}: ${slice.tabs.length} tab(s)`)
+    )
+    publisher.snapshot()
+    order.length = 0
+
+    const deps = makeDeps({
+      migrateWorktreeIdentity: vi.fn(() => {
+        owners = ownedBy(NEW_ID)
+        publisher.markDirty()
+      }),
+      notifyWorktreeRenamed: vi.fn(() => order.push('renamed'))
+    })
+    await renameWorktreeFolderOnFirstWork(OLD_ID, 'worktree-creation-spinner', deps)
+    await Promise.resolve()
+
+    // The window re-keys its tabs first, so the old id's empty slice finds none to drop.
+    expect(order).toEqual(['renamed', `${OLD_ID}: 0 tab(s)`, `${NEW_ID}: 1 tab(s)`])
   })
 })
