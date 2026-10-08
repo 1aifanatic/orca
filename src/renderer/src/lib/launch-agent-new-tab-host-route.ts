@@ -16,6 +16,14 @@ import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentLaunchFollowUp } from '../../../shared/agent-launch-follow-up'
 import { recordableLaunchFollowUp, takeLaunchFollowUps } from '@/lib/agent-launch-follow-ups'
 import { waitForRecordedLaunchFollowUp } from '@/lib/agent-launch-follow-up-waiter'
+import { seedNativeChatLaunchDraftForAgentTab } from '@/lib/agent-launch-prompt-delivery'
+import { desktopNewTabPromptDelivery } from '../../../shared/desktop-new-tab-prompt'
+import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
+import type {
+  LaunchAgentInNewTabArgs,
+  LaunchAgentInNewTabResult
+} from './launch-agent-in-new-tab-contract'
+import type { Tab } from '../../../shared/tab-types'
 
 /** `followUpDeferred`: the click's recorded follow-up was left for the next start; don't run it. */
 export type NewTabPromptDeliveryResult = {
@@ -24,11 +32,7 @@ export type NewTabPromptDeliveryResult = {
   followUpDeferred?: boolean
 }
 
-/**
- * Whether a new agent tab starts through the host's `agent.launch`: an AI button's launch, whose
- * prompt is pasted once the agent is ready, in a terminal this window makes. A typed prompt
- * (`auto-submit`, `draft`) keeps main's launch, and so does a launch the host could turn into a chat.
- */
+/** Existing AI buttons retain their submit-after-ready paste transport. */
 export function newTabPromptLaunchesThroughHost(args: {
   promptDelivery: 'auto-submit' | 'draft' | 'submit-after-ready'
   pastesPrompt: boolean
@@ -36,6 +40,60 @@ export function newTabPromptLaunchesThroughHost(args: {
   return (
     args.promptDelivery === 'submit-after-ready' && args.pastesPrompt && windowMakesHostLaunchTab()
   )
+}
+
+/** Chat-default fallbacks keep their already-decided renderer surface. */
+export function newTabTerminalLaunchesThroughHost(): boolean {
+  return windowMakesHostLaunchTab()
+}
+
+/** Keeps fresh desktop startup and live input on the existing reserved-pane launch. */
+export function launchFreshTerminalTabThroughHost(
+  args: LaunchAgentInNewTabArgs,
+  startupPlan: AgentStartupPlan,
+  pasteDraftAfterLaunch: string | null,
+  viewMode: Tab['viewMode']
+): NonNullable<LaunchAgentInNewTabResult> {
+  const prompt = args.prompt?.trim() ?? ''
+  const promptDelivery = args.promptDelivery ?? 'auto-submit'
+  const launched = launchNewTabPromptThroughHost({
+    agent: args.agent,
+    worktreeId: args.worktreeId,
+    groupId: args.groupId,
+    prompt,
+    pasteContent: prompt,
+    desktopPrompt: {
+      text: prompt,
+      delivery: desktopNewTabPromptDelivery(args.agent, promptDelivery),
+      transport: { kind: 'desktop-new-tab', promptDelivery }
+    },
+    seedSubmittedChatCopy: pasteDraftAfterLaunch !== null,
+    ...(args.agentArgs !== undefined ? { agentArgs: args.agentArgs } : {}),
+    ...(args.initialCwd?.trim() ? { cwd: args.initialCwd } : {}),
+    sessionOptions: startupPlan.sessionOptions,
+    launchSource: args.launchSource ?? 'tab_bar_quick_launch',
+    quickCommandLabel: args.quickCommandLabel,
+    pendingActivationSpawn: args.pendingActivationSpawn,
+    activate: args.activate,
+    viewMode,
+    ...(args.onPromptDelivered ? { onPromptDelivered: args.onPromptDelivered } : {}),
+    ...(args.onPromptDeliveryUnconfirmed
+      ? { onPromptDeliveryUnconfirmed: args.onPromptDeliveryUnconfirmed }
+      : {})
+  })
+  if (prompt && promptDelivery !== 'submit-after-ready') {
+    void launched.promptDeliveryResult.catch((error) =>
+      console.error('Prompt delivery failed after launch', error)
+    )
+  }
+  return {
+    surface: { kind: 'local-terminal', tabId: launched.tabId },
+    startupPlan,
+    pasteDraftAfterLaunch: pasteDraftAfterLaunch !== null,
+    ...(prompt && promptDelivery === 'submit-after-ready'
+      ? { promptDeliveryResult: launched.promptDeliveryResult }
+      : {})
+  }
 }
 
 /** The tab is gone, so the pane's own words go in a notice, with its prompt to copy. */
@@ -98,7 +156,7 @@ async function settleHostPrompt(
     if (receipt.composerUnobserved) {
       args.onPromptDeliveryUnconfirmed?.()
     }
-    if (args.agent === 'command-code') {
+    if (args.agent === 'command-code' && args.desktopPrompt?.delivery !== 'draft') {
       // Command Code has no prompt-submit hook; seed working when the prompt is submitted.
       seedCommandCodeSubmittedPromptStatus(args.worktreeId, tabId, args.prompt)
     }
@@ -129,20 +187,19 @@ async function settleHostPrompt(
     worktreeId: args.worktreeId,
     tabId,
     agent: args.agent,
-    submitted: true
+    submitted: args.desktopPrompt?.delivery !== 'draft'
   })
   notice.onTimeout()
   return { delivered: false, failureNotified: notice.wasNotified() }
 }
 
-/**
- * Starts the agent through the host, which also pastes and submits the prompt once the agent is
- * ready, as main's window did, and answers how it went. The follow-ups run on that answer.
- */
+/** Starts the reserved-pane launch and applies its actual prompt receipt to the click. */
 export function launchNewTabPromptThroughHost(
   args: HostAgentLaunchArgs & {
     /** What is pasted, which can differ from the prompt the user wrote. */
     pasteContent: string
+    /** Startup-carried submissions have no pasted chat bubble on main. */
+    seedSubmittedChatCopy?: boolean
     onPromptDelivered?: () => void
     onPromptDeliveryUnconfirmed?: () => void
     /** What `onPromptDelivered` does, recorded so a reload mid-launch still runs it once. */
@@ -157,6 +214,7 @@ export function launchNewTabPromptThroughHost(
     onPromptDelivered: _delivered,
     onPromptDeliveryUnconfirmed: _u,
     durableFollowUp,
+    seedSubmittedChatCopy = true,
     ...launch
   } = args
   const followUp = recordableLaunchFollowUp(durableFollowUp)
@@ -167,11 +225,20 @@ export function launchNewTabPromptThroughHost(
   })
   // Stamped at the click: the chat view matches the agent's turn to a copy made before it.
   const clickedAt = Date.now()
+  if (args.desktopPrompt?.delivery === 'draft') {
+    seedNativeChatLaunchDraftForAgentTab({ tabId, agent: args.agent, text: pasteContent })
+  }
   const promptDeliveryResult = outcome.then((launched) => {
     if (launched.kind === 'started') {
+      if (args.desktopPrompt && !args.desktopPrompt.text.trim()) {
+        return { delivered: false, failureNotified: false }
+      }
       // Seeded once the host started the agent, as main's paste seeded it: a launch that never
       // started leaves no chat copy behind.
-      const seeded = seedChatCopy(tabId, args.agent, pasteContent, clickedAt)
+      const seeded =
+        seedSubmittedChatCopy &&
+        args.desktopPrompt?.delivery !== 'draft' &&
+        seedChatCopy(tabId, args.agent, pasteContent, clickedAt)
       // A launch past the record's cap kept no follow-up: the click runs its own, as main did.
       const recorded = launched.unrecorded ? undefined : followUp
       return settleHostPrompt(

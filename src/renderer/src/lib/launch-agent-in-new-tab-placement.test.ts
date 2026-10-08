@@ -8,6 +8,11 @@ const mockCreateTab = vi.fn()
 const mockQueueTabStartupCommand = vi.fn()
 const mockSetActiveTabType = vi.fn()
 const mockSeedNativeChatAppliedSessionOptions = vi.fn()
+const callRuntimeRpc = vi.hoisted(() => vi.fn(() => new Promise(() => {})))
+vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  callRuntimeRpc
+}))
 
 type PlacementSettings = {
   agentCmdOverrides: Record<string, string>
@@ -102,6 +107,12 @@ describe('launchAgentInNewTab terminal tab activation', () => {
 
       expect(mockCreateTab.mock.calls[0]?.[3]).not.toHaveProperty('activate')
       expect(mockSetActiveTabType).toHaveBeenCalledExactlyOnceWith('terminal', worktreeId)
+      expect(mockQueueTabStartupCommand).not.toHaveBeenCalled()
+      expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
+        { kind: 'local' },
+        'agent.launchReplay',
+        expect.objectContaining({ target: { kind: 'existing', worktree: `id:${worktreeId}` } })
+      )
     }
   )
 

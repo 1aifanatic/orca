@@ -85,6 +85,7 @@ export async function launchAgentSessionContinuation({
   // could vanish silently (#22479).
   let deliveryUnconfirmed = false
   const result = launchAgentInNewTab({
+    launchPurpose: 'session-continuation',
     requestId: newAgentLaunchRequestId(),
     agent,
     worktreeId,

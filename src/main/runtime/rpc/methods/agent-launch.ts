@@ -132,7 +132,8 @@ async function runAgentLaunch(
       replaySafe?.callerKey,
       callerNavigationId !== null,
       replaySafe?.terminalSpawn,
-      view.early
+      view.early,
+      view.presentation
     ),
     workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
     ...(callerRendersLaunchedChat(context, intent.agent) ? {} : { callerRendersStructured: false }),

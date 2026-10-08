@@ -15,7 +15,6 @@ import {
   queuedStartupPayload,
   resetLaunchFunnelStore
 } from './agent-launch-funnel-test-harness'
-import { newTabPromptLaunchesThroughHost } from './launch-agent-new-tab-host-route'
 
 const store = createLaunchFunnelStore()
 
@@ -52,10 +51,7 @@ const callRuntimeRpc = vi.hoisted(() => vi.fn(() => new Promise(() => {})))
 vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc, RuntimeRpcCallError: Error }))
 
 function launchesThroughHost(profile: AgentLaunchCallerProfile): boolean {
-  return newTabPromptLaunchesThroughHost({
-    promptDelivery: profile.args.promptDelivery ?? 'auto-submit',
-    pastesPrompt: (profile.args.prompt?.trim() ?? '').length > 0
-  })
+  return profile.args.launchPurpose !== 'session-fork'
 }
 
 const cases = callerProfileCases()
@@ -98,13 +94,14 @@ describe('agent launch caller placement and telemetry', () => {
   })
 
   it.each(cases)('persists the tab-bar order after %s launches', async (_id, profile) => {
-    await launch(profile)
+    const result = await launch(profile)
 
     // Why: without this the stored order falls back to terminals-first and the new tab jumps to
     // index 0. It runs for every call site.
     expect(store.setTabBarOrder).toHaveBeenCalledTimes(1)
     expect(store.setTabBarOrder.mock.calls[0]?.[0]).toBe(profile.args.worktreeId)
-    expect(store.setTabBarOrder.mock.calls[0]?.[1]).toContain('tab-1')
+    const tabId = result?.surface.kind === 'local-terminal' ? result.surface.tabId : undefined
+    expect(store.setTabBarOrder.mock.calls[0]?.[1]).toContain(tabId)
   })
 
   it.each(cases)(
@@ -162,19 +159,17 @@ describe('agent launch caller placement and telemetry', () => {
     })
   })
 
-  it('creates the tab before queueing its startup command', async () => {
+  it('reserves its pane and admits the launch without queueing a renderer command', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({ requestId: 'request-2', agent: 'codex', worktreeId: 'wt-1' })
 
-    // Why: the terminal pane snapshots pending startup in useState on first render, so a startup
-    // queued after mount is never seen.
-    expect(store.createTab.mock.invocationCallOrder[0]).toBeLessThan(
-      store.queueTabStartupCommand.mock.invocationCallOrder[0] ?? 0
-    )
+    expect(createdTabOptions(store)?.agentLaunchPane).toBeDefined()
+    expect(store.queueTabStartupCommand).not.toHaveBeenCalled()
+    expect(hostLaunchRequest(callRuntimeRpc)?.paneKey).toBeDefined()
   })
 
-  it('seeds working status for a Command Code prompt that rides argv', async () => {
+  it('gives a Command Code submitted prompt to the host instead of queueing status', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({
@@ -184,10 +179,11 @@ describe('agent launch caller placement and telemetry', () => {
       prompt: 'fix the spinner'
     })
 
-    expect(queuedStartupPayload(store)?.initialAgentStatus).toEqual({
+    expect(hostLaunchRequest(callRuntimeRpc)).toMatchObject({
       agent: 'command-code',
-      prompt: 'fix the spinner'
+      prompt: { text: 'fix the spinner', delivery: 'submit' }
     })
+    expect(queuedStartupPayload(store)).toBeUndefined()
   })
 
   it('leaves initial agent status unset for every other argv prompt launch', async () => {
@@ -200,6 +196,6 @@ describe('agent launch caller placement and telemetry', () => {
       prompt: 'fix the spinner'
     })
 
-    expect(queuedStartupPayload(store)).not.toHaveProperty('initialAgentStatus')
+    expect(queuedStartupPayload(store)).toBeUndefined()
   })
 })

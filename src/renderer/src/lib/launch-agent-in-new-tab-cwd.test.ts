@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mockQueueTabInitialCwd = vi.fn()
 const mockLaunchAgentInWebHostTab = vi.fn()
 const mockIsWebRuntimeSessionActive = vi.fn()
+const callRuntimeRpc = vi.hoisted(() => vi.fn(() => new Promise(() => {})))
+vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  callRuntimeRpc
+}))
 
 const store = {
   settings: {
@@ -74,7 +79,7 @@ describe('launchAgentInNewTab initial cwd', () => {
     })
   })
 
-  it('queues the original cwd before a local Agent session starts', async () => {
+  it('admits the original cwd on the host without a renderer startup queue', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
     launchAgentInNewTab({
@@ -84,7 +89,13 @@ describe('launchAgentInNewTab initial cwd', () => {
       initialCwd: '/repo/worktree/packages/app'
     })
 
-    expect(mockQueueTabInitialCwd).toHaveBeenCalledWith('tab-1', '/repo/worktree/packages/app')
+    expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
+      { kind: 'local' },
+      'agent.launchReplay',
+      expect.objectContaining({ cwd: '/repo/worktree/packages/app' })
+    )
+    expect(mockQueueTabInitialCwd).not.toHaveBeenCalled()
+    expect(store.queueTabStartupCommand).not.toHaveBeenCalled()
   })
 
   it('forwards the original cwd to a paired web runtime', async () => {

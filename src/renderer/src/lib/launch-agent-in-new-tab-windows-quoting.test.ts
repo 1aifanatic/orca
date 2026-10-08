@@ -1,13 +1,22 @@
 // Windows/WSL shell-quoting coverage for launchAgentInNewTab, split from
 // launch-agent-in-new-tab.test.ts to keep both files within the lines budget.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockIsWebRuntimeSessionActive = vi.fn(() => false)
 const mockCreateWebRuntimeAgentSessionTerminal = vi.fn()
 const mockCreateWebRuntimeAgentSessionTerminalWithLaunchDraft = vi.fn()
 const mockCreateTab = vi.fn()
 const mockQueueTabStartupCommand = vi.fn()
+const callRuntimeRpc = vi.hoisted(() =>
+  vi.fn<(target: unknown, method: string, params: Record<string, unknown>) => Promise<unknown>>(
+    () => new Promise(() => {})
+  )
+)
+vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  callRuntimeRpc
+}))
 const mockPasteDraftWhenAgentReady = vi.fn()
 
 const store = {
@@ -113,6 +122,20 @@ vi.mock('@/runtime/web-runtime-session', () => ({
 }))
 
 describe('launchAgentInNewTab Windows shell quoting', () => {
+  afterEach(() => {
+    if (!mockIsWebRuntimeSessionActive()) {
+      expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
+        { kind: 'local' },
+        'agent.launchReplay',
+        expect.objectContaining({
+          prompt: expect.objectContaining({
+            transport: expect.objectContaining({ kind: 'desktop-new-tab' })
+          })
+        })
+      )
+      expect(mockQueueTabStartupCommand).not.toHaveBeenCalled()
+    }
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsWebRuntimeSessionActive.mockReturnValue(false)
@@ -185,7 +208,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
   it('uses the explicit startup shell platform when building draft launch commands', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-2',
       agent: 'claude',
       worktreeId: 'wt-1',
@@ -194,11 +217,8 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
       launchPlatform: 'win32'
     })
 
-    expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({
-        command: "claude '--dangerously-skip-permissions' --prefill 'review Bob''s change'"
-      })
+    expect(result?.startupPlan.launchCommand).toBe(
+      "claude '--dangerously-skip-permissions' --prefill 'review Bob''s change'"
     )
   })
 
@@ -206,45 +226,35 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     store.settings.terminalWindowsShell = 'cmd.exe'
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-3',
       agent: 'claude',
       worktreeId: 'wt-1',
       launchPlatform: 'win32'
     })
 
-    expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({
-        command: 'claude "--dangerously-skip-permissions"'
-      })
-    )
+    expect(result?.startupPlan.launchCommand).toBe('claude "--dangerously-skip-permissions"')
   })
 
   it('keeps PowerShell quoting for local Windows default agent args', async () => {
     store.settings.terminalWindowsShell = 'powershell.exe'
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-4',
       agent: 'claude',
       worktreeId: 'wt-1',
       launchPlatform: 'win32'
     })
 
-    expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({
-        command: "claude '--dangerously-skip-permissions'"
-      })
-    )
+    expect(result?.startupPlan.launchCommand).toBe("claude '--dangerously-skip-permissions'")
   })
 
   it('quotes local Windows explicit agent args for cmd.exe prompt launches', async () => {
     store.settings.terminalWindowsShell = 'cmd.exe'
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-5',
       agent: 'codex',
       worktreeId: 'wt-1',
@@ -253,20 +263,15 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
       launchPlatform: 'win32'
     })
 
-    expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({
-        command: 'codex "--model" "gpt-5" "fix the spinner"',
-        agentArgsOverride: '--model gpt-5'
-      })
-    )
+    expect(result?.startupPlan.launchCommand).toBe('codex "--model" "gpt-5" "fix the spinner"')
+    expect(callRuntimeRpc.mock.calls[0]?.[2]).toMatchObject({ agentArgs: '--model gpt-5' })
   })
 
   it('quotes local Windows draft launches for Git Bash', async () => {
     store.settings.terminalWindowsShell = 'git-bash'
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-6',
       agent: 'claude',
       worktreeId: 'wt-1',
@@ -275,11 +280,8 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
       launchPlatform: 'win32'
     })
 
-    expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({
-        command: `claude '--dangerously-skip-permissions' --prefill 'review Bob'"'"'s change'`
-      })
+    expect(result?.startupPlan.launchCommand).toBe(
+      `claude '--dangerously-skip-permissions' --prefill 'review Bob'"'"'s change'`
     )
   })
 
@@ -288,14 +290,13 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     store.repos = [{ id: 'repo-1', connectionId: 'ssh-1', path: 'C:\\remote\\repo' }]
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ requestId: 'request-7', agent: 'claude', worktreeId: 'wt-1' })
+    const result = launchAgentInNewTab({
+      requestId: 'request-7',
+      agent: 'claude',
+      worktreeId: 'wt-1'
+    })
 
-    expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({
-        command: "claude '--dangerously-skip-permissions'"
-      })
-    )
+    expect(result?.startupPlan.launchCommand).toBe("claude '--dangerously-skip-permissions'")
   })
 
   it('uses WSL launch quoting by default for Windows-path projects forced to WSL', async () => {
@@ -320,7 +321,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     }
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-8',
       agent: 'claude',
       worktreeId: 'wt-1',
@@ -328,11 +329,8 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
       promptDelivery: 'draft'
     })
 
-    expect(mockQueueTabStartupCommand).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({
-        command: `claude '--dangerously-skip-permissions' --prefill 'review Bob'"'"'s change'`
-      })
+    expect(result?.startupPlan.launchCommand).toBe(
+      `claude '--dangerously-skip-permissions' --prefill 'review Bob'"'"'s change'`
     )
   })
 
@@ -361,10 +359,13 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     }
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ requestId: 'request-9', agent: 'codex', worktreeId: 'wt-1' })
+    const result = launchAgentInNewTab({
+      requestId: 'request-9',
+      agent: 'codex',
+      worktreeId: 'wt-1'
+    })
 
-    const queued = mockQueueTabStartupCommand.mock.calls.at(-1)?.[1] as { command: string }
-    expect(queued.command).toContain(`'don'"'"'t'`)
-    expect(queued.command).not.toContain("'don''t'")
+    expect(result?.startupPlan.launchCommand).toContain(`'don'"'"'t'`)
+    expect(result?.startupPlan.launchCommand).not.toContain("'don''t'")
   })
 })

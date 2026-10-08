@@ -279,6 +279,60 @@ describe('the instant tab', () => {
     expect(terminalOptions(runtime)).not.toHaveProperty('surfaceOwner')
   })
 
+  it.each([
+    ['background', true],
+    ['background', false],
+    ['focused', true],
+    ['focused', false]
+  ] as const)(
+    'keeps a desktop %s launch with early acknowledgment %s on host spawning',
+    async (presentation, acknowledged) => {
+      const runtime = hostWithWindow({
+        terminalPaneKey: PANE_KEY,
+        ...(acknowledged ? {} : { reply: new Error('renderer_unavailable') })
+      })
+
+      await replayLaunch(runtime, { paneKey: PANE_KEY, presentation }, DESKTOP)
+
+      expect(runtime.published[0]?.viewer).toBe(
+        presentation === 'background' ? 'none' : 'focus-in-workspace'
+      )
+      expect(terminalOptions(runtime)).toMatchObject({ tabId: TAB_ID, leafId: LEAF_ID })
+      if (presentation === 'background') {
+        expect(terminalOptions(runtime)).toMatchObject({ presentation, surfaceOwner: false })
+      } else {
+        // Passing focused here would request renderer spawning and select the tab again.
+        expect(terminalOptions(runtime)).not.toHaveProperty('presentation')
+        expect(terminalOptions(runtime).surfaceOwner).toBe(acknowledged ? false : undefined)
+      }
+      expect(runtime.createTerminal).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it.each(['background', 'focused'] as const)(
+    'keeps the reserved pane for an unrecorded desktop %s launch',
+    async (presentation) => {
+      const runtime = hostWithWindow({ terminalPaneKey: PANE_KEY })
+
+      const result = await plainLaunch(runtime, { paneKey: PANE_KEY, presentation }, DESKTOP)
+
+      expect(runtime.published).toEqual([])
+      expect(result.outcome).toMatchObject({ kind: 'terminal', paneKey: PANE_KEY })
+      expect(terminalOptions(runtime)).toMatchObject({
+        tabId: TAB_ID,
+        leafId: LEAF_ID,
+        requireFreshPane: true
+      })
+      if (presentation === 'background') {
+        expect(terminalOptions(runtime)).toMatchObject({ presentation, surfaceOwner: false })
+      } else {
+        expect(terminalOptions(runtime)).not.toHaveProperty('presentation')
+        expect(terminalOptions(runtime)).not.toHaveProperty('surfaceOwner')
+      }
+      expect(runtime.createTerminal).toHaveBeenCalledTimes(1)
+    }
+  )
+
   it('records the pane it showed with the launch, and lets the pane attach once the agent runs', async () => {
     const runtime = hostWithWindow({ terminalPaneKey: PANE_KEY })
 

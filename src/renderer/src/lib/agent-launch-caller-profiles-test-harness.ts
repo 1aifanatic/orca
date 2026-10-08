@@ -125,6 +125,7 @@ export const AGENT_LAUNCH_CALLER_PROFILES: readonly AgentLaunchCallerProfile[] =
       prompt: PROMPT,
       promptDelivery: 'draft',
       launchSource: 'terminal_context_menu',
+      launchPurpose: 'session-fork',
       launchPlatform: 'darwin'
     }
   },
@@ -159,7 +160,8 @@ export const AGENT_LAUNCH_CALLER_PROFILES: readonly AgentLaunchCallerProfile[] =
       promptDelivery: 'submit-after-ready',
       initialCwd: '/repo/worktree/packages/app',
       // Caller-supplied, not fixed at the call site: one representative value stands in.
-      launchSource: 'command_palette'
+      launchSource: 'command_palette',
+      launchPurpose: 'session-continuation'
     }
   },
   {

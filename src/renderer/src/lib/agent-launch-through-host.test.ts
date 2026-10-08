@@ -110,6 +110,38 @@ beforeEach(() => {
 })
 
 describe('a desktop launch through the host', () => {
+  it('keeps desktop draft transport, boolean options and floating activation through admission', () => {
+    callRuntimeRpc.mockReturnValue(new Promise(() => {}))
+    const desktopPrompt = {
+      text: 'editable notes',
+      delivery: 'draft',
+      transport: { kind: 'desktop-new-tab', promptDelivery: 'draft' }
+    } as const
+    const { tabId } = launchAgentThroughHost({
+      agent: 'claude',
+      worktreeId: WT,
+      prompt: desktopPrompt.text,
+      desktopPrompt,
+      sessionOptions: { model: 'chosen', thinking: true },
+      activate: false,
+      pendingActivationSpawn: true,
+      quickCommandLabel: 'Review'
+    })
+    expect(lastParams()).toMatchObject({
+      prompt: desktopPrompt,
+      sessionOptions: { model: 'chosen', thinking: true },
+      presentation: 'background'
+    })
+    expect(store.getState().activeTabId).not.toBe(tabId)
+    expect(launchTab(tabId)).toMatchObject({
+      quickCommandLabel: 'Review',
+      pendingActivationSpawn: true
+    })
+    expect(
+      agentLaunchPaneSpawnHold(tabId, launchTab(tabId)!.agentLaunchPane!.leafId)
+    ).not.toBeNull()
+  })
+
   it('shows its tab at the click, in its split, waiting for the host before it spawns', () => {
     const reply = deferred<unknown>()
     callRuntimeRpc.mockReturnValue(reply.promise)
@@ -244,5 +276,41 @@ describe('a desktop launch through the host', () => {
       code: 'worktree_not_found'
     })
     expect(launchTab(tabId)).toBeUndefined()
+  })
+
+  it('keeps a background desktop launch in its original pane on a definite capacity refusal', async () => {
+    const unrecorded = deferred<unknown>()
+    callRuntimeRpc
+      .mockRejectedValueOnce(rpcError('agent_session_operation_capacity'))
+      .mockReturnValueOnce(unrecorded.promise)
+    const selectedTab = store.getState().createTab(WT).id
+    const desktopPrompt = {
+      text: 'editable notes',
+      delivery: 'draft',
+      transport: { kind: 'desktop-new-tab', promptDelivery: 'draft' }
+    } as const
+    const { tabId, outcome } = launchAgentThroughHost({
+      agent: 'claude',
+      worktreeId: WT,
+      prompt: desktopPrompt.text,
+      desktopPrompt,
+      activate: false
+    })
+    const paneKey = lastPaneKey()
+    await vi.waitFor(() => expect(callRuntimeRpc).toHaveBeenCalledTimes(2))
+
+    const [, method, params] = callRuntimeRpc.mock.calls[1]!
+    expect(method).toBe('agent.launch')
+    expect(params).toMatchObject({ prompt: desktopPrompt, paneKey, presentation: 'background' })
+    expect(params).not.toHaveProperty('operationId')
+    expect(store.getState().activeTabId).toBe(selectedTab)
+    const leafId = launchTab(tabId)!.agentLaunchPane!.leafId
+    expect(agentLaunchPaneSpawnHold(tabId, leafId)).not.toBeNull()
+
+    unrecorded.resolve(terminalResult(paneKey))
+    await expect(outcome).resolves.toEqual({ kind: 'started', unrecorded: true })
+    expect(launchTab(tabId)).toBeDefined()
+    expect(store.getState().activeTabId).toBe(selectedTab)
+    expect(store.getState().tabsByWorktree[WT]).toHaveLength(2)
   })
 })

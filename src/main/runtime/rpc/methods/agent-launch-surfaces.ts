@@ -42,6 +42,7 @@ import {
 import { AgentLaunchTabClosedError } from '../../../../shared/agent-launch-tab-closed'
 import {
   agentLaunchMovesHostWindow,
+  type AgentLaunchView,
   type EarlyAgentLaunchTab
 } from './agent-launch-tab-publication'
 
@@ -55,7 +56,8 @@ export function agentLaunchSurfaceFactory(
   terminalSpawn: TerminalSpawnDispatch = trackTerminalSpawnDispatch(),
   // The tab shown before the launch ran; asked at spawn, since the window's answer and the user's
   // close can both land after admission.
-  earlyTab: Pick<EarlyAgentLaunchTab, 'windowShowsTab' | 'closedByUser'> | null = null
+  earlyTab: Pick<EarlyAgentLaunchTab, 'windowShowsTab' | 'closedByUser'> | null = null,
+  presentation: AgentLaunchView['presentation'] = undefined
 ): AgentLaunchSurfaceFactory {
   const movesHostWindow = agentLaunchMovesHostWindow(context)
   return {
@@ -177,7 +179,11 @@ export function agentLaunchSurfaceFactory(
         ...(paneKey ? { ...paneIdentity(paneKey), requireFreshPane: true } : {}),
         ...(launchSource ? { launchSource } : {}),
         ...(viewMode ? { viewMode } : {}),
-        ...(earlyTab?.windowShowsTab() || !movesHostWindow ? { surfaceOwner: false as const } : {}),
+        // Focused launches keep host spawning; their early tab already handles selection.
+        ...(presentation === 'background' ? { presentation } : {}),
+        ...(presentation === 'background' || earlyTab?.windowShowsTab() || !movesHostWindow
+          ? { surfaceOwner: false as const }
+          : {}),
         onPtySpawnDispatched: terminalSpawn.onPtySpawnDispatched
       })
       const terminal = await created.catch(terminalSpawn.rethrow)

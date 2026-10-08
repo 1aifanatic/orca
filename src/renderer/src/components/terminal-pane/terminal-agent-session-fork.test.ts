@@ -148,6 +148,7 @@ describe('forkAgentSessionFromPane', () => {
         worktreeId: 'wt-fork',
         prompt: expect.stringContaining('User: compare OAuth options'),
         promptDelivery: 'draft',
+        launchPurpose: 'session-fork',
         launchSource: 'terminal_context_menu'
       })
     )

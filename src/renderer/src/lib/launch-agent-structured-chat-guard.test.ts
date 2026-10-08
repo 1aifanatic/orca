@@ -3,6 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockCreateTab = vi.fn()
+const callRuntimeRpc = vi.hoisted(() => vi.fn(() => new Promise(() => {})))
+vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  callRuntimeRpc
+}))
 const mockCreateUnifiedTab = vi.fn<
   (
     worktreeId: string,
@@ -376,7 +381,13 @@ describe('structured chat adoption guard on the launch path', () => {
       worktreeId: 'wt-1'
     })
 
-    expect(result?.surface).toEqual({ kind: 'local-terminal', tabId: 'tab-1' })
+    expect(result?.surface).toEqual({ kind: 'local-terminal', tabId: expect.any(String) })
+    expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
+      { kind: 'local' },
+      'agent.launchReplay',
+      expect.objectContaining({ agent: 'codex' })
+    )
+    expect(store.queueTabStartupCommand).not.toHaveBeenCalled()
     expect(mockLaunchStructuredCodexSession).not.toHaveBeenCalled()
     expect(mockCreateTab).toHaveBeenCalledWith(
       'wt-1',

@@ -243,6 +243,7 @@ export async function startAgentSessionFork(fork: PreparedAgentSessionFork): Pro
     projectRuntime: sourceProjectRuntime
   })
   const result = launchAgentInNewTab({
+    launchPurpose: 'session-fork',
     agent: fork.agent,
     worktreeId: forkWorktreeId,
     prompt: fork.prompt,

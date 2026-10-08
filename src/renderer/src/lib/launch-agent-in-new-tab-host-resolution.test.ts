@@ -5,6 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockCreateTab = vi.fn()
 const mockQueueTabStartupCommand = vi.fn()
+const callRuntimeRpc = vi.hoisted(() => vi.fn(() => new Promise(() => {})))
+vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  callRuntimeRpc
+}))
+let launchCommand: string | undefined
 
 type StoreRepo = {
   id: string
@@ -92,16 +98,24 @@ function worktreeOn(hostId: string, path: string): StoreWorktree {
 
 async function launchOnLinux(): Promise<void> {
   const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
-  launchAgentInNewTab({
+  const result = launchAgentInNewTab({
     requestId: 'request-1',
     agent: 'claude-agent-teams',
     worktreeId: 'wt-1',
     launchPlatform: 'linux'
   })
-}
-
-function queuedCommand(): string {
-  return mockQueueTabStartupCommand.mock.calls[0]?.[1]?.command
+  launchCommand = result?.startupPlan.launchCommand
+  expect(mockQueueTabStartupCommand).not.toHaveBeenCalled()
+  expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
+    { kind: 'local' },
+    'agent.launchReplay',
+    expect.objectContaining({
+      target: { kind: 'existing', worktree: 'id:wt-1' },
+      prompt: expect.objectContaining({
+        transport: { kind: 'desktop-new-tab', promptDelivery: 'auto-submit' }
+      })
+    })
+  )
 }
 
 describe('launchAgentInNewTab execution host resolution', () => {
@@ -133,7 +147,7 @@ describe('launchAgentInNewTab execution host resolution', () => {
 
     await launchOnLinux()
 
-    expect(queuedCommand()).toBe("orca-ide claude-teams '--dangerously-skip-permissions'")
+    expect(launchCommand).toBe("orca-ide claude-teams '--dangerously-skip-permissions'")
   })
 
   it('keeps a worktree on one SSH host remote while a rival row names another', async () => {
@@ -145,7 +159,7 @@ describe('launchAgentInNewTab execution host resolution', () => {
 
     await launchOnLinux()
 
-    expect(queuedCommand()).toBe("orca claude-teams '--dangerously-skip-permissions'")
+    expect(launchCommand).toBe("orca claude-teams '--dangerously-skip-permissions'")
   })
 
   it('keeps a runtime host reaching a nested SSH target on the relay shim name', async () => {
@@ -156,7 +170,7 @@ describe('launchAgentInNewTab execution host resolution', () => {
 
     await launchOnLinux()
 
-    expect(queuedCommand()).toBe("orca claude-teams '--dangerously-skip-permissions'")
+    expect(launchCommand).toBe("orca claude-teams '--dangerously-skip-permissions'")
   })
 
   it('keeps a runtime host with no nested SSH target on the local CLI name', async () => {
@@ -167,6 +181,6 @@ describe('launchAgentInNewTab execution host resolution', () => {
 
     await launchOnLinux()
 
-    expect(queuedCommand()).toBe("orca-ide claude-teams '--dangerously-skip-permissions'")
+    expect(launchCommand).toBe("orca-ide claude-teams '--dangerously-skip-permissions'")
   })
 })

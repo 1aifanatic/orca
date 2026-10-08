@@ -15,7 +15,6 @@ import {
   queuedStartupPayload,
   resetLaunchFunnelStore
 } from './agent-launch-funnel-test-harness'
-import { newTabPromptLaunchesThroughHost } from './launch-agent-new-tab-host-route'
 
 const store = createLaunchFunnelStore()
 
@@ -52,10 +51,7 @@ const callRuntimeRpc = vi.hoisted(() => vi.fn(() => new Promise(() => {})))
 vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc, RuntimeRpcCallError: Error }))
 
 function launchesThroughHost(profile: AgentLaunchCallerProfile): boolean {
-  return newTabPromptLaunchesThroughHost({
-    promptDelivery: profile.args.promptDelivery ?? 'auto-submit',
-    pastesPrompt: (profile.args.prompt?.trim() ?? '').length > 0
-  })
+  return profile.args.launchPurpose !== 'session-fork'
 }
 
 /**
@@ -155,9 +151,9 @@ describe('agent launch caller arguments and permission bypass', () => {
     async (agent, _mode, bypassFlag) => {
       const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-      launchAgentInNewTab({ requestId: 'request-2', agent, worktreeId: 'wt-1' })
+      const result = launchAgentInNewTab({ requestId: 'request-2', agent, worktreeId: 'wt-1' })
 
-      expect(queuedStartupCommand(store)).toContain(bypassFlag)
+      expect(result?.startupPlan.launchCommand).toContain(bypassFlag)
     }
   )
 
@@ -167,27 +163,31 @@ describe('agent launch caller arguments and permission bypass', () => {
       store.settings = { ...store.settings, agentDefaultArgs: { [agent]: '' } }
       const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-      launchAgentInNewTab({ requestId: 'request-3', agent, worktreeId: 'wt-1' })
+      const result = launchAgentInNewTab({ requestId: 'request-3', agent, worktreeId: 'wt-1' })
 
       // A stored empty string owns the key, so it beats the shipped bypass default.
-      expect(queuedStartupCommand(store)).not.toContain(bypassFlag)
+      expect(result?.startupPlan.launchCommand).not.toContain(bypassFlag)
     }
   )
 
   it('carries a bypass posture that lives in the environment rather than in argv', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ requestId: 'request-4', agent: 'goose', worktreeId: 'wt-1' })
+    const result = launchAgentInNewTab({
+      requestId: 'request-4',
+      agent: 'goose',
+      worktreeId: 'wt-1'
+    })
 
     // Goose has no bypass flag; its default posture is an env var, and a migration that carried
     // only argv would silently downgrade it.
-    expect(queuedStartupPayload(store)?.env).toEqual({ GOOSE_MODE: 'auto' })
+    expect(result?.startupPlan.env).toEqual({ GOOSE_MODE: 'auto' })
   })
 
   it('restores the shipped bypass default when a caller passes agentArgs as undefined', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-5',
       agent: 'codex',
       worktreeId: 'wt-1',
@@ -197,45 +197,49 @@ describe('agent launch caller arguments and permission bypass', () => {
     // Characterized, not endorsed: an explicit `undefined` is indistinguishable from an omitted
     // key here, so a caller that resolved "apply no saved arguments" to `undefined` gets the
     // shipped bypass default back instead of launching without it.
-    expect(queuedStartupCommand(store)).toBe(`codex '${CODEX_BYPASS}'`)
-    expect(queuedStartupPayload(store)).not.toHaveProperty('agentArgsOverride')
+    expect(result?.startupPlan.launchCommand).toBe(`codex '${CODEX_BYPASS}'`)
+    expect(hostLaunchRequest(callRuntimeRpc)).not.toHaveProperty('agentArgs')
   })
 
   it('launches without any arguments when a caller passes agentArgs as null', async () => {
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-6',
       agent: 'codex',
       worktreeId: 'wt-1',
       agentArgs: null
     })
 
-    expect(queuedStartupCommand(store)).toBe('codex')
-    expect(queuedStartupPayload(store)?.agentArgsOverride).toBeNull()
+    expect(result?.startupPlan.launchCommand).toBe('codex')
+    expect(hostLaunchRequest(callRuntimeRpc)?.agentArgs).toBeNull()
   })
 
   it('lets a per-launch argument beat the stored setting', async () => {
     store.settings = { ...store.settings, agentDefaultArgs: { codex: '--model stored' } }
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-7',
       agent: 'codex',
       worktreeId: 'wt-1',
       agentArgs: '--model per-launch'
     })
 
-    expect(queuedStartupCommand(store)).toBe("codex '--model' 'per-launch'")
+    expect(result?.startupPlan.launchCommand).toBe("codex '--model' 'per-launch'")
   })
 
   it('carries the stored launch environment onto the queued tab', async () => {
     store.settings = { ...store.settings, agentDefaultEnv: { codex: { CODEX_PROFILE: 'team' } } }
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({ requestId: 'request-8', agent: 'codex', worktreeId: 'wt-1' })
+    const result = launchAgentInNewTab({
+      requestId: 'request-8',
+      agent: 'codex',
+      worktreeId: 'wt-1'
+    })
 
-    const payload = queuedStartupPayload(store)
+    const payload = result?.startupPlan
     expect(payload?.env).toEqual({ CODEX_PROFILE: 'team' })
     expect(payload?.launchConfig).toMatchObject({
       agentArgs: CODEX_BYPASS,
@@ -264,10 +268,10 @@ describe('agent launch caller arguments and permission bypass', () => {
       model: 'gpt-5.2-codex',
       effort: 'medium'
     })
-    expect(queuedStartupCommand(store)).toContain("'-m' 'gpt-5.2-codex'")
-    expect(queuedStartupCommand(store)).toContain("'-c' 'model_reasoning_effort=medium'")
+    expect(result?.startupPlan.launchCommand).toContain("'-m' 'gpt-5.2-codex'")
+    expect(result?.startupPlan.launchCommand).toContain("'-c' 'model_reasoning_effort=medium'")
     // The remembered options ride beside the bypass default rather than replacing it.
-    expect(queuedStartupCommand(store)).toContain(CODEX_BYPASS)
+    expect(result?.startupPlan.launchCommand).toContain(CODEX_BYPASS)
   })
 
   it('keeps remembered session options out of a plain terminal launch', async () => {
@@ -286,6 +290,6 @@ describe('agent launch caller arguments and permission bypass', () => {
     })
 
     expect(result?.startupPlan?.sessionOptions).toBeUndefined()
-    expect(queuedStartupCommand(store)).not.toContain("'-m'")
+    expect(result?.startupPlan.launchCommand).not.toContain("'-m'")
   })
 })

@@ -13,6 +13,7 @@ vi.mock('@/lib/launch-agent-paste-timeout-notice', () => ({
 }))
 const store = vi.hoisted(() => ({
   seedNativeChatLaunchPrompt: vi.fn(),
+  seedNativeChatLaunchDraft: vi.fn(),
   markNativeChatLaunchPromptFailed: vi.fn()
 }))
 vi.mock('@/store', () => ({ useAppStore: { getState: () => store } }))
@@ -80,6 +81,73 @@ beforeEach(() => {
 })
 
 describe('an AI button launched through the host, which delivers its prompt', () => {
+  it('keeps a desktop draft editable and mirrors it without a submitted chat bubble', async () => {
+    const answer = deferredOutcome()
+    const onPromptDelivered = vi.fn()
+    const desktopPrompt = {
+      text: 'editable notes',
+      delivery: 'draft',
+      transport: { kind: 'desktop-new-tab', promptDelivery: 'draft' }
+    } as const
+    const { promptDeliveryResult } = launchNewTabPromptThroughHost({
+      agent: 'codex',
+      worktreeId: 'wt-1',
+      prompt: desktopPrompt.text,
+      pasteContent: desktopPrompt.text,
+      desktopPrompt,
+      onPromptDelivered
+    })
+    expect(store.seedNativeChatLaunchDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: TAB, agent: 'codex', text: 'editable notes' })
+    )
+    expect(onPromptDelivered).not.toHaveBeenCalled()
+    answer({ kind: 'started', prompt: { delivery: 'draft', outcome: 'handed-to-terminal' } })
+    await expect(promptDeliveryResult).resolves.toEqual({ delivered: true, failureNotified: false })
+    expect(onPromptDelivered).toHaveBeenCalledOnce()
+    expect(store.seedNativeChatLaunchPrompt).not.toHaveBeenCalled()
+    expect(notice.onTimeout).not.toHaveBeenCalled()
+  })
+
+  it('does not invent prompt delivery or a timeout notice for an empty desktop launch', async () => {
+    deferredOutcome()({ kind: 'started' })
+    const onPromptDelivered = vi.fn()
+    await launchNewTabPromptThroughHost({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      prompt: '',
+      pasteContent: '',
+      desktopPrompt: {
+        text: '',
+        delivery: 'submit',
+        transport: { kind: 'desktop-new-tab', promptDelivery: 'auto-submit' }
+      },
+      onPromptDelivered
+    }).promptDeliveryResult
+    expect(onPromptDelivered).not.toHaveBeenCalled()
+    expect(store.seedNativeChatLaunchPrompt).not.toHaveBeenCalled()
+    expect(notice.onTimeout).not.toHaveBeenCalled()
+  })
+
+  it('leaves startup-carried submitted prompts without a pasted chat bubble, as main does', async () => {
+    deferredOutcome()({
+      kind: 'started',
+      prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+    })
+    await launchNewTabPromptThroughHost({
+      agent: 'codex',
+      worktreeId: 'wt-1',
+      prompt: 'first turn',
+      pasteContent: 'first turn',
+      desktopPrompt: {
+        text: 'first turn',
+        delivery: 'submit',
+        transport: { kind: 'desktop-new-tab', promptDelivery: 'auto-submit' }
+      },
+      seedSubmittedChatCopy: false
+    }).promptDeliveryResult
+    expect(store.seedNativeChatLaunchPrompt).not.toHaveBeenCalled()
+  })
+
   it('sends the host what main pasted, and runs the follow-up once the host handed it over', async () => {
     const answer = deferredOutcome()
     const onPromptDelivered = vi.fn()

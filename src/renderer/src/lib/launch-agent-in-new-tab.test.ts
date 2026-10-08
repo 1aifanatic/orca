@@ -120,6 +120,7 @@ vi.mock('@/lib/agent-paste-draft', () => ({
 // still take; an AI button's host launch reuses that paste and is pinned in its own tests.
 vi.mock('@/lib/launch-agent-new-tab-host-route', () => ({
   newTabPromptLaunchesThroughHost: () => false,
+  newTabTerminalLaunchesThroughHost: () => false,
   launchNewTabPromptThroughHost: vi.fn()
 }))
 

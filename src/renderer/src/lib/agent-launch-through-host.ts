@@ -31,6 +31,7 @@ import type { LaunchSource } from '../../../shared/telemetry-events'
 import type { Tab } from '../../../shared/tab-types'
 import type { SessionOptionValue } from '../../../shared/native-chat-session-options'
 import type { AgentLaunchFollowUp } from '../../../shared/agent-launch-follow-up'
+import type { DesktopNewTabPrompt } from '../../../shared/desktop-new-tab-prompt'
 
 export type HostAgentLaunchArgs = {
   agent: TuiAgent
@@ -41,6 +42,8 @@ export type HostAgentLaunchArgs = {
   prompt: string
   /** What the host pastes and submits once the agent is ready; it can differ from `prompt`. */
   hostPrompt?: string
+  /** The desktop startup and input rules for a fresh terminal tab. */
+  desktopPrompt?: DesktopNewTabPrompt
   /** Recorded on the launch, so a window that reloads mid-launch still runs it once. */
   followUp?: AgentLaunchFollowUp
   /** Absent uses the settings default; `null` means no arguments. */
@@ -54,6 +57,7 @@ export type HostAgentLaunchArgs = {
   pendingActivationSpawn?: boolean
   /** The view the tab opens in, decided as for any new agent tab. */
   viewMode?: Tab['viewMode']
+  activate?: boolean
 }
 
 /** What became of the launch, as this window must tell it. */
@@ -107,23 +111,31 @@ function launchParams(args: HostAgentLaunchArgs) {
   return {
     agent: args.agent,
     target: { kind: 'existing', worktree: `id:${args.worktreeId}` },
-    ...(args.hostPrompt
-      ? // Temporary `paste`: kept off the launch line, as these launches delivered on main.
-        {
-          prompt: {
-            text: args.hostPrompt,
-            delivery: 'submit' as const,
-            transport: 'paste' as const
+    ...(args.desktopPrompt
+      ? { prompt: args.desktopPrompt }
+      : args.hostPrompt
+        ? // Temporary `paste`: kept off the launch line, as these launches delivered on main.
+          {
+            prompt: {
+              text: args.hostPrompt,
+              delivery: 'submit' as const,
+              transport: 'paste' as const
+            }
           }
-        }
-      : {}),
+        : {}),
     ...(args.followUp ? { followUp: args.followUp } : {}),
     ...(args.agentArgs !== undefined ? { agentArgs: args.agentArgs } : {}),
     ...(args.cwd ? { cwd: args.cwd } : {}),
-    ...stringSessionOptions(args.sessionOptions),
+    ...(args.desktopPrompt && args.sessionOptions
+      ? { sessionOptions: args.sessionOptions }
+      : stringSessionOptions(args.sessionOptions)),
     ...(args.launchSource ? { launchSource: args.launchSource } : {}),
     ...(args.groupId ? { placement: { groupId: args.groupId } } : {}),
-    presentation: 'focused'
+    presentation:
+      args.activate === false ||
+      (args.desktopPrompt && useAppStore.getState().activeWorktreeId !== args.worktreeId)
+        ? 'background'
+        : 'focused'
   }
 }
 
@@ -220,6 +232,7 @@ export function launchAgentThroughHost(args: HostAgentLaunchArgs): {
     launchAgent: args.agent,
     quickCommandLabel: args.quickCommandLabel,
     ...(args.pendingActivationSpawn ? { pendingActivationSpawn: true } : {}),
+    ...(args.activate === false ? { activate: false } : {}),
     ...(args.viewMode ? { viewMode: args.viewMode } : {})
   })
   rememberAgentLaunchPanePrompt(tabId, args.prompt)

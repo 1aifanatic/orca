@@ -8,12 +8,7 @@ import {
   callerProfileCases,
   type AgentLaunchCallerProfile
 } from './agent-launch-caller-profiles-test-harness'
-import {
-  createLaunchFunnelStore,
-  queuedStartupCommand,
-  queuedStartupPayload,
-  resetLaunchFunnelStore
-} from './agent-launch-funnel-test-harness'
+import { createLaunchFunnelStore, resetLaunchFunnelStore } from './agent-launch-funnel-test-harness'
 
 const store = createLaunchFunnelStore()
 /** Loosely typed so the suite can read back the whole delivery request the funnel built. */
@@ -66,11 +61,6 @@ function hostPrompts(): unknown[] {
   return callRuntimeRpc.mock.calls.flatMap(([, , params]) => (params.prompt ? [params.prompt] : []))
 }
 vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc, RuntimeRpcCallError: Error }))
-
-/** What the window's own launch command carries; a launch started by the host queues none. */
-function commandCarries(text: string): boolean {
-  return queuedStartupCommand(store)?.includes(text) ?? false
-}
 
 const PROMPT = 'Explain the failing check and propose a fix.'
 
@@ -168,14 +158,14 @@ describe('agent launch caller prompt transport', () => {
       if (profile.args.prompt === undefined) {
         expect(result?.pasteDraftAfterLaunch).toBe(false)
         expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
-        expect(commandCarries(PROMPT)).toBe(false)
+        expect(result?.startupPlan.launchCommand.includes(PROMPT)).toBe(false)
         return
       }
       // quick-command is the only prompt-carrying call site that names no delivery mode, so its text
       // rides argv; every other one asks for draft or submit-after-ready and pastes.
       const ridesArgv = id === 'quick-command'
       expect(result?.pasteDraftAfterLaunch).toBe(!ridesArgv)
-      expect(commandCarries(PROMPT)).toBe(ridesArgv)
+      expect(result?.startupPlan.launchCommand.includes(PROMPT)).toBe(ridesArgv)
       // An AI button's text goes to the host, which pastes it as main's window did; a draft stays
       // the window's own paste.
       if (profile.args.promptDelivery === 'submit-after-ready') {
@@ -183,8 +173,17 @@ describe('agent launch caller prompt transport', () => {
           { text: expect.stringContaining(PROMPT), delivery: 'submit', transport: 'paste' }
         ])
         expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
-      } else {
+      } else if (profile.args.launchPurpose === 'session-fork') {
         expect(hostPrompts()).toEqual([])
+      } else {
+        expect(hostPrompts()).toEqual([
+          {
+            text: PROMPT,
+            delivery: 'submit',
+            transport: { kind: 'desktop-new-tab', promptDelivery: 'auto-submit' }
+          }
+        ])
+        expect(store.queueTabStartupCommand).not.toHaveBeenCalled()
       }
     }
   )
@@ -242,23 +241,24 @@ describe('agent launch caller prompt transport', () => {
     })
 
     expect(result?.pasteDraftAfterLaunch).toBe(row.transport === 'paste')
-    expect(commandCarries(PROMPT)).toBe(row.transport === 'argv')
+    expect(result?.startupPlan.launchCommand.includes(PROMPT)).toBe(row.transport === 'argv')
     if (row.transport === 'paste' && row.promptDelivery === 'submit-after-ready') {
       // The host pastes and submits it once the agent is ready, as main's window did.
       expect(hostPrompts()).toEqual([{ text: PROMPT, delivery: 'submit', transport: 'paste' }])
       expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
-    } else if (row.transport === 'paste') {
-      await vi.waitFor(() =>
-        expect(mockPasteDraftWhenAgentReady.mock.calls[0]?.[0]).toMatchObject({
-          content: PROMPT,
-          submit: row.submits
-        })
-      )
     } else {
+      expect(hostPrompts()).toEqual([
+        {
+          text: PROMPT,
+          delivery: row.submits ? 'submit' : 'draft',
+          transport: { kind: 'desktop-new-tab', promptDelivery: row.promptDelivery }
+        }
+      ])
       expect(mockPasteDraftWhenAgentReady).not.toHaveBeenCalled()
+      expect(store.queueTabStartupCommand).not.toHaveBeenCalled()
     }
     if (row.transport === 'env') {
-      expect(queuedStartupPayload(store)?.env).toMatchObject({
+      expect(result?.startupPlan.env).toMatchObject({
         ORCA_HERMES_STARTUP_QUERY: PROMPT
       })
     }
