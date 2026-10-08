@@ -1,11 +1,5 @@
-// A composer's chips still on their way (a save, an upload, a server's answer), per pane scope,
-// owned here rather than by the composer. A prompt card unmounts the composer, so anything owed to
-// the message must outlive it: the composer that comes back shows the same chips, Send waits for
-// them, and each settles into the scope's draft whichever composer, if any, is showing. They are
-// never saved with the draft, so a restored draft cannot bring back an upload as if it were
-// attached. Every chip dies with its operation: settled or dropped when the save or upload settles
-// (each bounded by its call timeout), removed by the user, or dropped with the drafts of a tab or
-// workspace the user closed or removed, so none settles into a draft nothing could find or delete.
+// Pending operations belong to draft scopes and outlive their composers. They are not persisted.
+// Completion, failure, explicit removal, draft/workspace deletion or renderer exit ends ownership.
 
 import { useCallback, useSyncExternalStore } from 'react'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'

@@ -172,9 +172,7 @@ export function useNativeChatComposerAttachments({
   // takes a beat to save (or upload over SSH) never reads as a dropped paste.
   const beginPendingImageAttachment = useCallback(
     (previewUrl?: string, pendingName?: string, options?: { hidden?: true }): string | null => {
-      // Without image input the saved paste is attached by path once it lands, so no image chip;
-      // a named upload chip is a file, not an image, and still shows.
-      if (disabledRef.current || (!acceptsImages && pendingName === undefined)) {
+      if (disabledRef.current) {
         return null
       }
       if (attachmentTargetBlocked()) {
@@ -187,7 +185,9 @@ export function useNativeChatComposerAttachments({
         path: '',
         pending: true,
         ...(pendingName ? { pendingName } : {}),
-        ...(options?.hidden ? { hidden: true } : {})
+        ...(options?.hidden || (!acceptsImages && pendingName === undefined)
+          ? { hidden: true }
+          : {})
       })
       setPreview(id, previewUrl)
       return id
@@ -203,19 +203,39 @@ export function useNativeChatComposerAttachments({
     ]
   )
 
+  const attachPendingReferences = useCallback(
+    (references: { id: string; path: string }[]) => {
+      settleNativeChatPendingAttachmentReferences(
+        attachmentScopeKey,
+        references,
+        mountedRef.current && !disabledRef.current && !isComposing()
+          ? (paths) => attachResolvedPaths(paths, null)
+          : undefined
+      )
+    },
+    [attachResolvedPaths, attachmentScopeKey, disabledRef, isComposing, mountedRef]
+  )
+
   const resolvePendingImageAttachment = useCallback(
     (id: string, path: string, connectionId?: string | null) => {
-      settleNativeChatPendingAttachment(attachmentScopeKey, id, path, connectionId)
+      if (acceptsImages) {
+        settleNativeChatPendingAttachment(attachmentScopeKey, id, path, connectionId)
+      } else {
+        attachPendingReferences([{ id, path }])
+      }
     },
-    [attachmentScopeKey]
+    [acceptsImages, attachPendingReferences, attachmentScopeKey]
   )
 
   const revealPendingImageAttachment = useCallback(
     (id: string, previewUrl?: string) => {
+      if (!acceptsImages) {
+        return
+      }
       setPreview(id, previewUrl)
       revealNativeChatPendingAttachment(attachmentScopeKey, id)
     },
-    [attachmentScopeKey, setPreview]
+    [acceptsImages, attachmentScopeKey, setPreview]
   )
 
   // A pending chip was never saved, so dropping one, even late from a replaced composer, leaves
@@ -235,23 +255,12 @@ export function useNativeChatComposerAttachments({
       drop: dropPendingImageAttachment,
       // At the caret, as every attach does; mid-composition or once the composer is gone, into the
       // scope's draft, which keeps it until the composition settles or the composer comes back.
-      attachReferences: (references) => {
-        settleNativeChatPendingAttachmentReferences(
-          attachmentScopeKey,
-          references,
-          mountedRef.current && !isComposing()
-            ? (paths) => attachResolvedPaths(paths, null)
-            : undefined
-        )
-      }
+      attachReferences: attachPendingReferences
     }),
     [
-      attachResolvedPaths,
-      attachmentScopeKey,
+      attachPendingReferences,
       beginPendingImageAttachment,
       dropPendingImageAttachment,
-      isComposing,
-      mountedRef,
       resolvePendingImageAttachment
     ]
   )
