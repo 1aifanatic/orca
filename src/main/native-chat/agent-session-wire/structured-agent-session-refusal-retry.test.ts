@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS } from '../../../shared/agent-session-host-authority'
-import { AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT } from '../../../shared/agent-session-operation-ledger'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
@@ -198,22 +197,11 @@ async function setLease(
   await harness.store.transitionHandoff(SESSION, update)
 }
 
-async function fillOperationLedger(harness: Harness): Promise<void> {
-  while (
-    harness.store.listOperationRows().filter((row) => row.callerKey === CALLER.callerKey).length <
-    AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT
-  ) {
-    await harness.store.admitOperation({
-      callerKey: CALLER.callerKey,
-      operationId: operationId(),
-      fingerprint: 'capacity-fixture',
-      now: NOW
-    })
-  }
-}
-
 // sendPlan and setOptionPlan have no unsupported branch.
 const UNREACHABLE = new Set<Pair>([
+  // Older hosts can refuse by receipt quota; this host retains by age without a quota.
+  'agentSession.send:agent_session_operation_capacity',
+  'agentSession.setOption:agent_session_operation_capacity',
   'agentSession.send:structured_agent_session_unsupported',
   'agentSession.setOption:structured_agent_session_unsupported',
   // performPrompt is the sole producer of prompt revision and resolution refusals.
@@ -313,18 +301,6 @@ describe('agentSessionRefusalOperationState host oracle', () => {
           )
         )
       }
-    }
-
-    const capacity = await createHarness()
-    await fillOperationLedger(capacity)
-    for (const method of METHODS) {
-      const spec = { method, operationId: operationId() }
-      record(
-        await assertHostAgreement(capacity, spec, 'agent_session_operation_capacity', async () => ({
-          harness: await createHarness(),
-          spec
-        }))
-      )
     }
 
     const unknown = await createHarness()

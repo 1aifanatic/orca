@@ -11,10 +11,10 @@ import {
  * Durable client-operation ledger.
  *
  * `terminal.ensureAgentSession` / `terminal.createAgentSession` already enforce timestamped
- * operation ids with fingerprint conflict detection, age expiry, capacity limits, and tombstone
- * retention — but in memory, so a host restart turns "replay this create" into "spawn another
- * agent". These are the same rules over rows that survive a restart; the store writes a row in
- * the same atomic transaction as the lease reservation.
+ * operation ids with fingerprint conflict detection and age expiry, but in memory. Durable
+ * receipts survive restart and expire only after their ids can no longer be admitted as new.
+ * Their count never gates a user action; the store writes a receipt in the same atomic
+ * transaction as the lease reservation.
  */
 
 import {
@@ -27,7 +27,7 @@ import {
   type AgentSessionConversationCommandResult
 } from './agent-session-conversation-command'
 
-export const AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT = 512
+/** Legacy phone uncertainty-journal limit; host receipts expire by age without a count limit. */
 export const AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT = 4_096
 
 export type AgentSessionOperationOutcome =
@@ -271,8 +271,6 @@ export function evaluateAgentSessionOperation(args: {
   operationId: string
   fingerprint: string
   now: number
-  perClientLimit?: number
-  globalLimit?: number
 }): AgentSessionOperationDecision {
   const { rows, callerKey, operationId, fingerprint, now } = args
   const operationTimestamp = parseAgentSessionOperationTimestamp(operationId)
@@ -307,23 +305,7 @@ export function evaluateAgentSessionOperation(args: {
       details: { reason: 'operationExpired' }
     }
   }
-  const perClientLimit = args.perClientLimit ?? AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT
-  const globalLimit = args.globalLimit ?? AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT
-  let callerCount = 0
-  for (const row of rows.values()) {
-    if (row.callerKey === callerKey) {
-      callerCount += 1
-    }
-  }
-  if (callerCount >= perClientLimit || rows.size >= globalLimit) {
-    // Why: tombstones cannot be evicted early without making an old replay capable of spawning
-    // again; reject new ids until retained rows age out.
-    return {
-      decision: 'refused',
-      code: 'agent_session_operation_capacity',
-      details: { reason: 'operationCapacity' }
-    }
-  }
+  // Expiry bounds history; evicting a still-admissible id would let its retry run twice.
   return {
     decision: 'admit',
     row: pendingAgentSessionOperationRow({ callerKey, operationId, fingerprint, now })

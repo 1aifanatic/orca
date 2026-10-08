@@ -28,8 +28,6 @@ function evaluate(
     operationId: string
     fingerprint: string
     now: number
-    perClientLimit: number
-    globalLimit: number
   }> = {}
 ) {
   return evaluateAgentSessionOperation({
@@ -115,21 +113,15 @@ describe('operation admission', () => {
     ).toBe('admit')
   })
 
-  it('refuses new ids at the per-client and global caps rather than evicting tombstones', () => {
+  it('admits new ids beyond the former quotas without evicting replayable receipts', () => {
     const rows = new Map<string, AgentSessionOperationRow>()
-    admit(rows, { operationId: operationId(NOW, 'b'.repeat(32)) })
-    expect(evaluate(rows, { perClientLimit: 1 })).toEqual({
-      decision: 'refused',
-      code: 'agent_session_operation_capacity',
-      details: { reason: 'operationCapacity' }
-    })
-    // A different caller is still refused once the global cap is reached.
-    expect(evaluate(rows, { callerKey: 'client-2', globalLimit: 1 })).toEqual({
-      decision: 'refused',
-      code: 'agent_session_operation_capacity',
-      details: { reason: 'operationCapacity' }
-    })
-    expect(evaluate(rows, { callerKey: 'client-2', perClientLimit: 1 }).decision).toBe('admit')
+    const original = admit(rows)
+    for (let index = 0; index < 4_096; index += 1) {
+      admit(rows, { operationId: operationId(NOW, index.toString(16).padStart(32, '0')) })
+    }
+    expect(rows.size).toBe(4_097)
+    expect(evaluate(rows)).toEqual({ decision: 'replay', row: original })
+    expect(evaluate(rows, { callerKey: 'client-2' }).decision).toBe('admit')
   })
 })
 

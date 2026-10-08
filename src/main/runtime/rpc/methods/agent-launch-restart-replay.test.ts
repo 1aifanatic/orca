@@ -516,7 +516,7 @@ describe('a caller cannot claim an identity', () => {
   })
 })
 
-describe('the ledger stays bounded', () => {
+describe('launch receipt retention', () => {
   it('keeps one row per launch, retained from admission, across both writes', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
     deliverTerminalPrompt.mockImplementationOnce(
@@ -536,7 +536,7 @@ describe('the ledger stays bounded', () => {
     expect(row()?.recordedAt).toBe(afterFirstWrite?.recordedAt)
   })
 
-  it('holds the desktop to the same per-caller cap as every other caller', async () => {
+  it('admits a desktop launch beyond the former per-caller quota', async () => {
     const now = Date.now()
     for (let index = 0; index < 512; index += 1) {
       await store.admitOperation({
@@ -548,11 +548,10 @@ describe('the ledger stays bounded', () => {
     }
     const host = hostRuntime()
 
-    await expect(launch(host, PROMPTED_LAUNCH, { ...DESKTOP_IPC })).rejects.toThrow(
-      'agent_session_operation_capacity'
-    )
-    expect(host.createTerminal).not.toHaveBeenCalled()
-    // Another caller's namespace is not starved by it.
+    await expect(launch(host, PROMPTED_LAUNCH, { ...DESKTOP_IPC })).resolves.toMatchObject({
+      outcome: { kind: 'terminal' }
+    })
+    expect(host.createTerminal).toHaveBeenCalledOnce()
     await expect(launch(host)).resolves.toMatchObject({ outcome: { kind: 'terminal' } })
   })
 })
