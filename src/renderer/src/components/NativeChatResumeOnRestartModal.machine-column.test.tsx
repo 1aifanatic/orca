@@ -22,6 +22,7 @@ import { _resetNativeChatRestartOffer } from './native-chat-restart-offer-trigge
 import { pairedEnvironment } from './native-chat-restart-offer-test-support'
 import { button, chatBox, namedBox } from './native-chat-resume-on-restart-modal.test-support'
 import {
+  machineDisclosure,
   machineRow,
   machineRowFixture as row,
   machineToggle
@@ -106,22 +107,19 @@ afterEach(() => {
   useAppStore.setState(useAppStore.getInitialState(), true)
 })
 
-it('puts each machine’s box in the list’s one checkbox column, indenting only what is under it', async () => {
+it('puts each machine in the tree’s one checkbox column, its chats one level further in', async () => {
   await stage({ sessions: [row('l1', 'own')] }, { studio: { sessions: SERVER_ROWS } })
   await open('environment:studio')
 
   expect(document.querySelectorAll('[aria-label="Select all chats"]')).toHaveLength(1)
-  const machine = rowOf(machineToggle('studio-mac'))
-  const workspace = rowOf(namedBox('Select all chats in workspace-s1'))
-  const columns = 'grid-cols-[1.75rem_minmax(0,1fr)]'
-  expect(machine.classList.contains(columns)).toBe(true)
-  expect(workspace.classList.contains(columns)).toBe(true)
-  expect(machine.firstElementChild?.contains(machineToggle('studio-mac'))).toBe(true)
-  // Nested one level under the machine: the workspace's box, title and chats move right.
-  expect(workspace.querySelector<HTMLElement>(':scope > :nth-child(2)')?.style.marginLeft).toBe(
-    '40px'
-  )
-  expect(chatBox('s1').closest('ul')?.style.getPropertyValue('--resume-chat-indent')).toBe('60px')
+  // Every checkbox opens its row; nesting is the indent after it and the tree's own levels.
+  const level = (box: HTMLElement) => box.closest('[role="treeitem"]')?.getAttribute('aria-level')
+  for (const box of document.querySelectorAll<HTMLElement>('[role="tree"] [role="checkbox"]')) {
+    expect(box.closest('label')?.firstElementChild?.contains(box)).toBe(true)
+  }
+  expect(level(machineToggle('studio-mac'))).toBe('1')
+  expect(level(namedBox('Select all chats in workspace-s1'))).toBe('2')
+  expect(level(chatBox('s1'))).toBe('3')
 
   const order = [
     namedBox('Select all chats'),
@@ -145,20 +143,77 @@ it('puts each machine’s box in the list’s one checkbox column, indenting onl
   }
 })
 
-// A machine row heads its workspaces' boxes from outside them, and sits a step further from the
-// previous machine's boxes than one box from the next.
-it('heads each machine’s boxes from outside them, set apart from the machine before', async () => {
+// A machine is a node of the tree: its row heads its workspaces, says why it stopped and when, and
+// Left/Right on its checkbox close and open it as on any node.
+it('heads each machine’s workspaces with its own row, opened and closed from its checkbox', async () => {
   await stage({ sessions: [row('l1', 'own')] }, { studio: { sessions: SERVER_ROWS } })
   await open('environment:studio')
-  await act(async () => machineRow(LOCAL).click())
-  const localBox = rowOf(namedBox('Select all chats in workspace-l1')).parentElement!
-  const studio = rowOf(machineToggle('studio-mac'))
-  // Each workspace box draws its border in the content area; the machine row is in none of them.
-  expect(localBox.querySelector(':scope > [aria-hidden="true"]')).not.toBeNull()
-  expect(studio.closest('.relative')).toBeNull()
-  expect(localBox.compareDocumentPosition(studio) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  expect(studio.classList.contains('mt-3')).toBe(true)
-  expect(localBox.classList.contains('my-1.5')).toBe(true)
+  const studio = machineRow('studio-mac')
+  expect(studio.textContent).toContain('Installed an update · now')
+  expect(
+    studio.compareDocumentPosition(namedBox('Select all chats in workspace-s1')) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+  expect(machineRow(LOCAL).getAttribute('aria-expanded')).toBe('false')
+  const key = (key: string) =>
+    act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    })
+  machineToggle(LOCAL).focus()
+  await key('ArrowRight')
+  expect(machineRow(LOCAL).getAttribute('aria-expanded')).toBe('true')
+  expect(chatBox('l1')).toBeTruthy()
+  await key('ArrowLeft')
+  expect(machineRow(LOCAL).getAttribute('aria-expanded')).toBe('false')
+})
+
+// Two servers may hold the same session id: each row is its own machine's, ticked and resumed there.
+it('keeps a chat of the same id on two servers apart, ticked and resumed on its own machine', async () => {
+  await stage(
+    { sessions: [] },
+    { studio: { sessions: [row('s1', 'own')] }, build: { sessions: [row('s1', 'other-device')] } }
+  )
+  await open(null)
+  // build-box starts open (nothing on it starts ticked); open studio-mac too.
+  await act(async () => machineDisclosure('studio-mac').click())
+  const boxes = [...document.querySelectorAll<HTMLElement>('[aria-label*="Prompt s1"]')]
+  const machineOf = (box: HTMLElement) =>
+    machineToggle('build-box').compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING &&
+    !(machineToggle('studio-mac').compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING)
+      ? 'build'
+      : 'studio'
+  const onBuild = boxes.find((box) => machineOf(box) === 'build')!
+  const onStudio = boxes.find((box) => machineOf(box) === 'studio')!
+  expect([onBuild.getAttribute('aria-checked'), onStudio.getAttribute('aria-checked')]).toEqual([
+    'false',
+    'true'
+  ])
+  await act(async () => onBuild.click())
+  expect([onBuild.getAttribute('aria-checked'), onStudio.getAttribute('aria-checked')]).toEqual([
+    'true',
+    'true'
+  ])
+  await act(async () => onStudio.click())
+  await act(async () => button('Resume 1 chat').click())
+  expect(
+    rpc.mock.calls
+      .filter((call) => call[1] === 'agentSession.restartContinue')
+      .map((call) => call[0])
+  ).toEqual([{ kind: 'environment', environmentId: 'build' }])
+})
+
+// A machine the user opened or closed stays that way when its next answer lands.
+it('keeps a machine the user closed closed when its answer arrives again', async () => {
+  await stage({ sessions: [row('l1', 'own')] }, { studio: { sessions: SERVER_ROWS } })
+  await open('environment:studio')
+  expect(machineRow('studio-mac').getAttribute('aria-expanded')).toBe('true')
+  await act(async () => machineDisclosure('studio-mac').click())
+  await stage(
+    { sessions: [row('l1', 'own')] },
+    { studio: { sessions: [...SERVER_ROWS, row('s4', 'own')] } }
+  )
+  expect(machineRow('studio-mac').getAttribute('aria-expanded')).toBe('false')
+  expect(machineRow('studio-mac').textContent).toContain('2 of 4')
 })
 
 it('ticks and clears only its own machine’s chats from a machine’s tri-state box', async () => {
@@ -252,9 +307,9 @@ it('names a paired server once, on its machine row, not again on each workspace'
   }
 })
 
-// The machine row and a workspace's host chip read one source, the sidebar's host names; a host
-// renamed in its settings reads the new name on both, and no name shows twice for one host.
-it('names each machine as the sidebar does, a rename included, and an SSH host only on its chip', async () => {
+// A machine is named from the sidebar's host names, a rename included: this computer, a server,
+// and this computer's SSH host, which carries the SSH chip. No workspace repeats a machine's name.
+it('names each machine as the sidebar does, a rename included, and an SSH host with its chip', async () => {
   useAppStore.setState({
     settings: {
       ...getDefaultSettings(''),
@@ -285,8 +340,10 @@ it('names each machine as the sidebar does, a rename included, and an SSH host o
   expect([sidebar.get('local'), sidebar.get('runtime:studio')]).toEqual(['Desk', 'Studio'])
   expect(machineToggle('Desk')).toBeTruthy()
   expect(machineToggle('Studio')).toBeTruthy()
-  await act(async () => machineRow('Desk').click())
-  expect(rowOf(namedBox('Select all chats in workspace-l2')).textContent).toContain('devbox')
-  expect(rowOf(namedBox('Select all chats in workspace-l1')).textContent).not.toContain('Desk')
-  expect(rowOf(namedBox('Select all chats in workspace-s1')).textContent).not.toContain('Studio')
+  expect(machineRow('devbox').textContent).toContain('SSH')
+  expect(machineRow('Studio').textContent).not.toContain('SSH')
+  await act(async () => machineDisclosure('devbox').click())
+  const workspaceRow = (name: string) =>
+    namedBox(`Select all chats in ${name}`).closest('[role="treeitem"]')?.textContent ?? ''
+  expect(workspaceRow('workspace-s1')).not.toContain('Studio')
 })

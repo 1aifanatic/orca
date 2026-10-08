@@ -668,9 +668,11 @@ it('keeps a lost resume request marked failed when its Dismiss fails', async () 
 
 /** Every button in the dialog, in order; row checkboxes are buttons too, so they are left out. */
 function dialogControls(): (string | null)[] {
-  return [...document.querySelectorAll('[role="dialog"] button:not([role="checkbox"])')].map(
-    (entry) => entry.textContent?.trim() || entry.getAttribute('aria-label')
-  )
+  return [
+    ...document.querySelectorAll(
+      '[role="dialog"] button:not([role="checkbox"]):not([aria-expanded])'
+    )
+  ].map((entry) => entry.textContent?.trim() || entry.getAttribute('aria-label'))
 }
 
 // A chat the resume could not carry on stays in the same dialog — same title, checkboxes and

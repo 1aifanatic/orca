@@ -1,213 +1,34 @@
 // @vitest-environment happy-dom
 
-import { act, useState } from 'react'
+// The resume tree's shape: levels, depth, where child workspaces go, and when machines show.
+
+import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it } from 'vitest'
 import { useAppStore } from '../store'
 import { getDefaultSettings } from '../../../shared/constants'
 import { getHostContextLabel } from '../../../shared/worktree/host-context-labels'
 import type { ExecutionHostId } from '../../../shared/execution-host'
-import type { WorktreeLineage } from '../../../shared/worktree/lineage-types'
-import type { Worktree } from '../../../shared/worktree/types'
-import { ResumeOnRestartGroups } from './NativeChatResumeOnRestartGroups'
-import { TooltipProvider } from './ui/tooltip'
-import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
+import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
+import {
+  candidate,
+  chatBox,
+  itemOf,
+  lineage,
+  nodeBox,
+  onToggleSpy,
+  seedTree,
+  treeOutline,
+  worktree
+} from './native-chat-resume-tree.test-support'
+import { ResumeTreeHarness as Harness } from './NativeChatResumeTreeHarness.test-support'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 let root: Root
 let container: HTMLElement
 
-function worktree(name: string, overrides: Partial<Worktree> = {}): Worktree {
-  return {
-    id: `repo-1::/repo/${name}`,
-    instanceId: `instance-${name}`,
-    repoId: 'repo-1',
-    path: `/repo/${name}`,
-    displayName: name,
-    branch: `refs/heads/${name}-branch`,
-    head: 'abc123',
-    isBare: false,
-    isMainWorktree: false,
-    comment: '',
-    linkedIssue: null,
-    linkedPR: null,
-    linkedLinearIssue: null,
-    isArchived: false,
-    isUnread: false,
-    isPinned: false,
-    sortOrder: 0,
-    lastActivityAt: 1,
-    ...overrides
-  }
-}
-
-function candidate(sessionId: string, workspace: Worktree): ResumeCandidate {
-  return {
-    sessionId,
-    workspaceId: workspace.id,
-    agent: 'codex',
-    trigger: 'quit',
-    latestPrompt: `Prompt ${sessionId}`,
-    recordedAt: 1_800_000_000_000,
-    executionHostId: workspace.hostId ?? 'local',
-    workspaceKind: 'git-worktree'
-  }
-}
-
-function lineage(child: Worktree, parent: Worktree): WorktreeLineage {
-  return {
-    worktreeId: child.id,
-    worktreeInstanceId: child.instanceId!,
-    parentWorktreeId: parent.id,
-    parentWorktreeInstanceId: parent.instanceId!,
-    origin: 'cli',
-    capture: { source: 'explicit-cli-flag', confidence: 'explicit' },
-    createdAt: 1
-  }
-}
-
-/** parent (1 chat) > child (2 chats), plus an unrelated root workspace. */
-function seedTree(hosts: { parent?: ExecutionHostId; child?: ExecutionHostId } = {}) {
-  // An explicit undefined is a row with no host id (older metadata).
-  const parentHost = 'parent' in hosts ? hosts.parent : 'local'
-  const parent = worktree('parent', { hostId: parentHost })
-  const child = worktree('child', { hostId: 'child' in hosts ? hosts.child : 'local' })
-  const other = worktree('other', { hostId: parentHost })
-  useAppStore.setState({
-    settings: getDefaultSettings(''),
-    repos: [
-      { id: 'repo-1', path: '/repo', displayName: 'orca', badgeColor: '#999999', addedAt: 1 }
-    ],
-    worktreesByRepo: { 'repo-1': [parent, child, other] },
-    worktreeLineageById: { [child.id]: lineage(child, parent) }
-  })
-  return [
-    candidate('in-child', child),
-    candidate('in-parent', parent),
-    candidate('also-in-child', child),
-    candidate('in-other', other)
-  ]
-}
-
-const onToggleSpy = vi.fn()
-
-/** Owns the selection the way the dialog does, so group toggles show their effect. */
-function Harness({
-  candidates,
-  initiallySelected,
-  busy = false,
-  failureFor,
-  machineHostId
-}: {
-  candidates: ResumeCandidate[]
-  initiallySelected?: string[]
-  busy?: boolean
-  failureFor?: (sessionId: string) => ResumeFailure | undefined
-  machineHostId?: ExecutionHostId
-}): React.JSX.Element {
-  const [selected, setSelected] = useState<ReadonlySet<string>>(
-    () => new Set(initiallySelected ?? candidates.map((entry) => entry.sessionId))
-  )
-  return (
-    <TooltipProvider>
-      <ResumeOnRestartGroups
-        candidates={candidates}
-        listedAt={1_800_000_060_000}
-        busy={busy}
-        selected={selected}
-        onToggle={(sessionId, checked) => {
-          onToggleSpy(sessionId, checked)
-          setSelected((current) => {
-            const next = new Set(current)
-            if (checked) {
-              next.add(sessionId)
-            } else {
-              next.delete(sessionId)
-            }
-            return next
-          })
-        }}
-        failureFor={failureFor}
-        machineHostId={machineHostId}
-      />
-    </TooltipProvider>
-  )
-}
-
 function render(props: React.ComponentProps<typeof Harness>): void {
   act(() => root.render(<Harness {...props} />))
-}
-
-function workspaceBox(name: string): HTMLElement {
-  const box = container.querySelector<HTMLElement>(
-    `[role="checkbox"][aria-label="Select all chats in ${name}"]`
-  )
-  if (!box) {
-    throw new Error(`Missing workspace checkbox: ${name}`)
-  }
-  return box
-}
-
-function chatBox(sessionId: string): HTMLElement {
-  const box = container.querySelector<HTMLElement>(
-    `[role="checkbox"][aria-label*="Prompt ${sessionId}"]`
-  )
-  if (!box) {
-    throw new Error(`Missing chat checkbox: ${sessionId}`)
-  }
-  return box
-}
-
-function rowOf(box: HTMLElement): HTMLElement {
-  return box.closest('label')!
-}
-
-/** A row's grid cell: 1 is the checkbox column, 2 the indented content. */
-function cell(row: HTMLElement, column: 1 | 2): HTMLElement {
-  return row.querySelector<HTMLElement>(`:scope > :nth-child(${column})`)!
-}
-
-/** The workspace row's "x of y". */
-function workspaceCount(name: string): string | undefined {
-  return rowOf(workspaceBox(name)).querySelector('.tabular-nums')?.textContent ?? undefined
-}
-
-/** A project's header row, by the name it shows. */
-function projectRow(name: string): HTMLElement {
-  const row = [...container.querySelectorAll('section')]
-    .map((section) => section.firstElementChild)
-    .find((header) => header?.querySelector('.font-semibold')?.textContent === name)
-  if (!(row instanceof HTMLElement)) {
-    throw new Error(`Missing project row: ${name}`)
-  }
-  return row
-}
-
-function projectBox(name: string): HTMLElement {
-  return projectRow(name).querySelector<HTMLElement>('[role="checkbox"]')!
-}
-
-function projectCount(name: string): string | undefined {
-  return projectRow(name).querySelector('.tabular-nums')?.textContent ?? undefined
-}
-
-/** Each row in list order, as kind:label@indent-of-its-content. */
-function rowOutline(): string[] {
-  return [...container.querySelectorAll<HTMLElement>('[role="checkbox"]')].map((box) => {
-    const label = box.getAttribute('aria-label') ?? ''
-    const row = rowOf(box)
-    // A workspace row sits in its box; only a project header is the section's own row.
-    if (row.parentElement?.tagName === 'SECTION') {
-      return `project:${/^Select all chats in (.+)$/.exec(label)?.[1]}`
-    }
-    const workspace = /^Select all chats in (.+)$/.exec(label)?.[1]
-    if (workspace) {
-      const content = cell(rowOf(box), 2)
-      return `ws:${workspace}@${content.style.marginLeft || '0px'}`
-    }
-    const indent = box.closest('ul')?.style.getPropertyValue('--resume-chat-indent')
-    return `chat:${/Prompt ([\w-]+)/.exec(label)?.[1]}@${indent}`
-  })
 }
 
 beforeEach(() => {
@@ -224,258 +45,88 @@ afterEach(() => {
   useAppStore.setState(useAppStore.getInitialState(), true)
 })
 
-it('lists every chat with its checkbox in the shared left column, indenting only the content', () => {
-  const candidates = seedTree()
-  render({ candidates })
+const LOCAL_TREE = [
+  '1:project:orca',
+  '2:workspace:parent',
+  '3:chat:in-parent',
+  '3:workspace:child',
+  '4:chat:in-child',
+  '4:chat:also-in-child',
+  '2:workspace:other',
+  '3:chat:in-other'
+]
 
-  expect(rowOutline()).toEqual([
-    'project:orca',
-    'ws:parent@20px',
-    'chat:in-parent@40px',
-    'ws:child@40px',
-    'chat:in-child@60px',
-    'chat:also-in-child@60px',
-    'ws:other@20px',
-    'chat:in-other@40px'
-  ])
-  for (const box of container.querySelectorAll<HTMLElement>('[role="checkbox"]')) {
-    const row = rowOf(box)
-    // The checkbox cell is the row's first grid column and is never indented.
-    expect(row.classList.contains('grid-cols-[1.75rem_minmax(0,1fr)]')).toBe(true)
-    expect(row.firstElementChild?.contains(box)).toBe(true)
-    expect(cell(row, 1).style.paddingLeft).toBe('')
+it('lists project, workspace and chat levels, a child workspace after its parent’s chats', () => {
+  render({ candidates: seedTree() })
+
+  expect(treeOutline()).toEqual(LOCAL_TREE)
+})
+
+it('keeps every checkbox in the left column and indents what follows it 18px a level', () => {
+  render({ candidates: seedTree() })
+
+  for (const item of container.querySelectorAll<HTMLElement>('[role="treeitem"]')) {
+    const row = item.querySelector('label')!
+    const cell = (n: number) => row.querySelector<HTMLElement>(`:scope > :nth-child(${n})`)
+    const disclosure = cell(3)
+    // The checkbox cell comes first, before any indent.
+    expect(cell(1)?.querySelector('[role="checkbox"]')).not.toBeNull()
+    const level = Number(item.getAttribute('aria-level'))
+    expect(cell(2)?.style.width).toBe(`${(level - 1) * 18}px`)
+    // Every row keeps the arrow's slot, so icons line up; only a node with children has an arrow.
+    expect(disclosure?.getAttribute('aria-hidden')).toBe('true')
+    const arrow = item.querySelector<HTMLElement>('button[aria-expanded]')
+    expect(arrow !== null).toBe(item.hasAttribute('aria-expanded'))
+    // Laid over its slot, outside the label, so it never toggles the checkbox.
+    expect(arrow?.closest('label') ?? null).toBeNull()
+    if (arrow) {
+      expect(arrow.style.left).toBe(`${28 + (level - 1) * 18}px`)
+    }
   }
 })
 
-it('heads each project with a checkbox row in the same left column', () => {
+it('reads levels apart by weight, with no row dividers or bands', () => {
   render({ candidates: seedTree() })
 
-  const header = projectRow('orca')
-  expect(header.textContent).toBe('orca4 of 4')
-  expect(header.classList.contains('grid-cols-[1.75rem_minmax(0,1fr)]')).toBe(true)
-  expect(cell(header, 1).contains(projectBox('orca'))).toBe(true)
-  expect(projectBox('orca').getAttribute('aria-label')).toBe('Select all chats in orca')
-})
-
-/** The bordered box a workspace's rows sit in. */
-function boxOf(name: string): HTMLElement {
-  return rowOf(workspaceBox(name)).parentElement!
-}
-
-// Nested boxes: the box border is the only line; a child's box sits inside its parent's.
-it("puts each workspace in a bordered box, a child's box inside its parent's after its chats", () => {
-  render({ candidates: seedTree() })
-
-  const parent = boxOf('parent')
-  const child = boxOf('child')
-  expect(child.parentElement).toBe(parent)
-  expect(parent.lastElementChild).toBe(child)
-  for (const id of ['in-parent', 'in-child', 'also-in-child']) {
-    expect(parent.contains(chatBox(id))).toBe(true)
-  }
-  expect(child.contains(chatBox('in-parent'))).toBe(false)
-  expect(boxOf('other').contains(rowOf(workspaceBox('child')))).toBe(false)
-  for (const [name, left] of [
-    ['parent', '20px'],
-    ['child', '40px'],
-    ['other', '20px']
-  ] as const) {
-    const outline = boxOf(name).querySelector<HTMLElement>(':scope > [aria-hidden="true"]')!
-    expect(outline.getAttribute('aria-hidden')).toBe('true')
-    expect([...outline.classList]).toEqual(
-      expect.arrayContaining(['border', 'border-border', 'rounded-md'])
-    )
-    // Drawn past the checkbox column, at the workspace's own indent.
-    expect(outline.style.left).toBe(`calc(1.75rem + ${left})`)
-  }
-})
-
-it('draws project and workspace bands with no dividers between rows', () => {
-  render({ candidates: seedTree() })
-
-  const project = cell(projectRow('orca'), 2)
-  expect(project.classList.contains('rounded-t-md')).toBe(true)
-  expect(project.className).toContain(
-    'bg-[color-mix(in_srgb,var(--foreground)_5%,var(--worktree-sidebar-accent))]'
+  expect(itemOf(nodeBox('orca')).querySelector('.font-semibold')?.textContent).toBe('orca')
+  expect(itemOf(nodeBox('parent')).querySelector('.font-medium')?.textContent).toBe('parent')
+  // Every row element but the checkboxes, which keep their own outline.
+  const rows = container.querySelectorAll(
+    '[role="treeitem"], [role="treeitem"] *:not([role="checkbox"])'
   )
-  for (const [name, nested] of [
-    ['parent', 'false'],
-    ['child', 'true'],
-    ['other', 'false']
-  ] as const) {
-    const band = cell(rowOf(workspaceBox(name)), 2)
-    expect(band.classList.contains('bg-worktree-sidebar-accent')).toBe(true)
-    expect(band.getAttribute('data-nested')).toBe(nested)
-    expect(band.querySelector('.font-semibold')?.textContent).toBe(name)
+  for (const element of rows) {
+    expect([...element.classList].filter((name) => /^(border|bg-)/.test(name))).toEqual([])
   }
-  for (const row of container.querySelectorAll('label, li, ul')) {
-    expect([...row.classList].filter((name) => /(^|:)border/.test(name))).toEqual([])
-  }
-})
-
-it('selects every eligible chat in a project, nested workspaces included', () => {
-  const candidates = seedTree()
-  const mobile = worktree('mobile', { repoId: 'repo-2', id: 'repo-2::/mobile/mobile' })
-  useAppStore.setState((state) => ({
-    repos: [
-      ...state.repos,
-      {
-        id: 'repo-2',
-        path: '/mobile',
-        displayName: 'orca-mobile',
-        badgeColor: '#999999',
-        addedAt: 1
-      }
-    ],
-    worktreesByRepo: { ...state.worktreesByRepo, 'repo-2': [mobile] }
-  }))
-  const stuck: ResumeFailure = {
-    ...candidates[3]!,
-    failedAt: 1_800_000_030_000,
-    outcome: 'refused',
-    reason: 'agent_session_restart_work_superseded',
-    retryable: false
-  }
-  render({
-    candidates: [...candidates, candidate('in-mobile', mobile)],
-    initiallySelected: ['in-parent', 'in-child', 'also-in-child', 'in-mobile'],
-    failureFor: (sessionId) => (sessionId === 'in-other' ? stuck : undefined)
-  })
-  expect(projectBox('orca').getAttribute('aria-checked')).toBe('true')
-  expect(projectCount('orca')).toBe('3 of 3')
-
-  act(() => chatBox('also-in-child').click())
-  expect(projectBox('orca').getAttribute('aria-checked')).toBe('mixed')
-  expect(projectCount('orca')).toBe('2 of 3')
-
-  onToggleSpy.mockClear()
-  act(() => projectBox('orca').click())
-  expect(chatBox('also-in-child').getAttribute('aria-checked')).toBe('true')
-  expect(projectCount('orca')).toBe('3 of 3')
-
-  act(() => projectBox('orca').click())
-  expect(projectBox('orca').getAttribute('aria-checked')).toBe('false')
-  for (const id of ['in-parent', 'in-child', 'also-in-child']) {
-    expect(chatBox(id).getAttribute('aria-checked')).toBe('false')
-  }
-  // Never the unretryable chat, never another project's.
-  const touched = onToggleSpy.mock.calls.map(([sessionId]) => sessionId)
-  expect(touched).not.toContain('in-other')
-  expect(touched).not.toContain('in-mobile')
-  expect(chatBox('in-mobile').getAttribute('aria-checked')).toBe('true')
-  expect(projectCount('orca-mobile')).toBe('1 of 1')
 })
 
 it('shows the branch for a git worktree, muted after its name', () => {
   render({ candidates: seedTree() })
 
-  const content = rowOf(workspaceBox('parent')).children[1]!
-  expect(content.textContent).toContain('parentparent-branch')
-  const branch = [...content.querySelectorAll('span')].find(
+  const branch = [...itemOf(nodeBox('parent')).querySelectorAll('span')].find(
     (span) => span.textContent === 'parent-branch'
   )
   expect(branch?.classList.contains('text-muted-foreground')).toBe(true)
 })
 
-it('covers nested child workspaces with a tri-state workspace checkbox', () => {
+it('starts at projects when every chat is on this machine', () => {
   render({ candidates: seedTree() })
-  expect(workspaceBox('parent').getAttribute('aria-checked')).toBe('true')
-  expect(workspaceCount('parent')).toBe('3 of 3')
 
-  act(() => chatBox('in-child').click())
-  expect(workspaceBox('parent').getAttribute('aria-checked')).toBe('mixed')
-  expect(workspaceCount('parent')).toBe('2 of 3')
-  expect(workspaceBox('child').getAttribute('aria-checked')).toBe('mixed')
-  expect(workspaceCount('child')).toBe('1 of 2')
-  expect(workspaceBox('other').getAttribute('aria-checked')).toBe('true')
-
-  // Partly selected: ticking selects everything it covers, child workspace included.
-  act(() => workspaceBox('parent').click())
-  expect(chatBox('in-child').getAttribute('aria-checked')).toBe('true')
-  expect(workspaceCount('parent')).toBe('3 of 3')
-
-  act(() => workspaceBox('parent').click())
-  expect(workspaceBox('parent').getAttribute('aria-checked')).toBe('false')
-  expect(workspaceCount('parent')).toBe('0 of 3')
-  for (const id of ['in-parent', 'in-child', 'also-in-child']) {
-    expect(chatBox(id).getAttribute('aria-checked')).toBe('false')
-  }
-  expect(chatBox('in-other').getAttribute('aria-checked')).toBe('true')
+  expect(container.textContent).not.toContain(getHostContextLabel('local'))
+  expect(container.querySelector('[aria-label^="Select all chats on"]')).toBeNull()
 })
 
-it('selects a whole row by clicking anywhere on it', () => {
-  render({ candidates: seedTree(), initiallySelected: [] })
-
-  act(() => cell(rowOf(workspaceBox('child')), 2).click())
-  expect(chatBox('in-child').getAttribute('aria-checked')).toBe('true')
-  expect(chatBox('also-in-child').getAttribute('aria-checked')).toBe('true')
-
-  act(() => cell(rowOf(chatBox('in-other')), 2).click())
-  expect(chatBox('in-other').getAttribute('aria-checked')).toBe('true')
-})
-
-it('leaves a failure a retry cannot fix out of its workspace checkbox', () => {
-  const candidates = seedTree()
-  const stuck: ResumeFailure = {
-    ...candidates[0]!,
-    failedAt: 1_800_000_030_000,
-    outcome: 'refused',
-    reason: 'agent_session_restart_work_superseded',
-    retryable: false
-  }
-  render({
-    candidates,
-    initiallySelected: ['in-parent'],
-    failureFor: (sessionId) => (sessionId === 'in-child' ? stuck : undefined)
-  })
-
-  expect(chatBox('in-child').hasAttribute('disabled')).toBe(true)
-  expect(workspaceCount('child')).toBe('0 of 1')
-  expect(workspaceCount('parent')).toBe('1 of 2')
-
-  act(() => workspaceBox('parent').click())
-  expect(onToggleSpy.mock.calls.map(([sessionId]) => sessionId)).not.toContain('in-child')
-  expect(chatBox('in-child').getAttribute('aria-checked')).toBe('false')
-  expect(workspaceBox('parent').getAttribute('aria-checked')).toBe('true')
-})
-
-it('disables a workspace checkbox with nothing it could select', () => {
-  const candidates = seedTree()
-  const stuck = (sessionId: string): ResumeFailure => ({
-    ...candidates.find((entry) => entry.sessionId === sessionId)!,
-    failedAt: 1_800_000_030_000,
-    outcome: 'refused',
-    reason: 'agent_session_restart_work_superseded',
-    retryable: false
-  })
-  render({
-    candidates,
-    initiallySelected: [],
-    failureFor: (sessionId) => (sessionId === 'in-other' ? stuck(sessionId) : undefined)
-  })
-
-  expect(workspaceBox('other').hasAttribute('disabled')).toBe(true)
-  expect(workspaceCount('other')).toBeUndefined()
-})
-
-it('disables every checkbox while a resume runs', () => {
-  render({ candidates: seedTree(), busy: true })
-
-  const boxes = [...container.querySelectorAll('[role="checkbox"]')]
-  expect(boxes).toHaveLength(8)
-  for (const box of boxes) {
-    expect(box.hasAttribute('disabled')).toBe(true)
-  }
-})
-
-it('names the machine of a single-host SSH offer', () => {
+it('heads a single SSH host with its machine node, named and marked SSH', () => {
   const remote: ExecutionHostId = 'ssh:build-server'
   render({ candidates: seedTree({ parent: remote, child: remote }) })
 
-  const label = getHostContextLabel(remote)
-  for (const name of ['parent', 'child', 'other']) {
-    expect(rowOf(workspaceBox(name)).textContent).toContain(label)
-  }
+  const machine = getHostContextLabel(remote)
+  expect(treeOutline()).toEqual([
+    `1:machine:${machine}`,
+    ...LOCAL_TREE.map((row) => row.replace(/^(\d)/, (level) => String(Number(level) + 1)))
+  ])
+  expect(itemOf(nodeBox(machine)).textContent).toContain('SSH')
+  // The machine node names the host, so no workspace repeats it.
+  expect(itemOf(nodeBox('parent')).textContent).not.toContain(machine)
 })
 
 // A target saved through Add SSH target gets a generated id; the sidebar names it by its label.
@@ -486,50 +137,51 @@ it('names an SSH machine by its saved name, not its target id', () => {
   useAppStore.setState({ sshTargetLabels: new Map([[targetId, 'devbox']]) })
   render({ candidates })
 
-  const row = rowOf(workspaceBox('parent')).textContent
-  expect(row).toContain('devbox')
-  expect(row).not.toContain(targetId)
+  expect(itemOf(nodeBox('devbox')).getAttribute('aria-level')).toBe('1')
+  expect(container.textContent).not.toContain(targetId)
 })
 
-it('names hosts only when the machine is not obvious', () => {
-  render({ candidates: seedTree() })
+it('gives each machine its own branch when chats span hosts', () => {
+  const remote: ExecutionHostId = 'ssh:build-server'
+  const candidates = seedTree({ parent: 'local', child: remote })
+  render({ candidates })
+
   const local = getHostContextLabel('local')
-  expect(container.textContent).not.toContain(local)
-
-  act(() => root.unmount())
-  root = createRoot(container)
-  const remote: ExecutionHostId = 'ssh:build-server'
-  render({ candidates: seedTree({ parent: 'local', child: remote }) })
-  expect(rowOf(workspaceBox('parent')).textContent).toContain(local)
-  expect(rowOf(workspaceBox('child')).textContent).toContain(getHostContextLabel(remote))
+  const machine = getHostContextLabel(remote)
+  // The child is on another host, so it does not nest under the local parent.
+  expect(treeOutline()).toEqual([
+    `1:machine:${machine}`,
+    '2:project:orca',
+    '3:workspace:child',
+    '4:chat:in-child',
+    '4:chat:also-in-child',
+    `1:machine:${local}`,
+    '2:project:orca',
+    '3:workspace:parent',
+    '4:chat:in-parent',
+    '3:workspace:other',
+    '4:chat:in-other'
+  ])
+  expect(itemOf(nodeBox(local)).textContent).not.toContain('SSH')
 })
 
-// Under a machine row the row already names the machine; only a workspace elsewhere says where.
-it('under a machine row, indents one level and names only a workspace on another host', () => {
+it('lists every offered chat exactly once, even with one workspace id on two hosts', () => {
   const remote: ExecutionHostId = 'ssh:build-server'
-  render({ candidates: seedTree({ parent: 'local', child: remote }), machineHostId: 'local' })
+  const candidates = seedTree()
+  const remoteParent = worktree('parent', { hostId: remote, instanceId: 'instance-remote' })
+  useAppStore.setState((state) => ({
+    worktreesByRepo: { 'repo-1': [...state.worktreesByRepo['repo-1']!, remoteParent] }
+  }))
+  const twin = candidate('on-remote', remoteParent)
+  render({ candidates: [...candidates, twin] })
 
-  expect(rowOf(workspaceBox('parent')).textContent).not.toContain(getHostContextLabel('local'))
-  expect(rowOf(workspaceBox('other')).textContent).not.toContain(getHostContextLabel('local'))
-  expect(rowOf(workspaceBox('child')).textContent).toContain(getHostContextLabel(remote))
-  // The child is on another host, so it is not nested under its parent, as in the sidebar. Every
-  // box and title sits one level further in than without a machine row; checkboxes do not move.
-  expect(rowOutline()).toEqual([
-    'project:orca',
-    'ws:child@40px',
-    'chat:in-child@60px',
-    'chat:also-in-child@60px',
-    'ws:parent@40px',
-    'chat:in-parent@60px',
-    'ws:other@40px',
-    'chat:in-other@60px'
-  ])
-  const header = container.querySelector<HTMLElement>('section > label')!
-  expect(cell(header, 2).style.marginLeft).toBe('20px')
-  const box = rowOf(workspaceBox('parent')).parentElement?.querySelector<HTMLElement>(
-    ':scope > [aria-hidden="true"]'
-  )
-  expect(box?.style.left).toBe('calc(1.75rem + 40px)')
+  for (const entry of [...candidates, twin]) {
+    expect(
+      container.querySelectorAll(`[role="checkbox"][aria-label*="Prompt ${entry.sessionId}"]`)
+    ).toHaveLength(1)
+  }
+  // Same id, different machine: two separate workspace nodes.
+  expect(container.querySelectorAll('[aria-label="Select all chats in parent"]')).toHaveLength(2)
 })
 
 it('names a workspace the store does not know by its id, with the kind the host recorded', () => {
@@ -540,38 +192,22 @@ it('names a workspace the store does not know by its id, with the kind the host 
   }
   render({ candidates: [unknown] })
 
-  const row = rowOf(workspaceBox('folder:missing-folder'))
-  expect(row.textContent).toContain('folder:missing-folder')
+  const row = itemOf(nodeBox('folder:missing-folder'))
   expect(row.querySelector('svg.lucide-folder')).not.toBeNull()
   expect(chatBox('lost').getAttribute('aria-label')).toContain('in folder:missing-folder')
 })
 
 // Its project is unknown too: a nameless "Select all chats in " checkbox would help no one.
-it('gives workspaces the store cannot place no project row, leaving them to Select all', () => {
-  const candidates = seedTree()
+it('gives workspaces the store cannot place no project node', () => {
   const unknown: ResumeCandidate = {
     ...candidate('lost', worktree('gone')),
     workspaceId: 'folder:missing-folder',
     workspaceKind: 'folder'
   }
-  render({ candidates: [...candidates, unknown] })
+  render({ candidates: [...seedTree(), unknown] })
 
-  expect(rowOutline()).toEqual([
-    'project:orca',
-    'ws:parent@20px',
-    'chat:in-parent@40px',
-    'ws:child@40px',
-    'chat:in-child@60px',
-    'chat:also-in-child@60px',
-    'ws:other@20px',
-    'chat:in-other@40px',
-    'ws:folder:missing-folder@20px',
-    'chat:lost@40px'
-  ])
+  expect(treeOutline()).toEqual([...LOCAL_TREE, '1:workspace:folder:missing-folder', '2:chat:lost'])
   expect(container.querySelector('[aria-label="Select all chats in "]')).toBeNull()
-  const [, unplaced] = container.querySelectorAll('section')
-  expect(unplaced?.querySelector('label')).toBe(rowOf(workspaceBox('folder:missing-folder')))
-  expect(projectCount('orca')).toBe('4 of 4')
 })
 
 // Why: the sidebar nests a child only under a parent on its own host; no host id matches only none.
@@ -583,11 +219,9 @@ it.each([
 ] as const)(
   '%s: nests the child exactly as the sidebar does',
   (_, parentHost, childHost, nests) => {
-    const candidates = seedTree({ parent: parentHost, child: childHost })
-    render({ candidates })
+    render({ candidates: seedTree({ parent: parentHost, child: childHost }) })
 
-    expect(rowOutline()).toContain(nests ? 'ws:child@40px' : 'ws:child@20px')
-    expect(workspaceCount('parent')).toBe(nests ? '3 of 3' : '1 of 1')
+    expect(treeOutline()).toContain(nests ? '3:workspace:child' : '2:workspace:child')
     expect(container.querySelectorAll('[role="checkbox"][aria-label^="Resume"]')).toHaveLength(4)
   }
 )

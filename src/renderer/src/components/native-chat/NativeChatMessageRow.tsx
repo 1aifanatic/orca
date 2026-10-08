@@ -14,6 +14,7 @@ import type {
 import { deriveNativeChatRowContent } from '../../../../shared/native-chat-row-content'
 import { NativeChatToolRun } from './NativeChatToolRun'
 import { NativeChatReasoningRow } from './NativeChatReasoningRow'
+import { NativeChatUserMessageFold } from './NativeChatUserMessageFold'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import { NativeChatNoticeRow } from './NativeChatNoticeRow'
 import { nativeChatBlocksInOwnWords } from './native-chat-stopped-before-start-row'
@@ -88,6 +89,8 @@ type MessageRowProps = {
   activeTurnIsWorking?: boolean
   /** This row's tool run is the turn's last, so it is the one still live. */
   trailingRun?: boolean
+  /** Hover controls would overlap the next row. */
+  continuesTurn?: boolean
   /** Align this message's top to the top of the scroll viewport. */
   onScrollMessageToTop: (el: HTMLElement) => void
   onLinkClick?: CommentMarkdownLinkClickHandler
@@ -119,6 +122,7 @@ export const MessageRow = memo(function MessageRow({
   expandSignal,
   activeTurnIsWorking,
   trailingRun,
+  continuesTurn = false,
   onScrollMessageToTop,
   onLinkClick,
   allowFileUriLinks = false,
@@ -150,6 +154,14 @@ export const MessageRow = memo(function MessageRow({
   const scrollToTop = useCallback(() => {
     if (rowRef.current) {
       onScrollMessageToTop(rowRef.current)
+    }
+  }, [onScrollMessageToTop])
+  // "Show less" sits at the bottom of an open prompt; folding it can leave the reader past it.
+  const returnToView = useCallback(() => {
+    const row = rowRef.current
+    const viewport = row?.closest('[data-native-chat-scroll]')
+    if (row && viewport && row.getBoundingClientRect().top < viewport.getBoundingClientRect().top) {
+      onScrollMessageToTop(row)
     }
   }, [onScrollMessageToTop])
 
@@ -224,14 +236,20 @@ export const MessageRow = memo(function MessageRow({
                 runtimeContext={runtimeContext}
                 enablePreview={runtimeContext !== undefined}
               />
-              <NativeChatMarkdown
-                content={markdown}
-                variant="document"
-                className="text-sm native-chat-message-text"
-                renderCodeBlock={NativeChatCodeBlock}
-                onLinkClick={onLinkClick}
-                allowFileUriLinks={allowFileUriLinks}
-              />
+              <NativeChatUserMessageFold
+                messageId={message.id}
+                markdown={markdown}
+                onRefolded={returnToView}
+              >
+                <NativeChatMarkdown
+                  content={markdown}
+                  variant="document"
+                  className="text-sm native-chat-message-text"
+                  renderCodeBlock={NativeChatCodeBlock}
+                  onLinkClick={onLinkClick}
+                  allowFileUriLinks={allowFileUriLinks}
+                />
+              </NativeChatUserMessageFold>
             </>
           ) : (
             <NativeChatImageAttachments
@@ -284,7 +302,7 @@ export const MessageRow = memo(function MessageRow({
   // A thought heading a run reads inside it, so the row has no words of its own.
   const words = isReasoning ? '' : markdown
   // Assistant controls reveal on hover and keyboard focus; system asides stay chrome-free.
-  const showControls = !isSystem && words.length > 0
+  const showControls = !isSystem && words.length > 0 && !continuesTurn
 
   return (
     <div
@@ -332,6 +350,7 @@ export const MessageRow = memo(function MessageRow({
           subagentRoster={subagentRoster}
           subagentDisclosure={subagentDisclosure}
           backgroundTasks={backgroundTasks}
+          followsProse={markdown.length > 0 || hasImages}
           expandSignal={expandSignal}
           activeTurnIsWorking={activeTurnIsWorking}
           trailing={trailingRun}

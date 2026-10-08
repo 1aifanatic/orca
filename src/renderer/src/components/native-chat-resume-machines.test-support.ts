@@ -19,20 +19,30 @@ export function machineRowFixture(sessionId: string, origin: RestartOfferOrigin)
 }
 
 export function machineToggle(name: string): HTMLElement {
-  const found = document.querySelector<HTMLElement>(`[aria-label="Resume every chat on ${name}"]`)
+  const found = document.querySelector<HTMLElement>(
+    `[role="checkbox"][aria-label="Select all chats on ${name}"]`
+  )
   if (!found) {
     throw new Error(`Missing machine checkbox: ${name}`)
   }
   return found
 }
 
-/** The machine row's expand control, which carries its name, cause, age and count. */
-export function machineRow(name: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
-    (entry) => entry.textContent?.startsWith(name)
-  )
+/** The machine's tree node: its row carries the name, why it stopped, the count and whether it is
+ *  open (`aria-expanded`). */
+export function machineRow(name: string): HTMLElement {
+  const found = machineToggle(name).closest<HTMLElement>('[role="treeitem"]')
   if (!found) {
     throw new Error(`Missing machine row: ${name}`)
+  }
+  return found
+}
+
+/** The arrow that opens or closes the machine's node. */
+export function machineDisclosure(name: string): HTMLButtonElement {
+  const found = machineRow(name).querySelector<HTMLButtonElement>('button[aria-expanded]')
+  if (!found) {
+    throw new Error(`Missing machine disclosure: ${name}`)
   }
   return found
 }

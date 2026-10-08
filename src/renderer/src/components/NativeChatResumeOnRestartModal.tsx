@@ -13,7 +13,8 @@ import {
 import { useAppStore } from '../store'
 import { translate } from '@/i18n/i18n'
 import { ResumeOnRestartGroups } from './NativeChatResumeOnRestartGroups'
-import { ResumeMachineSection } from './NativeChatResumeOnRestartMachineSection'
+import { ResumeTreeRow } from './NativeChatResumeTreeRow'
+import { resumeTreeMachines, resumeTreeRowAction } from './native-chat-resume-tree-machines'
 import type { ResumeFailureAction } from './native-chat-resume-failure-guidance'
 import { consumeNativeChatResumeOnRestartDialogRequest } from './native-chat-resume-on-restart-dialog'
 import {
@@ -24,13 +25,11 @@ import { useNativeChatRestartResuming } from './native-chat-resume-on-restart-st
 import type { MachineView } from './native-chat-resume-machine-views'
 import { useNativeChatResumeDialogOpening } from './native-chat-resume-dialog-opening'
 import { actOnResumeRow } from './native-chat-resume-failure-action'
-import { resumeOwnershipLabel } from './native-chat-resume-ownership'
 import { resumeSelectionState } from './native-chat-resume-on-restart-grouping'
 import {
   chosenResumeRows,
   dismissedRows,
   resumeRowKey,
-  resumeRowSelectedByDefault,
   selectableResumeRows
 } from './native-chat-resume-selection'
 
@@ -95,21 +94,34 @@ function resumeButtonLabel(chosenCount: number, running: boolean): string {
       )
 }
 
-/** Up/Down step between the list's checkboxes; Space toggles the focused one natively. */
-function moveCheckboxFocus(event: React.KeyboardEvent<HTMLElement>): void {
-  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
-    return
-  }
+/**
+ * Tree keys on a row's checkbox: Up/Down step between the enabled checkboxes, Left collapses and
+ * Right expands the focused node through its own disclosure. Space toggles the checkbox natively.
+ */
+function moveInTree(event: React.KeyboardEvent<HTMLElement>): void {
   const target = event.target
   if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'checkbox') {
     return
   }
-  const boxes = [
-    ...event.currentTarget.querySelectorAll<HTMLElement>('[role="checkbox"]:not(:disabled)')
-  ]
-  const next = boxes[boxes.indexOf(target) + (event.key === 'ArrowDown' ? 1 : -1)]
-  event.preventDefault()
-  next?.focus()
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    const boxes = [
+      ...event.currentTarget.querySelectorAll<HTMLElement>('[role="checkbox"]:not(:disabled)')
+    ]
+    event.preventDefault()
+    boxes[boxes.indexOf(target) + (event.key === 'ArrowDown' ? 1 : -1)]?.focus()
+    return
+  }
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    // Rows are flat treeitems, so the nearest one is this checkbox's own node.
+    const disclosure = target
+      .closest('[role="treeitem"]')
+      ?.querySelector<HTMLButtonElement>('button[aria-expanded]')
+    const open = disclosure?.getAttribute('aria-expanded') === 'true'
+    if (disclosure && open === (event.key === 'ArrowLeft')) {
+      disclosure.click()
+    }
+  }
 }
 
 export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
@@ -122,9 +134,6 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const resuming = useNativeChatRestartResuming()
   const allBusy = machines.length > 0 && machines.every((machine) => resuming.has(machine.machine))
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map())
-  const [expandedOverrides, setExpandedOverrides] = useState<ReadonlyMap<string, boolean>>(
-    () => new Map()
-  )
   // Each opening starts from the rows' defaults. This component never unmounts, so an untick made
   // before a close would otherwise greet a reopen, e.g. as "Resume 0 chats" over what a run left.
   // Keyed on the request and the machine it was opened for.
@@ -134,7 +143,6 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     setOpenedWith(opening)
     if (opening) {
       setOverrides(new Map())
-      setExpandedOverrides(new Map())
     }
   }
   const chosen = useMemo(
@@ -175,8 +183,8 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     return { keys, state: resumeSelectionState(keys, ticked) }
   }, [allBusy, chosen, machines, resuming])
 
-  const toggle = useCallback((identity: string, sessionId: string, checked: boolean) => {
-    setOverrides((current) => new Map(current).set(resumeRowKey(identity, sessionId), checked))
+  const toggle = useCallback((key: string, checked: boolean) => {
+    setOverrides((current) => new Map(current).set(key, checked))
   }, [])
   const setTicks = useCallback((keys: readonly string[], checked: boolean) => {
     setOverrides((current) => {
@@ -223,13 +231,21 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const flat = machines.length === 1 && machines[0]!.offer.target.kind === 'local'
   const rowsAcrossMachines = machines.flatMap((machine) => machine.rows)
   const interruptedByUpdate = rowsAcrossMachines.some((row) => row.trigger === 'update')
-  const tickedFor = (machine: MachineView): ReadonlySet<string> =>
-    new Set(
+  const tree = resumeTreeMachines(machines, resuming, request.focus)
+  const ticked = new Set(
+    machines.flatMap((machine) =>
       // Mid-run the ticks show what is running; this opening's own ticks may name chats left out.
-      resuming.get(machine.machine) ?? chosen.find((entry) => entry.machine === machine)?.ids ?? []
+      (
+        resuming.get(machine.machine) ??
+        chosen.find((entry) => entry.machine === machine)?.ids ??
+        []
+      ).map((sessionId) => resumeRowKey(machine.identity, sessionId))
     )
-  const originLabelFor = (machine: MachineView) => (sessionId: string) =>
-    resumeOwnershipLabel(machine.ownershipFor(sessionId), machine.name)
+  )
+  const selectAllLabel = translate(
+    'auto.components.NativeChatResumeOnRestartModal.selectAllLabel',
+    'Select all'
+  )
 
   return (
     <Dialog
@@ -271,41 +287,38 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
         </DialogHeader>
 
         <div
-          role="group"
+          role="tree"
           tabIndex={0}
           aria-label={translate(
             'auto.components.NativeChatResumeOnRestartModal.listLabel',
             'Chats that would be resumed'
           )}
           // The sidebar's own surface, so its workspaces read here as they do there.
-          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar pt-1 pb-1.5"
-          onKeyDown={moveCheckboxFocus}
+          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar p-1.5 pb-2"
+          onKeyDown={moveInTree}
         >
-          {/* Here, not in the groups or machine rows: one Select all for every machine listed. */}
-          <label className="group/row grid h-7 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center has-[:disabled]:cursor-default">
-            <span className="flex justify-center">
-              <Checkbox
-                checked={allSelection.state.checked}
-                disabled={allBusy || allSelection.state.total === 0}
-                // Ticks everything unless all already are, as a workspace's box does.
-                onCheckedChange={() =>
-                  setTicks(
-                    allSelection.keys,
-                    allSelection.state.selectedCount < allSelection.state.total
-                  )
-                }
-                aria-label={translate(
-                  'auto.components.NativeChatResumeOnRestartModal.selectAll',
-                  'Select all chats'
-                )}
-              />
-            </span>
-            <span className="mr-1.5 flex h-full min-w-0 items-center gap-1.5 pr-2.5 pl-2 group-hover/row:bg-worktree-sidebar-accent">
+          {/* Here, not in the tree: one Select all for every machine listed. The tree's one divider
+              sets it apart from the nodes. */}
+          <div className="mb-1 border-b border-worktree-sidebar-border pb-0.5">
+            <ResumeTreeRow
+              depth={0}
+              name={selectAllLabel}
+              checked={allSelection.state.checked}
+              disabled={allBusy || allSelection.state.total === 0}
+              // Ticks everything unless all already are, as a node's box does.
+              onCheckedChange={() =>
+                setTicks(
+                  allSelection.keys,
+                  allSelection.state.selectedCount < allSelection.state.total
+                )
+              }
+              checkboxLabel={translate(
+                'auto.components.NativeChatResumeOnRestartModal.selectAll',
+                'Select all chats'
+              )}
+            >
               <span className="min-w-0 truncate text-xs font-semibold text-muted-foreground">
-                {translate(
-                  'auto.components.NativeChatResumeOnRestartModal.selectAllLabel',
-                  'Select all'
-                )}
+                {selectAllLabel}
               </span>
               <span className="ml-auto shrink-0 pl-2 text-[11px] tabular-nums text-muted-foreground">
                 {translate(
@@ -314,68 +327,33 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
                   { value0: allSelection.state.selectedCount, value1: allSelection.state.total }
                 )}
               </span>
-            </span>
-          </label>
-          {flat ? (
-            <ResumeOnRestartGroups
-              candidates={machines[0]!.rows}
-              listedAt={machines[0]!.offer.listedAt}
-              busy={resuming.has(machines[0]!.machine)}
-              selected={tickedFor(machines[0]!)}
-              onToggle={(sessionId, checked) => toggle(machines[0]!.identity, sessionId, checked)}
-              failureFor={machines[0]!.failureFor}
-              onFailureAction={(action, sessionId) =>
-                void actOnFailure(machines[0]!, action, sessionId)
-              }
-              originLabelFor={originLabelFor(machines[0]!)}
-            />
-          ) : (
-            <div className="flex flex-col">
-              {machines.map((machine) => {
-                const ticked = tickedFor(machine)
-                const selectable = selectableResumeRows(machine)
-                // Opened for this machine, or nothing on it starts ticked (so its empty box is
-                // explained), or it is the only machine listed.
-                const expandedByDefault =
-                  request.focus === machine.machine ||
-                  machines.length === 1 ||
-                  !machine.rows.some((row) =>
-                    resumeRowSelectedByDefault(
-                      machine.ownershipFor(row.sessionId),
-                      machine.failureFor(row.sessionId)
-                    )
-                  )
-                return (
-                  <ResumeMachineSection
-                    key={machine.identity}
-                    offer={machine.offer}
-                    name={machine.name}
-                    expanded={expandedOverrides.get(machine.identity) ?? expandedByDefault}
-                    onExpandedChange={(expanded) =>
-                      setExpandedOverrides((current) =>
-                        new Map(current).set(machine.identity, expanded)
-                      )
-                    }
-                    selected={ticked}
-                    selectable={selectable}
-                    busy={resuming.has(machine.machine)}
-                    onToggle={(sessionId, checked) => toggle(machine.identity, sessionId, checked)}
-                    onToggleAll={(checked) =>
-                      setTicks(
-                        selectable.map((sessionId) => resumeRowKey(machine.identity, sessionId)),
-                        checked
-                      )
-                    }
-                    failureFor={machine.failureFor}
-                    onFailureAction={(action, sessionId) =>
-                      void actOnFailure(machine, action, sessionId)
-                    }
-                    originLabelFor={originLabelFor(machine)}
-                  />
-                )
-              })}
-            </div>
-          )}
+            </ResumeTreeRow>
+          </div>
+          {/* One tree over every machine: it shows a machine level whenever more than this
+              computer is listed, each machine named, busy and opened on its own. */}
+          <ResumeOnRestartGroups
+            candidates={tree.rows}
+            listedAt={tree.listedAt}
+            busy={false}
+            selected={ticked}
+            onToggle={toggle}
+            rowKey={tree.rowKey}
+            busyFor={tree.busyFor}
+            failureFor={tree.failureFor}
+            onFailureAction={(action, key) =>
+              resumeTreeRowAction(
+                tree,
+                key,
+                (machine, act, sessionId) => {
+                  void actOnFailure(machine, act, sessionId)
+                },
+                action
+              )
+            }
+            originLabelFor={tree.originLabelFor}
+            defaultExpanded={tree.defaultExpanded}
+            machineSubtitle={tree.machineSubtitle}
+          />
         </div>
 
         {/* Two controls: one deletes the offers, one acts on them. Closing snoozes, so it needs none. */}

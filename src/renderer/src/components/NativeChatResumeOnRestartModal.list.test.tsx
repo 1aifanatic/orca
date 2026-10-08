@@ -80,16 +80,49 @@ it('uses the sidebar surface without a border around the resume list', async () 
   expect(list?.classList.contains('border')).toBe(false)
 })
 
-// It takes arrow keys, so it needs a role; a group also lets its aria-label name it.
-it('exposes the list as a named group', async () => {
+// The resume list is a tree; it keeps the list's accessible name.
+it('exposes the list as a named tree of leveled items', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(<NativeChatResumeOnRestartModal />)
-  const list = document.querySelector('[role="group"][aria-label="Chats that would be resumed"]')
-  expect(list).not.toBeNull()
-  // The bands run edge to edge; the rounded, clipped container keeps the corners.
-  expect(list?.classList.contains('rounded-md')).toBe(true)
-  expect(list?.classList.contains('overflow-y-auto')).toBe(true)
-  expect(list?.className).not.toMatch(/\bp-/)
+  const tree = document.querySelector('[role="tree"][aria-label="Chats that would be resumed"]')
+  expect(tree).not.toBeNull()
+  expect(
+    document.querySelector('[role="group"][aria-label="Chats that would be resumed"]')
+  ).toBeNull()
+  const levels = [...tree!.querySelectorAll('[role="treeitem"]')].map((item) =>
+    item.getAttribute('aria-level')
+  )
+  // Select all, then this workspace (no project the store knows) and its two chats.
+  expect(levels).toEqual(['1', '1', '2', '2'])
+  // The one divider sits under Select all.
+  const selectAllItem = namedBox('Select all chats').closest('[role="treeitem"]')
+  expect(selectAllItem?.parentElement?.classList.contains('border-b')).toBe(true)
+})
+
+it('folds the focused node with Left and opens it with Right, keeping focus and ticks', async () => {
+  rpc.mockResolvedValue({ sessions: offered })
+  await mount(<NativeChatResumeOnRestartModal />)
+  const workspace = namedBox('Select all chats in workspace')
+  const press = async (key: string) =>
+    act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    })
+  await act(async () => chatBox('a').click())
+  workspace.focus()
+
+  await press('ArrowLeft')
+  expect(workspace.closest('[role="treeitem"]')?.getAttribute('aria-expanded')).toBe('false')
+  expect(document.querySelector('[aria-label*="Prompt a"]')).toBeNull()
+  expect(document.activeElement).toBe(workspace)
+  // Left again on a closed node does nothing.
+  await press('ArrowLeft')
+  expect(workspace.closest('[role="treeitem"]')?.getAttribute('aria-expanded')).toBe('false')
+
+  await press('ArrowRight')
+  expect(workspace.closest('[role="treeitem"]')?.getAttribute('aria-expanded')).toBe('true')
+  expect(chatBox('a').getAttribute('aria-checked')).toBe('false')
+  expect(chatBox('b').getAttribute('aria-checked')).toBe('true')
+  expect(button('Resume 1 chat')).toBeTruthy()
 })
 
 it('keeps initial focus inside the dialog with no resumable chats', async () => {

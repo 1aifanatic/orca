@@ -144,8 +144,10 @@ it('keeps initial focus inside the dialog when reopened during resume', async ()
 it('offers exactly Dismiss all and the resume action', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(<NativeChatResumeOnRestartModal />)
-  // Row and preference checkboxes are buttons too; the controls are what is left after them.
-  const controls = document.querySelectorAll('[role="dialog"] button:not([role="checkbox"])')
+  // Checkboxes and tree arrows are buttons too; the controls are what is left after them.
+  const controls = document.querySelectorAll(
+    '[role="dialog"] button:not([role="checkbox"]):not([aria-expanded])'
+  )
   expect([...controls].map((entry) => entry.textContent?.trim())).toEqual([
     'Dismiss all',
     'Resume 2 chats',

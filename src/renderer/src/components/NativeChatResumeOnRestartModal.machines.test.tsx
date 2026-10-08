@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { useAppStore } from '../store'
 import { getDefaultSettings } from '../../../shared/constants'
+import { getHostContextLabel } from '../../../shared/worktree/host-context-labels'
 import { NativeChatResumeOnRestartModal } from './NativeChatResumeOnRestartModal'
 import { TooltipProvider } from './ui/tooltip'
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
@@ -41,6 +42,7 @@ let root: Root
 let container: HTMLDivElement
 
 const row = machineRowFixture
+const LOCAL = getHostContextLabel('local')
 
 let localRows = [row('l1', 'own')]
 const SERVER_ROWS = [row('s1', 'own'), row('s2', 'other-device'), row('s3', 'automation')]
@@ -129,7 +131,7 @@ it('lists each machine with only the user’s own chats ticked, opening the one 
   expect(machineRow('studio-mac').getAttribute('aria-expanded')).toBe('true')
   expect(machineRow('studio-mac').textContent).toContain('1 of 3')
   // This computer's own chats all start ticked, and it stays closed but listed.
-  expect(machineRow('Local').getAttribute('aria-expanded')).toBe('false')
+  expect(machineRow(LOCAL).getAttribute('aria-expanded')).toBe('false')
   expect(machineToggle('studio-mac').getAttribute('data-state')).toBe('indeterminate')
   expect(document.body.textContent).toContain('Another device')
   expect(document.body.textContent).toContain('Automation')
@@ -251,7 +253,7 @@ it("keeps the user's ticks and open machine when this computer's launch read lan
   await act(async () => requestLaunchResumePrompt())
   expect(getNativeChatResumeOnRestartDialogRequest()).toEqual({ focus: 'environment:studio' })
   // This computer joins the open dialog with its chat ticked; the server's unticks stay.
-  expect(machineRow('Local')).toBeTruthy()
+  expect(machineRow(LOCAL)).toBeTruthy()
   expect(button('Resume 1 chat')).toBeTruthy()
   expect(machineToggle('studio-mac').getAttribute('data-state')).toBe('unchecked')
   expect(machineRow('studio-mac').getAttribute('aria-expanded')).toBe('true')
@@ -260,7 +262,8 @@ it("keeps the user's ticks and open machine when this computer's launch read lan
 it('keeps the flat list when only this computer has chats', async () => {
   await stage({})
   await open('local')
-  expect(document.querySelector('button[aria-expanded]')).toBeNull()
+  // No machine level: the only machine is obvious.
+  expect(document.querySelector('[aria-label^="Select all chats on "]')).toBeNull()
   expect(button('Resume 1 chat')).toBeTruthy()
 })
 
@@ -316,7 +319,7 @@ it('names the machine on its row whenever chats are grouped by machine, even a s
   expect(machineRow('studio-mac').textContent).toContain('studio-mac')
   localRows = [row('l1', 'own')]
   await stage({ studio: SERVER_ROWS })
-  expect(machineRow('Local').textContent).toContain('Local')
+  expect(machineRow(LOCAL).textContent).toContain(LOCAL)
   expect(machineRow('studio-mac')).toBeTruthy()
 })
 
