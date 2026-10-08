@@ -1,8 +1,5 @@
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
-import {
-  isSameAgentProcess,
-  type AgentProcessVerdict
-} from '../../../shared/agent-process-presence'
+import type { AgentProcessVerdict } from '../../../shared/agent-process-presence'
 import { probeAgentProcessPresence } from '../../../shared/agent-process-presence-probe'
 import { AgentHookServerLifecycle } from './server-lifecycle'
 
@@ -11,15 +8,6 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     AgentHookEventPayload,
     Promise<AgentProcessVerdict | null>
   >()
-
-  /** A live hook proves its own process alive; only another process's hook casts doubt on the owner. */
-  checkAgentPresenceAfterHook(event: AgentHookEventPayload, row: AgentHookEventPayload): void {
-    const sender = event.agentPresence?.process
-    const owner = row.agentPresence
-    if (sender && owner?.process && !owner.ended && !isSameAgentProcess(sender, owner.process)) {
-      void this.checkAgentPresence(row.paneKey)
-    }
-  }
 
   /** Whether this pane's owner carries a process identity that its execution host can check. */
   hasVerifiableAgentProcess(paneKey: string): boolean {

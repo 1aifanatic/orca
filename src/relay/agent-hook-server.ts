@@ -16,6 +16,7 @@ export type {
 } from './agent-hook-server-contract'
 import { handleRelayHookRequest } from './agent-hook-request'
 import { RelayAgentPresence } from './relay-agent-presence'
+import type { AgentProcessVerdict } from '../shared/agent-process-presence'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -72,7 +73,15 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
   private fixedToken: string | undefined
   private preferredPort: number
   private portFallbackApplied = false
-  private readonly presenceChecks = new RelayAgentPresence()
+  private readonly presenceChecks = new RelayAgentPresence({
+    current: (paneKey) => this.state.lastStatusByPaneKey.get(paneKey),
+    publish: (paneKey, event) => {
+      const meta = this.lastEnvelopeMetaByPaneKey.get(paneKey)
+      if (meta) {
+        this.applyEvent(event, meta.source, meta.env, meta.version)
+      }
+    }
+  })
   private retryScheduler: AgentHookResultRetryScheduler
   readonly claudeTerminalInterrupts = createRelayClaudeTerminalInterrupts(this.state, () =>
     this.relayInterruptHost()
@@ -235,18 +244,8 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
     }
   }
 
-  checkAgentPresence(paneKey: string): Promise<void> {
-    const row = this.state.lastStatusByPaneKey.get(paneKey)
-    const meta = this.lastEnvelopeMetaByPaneKey.get(paneKey)
-    return this.presenceChecks.check(
-      row,
-      () => this.state.lastStatusByPaneKey.get(paneKey),
-      (event) => {
-        if (meta) {
-          this.applyEvent(event, meta.source, meta.env, meta.version)
-        }
-      }
-    )
+  checkAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null> {
+    return this.presenceChecks.check(paneKey)
   }
 
   /** Drop a paneKey's cached entries on PTY exit so a terminated pane can't resurface as a ghost event on reconnect. */
@@ -310,7 +309,7 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
         clearAssistantMessageRetry: (paneKey) =>
           this.retryScheduler.clearAssistantMessageRetry(paneKey),
         forward: this.forward,
-        checkAgentPresence: (paneKey) => this.checkAgentPresence(paneKey)
+        ownerProbes: this.presenceChecks.owners
       },
       incoming,
       source,
