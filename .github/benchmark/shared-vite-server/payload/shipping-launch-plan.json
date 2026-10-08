@@ -1,0 +1,276 @@
+{
+  "sourceHead": "b46a2eb9beec05b1a4ff3527c7a75a3dd77004b9",
+  "files": [
+    "config/scripts/vitest-runtime-boundary.test.ts",
+    "config/scripts/vitest-node-runtime-boundary.test.ts",
+    "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+    "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+    "src/renderer/src/components/settings/AppearancePane.test.tsx",
+    "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+    "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+    "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts"
+  ],
+  "originalFiles": [
+    "config/scripts/vitest-runtime-boundary.test.ts",
+    "config/scripts/vitest-node-runtime-boundary.test.ts",
+    "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+    "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+    "src/renderer/src/components/settings/AppearancePane.test.tsx",
+    "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts"
+  ],
+  "probeSourceHashes": {
+    "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+    "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+    "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+    "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+    "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+    "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+    "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c"
+  },
+  "setupFiles": [
+    "config/scripts/vitest-real-agent-home-write-guard.ts",
+    "config/scripts/vitest-bun-node-builtins.ts",
+    "config/scripts/happy-dom-offscreen-canvas.ts",
+    "config/scripts/happy-dom-mutation-observer-retention.ts",
+    "config/scripts/vitest-host-ports-setup.ts",
+    "config/scripts/vitest-caller-identity-env-setup.ts"
+  ],
+  "shuffleSeeds": [
+    104729,
+    130363
+  ],
+  "caseCount": null,
+  "runtimeManifestPending": true,
+  "timedFiles": [],
+  "probeFiles": [
+    "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+    "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts"
+  ],
+  "namedSourceHashes": {
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "2ec999d585da35017fd799f12bef021601a14acae0eb561135544d6c585f593c",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+    "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+    "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+    "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+    "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+    "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+    "config/scripts/ci-shard-timings.json": "716197dfc7bf52f3beba99ce6f23269a8a7423451c0da0af6e15a5a4ce70f4b8",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45"
+  },
+  "sourceHashes": {
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/ci-shard-assignment.mjs": "c95ea6572621746cc610b3d868ff38980ce8ce86a739b8c706a986ba31260090",
+    "config/scripts/ci-shard-timings.json": "716197dfc7bf52f3beba99ce6f23269a8a7423451c0da0af6e15a5a4ce70f4b8",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+    "config/scripts/vitest-node-runtime-files.mjs": "7be68fd86ffecff4c41953ced057258764f34506a9f86c547956440820c56b19",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-runtime-boundary.test.ts": "9e2b5b39277183d5bed65c8178a4e261a38a075222bcd748012c255ce80dea7d",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-sqlite-runtime-boundary.test.ts": "2066f50ad13b2a80212fbb8c36cf8e783f70f2ebaed876b018c4bd8f408d7248",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "2ec999d585da35017fd799f12bef021601a14acae0eb561135544d6c585f593c",
+    "config/vitest.config.ts": "eb6e346f3c20910feb1dbe009c7a027c0d65de72cff576f2590ba18ad4dd5c5b",
+    "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664",
+    "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+    "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "1530a89d189ebdc57a1577e7fbfcd34eac55a0165589265b8d776b33f83678bd",
+    "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "63ce5695869dc8c6506faa7eaf8c6eee06fd5dc1766222e0d6f4449bab3f2a20",
+    "notes/bun-migration/performance/qualify-fixture-reuse.py": "1196543e3c0b47d8110bf44336afb3faf047bf0f0a2180eaaee9866d54a706a2",
+    "notes/bun-migration/performance/shared-vite-server-ci-b46/shared-server-preflight.mjs": "43aad15729f7e135ec8ee53be9d35e792a9b91c1b19749c071c07e2f7a0ce17c",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts": "2469a65b865ded77c7ca74dd720d7283488057fc762c5226d110a9bacbb03ab1",
+    "src/main/persistence/profile-state/profile-state-access-identity.test.ts": "029fd2d4fba70e09429fe8b76c9360d87a705808aac3339dfad911f7f5990581",
+    "src/renderer/src/components/settings/AppearancePane.test.tsx": "44cc6f6782fe0b1c2bed44f585950f5c7d70e86dd911b40ba2325ec3e2d220f8",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    "src/shared/orca-shared-server-probe-ci/config-choice.ts": "fc4071f94f23aa0567617de9fdcb20af683e65b68913b67f5927b881cbb35e36",
+    "src/shared/orca-shared-server-probe-ci/mock-target.ts": "b2218f51241dcc481cccce495b91c74b78178ff61cd890488c31659e1d2a78e6",
+    "src/shared/orca-shared-server-probe-ci/ordinary.test.ts": "fc7af64ff482e99ff739ffd610b9d354001c42473c643d30628103406927ca3e",
+    "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts": "2096fdf8076d02e65168962f52c68b56e1f10ce8a771bf163f5d4f886429344d",
+    "src/shared/orca-shared-server-probe-ci/relocation.ts": "fff85a143d8ae38244813b32ba52dbf89dfa1f401ae391af378bc7fc92cb34ca",
+    "src/shared/orca-shared-server-probe-ci/reset-state.ts": "b7a66a0ed588c06a624f9169472a104fae96b6dbb88ca5b3f6a104f723e7705c",
+    "src/shared/orca-shared-server-probe-ci/source-value.ts": "554186a821ea140718ba623ef324cb8ff464231ca679e9a75de21ea09649ecb9",
+    "node_modules/vitest/dist/config.js": "52fe8265e2c9fcbaca628deef9ea53a72e0bca0e0bd7dc5cc21ec63c1f34c5e5",
+    "node_modules/vitest/dist/chunks/defaults.D2ip7f-X.js": "94c9e4edfb342f810c1e717c30005b8e0bfa3c17aa60280ac8b5ec88eef0eda2"
+  },
+  "controllerSha256": "1196543e3c0b47d8110bf44336afb3faf047bf0f0a2180eaaee9866d54a706a2",
+  "reporterSha256": "63ce5695869dc8c6506faa7eaf8c6eee06fd5dc1766222e0d6f4449bab3f2a20",
+  "patch": "notes/bun-migration/performance/shared-vite-server-ci-b46/shipping.patch",
+  "patchSha256": "dcad6c382dbb613b45ad8336b5329a384cf6cb044eabb458df4ec06d30931c05",
+  "patchTargets": {
+    "config/vitest.config.ts": {
+      "beforeSha256": "eb6e346f3c20910feb1dbe009c7a027c0d65de72cff576f2590ba18ad4dd5c5b",
+      "afterSha256": "4cec35b9fb0276bb9f333c51e22fc58d6ebcf9d54a4e702f0e29efa9058b29f2"
+    }
+  },
+  "measurementFile": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+  "expectedRoutes": {
+    "bun": [
+      {
+        "file": "config/scripts/vitest-runtime-boundary.test.ts",
+        "project": "bun",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+        "project": "node-runtime",
+        "pool": "node-runtime",
+        "groupOrder": 1
+      },
+      {
+        "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+        "project": "node-runtime",
+        "pool": "node-runtime",
+        "groupOrder": 1
+      },
+      {
+        "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+        "project": "node-runtime",
+        "pool": "node-runtime",
+        "groupOrder": 1
+      },
+      {
+        "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+        "project": "bun",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+        "project": "node-measurement",
+        "pool": "node-runtime",
+        "groupOrder": 2
+      },
+      {
+        "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+        "project": "bun",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+        "project": "node-runtime",
+        "pool": "node-runtime",
+        "groupOrder": 1
+      }
+    ],
+    "node": [
+      {
+        "file": "config/scripts/vitest-runtime-boundary.test.ts",
+        "project": "node",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+        "project": "node",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "config/scripts/vitest-sqlite-runtime-boundary.test.ts",
+        "project": "node",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "src/main/persistence/profile-state/profile-state-access-identity.test.ts",
+        "project": "node",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "src/renderer/src/components/settings/AppearancePane.test.tsx",
+        "project": "node",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts",
+        "project": "node-measurement",
+        "pool": "forks",
+        "groupOrder": 2
+      },
+      {
+        "file": "src/shared/orca-shared-server-probe-ci/ordinary.test.ts",
+        "project": "node",
+        "pool": "forks",
+        "groupOrder": 1
+      },
+      {
+        "file": "src/shared/orca-shared-server-probe-ci/protected-retention.test.ts",
+        "project": "node",
+        "pool": "forks",
+        "groupOrder": 1
+      }
+    ]
+  },
+  "runtimeDerivedCountsRequired": true,
+  "cache": true,
+  "maxWorkers": 4,
+  "scope": "One held ARM4; eight correctness commands only. Six original modules unchanged; separate reused diagnostic assertions, no speed claim.",
+  "allowedMetadataOnly": [
+    "project sequence.sequencer now inherits exact root class",
+    "project reporters inherit exact raw-root reporters or config defaults",
+    "project Vite cacheDir/config.cache.dir use exact root owner",
+    "project internal _moduleRunnerOptions provenance absent while worker and public config plus root options remain equal"
+  ],
+  "crossPlatformLimit": "Linux ARM4 CLI4 only. Windows project serialized cap provenance undefined-to4 needs independent prospective proof; no universal serialized byte-equality claim.",
+  "inheritedSourceBoundary": {
+    "design": {
+      "path": "notes/bun-migration/performance/vitest-shared-transform-server-b46-review-fixes-independent-source-design-peer.json",
+      "sha256": "9d806822c8cab337d35270e400869e4a56d423cdefaffe9b3ab2b999a29c5dfd"
+    },
+    "inheritance": {
+      "path": "notes/bun-migration/performance/vitest-shared-transform-server-b46-inheritance-boundary-supplement.json",
+      "sha256": "eb9dbf6e250393ad8346958d3d0774a72545238a930d4a26a1d099352e4348cc"
+    }
+  },
+  "functionalSource": {
+    "beforeSha256": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "afterSha256": "26596b5801e1eb81a64ada91a183afda90ec436b01d0cd31a2e8c98c651c2a3f",
+    "patchSha256": "4976762b16caa80a8a56a8c050793b2a2955902709ff1bfa9519fa16867cb29f"
+  },
+  "instrumentationTargets": {
+    "config/vitest.config.ts": {
+      "commonBeforeAfterChange": "Add only one literal define and one alias to the existing transforms declaration; both arms use identical diagnostic owner.",
+      "beforeInstrumentedSha256": "eb6e346f3c20910feb1dbe009c7a027c0d65de72cff576f2590ba18ad4dd5c5b",
+      "afterInstrumentedSha256": "4cec35b9fb0276bb9f333c51e22fc58d6ebcf9d54a4e702f0e29efa9058b29f2"
+    }
+  },
+  "prospectiveExpectedStatus": "all original and diagnostic cases passed; actual registration counts pending; no status/title normalization or guessed literal counts"
+}

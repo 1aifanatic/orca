@@ -1,0 +1,41 @@
+diff --git a/config/vitest.config.ts b/config/vitest.config.ts
+--- a/config/vitest.config.ts
++++ b/config/vitest.config.ts
+@@ -43,10 +43,8 @@
+   testTimeout: 30_000
+ }
+ const nodeProject = {
+-  extends: false,
+-  ...transforms,
++  extends: true,
+   test: {
+-    ...testOptions,
+     name: process.versions.bun ? 'node-runtime' : 'node',
+     env: { ORCA_VITEST_RUNTIME: process.versions.bun ? 'node-runtime' : 'node' },
+     include: process.versions.bun ? NODE_RUNTIME_INCLUDE : UNIT_INCLUDE,
+@@ -61,13 +59,12 @@
+   ...(process.versions.bun
+     ? [
+         {
+-          extends: false,
+-          ...transforms,
++          extends: true,
+           test: {
+-            ...testOptions,
+             name: 'bun',
+             env: { ORCA_VITEST_RUNTIME: 'bun' },
+             pool: 'forks',
++            include: UNIT_INCLUDE,
+             exclude: [...testOptions.exclude, ...NODE_RUNTIME_INCLUDE, measurementFile],
+             sequence: { groupOrder: 1 }
+           }
+@@ -93,6 +90,9 @@
+   ...transforms,
+   test: {
+     ...testOptions,
++    // Inline projects own their selectors; empty root arrays avoid concatenating them.
++    include: [],
++    exclude: [],
+     sequence: { sequencer: balancedShards ? TimingSequencer : RuntimeSequencer },
+     ...(balancedShards
+       ? {
