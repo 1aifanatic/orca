@@ -37,7 +37,7 @@ import {
   provenUnverifiableTurnRevisions,
   provenUnverifiedToolCallRevisions,
   runningTurnLifecycleRevisions,
-  stopFoundTurnLiveAt,
+  lastProvenTurnLiveAt,
   turnVerdictFromDeathEvidence,
   watchedExitRevisions,
   type StructuredAgentSessionTurnVerdict,
@@ -197,7 +197,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
     turnVerdictFromDeathEvidence(
       input.deathEvidence,
       journal.itemFence(item.itemId),
-      stopFoundTurnLiveAt(journal, item)
+      lastProvenTurnLiveAt(journal, item)
     )
   // Per attempt: a retry re-partitions only what is left, and a reused chunk id would skip it.
   const generation = input.acquisitionGeneration ?? `seq-${journal.cursor().sequence}`

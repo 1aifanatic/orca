@@ -36,7 +36,7 @@ export function turnVerdictFromDeathEvidence(
   evidence: AgentSessionDeathEvidence | null | undefined,
   /** Fence of the owner that wrote the turn. */
   turnFence: number | undefined,
-  /** When a Stop event found the turn running (`stopFoundTurnLiveAt`): a later proof of life. */
+  /** A provider observation or Stop that found the turn running: a later proof of life. */
   liveAt?: number
 ): StructuredAgentSessionTurnVerdict {
   if (!evidence) {
@@ -55,20 +55,23 @@ export function turnVerdictFromDeathEvidence(
     return { state: 'interrupted', completedAt: evidence.observedAt }
   }
   // A probe finds a dead child long after it died; its last renewal bounds the end, so the turn never
-  // counts the time Orca was down. Timeline rows don't: a send can land there after the death. A
-  // Stop that found the turn running is a later renewal, so the end reads after that Stop.
+  // counts the time Orca was down. Provider output and a Stop that found the turn running can
+  // prove life after that renewal; a client's later send or a recovery write cannot.
   const lastAlive = Math.max(evidence.lastProvenAliveAt ?? evidence.observedAt, liveAt ?? 0)
   return { state: 'interrupted', completedAt: Math.min(lastAlive, evidence.observedAt) }
 }
 
-/** When the latest Stop event found `item`'s turn running: E1 writes one only for a live turn. */
-export function stopFoundTurnLiveAt(
-  journal: Pick<AgentSessionJournal, 'stopMarks'>,
+/** The latest observation of this turn's owner, including a Stop that found it running. */
+export function lastProvenTurnLiveAt(
+  journal: Pick<AgentSessionJournal, 'stopMarks' | 'itemFence' | 'lastProviderActivityAt'>,
   item: AgentJournalRenderItem
 ): number | undefined {
   const stop = journal.stopMarks.latest()
   const turnId = readAgentJournalTurn(item.body)?.turnId
-  return stop && turnId !== undefined && stop.event.turnId === turnId ? stop.event.at : undefined
+  const stoppedAt = stop && turnId !== undefined && stop.event.turnId === turnId ? stop.event.at : 0
+  const fence = journal.itemFence(item.itemId)
+  const providerAt = fence === undefined ? 0 : (journal.lastProviderActivityAt(fence) ?? 0)
+  return Math.max(stoppedAt, providerAt) || undefined
 }
 
 /** Every turn this settle interrupts is a person's Stop's to end (`turnEndAfterStop`), so it reads
@@ -106,7 +109,7 @@ export function runningTurnLifecycleRevisions(
 export function provenUnverifiableTurnRevisions(
   items: readonly AgentJournalRenderItem[],
   evidence: AgentSessionDeathEvidence | null | undefined,
-  journal: Pick<AgentSessionJournal, 'itemFence' | 'stopMarks'>
+  journal: Pick<AgentSessionJournal, 'itemFence' | 'stopMarks' | 'lastProviderActivityAt'>
 ): JournalLifecycleMutationInput[] {
   const ownerFence = evidence?.ownerFence
   if (ownerFence === undefined) {
@@ -118,7 +121,7 @@ export function provenUnverifiableTurnRevisions(
       ? turnLifecycleRevision(
           item,
           turn,
-          turnVerdictFromDeathEvidence(evidence, ownerFence, stopFoundTurnLiveAt(journal, item))
+          turnVerdictFromDeathEvidence(evidence, ownerFence, lastProvenTurnLiveAt(journal, item))
         )
       : []
   })
