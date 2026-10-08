@@ -8,13 +8,7 @@ import {
   type AgentSessionRewindResult
 } from './agent-session-rewind'
 /**
- * Durable client-operation ledger.
- *
- * `terminal.ensureAgentSession` / `terminal.createAgentSession` already enforce timestamped
- * operation ids with fingerprint conflict detection, age expiry, and tombstone retention — but in
- * memory, so a host restart turns "replay this create" into "spawn another agent". These are the
- * same rules over rows that survive a restart; the store writes a row in the same atomic
- * transaction as the lease reservation.
+ * Durable operation admission, claims and outcomes, persisted with the session records.
  *
  * There is no count limit. Rows are bookkeeping for retries, and a full ledger refused every
  * caller's next write, including the user's own send behind unrelated agent traffic. A row's only
@@ -56,6 +50,7 @@ export type AgentSessionOperationOutcome =
        * the value is read instead, where a payload we cannot read costs one replay.
        */
       launch?: unknown
+      terminalCreate?: unknown
     }
   | {
       status: 'failed'
@@ -67,7 +62,7 @@ export type AgentSessionOperationOutcome =
       details?: AgentSessionAnyRefusalDetails
     }
   /** The effect may or may not have happened; replay this answer instead of spawning again. */
-  | { status: 'unknown' }
+  | { status: 'unknown'; message?: string }
 
 /** A terminal pane an operation laid out before its process existed. */
 export type AgentSessionOperationOwnedPane = { worktreeId: string; paneKey: string }
@@ -87,6 +82,8 @@ export type AgentSessionOperationRow = {
    * malformed value costs that pane its verdict, never the row.
    */
   ownedPane?: AgentSessionOperationOwnedPane
+  /** Read at replay, never during row validation: an unreadable plan must retain its fence. */
+  terminalCreate?: unknown
 }
 
 /** Unexpired rows naming this pane as theirs. */
@@ -198,7 +195,12 @@ export type AgentSessionOperationClaim =
  */
 export function claimAgentSessionOperation(
   rows: ReadonlyMap<string, AgentSessionOperationRow>,
-  args: { callerKey: string; operationId: string; ownedPane?: AgentSessionOperationOwnedPane }
+  args: {
+    callerKey: string
+    operationId: string
+    ownedPane?: AgentSessionOperationOwnedPane
+    terminalCreate?: unknown
+  }
 ): { rows: Map<string, AgentSessionOperationRow>; claim: AgentSessionOperationClaim } {
   const key = agentSessionOperationKey(args.callerKey, args.operationId)
   const existing = rows.get(key)
@@ -211,7 +213,8 @@ export function claimAgentSessionOperation(
   const claimed: AgentSessionOperationRow = {
     ...existing,
     outcome: { status: 'unknown' },
-    ...(args.ownedPane ? { ownedPane: args.ownedPane } : {})
+    ...(args.ownedPane ? { ownedPane: args.ownedPane } : {}),
+    ...(args.terminalCreate !== undefined ? { terminalCreate: args.terminalCreate } : {})
   }
   const next = new Map(rows)
   next.set(key, claimed)
