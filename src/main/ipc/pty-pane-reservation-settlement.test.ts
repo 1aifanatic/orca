@@ -123,6 +123,7 @@ describe('registerPtyHandlers', () => {
         session = next
       }),
       flushOrThrow: vi.fn(),
+      retirePtyBinding: vi.fn(async () => true),
       persistPtyBinding: vi.fn(),
       upsertSshRemotePtyLease: vi.fn(),
       supersedeSshRemotePtyLeasesForBoundPane: vi.fn(),

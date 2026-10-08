@@ -279,6 +279,7 @@ describe('registerPtyHandlers', () => {
           session = next
         }),
         flushOrThrow: vi.fn(),
+        retirePtyBinding: vi.fn(async () => true),
         persistPtyBinding: vi.fn(),
         getFolderWorkspace: vi.fn(() => ({
           id: 'dead-persisted-owner',
@@ -441,6 +442,7 @@ describe('registerPtyHandlers', () => {
         session = next
       }),
       flushOrThrow: vi.fn(),
+      retirePtyBinding: vi.fn(async () => true),
       persistPtyBinding: vi.fn(),
       getFolderWorkspace: vi.fn(() => undefined),
       getFolderWorkspaces: vi.fn(() => []),

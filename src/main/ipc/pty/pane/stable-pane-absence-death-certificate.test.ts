@@ -61,6 +61,7 @@ function paneStore(): { store: Store; read: () => WorkspaceSessionState } {
         session = next
       },
       flushOrThrow: () => {},
+      retirePtyBinding: async () => true,
       getRepos: () => [
         {
           id: 'repo-1',
