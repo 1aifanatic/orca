@@ -56,7 +56,7 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
     getTabTitle: (tabId) => this.tabs.get(tabId)?.title?.trim() || null,
     getForegroundProcess: (ptyId) => this.ptyController?.getForegroundProcess(ptyId) ?? null,
     getTitleDisplayClear: (ptyId) => this.getPtyTitleDisplayClear(ptyId),
-    readScreenBlockedReason: (ptyId) => this.readCurrentScreenBlockedReason(ptyId)
+    readScreenBlockedEvidence: (ptyId) => this.readCurrentScreenBlockedEvidence(ptyId)
   })
 
   protected notifier: RuntimeNotifier | null = null
@@ -206,7 +206,7 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
     getLifecycleStatus: (ptyId) => this.agentPromptLifecycleByPtyId.get(ptyId),
     isRunning: (handle) => this.isTerminalRunningAgent(handle),
     getTitleDisplayClear: (ptyId) => this.getPtyTitleDisplayClear(ptyId),
-    readScreenBlockedReason: (ptyId) => this.readCurrentScreenBlockedReason(ptyId)
+    readScreenBlockedEvidence: (ptyId) => this.readCurrentScreenBlockedEvidence(ptyId)
   })
 
   protected _orchestrationDb: OrchestrationDb | null = null

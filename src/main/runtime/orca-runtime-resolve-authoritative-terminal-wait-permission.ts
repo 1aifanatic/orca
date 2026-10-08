@@ -19,7 +19,13 @@ import type { TerminalAgent } from '../../shared/terminal-agent'
 import type { AgentPromptActivity } from './agent-prompt-submission-verification'
 import { hasExplicitIdleTitle } from './tui-idle-evidence'
 import { readTuiIdleHookTurn, type TuiIdleHookTurn } from './tui-idle-hook-lane'
-import { judgeBlockedAgainstLiveScreen } from './live-screen-blocked-judgement'
+import {
+  agentSaysNotWaiting,
+  judgeBlockedAgainstLiveScreen,
+  type LiveScreenBlockedEvidence
+} from './live-screen-blocked-judgement'
+import { isKnownReadyPromptBody } from './terminal-wait-detection'
+import { readsTrustedScreen } from './agent-state-rules/agent-state-rules-engine'
 
 export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends OrcaRuntimeWithAgentPromptRequestCorrelation {
   readOpenCodeStartupPromptOwner(ptyId: string, incarnationId: string, launchToken: string) {
@@ -87,15 +93,14 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
         explicitStatus,
         lifecycle
       ),
-      screenReason: this.readCurrentScreenBlockedReason(ptyId),
-      agentWorking: terminal.titleStatus === 'working' || explicitStatus?.status === 'working'
+      tailShowsBlockedText: detectTerminalWaitBlockedReason(terminal.waitText) !== null,
+      screen: this.readCurrentScreenBlockedEvidence(ptyId),
+      agentSaysNotWaiting: agentSaysNotWaiting(terminal, explicitStatus)
     })
   }
 
   /** Undefined when no whole-screen model has applied every byte the runtime received. */
-  protected readCurrentScreenBlockedReason(
-    ptyId: string
-  ): RuntimeTerminalWaitBlockedReason | null | undefined {
+  protected readCurrentScreenBlockedEvidence(ptyId: string): LiveScreenBlockedEvidence | undefined {
     const state = this.readWholeScreenModel(ptyId)
     // Why caught up: the model applies bytes asynchronously, and a lagging grid would hide a
     // dialog the newest chunk painted.
@@ -103,7 +108,21 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
       return undefined
     }
     const lines = this.readLiveTerminalScreenLines(ptyId)
-    return lines ? detectTerminalWaitBlockedReason(lines.join('\n')) : undefined
+    if (!lines) {
+      return undefined
+    }
+    const text = lines.join('\n')
+    const blockedReason = detectTerminalWaitBlockedReason(text)
+    const agent = this.getPaneAgentForTuiIdle(ptyId)
+    const readScreenLines = readsTrustedScreen(agent)
+      ? () => this.readRuledScreen(ptyId)?.lines ?? null
+      : () => lines
+    return {
+      blockedReason,
+      // Why clockless: quiet decides when a turn ended, not whether the composer is painted.
+      showsReadyPrompt:
+        blockedReason === null && isKnownReadyPromptBody(text, agent, readScreenLines, false)
+    }
   }
 
   /**

@@ -20,8 +20,11 @@ import {
 import { detectTerminalWaitBlockedReason } from './terminal-wait-detection'
 import { getTerminalState } from './terminal-wait-results'
 import { buildTerminalWaitText } from './terminal-wait-tail-state'
-import { judgeBlockedAgainstLiveScreen } from './live-screen-blocked-judgement'
-import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
+import {
+  agentSaysNotWaiting,
+  judgeBlockedAgainstLiveScreen,
+  type LiveScreenBlockedEvidence
+} from './live-screen-blocked-judgement'
 
 export type RuntimeTerminalAgentStatusSnapshot = {
   waitText: string
@@ -45,8 +48,8 @@ type Dependencies = {
   ): { status: AgentStatus | null; updatedAt: number } | null | undefined
   isRunning(handle: string): Promise<boolean>
   getTitleDisplayClear(ptyId: string): TitleDisplayClear | null
-  /** Blocked text on the current whole-screen model; undefined when there is none. */
-  readScreenBlockedReason?(ptyId: string): RuntimeTerminalWaitBlockedReason | null | undefined
+  /** What the current whole-screen model shows; undefined when there is none. */
+  readScreenBlockedEvidence?(ptyId: string): LiveScreenBlockedEvidence | undefined
 }
 
 export class RuntimeTerminalAgentStatusQuery {
@@ -107,8 +110,9 @@ export class RuntimeTerminalAgentStatusQuery {
         : null
     const blocked = judgeBlockedAgainstLiveScreen({
       tailVerdict: tailBlocked,
-      screenReason: this.deps.readScreenBlockedReason?.(ptyId),
-      agentWorking: terminal.titleStatus === 'working' || explicitStatus?.status === 'working'
+      tailShowsBlockedText: blockedByWaitText !== null,
+      screen: this.deps.readScreenBlockedEvidence?.(ptyId),
+      agentSaysNotWaiting: agentSaysNotWaiting(terminal, explicitStatus)
     })
     if (blocked) {
       return { handle, isRunningAgent: true, status: 'permission' }
