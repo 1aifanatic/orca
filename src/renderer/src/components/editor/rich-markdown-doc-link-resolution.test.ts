@@ -31,11 +31,11 @@ function docLinkEditor(): Editor {
   return editor
 }
 function updateDocuments(editor: Editor, documents: MarkdownDocument[]): void {
-  const storage: unknown = Reflect.get(editor.storage, 'markdownDocLink')
-  if (typeof storage !== 'object' || storage === null) {
+  const storage = editor.storage.markdownDocLink
+  if (!storage) {
     throw new Error('Missing document-link storage')
   }
-  Reflect.set(storage, 'documents', documents)
+  storage.documents = documents
   editor.view.dispatch(editor.state.tr.setMeta('docLinksUpdated', true))
 }
 afterEach(() => editors.splice(0).forEach((editor) => editor.destroy()))
