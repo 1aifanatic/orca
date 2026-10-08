@@ -6,7 +6,7 @@ export type AgentChildIdentity = { agentType?: string; model?: string }
 export function mergeAgentChildIdentity(
   prior: AgentChildIdentity | undefined,
   observed: AgentChildIdentity
-): AgentChildIdentity {
+): { agentType: string | undefined; model: string | undefined } {
   const agentTypeChanged =
     observed.agentType !== undefined &&
     prior?.agentType !== undefined &&
