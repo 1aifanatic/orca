@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getNativeFileDropRejectionMessage } from './useGlobalFileDrop'
+import { getNativeFileDropRejectionMessage } from './native-file-drop-rejection-message'
 
 describe('getNativeFileDropRejectionMessage', () => {
   it('formats metadata-only rejection messages for oversized native drops', () => {

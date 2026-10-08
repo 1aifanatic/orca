@@ -17539,7 +17539,17 @@
         "activitySubagentOne": "サブ Agent 実行中: {{value0}}",
         "activitySubagentMany": "{{value0}} 個のサブ Agent が実行中",
         "activityMonitorOne": "監視中: {{value0}}",
-        "activityMonitorMany": "{{value0}} 個のバックグラウンドタスクを監視中"
+        "activityMonitorMany": "{{value0}} 個のバックグラウンドタスクを監視中",
+        "selectWorkspace": "{{value0}} のチャットをすべて選択",
+        "workspaceSelectedCount": "{{value0}}/{{value1}}",
+        "selectAll": "すべてのチャットを選択",
+        "selectAllLabel": "すべて選択",
+        "selectedCount": "{{value1}} 件中 {{value0}} 件を選択",
+        "selectProject": "{{value0}} のチャットをすべて選択",
+        "collapseNode": "{{value0}} を折りたたむ",
+        "expandNode": "{{value0}} を展開します",
+        "selectMachine": "{{value0}} のチャットをすべて選択",
+        "sshHost": "SSH"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "{{value0}}/{{value1}} チームステータスをフィルタリングしています。残りのチームからの問題は含まれません。",

@@ -17539,7 +17539,17 @@
         "activitySubagentOne": "子智能体运行中：{{value0}}",
         "activitySubagentMany": "{{value0}} 个子智能体运行中",
         "activityMonitorOne": "正在监控：{{value0}}",
-        "activityMonitorMany": "正在监控 {{value0}} 个后台任务"
+        "activityMonitorMany": "正在监控 {{value0}} 个后台任务",
+        "selectWorkspace": "选择 {{value0}} 中的全部聊天",
+        "workspaceSelectedCount": "{{value0}}/{{value1}}",
+        "selectAll": "选择全部聊天",
+        "selectAllLabel": "选择全部",
+        "selectedCount": "已选择 {{value0}}/{{value1}}",
+        "selectProject": "选择 {{value0}} 中的全部聊天",
+        "collapseNode": "折叠 {{value0}}",
+        "expandNode": "展开 {{value0}}",
+        "selectMachine": "选择 {{value0}} 上的全部聊天",
+        "sshHost": "SSH"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "过滤 {{value1}} 团队状态中的 {{value0}} — 不包括其余团队的问题。",
