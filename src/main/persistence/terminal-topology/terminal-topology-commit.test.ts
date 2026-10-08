@@ -152,8 +152,9 @@ describe('persistence.terminal-topology span', () => {
 
   it("commits an SSH import into that target's partition alone", () => {
     const patchWorkspaceSession = vi.fn()
-    importPeerTopology({ patchWorkspaceSession }, 'target-1', { tabsByWorktree: {} })
-    importPeerTopology({ patchWorkspaceSession }, 'target-1', {})
+    const store = { getWorkspaceSession: () => session(), patchWorkspaceSession }
+    importPeerTopology(store, 'target-1', { tabsByWorktree: {} }, () => false)
+    importPeerTopology(store, 'target-1', {}, () => false)
 
     expect(patchWorkspaceSession.mock.calls).toEqual([[{ tabsByWorktree: {} }, HOST_ID]])
     expect(records.map((record) => record.attributes)).toEqual([
@@ -164,5 +165,94 @@ describe('persistence.terminal-topology span', () => {
       },
       { kind: 'persistence', 'topology.kind': 'import_peer_topology', 'topology.outcome': 'noop' }
     ])
+  })
+})
+
+describe('an SSH import against a mirror main has published past', () => {
+  const NEW_TAB = 'tab-created-by-cli'
+  const HOST_TAB = 'tab-from-peer'
+
+  // What main committed after the window read its mirror: a CLI-created tab, and the split's
+  // second pane bound to its PTY.
+  function mainAfterWindowRead(): WorkspaceSessionState {
+    const prior = session()
+    return {
+      ...prior,
+      tabsByWorktree: {
+        [WORKTREE_ID]: [...prior.tabsByWorktree[WORKTREE_ID], tab(NEW_TAB, 'pty-new')]
+      },
+      terminalLayoutsByTabId: {
+        ...prior.terminalLayoutsByTabId,
+        [SPLIT_TAB]: {
+          ...prior.terminalLayoutsByTabId[SPLIT_TAB],
+          ptyIdsByLeafId: { [LEAF_1]: 'pty-1', [LEAF_2]: 'pty-2-bound-late' }
+        }
+      }
+    }
+  }
+
+  // The window's merge of the host snapshot over its older mirror: no CLI tab, the stale binding,
+  // and a tab a peer created on the host.
+  function windowPull() {
+    const read = session()
+    return {
+      tabsByWorktree: {
+        [WORKTREE_ID]: [...read.tabsByWorktree[WORKTREE_ID], tab(HOST_TAB, 'pty-peer')]
+      },
+      terminalLayoutsByTabId: read.terminalLayoutsByTabId
+    }
+  }
+
+  function importInto(main: WorkspaceSessionState, publishedSince: boolean) {
+    let written: Partial<WorkspaceSessionState> = {}
+    const kept = importPeerTopology(
+      {
+        getWorkspaceSession: () => main,
+        patchWorkspaceSession: (patch) => {
+          written = patch
+        }
+      },
+      'target-1',
+      windowPull(),
+      () => publishedSince
+    )
+    return { kept, written }
+  }
+
+  it("keeps main's newer rows and adds the host's new tab", () => {
+    const { kept, written } = importInto(mainAfterWindowRead(), true)
+
+    expect(written.tabsByWorktree?.[WORKTREE_ID]?.map((row) => row.id)).toEqual([
+      SPLIT_TAB,
+      PINNED_TAB,
+      NEW_TAB,
+      HOST_TAB
+    ])
+    expect(written.terminalLayoutsByTabId?.[SPLIT_TAB]?.ptyIdsByLeafId?.[LEAF_2]).toBe(
+      'pty-2-bound-late'
+    )
+    expect(kept).toBe(true)
+  })
+
+  it('does not revive a tab main closed after the window read it', () => {
+    const main = mainAfterWindowRead()
+    const { written } = importInto(
+      {
+        ...main,
+        closedTerminalTabTombstonesByTabId: {
+          [HOST_TAB]: { closedAt: Date.now(), worktreeId: WORKTREE_ID, reason: 'user' }
+        }
+      },
+      true
+    )
+
+    expect(written.tabsByWorktree?.[WORKTREE_ID]?.map((row) => row.id)).not.toContain(HOST_TAB)
+  })
+
+  it('applies the pull as the window merged it when main has published nothing since', () => {
+    const { kept, written } = importInto(mainAfterWindowRead(), false)
+
+    expect(written).toEqual(windowPull())
+    expect(kept).toBe(false)
   })
 })
