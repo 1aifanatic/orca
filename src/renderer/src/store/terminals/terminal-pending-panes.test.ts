@@ -5,8 +5,10 @@ import type {
   TerminalTopologySlice
 } from '../../../../shared/terminal-topology-slice'
 import { commitTerminalSurfaceClose } from './terminal-surface-close-intent'
+import { collectLeafIds } from '../../../../shared/terminal-pane-layout-tree'
 import {
   commitTerminalPaneIfAheadOfMain,
+  isPendingTerminalTab,
   pendingTerminalLeafIds,
   terminalTabPanesNamed
 } from './terminal-pending-panes'
@@ -124,6 +126,43 @@ describe('a tab this window creates', () => {
     )
     apply(slice(2, { a: [LEAF_A, LEAF_B] }))
     expect(state().pendingTerminalPanes).toEqual([])
+  })
+})
+
+describe('a tab adopted for a live PTY no pane has mounted', () => {
+  it('is committed to main with its pane at once, not on its first attach', () => {
+    const main = stubReplies('createTerminalSurface')
+    const tab = state().createTab(WT, undefined, undefined, {
+      initialPtyId: 'pty-live',
+      activate: false,
+      recordInteraction: false
+    })
+
+    const [leafId] = collectLeafIds(state().terminalLayoutsByTabId[tab.id]?.root)
+    expect(leafId).toBeDefined()
+    expect(main.calls).toHaveBeenCalledWith({
+      worktreeId: WT,
+      tabId: tab.id,
+      leafId,
+      placement: { kind: 'new-tab', row: expect.objectContaining({ title: tab.title }) }
+    })
+    expect(isPendingTerminalTab(state().pendingTerminalPanes, WT, tab.id, 'add')).toBe(true)
+  })
+})
+
+describe('a web client', () => {
+  // Its tabs reach the host through session-tab RPCs and no push from main settles them.
+  it('commits nothing to main and holds no pending entry for a tab it makes', () => {
+    const createTerminalSurface = vi.fn()
+    vi.stubGlobal('window', {
+      __ORCA_WEB_CLIENT__: true,
+      api: { session: { createTerminalSurface } }
+    })
+    const tab = state().createTab(WT)
+
+    expect(createTerminalSurface).not.toHaveBeenCalled()
+    expect(state().pendingTerminalPanes).toEqual([])
+    expect(tabIds()).toEqual(['a', tab.id])
   })
 })
 

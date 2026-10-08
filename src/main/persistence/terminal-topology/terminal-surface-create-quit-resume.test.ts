@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { TerminalSurfaceCreateRequest } from '../../../shared/terminal-surface-create'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
@@ -201,6 +202,87 @@ describe('a tab or pane the window creates, quit before it binds', () => {
     }
   })
 
+  it('keeps an agent launch tab, its agent and its laid-out pane, before the agent exists', async () => {
+    const { directory, store, create, stageQuit } = await windowOnStore()
+    const tab: TerminalTab = { ...row('tab-launch', WORKTREE), launchAgent: 'claude' }
+    // The request a published launch tab sends: its host ids and the launch in the row.
+    await expect(
+      create({
+        worktreeId: WORKTREE,
+        tabId: tab.id,
+        leafId: LEFT,
+        placement: {
+          kind: 'new-tab',
+          row: { title: tab.title, createdAt: tab.createdAt, launchAgent: 'claude' }
+        }
+      })
+    ).resolves.toMatchObject({ status: 'committed' })
+    const window = structuredClone(store.getWorkspaceSession())
+    window.tabsByWorktree = { [WORKTREE]: [{ ...tab, agentLaunchPane: { leafId: LEFT } }] }
+    expect(stageQuit(window)).toEqual({ ok: true })
+
+    const relaunched = await reopenTopologyStore(store, directory)
+    try {
+      const session = relaunched.getWorkspaceSession()
+      expect(session.tabsByWorktree[WORKTREE]).toEqual([
+        expect.objectContaining({
+          id: tab.id,
+          ptyId: null,
+          launchAgent: 'claude',
+          agentLaunchPane: { leafId: LEFT }
+        })
+      ])
+      expect(session.terminalLayoutsByTabId[tab.id]?.root).toEqual({ type: 'leaf', leafId: LEFT })
+    } finally {
+      await relaunched.freezeWritesAsync()
+    }
+  })
+
+  it('keeps a tab adopted for a live PTY whose pane has not mounted', async () => {
+    const { directory, store, create, stageQuit } = await windowOnStore()
+    const tab: TerminalTab = { ...row('tab-adopted', WORKTREE), ptyId: 'pty-live' }
+    await expect(create(newTab(WORKTREE, tab, LEFT))).resolves.toMatchObject({
+      status: 'committed'
+    })
+    const window = structuredClone(store.getWorkspaceSession())
+    window.tabsByWorktree = { [WORKTREE]: [tab] }
+    expect(stageQuit(window)).toEqual({ ok: true })
+
+    const relaunched = await reopenTopologyStore(store, directory)
+    try {
+      const session = relaunched.getWorkspaceSession()
+      expect(session.tabsByWorktree[WORKTREE]?.map((entry) => entry.id)).toEqual([tab.id])
+      expect(session.terminalLayoutsByTabId[tab.id]?.root).toEqual({ type: 'leaf', leafId: LEFT })
+    } finally {
+      await relaunched.freezeWritesAsync()
+    }
+  })
+
+  it('keeps a floating terminal tab, which no repo catalogs, in the local partition', async () => {
+    const { directory, store, create, stageQuit } = await windowOnStore()
+    const tab = row('tab-floating', FLOATING_TERMINAL_WORKTREE_ID, 'scratch')
+    await expect(create(newTab(FLOATING_TERMINAL_WORKTREE_ID, tab, LEFT))).resolves.toMatchObject({
+      status: 'committed'
+    })
+    const window = structuredClone(store.getWorkspaceSession())
+    window.tabsByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: [tab] }
+    expect(stageQuit(window)).toEqual({ ok: true })
+
+    const relaunched = await reopenTopologyStore(store, directory)
+    try {
+      const session = relaunched.getWorkspaceSession()
+      expect(
+        session.tabsByWorktree[FLOATING_TERMINAL_WORKTREE_ID]?.map((entry) => [
+          entry.id,
+          entry.customTitle
+        ])
+      ).toEqual([[tab.id, 'scratch']])
+      expect(session.terminalLayoutsByTabId[tab.id]?.root).toEqual({ type: 'leaf', leafId: LEFT })
+    } finally {
+      await relaunched.freezeWritesAsync()
+    }
+  })
+
   it('refuses a tab main recorded as closed, and a split of a pane it does not hold', async () => {
     const { store, create } = await windowOnStore()
     const tab = row('tab-closed', WORKTREE)
@@ -226,5 +308,39 @@ describe('a tab or pane the window creates, quit before it binds', () => {
     expect(store.getWorkspaceSession().tabsByWorktree[WORKTREE]?.map((entry) => entry.id)).toEqual([
       open.id
     ])
+  })
+})
+
+describe('a tab a phone closes on the desktop', () => {
+  // The window commits the close, then saves its whole session before answering the phone.
+  it('stays closed through the window’s full save and a relaunch, keeping the rest', async () => {
+    const { directory, store, create } = await windowOnStore()
+    const kept = row('tab-kept', WORKTREE)
+    const closed = row('tab-closed', WORKTREE)
+    await create(newTab(WORKTREE, kept, LEFT))
+    await create(newTab(WORKTREE, closed, RIGHT))
+    const before = structuredClone(store.getWorkspaceSession())
+
+    const close = invokeHandlers.get('session:close-terminal-surface')!(
+      {},
+      { worktreeId: WORKTREE, target: { kind: 'tab', tabId: closed.id } }
+    )
+    // A debounced save taken before the close races it; the full save follows.
+    await invokeHandlers.get('session:set')!({}, before)
+    const window = structuredClone(before)
+    window.tabsByWorktree = { [WORKTREE]: [{ ...kept, customTitle: 'server' }] }
+    await invokeHandlers.get('session:set')!({}, window)
+    await close
+
+    const relaunched = await reopenTopologyStore(store, directory)
+    try {
+      const session = relaunched.getWorkspaceSession()
+      expect(session.tabsByWorktree[WORKTREE]?.map((tab) => [tab.id, tab.customTitle])).toEqual([
+        [kept.id, 'server']
+      ])
+      expect(session.terminalLayoutsByTabId[closed.id]).toBeUndefined()
+    } finally {
+      await relaunched.freezeWritesAsync()
+    }
   })
 })
