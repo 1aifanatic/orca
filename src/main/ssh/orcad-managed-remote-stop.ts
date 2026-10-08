@@ -30,7 +30,6 @@ import {
   ORCAD_COMPLETE_MANAGED_STOP_FLAG,
   ORCAD_MANAGED_STOP_REQUEST_FILE_FLAG,
   ORCAD_STOP_REQUESTS_CAPABILITY,
-  ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY,
   OrcadManagedStopCancellationSchema,
   OrcadManagedStopCompletionSchema,
   type OrcadManagedStopCancellation,
@@ -52,8 +51,7 @@ function refused(code: string, reason: string): OrcadManagedStopTarget {
 /** Names the running instance of `version`, or says why the host could not prove which it is. */
 export async function readRemoteOrcadManagedStopTarget(
   options: OrcadSlotOptions,
-  version: string,
-  intent?: 'user'
+  version: string
 ): Promise<OrcadManagedStopTarget> {
   const slotDir = orcadSlotDir(options, version)
   const readiness = parseOrcadReadinessWaitOutput(
@@ -71,15 +69,6 @@ export async function readRemoteOrcadManagedStopTarget(
     return refused(
       'orcad_managed_stop_unsupported',
       `orcad ${version} predates managed stop requests; it can only be stopped by signal.`
-    )
-  }
-  if (
-    intent !== 'user' &&
-    health.structuredWorkProtection !== ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY
-  ) {
-    return refused(
-      'orcad_structured_work_protection_unavailable',
-      'This server cannot protect chat work during an automatic stop. Use an explicit update or stop instead.'
     )
   }
   const lockPath = joinRemotePath(options.host, options.userDataDir, ORCAD_LOCK_FILE_NAME)

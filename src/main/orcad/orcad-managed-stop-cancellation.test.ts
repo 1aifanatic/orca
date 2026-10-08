@@ -93,7 +93,6 @@ describe('cancelling a managed stop', () => {
     const root = mkdtempSync(join(tmpdir(), 'orcad-stop-cancel-slot-'))
     roots.push(root)
     const listener = installOrcadStopRequestListeners(onRequest, {
-      admitAutomaticStop: () => false,
       installRoot: root,
       managedStop: {
         version: request.version,

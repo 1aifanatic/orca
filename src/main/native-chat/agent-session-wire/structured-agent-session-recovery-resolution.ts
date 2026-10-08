@@ -1,7 +1,13 @@
 /**
- * Recovery retains ownership until present-time evidence proves exit. Transport loss cannot
- * prove exit. Native POSIX owners may be stopped by verified identity; Windows owners and
- * terminal agents are only released on exit proof, since their saved pid is not a safe stop handle.
+ * Exits from the `recovering` stage. A session lands there when evidence about its owner was
+ * unavailable; this re-asks with present-time evidence and always concludes. A dead owner is
+ * evicted on proof. A live one is stopped by identity and evicted once
+ * proven gone. One that outlives the stop, or whose identity cannot be verified, is released
+ * anyway: its transport died with the runtime that held it, so nothing can drive it, and no signal
+ * is sent to a pid that cannot be verified as the one recorded. Windows never signals a saved pid
+ * at all: Orca stops a Windows tree only through a child it still holds. Only a conflicted claim,
+ * which is how a terminal owner an older build recorded now loads, is waited out and never
+ * stopped: it is the user's own agent, and its exit is its way out.
  */
 
 import {
@@ -11,6 +17,7 @@ import {
 } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../../provider-process/provider-process-supervisor'
+import { releaseUnprovenAgentSessionOwner } from '../../runtime/agent-session-lease-transitions'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 
 export type StructuredSessionRecoveryStopSignal = 'SIGTERM' | 'SIGKILL'
@@ -62,18 +69,21 @@ export async function resolveStructuredSessionRecovery(
       probe = await stopOwnerAndReprobe(deps, record, owner.pid)
     }
   }
-  const alreadyFree =
-    record.lease.claimStatus === 'released' && record.lease.reservedSpawnToken === null
-  if (owner ? !isProvenDeadProbe(probe) : !alreadyFree && probe.outcome !== 'reservation-unused') {
-    return 'unresolved'
-  }
   try {
-    await deps.store.evictProvenDeadOwner({
-      sessionId,
-      expectedFence: record.lease.runtimeFence,
-      probe,
-      now: deps.now()
-    })
+    await (owner && !isProvenDeadProbe(probe)
+      ? deps.store.transitionHandoff(sessionId, (latest) =>
+          releaseUnprovenAgentSessionOwner({
+            record: latest,
+            expectedFence: record.lease.runtimeFence,
+            now: deps.now()
+          })
+        )
+      : deps.store.evictProvenDeadOwner({
+          sessionId,
+          expectedFence: record.lease.runtimeFence,
+          probe,
+          now: deps.now()
+        }))
     return 'resolved'
   } catch (error) {
     const code = error instanceof Error ? error.message : String(error)

@@ -187,11 +187,9 @@ describe('the reservation owner probe', () => {
 
     const store = await reconcileReservation()
 
-    // The token still names execution, even though it cannot identify a safe stop target.
+    // Released without evidence, and the process carrying the token is left alone.
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'reserved',
-      handoffStage: 'recovering',
-      reservedSpawnToken: MINTED_TOKEN,
+      claimStatus: 'released',
       deathEvidence: null
     })
     expect(kill.mock.calls.filter(([, signal]) => signal !== 0)).toEqual([])

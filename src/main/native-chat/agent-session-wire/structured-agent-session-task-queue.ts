@@ -1,35 +1,11 @@
-import {
-  getKeyedSerializedQueueTail,
-  runKeyedSerializedOperation
-} from '../../cli/keyed-promise-queue'
-import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
+import { runKeyedSerializedOperation } from '../../cli/keyed-promise-queue'
 
 export class StructuredAgentSessionTaskQueue {
   private readonly chains = new Map<string, Promise<void>>()
   private readonly attaching = new Set<Promise<unknown>>()
-  private admissionClosed = false
 
   serialize<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
-    if (this.admissionClosed) {
-      return Promise.reject(
-        agentSessionRefusalError('agent_session_ownership_unknown', {
-          reason: 'sessionNotAttached'
-        })
-      )
-    }
-    return this.serializeDuringShutdown(sessionId, task)
-  }
-
-  serializeDuringShutdown<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
-    const operation = runKeyedSerializedOperation(this.chains, sessionId, task)
-    const tail = getKeyedSerializedQueueTail(this.chains, sessionId)
-    // Observers finish after their own tail clears, so a probe does not count itself as work.
-    return operation.finally(() => tail)
-  }
-
-  hasPending = (): boolean => this.chains.size > 0 || this.attaching.size > 0
-  closeAdmission = (): void => {
-    this.admissionClosed = true
+    return runKeyedSerializedOperation(this.chains, sessionId, task)
   }
 
   trackAttach<T>(operation: Promise<T>): Promise<T> {

@@ -8,6 +8,10 @@
 //
 // Owed work is derived on every tick, never stored, so there is nothing to disagree with it.
 
+import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'
+import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
+import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
@@ -39,8 +43,16 @@ export type StructuredAgentSessionIdleSweepDeps = {
   idleMs?: number
 }
 
-export { hasPendingStructuredAgentSessionPrompt } from './structured-agent-session-owed-work'
-import { structuredAgentSessionOwesWork } from './structured-agent-session-owed-work'
+/** A prompt the user has not answered. A subagent can raise one the lead turn cannot see. */
+export function hasPendingStructuredAgentSessionPrompt(
+  items: readonly AgentJournalRenderItem[]
+): boolean {
+  return items.some(
+    (item) =>
+      (item.body.kind === 'approval' || item.body.kind === 'question') &&
+      item.body.resolution.state === 'pending'
+  )
+}
 
 export class StructuredAgentSessionIdleSweep {
   private timer: ReturnType<typeof setInterval> | null = null
@@ -117,15 +129,24 @@ export class StructuredAgentSessionIdleSweep {
     await this.deps.closeConversation(sessionId)
   }
 
+  private queuedOrDelivering(sessionId: string, session: StructuredAgentSessionHostSession) {
+    return (
+      this.deps.deliveryActive(sessionId) ||
+      session.journal.submissions().some(isQueuedAgentJournalSubmission)
+    )
+  }
+
+  /** Work the running child still owes. Scoped to the child: with none, nothing here can pin the
+   *  handle, and a leftover prompt or turn row is only history. */
   private owesWork(sessionId: string, session: StructuredAgentSessionHostSession): boolean {
-    return structuredAgentSessionOwesWork({
-      snapshot: session.journal.snapshot(),
-      hasChild: session.child !== null,
-      stopping: session.child?.close !== undefined,
-      deliveryActive: this.deps.deliveryActive(sessionId),
-      childWork: this.deps.childWork(sessionId),
-      openDispatch: this.deps.hasOpenDispatch(sessionId),
-      providerHoldsDispatch: this.deps.providerHoldsDispatch(sessionId)
-    })
+    const items = session.journal.snapshot().items
+    return (
+      activeStructuredAgentSessionTurnId(items) !== null ||
+      this.queuedOrDelivering(sessionId, session) ||
+      agentChildWorkLiveness(this.deps.childWork(sessionId)) !== null ||
+      this.deps.hasOpenDispatch(sessionId) ||
+      this.deps.providerHoldsDispatch(sessionId) ||
+      hasPendingStructuredAgentSessionPrompt(items)
+    )
   }
 }

@@ -112,8 +112,6 @@ export type StructuredAgentSessionHostSession = {
 }
 
 export type StructuredAgentSessionHostDeps = {
-  /** Execution-host platform; tests may supply a different host. */
-  platform?: NodeJS.Platform
   store: AgentSessionRecordStore
   adapter: StructuredAgentSessionAdapter
   /** The agents this runtime drives; what each declares is read here, never from the adapter. */

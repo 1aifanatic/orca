@@ -103,12 +103,10 @@ describe('updateManagedOrcadEnvironment', () => {
     mocks.deploy.mockResolvedValueOnce({
       outcome: 'installed-not-activated',
       fullVersion: '0.3.0+new',
-      code: 'orcad_update_structured_work',
+      code: 'orcad_update_terminals_running',
       reason: 'busy'
     })
-    await expect(
-      updateManagedOrcadEnvironment(harness.userDataPath, { selector: 'Managed' })
-    ).resolves.toMatchObject({ outcome: 'deferred', forceable: true })
+    await updateManagedOrcadEnvironment(harness.userDataPath, { selector: 'Managed' })
     mocks.deploy.mockResolvedValueOnce({
       outcome: 'installed-and-activated',
       fullVersion: '0.3.0+new'
@@ -118,7 +116,6 @@ describe('updateManagedOrcadEnvironment', () => {
       force: true
     })
     expect(result).toMatchObject({ outcome: 'updated', activeVersion: '0.3.0+new' })
-    expect(mocks.deploy.mock.calls.at(-1)?.[0]).toMatchObject({ force: true })
     expect(mocks.probe).toHaveBeenCalledWith(expect.anything(), {
       buildHash: 'local-hash',
       fullVersion: '0.3.0+new'

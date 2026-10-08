@@ -219,7 +219,7 @@ describe('settled attach retry', () => {
     expect(spawnTokens).toEqual(['spawn-safe', 'spawn-safe'])
   })
 
-  it('retains an unverified reservation until a deliberate server stop abandons it', async () => {
+  it('releases a reservation a crash left ownerless at restart, so the next start goes ahead', async () => {
     const spawnTokens: string[] = []
     acquire.mockImplementation(async ({ fence, spawnToken }) => {
       spawnTokens.push(spawnToken)
@@ -294,23 +294,7 @@ describe('settled attach retry', () => {
 
     await host.restoreReadableSessions()
     expect(releaseAcquisition).toHaveBeenCalledTimes(1)
-    expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'reserved',
-      handoffStage: 'recovering',
-      runtimeFence: 1,
-      reservedSpawnToken: 'spawn-1',
-      ownerProcess: null,
-      deathEvidence: null
-    })
-    await host.serverRetirement.abandonOwnerlessReservations()
-    await host.flushAllStreamedEvents()
-    store = await openTestAgentSessionRecordStore(root)
-    host = new StructuredAgentSessionHost({
-      ...host.deps,
-      store,
-      adapter: adapter()
-    })
-    await host.restoreReadableSessions()
+    // No owner was recorded: released at restart, with no evidence, since nothing proved one.
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,

@@ -84,7 +84,6 @@ function readyLine(version = VERSION): string {
       arch: 'x64',
       pid: 4242,
       stopRequests: 1,
-      structuredWorkProtection: 1,
       terminalDaemon: {
         state: 'live',
         ownsFreshSessions: true,
@@ -169,12 +168,7 @@ function options(): OrcadDeployOptions {
     userDataDir: 'C:/Users/u/.orca',
     bindHost: '127.0.0.1',
     port: 7777,
-    census: {
-      structuredWork: 0,
-      liveSessions: 0,
-      startedSinceActivation: 0,
-      daemonProtocolVersion: 3
-    },
+    census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: 3 },
     readinessTimeoutMs: 1_000,
     sleep: async () => {},
     now: () => new Date('2026-10-02T00:00:00.000Z')

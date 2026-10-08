@@ -234,34 +234,23 @@ export function evictAgentSessionOwner(args: {
   return releasedAgentSessionLease(record, adjudication.nextFence, adjudication.evidence, args.now)
 }
 
-export function isOwnerlessAgentSessionReservation(record: AgentSessionRecord): boolean {
-  return (
-    record.lease.runtimeKind === 'native' &&
-    record.lease.claimStatus !== 'released' &&
-    record.lease.ownerProcess === null &&
-    record.lease.reservedSpawnToken !== null
-  )
-}
-
-/** A deliberate host stop abandons a reservation without claiming its process exited. */
-export function abandonAgentSessionOwnerlessReservation(args: {
+/**
+ * Recovery's conclusion when proof never came: a recorded owner whose identity cannot be verified,
+ * or that survived the stop ladder. Its transport died with the runtime that held it, so nothing
+ * can drive it, and a verdict that never arrives must not hold the conversation. Nothing proved it
+ * gone, so no death evidence is written.
+ */
+export function releaseUnprovenAgentSessionOwner(args: {
   record: AgentSessionRecord
   expectedFence: number
   now: number
 }): AgentSessionRecord {
-  if (
-    args.record.lease.runtimeFence !== args.expectedFence ||
-    !isOwnerlessAgentSessionReservation(args.record)
-  ) {
-    return args.record
+  const { record } = args
+  assertFence(record.lease, args.expectedFence)
+  if (record.lease.handoffStage !== 'recovering') {
+    throw new Error('agent_session_ownership_unknown')
   }
-  const released = releasedAgentSessionLease(
-    args.record,
-    nextAgentSessionFence(args.record.lease),
-    null,
-    args.now
-  )
-  return { ...released, lease: { ...released.lease, unreconciled: false } }
+  return releasedAgentSessionLease(record, nextAgentSessionFence(record.lease), null, args.now)
 }
 
 function releasedAgentSessionLease(

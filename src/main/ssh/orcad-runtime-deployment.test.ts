@@ -192,11 +192,7 @@ describe('createManagedOrcadEnvironment', () => {
   it('deploys an empty host with a zero census and an unknown one over an active slot', async () => {
     await deploy()
     expect(mocks.deploy.mock.calls[0]?.[0]).toMatchObject({
-      census: {
-        liveSessions: 0,
-        startedSinceActivation: 0,
-        daemonProtocolVersion: null
-      },
+      census: { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: null },
       nodePath: ''
     })
   })

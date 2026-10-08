@@ -52,7 +52,7 @@ describe('orcad stop-request listeners', () => {
     const installRoot = directory()
     writeFileSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME), '')
     const onRequest = vi.fn()
-    listen(onRequest, { installRoot, admitAutomaticStop: (commit) => commit() })
+    listen(onRequest, { installRoot })
     expect(onRequest).toHaveBeenCalledOnce()
     expect(existsSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME))).toBe(false)
   })
@@ -60,7 +60,7 @@ describe('orcad stop-request listeners', () => {
   it('picks up a slot request written later, once', async () => {
     const installRoot = directory()
     const onRequest = vi.fn()
-    listen(onRequest, { installRoot, admitAutomaticStop: (commit) => commit() })
+    listen(onRequest, { installRoot })
     writeFileSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME), '')
     await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
     writeFileSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME), '')
@@ -73,7 +73,6 @@ describe('orcad stop-request listeners', () => {
     const onRequest = vi.fn()
     const report = vi.spyOn(console, 'error').mockImplementation(() => {})
     listen(onRequest, {
-      admitAutomaticStop: (commit) => commit(),
       installRoot: directory(),
       managedStop,
       beforeManagedStop: async () => {
@@ -99,11 +98,7 @@ describe('orcad stop-request listeners', () => {
   it('stops on a valid managed request and keeps it as evidence', async () => {
     const managedStop = managedContext()
     const onRequest = vi.fn()
-    listen(onRequest, {
-      admitAutomaticStop: (commit) => commit(),
-      installRoot: directory(),
-      managedStop
-    })
+    listen(onRequest, { installRoot: directory(), managedStop })
     const path = orcadManagedStopRequestPath(managedStop.instance)
     writeFileSync(
       path,
@@ -130,12 +125,7 @@ describe('orcad stop-request listeners', () => {
     const onRequest = vi.fn()
     const prepare = vi.fn(async () => {})
     const report = vi.spyOn(console, 'error').mockImplementation(() => {})
-    listen(onRequest, {
-      admitAutomaticStop: (commit) => commit(),
-      installRoot: directory(),
-      managedStop,
-      beforeManagedStop: prepare
-    })
+    listen(onRequest, { installRoot: directory(), managedStop, beforeManagedStop: prepare })
     await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(prepare).toHaveBeenCalledOnce()
@@ -147,11 +137,7 @@ describe('orcad stop-request listeners', () => {
     const managedStop = managedContext()
     const onRequest = vi.fn()
     const report = vi.spyOn(console, 'error').mockImplementation(() => {})
-    listen(onRequest, {
-      admitAutomaticStop: (commit) => commit(),
-      installRoot: directory(),
-      managedStop
-    })
+    listen(onRequest, { installRoot: directory(), managedStop })
     writeFileSync(
       orcadManagedStopRequestPath(managedStop.instance),
       JSON.stringify({
@@ -170,116 +156,9 @@ describe('orcad stop-request listeners', () => {
   it('stops watching once closed', async () => {
     const installRoot = directory()
     const onRequest = vi.fn()
-    listen(onRequest, { installRoot, admitAutomaticStop: (commit) => commit() }).close()
+    listen(onRequest, { installRoot }).close()
     writeFileSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME), '')
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(onRequest).not.toHaveBeenCalled()
   })
-
-  it.each([1, null])('defers an older desktop slot request while work is %s', async (work) => {
-    const installRoot = directory()
-    const path = join(installRoot, ORCAD_STOP_REQUEST_FILENAME)
-    let observed = work
-    const onRequest = vi.fn()
-    listen(onRequest, {
-      installRoot,
-      admitAutomaticStop: (commit) => observed === 0 && commit()
-    })
-    writeFileSync(path, '')
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(onRequest).not.toHaveBeenCalled()
-    expect(existsSync(path)).toBe(true)
-    observed = 0
-    await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
-  })
-
-  it('defers a generation-bound request without claiming its decision', async () => {
-    const managedStop = managedContext()
-    const onRequest = vi.fn()
-    let owingWork = true
-    listen(onRequest, {
-      installRoot: directory(),
-      managedStop,
-      admitAutomaticStop: (commit) => !owingWork && commit()
-    })
-    const path = orcadManagedStopRequestPath(managedStop.instance)
-    writeFileSync(
-      path,
-      JSON.stringify({
-        schemaVersion: 1,
-        transactionId: '0b9f6a3e-9e2c-4c8e-8f58-4c0f6b1d2e3a',
-        ...managedStop
-      })
-    )
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(onRequest).not.toHaveBeenCalled()
-    owingWork = false
-    await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
-  })
-
-  it.each(['slot', 'managed'])('always honors an explicit user stop through %s', async (kind) => {
-    const installRoot = directory()
-    const managedStop = managedContext()
-    const onRequest = vi.fn()
-    const automatic = vi.fn(() => false)
-    const abandon = vi.fn(async () => {})
-    listen(onRequest, {
-      installRoot,
-      managedStop,
-      admitAutomaticStop: automatic,
-      beforeUserStop: abandon
-    })
-    if (kind === 'slot') {
-      writeFileSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME), '{"intent":"user"}')
-    } else {
-      writeFileSync(
-        orcadManagedStopRequestPath(managedStop.instance),
-        JSON.stringify({
-          schemaVersion: 1,
-          transactionId: '0b9f6a3e-9e2c-4c8e-8f58-4c0f6b1d2e3a',
-          ...managedStop,
-          intent: 'user'
-        })
-      )
-    }
-    await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
-    expect(automatic).not.toHaveBeenCalled()
-    expect(abandon).toHaveBeenCalledOnce()
-  })
-
-  it.each(['slot', 'managed'])(
-    'honors a user %s stop when abandonment bookkeeping fails',
-    async (kind) => {
-      const installRoot = directory()
-      const managedStop = managedContext()
-      const onRequest = vi.fn()
-      const report = vi.spyOn(console, 'error').mockImplementation(() => {})
-      listen(onRequest, {
-        installRoot,
-        managedStop,
-        admitAutomaticStop: () => false,
-        beforeUserStop: async () => {
-          throw new Error('store unreadable')
-        }
-      })
-      if (kind === 'slot') {
-        writeFileSync(join(installRoot, ORCAD_STOP_REQUEST_FILENAME), '{"intent":"user"}')
-      } else {
-        writeFileSync(
-          orcadManagedStopRequestPath(managedStop.instance),
-          JSON.stringify({
-            schemaVersion: 1,
-            transactionId: '0b9f6a3e-9e2c-4c8e-8f58-4c0f6b1d2e3a',
-            ...managedStop,
-            intent: 'user'
-          })
-        )
-      }
-      await vi.waitFor(() => expect(onRequest).toHaveBeenCalledOnce())
-      expect(report).toHaveBeenCalledWith(
-        '[orcad] user stop preparation failed; stop continues:',
-        expect.any(Error)
-      )
-    }
-  )
 })

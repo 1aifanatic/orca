@@ -13,11 +13,8 @@ import {
   writeOrcadIdleStopRecord
 } from './orcad-idle-stop-record'
 import type { OrcadShutdownTrigger } from './orcad-lifecycle'
-import {
-  expireOrcadUnansweredPrompts,
-  admitOrcadAutomaticStop
-} from './orcad-structured-work-boundary'
 import type { OrcadIdleStopRecord } from '../../shared/orcad-idle-exit'
+import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 
 let requestIdleShutdown: OrcadShutdownTrigger | null = null
 
@@ -70,6 +67,8 @@ async function startOrcadManagedIdleExit(
   const { countLiveOrcadDaemonSessions, retireOrcadDaemonIfIdle } =
     await import('./orcad-daemon-retirement')
   const idleRecord = createIdleStopRecordOwnership(input.userDataPath)
+  const hasChatProviders = (): boolean =>
+    getStructuredAgentSessionHost()?.hasLoadedProviders() ?? false
   const dispose = installOrcadManagedIdleExit({
     config: input.config,
     ports: {
@@ -78,19 +77,20 @@ async function startOrcadManagedIdleExit(
       countDaemonSessions: countLiveOrcadDaemonSessions,
       hasDaemon: () => getDaemonEndpointFacts() !== null,
       agentStates: input.agentStates,
-      readStructuredWork: expireOrcadUnansweredPrompts,
+      hasChatProviders,
       hasStagedMigration: input.hasStagedMigration,
       automationsBusy: input.automationsBusy,
       activationFenceExists
     },
-    stop: (evidence) => {
-      if (!admitOrcadAutomaticStop(() => true)) {
+    stop: async (evidence) => {
+      await stopForIdle(input, evidence, retireOrcadDaemonIfIdle)
+      // Provider startup may complete while daemon retirement is awaiting its reply.
+      if (hasChatProviders()) {
+        discardOrcadIdleStopRecord(input.userDataPath)
         return false
       }
-      void stopForIdle(input, evidence, retireOrcadDaemonIfIdle).finally(() =>
-        idleRecord.requestShutdown(requestIdleShutdown)
-      )
-      return undefined
+      idleRecord.requestShutdown(requestIdleShutdown)
+      return true
     }
   })
   input.registerCleanup(() => {

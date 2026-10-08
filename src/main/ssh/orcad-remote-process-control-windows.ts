@@ -12,12 +12,11 @@ import type { RemoteHostPlatform } from './ssh-remote-platform'
 export function windowsStopOrcadCommand(
   host: RemoteHostPlatform,
   remoteInstallDir: string,
-  options: { waitSeconds: number; justLaunched: boolean; user?: boolean }
+  options: { waitSeconds: number; justLaunched: boolean }
 ): string {
   return orcadWindowsHostOpCommand(host, orcadWindowsBaseDir(host, remoteInstallDir), 'stop', [
     remoteInstallDir,
     String(options.waitSeconds),
-    options.justLaunched ? '1' : '0',
-    options.user ? '1' : '0'
+    options.justLaunched ? '1' : '0'
   ])
 }

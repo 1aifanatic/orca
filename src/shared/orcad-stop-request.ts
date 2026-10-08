@@ -35,9 +35,7 @@ export const OrcadManagedStopRequestSchema = z.object({
   runtimeId: z.string().min(1).max(255),
   instance: OrcadManagedStopInstanceSchema,
   /** Best effort: also retire the terminal daemon if it is provably idle. Never blocks the stop. */
-  retireIdleDaemon: z.literal(true).optional(),
-  /** Missing intent is automatic, including requests from older desktops. */
-  intent: z.literal('user').optional()
+  retireIdleDaemon: z.literal(true).optional()
 })
 
 export type OrcadManagedStopInstance = z.infer<typeof OrcadManagedStopInstanceSchema>
@@ -97,8 +95,6 @@ export type OrcadDaemonRetirementRecord = z.infer<typeof OrcadDaemonRetirementRe
 export const ORCAD_CANCEL_MANAGED_STOP_FLAG = '--cancel-managed-stop'
 /** Readiness `health.stopRequests`: this build consumes stop files and both commands above. */
 export const ORCAD_STOP_REQUESTS_CAPABILITY = 1
-/** Automatic stop requests are checked against structured work at the host boundary. */
-export const ORCAD_STRUCTURED_WORK_PROTECTION_CAPABILITY = 1
 
 /**
  * Which side won a managed request: the running orcad acting on it, or a client cancelling it.

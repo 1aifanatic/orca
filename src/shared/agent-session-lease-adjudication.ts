@@ -242,23 +242,23 @@ export function adjudicateAgentSessionRestart(args: {
       // treating it as an unproven reservation is what re-latches every released record on restart.
       return { disposition: 'free', reason: 'lease has no owner and no reservation' }
     }
-    // A spawn-token scan must prove the reservation unused; missing transport is not exit proof.
-    if (probe.outcome !== 'reservation-unused') {
-      return {
-        disposition: 'recovering',
-        stage: 'recovering',
-        reason: 'reservation process could not be verified'
-      }
-    }
+    // Why: a child spawned before its identity was recorded lost its stdio with the runtime that
+    // crashed, so nothing can drive it. A token scan that proves no child is the only evidence there
+    // can be; without it the lease is released anyway. A live child still carrying the token is
+    // never signalled: the token is inherited by every descendant, so it cannot prove which one is
+    // the provider child.
     return {
       disposition: 'evicted',
       nextFence: nextAgentSessionFence(lease),
-      evidence: {
-        kind: 'pid-absent',
-        detail: 'reservation never spawned',
-        observedAt,
-        ownerFence: lease.runtimeFence
-      }
+      evidence:
+        probe.outcome === 'reservation-unused'
+          ? {
+              kind: 'pid-absent',
+              detail: 'reservation never spawned',
+              observedAt,
+              ownerFence: lease.runtimeFence
+            }
+          : null
     }
   }
   if (isProvenAliveProbe(probe)) {

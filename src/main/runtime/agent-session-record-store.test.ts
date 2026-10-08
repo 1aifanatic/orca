@@ -584,14 +584,14 @@ describe('restart reconciliation', () => {
       probe: async () => ({ outcome: 'indeterminate', reason: 'no answer' }),
       now: NOW
     })
-    // Unverifiable execution retains its identity until a later probe can prove exit.
+    // An unverifiable owner goes to recovery like any other; resolution concludes about it.
     expect(reopened.getRecord('session-alpha')?.lease).toMatchObject({
       handoffStage: 'recovering',
       ownerProcess: { pid: expect.any(Number) }
     })
   })
 
-  it('retains an ownerless older conflict until its reservation is proven unused', async () => {
+  it('releases a claim an older record marked conflicted that names no process', async () => {
     const first = await open()
     await markLegacyConflicted(first, { ownerProcess: null })
 
@@ -601,19 +601,9 @@ describe('restart reconciliation', () => {
       now: NOW
     })
     expect(reopened.getRecord('session-alpha')?.lease).toMatchObject({
-      claimStatus: 'conflicted',
-      handoffStage: 'recovering',
-      deathEvidence: null
-    })
-    const verified = await open()
-    await verified.reconcileOnRestart({
-      probe: async () => ({ outcome: 'reservation-unused' }),
-      now: NOW + 1
-    })
-    expect(verified.getRecord('session-alpha')?.lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,
-      deathEvidence: { kind: 'pid-absent' }
+      deathEvidence: null
     })
   })
 

@@ -91,18 +91,6 @@ describe('OrcadIdleExitMonitor', () => {
     expect(await h.monitor.check()).toBe(true)
   })
 
-  it('restarts the quiet window when the final host boundary defers a racing send', async () => {
-    const h = harness()
-    h.onIdle.mockReturnValueOnce(false)
-    await h.monitor.check()
-    h.advance(100)
-    expect(await h.monitor.check()).toBe(false)
-    expect(await h.monitor.check()).toBe(false)
-    h.advance(100)
-    expect(await h.monitor.check()).toBe(true)
-    expect(h.onIdle).toHaveBeenCalledTimes(2)
-  })
-
   it('does not fire after it was stopped', async () => {
     const h = harness()
     await h.monitor.check()
@@ -110,6 +98,22 @@ describe('OrcadIdleExitMonitor', () => {
     h.advance(1_000)
     expect(await h.monitor.check()).toBe(false)
     expect(h.onIdle).not.toHaveBeenCalled()
+  })
+
+  it('restarts the quiet period when the final idle stop declines after an asynchronous check', async () => {
+    const h = harness()
+    await h.monitor.check()
+    const decision = Promise.withResolvers<boolean>()
+    h.onIdle.mockImplementationOnce(() => decision.promise)
+    h.advance(100)
+    const checking = h.monitor.check()
+    await vi.waitFor(() => expect(h.onIdle).toHaveBeenCalledOnce())
+    decision.resolve(false)
+    expect(await checking).toBe(false)
+    h.advance(100)
+    expect(await h.monitor.check()).toBe(false)
+    h.advance(100)
+    expect(await h.monitor.check()).toBe(true)
   })
 
   it('polls often enough for a short test timeout and at most once a minute', () => {

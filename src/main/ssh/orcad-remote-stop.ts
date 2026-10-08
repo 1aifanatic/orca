@@ -89,7 +89,7 @@ export async function decommissionRemoteOrcad(
       if (census) {
         return census
       }
-      const target = await readRemoteOrcadManagedStopTarget(options, activeVersion, 'user')
+      const target = await readRemoteOrcadManagedStopTarget(options, activeVersion)
       if (target.state === 'refused') {
         return refuse(target.verdict, target.code, target.reason)
       }
@@ -106,8 +106,7 @@ export async function decommissionRemoteOrcad(
         transactionId: transaction.transactionId,
         ...target.context,
         // Best effort: an idle daemon goes with orcad, a busy one keeps its terminals.
-        retireIdleDaemon: true as const,
-        intent: 'user' as const
+        retireIdleDaemon: true as const
       }
       // Durable before it can reach the host, so recovery can settle exactly this request.
       transaction = withOrcadDecommissionStopDispatched(transaction, request, now())

@@ -1,4 +1,3 @@
-import { observeOrcadStructuredWork } from '../../../orcad/orcad-structured-work-boundary'
 import { defineMethod } from '../core'
 import {
   ORCAD_TERMINAL_CENSUS_METHOD,
@@ -14,17 +13,13 @@ export const ORCAD_TERMINAL_CENSUS_METHODS = [
       // Why lazy: the census reaches the daemon modules, whose xterm polyfill defines a global
       // `window`; importing them statically would load it into every process with the dispatcher.
       const { collectOrcadTerminalCensus } = await import('../../../orcad/orcad-terminal-census')
-      const collect = async () => ({
-        ...(await collectOrcadTerminalCensus(params.activatedAt)),
-        structuredWork: await observeOrcadStructuredWork()
-      })
       if (!params.releaseFinishedAutomationTerminals) {
-        return collect()
+        return collectOrcadTerminalCensus(params.activatedAt)
       }
-      const before = await collect()
+      const before = await collectOrcadTerminalCensus(params.activatedAt)
       const released = await runtime.releaseFinishedAutomationRunTerminals()
       return settledCensus(
-        collect,
+        () => collectOrcadTerminalCensus(params.activatedAt),
         before.liveSessions === null ? null : before.liveSessions - released
       )
     }
