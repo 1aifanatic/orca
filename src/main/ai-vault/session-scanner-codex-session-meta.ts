@@ -1,5 +1,10 @@
 import type { SessionAccumulator } from './session-scanner-types'
-import { extractGitBranch, extractString, normalizeTitleText } from './session-scanner-values'
+import {
+  asRecord,
+  extractGitBranch,
+  extractString,
+  normalizeTitleText
+} from './session-scanner-values'
 import {
   readCodexNonUserOrigin,
   type CodexNonUserOrigin
@@ -35,9 +40,9 @@ export function extractCodexSessionMetadataTitle(payload: Record<string, unknown
 
 /**
  * The first `session_meta` is the thread's own and owns its identity and classification. Codex
- * re-appends that record, same id, after a git metadata update on a non-paginated history, so a
- * later one with the thread's id moves the branch only; any other (a fork's copy of its parent's)
- * changes nothing.
+ * re-appends that record, same id, after a git or memory_mode update on a non-paginated history,
+ * so a later one with the thread's id moves the branch only (a `git` object without one clears
+ * it; no `git` keeps it); any other (a fork's copy of its parent's) changes nothing.
  */
 export function consumeCodexSessionMeta(
   state: CodexSessionMetaState,
@@ -45,8 +50,8 @@ export function consumeCodexSessionMeta(
 ): void {
   const { accumulator } = state
   if (state.sawSessionMeta) {
-    if (extractString(payload.id) === accumulator.sessionId) {
-      accumulator.branch = extractGitBranch(payload.git) ?? accumulator.branch
+    if (extractString(payload.id) === accumulator.sessionId && asRecord(payload.git)) {
+      accumulator.branch = extractGitBranch(payload.git)
     }
     return
   }

@@ -209,6 +209,11 @@ describe('parseCodexSessionFile', () => {
     })
     // A memory_mode update re-appends the header without git; the branch stays.
     consume('session_meta', { ...firstMeta, git: undefined, memory_mode: 'disabled' })
+    expect(await state.finalize('darwin')).toMatchObject({ branch: 'fix-bug' })
+    // Clearing the branch re-appends the header with an empty git object.
+    consume('session_meta', { ...firstMeta, git: {} })
+    expect((await state.finalize('darwin'))?.branch).toBeFalsy()
+    consume('session_meta', { ...firstMeta, git: { branch: 'fix-bug' } })
     consume('response_item', {
       type: 'message',
       role: 'assistant',
@@ -242,13 +247,15 @@ describe('parseCodexSessionFile', () => {
       cwd: '/repo/fork',
       git: { branch: 'fork-branch' }
     }
-    consume('session_meta', forkMeta)
-    consume('session_meta', {
+    const parentMeta = {
       id: 'parent-session',
       cwd: '/repo/parent',
       git: { branch: 'parent-branch' }
-    })
+    }
+    consume('session_meta', forkMeta)
+    consume('session_meta', parentMeta)
     consume('session_meta', { ...forkMeta, git: { branch: 'fork-branch-2' } })
+    consume('session_meta', parentMeta)
     // A header with no id is not the fork's own either.
     consume('session_meta', { cwd: '/repo/other', git: { branch: 'unidentified-branch' } })
 
