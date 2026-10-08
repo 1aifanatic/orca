@@ -20,7 +20,6 @@ import { claudeConfigDirEnvPatch } from './claude-config-dir-pin'
 import { CLAUDE_SPAWN_TOKEN_ENV, claudeProcessIdentity } from './claude-structured-owner-identity'
 import { ClaudePromptRegistry } from './claude-structured-prompt-replies'
 import { adoptClaudeStructuredSpawnOptions } from './claude-structured-spawn-options'
-import { createClaudeSessionJournalTranslator } from './claude-structured-journal-translation'
 import { observeClaudeFastModeFacts } from './claude-structured-session-options'
 import {
   readClaudeStartupFacts,
@@ -45,7 +44,7 @@ import { resolveClaudeAcquisitionLaunch } from './claude-structured-acquisition-
 import { claudeAcquireCatalogAccess } from './claude-structured-acquire-catalog'
 import {
   bindClaudeConnectionJournalControls,
-  createClaudeJournalFailureHandler
+  createClaudeSessionJournalTranslator
 } from './claude-structured-session-journal-control'
 
 export async function acquireClaudeSession({
@@ -82,12 +81,12 @@ export async function acquireClaudeSession({
   // Frames are admitted only after launch resolution proves the provider session
   // this acquisition owns. Keep the check ahead of every stateful consumer.
   const initProof = createClaudeInitProof()
-  const translator = createClaudeSessionJournalTranslator(
-    input.events,
-    prompts,
-    String(input.fence),
-    createClaudeJournalFailureHandler({ attempt, initProof, callbacks, sessionId })
-  )
+  const translator = createClaudeSessionJournalTranslator(input.events, String(input.fence), {
+    attempt,
+    initProof,
+    callbacks,
+    sessionId
+  })
 
   const onMessage = (message: Record<string, unknown>): void => {
     const init = readClaudeInit(message)
@@ -170,6 +169,7 @@ export async function acquireClaudeSession({
       attempt
     })
     expectedProviderSessionId = launch.providerSessionId
+    attempt.account = launch.account
     observedLeafUuid = launch.resumeLeafUuid
     const open = deps.openConnection ?? openClaudeStreamJsonConnection
     const connection = await withAgentSessionCreatePhase('spawn', input.recordPhase, () =>

@@ -68,6 +68,8 @@ export type AgentSessionFailureWordsContext = {
   /** The surface retries for the person — its own Retry beside the words, or a read that reconnects
    *  on its own — so they leave out sending or trying again. */
   retryControl?: boolean
+  /** A direct create has no submitted message to send again. */
+  messageSubmitted?: boolean
 }
 
 /**
@@ -128,13 +130,17 @@ function quotingPersonDetail(
 /** The next step after a start or restart that failed: the command, or the message, again. */
 function startRetry(
   say: AgentSessionFailureSay,
-  { command, retryControl }: AgentSessionFailureWordsContext,
+  { command, retryControl, messageSubmitted }: AgentSessionFailureWordsContext,
   sendAgain: 'sendToTryAgain' | 'sendAgainToTryOnceMore' = 'sendToTryAgain'
 ): string[] {
   if (retryControl) {
     return []
   }
-  return [command ? say('runCommandAgain', { command }) : say(sendAgain)]
+  return [
+    command
+      ? say('runCommandAgain', { command })
+      : say(messageSubmitted === false ? 'sendToTryAgain' : sendAgain)
+  ]
 }
 
 function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
@@ -207,7 +213,7 @@ const FAILURE_SENTENCES = {
   providerStartFailed: (context, _fact, _surface, say) =>
     joinSentences([say('providerStartFailed', agent(say, context)), ...startRetry(say, context)]),
   startFailed: couldNot('couldNotStart'),
-  notSignedIn: (context, fact, _surface, say) => notSignedInSentence(context, fact, say),
+  notSignedIn: (context, fact, surface, say) => notSignedInSentence(context, fact, say, surface),
   cliMissing: (context, _fact, _surface, say) => cliMissingSentence(context, say),
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
@@ -220,7 +226,7 @@ const FAILURE_SENTENCES = {
   managedAccountUnsupported: (context, _fact, _surface, say) =>
     joinSentences([
       say('managedAccountUnsupported'),
-      context.retryControl
+      context.retryControl || context.messageSubmitted === false
         ? say('chooseClaudeAccount')
         : context.command
           ? say('chooseClaudeAccountThenRunCommand', { command: context.command })

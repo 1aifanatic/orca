@@ -1,4 +1,16 @@
 import { WORKSPACE_ATTACHMENT_RUNTIME_CAPABILITIES } from './workspace-attachment-capabilities'
+import {
+  AUTOMATION_RUNTIME_CAPABILITIES,
+  AUTOMATION_RUNTIME_CLIENT_CAPABILITIES
+} from './automation-runtime-capabilities'
+export {
+  AUTOMATION_LIST_HOST_SCOPE_RUNTIME_CAPABILITY,
+  AUTOMATION_LIST_HOST_SCOPE_UPDATE_REQUIRED_MESSAGE,
+  AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY,
+  AUTOMATION_OWNER_FENCING_UPDATE_REQUIRED_MESSAGE,
+  AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
+  AUTOMATION_EXTRA_AGENT_ARGS_RUNTIME_CAPABILITY
+} from './automation-runtime-capabilities'
 import { STRUCTURED_AGENT_SESSION_SURFACE_RUNTIME_CAPABILITIES } from './structured-agent-session-surface-capabilities'
 export {
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
@@ -299,17 +311,6 @@ export const WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY =
 // would re-show that row as a normal workspace, so the host leaves such rows out of its listings.
 export const WORKTREE_BACKGROUND_REMOVAL_RUNTIME_CAPABILITY =
   'worktree.background-removal.v1' as const
-// Why: older hosts drop automation.list's selector and answer with the whole authority, so a scoped client must not read that as one host's rows.
-export const AUTOMATION_LIST_HOST_SCOPE_RUNTIME_CAPABILITY =
-  'automation.list-host-scope.v1' as const
-export const AUTOMATION_LIST_HOST_SCOPE_UPDATE_REQUIRED_MESSAGE =
-  'Filtering automations by host requires a newer Orca server. Update the HUB and try again.'
-// Why: without server-side owner preconditions a mutation could run against a host the user never saw, so unfenced rows stay view-only.
-export const AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY = 'automation.owner-fencing.v1' as const
-export const AUTOMATION_OWNER_FENCING_UPDATE_REQUIRED_MESSAGE =
-  'Editing automations on this host requires a newer Orca server. Update the HUB and try again.'
-export const AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY =
-  'automation.create-idempotency.v1' as const
 // Hosts without this capability have no notifications.registerPush RPC.
 export const NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY = 'notifications.remote-push.v1' as const
 
@@ -322,8 +323,7 @@ export const NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   WORKTREE_VISIBILITY_SOURCE_DEFAULTS_RUNTIME_CAPABILITY,
   WORKTREE_GITHUB_PR_SUPPRESSION_RUNTIME_CAPABILITY,
   REPO_SEARCH_QUALIFIED_REFS_RUNTIME_CAPABILITY,
-  AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY,
-  AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
+  ...AUTOMATION_RUNTIME_CLIENT_CAPABILITIES,
   AGENT_LAUNCH_RUNTIME_CAPABILITY
 ] as const
 
@@ -417,9 +417,7 @@ export const RUNTIME_CAPABILITIES = [
   DATA_ACCOUNT_RUNTIME_CAPABILITY,
   CODEX_RESET_CREDIT_RUNTIME_CAPABILITY,
   ...SKILL_RUNTIME_CAPABILITIES,
-  AUTOMATION_LIST_HOST_SCOPE_RUNTIME_CAPABILITY,
-  AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY,
-  AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
+  ...AUTOMATION_RUNTIME_CAPABILITIES,
   NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY,
   ...AGENT_LAUNCH_RUNTIME_CAPABILITIES
 ] as const

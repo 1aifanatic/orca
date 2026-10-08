@@ -16848,6 +16848,16 @@
         "runHistory": {
           "occurrencesWithLatest": "{{times}} 回、最近では {{date}}",
           "occurrences": "{{times}}回"
+        },
+        "extraAgentArgs": {
+          "advanced": "詳細設定",
+          "clear": "引数をクリア",
+          "unsupported": "この Agent は追加の引数にまだ対応していません。",
+          "label": "追加の Agent 引数",
+          "needsFreshSession": "追加の引数を使うには、実行ごとに新しいセッションが必要です。",
+          "useFreshSessions": "新しいセッションを使用",
+          "helper": "新しいセッションごとに、このホストのデフォルト引数に追加されます。",
+          "detailLabel": "追加の引数"
         }
       },
       "agent": {
@@ -17812,10 +17822,10 @@
         "couldNotStart": "{{agent}} を起動できませんでした。",
         "editSavedArguments": "設定 > Agent > 引数で編集してください。",
         "couldNotRestart": "{{agent}} を再起動できませんでした。",
-        "notSignedIn": "{{agent}} は選択したアカウントでサインインしていません。",
-        "claudeSystemNotSignedIn": "Claude にサインインしていません。`claude` を実行して /login でサインインするか、設定の Claude アカウントでアカウントを選択してください。",
+        "notSignedIn": "{{agent}} にサインインしていません。",
+        "claudeSystemNotSignedIn": "Claude にサインインしていません。`{{loginCommand}}` を実行するか、Claude アカウント設定でアカウントを選択してください。",
         "claudeManagedNotSignedIn": "この Claude アカウントにサインインしていません。設定の Claude アカウントで再度サインインしてください。",
-        "codexSystemNotSignedIn": "Codex にサインインしていません。`codex login` を実行してください。",
+        "codexSystemNotSignedIn": "Codex にサインインしていません。`{{loginCommand}}` を実行してください。",
         "codexManagedNotSignedIn": "この Codex アカウントにサインインしていません。設定の Codex アカウントで再度サインインしてください。",
         "cliMissing": "このチャットを実行しているコンピューターで {{agent}} が見つかりませんでした。インストールするか、[設定] → [Agent] の [コマンド] を確認してください。",
         "signInFirst": "先にサインインしてください。",
@@ -17879,6 +17889,11 @@
         "providerRetryNumberOf": "{{maxRetries}} 回中 {{attempt}} 回目の再試行です。",
         "providerRetryLastError": "直近のエラー: {{detail}}。",
         "previousExitUnverifiable": "以前の {{agent}} を停止できませんでした。",
+        "sessionNotRestored": "{{agent}} は以前のセッションを再開できなかったため、このチャットは新しいセッションで続行します。{{agent}} は以前のメッセージを覚えていません。",
+        "agentCommandNotSignedIn": "このチャットを実行しているコンピューターで `{{loginCommand}}` を使って {{agent}} にサインインしてください。",
+        "interactiveAgentNotSignedIn": "このチャットを実行しているコンピューターで `{{loginCommand}}` を起動し、`{{slashCommand}}` を使って {{agent}} にサインインしてください。",
+        "agentNotSignedIn": "{{agent}} にサインインしてください。",
+        "thenSendAgain": "その後、メッセージをもう一度送信してください。",
         "runCommandWhenDone": "終わったら /{{command}} を実行してください。",
         "commandAfterAnswer": "Agent の質問または承認に回答してから、/{{command}} を実行してください。",
         "sessionNotRestored": "{{agent}} は以前のセッションを再開できなかったため、このチャットは新しいセッションで続行します。{{agent}} は以前のメッセージを覚えていません。"

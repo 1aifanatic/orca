@@ -17077,6 +17077,16 @@
         "AutomationsPageBreadcrumb": {
           "ariaLabel": "Automations breadcrumb",
           "runDetails": "Run details"
+        },
+        "extraAgentArgs": {
+          "advanced": "Advanced",
+          "clear": "Clear arguments",
+          "unsupported": "Extra arguments aren't supported for this agent yet.",
+          "label": "Extra agent arguments",
+          "needsFreshSession": "Extra arguments require a fresh session for every run.",
+          "useFreshSessions": "Use fresh sessions",
+          "helper": "Added to this host's default arguments for each fresh session.",
+          "detailLabel": "Extra arguments"
         }
       },
       "agent": {
@@ -17998,10 +18008,10 @@
         "sendAgainToTryOnceMore": "Send your message again to try once more.",
         "couldNotStart": "{{agent}} couldn't start.",
         "couldNotRestart": "{{agent}} couldn't restart.",
-        "notSignedIn": "{{agent}} is not signed in for the selected account.",
-        "claudeSystemNotSignedIn": "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings.",
+        "notSignedIn": "{{agent}} is not signed in.",
+        "claudeSystemNotSignedIn": "Claude isn't signed in. Run `{{loginCommand}}`, or choose an account in Claude Accounts settings.",
         "claudeManagedNotSignedIn": "This Claude account isn't signed in. Sign in again in Claude Accounts settings.",
-        "codexSystemNotSignedIn": "Codex isn't signed in. Run `codex login`.",
+        "codexSystemNotSignedIn": "Codex isn't signed in. Run `{{loginCommand}}`.",
         "codexManagedNotSignedIn": "This Codex account isn't signed in. Sign in again in Codex Accounts settings.",
         "cliMissing": "{{agent}} wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents.",
         "signInFirst": "Sign in first.",
@@ -18067,6 +18077,10 @@
         "argumentsMultipleValues": "Saved Arguments give {{option}} more than one value.",
         "argumentsPositionalPrompt": "Saved Arguments include a prompt.",
         "editSavedArguments": "Edit them in Settings > Agents > Arguments.",
+        "agentCommandNotSignedIn": "Sign in to {{agent}} with `{{loginCommand}}` on the computer running this chat.",
+        "interactiveAgentNotSignedIn": "Sign in to {{agent}} by running `{{loginCommand}}` and using `{{slashCommand}}` on the computer running this chat.",
+        "agentNotSignedIn": "Sign in to {{agent}}.",
+        "thenSendAgain": "Then send your message again.",
         "runCommandWhenDone": "Run /{{command}} when it's done.",
         "commandAfterAnswer": "Answer the agent's question or approval, then run /{{command}}."
       },

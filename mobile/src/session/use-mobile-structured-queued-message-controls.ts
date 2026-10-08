@@ -7,7 +7,11 @@
 // the only truth a card action ever needs.
 
 import { useCallback, useMemo } from 'react'
-import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../src/shared/agent-session-journal-types'
+import { agentSessionVisibleFailureFacts } from '../../../src/shared/agent-session-visible-failures'
 import type {
   AgentSessionQueuedMessageDeleteResult,
   AgentSessionQueuedMessagesResumeResult,
@@ -46,6 +50,8 @@ export type MobileStructuredQueuedMessageControls = {
 
 export function useMobileStructuredQueuedMessageControls(args: {
   sessionKey: string
+  agentName?: string
+  journalItems?: readonly AgentJournalRenderItem[]
   queuedMessages: MobileQueuedMessageFeed
   queuePause: MobileQueuePause
   submissions: readonly AgentJournalSubmission[]
@@ -77,9 +83,21 @@ export function useMobileStructuredQueuedMessageControls(args: {
       mobileQueuedMessageCards(queuedMessages, submissions, {
         pendingPrompt,
         agentWorking,
+        agentName: args.agentName,
+        statedFailures: queuedMessages?.some((draft) => draft.state === 'returned')
+          ? agentSessionVisibleFailureFacts(args.journalItems ?? [])
+          : [],
         queuePaused: queuePause !== null
       }),
-    [agentWorking, pendingPrompt, queuePause, queuedMessages, submissions]
+    [
+      agentWorking,
+      args.agentName,
+      args.journalItems,
+      pendingPrompt,
+      queuePause,
+      queuedMessages,
+      submissions
+    ]
   )
   const resolved = useCallback(
     (accepted: boolean): boolean => {

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
 import { withNativeChatCutTurnNotices } from '../../../src/shared/native-chat-cut-turn-notice'
-import { TUI_AGENT_DISPLAY_NAMES } from '../../../src/shared/tui-agent-display-names'
+import { tuiAgentDisplayName } from '../../../src/shared/tui-agent-display-names'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../src/shared/structured-agent-session-main-agent-working'
 import { isFinalAgentSessionReadRefusal } from '../../../src/shared/structured-agent-session-read-refusal'
 import {
@@ -137,7 +137,7 @@ export function useMobileStructuredAgentSession(args: {
   const transcriptItems = useMemo(
     () =>
       withNativeChatCutTurnNotices(state.items, {
-        agentName: TUI_AGENT_DISPLAY_NAMES[agent === 'codex' ? 'codex' : 'claude']
+        agentName: agent ? (tuiAgentDisplayName(agent) ?? agent) : undefined
       }),
     [agent, state.items]
   )
@@ -214,6 +214,8 @@ export function useMobileStructuredAgentSession(args: {
   )
   const queued = useMobileStructuredQueuedMessageControls({
     sessionKey,
+    agentName: agent ? (tuiAgentDisplayName(agent) ?? agent) : undefined,
+    journalItems: state.items,
     queuedMessages,
     queuePause,
     submissions: state.submissions,
