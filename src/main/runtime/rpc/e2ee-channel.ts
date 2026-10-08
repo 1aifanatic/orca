@@ -1,6 +1,6 @@
 // Why: this channel keeps E2EE framing out of RPC handlers, which consume plaintext across transports.
 import type { WebSocket } from 'ws'
-import { deriveSharedKey, encrypt, decrypt, encryptBytes, decryptBytes } from './e2ee-crypto'
+import { deriveSharedKey, encrypt, decrypt, decryptBytes } from './e2ee-crypto'
 import {
   DesktopMobileE2EEV2Session,
   type DesktopMobileE2EEV2Context
@@ -17,7 +17,11 @@ import { parseRemoteRuntimeJsonText } from '../../../shared/remote-runtime-reque
 import type { MobileE2EEOutboundMemoryBudget } from './mobile-e2ee-outbound-memory-budget'
 import { MobileE2EEDesktopOutboundOwner } from './mobile-e2ee-desktop-outbound-owner'
 import { parseRuntimeClientCapabilities } from './runtime-client-capabilities'
-import type { RpcBinarySendOptions, RpcBinarySender } from './rpc-binary-sender'
+import type {
+  RpcBinarySendOptions,
+  RpcBinarySendResult,
+  RpcBinarySender
+} from './rpc-binary-sender'
 import type { RuntimeCapability } from '../../../shared/protocol-version'
 import type { EventProps } from '../../../shared/telemetry-events'
 import { track } from '../../telemetry/client'
@@ -160,7 +164,7 @@ export class E2EEChannel {
         this.closeForOutboundBudget('size')
         return
       }
-      this.outbound.enqueueLegacy(encrypt(response, this.sharedKey))
+      this.outbound.enqueueLegacyText(encrypt(response, this.sharedKey))
     }
     const encryptedBinaryReply: RpcBinarySender = (response, options) => {
       if (!this.sharedKey || this.ws.readyState !== this.ws.OPEN) {
@@ -170,10 +174,7 @@ export class E2EEChannel {
         this.closeForOutboundBudget('size')
         return false
       }
-      return this.outbound.enqueueLegacy(
-        Buffer.from(encryptBytes(response, this.sharedKey)),
-        options
-      )
+      return this.outbound.enqueueLegacyBinary(response, this.sharedKey, options)
     }
     this.messageHandler?.(plaintext, encryptedReply, encryptedBinaryReply)
   }
@@ -298,7 +299,7 @@ export class E2EEChannel {
     })
   }
 
-  private enqueueV2(item: V2OutboundItem, options?: RpcBinarySendOptions): boolean {
+  private enqueueV2(item: V2OutboundItem, options?: RpcBinarySendOptions): RpcBinarySendResult {
     if (!this.v2Session || this.ws.readyState !== this.ws.OPEN) {
       return false
     }

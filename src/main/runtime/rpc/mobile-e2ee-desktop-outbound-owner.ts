@@ -1,8 +1,10 @@
 import type { WebSocket } from 'ws'
 import type { WsOutboundBackpressureQueue } from '../../../shared/ws-outbound-backpressure-queue'
 import { createLegacyMobileE2EEReplyQueue } from './mobile-e2ee-outbound-admission'
+import { encryptBytes } from './e2ee-crypto'
 import {
   createDesktopMobileE2EEV2OutboundQueue,
+  desktopMobileE2EEV2OutboundItemBytes,
   type DesktopMobileE2EEV2OutboundItem
 } from './mobile-e2ee-v2-desktop-outbound'
 import type { DesktopMobileE2EEV2Session } from './mobile-e2ee-v2-desktop-session'
@@ -39,26 +41,31 @@ export class MobileE2EEDesktopOutboundOwner {
     return true
   }
 
-  enqueueLegacy(frame: string | Buffer, options?: RpcBinarySendOptions): boolean {
-    if (!this.socketMemory) {
-      this.onOverflow()
+  enqueueLegacyText(frame: string): boolean {
+    return this.legacy()?.enqueue(frame) ?? false
+  }
+
+  enqueueLegacyBinary(
+    bytes: Uint8Array<ArrayBufferLike>,
+    sharedKey: Uint8Array,
+    options?: RpcBinarySendOptions
+  ): boolean | 'backlogged' {
+    const queue = this.legacy()
+    if (!queue) {
       return false
     }
-    this.legacyQueue ??= createLegacyMobileE2EEReplyQueue({
-      ws: this.ws,
-      isKeyed: this.isLegacyKeyed,
-      memoryBudget: this.memoryBudget,
-      socketMemory: this.socketMemory,
-      onOverflow: this.onOverflow
-    })
-    return sendOrEnqueue(this.legacyQueue, frame, options)
+    // Why: idleness is judged on the sealed size (+40) before sealing, so a skipped frame costs no encryption.
+    if (options?.dropWhenBacklogged && !queue.isIdle(bytes.byteLength + 40)) {
+      return 'backlogged'
+    }
+    return queue.enqueue(Buffer.from(encryptBytes(bytes, sharedKey)))
   }
 
   enqueueV2(
     item: DesktopMobileE2EEV2OutboundItem,
     session: DesktopMobileE2EEV2Session,
     options?: RpcBinarySendOptions
-  ): boolean {
+  ): boolean | 'backlogged' {
     if (!this.socketMemory) {
       this.onOverflow()
       return false
@@ -70,7 +77,28 @@ export class MobileE2EEDesktopOutboundOwner {
       socketMemory: this.socketMemory,
       onOverflow: this.onOverflow
     })
-    return sendOrEnqueue(this.v2Queue, item, options)
+    if (
+      options?.dropWhenBacklogged &&
+      !this.v2Queue.isIdle(desktopMobileE2EEV2OutboundItemBytes(item))
+    ) {
+      return 'backlogged'
+    }
+    return this.v2Queue.enqueue(item)
+  }
+
+  private legacy(): WsOutboundBackpressureQueue<string | Buffer> | null {
+    if (!this.socketMemory) {
+      this.onOverflow()
+      return null
+    }
+    this.legacyQueue ??= createLegacyMobileE2EEReplyQueue({
+      ws: this.ws,
+      isKeyed: this.isLegacyKeyed,
+      memoryBudget: this.memoryBudget,
+      socketMemory: this.socketMemory,
+      onOverflow: this.onOverflow
+    })
+    return this.legacyQueue
   }
 
   dispose(): void {
@@ -80,12 +108,4 @@ export class MobileE2EEDesktopOutboundOwner {
     this.v2Queue = null
     this.socketMemory?.release()
   }
-}
-
-function sendOrEnqueue<TFrame>(
-  queue: WsOutboundBackpressureQueue<TFrame>,
-  frame: TFrame,
-  options: RpcBinarySendOptions | undefined
-): boolean {
-  return options?.dropWhenBacklogged ? queue.sendIfIdle(frame) : queue.enqueue(frame)
 }

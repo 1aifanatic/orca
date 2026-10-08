@@ -62,8 +62,8 @@ export type WsOutboundBackpressureQueue<TFrame> = {
   enqueue: (frame: TFrame) => boolean
   /** Queue-or-send a frame and allow its owner to cancel it before wire delivery. */
   enqueueCancelable: (frame: TFrame) => WsOutboundEnqueueResult
-  /** Send a frame only when nothing is parked and the wire has room; never queues it. */
-  sendIfIdle: (frame: TFrame) => boolean
+  /** True when nothing is parked and the wire has room, so enqueue would send this size directly. */
+  isIdle: (frameBytes: number) => boolean
   /** Bytes currently held (not yet handed to the wire). */
   queuedBytes: () => number
   evidence: () => { queuedBytes: number; queuedFrames: number; storageSlots: number }
@@ -259,18 +259,6 @@ export function createWsOutboundBackpressureQueue<TFrame>(
     }
   }
 
-  const admittedByteLength = (frame: TFrame): number | null => {
-    if (disposed || overflowed) {
-      return null
-    }
-    const bytes = options.byteLengthOf(frame)
-    if (!Number.isFinite(bytes) || bytes < 0 || bytes > maxFrameBytes) {
-      failOverflow('maxFrameBytes')
-      return null
-    }
-    return bytes
-  }
-
   const isIdle = (bytes: number): boolean =>
     queuedFrames === 0 &&
     options.isWritable() &&
@@ -278,8 +266,12 @@ export function createWsOutboundBackpressureQueue<TFrame>(
     (options.canSend?.(bytes, false) ?? true)
 
   const enqueueCancelable = (frame: TFrame): WsOutboundEnqueueResult => {
-    const bytes = admittedByteLength(frame)
-    if (bytes === null) {
+    if (disposed || overflowed) {
+      return { accepted: false, queued: false, cancel: () => false }
+    }
+    const bytes = options.byteLengthOf(frame)
+    if (!Number.isFinite(bytes) || bytes < 0 || bytes > maxFrameBytes) {
+      failOverflow('maxFrameBytes')
       return { accepted: false, queued: false, cancel: () => false }
     }
     // Fast path: nothing parked and the wire is under the cap — send directly.
@@ -323,10 +315,7 @@ export function createWsOutboundBackpressureQueue<TFrame>(
       return enqueueCancelable(frame).accepted
     },
     enqueueCancelable,
-    sendIfIdle(frame: TFrame): boolean {
-      const bytes = admittedByteLength(frame)
-      return bytes !== null && isIdle(bytes) && sendFrame(frame)
-    },
+    isIdle,
     queuedBytes: () => queued,
     evidence: () => ({
       queuedBytes: queued,

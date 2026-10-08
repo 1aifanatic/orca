@@ -3,8 +3,10 @@ export type RpcBinarySendOptions = {
   dropWhenBacklogged?: boolean
 }
 
-/** Returns false when the frame was not sent or queued. */
+/** False: not sent or queued. 'backlogged': skipped under dropWhenBacklogged; the socket is alive. */
+export type RpcBinarySendResult = boolean | void | 'backlogged'
+
 export type RpcBinarySender = (
   bytes: Uint8Array<ArrayBufferLike>,
   options?: RpcBinarySendOptions
-) => boolean | void
+) => RpcBinarySendResult

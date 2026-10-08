@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WebSocket } from 'ws'
+import type { RpcBinarySendResult } from './rpc-binary-sender'
 import { E2EEChannel, type E2EEChannelOptions } from './e2ee-channel'
 import { deriveSharedKey, decrypt, decryptBytes, encrypt, generateKeyPair } from './e2ee-crypto'
 import { createMobileE2EEOutboundMemoryBudget } from './mobile-e2ee-outbound-memory-budget'
@@ -167,7 +168,7 @@ describe('E2EE legacy binary reply backpressure', () => {
     const ctx = setup({ outboundMemoryBudget })
     const baseline = ctx.ws.sent.length
     ctx.ws.bufferedAmount = 1_001
-    const accepted: (boolean | void)[] = []
+    const accepted: RpcBinarySendResult[] = []
 
     ctx.channel.onMessage((_plaintext, encryptedReply, encryptedBinaryReply) => {
       encryptedReply('{"seq":1}')
@@ -212,7 +213,7 @@ describe('E2EE legacy binary reply backpressure', () => {
   it('refuses binary once the socket has left OPEN', () => {
     const ctx = setup()
     ctx.ws.readyState = 3
-    let accepted: boolean | void = undefined
+    let accepted: RpcBinarySendResult = undefined
 
     ctx.channel.onMessage((_plaintext, _encryptedReply, encryptedBinaryReply) => {
       accepted = encryptedBinaryReply(new Uint8Array([1]))
@@ -226,7 +227,7 @@ describe('E2EE legacy binary reply backpressure', () => {
     const ctx = setup()
     const baseline = ctx.ws.sent.length
     ctx.ws.bufferedAmount = 9 * 1024 * 1024
-    const accepted: (boolean | void)[] = []
+    const accepted: RpcBinarySendResult[] = []
     ctx.channel.onMessage((_plaintext, _encryptedReply, encryptedBinaryReply) => {
       accepted.push(encryptedBinaryReply(Buffer.from('frame'), { dropWhenBacklogged: true }))
     })
@@ -237,7 +238,7 @@ describe('E2EE legacy binary reply backpressure', () => {
     expect(ctx.ws.sent.length).toBe(baseline)
 
     ctx.channel.handleRawMessage(request)
-    expect(accepted).toEqual([false, true])
+    expect(accepted).toEqual(['backlogged', true])
     expect(ctx.ws.sent.slice(baseline).map((frame) => decodeSent(ctx, frame))).toEqual([
       'binary:frame'
     ])
