@@ -62,6 +62,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   waitForBackgroundTasks: 'Wait for the background tasks to finish.',
   messagesUnsettled: "A message you sent earlier isn't confirmed yet.",
   settleEarlierMessage: 'Wait for your earlier message to go through, or retry it.',
+  queueTooLarge: 'Too much text is waiting in the queue.',
+  shrinkQueue: 'Delete a queued message, or wait for one to go through, then try again.',
   optionRejected: "The agent didn't accept this setting.",
   goalsUnsupported: "This agent doesn't support goals.",
   agentRefused: 'The agent turned this down.',
