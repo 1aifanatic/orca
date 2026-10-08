@@ -51,10 +51,6 @@ export function getNativeChatExperimentalSearchEntry(): SettingsSearchEntry {
         'agent'
       ),
       ...translateSearchKeyword(
-        'components.settings.nativeChat.inlineVisualsTitle',
-        'Inline visuals'
-      ),
-      ...translateSearchKeyword(
         'auto.components.settings.experimental.search.nativeChat.queue',
         'queue'
       )

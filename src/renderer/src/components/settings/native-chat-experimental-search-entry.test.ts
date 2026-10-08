@@ -11,7 +11,10 @@ describe('native chat experimental search entry', () => {
     expect(matchesSettingsSearch('queue', getNativeChatExperimentalSearchEntry())).toBe(true)
   })
 
-  it.each(['inline visuals', 'visuals'])('finds the Inline visuals switch for %s', (query) => {
-    expect(matchesSettingsSearch(query, getNativeChatExperimentalSearchEntry())).toBe(true)
-  })
+  it.each(['inline visuals', 'visuals'])(
+    'leaves the moved switch out of Experimental for %s',
+    (query) => {
+      expect(matchesSettingsSearch(query, getNativeChatExperimentalSearchEntry())).toBe(false)
+    }
+  )
 })

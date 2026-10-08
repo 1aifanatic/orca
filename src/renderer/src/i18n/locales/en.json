@@ -177,7 +177,7 @@
   },
   "settings": {
     "chat": {
-      "description": "Choose how chats look and get their names.",
+      "description": "Choose how chats look and behave.",
       "names": {
         "title": "Chat names",
         "description": "Use an agent to name new chats from their first message. Without a generated name, chats stay Claude Chat or Codex Chat.",

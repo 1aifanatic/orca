@@ -260,46 +260,13 @@ describe('NativeChatExperimentalSetting queue follow-ups', () => {
 })
 
 describe('NativeChatExperimentalSetting inline visuals', () => {
-  const structuredOn = {
-    experimentalNativeChat: true,
-    openAgentTabsInChatByDefault: true,
-    experimentalStructuredNativeChat: true
-  }
-
-  it.each([true, undefined])(
-    'defaults visuals on for a saved preference of %s',
-    (nativeChatInlineVisuals) => {
-      expect(getDefaultSettings('/tmp').nativeChatInlineVisuals).toBe(true)
-      const updateSettings = vi.fn()
-      const { getByRole } = renderSetting(
-        { ...structuredOn, nativeChatInlineVisuals },
-        updateSettings
-      )
-      const toggle = getByRole('switch', { name: 'Toggle inline visuals' })
-      expect(toggle.getAttribute('aria-checked')).toBe('true')
-      fireEvent.click(toggle)
-      expect(updateSettings).toHaveBeenCalledWith({ nativeChatInlineVisuals: false })
-    }
-  )
-
-  it('uses the saved off preference and lets the user turn it back on', () => {
-    const updateSettings = vi.fn()
-    const { getByRole, getByText } = renderSetting(
-      { ...structuredOn, nativeChatInlineVisuals: false },
-      updateSettings
-    )
-    expect(getByText(/Applies to newly started chats/)).toBeTruthy()
-    const toggle = getByRole('switch', { name: 'Toggle inline visuals' })
-    expect(toggle.getAttribute('aria-checked')).toBe('false')
-    fireEvent.click(toggle)
-    expect(updateSettings).toHaveBeenCalledWith({ nativeChatInlineVisuals: true })
-  })
-
-  it('hides the switch outside structured chat', () => {
-    const { queryByRole } = renderSetting({
-      ...structuredOn,
-      experimentalStructuredNativeChat: false
+  it('leaves Inline visuals on the Chat page even while structured chat is enabled', () => {
+    const { queryByRole, getByRole } = renderSetting({
+      experimentalNativeChat: true,
+      openAgentTabsInChatByDefault: true,
+      experimentalStructuredNativeChat: true
     })
+    expect(getByRole('switch', { name: 'Toggle automatic resume after a restart' })).toBeTruthy()
     expect(queryByRole('switch', { name: 'Toggle inline visuals' })).toBeNull()
   })
 })
