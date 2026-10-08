@@ -1,6 +1,9 @@
 import type { AgentProviderSessionMetadata } from '../../shared/agent-session-resume'
 import type { CodexAccountSelectionTarget } from '../codex-accounts/runtime-selection'
-import type { CodexSessionResumePreparation } from '../codex/codex-session-resume-home'
+import {
+  trustedCodexResumeHomes,
+  type CodexSessionResumePreparation
+} from '../codex/codex-session-resume-home'
 import { prepareCodexSessionResume } from '../codex/codex-session-resume-preparation'
 import {
   prepareCodexAccountRestartResume,
@@ -27,8 +30,7 @@ export async function prepareCodexSessionResumeForLaunch(args: {
     return null
   }
   const systemHomePath = getSystemCodexHomePath()
-  // Why: codexSessionSourceHome is import-only; treating it as CODEX_HOME would mutate history sources and bypass account auth.
-  const trustedHomes = [systemHomePath, ...runtimeHome.getHostCodexHomePathsForSessionDiscovery()]
+  const trustedHomes = trustedCodexResumeHomes(runtimeHome, systemHomePath)
   // Why: resolved eagerly, once, before any ranking or provenance match. The
   // marker read used to be deferred into the ranking thunk so a
   // provenance-present resume never paid for it, but that optimisation let an
