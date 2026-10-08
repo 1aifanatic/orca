@@ -2,32 +2,29 @@ import { useEffect } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
+import type { ClaudeManagedAccountSummary } from '../../../shared/managed-account-types'
 import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
 import { claudeAccountToSignIn, signInToClaudeAccount } from './claude-account-sign-in'
 
 const NOTICE_TOAST_ID = 'claude-account-sign-in-notice'
 
-function showClaudeAccountSignInNotice(): void {
+function showClaudeAccountSignInNotice(account: ClaudeManagedAccountSummary): void {
   toast.info(
-    translate('accounts.claude.signInNotice.title', 'Each Claude account now has its own sign-in.'),
+    translate('accounts.claude.signInNotice.title', 'Finish setting up your Claude accounts'),
     {
       // Why a stable id: a late sync that resets the flag can't stack a second toast.
       id: NOTICE_TOAST_ID,
       description: translate(
         'accounts.claude.signInNotice.description',
-        'Sign in once to each account to keep using it.'
+        "Sign in to each saved account once and you're ready to switch anytime."
       ),
       // Why no timeout: it is marked seen before showing, so an auto-close would lose it for good.
       duration: Infinity,
       action: {
-        label: translate('accounts.claude.signIn', 'Sign in'),
-        onClick: () => {
-          // Why read again: a sign-in elsewhere may have happened since the toast appeared.
-          void window.api.claudeAccounts.list().then((state) => {
-            const accountId = claudeAccountToSignIn(state)
-            return accountId ? signInToClaudeAccount(accountId) : false
-          })
-        }
+        label: translate('accounts.claude.signInNotice.action', 'Sign in to {{value0}}', {
+          value0: account.email
+        }),
+        onClick: () => void signInToClaudeAccount(account.id)
       }
     }
   )
@@ -52,8 +49,10 @@ export function useClaudeAccountSignInNotice(): void {
         }
         // Why mark either way: the update happened once; a later sign-out is not this news.
         useAppStore.getState().markClaudeAccountSignInNoticeSeen()
-        if (claudeAccountToSignIn(state)) {
-          showClaudeAccountSignInNotice()
+        const accountId = claudeAccountToSignIn(state)
+        const account = state.accounts.find((candidate) => candidate.id === accountId)
+        if (account) {
+          showClaudeAccountSignInNotice(account)
         }
       })
       .catch((error: unknown) => console.warn('[claude-accounts] Sign-in notice skipped:', error))

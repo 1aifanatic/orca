@@ -75,11 +75,11 @@ describe('useClaudeAccountSignInNotice', () => {
     expect(noticeTestStore.getState().claudeAccountSignInNoticeSeen).toBe(true)
     expect(toastInfo).toHaveBeenCalledTimes(1)
     const [title, options] = toastInfo.mock.calls[0]
-    expect(title).toBe('Each Claude account now has its own sign-in.')
+    expect(title).toBe('Finish setting up your Claude accounts')
     expect(options).toMatchObject({
-      description: 'Sign in once to each account to keep using it.',
+      description: "Sign in to each saved account once and you're ready to switch anytime.",
       duration: Infinity,
-      action: { label: 'Sign in' }
+      action: { label: 'Sign in to b@example.test' }
     })
 
     await act(async () => options.action.onClick())
