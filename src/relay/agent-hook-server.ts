@@ -18,6 +18,7 @@ import { handleRelayHookRequest } from './agent-hook-request'
 import { listenOnLoopback } from './agent-hook-loopback-listener'
 import { RelayAgentPresence } from './relay-agent-presence'
 import { PaneOwnerProbes } from '../shared/agent-pane-owner-probes'
+import { currentOwner } from '../shared/agent-hook-presence-transition'
 import type { AgentProcessVerdict } from '../shared/agent-process-presence'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
@@ -79,13 +80,15 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
     current: (paneKey) => this.state.lastStatusByPaneKey.get(paneKey),
     publish: (paneKey, event) => {
       const meta = this.lastEnvelopeMetaByPaneKey.get(paneKey)
-      if (meta) {
-        this.applyEvent(event, meta.source, meta.env, meta.version)
-      }
+      return (
+        meta !== undefined &&
+        this.applyEvent(event, meta.source, meta.env, meta.version) !== undefined
+      )
     }
   })
   private readonly ownerProbes = new PaneOwnerProbes({
-    checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
+    ownerOf: (paneKey) => currentOwner(this.state.lastStatusByPaneKey.get(paneKey))?.process,
+    checkOwner: (paneKey) => this.presenceChecks.check(paneKey)
   })
   private retryScheduler: AgentHookResultRetryScheduler
   readonly claudeTerminalInterrupts = createRelayClaudeTerminalInterrupts(this.state, () =>
@@ -234,7 +237,7 @@ export class RelayAgentHookServer extends RelayAgentHookCanonicalStatus {
   }
 
   checkAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null> {
-    return this.presenceChecks.check(paneKey)
+    return this.ownerProbes.check(paneKey)
   }
 
   /** Drop a paneKey's cached entries on PTY exit so a terminated pane can't resurface as a ghost event on reconnect. */

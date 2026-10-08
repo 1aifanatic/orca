@@ -61,18 +61,30 @@ function otherProcess(
   return a !== undefined && b !== undefined && !isSameAgentProcess(a, b)
 }
 
-// Why: only an owner the host cannot check falls back to freshness; a restored one never blocks.
+// Why: only an owner this host cannot check falls back to freshness; a restored one never blocks.
 function isOwnerReleased(
   owner: AgentProcessPresence,
   row: AgentHookEventPayload,
   rowUpdatedAt: number | undefined,
-  now: number
+  now: number,
+  checkable = true
 ): boolean {
   return (
     row.restoredUnconfirmed === true ||
-    (owner.process === undefined &&
+    ((!checkable || owner.process === undefined) &&
       !isFreshNonDoneAgentStatus({ state: row.payload.state, updatedAt: rowUpdatedAt ?? 0 }, now))
   )
+}
+
+/** An owned row's agent type is its owner's; an event that names no agent never erases it. */
+export function withOwnerAgentType(
+  event: AgentHookEventPayload,
+  owner: AgentProcessPresence
+): AgentHookEventPayload {
+  const agentType = event.payload.agentType
+  return agentType && agentType !== 'unknown'
+    ? event
+    : { ...event, payload: { ...event.payload, agentType: owner.agent } }
 }
 
 /** PLAN rules 1-4, first match wins: proven guests (rule 2) need no liveness check. */
@@ -104,8 +116,13 @@ function withOwnerSession(
   producer: HookProducer
 ): AgentProcessPresence {
   const session = producer.session
-  // Why: a different process of the owner's type is not the owner, so it never rotates its session.
-  if (!session || session === owner.session || otherProcess(producer.process, owner.process)) {
+  // Why: a different process of the owner's type, or a producer naming no agent, never rotates it.
+  if (
+    !session ||
+    !producer.agent ||
+    session === owner.session ||
+    otherProcess(producer.process, owner.process)
+  ) {
     return owner
   }
   const heldSessions = ownerSessions(owner)
@@ -120,6 +137,7 @@ function carryOwnerFields(
   event: AgentHookEventPayload,
   previous: AgentHookEventPayload | undefined
 ): AgentHookEventPayload {
+  // Why: a row with no owner record still carries (older relays' envelopes send no agentPresence).
   if (
     !previous ||
     previous.providerSessionOnly ||
@@ -155,35 +173,32 @@ export function transitionHookPresence(
   // Why: only an admitted exit is marked ended (Claude's process-ending SessionEnd, or a host-proved
   // exit); other agents' SessionEnd hooks are ordinary status updates.
   const exit = incoming.agentPresence?.ended === true
-  const verdict =
-    owner && previous ? classifyAgainstOwner(producer, owner, previous, rowUpdatedAt, now) : 'claim'
-  if (verdict === 'nested') {
-    return { kind: 'skip' }
-  }
-  if (owner && verdict === 'guest') {
-    return exit || !owner.process ? { kind: 'skip' } : { kind: 'skip', probe: owner.process }
-  }
-  if (owner && verdict === 'owner') {
-    if (exit) {
+  if (owner && previous) {
+    const verdict = classifyAgainstOwner(producer, owner, previous, rowUpdatedAt, now)
+    if (verdict === 'nested') {
+      return { kind: 'skip' }
+    }
+    if (verdict === 'guest') {
+      return exit || !owner.process ? { kind: 'skip' } : { kind: 'skip', probe: owner.process }
+    }
+    if (verdict === 'owner' && exit) {
       return sameProcess(owner.process, producer.process)
         ? {
             kind: 'write',
-            event: {
-              ...event,
-              payload: previous?.payload ?? event.payload,
-              agentPresence: { ...owner, ended: true }
-            }
+            event: { ...event, payload: previous.payload, agentPresence: { ...owner, ended: true } }
           }
         : { kind: 'skip' }
     }
-    const probe = otherProcess(producer.process, owner.process) ? owner.process : undefined
-    return {
-      kind: 'write',
-      event: {
-        ...carryOwnerFields(event, previous),
-        agentPresence: withOwnerSession(owner, producer)
-      },
-      ...(probe ? { probe } : {})
+    if (verdict === 'owner') {
+      const probe = otherProcess(producer.process, owner.process) ? owner.process : undefined
+      return {
+        kind: 'write',
+        event: {
+          ...carryOwnerFields(withOwnerAgentType(event, owner), previous),
+          agentPresence: withOwnerSession(owner, producer)
+        },
+        ...(probe ? { probe } : {})
+      }
     }
   }
   const ended = previous?.agentPresence?.ended ? previous.agentPresence : undefined
@@ -214,38 +229,38 @@ export function adoptRelayedRow(
   incoming: AgentHookEventPayload,
   previous: AgentHookEventPayload | undefined
 ): AgentHookEventPayload {
+  const owner = incoming.agentPresence ?? currentOwner(previous)
+  const adopted = { ...incoming, agentPresence: owner }
   return carryOwnerFields(
-    incoming.agentPresence ? incoming : { ...incoming, agentPresence: currentOwner(previous) },
+    owner && !owner.ended ? withOwnerAgentType(adopted, owner) : adopted,
     previous
   )
 }
 
-/** A terminal signal (OSC, title, process-derived) naming another agent than a held owner yields:
- *  terminals never claim, so it leaves the row unchanged and only casts doubt on the owner. */
-export function terminalSignalYieldsToOwner(
+export type TerminalSignalVerdict =
+  | { kind: 'yield'; probe?: AgentProcessIdentity }
+  | { kind: 'write'; owner?: AgentProcessPresence }
+
+/** Terminal signals (OSC, title, process-derived) never claim. One naming another agent than a held
+ *  owner yields: the row stays and the owner is doubted. Otherwise it writes under the owner when it
+ *  names it (or no agent), and ownerless once the owner was released. */
+export function classifyTerminalSignal(
   previous: (AgentHookEventPayload & { receivedAt: number }) | undefined,
   agentType: string | undefined,
+  ownerCheckable: boolean,
   now = Date.now()
-): boolean {
+): TerminalSignalVerdict {
   const owner = currentOwner(previous)
-  return Boolean(
-    owner &&
-    previous &&
-    agentType &&
-    agentType !== 'unknown' &&
-    agentType !== owner.agent &&
-    !isOwnerReleased(owner, previous, previous.receivedAt, now)
-  )
-}
-
-/** Terminal signals write under the owner only when they name it (or no agent); one naming another
- *  agent after the owner was released leaves the pane ownerless. */
-export function terminalSignalOwner(
-  previous: AgentHookEventPayload | undefined,
-  agentType: string | undefined
-): AgentProcessPresence | undefined {
-  const owner = currentOwner(previous)
-  return owner && (!agentType || agentType === 'unknown' || agentType === owner.agent)
-    ? owner
-    : undefined
+  if (!owner || !previous) {
+    return { kind: 'write' }
+  }
+  if (!agentType || agentType === 'unknown' || agentType === owner.agent) {
+    return { kind: 'write', owner }
+  }
+  if (isOwnerReleased(owner, previous, previous.receivedAt, now, ownerCheckable)) {
+    return { kind: 'write' }
+  }
+  return ownerCheckable && owner.process
+    ? { kind: 'yield', probe: owner.process }
+    : { kind: 'yield' }
 }

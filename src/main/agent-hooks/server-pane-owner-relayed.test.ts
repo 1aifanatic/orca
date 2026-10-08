@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RelayAgentHookServer } from '../../relay/agent-hook-server'
 import type { AgentHookEventPayload } from '../../shared/agent-hook-listener/listener-event'
+import { AGENT_STATUS_STALE_AFTER_MS } from '../../shared/agent-status-freshness'
 import { AgentHookServer } from './server'
 import { buildBody, PANE } from './server.test-fixtures'
 
@@ -176,5 +177,65 @@ describe('pane owner rule (relayed panes)', () => {
       session: 'claude-a',
       process: { pid: 4001 }
     })
+  })
+
+  it("keeps a relayed owner's agent type and model for a terminal signal that names no agent", () => {
+    const desktop = new AgentHookServer()
+    desktop.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        agentPresence: { agent: 'codex', session: 'codex-x' },
+        payload: { state: 'working', prompt: 'codex task', agentType: 'codex', model: 'gpt-5.4' }
+      },
+      'ssh-1'
+    )
+    desktop.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      connectionId: 'ssh-1',
+      payload: { state: 'done', prompt: '', agentType: 'unknown' }
+    })
+    expect(row(desktop)).toMatchObject({ state: 'done', agentType: 'codex', model: 'gpt-5.4' })
+  })
+
+  // Why: main cannot check a remote process, so a relayed owner falls back to freshness here.
+  it('lets a terminal signal past a relayed owner only once the owner goes stale', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1_000_000)
+      const desktop = new AgentHookServer()
+      const signal = () =>
+        desktop.ingestTerminalStatus({
+          paneKey: PANE,
+          tabId: 'tab-1',
+          worktreeId: 'wt-1',
+          connectionId: 'ssh-1',
+          payload: { state: 'working', prompt: '', agentType: 'opencode' }
+        })
+      desktop.ingestRemote(
+        {
+          paneKey: PANE,
+          tabId: 'tab-1',
+          worktreeId: 'wt-1',
+          agentPresence: {
+            agent: 'claude',
+            process: { pid: 4001, platform: 'linux', startTime: 'b' }
+          },
+          payload: { state: 'working', prompt: 'claude task', agentType: 'claude' }
+        },
+        'ssh-1'
+      )
+      signal()
+      expect(row(desktop)).toMatchObject({ agentType: 'claude' })
+      expect(probe).not.toHaveBeenCalled()
+      vi.setSystemTime(1_000_000 + AGENT_STATUS_STALE_AFTER_MS + 1)
+      signal()
+      expect(row(desktop)).toMatchObject({ agentType: 'opencode' })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -19,6 +19,10 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
   }
 
   checkAgentPresence(paneKey: string): Promise<AgentProcessVerdict | null> {
+    return this.paneOwnerProbes.check(paneKey)
+  }
+
+  protected probeOwnerProcess(paneKey: string): Promise<AgentProcessVerdict | null> {
     const resolved = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(resolved)
     const presence = currentOwner(row)
@@ -35,10 +39,7 @@ export abstract class AgentHookServerAgentPresence extends AgentHookServerLifecy
     }
     const check = probeAgentProcessPresence(presence.process)
       .then((verdict) => {
-        if (
-          this.state.lastStatusByPaneKey.get(resolved) !== row ||
-          row.agentPresence !== presence
-        ) {
+        if (this.state.lastStatusByPaneKey.get(resolved) !== row) {
           return 'unverifiable' as const
         }
         if (verdict === 'exited') {

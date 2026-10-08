@@ -1,6 +1,6 @@
 import {
   adoptRelayedRow,
-  terminalSignalOwner,
+  currentOwner,
   transitionHookPresence
 } from '../../../shared/agent-hook-presence-transition'
 import { PaneOwnerProbes } from '../../../shared/agent-pane-owner-probes'
@@ -29,7 +29,9 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
   )
 
   protected readonly paneOwnerProbes = new PaneOwnerProbes({
-    checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
+    ownerOf: (paneKey) =>
+      currentOwner(this.state.lastStatusByPaneKey.get(this.resolvePaneKeyAlias(paneKey)))?.process,
+    checkOwner: (paneKey) => this.probeOwnerProcess(paneKey)
   })
 
   // Why here: every stored row passes through, including a cancel inference and a pane move.
@@ -60,14 +62,11 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       | EnrichedAgentHookEventPayload
       | undefined
     const apply = (event: typeof incoming) =>
-      this.applyOwnedStatus(event, onAccepted, origin, observedAt, mutationBefore)
-    // Why: terminals never claim; a relayed row's owner was decided by its relay; main decides
-    // ownership only for local hook producers.
+      this.applyOwnedStatus(event, previous, onAccepted, origin, observedAt, mutationBefore)
+    // Why: terminal ingest already placed its signal under the owner (terminals never claim); a
+    // relayed row's owner was decided by its relay; main decides only for local hook producers.
     if (origin !== 'hook') {
-      return apply({
-        ...incoming,
-        agentPresence: terminalSignalOwner(previous, incoming.payload.agentType)
-      })
+      return apply(incoming)
     }
     if (incoming.connectionId !== null) {
       return apply(adoptRelayedRow(incoming, previous))
@@ -88,6 +87,7 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
 
   private applyOwnedStatus(
     incoming: AgentHookEventPayload & { authorityRestartId?: string },
+    previous: EnrichedAgentHookEventPayload | undefined,
     onAccepted: (() => void) | undefined,
     origin: AgentStatusObservationOrigin,
     observedAt: number | undefined,
@@ -108,10 +108,6 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       // Why: the prompt boundary is authoritative even when text is unchanged; its next OSC working row must not inherit the prior cron/background turn stamp.
       this.activeHookTurnCompletedAtByPaneKey.delete(payload.paneKey)
     }
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
-    const previous = this.state.lastStatusByPaneKey.get(payload.paneKey) as
-      | EnrichedAgentHookEventPayload
-      | undefined
     const rowBefore = mutationBefore ?? previous
     const terminalHandle =
       payload.terminalHandle ??

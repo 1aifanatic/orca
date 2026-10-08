@@ -279,6 +279,21 @@ describe('pane owner rule (local panes)', () => {
     expect(row(server)).toMatchObject({ agentType: 'opencode' })
   })
 
+  it("keeps the owner's agent type and model for signals that name no agent", async () => {
+    const server = await createServer()
+    await codex(server, 'UserPromptSubmit', { prompt: 'codex task' })
+    expect(row(server)).toMatchObject({ agentType: 'codex', model: 'gpt-6-astra' })
+    osc(server, 'unknown', 'working')
+    expect(row(server)).toMatchObject({ agentType: 'codex', model: 'gpt-6-astra' })
+    server.applyHook({
+      paneKey: PANE,
+      connectionId: null,
+      providerSession: { key: 'session_id', id: 'codex-x' },
+      payload: { state: 'done', prompt: 'codex task', agentType: 'unknown' }
+    })
+    expect(row(server)).toMatchObject({ state: 'done', agentType: 'codex', model: 'gpt-6-astra' })
+  })
+
   it('never lets a terminal signal claim an ownerless pane', async () => {
     const server = await createServer()
     server.ingestTerminalStatus({

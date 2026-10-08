@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentProcessVerdict } from './agent-process-presence'
+import type { AgentProcessIdentity, AgentProcessVerdict } from './agent-process-presence'
 import {
   HELD_GUEST_WINDOW_MS,
   OWNER_PROBE_COOLDOWN_MS,
@@ -11,8 +11,13 @@ const HOLD = { kind: 'skip' as const, probe: OWNER }
 
 function setup(checkOwner: () => Promise<AgentProcessVerdict | null>) {
   let now = 1_000
-  const probes = new PaneOwnerProbes({ checkOwner, now: () => now })
-  return { probes, advance: (ms: number) => (now += ms) }
+  let owner: AgentProcessIdentity = OWNER
+  const probes = new PaneOwnerProbes({ ownerOf: () => owner, checkOwner, now: () => now })
+  return {
+    probes,
+    advance: (ms: number) => (now += ms),
+    replaceOwner: (next: AgentProcessIdentity) => (owner = next)
+  }
 }
 
 describe('PaneOwnerProbes', () => {
@@ -59,6 +64,18 @@ describe('PaneOwnerProbes', () => {
     advance(HELD_GUEST_WINDOW_MS + 1)
     release('exited')
     await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(reapply).not.toHaveBeenCalled()
+  })
+
+  it('never replays a guest held behind an owner that is gone onto a later owner', async () => {
+    const checkOwner = vi.fn(async (): Promise<AgentProcessVerdict> => 'exited')
+    const { probes, replaceOwner } = setup(checkOwner)
+    const reapply = vi.fn()
+    checkOwner.mockResolvedValueOnce('live')
+    probes.admit('pane', HOLD, { write: vi.fn(), reapply })
+    await vi.waitFor(() => expect(checkOwner).toHaveBeenCalledOnce())
+    replaceOwner({ ...OWNER, pid: 4002 })
+    await probes.check('pane')
     expect(reapply).not.toHaveBeenCalled()
   })
 })
