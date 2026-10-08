@@ -5,6 +5,7 @@ import type {
 } from '../runtime/structured-agent-scripted-child.test-fixture'
 import { FakeAcpChild, GROK_CONFIG_OPTIONS } from './acp-structured-adapter.test-support'
 import type { FakeFrame } from './acp-scripted-agent.test-support'
+import type { AcpLaunchSpec } from './acp-launch-specs'
 
 const promptParams = z.object({
   sessionId: z.string(),
@@ -14,7 +15,7 @@ const promptParams = z.object({
 const loadParams = z.object({ sessionId: z.string() })
 const configParams = z.object({ configId: z.string(), value: z.string() })
 
-export function acpScriptedChild(agent: 'grok' | 'opencode'): ScriptedAgentChildFactory {
+export function acpScriptedChild(agent: AcpLaunchSpec['agent']): ScriptedAgentChildFactory {
   return () => {
     let current: FakeAcpChild | undefined
     let handshake: (() => void) | undefined

@@ -340,7 +340,7 @@ describe('a start that ends before it proves itself', () => {
     await restartWith(async (input) => {
       await input.onSpawned?.(acquisition(input).process)
       chatter.push(setInterval(() => input.onOutput?.(), 10))
-      return { ...acquisition(input), providerChildPhase: 'starting' }
+      return acquisition(input)
     })
     try {
       const id = await heldBehindStart('hello')

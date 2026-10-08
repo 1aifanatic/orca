@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import type { AgentJournalSubmission } from '../../shared/agent-session-journal-types'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
+import { ACP_LAUNCH_SPECS } from '../acp/acp-launch-specs'
 import { acpScriptedChild } from '../acp/acp-scripted-child.test-fixture'
 import { claudeScriptedChild } from '../claude/claude-scripted-child.test-fixture'
 import { codexScriptedChild } from '../codex/codex-scripted-child.test-fixture'
@@ -32,11 +33,11 @@ import {
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
 
+// Every ACP agent runs the one ACP adapter, so each gets the ACP child; any other kind needs its own.
 const SCRIPTED_CHILDREN: Readonly<Record<string, ScriptedAgentChildFactory>> = {
   claude: claudeScriptedChild,
   codex: codexScriptedChild,
-  grok: acpScriptedChild('grok'),
-  opencode: acpScriptedChild('opencode'),
+  ...Object.fromEntries(ACP_LAUNCH_SPECS.map(({ agent }) => [agent, acpScriptedChild(agent)])),
   pi: piScriptedChild
 }
 
