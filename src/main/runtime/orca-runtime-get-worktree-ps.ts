@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import { resolveStructuredCodexAccountKind } from './structured-agent-account-home'
 import { collectRuntimeWorktreeAgentSources } from './runtime-worktree-agent-sources'
 import { OrcaRuntimeWithStartTuiIdleVisibleReadProbe } from './orca-runtime-start-tui-idle-visible-read-probe'
 import { DEFAULT_WORKTREE_PS_LIMIT } from './orca-runtime-postlude'
@@ -257,7 +258,12 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           ? resolveTuiAgentLaunchEnv(agent, this.requireStore().getSettings().agentDefaultEnv)
           : {},
       resolveAgentCommandSettings: () => this.requireStore().getSettings(),
+      resolveCodexAccountKind: (home) =>
+        resolveStructuredCodexAccountKind(home, this.requireStore().getSettings()),
       resolveAgentAccountHome: (agent) => this.resolveStructuredAgentAccountHome(agent),
+      ...(this.prepareCodexCatalogProbeHomeFn
+        ? { prepareCodexCatalogProbeHome: this.prepareCodexCatalogProbeHomeFn }
+        : {}),
       // Structured chat has no agent CLI hooks, so this projection is what the first-work
       // workspace rename listens to instead of `agentStatus:set`.
       onSessionStatusChanged: (summary, options) => {

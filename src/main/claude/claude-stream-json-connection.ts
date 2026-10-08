@@ -19,6 +19,7 @@ import {
 } from './claude-agent-sdk-user-message-queue'
 import type { ClaudeStructuredSdkOptions } from './claude-structured-launch-resolution'
 import { providerStderrForDisplay } from '../provider-process/provider-spawn-failure-report'
+import { withMissingProviderExecutable } from '../provider-process/provider-executable-missing'
 
 export { ClaudeControlRequestError }
 
@@ -89,6 +90,8 @@ export type ClaudeStreamJsonConnection = ClaudeControlSurface & {
   readonly closed: boolean
   /** What the ladder has observed so far; read after a `close()` that returned false. */
   readonly exitVerdict: ClaudeChildExitVerdict
+  /** The CLI's executable was not found; a start that failed for it says so. */
+  readonly executableMissing?: boolean
   pauseReading?: () => void
   resumeReading?: () => void
   send: (message: Record<string, unknown>, beforeDispatch?: () => Promise<void>) => Promise<void>
@@ -198,7 +201,10 @@ export async function openClaudeStreamJsonConnection(
 
   const handleUnexpectedEnd = (cause?: Error): void => {
     resumeReading()
-    terminalError ??= exitError(managed.stderrTail(), exitStatus, cause)
+    if (!terminalError) {
+      const error = exitError(managed.stderrTail(), exitStatus, cause)
+      terminalError = managed.executableMissing ? withMissingProviderExecutable(error) : error
+    }
     inbox.fail(terminalError)
     if (!closing && !faultReported) {
       faultReported = true
@@ -325,6 +331,9 @@ export async function openClaudeStreamJsonConnection(
     },
     get closed() {
       return closing || managed.rootVerdict === 'exited' || terminalError !== null
+    },
+    get executableMissing() {
+      return managed.executableMissing
     },
     get exitVerdict() {
       return {
