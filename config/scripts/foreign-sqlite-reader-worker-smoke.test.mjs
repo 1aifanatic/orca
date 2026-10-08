@@ -57,9 +57,7 @@ describe('foreign SQLite reader build smoke', () => {
 
   it('runs in the orcad build under both runtimes', () => {
     const source = readFileSync(resolve('config/scripts/build-orcad.mjs'), 'utf8')
-    expect(source).toContain('smokeForeignSqliteReaderWorker(OUT_DIR)')
-    expect(source).toContain(
-      'smokeForeignSqliteReaderWorker(OUT_DIR, { runtimePath: nodeRuntimePath })'
-    )
+    expect(source).toContain("['foreign SQLite reader worker', smokeForeignSqliteReaderWorker]")
+    expect(source).toContain('await smoke(OUT_DIR, { runtimePath: nodeRuntimePath })')
   })
 })
