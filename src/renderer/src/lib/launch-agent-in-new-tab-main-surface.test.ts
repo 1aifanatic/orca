@@ -97,6 +97,45 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(store.getState().activeTabId).toBe(tabId)
   })
 
+  it.each(['empty', 'draft'] as const)(
+    'keeps a planned terminal-backed chat %s launch on the existing renderer path',
+    async (kind) => {
+      const store = seedMainWindowOnEditor()
+      store.setState({
+        settings: {
+          ...getDefaultSettings('/tmp'),
+          experimentalNativeChat: true,
+          experimentalStructuredNativeChat: false,
+          openAgentTabsInChatByDefault: true
+        }
+      })
+      const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+      const result = launchAgentInNewTab({
+        requestId: 'terminal-backed-chat',
+        agent: 'claude',
+        worktreeId: MAIN_WORKTREE_ID,
+        ...(kind === 'draft' ? { prompt: 'editable notes', promptDelivery: 'draft' } : {})
+      })
+
+      const tabId = result?.surface.kind === 'local-terminal' ? result.surface.tabId : ''
+      expect(tabId).not.toBe('')
+      expect(
+        store
+          .getState()
+          .unifiedTabsByWorktree[MAIN_WORKTREE_ID]?.find((tab) => tab.entityId === tabId)?.viewMode
+      ).toBe('chat')
+      expect(store.getState().pendingStartupByTabId[tabId]).toBeDefined()
+      expect(callRuntimeRpc).not.toHaveBeenCalled()
+      if (kind === 'draft') {
+        expect(store.getState().nativeChatLaunchDraftByTabId[tabId]).toMatchObject({
+          agent: 'claude',
+          text: 'editable notes'
+        })
+        expect(store.getState().nativeChatLaunchPromptByTabId[tabId]).toBeUndefined()
+      }
+    }
+  )
+
   it('admits a menu launch once with a held pane and no renderer startup queue', async () => {
     const store = seedMainWindowOnEditor()
     const beforeSurfaceOpen = vi.fn(() => {
@@ -121,7 +160,7 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(store.getState().pendingStartupByTabId[tabId]).toBeUndefined()
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launchReplay',
+      'agent.launch',
       expect.objectContaining({
         paneKey: `${tabId}:${tab?.agentLaunchPane?.leafId}`,
         prompt: {
@@ -154,7 +193,7 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(result?.tabId).toBeDefined()
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launchReplay',
+      'agent.launch',
       expect.objectContaining({
         launchSource: 'quick_command',
         placement: { groupId },
@@ -178,7 +217,7 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(launchDashboardAgent({ worktreeId: MAIN_WORKTREE_ID, agent: 'codex' })).toBe(true)
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launchReplay',
+      'agent.launch',
       expect.objectContaining({
         target: { kind: 'existing', worktree: `id:${MAIN_WORKTREE_ID}` },
         launchSource: 'unknown'
@@ -215,7 +254,7 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(result?.surface.kind).toBe('local-terminal')
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launchReplay',
+      'agent.launch',
       expect.objectContaining({
         target: { kind: 'existing', worktree: `id:${MAIN_WORKTREE_ID}` }
       })

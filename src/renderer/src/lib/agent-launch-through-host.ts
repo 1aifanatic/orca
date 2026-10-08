@@ -94,7 +94,11 @@ function closeLaunchTab(worktreeId: string, tabId: string): void {
 // Only a terminal in this pane is one the window can paste into; anything else, its pane explains.
 function outcomeFromResult(result: unknown): HostAgentLaunchOutcome {
   return isAgentLaunchResult(result) && result.outcome.kind === 'terminal'
-    ? { kind: 'started', ...(result.prompt ? { prompt: result.prompt } : {}) }
+    ? {
+        kind: 'started',
+        ...(result.prompt ? { prompt: result.prompt } : {}),
+        ...(result.recorded === false ? { unrecorded: true } : {})
+      }
     : { kind: 'pane-says' }
 }
 
@@ -181,7 +185,7 @@ async function settleLaunch(
     if (code === AGENT_LAUNCH_TAB_CLOSED_CODE) {
       return { kind: 'closed-by-user' }
     }
-    if (code === 'agent_session_operation_capacity') {
+    if (code === 'agent_session_operation_capacity' && !args.desktopPrompt) {
       // Awaited: the pane stays held until the unrecorded launch has its answer.
       return await launchWithoutRecord(args, pane)
     }
@@ -220,11 +224,15 @@ export function launchAgentThroughHost(args: HostAgentLaunchArgs): {
   const releaseHold = holdAgentLaunchPaneSpawn(tabId, leafId)
   // A new click is a new operation; the pane is this click's too.
   const operationId = createAgentSessionOperationId()
-  const send = callRuntimeRpc<unknown>({ kind: 'local' }, 'agent.launchReplay', {
-    ...launchParams(args),
-    operationId,
-    paneKey: makePaneKey(tabId, leafId)
-  })
+  const send = callRuntimeRpc<unknown>(
+    { kind: 'local' },
+    args.desktopPrompt ? 'agent.launch' : 'agent.launchReplay',
+    {
+      ...launchParams(args),
+      operationId,
+      paneKey: makePaneKey(tabId, leafId)
+    }
+  )
   store.createTab(args.worktreeId, args.groupId, undefined, {
     id: tabId,
     initialLeafId: leafId,

@@ -217,7 +217,11 @@ export function launchAgentInNewTab(args: LaunchAgentInNewTabArgs): LaunchAgentI
       promptDeliveryResult: launched.promptDeliveryResult
     }
   }
-  if (!args.launchPurpose && newTabTerminalLaunchesThroughHost()) {
+  if (
+    !args.launchPurpose &&
+    initialViewModeProps.viewMode !== 'chat' &&
+    newTabTerminalLaunchesThroughHost()
+  ) {
     return launchFreshTerminalTabThroughHost(
       args,
       startupPlan,

@@ -278,11 +278,9 @@ describe('a desktop launch through the host', () => {
     expect(launchTab(tabId)).toBeUndefined()
   })
 
-  it('keeps a background desktop launch in its original pane on a definite capacity refusal', async () => {
+  it('reads the host capacity fallback receipt without making another desktop request', async () => {
     const unrecorded = deferred<unknown>()
-    callRuntimeRpc
-      .mockRejectedValueOnce(rpcError('agent_session_operation_capacity'))
-      .mockReturnValueOnce(unrecorded.promise)
+    callRuntimeRpc.mockReturnValueOnce(unrecorded.promise)
     const selectedTab = store.getState().createTab(WT).id
     const desktopPrompt = {
       text: 'editable notes',
@@ -297,20 +295,51 @@ describe('a desktop launch through the host', () => {
       activate: false
     })
     const paneKey = lastPaneKey()
-    await vi.waitFor(() => expect(callRuntimeRpc).toHaveBeenCalledTimes(2))
+    expect(callRuntimeRpc).toHaveBeenCalledOnce()
 
-    const [, method, params] = callRuntimeRpc.mock.calls[1]!
+    const [, method, params] = callRuntimeRpc.mock.calls[0]!
     expect(method).toBe('agent.launch')
     expect(params).toMatchObject({ prompt: desktopPrompt, paneKey, presentation: 'background' })
-    expect(params).not.toHaveProperty('operationId')
+    expect(params).toHaveProperty('operationId')
     expect(store.getState().activeTabId).toBe(selectedTab)
     const leafId = launchTab(tabId)!.agentLaunchPane!.leafId
     expect(agentLaunchPaneSpawnHold(tabId, leafId)).not.toBeNull()
 
-    unrecorded.resolve(terminalResult(paneKey))
+    unrecorded.resolve({ ...terminalResult(paneKey), recorded: false })
     await expect(outcome).resolves.toEqual({ kind: 'started', unrecorded: true })
     expect(launchTab(tabId)).toBeDefined()
     expect(store.getState().activeTabId).toBe(selectedTab)
     expect(store.getState().tabsByWorktree[WT]).toHaveLength(2)
   })
+
+  it('a desktop capacity error never sends a second public request', async () => {
+    callRuntimeRpc.mockRejectedValueOnce(rpcError('agent_session_operation_capacity'))
+    const { tabId, outcome } = launchAgentThroughHost({
+      agent: 'claude',
+      worktreeId: WT,
+      prompt: '',
+      desktopPrompt: {
+        text: '',
+        delivery: 'submit',
+        transport: { kind: 'desktop-new-tab', promptDelivery: 'auto-submit' }
+      }
+    })
+    await expect(outcome).resolves.toMatchObject({
+      kind: 'not-started',
+      code: 'agent_session_operation_capacity'
+    })
+    expect(callRuntimeRpc).toHaveBeenCalledOnce()
+    expect(launchTab(tabId)).toBeUndefined()
+  })
+
+  it.each([null, 'false', 0])(
+    'does not claim an unrecorded start from a malformed recorded field %s',
+    async (recorded) => {
+      const reply = deferred<unknown>()
+      callRuntimeRpc.mockReturnValueOnce(reply.promise)
+      const { outcome } = launch()
+      reply.resolve({ ...terminalResult(lastPaneKey()), recorded })
+      await expect(outcome).resolves.toEqual({ kind: 'pane-says' })
+    }
+  )
 })

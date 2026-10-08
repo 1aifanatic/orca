@@ -22,6 +22,23 @@ export class AgentLaunchExecutionError extends Error {
   }
 }
 
+/** Optional identity keeps its original errors; desktop input never retries an ambiguous effect. */
+export function throwOptionalAgentLaunchFailure(
+  error: unknown,
+  context: RpcContext,
+  desktop: boolean
+): never {
+  if (error instanceof AgentLaunchExecutionError) {
+    if (desktop && !error.failedWithoutEffects) {
+      throw new Error('agent_session_operation_unknown', { cause: error.cause })
+    }
+    throw error.cause instanceof AgentLaunchTabClosedError
+      ? agentLaunchTabClosedAnswer(context)
+      : error.cause
+  }
+  throw error
+}
+
 export function settleQuietly(settlement: Promise<void>): Promise<void> {
   return settlement.catch((error: unknown) => {
     console.warn('[agent-launch] the launch settled, its operation row did not', error)
@@ -55,12 +72,14 @@ export function agentLaunchTabClosedAnswer(context: RpcContext): Error {
 export async function settleLaunchWhoseTabWasClosed(
   context: RpcContext,
   early: EarlyAgentLaunchTab,
-  admission: { fail: (code: string) => Promise<void> }
+  admission?: { fail: (code: string) => Promise<void> }
 ): Promise<never> {
   const handle = context.runtime.getTerminalHandleForPaneKey(early.paneKey)
   if (handle) {
     await context.runtime.closeTerminal(handle).catch(() => {})
   }
-  await settleQuietly(admission.fail(AGENT_LAUNCH_TAB_CLOSED_CODE))
+  if (admission) {
+    await settleQuietly(admission.fail(AGENT_LAUNCH_TAB_CLOSED_CODE))
+  }
   throw new AgentLaunchExecutionError(new AgentLaunchTabClosedError(), true)
 }

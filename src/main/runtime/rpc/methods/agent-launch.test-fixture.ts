@@ -11,6 +11,7 @@ import { AgentLaunchPaneAlreadyLiveError } from '../../../../shared/agent-launch
 import type { RpcContext } from '../core'
 import { resolveRpcCallerIdentity } from '../rpc-caller-identity'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
+import type { AgentLaunchPaneVerdict } from '../../../../shared/agent-launch-pane-verdict'
 import type {
   AgentLaunchTabPublished,
   AgentLaunchTabPublishRequest
@@ -172,7 +173,10 @@ export function runtimeStub(options: AgentLaunchRuntimeStubOptions = {}) {
         options.publishAgentLaunchTab?.(request) ?? null
     ),
     reportAgentLaunchPaneVerdict: vi.fn(
-      (_pane: { worktreeId: string; tabId: string; leafId: string }, _verdict: unknown) => {}
+      (
+        _pane: { worktreeId: string; tabId: string; leafId: string },
+        _verdict: AgentLaunchPaneVerdict
+      ) => {}
     ),
     // A pane this runtime created or adopted is running its process.
     hasLiveTerminalForPaneKey: vi.fn((paneKey: string) => handlesByPaneKey.has(paneKey)),

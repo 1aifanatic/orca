@@ -41,6 +41,7 @@ import {
   agentLaunchTabClosedAnswer,
   settleLaunchWhoseTabWasClosed,
   settleQuietly,
+  throwOptionalAgentLaunchFailure,
   withEarlyTab
 } from './agent-launch-execution-outcome'
 import { AgentLaunch, AgentLaunchReplay, type AgentLaunchParams } from './agent-launch-schemas'
@@ -54,13 +55,13 @@ import {
   selectAgentLaunchTabForCaller
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
-import { activeAgentLaunchesFor } from './agent-launch-active-operations'
+import { joinActiveAgentLaunch } from './agent-launch-active-operations'
 import {
   launchedTerminal,
   settleOwedLaunchPromptBeforeReplay
 } from './agent-launch-owed-prompt-host'
 import { announceSettledLaunchFollowUps } from './agent-launch-follow-ups'
-import { clientRendersStructuredAgent } from './structured-agent-session-policy'
+import { callerRendersLaunchedChat } from './structured-agent-session-policy'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
 import {
   publishEarlyTab,
@@ -68,6 +69,8 @@ import {
   type AgentLaunchView
 } from './agent-launch-tab-publication'
 import type { OwedLaunchPromptWriteStart } from '../../agent-launch-owed-prompt-record'
+import { isDesktopNewTabPrompt } from '../../../../shared/desktop-new-tab-prompt'
+import { runDesktopCapacityFallback } from './agent-launch-capacity-fallback'
 
 /**
  * Advertising `agent.launch.v2` is a client's statement that it understands EITHER outcome — a
@@ -83,23 +86,6 @@ export function supportsAgentLaunch(
   return (
     context.clientKind === undefined ||
     context.clientCapabilities?.includes(AGENT_LAUNCH_RUNTIME_CAPABILITY) === true
-  )
-}
-
-/**
- * `agent.launch.v2` was defined when Claude and Codex were the only chats, so it vouches for those
- * two. Any other agent's chat needs the client to say it reads it, by the rule tabs and restart
- * offers use; a client that does not gets that agent as a terminal.
- */
-function callerRendersLaunchedChat(
-  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>,
-  agent: string
-): boolean {
-  return (
-    context.clientKind === undefined ||
-    agent === 'claude' ||
-    agent === 'codex' ||
-    clientRendersStructuredAgent(context.clientCapabilities, agent)
   )
 }
 
@@ -120,7 +106,8 @@ async function runAgentLaunch(
   intent: AgentLaunchIntent,
   context: RpcContext,
   view: AgentLaunchView,
-  replaySafe?: ReplaySafeLaunch
+  replaySafe?: ReplaySafeLaunch,
+  terminalSpawn?: TerminalSpawnDispatch
 ): Promise<AgentLaunchResult> {
   const callerNavigationId = agentLaunchCallerNavigationId(intent.target, context)
   const result = await executeAgentLaunch({
@@ -131,7 +118,7 @@ async function runAgentLaunch(
       replaySafe?.attachOperationId,
       replaySafe?.callerKey,
       callerNavigationId !== null,
-      replaySafe?.terminalSpawn,
+      replaySafe?.terminalSpawn ?? terminalSpawn,
       view.early,
       view.presentation
     ),
@@ -183,7 +170,8 @@ function runLegacyAgentLaunch(
 async function executeReplaySafeAgentLaunch(
   params: AgentLaunchParams & { operationId: string },
   context: RpcContext,
-  fingerprint: string
+  fingerprint: string,
+  preserveCapacityTab?: (view: AgentLaunchView) => boolean
 ): Promise<AgentLaunchResult> {
   // The tab is the host's first act: admission has a cold cost the user should not watch.
   const early = await publishEarlyTab(params, context)
@@ -206,6 +194,13 @@ async function executeReplaySafeAgentLaunch(
     throw error
   }
   if (admission.decision !== 'execute') {
+    if (
+      admission.decision === 'refuse' &&
+      admission.refusal.code === 'agent_session_operation_capacity' &&
+      preserveCapacityTab?.({ early, presentation: params.presentation })
+    ) {
+      throw Object.assign(new Error(admission.refusal.code), { code: admission.refusal.code })
+    }
     // Nothing runs under this request. A tab it made goes, unless an agent still runs in its pane
     // (a replay can remake the tab of an agent that survived).
     early?.finish()
@@ -278,33 +273,29 @@ async function executeAdmittedAgentLaunch(
 
 function runReplaySafeAgentLaunch(
   params: AgentLaunchParams & { operationId: string },
-  context: RpcContext
+  context: RpcContext,
+  desktopCapacityFallback = false
 ): Promise<AgentLaunchResult> {
-  const callerKey = agentLaunchOperationCallerKey(context)
-  const key = agentSessionOperationKey(callerKey, params.operationId)
   const fingerprint = computeAgentLaunchFingerprint(params)
-  const activeAgentLaunches = activeAgentLaunchesFor(context.runtime)
-  const active = activeAgentLaunches.get(key)
-  if (active) {
-    if (active.fingerprint !== fingerprint) {
-      return Promise.reject(new Error('agent_session_operation_conflict'))
-    }
-    return active.promise
-  }
-
-  let promise: Promise<AgentLaunchResult>
-  promise = executeReplaySafeAgentLaunch(params, context, fingerprint).finally(() => {
-    if (activeAgentLaunches.get(key)?.promise === promise) {
-      activeAgentLaunches.delete(key)
-    }
-    // Every way a launch ends, once it no longer reads as running: a window that reloaded mid-launch
-    // holds its follow-up's notes and threads until it hears.
-    if (params.followUp) {
-      announceSettledLaunchFollowUps(context.runtime)
+  return joinActiveAgentLaunch({
+    runtime: context.runtime,
+    key: agentSessionOperationKey(agentLaunchOperationCallerKey(context), params.operationId),
+    fingerprint,
+    desktopRequest: desktopCapacityFallback,
+    execute: (preserveCapacityTab) =>
+      executeReplaySafeAgentLaunch(params, context, fingerprint, preserveCapacityTab),
+    capacityFallback: isDesktopNewTabPrompt(params.prompt)
+      ? (view: AgentLaunchView) =>
+          runDesktopCapacityFallback(params, context, view, (intent, terminalSpawn) =>
+            runAgentLaunch(intent, context, view, undefined, terminalSpawn)
+          )
+      : undefined,
+    onSettled: () => {
+      if (params.followUp) {
+        announceSettledLaunchFollowUps(context.runtime)
+      }
     }
   })
-  activeAgentLaunches.set(key, { fingerprint, promise })
-  return promise
 }
 
 export const AGENT_LAUNCH_METHODS = [
@@ -354,16 +345,11 @@ export const AGENT_LAUNCH_METHODS = [
           ...params,
           operationId: params.operationId
         },
-        context
-      ).catch((error: unknown) => {
-        // Preserve the original error contract for callers of the optional-identity method.
-        if (error instanceof AgentLaunchExecutionError) {
-          throw error.cause instanceof AgentLaunchTabClosedError
-            ? agentLaunchTabClosedAnswer(context)
-            : error.cause
-        }
-        throw error
-      })
+        context,
+        isDesktopNewTabPrompt(params.prompt)
+      ).catch((error: unknown) =>
+        throwOptionalAgentLaunchFailure(error, context, isDesktopNewTabPrompt(params.prompt))
+      )
     }
   })
 ]

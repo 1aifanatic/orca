@@ -44,6 +44,19 @@ export function clientRendersStructuredAgent(
   )
 }
 
+/** `agent.launch.v2` already vouches for Claude and Codex; other chats need explicit support. */
+export function callerRendersLaunchedChat(
+  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>,
+  agent: string
+): boolean {
+  return (
+    context.clientKind === undefined ||
+    agent === 'claude' ||
+    agent === 'codex' ||
+    clientRendersStructuredAgent(context.clientCapabilities, agent)
+  )
+}
+
 /** The agents this client reads rows of, among those registered or saved here; undefined when it
  *  reads every one, so an action for it is exactly the unscoped one (one fence for every offer). */
 export function structuredAgentsReadBy(

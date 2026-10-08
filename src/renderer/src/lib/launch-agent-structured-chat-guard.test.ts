@@ -384,8 +384,13 @@ describe('structured chat adoption guard on the launch path', () => {
     expect(result?.surface).toEqual({ kind: 'local-terminal', tabId: expect.any(String) })
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launchReplay',
-      expect.objectContaining({ agent: 'codex' })
+      'agent.launch',
+      expect.objectContaining({
+        agent: 'codex',
+        prompt: expect.objectContaining({
+          transport: { kind: 'desktop-new-tab', promptDelivery: 'auto-submit' }
+        })
+      })
     )
     expect(store.queueTabStartupCommand).not.toHaveBeenCalled()
     expect(mockLaunchStructuredCodexSession).not.toHaveBeenCalled()
