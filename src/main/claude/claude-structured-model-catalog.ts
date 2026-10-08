@@ -4,6 +4,7 @@ import type {
 } from '../../shared/agent-session-wire'
 import { CLAUDE_SESSION_OPTION_CATALOG } from '../../shared/agent-session-option-catalog-claude-codex'
 import type { CatalogModel } from '../../shared/agent-session-option-catalog-types'
+import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 export type ListedModel = AgentSessionModelOption & { resolvedModel: string | null }
 
@@ -92,6 +93,14 @@ export function seedModels(): ListedModel[] {
     efforts: seedEfforts(model),
     resolvedModel: null
   }))
+}
+
+/** A missing listing keeps this child's pinned account catalog usable. */
+export function savedOrSeedModels(
+  access: AgentModelCatalogSessionAccess | undefined
+): ListedModel[] {
+  const saved = access?.store.get(access.fingerprint)
+  return saved?.models.map((model) => ({ ...model, resolvedModel: null })) ?? seedModels()
 }
 
 export function currentModelId(models: ListedModel[], reportedModel: string | undefined): string {

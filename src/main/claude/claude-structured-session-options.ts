@@ -8,7 +8,7 @@ import {
   listedModels,
   matchListedModel,
   record,
-  seedModels,
+  savedOrSeedModels,
   text,
   type ListedModel
 } from './claude-structured-model-catalog'
@@ -234,6 +234,7 @@ function wireClaudeModel(entry: ListedModel): WireClaudeModel {
     ...(entry.description ? { description: entry.description } : {}),
     isDefault: entry.isDefault,
     efforts: entry.efforts,
+    ...(entry.defaultEffort ? { defaultEffort: entry.defaultEffort } : {}),
     ...(entry.supportsFastMode !== undefined ? { supportsFastMode: entry.supportsFastMode } : {})
   }
 }
@@ -245,7 +246,7 @@ function wireClaudeModels(models: readonly ListedModel[]): WireClaudeModel[] {
 /** The built-in models a running child lists when the CLI gives it none; a chat at rest with no
  *  catalog lists the same. */
 export function claudeFallbackModelOptions(): WireClaudeModel[] {
-  return wireClaudeModels(seedModels())
+  return wireClaudeModels(savedOrSeedModels(undefined))
 }
 
 /** The listing, with what the CLI runs when no effort is sent on each model the child applies —
@@ -335,7 +336,7 @@ export function claudeStructuredSessionOptionsFrom(
 ): AgentSessionOptionsResult {
   const discovered = listedModels(catalog ? { models: catalog } : null)
   writeClaudeCatalogThrough(session, discovered)
-  const listed = discovered.length > 0 ? discovered : seedModels()
+  const listed = discovered.length > 0 ? discovered : savedOrSeedModels(session.catalogAccess)
   const current = readClaudeCurrentModel(session)
   const model = currentModelId(listed, current.id)
   const models = structuredAgentSessionOptionModels(listed, model, (row) => ({

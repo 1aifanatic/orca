@@ -228,6 +228,9 @@ export class AgentModelCatalogStore {
     const order = ++this.nextListingOrder
     const run = listModels().then(
       (success) => {
+        if (success.models.length === 0) {
+          this.recordFailure(fingerprint, `${agent} listed no models`)
+        }
         // An older session still receives its own result, but cannot replace a newer catalog.
         const entry =
           (this.latestWrittenOrder.get(fingerprint) ?? 0) > order && this.entries.has(fingerprint)
