@@ -265,6 +265,7 @@
     "reportCrash": "Signaler un plantage...",
     "file": "Fichier",
     "exit": "Quitter",
+    "quitApp": "Quitter {{appName}}",
     "edit": "Édition",
     "appearance": "Apparence",
     "toggleLeftSidebar": "Basculer la barre latérale gauche",

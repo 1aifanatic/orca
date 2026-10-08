@@ -3134,6 +3134,9 @@
       "viewing": "Viewing: {{path}}"
     }
   },
+  "menu": {
+    "quitApp": "Quit {{appName}}"
+  },
   "runtimeRpc": {
     "startupFailure": {
       "guidance": {

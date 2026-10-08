@@ -164,6 +164,7 @@
     "reportCrash": "发送崩溃报告...",
     "file": "文件",
     "exit": "退出",
+    "quitApp": "退出 {{appName}}",
     "edit": "编辑",
     "appearance": "外观",
     "toggleLeftSidebar": "显示/隐藏左侧边栏",

@@ -332,6 +332,7 @@
     "reportCrash": "Report Crash...",
     "file": "File",
     "exit": "Exit",
+    "quitApp": "Quit {{appName}}",
     "edit": "Edit",
     "appearance": "Appearance",
     "toggleLeftSidebar": "Toggle Left Sidebar",
@@ -8817,7 +8818,9 @@
           "c77f1abfe3": "Ending remote terminals",
           "18968ede9e": "Error",
           "f0871e6bfb": "connect",
-          "47e94bd6ba": "connected"
+          "47e94bd6ba": "connected",
+          "hostNodeFallback": "Unsupported configuration: Orca-managed Node isn’t available for this connection, so Orca runs on this host’s Node.js with terminal support installed by npm on the host.",
+          "hostNodeUnsupported": "Unsupported configuration: Orca runs on this host’s Node.js with terminal support installed by npm on the host. Set Runtime to Auto in this host’s SSH settings to use Orca-managed Node."
         },
         "SshTargetDestructiveActions": {
           "7e66942808": "This will stop active terminal sessions on this SSH target. Reconnecting will not restore them.",
@@ -8865,6 +8868,8 @@
           "remoteRuntimeAuto": "Auto",
           "remoteRuntimePinnedNode": "Orca-managed Node",
           "remoteRuntimeHostNode": "Host Node",
+          "allowRemoteCliControl": "Allow this host's orca CLI to control Orca",
+          "allowRemoteCliControlHelp": "When off, orca commands run on this host reach only its own terminals. Turn on to let them reach other hosts, orchestration, files, and integrations on this computer.",
           "editTitle": "Edit SSH host",
           "addTitle": "Add SSH host",
           "editDescription": "Update connection details for this machine. Changes apply on next connect.",
