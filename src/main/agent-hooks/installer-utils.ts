@@ -145,7 +145,8 @@ export function buildWindowsHookPowerShellCommand(
   return `${envPrefix}if (Test-Path -LiteralPath ${quoted} -PathType Leaf) { & ${quoted}; exit $LASTEXITCODE }; ${fallback}${WINDOWS_POWERSHELL_HOOK_ENVIRONMENT_GUARD}; [Console]::In.ReadToEnd() | Out-Null; exit 0`
 }
 
-export const WINDOWS_CMD_SAFE_PATH = /^[A-Za-z0-9_.:\\~-]+$/
+// Unicode letters and marks remain one token; whitespace and shell syntax still need the launcher.
+export const WINDOWS_CMD_SAFE_PATH = /^[\p{L}\p{N}\p{M}_.:\\~-]+$/u
 
 export function wrapWindowsCmdHookCommand(scriptPath: string): string {
   // Direct-spawn consumers need one executable token; a cmd `if exist` fragment is not one (#8430).
