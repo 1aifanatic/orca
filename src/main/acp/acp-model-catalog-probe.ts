@@ -67,7 +67,13 @@ export function createAcpModelCatalogProbe(
       )
       models = discovery.parse(stdout)
     } else {
-      const launch = { command, args: spec.args({ fullAccess: false }), cwd, env, envToDelete }
+      const launch = {
+        command,
+        args: spec.args({ fullAccess: false, pluginDir: null }),
+        cwd,
+        env,
+        envToDelete
+      }
       models = await runAgentModelCatalogSession(
         () => (deps.connect ?? createAcpAgentConnection)(launch),
         async (connection) => discovery.read(await connection.initialize(), connection),

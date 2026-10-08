@@ -25,6 +25,12 @@ import {
   OPENCODE_MODEL_LISTING_ARGS,
   parseOpenCodeModelListing
 } from '../opencode/opencode-model-catalog-listing'
+import {
+  loadGrokVisualsSkill,
+  loadOmpVisualsSkill,
+  loadOpenCodeVisualsSkill,
+  type AcpVisualsSkillLoader
+} from './acp-visuals-skill'
 
 /** How an agent lists its models without a session: from its `initialize` answer (plus extension
  *  requests), from a listing command, or not at all. Never `authenticate` or `session/new`. */
@@ -50,8 +56,9 @@ export type AcpLaunchSpec = {
   /** The Orca agent id, which names the agent's records, its catalog label and its settings. */
   agent: TuiAgent
   command: string
-  /** Built per launch: `fullAccess` is the Agent Permissions setting's bypass posture. */
-  args(input: { fullAccess: boolean }): string[]
+  /** Built per launch: `fullAccess` is the Agent Permissions setting's bypass posture;
+   *  `pluginDir` is a plugin folder `visualsSkill` asked the agent to load. */
+  args(input: { fullAccess: boolean; pluginDir: string | null }): string[]
   /** Laid over the child's environment last, after the account and the user's own variables. */
   env: Readonly<Record<string, string>>
   /** Rewrites what the child would inherit from Orca's own plumbing; returns the keys it must not
@@ -78,13 +85,20 @@ export type AcpLaunchSpec = {
   /** The agent's own store of a session's user messages, read for restart recovery only. */
   readStoredUserMessages?: AcpStoredUserMessagesReader
   modelDiscovery: AcpModelDiscovery
+  /** How a launch loads the inline-visuals skill; absent, the agent's chats have no visuals. */
+  visualsSkill?: AcpVisualsSkillLoader
 }
 
 const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   agent: 'grok',
   command: 'grok',
   // `--always-approve` only for full access, as the user's setting chooses.
-  args: ({ fullAccess }) => ['agent', ...(fullAccess ? ['--always-approve'] : []), 'stdio'],
+  args: ({ fullAccess, pluginDir }) => [
+    'agent',
+    ...(fullAccess ? ['--always-approve'] : []),
+    ...(pluginDir ? ['--plugin-dir', pluginDir] : []),
+    'stdio'
+  ],
   env: {},
   dialect: GROK_ACP_DIALECT,
   loginCommand: ['grok', 'login'],
@@ -103,7 +117,8 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
     kind: 'initialize',
     read: readGrokModelCatalog,
     listingNamesConfiguredModel: true
-  }
+  },
+  visualsSkill: loadGrokVisualsSkill
 }
 
 // `opencode acp` on 1.x serves in-process; on 2.x it starts a private `opencode serve --stdio` child
@@ -139,15 +154,16 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
     parse: parseOpenCodeModelListing,
     // The listing marks no default, and a project's `opencode.json` may pick the model.
     listingNamesConfiguredModel: false
-  }
+  },
+  visualsSkill: loadOpenCodeVisualsSkill
 }
 
 // OMP serves ACP through `omp acp`; its environment reaches it as the user set it.
 const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   agent: 'omp',
   command: 'omp',
-  // `omp acp` takes no flags: full access answers each permission request yes.
-  args: () => ['acp'],
+  // Full access answers each permission request yes.
+  args: ({ pluginDir }) => ['acp', ...(pluginDir ? ['--plugin-dir', pluginDir] : [])],
   env: {},
   dialect: OMP_ACP_DIALECT,
   // OMP signs in from its own `/login`.
@@ -161,7 +177,8 @@ const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   // Stable releases from 17.0.5, the release verified to serve `omp acp`.
   supportsVersion: (version) => isStableCliVersionFrom(version, '17.0.5'),
   // No session-free listing is verified yet; its chats' own listings still fill the catalog.
-  modelDiscovery: { kind: 'unavailable', reason: 'omp has no verified listing without a session' }
+  modelDiscovery: { kind: 'unavailable', reason: 'omp has no verified listing without a session' },
+  visualsSkill: loadOmpVisualsSkill
 }
 
 export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [
