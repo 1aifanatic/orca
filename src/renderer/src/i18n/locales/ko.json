@@ -14994,6 +14994,25 @@
             "d20ccf1e61": "완료",
             "379d776971": "입력 중",
             "0418f9becc": "열림"
+          },
+          "NativeChatUpgradeFeatureTipVisual": {
+            "chatRowTitle": "Claude 채팅",
+            "chatRowText": "재시도를 추가하고 웹훅 테스트를 업데이트했습니다.",
+            "cliRowTitle": "불안정한 결제 테스트 수정",
+            "cliRowText": "결제 테스트 모음이 10번 연속 통과했습니다.",
+            "otherRowTitle": "lockfile 업데이트",
+            "otherRowText": "종속성을 업데이트했으며 빌드는 계속 통과합니다.",
+            "copySessionId": "세션 ID 복사",
+            "resume": "재개",
+            "resumeInNewCliTooltipFork": "이 대화를 새 CLI 세션으로 포크합니다.",
+            "resumeInNewCliTooltipChat": "기본 채팅은 그대로 유지됩니다.",
+            "resumeInNewCli": "새 CLI에서 재개",
+            "resumeInNewNativeChat": "새 기본 채팅에서 재개",
+            "copyResumeCommand": "재개 명령 복사",
+            "roleAgent": "에이전트",
+            "messageCount": "메시지 {{value0}}개",
+            "panelTitle": "Agent 세션 기록",
+            "panelSubtitle": "이전 세션 재개"
           }
         }
       },
@@ -19081,6 +19100,15 @@
       "recent3Title": "릴리스 노트 초안",
       "settingsLink": "설정 → 에이전트 세션 검색",
       "startSearching": "검색 시작하기"
+    },
+    "nativeChatUpgrade": {
+      "sessionHistoryIntro": "대화를 채팅과 터미널 사이에서 옮기려면 worktree 사이드바에서 Agent 세션 기록을 여세요:",
+      "resumeInChatLabel": "새 기본 채팅에서 재개",
+      "resumeInChatText": "는 CLI 세션을 기본 채팅으로 이어갑니다.",
+      "resumeInCliLabel": "새 CLI에서 재개",
+      "resumeInCliText": "는 채팅의 사본으로 새 CLI 세션을 시작합니다. 채팅은 그대로 유지되며 둘은 동기화되지 않습니다.",
+      "settingsLead": "언제든지 다음에서 변경",
+      "settingsLink": "설정 → 채팅"
     }
   },
   "quickOpen": {
