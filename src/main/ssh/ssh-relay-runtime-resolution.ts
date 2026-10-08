@@ -95,6 +95,10 @@ export class RelayRuntimeLadderRun {
   hostNodeFallback = false
   /** The Node the fallback's strict probe found, reused by the launch. */
   hostNodePath: string | null = null
+  /** This step issued its relay launch; failures after it never step down. */
+  launchStarted = false
+  /** A noexec this pass proved rather than replayed. */
+  noexecProved = false
   selfTest: RelayRuntimeSelfTestOutcome = 'not_run'
   runtimeTransfer: RelayRuntimeTransfer = 'none'
   hostNode: HostNodeVersion | null = null
@@ -114,8 +118,12 @@ export class RelayRuntimeLadderRun {
     if (reason === 'artifacts_unavailable') {
       this.clientArtifactGap = true
     }
-    if (reason === 'noexec' && remembered) {
-      this.noexecRemembered = true
+    if (reason === 'noexec') {
+      if (remembered) {
+        this.noexecRemembered = true
+      } else {
+        this.noexecProved = true
+      }
     }
     if (step === 'A' && isPinnedRuntimeRefusal(reason)) {
       this.pinnedRefusal = reason
@@ -246,7 +254,11 @@ export class RemoteRuntimeUnavailableError extends Error {
 
 export function remoteRuntimeUnavailableError(run: RelayRuntimeLadderRun): Error {
   return new RemoteRuntimeUnavailableError(
-    remoteRuntimeUnavailableReason(run.lastRefusal, run.noexecRemembered, run.host?.os ?? null),
+    remoteRuntimeUnavailableReason(
+      run.lastRefusal,
+      run.noexecRemembered || run.noexecProved,
+      run.host?.os ?? null
+    ),
     run
   )
 }

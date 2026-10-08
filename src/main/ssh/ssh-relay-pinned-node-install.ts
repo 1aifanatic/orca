@@ -13,6 +13,7 @@ import type { SshConnection } from './ssh-connection'
 import { shellEscape } from './ssh-connection-utils'
 import { execCommand } from './ssh-relay-deploy-helpers'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-exec-command'
+import { RelayHostAnsweredError } from './ssh-relay-host-answered-failure'
 import {
   isPinnedRuntimeRefusal,
   PinnedRelayFallbackError,
@@ -189,6 +190,8 @@ export async function verifyPinnedRelayInstall(context: PinnedInstallContext): P
         `The relay runtime self-test at ${remoteRelayDir} is unverifiable; retrying on the next connect: ${verdict.detail}`
       )
     case 'failed':
-      throw new Error(`The relay runtime self-test at ${remoteRelayDir} failed: ${verdict.detail}`)
+      throw new RelayHostAnsweredError(
+        `The relay runtime self-test at ${remoteRelayDir} failed: ${verdict.detail}`
+      )
   }
 }

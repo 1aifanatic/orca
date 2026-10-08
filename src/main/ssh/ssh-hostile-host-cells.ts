@@ -151,7 +151,8 @@ export const HOSTILE_HOST_CELLS: readonly HostileHostCell[] = [
     }
   },
   {
-    // A host Node 20 does not help: rung C would load its addons from the same noexec tree.
+    // A proved noexec skips B and C (same tree) for the host-Node fallback, which finds Node 20
+    // without npm; that answered "no Node" is the only way to D.
     id: 'ubuntu2204-node20-noexec-home',
     dockerfile: [
       `FROM ${NODE_20} AS host-node`,
@@ -165,7 +166,10 @@ export const HOSTILE_HOST_CELLS: readonly HostileHostCell[] = [
     expect: {
       outcome: 'unavailable',
       reason: 'home_noexec',
-      refusals: [{ step: 'A', reason: 'noexec' }]
+      refusals: [
+        { step: 'A', reason: 'noexec' },
+        { step: 'legacy', reason: 'host_node_missing' }
+      ]
     }
   },
   {

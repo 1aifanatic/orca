@@ -1,7 +1,8 @@
 /**
- * The ladder's invariant, per host class: the connect is never worse than the pre-ladder default
- * (the host-Node relay, `legacy`), and never compiles on a host where Orca's own runtime works.
- * Drives the real step function the deploy loop uses; each rung's answer is scripted per host.
+ * The ladder's invariant: for every host, the connect is never worse than the pre-ladder default
+ * (the host-Node relay, `legacy`), never compiles where Orca's own runtime runs, and lands on
+ * plain SSH only when that default itself answered with a failure. Drives the real step function
+ * the deploy loop uses over the cross-product of what each rung and the default can answer.
  */
 import { describe, expect, it } from 'vitest'
 import type { RemoteOperatingSystem } from './ssh-remote-platform'
@@ -12,16 +13,23 @@ import {
   type RelayRuntimeStepReason
 } from './ssh-relay-runtime-ladder'
 
-/** What a rung's attempt ends in: it launches, refuses for a reason, or never gets an answer. */
-type RungAnswer = 'launch' | 'unanswered' | RelayRuntimeStepReason
-/** What the host-Node relay does: launch, prove no Node, fail its npm build, or go unanswered. */
-type HostNodeAnswer = 'launch' | 'no_node' | 'build_fails' | 'unanswered'
+/** A rung either launches or answers with a refusal; transport loss is modelled separately. */
+type RungAnswer = 'launch' | RelayRuntimeStepReason
+/**
+ * The host-Node relay: it launches, its strict probe answers "no Node", its npm install answers
+ * with a failure, or its relay launch fails after starting (which propagates, as before).
+ */
+type HostNodeAnswer = 'launch' | 'no_node' | 'install_fails' | 'launch_fails'
 
-type HostClass = {
+type HostCase = {
   id: string
   os: RemoteOperatingSystem
-  rungs: Partial<Record<'A' | 'B' | 'C', RungAnswer>>
+  a: RungAnswer
+  b: RungAnswer
+  c: RungAnswer
   hostNode: HostNodeAnswer
+  /** Every exec channel is refused or lost (MaxSessions, a dropped link): nothing answers. */
+  transportDown?: boolean
 }
 
 type Outcome =
@@ -31,188 +39,202 @@ type Outcome =
 
 const RANK: Record<Outcome['kind'], number> = { relay: 2, plain_ssh: 1, failed: 0 }
 
-function hostNodeOutcome(answer: HostNodeAnswer): Outcome | 'no_node' {
-  switch (answer) {
-    case 'launch':
-      return { kind: 'relay', rung: 'legacy' }
-    case 'no_node':
-      return 'no_node'
-    case 'build_fails':
-      return { kind: 'failed', retryable: false }
-    case 'unanswered':
-      return { kind: 'failed', retryable: true }
+/** Before the ladder: every connect ran the host-Node relay, and any failure failed the connect. */
+function baseOutcome(host: HostCase): Outcome {
+  if (host.transportDown) {
+    return { kind: 'failed', retryable: true }
   }
+  return host.hostNode === 'launch'
+    ? { kind: 'relay', rung: 'legacy' }
+    : { kind: 'failed', retryable: false }
 }
 
-/** Before the ladder: every connect ran the host-Node relay, and "no Node" failed the connect. */
-function baseOutcome(host: HostClass): Outcome {
-  const outcome = hostNodeOutcome(host.hostNode)
-  return outcome === 'no_node' ? { kind: 'failed', retryable: false } : outcome
-}
-
-/** The deploy loop: refusals step on; anything unanswered fails retryably on that rung. */
-function ladderOutcome(host: HostClass): Outcome {
+/** The deploy loop: answered refusals step on; a launch failure or lost transport propagates. */
+function ladderOutcome(host: HostCase): Outcome {
+  if (host.transportDown) {
+    return { kind: 'failed', retryable: true }
+  }
   const ladder = relayRuntimeLadder('pinned-node')
   let step: RelayRuntimeStep = ladder[0]!
   for (let guard = 0; guard < 10; guard++) {
-    if (step === 'D') {
-      return { kind: 'plain_ssh' }
-    }
     let answer: RungAnswer
-    if (step === 'legacy') {
-      const outcome = hostNodeOutcome(host.hostNode)
-      if (outcome !== 'no_node') {
-        return outcome
-      }
-      answer = 'host_node_missing'
-    } else {
-      answer =
-        host.rungs[step] ??
-        (host.os === 'win32' && step === 'C' ? 'windows_host_unsupported' : 'runtime_unavailable')
+    switch (step) {
+      case 'D':
+        return { kind: 'plain_ssh' }
+      case 'legacy':
+        if (host.hostNode === 'launch') {
+          return { kind: 'relay', rung: 'legacy' }
+        }
+        if (host.hostNode === 'launch_fails') {
+          return { kind: 'failed', retryable: false }
+        }
+        answer = host.hostNode === 'no_node' ? 'host_node_missing' : 'install_failed'
+        break
+      case 'A':
+        answer = host.a
+        break
+      case 'B':
+        answer = host.os === 'win32' ? 'runtime_unavailable' : host.b
+        break
+      case 'C':
+        answer = host.os === 'win32' ? 'windows_host_unsupported' : host.c
+        break
     }
     if (answer === 'launch') {
       return { kind: 'relay', rung: step }
-    }
-    if (answer === 'unanswered') {
-      return { kind: 'failed', retryable: true }
     }
     step = relayRuntimeStepAfterRefusal(ladder, step, answer, false, { hostOs: host.os })
   }
   throw new Error(`ladder did not settle for ${host.id}`)
 }
 
-const HOSTS: readonly HostClass[] = [
-  { id: 'posix-with-compiler', os: 'linux', rungs: { A: 'launch' }, hostNode: 'launch' },
-  { id: 'posix-node-no-compiler', os: 'linux', rungs: { A: 'launch' }, hostNode: 'build_fails' },
-  { id: 'posix-no-node', os: 'linux', rungs: { A: 'launch' }, hostNode: 'no_node' },
+const A_ANSWERS: readonly RungAnswer[] = [
+  'launch',
+  'noexec',
+  'missing_lib',
+  'libc_floor',
+  'illegal_instruction',
+  'wrong_libc',
+  'security_software',
+  'target_unresolved',
+  'artifacts_unavailable',
+  'install_failed'
+]
+const B_ANSWERS: readonly RungAnswer[] = ['launch', 'runtime_unavailable', 'install_failed']
+const C_ANSWERS: readonly RungAnswer[] = [
+  'launch',
+  'host_node_missing',
+  'noexec',
+  'libc_floor',
+  'artifacts_unavailable',
+  'target_unresolved',
+  'install_failed'
+]
+const HOST_NODE_ANSWERS: readonly HostNodeAnswer[] = [
+  'launch',
+  'no_node',
+  'install_fails',
+  'launch_fails'
+]
+const OSES: readonly RemoteOperatingSystem[] = ['linux', 'win32']
+
+const CROSS_PRODUCT: HostCase[] = OSES.flatMap((os) =>
+  A_ANSWERS.flatMap((a) =>
+    B_ANSWERS.flatMap((b) =>
+      C_ANSWERS.flatMap((c) =>
+        HOST_NODE_ANSWERS.map((hostNode) => ({
+          id: `${os} A:${a} B:${b} C:${c} host:${hostNode}`,
+          os,
+          a,
+          b,
+          c,
+          hostNode
+        }))
+      )
+    )
+  )
+)
+
+/** Named host classes from review, kept readable alongside the cross-product. */
+const NAMED: readonly HostCase[] = [
   {
-    id: 'offline-client-host-node',
+    id: 'A install fails on ENOSPC, host Node works',
     os: 'linux',
-    rungs: { A: 'artifacts_unavailable', C: 'launch' },
+    a: 'install_failed',
+    b: 'runtime_unavailable',
+    c: 'host_node_missing',
     hostNode: 'launch'
   },
   {
-    id: 'offline-client-no-host-node',
+    // AppArmor denies uploaded binaries (exit 126) but allows /usr/bin/node.
+    id: 'executable-only denial, host Node works',
     os: 'linux',
-    rungs: { A: 'artifacts_unavailable', C: 'host_node_missing' },
+    a: 'noexec',
+    b: 'runtime_unavailable',
+    c: 'noexec',
+    hostNode: 'launch'
+  },
+  {
+    id: 'noexec home, host Node relay launches',
+    os: 'linux',
+    a: 'noexec',
+    b: 'runtime_unavailable',
+    c: 'noexec',
+    hostNode: 'launch'
+  },
+  {
+    id: 'noexec home, host Node relay cannot load its addons',
+    os: 'linux',
+    a: 'noexec',
+    b: 'runtime_unavailable',
+    c: 'noexec',
+    hostNode: 'install_fails'
+  },
+  {
+    id: 'unidentified libc',
+    os: 'linux',
+    a: 'target_unresolved',
+    b: 'target_unresolved',
+    c: 'target_unresolved',
+    hostNode: 'launch'
+  },
+  {
+    id: 'Windows blocked by antivirus, no Node',
+    os: 'win32',
+    a: 'security_software',
+    b: 'runtime_unavailable',
+    c: 'windows_host_unsupported',
     hostNode: 'no_node'
   },
   {
-    id: 'missing-template-host-node',
-    os: 'linux',
-    rungs: { A: 'artifacts_unavailable', C: 'artifacts_unavailable' },
-    hostNode: 'launch'
-  },
-  {
-    id: 'missing-template-no-host-node',
-    os: 'linux',
-    rungs: { A: 'artifacts_unavailable', C: 'artifacts_unavailable' },
-    hostNode: 'no_node'
-  },
-  {
-    id: 'glibc-2.17',
-    os: 'linux',
-    rungs: { A: 'libc_floor', B: 'launch' },
-    hostNode: 'build_fails'
-  },
-  { id: 'musl', os: 'linux', rungs: { A: 'launch' }, hostNode: 'launch' },
-  {
-    id: 'musl-no-libstdcxx',
-    os: 'linux',
-    rungs: { A: 'missing_lib', C: 'host_node_missing' },
-    hostNode: 'no_node'
-  },
-  {
-    id: 'unidentified-libc',
-    os: 'linux',
-    rungs: { A: 'target_unresolved', B: 'target_unresolved', C: 'target_unresolved' },
-    hostNode: 'launch'
-  },
-  {
-    // C's N-API floor can refuse a Node 18 the host-npm relay still builds against.
-    id: 'host-node-below-addon-napi',
-    os: 'linux',
-    rungs: { A: 'missing_lib', C: 'host_node_missing' },
-    hostNode: 'launch'
-  },
-  { id: 'nixos', os: 'linux', rungs: { A: 'wrong_libc', C: 'launch' }, hostNode: 'launch' },
-  {
-    // The host-npm relay loads its addons from the same noexec tree, so it never ran here.
-    id: 'noexec-home',
-    os: 'linux',
-    rungs: { A: 'noexec' },
-    hostNode: 'build_fails'
-  },
-  { id: 'windows-with-node', os: 'win32', rungs: { A: 'launch' }, hostNode: 'launch' },
-  { id: 'windows-without-node', os: 'win32', rungs: { A: 'launch' }, hostNode: 'no_node' },
-  {
-    id: 'windows-av-blocked-with-node',
+    id: 'channel-open failure (MaxSessions) on every exec',
     os: 'win32',
-    rungs: { A: 'security_software' },
-    hostNode: 'launch'
-  },
-  {
-    id: 'windows-av-blocked-without-node',
-    os: 'win32',
-    rungs: { A: 'security_software' },
-    hostNode: 'no_node'
-  },
-  {
-    id: 'windows-applocker-with-node',
-    os: 'win32',
-    rungs: { A: 'noexec' },
-    hostNode: 'launch'
-  },
-  {
-    id: 'windows-offline-client-with-node',
-    os: 'win32',
-    rungs: { A: 'artifacts_unavailable' },
-    hostNode: 'launch'
-  },
-  {
-    // MaxSessions refuses the fallback's probe channel: never proof of "no Node".
-    id: 'channel-open-failure',
-    os: 'win32',
-    rungs: { A: 'security_software' },
-    hostNode: 'unanswered'
-  },
-  {
-    id: 'channel-open-failure-at-a',
-    os: 'linux',
-    rungs: { A: 'unanswered' },
-    hostNode: 'unanswered'
+    a: 'launch',
+    b: 'runtime_unavailable',
+    c: 'windows_host_unsupported',
+    hostNode: 'launch',
+    transportDown: true
   }
 ]
 
+function violations(host: HostCase): string[] {
+  const base = baseOutcome(host)
+  const ladder = ladderOutcome(host)
+  const found: string[] = []
+  if (RANK[ladder.kind] < RANK[base.kind]) {
+    found.push(`${host.id}: ${ladder.kind} is worse than base ${base.kind}`)
+  }
+  if (
+    !host.transportDown &&
+    host.a === 'launch' &&
+    ladder.kind === 'relay' &&
+    ladder.rung !== 'A'
+  ) {
+    found.push(`${host.id}: compiled on the host though rung A runs`)
+  }
+  // D only when the host-Node default itself answered with a failure.
+  if (ladder.kind === 'plain_ssh' && !['no_node', 'install_fails'].includes(host.hostNode)) {
+    found.push(`${host.id}: plain SSH without the default failing`)
+  }
+  if (host.transportDown && !(ladder.kind === 'failed' && ladder.retryable)) {
+    found.push(`${host.id}: a lost transport became a verdict`)
+  }
+  return found
+}
+
 describe('relay runtime ladder vs the pre-ladder host-Node default', () => {
-  it.each(HOSTS)('$id is never worse than before the ladder', (host) => {
-    const base = baseOutcome(host)
-    const ladder = ladderOutcome(host)
-    expect(RANK[ladder.kind]).toBeGreaterThanOrEqual(RANK[base.kind])
-    if (ladder.kind === 'failed' && host.hostNode === 'unanswered') {
-      // An unanswered probe stays retryable rather than read as a verdict.
-      expect(ladder.retryable).toBe(true)
-    }
+  it(`is never worse across all ${CROSS_PRODUCT.length} host combinations`, () => {
+    expect(CROSS_PRODUCT.flatMap(violations)).toEqual([])
   })
 
-  it.each(HOSTS.filter((host) => Object.values(host.rungs).includes('launch')))(
-    '$id never compiles on the host where an Orca runtime rung runs',
-    (host) => {
-      expect(ladderOutcome(host)).toMatchObject({ kind: 'relay' })
-      expect(ladderOutcome(host)).not.toMatchObject({ rung: 'legacy' })
-    }
-  )
+  it.each(NAMED)('$id is never worse', (host) => {
+    expect(violations(host)).toEqual([])
+  })
 
-  it('lands on plain SSH only with proof the host-Node relay could not have run either', () => {
-    const plain = HOSTS.filter((host) => ladderOutcome(host).kind === 'plain_ssh').map(
-      (host) => host.id
-    )
-    expect(plain).toEqual([
-      'offline-client-no-host-node',
-      'missing-template-no-host-node',
-      'musl-no-libstdcxx',
-      'noexec-home',
-      'windows-av-blocked-without-node'
-    ])
+  it('gives a host whose default works that default, or better, after any ladder refusal', () => {
+    const fallbacks = CROSS_PRODUCT.filter(
+      (host) => host.a !== 'launch' && host.hostNode === 'launch'
+    ).map(ladderOutcome)
+    expect(fallbacks.every((outcome) => outcome.kind === 'relay')).toBe(true)
   })
 })

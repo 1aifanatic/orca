@@ -184,7 +184,10 @@ describe('hostileHostCellViolations', () => {
       target: 'linux-x64-glibc',
       unavailableReason: 'home_noexec',
       deployError: 'home directory is mounted noexec',
-      refusals: [{ step: 'A', reason: 'noexec' }],
+      refusals: [
+        { step: 'A', reason: 'noexec' },
+        { step: 'legacy', reason: 'host_node_missing' }
+      ],
       forbiddenToolCalls: []
     }
     expect(hostileHostCellViolations(noexec, observed)).toEqual([])
@@ -198,7 +201,7 @@ describe('hostileHostCellViolations', () => {
         ]
       })
     ).toEqual([
-      'refusals A:noexec > C:noexec, expected A:noexec',
+      'refusals A:noexec > C:noexec, expected A:noexec > legacy:host_node_missing',
       'rung D reason no_runtime, expected home_noexec'
     ])
   })

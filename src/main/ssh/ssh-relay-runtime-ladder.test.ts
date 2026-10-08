@@ -81,13 +81,15 @@ describe('relay runtime ladder (design D6)', () => {
     ] as const) {
       expect(relayRuntimeStepAfterRefusal(ladder, 'C', reason, false, linux)).toBe('legacy')
     }
-    // A proved noexec defeats the host-npm relay too; a remembered one is re-proved.
-    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'noexec', false, linux)).toBe('D')
-    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'noexec', false, linux)).toBe('D')
+    // A noexec skips B and C (same tree) but still gets the fallback: exec denial can be per binary.
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'noexec', false, linux)).toBe('legacy')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'noexec', false, linux)).toBe('legacy')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'install_failed', false, linux)).toBe('B')
     // Only the fallback itself proving no host Node lands on D.
     expect(relayRuntimeStepAfterRefusal(ladder, 'legacy', 'host_node_missing', false, linux)).toBe(
       'D'
     )
+    expect(relayRuntimeStepAfterRefusal(ladder, 'legacy', 'install_failed', false, linux)).toBe('D')
   })
 
   it('chooses rung B only when a listed compat runtime serves the host', () => {

@@ -147,9 +147,9 @@ export type RelayRuntimeStepContext = { hostOs: RemoteOperatingSystem | null }
 /**
  * The invariant: no host does worse than the pre-ladder default. A, B and C are tried first
  * (no host compile where Orca's runtime works); any refusal past them falls back to exactly
- * that default, the host-Node relay (`legacy`, marked unsupported). D is reached only when
- * that fallback proved the host has no usable Node, or a proved noexec home would defeat it
- * too. Windows has no B or C yet, so it falls back straight after A.
+ * that default, the host-Node relay (`legacy`, marked unsupported). D is reached only when that
+ * fallback itself answered with a failure, so D is a superset of the default's outcome. Windows
+ * has no B or C yet, so it falls back straight after A.
  */
 export function relayRuntimeStepAfterRefusal(
   ladder: readonly RelayRuntimeStep[],
@@ -164,12 +164,12 @@ export function relayRuntimeStepAfterRefusal(
   if (context.hostOs === 'win32') {
     return 'legacy'
   }
-  const next = nextRelayRuntimeStep(ladder, current, reason, remembered)
-  if (next !== 'D') {
-    return next
+  // Why noexec skips B and C: they load addons from the same tree; only the fallback can disprove it.
+  if (reason === 'noexec' && !remembered) {
+    return 'legacy'
   }
-  // Why noexec: the host-npm relay loads its addons from the same noexec tree, so it fails too.
-  return reason === 'noexec' && !remembered ? 'D' : 'legacy'
+  const next = nextRelayRuntimeStep(ladder, current, reason, remembered)
+  return next === 'D' ? 'legacy' : next
 }
 
 /** The machine-readable part of a rung D failure; the message is what the user reads. */
@@ -237,6 +237,12 @@ const CLIENT_ARTIFACTS_NO_HOST_NODE_MESSAGE =
   'Node.js, and no Node.js 18 or newer was found on the host to run on instead. Install Node.js ' +
   '18+ and npm on the host, or reconnect once Orca can fetch its runtime.'
 
+// Why its own wording: the unsupported host-Node fallback ran and the host answered it with a failure.
+const HOST_NODE_FALLBACK_FAILED_MESSAGE =
+  "Orca can't run its remote runtime on this host: its bundled Node.js was refused, and the " +
+  "host's own Node.js relay, an unsupported fallback, also failed to install. Check the host's " +
+  'disk space and its Node.js and npm setup, then reconnect.'
+
 export function remoteRuntimeUnavailableMessage(
   reason: RemoteRuntimeUnavailableReason,
   refusal: RelayRuntimeStepReason | null,
@@ -247,6 +253,9 @@ export function remoteRuntimeUnavailableMessage(
 ): string {
   if (refusal === 'artifacts_unavailable' && hostNodeRefusal === 'host_node_missing') {
     return `${CLIENT_ARTIFACTS_NO_HOST_NODE_MESSAGE} (Orca's Node: ${refusal})`
+  }
+  if (hostNodeRefusal === 'install_failed' && reason !== 'home_noexec') {
+    return `${HOST_NODE_FALLBACK_FAILED_MESSAGE} (Orca's Node: ${refusal ?? 'none'})`
   }
   if (hostOs === 'win32') {
     const base =
