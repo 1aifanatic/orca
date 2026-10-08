@@ -18,11 +18,13 @@ function fixture(exitCode = 0, npmInstalled = true) {
       `process.stdout.write('first chunk\\n'); setTimeout(() => { process.stderr.write('last chunk\\n'); process.exit(${exitCode}) }, 100)`
     ]
   }
-  const resolve = vi.fn().mockResolvedValue({ installation, action, spec })
+  const evidence = { expiresAt: Date.now() + 30_000, configurationId: 'configuration' }
+  const resolve = vi.fn().mockResolvedValue({ installation, evidence, action, spec })
   const spawn = vi.fn(spawnProcess)
   const invalidate = vi.fn(() => {
     resolve.mockResolvedValue({
       installation: exitCode ? installation : ready,
+      evidence,
       action: exitCode ? action : null,
       spec: exitCode ? spec : null
     })
@@ -162,5 +164,22 @@ describe('host-owned Codex maintenance runner', () => {
     const result = await finished(f.runner, state.job.id)
     expect(Buffer.byteLength(result.job?.output ?? '')).toBeLessThanOrEqual(128 * 1024)
     expect(result.job?.output).toContain('final diagnostic')
+  })
+  it('separates a historical log read from the latest job and forwards the host evidence unchanged', async () => {
+    const f = fixture(1)
+    const first = await f.runner.start()
+    if (!first.job) {
+      throw new Error('No first job')
+    }
+    await finished(f.runner, first.job.id)
+    const second = await f.runner.start()
+    if (!second.job) {
+      throw new Error('No second job')
+    }
+    await finished(f.runner, second.job.id)
+    const historical = await f.runner.status(first.job.id)
+    expect(historical.job?.id).toBe(first.job.id)
+    expect(historical.currentJob?.id).toBe(second.job.id)
+    expect(historical.evidence).toEqual(first.evidence)
   })
 })

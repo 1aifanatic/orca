@@ -36,11 +36,12 @@ export class CodexMaintenanceRunner {
     if (revision !== this.revision) {
       current = await this.deps.resolve(context)
     }
-    const job = jobId
-      ? (this.jobs.get(jobId)?.job ?? null)
-      : ([...this.jobs.values()].at(-1)?.job ?? null)
+    const latest = [...this.jobs.values()].at(-1)?.job ?? null
+    const job = jobId ? (this.jobs.get(jobId)?.job ?? null) : latest
     return {
       installation: current.installation,
+      evidence: current.evidence,
+      currentJob: latest ? { id: latest.id, phase: latest.phase } : null,
       action: current.action,
       canRun: Boolean(current.spec) && !this.unsettledProcess?.(),
       job
@@ -81,6 +82,8 @@ export class CodexMaintenanceRunner {
     void this.execute(job, resolved, context)
     return {
       installation: resolved.installation,
+      evidence: resolved.evidence,
+      currentJob: { id: job.id, phase: job.phase },
       action: resolved.action,
       canRun: true,
       job: { ...job }

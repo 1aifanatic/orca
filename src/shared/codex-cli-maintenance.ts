@@ -44,7 +44,26 @@ export type CodexMaintenanceState = {
   action: CodexMaintenanceAction | null
   canRun: boolean
   job: CodexMaintenanceJob | null
+  currentJob?: Pick<CodexMaintenanceJob, 'id' | 'phase'> | null
+  evidence?: { expiresAt: number; configurationId: string; observedAt?: number }
 }
+
+const CodexMaintenanceJobSchema = z
+  .object({
+    id: z.string(),
+    phase: openEnum(['queued', 'running', 'completed', 'unknown'], 'unknown'),
+    action: z.object({
+      kind: openEnum(['install', 'update', 'unknown'], 'unknown'),
+      command: z.string(),
+      manual: z.boolean().optional(),
+      installationPath: z.string().optional()
+    }),
+    output: z.string(),
+    exitCode: z.number().nullable(),
+    error: z.string().nullable(),
+    termination: openEnum(['live', 'unverifiable', 'exited'], 'unverifiable').optional()
+  })
+  .nullable()
 
 export const CodexMaintenanceStateSchema = z.object({
   installation: z.object({
@@ -61,22 +80,21 @@ export const CodexMaintenanceStateSchema = z.object({
     })
     .nullable(),
   canRun: z.boolean(),
-  job: z
+  job: CodexMaintenanceJobSchema,
+  currentJob: z
     .object({
       id: z.string(),
-      phase: openEnum(['queued', 'running', 'completed', 'unknown'], 'unknown'),
-      action: z.object({
-        kind: openEnum(['install', 'update', 'unknown'], 'unknown'),
-        command: z.string(),
-        manual: z.boolean().optional(),
-        installationPath: z.string().optional()
-      }),
-      output: z.string(),
-      exitCode: z.number().nullable(),
-      error: z.string().nullable(),
-      termination: openEnum(['live', 'unverifiable', 'exited'], 'unverifiable').optional()
+      phase: openEnum(['queued', 'running', 'completed', 'unknown'], 'unknown')
     })
     .nullable()
+    .optional(),
+  evidence: z
+    .object({
+      expiresAt: z.number().finite(),
+      configurationId: z.string().min(1),
+      observedAt: z.number().finite().optional()
+    })
+    .optional()
 })
 
 export function codexMaintenanceAction(

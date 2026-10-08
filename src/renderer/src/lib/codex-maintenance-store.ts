@@ -5,19 +5,14 @@ import {
 } from './codex-maintenance-client'
 import type { CodexMaintenanceState } from '../../../shared/codex-cli-maintenance'
 import { useAppStore } from '@/store'
+import {
+  codexMaintenanceEvidenceExpiry,
+  EMPTY,
+  type CodexMaintenanceEntry
+} from './codex-maintenance-snapshot'
+export type { CodexMaintenanceEntry } from './codex-maintenance-snapshot'
+import { CodexMaintenanceActivity } from './codex-maintenance-activity'
 
-export type CodexMaintenanceEntry = {
-  state: CodexMaintenanceState | null
-  starting: boolean
-  error: string | null
-  verification: 'checking' | 'current' | 'unverifiable'
-}
-const EMPTY: CodexMaintenanceEntry = {
-  state: null,
-  starting: false,
-  error: null,
-  verification: 'unverifiable'
-}
 let entries: ReadonlyMap<string, CodexMaintenanceEntry> = new Map()
 let logTarget: CodexMaintenanceTarget | null = null
 const listeners = new Set<() => void>()
@@ -27,10 +22,7 @@ const revisions = new Map<string, number>()
 const starts = new Map<string, object>()
 const hosts = new Map<string, string>()
 const contexts = new Map<string, CodexMaintenanceTarget>()
-const activities = new Map<
-  string,
-  Pick<CodexMaintenanceEntry, 'starting' | 'error'> & { job: CodexMaintenanceState['job'] }
->()
+const activities = new CodexMaintenanceActivity()
 let revisionId = 0
 
 function rememberTarget(target: CodexMaintenanceTarget): string {
@@ -41,13 +33,8 @@ function rememberTarget(target: CodexMaintenanceTarget): string {
 }
 
 export function getCodexMaintenanceHostBusy(target: CodexMaintenanceTarget): boolean {
-  const activity = activities.get(codexMaintenanceTargetKey({ ...target, cwd: undefined }))
-  return Boolean(
-    activity?.starting ||
-    (!activity?.error &&
-      activity?.job &&
-      (activity.job.phase === 'queued' || activity.job.phase === 'running'))
-  )
+  const host = codexMaintenanceTargetKey({ ...target, cwd: undefined })
+  return activities.isBusy(host) || [...starts.keys()].some((key) => hosts.get(key) === host)
 }
 
 function nextRevision(key: string): number {
@@ -57,17 +44,6 @@ function nextRevision(key: string): number {
 }
 
 function publish(key: string, patch: Partial<CodexMaintenanceEntry>): void {
-  const host = hosts.get(key)
-  if (host) {
-    const current = activities.get(host) ?? { starting: false, error: null, job: null }
-    const job = patch.state?.job
-    const running = current.job?.phase === 'running' || current.job?.phase === 'queued'
-    activities.set(host, {
-      starting: patch.starting ?? current.starting,
-      error: patch.error === undefined ? current.error : patch.error,
-      job: job !== undefined && (!running || job?.id === current.job?.id) ? job : current.job
-    })
-  }
   const next = new Map(entries).set(key, { ...getCodexMaintenanceEntry(key), ...patch })
   for (const [id, entry] of next) {
     if (next.size <= 64) {
@@ -90,6 +66,38 @@ function publish(key: string, patch: Partial<CodexMaintenanceEntry>): void {
   }
 }
 
+function acceptState(
+  key: string,
+  state: CodexMaintenanceState,
+  revision: number,
+  requestedAt: number,
+  historical = false
+): void {
+  const host = hosts.get(key)
+  if (host) {
+    activities.reconcile(host, state, revision, historical)
+  }
+  const now = Date.now()
+  const evidence = state.evidence
+  const expiresAt = codexMaintenanceEvidenceExpiry(evidence, requestedAt)
+  publish(key, {
+    state,
+    expiresAt,
+    ...(state.job ? { logJob: state.job } : {}),
+    error: null,
+    verification: evidence && expiresAt > now ? 'current' : 'unverifiable'
+  })
+}
+
+function publishFailure(key: string, error: unknown, revision: number): void {
+  const message = error instanceof Error ? error.message : String(error)
+  const host = hosts.get(key)
+  if (host) {
+    activities.recordFailure(host, revision, message)
+  }
+  publish(key, { error: message, verification: 'unverifiable' })
+}
+
 export function subscribeCodexMaintenance(listener: () => void): () => void {
   listeners.add(listener)
   return () => {
@@ -97,7 +105,13 @@ export function subscribeCodexMaintenance(listener: () => void): () => void {
   }
 }
 export function getCodexMaintenanceEntry(key: string): CodexMaintenanceEntry {
-  return entries.get(key) ?? EMPTY
+  const entry = entries.get(key) ?? EMPTY
+  if (entry.verification === 'current' && entry.expiresAt <= Date.now()) {
+    const withdrawn: CodexMaintenanceEntry = { ...entry, verification: 'unverifiable' }
+    entries = new Map(entries).set(key, withdrawn)
+    return withdrawn
+  }
+  return entry
 }
 export function getCodexMaintenanceLogTarget(): CodexMaintenanceTarget | null {
   return logTarget
@@ -120,16 +134,28 @@ function scheduleRead(target: CodexMaintenanceTarget, jobId: string, failures = 
         return
       }
       const revision = nextRevision(key)
+      const requestedAt = Date.now()
       void callCodexMaintenance(target, { operation: 'read', jobId })
         .then((state) => {
           if (revisions.get(key) !== revision) {
             return
           }
-          publish(key, { state, error: null, verification: 'current' })
-          if (state.job && (state.job.phase === 'queued' || state.job.phase === 'running')) {
+          acceptState(key, state, revision, requestedAt, true)
+          if (activities.isSuperseded(hosts.get(key) ?? '', revision)) {
+            return
+          }
+          if (
+            state.job &&
+            getCodexMaintenanceHostBusy(target) &&
+            (state.currentJob === undefined || state.currentJob?.id === state.job.id) &&
+            (state.job.phase === 'queued' || state.job.phase === 'running')
+          ) {
             scheduleRead(target, jobId)
           } else {
             refreshDetectedAgents(target)
+            if (state.currentJob === undefined) {
+              void refreshCodexMaintenance(target)
+            }
             for (const [peerKey, peer] of contexts) {
               if (peerKey !== key && hosts.get(peerKey) === hosts.get(key)) {
                 invalidateCodexMaintenanceContact(peer)
@@ -142,10 +168,7 @@ function scheduleRead(target: CodexMaintenanceTarget, jobId: string, failures = 
           if (revisions.get(key) !== revision) {
             return
           }
-          publish(key, {
-            error: error instanceof Error ? error.message : String(error),
-            verification: 'unverifiable'
-          })
+          publishFailure(key, error, revision)
           if (failures < 2) {
             scheduleRead(target, jobId, failures + 1)
           }
@@ -174,14 +197,17 @@ export function refreshCodexMaintenance(target: CodexMaintenanceTarget): Promise
   if (pending) {
     return pending
   }
+  clearTimeout(polls.get(key))
+  polls.delete(key)
   const revision = nextRevision(key)
+  const requestedAt = Date.now()
   publish(key, { verification: 'checking' })
   const read = callCodexMaintenance(target, { operation: 'status' })
     .then((state) => {
       if (revisions.get(key) !== revision) {
         return
       }
-      publish(key, { state, error: null, verification: 'current' })
+      acceptState(key, state, revision, requestedAt)
       if (state.job && (state.job.phase === 'queued' || state.job.phase === 'running')) {
         scheduleRead(target, state.job.id)
       }
@@ -191,10 +217,7 @@ export function refreshCodexMaintenance(target: CodexMaintenanceTarget): Promise
         return
       }
       // An unavailable host does not prove a missing or old CLI.
-      publish(key, {
-        error: error instanceof Error ? error.message : String(error),
-        verification: 'unverifiable'
-      })
+      publishFailure(key, error, revision)
     })
     .finally(() => {
       if (reads.get(key) === read) {
@@ -217,16 +240,7 @@ export function invalidateCodexMaintenanceContact(target: CodexMaintenanceTarget
 export function startCodexMaintenance(target: CodexMaintenanceTarget): void {
   const key = rememberTarget(target)
   openCodexMaintenanceLog(target)
-  const entry = getCodexMaintenanceEntry(key)
-  if (entry.starting || activities.get(hosts.get(key) ?? '')?.starting) {
-    return
-  }
-  if (
-    entry.state?.job &&
-    (entry.state.job.phase === 'queued' || entry.state.job.phase === 'running') &&
-    !entry.error
-  ) {
-    scheduleRead(target, entry.state.job.id)
+  if (getCodexMaintenanceHostBusy(target)) {
     return
   }
   clearTimeout(polls.get(key))
@@ -235,16 +249,13 @@ export function startCodexMaintenance(target: CodexMaintenanceTarget): void {
   starts.set(key, request)
   publish(key, { starting: true, error: null, verification: 'checking' })
   const revision = nextRevision(key)
+  const requestedAt = Date.now()
   void callCodexMaintenance(target, { operation: 'start' })
     .then((state) => {
       if (starts.get(key) !== request || revisions.get(key) !== revision) {
         return
       }
-      const host = hosts.get(key)
-      if (host) {
-        activities.set(host, { starting: true, error: null, job: state.job })
-      }
-      publish(key, { state, verification: 'current' })
+      acceptState(key, state, revision, requestedAt)
       if (state.job && (state.job.phase === 'queued' || state.job.phase === 'running')) {
         scheduleRead(target, state.job.id)
       }
@@ -253,10 +264,7 @@ export function startCodexMaintenance(target: CodexMaintenanceTarget): void {
       if (revisions.get(key) !== revision) {
         return
       }
-      publish(key, {
-        error: error instanceof Error ? error.message : String(error),
-        verification: 'unverifiable'
-      })
+      publishFailure(key, error, revision)
     })
     .finally(() => {
       if (starts.get(key) === request) {

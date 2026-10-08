@@ -42,7 +42,13 @@ vi.mock('@/store', () => ({
 const TARGET = { kind: 'local' } as const
 function state(installed: boolean, version: string | null, canRun = true): CodexMaintenanceState {
   const installation = codexCliInstallation(installed, version)
-  return { installation, action: codexMaintenanceAction(installation, false), canRun, job: null }
+  return {
+    evidence: { expiresAt: Date.now() + 30_000, configurationId: 'config' },
+    installation,
+    action: codexMaintenanceAction(installation, false),
+    canRun,
+    job: null
+  }
 }
 function Composer({ target = TARGET }: { target?: CodexMaintenanceTarget } = {}) {
   const maintenance = useCodexMaintenance(target)
@@ -131,15 +137,14 @@ describe('Codex composer and Settings maintenance', () => {
     expect(screen.queryByRole('button', { name: 'Update Codex' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
   })
-  it('shows the required and installed versions and command text for an older relay', async () => {
-    call.mockResolvedValue(state(true, '0.135.0', false))
+  it('allows an older relay response without current evidence', async () => {
+    const legacy = state(true, '0.135.0', false)
+    delete legacy.evidence
+    call.mockResolvedValue(legacy)
     render(<Composer />)
     await flush()
-    expect(
-      screen.getByText('Installed 0.135.0; version 0.136.0 or newer is required.')
-    ).toBeInTheDocument()
-    expect(screen.getByText('codex update')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Update Codex' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    expect(screen.queryByText('Codex update required')).toBeNull()
   })
   it.each([
     { installed: false, version: null, text: 'Not installed', action: 'Install Codex' },
@@ -181,6 +186,7 @@ describe('Codex composer and Settings maintenance', () => {
     }
     const failed: CodexMaintenanceState = {
       ...running,
+      currentJob: null,
       job: {
         ...running.job!,
         phase: 'completed',
@@ -230,6 +236,7 @@ describe('Codex composer and Settings maintenance', () => {
     }
     const complete: CodexMaintenanceState = {
       ...state(true, '0.136.0'),
+      currentJob: null,
       job: { ...running.job!, phase: 'completed', exitCode: 0 }
     }
     call.mockImplementation(async (_target, params) =>

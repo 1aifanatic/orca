@@ -11,6 +11,7 @@ import { translate } from '@/i18n/i18n'
 import { codexMaintenanceTargetKey } from '@/lib/codex-maintenance-client'
 import {
   getCodexMaintenanceEntry,
+  getCodexMaintenanceHostBusy,
   getCodexMaintenanceLogTarget,
   openCodexMaintenanceLog,
   subscribeCodexMaintenance
@@ -26,10 +27,9 @@ export function CodexMaintenanceLogDialog(): React.JSX.Element {
   )
   const snapshot = () => getCodexMaintenanceEntry(target ? codexMaintenanceTargetKey(target) : '')
   const entry = useSyncExternalStore(subscribeCodexMaintenance, snapshot, snapshot)
-  const job = entry.state?.job
-  const busy =
-    entry.starting ||
-    Boolean(job && (job.phase === 'queued' || job.phase === 'running') && !entry.error)
+  const job = entry.logJob
+  const busySnapshot = () => Boolean(target && getCodexMaintenanceHostBusy(target))
+  const busy = useSyncExternalStore(subscribeCodexMaintenance, busySnapshot, busySnapshot)
   const message =
     entry.error ??
     job?.error ??
@@ -37,8 +37,8 @@ export function CodexMaintenanceLogDialog(): React.JSX.Element {
       ? translate('codex.maintenance.exitCode', 'Command exited with code {{code}}', {
           code: job.exitCode ?? '?'
         })
-      : job?.phase === 'unknown'
-        ? job.action.command
+      : !busy || job?.phase === 'unknown'
+        ? (job?.action.command ?? '')
         : codexMaintenanceLabel(job?.action.kind === 'update', true))
   const output = job?.output ?? ''
   return (

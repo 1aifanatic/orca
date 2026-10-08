@@ -16,7 +16,11 @@ vi.mock('../codex/codex-structured-launch-resolution', () => ({
   resolveCodexStructuredInvocation: invocation
 }))
 vi.mock('./codex-cli-installation', () => ({
-  readCodexCliInstallation: installation,
+  readCodexCliInstallationEvidence: async (input: unknown) => ({
+    installation: await installation(input),
+    expiresAt: Date.now() + 30_000,
+    configurationId: 'config'
+  }),
   codexCliPackagePaths: packages
 }))
 vi.mock('../ipc/command-path-resolver', () => ({ listLocalCommandPaths: lookup }))

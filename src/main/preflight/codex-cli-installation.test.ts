@@ -2,7 +2,10 @@ import { mkdtemp, mkdir, rm, writeFile, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { readCodexCliInstallation } from './codex-cli-installation'
+import {
+  readCodexCliInstallation,
+  readCodexCliInstallationEvidence
+} from './codex-cli-installation'
 import { CodexCliInstallationCache } from './codex-cli-installation-cache'
 import { codexCliInstallation } from '../../shared/codex-cli-installation'
 
@@ -184,5 +187,29 @@ describe('Codex binary version cache', () => {
     prints('codex-cli 0.136.0')
     expect((await readCodexCliInstallation({ program: launcher })).status).toBe('ready')
     expect(runProcess).toHaveBeenCalledTimes(2)
+  })
+  it('returns the original host expiry on cached reads and an opaque identity for each configuration', async () => {
+    const program = await binary()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(0)
+    prints('codex-cli 0.135.0')
+    const input = { program, env: { SELECTION: 'private-test-value' } }
+    const first = await readCodexCliInstallationEvidence(input)
+    expect(first.expiresAt).toBe(30_000)
+    vi.setSystemTime(29_999)
+    const cached = await readCodexCliInstallationEvidence(input)
+    expect(cached.expiresAt).toBe(first.expiresAt)
+    expect(cached.configurationId).toBe(first.configurationId)
+    expect(cached.configurationId).toMatch(/^[a-f0-9]{64}$/)
+    const changed = await readCodexCliInstallationEvidence({
+      ...input,
+      env: { SELECTION: 'changed' }
+    })
+    expect(changed.configurationId).not.toBe(first.configurationId)
+    prints('codex-cli 0.136.0')
+    vi.setSystemTime(30_000)
+    const updated = await readCodexCliInstallationEvidence(input)
+    expect(updated.installation.status).toBe('ready')
+    expect(updated.expiresAt).toBe(60_000)
   })
 })

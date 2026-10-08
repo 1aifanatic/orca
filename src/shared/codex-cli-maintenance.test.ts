@@ -75,4 +75,38 @@ describe('Codex maintenance policy and mixed-version replies', () => {
     expect(result.job?.phase).toBe('unknown')
     expect(result.job?.output).toBe('host log')
   })
+  it('accepts optional current-job and expiry evidence while preserving legacy replies', () => {
+    const legacy = {
+      installation: codexCliInstallation(true, '0.135.0'),
+      action: null,
+      canRun: true,
+      job: null
+    }
+    expect(CodexMaintenanceStateSchema.parse(legacy)).toEqual(legacy)
+    const current = {
+      ...legacy,
+      currentJob: null,
+      evidence: { expiresAt: 30_000, configurationId: 'opaque' }
+    }
+    expect(CodexMaintenanceStateSchema.parse(current)).toEqual(current)
+  })
+  it('keeps latest activity compact when reading a historical log', () => {
+    const job = {
+      id: 'job',
+      phase: 'running',
+      action: { kind: 'update', command: 'codex update' },
+      output: 'historical output',
+      exitCode: null,
+      error: null
+    }
+    const reply = CodexMaintenanceStateSchema.parse({
+      installation: codexCliInstallation(true, '0.135.0'),
+      action: null,
+      canRun: true,
+      job,
+      currentJob: job
+    })
+    expect(reply.currentJob).toEqual({ id: 'job', phase: 'running' })
+    expect(reply.job?.output).toBe('historical output')
+  })
 })

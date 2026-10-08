@@ -1,5 +1,5 @@
 import { stat, realpath } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { dirname, isAbsolute, join } from 'node:path'
 import {
   codexCliInstallation,
@@ -13,6 +13,7 @@ import { CodexCliInstallationCache } from './codex-cli-installation-cache'
 import { codexNpmInstallationFiles } from './codex-npm-installation-files'
 
 const cache = new CodexCliInstallationCache()
+const configurationSecret = randomBytes(32)
 
 async function stamp(file: string): Promise<string> {
   try {
@@ -55,6 +56,25 @@ async function binaryFingerprint(input: Pick<ProcessSpec, 'program' | 'env'>): P
 export async function readCodexCliInstallation(
   input: Pick<ProcessSpec, 'program' | 'cwd' | 'env'>
 ): Promise<CodexCliInstallation> {
+  return (await readCodexCliInstallationEvidence(input)).installation
+}
+
+export async function readCodexCliInstallationEvidence(
+  input: Pick<ProcessSpec, 'program' | 'cwd' | 'env'>
+) {
+  const environment = Object.entries({ ...process.env, ...input.env }).sort(([left], [right]) =>
+    left.localeCompare(right)
+  )
+  const configuration = JSON.stringify([input.program, input.cwd ?? process.cwd(), environment])
+  // A host-private salt keeps low-entropy secrets out of client-visible identities.
+  const configurationId = createHmac('sha256', configurationSecret)
+    .update(configuration)
+    .digest('hex')
+  const immediate = (installation: CodexCliInstallation) => ({
+    installation,
+    expiresAt: Date.now() + 30_000,
+    configurationId
+  })
   const program = isAbsolute(input.program)
     ? input.program
     : (
@@ -65,25 +85,25 @@ export async function readCodexCliInstallation(
         })
       )[0]
   if (!program) {
-    return codexCliInstallation(false, null)
+    return immediate(codexCliInstallation(false, null))
   }
   try {
     await stat(program)
   } catch (error) {
     const missing =
       typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
-    return codexCliInstallation(!missing, null)
+    return immediate(codexCliInstallation(!missing, null))
   }
   const launch = { ...input, program }
   const fingerprint = await binaryFingerprint(launch)
-  const environment = Object.entries({ ...process.env, ...input.env }).sort(([left], [right]) =>
-    left.localeCompare(right)
+  const context = createHash('sha256').update(configuration).digest('hex')
+  const evidence = await cache.readEvidence(
+    `native:${program}:${context}`,
+    fingerprint,
+    async () => {
+      const result = await readAgentCliVersion(launch, parseCodexCliVersion)
+      return codexCliInstallation(true, result.version)
+    }
   )
-  const context = createHash('sha256')
-    .update(JSON.stringify([input.cwd ?? process.cwd(), environment]))
-    .digest('hex')
-  return cache.read(`native:${program}:${context}`, fingerprint, async () => {
-    const result = await readAgentCliVersion(launch, parseCodexCliVersion)
-    return codexCliInstallation(true, result.version)
-  })
+  return { ...evidence, configurationId }
 }

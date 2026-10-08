@@ -67,6 +67,7 @@ describe('workspace composer Codex installation admission', () => {
       mocks.call.mockResolvedValue({
         installation,
         action: codexMaintenanceAction(installation, false),
+        evidence: { expiresAt: Date.now() + 30_000, configurationId: 'config' },
         canRun: true,
         job: null
       })
@@ -95,6 +96,7 @@ describe('workspace composer Codex installation admission', () => {
     mocks.call.mockResolvedValue({
       installation: codexCliInstallation(true, null),
       action: null,
+      evidence: { expiresAt: Date.now() + 30_000, configurationId: 'config' },
       canRun: true,
       job: null
     })

@@ -1,8 +1,6 @@
 import { createContext, useLayoutEffect, useSyncExternalStore } from 'react'
-import {
-  codexMaintenanceHostIsReachable,
-  subscribeCodexMaintenanceHostContact
-} from '@/lib/codex-maintenance-host-contact'
+import { codexMaintenanceHostIsReachable } from '@/lib/codex-maintenance-host-contact'
+import { observeCodexMaintenance } from '@/lib/codex-maintenance-observation'
 import {
   codexMaintenanceTargetKey,
   type CodexMaintenanceTarget
@@ -52,7 +50,7 @@ export function useCodexMaintenance(target: CodexMaintenanceTarget | null) {
       return
     }
     const context = { ...host, ...(cwd ? { cwd } : {}) }
-    const unsubscribeContact = subscribeCodexMaintenanceHostContact(context)
+    const unsubscribeContact = observeCodexMaintenance(context)
     void refreshCodexMaintenance(context)
     const onFocus = (): void => {
       void refreshCodexMaintenance(context)
@@ -68,14 +66,7 @@ export function useCodexMaintenance(target: CodexMaintenanceTarget | null) {
       ? entry.state?.installation
       : undefined
   const blocked = installation?.status === 'missing' || installation?.status === 'unsupported'
-  const busy =
-    hostBusy ||
-    entry.starting ||
-    (!entry.error &&
-      Boolean(
-        entry.state?.job &&
-        (entry.state.job.phase === 'queued' || entry.state.job.phase === 'running')
-      ))
+  const busy = hostBusy || entry.starting
   const action =
     installation &&
     target &&

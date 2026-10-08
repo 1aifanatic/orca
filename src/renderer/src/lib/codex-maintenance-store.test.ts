@@ -5,6 +5,7 @@ import {
   type CodexMaintenanceState
 } from '../../../shared/codex-cli-maintenance'
 import {
+  invalidateCodexMaintenanceContact,
   getCodexMaintenanceEntry,
   getCodexMaintenanceHostBusy,
   refreshCodexMaintenance,
@@ -33,6 +34,7 @@ function state(): CodexMaintenanceState {
   return {
     installation,
     action: codexMaintenanceAction(installation, false),
+    evidence: { expiresAt: Date.now() + 30_000, configurationId: 'config' },
     canRun: true,
     job: null
   }
@@ -79,6 +81,7 @@ describe('shared Codex maintenance snapshots', () => {
       throw new Error('No job')
     }
     completed.job.phase = 'completed'
+    completed.currentJob = completed.job
     call.mockResolvedValueOnce(completed).mockResolvedValueOnce(state())
     await vi.advanceTimersByTimeAsync(1000)
     expect(getCodexMaintenanceHostBusy(TARGET)).toBe(false)
@@ -179,5 +182,59 @@ describe('shared Codex maintenance snapshots', () => {
     expect(entry.verification).toBe('unverifiable')
     expect(entry.state?.job?.output).toBe('started')
     expect(entry.state?.installation.status).toBe('missing')
+  })
+  it.each(['host restart', 'log expiry', 'another client'])(
+    'reconciles disappeared or superseded activity after %s while preserving logs',
+    async (scenario) => {
+      call.mockResolvedValueOnce(running())
+      await refreshCodexMaintenance(TARGET)
+      invalidateCodexMaintenanceContact(TARGET)
+      const latest = state()
+      if (scenario === 'another client') {
+        const other = running().job
+        if (!other) {
+          throw new Error('No job')
+        }
+        latest.job = { ...other, id: 'job-B', phase: 'completed', exitCode: 1 }
+      }
+      call.mockResolvedValueOnce(latest)
+      await refreshCodexMaintenance(TARGET)
+      expect(getCodexMaintenanceHostBusy(TARGET)).toBe(false)
+      expect(getCodexMaintenanceEntry('local:codex').logJob?.output).toBe('started')
+      call.mockResolvedValueOnce(running())
+      startCodexMaintenance(TARGET)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(call.mock.calls.at(-1)?.[1].operation).toBe('start')
+    }
+  )
+
+  it('does not let an older log reply restore activity superseded in another context', async () => {
+    const workspace = { kind: 'local', cwd: '/project' } as const
+    call.mockResolvedValueOnce(running())
+    await refreshCodexMaintenance(workspace)
+    let completeLog: (value: CodexMaintenanceState) => void = () => {}
+    call.mockImplementationOnce(
+      () =>
+        new Promise<CodexMaintenanceState>((resolve) => {
+          completeLog = resolve
+        })
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    call.mockResolvedValueOnce(state())
+    await refreshCodexMaintenance(TARGET)
+    completeLog({ ...running(), currentJob: running().job })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getCodexMaintenanceHostBusy(workspace)).toBe(false)
+    expect(call).toHaveBeenCalledTimes(3)
+    expect(getCodexMaintenanceEntry('local:codex:/project').logJob?.output).toBe('started')
+  })
+  it('cancels historical polling when the latest status no longer has that job', async () => {
+    call.mockResolvedValueOnce(running())
+    await refreshCodexMaintenance(TARGET)
+    call.mockResolvedValueOnce(state())
+    await refreshCodexMaintenance(TARGET)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(call).toHaveBeenCalledTimes(2)
+    expect(getCodexMaintenanceHostBusy(TARGET)).toBe(false)
   })
 })

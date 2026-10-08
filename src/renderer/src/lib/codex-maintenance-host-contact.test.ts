@@ -77,6 +77,7 @@ describe('maintenance host contact lifecycle', () => {
     call.mockResolvedValue({
       installation: codexCliInstallation(true, '0.136.0'),
       action: null,
+      evidence: { expiresAt: Date.now() + 30_000, configurationId: 'config' },
       canRun: true,
       job: null
     })
@@ -99,6 +100,7 @@ describe('maintenance host contact lifecycle', () => {
     call.mockResolvedValueOnce({
       installation: codexCliInstallation(true, '0.135.0'),
       action: null,
+      evidence: { expiresAt: Date.now() + 30_000, configurationId: 'config' },
       canRun: true,
       job: null
     })
@@ -109,6 +111,7 @@ describe('maintenance host contact lifecycle', () => {
     call.mockResolvedValueOnce({
       installation: codexCliInstallation(true, '0.136.0'),
       action: null,
+      evidence: { expiresAt: Date.now() + 30_000, configurationId: 'config' },
       canRun: true,
       job: null
     })
