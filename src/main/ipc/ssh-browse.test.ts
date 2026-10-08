@@ -92,8 +92,8 @@ describe('registerSshBrowseHandler', () => {
     await Promise.resolve()
     // Login-shell rc output ahead of the fence must not become the resolved path.
     const command = String(exec.mock.calls[0]?.[0])
-    const begin = /__ORCA_SSH_CAPTURE_BEGIN_\w+?__/.exec(command)?.[0] ?? ''
-    const end = /__ORCA_SSH_CAPTURE_END_\w+?__/.exec(command)?.[0] ?? ''
+    const begin = (/__ORCA_SSH_CAPTURE_BEGIN_ \w+?__/.exec(command)?.[0] ?? '').replace(' ', '')
+    const end = (/__ORCA_SSH_CAPTURE_END_ \w+?__/.exec(command)?.[0] ?? '').replace(' ', '')
     channel.emit('data', Buffer.from(`RC-BANNER stdout\n\u001b]0;t\u0007${begin}`))
     channel.emit('data', Buffer.from(`/tmp/it's here\n${end}`))
     channel.emit('exit', 0)

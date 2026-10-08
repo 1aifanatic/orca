@@ -22,15 +22,18 @@ const conn = {} as SshConnection
 /** The login shell's answer, inside the fence the probe printed. */
 function loginShellAnswer(output: string) {
   return async (_conn: SshConnection, command: string): Promise<string> => {
-    const begin = /__ORCA_SSH_LOGIN_CAPTURE_BEGIN_\w+?__/.exec(command)?.[0] ?? ''
-    const end = /__ORCA_SSH_LOGIN_CAPTURE_END_\w+?__/.exec(command)?.[0] ?? ''
+    const begin = (/__ORCA_SSH_LOGIN_CAPTURE_BEGIN_ \w+?__/.exec(command)?.[0] ?? '').replace(
+      ' ',
+      ''
+    )
+    const end = (/__ORCA_SSH_LOGIN_CAPTURE_END_ \w+?__/.exec(command)?.[0] ?? '').replace(' ', '')
     return `RC-BANNER\n${begin}${output}${end}`
   }
 }
 
 function loginShellProbe(shell: string, mode: string) {
   return expect.stringMatching(
-    new RegExp(`^'${shell}' ${mode} 'printf %s \\w+; command -v node; printf %s \\w+'$`)
+    new RegExp(`^'${shell}' ${mode} 'printf %s \\w+ \\w+; command -v node; printf %s \\w+ \\w+'$`)
   )
 }
 

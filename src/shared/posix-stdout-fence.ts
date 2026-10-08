@@ -31,15 +31,15 @@ export function buildPosixStdoutFence(
   label: string,
   nonce: string = nextPosixStdoutFenceNonce()
 ): PosixStdoutFence {
-  const markers = fenceMarkers(label, nonce)
+  const { printBegin, printEnd, ...markers } = fenceMarkers(label, nonce)
   return {
     ...markers,
     command: [
-      // Markers are [A-Za-z0-9_] only, so plain single quotes are exact.
-      `printf %s '${markers.beginMarker}'`,
+      // Markers are [A-Za-z0-9_] only, so they need no quoting.
+      `printf %s ${printBegin.join(' ')}`,
       command,
       '_orca_capture_status=$?',
-      `printf %s '${markers.endMarker}'`,
+      `printf %s ${printEnd.join(' ')}`,
       'exit $_orca_capture_status'
     ].join('\n')
   }
@@ -55,25 +55,35 @@ export function buildAnyShellStdoutFence(
   label: string,
   nonce: string = nextPosixStdoutFenceNonce()
 ): PosixStdoutFence {
-  const markers = fenceMarkers(label, nonce)
+  const { printBegin, printEnd, ...markers } = fenceMarkers(label, nonce)
   return {
     ...markers,
     // Unquoted: nested quoting differs between these shells, and the markers need none.
-    command: `printf %s ${markers.beginMarker}; ${command}; printf %s ${markers.endMarker}`
+    command: `printf %s ${printBegin.join(' ')}; ${command}; printf %s ${printEnd.join(' ')}`
   }
 }
 
-function fenceMarkers(label: string, nonce: string): Omit<PosixStdoutFence, 'command'> {
-  const begin = `__ORCA_${label}_CAPTURE_BEGIN_${nonce}__`
-  const end = `__ORCA_${label}_CAPTURE_END_${nonce}__`
+type FenceMarkers = Omit<PosixStdoutFence, 'command'> & {
+  /** `printf %s` arguments that join into each marker. */
+  printBegin: [string, string]
+  printEnd: [string, string]
+}
+
+function fenceMarkers(label: string, nonce: string): FenceMarkers {
+  const beginPrefix = `__ORCA_${label}_CAPTURE_BEGIN_`
+  const endPrefix = `__ORCA_${label}_CAPTURE_END_`
+  const begin = `${beginPrefix}${nonce}__`
+  const end = `${endPrefix}${nonce}__`
   return {
     beginMarker: begin,
     endMarker: end,
+    // Why split: a whole marker in the script would reach stdout whenever the payload or the
+    // shell prints the command text (`ps -o args`, `set -v`) and be read as the fence.
+    printBegin: [beginPrefix, `${nonce}__`],
+    printEnd: [endPrefix, `${nonce}__`],
     readStdout: (stdout) => {
-      // Why lastIndexOf: a login shell can echo the command text before running
-      // it (`set -x` in an rc file), which repeats the opening fence verbatim.
-      // The real payload always follows the last one. The nonce keeps a payload
-      // that happens to quote a marker from colliding.
+      // Why lastIndexOf: the nonce keeps rc output and payloads from forming a marker, so the
+      // last one is the fence itself even if a shell somehow repeats it.
       const beginIndex = stdout.lastIndexOf(begin)
       if (beginIndex === -1) {
         return null
