@@ -14,7 +14,11 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { narrowStructuredLaunchSeedOptions } from '../../../../shared/native-chat-session-option-defaults'
+import {
+  narrowStructuredLaunchSeedOptions,
+  parseStructuredLaunchSeedOptions
+} from '../../../../shared/native-chat-session-option-defaults'
+import { normalizeStructuredChatLaunchOptions } from '../../../../shared/structured-chat-launch-options'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { structuredAgentSessionTabId } from '../../../../shared/structured-agent-session-projection'
 import {
@@ -64,7 +68,13 @@ export function agentLaunchSurfaceFactory(
       tabId
     }) => {
       const sessionId = requested ?? createStructuredAgentSessionId(agent, randomUUID)
-      const seeded = narrowStructuredLaunchSeedOptions(options)
+      const parsed = parseStructuredLaunchSeedOptions(options)
+      const seeded =
+        options === undefined
+          ? undefined
+          : parsed?.permissionMode !== undefined
+            ? normalizeStructuredChatLaunchOptions(agent, parsed)
+            : (narrowStructuredLaunchSeedOptions(options) ?? {})
       const created = await createStructuredAgentSessionForWorktree({
         runtime: context.runtime,
         ensureHost: async () => {
@@ -86,7 +96,7 @@ export function agentLaunchSurfaceFactory(
         },
         worktree: `id:${worktreeId}`,
         agent,
-        ...(seeded ? { options: seeded } : {}),
+        ...(seeded !== undefined ? { options: seeded } : {}),
         ...(tabId ? { tabId } : {}),
         // The user asked for this chat, so it takes the surface — unlike a dispatched worker.
         activate: !callerPresentsSurface

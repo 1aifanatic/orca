@@ -139,7 +139,10 @@ export function beginHostAdmittedStructuredLaunch(args: {
   target: RuntimeClientTarget
   /** Commits the admitted chat: the local launch path, told which host admitted it and the saved
    *  selection that host said create will seed. */
-  openAdmitted: (seedOptions?: Readonly<Record<string, string>>) => AdmittedLaunch | null
+  openAdmitted: (
+    seedOptions?: Readonly<Record<string, string>>,
+    clientOptions?: Readonly<Record<string, string>>
+  ) => AdmittedLaunch | null
   /** Told which host declined, since where its terminal opens can depend on it. */
   onHostDeclined: (
     target: RuntimeClientTarget
@@ -209,7 +212,8 @@ export function beginHostAdmittedStructuredLaunch(args: {
         return terminal.opened ? { kind: 'terminal' } : { kind: 'cancelled', sessionId: null }
       }
       admitted = args.openAdmitted(
-        admission.kind === 'admitted' ? admission.seedOptions : undefined
+        admission.kind === 'admitted' ? admission.seedOptions : undefined,
+        admission.kind === 'admitted' ? admission.clientOptions : undefined
       )
       if (!admitted) {
         resolveDelivery(NOT_DELIVERED)

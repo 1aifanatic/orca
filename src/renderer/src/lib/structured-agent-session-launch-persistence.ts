@@ -24,6 +24,7 @@ export type StructuredAgentLaunchPersistedRecord = {
   resumeFrom?: StructuredAgentSessionResumeSource
   /** A paired server's reported seed, which this machine cannot re-derive after a reload. */
   seedOptions?: Readonly<Record<string, string>>
+  options?: Readonly<Record<string, string>>
   /** When a failed launch failed; records written by older builds lack it. */
   failedAt?: number
 }
@@ -33,8 +34,8 @@ export function structuredAgentLaunchRecordFor(
   intent: StructuredAgentSessionLaunchIntent,
   lifecycle: StructuredAgentLaunchPersistedLifecycle
 ): StructuredAgentLaunchPersistedRecord {
-  const { envelope, resumeFrom } = intent.params
-  // A local launch re-reads this machine's settings on reload; only a paired server's seed is kept.
+  const { envelope, resumeFrom, options } = intent.params
+  // Legacy paired launches cannot re-derive their host seed; explicit client options are frozen.
   const pairedSeed = intent.target.kind === 'local' ? undefined : intent.seedOptions
   return {
     sessionId: intent.sessionId,
@@ -45,6 +46,7 @@ export function structuredAgentLaunchRecordFor(
     payloadFingerprint: envelope.payloadFingerprint,
     expectedRuntimeFence: envelope.expectedRuntimeFence,
     ...(resumeFrom ? { resumeFrom } : {}),
+    ...(options !== undefined ? { options } : {}),
     ...(pairedSeed ? { seedOptions: pairedSeed } : {})
   }
 }
@@ -124,9 +126,14 @@ function load(): void {
           const seedOptions = parseStructuredLaunchSeedOptions(
             'seedOptions' in value ? value.seedOptions : undefined
           )
-          const { seedOptions: _stored, ...rest } = value
+          const { seedOptions: _stored, options: _storedOptions, ...rest } = value
+          const options =
+            'options' in value && value.options && typeof value.options === 'object'
+              ? (parseStructuredLaunchSeedOptions(value.options) ?? {})
+              : undefined
           records.set(value.sessionId, {
             ...rest,
+            ...(options !== undefined ? { options } : {}),
             ...(seedOptions ? { seedOptions } : {}),
             executionHostId:
               parseExecutionHostId(value.executionHostId)?.id ?? LOCAL_EXECUTION_HOST_ID,

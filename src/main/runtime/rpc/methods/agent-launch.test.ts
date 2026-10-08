@@ -447,6 +447,19 @@ describe('whose window a new workspace moves', () => {
 })
 
 describe('the structured session factory', () => {
+  it('preserves the client permission choice alongside its model and effort', async () => {
+    await launch(
+      {
+        ...CREATE_LAUNCH,
+        sessionOptions: { model: 'sonnet', effort: 'high', permissionMode: 'ask' }
+      },
+      runtimeStub()
+    )
+    expect(createStructuredSession.mock.calls[0]?.[0]).toMatchObject({
+      options: { model: 'sonnet', effort: 'high', permissionMode: 'ask' }
+    })
+  })
+
   it('creates the session for the worktree the launch just made, and activates it', async () => {
     const runtime = runtimeStub()
     const result = await launch(CREATE_LAUNCH, runtime)
