@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act, type ReactNode, type RefObject } from 'react'
+import { act, type JSX, type ReactNode, type RefObject } from 'react'
 import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
@@ -87,14 +87,15 @@ describe('NativeChatUpgradeTipDialog', () => {
     expect(markup).toContain('Got it')
   })
 
-  it('focuses Got it on open without scrolling the title out of view', async () => {
+  it('opens with the title at the top and Got it focused outside the scrolling copy', async () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
     await act(async () => root.render(renderDialog(getTip())))
+    const copy = container.querySelector('[data-testid="native-chat-upgrade-tip-copy"]')
     const button = container.querySelector<HTMLButtonElement>('[data-testid="feature-tip-actions"]')
-    if (!button) {
-      throw new Error('Expected the primary action button')
+    if (!copy || !button) {
+      throw new Error('Expected the tip copy and the primary action button')
     }
     const focus = vi.spyOn(button, 'focus')
     const event = new Event('focus', { cancelable: true })
@@ -103,6 +104,11 @@ describe('NativeChatUpgradeTipDialog', () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true })
+    expect(document.activeElement).toBe(button)
+    expect(copy.scrollTop).toBe(0)
+    expect(copy.contains(container.querySelector('h1'))).toBe(true)
+    expect(copy.contains(container.querySelector('footer'))).toBe(false)
+    expect(container.querySelector('footer')?.contains(button)).toBe(true)
 
     await act(async () => root.unmount())
     container.remove()
