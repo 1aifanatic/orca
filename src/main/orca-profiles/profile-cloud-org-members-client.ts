@@ -6,7 +6,7 @@ import type {
 } from '../../shared/orca-profiles'
 import type { OrcaCloudAuthConfig } from './profile-cloud-auth-config'
 import type { OrcaCloudSession } from './profile-cloud-session-store'
-import { OrcaCloudRequestError, readOrcaCloudErrorCode } from './profile-cloud-client'
+import { orcaCloudResponseError } from './profile-cloud-client'
 
 const CLOUD_REQUEST_TIMEOUT_MS = 30_000
 const ORG_ROLES: readonly OrcaOrgRole[] = ['owner', 'admin', 'member']
@@ -127,7 +127,7 @@ async function requestOrgMembers<T>(
 ): Promise<T> {
   const response = await fetch(url, init)
   if (!response.ok) {
-    throw new OrcaCloudRequestError(response.status, await readOrcaCloudErrorCode(response))
+    throw await orcaCloudResponseError(response)
   }
   return parse((await response.json()) as unknown)
 }

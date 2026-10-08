@@ -35,8 +35,11 @@ vi.mock('./profile-cloud-client', async (importOriginal) => {
 
 vi.mock('./profile-cloud-index', () => ({ linkOrcaProfileToCloud: linkMock }))
 
-import { readFreshOrcaCloudSession } from './profile-cloud-session-refresh'
-import { OrcaCloudRequestError } from './profile-cloud-client'
+import {
+  readFreshOrcaCloudSession,
+  runWithFreshOrcaCloudSession
+} from './profile-cloud-session-refresh'
+import { OrcaCloudRequestError, OrcaCloudUnverifiedRejectionError } from './profile-cloud-client'
 import { onOrcaCloudSessionInvalidated } from './profile-cloud-session-invalidation'
 import { forgetAmbiguousRefreshAttempt } from './profile-cloud-refresh-replay-guard'
 
@@ -119,7 +122,7 @@ describe('profile cloud session refresh', () => {
   it('notifies subscribers when an auth failure clears the stored session', async () => {
     const invalidated = vi.fn()
     const unsubscribe = onOrcaCloudSessionInvalidated(invalidated)
-    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401, 'invalid_refresh_token'))
+    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401))
 
     await expect(readFreshOrcaCloudSession(config, active, '/data')).resolves.toEqual({
       status: 'reconnect-required'
@@ -133,7 +136,7 @@ describe('profile cloud session refresh', () => {
   it('stays silent when a concurrent rotation already replaced the failed session', async () => {
     const invalidated = vi.fn()
     const unsubscribe = onOrcaCloudSessionInvalidated(invalidated)
-    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401, 'invalid_refresh_token'))
+    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401))
     readMock.mockReturnValueOnce({
       status: 'found',
       session: staleSession,
@@ -253,7 +256,7 @@ describe('refresh-token replay after an ambiguous attempt', () => {
     )
 
     now.mockReturnValue(1_000_000 + 31_000)
-    refreshMock.mockRejectedValueOnce(new OrcaCloudRequestError(401, 'invalid_refresh_token'))
+    refreshMock.mockRejectedValueOnce(new OrcaCloudRequestError(401))
 
     await expect(readFreshOrcaCloudSession(config, active, '/data')).resolves.toEqual({
       status: 'reconnect-required'
@@ -268,7 +271,7 @@ describe('refresh-token replay after an ambiguous attempt', () => {
 
   it('does not mark a 401 that follows no ambiguous attempt', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401, 'invalid_refresh_token'))
+    refreshMock.mockRejectedValue(new OrcaCloudRequestError(401))
 
     await expect(readFreshOrcaCloudSession(config, active, '/data')).resolves.toEqual({
       status: 'reconnect-required'
@@ -276,5 +279,36 @@ describe('refresh-token replay after an ambiguous attempt', () => {
 
     expect(warn.mock.calls.flat().join(' ')).not.toContain('orca_cloud_refresh_possible_replay')
     expect(clearMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the session and holds the token back when a middlebox answers the refresh', async () => {
+    refreshMock.mockRejectedValue(new OrcaCloudUnverifiedRejectionError(403))
+
+    await expect(readFreshOrcaCloudSession(config, active, '/data')).rejects.toThrow(
+      'orca_cloud_unverified_rejection_403'
+    )
+    // The middlebox may have forwarded the request, so the token is treated as possibly spent.
+    await expect(readFreshOrcaCloudSession(config, active, '/data')).rejects.toThrow(
+      'orca_cloud_refresh_replay_blocked'
+    )
+    expect(refreshMock).toHaveBeenCalledTimes(1)
+    expect(clearMock).not.toHaveBeenCalled()
+  })
+
+  it('neither refreshes nor signs out when a middlebox answers an operation', async () => {
+    readMock.mockReturnValue({
+      status: 'found',
+      session: { ...staleSession, expiresAt: Date.now() + 600_000 },
+      persistence: 'memory-only'
+    })
+    const operation = vi.fn(async () => {
+      throw new OrcaCloudUnverifiedRejectionError(401)
+    })
+
+    await expect(runWithFreshOrcaCloudSession(config, active, '/data', operation)).rejects.toThrow(
+      'orca_cloud_unverified_rejection_401'
+    )
+    expect(refreshMock).not.toHaveBeenCalled()
+    expect(clearMock).not.toHaveBeenCalled()
   })
 })

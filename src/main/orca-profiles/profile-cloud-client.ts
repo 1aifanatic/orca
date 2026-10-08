@@ -6,7 +6,6 @@ import type {
 import type { OrcaCloudAuthConfig } from './profile-cloud-auth-config'
 import type { OrcaCloudSession } from './profile-cloud-session-store'
 import type { OrcaCloudSessionExchangeResponse } from './profile-cloud-session-exchange'
-import { cancelUnreadResponseBody } from '../lib/unread-response-body'
 import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
 
 type ExchangeCodeArgs = {
@@ -171,27 +170,25 @@ type PostJsonOptions = {
   timeoutMs?: number
 }
 
-// Orca Cloud rejects with a JSON `{error}` (auth) or `{code}` (API) body. A 401/403
-// without one came from a proxy, captive portal, or firewall, not from Orca Cloud.
-export function isUnverifiedCloudAuthRejection(error: unknown): boolean {
-  return (
-    error instanceof OrcaCloudRequestError &&
-    (error.statusCode === 401 || error.statusCode === 403) &&
-    error.errorCode === undefined
-  )
-}
-
 // Only a status line from Orca Cloud proves it rejected the request without
 // consuming what was in it. Everything else — an abort, a dropped socket, a 200
 // we could not parse, a middlebox's 401/403 — leaves a rotating credential
 // possibly already spent.
 export function isAmbiguousCloudRequestFailure(error: unknown): boolean {
-  return !(error instanceof OrcaCloudRequestError) || isUnverifiedCloudAuthRejection(error)
+  return !(error instanceof OrcaCloudRequestError)
+}
+
+/** A 401/403 answered by a proxy, captive portal, or firewall rather than Orca Cloud. */
+export class OrcaCloudUnverifiedRejectionError extends Error {
+  constructor(public readonly statusCode: number) {
+    super(`orca_cloud_unverified_rejection_${statusCode}`)
+    this.name = 'OrcaCloudUnverifiedRejectionError'
+  }
 }
 
 const CLOUD_ERROR_BODY_MAX_BYTES = 16 * 1024
 
-export async function readOrcaCloudErrorCode(response: Response): Promise<string | undefined> {
+async function readOrcaCloudErrorCode(response: Response): Promise<string | undefined> {
   try {
     const body = await readFetchResponseJsonWithinLimit<unknown>(
       response,
@@ -201,12 +198,19 @@ export async function readOrcaCloudErrorCode(response: Response): Promise<string
     if (!body || typeof body !== 'object') {
       return undefined
     }
-    const code = 'error' in body ? body.error : 'code' in body ? body.code : undefined
+    const code = 'code' in body ? body.code : 'error' in body ? body.error : undefined
     return typeof code === 'string' ? code.trim() || undefined : undefined
   } catch {
-    // Non-JSON or oversized: not an Orca Cloud error body.
     return undefined
   }
+}
+
+// Orca Cloud rejects with a JSON `{error}` (auth) or `{code}` (API) body; only that may sign a user out.
+export async function orcaCloudResponseError(response: Response): Promise<Error> {
+  const errorCode = await readOrcaCloudErrorCode(response)
+  return (response.status === 401 || response.status === 403) && errorCode === undefined
+    ? new OrcaCloudUnverifiedRejectionError(response.status)
+    : new OrcaCloudRequestError(response.status, errorCode)
 }
 
 async function postJson<T>(url: string, body: unknown, options?: PostJsonOptions): Promise<T> {
@@ -224,12 +228,7 @@ async function postJson<T>(url: string, body: unknown, options?: PostJsonOptions
     signal: AbortSignal.timeout(options?.timeoutMs ?? CLOUD_REQUEST_TIMEOUT_MS)
   })
   if (!response.ok) {
-    // Only an auth rejection's body matters: it decides whether the user is signed out.
-    if (response.status !== 401 && response.status !== 403) {
-      await cancelUnreadResponseBody(response)
-      throw new OrcaCloudRequestError(response.status)
-    }
-    throw new OrcaCloudRequestError(response.status, await readOrcaCloudErrorCode(response))
+    throw await orcaCloudResponseError(response)
   }
   return (await response.json()) as T
 }

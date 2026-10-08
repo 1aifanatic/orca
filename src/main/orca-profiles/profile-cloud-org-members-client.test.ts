@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OrcaCloudAuthConfig } from './profile-cloud-auth-config'
 import type { OrcaCloudSession } from './profile-cloud-session-store'
-import { OrcaCloudRequestError } from './profile-cloud-client'
+import { OrcaCloudUnverifiedRejectionError } from './profile-cloud-client'
 import {
   changeOrcaCloudOrgMemberRole,
   inviteOrcaCloudOrgMember,
@@ -121,7 +121,8 @@ describe('Orca cloud org members client', () => {
     ).rejects.toMatchObject({ statusCode: 409, errorCode: 'already_invited' })
   })
 
-  it('surfaces a 403 as an OrcaCloudRequestError without an error code when the body is empty', async () => {
+  // An uncoded 403 is not Orca Cloud's answer, so it must not map to a permission outcome.
+  it('surfaces a 403 without an Orca error code as an unverified rejection', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 403,
@@ -135,10 +136,10 @@ describe('Orca cloud org members client', () => {
         userId: 'user-2',
         role: 'admin'
       })
-    ).rejects.toBeInstanceOf(OrcaCloudRequestError)
+    ).rejects.toBeInstanceOf(OrcaCloudUnverifiedRejectionError)
     await expect(
       removeOrcaCloudOrgMember(config, session, { orgId: 'org-1', userId: 'user-2' })
-    ).rejects.toMatchObject({ statusCode: 403, errorCode: undefined })
+    ).rejects.toMatchObject({ statusCode: 403 })
   })
 
   it('posts invite revocations by email', async () => {

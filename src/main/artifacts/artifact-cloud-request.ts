@@ -1,5 +1,5 @@
 import type { ArtifactWriteRequest } from '../../shared/artifacts'
-import { OrcaCloudRequestError } from '../orca-profiles/profile-cloud-client'
+import { orcaCloudResponseError } from '../orca-profiles/profile-cloud-client'
 
 export type ArtifactWriteBody = {
   content: string
@@ -36,8 +36,7 @@ export async function artifactRequest<T>(
     signal: AbortSignal.timeout(20_000)
   })
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { code?: string } | null
-    throw new OrcaCloudRequestError(response.status, body?.code)
+    throw await orcaCloudResponseError(response)
   }
   if (response.status === 204) {
     return undefined as T

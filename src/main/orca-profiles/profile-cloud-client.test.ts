@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cancelTrackingResponse } from '../lib/unread-response-body.test-fixtures'
 import type { OrcaCloudAuthConfig } from './profile-cloud-auth-config'
 import type { OrcaCloudSession } from './profile-cloud-session-store'
 import {
   createOrcaCloudProfile,
   exchangeOrcaCloudAuthCode,
+  OrcaCloudUnverifiedRejectionError,
   refreshOrcaCloudCapabilities,
   refreshOrcaCloudSession,
   selectOrcaCloudOrg
@@ -250,15 +250,32 @@ describe('Orca cloud client', () => {
     })
   })
 
-  it('cancels the unread error-response body so bundled undici cannot crash on socket close', async () => {
-    let cancelledBodies = 0
-    fetchMock.mockResolvedValue(
-      cancelTrackingResponse(502, () => {
-        cancelledBodies += 1
-      })
-    )
+  it('consumes the error-response body so bundled undici cannot crash on socket close', async () => {
+    const response = new Response('<html>Bad gateway</html>', { status: 502 })
+    fetchMock.mockResolvedValue(response)
 
     await expect(refreshOrcaCloudCapabilities(config, session)).rejects.toThrow()
-    expect(cancelledBodies).toBe(1)
+    expect(response.bodyUsed).toBe(true)
+  })
+
+  // A proxy or firewall answering 401/403 must not read as Orca Cloud signing the user out.
+  it('only treats a 401/403 carrying an Orca Cloud error code as a rejection', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('<html>Access denied</html>', { status: 403 }))
+    fetchMock.mockResolvedValueOnce(Response.json({ error: 'invalid_token' }, { status: 401 }))
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ code: 'invalid_access_token' }, { status: 401 })
+    )
+
+    await expect(refreshOrcaCloudCapabilities(config, session)).rejects.toBeInstanceOf(
+      OrcaCloudUnverifiedRejectionError
+    )
+    await expect(refreshOrcaCloudCapabilities(config, session)).rejects.toMatchObject({
+      statusCode: 401,
+      errorCode: 'invalid_token'
+    })
+    await expect(refreshOrcaCloudCapabilities(config, session)).rejects.toMatchObject({
+      statusCode: 401,
+      errorCode: 'invalid_access_token'
+    })
   })
 })

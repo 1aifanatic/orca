@@ -24,11 +24,7 @@ const {
   refreshOrcaCloudCapabilitiesMock: vi.fn(),
   refreshOrcaCloudSessionMock: vi.fn(),
   OrcaCloudRequestErrorMock: class OrcaCloudRequestError extends Error {
-    // Orca Cloud's own rejections always carry a JSON error code.
-    constructor(
-      public readonly statusCode: number,
-      public readonly errorCode: string | undefined = 'invalid_token'
-    ) {
+    constructor(public readonly statusCode: number) {
       super(`orca_cloud_request_failed_${statusCode}`)
       this.name = 'OrcaCloudRequestError'
     }
