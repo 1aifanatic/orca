@@ -3,6 +3,11 @@ import { SQLITE_DATABASE_RUNTIME_INCLUDE } from './vitest-sqlite-database-runtim
 // Real SQLite fixtures keep Node publication and close semantics.
 export const SQLITE_RUNTIME_INCLUDE = [
   ...SQLITE_DATABASE_RUNTIME_INCLUDE,
+  'src/main/acp/acp-structured-sign-in.test.ts',
+  'src/main/acp/acp-structured-auth.test.ts',
+  'src/main/acp/acp-timeline-turn-failures.test.ts',
+  'src/main/acp/acp-structured-session-adapter.test.ts',
+  'src/main/pi/rpc-turn-races.test.ts',
   'src/main/active-view-persistence-boundary.test.ts',
   'src/main/automations/automation-dispatch-host-fence.test.ts',
   'src/main/automations/automation-owner-fencing.test.ts',
@@ -137,6 +142,7 @@ export const SQLITE_RUNTIME_INCLUDE = [
   'src/main/native-chat/agent-session-wire/structured-agent-session-send-restarts-failed-start.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-settled-attach-retry.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-shutdown-cut-row.test.ts',
+  'src/main/native-chat/agent-session-wire/structured-agent-session-signed-out-child.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-stale-turn-verdict.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-start-failure-writer.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-startup-attempt-host.test.ts',

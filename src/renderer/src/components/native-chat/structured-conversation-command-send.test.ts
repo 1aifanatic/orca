@@ -101,7 +101,7 @@ describe('the line under the composer after a conversation command failed', () =
       (await sent(hostResult('compact', { kind: 'restartFailed' }, 'codex'), 'codex')).error
     ).toBe("Codex couldn't restart. Run /compact again.")
     expect((await sent(hostResult('compact', { kind: 'notSignedIn' }), 'claude')).error).toBe(
-      "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings. Run /compact again."
+      "Claude isn't signed in. Run `claude auth login`, or choose an account in Claude Accounts settings. Run /compact again."
     )
     expect((await sent(hostResult('clear', START_FACTS[2], 'codex'), 'codex')).error).toBe(
       "Codex couldn't start. Start a new chat to continue."
@@ -130,7 +130,7 @@ describe('the line under the composer after a conversation command failed', () =
       'Claude を起動できませんでした。/clear をもう一度実行してください。'
     )
     expect((await sent(hostResult('compact', { kind: 'notSignedIn' }))).error).toBe(
-      'Claude にサインインしていません。`claude` を実行して /login でサインインするか、設定の Claude アカウントでアカウントを選択してください。/compact をもう一度実行してください。'
+      'Claude にサインインしていません。`claude auth login` を実行するか、Claude アカウント設定でアカウントを選択してください。/compact をもう一度実行してください。'
     )
   })
 

@@ -757,7 +757,7 @@ describe('agentSessionRefusalCauseParts', () => {
         )
       )
     ).toBe(
-      "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings."
+      "Claude isn't signed in. Run `claude auth login`, or choose an account in Claude Accounts settings."
     )
     expect(
       agentSessionWriteNoticeEnglish(
@@ -801,7 +801,7 @@ describe('agentSessionRefusalCauseParts', () => {
 
   it('writes the same sentences as before where no Retry stands beside them', () => {
     expect(agentSessionFailureSentence({ kind: 'notSignedIn' }, 'rejection')).toBe(
-      'The agent is not signed in for the selected account. Sign in, then send your message again.'
+      'The agent is not signed in. Sign in, then send your message again.'
     )
   })
 

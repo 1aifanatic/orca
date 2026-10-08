@@ -27,13 +27,23 @@ import {
   type QueuedMessageCard
 } from './structured-agent-session-queued-cards'
 import { queuedCardSenderLine } from './native-chat-agent-message-sender-label'
+import { agentSessionFailureStatedByStartRow } from './structured-agent-session-delivery-notices'
+import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-refusal-notice'
 
 /** The visible caption under the text; the default waiting hold needs none. */
-export function queuedMessageCardCaption(card: QueuedMessageCard): string | null {
+export function queuedMessageCardCaption(
+  card: QueuedMessageCard,
+  agentName?: string,
+  statedFailures: readonly AgentSessionFailureFact[] = []
+): string | null {
   switch (card.hold) {
     case 'returned': {
       // Read exactly as a rejected submission: the typed fact decides, the reason is the fallback.
       const reason = card.returnedReason ?? null
+      if (agentSessionFailureStatedByStartRow(card.returnedRejection, statedFailures)) {
+        return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
+      }
       // A consumed draft whose submission a Stop withdrew is not a failure of the
       // message — say what happened rather than "not sent".
       if (
@@ -46,11 +56,14 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
         )
       }
       return agentSessionWriteNoticeText(
-        structuredAgentSessionReturnedCardParts({
-          returnedReason: reason,
-          returnedRejection: card.returnedRejection,
-          command: card.command === true
-        })
+        structuredAgentSessionReturnedCardParts(
+          {
+            returnedReason: reason,
+            returnedRejection: card.returnedRejection,
+            command: card.command === true
+          },
+          { agentName }
+        )
       )
     }
     case 'paused':
@@ -119,6 +132,8 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
 
 export function NativeChatQueuedMessageCard({
   card,
+  agentName,
+  statedFailures,
   showsSteerShortcut,
   steerHeld = false,
   onSteer,
@@ -127,6 +142,8 @@ export function NativeChatQueuedMessageCard({
   onTurnOffQueueing
 }: {
   card: QueuedMessageCard
+  agentName?: string
+  statedFailures?: readonly AgentSessionFailureFact[]
   /** Only the newest card answers Cmd/Ctrl+Enter; only it may show the chord. */
   showsSteerShortcut: boolean
   /** The chat reads Stopping: the card waits for the stop (`NativeChatQueuedMessageList`). */
@@ -137,7 +154,7 @@ export function NativeChatQueuedMessageCard({
   /** Absent when the host does not queue sends, so there is nothing to turn off. */
   onTurnOffQueueing?: () => void
 }): React.JSX.Element {
-  const caption = queuedMessageCardCaption(card)
+  const caption = queuedMessageCardCaption(card, agentName, statedFailures)
   const returned = card.state === 'returned'
   const sendNow = queuedMessageCardSendNow(card)
   const isMac = isMacPlatform()

@@ -30,6 +30,43 @@ function draft(overrides: Partial<AgentSessionQueuedMessage> & { messageId: stri
 }
 
 describe('mobileQueuedMessageCards', () => {
+  it.each([
+    ['Claude', 'claude auth login'],
+    ['Codex', 'codex login'],
+    ['Grok', 'grok login'],
+    ['OpenCode', 'opencode auth login'],
+    ['Pi', '/login'],
+    ['OMP', 'Sign in to OMP.']
+  ])('keeps %s identity and its sign-in action on returned cards', (agentName, guidance) => {
+    const [card] = mobileQueuedMessageCards(
+      [draft({ messageId: 'auth', ...returnedAs(agentSessionFailureFact('notSignedIn')) })],
+      [],
+      { pendingPrompt: false, agentName }
+    )
+    expect(card?.caption).toContain(agentName)
+    expect(card?.caption).toContain(guidance)
+    expect(card?.caption).not.toContain('send your message again')
+    expect(card?.needsAttention).toBe(true)
+  })
+
+  it.each(['Claude', 'Codex'])(
+    'keeps %s managed guidance unless a row already explains it',
+    (agentName) => {
+      const fact = agentSessionFailureFact('notSignedIn', { account: 'managed' })
+      const drafts = [draft({ messageId: 'auth', ...returnedAs(fact) })]
+      const [card] = mobileQueuedMessageCards(drafts, [], { pendingPrompt: false, agentName })
+      expect(card?.caption).toBe(
+        `This ${agentName} account isn't signed in. Sign in again in ${agentName} Accounts settings.`
+      )
+      const [stated] = mobileQueuedMessageCards(drafts, [], {
+        pendingPrompt: false,
+        agentName,
+        statedFailures: [fact]
+      })
+      expect(stated?.caption).toBe('Your message was not sent.')
+    }
+  )
+
   it('marks a /compact card as a command, its text as typed', () => {
     const [card] = mobileQueuedMessageCards(
       [

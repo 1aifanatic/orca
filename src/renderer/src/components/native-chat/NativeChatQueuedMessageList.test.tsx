@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn()
 }))
 
-vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 vi.mock('../../store', () => {
   const state = { updateSettings: mocks.updateSettings }
@@ -31,12 +30,21 @@ import {
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
 import type { AgentSessionQueuePause } from '../../../../shared/agent-session-queued-message-wire'
+import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 
-function renderList(owner: StructuredAgentSessionQueuedMessagesController) {
+function renderList(
+  owner: StructuredAgentSessionQueuedMessagesController,
+  agentName?: string,
+  statedFailures?: readonly AgentSessionFailureFact[]
+) {
   // The app root mounts the provider; tests supply the same context.
   return render(
     <TooltipProvider delayDuration={0}>
-      <NativeChatQueuedMessageList controller={owner} />
+      <NativeChatQueuedMessageList
+        controller={owner}
+        agentName={agentName}
+        statedFailures={statedFailures}
+      />
     </TooltipProvider>
   )
 }
@@ -126,6 +134,60 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('NativeChatQueuedMessageList', () => {
+  it.each([
+    [
+      'Claude',
+      "Claude isn't signed in. Run `claude auth login`, or choose an account in Claude Accounts settings."
+    ],
+    ['Codex', "Codex isn't signed in. Run `codex login`."],
+    ['Grok', 'Sign in to Grok with `grok login` on the computer running this chat.'],
+    [
+      'OpenCode',
+      'Sign in to OpenCode with `opencode auth login` on the computer running this chat.'
+    ],
+    ['Pi', 'Sign in to Pi by running `pi` and using `/login` on the computer running this chat.'],
+    ['OMP', 'Sign in to OMP.']
+  ])(
+    'threads %s identity to returned cards and keeps their Send control',
+    (agentName, sentence) => {
+      renderList(
+        controller([
+          card({
+            messageId: 'auth',
+            state: 'returned',
+            hold: 'returned',
+            returnedReason: 'Host English',
+            returnedRejection: { kind: 'notSignedIn' }
+          })
+        ]),
+        agentName
+      )
+      expect(screen.getByText(sentence)).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
+      expect(screen.queryByText(/send your message again/)).toBeNull()
+    }
+  )
+
+  it.each(['Claude', 'Codex'])(
+    'keeps %s managed guidance and shows only delivery when the row explains auth',
+    (agentName) => {
+      const fact: AgentSessionFailureFact = { kind: 'notSignedIn', account: 'managed' }
+      const owner = controller([
+        card({ messageId: 'auth', state: 'returned', hold: 'returned', returnedRejection: fact })
+      ])
+      const rendered = renderList(owner, agentName)
+      expect(
+        screen.getByText(
+          `This ${agentName} account isn't signed in. Sign in again in ${agentName} Accounts settings.`
+        )
+      ).toBeTruthy()
+      rendered.unmount()
+      renderList(owner, agentName, [fact])
+      expect(screen.getByText('Your message was not sent.')).toBeTruthy()
+      expect(screen.queryByText(/account isn't signed in/)).toBeNull()
+      expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
+    }
+  )
   it('renders only an empty live region when the host holds no drafts', () => {
     const { container } = renderList(controller([]))
     expect(screen.queryByRole('list')).toBeNull()

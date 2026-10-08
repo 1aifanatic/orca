@@ -3,8 +3,13 @@
 // draft's own state plus the live facts the client already holds.
 
 import { nextActionableQueuedMessage } from '../../../src/shared/structured-agent-session-queue-selection'
+import type { AgentSessionFailureFact } from '../../../src/shared/agent-session-failure'
+import { agentSessionFailureStatedByRow } from '../../../src/shared/agent-session-visible-failures'
+import {
+  agentSessionWriteNotDoneParts,
+  agentSessionWriteNoticeEnglish
+} from '../../../src/shared/agent-session-refusal-notice'
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
-import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionReturnedCardParts } from '../../../src/shared/structured-agent-session-rejection-words'
 import {
@@ -41,21 +46,29 @@ function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string 
 }
 
 function returnedCaption(
-  draft: Pick<AgentSessionQueuedMessage, 'returnedReason' | 'returnedRejection' | 'body'>
+  draft: Pick<AgentSessionQueuedMessage, 'returnedReason' | 'returnedRejection' | 'body'>,
+  agentName?: string,
+  statedFailures: readonly AgentSessionFailureFact[] = []
 ): string {
   const reason = draft.returnedReason ?? null
   const rejection = draft.returnedRejection
+  if (agentSessionFailureStatedByRow(rejection, statedFailures)) {
+    return agentSessionWriteNoticeEnglish(agentSessionWriteNotDoneParts('send'))
+  }
   if (dispatchWasWithdrawn({ dispatchState: 'rejected', reason, rejection })) {
     return 'Stopped before it was sent'
   }
   // Worded as the desktop card words it: a fact read whole decides, the host's reason is the
   // fallback, and the card's own Send is the retry, so the words leave out sending again.
   return agentSessionWriteNoticeEnglish(
-    structuredAgentSessionReturnedCardParts({
-      returnedReason: reason,
-      ...(rejection ? { returnedRejection: rejection } : {}),
-      command: draft.body.command !== undefined
-    })
+    structuredAgentSessionReturnedCardParts(
+      {
+        returnedReason: reason,
+        ...(rejection ? { returnedRejection: rejection } : {}),
+        command: draft.body.command !== undefined
+      },
+      { agentName }
+    )
   )
 }
 
@@ -102,7 +115,13 @@ export function mobileQueuePauseLabel(pause: Pick<AgentSessionQueuePause, 'reaso
 export function mobileQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null,
   submissions: readonly Pick<AgentJournalSubmission, 'queuedMessageId' | 'dispatchState'>[],
-  facts: { pendingPrompt: boolean; queuePaused?: boolean; agentWorking?: boolean }
+  facts: {
+    pendingPrompt: boolean
+    queuePaused?: boolean
+    agentWorking?: boolean
+    agentName?: string
+    statedFailures?: readonly AgentSessionFailureFact[]
+  }
 ): MobileQueuedMessageCard[] {
   if (!queuedMessages || queuedMessages.length === 0) {
     return []
@@ -128,7 +147,7 @@ export function mobileQueuedMessageCards(
     const paused = draft.paused === true
     const caption =
       draft.state === 'returned'
-        ? returnedCaption(draft)
+        ? returnedCaption(draft, facts.agentName, facts.statedFailures)
         : paused
           ? pausedCaption(
               draft.pausedReason,

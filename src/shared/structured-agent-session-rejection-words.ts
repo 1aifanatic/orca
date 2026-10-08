@@ -86,15 +86,18 @@ export function structuredAgentSessionAttemptFailureParts(
 }
 
 /** A returned command card's own Send retries it once the agent is idle. */
-export function structuredAgentSessionReturnedCardParts(card: {
-  returnedReason?: string | null
-  returnedRejection?: UnreadAgentSessionFailureFact
-  command?: boolean
-}): AgentSessionWriteNoticePart[] {
+export function structuredAgentSessionReturnedCardParts(
+  card: {
+    returnedReason?: string | null
+    returnedRejection?: UnreadAgentSessionFailureFact
+    command?: boolean
+  },
+  context: AgentSessionFailureWordsContext = {}
+): AgentSessionWriteNoticePart[] {
   const fact = readWholeAgentSessionFailureFact(card.returnedRejection)
   return structuredAgentSessionAttemptFailureParts(
     { kind: 'rejected', reason: card.returnedReason ?? null },
-    { retryControl: !(card.command === true && fact?.kind === 'commandRefused') },
+    { ...context, retryControl: !(card.command === true && fact?.kind === 'commandRefused') },
     fact
   )
 }

@@ -5,7 +5,6 @@ import type {
 import {
   dispatchStructuredAgentSessionComposerCommand,
   isStructuredAgentSessionComposerCommand,
-  type StructuredAgentSessionCommandRefusalCause,
   type StructuredAgentSessionComposerOptions
 } from '../../../src/shared/structured-agent-session-composer'
 import { structuredAgentSessionCommandHostRefusalCause } from '../../../src/shared/structured-agent-session-command-refusal-cause'
@@ -13,6 +12,7 @@ import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-sessio
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { requestStructuredAgentSessionMutation } from './mobile-structured-agent-session-rpc'
+import type { MobileNativeChatSendErrorReporter } from './use-mobile-native-chat-send-error'
 
 /** What the person sees and can do, in the words the desktop uses. */
 function busyCommandText(
@@ -52,7 +52,7 @@ export async function dispatchMobileStructuredCommand(input: {
   /** The host holds this command as a card behind work in flight, so nothing here holds it. */
   waitsInLine: (command: AgentSessionConversationCommand) => boolean
   /** `refusedWhile`: what the phone showed the refused command waiting on. */
-  onError: (message: string, refusedWhile?: StructuredAgentSessionCommandRefusalCause) => void
+  onError: MobileNativeChatSendErrorReporter
   timeoutMs: number
 }): Promise<MobileNativeChatSendOutcome | null> {
   if (input.pending.current) {
@@ -115,7 +115,10 @@ export async function dispatchMobileStructuredCommand(input: {
     }
   })
   if (outcome.error) {
-    input.onError(outcome.error, outcome.refusedWhile)
+    input.onError(
+      outcome.error,
+      outcome.refusedWhile ? { refusedWhile: outcome.refusedWhile } : undefined
+    )
   }
   return unknown ? 'unknown' : outcome.accepted ? 'accepted' : 'rejected'
 }
