@@ -91,7 +91,8 @@ import {
 } from '@/runtime/runtime-environment-revision'
 import {
   isRuntimeEnvironmentPairingChangedError,
-  refreshRuntimeEnvironmentsAfterPairingChange
+  refreshRuntimeEnvironmentsAfterPairingChange,
+  runtimeEnvironmentPairingChangedError
 } from '@/runtime/runtime-environment-pairing-refresh'
 
 const REMOTE_TERMINAL_INPUT_FLUSH_MS = 8
@@ -218,21 +219,18 @@ export function createRemoteRuntimePtyTransport(
   let authoritativeExecutionHostId: ExecutionHostId | null = executionHostId ?? null
   let authoritativeHostPlatform: NodeJS.Platform | null = null
   let authoritativePtyIncarnationId: string | null = null
-  let currentRuntimeEnvironmentId = runtimeEnvironmentId
+  // Why: never adopts a persisted existingPtyId's environment; the worktree owner chose this transport.
+  const currentRuntimeEnvironmentId = runtimeEnvironmentId
   // Why: the pane belongs to the machine it was opened on; it may follow that machine's own
   // re-pair (a server update) but never a same-id re-pair to another or unverified machine.
-  const pairingRevisionByEnvironmentId = new Map<string, number | undefined>()
-  function paneRuntimeEnvironmentRevision(environmentId: string): number | undefined {
-    const revision = resolveContinuedRuntimeEnvironmentRevision(
-      environmentId,
-      pairingRevisionByEnvironmentId.has(environmentId)
-        ? pairingRevisionByEnvironmentId.get(environmentId)
-        : getRuntimeEnvironmentRevision(environmentId)
-    )
-    pairingRevisionByEnvironmentId.set(environmentId, revision)
-    return revision
+  let paneRevision = resolveContinuedRuntimeEnvironmentRevision(
+    runtimeEnvironmentId,
+    getRuntimeEnvironmentRevision(runtimeEnvironmentId)
+  )
+  function currentPaneRevision(): number | undefined {
+    paneRevision = resolveContinuedRuntimeEnvironmentRevision(runtimeEnvironmentId, paneRevision)
+    return paneRevision
   }
-  paneRuntimeEnvironmentRevision(runtimeEnvironmentId)
   let multiplexedStream: RemoteRuntimeMultiplexedTerminal | null = null
   let multiplexedStreamHandle: string | null = null
   let desiredOutputPaused = false
@@ -1088,7 +1086,7 @@ export function createRemoteRuntimePtyTransport(
       method,
       params,
       timeoutMs,
-      expectedEnvironmentPairingRevision: paneRuntimeEnvironmentRevision(environmentId)
+      expectedEnvironmentPairingRevision: currentPaneRevision()
     })
     try {
       return unwrapRuntimeRpcResult(response as RuntimeRpcResponse<TResult>)
@@ -2093,10 +2091,9 @@ export function createRemoteRuntimePtyTransport(
       generation === subscriptionGeneration &&
       (expectedRecoveryEpoch === undefined || recovery.ownsEpoch(expectedRecoveryEpoch)) &&
       isCurrentRemoteTerminal(subscribedHandle, subscribedPtyId)
-    const paneRevision = paneRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)
-    if (paneRevision !== getRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)) {
+    if (currentPaneRevision() !== getRuntimeEnvironmentRevision(currentRuntimeEnvironmentId)) {
       // Why local: the shared stream would subscribe on a pairing not proven to be this pane's machine.
-      throw new Error('Runtime environment pairing changed; refresh and try again')
+      throw runtimeEnvironmentPairingChangedError()
     }
     const nextStream = await getRemoteRuntimeTerminalMultiplexer(
       currentRuntimeEnvironmentId
@@ -2323,8 +2320,6 @@ export function createRemoteRuntimePtyTransport(
     terminalEnded = false
     connecting = true
     emitRecoveryState(true)
-    // Why: persisted ids are untrusted cache state; the worktree owner selected this transport and must remain authoritative.
-    currentRuntimeEnvironmentId = runtimeEnvironmentId
     const previousHandle = handle
     const previousPtyId = remotePtyId
     const nextHandle = getRemoteRuntimeTerminalHandle(options.existingPtyId)
@@ -2642,7 +2637,7 @@ export function createRemoteRuntimePtyTransport(
           })
           // Snapshot parity must not delay attachment to a terminal the host already created.
           void refreshWebRuntimeSessionTabsSnapshot(createEnvironmentId, worktreeId, {
-            expectedEnvironmentPairingRevision: paneRuntimeEnvironmentRevision(createEnvironmentId),
+            expectedEnvironmentPairingRevision: currentPaneRevision(),
             acceptCurrentSnapshot: true,
             confirmAgentSessionHandoff: {
               provisionalTabId: tabId,
