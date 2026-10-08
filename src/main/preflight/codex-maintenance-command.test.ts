@@ -23,7 +23,10 @@ vi.mock('./codex-cli-installation', () => ({
   }),
   codexCliPackagePaths: packages
 }))
-vi.mock('../ipc/command-path-resolver', () => ({ listLocalCommandPaths: lookup }))
+vi.mock('../ipc/command-path-resolver', () => ({
+  listLocalCommandPaths: lookup,
+  resolveLocalExecutionCommand: async (program: string) => ({ status: 'resolved', program })
+}))
 vi.mock('../../shared/node-cli-command-resolution', () => ({
   resolveCliCommand: resolve,
   withCliRuntimeOnPath: (_program: string, env: NodeJS.ProcessEnv) => env

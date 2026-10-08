@@ -8,7 +8,7 @@ import {
 } from '../../shared/codex-cli-installation'
 import { resolveSpawn, type ProcessSpec } from '../../shared/child-process/run-process'
 import { readAgentCliVersion } from '../agent-cli-version-probe'
-import { listLocalCommandPaths } from '../ipc/command-path-resolver'
+import { resolveLocalExecutionCommand } from '../ipc/command-path-resolver'
 import { CodexCliInstallationCache } from './codex-cli-installation-cache'
 import { codexNpmInstallationFiles } from './codex-npm-installation-files'
 
@@ -62,10 +62,11 @@ export async function readCodexCliInstallation(
 export async function readCodexCliInstallationEvidence(
   input: Pick<ProcessSpec, 'program' | 'cwd' | 'env'>
 ) {
+  const cwd = input.cwd ?? process.cwd()
   const environment = Object.entries({ ...process.env, ...input.env }).sort(([left], [right]) =>
     left.localeCompare(right)
   )
-  const configuration = JSON.stringify([input.program, input.cwd ?? process.cwd(), environment])
+  const configuration = JSON.stringify([input.program, cwd, environment])
   // A host-private salt keeps low-entropy secrets out of client-visible identities.
   const configurationId = createHmac('sha256', configurationSecret)
     .update(configuration)
@@ -75,26 +76,12 @@ export async function readCodexCliInstallationEvidence(
     expiresAt: Date.now() + 30_000,
     configurationId
   })
-  const program = isAbsolute(input.program)
-    ? input.program
-    : (
-        await listLocalCommandPaths(input.program, {
-          env: input.env,
-          cwd: input.cwd,
-          maxResults: 1
-        })
-      )[0]
-  if (!program) {
-    return immediate(codexCliInstallation(false, null))
+  const selected = await resolveLocalExecutionCommand(input.program, { ...input, cwd })
+  if (selected.status !== 'resolved') {
+    return immediate(codexCliInstallation(selected.status !== 'missing', null))
   }
-  try {
-    await stat(program)
-  } catch (error) {
-    const missing =
-      typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
-    return immediate(codexCliInstallation(!missing, null))
-  }
-  const launch = { ...input, program }
+  const program = selected.program
+  const launch = { ...input, program, cwd }
   const fingerprint = await binaryFingerprint(launch)
   const context = createHash('sha256').update(configuration).digest('hex')
   const evidence = await cache.readEvidence(

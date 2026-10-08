@@ -14,7 +14,7 @@ import {
 import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
 import type { ProcessSpec } from '../../shared/child-process/run-process'
 import { resolveCodexStructuredInvocation } from '../codex/codex-structured-launch-resolution'
-import { listLocalCommandPaths } from '../ipc/command-path-resolver'
+import { listLocalCommandPaths, resolveLocalExecutionCommand } from '../ipc/command-path-resolver'
 import { codexCliPackagePaths, readCodexCliInstallationEvidence } from './codex-cli-installation'
 
 const Package = z.object({ name: z.literal('@openai/codex') })
@@ -46,15 +46,15 @@ async function resolveMaintenanceInvocation(
   cwd: string | undefined,
   settings: CodexCommandSettings
 ): Promise<ResolvedCodexMaintenanceCommand> {
-  const program =
-    (await listLocalCommandPaths(command, { env: environment, cwd, maxResults: 1 }))[0] ?? command
+  const selected = await resolveLocalExecutionCommand(command, { env: environment, cwd })
+  const program = selected.status === 'resolved' ? selected.program : command
   const launch = {
     program,
     cwd,
     env: environment
   }
   const { installation, ...evidence } = await readCodexCliInstallationEvidence(launch)
-  const packagePaths = await codexCliPackagePaths(launch)
+  const packagePaths = selected.status === 'resolved' ? await codexCliPackagePaths(launch) : []
   const npmPackages = (
     await Promise.all(
       packagePaths.map(async (file) => {

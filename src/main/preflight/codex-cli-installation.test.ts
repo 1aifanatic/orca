@@ -153,7 +153,9 @@ describe('Codex binary version cache', () => {
     prints('codex-cli 0.135.0')
     await readCodexCliInstallation({ program, cwd: tmpdir(), env: { CODEX_SELECTION: 'old' } })
     prints('codex-cli 0.136.0')
-    const first = { program, cwd: join(tmpdir(), 'workspace'), env: { CODEX_SELECTION: 'old' } }
+    const cwd = join(program, '..', 'workspace')
+    await mkdir(cwd)
+    const first = { program, cwd, env: { CODEX_SELECTION: 'old' } }
     expect((await readCodexCliInstallation(first)).status).toBe('ready')
     prints('codex-cli 0.135.0')
     expect(
