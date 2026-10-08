@@ -44,9 +44,14 @@ class RelayLink {
 }
 
 /**
- * Relays a paired phone's requests for a server's workspace to that server, over one socket per
- * (phone connection, server) signed in as the phone's delegated device. It never reads a reply
- * beyond its id and stream ids; see docs/reference/mobile-desktop-relay.md.
+ * Relays a phone request carrying `executionHost: runtime:<env>` to that configured server, over one
+ * socket per (phone connection, server) signed in as the phone's delegated device (minted by
+ * `pairing.delegatedMobileDevice.sync`, tokens held in memory only). Contract:
+ * - The desktop never interprets replies; it renumbers only host stream ids (RELAYED_STREAM_CARRIERS).
+ * - Upstream, the phone's desktop token is swapped wherever it appears, not per field.
+ * - Only `execution-host` methods relay (MOBILE_RPC_METHOD_ROUTES); both tables have census tests.
+ * - A server without the delegated-devices capability is `update-needed`; nothing relays to it.
+ * - Hidden until S2: MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY is not advertised yet.
  */
 export class MobileDesktopRelay {
   private readonly links = new Map<string, RelayLink>()

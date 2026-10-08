@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY } from '../../../shared/delegated-mobile-device-contract'
+import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import { RemoteRuntimeClientError } from '../../../shared/remote-runtime-client-error'
 import type { RemoteRuntimePassthroughCallbacks } from '../../../shared/remote-runtime-passthrough-socket'
 import { MobileDesktopRelay, type RelayedPhone } from './mobile-desktop-relay'
@@ -37,7 +38,10 @@ vi.mock('../../../shared/remote-runtime-passthrough-socket', () => ({
 
 const ok = (result: unknown) => ({ id: 'x', ok: true as const, result, _meta: { runtimeId: 'h' } })
 
-function relayWithPhone() {
+function relayWithPhone(
+  syncResponse: () => RuntimeRpcResponse<unknown> = () =>
+    ok({ devices: [{ phoneKey: 'phone-1', deviceId: 'child', token: 'host-token' }] })
+) {
   const hosts: MobileDesktopRelayHosts = {
     resolve: async (environmentId) => ({
       environmentId,
@@ -47,7 +51,7 @@ function relayWithPhone() {
     call: async (_host, method) =>
       method === 'status.get'
         ? ok({ capabilities: [DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY] })
-        : ok({ devices: [{ phoneKey: 'phone-1', deviceId: 'child', token: 'host-token' }] }),
+        : syncResponse(),
     onEnvironmentRetired: () => () => {}
   }
   const relay = new MobileDesktopRelay({
@@ -136,5 +140,31 @@ describe('MobileDesktopRelay', () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(2))
     relay.closePhoneConnection('conn-1')
     expect(sockets[1]!.closed).toBe(true)
+  })
+
+  it('treats a server whose sync failed as unavailable, and syncs again on the next request', async () => {
+    sockets.length = 0
+    let failing = true
+    const { relay, phone, replies } = relayWithPhone(() =>
+      failing
+        ? {
+            id: 'x',
+            ok: false,
+            error: { code: 'runtime_error', message: 'delegated_device_revoke_failed' }
+          }
+        : ok({ devices: [{ phoneKey: 'phone-1', deviceId: 'child', token: 'host-token' }] })
+    )
+    relay.forward(phone, 'env-1', { id: 'a', method: 'terminal.list' }, '{"id":"a"}')
+    await vi.waitFor(() => expect(replies).toHaveLength(1))
+    expect(JSON.parse(replies[0]!)).toMatchObject({
+      id: 'a',
+      error: { code: 'remote_runtime_unavailable' }
+    })
+    await expect(relay.hostState('env-1')).resolves.toBe('unavailable')
+    expect(sockets).toHaveLength(0)
+
+    failing = false
+    relay.forward(phone, 'env-1', { id: 'b', method: 'terminal.list' }, '{"id":"b"}')
+    await vi.waitFor(() => expect(sockets[0]?.sent).toHaveLength(1))
   })
 })
