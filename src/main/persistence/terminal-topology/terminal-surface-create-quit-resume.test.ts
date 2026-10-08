@@ -238,12 +238,17 @@ describe('a tab or pane the window creates, quit before it binds', () => {
     }
   })
 
-  it('keeps a tab adopted for a live PTY whose pane has not mounted', async () => {
+  it('keeps a tab adopted for a live PTY whose pane has not mounted, bound to it', async () => {
     const { directory, store, create, stageQuit } = await windowOnStore()
     const tab: TerminalTab = { ...row('tab-adopted', WORKTREE), ptyId: 'pty-live' }
-    await expect(create(newTab(WORKTREE, tab, LEFT))).resolves.toMatchObject({
-      status: 'committed'
-    })
+    // The adoption sends its create and its binding back to back, without awaiting the create.
+    const created = create(newTab(WORKTREE, tab, LEFT))
+    const bound = invokeHandlers.get('session:terminal-bind-leaf')!(
+      {},
+      { worktreeId: WORKTREE, tabId: tab.id, leafId: LEFT, ptyId: 'pty-live' }
+    )
+    await expect(created).resolves.toMatchObject({ status: 'committed' })
+    await expect(bound).resolves.toMatchObject({ status: 'bound' })
     const window = structuredClone(store.getWorkspaceSession())
     window.tabsByWorktree = { [WORKTREE]: [tab] }
     expect(stageQuit(window)).toEqual({ ok: true })
@@ -251,8 +256,13 @@ describe('a tab or pane the window creates, quit before it binds', () => {
     const relaunched = await reopenTopologyStore(store, directory)
     try {
       const session = relaunched.getWorkspaceSession()
-      expect(session.tabsByWorktree[WORKTREE]?.map((entry) => entry.id)).toEqual([tab.id])
-      expect(session.terminalLayoutsByTabId[tab.id]?.root).toEqual({ type: 'leaf', leafId: LEFT })
+      expect(session.tabsByWorktree[WORKTREE]?.map((entry) => [entry.id, entry.ptyId])).toEqual([
+        [tab.id, 'pty-live']
+      ])
+      expect(session.terminalLayoutsByTabId[tab.id]).toMatchObject({
+        root: { type: 'leaf', leafId: LEFT },
+        ptyIdsByLeafId: { [LEFT]: 'pty-live' }
+      })
     } finally {
       await relaunched.freezeWritesAsync()
     }

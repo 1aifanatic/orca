@@ -1,6 +1,7 @@
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import { worktreeIdsEqual } from '../../../shared/worktree/id'
 import type { useAppStore } from '@/store'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 import { resolveTerminalTabPtyOwnership } from './terminal-tab-for-pty-id'
 import type {
   LiveTerminalSurfaceOwner,
@@ -57,23 +58,39 @@ export function bindLivePtyToExactSurface(
       return false
     }
     store.updateTabPtyId(terminal.tabId, terminal.ptyId)
-    // The pane's binding is main's: it records the adopted PTY, and its push brings it to the pane.
-    void globalThis.window?.api?.session?.bindTerminalLeaf?.({
-      worktreeId: existing.ownerWorktreeId,
-      tabId: terminal.tabId,
-      leafId: pane.leafId,
-      ptyId: terminal.ptyId
-    })
+    bindLeafInMain(existing.ownerWorktreeId, terminal.tabId, pane.leafId, terminal.ptyId)
     return true
   }
+  return mintTabForLivePty(store, worktreeId, terminal.ptyId, {
+    tabId: terminal.tabId,
+    leafId: pane.leafId
+  })
+}
+
+/** The pane's binding is main's: it records the adopted PTY, and its push brings it to the pane. */
+function bindLeafInMain(worktreeId: string, tabId: string, leafId: string, ptyId: string): void {
+  void globalThis.window?.api?.session?.bindTerminalLeaf?.({ worktreeId, tabId, leafId, ptyId })
+}
+
+/** A new tab for a live PTY; bound in main at once, so a restart before its pane mounts reattaches. */
+function mintTabForLivePty(
+  store: LiveSurfaceAdoptionStore,
+  worktreeId: string,
+  ptyId: string,
+  { tabId, leafId }: { tabId?: string; leafId: string }
+): boolean {
   const created = store.createTab(worktreeId, undefined, undefined, {
-    id: terminal.tabId,
-    initialLeafId: pane.leafId,
-    initialPtyId: terminal.ptyId,
+    ...(tabId ? { id: tabId } : {}),
+    initialLeafId: leafId,
+    initialPtyId: ptyId,
     activate: false,
     recordInteraction: false
   })
-  return created.id === terminal.tabId
+  if (tabId && created.id !== tabId) {
+    return false
+  }
+  bindLeafInMain(worktreeId, created.id, leafId, ptyId)
+  return true
 }
 
 function tabExists(store: LiveSurfaceAdoptionStore, tabId: string): boolean {
@@ -205,11 +222,7 @@ export async function adoptLiveWorkspacePtySurfaces(
     ) {
       continue
     }
-    getState().createTab(worktreeId, undefined, undefined, {
-      initialPtyId: ptyId,
-      activate: false,
-      recordInteraction: false
-    })
+    mintTabForLivePty(getState(), worktreeId, ptyId, { leafId: createBrowserUuid() })
   }
   return { surfaced, declinedPtyIds }
 }

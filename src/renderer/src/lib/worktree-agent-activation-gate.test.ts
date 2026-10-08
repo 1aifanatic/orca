@@ -281,13 +281,24 @@ describe('worktree agent activation gate', () => {
       sessions: [listed(ptyId)],
       surfaceOwners: new Map([[ptyId, UNOWNED]])
     })
+    const bindTerminalLeaf = vi.fn(async () => ({ status: 'bound' as const }))
+    vi.stubGlobal('window', { api: { session: { bindTerminalLeaf } } })
 
-    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+    try {
+      await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+    } finally {
+      vi.unstubAllGlobals()
+    }
 
-    expect(createTab).toHaveBeenCalledWith(WORKTREE_ID, undefined, undefined, {
-      initialPtyId: ptyId,
-      activate: false,
-      recordInteraction: false
+    expect(createTab).toHaveBeenCalledOnce()
+    // Main binds the minted pane at once, so a restart before it mounts reattaches the agent.
+    const [minted] = deps.getState().tabsByWorktree[WORKTREE_ID]
+    const leafId = deps.getState().terminalLayoutsByTabId[minted.id]?.activeLeafId
+    expect(bindTerminalLeaf).toHaveBeenCalledExactlyOnceWith({
+      worktreeId: WORKTREE_ID,
+      tabId: minted.id,
+      leafId,
+      ptyId
     })
     expect(resume).not.toHaveBeenCalled()
   })
@@ -311,6 +322,7 @@ describe('worktree agent activation gate', () => {
 
     expect(createTab).toHaveBeenCalledOnce()
     expect(createTab).toHaveBeenCalledWith(WORKTREE_ID, undefined, undefined, {
+      initialLeafId: expect.any(String),
       initialPtyId: livePtyId,
       activate: false,
       recordInteraction: false
@@ -433,6 +445,7 @@ describe('worktree agent activation gate', () => {
     await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
 
     expect(createTab).toHaveBeenCalledWith(WORKTREE_ID, undefined, undefined, {
+      initialLeafId: expect.any(String),
       initialPtyId: ptyId,
       activate: false,
       recordInteraction: false
@@ -453,6 +466,7 @@ describe('worktree agent activation gate', () => {
     await expect(runWorktreeAgentActivationGate(folderWorkspaceId, deps)).resolves.toBe('adopted')
 
     expect(createTab).toHaveBeenCalledWith(folderWorkspaceId, undefined, undefined, {
+      initialLeafId: expect.any(String),
       initialPtyId: ptyId,
       activate: false,
       recordInteraction: false
@@ -901,6 +915,7 @@ describe('worktree agent activation gate', () => {
     await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
 
     expect(createTab).toHaveBeenCalledWith(WORKTREE_ID, undefined, undefined, {
+      initialLeafId: expect.any(String),
       initialPtyId: livePtyId,
       activate: false,
       recordInteraction: false
