@@ -10,6 +10,7 @@ import {
   requestRelayAssignment
 } from '../runtime/relay/relay-http-client'
 import { setMainHttpClient, type MainHttpClient } from './http-client'
+import { setRelayAndCloudUseSystemProxy } from './relay-cloud-proxy-route'
 
 const config: OrcaCloudAuthConfig = {
   apiBaseUrl: 'https://orca-cloud.example',
@@ -33,20 +34,23 @@ const session = {
   capabilities: { flags: {}, refreshedAt: 1 }
 }
 
-// Why: Node's global fetch ignores the desktop's system/PAC proxy; these calls must use the port.
-describe('relay and Orca Cloud HTTP use the main HTTP client', () => {
+// Why: Node's global fetch ignores the desktop's system/PAC proxy; with the setting on these calls must use the port.
+describe('relay and Orca Cloud HTTP use the main HTTP client when the proxy setting is on', () => {
   const portFetch = vi.fn<MainHttpClient['fetch']>()
-  const globalFetch = vi.fn(async () => {
+  const globalFetch = vi.fn<MainHttpClient['fetch']>(async () => {
     throw new Error('global fetch bypasses the desktop proxy')
   })
 
   beforeEach(() => {
     portFetch.mockReset()
+    globalFetch.mockClear()
     vi.stubGlobal('fetch', globalFetch)
     setMainHttpClient({ fetch: portFetch, proxySession: () => null })
+    setRelayAndCloudUseSystemProxy(true)
   })
 
   afterEach(() => {
+    setRelayAndCloudUseSystemProxy(false)
     setMainHttpClient(null)
     vi.unstubAllGlobals()
   })
@@ -101,5 +105,15 @@ describe('relay and Orca Cloud HTTP use the main HTTP client', () => {
       'https://orca-cloud.example/v1/artifacts/mine'
     ])
     expect(globalFetch).not.toHaveBeenCalled()
+  })
+
+  it('keeps the pre-setting Node fetch path when the setting is off', async () => {
+    setRelayAndCloudUseSystemProxy(false)
+    globalFetch.mockImplementationOnce(async () => Response.json({ items: [] }))
+
+    await artifactRequest('https://orca-cloud.example', 'access-token', '/mine')
+
+    expect(globalFetch).toHaveBeenCalledTimes(1)
+    expect(portFetch).not.toHaveBeenCalled()
   })
 })

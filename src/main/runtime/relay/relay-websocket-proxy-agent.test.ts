@@ -1,7 +1,8 @@
 import { Agent } from 'node:http'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import nacl from 'tweetnacl'
 import { WebSocketServer } from 'ws'
+import { setRelayAndCloudUseSystemProxy } from '../../network/relay-cloud-proxy-route'
 import { sessionProxyWebSocketAgent } from '../../network/session-proxy-agent'
 import { CloudRelayTransport } from '../rpc/relay-transport'
 import { RelayControlClient } from './relay-control-client'
@@ -13,7 +14,13 @@ describe('relay websockets use the session proxy agent', () => {
   const servers: WebSocketServer[] = []
   const cleanups: (() => unknown)[] = []
 
+  beforeEach(() => {
+    vi.mocked(sessionProxyWebSocketAgent).mockReset()
+    setRelayAndCloudUseSystemProxy(true)
+  })
+
   afterEach(async () => {
+    setRelayAndCloudUseSystemProxy(false)
     await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()))
     await Promise.all(
       servers.splice(0).map(
@@ -102,5 +109,31 @@ describe('relay websockets use the session proxy agent', () => {
       `ws://127.0.0.1:${port}/v1/host/data/conn-1`
     )
     expect(dials).toHaveBeenCalled()
+  })
+
+  it('dials directly without the agent when the setting is off', async () => {
+    setRelayAndCloudUseSystemProxy(false)
+    const { port, connected } = await startServer()
+    const transport = new CloudRelayTransport({
+      cellUrl: `http://127.0.0.1:${port}`,
+      relayHostId: 'AbCdEf0123_-xyZ9',
+      generation: 1
+    })
+    cleanups.push(() => transport.stop())
+    transport.onMessage(vi.fn())
+    transport.onConnectionClose(vi.fn())
+    await transport.start()
+    void transport
+      .openConnection({
+        connId: 'conn-1',
+        connTicket: 'ticket-1',
+        kind: 'resume',
+        relayDeviceId: 'device-1',
+        attachDeadlineMs: 1_000
+      })
+      .catch(() => undefined)
+
+    await expect(connected).resolves.toBe('/v1/host/data/conn-1')
+    expect(sessionProxyWebSocketAgent).not.toHaveBeenCalled()
   })
 })

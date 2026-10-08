@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { getMainHttpClient, type MainHttpClient } from '../../network/http-client'
+import type { MainHttpClient } from '../../network/http-client'
+import { relayAndCloudFetch } from '../../network/relay-cloud-proxy-route'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import { cancelUnreadResponseBody } from '../../lib/unread-response-body'
 import { parseRelayRetryAfterMs } from '../../../shared/relay-retry-after-header'
@@ -104,9 +105,8 @@ function isAllowedRelayOrigin(value: string): boolean {
   }
 }
 
-// Why the port: on the desktop it is Chromium's stack, which follows the system/PAC proxy.
 function relayFetch(input: { fetch?: typeof globalThis.fetch }): MainHttpClient['fetch'] {
-  return input.fetch ?? getMainHttpClient().fetch
+  return input.fetch ?? relayAndCloudFetch()
 }
 
 export async function exchangeRelayAuthorization(input: {

@@ -1,5 +1,5 @@
 import WebSocket, { type RawData } from 'ws'
-import { sessionProxyWebSocketAgent } from '../../network/session-proxy-agent'
+import { relayWebSocketAgent } from '../../network/relay-cloud-proxy-route'
 import { forEachWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { RpcTransport } from './transport'
 import type { MobileSocketTransport, MobileSocketTransportMetadata } from './mobile-socket-wiring'
@@ -67,7 +67,7 @@ export class CloudRelayTransport implements RpcTransport, MobileSocketTransport 
       options.createSocket ??
       ((url) =>
         new WebSocket(url, {
-          agent: sessionProxyWebSocketAgent(url),
+          agent: relayWebSocketAgent(url),
           perMessageDeflate: false,
           maxPayload: MAX_RELAY_MESSAGE_BYTES
         }))
