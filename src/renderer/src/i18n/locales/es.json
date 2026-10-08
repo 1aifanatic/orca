@@ -16857,7 +16857,8 @@
         },
         "extraAgentArgs": {
           "advanced": "Avanzado",
-          "configured": "Configurado",
+          "clear": "Borrar argumentos",
+          "unsupported": "Este agente aún no admite argumentos adicionales.",
           "label": "Argumentos adicionales del agente",
           "needsFreshSession": "Los argumentos adicionales requieren una sesión nueva en cada ejecución.",
           "useFreshSessions": "Usar sesiones nuevas",

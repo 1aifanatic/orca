@@ -16962,7 +16962,8 @@
         },
         "extraAgentArgs": {
           "advanced": "Avancé",
-          "configured": "Configuré",
+          "clear": "Effacer les arguments",
+          "unsupported": "Cet agent ne prend pas encore en charge les arguments supplémentaires.",
           "label": "Arguments supplémentaires de l'agent",
           "needsFreshSession": "Les arguments supplémentaires exigent une nouvelle session à chaque exécution.",
           "useFreshSessions": "Utiliser de nouvelles sessions",
