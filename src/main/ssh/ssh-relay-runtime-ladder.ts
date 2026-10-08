@@ -24,7 +24,6 @@ import type { GlibcVersion } from './orcad-deployment-target'
 import type { RemoteOperatingSystem } from './ssh-remote-platform'
 import {
   isGlibcBelow,
-  isPinnedRuntimeRefusal,
   PINNED_NODE_GLIBC_FLOOR,
   type RelayRuntimeFallbackReason
 } from './ssh-relay-pinned-node'
@@ -148,19 +147,6 @@ export function relayRuntimeStepAfterRefusal(
 export const REMOTE_RUNTIME_UNAVAILABLE_REASONS = ['home_noexec', 'no_runtime'] as const
 export type RemoteRuntimeUnavailableReason = (typeof REMOTE_RUNTIME_UNAVAILABLE_REASONS)[number]
 
-/** A noexec seen anywhere in the pass, remembered or proved, rules out advising a host Node. */
-export function remoteRuntimeUnavailableReason(
-  lastReason: RelayRuntimeStepReason | null,
-  noexecSeen = false,
-  hostOs: RemoteOperatingSystem | null = null
-): RemoteRuntimeUnavailableReason {
-  // Why not on Windows: its 'noexec' is an application-control block, not a mount the user can fix.
-  if (hostOs === 'win32') {
-    return 'no_runtime'
-  }
-  return lastReason === 'noexec' || noexecSeen ? 'home_noexec' : 'no_runtime'
-}
-
 const REMOTE_RUNTIME_UNAVAILABLE_MESSAGES: Record<RemoteRuntimeUnavailableReason, string> = {
   home_noexec:
     "Orca can't run its remote runtime on this host: the home directory is mounted noexec, so " +
@@ -177,25 +163,6 @@ const REMEMBERED_NOEXEC_MESSAGE =
   "Orca can't run its remote runtime on this host: an earlier connect found the home directory " +
   'mounted noexec, so nothing under ~/.orca-remote may execute. Remote terminals and file ' +
   'browsing are unavailable until exec is allowed there; Orca re-checks on the next connect.'
-
-// Why its own wording: the host's Node ran but refused the prebuilt addons, so only the unsupported npm path is left.
-const HOST_NODE_REFUSED_MESSAGE =
-  "Orca can't run its remote runtime on this host: its bundled Node.js was refused and the " +
-  "host's Node.js can't load Orca's prebuilt addons. Host Node, which builds them with npm on " +
-  "the host, is an unsupported configuration; to opt in anyway, set this host's Runtime to Host " +
-  'Node in its SSH settings, then reconnect.'
-
-// Why no Host Node advice: the refusal was Orca's own (a download or a host it can't classify), not the host's Node.
-const NO_SUPPORTED_RUNTIME_MESSAGE =
-  "Orca can't run its remote runtime on this host: its bundled Node.js was refused and no other " +
-  'supported runtime could start. Reconnect to retry.'
-
-// Why Host Node here: Windows has no rung below A yet, so the host-Node route is the only other one.
-const WINDOWS_HOST_MESSAGE =
-  "Orca can't run its remote runtime on this Windows host: its bundled Node.js was refused, which " +
-  'can mean security software or an application control policy blocks it. Host Node, which ' +
-  "builds terminal support with npm on the host, is an unsupported configuration; to opt in, set this host's " +
-  'Runtime to Host Node in its SSH settings, then reconnect.'
 
 const WINDOWS_NO_HOST_NODE_MESSAGE =
   "Orca can't run its remote runtime on this Windows host: its bundled Node.js could not run, " +
@@ -215,37 +182,43 @@ const HOST_NODE_FALLBACK_FAILED_MESSAGE =
   "host's own Node.js relay, an unsupported fallback, also failed to install. Check the host's " +
   'disk space and its Node.js and npm setup, then reconnect.'
 
-export function remoteRuntimeUnavailableMessage(
+export type RemoteRuntimeUnavailableState = {
+  firstRefusal: RelayRuntimeStepReason | null
+  /** D is reached only from the host-Node fallback, so 'host_node_missing' or 'install_failed'. */
+  hostNodeRefusal: RelayRuntimeStepReason | null
+  /** A noexec seen anywhere in the pass rules out advising a host Node. */
+  noexec: 'remembered' | 'proved' | null
+  hostOs: RemoteOperatingSystem | null
+}
+
+export function remoteRuntimeUnavailable(state: RemoteRuntimeUnavailableState): {
+  reason: RemoteRuntimeUnavailableReason
+  message: string
+} {
+  const { noexec, hostOs } = state
+  // Why not on Windows: its 'noexec' is an application-control block, not a mount the user can fix.
+  const reason = hostOs !== 'win32' && noexec !== null ? 'home_noexec' : 'no_runtime'
+  return { reason, message: unavailableMessage(reason, state) }
+}
+
+function unavailableMessage(
   reason: RemoteRuntimeUnavailableReason,
-  refusal: RelayRuntimeStepReason | null,
-  noexecRemembered = false,
-  /** The last refusal before D: the host-Node fallback's. */
-  hostNodeRefusal: RelayRuntimeStepReason | null = null,
-  hostOs: RemoteOperatingSystem | null = null
+  { firstRefusal, hostNodeRefusal, noexec, hostOs }: RemoteRuntimeUnavailableState
 ): string {
-  if (refusal === 'artifacts_unavailable' && hostNodeRefusal === 'host_node_missing') {
-    return `${CLIENT_ARTIFACTS_NO_HOST_NODE_MESSAGE} (Orca's Node: ${refusal})`
+  if (firstRefusal === 'artifacts_unavailable' && hostNodeRefusal === 'host_node_missing') {
+    return `${CLIENT_ARTIFACTS_NO_HOST_NODE_MESSAGE} (Orca's Node: ${firstRefusal})`
   }
   if (hostNodeRefusal === 'install_failed' && reason !== 'home_noexec') {
-    return `${HOST_NODE_FALLBACK_FAILED_MESSAGE} (Orca's Node: ${refusal ?? 'none'})`
+    return `${HOST_NODE_FALLBACK_FAILED_MESSAGE} (Orca's Node: ${firstRefusal ?? 'none'})`
   }
   if (hostOs === 'win32') {
-    const base =
-      hostNodeRefusal === 'host_node_missing' ? WINDOWS_NO_HOST_NODE_MESSAGE : WINDOWS_HOST_MESSAGE
-    return `${base} (Orca's Node: ${refusal ?? 'none'})`
+    return `${WINDOWS_NO_HOST_NODE_MESSAGE} (Orca's Node: ${firstRefusal ?? 'none'})`
   }
   if (reason === 'home_noexec') {
-    return noexecRemembered
+    return noexec === 'remembered'
       ? REMEMBERED_NOEXEC_MESSAGE
       : REMOTE_RUNTIME_UNAVAILABLE_MESSAGES.home_noexec
   }
-  if (hostNodeRefusal && hostNodeRefusal !== 'host_node_missing') {
-    // Only a refusal the host's Node itself answered could change under an npm build on the host.
-    const base = isPinnedRuntimeRefusal(hostNodeRefusal)
-      ? HOST_NODE_REFUSED_MESSAGE
-      : NO_SUPPORTED_RUNTIME_MESSAGE
-    return `${base} (Orca's Node: ${refusal ?? 'none'}; host Node: ${hostNodeRefusal})`
-  }
-  const base = REMOTE_RUNTIME_UNAVAILABLE_MESSAGES[reason]
-  return refusal ? `${base} (Orca's Node: ${refusal})` : base
+  const base = REMOTE_RUNTIME_UNAVAILABLE_MESSAGES.no_runtime
+  return firstRefusal ? `${base} (Orca's Node: ${firstRefusal})` : base
 }

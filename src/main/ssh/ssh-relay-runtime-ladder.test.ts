@@ -6,8 +6,8 @@ import {
   relayRuntimeLadder,
   relayRuntimeStepAfterRefusal,
   relayRuntimeStorePins,
-  remoteRuntimeUnavailableMessage,
-  remoteRuntimeUnavailableReason,
+  remoteRuntimeUnavailable,
+  type RemoteRuntimeUnavailableState,
   rungBCompatRuntimeFor
 } from './ssh-relay-runtime-ladder'
 import { resolveSshRemoteRuntime } from './ssh-relay-pinned-node'
@@ -135,65 +135,72 @@ describe('relay runtime ladder (design D6)', () => {
     )
   })
 
+  const linuxD: RemoteRuntimeUnavailableState = {
+    firstRefusal: 'missing_lib',
+    hostNodeRefusal: 'host_node_missing',
+    noexec: null,
+    hostOs: 'linux'
+  }
+
   it('names the rung D reason in words the user can act on', () => {
-    expect(remoteRuntimeUnavailableReason('noexec')).toBe('home_noexec')
-    expect(remoteRuntimeUnavailableReason('host_node_missing')).toBe('no_runtime')
-    expect(remoteRuntimeUnavailableMessage('home_noexec', 'noexec')).toContain('mounted noexec')
-    expect(remoteRuntimeUnavailableMessage('no_runtime', 'host_node_missing')).toContain(
-      'Install Node.js 18+'
-    )
-    expect(
-      remoteRuntimeUnavailableMessage('no_runtime', 'missing_lib', false, 'host_node_missing')
-    ).toContain('Install Node.js 18+')
-  })
-
-  it('offers Host Node only as an unsupported opt-in, and only when the host Node refused', () => {
-    const message = remoteRuntimeUnavailableMessage(
-      'no_runtime',
-      'libc_floor',
-      false,
-      'missing_lib'
-    )
-    expect(message).toContain("set this host's Runtime to Host Node")
-    expect(message).toContain('unsupported configuration')
-    expect(message).toContain("Orca's Node: libc_floor; host Node: missing_lib")
-    expect(message).not.toContain('Install Node.js')
-  })
-
-  it.each(['artifacts_unavailable', 'target_unresolved', 'windows_host_unsupported'] as const)(
-    'never points at Host Node when rung C refused for %s',
-    (hostNodeRefusal) => {
-      const message = remoteRuntimeUnavailableMessage(
-        'no_runtime',
-        'security_software',
-        false,
-        hostNodeRefusal
+    expect(remoteRuntimeUnavailable(linuxD)).toEqual({
+      reason: 'no_runtime',
+      message: expect.stringContaining(
+        "Install Node.js 18+ and npm on the host, then reconnect. (Orca's Node: missing_lib)"
       )
-      expect(message).not.toContain('Host Node')
-      expect(message).not.toContain('Install Node.js')
-      expect(message).toContain(`host Node: ${hostNodeRefusal}`)
-    }
-  )
+    })
+    const noexec = remoteRuntimeUnavailable({ ...linuxD, firstRefusal: 'noexec', noexec: 'proved' })
+    expect(noexec.reason).toBe('home_noexec')
+    expect(noexec.message).toContain('mounted noexec')
+    expect(noexec.message).not.toContain("Orca's Node:")
+    expect(remoteRuntimeUnavailable({ ...linuxD, firstRefusal: null }).message).not.toContain(
+      "Orca's Node:"
+    )
+  })
 
   it('never advises installing Node when a remembered noexec defeated the tree', () => {
-    expect(remoteRuntimeUnavailableReason('host_node_missing', true)).toBe('home_noexec')
-    const message = remoteRuntimeUnavailableMessage('home_noexec', 'noexec', true)
+    const { reason, message } = remoteRuntimeUnavailable({ ...linuxD, noexec: 'remembered' })
+    expect(reason).toBe('home_noexec')
     expect(message).toContain('earlier connect found the home directory')
     expect(message).not.toContain('Install Node.js')
   })
 
-  it('words a Windows rung D for Windows, offering Host Node rather than a noexec mount', () => {
-    expect(remoteRuntimeUnavailableReason('noexec', false, 'win32')).toBe('no_runtime')
-    const message = remoteRuntimeUnavailableMessage(
-      'no_runtime',
-      'noexec',
-      false,
-      'windows_host_unsupported',
-      'win32'
+  it('blames this copy of Orca when its artifacts were missing and the host has no Node', () => {
+    const { message } = remoteRuntimeUnavailable({
+      ...linuxD,
+      firstRefusal: 'artifacts_unavailable'
+    })
+    expect(message).toContain('this copy of Orca could not prepare its bundled')
+    expect(message).toContain("(Orca's Node: artifacts_unavailable)")
+  })
+
+  it('reports a failed host-Node fallback install unless noexec explains it', () => {
+    const failed = { ...linuxD, hostNodeRefusal: 'install_failed' as const }
+    expect(remoteRuntimeUnavailable(failed).message).toContain(
+      "also failed to install. Check the host's disk space"
     )
+    expect(remoteRuntimeUnavailable({ ...failed, firstRefusal: null }).message).toContain(
+      "(Orca's Node: none)"
+    )
+    expect(remoteRuntimeUnavailable({ ...failed, noexec: 'proved' }).message).toContain(
+      'mounted noexec'
+    )
+    const windows = remoteRuntimeUnavailable({ ...failed, hostOs: 'win32', noexec: 'proved' })
+    expect(windows).toMatchObject({ reason: 'no_runtime' })
+    expect(windows.message).toContain('also failed to install')
+  })
+
+  it('words a Windows rung D for Windows, never as a noexec mount', () => {
+    const { reason, message } = remoteRuntimeUnavailable({
+      ...linuxD,
+      firstRefusal: 'noexec',
+      noexec: 'proved',
+      hostOs: 'win32'
+    })
+    expect(reason).toBe('no_runtime')
     expect(message).toContain('Windows host')
-    expect(message).toContain("set this host's Runtime to Host Node")
-    expect(message).not.toContain('noexec,')
+    expect(message).toContain("Orca's Node.js through security software")
+    expect(message).toContain("(Orca's Node: noexec)")
     expect(message).not.toContain('mounted')
     expect(message).not.toContain('~/.orca-remote')
   })

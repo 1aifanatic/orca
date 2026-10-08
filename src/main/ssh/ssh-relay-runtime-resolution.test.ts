@@ -109,6 +109,14 @@ describe('RelayRuntimeLadderRun', () => {
     expect(error).toMatchObject({ data: { reason: 'home_noexec' } })
   })
 
+  it('keeps a replayed noexec remembered when a later rung proves noexec again', () => {
+    const run = new RelayRuntimeLadderRun('ssh-1', null, true)
+    run.refused('A', 'noexec', true)
+    run.refused('legacy', 'noexec')
+    expect(run.noexec).toBe('remembered')
+    expect(remoteRuntimeUnavailableError(run).message).toContain('earlier connect found')
+  })
+
   it('still advises a host Node when rung A refused for another reason', () => {
     const run = new RelayRuntimeLadderRun('ssh-1', null, true)
     run.refused('A', 'libc_floor')

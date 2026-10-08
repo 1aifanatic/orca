@@ -17,8 +17,7 @@ import {
   isPinnedRefusalExpired
 } from './ssh-relay-pinned-refusal-cache'
 import {
-  remoteRuntimeUnavailableMessage,
-  remoteRuntimeUnavailableReason,
+  remoteRuntimeUnavailable,
   type RelayRuntimeStep,
   type RemoteRuntimeUnavailableReason
 } from './ssh-relay-runtime-ladder'
@@ -87,16 +86,14 @@ export class RelayRuntimeLadderRun {
   pinnedRefusal: PinnedRuntimeRefusal | null = null
   /** The pinned refusal was replayed from a cache rather than proved on this pass. */
   pinnedRefusalRemembered = false
-  /** A noexec this pass replayed from a cache rather than proved. */
-  noexecRemembered = false
+  /** A noexec this pass replayed from a cache, else proved; a replay is never downgraded. */
+  noexec: 'remembered' | 'proved' | null = null
   /** A rung refused because this client lacked Orca's artifacts; nothing it proves is the host's. */
   clientArtifactGap = false
   /** The Node the fallback's strict probe found, reused by the launch. */
   hostNodePath: string | null = null
   /** This step issued its relay launch; failures after it never step down. */
   launchStarted = false
-  /** A noexec this pass proved rather than replayed. */
-  noexecProved = false
   selfTest: RelayRuntimeSelfTestOutcome = 'not_run'
   runtimeTransfer: RelayRuntimeTransfer = 'none'
   hostNode: HostNodeVersion | null = null
@@ -119,11 +116,7 @@ export class RelayRuntimeLadderRun {
       this.clientArtifactGap = true
     }
     if (reason === 'noexec') {
-      if (remembered) {
-        this.noexecRemembered = true
-      } else {
-        this.noexecProved = true
-      }
+      this.noexec = remembered ? 'remembered' : (this.noexec ?? 'proved')
     }
     if (step === 'A' && isPinnedRuntimeRefusal(reason)) {
       this.pinnedRefusal = reason
@@ -143,7 +136,7 @@ export class RelayRuntimeLadderRun {
     // Why also at D on a replayed noexec: nothing connects there, so the next connect re-proves A
     // instead of the message's "allow exec" advice being unfixable.
     const disproved = rung === 'C' && this.selfTest === 'passed'
-    const replayedAtD = rung === 'D' && this.noexecRemembered
+    const replayedAtD = rung === 'D' && this.noexec === 'remembered'
     if ((disproved || replayedAtD) && this.pinnedRefusal === 'noexec') {
       this.pinnedRefusal = null
       if (this.facts) {
@@ -214,22 +207,19 @@ export class RelayRuntimeLadderRun {
 
 /** Rung D: no runtime runs on this host. Carries the classified cause for structured readers. */
 export class RemoteRuntimeUnavailableError extends Error {
+  readonly reason: RemoteRuntimeUnavailableReason
   readonly data: TerminalUnavailableCause
 
-  constructor(
-    readonly reason: RemoteRuntimeUnavailableReason,
-    run: RelayRuntimeLadderRun
-  ) {
-    super(
-      remoteRuntimeUnavailableMessage(
-        reason,
-        run.firstRefusal,
-        run.noexecRemembered,
-        run.lastRefusal,
-        run.host?.os ?? null
-      )
-    )
+  constructor(run: RelayRuntimeLadderRun) {
+    const { reason, message } = remoteRuntimeUnavailable({
+      firstRefusal: run.firstRefusal,
+      hostNodeRefusal: run.lastRefusal,
+      noexec: run.noexec,
+      hostOs: run.host?.os ?? null
+    })
+    super(message)
     this.name = 'RemoteRuntimeUnavailableError'
+    this.reason = reason
     const glibc = run.facts?.glibc
     this.data = {
       status: 'blocked',
@@ -253,14 +243,7 @@ export class RemoteRuntimeUnavailableError extends Error {
 }
 
 export function remoteRuntimeUnavailableError(run: RelayRuntimeLadderRun): Error {
-  return new RemoteRuntimeUnavailableError(
-    remoteRuntimeUnavailableReason(
-      run.lastRefusal,
-      run.noexecRemembered || run.noexecProved,
-      run.host?.os ?? null
-    ),
-    run
-  )
+  return new RemoteRuntimeUnavailableError(run)
 }
 
 export function sshTargetRelayRuntimeDecisionStore(registry: {
