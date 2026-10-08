@@ -303,6 +303,33 @@ async function addFolderWorkspace(page: Page): Promise<ScenarioSetup> {
 }
 
 /**
+ * Main reveals the split to the window only if the window's runtime graph already lists the first
+ * terminal. The natural repro lost that race; an idle e2e window wins it in ~80 ms, so hold the
+ * window busy from just after the first reveal until well past main's split.
+ */
+async function stallRendererOnFirstSetupTab(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const store = window.__store!
+    const unsubscribe = store.subscribe((state) => {
+      const revealed = Object.entries(state.tabsByWorktree).some(
+        ([worktreeId, tabs]) => worktreeId.endsWith('parity-setup') && (tabs ?? []).length > 0
+      )
+      if (!revealed) {
+        return
+      }
+      unsubscribe()
+      // After the reveal's own task, before the graph sync it scheduled.
+      setTimeout(() => {
+        const until = performance.now() + 3_000
+        while (performance.now() < until) {
+          // Busy, as a loaded renderer is: no timer or IPC runs.
+        }
+      }, 0)
+    })
+  })
+}
+
+/**
  * STA-9417's shape: the CLI creates a worktree whose setup script runs in a split of its first
  * terminal, with the window open on another worktree; the user then opens it for the first time.
  */
@@ -324,6 +351,7 @@ async function addHostCreatedSetupSplitWorktree(
   await page.evaluate(() =>
     window.__store!.getState().updateSettings({ setupScriptLaunchMode: 'split-vertical' })
   )
+  await stallRendererOnFirstSetupTab(page)
   const client = new RuntimeClient(userDataDir, 30_000)
   const added = await client.call<{ repo: { id: string } }>('repo.add', {
     path: repoPath,
@@ -366,17 +394,41 @@ async function openSetupSplitWorktree({ page, userDataDir }: Journey): Promise<v
     .toBeDefined()
   const client = new RuntimeClient(userDataDir, 30_000)
   // Main has spawned the first terminal and the setup split before the user opens the worktree.
+  let hostPtyIds: string[] = []
   await expect
     .poll(async () => {
       const listed = await client
         .call<RuntimeTerminalListResult>('terminal.list', { worktree: `id:${setupWorktreeId!}` })
         .catch(() => null)
-      return listed?.result.terminals.length ?? 0
+      hostPtyIds = (listed?.result.terminals ?? []).flatMap((terminal) =>
+        terminal.ptyId ? [terminal.ptyId] : []
+      )
+      return hostPtyIds.length
     })
     .toBe(2)
   await activateWorkspaceByClick(page, setupWorktreeId!)
   await waitForActiveTerminalManager(page)
-  await waitForBoundPanes(page, 2)
+  // Main either mints a second tab for the setup terminal or leaves it with no pane at all, so
+  // wait for every host terminal to have a pane but capture whichever state activation settles in.
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    const allBound = await page.evaluate(
+      ([worktreeId, ptyIds]) => {
+        const state = window.__store!.getState()
+        const bound = new Set(
+          (state.tabsByWorktree[worktreeId] ?? []).flatMap((tab) =>
+            Object.values(state.terminalLayoutsByTabId[tab.id]?.ptyIdsByLeafId ?? {})
+          )
+        )
+        return ptyIds.every((ptyId) => bound.has(ptyId))
+      },
+      [setupWorktreeId!, hostPtyIds] as const
+    )
+    if (allBound) {
+      return
+    }
+    await page.waitForTimeout(250)
+  }
 }
 
 /** A slept agent pane, through the user's sidebar Sleep, so the quit and relaunch resume it. */

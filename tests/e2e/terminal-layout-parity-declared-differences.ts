@@ -33,15 +33,14 @@ export const TERMINAL_LAYOUT_PARITY_DECLARED_DIFFERENCES: readonly DeclaredParit
     reason: 'Main keeps the topology fields it authors; a window save no longer rewrites them.'
   })),
   {
+    // The bug itself: main mints a second tab for the setup terminal (or leaves it with no pane);
+    // the extra tab renumbers every later id, so the whole checkpoint differs.
     scenario: 'setup-split-first-activation',
     bugId: 'STA-9417',
-    paths: [
-      '[0].renderer.tabsByWorktree.#2::<setup-worktree>[0].startupCwd',
-      '[0].persisted.local.tabsByWorktree.#2::<setup-worktree>[0].startupCwd'
-    ],
+    paths: ['[0].renderer', '[0].persisted.local'],
     reason:
-      "A host-created tab keeps main's row (its start folder is the worktree root); the window " +
-      'no longer replaces it with its own copy first.'
+      'Main mints a duplicate tab for the setup split on first activation; the core keeps one ' +
+      "tab whose split holds both terminals, and keeps main's row (start folder) for that tab."
   }
 ]
 
