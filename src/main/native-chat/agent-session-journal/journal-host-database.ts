@@ -73,9 +73,9 @@ export class JournalHostDatabase {
   /** Last, after every store has drained. A close that fails keeps the handle, so the retried
    *  teardown closes this same connection. */
   close(): void {
+    this.stopOperationMaintenance()
     this.connection?.close()
     this.connection = null
-    this.stopOperationMaintenance()
   }
 
   /**

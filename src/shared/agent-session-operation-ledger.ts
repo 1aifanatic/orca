@@ -237,36 +237,9 @@ export function agentSessionOperationExpiry(
   )
 }
 
-/** The unexpired row a globally scoped id already holds, under whichever caller admitted it. */
-export function findAgentSessionGlobalOperationRow(
-  rows: ReadonlyMap<string, AgentSessionOperationRow>,
-  operationId: string,
-  now: number
-): AgentSessionOperationRow | undefined {
-  for (const row of rows.values()) {
-    if (row.expiresAt > now && row.operationId === operationId) {
-      return row
-    }
-  }
-  return undefined
-}
-
-export function pruneAgentSessionOperationRows(
-  rows: ReadonlyMap<string, AgentSessionOperationRow>,
-  now: number
-): Map<string, AgentSessionOperationRow> {
-  const kept = new Map<string, AgentSessionOperationRow>()
-  for (const [key, row] of rows) {
-    if (row.expiresAt > now) {
-      kept.set(key, row)
-    }
-  }
-  return kept
-}
-
 /**
  * Decide what a mutating call with this operation id means against the persisted ledger. Callers
- * must prune first; a row that is present is a row that is still authoritative.
+ * must drop expired rows first; a row that is present is a row that is still authoritative.
  */
 export function evaluateAgentSessionOperation(args: {
   rows: ReadonlyMap<string, AgentSessionOperationRow>

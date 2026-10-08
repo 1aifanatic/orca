@@ -118,6 +118,15 @@ function launchRanInPane(row: AgentSessionOperationRow, paneKey: string): boolea
   return outcome.kind === 'terminal' && outcome.paneKey === paneKey
 }
 
+/** Reading launch bookkeeping must leave the launch or spawn as it was, never stop it. */
+export function readLaunchBookkeepingOr<T>(read: () => T, fallback: T): T {
+  try {
+    return read()
+  } catch {
+    return fallback
+  }
+}
+
 /** The pane's fate as the record tells it. Exported for the record-only cases a test pins. */
 export function agentLaunchPaneVerdictFromRecord(
   owning: readonly AgentSessionOperationRow[],
@@ -144,7 +153,7 @@ export type AgentLaunchPaneEvidence = {
   /** A process holds the pane, live or by its persisted binding: the spawn adopts it, whatever the
    *  record says. */
   isPaneLive(paneKey: string): boolean
-  /** The record's rows when the store is already open; null when it is not. */
+  /** The record's rows owning the pane when the store is already open; null when it is not. */
   openedRows(
     pane: AgentSessionOperationOwnedPane,
     now: number

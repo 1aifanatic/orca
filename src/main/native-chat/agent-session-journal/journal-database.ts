@@ -83,7 +83,7 @@ export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
     // writable open with no `user_version` bump (see `ensureQueuedMessagesTable`).
     ensureQueuedMessagesTable(probe)
     ensureAgentSessionAttachmentClaimTables(probe)
-    runJournalTransaction(probe, () => ensureAgentSessionOperationIndexes(probe))
+    buildOperationIndexes(probe)
     hardenSqliteDatabaseFiles(dbPath)
     transferred = true
     return { db: probe, readOnly: false }
@@ -91,6 +91,26 @@ export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
     if (!transferred) {
       probe.close()
     }
+  }
+}
+
+/** Receipt indexes only speed lookups: a failed build warns and the next open retries it. */
+function buildOperationIndexes(db: Database.Database): void {
+  let stranded = false
+  try {
+    runJournalTransaction(
+      db,
+      () => ensureAgentSessionOperationIndexes(db),
+      () => {
+        stranded = true
+      }
+    )
+  } catch (error) {
+    // A connection still inside the failed transaction is unusable.
+    if (stranded) {
+      throw error
+    }
+    console.warn('[journal-open] operation receipt index build skipped:', error)
   }
 }
 

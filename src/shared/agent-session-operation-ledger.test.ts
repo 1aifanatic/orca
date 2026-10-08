@@ -11,7 +11,6 @@ import {
   pendingAgentSessionOperationRow,
   settleAgentSessionOperation,
   isAgentSessionOperationRow,
-  pruneAgentSessionOperationRows,
   type AgentSessionOperationRow
 } from './agent-session-operation-ledger'
 
@@ -189,25 +188,14 @@ describe('retention', () => {
   it('keeps a tombstone strictly longer than its id can be admitted as new', () => {
     const expiry = agentSessionOperationExpiry(NOW, NOW)
     const lastAdmissibleAt = NOW + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS
-    expect(expiry).toBeGreaterThan(lastAdmissibleAt)
     // Why: a retry landing in that gap would become a second spawn instead of a replay.
-    const rows = new Map<string, AgentSessionOperationRow>()
-    admit(rows)
-    expect(pruneAgentSessionOperationRows(rows, lastAdmissibleAt).size).toBe(1)
-    expect(evaluate(pruneAgentSessionOperationRows(rows, lastAdmissibleAt)).decision).toBe('replay')
+    expect(expiry).toBeGreaterThan(lastAdmissibleAt)
   })
 
   it('anchors retention to the later of recording and stamping', () => {
     const late = agentSessionOperationExpiry(NOW + 10_000, NOW)
     expect(late).toBe(agentSessionOperationExpiry(NOW + 10_000, NOW + 10_000))
     expect(late).toBeGreaterThan(agentSessionOperationExpiry(NOW, NOW))
-  })
-
-  it('drops only rows past their own expiry', () => {
-    const rows = new Map<string, AgentSessionOperationRow>()
-    const row = admit(rows)
-    expect(pruneAgentSessionOperationRows(rows, row.expiresAt).size).toBe(0)
-    expect(pruneAgentSessionOperationRows(rows, row.expiresAt - 1).size).toBe(1)
   })
 })
 

@@ -95,7 +95,7 @@ export class AgentSessionStoreTransactions {
     )
   }
 
-  /** The committed state. A transaction in flight never shows here until its rows have landed. */
+  /** The committed state, except `operations`: it reads the journal, so an open transaction shows. */
   get state(): AgentSessionStoreState {
     return this.published
   }
@@ -119,9 +119,10 @@ export class AgentSessionStoreTransactions {
   }
 
   /**
-   * `apply`'s rows, written inside a journal transaction the caller runs and adopted once it
-   * commits. Exact without the queue: `write` and `committed` run in one synchronous step, so no
-   * store transaction can commit between the draft's staging and its adoption.
+   * `apply`'s rows, written inside a journal transaction the caller runs on this store's connection
+   * (operation rows go straight through it) and adopted once it commits. Exact without the queue:
+   * `write` and `committed` run in one synchronous step, so no store transaction can commit between
+   * the draft's staging and its adoption.
    */
   receipt(apply: (draft: AgentSessionStoreState) => void): JournalOperationReceipt {
     let staged: StagedStoreTransaction<void> | null = null
@@ -129,6 +130,12 @@ export class AgentSessionStoreTransactions {
       write: (db) => {
         if (this.journalDatabase.readOnly) {
           throw readOnlyStoreRefusal()
+        }
+        if (db !== this.journalDatabase.db) {
+          throw new AgentSessionJournalError(
+            'journal_row_rejected',
+            "an operation receipt must commit on its store's own journal connection"
+          )
         }
         staged = this.stage(apply)
         const writes = staged.writes

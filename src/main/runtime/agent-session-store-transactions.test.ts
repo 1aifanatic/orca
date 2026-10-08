@@ -198,6 +198,18 @@ describe('a receipt', () => {
     await store.setConversationName('chat-a-0001', 'after')
     expect(await persistedStatus()).toBe('pending')
   })
+
+  it('refuses a transaction on another connection, whose rollback would not undo its receipt', async () => {
+    const store = await pendingOperation()
+    const receipt = store.operationOutcomeReceipt({ callerKey: 'client-1', operationId, outcome })
+    const other = new Database(journalDatabasePath(root))
+    try {
+      expect(() => receipt.write(other)).toThrow("store's own journal connection")
+    } finally {
+      other.close()
+    }
+    expect(await persistedStatus()).toBe('pending')
+  })
 })
 
 describe('a change a load would refuse', () => {

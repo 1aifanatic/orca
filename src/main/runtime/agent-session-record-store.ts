@@ -311,8 +311,9 @@ export class AgentSessionRecordStore {
     claimAfter: ClaimAfterAdmission
   ) => this.transact((draft) => admitAndClaimAgentSessionOperationInto(draft, args, claimAfter))
 
-  recordOperationOutcome = (args: AgentSessionOperationSettlement): Promise<void> =>
-    this.transact((draft) => settleAgentSessionOperationInto(draft, args))
+  async recordOperationOutcome(args: AgentSessionOperationSettlement): Promise<void> {
+    await this.transact((draft) => settleAgentSessionOperationInto(draft, args))
+  }
 
   /** The same settlement, committed by the journal write that makes it true. It changes only the
    *  ledger, so no record listener is owed. */

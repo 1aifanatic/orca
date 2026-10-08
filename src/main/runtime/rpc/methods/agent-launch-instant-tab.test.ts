@@ -249,6 +249,18 @@ describe('the instant tab', () => {
     expect(terminalOptions(runtime)).toMatchObject({ tabId: TAB_ID, leafId: LEAF_ID })
   })
 
+  it('is still shown when the record cannot be read at the publish', async () => {
+    const runtime = hostWithWindow({ terminalPaneKey: PANE_KEY })
+    runtime.openedAgentSessionRecordStore.mockImplementationOnce(() => {
+      throw new Error('journal_closed')
+    })
+
+    await replayLaunch(runtime, { paneKey: PANE_KEY }, CLI)
+
+    expect(runtime.published[0]).toMatchObject({ tabId: TAB_ID, leafId: LEAF_ID })
+    expect(terminalOptions(runtime)).toMatchObject({ tabId: TAB_ID, leafId: LEAF_ID })
+  })
+
   it('names a pane the host minted when the caller sent none, and spawns into that pane', async () => {
     const runtime = hostWithWindow()
 
