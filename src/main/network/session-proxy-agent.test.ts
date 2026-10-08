@@ -172,10 +172,10 @@ describe('SessionProxyAgent', () => {
     await expect(roundTrip(port(relay), new SessionProxyAgent(session))).resolves.toBe('echo:ping')
   })
 
-  it('fails the socket instead of going direct when the only proxy refuses the tunnel', async () => {
+  it('fails the socket instead of going direct when the proxy refuses the tunnel', async () => {
     const relay = await startEchoRelay()
     const proxy = await startConnectProxy(407)
-    const session = fakeSession(`PROXY 127.0.0.1:${port(proxy.server)}`)
+    const session = fakeSession(`PROXY 127.0.0.1:${port(proxy.server)}; DIRECT`)
 
     await expect(roundTrip(port(relay), new SessionProxyAgent(session))).rejects.toThrow(
       'proxy_tunnel_rejected_407'

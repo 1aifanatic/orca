@@ -96,7 +96,7 @@ describe('relay and Orca Cloud HTTP use the main HTTP client when the proxy sett
     )
     await refreshOrcaCloudSession(config, session)
     portFetch.mockResolvedValueOnce(Response.json({ members: [], invites: [] }))
-    await listOrcaCloudOrgMembers(config, session, 'org-1').catch(() => undefined)
+    await listOrcaCloudOrgMembers(config, session, 'org-1')
     portFetch.mockResolvedValueOnce(Response.json({ items: [] }))
     await artifactRequest('https://orca-cloud.example', 'access-token', '/mine')
 

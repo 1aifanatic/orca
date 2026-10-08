@@ -43,6 +43,14 @@ export function parseResolvedProxyRoutes(resolved: string): ResolvedProxyRoute[]
   return routes
 }
 
+// A proxy that answered and refused is a policy decision, not an unreachable route.
+class ProxyTunnelRejectedError extends Error {
+  constructor(statusCode: number | undefined) {
+    super(`proxy_tunnel_rejected_${statusCode}`)
+    this.name = 'ProxyTunnelRejectedError'
+  }
+}
+
 function hostForAuthority(host: string): string {
   return isIP(host) === 6 ? `[${host}]` : host
 }
@@ -79,7 +87,7 @@ function openProxyTunnel(
       clearTimeout(deadline)
       if (response.statusCode !== 200) {
         socket.destroy()
-        reject(new Error(`proxy_tunnel_rejected_${response.statusCode}`))
+        reject(new ProxyTunnelRejectedError(response.statusCode))
         return
       }
       if (head.length > 0) {
@@ -141,6 +149,10 @@ export class SessionProxyAgent extends Agent {
       try {
         return this.startTls(options, await openProxyTunnel(this.proxySession, route, authority))
       } catch (error) {
+        // Like Chromium, fall back only when the proxy is unreachable, never past a refusal.
+        if (error instanceof ProxyTunnelRejectedError) {
+          throw error
+        }
         lastError = error
       }
     }
