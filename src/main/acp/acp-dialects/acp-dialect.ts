@@ -41,6 +41,8 @@ export type AcpDialectNotification =
 /** Hooks interpret extensions; lifecycle and row identity stay shared. */
 export type AcpDialect = {
   injectedPromptIdentity?: true
+  /** A tool update in the shared shape (`rawOutput.stdout`, `rawOutput.exitCode`), read first. */
+  normalizeToolUpdate?(update: ToolCallUpdate): ToolCallUpdate
   toolName?(update: ToolCallUpdate): string | undefined
   toolBackgroundTasks?(
     update: ToolCallUpdate,
@@ -53,6 +55,7 @@ export type AcpDialect = {
   settleRequest?(method: string, params: unknown): AcpRequestSettlement | undefined
   /** The provider's words in a `session/prompt` error answer, when its message is generic. */
   promptErrorDetail?(error: AcpAgentError): string | undefined
+  authenticationRequired?(error: AcpAgentError): boolean
   /** The row for a failed turn the provider gave no words for. */
   failedTurnText?(stopReason: string): string
 }

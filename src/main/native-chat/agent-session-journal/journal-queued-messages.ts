@@ -16,7 +16,7 @@ import {
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
-import type { JournalOperationReceipt, JournalRowTransactionHook } from './journal-row-writer'
+import type { JournalOperationReceipt } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
 import { holdQueuedMessages } from './queued-message-holds'
 import {
@@ -45,7 +45,10 @@ import {
   settleQueuedMessagesForRow
 } from './queued-message-settlement'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
+import type { JournalAttachmentClaim } from './journal-submission-hook'
 import type { JournalWriteBody, JournalWriteResult } from './journal-write-queue'
+import { QueuedMessageNotConsumableError } from './queued-message-consume-error'
+export { QueuedMessageNotConsumableError } from './queued-message-consume-error'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
 export const QUEUED_MESSAGE_REPLAY_WINDOW_MS =
@@ -66,6 +69,7 @@ export type JournalQueuedMessagesDeps = {
    *  does — no call site can forget. In-transaction consume and the returned
    *  transition already ride their row's own commit. */
   committed: () => void
+  claimAttachments: JournalAttachmentClaim
 }
 
 export class JournalQueuedMessages {
@@ -109,21 +113,20 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
-  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused;
-   *  `holdReason` carries a hold of its own over with it. `receipt`: the send's ledger answer,
-   *  committed with the draft only when this inserts it. */
+  /** Attachments and the send receipt commit with the card. */
   insert(
     input: {
       messageId: string
       body: AgentJournalMessageItem
       fingerprint: string
       hostInstance: string
-      carriedFrom?: string
+      requireAttachments?: true
       holdReason?: QueuedMessageHoldReason
     },
     receipt?: JournalOperationReceipt
   ): Promise<QueuedMessageRow> {
     const { sessionId } = this.deps
+    const { requireAttachments, ...draft } = input
     let inserted = false
     return this.transact(
       (db) => {
@@ -133,10 +136,11 @@ export class JournalQueuedMessages {
           // gets here, so an existing row is the same accept landing twice.
           return existing
         }
+        this.deps.claimAttachments(db, input.body, requireAttachments === true)
         inserted = true
         const { epoch, lastSequence } = this.deps.state()
         const row = insertQueuedMessage(db, {
-          ...input,
+          ...draft,
           sessionId,
           queuedAt: { epoch, sequence: lastSequence },
           now: this.deps.now()
@@ -233,6 +237,21 @@ export class JournalQueuedMessages {
         }),
       (withdrawn) => withdrawn.length > 0
     )
+  }
+
+  /** Withdraw commands with the clear's divider and receipt on the same connection. */
+  withdrawInTransaction(
+    db: Database.Database,
+    input: { messageIds: readonly string[]; settledByOp: string }
+  ): void {
+    if (this.deps.database().db !== db) {
+      throw new AgentSessionJournalError('journal_closed', 'withdraw crossed database handles')
+    }
+    this.changeRevision += withdrawQueuedMessages(db, {
+      ...input,
+      sessionId: this.deps.sessionId,
+      now: this.deps.now()
+    }).length
   }
 
   /** One standalone draft-table transaction on the journal's queue; one that
@@ -360,24 +379,5 @@ export class JournalQueuedMessages {
       },
       (changed) => changed > 0
     ).then(() => undefined)
-  }
-}
-
-/** The per-append hook converting one draft inside the append's own transaction. */
-export function queuedMessageConsumeHook(
-  queuedMessages: JournalQueuedMessages,
-  consumedAs: string,
-  consume: JournalSubmissionConsume
-): JournalRowTransactionHook {
-  return (db) => queuedMessages.consumeInTransaction(db, { ...consume, consumedAs })
-}
-
-export class QueuedMessageNotConsumableError extends Error {
-  constructor(
-    readonly messageId: string,
-    readonly expected: 'waiting' | 'returned'
-  ) {
-    super(`queued message ${messageId} is no longer ${expected}`)
-    this.name = 'QueuedMessageNotConsumableError'
   }
 }
