@@ -34,7 +34,11 @@ export function createRestartResumeProgress(
         return
       }
       if (phase === 'queued' || phase === 'skipped') {
-        if (session.restartResume) {
+        // Excluding a request cannot take progress away from an admitted action.
+        if (
+          session.restartResume &&
+          (phase === 'skipped' || session.restartResume.phase !== 'skipped')
+        ) {
           return
         }
         owned.set(sessionId, session)

@@ -18,17 +18,15 @@ export type ResumeRun = Readonly<{
 function progressRank(status: ResumeRunHostStatus | undefined): number {
   const phase = status?.restartResume?.phase
   if (phase === 'starting') {
-    return status?.hostExecutionPhase === 'ready' ? 3 : 2
+    return status?.hostExecutionPhase === 'ready' ? 4 : 3
   }
   if (phase === 'queued') {
+    return 2
+  }
+  if (phase === 'skipped') {
     return 1
   }
-  return phase === 'continued' ||
-    phase === 'refused' ||
-    phase === 'unconfirmed' ||
-    phase === 'skipped'
-    ? 4
-    : 0
+  return phase === 'continued' || phase === 'refused' || phase === 'unconfirmed' ? 5 : 0
 }
 
 /** Clearing live fields cannot undo progress this action already showed. */

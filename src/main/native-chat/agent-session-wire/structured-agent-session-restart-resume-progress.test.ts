@@ -8,8 +8,107 @@ import {
   throwAfterContinuationAccepted
 } from './structured-agent-session-restart-interruption-test-harness'
 import { HOST_TEST_SESSION as SESSION } from './structured-agent-session-host-test-data'
+import { createRestartResumeProgress } from './structured-agent-session-restart-resume-progress'
+import { journal } from './structured-agent-session-restart-resume-test-harness'
+import type { StructuredAgentSessionRestartOfferSession } from './structured-agent-session-restart-offer-withdrawal'
 
 afterEach(() => vi.restoreAllMocks())
+
+it.each(['queued', 'starting', 'continued', 'refused', 'unconfirmed'] as const)(
+  "keeps %s owned by the admitted action through another action's skip and cleanup",
+  (phase) => {
+    const session: StructuredAgentSessionRestartOfferSession = { journal: journal([]), child: null }
+    const sessions = new Map([[SESSION, session]])
+    const publish = vi.fn()
+    const excluded = createRestartResumeProgress(sessions, publish)
+    const admitted = createRestartResumeProgress(sessions, publish)
+    const other = createRestartResumeProgress(sessions, publish)
+    excluded.set(SESSION, 'skipped')
+    const skipped = session.restartResume
+    other.set(SESSION, 'skipped')
+    expect(session.restartResume).toBe(skipped)
+    admitted.set(SESSION, 'queued')
+    admitted.set(SESSION, phase)
+    const owned = session.restartResume
+    expect(owned?.phase).toBe(phase)
+    expect(owned?.operationId).not.toBe(skipped?.operationId)
+    excluded.set(SESSION, 'skipped')
+    other.set(SESSION, 'queued')
+    other.set(SESSION, 'refused')
+    excluded.clear()
+    other.clear()
+    expect(session.restartResume).toBe(owned)
+    admitted.clear()
+    expect(session.restartResume).toBeUndefined()
+    expect(publish).toHaveBeenCalledTimes(phase === 'queued' ? 3 : 4)
+  }
+)
+
+it('publishes a real continuation through an overlapping audience exclusion', async () => {
+  const { host, dispatch } = await interruptedRestart()
+  await host.restartResume.list()
+  const phases: (string | undefined)[] = []
+  const release = host.subscribeStatus({
+    id: 'overlap',
+    emit: (event) => {
+      if (event.type === 'status') {
+        phases.push(event.session.restartResume?.phase)
+      }
+    }
+  })
+  const excludedAtReply = Promise.withResolvers<void>()
+  const releaseExcluded = Promise.withResolvers<void>()
+  const list = AgentSessionRecoveryCapsule.prototype.list
+  let reads = 0
+  vi.spyOn(AgentSessionRecoveryCapsule.prototype, 'list').mockImplementation(async function (
+    this: AgentSessionRecoveryCapsule,
+    ...args
+  ) {
+    if (++reads === 2) {
+      excludedAtReply.resolve()
+      await releaseExcluded.promise
+    }
+    return list.apply(this, args)
+  })
+  const releaseDispatch = Promise.withResolvers<void>()
+  const dispatchNormally = dispatch.getMockImplementation()
+  dispatch.mockImplementationOnce(async (input) => {
+    await releaseDispatch.promise
+    if (!dispatchNormally) {
+      throw new Error('missing provider dispatch')
+    }
+    return dispatchNormally(input)
+  })
+  const excluded = host.restartResume.continueAfterRestart(
+    [SESSION],
+    'excluded-caller',
+    (agent) => agent !== 'codex'
+  )
+  let admitted: ReturnType<typeof host.restartResume.continueAfterRestart> | undefined
+  try {
+    await excludedAtReply.promise
+    expect(phases).toEqual(['skipped'])
+    admitted = host.restartResume.continueAfterRestart([SESSION], 'admitted-caller')
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
+    expect(phases).toContain('queued')
+    expect(phases.at(-1)).toBe('starting')
+    releaseExcluded.resolve()
+    expect(await excluded).toMatchObject({ skipped: [SESSION], continued: [] })
+    expect(phases.at(-1)).toBe('starting')
+    releaseDispatch.resolve()
+    expect(await admitted).toMatchObject({
+      continued: [{ sessionId: SESSION, outcome: 'continued' }]
+    })
+    expect(phases).toContain('continued')
+    expect(phases.at(-1)).toBeUndefined()
+    expect(dispatch).toHaveBeenCalledOnce()
+  } finally {
+    releaseExcluded.resolve()
+    releaseDispatch.resolve()
+    await Promise.allSettled([excluded, admitted])
+    release()
+  }
+})
 
 it('publishes skipped when an offer disappears during reservation without starting its agent', async () => {
   const { host, acquire, dispatch } = await interruptedRestart()

@@ -52,9 +52,24 @@ describe('the dialog over a bulk action', () => {
       phase: 'ready',
       startedAt: 10
     })
-    expect(observeResumeRun(observed, () => ({ restartResume: { phase: 'starting' } }))).toBe(
-      observed
-    )
+    const admitted = observeResumeRun(observed, () => ({ restartResume: { phase: 'starting' } }))
+    expect(admitted.entries[1]).toBe(observed.entries[1])
+    expect(resumeRunView(admitted, [], () => undefined, 'all').counts.total).toBe(2)
+  })
+
+  it("real action progress supersedes another request's provisional skip", () => {
+    let observed = observeResumeRun(run, () => ({ restartResume: { phase: 'skipped' } }))
+    for (const phase of ['queued', 'starting', 'continued'] as const) {
+      observed = observeResumeRun(observed, () => ({ restartResume: { phase } }))
+      expect(observed.entries[0]?.observedStatus?.restartResume?.phase).toBe(phase)
+      expect(observeResumeRun(observed, () => ({ restartResume: { phase: 'skipped' } }))).toBe(
+        observed
+      )
+    }
+    expect(resumeRunView(observed, [], () => undefined, 'all').counts).toMatchObject({
+      total: 2,
+      resumed: 2
+    })
   })
   it('settles a chat from its host verdict while the request remains in flight', () => {
     const statusFor = (id: string): ResumeRunHostStatus => ({

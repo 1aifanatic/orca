@@ -55,7 +55,7 @@ export function resumeRunView(
     const failure = failureFor(sessionId)
     const hostStatus = run.inFlight ? (entry.observedStatus ?? hostStatusFor(sessionId)) : undefined
     const phase = hostStatus?.restartResume?.phase
-    if (entry.observedStatus?.restartResume?.phase === 'skipped' || phase === 'skipped') {
+    if (run.inFlight && phase === 'skipped') {
       continue
     }
     inRunCount += 1
