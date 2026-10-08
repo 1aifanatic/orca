@@ -42,11 +42,13 @@ export function NativeChatUpgradeTipDialog({
       {/* Why: only the copy scrolls, so the focused Got it button stays visible with long copy. */}
       <div className="flex min-h-0 flex-1 flex-col">
         {/* Why: "always" shows the thumb whenever longer translations overflow, with no hover needed;
-            the gutter puts it in the frame padding so it never covers text. */}
+            the gutter puts it in the frame padding so it never covers text. Flex sizing, not the
+            viewport's height:100%, because below md the frame has no definite height to resolve it. */}
         <ScrollArea
           type="always"
           data-testid="native-chat-upgrade-tip-copy"
-          className="-mr-4 min-h-0 flex-1"
+          className="-mr-4 flex min-h-0 flex-1 flex-col"
+          viewportClassName="min-h-0 flex-1"
         >
           <DialogHeader className="text-left">
             <div className="pr-4">

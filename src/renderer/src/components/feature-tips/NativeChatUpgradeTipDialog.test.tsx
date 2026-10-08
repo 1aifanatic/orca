@@ -105,7 +105,11 @@ describe('NativeChatUpgradeTipDialog', () => {
     expect(event.defaultPrevented).toBe(true)
     expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true })
     expect(document.activeElement).toBe(button)
-    expect(copy.querySelector('[data-slot="scroll-area-viewport"]')?.scrollTop).toBe(0)
+    const viewport = copy.querySelector('[data-slot="scroll-area-viewport"]')
+    expect(viewport?.scrollTop).toBe(0)
+    // Flex sizing keeps the viewport inside its box below md, where height:100% can't resolve.
+    expect(copy.classList.contains('flex-col')).toBe(true)
+    expect(viewport?.classList.contains('flex-1')).toBe(true)
     expect(copy.contains(container.querySelector('h1'))).toBe(true)
     expect(copy.contains(container.querySelector('footer'))).toBe(false)
     expect(container.querySelector('footer')?.contains(button)).toBe(true)
