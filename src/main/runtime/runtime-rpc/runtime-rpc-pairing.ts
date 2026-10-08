@@ -11,6 +11,10 @@ import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../../shared/pairi
 import type { RuntimePairingReach } from '../../../shared/runtime-pairing-reach'
 import { resolveAdvertisedPairingEndpoint } from '../pairing-endpoint'
 import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
+import { MobileDesktopRelay } from '../mobile-desktop-relay/mobile-desktop-relay'
+import type { MobileDesktopRelayHosts } from '../mobile-desktop-relay/mobile-desktop-relay-hosts'
+import type { MobileDesktopRelayHostState } from '../../../shared/mobile-desktop-relay-contract'
+import { allocateTerminalSubscriptionStreamId } from '../rpc/methods/terminal/terminal-subscription-stream-id'
 import {
   createWebClientUrl,
   DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE,
@@ -85,6 +89,33 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     this.mobileRelayPairingProvider = provider
   }
 
+  setMobileDesktopRelayHosts(hosts: MobileDesktopRelayHosts | null): void {
+    this.mobileDesktopRelay?.dispose()
+    this.mobileDesktopRelay = hosts
+      ? new MobileDesktopRelay({
+          hosts,
+          listPhones: () => this.listRelayedPhones(),
+          // Why: one allocator with local streams, so relayed ids never collide on the phone's socket.
+          allocateStreamId: allocateTerminalSubscriptionStreamId
+        })
+      : null
+  }
+
+  /** Whether a paired phone can open this server's workspaces through this desktop. */
+  getMobileDesktopRelayHostState(environmentId: string): Promise<MobileDesktopRelayHostState> {
+    return this.mobileDesktopRelay?.hostState(environmentId) ?? Promise.resolve('unavailable')
+  }
+
+  private listRelayedPhones(): { phoneKey: string; name: string }[] {
+    const computerName = this.runtime.readMachineName()
+    return (this.deviceRegistry?.listDevices() ?? [])
+      .filter((device) => device.scope === 'mobile' && device.lastSeenAt > 0)
+      .map((device) => ({
+        phoneKey: device.deviceId,
+        name: `${device.name} via ${computerName}`.slice(0, 128)
+      }))
+  }
+
   async revokeMobileDevice(deviceId: string): Promise<boolean> {
     const device = this.deviceRegistry?.getDevice(deviceId)
     if (device?.scope !== 'mobile') {
@@ -104,6 +135,7 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     this.mobileRelayPairingProvider?.onDemandStateChanged?.()
     this.runtime.forgetClientNavigationState(deviceId)
     this.mobileSocketWiring?.terminateDeviceConnections(device.token)
+    this.mobileDesktopRelay?.phonesChanged()
     return true
   }
 
