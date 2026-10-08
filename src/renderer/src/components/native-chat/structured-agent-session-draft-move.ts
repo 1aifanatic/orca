@@ -1,5 +1,4 @@
-// A structured chat's draft belongs to its conversation. A /clear moves the chat to a new
-// conversation, so the unsent draft moves with it rather than staying in one nothing shows.
+// Unsent input follows its chat tab when /clear changes that tab's conversation.
 
 import { withNativeChatComposerDraftAddition } from './native-chat-composer-draft-addition'
 import {
@@ -7,7 +6,6 @@ import {
   nativeChatComposerDraftWriteSettled,
   hydrateNativeChatComposerDrafts,
   isNativeChatComposerDraftLoadPending,
-  isNativeChatComposerDraftUnverified,
   markNativeChatComposerDraftUnverified,
   readNativeChatComposerDraft,
   structuredAgentSessionDraftScopeKey,
@@ -16,6 +14,11 @@ import {
 import { sameNativeChatComposerDraftDocument } from './native-chat-composer-draft-comparison'
 import { moveNativeChatPendingAttachments } from './native-chat-pending-attachment-cache'
 import { mergeNativeChatDraftDocument } from './native-chat-draft-document-merge'
+import {
+  captureNativeChatDraftTransfer,
+  nativeChatDraftTransferSourceUnchanged,
+  type NativeChatDraftTransferSnapshot
+} from './native-chat-draft-transfer-snapshot'
 import type { Tab } from '../../../../shared/tab-types'
 
 /** Moves the whole draft, removing its source only after the destination is saved. */
@@ -29,13 +32,28 @@ export async function moveStructuredAgentSessionDraft(
   const from = structuredAgentSessionDraftScopeKey(fromSessionId)
   const to = structuredAgentSessionDraftScopeKey(toSessionId)
   moveNativeChatPendingAttachments(from, to)
+  const captured = await captureNativeChatDraftTransfer(from)
   if (isNativeChatComposerDraftLoadPending()) {
     await hydrateNativeChatComposerDrafts()
     if (isNativeChatComposerDraftLoadPending()) {
       return
     }
   }
-  const source = readNativeChatComposerDraft(from)
+  await moveCapturedStructuredAgentSessionDraft(fromSessionId, toSessionId, captured)
+}
+
+/** Pending operations already moved at the switch; later history operations stay where begun. */
+export async function moveCapturedStructuredAgentSessionDraft(
+  fromSessionId: string,
+  toSessionId: string,
+  snapshot: NativeChatDraftTransferSnapshot
+): Promise<void> {
+  if (fromSessionId === toSessionId) {
+    return
+  }
+  const from = structuredAgentSessionDraftScopeKey(fromSessionId)
+  const to = structuredAgentSessionDraftScopeKey(toSessionId)
+  const source = snapshot.draft
   if (source.text === '' && source.images.length === 0) {
     return
   }
@@ -56,11 +74,12 @@ export async function moveStructuredAgentSessionDraft(
     },
     'immediate'
   )
-  if (source.images.length > 0 && isNativeChatComposerDraftUnverified(from)) {
+  if (source.images.length > 0 && snapshot.unverified) {
     markNativeChatComposerDraftUnverified(to)
   }
   if (
     (await nativeChatComposerDraftWriteSettled(to)) &&
+    nativeChatDraftTransferSourceUnchanged(from, snapshot) &&
     sameNativeChatComposerDraftDocument(readNativeChatComposerDraft(from).document, source.document)
   ) {
     clearNativeChatComposerDraftIfUnchanged(from, source)

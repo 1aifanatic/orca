@@ -29,6 +29,11 @@ import {
   createMemoryNativeChatComposerDraftStorage,
   setNativeChatComposerDraftStorageForTests
 } from '@/components/native-chat/native-chat-composer-draft-storage'
+import {
+  addNativeChatPendingAttachment,
+  clearNativeChatPendingAttachmentsForTests,
+  settleNativeChatPendingAttachment
+} from '@/components/native-chat/native-chat-pending-attachment-cache'
 
 const initial = useAppStore.getState()
 let stop = (): void => {}
@@ -90,6 +95,7 @@ afterEach(() => {
   stop()
   useAppStore.setState(initial, true)
   clearNativeChatComposerDraftsForTests()
+  clearNativeChatPendingAttachmentsForTests()
   vi.useRealTimers()
 })
 
@@ -228,4 +234,58 @@ it('collapses repeated observed clears while storage is still loading', async ()
   expect(readNativeChatComposerDraft(scope('c')).text).toBe('a to c')
   expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
   expect(readNativeChatComposerDraft(scope('b')).text).toBe('')
+})
+
+async function deferredReplacement(): Promise<() => Promise<void>> {
+  stop()
+  clearNativeChatComposerDraftsForTests()
+  const storage = createMemoryNativeChatComposerDraftStorage()
+  storage.drafts.set(scope('a'), { text: 'before clear', images: [], savedAt: 1 })
+  let finish = (): void => {}
+  storage.loadAll = () =>
+    new Promise((resolve) => {
+      finish = () => resolve(new Map(storage.drafts))
+    })
+  setNativeChatComposerDraftStorageForTests(storage)
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('a')] } })
+  stop = startNativeChatDraftLoad()
+  publish(snapshot('b', 'a'))
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('b'), chat('a', 'history')] } })
+  return async () => {
+    finish()
+    await waitForNativeChatComposerDrafts(1000)
+    await settled()
+  }
+}
+
+it('carries the captured draft while later history text stays in its earlier conversation', async () => {
+  const finish = await deferredReplacement()
+  updateNativeChatComposerDraft(scope('a'), { text: 'new history input' }, 'immediate')
+  useAppStore.setState({ unifiedTabsByWorktree: { [WT]: [chat('b')] } })
+  await finish()
+  expect(readNativeChatComposerDraft(scope('a')).text).toBe('new history input')
+  expect(readNativeChatComposerDraft(scope('b')).text).toBe('before clear')
+})
+
+it('leaves a new history upload where it began when the captured move drains', async () => {
+  const finish = await deferredReplacement()
+  addNativeChatPendingAttachment(scope('a'), { id: 'history-image', path: '', pending: true })
+  await finish()
+  settleNativeChatPendingAttachment(scope('a'), 'history-image', '/ssh/history.png', 'ssh-1')
+  expect(readNativeChatComposerDraft(scope('a')).images).toEqual([
+    { id: 'history-image', path: '/ssh/history.png', connectionId: 'ssh-1' }
+  ])
+  expect(readNativeChatComposerDraft(scope('b')).images).toEqual([])
+})
+
+it('keeps history uploads that settle before the saved-draft load completes', async () => {
+  const finish = await deferredReplacement()
+  addNativeChatPendingAttachment(scope('a'), { id: 'history-image', path: '', pending: true })
+  settleNativeChatPendingAttachment(scope('a'), 'history-image', '/ssh/history.png', 'ssh-1')
+  await finish()
+  expect(readNativeChatComposerDraft(scope('a')).images).toEqual([
+    { id: 'history-image', path: '/ssh/history.png', connectionId: 'ssh-1' }
+  ])
+  expect(readNativeChatComposerDraft(scope('b')).images).toEqual([])
+  expect(readNativeChatComposerDraft(scope('b')).text).toBe('before clear')
 })
