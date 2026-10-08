@@ -2876,8 +2876,6 @@
         "chooseClaudeAccount": "Choose or add one in Claude Accounts settings.",
         "chooseClaudeAccountThenRunCommand": "Choose or add one in Claude Accounts settings, then run /{{command}} again.",
         "chooseClaudeAccountThenSend": "Choose or add one in Claude Accounts settings, then send your message again.",
-        "claudeAccountFolderMissing": "The selected Claude account's folder is missing. Sign in to it again or choose another account.",
-        "claudeAccountSetupFailed": "The selected Claude account could not be set up. Try again or choose another account.",
         "claudeManagedNotSignedIn": "This Claude account isn't signed in. Sign in again in Claude Accounts settings.",
         "claudeSystemNotSignedIn": "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings.",
         "cliMissing": "{{agent}} wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents.",
