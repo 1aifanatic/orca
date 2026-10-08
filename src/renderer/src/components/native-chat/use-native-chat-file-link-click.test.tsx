@@ -2,18 +2,30 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import CommentMarkdown from '@/components/sidebar/CommentMarkdown'
+import type { LinkActionRequest } from '@/components/link-actions/link-action-request'
 import type { NativeChatFileLinkContext } from './native-chat-file-link'
 import { useNativeChatFileLinkClick } from './use-native-chat-file-link-click'
 
-const mocks = vi.hoisted(() => ({
-  openDetectedFilePath: vi.fn(),
-  showNotFound: vi.fn(),
-  showUnverifiable: vi.fn(),
-  showUnresolved: vi.fn()
-}))
+const mocks = vi.hoisted(() => {
+  const noSettings: Record<string, unknown> = {}
+  return {
+    openDetectedFilePath: vi.fn(),
+    showNotFound: vi.fn(),
+    showUnverifiable: vi.fn(),
+    showUnresolved: vi.fn(),
+    buildFileLinkActions: vi.fn(),
+    settings: noSettings
+  }
+})
 
 vi.mock('@/components/terminal-pane/terminal-file-open-routing', () => ({
   openDetectedFilePath: mocks.openDetectedFilePath
+}))
+vi.mock('@/components/terminal-pane/terminal-file-link-actions', () => ({
+  buildFileLinkActions: mocks.buildFileLinkActions
+}))
+vi.mock('./native-chat-http-link-source-owner', () => ({
+  resolveNativeChatHttpLinkSourceOwner: () => ({ kind: 'local' })
 }))
 vi.mock('./native-chat-file-link-toasts', () => ({
   showFileLinkNotFoundToast: mocks.showNotFound,
@@ -23,7 +35,7 @@ vi.mock('./native-chat-file-link-toasts', () => ({
 vi.mock('@/store', () => ({
   useAppStore: Object.assign(
     (selector: (state: Record<string, unknown>) => unknown) => selector({}),
-    { getState: () => ({ settings: {} }) }
+    { getState: () => ({ settings: mocks.settings }) }
   )
 }))
 
@@ -36,8 +48,9 @@ const context: NativeChatFileLinkContext = {
 function Transcript(props: {
   markdown: string
   linkContext?: NativeChatFileLinkContext
+  request?: (request: LinkActionRequest) => void
 }): React.JSX.Element {
-  const onLinkClick = useNativeChatFileLinkClick(props.linkContext ?? context)
+  const onLinkClick = useNativeChatFileLinkClick(props.linkContext ?? context, props.request)
   return (
     <CommentMarkdown
       content={props.markdown}
@@ -60,6 +73,7 @@ function failLastOpen(verdict: 'missing' | 'unverifiable', error: unknown = new 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  mocks.settings = {}
 })
 
 describe('useNativeChatFileLinkClick', () => {
@@ -196,5 +210,63 @@ describe('useNativeChatFileLinkClick', () => {
     expect(mocks.openDetectedFilePath).not.toHaveBeenCalled()
     expect(mocks.showUnresolved).toHaveBeenCalledWith('~/.claude/plans/plan.md')
     expect(mocks.showNotFound).not.toHaveBeenCalled()
+  })
+
+  describe('with the file popover', () => {
+    const rows = { destination: '/repo/src/app.ts', kind: 'file', primary: { label: 'Open file' } }
+
+    it('offers the terminal file actions on a plain click', () => {
+      mocks.buildFileLinkActions.mockReturnValue(rows)
+      const request = vi.fn()
+      render(<Transcript markdown="See `src/app.ts:12`." request={request} />)
+
+      clickLink('src/app.ts:12')
+
+      expect(mocks.openDetectedFilePath).not.toHaveBeenCalled()
+      expect(mocks.buildFileLinkActions).toHaveBeenCalledWith(
+        '/repo/src/app.ts',
+        12,
+        null,
+        expect.objectContaining({ worktreeId: 'wt-1', onOpenFailure: expect.any(Function) }),
+        { kind: 'local' }
+      )
+      expect(request).toHaveBeenCalledWith(expect.objectContaining(rows))
+    })
+
+    it.each([
+      [
+        'a modifier click',
+        { [navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey']: true },
+        false
+      ],
+      ['a Shift click', { shiftKey: true }, true]
+    ])('opens outright on %s', (_name, modifiers, openWithSystemDefault) => {
+      const request = vi.fn()
+      render(<Transcript markdown="See `src/app.ts`." request={request} />)
+
+      fireEvent.click(screen.getByRole('link', { name: 'src/app.ts' }), modifiers)
+
+      expect(request).not.toHaveBeenCalled()
+      expect(mocks.openDetectedFilePath).toHaveBeenCalledWith(
+        '/repo/src/app.ts',
+        null,
+        null,
+        expect.objectContaining({ openWithSystemDefault })
+      )
+    })
+
+    it.each([
+      ['open', 1],
+      ['none', 0]
+    ])('follows a %s link-click setting', (terminalLinkClickBehavior, opens) => {
+      mocks.settings = { terminalLinkClickBehavior }
+      const request = vi.fn()
+      render(<Transcript markdown="See `src/app.ts`." request={request} />)
+
+      clickLink('src/app.ts')
+
+      expect(request).not.toHaveBeenCalled()
+      expect(mocks.openDetectedFilePath).toHaveBeenCalledTimes(opens)
+    })
   })
 })
