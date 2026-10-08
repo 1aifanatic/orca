@@ -7177,6 +7177,7 @@
         },
         "chat": {
           "search": {
+            "queue": "cola",
             "variables": "variables"
           }
         },
@@ -7207,22 +7208,6 @@
             "description": "Previsualiza el diseño actualizado de tarjetas de worktree, la ubicación de metadatos, las opciones del menú de visualización de tarjetas y la presentación de estado.",
             "title": "Nuevo estilo de tarjeta",
             "toggleLabel": "Alternar nuevo estilo de tarjeta"
-          },
-          "nativeChat": {
-            "title": "Chat UI",
-            "toggleLabel": "Alternar Chat UI",
-            "shellEnvNamesLabel": "Variables que se pasan desde tu shell",
-            "shellEnvNamePlaceholder": "Nombre de la variable",
-            "shellEnvNameAdd": "Agregar",
-            "shellEnvNameRemove": "Quitar {{value0}}",
-            "shellEnvNamesEmpty": "Aún no se han agregado variables.",
-            "shellEnvNamesAlwaysPassed": "PATH, la configuración regional y SSH_AUTH_SOCK se pasan siempre. Se aplica la próxima vez que un chat se inicie o se reanude.",
-            "shellEnvTitle": "Usar el entorno de tu shell",
-            "shellEnvCopy": "Los chats de Codex y Claude empiezan con todas las variables que exporta tu shell de inicio de sesión, igual que un terminal. Desactívalo para elegir cuáles reciben.",
-            "shellEnvToggleLabel": "Alternar el uso del entorno de tu shell",
-            "resumeCopy": "Cuando Orca se cierra o instala una actualización, los chats que estaban trabajando se reanudan automáticamente al volver a abrir Orca.",
-            "resumeTitle": "Reanudar los chats de trabajo automáticamente después de reiniciar",
-            "resumeToggleLabel": "Alternar reanudación automática después de un reinicio"
           },
           "agentDashboard": {
             "title": "Panel de agentes",
@@ -9665,19 +9650,6 @@
               "title": "Nuevo estilo de tarjeta",
               "worktree": "worktree",
               "worktrees": "worktrees"
-            },
-            "nativeChat": {
-              "title": "Chat UI",
-              "grok": "grok",
-              "queue": "cola",
-              "native": "nativo",
-              "chat": "chat",
-              "claude": "claude",
-              "codex": "codex",
-              "openclaude": "claudia abierta",
-              "omp": "omp",
-              "terminal": "Terminal",
-              "agent": "agente"
             },
             "agentDashboard": {
               "title": "Panel de agentes",

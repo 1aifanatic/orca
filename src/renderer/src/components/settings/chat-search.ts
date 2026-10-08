@@ -44,10 +44,7 @@ const getAllChatUiSearchEntries = createLocalizedCatalog((): ChatSearchEntry[] =
       'components.settings.nativeChat.queueFollowUpsCopy',
       'Messages you send while the agent is working wait as cards you can steer, edit, or delete. Messages with images send right away.'
     ),
-    keywords: translateSearchKeyword(
-      'auto.components.settings.experimental.search.nativeChat.queue',
-      'queue'
-    )
+    keywords: translateSearchKeyword('auto.components.settings.chat.search.queue', 'queue')
   },
   {
     id: 'chat-resume-on-restart',

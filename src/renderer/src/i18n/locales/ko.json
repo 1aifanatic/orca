@@ -7171,6 +7171,7 @@
             "codex": "codex",
             "terminal": "터미널",
             "agent": "에이전트",
+            "queue": "대기열",
             "variables": "변수"
           }
         },
@@ -7201,22 +7202,6 @@
             "description": "업데이트된 워크트리 카드 레이아웃, 메타데이터 배치, 카드 표시 메뉴 옵션 및 상태 표시를 미리 봅니다.",
             "title": "새 카드 스타일",
             "toggleLabel": "새 카드 스타일 전환"
-          },
-          "nativeChat": {
-            "title": "Chat UI",
-            "toggleLabel": "Chat UI 전환",
-            "shellEnvNamesLabel": "셸에서 전달할 변수",
-            "shellEnvNamePlaceholder": "변수 이름",
-            "shellEnvNameAdd": "추가",
-            "shellEnvNameRemove": "{{value0}} 제거",
-            "shellEnvNamesEmpty": "아직 추가된 변수가 없습니다.",
-            "shellEnvNamesAlwaysPassed": "PATH, 로캘, SSH_AUTH_SOCK은 항상 전달됩니다. 다음에 채팅을 시작하거나 재개할 때 적용됩니다.",
-            "shellEnvTitle": "셸 환경 사용",
-            "shellEnvCopy": "Codex 및 Claude 채팅은 터미널과 마찬가지로 로그인 셸이 내보내는 모든 변수를 가지고 시작합니다. 끄면 전달할 변수를 선택할 수 있습니다.",
-            "shellEnvToggleLabel": "셸 환경 사용 전환",
-            "resumeTitle": "다시 시작한 후 작업 중인 채팅을 자동으로 재개합니다.",
-            "resumeCopy": "Orca가 종료되거나 업데이트를 설치하면 Orca가 다시 열릴 때 작업 중이던 채팅이 자동으로 재개됩니다.",
-            "resumeToggleLabel": "다시 시작한 후 자동 재개 전환"
           },
           "agentDashboard": {
             "title": "에이전트 대시보드",
@@ -9659,19 +9644,6 @@
               "title": "새 카드 스타일",
               "worktree": "worktree",
               "worktrees": "worktrees"
-            },
-            "nativeChat": {
-              "title": "Chat UI",
-              "grok": "grok",
-              "native": "네이티브",
-              "chat": "채팅",
-              "claude": "claude",
-              "codex": "codex",
-              "openclaude": "개방형",
-              "omp": "펌프",
-              "terminal": "터미널",
-              "agent": "에이전트",
-              "queue": "대기열"
             },
             "agentDashboard": {
               "title": "에이전트 대시보드",

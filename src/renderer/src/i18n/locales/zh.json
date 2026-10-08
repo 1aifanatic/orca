@@ -7171,6 +7171,7 @@
             "codex": "codex",
             "terminal": "终端",
             "agent": "代理",
+            "queue": "队列",
             "variables": "变量"
           }
         },
@@ -7201,22 +7202,6 @@
             "description": "预览更新后的 worktree 卡片布局、元数据位置、卡片显示菜单选项和状态呈现。",
             "title": "新卡片样式",
             "toggleLabel": "切换新卡片样式"
-          },
-          "nativeChat": {
-            "title": "Chat UI",
-            "toggleLabel": "切换 Chat UI",
-            "shellEnvNamesLabel": "从 shell 传递的变量",
-            "shellEnvNamePlaceholder": "变量名",
-            "shellEnvNameAdd": "添加",
-            "shellEnvNameRemove": "删除 {{value0}}",
-            "shellEnvNamesEmpty": "尚未添加任何变量。",
-            "shellEnvNamesAlwaysPassed": "PATH、区域设置和 SSH_AUTH_SOCK 始终会传递。在下次聊天开始或恢复时生效。",
-            "shellEnvTitle": "使用 shell 环境",
-            "shellEnvCopy": "Codex 和 Claude 聊天启动时会带上登录 shell 导出的所有变量，与终端一致。关闭后可选择传递哪些变量。",
-            "shellEnvToggleLabel": "切换使用 shell 环境",
-            "resumeTitle": "重启后自动恢复工作聊天",
-            "resumeCopy": "当 Orca 退出或安装更新时，重新打开 Orca 后，正在工作的聊天会自动恢复。",
-            "resumeToggleLabel": "重启后切换自动恢复"
           },
           "agentDashboard": {
             "title": "智能体仪表盘",
@@ -9659,19 +9644,6 @@
               "title": "新卡片样式",
               "worktree": "工作树",
               "worktrees": "工作树"
-            },
-            "nativeChat": {
-              "title": "Chat UI",
-              "grok": "grok",
-              "native": "原生",
-              "chat": "聊天",
-              "claude": "claude",
-              "codex": "codex",
-              "openclaude": "开放克劳德",
-              "omp": "奥普",
-              "terminal": "终端",
-              "agent": "智能体",
-              "queue": "队列"
             },
             "agentDashboard": {
               "title": "智能体仪表盘",
