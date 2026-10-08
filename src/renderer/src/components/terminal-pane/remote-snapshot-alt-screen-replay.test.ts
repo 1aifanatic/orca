@@ -78,7 +78,7 @@ const AGENT_FRAME = '\x1b[H\x1b[2;1HNo\x1b[1Cnotice\x1b[1Ctoday'
 const ENTER_AGENT_FRAME = `\x1b[0m\x1b[?1049h${AGENT_FRAME}`
 
 // Remote image shapes: the normal buffer folded in, then the image enters alt itself.
-// Pushes carry only the host's screen; requested snapshots also carry history.
+// A screen-only push is an older host's shape; requested snapshots also carry history.
 function pushedImage(hostRows: number): string {
   return `${NORMAL_LINES.slice(-hostRows).join('\r\n')}${ENTER_AGENT_FRAME}`
 }
@@ -112,11 +112,6 @@ async function render(events: PaneEvent[], rows = ROWS): Promise<Terminal> {
     }
   }
   return term
-}
-
-/** The live pane's own buffers carried through the drain's grid changes and nothing else. */
-function untouchedPane(events: PaneEvent[]): Promise<Terminal> {
-  return render([LIVE_PANE, ...events.filter((event) => typeof event !== 'string')])
 }
 
 describe('remote snapshot replay onto a live alt screen', () => {
@@ -189,8 +184,9 @@ describe('remote snapshot replay onto a live alt screen', () => {
 
   // Why: a revisited remote tab running an agent TUI gets a pushed snapshot while xterm
   // is on the agent's alt screen. Cleared in place, the image's normal screen (old setup
-  // output) painted into the agent's screen, under its next paints.
-  it('repaints a pushed image exactly and keeps the history the TUI covers', async () => {
+  // output) painted into the agent's screen, under its next paints. The image owns the
+  // normal buffer too: the gap can hide a TUI exit, shell output and a new TUI.
+  it('repaints a pushed image exactly, normal buffer included', async () => {
     const payload = recoveryPayload(ROWS)
     const client = await render([
       LIVE_PANE,
@@ -200,22 +196,20 @@ describe('remote snapshot replay onto a live alt screen', () => {
         snapshotRows: ROWS
       }))
     ])
-    const host = await render([LIVE_PANE])
     const fresh = await render([pushedImage(ROWS)])
     try {
       expect(client.buffer.active.type).toBe('alternate')
       expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
-      expect(bufferLines(client, 'normal')).toEqual(bufferLines(host, 'normal'))
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(fresh, 'normal'))
     } finally {
       client.dispose()
-      host.dispose()
       fresh.dispose()
     }
   })
 
-  // Why: the pane's normal buffer froze with the host's when the TUI entered alt, so a
-  // pushed image repaints only the alt frame, whatever grid the host serialized it at.
-  it("keeps the pane's history when the host screen has another grid", async () => {
+  // Why: the image is parsed at the host's grid, so both buffers match a fresh pane that
+  // painted it there and then fitted back.
+  it('replaces both buffers when the host screen has another grid', async () => {
     const hostRows = 10
     const events = await drainOntoLiveAltScreen(recoveryPayload(hostRows), {
       carriesNormalBuffer: true,
@@ -223,20 +217,17 @@ describe('remote snapshot replay onto a live alt screen', () => {
       snapshotRows: hostRows
     })
     const client = await render([LIVE_PANE, ...events])
-    const untouched = await untouchedPane(events)
     const fresh = await render([pushedImage(hostRows), { cols: COLS, rows: ROWS }], hostRows)
     try {
       expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
-      expect(bufferLines(client, 'normal')).toEqual(bufferLines(untouched, 'normal'))
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(fresh, 'normal'))
     } finally {
       client.dispose()
-      untouched.dispose()
       fresh.dispose()
     }
   })
 
-  // Why: a push can reuse a concurrent requested capture that folds history in too;
-  // painting that history over the kept one would duplicate it in scrollback.
+  // Why: a push that folds history in replaces the pane's own, never stacks on it.
   it('keeps history unduplicated when a pushed image also carries history', async () => {
     const client = await render([
       LIVE_PANE,
@@ -269,14 +260,12 @@ describe('remote snapshot replay onto a live alt screen', () => {
         'alternate-queued'
       ))
     ])
-    const host = await render([LIVE_PANE])
     const fresh = await render([pushedImage(ROWS)])
     try {
       expect(viewport(client, 'alternate')).toEqual(viewport(fresh, 'alternate'))
-      expect(bufferLines(client, 'normal')).toEqual(bufferLines(host, 'normal'))
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(fresh, 'normal'))
     } finally {
       client.dispose()
-      host.dispose()
       fresh.dispose()
     }
   })

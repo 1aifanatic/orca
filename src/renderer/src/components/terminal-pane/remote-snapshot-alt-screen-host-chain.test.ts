@@ -396,4 +396,25 @@ describe('host-published recovery snapshot onto a live alt screen', () => {
       host.dispose()
     }
   })
+
+  // Why: inside the gap the TUI exited, the shell printed past the pane's history and a
+  // second TUI started; both ends are on alt, but the pane's normal buffer is stale.
+  it('replaces the normal history that changed between two alt-screen sessions', async () => {
+    const missed = `\x1b[?1049l\r\n${Array.from({ length: 300 }, (_, i) => `MISSED-${i}`).join('\r\n')}\r\n$ next-agent${COMMAND_START}\x1b[?1049h\x1b[2J\x1b[HNEW-AGENT-FRAME`
+    const { data, meta } = await publishHostRecovery(missed)
+    const liveExit = '\x1b[?1049l\r\nAFTER-RECOVERY'
+    const client = await render([
+      LIVE_PANE,
+      ...(await drainOntoLiveAltScreen(data, meta)),
+      liveExit
+    ])
+    const host = await render([LIVE_PANE, missed, liveExit])
+    try {
+      expect(bufferLines(client, 'normal')).toContain('MISSED-299')
+      expect(bufferLines(client, 'normal')).toEqual(bufferLines(host, 'normal'))
+    } finally {
+      client.dispose()
+      host.dispose()
+    }
+  })
 })

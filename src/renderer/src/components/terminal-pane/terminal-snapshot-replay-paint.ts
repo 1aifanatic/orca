@@ -4,7 +4,6 @@ import {
   ABORT_TRUNCATED_CONTROL_STRING,
   buildSnapshotReplayPrologue
 } from '../../../../shared/terminal-mode-reset-profiles'
-import { splitAtAlternateScreenEntry } from '../../../../shared/terminal-alternate-screen-split'
 
 /**
  * Shared guards and write choreography for painting a main-model snapshot into
@@ -71,24 +70,14 @@ export function buildSnapshotReplayPreamble(
 
 /**
  * Writes for a remote image, which folds its normal buffer in ahead of its alt
- * entry. Over a pane already on alt, an image that ends on alt repaints only its
- * alt payload, so the pane's normal buffer and history stay as they are; any
- * other image paints from the normal buffer.
+ * entry. A pushed image is sent because the pane's stream broke, so it always
+ * replaces the pane's normal buffer and history, even over a live alt screen:
+ * a TUI can exit, the shell print and another TUI start inside the gap.
  */
 export function buildFoldedImageReplayWrites(
   data: string,
   paneOnAlternateScreen: boolean
 ): { preamble: string; payload: string } {
-  const split = paneOnAlternateScreen ? splitAtAlternateScreenEntry(data) : null
-  if (split) {
-    return {
-      preamble: buildSnapshotReplayPreamble({
-        targetAlternateScreen: true,
-        paneOnAlternateScreen: true
-      }),
-      payload: split.alternateAnsi
-    }
-  }
   return {
     preamble: buildSnapshotReplayPreamble({ targetAlternateScreen: false, paneOnAlternateScreen }),
     payload: data
