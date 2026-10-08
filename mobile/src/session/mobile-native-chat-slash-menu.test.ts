@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentSessionConversationCommand } from '../../../src/shared/agent-session-conversation-command'
 import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
+import { nativeChatComposerCatalog } from '../../../src/shared/native-chat-composer-catalog'
 import { getMobileNativeChatCommands } from './mobile-native-chat-send-classification'
-import {
-  mobileNativeChatComposerCatalog,
-  mobileNativeChatSlashMenu
-} from './mobile-native-chat-slash-menu'
+import { mobileNativeChatSlashMenu } from './mobile-native-chat-slash-menu'
 
 const names = (items: readonly { name: string }[]): string[] => items.map(({ name }) => name)
 
@@ -23,8 +21,9 @@ function menu({
   query?: string
 }): ReturnType<typeof mobileNativeChatSlashMenu> {
   const catalog = agent
-    ? mobileNativeChatComposerCatalog(
+    ? nativeChatComposerCatalog(
         agent,
+        getMobileNativeChatCommands(agent),
         lane === 'structured' ? { sessionCommands, conversationCommands } : undefined
       )
     : null
@@ -117,6 +116,11 @@ describe('mobileNativeChatSlashMenu', () => {
     const result = menu({ lane: 'terminal', sessionCommands: CLAUDE_REPORT })
     expect(names(result.commands)).toEqual(names(getMobileNativeChatCommands('claude')))
     expect(result.skills).toEqual([])
+  })
+
+  it('leaves out terminal-lane commands only the desktop chat answers', () => {
+    expect(names(menu({ agent: 'omp', lane: 'terminal' }).commands)).not.toContain('context')
+    expect(names(menu({ agent: 'openclaude', lane: 'terminal' }).commands)).not.toContain('context')
   })
 
   it('groups by whether the session reports skills, whatever the query', () => {

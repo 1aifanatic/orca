@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import type { NativeChatStructuredCatalogInputs } from '../../../src/shared/native-chat-composer-catalog'
+import {
+  nativeChatComposerCatalog,
+  type NativeChatStructuredCatalogInputs
+} from '../../../src/shared/native-chat-composer-catalog'
 import {
   applyAutocomplete,
   detectAutocompleteTrigger,
   rankSuggestions
 } from './mobile-native-chat-autocomplete'
+import { getMobileNativeChatCommands } from './mobile-native-chat-send-classification'
 import {
-  mobileNativeChatComposerCatalog,
   mobileNativeChatSlashMenu,
   type MobileNativeChatSlashMenu
 } from './mobile-native-chat-slash-menu'
@@ -66,8 +69,10 @@ export function useMobileNativeChatComposerAutocomplete(args: {
   const catalog = useMemo(
     () =>
       agent
-        ? mobileNativeChatComposerCatalog(
+        ? nativeChatComposerCatalog(
             agent,
+            // Why: drops rows only desktop answers (e.g. /context); the phone can't show the reply.
+            getMobileNativeChatCommands(agent),
             structured ? { sessionCommands, conversationCommands } : undefined
           )
         : null,

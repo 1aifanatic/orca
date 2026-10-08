@@ -1,7 +1,6 @@
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
 import type { AgentSessionSlashCommand } from './agent-session-wire'
 import type { AgentType } from './agent-status-types'
-import { getVerifiedNativeChatCommands } from './native-chat-agent-profiles'
 import type { NativeChatSessionSkill } from './native-chat-picker-items'
 import {
   sessionReportedSkills,
@@ -25,16 +24,18 @@ export type NativeChatComposerCatalog = {
  * What the `/` menu offers, for the desktop composer and the phone alike. A
  * structured session reports the surface it actually loaded — the only list that
  * includes this repo's own commands and the skills that reach the session through
- * plugin roots — so it wins whenever it is present, even when empty. The curated
- * per-agent catalog remains the answer for the PTY lane, and the host-owned
- * fallback for a structured host that predates the report.
+ * plugin roots — so it wins whenever it is present, even when empty. The caller's
+ * curated list remains the answer for the PTY lane, and the host-owned fallback
+ * for a structured host that predates the report.
  */
 export function nativeChatComposerCatalog(
   agent: AgentType,
+  /** The PTY lane's curated list; each surface passes the commands it can answer. */
+  terminalCommands: readonly SlashCommandSuggestion[],
   structured?: NativeChatStructuredCatalogInputs
 ): NativeChatComposerCatalog {
   if (!structured) {
-    return { agentCommands: getVerifiedNativeChatCommands(agent), sessionSkills: undefined }
+    return { agentCommands: terminalCommands, sessionSkills: undefined }
   }
   const reported = structured.sessionCommands
   if (reported === undefined) {

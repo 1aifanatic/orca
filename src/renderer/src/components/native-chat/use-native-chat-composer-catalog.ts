@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { AgentType } from '../../../../shared/agent-status-types'
+import { getVerifiedNativeChatCommands } from '../../../../shared/native-chat-agent-profiles'
 import {
   nativeChatComposerCatalog,
   type NativeChatComposerCatalog
@@ -21,6 +22,7 @@ export function useNativeChatComposerCatalog(
     () =>
       nativeChatComposerCatalog(
         agent,
+        getVerifiedNativeChatCommands(agent),
         structured ? { sessionCommands, conversationCommands } : undefined
       ),
     [agent, conversationCommands, sessionCommands, structured]
