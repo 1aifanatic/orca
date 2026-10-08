@@ -18028,6 +18028,7 @@
         "commands": "コマンド",
         "skills": "スキル",
         "loadingSkills": "スキルを読み込み中…",
+        "clearDescription": "会話のコンテキストをクリア",
         "skillsUnavailableHost": "SSH チャットではスキルを一覧表示できません",
         "skillsLoadFailed": "スキルを読み込めませんでした",
         "retrySkills": "再試行",
@@ -18255,6 +18256,7 @@
         "cancelledBy": "{{device}}にキャンセルされました"
       },
       "notices": {
+        "contextCleared": "コンテキストをクリアしました",
         "compaction": "圧縮されたコンテキスト",
         "details": "詳細",
         "plan": "プラン",
