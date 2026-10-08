@@ -2390,12 +2390,6 @@
           "tooltip": {
             "7567cd1c6b": "Usage unavailable",
             "cedb7b99e3": "% used"
-          },
-          "NativeChatResumeStatusSegment": {
-            "resumingAria": "Resuming {{value0}} chats. Click to open details.",
-            "resumingAriaOne": "Resuming 1 chat. Click to open details.",
-            "resumingLabel": "Resuming {{value0}} chats",
-            "resumingLabelOne": "Resuming 1 chat"
           }
         }
       },

@@ -4072,10 +4072,6 @@
             "checkAriaOne": "再開後に確認が必要なチャット 1 件。詳細はクリックしてください。",
             "checkAria": "再開後に確認が必要なチャット {{value0}} 件。詳細はクリックしてください。",
             "checkTooltip": "再起動後に Orca が再開できなかった、または再開を確認できなかったチャット。詳細はクリックしてください。",
-            "resumingLabelOne": "1 件のチャットを再開中",
-            "resumingLabel": "{{value0}} 件のチャットを再開中",
-            "resumingAriaOne": "1 件のチャットを再開中。詳細はクリックしてください。",
-            "resumingAria": "{{value0}} 件のチャットを再開中。詳細はクリックしてください。",
             "resumingTooltip": "中断されたチャットを復元し、続行を依頼しています…",
             "resumingProgressLabel": "チャットを再開中 {{value0}}/{{value1}}",
             "resumingProgressAria": "チャットを再開中。{{value1}} 件中 {{value0}} 件完了。クリックすると詳細を表示します。"

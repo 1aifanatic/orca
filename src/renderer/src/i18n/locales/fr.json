@@ -4177,10 +4177,6 @@
             "checkAriaOne": "1 chat à vérifier après la reprise. Cliquez pour plus de détails.",
             "checkAria": "{{value0}} chats à vérifier après la reprise. Cliquez pour plus de détails.",
             "checkTooltip": "Chats qu'Orca n'a pas pu reprendre, ou dont il n'a pas pu confirmer la reprise, après le redémarrage. Cliquez pour plus de détails.",
-            "resumingLabelOne": "Reprise d’1 conversation",
-            "resumingLabel": "Reprise de {{value0}} conversations",
-            "resumingAriaOne": "Reprise d’1 conversation. Cliquez pour voir les détails.",
-            "resumingAria": "Reprise de {{value0}} conversations. Cliquez pour voir les détails.",
             "resumingTooltip": "Restauration des conversations interrompues et demande de poursuite…",
             "resumingProgressLabel": "Reprise des discussions {{value0}}/{{value1}}",
             "resumingProgressAria": "Reprise des discussions, {{value0}} sur {{value1}} terminées. Cliquez pour voir les détails."
