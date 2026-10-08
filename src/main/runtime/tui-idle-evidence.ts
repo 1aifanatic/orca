@@ -32,7 +32,8 @@ import { evaluateHookTurn, type TuiIdleHookTurn } from './tui-idle-hook-lane'
  *   0. HOOKS — for an agent whose hooks are authoritative (agent-state-rules/ profile), a fresh
  *      hook row for the main agent's turn: done, working, or a permission wait, with the tail's
  *      blocked text judged by the permission arbiter against it (tui-idle-hook-lane.ts).
- *   0b. BLOCKED — otherwise, the tail shows a prompt waiting on the user.
+ *   0b. BLOCKED — otherwise, the rendered screen (or the line tail without a current one) shows a
+ *       prompt waiting on the user.
  *   1. STRONG READY — the agent states it is ready: an explicit idle marker in its own
  *      title, or a known ready-prompt body.
  *   1b. QUIET READY SCREEN — Muse titles no rest signal, and agents whose rules
@@ -195,7 +196,7 @@ export function quietForegroundLaneForTerminalAgent(
 
 export type TuiIdleEvaluationInput = {
   record: TuiIdleEvidenceRecord
-  /** Tier 0: a blocking prompt in the line tail. */
+  /** Tier 0: a blocking prompt on the rendered screen, or in the line tail without one. */
   readTailBlockedReason: () => RuntimeTerminalWaitBlockedReason | null
   /** Renderer-synced pane/tab title, when one exists. */
   rendererTitle?: string | null
@@ -376,4 +377,44 @@ function isSettledWeakIdle(
 
 export function isTuiIdleReadyVerdict(verdict: TuiIdleVerdict): boolean {
   return verdict.kind === 'ready-strong' || verdict.kind === 'ready-weak'
+}
+
+/**
+ * Tier 0b over the current rendered screen. The tail arbiter's stamp-vs-clear ordering judges
+ * whether HISTORY is stale; screen text is present now, so only strong evidence clears it.
+ */
+export function judgeScreenBlockedText(input: {
+  reason: RuntimeTerminalWaitBlockedReason | null
+  record: TuiIdleEvidenceRecord
+  rendererTitle?: string | null
+  agent: TuiAgent | null | undefined
+  firstPartyStatus: FirstPartyAgentStatus
+  explicitStatus: { status: AgentStatus; updatedAt: number } | null
+  /** When the tail scan stamped this pane's blocker; null when the tail never saw one. */
+  blockedAt: number | null
+}): RuntimeTerminalWaitBlockedReason | null {
+  const { reason, explicitStatus } = input
+  // Why exempt: the arbiter lets no title clear an approval menu, which Cursor paints under its
+  // working spinner.
+  if (reason === null || reason === 'agent-approval-prompt') {
+    return reason
+  }
+  // Why the working gate, as the poll's screen read: a mid-turn agent's output can quote a dialog.
+  if (
+    input.record.lastAgentStatus === 'working' ||
+    (hasFreshWorkingFirstPartyStatus(input.firstPartyStatus) &&
+      input.firstPartyStatus?.state === 'working') ||
+    hasFreshDoneFirstPartyStatus(input.agent, input.firstPartyStatus) ||
+    hasExplicitIdleTitle(input.record, input.rendererTitle)
+  ) {
+    return null
+  }
+  if (explicitStatus === null || explicitStatus.status === 'permission') {
+    return reason
+  }
+  // Why only a done newer than the blocker: a menu painted after the turn ended is still open.
+  return explicitStatus.status === 'working' ||
+    (input.blockedAt !== null && explicitStatus.updatedAt > input.blockedAt)
+    ? null
+    : reason
 }
