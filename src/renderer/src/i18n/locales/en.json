@@ -177,7 +177,7 @@
   },
   "settings": {
     "chat": {
-      "description": "Choose how chats look and get their names.",
+      "description": "Choose how chats look and behave.",
       "names": {
         "title": "Chat names",
         "description": "Use an agent to name new chats from their first message. Without a generated name, chats stay Claude Chat or Codex Chat.",
@@ -18945,6 +18945,9 @@
       },
       "nativeChat": {
         "queueFollowUpsTitle": "Queue follow-ups",
+        "inlineVisualsTitle": "Inline visuals",
+        "inlineVisualsCopy": "Let the agent show charts, diagrams and mockups inside its replies. Applies to newly started chats.",
+        "inlineVisualsToggleLabel": "Toggle inline visuals",
         "queueFollowUpsCopy": "Messages you send while the agent is working wait as cards you can steer, edit, or delete. Messages with images send right away.",
         "queueFollowUpsToggleLabel": "Toggle queue follow-ups"
       }
