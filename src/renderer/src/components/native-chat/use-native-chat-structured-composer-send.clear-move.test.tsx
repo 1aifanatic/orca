@@ -16,6 +16,12 @@ import {
   setNativeChatComposerDraftStorageForTests
 } from './native-chat-composer-draft-storage'
 import { writeNativeChatDraftCache } from './native-chat-draft-cache'
+import {
+  addNativeChatPendingAttachment,
+  clearNativeChatPendingAttachmentsForTests,
+  nativeChatPendingAttachmentSnapshot,
+  settleNativeChatPendingAttachment
+} from './native-chat-pending-attachment-cache'
 import { moveStructuredAgentSessionDraft } from './structured-agent-session-draft-move'
 
 vi.mock('@/lib/native-chat-telemetry', () => ({ emitNativeChatMessageSent: vi.fn() }))
@@ -33,6 +39,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   clearNativeChatComposerDraftsForTests()
+  clearNativeChatPendingAttachmentsForTests()
 })
 
 // The host moves the chat before the command reply lands.
@@ -78,7 +85,7 @@ async function clearHarness() {
     })
   )
 
-  return { send: result.current, reply: (accepted: boolean) => reply(accepted) }
+  return { transport, send: result.current, reply: (accepted: boolean) => reply(accepted) }
 }
 
 it('moves only what was typed after /clear when the chat moves before the reply', async () => {
@@ -124,4 +131,20 @@ it('leaves the new composer empty when clear succeeds with no following input', 
   await sent
   expect(readNativeChatComposerDraft(to)).toMatchObject({ text: '', images: [] })
   expect(readNativeChatComposerDraft(from)).toMatchObject({ text: '', images: [] })
+})
+
+it('does not restore a refused clear beside a pending-only image and sends that image next', async () => {
+  const { send, reply, transport } = await clearHarness()
+  const sent = send('/clear')
+  addNativeChatPendingAttachment(from, { id: 'new-image', path: '', pending: true })
+  reply(false)
+  await sent
+  expect(readNativeChatComposerDraft(from).text).toBe('')
+  expect(nativeChatPendingAttachmentSnapshot(from)).toHaveLength(1)
+  settleNativeChatPendingAttachment(from, 'new-image', '/stored/new-image.png')
+  const next = readNativeChatComposerDraft(from)
+  await send(next.text, next.images)
+  expect(transport.send).toHaveBeenCalledWith('', [
+    { id: 'new-image', path: '/stored/new-image.png' }
+  ])
 })

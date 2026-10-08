@@ -1,37 +1,34 @@
 // Unsent input follows its chat tab when /clear changes that tab's conversation.
 
-import { withNativeChatComposerDraftAddition } from './native-chat-composer-draft-addition'
 import {
   isNativeChatComposerDraftHydrated,
   moveNativeChatComposerDraft,
+  readNativeChatComposerDraft,
   structuredAgentSessionDraftScopeKey
 } from './native-chat-composer-draft-store'
-import { moveNativeChatPendingAttachments } from './native-chat-pending-attachment-cache'
-import { mergeNativeChatDraftDocument } from './native-chat-draft-document-merge'
+import {
+  moveNativeChatPendingAttachments,
+  nativeChatPendingAttachmentSnapshot
+} from './native-chat-pending-attachment-cache'
 import type { Tab } from '../../../../shared/tab-types'
 
-/** Moves the loaded draft synchronously with its tab; unobserved input stays in history. */
+/** Moves loaded input into an empty replacement; conflicting input stays in history. */
 export function moveStructuredAgentSessionDraft(fromSessionId: string, toSessionId: string): void {
   if (fromSessionId === toSessionId || !isNativeChatComposerDraftHydrated()) {
     return
   }
   const from = structuredAgentSessionDraftScopeKey(fromSessionId)
   const to = structuredAgentSessionDraftScopeKey(toSessionId)
+  const target = readNativeChatComposerDraft(to)
+  if (
+    target.text !== '' ||
+    target.images.length > 0 ||
+    nativeChatPendingAttachmentSnapshot(to).length > 0
+  ) {
+    return
+  }
   moveNativeChatPendingAttachments(from, to)
-  moveNativeChatComposerDraft(from, to, (target, source) => {
-    const merged = withNativeChatComposerDraftAddition(target, { text: source.text })
-    const emptyTarget = target.text === '' && target.images.length === 0
-    return {
-      ...(emptyTarget ? source : merged),
-      images: emptyTarget
-        ? source.images
-        : [
-            ...target.images,
-            ...source.images.filter((image) => !target.images.some((held) => held.id === image.id))
-          ],
-      document: mergeNativeChatDraftDocument(target, source, merged.text)
-    }
-  })
+  moveNativeChatComposerDraft(from, to)
 }
 
 /** Each chat whose tab now shows another conversation, whichever client ran the clear. */

@@ -19,6 +19,7 @@ import {
   readNativeChatComposerDraft,
   updateNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
+import { nativeChatPendingAttachmentSnapshot } from './native-chat-pending-attachment-cache'
 import { nativeChatComposerDraftLeftAfterSend } from './native-chat-composer-draft-comparison'
 import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
 
@@ -104,7 +105,12 @@ export function useNativeChatStructuredComposerSend({
       }
       const restoreCommand = (): void => {
         const current = readNativeChatComposerDraft(draftScopeKey)
-        if (clearedAtSubmit && current.text === '' && current.images.length === 0) {
+        if (
+          clearedAtSubmit &&
+          current.text === '' &&
+          current.images.length === 0 &&
+          nativeChatPendingAttachmentSnapshot(draftScopeKey).length === 0
+        ) {
           updateNativeChatComposerDraft(draftScopeKey, submitted, 'immediate')
           setDraft(submitted.text)
           setCaret(submitted.text.length)

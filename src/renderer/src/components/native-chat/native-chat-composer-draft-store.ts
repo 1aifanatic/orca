@@ -131,10 +131,17 @@ export function readNativeChatComposerDraft(scopeKey: string): NativeChatCompose
   return records.get(scopeKey) ?? EMPTY_DRAFT
 }
 
-function changeNativeChatComposerDraft(
+/**
+ * Changes fields of the scope's draft. `deferred` is for typing, coalesced into one write;
+ * `immediate` saves now: text or images given back from a copy about to be deleted, and clears.
+ * An emptied draft is removed at once, so a sent message never comes back.
+ */
+export function updateNativeChatComposerDraft(
   scopeKey: string,
-  change: NativeChatComposerDraftChange
-): boolean {
+  change: NativeChatComposerDraftChange,
+  persist: 'immediate' | 'deferred',
+  append?: DraftAppend
+): void {
   const current = records.get(scopeKey) ?? EMPTY_DRAFT
   const text = change.text ?? current.text
   const document = 'document' in change ? change.document : current.document
@@ -146,11 +153,16 @@ function changeNativeChatComposerDraft(
     unsavedText === current.unsavedText &&
     sameNativeChatComposerDraftImages(images, current.images)
   ) {
-    return false
+    if (persist === 'immediate' && dirtyScopes.has(scopeKey)) {
+      persistNativeChatComposerDraft(scopeKey, 'immediate')
+    }
+    return
   }
   if (isEmptyDraft({ text, images })) {
     records.delete(scopeKey)
-    return true
+    notifyScope(scopeKey)
+    persistNativeChatComposerDraft(scopeKey, 'immediate', append)
+    return
   }
   // Why stamped once: a conversation never moves to another workspace, so its owner stays true.
   const owner = current.owner ?? change.owner ?? resolveOwner?.(scopeKey)
@@ -163,29 +175,10 @@ function changeNativeChatComposerDraft(
     ...(unsavedText === undefined ? {} : { unsavedText })
   }
   records.set(scopeKey, record)
-  return true
-}
-
-/**
- * Changes fields of the scope's draft. `deferred` is for typing, coalesced into one write;
- * `immediate` saves now: text or images given back from a copy about to be deleted, and clears.
- * An emptied draft is removed at once, so a sent message never comes back.
- */
-export function updateNativeChatComposerDraft(
-  scopeKey: string,
-  change: NativeChatComposerDraftChange,
-  persist: 'immediate' | 'deferred',
-  append?: DraftAppend
-): void {
-  if (!changeNativeChatComposerDraft(scopeKey, change)) {
-    if (persist === 'immediate' && dirtyScopes.has(scopeKey)) {
-      persistNativeChatComposerDraft(scopeKey, 'immediate')
-    }
-    return
-  }
   notifyScope(scopeKey)
-  persistNativeChatComposerDraft(scopeKey, records.has(scopeKey) ? persist : 'immediate', append)
-  if (records.has(scopeKey) && !load.hydrated) {
+  persistNativeChatComposerDraft(scopeKey, persist, append)
+  if (!load.hydrated) {
+    // Why: a window whose startup never started the load still gets its saved drafts.
     void hydrateNativeChatComposerDrafts()
   }
 }
@@ -195,22 +188,15 @@ export function isNativeChatComposerDraftHydrated(): boolean {
 }
 
 /** Both scope changes are visible together; storage follows the same save path as an edit. */
-export function moveNativeChatComposerDraft(
-  from: string,
-  to: string,
-  merge: (
-    target: NativeChatComposerDraft,
-    source: NativeChatComposerDraft
-  ) => NativeChatComposerDraftChange
-): void {
-  if (from === to || !load.hydrated) {
+export function moveNativeChatComposerDraft(from: string, to: string): void {
+  if (from === to || !load.hydrated || !isEmptyDraft(readNativeChatComposerDraft(to))) {
     return
   }
   const source = records.get(from)
   if (!source) {
     return
   }
-  changeNativeChatComposerDraft(to, merge(readNativeChatComposerDraft(to), source))
+  records.set(to, { ...source, savedAt: nextSavedAt() })
   records.delete(from)
   if (unverifiedScopes.delete(from)) {
     unverifiedScopes.add(to)

@@ -35,148 +35,82 @@ afterEach(() => {
 })
 
 describe('moving a cleared conversation draft', () => {
-  it.each(['$review', 'question\n\n$review'])(
-    'keeps a picked skill when the destination already holds its literal text: %s',
-    async (text) => {
-      const document = {
-        type: 'doc',
-        content: [
-          { type: 'paragraph', content: [{ type: 'nativeChatSkill', attrs: { token: '$review' } }] }
-        ]
-      }
-      updateNativeChatComposerDraft(scope('a'), { text: '$review', document }, 'immediate')
-      updateNativeChatComposerDraft(scope('b'), { text }, 'immediate')
-      await moveStructuredAgentSessionDraft('a', 'b')
-      expect(readNativeChatComposerDraft(scope('b')).text).toBe(text)
-      expect(JSON.stringify(readNativeChatComposerDraft(scope('b')).document) ?? '').toContain(
-        'nativeChatSkill'
-      )
-      if (text === '$review') {
-        expect(readNativeChatComposerDraft(scope('b')).document).toEqual(document)
-      }
-      expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
-    }
-  )
-
-  it('preserves an existing chip and copies the source chip into a matching literal suffix', async () => {
-    const first = { type: 'nativeChatSkill', attrs: { token: '$first' } }
-    const review = { type: 'nativeChatSkill', attrs: { token: '$review' } }
-    updateNativeChatComposerDraft(
-      scope('a'),
-      {
-        text: '$review',
-        document: { type: 'doc', content: [{ type: 'paragraph', content: [review] }] }
-      },
-      'immediate'
-    )
-    const document = {
-      type: 'doc',
-      content: [
-        { type: 'paragraph', content: [first] },
-        { type: 'paragraph', content: [] },
-        { type: 'paragraph', content: [{ type: 'text', text: '$review' }] }
-      ]
-    }
-    updateNativeChatComposerDraft(scope('b'), { text: '$first\n\n$review', document }, 'immediate')
-    await moveStructuredAgentSessionDraft('a', 'b')
-    expect(readNativeChatComposerDraft(scope('b')).document).toEqual({
-      type: 'doc',
-      content: [
-        { type: 'paragraph', content: [first] },
-        { type: 'paragraph', content: [] },
-        { type: 'paragraph', content: [review] }
-      ]
-    })
-  })
-
-  it('preserves the skill document when the destination holds only an image', async () => {
-    const document = {
-      type: 'doc',
-      content: [
-        { type: 'paragraph', content: [{ type: 'nativeChatSkill', attrs: { token: '$review' } }] }
-      ]
-    }
-    updateNativeChatComposerDraft(scope('a'), { text: '$review', document }, 'immediate')
-    updateNativeChatComposerDraft(scope('b'), { images: [SSH_IMAGE] }, 'immediate')
-    await moveStructuredAgentSessionDraft('a', 'b')
-    expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
-      text: '$review',
-      document,
-      images: [SSH_IMAGE]
-    })
-  })
-
-  it('saves chips in both merged documents without flattening either', async () => {
-    const storage = createMemoryNativeChatComposerDraftStorage()
-    setNativeChatComposerDraftStorageForTests(storage)
-    const first = {
-      type: 'paragraph',
-      content: [
-        { type: 'nativeChatSkill', attrs: { token: '$first' } },
-        { type: 'text', text: ' \n' }
-      ]
-    }
-    const second = {
-      type: 'paragraph',
-      content: [{ type: 'nativeChatSkill', attrs: { token: '$second' } }]
-    }
-    updateNativeChatComposerDraft(
-      scope('b'),
-      { text: '$first \n', document: { type: 'doc', content: [first] } },
-      'immediate'
-    )
-    updateNativeChatComposerDraft(
-      scope('a'),
-      { text: '$second', document: { type: 'doc', content: [second] } },
-      'immediate'
-    )
-    await moveStructuredAgentSessionDraft('a', 'b')
-    const expected = {
-      type: 'doc',
-      content: [
-        { ...first, content: [first.content[0]] },
-        { type: 'paragraph', content: [] },
-        second
-      ]
-    }
-    expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
-      text: '$first\n\n$second',
-      document: expected
-    })
-    clearNativeChatComposerDraftsForTests()
-    setNativeChatComposerDraftStorageForTests(storage)
-    await hydrateNativeChatComposerDrafts()
-    expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
-      text: '$first\n\n$second',
-      document: expected
-    })
-  })
   it('moves text, SSH images and skill chips whole into the new conversation', async () => {
-    const document = { type: 'doc', content: [{ type: 'paragraph' }] }
+    const document = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'before ' },
+            { type: 'nativeChatSkill', attrs: { token: '$review' } },
+            { type: 'text', text: ' after' }
+          ]
+        }
+      ]
+    }
     updateNativeChatComposerDraft(
       scope('a'),
-      { text: 'typed during clear', document, images: [SSH_IMAGE] },
+      { text: 'before $review after', document, images: [SSH_IMAGE] },
       'immediate'
     )
 
     await moveStructuredAgentSessionDraft('a', 'b')
 
     expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
-      text: 'typed during clear',
+      text: 'before $review after',
       document,
       images: [SSH_IMAGE]
     })
     expect(readNativeChatComposerDraft(scope('a'))).toMatchObject({ text: '', images: [] })
   })
 
-  it('goes after what the new conversation already holds', async () => {
-    updateNativeChatComposerDraft(scope('a'), { text: 'moved' }, 'immediate')
-    updateNativeChatComposerDraft(scope('b'), { text: 'already here' }, 'immediate')
-
-    await moveStructuredAgentSessionDraft('a', 'b')
-
-    expect(readNativeChatComposerDraft(scope('b')).text).toBe('already here\n\nmoved')
-  })
+  it.each(['text', 'image', 'skill'] as const)(
+    'keeps both drafts intact when the destination has %s input',
+    (kind) => {
+      const source = {
+        text: '$review-long',
+        document: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'nativeChatSkill', attrs: { token: '$review-long' } }]
+            }
+          ]
+        },
+        images: [SSH_IMAGE]
+      }
+      const destination =
+        kind === 'image'
+          ? { text: '', images: [SSH_IMAGE] }
+          : kind === 'text'
+            ? { text: '$review-long', images: [] }
+            : {
+                text: '$review-long',
+                images: [],
+                document: {
+                  type: 'doc',
+                  content: [
+                    {
+                      type: 'paragraph',
+                      content: [
+                        { type: 'nativeChatSkill', attrs: { token: '$review' } },
+                        { type: 'text', text: '-long' }
+                      ]
+                    }
+                  ]
+                }
+              }
+      updateNativeChatComposerDraft(scope('a'), source, 'immediate')
+      updateNativeChatComposerDraft(scope('b'), destination, 'immediate')
+      const originalSource = readNativeChatComposerDraft(scope('a'))
+      const originalTarget = readNativeChatComposerDraft(scope('b'))
+      moveStructuredAgentSessionDraft('a', 'b')
+      expect(readNativeChatComposerDraft(scope('a'))).toBe(originalSource)
+      expect(readNativeChatComposerDraft(scope('b'))).toBe(originalTarget)
+    }
+  )
 
   it('moves nothing from an empty draft', async () => {
     updateNativeChatComposerDraft(scope('b'), { text: 'mine' }, 'immediate')
@@ -256,15 +190,15 @@ describe('moving a cleared conversation draft', () => {
     expect(readNativeChatComposerDraft(scope('a')).text).toBe('')
   })
 
-  it('keeps unavailable images intact and deduplicates an already copied image', async () => {
+  it('keeps unavailable images intact in the whole transferred record', () => {
     const image = { id: 'missing', path: '', unavailableName: 'notes.png' }
     updateNativeChatComposerDraft(scope('a'), { text: 'moved', images: [image] }, 'immediate')
-    updateNativeChatComposerDraft(scope('b'), { text: 'moved', images: [image] }, 'immediate')
-    await moveStructuredAgentSessionDraft('a', 'b')
+    moveStructuredAgentSessionDraft('a', 'b')
     expect(readNativeChatComposerDraft(scope('b'))).toMatchObject({
       text: 'moved',
       images: [image]
     })
+    expect(readNativeChatComposerDraft(scope('a')).images).toEqual([])
   })
 
   it('keeps new history input entered after the synchronous move', async () => {
