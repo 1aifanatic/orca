@@ -141,3 +141,58 @@ describe('host snapshot fences before split-pane retirement', () => {
 function retiredSnapshotWithVersion(snapshotVersion: number): RuntimeMobileSessionTabsResult {
   return { ...retiredSnapshot(), snapshotVersion }
 }
+
+describe('a host snapshot that does not list a pane split here yet', () => {
+  beforeEach(() => {
+    resetWebSessionTabsSyncTestState()
+    clearWebSessionTerminalOrphanRecoveryForTests()
+  })
+
+  it('keeps the pane while the host has not recorded it', async () => {
+    let state = makeState()
+    // The host answers for a pane it has not recorded yet.
+    const call = vi.fn(async () => ({
+      id: 'resolve',
+      ok: false as const,
+      error: { code: 'terminal_not_found', message: 'terminal_not_found' }
+    }))
+    const receive = async (incoming: RuntimeMobileSessionTabsResult): Promise<void> => {
+      const recovered = await recoverWebSessionTerminalOrphansBeforeApply(state, incoming, ENV, {
+        call
+      })
+      expect(recovered).not.toBeNull()
+      if (recovered) {
+        state = { ...state, ...applyFreshWebSessionTabsSnapshot(state, recovered, ENV) }
+      }
+    }
+    await receive(snapshot(2, [LEAF_ID]))
+    // The split writes the window's tree before any later host frame can apply.
+    state = {
+      ...state,
+      terminalLayoutsByTabId: {
+        ...state.terminalLayoutsByTabId,
+        [TAB_ID]: {
+          ...state.terminalLayoutsByTabId[TAB_ID],
+          root: {
+            type: 'split',
+            direction: 'vertical',
+            first: { type: 'leaf', leafId: LEAF_ID },
+            second: { type: 'leaf', leafId: SECOND_LEAF_ID }
+          }
+        }
+      }
+    }
+    const later = snapshot(3, [LEAF_ID])
+    await receive({ ...later, tabs: later.tabs.map((tab) => ({ ...tab, title: 'vim' })) })
+
+    expect(call).toHaveBeenCalledWith(expect.objectContaining({ method: 'terminal.resolvePane' }))
+    expect(collectLeafIds(state.terminalLayoutsByTabId[TAB_ID].root!)).toEqual(mountedLeaves)
+    expect(
+      planTerminalLiveLayoutRemovals(
+        state.terminalLayoutsByTabId[TAB_ID].root,
+        mountedLeaves,
+        new Set()
+      )
+    ).toEqual([])
+  })
+})
