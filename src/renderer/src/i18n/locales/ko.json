@@ -18324,6 +18324,7 @@
         "estimated": "마지막 응답 기준 추정치입니다."
       },
       "dismissDeliveryNotice": "닫기",
+      "addSelectionToChat": "채팅에 추가",
       "messageNotSent": "메시지가 전송되지 않음",
       "deliveryUnconfirmed": "전달 확인 안 됨 — 다시 시도하기 전에 채팅을 확인하세요",
       "messageSending": "전송 중…",
