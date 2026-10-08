@@ -120,7 +120,9 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
       }) => AgentHookAuthorityAttestation | null)
     | null
 
-  protected readonly retireAgentHookCompatibilityAuthorityFn:
+  protected readonly retireAgentHookCompatibilityAuthorityFn: ((paneKey: string) => void) | null
+
+  protected readonly endAgentHookLaunchFn:
     | ((paneKey: string, launchAgent: TuiAgent | null) => void)
     | null
 

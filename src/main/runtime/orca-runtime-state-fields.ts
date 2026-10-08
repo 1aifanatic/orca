@@ -90,10 +90,8 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
         connectionId: string | null
         terminalProvenance: 'current_runtime' | 'restored'
       }) => AgentHookAuthorityAttestation | null
-      retireAgentHookCompatibilityAuthority?: (
-        paneKey: string,
-        launchAgent: TuiAgent | null
-      ) => void
+      retireAgentHookCompatibilityAuthority?: (paneKey: string) => void
+      endAgentHookLaunch?: (paneKey: string, launchAgent: TuiAgent | null) => void
       checkHookAgentPresence?: (
         paneKey: string
       ) => Promise<'live' | 'unverifiable' | 'exited' | null>
@@ -242,6 +240,7 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
       deps?.attestAgentHookCompatibilityAuthority ?? null
     this.retireAgentHookCompatibilityAuthorityFn =
       deps?.retireAgentHookCompatibilityAuthority ?? null
+    this.endAgentHookLaunchFn = deps?.endAgentHookLaunch ?? null
     this.checkHookAgentPresenceFn = deps?.checkHookAgentPresence ?? null
     this.reconcileAgentStatusForEndedProcessFn = deps?.reconcileAgentStatusForEndedProcess ?? null
     this.dropAgentStatusForRemovedWorktreeFn = deps?.dropAgentStatusForRemovedWorktree ?? null

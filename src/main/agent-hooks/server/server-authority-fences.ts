@@ -9,8 +9,9 @@ import type {
 } from './server-types'
 
 export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuthorityAliases {
-  /** The pane's launched agent command ended, which is its owner's exit when the launch still owns
-   *  the pane. Ends only the launch: a resume remnant or an owner it handed the pane to stays. */
+  /** The pane's launched agent command ended in a terminal that lives on. That is its owner's exit
+   *  when the launch still owns the pane; any other row (a resume remnant, an owner it handed the
+   *  pane to, a relayed row its relay decides) stays. */
   endLaunchAuthority(paneKey: string, launchAgent: string | null): void {
     const ownerPaneKey = this.resolvePaneKeyAlias(paneKey)
     const row = this.state.lastStatusByPaneKey.get(ownerPaneKey)
@@ -25,7 +26,7 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       this.scheduleStatusPersist()
       this.notifyStatusChangeListeners()
     }
-    if (!owner || (launchAgent && owner.agent !== launchAgent)) {
+    if (!owner || row?.connectionId !== null || !launchAgent || owner.agent !== launchAgent) {
       return
     }
     this.reconcileEndedProcessForPaneKeys([ownerPaneKey], {
@@ -33,6 +34,10 @@ export abstract class AgentHookServerAuthorityFences extends AgentHookServerAuth
       endedPresence: { ...owner, ended: true }
     })
     this.paneOwnerProbes.ownerEnded(ownerPaneKey, owner.process)
+    // Why: an owner with no session to resume leaves no ended record, so fence its late hooks as before.
+    if (!this.state.lastStatusByPaneKey.has(ownerPaneKey)) {
+      this.retirePaneAuthority(paneKey)
+    }
   }
 
   // Why: retirement fences a pane and every alias of it, then deletes those aliases.

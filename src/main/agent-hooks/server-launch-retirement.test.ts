@@ -74,19 +74,76 @@ describe('ending a launched agent command', () => {
     expect(row(server)).toMatchObject({ agentType: 'codex', toolName: 'Bash' })
   })
 
-  it.each([['claude'], [null]])(
-    "ends the launch's ownership into its resume remnant (launch agent %s)",
-    async (launchAgent) => {
-      const server = await createServer()
-      await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
-      server.endLaunchAuthority(PANE, launchAgent)
-      const remnant = { providerSessionOnly: true, providerSession: { id: 'claude-a' } }
-      expect(row(server)).toMatchObject(remnant)
-      // Why: a late hook from the ended process never revives the pane.
-      await claude(server, 'PreToolUse', toolUse)
-      expect(row(server)).toMatchObject(remnant)
-    }
-  )
+  it("ends the launch's ownership into its resume remnant, and admits a new process", async () => {
+    const server = await createServer()
+    await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
+    server.endLaunchAuthority(PANE, 'claude')
+    const remnant = { providerSessionOnly: true, providerSession: { id: 'claude-a' } }
+    expect(row(server)).toMatchObject(remnant)
+    // Why: a late hook from the ended process never revives the pane.
+    await claude(server, 'PreToolUse', toolUse)
+    expect(row(server)).toMatchObject(remnant)
+    const next = JSON.stringify({ pid: 4002, platform: process.platform, startTime: 'birth-4002' })
+    const body = buildBody(
+      { hook_event_name: 'PreToolUse', session_id: 'claude-b', ...toolUse },
+      { agentProcess: next }
+    )
+    expect((await postHookEvent(server, body)).status).toBe(204)
+    expect(row(server)).toMatchObject({ state: 'working', toolName: 'Bash' })
+    expect(row(server)?.providerSessionOnly).toBeFalsy()
+  })
+
+  it('leaves the owner of a launch whose agent is unknown, revoking only its authority', async () => {
+    const server = await createServer()
+    await claude(server, 'UserPromptSubmit', { prompt: 'claude task' })
+    const before = row(server)
+    server.endLaunchAuthority(PANE, null)
+    expect(row(server)).toEqual(before)
+  })
+
+  it('leaves a relayed row to its relay', async () => {
+    const server = await createServer()
+    server.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        source: 'codex',
+        hookEventName: 'UserPromptSubmit',
+        agentPresence: { agent: 'codex' },
+        payload: { state: 'working', prompt: 'remote task', agentType: 'codex' }
+      },
+      'ssh-1'
+    )
+    const before = row(server)
+    server.endLaunchAuthority(PANE, 'codex')
+    expect(row(server)).toEqual(before)
+  })
+
+  it('fences a session-less launch, then admits its new run once its process shows', async () => {
+    const server = await createServer()
+    const commandCode = (event: string) =>
+      postHookEvent(server, buildBody({ hook_event_name: event, ...toolUse }), '/hook/command-code')
+    await commandCode('PreToolUse')
+    expect(row(server)).toMatchObject({ agentType: 'command-code' })
+    server.endLaunchAuthority(PANE, 'command-code')
+    expect(row(server)).toBeUndefined()
+    await commandCode('PostToolUse')
+    expect(row(server)).toBeUndefined()
+    server.ingestTerminalStatus({
+      paneKey: PANE,
+      tabId: 'tab-1',
+      worktreeId: 'wt-1',
+      origin: 'process',
+      payload: { state: 'working', prompt: '', agentType: 'command-code' }
+    })
+    await commandCode('PreToolUse')
+    expect(row(server)).toMatchObject({
+      state: 'working',
+      agentType: 'command-code',
+      toolName: 'Bash'
+    })
+  })
 
   it.each([['Stop'], ['PostToolUse']])(
     'drops a late %s from a launch with no process, and revives on a new prompt',
