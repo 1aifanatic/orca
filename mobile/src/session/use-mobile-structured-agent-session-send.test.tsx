@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalDispatchState } from '../../../src/shared/agent-session-journal-types'
 import { DISPATCH_REJECTED_CANCELLED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
+import { SendParams } from '../../../src/shared/rpc-contract/structured-agent-session-params'
 import type { RpcClient } from '../transport/rpc-client'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { resetMobileStructuredSendOperationJournalForTests } from './mobile-structured-send-operation-journal'
@@ -443,43 +444,71 @@ describe('mobile structured send retries', () => {
     expect(calls().every(([, params]) => !('retryUnknown' in (params as object)))).toBe(true)
   })
 
-  it('sends under a new id once the host has expired an ambiguous one', async () => {
-    let attempts = 0
-    sendRequest.mockImplementation(async (method) => {
-      if (method !== 'agentSession.send') {
-        return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
-      }
-      attempts += 1
-      if (attempts === 1) {
-        throw markRpcDeliveryUnknown(new Error('Connection closed'))
-      }
-      if (attempts === 3) {
-        return sendResult('accepted')
-      }
-      return ok({
-        ok: false,
-        refusal: {
-          code: 'agent_session_operation_expired',
-          message: 'Operation expired.'
+  it.each(['accepted', 'rejected'] as const)(
+    'keeps an expired ambiguous id until %s host history allows one later user send',
+    async (dispatchState) => {
+      let attempts = 0
+      sendRequest.mockImplementation(async (method) => {
+        if (method !== 'agentSession.send') {
+          return method === 'agentSession.options' ? ok({ models: [], current: {} }) : ok({})
         }
+        attempts += 1
+        if (attempts === 1) {
+          throw markRpcDeliveryUnknown(new Error('Connection closed'))
+        }
+        if (attempts === 4) {
+          return sendResult('accepted')
+        }
+        return ok({
+          ok: false,
+          refusal: {
+            code: 'agent_session_operation_expired',
+            message: 'Operation expired.'
+          }
+        })
       })
-    })
-    await mountSession()
+      await mountSession()
 
-    await act(async () => {
-      expect(await hook!.sendWithOutcome('old ambiguity')).toBe('unknown')
-      expect(await hook!.sendWithOutcome('old ambiguity')).toBe('rejected')
-      expect(await hook!.sendWithOutcome('old ambiguity')).toBe('accepted')
-    })
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('old ambiguity')).toBe('unknown')
+        expect(await hook!.sendWithOutcome('old ambiguity')).toBe('unknown')
+        expect(await hook!.sendWithOutcome('old ambiguity')).toBe('unknown')
+      })
 
-    expect(calls()).toHaveLength(3)
-    const [first, replay, fresh] = sentIds()
-    expect(replay).toBe(first)
-    expect(fresh).not.toBe(first)
-    expect(onSendError).toHaveBeenCalledWith(
-      "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
-    )
-  })
+      expect(calls()).toHaveLength(3)
+      const [first, replay, expiredRetry] = sentIds()
+      expect(replay).toBe(first)
+      expect(expiredRetry).toBe(first)
+      expect(storedOperations.size).toBe(1)
+      expect(onSendError).toHaveBeenCalledWith(
+        "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
+      )
+      const request = SendParams.parse(calls()[0]?.[1])
+      const event = snapshotEvent()
+      act(() =>
+        listener?.({
+          ...event,
+          page: {
+            ...event.page,
+            submissions: [
+              {
+                ...structuredSendResultFixture(dispatchState).submission,
+                clientMessageId: request.envelope.clientOperationId,
+                payloadFingerprint: request.envelope.payloadFingerprint
+              }
+            ]
+          }
+        })
+      )
+      await vi.waitFor(() => expect(storedOperations.size).toBe(0))
+      expect(calls()).toHaveLength(3)
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('old ambiguity')).toBe('accepted')
+      })
+      expect(calls()).toHaveLength(4)
+      expect(sentIds()[3]).not.toBe(first)
+    }
+  )
 
   it('does not retain an id when the action budget expires before dispatch', async () => {
     await mountSession()

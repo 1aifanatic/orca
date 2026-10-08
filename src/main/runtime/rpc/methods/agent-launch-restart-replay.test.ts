@@ -517,6 +517,33 @@ describe('a caller cannot claim an identity', () => {
 })
 
 describe('launch receipt retention', () => {
+  it('allows a fresh desktop launch after 600 settled operations over a day', async () => {
+    const end = Date.now()
+    for (let index = 0; index < 600; index += 1) {
+      const now = end - (599 - index) * 138_000
+      const operationId = `${now}-${index.toString(16).padStart(32, '0')}`
+      expect(
+        await store.admitOperation({
+          callerKey: 'trusted-local:desktop',
+          operationId,
+          fingerprint: 'fp-history',
+          now
+        })
+      ).toMatchObject({ decision: 'admit' })
+      await store.recordOperationOutcome({
+        callerKey: 'trusted-local:desktop',
+        operationId,
+        outcome: { status: 'succeeded', sessionId: '' }
+      })
+    }
+    const host = hostRuntime()
+    await expect(launch(host, PROMPTED_LAUNCH, { ...DESKTOP_IPC })).resolves.toMatchObject({
+      outcome: { kind: 'terminal' }
+    })
+    expect(host.createTerminal).toHaveBeenCalledOnce()
+    expect(store.listOperationRows().length).toBeLessThan(512)
+  })
+
   it('keeps one row per launch, retained from admission, across both writes', async () => {
     let releasePaste: (pasted: boolean) => void = () => {}
     deliverTerminalPrompt.mockImplementationOnce(
@@ -536,7 +563,7 @@ describe('launch receipt retention', () => {
     expect(row()?.recordedAt).toBe(afterFirstWrite?.recordedAt)
   })
 
-  it('admits a desktop launch beyond the former per-caller quota', async () => {
+  it('bounds fresh desktop launches without starving another caller', async () => {
     const now = Date.now()
     for (let index = 0; index < 512; index += 1) {
       await store.admitOperation({
@@ -548,10 +575,10 @@ describe('launch receipt retention', () => {
     }
     const host = hostRuntime()
 
-    await expect(launch(host, PROMPTED_LAUNCH, { ...DESKTOP_IPC })).resolves.toMatchObject({
-      outcome: { kind: 'terminal' }
-    })
-    expect(host.createTerminal).toHaveBeenCalledOnce()
+    await expect(launch(host, PROMPTED_LAUNCH, { ...DESKTOP_IPC })).rejects.toThrow(
+      'agent_session_operation_capacity'
+    )
+    expect(host.createTerminal).not.toHaveBeenCalled()
     await expect(launch(host)).resolves.toMatchObject({ outcome: { kind: 'terminal' } })
   })
 })

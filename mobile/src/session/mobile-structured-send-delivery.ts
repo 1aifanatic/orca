@@ -20,11 +20,9 @@
 //     provably never ran, so the caller sends it again under a fresh id.
 //   rejected — a terminal refusal or rejected submission spends a fresh id. A
 //     pending-admission refusal, or any refusal after earlier transport doubt,
-//     keeps it because neither proves a retained delivery did not happen. Two
-//     exceptions spend it anyway, because the host can never accept the replay
-//     and keeping the id would only refuse every later send of the same text:
-//     a host that refuses the replay's request shape itself (an older host's
-//     strict schema turning `delivery` away), and an id the host has expired.
+//     keeps it because neither proves a retained delivery did not happen. A host
+//     refusing the request shape itself spends it; expiry still needs history
+//     to establish the earlier delivery before the same intent gets a new id.
 //     A rejection the host kept as a card answers as `queued`: the card holds the text.
 //   unknown — the one answer that KEEPS its id, whether it came from the host or
 //     from an ack-loss on the way back. The message may be with the provider, so
@@ -76,11 +74,10 @@ export function mobileStructuredSendDelivery(
       return { outcome: 'unknown', operationIdSpent: false, error: null }
     }
     if (retained && result.code === 'agent_session_operation_expired') {
-      // The host refuses this id for good once its day is up, so keeping it would refuse this text
-      // forever. The earlier attempt may already be in the chat, so the words say to check first.
+      // Expiry is not proof of non-delivery; host history retires the uncertain id.
       return {
-        outcome: 'rejected',
-        operationIdSpent: true,
+        outcome: 'unknown',
+        operationIdSpent: false,
         error: agentSessionWriteNoticeEnglish(['sendOutcomeLost'])
       }
     }

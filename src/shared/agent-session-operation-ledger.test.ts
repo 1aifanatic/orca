@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
-  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS,
+  AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS
 } from './agent-session-host-authority'
 import {
   agentSessionOperationExpiry,
@@ -101,15 +102,16 @@ describe('operation admission', () => {
 
   it('refuses an id older than the admission window instead of treating it as new', () => {
     const rows = new Map<string, AgentSessionOperationRow>()
-    const stale = operationId(NOW - AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS - 1)
+    const stale = operationId(NOW - AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS - 1)
     expect(evaluate(rows, { operationId: stale })).toEqual({
       decision: 'refused',
       code: 'agent_session_operation_expired',
       details: { reason: 'operationExpired' }
     })
     expect(
-      evaluate(rows, { operationId: operationId(NOW - AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS) })
-        .decision
+      evaluate(rows, {
+        operationId: operationId(NOW - AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS)
+      }).decision
     ).toBe('admit')
   })
 
@@ -180,6 +182,62 @@ describe('the pane a launch laid out', () => {
 })
 
 describe('retention', () => {
+  it.each(['succeeded', 'failed'] as const)(
+    'keeps a %s receipt through the exact retry boundary, then expires its id',
+    (status) => {
+      const rows = new Map<string, AgentSessionOperationRow>()
+      const row = admit(rows)
+      const key = agentSessionOperationKey(row.callerKey, row.operationId)
+      rows.set(key, {
+        ...row,
+        outcome:
+          status === 'succeeded' ? { status, sessionId: 'session-1' } : { status, code: 'failure' }
+      })
+      const boundary = NOW + AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS
+      expect(
+        evaluate(pruneAgentSessionOperationRows(rows, boundary), { now: boundary }).decision
+      ).toBe('replay')
+      const expired = pruneAgentSessionOperationRows(rows, boundary + 1)
+      expect(expired.size).toBe(0)
+      expect(evaluate(expired, { now: boundary + 1 })).toMatchObject({
+        decision: 'refused',
+        code: 'agent_session_operation_expired'
+      })
+    }
+  )
+
+  it.each(['pending', 'unknown'] as const)(
+    'keeps a %s receipt beyond the settled retry window until its existing expiry',
+    (status) => {
+      const rows = new Map<string, AgentSessionOperationRow>()
+      const row = admit(rows)
+      rows.set(agentSessionOperationKey(row.callerKey, row.operationId), {
+        ...row,
+        outcome: { status }
+      })
+      const now = NOW + AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS + 1
+      expect(evaluate(pruneAgentSessionOperationRows(rows, now), { now }).decision).toBe('replay')
+      expect(pruneAgentSessionOperationRows(rows, row.expiresAt).size).toBe(0)
+    }
+  )
+
+  it('retains a settled future-stamped receipt until the id itself expires', () => {
+    const rows = new Map<string, AgentSessionOperationRow>()
+    const id = operationId(NOW + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS)
+    const row = admit(rows, { operationId: id })
+    rows.set(agentSessionOperationKey(row.callerKey, id), {
+      ...row,
+      outcome: { status: 'succeeded', sessionId: 'session-1' }
+    })
+    const now = row.operationTimestamp + AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS
+    expect(
+      evaluate(pruneAgentSessionOperationRows(rows, now), { operationId: id, now }).decision
+    ).toBe('replay')
+    expect(
+      evaluate(pruneAgentSessionOperationRows(rows, now + 1), { operationId: id, now: now + 1 })
+    ).toMatchObject({ decision: 'refused', code: 'agent_session_operation_expired' })
+  })
+
   it('keeps a tombstone strictly longer than its id can be admitted as new', () => {
     const expiry = agentSessionOperationExpiry(NOW, NOW)
     const lastAdmissibleAt = NOW + AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS

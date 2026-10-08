@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS } from '../../../src/shared/agent-session-host-authority'
+import {
+  AGENT_SESSION_MAX_OPERATION_REPLAY_AGE_MS,
+  AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS
+} from '../../../src/shared/agent-session-host-authority'
 import { AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT } from '../../../src/shared/agent-session-operation-ledger'
 
 const asyncStorage = vi.hoisted(() => ({
@@ -185,6 +188,42 @@ describe('mobile structured send operation journal', () => {
       submissions: [{ ...submission, dispatchState: 'accepted', reason: null }]
     })
     expect(values.size).toBe(0)
+  })
+
+  it('reconciles a lost reply from host history after settled receipt replay expires', async () => {
+    const operationId = operationIdAt(NOW, 'd')
+    await getOrCreateMobileStructuredSendOperation({
+      operationKey: OPERATION_KEY,
+      createOperationId: () => operationId,
+      now: NOW
+    })
+    const reconnectAt = NOW + AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS + 1
+    const createFreshId = vi.fn(() => operationIdAt(reconnectAt, 'e'))
+    await expect(
+      getOrCreateMobileStructuredSendOperation({
+        operationKey: OPERATION_KEY,
+        createOperationId: createFreshId,
+        now: reconnectAt
+      })
+    ).resolves.toEqual({ operationId, retained: true })
+    expect(createFreshId).not.toHaveBeenCalled()
+
+    await clearMobileStructuredSettledSendOperations({
+      submissions: [
+        {
+          clientMessageId: operationId,
+          fence: 1,
+          payloadFingerprint: 'b'.repeat(64),
+          dispatchState: 'accepted',
+          providerItemId: 'accepted-item',
+          reason: null,
+          submittedAt: NOW,
+          resolvedAt: NOW
+        }
+      ]
+    })
+    expect(values.size).toBe(0)
+    expect(createFreshId).not.toHaveBeenCalled()
   })
 
   it("clears an id a draft hand-off names, whatever that hand-off's state", async () => {

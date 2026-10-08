@@ -19,6 +19,7 @@ import {
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS,
+  AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS,
   parseAgentSessionOperationTimestamp
 } from './agent-session-host-authority'
 import {
@@ -99,7 +100,7 @@ export function listAgentSessionOperationRowsOwningPane(
   for (const row of rows) {
     const owned: unknown = row.ownedPane
     if (
-      row.expiresAt > now &&
+      agentSessionOperationRowRetained(row, now) &&
       typeof owned === 'object' &&
       owned !== null &&
       'paneKey' in owned &&
@@ -220,9 +221,8 @@ export function claimAgentSessionOperation(
 }
 
 /**
- * Retention floor. The tombstone must outlive the window in which its id could still be admitted
- * as new, plus the accepted future skew — otherwise a retry arriving in the gap becomes a second
- * spawn instead of a replay.
+ * Pending or unknown effects keep their existing recovery expiry; settled rows use the shorter
+ * retry boundary when pruned, after which an absent id can never run again.
  */
 export function agentSessionOperationExpiry(
   operationTimestamp: number,
@@ -242,7 +242,7 @@ export function findAgentSessionGlobalOperationRow(
   now: number
 ): AgentSessionOperationRow | undefined {
   for (const row of rows.values()) {
-    if (row.expiresAt > now && row.operationId === operationId) {
+    if (agentSessionOperationRowRetained(row, now) && row.operationId === operationId) {
       return row
     }
   }
@@ -255,11 +255,20 @@ export function pruneAgentSessionOperationRows(
 ): Map<string, AgentSessionOperationRow> {
   const kept = new Map<string, AgentSessionOperationRow>()
   for (const [key, row] of rows) {
-    if (row.expiresAt > now) {
+    if (agentSessionOperationRowRetained(row, now)) {
       kept.set(key, row)
     }
   }
   return kept
+}
+
+function agentSessionOperationRowRetained(row: AgentSessionOperationRow, now: number): boolean {
+  return (
+    row.expiresAt > now &&
+    ((row.outcome.status !== 'succeeded' && row.outcome.status !== 'failed') ||
+      now - Math.max(row.recordedAt, row.operationTimestamp) <=
+        AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS)
+  )
 }
 
 /**
@@ -298,7 +307,7 @@ export function evaluateAgentSessionOperation(args: {
           details: { reason: 'operationIdReused' }
         }
   }
-  if (now - operationTimestamp > AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS) {
+  if (now - operationTimestamp > AGENT_SESSION_SETTLED_OPERATION_REPLAY_WINDOW_MS) {
     // Why: once a tombstone could have expired, an unseen replay must never be reinterpreted as
     // permission to start another fresh agent.
     return {
