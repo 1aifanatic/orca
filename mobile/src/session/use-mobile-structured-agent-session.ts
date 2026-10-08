@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef } from 'react'
+import { formatAgentTypeLabel } from '../../../src/shared/agent-type-label'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
 import type { MobileStructuredSendResult } from './mobile-structured-agent-session-send'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
@@ -250,6 +251,7 @@ export function useMobileStructuredAgentSession(args: {
   )
   const queued = useMobileStructuredQueuedMessageControls({
     sessionKey,
+    ...(agent ? { agentName: formatAgentTypeLabel(agent) } : {}),
     queuedMessages,
     queuePause,
     submissions: state.submissions,

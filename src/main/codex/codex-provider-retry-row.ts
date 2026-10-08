@@ -16,7 +16,6 @@ import {
 } from '../native-chat/agent-session-journal/journal-payload-bounds'
 import type { CodexStructuredSessionEvent } from './codex-structured-session-adapter'
 import {
-  readCodexErrorAdditionalDetails,
   readCodexErrorInfo,
   readCodexErrorMessage,
   readCodexErrorWillRetry
@@ -33,15 +32,9 @@ export function isCodexProviderRetryFrame(event: CodexStructuredSessionEvent): b
 
 export function codexProviderRetryRowBody(payload: unknown): AgentJournalStatusItem {
   const message = readCodexErrorMessage(payload)
-  const detail = message ? providerDiagnostic(message, 'person') : undefined
-  const additionalDetails = readCodexErrorAdditionalDetails(payload)
-  const retry = readProviderRetry({
-    ...readCodexErrorInfo(payload),
-    // Details that only repeat the message would print the same words twice.
-    ...(additionalDetails && additionalDetails.trim() !== message?.trim()
-      ? { cause: additionalDetails }
-      : {})
-  })
+  const detail = message ? providerDiagnostic(message, 'log') : undefined
+  // Transport details remain in providerFrame; neither error field is a person-facing explanation.
+  const retry = readProviderRetry(readCodexErrorInfo(payload))
   const words = agentSessionFailureWords(
     agentSessionFailureFact('providerRetrying', {
       ...(detail ? { detail } : {}),

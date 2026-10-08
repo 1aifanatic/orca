@@ -30,6 +30,18 @@ function draft(overrides: Partial<AgentSessionQueuedMessage> & { messageId: stri
 }
 
 describe('mobileQueuedMessageCards', () => {
+  it.each(['Codex', 'Claude'])(
+    'names %s on a returned write failure without duplicating Send',
+    (agentName) => {
+      const [card] = mobileQueuedMessageCards(
+        [draft({ messageId: 'a', ...returnedAs(agentSessionFailureFact('writeFailed')) })],
+        [],
+        { pendingPrompt: false, agentName }
+      )
+      expect(card?.caption).toBe(`${agentName} couldn't receive this message.`)
+    }
+  )
+
   it('renders nothing without a published list', () => {
     expect(mobileQueuedMessageCards(null, [], { pendingPrompt: false })).toEqual([])
     expect(mobileQueuedMessageCards([], [], { pendingPrompt: false })).toEqual([])

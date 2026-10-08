@@ -10,6 +10,7 @@ import {
 import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
 import { translate } from '@/i18n/i18n'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
+import { sayAgentSessionWriteNoticeTranslated } from './agent-session-write-notice-text'
 import { agentSessionFailureStatedByStartRow } from '../../../../shared/structured-agent-session-start-failure-facts'
 import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
 
@@ -79,6 +80,7 @@ function conversationCommandFailureText(
     fact,
     'row',
     { agentName, command: result.command },
-    sayAgentSessionFailureTranslated
+    sayAgentSessionFailureTranslated,
+    sayAgentSessionWriteNoticeTranslated
   )
 }

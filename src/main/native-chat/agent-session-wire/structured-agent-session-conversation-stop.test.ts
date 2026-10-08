@@ -396,7 +396,7 @@ describe('a Stop that names no turn', () => {
     await eventually(async () =>
       expect(await submission(refused.id)).toMatchObject({
         dispatchState: 'rejected',
-        reason: expect.stringContaining('unknown model gpt-missing'),
+        reason: "Codex didn't accept this message.",
         rejection: { kind: 'providerRejected' }
       })
     )
@@ -630,7 +630,7 @@ describe('a Stop that names no turn', () => {
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 
     expect(closeSession).not.toHaveBeenCalled()
-    expect(await statusRows()).toEqual(["Codex didn't stop: no active turn to interrupt."])
+    expect(await statusRows()).toEqual(['Codex had no response in progress to stop.'])
   })
 
   it('ends the child when the provider never answered the interrupt', async () => {
@@ -666,7 +666,9 @@ describe('a Stop that names no turn', () => {
         fields: expect.objectContaining({ scope: 'stop-child', sessionId: SESSION })
       })
     )
-    expect(await statusRows()).toEqual(["Codex didn't stop: failed to interrupt turn."])
+    expect(await statusRows()).toEqual([
+      "Codex didn't stop: failed to interrupt turn. Check the chat before trying again."
+    ])
   })
 
   it('counts as stopped when the child exit was proven and only a later cleanup step failed', async () => {
@@ -701,7 +703,7 @@ describe('a Stop that names no turn', () => {
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 
     expect(await statusRows()).toEqual([
-      "The agent hasn't confirmed that it stopped. Check the chat before trying again."
+      "Codex hasn't confirmed that it stopped. Check the chat before trying again."
     ])
   })
 
@@ -709,7 +711,7 @@ describe('a Stop that names no turn', () => {
     const { id, result } = send('hello')
     await result
     await eventually(async () => expect((await submission(id))?.handedOverAt).toBeDefined())
-    cancelTurn.mockResolvedValueOnce({ cancelled: false })
+    cancelTurn.mockResolvedValueOnce({ cancelled: false, refusal: { turnNotRunning: true } })
 
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: false } })
 

@@ -201,18 +201,18 @@ describe('desktop words for a failure fact', () => {
         { agentName: 'Codex' },
         sayAgentSessionFailureTranslated
       )
-    expect(sentence({ kind: 'commandRefused' })).toBe(
-      "Cette commande n'a pas été exécutée. Réessayez."
-    )
+    expect(sentence({ kind: 'commandRefused' })).toBe('Codex n’a pas exécuté cette commande.')
     expect(sentence({ kind: 'stopRefused' })).toBe(
-      "Codex n'avait aucune réponse en cours à arrêter."
+      'Codex ne s’est pas arrêté. Vérifiez le chat avant de réessayer.'
     )
     expect(
       sentence({
         kind: 'stopRefused',
         detail: { text: 'no active turn to interrupt.', audience: 'person' }
       })
-    ).toBe("Codex ne s'est pas arrêté : no active turn to interrupt.")
+    ).toBe(
+      'Codex ne s’est pas arrêté : no active turn to interrupt. Vérifiez le chat avant de réessayer.'
+    )
   })
 
   it("says an image's size limit in the reader's unit", async () => {

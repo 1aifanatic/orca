@@ -104,7 +104,7 @@ describe('the line under the composer after a conversation command failed', () =
       "Claude n'a pas pu démarrer. Relancez /clear."
     )
     expect((await sent(hostResult('compact', COMPACTION_FAILED))).error).toBe(
-      'La compaction a échoué : Context is too short.'
+      "Claude n'a pas pu raccourcir l'historique de cette conversation : Context is too short."
     )
     expect((await sent(hostResult('compact', { kind: 'restartFailed' }))).error).toBe(
       "Claude n'a pas pu redémarrer. Relancez /compact."
@@ -118,6 +118,24 @@ describe('the line under the composer after a conversation command failed', () =
     )
     expect((await sent(hostResult('compact', { kind: 'notSignedIn' }))).error).toBe(
       'Claude は選択したアカウントでサインインしていません。サインインしてから、/compact をもう一度実行してください。'
+    )
+  })
+
+  it('translates the recorded refusal and its action alongside the named command failure', async () => {
+    await i18n.changeLanguage('fr')
+    const result = hostResult(
+      'compact',
+      {
+        kind: 'commandRefused',
+        refusal: {
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'conversationCleared' }
+        }
+      },
+      'codex'
+    )
+    expect((await sent(result, 'codex')).error).toBe(
+      'Codex n’a pas exécuté cette commande. Cette conversation a été effacée. Ouvrez la conversation actuelle pour continuer.'
     )
   })
 

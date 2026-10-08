@@ -13,10 +13,12 @@ import type { StructuredAgentSessionQueuedMessagesController } from './use-struc
  */
 export function NativeChatQueuedMessageList({
   controller,
+  agentName,
   steerHeld = false,
   focusComposer
 }: {
   controller: StructuredAgentSessionQueuedMessagesController
+  agentName?: string
   /** The chat reads Stopping: no card steers into the turn a Stop is ending. */
   steerHeld?: boolean
   /** Where focus goes once Steer, Edit or Delete takes the focused card away. */
@@ -64,6 +66,7 @@ export function NativeChatQueuedMessageList({
                 <NativeChatQueuedMessageCard
                   key={card.messageId}
                   card={card}
+                  agentName={agentName}
                   showsSteerShortcut={controller.queueCapable && card === newest}
                   steerHeld={steerHeld}
                   onSteer={() => refocusAfter(controller.steer(card.messageId))}

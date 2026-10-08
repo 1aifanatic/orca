@@ -4,6 +4,7 @@ import { isProviderDiagnosticPersonText } from './provider-diagnostic-person-tex
 describe('provider explanations a person can read', () => {
   it.each([
     'Claude does not support the image type .bmp',
+    'Claude does not support the image my_photo.bmp. Please use a PNG image.',
     'Not enough messages to compact.',
     'Too many requests',
     'Reconnecting... 2/5',
@@ -22,6 +23,9 @@ describe('provider explanations a person can read', () => {
     'write EPIPE',
     'HTTP 502 Bad Gateway',
     'RPC -32603',
+    'stream disconnected before completion: error sending request for url (http://127.0.0.1:9/v1/responses)',
+    'stream disconnected before completion',
+    'Request failed at https://example.test/v1/responses',
     'Failure\n    at send (/app/dispatch.ts:10:2)',
     'Traceback (most recent call last):',
     'data: {"type":"error"}',

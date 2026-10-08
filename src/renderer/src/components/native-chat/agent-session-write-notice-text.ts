@@ -138,6 +138,10 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
   tryAgain: () => translate('components.native-chat.writeNotice.tryAgain', COPY.tryAgain)
 }
 
+export function sayAgentSessionWriteNoticeTranslated(id: AgentSessionWriteNoticeSentence): string {
+  return SENTENCES[id]()
+}
+
 export function agentSessionWriteNoticeText(parts: readonly AgentSessionWriteNoticePart[]): string {
   return joinSentences(
     parts.map((part) =>
@@ -149,7 +153,8 @@ export function agentSessionWriteNoticeText(parts: readonly AgentSessionWriteNot
               part.failure,
               part.surface,
               part.context,
-              sayAgentSessionFailureTranslated
+              sayAgentSessionFailureTranslated,
+              sayAgentSessionWriteNoticeTranslated
             )
     )
   )

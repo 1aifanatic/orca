@@ -2,6 +2,7 @@
 // shared English as its fallback, so the host's row and desktop's notice never say it differently.
 
 import { translate } from '@/i18n/i18n'
+import { COMMAND_REFUSAL_PIECES } from './agent-session-command-refusal-words-text'
 import {
   AGENT_SESSION_FAILURE_COPY as COPY,
   type AgentSessionFailureCopyId,
@@ -189,13 +190,7 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         'components.native-chat.failureWords.notDeliveredSendAgain',
         COPY.notDeliveredSendAgain
       ),
-    commandRefused: () =>
-      translate('components.native-chat.failureWords.commandRefused', COPY.commandRefused),
-    commandRefusedTryAgain: () =>
-      translate(
-        'components.native-chat.failureWords.commandRefusedTryAgain',
-        COPY.commandRefusedTryAgain
-      ),
+    ...COMMAND_REFUSAL_PIECES,
     compactionFailed: (values) =>
       translate(
         'components.native-chat.failureWords.compactionFailed',

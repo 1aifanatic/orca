@@ -28,20 +28,14 @@ function rejected(patch: Partial<AgentJournalSubmission> = {}): AgentJournalSubm
 
 describe('the line under a message the host recorded and did not deliver', () => {
   it('names the agent with a resend step after the host classifies an unwritten send', () => {
+    const rejection: AgentSessionFailureFact = {
+      kind: 'writeFailed',
+      detail: { text: 'provider_write_failed: stand-in rejected the turn.', audience: 'log' }
+    }
     const notices = mobileNativeChatUnsentNotices(
       {
         items: [],
-        submissions: [
-          rejected({
-            rejection: {
-              kind: 'writeFailed',
-              detail: {
-                text: 'provider_write_failed: stand-in rejected the turn.',
-                audience: 'log'
-              }
-            }
-          })
-        ]
+        submissions: [rejected({ rejection })]
       },
       'codex'
     )
@@ -52,14 +46,14 @@ describe('the line under a message the host recorded and did not deliver', () =>
 
   it('never shows the stand-in marker from a previously misclassified fact', () => {
     const text = 'provider_write_failed: stand-in rejected the turn.'
+    const rejection: AgentSessionFailureFact = {
+      kind: 'providerRejected',
+      detail: { text, audience: 'person' }
+    }
     const notices = mobileNativeChatUnsentNotices(
       {
         items: [],
-        submissions: [
-          rejected({
-            rejection: { kind: 'providerRejected', detail: { text, audience: 'person' } }
-          })
-        ]
+        submissions: [rejected({ rejection })]
       },
       'codex'
     )

@@ -112,6 +112,6 @@ it('puts the host words under a not-sent row, and nothing under a delivered one'
       ? element.props.unsentNotice
       : undefined
   }
-  expect(notice(0)).toBe("Orca couldn't reach the agent. Your message was not sent.")
+  expect(notice(0)).toBe("Claude couldn't receive this message. Send it again.")
   expect(notice(1)).toBeUndefined()
 })

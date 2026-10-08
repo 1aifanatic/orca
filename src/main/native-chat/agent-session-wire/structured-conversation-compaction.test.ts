@@ -392,7 +392,12 @@ it('refuses the command at handover when the provider opened a turn meanwhile (B
   }
   await expect(commanded).resolves.toMatchObject({
     ok: true,
-    value: { state: 'completed', error: "This command didn't run. Try it again.", failure: refused }
+    value: {
+      state: 'completed',
+      error:
+        "Codex didn't run this command. Codex is still responding. Wait for it to finish, or stop it.",
+      failure: refused
+    }
   })
   expect(compact).not.toHaveBeenCalled()
   expect(await commandTurn(params.envelope.clientOperationId)).toBeUndefined()
@@ -402,7 +407,8 @@ it('refuses the command at handover when the provider opened a turn meanwhile (B
     )
   ).toMatchObject({
     dispatchState: 'rejected',
-    reason: "This command didn't run. Try it again.",
+    reason:
+      "Codex didn't run this command. Codex is still responding. Wait for it to finish, or stop it.",
     rejection: refused
   })
 })

@@ -52,7 +52,7 @@ export type CodexTurnEndSettlement = {
 
 function errorDetail(params: unknown): ProviderDiagnostic | undefined {
   const message = readCodexTurnErrorMessage(params)
-  return message ? providerDiagnostic(message, 'person') : undefined
+  return message ? providerDiagnostic(message, 'log') : undefined
 }
 
 /** A final `error` naming a turn Codex never opened: before 0.148 that is the only end such a
@@ -72,7 +72,7 @@ function unopenedTurnFailure(
   }
   const message = readCodexJournalRecord(readCodexJournalRecord(params).error).message
   const detail =
-    typeof message === 'string' && message ? providerDiagnostic(message, 'person') : undefined
+    typeof message === 'string' && message ? providerDiagnostic(message, 'log') : undefined
   return { status: 'failed', ...(detail ? { detail } : {}) }
 }
 

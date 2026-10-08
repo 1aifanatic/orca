@@ -50,6 +50,7 @@ export function useMobileStructuredQueuedMessageControls(args: {
   queuePause: MobileQueuePause
   submissions: readonly AgentJournalSubmission[]
   pendingPrompt: boolean
+  agentName?: string
   mutate: MobileStructuredAgentMutate
   /** The active pane's live composer, Edit's copy target; absent = Edit refuses. False when
    *  nothing was copied. */
@@ -60,6 +61,7 @@ export function useMobileStructuredQueuedMessageControls(args: {
 }): MobileStructuredQueuedMessageControls {
   const {
     appendComposerText,
+    agentName,
     mutate,
     onActionResolved,
     onSendError,
@@ -73,9 +75,10 @@ export function useMobileStructuredQueuedMessageControls(args: {
     () =>
       mobileQueuedMessageCards(queuedMessages, submissions, {
         pendingPrompt,
+        agentName,
         queuePaused: queuePause !== null
       }),
-    [pendingPrompt, queuePause, queuedMessages, submissions]
+    [agentName, pendingPrompt, queuePause, queuedMessages, submissions]
   )
   const resolved = useCallback(
     (accepted: boolean): boolean => {

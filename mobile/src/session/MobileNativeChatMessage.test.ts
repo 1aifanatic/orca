@@ -203,11 +203,11 @@ describe('MobileNativeChatMessage', () => {
   it('says under a message the host recorded but never delivered why it was not sent', () => {
     const tree = render(
       { ...userMessage([{ type: 'text', text: 'hello' }]), unsent: true },
-      { unsentNotice: "Orca couldn't reach the agent. Your message was not sent." }
+      { unsentNotice: "Claude couldn't receive this message. Send it again." }
     )
     expect(textIn(tree.root)).toEqual([
       'hello',
-      "Orca couldn't reach the agent. Your message was not sent."
+      "Claude couldn't receive this message. Send it again."
     ])
   })
 

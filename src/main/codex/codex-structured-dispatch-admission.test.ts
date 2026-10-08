@@ -175,13 +175,13 @@ describe('codex dispatch admission', () => {
     const adapter = await acquiredCodexAdapter({ codex, settlements })
     const connection = codex.connections[0]!
 
-    // Codex's own words reach the sentence and the fact; Orca's prefix reaches neither.
+    // Protocol refusals remain in the fact for Details, outside the person-facing sentence.
     expect(await send(adapter, 'client-1')).toEqual({
       state: 'rejected',
-      reason: "Codex didn't accept this message: thread not found.",
+      reason: "Codex didn't accept this message.",
       rejection: {
         kind: 'providerRejected',
-        detail: { text: 'thread not found', audience: 'person' }
+        detail: { text: 'thread not found', audience: 'log' }
       }
     })
 

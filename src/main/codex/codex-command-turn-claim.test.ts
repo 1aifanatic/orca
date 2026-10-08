@@ -194,10 +194,10 @@ describe('a Codex turn a conversation command claims', () => {
     expect(resultRows(writes).map((write) => write.body)).toEqual([
       {
         kind: 'status',
-        text: "Codex couldn't shorten this chat's history: Unavailable.",
+        text: "Codex couldn't shorten this chat's history.",
         failure: {
           kind: 'compactionFailed',
-          detail: { text: 'Unavailable', audience: 'person' }
+          detail: { text: 'Unavailable', audience: 'log' }
         },
         tone: 'error'
       }

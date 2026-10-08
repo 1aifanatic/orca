@@ -640,7 +640,7 @@ describe('a Stop in that window that the turn never opens for', () => {
 
     expect(interrupts).toBe(1)
     expect(childCloses).toBe(0)
-    expect(await statusRows()).toContain('Codex had no turn running to stop.')
+    expect(await statusRows()).toContain('Codex had no response in progress to stop.')
   })
 
   it('lets a chat closed behind it close within its bound and one eviction', async () => {

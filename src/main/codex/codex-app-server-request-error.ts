@@ -1,6 +1,8 @@
 import { providerDiagnostic, type ProviderDiagnostic } from '../../shared/agent-session-failure'
 import { isProviderDiagnosticPersonText } from '../../shared/provider-diagnostic-person-text'
 
+const JSON_RPC_PROTOCOL_ERROR_CODES = new Set([-32700, -32600, -32601, -32602, -32603])
+
 /** Codex answered the call and refused it, rather than timing out or exiting. */
 export class CodexAppServerRequestError extends Error {
   /** Codex's own `error.message`, kept apart from the Orca text around it. */
@@ -19,7 +21,10 @@ export class CodexAppServerRequestError extends Error {
         ? undefined
         : providerDiagnostic(
             providerMessage,
-            isProviderDiagnosticPersonText(providerMessage) ? 'person' : 'log'
+            !JSON_RPC_PROTOCOL_ERROR_CODES.has(code ?? 0) &&
+              isProviderDiagnosticPersonText(providerMessage)
+              ? 'person'
+              : 'log'
           )
     if (diagnostic) {
       this.providerDiagnostic = diagnostic

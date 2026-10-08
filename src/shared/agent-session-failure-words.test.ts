@@ -84,6 +84,7 @@ describe('the words written beside a failure fact', () => {
     'provider_write_failed: stand-in rejected the turn.',
     '{"type":"error","message":"failed"}',
     'API Error: Request was aborted.',
+    'stream disconnected before completion: error sending request for url (http://127.0.0.1:9/v1/responses)',
     'Error: failed\n    at send (/app/send.ts:1:2)'
   ])('never quotes technical detail labelled person: %s', (text) => {
     for (const kind of AGENT_SESSION_FAILURE_KINDS) {
@@ -103,17 +104,20 @@ describe('the words written beside a failure fact', () => {
     }
   })
 
-  it('keeps a readable content explanation and does not suggest repeating an unsupported image', () => {
+  it.each([
+    'Claude does not support the image type .bmp',
+    'Claude does not support the image my_photo.bmp. Please use a PNG image'
+  ])('keeps a readable content explanation without an unconditional resend: %s', (text) => {
     expect(
       agentSessionFailureSentence(
         {
           kind: 'providerRejected',
-          detail: { text: 'Claude does not support the image type .bmp', audience: 'person' }
+          detail: { text, audience: 'person' }
         },
         'rejection',
         { agentName: 'Claude' }
       )
-    ).toBe("Claude didn't accept this message: Claude does not support the image type .bmp.")
+    ).toBe(`Claude didn't accept this message: ${text}.`)
   })
 
   describe.each(SURFACES)('on the %s surface', (surface) => {
@@ -257,14 +261,16 @@ describe('the words written beside a failure fact', () => {
         { kind: 'stopRefused', ...(detail ? { detail } : {}) },
         { surface: 'row', agentName }
       ).text
-    expect(refused(undefined, 'Codex')).toBe('Codex had no response in progress to stop.')
-    expect(refused()).toBe('The agent had no response in progress to stop.')
+    expect(refused(undefined, 'Codex')).toBe(
+      "Codex didn't stop. Check the chat before trying again."
+    )
+    expect(refused()).toBe("The agent didn't stop. Check the chat before trying again.")
     expect(refused({ text: 'no active turn to interrupt.', audience: 'person' }, 'Codex')).toBe(
-      "Codex didn't stop: no active turn to interrupt."
+      "Codex didn't stop: no active turn to interrupt. Check the chat before trying again."
     )
     // Words Codex wrote for the log are never quoted to a person.
     expect(refused({ text: 'rpc -32600', audience: 'log' }, 'Codex')).toBe(
-      'Codex had no response in progress to stop.'
+      "Codex didn't stop. Check the chat before trying again."
     )
   })
 
@@ -310,7 +316,7 @@ describe('the words written beside a failure fact', () => {
         detail: { text: 'Reconnecting... 2/5', audience: 'person' },
         retry: { cause: 'stream disconnected before completion' }
       })
-    ).toBe('Codex is retrying: Reconnecting... 2/5.\nstream disconnected before completion')
+    ).toBe('Codex is retrying: Reconnecting... 2/5.')
     expect(retrying({ retry: { status: 429, cause: 'Too many requests' } })).toBe(
       'Codex reached a request limit and is retrying.\nToo many requests'
     )

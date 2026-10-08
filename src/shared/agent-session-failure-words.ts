@@ -27,6 +27,11 @@ import { providerRetryWords, withRetryCause } from './agent-session-provider-ret
 import { joinSentences } from './sentence-joining'
 import { agentSessionAttachmentFailureWords } from './agent-session-attachment-failure-words'
 import { isProviderDiagnosticPersonText } from './provider-diagnostic-person-text'
+import { agentSessionCommandRefusalWords } from './agent-session-command-refusal-words'
+import {
+  AGENT_SESSION_WRITE_NOTICE_COPY,
+  type AgentSessionWriteNoticeSentence
+} from './agent-session-write-notice-copy'
 import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_CODEX_QUEUE_FULL,
@@ -98,7 +103,8 @@ type Sentence = (
   context: AgentSessionFailureWordsContext,
   fact: AgentSessionFailureFact,
   surface: AgentSessionFailureSurface,
-  say: AgentSessionFailureSay
+  say: AgentSessionFailureSay,
+  sayNotice: (id: AgentSessionWriteNoticeSentence) => string
 ) => string
 
 function agent(say: AgentSessionFailureSay, { agentName }: AgentSessionFailureWordsContext) {
@@ -230,8 +236,8 @@ const FAILURE_SENTENCES = {
   hostRestarted: (_context, _fact, _surface, say) => say('hostRestarted'),
   notDelivered: ({ retryControl }, _fact, _surface, say) =>
     say(retryControl ? 'notDelivered' : 'notDeliveredSendAgain'),
-  commandRefused: ({ retryControl }, _fact, _surface, say) =>
-    say(retryControl ? 'commandRefused' : 'commandRefusedTryAgain'),
+  commandRefused: (context, fact, _surface, say, sayNotice) =>
+    agentSessionCommandRefusalWords(fact, context, say, sayNotice),
   compactionFailed: (context, fact, _surface, say) =>
     quotingPersonDetail(
       say,
@@ -246,15 +252,15 @@ const FAILURE_SENTENCES = {
     say('cancelUnconfirmed', agent(say, context)),
   // The agent was reached and declined, so the sentence says that, not that the Stop was lost.
   stopRefused: (context, fact, _surface, say) =>
-    fact.detail?.audience === 'person' && isProviderDiagnosticPersonText(fact.detail.text)
-      ? quotingPersonDetail(
+    fact.turnNotRunning
+      ? say('noTurnToStop', agent(say, context))
+      : quotingPersonDetail(
           say,
           'stopRefused',
           'stopRefusedQuoted',
           fact.detail,
           agent(say, context)
-        )
-      : say('noTurnToStop', agent(say, context)),
+        ),
   answerUnconfirmed: (context, _fact, _surface, say) =>
     say('answerUnconfirmed', agent(say, context)),
   hostFault: ({ retryControl }, _fact, _surface, say) =>
@@ -286,10 +292,12 @@ export function agentSessionFailureSentence(
   surface: AgentSessionFailureSurface,
   context: AgentSessionFailureWordsContext = {},
   /** Desktop passes its translations; the host and the phone keep English. */
-  say: AgentSessionFailureSay = sayAgentSessionFailureEnglish
+  say: AgentSessionFailureSay = sayAgentSessionFailureEnglish,
+  sayNotice: (id: AgentSessionWriteNoticeSentence) => string = (id) =>
+    AGENT_SESSION_WRITE_NOTICE_COPY[id]
 ): string {
   const sentence: Sentence = FAILURE_SENTENCES[fact.kind]
-  return sentence(context, fact, surface, say)
+  return sentence(context, fact, surface, say, sayNotice)
 }
 
 /** The markers released clients hide, for the rejections that had one before rows carried a fact.
