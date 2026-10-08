@@ -46,6 +46,26 @@ const EXTRA_AGENT_ARG_OPTIONS: Partial<Record<TuiAgent, readonly ExtraAgentArgOp
   omp: [MODEL_OPTION]
 }
 
+export function supportsExtraAgentArgs(agent: TuiAgent): boolean {
+  return EXTRA_AGENT_ARG_OPTIONS[agent] !== undefined
+}
+
+export function getExtraAgentArgsPlaceholder(agent: TuiAgent): string {
+  return (EXTRA_AGENT_ARG_OPTIONS[agent] ?? [])
+    .map((option) => {
+      const value =
+        option.kind === 'model'
+          ? agent === 'claude'
+            ? 'opus'
+            : 'model-id'
+          : option.kind === 'effort'
+            ? 'high'
+            : 'docs'
+      return `${option.aliases[0]} ${option.valuePrefix ?? ''}${value}`
+    })
+    .join(' ')
+}
+
 // C0, DEL, C1, and the Unicode line/paragraph separators.
 function hasControlCharacter(value: string): boolean {
   for (const char of value) {
