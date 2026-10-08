@@ -416,9 +416,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: config/*.tsbuildinfo
-          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ github.event.pull_request.base.sha }}-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.base.sha }}-${{ github.event.pull_request.head.sha }}
           restore-keys: |
-            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ github.event.pull_request.base.sha }}-pr-${{ github.event.pull_request.number }}-
+            tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-pr-${{ github.event.pull_request.number }}-
             tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-${{ github.event.pull_request.base.sha }}
             tsbuildinfo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'config/tsconfig*.json') }}-
 

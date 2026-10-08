@@ -519,6 +519,7 @@ describe('PR workflow parallelism', () => {
     const restoreKeys = steps[cacheIndex].with['restore-keys'].trim().split('\n')
     expect(restoreKeys[0]).toContain('github.event.pull_request.number')
     expect(restoreKeys[0]).not.toContain('github.event.pull_request.head.sha')
+    expect(restoreKeys[0]).not.toContain('github.event.pull_request.base.sha')
     expect(restoreKeys[1]).toContain('github.event.pull_request.base.sha')
     expect(restoreKeys[2]).not.toContain('github.event.pull_request.base.sha')
     expect(restoreKeys).toHaveLength(3)
