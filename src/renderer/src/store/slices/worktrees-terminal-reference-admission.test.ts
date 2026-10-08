@@ -196,4 +196,6 @@ it('deduplicates an observation while queued without collapsing different PR num
   expect(exactLookup).toHaveBeenCalledTimes(4)
   pending.get(103)?.resolve(null)
   await flush()
+  expect(exactLookup).toHaveBeenCalledTimes(4)
+  expect(exactLookup.mock.calls.filter(([args]) => args.number === 103)).toHaveLength(1)
 })
