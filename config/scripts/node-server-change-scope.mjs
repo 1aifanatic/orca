@@ -45,6 +45,8 @@ const ALWAYS_PREFIXES = [
   'src/main/persistence/',
   'src/main/sqlite/',
   'src/main/orcad/',
+  'src/main/runtime/',
+  'src/main/claude/',
   'src/main/daemon/pty-subprocess/',
   'src/main/providers/',
   'config/patches/',
@@ -119,6 +121,7 @@ export async function classifyNodeServerChanges(
     (file) =>
       ALWAYS_FILES.has(file) ||
       ALWAYS_PREFIXES.some((prefix) => file.startsWith(prefix)) ||
+      /^config\/scripts\/[^/]*orcad[^/]*$/.test(file) ||
       selectors.some((selector) => file.includes(selector))
   )
   if (forced) {

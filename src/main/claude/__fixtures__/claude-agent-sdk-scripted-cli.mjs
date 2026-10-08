@@ -17,12 +17,24 @@ import { spawn } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
+if (process.argv.includes('--version')) {
+  process.stdout.write('2.1.258 (Claude Code)\n')
+  process.exit(0)
+}
+
 const scenarioPath = process.env.ORCA_SDK_CONTRACT_SCENARIO_PATH
 const reportPath = process.env.ORCA_SDK_CONTRACT_REPORT_PATH
 
 const report = {
   argv: process.argv.slice(1),
   execPath: process.execPath,
+  cwd: process.cwd(),
+  env: Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key]) =>
+        key.startsWith('ORCA_') || ['HOME', 'CODEX_HOME', 'CLAUDE_CONFIG_DIR'].includes(key)
+    )
+  ),
   controlRequests: [],
   controlResponses: [],
   userMessages: [],

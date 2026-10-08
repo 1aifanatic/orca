@@ -91,6 +91,11 @@ it.each([
   '.github/actions/prepare-native-runtime/action.yml',
   '.github/actions/prepare-orcad-prebuilds/action.yml',
   '.github/workflows/node-server-tests.yml',
+  'src/main/orcad/orcad-packaged-structured-chat.integration.test.ts',
+  'src/main/runtime/new-launch-path.ts',
+  'src/main/claude/__fixtures__/claude-agent-sdk-scripted-cli.mjs',
+  'config/scripts/orcad-entry-build.mjs',
+  'config/scripts/future-orcad-package.mjs',
   'src/main/persistence/profile-state/new-worker.ts'
 ])('always selects build, native and dynamically opened inputs: %s', async (file) => {
   expect((await classifyNodeServerChanges([file], async () => new Set())).shouldRun).toBe(true)
@@ -291,6 +296,22 @@ it('builds server glibc slots on glibc 2.28 and the compat slot on glibc 2.17 (d
   expect(run).toContain(
     'env -u LD_LIBRARY_PATH node config/scripts/build-orcad-prebuilds.mjs --slot=linux-x64-glibc217 --smoke'
   )
+})
+
+it('runs a real packaged structured chat on Linux after the package is built', () => {
+  const workflow = parse(readFileSync('.github/workflows/node-server-tests.yml', 'utf8'))
+  const steps = workflow.jobs.persistence.steps
+  const chat = steps.find((step) =>
+    step.run?.includes('orcad-packaged-structured-chat.integration.test.ts')
+  )
+  expect(chat.if).toBe("runner.os == 'Linux'")
+  expect(chat.run).toBe(
+    'pnpm test:node-server --artifact src/main/orcad/orcad-packaged-structured-chat.integration.test.ts'
+  )
+  expect(steps.indexOf(chat)).toBeGreaterThan(
+    steps.findIndex((step) => step.run === 'pnpm build:orcad')
+  )
+  expect(chat['continue-on-error']).toBeUndefined()
 })
 
 it('runs the Bun and Node cross-runtime tests on Linux against pinned inputs', () => {
