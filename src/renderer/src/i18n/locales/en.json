@@ -177,7 +177,7 @@
   },
   "settings": {
     "chat": {
-      "description": "Choose how chats look and get their names.",
+      "description": "Choose how chats look and behave.",
       "names": {
         "title": "Chat names",
         "description": "Use an agent to name new chats from their first message. Without a generated name, chats stay Claude Chat or Codex Chat.",
@@ -2130,7 +2130,17 @@
         "activitySubagentOne": "Subagent running: {{value0}}",
         "activitySubagentMany": "{{value0}} subagents running",
         "activityMonitorOne": "Monitoring: {{value0}}",
-        "activityMonitorMany": "Monitoring {{value0}} background tasks"
+        "activityMonitorMany": "Monitoring {{value0}} background tasks",
+        "selectWorkspace": "Select all chats in {{value0}}",
+        "workspaceSelectedCount": "{{value0}} of {{value1}}",
+        "selectAll": "Select all chats",
+        "selectAllLabel": "Select all",
+        "selectedCount": "{{value0}} of {{value1}} selected",
+        "selectProject": "Select all chats in {{value0}}",
+        "collapseNode": "Collapse {{value0}}",
+        "expandNode": "Expand {{value0}}",
+        "selectMachine": "Select all chats on {{value0}}",
+        "sshHost": "SSH"
       },
       "StarNagCard": {
         "92b0f9d921": "is authenticated and try again.",
@@ -17969,6 +17979,11 @@
         "couldNotStart": "{{agent}} couldn't start.",
         "couldNotRestart": "{{agent}} couldn't restart.",
         "notSignedIn": "{{agent}} is not signed in for the selected account.",
+        "claudeSystemNotSignedIn": "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings.",
+        "claudeManagedNotSignedIn": "This Claude account isn't signed in. Sign in again in Claude Accounts settings.",
+        "codexSystemNotSignedIn": "Codex isn't signed in. Run `codex login`.",
+        "codexManagedNotSignedIn": "This Codex account isn't signed in. Sign in again in Codex Accounts settings.",
+        "cliMissing": "{{agent}} wasn't found on the computer running this chat. Install it, or check its Command in Settings → Agents.",
         "signInFirst": "Sign in first.",
         "signInThenRunCommand": "Sign in, then run /{{command}} again.",
         "signInThenSend": "Sign in, then send your message again.",
@@ -18944,6 +18959,9 @@
       },
       "nativeChat": {
         "queueFollowUpsTitle": "Queue follow-ups",
+        "inlineVisualsTitle": "Inline visuals",
+        "inlineVisualsCopy": "Let the agent show charts, diagrams and mockups inside its replies. Applies to newly started chats.",
+        "inlineVisualsToggleLabel": "Toggle inline visuals",
         "queueFollowUpsCopy": "Messages you send while the agent is working wait as cards you can steer, edit, or delete. Messages with images send right away.",
         "queueFollowUpsToggleLabel": "Toggle queue follow-ups"
       }
@@ -19464,6 +19482,12 @@
   },
   "fileSearch": {
     "failed": "Search failed. Try again."
+  },
+  "workspaceDeletion": {
+    "preferenceSaveFailed": "Could not save deletion preference",
+    "alwaysForceDelete": "Always force delete",
+    "moreActions": "More force delete options",
+    "alwaysForceDeleteTooltip": "Applies to all future workspace deletions."
   },
   "worktree": {
     "nestedRemoval": {
