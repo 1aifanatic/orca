@@ -9,8 +9,6 @@
 
 import {
   isSubmissionRejectionFact,
-  type AgentSessionAttachmentProblem,
-  type AgentSessionAttachmentProblemReason,
   type AgentSessionFailureFact,
   type AgentSessionFailureKind,
   type ProviderDiagnostic,
@@ -27,6 +25,8 @@ import {
 import type { AgentSessionWireRefusalCode } from './agent-session-wire-refusals'
 import { providerRetryWords, withRetryCause } from './agent-session-provider-retry-words'
 import { joinSentences } from './sentence-joining'
+import { agentSessionAttachmentFailureWords } from './agent-session-attachment-failure-words'
+import { isProviderDiagnosticPersonText } from './provider-diagnostic-person-text'
 import {
   DISPATCH_REJECTED_CANCELLED,
   DISPATCH_REJECTED_CODEX_QUEUE_FULL,
@@ -93,7 +93,6 @@ export const START_REFUSAL_RESUMABLE: Record<AgentSessionWireRefusalCode, boolea
 
 /** Person-facing provider text is quoted, but bounded so the sentence stays one. */
 const MAX_QUOTED_DETAIL_CHARS = 512
-const BYTES_PER_MB = 1024 * 1024
 
 type Sentence = (
   context: AgentSessionFailureWordsContext,
@@ -114,7 +113,7 @@ function quotingPersonDetail(
   values: AgentSessionFailureCopyValues = {}
 ): string {
   const quoted =
-    detail?.audience === 'person'
+    detail?.audience === 'person' && isProviderDiagnosticPersonText(detail.text)
       ? detail.text
           .slice(0, MAX_QUOTED_DETAIL_CHARS)
           .trim()
@@ -172,35 +171,6 @@ function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
   }
 }
 
-// The number only; each language's sentence carries its own unit.
-function megabytes(bytes: number): string {
-  return String(Math.round((bytes / BYTES_PER_MB) * 10) / 10)
-}
-
-const ATTACHMENT_SENTENCES = {
-  empty: (say) => say('attachmentEmpty'),
-  tooLarge: (say, _, { limit }) =>
-    limit ? say('attachmentLargerThan', { size: megabytes(limit) }) : say('attachmentTooLarge'),
-  tooMany: (say, context, { limit }) =>
-    limit
-      ? say('attachmentAtMost', { ...agent(say, context), limit: String(limit) })
-      : say('attachmentTooMany'),
-  totalTooLarge: (say, _, { limit }) =>
-    limit
-      ? say('attachmentTotalMoreThan', { size: megabytes(limit) })
-      : say('attachmentTotalTooLarge'),
-  unsupportedType: (say, context) => say('attachmentUnsupportedType', agent(say, context)),
-  notAFile: (say) => say('attachmentNotAFile'),
-  noSource: (say) => say('attachmentNoSource')
-} satisfies Record<
-  AgentSessionAttachmentProblemReason,
-  (
-    say: AgentSessionFailureSay,
-    context: AgentSessionFailureWordsContext,
-    problem: AgentSessionAttachmentProblem
-  ) => string
->
-
 const FAILURE_SENTENCES = {
   providerStartFailed: (context, _fact, _surface, say) =>
     joinSentences([say('providerStartFailed', agent(say, context)), ...startRetry(say, context)]),
@@ -237,16 +207,24 @@ const FAILURE_SENTENCES = {
   providerExited: (context, _fact, surface, say) =>
     say(surface === 'row' ? 'providerExitedRow' : 'providerExitedRejection', agent(say, context)),
   restartFailed: couldNot('couldNotRestart'),
-  providerRejected: (_context, fact, _surface, say) =>
-    quotingPersonDetail(say, 'providerRejected', 'providerRejectedQuoted', fact.detail),
+  providerRejected: (context, fact, _surface, say) =>
+    quotingPersonDetail(
+      say,
+      'providerRejected',
+      'providerRejectedQuoted',
+      fact.detail,
+      agent(say, context)
+    ),
   attachmentInvalid: (context, fact, _surface, say) =>
-    fact.attachment
-      ? ATTACHMENT_SENTENCES[fact.attachment.reason](say, context, fact.attachment)
-      : say('attachmentInvalid'),
+    agentSessionAttachmentFailureWords(fact.attachment, agent(say, context), say),
   attachmentUnreadable: (_context, _fact, _surface, say) => say('attachmentUnreadable'),
   emptyMessage: (_context, _fact, _surface, say) => say('emptyMessage'),
   queueFull: (_context, _fact, _surface, say) => say('queueFull'),
-  writeFailed: (_context, _fact, _surface, say) => say('writeFailed'),
+  writeFailed: (context, _fact, _surface, say) =>
+    joinSentences([
+      say('writeFailed', agent(say, context)),
+      ...(!context.retryControl ? [say('sendItAgain')] : [])
+    ]),
   cancelled: (_context, _fact, _surface, say) => say('cancelled'),
   chatClosed: (_context, _fact, _surface, say) => say('chatClosed'),
   hostRestarted: (_context, _fact, _surface, say) => say('hostRestarted'),
@@ -254,13 +232,21 @@ const FAILURE_SENTENCES = {
     say(retryControl ? 'notDelivered' : 'notDeliveredSendAgain'),
   commandRefused: ({ retryControl }, _fact, _surface, say) =>
     say(retryControl ? 'commandRefused' : 'commandRefusedTryAgain'),
-  compactionFailed: (_context, fact, _surface, say) =>
-    quotingPersonDetail(say, 'compactionFailed', 'compactionFailedQuoted', fact.detail),
-  compactionUnconfirmed: (_context, _fact, _surface, say) => say('compactionUnconfirmed'),
-  cancelUnconfirmed: (_context, _fact, _surface, say) => say('cancelUnconfirmed'),
+  compactionFailed: (context, fact, _surface, say) =>
+    quotingPersonDetail(
+      say,
+      'compactionFailed',
+      'compactionFailedQuoted',
+      fact.detail,
+      agent(say, context)
+    ),
+  compactionUnconfirmed: (context, _fact, _surface, say) =>
+    say('compactionUnconfirmed', agent(say, context)),
+  cancelUnconfirmed: (context, _fact, _surface, say) =>
+    say('cancelUnconfirmed', agent(say, context)),
   // The agent was reached and declined, so the sentence says that, not that the Stop was lost.
   stopRefused: (context, fact, _surface, say) =>
-    fact.detail?.audience === 'person'
+    fact.detail?.audience === 'person' && isProviderDiagnosticPersonText(fact.detail.text)
       ? quotingPersonDetail(
           say,
           'stopRefused',
@@ -269,13 +255,14 @@ const FAILURE_SENTENCES = {
           agent(say, context)
         )
       : say('noTurnToStop', agent(say, context)),
-  answerUnconfirmed: (_context, _fact, _surface, say) => say('answerUnconfirmed'),
+  answerUnconfirmed: (context, _fact, _surface, say) =>
+    say('answerUnconfirmed', agent(say, context)),
   hostFault: ({ retryControl }, _fact, _surface, say) =>
     say(retryControl ? 'hostFault' : 'hostFaultTryAgain'),
   hostStopped: (context, _fact, _surface, say) => say('hostStopped', agent(say, context)),
   // A provider that says how its retry is going, for a person, is quoted: that is the progress.
   providerRetrying: (context, { retry, detail }, _surface, say) =>
-    detail?.audience === 'person'
+    detail?.audience === 'person' && isProviderDiagnosticPersonText(detail.text)
       ? withRetryCause(
           quotingPersonDetail(
             say,

@@ -194,7 +194,7 @@ describe('a Codex turn a conversation command claims', () => {
     expect(resultRows(writes).map((write) => write.body)).toEqual([
       {
         kind: 'status',
-        text: 'Compaction failed: Unavailable.',
+        text: "Codex couldn't shorten this chat's history: Unavailable.",
         failure: {
           kind: 'compactionFailed',
           detail: { text: 'Unavailable', audience: 'person' }
@@ -214,7 +214,7 @@ describe('a Codex turn a conversation command claims', () => {
     expect(resultRows(writes).map((write) => write.body)).toEqual([
       {
         kind: 'status',
-        text: 'Compaction failed.',
+        text: "Codex couldn't shorten this chat's history.",
         failure: { kind: 'compactionFailed' },
         tone: 'error'
       }
@@ -231,7 +231,7 @@ describe('a Codex turn a conversation command claims', () => {
     expect(resultRows(writes).map((write) => write.body)).toEqual([
       {
         kind: 'status',
-        text: 'Compaction completion is unconfirmed.',
+        text: "Codex hasn't confirmed that this chat's history was shortened. Check the chat before running /compact again.",
         failure: { kind: 'compactionUnconfirmed' },
         tone: 'error'
       }

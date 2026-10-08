@@ -24,7 +24,7 @@ describe('what a rejection shows the reader', () => {
     const shown = notice('provider_write_failed: broken pipe')
     expect(shown).not.toContain('provider_write_failed')
     expect(shown).not.toContain('broken pipe')
-    expect(shown).toBe("Orca couldn't reach the agent. Your message was not sent.")
+    expect(shown).toBe("The agent couldn't receive this message. Send it again.")
   })
 
   it("shows a content rejection in the provider's own words", () => {
@@ -49,8 +49,8 @@ describe('what a rejection shows the reader', () => {
 
   it('tells the phone how to send it again after a transport failure', () => {
     const phone = structuredAgentSessionRejectionNotice('provider_write_failed', 'composer-send')
-    expect(phone.startsWith("Orca couldn't reach the agent. Your message was not sent.")).toBe(true)
-    expect(phone.length).toBeGreaterThan(notice('provider_write_failed').length)
+    expect(phone.startsWith("The agent couldn't receive this message. Send it again.")).toBe(true)
+    expect(phone).toBe(notice('provider_write_failed'))
   })
 })
 
@@ -59,7 +59,7 @@ describe('what a rejection with a typed fact shows the reader', () => {
   it('says Orca could not hand the message over, whatever the reason holds', () => {
     for (const reason of ['provider_write_failed', 'Something unrelated.']) {
       expect(notice(reason, { kind: 'writeFailed' })).toBe(
-        "Orca couldn't reach the agent. Your message was not sent."
+        "The agent couldn't receive this message. Send it again."
       )
     }
   })
@@ -129,7 +129,7 @@ function line(
 
 describe('the line under a message the host recorded and then rejected', () => {
   it("says why, in the host's words", () => {
-    expect(line(rejected())).toBe("Orca couldn't reach the agent. Your message was not sent.")
+    expect(line(rejected())).toBe("Claude couldn't receive this message. Send it again.")
     expect(line(rejected({ reason: 'Claude does not support .bmp' }))).toBe(
       'Claude does not support .bmp'
     )

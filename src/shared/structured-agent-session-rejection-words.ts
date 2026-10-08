@@ -14,6 +14,7 @@ import type { AgentJournalSubmission } from './agent-session-journal-types'
 import { agentSessionFailureStatedByStartRow } from './structured-agent-session-start-failure-facts'
 import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
+import { isProviderDiagnosticPersonText } from './provider-diagnostic-person-text'
 
 /**
  * What to put on screen for a rejection.
@@ -54,11 +55,13 @@ export function structuredAgentSessionRejectionParts(
   }
   const rejection = classifyDispatchRejection({ reason })
   if (rejection.kind === 'writeFailed') {
-    return ['unreachable', ...agentSessionWriteNotDoneParts(write)]
+    return rejectionFactParts(write, { kind: 'writeFailed' }, context)
   }
   // A legacy marker is an internal cause with no user-facing meaning; any other reason is a
   // sentence written to be read — the provider's, or the host's own.
-  return rejection.kind ? agentSessionWriteNotDoneParts(write) : [{ text: reason }]
+  return rejection.kind || !isProviderDiagnosticPersonText(reason)
+    ? agentSessionWriteNotDoneParts(write)
+    : [{ text: reason }]
 }
 
 function rejectionFactParts(
@@ -67,9 +70,6 @@ function rejectionFactParts(
   context: AgentSessionFailureWordsContext
 ): AgentSessionWriteNoticePart[] {
   const { kind } = classifyDispatchRejection({ reason: null, rejection: fact })
-  if (kind === 'writeFailed') {
-    return ['unreachable', ...agentSessionWriteNotDoneParts(write)]
-  }
   // A fact this build cannot place proves only that the message did not happen.
   return kind
     ? [{ failure: { ...fact, kind }, surface: 'rejection', context }]

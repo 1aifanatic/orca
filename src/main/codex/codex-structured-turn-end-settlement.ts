@@ -30,6 +30,7 @@ import {
   readCodexTurnStatus
 } from './codex-structured-thread-facts'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../shared/tui-agent-display-names'
+import { providerDispatchRejectionFact } from '../../shared/structured-agent-session-dispatch-rejection'
 
 /** A message Codex rejected, in the words that name Codex and its legacy markers. */
 export function codexDispatchRejection(
@@ -97,9 +98,7 @@ export function codexTurnEndRejection(end: CodexTurnEnd): AgentJournalDispatchRe
     return agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
   }
   if (end.status === 'failed') {
-    return codexDispatchRejection(
-      agentSessionFailureFact('providerRejected', end.detail ? { detail: end.detail } : {})
-    )
+    return codexDispatchRejection(providerDispatchRejectionFact(end.detail))
   }
   return null
 }

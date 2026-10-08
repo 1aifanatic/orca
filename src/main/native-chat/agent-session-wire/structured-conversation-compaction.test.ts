@@ -238,7 +238,7 @@ it('holds messages sent during the command and delivers them after it, in order 
     (item) => item.body.kind === 'status' && item.body.tone === 'error'
   )
   expect(error?.body).toMatchObject({
-    text: 'Compaction failed: Not enough messages to compact.',
+    text: "The agent couldn't shorten this chat's history: Not enough messages to compact.",
     failure: { kind: 'compactionFailed', detail: NOT_ENOUGH }
   })
 })
@@ -298,7 +298,7 @@ it('settles a command the provider refused as a failure with its reason, and mov
   // The message was not sent, in the provider's words; the command's row says the compaction failed.
   expect(snapshot.submissions.find((entry) => entry.clientMessageId === cmid)).toMatchObject({
     dispatchState: 'rejected',
-    reason: 'The provider did not accept this message: Not enough messages to compact.',
+    reason: "The agent didn't accept this message: Not enough messages to compact.",
     rejection: { kind: 'providerRejected', detail: NOT_ENOUGH }
   })
   expect(
@@ -307,7 +307,7 @@ it('settles a command the provider refused as a failure with its reason, and mov
     expect.objectContaining({
       body: {
         kind: 'status',
-        text: 'Compaction failed: Not enough messages to compact.',
+        text: "Codex couldn't shorten this chat's history: Not enough messages to compact.",
         failure: { kind: 'compactionFailed', detail: NOT_ENOUGH },
         tone: 'error'
       },
@@ -333,7 +333,7 @@ it('says only that the compaction failed when the provider refused it without wo
     ).toEqual([
       {
         kind: 'status',
-        text: 'Compaction failed.',
+        text: "Codex couldn't shorten this chat's history.",
         failure: { kind: 'compactionFailed' },
         tone: 'error'
       }
@@ -777,7 +777,8 @@ it("ignores an older build's unconfirmed compaction record, and answers its oper
     ok: true,
     value: {
       state: 'unknown',
-      error: 'Compaction completion is unconfirmed.',
+      error:
+        "The agent hasn't confirmed that this chat's history was shortened. Check the chat before running /compact again.",
       failure: { kind: 'compactionUnconfirmed' }
     }
   })
