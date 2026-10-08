@@ -55,7 +55,8 @@ import {
   resolveAgentLaunchModeOnHost,
   type AgentLaunchModeReceipt,
   type AgentLaunchModeVocabulary,
-  DEFAULT_LAUNCH_VOCABULARY
+  DEFAULT_LAUNCH_VOCABULARY,
+  warnStructuredLaunchDowngrade
 } from './agent-launch-mode'
 import {
   AgentLaunchStructuredSessionRefusedError,
@@ -211,10 +212,8 @@ export async function executeAgentLaunch(
   }
 }
 
-function published(
-  execution: AgentLaunchExecution,
-  surface: AgentLaunchPublishedSurface
-): AgentLaunchPublishedSurface {
+function published(execution: AgentLaunchExecution, surface: AgentLaunchResult): AgentLaunchResult {
+  warnStructuredLaunchDowngrade(execution.intent.agent, surface.receipt)
   execution.onSurfacePublished?.(surface)
   return surface
 }
