@@ -31,7 +31,7 @@ describe('relay Codex maintenance method', () => {
     await handler({ operation: 'start' }, context)
     await handler({ operation: 'read', jobId: 'remote-job' }, context)
     expect(start).toHaveBeenCalledOnce()
-    expect(status).toHaveBeenCalledWith('remote-job')
+    expect(status).toHaveBeenCalledWith('remote-job', { operation: 'read', jobId: 'remote-job' })
   })
   it('advertises support only to a client explicitly asking for it', async () => {
     const dispatcher = new RelayDispatcher(() => {})
@@ -46,7 +46,8 @@ describe('relay Codex maintenance method', () => {
     expect(await handler({ commands: [] }, context)).toEqual({ agents: [] })
     expect(await handler({ commands: [], reportCodexMaintenance: true }, context)).toEqual({
       agents: [],
-      codexMaintenance: true
+      codexMaintenance: true,
+      codexMaintenanceContext: true
     })
   })
 })

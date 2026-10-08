@@ -6,6 +6,7 @@ import {
 } from '../../../shared/codex-cli-maintenance'
 import {
   getCodexMaintenanceEntry,
+  getCodexMaintenanceHostBusy,
   refreshCodexMaintenance,
   resetCodexMaintenanceStoreForTests,
   startCodexMaintenance
@@ -17,10 +18,14 @@ const { call, refreshAgents } = vi.hoisted(() => ({
 }))
 vi.mock('./codex-maintenance-client', () => ({
   callCodexMaintenance: call,
-  codexMaintenanceTargetKey: () => 'local:codex'
+  codexMaintenanceTargetKey: (target: { cwd?: string }) =>
+    target.cwd ? `local:codex:${target.cwd}` : 'local:codex'
 }))
 vi.mock('@/store', () => ({
-  useAppStore: { getState: () => ({ refreshDetectedAgents: refreshAgents }) }
+  useAppStore: {
+    subscribe: () => () => {},
+    getState: () => ({ refreshDetectedAgents: refreshAgents })
+  }
 }))
 const TARGET = { kind: 'local' } as const
 function state(): CodexMaintenanceState {
@@ -60,6 +65,26 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('shared Codex maintenance snapshots', () => {
+  it('shares host job activity across workspace contexts while keeping their installation facts separate', async () => {
+    const workspace = { kind: 'local', cwd: '/project' } as const
+    call.mockResolvedValueOnce(state())
+    await refreshCodexMaintenance(TARGET)
+    call.mockResolvedValueOnce(running())
+    startCodexMaintenance(workspace)
+    expect(getCodexMaintenanceHostBusy(TARGET)).toBe(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getCodexMaintenanceHostBusy(TARGET)).toBe(true)
+    const completed = running()
+    if (!completed.job) {
+      throw new Error('No job')
+    }
+    completed.job.phase = 'completed'
+    call.mockResolvedValueOnce(completed).mockResolvedValueOnce(state())
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(getCodexMaintenanceHostBusy(TARGET)).toBe(false)
+    expect(getCodexMaintenanceEntry('local:codex').state?.job).toBeNull()
+  })
+
   it('ignores an older status response after an explicit start', async () => {
     let completeStatus: (value: CodexMaintenanceState) => void = () => {}
     call.mockImplementationOnce(
@@ -100,5 +125,59 @@ describe('shared Codex maintenance snapshots', () => {
     await Promise.all([refreshCodexMaintenance(TARGET), refreshCodexMaintenance(TARGET)])
     expect(call).toHaveBeenCalledTimes(1)
     expect(call.mock.calls[0][1]).toEqual({ operation: 'status' })
+  })
+
+  it('cancels an error retry poll without stranding a slow explicit start', async () => {
+    call.mockResolvedValueOnce(running())
+    startCodexMaintenance(TARGET)
+    await vi.advanceTimersByTimeAsync(0)
+    call.mockRejectedValueOnce(new Error('Transient read failure'))
+    await vi.advanceTimersByTimeAsync(1_000)
+    let complete: (result: CodexMaintenanceState) => void = () => {}
+    call.mockImplementationOnce(
+      () =>
+        new Promise<CodexMaintenanceState>((resolve) => {
+          complete = resolve
+        })
+    )
+    startCodexMaintenance(TARGET)
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(call).toHaveBeenCalledTimes(3)
+    const result = running()
+    if (!result.job) {
+      throw new Error('No job')
+    }
+    result.job.phase = 'completed'
+    result.job.exitCode = 1
+    complete(result)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getCodexMaintenanceEntry('local:codex').starting).toBe(false)
+    call.mockResolvedValueOnce(state())
+    await refreshCodexMaintenance(TARGET)
+    expect(call).toHaveBeenCalledTimes(4)
+    call.mockResolvedValueOnce(result)
+    startCodexMaintenance(TARGET)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(call).toHaveBeenCalledTimes(5)
+  })
+
+  it('withdraws stale installation facts while checking and after a failed read, retaining job evidence', async () => {
+    call.mockResolvedValueOnce(running())
+    await refreshCodexMaintenance(TARGET)
+    let rejectRead: (error: Error) => void = () => {}
+    call.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRead = reject
+        })
+    )
+    const pending = refreshCodexMaintenance(TARGET)
+    expect(getCodexMaintenanceEntry('local:codex').verification).toBe('checking')
+    rejectRead(new Error('Host unavailable'))
+    await pending
+    const entry = getCodexMaintenanceEntry('local:codex')
+    expect(entry.verification).toBe('unverifiable')
+    expect(entry.state?.job?.output).toBe('started')
+    expect(entry.state?.installation.status).toBe('missing')
   })
 })

@@ -39,5 +39,9 @@ export function useNewWorkspaceCodexMaintenance(props: NewWorkspaceComposerCardP
       : props.selectedRepoExecutionHostId
         ? runtimeTargetForExecutionHostId(props.selectedRepoExecutionHostId)
         : { kind: 'local' as const }
-  return useCodexMaintenance(target)
+  return useCodexMaintenance(
+    target
+      ? { ...target, ...(props.selectedRepoPath ? { cwd: props.selectedRepoPath } : {}) }
+      : null
+  )
 }

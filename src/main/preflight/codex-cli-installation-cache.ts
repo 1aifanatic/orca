@@ -12,7 +12,8 @@ export class CodexCliInstallationCache {
   async read(
     host: string,
     fingerprint: string,
-    probe: () => Promise<CodexCliInstallation>
+    probe: () => Promise<CodexCliInstallation>,
+    lifetimeMs = 30_000
   ): Promise<CodexCliInstallation> {
     const existing = this.entries.get(host)
     if (existing?.fingerprint === fingerprint && existing.expiresAt > Date.now()) {
@@ -23,7 +24,8 @@ export class CodexCliInstallationCache {
     try {
       const result = await entry.result
       // Unknown probes must heal even when the binary did not change.
-      entry.expiresAt = result.status === 'unknown' ? Date.now() + 30_000 : Infinity
+      entry.expiresAt =
+        Date.now() + Math.min(lifetimeMs, result.status === 'unknown' ? 30_000 : Infinity)
       return result
     } catch (error) {
       if (this.entries.get(host) === entry) {

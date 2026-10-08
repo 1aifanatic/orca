@@ -13,11 +13,24 @@ export type CodexInstallationProblem = {
   minimumVersion: string
 }
 
+export function parseCodexCliVersion(output: string | null | undefined): string | null {
+  const lines = output?.split(/\r?\n/).map((line) => line.trim()) ?? []
+  const identified = lines.filter((line) => /^codex(?:-cli)?\s/i.test(line))
+  const candidates = identified.length ? identified : lines.filter(Boolean)
+  const versions = candidates.map((line) => {
+    const value = line.replace(/^codex(?:-cli)?\s+/i, '').replace(/^v/i, '')
+    return isValidAppVersion(value) ? parseCliVersion(value) : null
+  })
+  return versions.length && versions.every((version) => version !== null && version === versions[0])
+    ? versions[0]
+    : null
+}
+
 export function codexCliInstallation(
   installed: boolean,
   output: string | null
 ): CodexCliInstallation {
-  const version = parseCliVersion(output)
+  const version = parseCodexCliVersion(output)
   return {
     status: !installed
       ? 'missing'

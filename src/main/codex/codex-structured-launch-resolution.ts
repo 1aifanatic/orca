@@ -92,9 +92,11 @@ export function createCodexStructuredLaunchResolver(
     }
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
     const args = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
+    const cwd = await resolveAgentSessionLaunchDirectory(deps, record)
     await (deps.requireSupportedCli ?? requireSupportedCodexCli)({
       program: command,
-      env: environment
+      cwd,
+      env: { ...process.env, ...environment, CODEX_HOME: accountHome.path }
     })
     const permissionPolicy = deps.resolvePermissionPolicy?.()
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
@@ -106,9 +108,17 @@ export function createCodexStructuredLaunchResolver(
     return {
       command,
       args: [...args, 'app-server'],
-      cwd: await resolveAgentSessionLaunchDirectory(deps, record),
+      cwd,
       codexHome: accountHome.path,
-      ...(environment ? { env: { ...environment } as Record<string, string> } : {}),
+      ...(environment
+        ? {
+            env: Object.fromEntries(
+              Object.entries(environment).filter(
+                (pair): pair is [string, string] => pair[1] !== undefined
+              )
+            )
+          }
+        : {}),
       // An empty chain is a session that has never proved a thread, so it
       // starts one; anything else resumes the last link this session proved.
       resumeThreadId,

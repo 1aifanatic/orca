@@ -50,8 +50,11 @@ export class PreflightHandler {
     this.dispatcher.onRequest('preflight.codexMaintenance', (p) => {
       const params = CodexMaintenanceRequest.parse(p)
       return params.operation === 'start'
-        ? codexMaintenanceRunner.start()
-        : codexMaintenanceRunner.status(params.operation === 'read' ? params.jobId : undefined)
+        ? codexMaintenanceRunner.start(params)
+        : codexMaintenanceRunner.status(
+            params.operation === 'read' ? params.jobId : undefined,
+            params
+          )
     })
     this.dispatcher.onRequest('preflight.detectAgents', (p) => this.detectAgents(p))
     this.dispatcher.onRequest('preflight.detectWindowsTerminalCapabilities', () =>
@@ -64,6 +67,7 @@ export class PreflightHandler {
     agents: string[]
     versions?: Record<string, string>
     codexMaintenance?: true
+    codexMaintenanceContext?: true
   }> {
     const commands = params.commands as AgentDetectionCommand[]
     if (!Array.isArray(commands)) {
@@ -123,7 +127,9 @@ export class PreflightHandler {
 
     return {
       agents: [...new Set(detectedCommands.map(({ id }) => id))],
-      ...(params.reportCodexMaintenance === true ? { codexMaintenance: true as const } : {}),
+      ...(params.reportCodexMaintenance === true
+        ? { codexMaintenance: true as const, codexMaintenanceContext: true as const }
+        : {}),
       ...(Object.keys(versions).length > 0 ? { versions } : {})
     }
   }

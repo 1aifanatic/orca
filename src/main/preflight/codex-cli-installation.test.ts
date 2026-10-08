@@ -129,4 +129,60 @@ describe('Codex binary version cache', () => {
     await cache.read('ssh:A', 'new', fresh)
     expect(fresh).toHaveBeenCalledTimes(3)
   })
+
+  it('rechecks an unchanged wrapper in both upgrade and downgrade directions', async () => {
+    const program = await binary()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(0)
+    prints('company-wrapper 0.1.0\ncodex-cli 0.135.0')
+    expect((await readCodexCliInstallation({ program })).status).toBe('unsupported')
+    prints('company-wrapper 0.1.0\ncodex-cli 0.136.0')
+    vi.setSystemTime(30_001)
+    expect((await readCodexCliInstallation({ program })).status).toBe('ready')
+    prints('company-wrapper 0.1.0\ncodex-cli 0.135.0')
+    vi.setSystemTime(60_002)
+    expect((await readCodexCliInstallation({ program })).status).toBe('unsupported')
+    expect(runProcess).toHaveBeenCalledTimes(3)
+  })
+
+  it('scopes a wrapper verdict to its directory and effective environment', async () => {
+    const program = await binary()
+    prints('codex-cli 0.135.0')
+    await readCodexCliInstallation({ program, cwd: tmpdir(), env: { CODEX_SELECTION: 'old' } })
+    prints('codex-cli 0.136.0')
+    const first = { program, cwd: join(tmpdir(), 'workspace'), env: { CODEX_SELECTION: 'old' } }
+    expect((await readCodexCliInstallation(first)).status).toBe('ready')
+    prints('codex-cli 0.135.0')
+    expect(
+      (await readCodexCliInstallation({ ...first, env: { CODEX_SELECTION: 'new' } })).status
+    ).toBe('unsupported')
+    expect(runProcess).toHaveBeenCalledTimes(3)
+  })
+
+  it("fingerprints an npm launcher's native vendor binary when its package and launcher stay unchanged", async () => {
+    const program = await binary()
+    const root = join(program, '..')
+    const cpu = process.arch === 'arm64' ? 'aarch64' : 'x86_64'
+    const system =
+      process.platform === 'darwin'
+        ? 'apple-darwin'
+        : process.platform === 'win32'
+          ? 'pc-windows-msvc'
+          : 'unknown-linux-musl'
+    const packageRoot = join(root, 'package')
+    await mkdir(join(packageRoot, 'bin'), { recursive: true })
+    const launcher = join(packageRoot, 'bin', 'codex.js')
+    await writeFile(launcher, 'unchanged launcher')
+    await writeFile(join(packageRoot, 'package.json'), '{"name":"@openai/codex"}')
+    const nativeDirectory = join(packageRoot, 'vendor', `${cpu}-${system}`, 'codex')
+    await mkdir(nativeDirectory, { recursive: true })
+    const native = join(nativeDirectory, process.platform === 'win32' ? 'codex.exe' : 'codex')
+    await writeFile(native, 'old binary')
+    prints('codex-cli 0.135.0')
+    await readCodexCliInstallation({ program: launcher })
+    await writeFile(native, 'updated binary of a different size')
+    prints('codex-cli 0.136.0')
+    expect((await readCodexCliInstallation({ program: launcher })).status).toBe('ready')
+    expect(runProcess).toHaveBeenCalledTimes(2)
+  })
 })

@@ -17785,8 +17785,8 @@
         "couldNotStart": "{{agent}} を起動できませんでした。",
         "editSavedArguments": "設定 > Agent > 引数で編集してください。",
         "couldNotRestart": "{{agent}} を再起動できませんでした。",
-        "codexCliMissing": "このホストに Codex がインストールされていません。チャットには Codex {{minimumVersion}} 以降が必要です。npm install -g @openai/codex でインストールしてから、再試行してください。",
-        "codexCliTooOld": "Codex {{installedVersion}} はチャットに対応していません。このホストで codex update（npm でインストールした場合は npm install -g @openai/codex）を実行して {{minimumVersion}} 以降に更新し、再試行してください。",
+        "codexCliMissing": "このホストに Codex がインストールされていません。チャットには Codex {{minimumVersion}} 以降が必要です。設定 → Agents で選択した Codex コマンドを確認し、このホストにインストールしてから再試行してください。",
+        "codexCliTooOld": "Codex {{installedVersion}} はチャットには古すぎます。設定 → Agents から、このホストで選択したインストールを {{minimumVersion}} 以降に更新して再試行してください。",
         "notSignedIn": "{{agent}} は選択したアカウントでサインインしていません。",
         "signInFirst": "先にサインインしてください。",
         "signInThenRunCommand": "サインインしてから、/{{command}} をもう一度実行してください。",
@@ -19480,7 +19480,8 @@
       "settingsRequired": "更新が必要です（インストール済み: {{installed}}、必要: {{minimum}}）",
       "exitCode": "コマンドが終了コード {{code}} で終了しました",
       "logTitle": "Codex のインストールログ",
-      "copyLog": "ログをコピー"
+      "copyLog": "ログをコピー",
+      "manualUpdate": "{{path}} に Codex {{minimum}} 以降をインストールまたは更新して、もう一度お試しください。"
     }
   }
 }

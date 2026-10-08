@@ -17851,8 +17851,8 @@
         "couldNotStart": "{{agent}} n'a pas pu démarrer.",
         "editSavedArguments": "Modifiez-les dans Paramètres > Agents > Arguments.",
         "couldNotRestart": "{{agent}} n'a pas pu redémarrer.",
-        "codexCliMissing": "Codex n’est pas installé sur cet hôte. Les chats nécessitent Codex {{minimumVersion}} ou une version ultérieure. Installez-le avec npm install -g @openai/codex, puis réessayez.",
-        "codexCliTooOld": "Codex {{installedVersion}} est trop ancien pour les chats. Passez à {{minimumVersion}} ou une version ultérieure sur cet hôte avec codex update (ou npm install -g @openai/codex pour une installation npm), puis réessayez.",
+        "codexCliMissing": "Codex n’est pas installé sur cet hôte. Les chats nécessitent Codex {{minimumVersion}} ou ultérieur. Vérifiez la commande Codex sélectionnée dans Paramètres → Agents, installez-le sur cet hôte, puis réessayez.",
+        "codexCliTooOld": "Codex {{installedVersion}} est trop ancien pour les chats. Mettez à jour l’installation sélectionnée vers {{minimumVersion}} ou ultérieur sur cet hôte depuis Paramètres → Agents, puis réessayez.",
         "notSignedIn": "{{agent}} n'est pas connecté avec le compte sélectionné.",
         "signInFirst": "Connectez-vous d'abord.",
         "signInThenRunCommand": "Connectez-vous, puis relancez /{{command}}.",
@@ -19480,7 +19480,8 @@
       "settingsRequired": "Mise à jour requise (version installée : {{installed}}, requise : {{minimum}})",
       "exitCode": "La commande s’est terminée avec le code {{code}}",
       "logTitle": "Journal d’installation de Codex",
-      "copyLog": "Copier le journal"
+      "copyLog": "Copier le journal",
+      "manualUpdate": "Installez ou mettez à jour Codex à {{path}} vers la version {{minimum}} ou ultérieure, puis réessayez."
     }
   }
 }

@@ -164,7 +164,7 @@ it("keeps the start failure's own words when its row is not loaded", async () =>
   expect(within(await notice('first')).getByText(START_FAILED_REASON)).toBeTruthy()
 })
 
-it.each([null, '0.135.0'])(
+it.each([null, '0.100.0', '0.135.0'])(
   'shows the Codex install/update instructions for installed version %s in the existing failure notice',
   async (installedVersion) => {
     const failure: AgentSessionFailureFact = {
@@ -182,6 +182,7 @@ it.each([null, '0.135.0'])(
     const row = await notice('codex-message')
     expect(within(row).getByText(text)).toBeTruthy()
     expect(text).toContain('0.136.0')
-    expect(text).toContain('npm install -g @openai/codex')
+    expect(text).toContain('Settings → Agents')
+    expect(text).not.toContain('codex update')
   }
 )

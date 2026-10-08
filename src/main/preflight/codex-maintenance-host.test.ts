@@ -49,11 +49,58 @@ describe('Codex maintenance execution host routing', () => {
       'preflight.codexMaintenance',
       'preflight.codexMaintenance'
     ])
-    expect(request).toHaveBeenLastCalledWith('preflight.codexMaintenance', {
-      operation: 'read',
-      jobId: 'host-job'
-    })
+    expect(request).toHaveBeenLastCalledWith(
+      'preflight.codexMaintenance',
+      expect.objectContaining({
+        operation: 'read',
+        jobId: 'host-job'
+      })
+    )
     expect(start).not.toHaveBeenCalled()
+  })
+  it('forwards configured invocation context to a capable SSH execution host', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        agents: ['codex'],
+        codexMaintenance: true,
+        codexMaintenanceContext: true
+      })
+      .mockResolvedValue(state())
+    getMux.mockReturnValue({ isDisposed: () => false, request })
+    await codexMaintenanceOnHost(
+      { connectionId: 'host', operation: 'status', cwd: '/remote/workspace' },
+      {
+        agentCmdOverrides: { codex: '/remote/company-codex' },
+        agentDefaultEnv: { codex: { PATH: '/remote/bin' } }
+      }
+    )
+    expect(request).toHaveBeenLastCalledWith(
+      'preflight.codexMaintenance',
+      expect.objectContaining({
+        cwd: '/remote/workspace',
+        commandSettings: expect.objectContaining({
+          agentCmdOverrides: { codex: '/remote/company-codex' },
+          agentDefaultEnv: { codex: { PATH: '/remote/bin' } }
+        })
+      })
+    )
+  })
+  it('treats a context-unaware relay as unknown rather than probing or updating stock Codex', async () => {
+    const request = vi.fn().mockResolvedValue({
+      agents: ['codex'],
+      versions: { codex: '0.135.0' },
+      codexMaintenance: true
+    })
+    getMux.mockReturnValue({ isDisposed: () => false, request })
+    const result = await codexMaintenanceOnHost({
+      connectionId: 'old',
+      operation: 'status',
+      cwd: '/workspace'
+    })
+    expect(result.installation.status).toBe('unknown')
+    expect(result.canRun).toBe(false)
+    expect(request).toHaveBeenCalledTimes(1)
   })
   it.each([{ agents: [] }, { agents: ['codex'], versions: { codex: '0.135.0' } }])(
     'shows command text on a relay without support: %j',

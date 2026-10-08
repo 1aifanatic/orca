@@ -17978,8 +17978,8 @@
         "sendAgainToTryOnceMore": "Send your message again to try once more.",
         "couldNotStart": "{{agent}} couldn't start.",
         "couldNotRestart": "{{agent}} couldn't restart.",
-        "codexCliMissing": "Codex is not installed on this host. Chats require Codex {{minimumVersion}} or newer. Install it with npm install -g @openai/codex, then try again.",
-        "codexCliTooOld": "Codex {{installedVersion}} is too old for chats. Update to {{minimumVersion}} or newer on this host with codex update (or npm install -g @openai/codex for npm installs), then try again.",
+        "codexCliMissing": "Codex is not installed on this host. Chats require Codex {{minimumVersion}} or newer. Check the selected Codex command in Settings → Agents, then install it on this host and try again.",
+        "codexCliTooOld": "Codex {{installedVersion}} is too old for chats. Update the selected installation to {{minimumVersion}} or newer on this host using Settings → Agents, then try again.",
         "notSignedIn": "{{agent}} is not signed in for the selected account.",
         "signInFirst": "Sign in first.",
         "signInThenRunCommand": "Sign in, then run /{{command}} again.",
@@ -19614,7 +19614,8 @@
       "settingsRequired": "Update required (installed {{installed}}, needs {{minimum}})",
       "exitCode": "Command exited with code {{code}}",
       "logTitle": "Codex installation log",
-      "copyLog": "Copy log"
+      "copyLog": "Copy log",
+      "manualUpdate": "Install or update Codex at {{path}} to {{minimum}} or newer, then try again."
     }
   }
 }

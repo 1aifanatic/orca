@@ -1,5 +1,19 @@
 import { translate } from '@/i18n/i18n'
 import type { CodexCliInstallation } from '../../../../shared/codex-cli-installation'
+import type { CodexMaintenanceAction } from '../../../../shared/codex-cli-maintenance'
+
+export function codexMaintenanceCommandText(
+  action: CodexMaintenanceAction,
+  minimum: string
+): string {
+  return action.manual
+    ? translate(
+        'codex.maintenance.manualUpdate',
+        'Install or update Codex at {{path}} to {{minimum}} or newer, then try again.',
+        { path: action.installationPath ?? action.command, minimum }
+      )
+    : action.command
+}
 
 export function codexMaintenanceLabel(update: boolean, busy = false): string {
   return busy

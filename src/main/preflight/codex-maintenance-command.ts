@@ -1,39 +1,94 @@
 import { readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { z } from 'zod'
-import { codexMaintenanceAction } from '../../shared/codex-cli-maintenance'
+import { createStructuredAgentEnvironmentResolvers } from '../runtime/structured-agent-shell-environment'
+import {
+  configuredCodexInvocationSources,
+  type CodexCommandSettings
+} from '../codex/configured-codex-invocation'
+import { hasExplicitTuiLaunchCommand } from '../../shared/tui-agent-launch-command-override'
+import {
+  codexMaintenanceAction,
+  codexMaintenanceManualAction
+} from '../../shared/codex-cli-maintenance'
 import { resolveCliCommand, withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import type { ProcessSpec } from '../../shared/child-process/run-process'
 import { resolveCodexStructuredInvocation } from '../codex/codex-structured-launch-resolution'
-import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
 import { listLocalCommandPaths } from '../ipc/command-path-resolver'
 import { codexCliPackagePaths, readCodexCliInstallation } from './codex-cli-installation'
 
 const Package = z.object({ name: z.literal('@openai/codex') })
 
-export async function resolveCodexMaintenanceCommand() {
-  const { command, environment } = await resolveCodexStructuredInvocation({
-    resolveEnvironment: resolveLoginShellEnvironment
+export type CodexMaintenanceContext = { cwd?: string; commandSettings?: CodexCommandSettings }
+export type ResolvedCodexMaintenanceCommand = {
+  installation: Awaited<ReturnType<typeof readCodexCliInstallation>>
+  action: ReturnType<typeof codexMaintenanceAction>
+  spec: ProcessSpec | null
+  recheck?: () => Promise<ResolvedCodexMaintenanceCommand>
+}
+
+export async function resolveCodexMaintenanceCommand(
+  context: CodexMaintenanceContext = {}
+): Promise<ResolvedCodexMaintenanceCommand> {
+  const settings = context.commandSettings ?? {}
+  const sources = configuredCodexInvocationSources(() => settings)
+  const environment = createStructuredAgentEnvironmentResolvers(sources)
+  const invocation = await resolveCodexStructuredInvocation({
+    resolveCommand: sources.resolveCommand,
+    resolveEnvironment: environment.resolveCodexEnvironment
   })
+  return resolveMaintenanceInvocation(invocation, context.cwd, settings)
+}
+
+async function resolveMaintenanceInvocation(
+  { command, environment }: Awaited<ReturnType<typeof resolveCodexStructuredInvocation>>,
+  cwd: string | undefined,
+  settings: CodexCommandSettings
+): Promise<ResolvedCodexMaintenanceCommand> {
   const program =
-    (await listLocalCommandPaths(command, { env: environment, maxResults: 1 }))[0] ?? command
-  const launch = { program, env: withCliRuntimeOnPath(program, environment ?? process.env) }
+    (await listLocalCommandPaths(command, { env: environment, cwd, maxResults: 1 }))[0] ?? command
+  const launch = {
+    program,
+    cwd,
+    env: withCliRuntimeOnPath(program, { ...process.env, ...environment })
+  }
   const installation = await readCodexCliInstallation(launch)
   const packagePaths = await codexCliPackagePaths(launch)
-  const npmInstalled = (
+  const npmPackages = (
     await Promise.all(
       packagePaths.map(async (file) => {
         try {
-          return Package.safeParse(JSON.parse(await readFile(file, 'utf8'))).success
+          return Package.safeParse(JSON.parse(await readFile(file, 'utf8'))).success ? file : null
         } catch {
-          return false
+          return null
         }
       })
     )
-  ).some(Boolean)
-  const action = codexMaintenanceAction(installation, npmInstalled)
+  ).filter((file): file is string => file !== null)
+  const npmInstalled = npmPackages.length > 0
+  const moduleDirectory = npmPackages
+    .map((file) => dirname(dirname(dirname(file))))
+    .find((directory) => basename(directory) === 'node_modules')
+  const prefixDirectory = moduleDirectory ? dirname(moduleDirectory) : null
+  const npmPrefix =
+    prefixDirectory && basename(prefixDirectory) === 'lib' && process.platform !== 'win32'
+      ? dirname(prefixDirectory)
+      : prefixDirectory
+  let action = codexMaintenanceAction(installation, npmInstalled)
+  if (
+    action &&
+    action.command !== 'codex update' &&
+    ((installation.status === 'missing' && hasExplicitTuiLaunchCommand(settings, 'codex')) ||
+      (installation.status === 'unsupported' && (!npmInstalled || !npmPrefix)))
+  ) {
+    action = codexMaintenanceManualAction(
+      program,
+      installation.minimumVersion,
+      installation.status === 'missing' ? 'install' : 'update'
+    )
+  }
   let spec: ProcessSpec | null = null
-  if (action) {
+  if (action && !action.manual) {
     const useNpm = action.command !== 'codex update'
     let maintenanceProgram = program
     if (useNpm) {
@@ -48,8 +103,16 @@ export async function resolveCodexMaintenanceCommand() {
     spec = {
       ...launch,
       program: maintenanceProgram,
-      args: useNpm ? ['install', '-g', '@openai/codex'] : ['update']
+      args: useNpm
+        ? ['install', '-g', '@openai/codex', ...(npmPrefix ? ['--prefix', npmPrefix] : [])]
+        : ['update']
     }
   }
-  return { installation, action, spec }
+  return {
+    installation,
+    action,
+    spec,
+    recheck: () =>
+      resolveMaintenanceInvocation({ command: program, environment: launch.env }, cwd, settings)
+  }
 }

@@ -23,6 +23,17 @@ describe('Codex maintenance policy and mixed-version replies', () => {
     expect(codexMaintenanceAction(codexCliInstallation(true, null), false)).toBeNull()
     expect(codexMaintenanceAction(codexCliInstallation(true, '0.136.0'), false)).toBeNull()
   })
+  it.each([
+    ['0.100.0', 'npm install -g @openai/codex'],
+    ['0.125.0', 'npm install -g @openai/codex'],
+    ['0.126.0-alpha.1', 'npm install -g @openai/codex'],
+    ['0.126.0', 'codex update'],
+    ['0.135.0', 'codex update']
+  ])('uses only the source-supported updater for %s', (version, command) => {
+    expect(codexMaintenanceAction(codexCliInstallation(true, version), false)?.command).toBe(
+      command
+    )
+  })
   it.each([null, '0.135.0'])(
     'retains the checked failure facts after a reload: %s',
     (installedVersion) => {

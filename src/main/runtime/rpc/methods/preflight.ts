@@ -18,7 +18,8 @@ export const PREFLIGHT_METHODS = [
   defineMethod({
     name: 'preflight.codexMaintenance',
     params: CodexMaintenanceRequest,
-    handler: async (params) => codexMaintenanceOnHost(params)
+    handler: async (params, { runtime }) =>
+      codexMaintenanceOnHost(params, runtime.getCodexMaintenanceSettings())
   }),
   defineMethod({
     name: 'preflight.check',

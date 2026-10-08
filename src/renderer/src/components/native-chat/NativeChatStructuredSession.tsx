@@ -148,7 +148,10 @@ export function NativeChatStructuredSession(
             fact.refusal?.code === 'agent_session_operation_invalid' &&
             fact.refusal.details?.codexInstallation
         ))
-      ? props.target
+      ? {
+          ...props.target,
+          ...(fileLinkContext?.worktreePath ? { cwd: fileLinkContext.worktreePath } : {})
+        }
       : null
   )
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({

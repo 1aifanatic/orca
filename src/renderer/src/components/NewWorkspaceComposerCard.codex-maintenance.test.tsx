@@ -25,7 +25,7 @@ vi.mock('@/lib/codex-maintenance-client', () => ({
 vi.mock('@/store', () => ({
   useAppStore: Object.assign(
     (selector: (state: typeof mocks.state) => unknown) => selector(mocks.state),
-    { getState: () => mocks.state }
+    { getState: () => mocks.state, subscribe: () => () => {} }
   )
 }))
 vi.mock('@/components/contextual-tours/use-contextual-tour', () => ({

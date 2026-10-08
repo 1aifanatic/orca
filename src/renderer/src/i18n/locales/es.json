@@ -17750,8 +17750,8 @@
         "couldNotStart": "{{agent}} no pudo iniciarse.",
         "editSavedArguments": "Edítalos en Ajustes > Agentes > Argumentos.",
         "couldNotRestart": "{{agent}} no pudo reiniciarse.",
-        "codexCliMissing": "Codex no está instalado en este equipo. Los chats requieren Codex {{minimumVersion}} o posterior. Instálalo con npm install -g @openai/codex y vuelve a intentarlo.",
-        "codexCliTooOld": "Codex {{installedVersion}} es demasiado antiguo para los chats. Actualiza a {{minimumVersion}} o posterior en este equipo con codex update (o npm install -g @openai/codex si lo instalaste con npm) y vuelve a intentarlo.",
+        "codexCliMissing": "Codex no está instalado en este equipo. Los chats requieren Codex {{minimumVersion}} o posterior. Comprueba el comando de Codex seleccionado en Configuración → Agentes, instálalo en este equipo y vuelve a intentarlo.",
+        "codexCliTooOld": "Codex {{installedVersion}} es demasiado antiguo para los chats. Actualiza la instalación seleccionada a {{minimumVersion}} o posterior en este equipo desde Configuración → Agentes y vuelve a intentarlo.",
         "notSignedIn": "{{agent}} no tiene la sesión iniciada con la cuenta seleccionada.",
         "signInFirst": "Inicie sesión primero.",
         "signInThenRunCommand": "Inicie sesión y vuelva a ejecutar /{{command}}.",
@@ -19480,7 +19480,8 @@
       "settingsRequired": "Actualización requerida (instalado {{installed}}, requiere {{minimum}})",
       "exitCode": "El comando terminó con el código {{code}}",
       "logTitle": "Registro de instalación de Codex",
-      "copyLog": "Copiar registro"
+      "copyLog": "Copiar registro",
+      "manualUpdate": "Instala o actualiza Codex en {{path}} a {{minimum}} o una versión posterior y vuelve a intentarlo."
     }
   }
 }

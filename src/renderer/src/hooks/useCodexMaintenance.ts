@@ -1,10 +1,15 @@
-import { createContext, useEffect, useSyncExternalStore } from 'react'
+import { createContext, useLayoutEffect, useSyncExternalStore } from 'react'
+import {
+  codexMaintenanceHostIsReachable,
+  subscribeCodexMaintenanceHostContact
+} from '@/lib/codex-maintenance-host-contact'
 import {
   codexMaintenanceTargetKey,
   type CodexMaintenanceTarget
 } from '@/lib/codex-maintenance-client'
 import {
   getCodexMaintenanceEntry,
+  getCodexMaintenanceHostBusy,
   refreshCodexMaintenance,
   startCodexMaintenance,
   subscribeCodexMaintenance
@@ -12,7 +17,8 @@ import {
 import {
   codexMaintenanceLabel,
   codexMaintenanceReason,
-  codexMaintenanceTitle
+  codexMaintenanceTitle,
+  codexMaintenanceCommandText
 } from '@/components/native-chat/codex-maintenance-copy'
 import type { NativeChatComposerNotice } from '@/components/native-chat/native-chat-composer-notice'
 
@@ -23,6 +29,8 @@ export function useCodexMaintenance(target: CodexMaintenanceTarget | null) {
   const key = target ? codexMaintenanceTargetKey(target) : ''
   const snapshot = () => getCodexMaintenanceEntry(key)
   const entry = useSyncExternalStore(subscribeCodexMaintenance, snapshot, snapshot)
+  const busySnapshot = () => Boolean(target && getCodexMaintenanceHostBusy(target))
+  const hostBusy = useSyncExternalStore(subscribeCodexMaintenance, busySnapshot, busySnapshot)
   const kind = target?.kind
   const identifier =
     target?.kind === 'environment'
@@ -30,7 +38,8 @@ export function useCodexMaintenance(target: CodexMaintenanceTarget | null) {
       : target?.kind === 'ssh'
         ? target.connectionId
         : null
-  useEffect(() => {
+  const cwd = target?.cwd
+  useLayoutEffect(() => {
     const host: CodexMaintenanceTarget | null =
       kind === 'local'
         ? { kind }
@@ -42,18 +51,25 @@ export function useCodexMaintenance(target: CodexMaintenanceTarget | null) {
     if (!host) {
       return
     }
-    void refreshCodexMaintenance(host)
+    const context = { ...host, ...(cwd ? { cwd } : {}) }
+    const unsubscribeContact = subscribeCodexMaintenanceHostContact(context)
+    void refreshCodexMaintenance(context)
     const onFocus = (): void => {
-      void refreshCodexMaintenance(host)
+      void refreshCodexMaintenance(context)
     }
     window.addEventListener('focus', onFocus)
     return () => {
       window.removeEventListener('focus', onFocus)
+      unsubscribeContact()
     }
-  }, [kind, identifier])
-  const installation = entry.state?.installation
+  }, [kind, identifier, cwd])
+  const installation =
+    entry.verification === 'current' && target && codexMaintenanceHostIsReachable(target)
+      ? entry.state?.installation
+      : undefined
   const blocked = installation?.status === 'missing' || installation?.status === 'unsupported'
   const busy =
+    hostBusy ||
     entry.starting ||
     (!entry.error &&
       Boolean(
@@ -61,7 +77,11 @@ export function useCodexMaintenance(target: CodexMaintenanceTarget | null) {
         (entry.state.job.phase === 'queued' || entry.state.job.phase === 'running')
       ))
   const action =
-    target && entry.state?.action && entry.state.action.kind !== 'unknown' && entry.state.canRun
+    installation &&
+    target &&
+    entry.state?.action &&
+    entry.state.action.kind !== 'unknown' &&
+    entry.state.canRun
       ? {
           label: codexMaintenanceLabel(entry.state.action.kind === 'update', busy),
           disabled: busy,
@@ -78,9 +98,14 @@ export function useCodexMaintenance(target: CodexMaintenanceTarget | null) {
           text: codexMaintenanceReason(installation),
           action,
           ...(!entry.state?.canRun && entry.state?.action
-            ? { errorText: entry.state.action.command }
+            ? {
+                errorText: codexMaintenanceCommandText(
+                  entry.state.action,
+                  installation.minimumVersion
+                )
+              }
             : {})
         }
       : null
-  return { ...entry, blocked, busy, action, notice }
+  return { ...entry, installation, blocked, busy, action, notice }
 }

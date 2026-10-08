@@ -6,8 +6,11 @@ import { codexCliInstallation } from '../../../../shared/codex-cli-installation'
 import { agentSessionRefusalFailure } from '../../../../shared/agent-session-write-failure'
 import {
   codexMaintenanceAction,
+  codexMaintenanceManualAction,
+  CodexMaintenanceStateSchema,
   type CodexMaintenanceState
 } from '../../../../shared/codex-cli-maintenance'
+import type { CodexMaintenanceTarget } from '@/lib/codex-maintenance-client'
 import { useCodexMaintenance } from '@/hooks/useCodexMaintenance'
 import {
   refreshCodexMaintenance,
@@ -24,18 +27,25 @@ const { call, refreshAgents } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/codex-maintenance-client', () => ({
   callCodexMaintenance: call,
-  codexMaintenanceTargetKey: (target: { kind: string }) => `${target.kind}:codex`
+  codexMaintenanceTargetKey: (target: { kind: string; cwd?: string }) =>
+    `${target.kind}:codex${target.cwd ? `:${target.cwd}` : ''}`
 }))
 vi.mock('@/store', () => ({
-  useAppStore: { getState: () => ({ refreshDetectedAgents: refreshAgents }) }
+  useAppStore: {
+    subscribe: () => () => {},
+    getState: () => ({
+      refreshDetectedAgents: refreshAgents,
+      sshConnectionStates: new Map([['offline', { status: 'disconnected' }]])
+    })
+  }
 }))
 const TARGET = { kind: 'local' } as const
 function state(installed: boolean, version: string | null, canRun = true): CodexMaintenanceState {
   const installation = codexCliInstallation(installed, version)
   return { installation, action: codexMaintenanceAction(installation, false), canRun, job: null }
 }
-function Composer() {
-  const maintenance = useCodexMaintenance(TARGET)
+function Composer({ target = TARGET }: { target?: CodexMaintenanceTarget } = {}) {
+  const maintenance = useCodexMaintenance(target)
   return (
     <>
       <NativeChatComposerNotices notices={maintenance.notice ? [maintenance.notice] : []} />
@@ -60,6 +70,17 @@ async function flush() {
 }
 
 describe('Codex composer and Settings maintenance', () => {
+  it('does not block on a completed installation response from a host whose contact is down', async () => {
+    call.mockResolvedValue(state(true, '0.135.0'))
+    const target = { kind: 'ssh', connectionId: 'offline' } as const
+    render(<Composer target={target} />)
+    await act(async () => {
+      await refreshCodexMaintenance(target)
+    })
+    expect(screen.getByText('Send')).toBeEnabled()
+    expect(screen.queryByText('Codex update required')).not.toBeInTheDocument()
+  })
+
   it.each([
     {
       installed: false,
@@ -88,6 +109,27 @@ describe('Codex composer and Settings maintenance', () => {
     } else {
       expect(screen.queryByRole('listitem')).toBeNull()
     }
+  })
+  it('renders a localized manual instruction while retaining readable text for legacy readers', async () => {
+    const initial = CodexMaintenanceStateSchema.parse({
+      ...state(true, '0.100.0', false),
+      action: codexMaintenanceManualAction('/selected/codex', '0.136.0')
+    })
+    call.mockResolvedValue(initial)
+    render(
+      <>
+        <Composer />
+        <CodexMaintenanceRow target={TARGET} />
+      </>
+    )
+    await flush()
+    expect(
+      screen.getAllByText(
+        'Install or update Codex at /selected/codex to 0.136.0 or newer, then try again.'
+      )
+    ).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Update Codex' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
   })
   it('shows the required and installed versions and command text for an older relay', async () => {
     call.mockResolvedValue(state(true, '0.135.0', false))
@@ -152,7 +194,7 @@ describe('Codex composer and Settings maintenance', () => {
     )
     render(
       <>
-        <Composer />
+        <Composer target={{ kind: 'local', cwd: '/project' }} />
         <CodexMaintenanceRow target={TARGET} />
       </>
     )
@@ -209,6 +251,48 @@ describe('Codex composer and Settings maintenance', () => {
     expect(screen.queryByText('Not installed')).toBeNull()
     expect(screen.getByText('Send', { selector: 'button' })).toBeEnabled()
   })
+  it('withholds a cached refusal on remount, focus revalidation and failed contact', async () => {
+    call.mockResolvedValue(state(true, '0.135.0'))
+    const first = render(<Composer />)
+    await flush()
+    expect(screen.getByText('Codex update required')).toBeInTheDocument()
+    first.unmount()
+    let rejectRead: (error: Error) => void = () => {}
+    call.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRead = reject
+        })
+    )
+    render(<Composer />)
+    expect(screen.queryByText('Codex update required')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    await act(async () => {
+      rejectRead(new Error('Host unavailable'))
+    })
+    expect(screen.queryByText('Codex update required')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    call.mockResolvedValue(state(true, '0.135.0'))
+    await flush()
+    expect(screen.getByText('Codex update required')).toBeInTheDocument()
+    let completeRead: (value: CodexMaintenanceState) => void = () => {}
+    call.mockImplementation(
+      () =>
+        new Promise<CodexMaintenanceState>((resolve) => {
+          completeRead = resolve
+        })
+    )
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    expect(screen.queryByText('Codex update required')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    await act(async () => {
+      completeRead(state(true, '0.136.0'))
+    })
+    expect(screen.queryByText('Codex update required')).toBeNull()
+  })
+
   it('adds Update to the existing start-failure notice while retaining Retry for other failures', () => {
     const action = { label: 'Update Codex', onClick: vi.fn() }
     const notices = structuredSessionNotices({

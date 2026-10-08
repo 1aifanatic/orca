@@ -31,7 +31,7 @@ function record(): AgentSessionRecord {
 }
 
 describe('Codex structured launch version admission', () => {
-  it.each([null, '0.135.0'])(
+  it.each([null, '0.100.0', '0.135.0'])(
     'refuses %s with install/update commands and both version facts',
     async (version) => {
       vi.mocked(readCodexCliInstallation).mockResolvedValue(
@@ -44,11 +44,9 @@ describe('Codex structured launch version admission', () => {
       const wording = { record: record(), newSession: true }
       const result = failedAcquisitionRefusal(caught, wording)
       expect(result?.refusal.message).toContain('0.136.0')
-      expect(result?.refusal.message).toContain('npm install -g @openai/codex')
+      expect(result?.refusal.message).toContain('Settings → Agents')
       expect(result?.refusal.message).toContain(version ?? 'not installed')
-      if (version) {
-        expect(result?.refusal.message).toContain('codex update')
-      }
+      expect(result?.refusal.message).not.toContain('codex update')
       expect(failedAcquisitionSettlement(caught, wording).exitProof).toBe('processless')
       const failure = structuredAgentSessionStartFailure({ error: caught })
       expect(failure.reason).toBe(result?.refusal.message)
@@ -95,15 +93,52 @@ describe('Codex structured launch version admission', () => {
       })
       vi.mocked(readCodexCliInstallation).mockResolvedValue(codexCliInstallation(true, '0.135.0'))
       await expect(resolve({ identity: identityFor(value.sessionId) })).rejects.toThrow('0.135.0')
-      expect(readCodexCliInstallation).toHaveBeenCalledWith({
-        program: '/host/bin/codex',
-        env: { PATH: '/host/bin', HOME: '/host/home' }
-      })
+      expect(readCodexCliInstallation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          program: '/host/bin/codex',
+          cwd: '/folder',
+          env: expect.objectContaining({
+            PATH: '/host/bin',
+            HOME: '/host/home',
+            CODEX_HOME: '/account'
+          })
+        })
+      )
       vi.mocked(readCodexCliInstallation).mockResolvedValue(codexCliInstallation(true, '0.136.0'))
       await expect(resolve({ identity: identityFor(value.sessionId) })).resolves.toMatchObject({
         command: '/host/bin/codex',
         args: ['app-server']
       })
+    }
+  )
+
+  it.each(['start', 'resume'] as const)(
+    'admits the workspace-selected version on %s',
+    async (mode) => {
+      const value = record()
+      if (mode === 'resume') {
+        value.providerHandleChain = [
+          {
+            linkId: 'link',
+            handle: codexProviderHandle('thread'),
+            origin: 'created',
+            mintedAtFence: 1,
+            observedAt: 1
+          }
+        ]
+      }
+      vi.mocked(readCodexCliInstallation).mockImplementation(async (input) =>
+        codexCliInstallation(true, input.cwd === '/workspace' ? '0.136.0' : '0.135.0')
+      )
+      const resolve = createCodexStructuredLaunchResolver({
+        store: { getRecord: () => value, pinLaunchDirectory: vi.fn() },
+        resolveCommand: () => '/host/project-aware-codex',
+        resolveEnvironment: async () => ({ PATH: '/host/bin' }),
+        resolveLaunchArgs: () => [],
+        resolveWorkspacePath: async () => '/workspace',
+        resolveRollout: async () => null
+      })
+      expect((await resolve({ identity: identityFor(value.sessionId) })).cwd).toBe('/workspace')
     }
   )
 

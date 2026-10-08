@@ -1,13 +1,16 @@
 import { stat, realpath } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { dirname, isAbsolute, join } from 'node:path'
 import {
   codexCliInstallation,
+  parseCodexCliVersion,
   type CodexCliInstallation
 } from '../../shared/codex-cli-installation'
 import { resolveSpawn, type ProcessSpec } from '../../shared/child-process/run-process'
 import { readAgentCliVersion } from '../agent-cli-version-probe'
 import { listLocalCommandPaths } from '../ipc/command-path-resolver'
 import { CodexCliInstallationCache } from './codex-cli-installation-cache'
+import { codexNpmInstallationFiles } from './codex-npm-installation-files'
 
 const cache = new CodexCliInstallationCache()
 
@@ -36,13 +39,15 @@ export async function codexCliPackagePaths(
 async function binaryFingerprint(input: Pick<ProcessSpec, 'program' | 'env'>): Promise<string> {
   const resolved = resolveSpawn(input, process.platform)
   const target = await realpath(input.program).catch(() => input.program)
+  const packages = await codexCliPackagePaths(input)
   const files = new Set([
     input.program,
     target,
     resolved.file,
     ...resolved.args.filter(isAbsolute),
     // npm can keep its launcher unchanged while replacing the package underneath it.
-    ...(await codexCliPackagePaths(input))
+    ...packages,
+    ...(await codexNpmInstallationFiles(packages))
   ])
   return JSON.stringify(await Promise.all([...files].map(stamp)))
 }
@@ -71,8 +76,14 @@ export async function readCodexCliInstallation(
   }
   const launch = { ...input, program }
   const fingerprint = await binaryFingerprint(launch)
-  return cache.read(`native:${program}`, fingerprint, async () => {
-    const result = await readAgentCliVersion(launch)
+  const environment = Object.entries({ ...process.env, ...input.env }).sort(([left], [right]) =>
+    left.localeCompare(right)
+  )
+  const context = createHash('sha256')
+    .update(JSON.stringify([input.cwd ?? process.cwd(), environment]))
+    .digest('hex')
+  return cache.read(`native:${program}:${context}`, fingerprint, async () => {
+    const result = await readAgentCliVersion(launch, parseCodexCliVersion)
     return codexCliInstallation(true, result.version)
   })
 }

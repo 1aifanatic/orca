@@ -1,18 +1,35 @@
 import { z } from 'zod'
 import type { CodexCliInstallation } from './codex-cli-installation'
 import { openEnum } from './zod-salvage'
+import { compareAppVersions } from './app-version'
 
-export const CODEX_MAINTENANCE_CAPABILITY = 'preflight.codex-maintenance.v1' as const
+export const CODEX_MAINTENANCE_LEGACY_CAPABILITY = 'preflight.codex-maintenance.v1' as const
+export const CODEX_MAINTENANCE_CAPABILITY = 'preflight.codex-maintenance.v2' as const
 export const CODEX_INSTALL_COMMAND = 'npm install -g @openai/codex'
+export const CODEX_SELF_UPDATE_MINIMUM_VERSION = '0.126.0'
 
 export const CodexMaintenanceRequest = z.object({
   operation: z.enum(['status', 'start', 'read']),
   connectionId: z.string().min(1).optional(),
-  jobId: z.string().min(1).optional()
+  jobId: z.string().min(1).optional(),
+  cwd: z.string().min(1).optional(),
+  commandSettings: z
+    .object({
+      agentCmdOverrides: z.object({ codex: z.string().optional() }).optional(),
+      agentDefaultEnv: z.object({ codex: z.record(z.string(), z.string()).optional() }).optional(),
+      nativeChatInheritShellEnvironment: z.boolean().optional(),
+      nativeChatShellEnvironmentVariables: z.array(z.string()).optional()
+    })
+    .optional()
 })
 
 export type CodexMaintenanceParams = z.infer<typeof CodexMaintenanceRequest>
-export type CodexMaintenanceAction = { kind: 'install' | 'update' | 'unknown'; command: string }
+export type CodexMaintenanceAction = {
+  kind: 'install' | 'update' | 'unknown'
+  command: string
+  manual?: boolean
+  installationPath?: string
+}
 export type CodexMaintenanceJob = {
   id: string
   phase: 'queued' | 'running' | 'completed' | 'unknown'
@@ -20,6 +37,7 @@ export type CodexMaintenanceJob = {
   output: string
   exitCode: number | null
   error: string | null
+  termination?: 'live' | 'unverifiable' | 'exited'
 }
 export type CodexMaintenanceState = {
   installation: CodexCliInstallation
@@ -35,7 +53,12 @@ export const CodexMaintenanceStateSchema = z.object({
     minimumVersion: z.string()
   }),
   action: z
-    .object({ kind: openEnum(['install', 'update', 'unknown'], 'unknown'), command: z.string() })
+    .object({
+      kind: openEnum(['install', 'update', 'unknown'], 'unknown'),
+      command: z.string(),
+      manual: z.boolean().optional(),
+      installationPath: z.string().optional()
+    })
     .nullable(),
   canRun: z.boolean(),
   job: z
@@ -44,11 +67,14 @@ export const CodexMaintenanceStateSchema = z.object({
       phase: openEnum(['queued', 'running', 'completed', 'unknown'], 'unknown'),
       action: z.object({
         kind: openEnum(['install', 'update', 'unknown'], 'unknown'),
-        command: z.string()
+        command: z.string(),
+        manual: z.boolean().optional(),
+        installationPath: z.string().optional()
       }),
       output: z.string(),
       exitCode: z.number().nullable(),
-      error: z.string().nullable()
+      error: z.string().nullable(),
+      termination: openEnum(['live', 'unverifiable', 'exited'], 'unverifiable').optional()
     })
     .nullable()
 })
@@ -61,7 +87,26 @@ export function codexMaintenanceAction(
     return { kind: 'install', command: CODEX_INSTALL_COMMAND }
   }
   if (installation.status === 'unsupported') {
-    return { kind: 'update', command: npmInstalled ? CODEX_INSTALL_COMMAND : 'codex update' }
+    const selfUpdate =
+      installation.version !== null &&
+      compareAppVersions(installation.version, CODEX_SELF_UPDATE_MINIMUM_VERSION) >= 0
+    return {
+      kind: 'update',
+      command: npmInstalled || !selfUpdate ? CODEX_INSTALL_COMMAND : 'codex update'
+    }
   }
   return null
+}
+
+export function codexMaintenanceManualAction(
+  path: string,
+  minimum: string,
+  kind: 'install' | 'update' = 'update'
+): CodexMaintenanceAction {
+  return {
+    kind,
+    command: `Install or update Codex at ${path} to ${minimum} or newer, then try again.`,
+    manual: true,
+    installationPath: path
+  }
 }

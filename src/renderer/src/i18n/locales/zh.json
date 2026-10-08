@@ -17750,8 +17750,8 @@
         "couldNotStart": "{{agent}} 无法启动。",
         "editSavedArguments": "请在设置 > 智能体 > 参数中编辑。",
         "couldNotRestart": "{{agent}} 无法重新启动。",
-        "codexCliMissing": "此主机尚未安装 Codex。聊天需要 Codex {{minimumVersion}} 或更高版本。请运行 npm install -g @openai/codex 安装后重试。",
-        "codexCliTooOld": "Codex {{installedVersion}} 版本过旧，无法用于聊天。请在此主机上运行 codex update（如果通过 npm 安装，则运行 npm install -g @openai/codex）更新至 {{minimumVersion}} 或更高版本后重试。",
+        "codexCliMissing": "此主机尚未安装 Codex。聊天需要 Codex {{minimumVersion}} 或更高版本。请在设置 → 智能体中检查所选 Codex 命令，在此主机上安装后重试。",
+        "codexCliTooOld": "Codex {{installedVersion}} 版本过旧，无法用于聊天。请通过设置 → 智能体将此主机上所选的安装更新至 {{minimumVersion}} 或更高版本，然后重试。",
         "notSignedIn": "{{agent}} 未使用所选账户登录。",
         "signInFirst": "请先登录。",
         "signInThenRunCommand": "请登录，然后重新运行 /{{command}}。",
@@ -19480,7 +19480,8 @@
       "settingsRequired": "需要更新（已安装 {{installed}}，需要 {{minimum}}）",
       "exitCode": "命令已退出，退出代码为 {{code}}",
       "logTitle": "Codex 安装日志",
-      "copyLog": "复制日志"
+      "copyLog": "复制日志",
+      "manualUpdate": "在 {{path}} 处安装 Codex {{minimum}} 或更高版本，或将其更新至该版本，然后重试。"
     }
   }
 }

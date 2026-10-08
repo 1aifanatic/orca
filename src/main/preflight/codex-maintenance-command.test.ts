@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,17 +43,21 @@ describe('Codex maintenance command choice', () => {
   it('updates a resolved native binary with that binary, without a shell', async () => {
     const result = await resolveCodexMaintenanceCommand()
     expect(result.action?.command).toBe('codex update')
-    expect(result.spec).toEqual({
+    expect(result.spec).toMatchObject({
       program: join(root, 'codex'),
       env: { PATH: root },
       args: ['update']
     })
   })
   it('uses the npm install when the resolved launcher belongs to the Codex npm package', async () => {
-    await writeFile(join(root, 'package.json'), JSON.stringify({ name: '@openai/codex' }))
+    const packageDir = join(root, 'lib', 'node_modules', '@openai', 'codex')
+    await mkdir(packageDir, { recursive: true })
+    const packageFile = join(packageDir, 'package.json')
+    await writeFile(packageFile, JSON.stringify({ name: '@openai/codex' }))
+    packages.mockResolvedValue([packageFile])
     const result = await resolveCodexMaintenanceCommand()
     expect(result.action?.command).toBe('npm install -g @openai/codex')
-    expect(result.spec?.args).toEqual(['install', '-g', '@openai/codex'])
+    expect(result.spec?.args).toEqual(['install', '-g', '@openai/codex', '--prefix', root])
     expect(result.spec?.program).toBe(join(root, 'npm'))
   })
   it('does not mistake an unrelated package for a Codex npm installation', async () => {

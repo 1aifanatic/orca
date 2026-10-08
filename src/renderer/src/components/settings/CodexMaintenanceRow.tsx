@@ -2,7 +2,10 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCodexMaintenance } from '@/hooks/useCodexMaintenance'
 import type { CodexMaintenanceTarget } from '@/lib/codex-maintenance-client'
-import { codexMaintenanceSettingsStatus } from '../native-chat/codex-maintenance-copy'
+import {
+  codexMaintenanceSettingsStatus,
+  codexMaintenanceCommandText
+} from '../native-chat/codex-maintenance-copy'
 
 export function CodexMaintenanceRow({
   target
@@ -10,7 +13,7 @@ export function CodexMaintenanceRow({
   target: CodexMaintenanceTarget
 }): React.JSX.Element | null {
   const maintenance = useCodexMaintenance(target)
-  const installation = maintenance.state?.installation
+  const installation = maintenance.installation
   const status = installation ? codexMaintenanceSettingsStatus(installation) : null
   if (!status) {
     return null
@@ -29,7 +32,12 @@ export function CodexMaintenanceRow({
           {maintenance.action.label}
         </Button>
       ) : maintenance.state?.action ? (
-        <code className="select-text font-mono text-xs">{maintenance.state.action.command}</code>
+        <code className="select-text font-mono text-xs">
+          {codexMaintenanceCommandText(
+            maintenance.state.action,
+            installation?.minimumVersion ?? ''
+          )}
+        </code>
       ) : null}
     </div>
   )

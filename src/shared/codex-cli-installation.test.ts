@@ -16,6 +16,11 @@ describe('Codex structured chat version floor', () => {
     ['codex-cli 0.153.4\n', 'ready'],
     ['codex-cli 1.0.0', 'ready'],
     ['codex-cli unknown', 'unknown'],
+    ['company-wrapper 0.1.0\ncodex-cli 0.136.0', 'ready'],
+    ['company-wrapper 9.0.0\ncodex-cli 0.135.0', 'unsupported'],
+    ['codex-cli 0.135.0\ncodex-cli 0.136.0', 'unknown'],
+    ['wrapper 0.135.0', 'unknown'],
+    ['0.135.0\n0.136.0', 'unknown'],
     ['', 'unknown']
   ])('%s is %s', (output, status) => {
     expect(codexCliInstallation(true, output)).toMatchObject({

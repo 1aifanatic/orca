@@ -30,7 +30,8 @@ export async function probeAgentCliVersion(
 }
 
 export async function readAgentCliVersion(
-  input: Pick<ProcessSpec, 'program' | 'cwd' | 'env'>
+  input: Pick<ProcessSpec, 'program' | 'cwd' | 'env'>,
+  parseVersion: typeof parseCliVersion = parseCliVersion
 ): Promise<{ version: string | null }> {
   let result
   try {
@@ -55,7 +56,7 @@ export async function readAgentCliVersion(
     warnRefused(input.program, why, output)
     return { version: null }
   }
-  const version = parseCliVersion(result.stdout)
+  const version = parseVersion(parseVersion === parseCliVersion ? result.stdout : output)
   if (version === null) {
     warnRefused(input.program, 'printed no version', output)
     return { version: null }
