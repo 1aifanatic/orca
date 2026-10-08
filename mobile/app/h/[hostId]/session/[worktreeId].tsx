@@ -38,6 +38,7 @@ export default function MobileSessionScreen() {
     created?: string | string[]
     warning?: string | string[]
     paneKey?: string | string[]
+    executionHost?: string | string[]
   }>()
   const hostId = firstParam(params.hostId)
   const worktreeId = firstParam(params.worktreeId)
@@ -65,7 +66,7 @@ export default function MobileSessionScreen() {
   // otherwise derives from the workspace, and `paneKey` empty is exactly what the notification hook
   // writes back to say the tap is spent.
   const routeParams = Object.fromEntries(
-    (['name', 'created', 'warning', 'paneKey'] as const)
+    (['name', 'created', 'warning', 'paneKey', 'executionHost'] as const)
       .map((key) => [key, firstParam(params[key])] as const)
       .filter(([, value]) => value !== '')
   )
