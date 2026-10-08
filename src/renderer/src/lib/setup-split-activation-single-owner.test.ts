@@ -193,6 +193,7 @@ function pushSetupSplitSlice(
     publishSeq,
     revision: 1,
     tabs: [{ id: TAB_B, ptyId: primaryPtyId, worktreeId, createdAt: 1 }],
+    presentation: {},
     layouts: {
       [TAB_B]: {
         root: {

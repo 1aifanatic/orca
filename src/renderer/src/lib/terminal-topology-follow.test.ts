@@ -13,6 +13,7 @@ function slice(publishSeq: number, tabIds: string[]): TerminalTopologySlice {
     publishSeq,
     revision: 1,
     tabs: tabIds.map((id) => ({ id, ptyId: null, worktreeId: WT, createdAt: 1 })),
+    presentation: {},
     layouts: {},
     sleeping: {}
   }

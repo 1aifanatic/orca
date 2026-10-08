@@ -1,4 +1,4 @@
-import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
+import type { TerminalPaneLayoutNode } from './terminal-tab-types'
 
 export function collectLeafIds(node: TerminalPaneLayoutNode | null | undefined): string[] {
   if (!node) {

@@ -5,7 +5,7 @@ import { omitRecordKeys } from '../slices/worktrees/teardown/record-key-omission
 import {
   normalizeTerminalLayoutPtyOwnership,
   resolveTerminalLayoutPtyOwnershipTransfers
-} from '@/components/terminal-pane/terminal-layout-pty-ownership'
+} from '../../../../shared/terminal-layout-pty-ownership'
 import { transferDirectSshPaneDetachLedger } from '../slices/direct-ssh-terminal-authority-ledger'
 import type { TerminalSlice, TerminalStoreGet, TerminalStoreSet } from './terminal-state'
 import {

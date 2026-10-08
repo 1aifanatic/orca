@@ -122,10 +122,10 @@ describe('TerminalTopologyPublisher', () => {
     expect(h.pushes[0]!.layouts[`tab-${WT}`]!.ptyIdsByLeafId).toEqual({ [TEST_LEAF_1]: 'pty-2' })
   })
 
-  it('sees an in-place edit and ignores an equal rewrite or a presentation-only change', async () => {
+  it('sees an in-place edit and ignores an equal rewrite or a live title change', async () => {
     const h = harness(sessionWith([WT]))
     h.replace({ ...structuredClone(h.session) })
-    h.session.tabsByWorktree[WT]![0]!.customTitle = 'renamed'
+    h.session.tabsByWorktree[WT]![0]!.title = 'vim'
     h.publisher.markDirty()
     await Promise.resolve()
     expect(h.pushes).toEqual([])
@@ -153,6 +153,7 @@ describe('TerminalTopologyPublisher', () => {
         publishSeq: 3,
         revision: 0,
         tabs: [],
+        presentation: {},
         layouts: {},
         sleeping: {}
       }

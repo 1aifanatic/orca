@@ -198,6 +198,59 @@ describe('OrcaRuntimeService', () => {
     ).rejects.toThrow('terminal_orphan_surface_retired')
   })
 
+  // A desktop pane close commits before its PTY exits; a paired client sees that PTY as an orphan.
+  it('refuses to adopt the PTY of a pane closed while its stop is pending', async () => {
+    const makeRuntime = (): OrcaRuntimeService => {
+      const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession({
+        ...getDefaultWorkspaceSession(),
+        tabsByWorktree: { [TEST_WORKTREE_ID]: [] },
+        terminalTopologyRevisionByRepoId: { [TEST_REPO_ID]: 7 }
+      })
+      const runtime = new OrcaRuntimeService(
+        withDurableRuntimeStore({ ...runtimeStore, flushOrThrow: vi.fn() })
+      )
+      runtime.setPtyController({
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => null,
+        listProcesses: async () => [
+          {
+            id: 'pty-closing',
+            incarnationId: 'inc-closing',
+            terminalHandle: 'term_closing',
+            title: 'shell',
+            cwd: TEST_WORKTREE_PATH,
+            worktreeId: TEST_WORKTREE_ID,
+            wslDistro: null
+          }
+        ]
+      })
+      return runtime
+    }
+    const request = {
+      worktree: `id:${TEST_WORKTREE_ID}`,
+      expectedTopologyRevision: 7,
+      claims: [
+        {
+          terminal: 'term_closing',
+          ptyId: 'pty-closing',
+          incarnationId: 'inc-closing',
+          tabId: 'tab-closing',
+          leafId: HEADLESS_LEAF_ID
+        }
+      ]
+    }
+    const closing = makeRuntime()
+    closing.markPtyStopRequested('pty-closing')
+
+    await expect(closing.adoptTerminalOrphans(request)).rejects.toThrow(
+      'terminal_orphan_surface_retired'
+    )
+    await expect(makeRuntime().adoptTerminalOrphans(request)).resolves.toMatchObject({
+      adopted: true
+    })
+  })
+
   it('keeps orphaned list and show writability aligned with the send gate', async () => {
     const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession({
       ...getDefaultWorkspaceSession(),

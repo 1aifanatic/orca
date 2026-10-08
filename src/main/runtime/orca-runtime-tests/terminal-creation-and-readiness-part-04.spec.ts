@@ -250,6 +250,29 @@ describe('OrcaRuntimeService', () => {
     )
   })
 
+  // The title is presentation for the tab its reveal shows, so main's row carries it from the spawn.
+  it("names a titled create's tab in its placement, unless the create is in the background", async () => {
+    const spawn = vi.fn().mockResolvedValue({ id: 'pty-titled' })
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn,
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+
+    await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, { title: 'cli-made' })
+    await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
+      title: 'worker-1',
+      presentation: 'background'
+    })
+
+    expect(spawn.mock.calls.map(([args]) => args.placement)).toEqual([
+      { kind: 'new-tab', row: { customTitle: 'cli-made' } },
+      { kind: 'new-tab' }
+    ])
+  })
+
   // Why (flipped by the aug20 "windows 2" incident): #8646 scoped the persisted
   // binding to windowless promotion, which left a host-initiated terminal on a
   // host running the full app with neither a persisted tab nor runtime

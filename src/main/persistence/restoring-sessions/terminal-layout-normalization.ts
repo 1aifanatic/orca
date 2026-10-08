@@ -4,6 +4,7 @@ import type {
   TerminalPaneLayoutNode
 } from '../../../shared/terminal-tab-types'
 import { isTerminalLeafId } from '../../../shared/stable-pane-id'
+import { normalizeTerminalLayoutPtyOwnership } from '../../../shared/terminal-layout-pty-ownership'
 
 export type LayoutLeafNormalization = {
   snapshot: TerminalLayoutSnapshot
@@ -117,7 +118,17 @@ export function leafRecordEquivalent(
   return leftEntries.every(([key, value]) => rightRecord[key] === value)
 }
 
+/** One pane per PTY in a tab, as a window keeps it (#11757), then one stable id per pane. */
 export function normalizeTerminalLayoutSnapshotForPersistence(
+  snapshot: TerminalLayoutSnapshot,
+  preferredLayout?: TerminalLayoutSnapshot
+): LayoutLeafNormalization {
+  const owned = normalizeTerminalLayoutPtyOwnership(snapshot)
+  const leaves = normalizeLayoutLeafIds(owned.snapshot, preferredLayout)
+  return { ...leaves, changed: owned.changed || leaves.changed }
+}
+
+function normalizeLayoutLeafIds(
   snapshot: TerminalLayoutSnapshot,
   preferredLayout?: TerminalLayoutSnapshot
 ): LayoutLeafNormalization {

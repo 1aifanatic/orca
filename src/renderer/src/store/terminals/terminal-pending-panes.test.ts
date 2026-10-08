@@ -29,6 +29,7 @@ function slice(publishSeq: number, tabs: Record<string, string[]>): TerminalTopo
     publishSeq,
     revision: 1,
     tabs: Object.keys(tabs).map((id) => ({ id, ptyId: null, worktreeId: WT, createdAt: 1 })),
+    presentation: {},
     layouts: Object.fromEntries(
       Object.entries(tabs).map(([id, [first, second]]) => [
         id,

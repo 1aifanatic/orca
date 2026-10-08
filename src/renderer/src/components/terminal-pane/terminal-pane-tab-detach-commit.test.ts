@@ -49,6 +49,7 @@ function movedSlice(publishSeq: number, targetTabId: string): TerminalTopologySl
       { id: SOURCE_TAB_ID, ptyId: 'pty-left', worktreeId: WORKTREE_ID, createdAt: 1 },
       { id: targetTabId, ptyId: PTY, worktreeId: WORKTREE_ID, createdAt: 2 }
     ],
+    presentation: {},
     layouts: {
       [SOURCE_TAB_ID]: {
         root: { type: 'leaf', leafId: LEAF_1 },

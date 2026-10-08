@@ -181,4 +181,31 @@ describe('workspace pane normalization tab index', () => {
 
     expect(idReads).toBe(0)
   })
+
+  it('keeps one pane of a tab whose saved layout binds two to one PTY', () => {
+    const second = '00000000-0000-4000-8000-000000000002'
+    const layout: TerminalLayoutSnapshot = {
+      root: {
+        type: 'split',
+        direction: 'vertical',
+        first: { type: 'leaf', leafId: STABLE_LEAF_ID },
+        second: { type: 'leaf', leafId: second }
+      },
+      activeLeafId: second,
+      expandedLeafId: null,
+      ptyIdsByLeafId: { [STABLE_LEAF_ID]: 'pty-1', [second]: 'pty-1' }
+    }
+
+    const result = normalizeWorkspaceSessionPaneIdentities(
+      workspaceSession({ wt: [terminalTab('tab', 'wt', 'pty-1')] }, { tab: layout })
+    )
+
+    expect(result.changed).toBe(true)
+    expect(result.session.terminalLayoutsByTabId.tab).toEqual({
+      root: { type: 'leaf', leafId: second },
+      activeLeafId: second,
+      expandedLeafId: null,
+      ptyIdsByLeafId: { [second]: 'pty-1' }
+    })
+  })
 })

@@ -34,7 +34,11 @@ export function projectTerminalTopologySlice(
   hostId: ExecutionHostId,
   worktreeId: string
 ): UnsequencedTerminalTopologySlice {
-  const tabs = (session.tabsByWorktree?.[worktreeId] ?? []).map(projectTabRow)
+  const rows = session.tabsByWorktree?.[worktreeId] ?? []
+  const tabs = rows.map(projectTabRow)
+  const presentation = Object.fromEntries(
+    rows.map(({ id, customTitle, color }) => [id, { customTitle, color }])
+  )
   const layouts: Record<string, TerminalTopologyLayout> = {}
   for (const tab of tabs) {
     const layout = session.terminalLayoutsByTabId?.[tab.id]
@@ -58,6 +62,7 @@ export function projectTerminalTopologySlice(
     worktreeId,
     revision: session.terminalTopologyRevisionByRepoId?.[getRepoIdFromWorktreeId(worktreeId)] ?? 0,
     tabs,
+    presentation,
     layouts,
     sleeping
   }
@@ -69,5 +74,5 @@ export function emptyTerminalTopologySlice(
   worktreeId: string,
   revision: number
 ): UnsequencedTerminalTopologySlice {
-  return { hostId, worktreeId, revision, tabs: [], layouts: {}, sleeping: {} }
+  return { hostId, worktreeId, revision, tabs: [], presentation: {}, layouts: {}, sleeping: {} }
 }

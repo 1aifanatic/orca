@@ -1,4 +1,4 @@
-import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
+import type { TerminalLayoutSnapshot } from './terminal-tab-types'
 import { collectLeafIds, pruneLeaves } from './terminal-pane-layout-tree'
 
 type TerminalLayoutPtyOwnershipNormalization = {

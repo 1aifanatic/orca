@@ -67,6 +67,7 @@ function slice(publishSeq: number, overrides: Partial<TerminalTopologySlice> = {
     publishSeq,
     revision: 1,
     tabs: [row('a'), row('b')],
+    presentation: {},
     layouts: {
       a: { root: { type: 'leaf', leafId: LEAF_A }, ptyIdsByLeafId: { [LEAF_A]: 'pty-a' } },
       b: { root: { type: 'leaf', leafId: LEAF_B }, ptyIdsByLeafId: { [LEAF_B]: 'pty-b' } }
@@ -306,6 +307,27 @@ describe('applyTerminalTopologySlice', () => {
       tabOrder: ['a', 'b', '/wt/readme.md', 'c']
     })
     expect(state().ptyIdsByTabId).not.toHaveProperty('c')
+  })
+
+  it("shows main's saved title and colour on a tab main created, and keeps the window's on its own", () => {
+    state().setTabCustomTitle('a', 'renamed here')
+    apply(
+      slice(2, {
+        tabs: [...slice(2).tabs, row('c', { defaultTitle: 'Terminal 3' })],
+        presentation: {
+          a: { customTitle: 'stale in main', color: 'blue' },
+          c: { customTitle: 'cli-made', color: 'red' }
+        }
+      })
+    )
+
+    expect(
+      state().tabsByWorktree[WT].map(({ id, customTitle, color }) => [id, customTitle, color])
+    ).toEqual([
+      ['a', 'renamed here', '#f00'],
+      ['b', null, null],
+      ['c', 'cli-made', 'red']
+    ])
   })
 
   it('does not add a unified entry a tab already has under another id', () => {

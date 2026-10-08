@@ -20,6 +20,8 @@ type RuntimeTerminalOrphanAdoptionPorts = {
   getPty: (handle: string) => RuntimePtyWorktreeRecord | null
   getLeaves: (ptyId: string) => readonly RuntimeLeafRecord[]
   getLeaf: (tabId: string, leafId: string) => RuntimeLeafRecord | undefined
+  /** Main was asked to stop the PTY, as a pane close does before its process exits. */
+  isStopRequested: (ptyId: string) => boolean
   /** The title display surfaces show for the PTY, which an adopted tab persists. */
   getDisplayTitle: (pty: RuntimePtyWorktreeRecord) => string | null
   /** Replays a binding the session already held: names the pane without claiming the graph holds it. */
@@ -189,7 +191,9 @@ export async function adoptRuntimeTerminalOrphansFromInventory(args: {
       throw new Error('terminal_orphan_surface_occupied')
     }
     // Why the close record too: it outlives a host restart, which the client's retirement proofs do not.
+    // Why the stop: a closed pane's PTY outlives the close until it exits, and is not an orphan.
     if (
+      ports.isStopRequested(claim.ptyId) ||
       session.terminalSurfaceTombstonesByPaneKey?.[paneKey] ||
       hasClosedTerminalTabRecord(session.closedTerminalTabTombstonesByTabId, claim.tabId)
     ) {

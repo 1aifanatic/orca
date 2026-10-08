@@ -6,7 +6,7 @@ import type {
   TerminalTopologyReply,
   TerminalTopologySlice
 } from '../../../../shared/terminal-topology-slice'
-import { collectLeafIds } from '@/components/terminal-pane/terminal-pane-layout-tree'
+import { collectLeafIds } from '../../../../shared/terminal-pane-layout-tree'
 import { isWebClientLocation } from '@/lib/web-client-location'
 import { getExplicitRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '../types'

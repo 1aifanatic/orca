@@ -84,7 +84,7 @@ function splitAgentAndShellSession(): WorkspaceSessionState {
 }
 
 describe('projectTerminalTopologySlice', () => {
-  it('keeps topology and creation fields of a split agent+shell tab and drops presentation', () => {
+  it("keeps a split agent+shell tab's row to topology and creation fields; its saved presentation rides apart", () => {
     const session = splitAgentAndShellSession()
     const before = structuredClone(session)
 
@@ -102,6 +102,7 @@ describe('projectTerminalTopologySlice', () => {
           createdAt: 10
         }
       ],
+      presentation: { 'tab-agent': { customTitle: 'presentation only', color: 'red' } },
       layouts: {
         'tab-agent': {
           root: session.terminalLayoutsByTabId['tab-agent']!.root,
@@ -145,6 +146,7 @@ describe('projectTerminalTopologySlice', () => {
       tabs: [
         { id: 'tab-f', worktreeId: folder, ptyId: null, createdAt: 10, startupCwd: '/tmp/f/sub' }
       ],
+      presentation: { 'tab-f': { customTitle: null, color: null } },
       layouts: {},
       sleeping: {}
     })

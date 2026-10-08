@@ -4,7 +4,7 @@ import type {
   TerminalPaneSplitDirection
 } from '../../../../shared/terminal-tab-types'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
-import { collectLeafIds } from './terminal-pane-layout-tree'
+import { collectLeafIds } from '../../../../shared/terminal-pane-layout-tree'
 import { removeLeafFromTree } from './terminal-layout-leaf-detach'
 
 export type TerminalLiveLayoutInsertion = {

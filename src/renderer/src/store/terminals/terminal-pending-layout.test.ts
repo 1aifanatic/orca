@@ -49,6 +49,7 @@ function slice(publishSeq: number, root: TerminalPaneLayoutNode): TerminalTopolo
     publishSeq,
     revision: 1,
     tabs: [{ id: TAB, ptyId: 'pty-a', worktreeId: WT, createdAt: 1 }],
+    presentation: {},
     layouts: { [TAB]: { root, ptyIdsByLeafId: { [A]: 'pty-a', [B]: 'pty-b' } } },
     sleeping: {}
   }

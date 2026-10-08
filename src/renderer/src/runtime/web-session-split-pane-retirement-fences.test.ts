@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
-import { collectLeafIds } from '../components/terminal-pane/terminal-pane-layout-tree'
+import { collectLeafIds } from '../../../shared/terminal-pane-layout-tree'
 import { planTerminalLiveLayoutRemovals } from '../components/terminal-pane/terminal-live-layout-reconciliation'
 import { applyFreshWebSessionTabsSnapshot } from './web-session-tabs-sync'
 import {
