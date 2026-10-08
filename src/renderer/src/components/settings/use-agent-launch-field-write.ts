@@ -2,28 +2,33 @@ import { useRef, useState } from 'react'
 
 export function useAgentLaunchFieldWrite(): {
   pending: boolean
-  write: (save: () => void | Promise<void>, onSaved?: () => void) => void
+  write: (value: string, save: () => void | Promise<void>, onSaved?: () => void) => void
 } {
-  const busy = useRef(false)
+  const tail = useRef<Promise<void> | null>(null)
+  const queuedValues = useRef(new Set<string>())
   const [pending, setPending] = useState(false)
-  const write = (save: () => void | Promise<void>, onSaved?: () => void): void => {
-    if (busy.current) {
+  const write = (value: string, save: () => void | Promise<void>, onSaved?: () => void): void => {
+    if (queuedValues.current.has(value)) {
       return
     }
-    const result = save()
+    const result = tail.current ? tail.current.then(save) : save()
     if (!result) {
       onSaved?.()
       return
     }
-    busy.current = true
+    queuedValues.current.add(value)
     setPending(true)
-    void result
+    const completion: Promise<void> = result
       .then(onSaved)
       .catch(() => {})
       .finally(() => {
-        busy.current = false
-        setPending(false)
+        queuedValues.current.delete(value)
+        if (tail.current === completion) {
+          tail.current = null
+          setPending(false)
+        }
       })
+    tail.current = completion
   }
   return { pending, write }
 }

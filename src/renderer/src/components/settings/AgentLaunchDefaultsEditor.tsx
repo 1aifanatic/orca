@@ -22,11 +22,12 @@ export function AgentCommandOverrideInput({
     const trimmed = cmdDraft.trim()
     if (!trimmed || trimmed === defaultCmd) {
       write(
+        '',
         () => onSaveOverride(''),
         () => setCmdDraft(defaultCmd)
       )
     } else {
-      write(() => onSaveOverride(trimmed))
+      write(trimmed, () => onSaveOverride(trimmed))
     }
   }
 
@@ -60,9 +61,9 @@ export function AgentCommandOverrideInput({
             type="button"
             variant="ghost"
             size="xs"
-            disabled={pending}
             onClick={() => {
               write(
+                '',
                 () => onSaveOverride(''),
                 () => setCmdDraft(defaultCmd)
               )
@@ -88,7 +89,10 @@ export function AgentDefaultArgsInput({
 }): React.JSX.Element {
   const [argsDraft, setArgsDraft] = useState(argsOverride)
   const { pending, write } = useAgentLaunchFieldWrite()
-  const commitArgs = (): void => write(() => onSaveArgs(argsDraft.trim()))
+  const commitArgs = (): void => {
+    const value = argsDraft.trim()
+    write(value, () => onSaveArgs(value))
+  }
 
   return (
     <div className="flex flex-col gap-1">
@@ -123,9 +127,9 @@ export function AgentDefaultArgsInput({
             type="button"
             variant="ghost"
             size="xs"
-            disabled={pending}
             onClick={() => {
               write(
+                defaultArgs,
                 () => onSaveArgs(defaultArgs),
                 () => setArgsDraft(defaultArgs)
               )

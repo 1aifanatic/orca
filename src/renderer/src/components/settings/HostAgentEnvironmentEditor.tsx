@@ -71,6 +71,7 @@ function EnvironmentValueRow({
   const { pending, write } = useAgentLaunchFieldWrite()
   const save = (): void =>
     write(
+      'save',
       () => mutate({ type: 'environment-set', agent, name, value }),
       () => {
         setValue('')
@@ -108,7 +109,9 @@ function EnvironmentValueRow({
             variant="ghost"
             size="xs"
             disabled={pending}
-            onClick={() => write(() => mutate({ type: 'environment-remove', agent, name }))}
+            onClick={() =>
+              write('remove', () => mutate({ type: 'environment-remove', agent, name }))
+            }
           >
             {translate('settings.agents.removeEnvironment', 'Remove')}
           </Button>
