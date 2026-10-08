@@ -250,10 +250,10 @@ describe('registerSettingsHandlers', () => {
       throw new Error('Missing settings:set handler')
     }
     await expect(
-      handler(settingsInvokeEvent, { alwaysForceDeleteWorktrees: true })
+      handler(settingsInvokeEvent, { alwaysForceDeleteWorktrees: true, editorWordWrap: false })
     ).rejects.toThrow('Disk full')
     expect(store.updateSettingsAndFlush).toHaveBeenCalledWith(
-      { alwaysForceDeleteWorktrees: true },
+      { alwaysForceDeleteWorktrees: true, editorWordWrap: false },
       { notifyListeners: true, originWebContentsId: 1 }
     )
   })

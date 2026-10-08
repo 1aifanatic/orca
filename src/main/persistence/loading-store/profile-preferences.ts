@@ -81,7 +81,7 @@ export class ProfilePreferences {
   ): Promise<GlobalSettings> {
     const { runtime } = this[profilePreferencesContext]
     let changedUpdates: Partial<GlobalSettings> = {}
-    const result = await runtime.runDurableMutation(() => {
+    await runtime.runDurableMutation(() => {
       const previous = runtime.state.settings
       const next = this.updateSettings(updates)
       const previousEntries = new Map(Object.entries(previous))
@@ -92,7 +92,7 @@ export class ProfilePreferences {
         )
       )
       return {
-        value: next,
+        value: undefined,
         rollback: () => {
           const currentEntries = new Map(Object.entries(runtime.state.settings))
           const nextEntries = new Map(Object.entries(next))
@@ -102,14 +102,23 @@ export class ProfilePreferences {
                 updateKeys.has(key) && Object.is(currentEntries.get(key), nextEntries.get(key))
             )
           )
-          runtime.state.settings = { ...runtime.state.settings, ...restoredUpdates }
+          const restoredSettings = { ...runtime.state.settings, ...restoredUpdates }
+          for (const key of updateKeys) {
+            if (
+              !previousEntries.has(key) &&
+              Object.is(currentEntries.get(key), nextEntries.get(key))
+            ) {
+              Reflect.deleteProperty(restoredSettings, key)
+            }
+          }
+          runtime.state.settings = restoredSettings
         }
       }
     })
     if (options.notifyListeners && Object.keys(changedUpdates).length > 0) {
       notifySettingsChanged(this, changedUpdates, options.originWebContentsId)
     }
-    return result
+    return this.getSettings()
   }
 
   getUI(): PersistedState['ui'] {

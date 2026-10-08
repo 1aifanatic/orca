@@ -36,8 +36,9 @@ it('waits for the SQLite write before returning or publishing the preference', a
   await started.promise
   expect(settled).toBe(false)
   expect(onChanged).not.toHaveBeenCalled()
+  store.updateSettings({ theme: 'dark' })
   release.resolve()
-  await pending
+  expect((await pending).theme).toBe('dark')
   expect(readState().settings.alwaysForceDeleteWorktrees).toBe(true)
   expect(onChanged).toHaveBeenCalledWith(
     { alwaysForceDeleteWorktrees: true },
@@ -80,4 +81,16 @@ it('rolls back the preference while retaining unrelated concurrent settings edit
     alwaysForceDeleteWorktrees: previous,
     theme: 'dark'
   })
+})
+
+it('removes previously absent optional keys after a failed preference payload write', async () => {
+  const { store, authority } = await createWorkerMaintenanceFixture()
+  delete store.getSettings().editorWordWrap
+  const previous = store.getSettings().alwaysForceDeleteWorktrees
+  vi.spyOn(authority, 'writeSerializedDomains').mockRejectedValueOnce(new Error('Disk full'))
+  await expect(
+    store.updateSettingsAndFlush({ alwaysForceDeleteWorktrees: true, editorWordWrap: false })
+  ).rejects.toThrow('Disk full')
+  expect(Object.hasOwn(store.getSettings(), 'editorWordWrap')).toBe(false)
+  expect(store.getSettings().alwaysForceDeleteWorktrees).toBe(previous)
 })
