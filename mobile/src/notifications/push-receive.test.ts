@@ -317,3 +317,27 @@ it('allows the viewed workspace after backgrounding during eligibility reads', a
   await expect(eligibility).resolves.toBe(true)
   await expect(shouldSuppressForegroundPush(apnsData(payload))).resolves.toBe(false)
 })
+
+it('silences only the viewed workspace on its own host, desktop or server', async () => {
+  AppState.currentState = 'active'
+  let seq = 0
+  const present = (executionHost?: string) =>
+    canPresentForegroundPush({
+      hostFingerprint,
+      worktreeId: 'repo::/work',
+      ...(executionHost ? { executionHost } : {}),
+      notificationId: `viewing-${++seq}`,
+      notificationEpoch: 'epoch',
+      notificationSeq: seq
+    })
+  setNotificationViewingWorkspace({ hostId: 'host-1', worktreeId: 'repo::/work' })
+  await expect(present()).resolves.toBe(false)
+  await expect(present('runtime:env-1')).resolves.toBe(true)
+  setNotificationViewingWorkspace({
+    hostId: 'host-1',
+    worktreeId: 'repo::/work',
+    executionHost: 'runtime:env-1'
+  })
+  await expect(present('runtime:env-1')).resolves.toBe(false)
+  await expect(present()).resolves.toBe(true)
+})

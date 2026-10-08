@@ -245,7 +245,9 @@ describe('dispatchTerminalNotification', () => {
     for (const workspaceOwner of [
       { executionHostId: 'local' as const, runtimeEnvironmentId: null },
       // A server's own SSH target still runs behind that server.
-      { executionHostId: 'ssh:qa' as const, runtimeEnvironmentId: 'env-1' }
+      { executionHostId: 'ssh:qa' as const, runtimeEnvironmentId: 'env-1' },
+      // A tab stamped with the server before its environment is known.
+      { executionHostId: 'runtime:env-2' as const, runtimeEnvironmentId: null }
     ]) {
       dispatchTerminalNotification('wt-primary', {
         source: 'agent-task-complete',
@@ -255,7 +257,11 @@ describe('dispatchTerminalNotification', () => {
       })
     }
     const calls = vi.mocked(window.api.notifications.dispatch).mock.calls
-    expect(calls.map(([request]) => request.executionHost)).toEqual([undefined, 'runtime:env-1'])
+    expect(calls.map(([request]) => request.executionHost)).toEqual([
+      undefined,
+      'runtime:env-1',
+      'runtime:env-2'
+    ])
   })
 
   it('writes unread with the completion reason while the agent-complete banner toggle is off', () => {
