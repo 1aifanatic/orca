@@ -28,6 +28,7 @@ beforeEach(() => {
   local = mkdtempSync(join(tmpdir(), 'runtime-promotion-'))
   writeFileSync(join(local, 'node.tar.gz'), 'archive')
   commands = []
+  vi.mocked(execCommand).mockClear()
 })
 afterEach(() => {
   rmSync(local, { recursive: true, force: true })
@@ -75,20 +76,27 @@ describe('ensureRemoteOrcadNodeRuntime promotion lock', () => {
     expect(released).toBeGreaterThan(promoted)
   })
 
-  it('skips promotion when a sibling published the pin while this client uploaded', async () => {
-    answer((count) => (count === 1 ? REMOTE_NODE_RUNTIME_MISSING : REMOTE_NODE_RUNTIME_READY))
-    await ensure()
-    expect(indexOf('tar -xzf')).toBe(-1)
-    expect(lastIndexOf(`rm -rf '${lock}'`)).toBeGreaterThan(indexOf(`mkdir '${lock}' 2>/dev/null`))
-  })
-
-  it('gives the POSIX promote the promote bound, not the 30 s exec default', async () => {
+  it('re-hashes and promotes in one host command that the host lock release covers', async () => {
     answer(() => REMOTE_NODE_RUNTIME_MISSING)
     await ensure()
-    const call = vi
+    // Why one command: a re-hash the client stops waiting on must not orphan the lock (HH-3).
+    const locked = commands.filter((c) => c.includes('sha256sum'))
+    expect(locked).toHaveLength(2)
+    const [, recheck] = locked
+    expect(recheck.indexOf('sha256sum')).toBeLessThan(recheck.indexOf('tar -xzf'))
+    expect(recheck.lastIndexOf(`rm -rf '${lock}'`)).toBeGreaterThan(recheck.indexOf('tar -xzf'))
+  })
+
+  it('gives every full hash and the promote the slow-storage bound, not the 30 s exec default', async () => {
+    answer(() => REMOTE_NODE_RUNTIME_MISSING)
+    await ensure()
+    const calls = vi
       .mocked(execCommand)
-      .mock.calls.find(([, command]) => command.includes('tar -xzf'))
-    expect(call?.[2]).toMatchObject({ timeoutMs: NODE_RUNTIME_PROMOTE_TIMEOUT_MS })
+      .mock.calls.filter(([, command]) => command.includes('sha256sum'))
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      expect(call[2]).toMatchObject({ timeoutMs: NODE_RUNTIME_PROMOTE_TIMEOUT_MS })
+    }
     expect(NODE_RUNTIME_PROMOTE_TIMEOUT_MS).toBeGreaterThan(30_000)
   })
 

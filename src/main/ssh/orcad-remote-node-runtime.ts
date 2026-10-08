@@ -62,8 +62,8 @@ export {
 } from './orcad-remote-node-runtime-report'
 const VERIFIED_MARKER = REMOTE_NODE_RUNTIME_VERIFIED_MARKER
 /**
- * Extracting, hashing and running the ~110 MiB executable takes minutes on slow storage (HH-3),
- * and Windows may fall back to Expand-Archive.
+ * Any step that reads the whole ~110 MiB executable (probe hash, extract, self-test) takes minutes
+ * on slow storage (HH-3), and Windows may fall back to Expand-Archive.
  */
 export const NODE_RUNTIME_PROMOTE_TIMEOUT_MS = 300_000
 /** Upload stages sit in the store beside the runtimes they become; store GC sweeps stale ones. */
@@ -209,6 +209,21 @@ export function promoteRemoteNodeRuntimeCommand(
 }
 
 /**
+ * The under-lock step as one host command: publish unless a sibling already did while this client
+ * uploaded. One command, so the host's lock release covers the re-hash as well as the promote.
+ */
+export function recheckAndPromoteRemoteNodeRuntimeCommand(
+  host: RemoteHostPlatform,
+  args: Parameters<typeof promoteRemoteNodeRuntimeCommand>[1]
+): string {
+  const probe = probeRemoteNodeRuntimeCommand(host, args.runtimeDir, args.target)
+  return (
+    `if [ "$(${probe})" = ${REMOTE_NODE_RUNTIME_READY} ]; then echo ${REMOTE_NODE_RUNTIME_READY}; ` +
+    `else ${promoteRemoteNodeRuntimeCommand(host, args)}; fi`
+  )
+}
+
+/**
  * Copies the archive at `$1` (a path the host can already read, e.g. a WSL view of the
  * client's cache) into a fresh stage, promotes it, and removes the stage whatever happens.
  */
@@ -267,7 +282,7 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
     windows
       ? windowsNodeRuntimeProbeCommand(runtimeDir, target, stageDir)
       : probeRemoteNodeRuntimeCommand(host, runtimeDir, target),
-    { signal }
+    { signal, timeoutMs: NODE_RUNTIME_PROMOTE_TIMEOUT_MS }
   )
   if (probe.trim() === REMOTE_NODE_RUNTIME_READY) {
     return { executable, transfer: 'cached' }
@@ -292,39 +307,39 @@ export async function ensureRemoteOrcadNodeRuntime(options: {
     await remoteStep(() => uploadRelayDirectory(conn, uploadDir, stageDir, host, { signal }))
     let promoteRan = false
     // Why unwrapped on Windows: these are already self-contained powershell.exe command lines.
-    const runLocked = (command: string, timeoutMs?: number): Promise<string> =>
-      execCommand(conn, command, { signal, timeoutMs, wrapCommand: !windows })
-    const promote = (held: HeldRuntimeStoreLock): Promise<string> => {
+    const runLocked = (command: string): Promise<string> =>
+      execCommand(conn, command, {
+        signal,
+        timeoutMs: NODE_RUNTIME_PROMOTE_TIMEOUT_MS,
+        wrapCommand: !windows
+      })
+    // Why re-probe under the lock: a sibling installer may have published this pin while we uploaded.
+    const recheckAndPromote = async (held: HeldRuntimeStoreLock): Promise<string> => {
+      if (!windows) {
+        return runLocked(
+          held.releasedByHostOnExit(
+            recheckAndPromoteRemoteNodeRuntimeCommand(host, {
+              stageDir,
+              archive,
+              runtimeDir,
+              target,
+              token
+            })
+          )
+        )
+      }
+      if (
+        (await runLocked(probeRemoteNodeRuntimeCommand(host, runtimeDir, target))).trim() ===
+        REMOTE_NODE_RUNTIME_READY
+      ) {
+        return REMOTE_NODE_RUNTIME_READY
+      }
       promoteRan = true
-      return runLocked(
-        windows
-          ? windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target })
-          : held.releasedByHostOnExit(
-              promoteRemoteNodeRuntimeCommand(host, {
-                stageDir,
-                archive,
-                runtimeDir,
-                target,
-                token
-              })
-            ),
-        NODE_RUNTIME_PROMOTE_TIMEOUT_MS
-      )
+      return runLocked(windowsNodeRuntimePromoteCommand({ stageDir, archive, runtimeDir, target }))
     }
     // Why the lock on Windows too: store GC collects there as well (design D5).
     const promoted = await remoteStep(() =>
-      withRuntimeStoreLock(
-        conn,
-        host,
-        remoteDirname(runtimeDir, host),
-        // Why re-probe under the lock: a sibling installer may have published this pin while we uploaded.
-        async (held) =>
-          (await runLocked(probeRemoteNodeRuntimeCommand(host, runtimeDir, target))).trim() ===
-          REMOTE_NODE_RUNTIME_READY
-            ? REMOTE_NODE_RUNTIME_READY
-            : promote(held),
-        signal
-      )
+      withRuntimeStoreLock(conn, host, remoteDirname(runtimeDir, host), recheckAndPromote, signal)
     )
     // Why: the Windows promote script removes its stage on every path; skip a second powershell.exe.
     hostRemovedStage = windows && promoteRan
