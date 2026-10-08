@@ -12,6 +12,7 @@ import type { PtyProcessInspection } from '../providers/pty-process-inspection'
 import { shouldHandoffDaemonHistory } from './daemon-history-handoff'
 import type { DaemonPtyRouterDataEvent, DaemonPtyRouterExitEvent } from './daemon-pty-router-events'
 import { DaemonSessionOwnerResolver } from './daemon-session-owner-resolution'
+import { withoutRetiredProviders } from './legacy-daemon-exit-evidence'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { TerminalOscColorQueryReplyColors } from '../../shared/terminal-osc-color-reply'
 
@@ -31,7 +32,8 @@ export class DaemonPtyRouter implements IPtyProvider {
       (id) => {
         this.ownerResolver.forgetRoute(id)
       },
-      (adapter) => this.ownerResolver.invalidateProvider(adapter)
+      (adapter) => this.ownerResolver.invalidateProvider(adapter),
+      (adapter) => this.ownerResolver.forgetProvider(adapter)
     )
   }
 
@@ -84,7 +86,7 @@ export class DaemonPtyRouter implements IPtyProvider {
     if (routed) {
       return routed.hasPty(id)
     }
-    return this.current.hasPty(id) || this.legacy.some((adapter) => adapter.hasPty(id))
+    return this.allAdapters().some((adapter) => adapter.hasPty(id))
   }
 
   async probePtyLiveness(id: string): Promise<boolean | null> {
@@ -293,7 +295,8 @@ export class DaemonPtyRouter implements IPtyProvider {
 
   dispose(): void {
     this.subscriptions.dispose()
-    for (const adapter of this.allAdapters()) {
+    // Why every adapter: teardown still owes a retired one its disposal.
+    for (const adapter of [this.current, ...this.legacy]) {
       adapter.dispose()
     }
   }
@@ -311,21 +314,19 @@ export class DaemonPtyRouter implements IPtyProvider {
 
   async disconnectOnly(): Promise<void> {
     this.subscriptions.dispose()
-    await Promise.all([...this.allAdapters()].map((adapter) => adapter.disconnectOnly()))
+    await Promise.all([this.current, ...this.legacy].map((adapter) => adapter.disconnectOnly()))
   }
 
   // Why: the Manage Sessions panel iterates all adapters to list sessions
   // across every protocol version, and the restart handler needs to preserve
-  // surviving legacy adapters across the current-adapter swap. On this branch
-  // (pre-#1323) the legacy list is set once at construction and never mutated,
-  // so returning the internal array by reference is safe for the intended
-  // read-only use.
+  // surviving legacy adapters across the current-adapter swap. A retired
+  // legacy adapter is left out, so a restart never carries an exited daemon.
   getCurrentAdapter(): DaemonPtyAdapter {
     return this.current
   }
 
   getLegacyAdapters(): readonly DaemonPtyAdapter[] {
-    return this.legacy
+    return withoutRetiredProviders(this.legacy)
   }
 
   getAllAdapters(): readonly DaemonPtyAdapter[] {
@@ -348,6 +349,6 @@ export class DaemonPtyRouter implements IPtyProvider {
   }
 
   private allAdapters(): DaemonPtyAdapter[] {
-    return [this.current, ...this.legacy]
+    return [this.current, ...withoutRetiredProviders(this.legacy)]
   }
 }

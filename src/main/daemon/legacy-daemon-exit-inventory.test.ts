@@ -5,11 +5,15 @@ import { linkSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DaemonPtyAdapter } from './daemon-pty-adapter'
+import { DaemonServer } from './daemon-server'
 import { DaemonPtyRouter } from './daemon-pty-router'
+import { DegradedDaemonPtyProvider } from './degraded-daemon-pty-provider'
+import { SessionNotFoundError } from './daemon-errors'
 import { getDaemonPidPath, getDaemonSocketPath, getDaemonTokenPath } from './daemon-spawner'
 import {
   createMockSubprocess,
   startDaemonAdapterHarness,
+  waitFor,
   type DaemonAdapterHarness
 } from './daemon-pty-adapter-test-harness'
 import { legacyDaemonProcessLiveness } from './legacy-daemon-exit-evidence'
@@ -82,6 +86,83 @@ describe.skipIf(process.platform === 'win32')(
 
       expect(result.providerStopped).toBe(1)
       await expect(router.listProcesses()).resolves.toEqual([])
+    })
+
+    it('retires the exited daemon from the router so no reader asks it again', async () => {
+      const exited = adoptLegacyDaemon(EXITED_PID)
+      const legacyList = vi.spyOn(exited, 'listProcesses')
+      const router = new DaemonPtyRouter({ current: harness.adapter, legacy: [exited] })
+
+      await router.listProcesses()
+      await router.listProcesses()
+
+      expect(exited.isRetired()).toBe(true)
+      expect(router.getLegacyAdapters()).toEqual([])
+      expect(router.getAllAdapters()).toEqual([harness.adapter])
+      expect(legacyList).toHaveBeenCalledTimes(1)
+    })
+
+    it('lets a pane routed to the exited daemon cold-restore instead of failing to reattach', async () => {
+      const socketPath = getDaemonSocketPath(harness.dir, LEGACY_PROTOCOL)
+      rmSync(socketPath, { force: true })
+      const legacyServer = new DaemonServer({
+        socketPath,
+        tokenPath: getDaemonTokenPath(harness.dir, LEGACY_PROTOCOL),
+        protocolVersion: LEGACY_PROTOCOL,
+        log: { log: () => {}, close() {} },
+        spawnSubprocess: () => createMockSubprocess()
+      })
+      await legacyServer.start()
+      const router = new DaemonPtyRouter({
+        current: harness.adapter,
+        legacy: [adoptLegacyDaemon(EXITED_PID)]
+      })
+      const sessionId = `${WORKTREE_ID}@@bbbb2222`
+      // Why through the legacy adapter: the router records the route the pane would reattach by.
+      await legacy!.spawn({ cols: 80, rows: 24, sessionId })
+      await router.discoverLegacySessions()
+      await legacyServer.shutdown()
+      await waitFor(() => legacy!.getDaemonIdentity() === null)
+
+      await expect(
+        router.spawn({ cols: 80, rows: 24, attachOnly: true, sessionId })
+      ).rejects.toBeInstanceOf(SessionNotFoundError)
+      expect(legacy!.isRetired()).toBe(true)
+    })
+
+    it('reads an unrouted session as absent in the same lookup that retires the daemon', async () => {
+      const router = new DaemonPtyRouter({
+        current: harness.adapter,
+        legacy: [adoptLegacyDaemon(EXITED_PID)]
+      })
+
+      await expect(
+        router.spawn({
+          cols: 80,
+          rows: 24,
+          attachOnly: true,
+          sessionId: `${WORKTREE_ID}@@cccc3333`
+        })
+      ).rejects.toBeInstanceOf(SessionNotFoundError)
+    })
+
+    it('retires the exited daemon from the degraded provider too', async () => {
+      const exited = adoptLegacyDaemon(EXITED_PID)
+      const fallback = new DaemonPtyAdapter({
+        socketPath: harness.socketPath,
+        tokenPath: harness.tokenPath
+      })
+      const provider = new DegradedDaemonPtyProvider({
+        current: harness.adapter,
+        legacy: [exited],
+        fallback
+      })
+      try {
+        await expect(provider.listProcesses()).resolves.toEqual([])
+        expect(provider.getLegacyAdapters()).toEqual([])
+      } finally {
+        fallback.dispose()
+      }
     })
 
     it('lists no sessions for the exited daemon in the session manager', async () => {

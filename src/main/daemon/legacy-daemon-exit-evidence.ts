@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { ProcessLivenessVerdict } from './daemon-incarnation-evidence-types'
+import type { IPtyProvider } from '../providers/types'
 import { parseDaemonPidFile, type ParsedDaemonPid } from './daemon-pid-file-parse'
 import { inspectProcessLiveness, mergeProcessLivenessVerdict } from './daemon-process-inspection'
 
@@ -44,4 +45,13 @@ export function legacyDaemonProcessLiveness(
 
 function isMissingFileError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
+}
+
+/** Adapter sets exclude a retired daemon adapter; it has proven it owns no session and never will. */
+export function isRetiredProvider(provider: IPtyProvider): boolean {
+  return provider.isRetired?.() === true
+}
+
+export function withoutRetiredProviders<T extends IPtyProvider>(providers: readonly T[]): T[] {
+  return providers.filter((provider) => !isRetiredProvider(provider))
 }

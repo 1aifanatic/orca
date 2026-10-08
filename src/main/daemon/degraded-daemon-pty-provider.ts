@@ -19,6 +19,7 @@ import {
 } from './degraded-daemon-session-routing'
 import { DegradedDaemonFreshSpawnRouter } from './degraded-daemon-fresh-spawn-routing'
 import { DegradedDaemonOwnerRecovery } from './degraded-daemon-owner-recovery'
+import { withoutRetiredProviders } from './legacy-daemon-exit-evidence'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 
 export class DegradedDaemonPtyProvider implements IPtyProvider {
@@ -297,7 +298,8 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
 
   dispose(): void {
     this.disposeProviderOnly()
-    for (const adapter of this.allDaemonAdapters()) {
+    // Why every adapter: teardown still owes a retired one its disposal.
+    for (const adapter of [this.current, ...this.legacy]) {
       adapter.dispose()
     }
   }
@@ -327,7 +329,7 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
 
   async disconnectOnly(): Promise<void> {
     this.disposeProviderOnly()
-    await Promise.all(this.allDaemonAdapters().map((adapter) => adapter.disconnectOnly()))
+    await Promise.all([this.current, ...this.legacy].map((adapter) => adapter.disconnectOnly()))
   }
 
   getCurrentAdapter(): DaemonPtyAdapter {
@@ -335,7 +337,7 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   }
 
   getLegacyAdapters(): readonly DaemonPtyAdapter[] {
-    return this.legacy
+    return withoutRetiredProviders(this.legacy)
   }
 
   getAllAdapters(): readonly DaemonPtyAdapter[] {
@@ -359,6 +361,6 @@ export class DegradedDaemonPtyProvider implements IPtyProvider {
   }
 
   private allDaemonAdapters(): DaemonPtyAdapter[] {
-    return [this.current, ...this.legacy]
+    return [this.current, ...withoutRetiredProviders(this.legacy)]
   }
 }

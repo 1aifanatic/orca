@@ -5,6 +5,7 @@ import type {
   PtySpawnResult
 } from '../providers/types'
 import { SessionNotFoundError, TerminalSessionOwnerUnverifiedError } from './daemon-errors'
+import { isRetiredProvider, withoutRetiredProviders } from './legacy-daemon-exit-evidence'
 
 export type DaemonSessionOwnerResolution<T extends IPtyProvider> =
   | { kind: 'owner'; provider: T }
@@ -37,9 +38,14 @@ export class DaemonSessionOwnerResolver<T extends IPtyProvider> {
   private epoch = 0
 
   constructor(
-    private readonly providers: readonly T[],
+    private readonly candidateProviders: readonly T[],
     private readonly routes: Map<string, IPtyProvider>
   ) {}
+
+  // Why: a retired daemon is absent, not unreachable, so it must not leave inventories incomplete.
+  private get providers(): readonly T[] {
+    return withoutRetiredProviders(this.candidateProviders)
+  }
 
   invalidateProvider(provider: T): void {
     this.epoch += 1
@@ -58,6 +64,20 @@ export class DaemonSessionOwnerResolver<T extends IPtyProvider> {
         this.routeIncarnations.delete(sessionId)
       }
     }
+  }
+
+  /**
+   * Drops a retired provider's routes. Unlike invalidateProvider it keeps the epoch: an inventory
+   * already in flight stays valid, since a retired provider contributes no sessions to it.
+   */
+  forgetProvider(provider: T): void {
+    for (const [sessionId, routed] of this.routes) {
+      if (routed === provider) {
+        this.routes.delete(sessionId)
+        this.routeIncarnations.delete(sessionId)
+      }
+    }
+    this.cachedInventory = null
   }
 
   async spawnAttachOnly(opts: PtySpawnOptions & { sessionId: string }): Promise<PtySpawnResult> {
@@ -82,10 +102,11 @@ export class DaemonSessionOwnerResolver<T extends IPtyProvider> {
         }
         return result
       } catch (error) {
-        if (!(error instanceof SessionNotFoundError)) {
+        // Why: a provider that retired during the attempt owns nothing, like a not-found reply.
+        if (!(error instanceof SessionNotFoundError) && !isRetiredProvider(direct)) {
           throw error
         }
-        if (this.providers.length === 1) {
+        if (this.providers.length === 1 && !isRetiredProvider(direct)) {
           throw error
         }
         if (routed && this.routes.get(opts.sessionId) === routed) {

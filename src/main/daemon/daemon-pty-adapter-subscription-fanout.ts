@@ -11,7 +11,8 @@ export class DaemonPtyAdapterSubscriptionFanout {
   constructor(
     private readonly adapters: readonly DaemonPtyAdapter[],
     onAdapterExit: (id: string) => void,
-    onAdapterIdentityChanged?: (adapter: DaemonPtyAdapter) => void
+    onAdapterIdentityChanged?: (adapter: DaemonPtyAdapter) => void,
+    onAdapterRetired?: (adapter: DaemonPtyAdapter) => void
   ) {
     for (const adapter of adapters) {
       this.unsubscribers.push(
@@ -28,6 +29,9 @@ export class DaemonPtyAdapterSubscriptionFanout {
         }),
         ...(onAdapterIdentityChanged && typeof adapter.onDaemonIdentityChanged === 'function'
           ? [adapter.onDaemonIdentityChanged(() => onAdapterIdentityChanged(adapter))]
+          : []),
+        ...(onAdapterRetired && typeof adapter.onRetired === 'function'
+          ? [adapter.onRetired(() => onAdapterRetired(adapter))]
           : [])
       )
     }
