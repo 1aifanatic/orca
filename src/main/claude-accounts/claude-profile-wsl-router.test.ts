@@ -85,6 +85,7 @@ function fixture() {
       if (setup.fail) {
         throw new Error('refused')
       }
+      mkdirSync(profileHome, { recursive: true })
       writeFileSync(join(profileHome, '..', 'profile.json'), '{}')
     }
   })
@@ -94,14 +95,10 @@ function fixture() {
 }
 
 describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
-  it('writes the guest pointer per build, sets up only a signed-in folder, and removes it with the last account', async () => {
+  it('writes the guest pointer per build, sets up even a missing folder, and removes it with the last account', async () => {
     const f = fixture()
     await f.router.publish('Ubuntu')
     expect(readFileSync(f.pointer, 'utf8')).toBe(f.profileHome)
-    expect(f.setup.calls).toBe(0)
-
-    mkdirSync(f.profileHome, { recursive: true })
-    await f.router.publish('Ubuntu')
     await vi.waitFor(() => expect(f.setup.calls).toBe(1))
 
     f.wsl.Ubuntu = null
@@ -113,11 +110,9 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     expect(existsSync(f.pointer)).toBe(false)
   })
 
-  it('refuses a missing folder, waits for a first setup never run or still running, then launches at once', async () => {
+  it('sets up a missing folder, waits for a first setup never run or still running, then launches at once', async () => {
     const f = fixture()
-    await expect(f.router.prepareLaunch('Ubuntu')).rejects.toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)
-
-    mkdirSync(f.profileHome, { recursive: true })
+    await expect(f.router.preparation('Ubuntu')).rejects.toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)
     f.setup.fail = true
     let release = () => {}
     f.setup.gate = new Promise((resolve) => (release = resolve))

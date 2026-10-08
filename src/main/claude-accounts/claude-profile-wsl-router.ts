@@ -90,8 +90,8 @@ export class ClaudeWslProfileRouter {
       return
     }
     await writePointer(distro, this.pointerIn(home), profile?.home ?? '')
-    // Why the existence check: setup creates the folder, and only sign-in may create an account.
-    if (profile && (await guestStat(distro, profile.home))?.isDirectory()) {
+    // Why even a missing folder: setup creates it without a login, for Claude's own first run.
+    if (profile) {
       this.setUp(distro, home, profile.accountId).catch((error: unknown) => {
         console.warn('[claude-profile] WSL account setup failed:', error)
       })
@@ -101,8 +101,8 @@ export class ClaudeWslProfileRouter {
   /** Waits for a first setup that never finished, running or not; otherwise launches at once. */
   async prepareLaunch(distro: string): Promise<ClaudeRuntimeAuthPreparation> {
     const { home, profile } = await this.resolve(distro)
-    await this.assertPresent(distro, profile)
-    // Why the marker: setup writes it last. A re-run of a set-up folder never blocks.
+    // Why the marker: setup writes it last, so a missing folder is set up too. A re-run of a
+    // set-up folder never blocks.
     if (profile && !(await hasMarker(distro, profile))) {
       await this.setUp(distro, home, profile.accountId).catch((error: unknown) => {
         console.warn('[claude-profile] WSL account setup failed:', error)

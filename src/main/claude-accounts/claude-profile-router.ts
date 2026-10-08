@@ -103,8 +103,9 @@ export class ClaudeProfileRouter {
     const profile = this.selectedProfile()
     mkdirSync(dirname(this.pointerPath), { recursive: true, mode: 0o700 })
     writeFileAtomically(this.pointerPath, profile?.home ?? '', { mode: 0o600 })
-    // Why the existence check: setup creates the folder, and only sign-in may create an account.
-    if (profile && isDirectory(profile.home)) {
+    // Why even a missing folder: setup creates it without a login, so Claude's own first run
+    // signs in there (an account saved before per-account folders has none yet).
+    if (profile) {
       this.setUp(profile).catch((error: unknown) => {
         console.warn('[claude-profile] Account setup failed:', error)
       })
@@ -119,8 +120,9 @@ export class ClaudeProfileRouter {
       await this.envReady
       return this.preparation()
     }
-    // Why the marker: setup writes it last. A re-run of a set-up folder never blocks.
-    if (isDirectory(profile.home) && !existsSync(claudeProfileMarkerPath(profile))) {
+    // Why the marker: setup writes it last, so a missing folder is set up too. A re-run of a
+    // set-up folder never blocks.
+    if (!existsSync(claudeProfileMarkerPath(profile))) {
       const report = await this.setUp(profile).catch(() => null)
       if (report?.outcome !== 'prepared') {
         throw claudeProfileSetupFailed()

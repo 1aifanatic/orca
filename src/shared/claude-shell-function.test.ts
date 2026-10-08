@@ -56,6 +56,8 @@ function fixture() {
       { encoding: 'utf8', cwd: root }
     )
     expect(result.status).not.toBe(97)
+    // Orca prints nothing into a terminal; the fake claude writes only to stdout.
+    expect(result.stderr).toBe('')
     return result
   }
   return { a, b, pointer, run }
@@ -107,13 +109,32 @@ describe.each(SHELLS)('the claude function in %s', (shell) => {
     expect(relative.stdout).toBe(`HOME=${f.a} KEY=none TWIN=${f.a}\n`)
   })
 
-  it('refuses a selected account whose folder is missing', () => {
+  it('creates a missing account folder and runs Claude in it, printing nothing', () => {
     const f = fixture()
-    writeFileSync(f.pointer, join(f.a, 'gone'))
+    // A pre-update account: nothing of its folder exists yet.
+    const fresh = join(f.a, 'claude-profiles', 'id', 'home')
+    writeFileSync(f.pointer, fresh)
+    const result = f.run(shell)
+    expect(result.stdout).toBe(`HOME=${fresh} KEY=none TWIN=${fresh}\n`)
+    expect(result.status).toBe(23)
+    expect(existsSync(fresh)).toBe(true)
+  })
+
+  it('still runs Claude only in the selected folder when that folder cannot be created', () => {
+    const f = fixture()
+    const blocked = join(f.a, 'file', 'home')
+    writeFileSync(join(f.a, 'file'), '')
+    writeFileSync(f.pointer, blocked)
+    expect(f.run(shell).stdout).toBe(`HOME=${blocked} KEY=none TWIN=${blocked}\n`)
+  })
+
+  it('runs nothing for a pointer that names no absolute folder', () => {
+    const f = fixture()
+    writeFileSync(f.pointer, 'not-a-folder')
     const result = f.run(shell)
     expect(result.status).toBe(1)
     expect(result.stdout).toBe('')
-    expect(result.stderr).toContain('folder is missing')
+    expect(existsSync(join(f.a, '..', 'not-a-folder'))).toBe(false)
   })
 
   it('lets the user’s own CLAUDE_CONFIG_DIR win silently when an account is selected', () => {
@@ -134,6 +155,15 @@ it('restores PowerShell process env without creating empty variables', () => {
   expect(script).toContain('finally {')
   // .NET 9+ turns a $null/'' SetEnvironmentVariable into an empty variable, not a removal.
   expect(script).not.toMatch(/SetEnvironmentVariable\([^)]*,\s*(\$null|''|"")\s*,/)
+})
+
+it('prints nothing from the PowerShell function and creates a missing account folder', () => {
+  const script = getPowerShellClaudeShellFunction()
+  expect(script).not.toMatch(/Write-(Error|Host|Output|Warning)|\bthrow\b|Orca:/)
+  expect(script).toContain(
+    'if (-not [IO.Directory]::Exists($orcaClaudeHome)) { $null = New-Item -ItemType Directory -Path $orcaClaudeHome -Force -ErrorAction SilentlyContinue }'
+  )
+  expect(script).toContain('-not [IO.Path]::IsPathRooted($orcaClaudeHome)')
 })
 
 it('trims the PowerShell pointer read as POSIX command substitution does', () => {

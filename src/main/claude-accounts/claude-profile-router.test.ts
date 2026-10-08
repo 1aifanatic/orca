@@ -221,16 +221,30 @@ describe('ClaudeProfileRouter', () => {
     await expect(router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
   })
 
-  it('names a never-signed-in folder without creating it, and refuses to launch it', async () => {
+  it("sets up a pre-update account's missing folder without a login, for Claude's own first run", async () => {
     const f = fixture()
     f.settings.activeClaudeManagedAccountId = 'b'
+    // Before its setup, a terminal still opens; its claude function creates the folder itself.
+    expect(() => f.router.preparation()).toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)
+    expect(f.router.terminalEnv()).toEqual({ ORCA_CLAUDE_PROFILE_POINTER: f.router.pointerPath })
     f.router.publish()
     expect(readFileSync(f.router.pointerPath, 'utf8')).toBe(f.home('b'))
-    expect(f.setup.calls).toBe(0)
-    expect(existsSync(f.home('b'))).toBe(false)
-    expect(() => f.router.preparation()).toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)
-    // A terminal still opens; its claude function refuses from the pointer instead.
-    expect(f.router.terminalEnv()).toEqual({ ORCA_CLAUDE_PROFILE_POINTER: f.router.pointerPath })
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+    expect(existsSync(f.home('b'))).toBe(true)
+    // Claude's first run is clean only without an onboarding-done state file.
+    expect(existsSync(join(f.home('b'), '.claude.json'))).toBe(false)
+    const launch = f.router.prepareLaunch()
+    f.setup.settle()
+    await expect(launch).resolves.toMatchObject({ configDir: f.home('b') })
+    expect(f.setup.calls).toBe(1)
+  })
+
+  it('makes a launch set up a missing folder first', async () => {
+    const f = fixture()
+    const launch = f.router.prepareLaunch()
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+    f.setup.settle()
+    await expect(launch).resolves.toMatchObject({ configDir: f.home('a') })
   })
 
   it('injects the account with its twin, and nothing over the user’s own System default', () => {

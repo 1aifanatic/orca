@@ -1,17 +1,17 @@
-import { CLAUDE_PROFILE_MISSING_MESSAGE } from './claude-profile-routing'
-
 const authHeaderWords = 'authorization|x-api-key|api-key|bearer'
 const posixAuthHeaderPattern = authHeaderWords
   .split('|')
   .map((word) => `*${word.replace(/[a-z]/g, (letter) => `[${letter}${letter.toUpperCase()}]`)}*`)
   .join('|')
-const MISSING_NOTE = `Orca: ${CLAUDE_PROFILE_MISSING_MESSAGE}`
 
 /**
  * `claude` re-reads the which-account file on every launch, so a switch reaches open terminals
  * (superset's wrapper rule). Defined only in a pane Orca routed (pointer env set) where `claude` is
  * a real executable. A missing or empty file is System default, which restores the user's own value
  * Orca's replaced; a CLAUDE_CONFIG_DIR the user set, as opposed to Orca's twin-marked value, wins.
+ * Prints nothing: an account folder with no login is created, and Claude's own first run signs in
+ * there. A pointer that names no absolute folder (never written by Orca) runs nothing, since any
+ * fallback would be another account.
  */
 export function getPosixClaudeShellFunction(): string {
   return `__orca_claude_binary="$(unalias claude 2>/dev/null || :; command -v claude 2>/dev/null || :)"
@@ -31,7 +31,8 @@ if [[ -n "\${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "\${__orca_claude_binary:-}" 
     if [ -z "$__orca_claude_home" ]; then
       ( unset CLAUDE_CONFIG_DIR ORCA_CLAUDE_INJECTED_CONFIG_DIR; command claude "$@" ); return
     fi
-    if [ ! -d "$__orca_claude_home" ]; then printf '%s\\n' "${MISSING_NOTE}" >&2; return 1; fi
+    case "$__orca_claude_home" in /*|[A-Za-z]:*) ;; *) return 1 ;; esac
+    [ -d "$__orca_claude_home" ] || mkdir -p -- "$__orca_claude_home" 2>/dev/null
     ( unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN AWS_BEARER_TOKEN_BEDROCK; case "\${ANTHROPIC_CUSTOM_HEADERS:-}" in ${posixAuthHeaderPattern}) unset ANTHROPIC_CUSTOM_HEADERS ;; esac; export CLAUDE_CONFIG_DIR="$__orca_claude_home" ORCA_CLAUDE_INJECTED_CONFIG_DIR="$__orca_claude_home"; command claude "$@" )
   }
 fi
@@ -60,9 +61,10 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
       env -u CLAUDE_CONFIG_DIR -u ORCA_CLAUDE_INJECTED_CONFIG_DIR claude $argv
       return $status
     end
-    if not test -d "$profile"
-      echo "${MISSING_NOTE}" >&2; return 1
+    if not string match -qr '^(/|[A-Za-z]:)' -- "$profile"
+      return 1
     end
+    test -d "$profile"; or mkdir -p -- "$profile" 2>/dev/null
     set -l headers
     if string match -irq '${authHeaderWords}' -- "$ANTHROPIC_CUSTOM_HEADERS"
       set headers -u ANTHROPIC_CUSTOM_HEADERS
@@ -95,9 +97,11 @@ function Global:claude {
             Remove-Item Env:ORCA_CLAUDE_INJECTED_CONFIG_DIR -ErrorAction SilentlyContinue
             if ($env:CLAUDE_CONFIG_DIR -and $env:ORCA_CLAUDE_USER_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR = $env:ORCA_CLAUDE_USER_CONFIG_DIR }
             else { Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue }
-        } elseif (-not [IO.Directory]::Exists($orcaClaudeHome)) {
-            throw "${MISSING_NOTE}"
+        } elseif (-not [IO.Path]::IsPathRooted($orcaClaudeHome)) {
+            $global:LASTEXITCODE = 1
+            return
         } else {
+            if (-not [IO.Directory]::Exists($orcaClaudeHome)) { $null = New-Item -ItemType Directory -Path $orcaClaudeHome -Force -ErrorAction SilentlyContinue }
             foreach ($name in $names) {
                 if ($name -ne 'ANTHROPIC_CUSTOM_HEADERS' -or $env:ANTHROPIC_CUSTOM_HEADERS -match '${authHeaderWords}') { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
             }
@@ -107,7 +111,7 @@ function Global:claude {
         $binary = Get-Command claude -CommandType Application,ExternalScript -ErrorAction Stop | Select-Object -First 1
         if ($MyInvocation.ExpectingInput) { $input | & $binary.Source @args } else { & $binary.Source @args }
         $global:LASTEXITCODE = $LASTEXITCODE
-    } catch { $global:LASTEXITCODE = 1; Write-Error $_ -ErrorAction Continue }
+    } catch { $global:LASTEXITCODE = 1 }
     finally {
         # Why Remove-Item: on .NET 9+ a $null value (passed as "") creates the variable empty instead of deleting it.
         foreach ($name in $names) {
