@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { normalizeHookPayload } from './agent-hook-listener'
 import {
   createHookListenerState,
+  producerCacheKey,
   seedLegacyAgentStatusForTests,
   type HookListenerState
 } from './agent-hook-listener/listener-state'
+import { seedClaudeLeadTurnFromPersistedStatus } from './agent-hook-listener/providers/claude-roster-state'
 import { PANE_KEY } from './agent-hook-listener-test-harness'
 
 // The pane's row was written by Claude; a nested agent's normalizer must not treat it as its own history.
@@ -52,5 +54,24 @@ describe("a nested agent's normalizer ignores another agent's row", () => {
       'production'
     )
     expect(event).toBeNull()
+  })
+
+  it.each([
+    ['claude', 'claude task'],
+    ['codex', undefined]
+  ] as const)('seeds Claude from a saved row only when Claude wrote it (%s)', (source, prompt) => {
+    const fresh = createHookListenerState()
+    seedClaudeLeadTurnFromPersistedStatus(fresh, PANE_KEY, {
+      source,
+      claudeRunningNonAgentTask: false,
+      payload: {
+        state: 'done',
+        prompt: 'claude task',
+        agentType: 'claude',
+        mainAgent: { state: 'done', stateStartedAt: 1 }
+      }
+    })
+    expect(fresh.lastPromptByPaneKey.get(producerCacheKey(PANE_KEY, 'claude'))).toBe(prompt)
+    expect(fresh.claudeLeadStateByPaneKey.has(PANE_KEY)).toBe(source === 'claude')
   })
 })

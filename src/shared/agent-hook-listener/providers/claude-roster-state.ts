@@ -227,12 +227,13 @@ export function seedClaudeSubagentRosterFromSnapshots(
 export function seedClaudeLeadTurnFromPersistedStatus(
   state: HookListenerState,
   paneKey: string,
-  status: Pick<AgentHookEventPayload, 'payload' | 'claudeRunningNonAgentTask'>
+  status: Pick<AgentHookEventPayload, 'source' | 'payload' | 'claudeRunningNonAgentTask'>
 ): void {
   const mainAgent = status.payload.mainAgent
   // Why: a row old enough to lack `mainAgent` was mapped from its legacy child-only flag at hydrate.
+  // Why source: a row another agent wrote can keep Claude's label, but its prompt is not Claude's.
   if (
-    status.payload.agentType === 'claude' &&
+    status.source === 'claude' &&
     mainAgent?.state === 'done' &&
     status.claudeRunningNonAgentTask === false
   ) {
