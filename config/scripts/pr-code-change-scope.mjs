@@ -564,8 +564,17 @@ function isProductBundlePath(file, extraPrefixes) {
   return matchesPrefix(file, extraPrefixes)
 }
 
+// This shared fixture is consumed only by unit suites and their placement rig.
+export function isUnitTestSupportSource(file) {
+  return file === 'src/renderer/src/runtime/web-session-tabs-sync-test-harness.ts'
+}
+
 function isTestFile(file) {
-  return /\.(?:test|spec)\.(?:js|cjs|mjs|ts|tsx)$/.test(file) || file.includes('/__tests__/')
+  return (
+    isUnitTestSupportSource(file) ||
+    /\.(?:test|spec)\.(?:js|cjs|mjs|ts|tsx)$/.test(file) ||
+    file.includes('/__tests__/')
+  )
 }
 
 function isDesktopIrrelevantPath(file) {
