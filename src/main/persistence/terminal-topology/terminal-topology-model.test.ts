@@ -6,11 +6,11 @@ import { mulberry32 } from '../../../shared/agent-tui-ansi-fuzz-stream'
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
-import type { TerminalPaneLayoutNode, TerminalTab } from '../../../shared/terminal-tab-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { projectTerminalTopologySlice } from '../../runtime/terminal-topology-projection'
 import type { TerminalSurfaceCloseTarget } from '../../../shared/terminal-surface-close-target'
-import { collectTerminalLeafOwners, isSameTerminal } from './terminal-owner-invariants'
+import { leafIds, WindowSession, withoutLeaf } from './terminal-topology-window-session-fixture'
+import { checkWorkspaceLayoutRules, type WorkspaceLayoutPartition } from './workspace-layout-rules'
 import { closeLeafOrTab } from './terminal-topology-commit'
 import {
   emptyTerminalSessionProfile,
@@ -59,25 +59,6 @@ function makeIds(random: () => number) {
   }
 }
 
-function leafIds(node: TerminalPaneLayoutNode | null | undefined): string[] {
-  if (!node) {
-    return []
-  }
-  return node.type === 'leaf' ? [node.leafId] : [...leafIds(node.first), ...leafIds(node.second)]
-}
-
-function withoutLeaf(node: TerminalPaneLayoutNode, leafId: string): TerminalPaneLayoutNode | null {
-  if (node.type === 'leaf') {
-    return node.leafId === leafId ? null : node
-  }
-  const first = withoutLeaf(node.first, leafId)
-  const second = withoutLeaf(node.second, leafId)
-  if (!first || !second) {
-    return first ?? second
-  }
-  return { ...node, first, second }
-}
-
 function sleepingRecord(
   worktreeId: string,
   tabId: string,
@@ -97,100 +78,20 @@ function sleepingRecord(
   }
 }
 
-/** The desktop window's copy of the session: it authors tabs and layouts and saves them whole. */
-class WindowSession {
-  constructor(public session: WorkspaceSessionState) {}
-
-  addTab(worktreeId: string, tabId: string, leafId: string): void {
-    const tabs = this.session.tabsByWorktree[worktreeId] ?? []
-    const tab: TerminalTab = {
-      id: tabId,
-      ptyId: null,
-      worktreeId,
-      title: `Terminal ${tabs.length + 1}`,
-      customTitle: null,
-      color: null,
-      sortOrder: tabs.length,
-      createdAt: 1
-    }
-    this.session.tabsByWorktree = { ...this.session.tabsByWorktree, [worktreeId]: [...tabs, tab] }
-    this.setLayout(tabId, { type: 'leaf', leafId }, {})
-  }
-
-  setLayout(tabId: string, root: TerminalPaneLayoutNode, ptyIdsByLeafId: Record<string, string>) {
-    this.session.terminalLayoutsByTabId = {
-      ...this.session.terminalLayoutsByTabId,
-      [tabId]: {
-        root,
-        activeLeafId: leafIds(root)[0] ?? null,
-        expandedLeafId: null,
-        ptyIdsByLeafId
-      }
-    }
-  }
-
-  bind(tabId: string, leafId: string, ptyId: string): void {
-    const layout = this.session.terminalLayoutsByTabId[tabId]
-    if (layout?.root) {
-      this.setLayout(tabId, layout.root, { ...layout.ptyIdsByLeafId, [leafId]: ptyId })
-    }
-    this.setTabPtyId(tabId, ptyId)
-  }
-
-  /** `clearTabPtyId` on exit: the tab's live id goes; the layout keeps the binding as a resume hint. */
-  setTabPtyId(tabId: string, ptyId: string | null): void {
-    this.session.tabsByWorktree = Object.fromEntries(
-      Object.entries(this.session.tabsByWorktree).map(([worktreeId, tabs]) => [
-        worktreeId,
-        tabs.map((tab) => (tab.id === tabId ? { ...tab, ptyId } : tab))
-      ])
-    )
-  }
-
-  removeTab(tabId: string): void {
-    this.session.tabsByWorktree = Object.fromEntries(
-      Object.entries(this.session.tabsByWorktree).map(([worktreeId, tabs]) => [
-        worktreeId,
-        tabs.filter((tab) => tab.id !== tabId)
-      ])
-    )
-    const { [tabId]: _removed, ...layouts } = this.session.terminalLayoutsByTabId
-    void _removed
-    this.session.terminalLayoutsByTabId = layouts
-    this.setSleeping(
-      Object.fromEntries(
-        Object.entries(this.session.sleepingAgentSessionsByPaneKey ?? {}).filter(
-          ([paneKey]) => !paneKey.startsWith(`${tabId}:`)
-        )
-      )
-    )
-  }
-
-  setSleeping(records: Record<string, SleepingAgentSessionRecord>): void {
-    this.session.sleepingAgentSessionsByPaneKey = records
-  }
-
-  snapshot(): WorkspaceSessionState {
-    return structuredClone(this.session)
-  }
-}
-
-/** Fails on a terminal bound to two leaves or a leaf in two tabs, naming both owners. */
-function expectOwnerInvariants(session: WorkspaceSessionState, context: string): void {
-  const owners = collectTerminalLeafOwners({ hostId: LOCAL_EXECUTION_HOST_ID, session })
-  const describe = (owner: (typeof owners)[number]): string =>
-    `${owner.worktreeId} ${owner.tab.id}:${owner.leafId} → ${owner.ptyId ?? 'unbound'}`
-  const breaches: string[] = []
-  for (const [index, left] of owners.entries()) {
-    for (const right of owners.slice(index + 1)) {
-      if (left.leafId === right.leafId && left.tab.id !== right.tab.id) {
-        breaches.push(`leaf in two tabs: ${describe(left)} | ${describe(right)}`)
-      } else if (left.leafId !== right.leafId && isSameTerminal(left, right)) {
-        breaches.push(`terminal on two leaves: ${describe(left)} | ${describe(right)}`)
-      }
-    }
-  }
-  expect(breaches, context).toEqual([])
+/** Fails on any structural breach in main's layout, or an id that changed since the last step. */
+function expectLayoutRules(
+  session: WorkspaceSessionState,
+  previous: WorkspaceSessionState | null,
+  context: string
+): void {
+  const partition = (state: WorkspaceSessionState): WorkspaceLayoutPartition[] => [
+    { hostId: LOCAL_EXECUTION_HOST_ID, session: state }
+  ]
+  const violations = checkWorkspaceLayoutRules(
+    partition(session),
+    previous ? partition(previous) : undefined
+  )
+  expect(violations, context).toEqual([])
 }
 
 /** Main's projected slices, reduced to what the model states. */
@@ -272,6 +173,7 @@ async function runSeed(seed: number): Promise<string[]> {
   const window = new WindowSession(structuredClone(store.getWorkspaceSession()))
   const model: Model = new Map()
   const log: string[] = []
+  let previous: WorkspaceSessionState | null = null
   const save = (): void => store.setWorkspaceSession(window.snapshot())
   const panes = () =>
     [...model].flatMap(([tabId, tab]) =>
@@ -493,14 +395,15 @@ async function runSeed(seed: number): Promise<string[]> {
     }
     const context = `seed ${seed}, step ${step}:\n${log.join('\n')}`
     const session = store.getWorkspaceSession()
-    expectOwnerInvariants(session, context)
+    expectLayoutRules(session, previous, context)
+    previous = structuredClone(session)
     expect(projectedTopology(session), context).toEqual(expectedTopology(model))
   }
 
   // The saved profile, read back cold, holds the same layout.
   await reopen(false)
   const context = `seed ${seed}, after reopen:\n${log.join('\n')}`
-  expectOwnerInvariants(store.getWorkspaceSession(), context)
+  expectLayoutRules(store.getWorkspaceSession(), previous, context)
   expect(projectedTopology(store.getWorkspaceSession()), context).toEqual(expectedTopology(model))
   await store.freezeWritesAsync()
   return log
