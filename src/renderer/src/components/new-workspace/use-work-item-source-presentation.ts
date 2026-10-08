@@ -8,11 +8,6 @@ import {
   parseBoundedSmartWorkspaceLinearIssueUrlIntent,
   prioritizeSmartWorkspaceLinearIssueResults
 } from '../../../../shared/new-workspace/smart-workspace-linear-intent'
-import {
-  getActiveWorkspaceEmojiShortcode,
-  searchWorkspaceEmojiShortcodes,
-  type WorkspaceEmojiSuggestion
-} from '@/lib/workspace-emoji-shortcodes'
 import { resolveSmartWorkspaceCommandValue } from './smart-workspace-command-value'
 import {
   buildSmartWorkspaceSourceRows,
@@ -20,17 +15,17 @@ import {
   getVisibleHeldProviderResults,
   isBlockingTaskUrlResolution,
   isSmartWorkspaceSourceQueryWithinLimit
-} from './smart-workspace-source-results'
+} from '../../../../shared/new-workspace/smart-workspace-source-results'
 import { RESULT_LIMIT, type RowEntry } from './smart-workspace-name-field-model'
-import type { useSmartWorkspaceNameFieldFoundation } from './use-smart-workspace-name-field-foundation'
+import type { useWorkItemSourceFoundation } from './use-work-item-source-foundation'
 
-type Foundation = ReturnType<typeof useSmartWorkspaceNameFieldFoundation>
+type Foundation = ReturnType<typeof useWorkItemSourceFoundation>
 
 function isTypedTextSourceRow(row: RowEntry): boolean {
   return row.kind === 'use-name' || row.kind === 'create-branch'
 }
 
-export function useSmartWorkspaceNameFieldPresentation(
+export function useWorkItemSourcePresentation(
   foundation: Foundation,
   options?: {
     linearUrlIntent?: ReturnType<typeof parseBoundedSmartWorkspaceLinearIssueUrlIntent>
@@ -54,10 +49,6 @@ export function useSmartWorkspaceNameFieldPresentation(
     linearIssues,
     commandValue,
     setCommandValue,
-    emojiCursor,
-    disabled,
-    selectedSource,
-    emojiCommandValue,
     githubLoading,
     gitlabLoading,
     branchesLoading,
@@ -100,7 +91,7 @@ export function useSmartWorkspaceNameFieldPresentation(
         site
       }))
     }
-    return buildSmartWorkspaceSourceRows({
+    const results = buildSmartWorkspaceSourceRows({
       branches: getVisibleBranchResults({
         branches,
         mode,
@@ -143,7 +134,11 @@ export function useSmartWorkspaceNameFieldPresentation(
       resultLimit: RESULT_LIMIT,
       value
     })
+    return foundation.typedTextEnabled
+      ? results
+      : results.filter((row) => !isTypedTextSourceRow(row))
   }, [
+    foundation.typedTextEnabled,
     branches,
     branchResultsSource,
     debouncedQuery,
@@ -235,33 +230,6 @@ export function useSmartWorkspaceNameFieldPresentation(
     }
     setCommandValue(resolvedCommandValue)
   }, [commandValue, resolvedCommandValue, setCommandValue])
-  const activeEmojiShortcode = useMemo(
-    () => getActiveWorkspaceEmojiShortcode(value, emojiCursor),
-    [emojiCursor, value]
-  )
-  const emojiSuggestions = useMemo(
-    () =>
-      activeEmojiShortcode
-        ? searchWorkspaceEmojiShortcodes(activeEmojiShortcode.query)
-        : ([] as WorkspaceEmojiSuggestion[]),
-    [activeEmojiShortcode]
-  )
-  const emojiMenuOpen =
-    !disabled &&
-    selectedSource === null &&
-    activeEmojiShortcode !== null &&
-    emojiSuggestions.length > 0
-  const resolvedEmojiCommandValue = emojiSuggestions.some(
-    (suggestion) => `emoji:${suggestion.shortcode}` === emojiCommandValue
-  )
-    ? emojiCommandValue
-    : emojiSuggestions[0]
-      ? `emoji:${emojiSuggestions[0].shortcode}`
-      : ''
-  const selectedEmojiSuggestion =
-    emojiSuggestions.find(
-      (suggestion) => `emoji:${suggestion.shortcode}` === resolvedEmojiCommandValue
-    ) ?? null
   const showLinearUrlLoadingFeedback =
     linearLoading && linearUrlIntentOwnsInput && linearUrlLoadingFeedbackQuery === linearQuery
   const visibleLinearLoading =
@@ -280,11 +248,6 @@ export function useSmartWorkspaceNameFieldPresentation(
     searchResultRows,
     isQueryStale,
     resolvedCommandValue,
-    activeEmojiShortcode,
-    emojiSuggestions,
-    emojiMenuOpen,
-    resolvedEmojiCommandValue,
-    selectedEmojiSuggestion,
     loading,
     showSearchSpinner,
     linearUrlIntent,

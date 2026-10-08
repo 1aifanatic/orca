@@ -17534,7 +17534,17 @@
         "selectAgent": "Reanudar {{value0}} chat \"{{value1}}\" en {{value2}}",
         "resumeSelected": "Reanudar {{value0}} chats",
         "resumeSelectedOne": "Reanudar 1 chat",
-        "dismissAll": "Descartar todo"
+        "dismissAll": "Descartar todo",
+        "selectWorkspace": "Seleccionar todos los chats en {{value0}}",
+        "workspaceSelectedCount": "{{value0}} de {{value1}}",
+        "selectAll": "Seleccionar todos los chats",
+        "selectAllLabel": "Seleccionar todo",
+        "selectedCount": "{{value0}} de {{value1}} seleccionados",
+        "selectProject": "Seleccionar todos los chats en {{value0}}",
+        "collapseNode": "Contraer {{value0}}",
+        "expandNode": "Expandir {{value0}}",
+        "selectMachine": "Seleccionar todos los chats en {{value0}}",
+        "sshHost": "SSH"
       },
       "NativeChatResumeOutcomeRow": {
         "openChat": "Abrir chat",
