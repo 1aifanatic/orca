@@ -1,8 +1,3 @@
-import {
-  carryOwnerFields,
-  transitionHookPresence,
-  transitionTerminalPresence
-} from '../../../shared/agent-hook-presence-transition'
 import { PaneOwnerProbes } from '../../../shared/agent-pane-owner-probes'
 import {
   reconcileRemoteCodexState,
@@ -10,10 +5,6 @@ import {
 } from '../../../shared/agent-hook-listener/providers/codex-state'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
-import type {
-  AgentProcessIdentity,
-  AgentProcessPresence
-} from '../../../shared/agent-process-presence'
 import type { AgentStatusObservationOrigin } from '../../../shared/agent-status-observation'
 import { ClaudeOwedNotificationExpiryTimers } from '../../../shared/claude-owed-notification-expiry-timers'
 import { setClaudeMainAgentTurnState } from '../../../shared/agent-hook-listener/providers/claude-roster-state'
@@ -26,10 +17,7 @@ import {
 import { isStaleGrokTurnEnd } from './server-grok-status-rules'
 import { resolveCancelVerdictLatch } from './server-cancel-verdict-latch'
 import { AgentHookServerStatusApplication } from './server-status-application'
-
-function liveOwner(row: AgentHookEventPayload | undefined): AgentProcessPresence | undefined {
-  return row?.agentPresence?.ended ? undefined : row?.agentPresence
-}
+import { decidePanePresence } from './server-pane-presence'
 
 export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusApplication {
   protected readonly claudeOwedNotificationExpiry = new ClaudeOwedNotificationExpiryTimers(
@@ -39,56 +27,6 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
   private readonly paneOwnerProbes = new PaneOwnerProbes({
     checkOwner: (paneKey) => this.checkAgentPresence(paneKey)
   })
-
-  /** Main decides ownership for local panes only; a relayed row's owner was decided by its relay. */
-  private transitionPanePresence(
-    incoming: AgentHookEventPayload,
-    onAccepted: (() => void) | undefined,
-    origin: AgentStatusObservationOrigin
-  ): { event: AgentHookEventPayload; probe?: AgentProcessIdentity } | undefined {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
-    const previous = this.state.lastStatusByPaneKey.get(incoming.paneKey) as
-      | EnrichedAgentHookEventPayload
-      | undefined
-    if (origin !== 'hook') {
-      const terminal = transitionTerminalPresence(incoming, previous)
-      // Why: main cannot check a remote owner; its relay does.
-      return incoming.connectionId === null ? terminal : { event: terminal.event }
-    }
-    if (incoming.connectionId !== null) {
-      // Why: host restatements (cancel inference, expiry) carry no owner; the relayed one stands.
-      return {
-        event: carryOwnerFields(
-          incoming.agentPresence ? incoming : { ...incoming, agentPresence: liveOwner(previous) },
-          previous
-        )
-      }
-    }
-    const transition = transitionHookPresence(incoming, previous, {
-      now: Date.now(),
-      rowUpdatedAt: previous?.receivedAt
-    })
-    if (transition.kind === 'drop') {
-      return undefined
-    }
-    if (transition.kind === 'guest') {
-      this.paneOwnerProbes.guest(
-        incoming.paneKey,
-        {
-          producer: transition.producer,
-          holdable: transition.holdable,
-          apply: () => {
-            if (this.server) {
-              this.applyNormalizedStatus(incoming, onAccepted)
-            }
-          }
-        },
-        transition.probe
-      )
-      return undefined
-    }
-    return transition
-  }
 
   // Why here: every stored row passes through, including a cancel inference and a pane move.
   protected override commitStatusRowMutation(
@@ -113,9 +51,30 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
     observedAt?: number,
     mutationBefore?: EnrichedAgentHookEventPayload
   ): EnrichedAgentHookEventPayload | undefined {
-    const presence = this.transitionPanePresence(incoming, onAccepted, origin)
+    const presence = decidePanePresence(
+      incoming,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Main admits enriched legacy rows; the shared view declares their base event type.
+      this.state.lastStatusByPaneKey.get(incoming.paneKey) as
+        | EnrichedAgentHookEventPayload
+        | undefined,
+      origin,
+      this.paneOwnerProbes,
+      () => {
+        if (this.server) {
+          this.applyNormalizedStatus(incoming, onAccepted)
+        }
+      }
+    )
     if (!presence) {
       return undefined
+    }
+    if ('keep' in presence) {
+      // Why: a terminal signal naming another agent never relabels a held owner's row.
+      if (mutationBefore) {
+        this.commitStatusRowMutation(mutationBefore, presence.keep)
+        this.emitEnrichedStatus(presence.keep)
+      }
+      return presence.keep
     }
     const {
       authorityRestartId,

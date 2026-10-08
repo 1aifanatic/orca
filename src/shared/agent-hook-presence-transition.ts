@@ -82,15 +82,23 @@ function classifyAgainstOwner(
   if (producer.agent === undefined || producer.agent === owner.agent) {
     return 'owner'
   }
-  // Why: only an owner the host cannot check falls back to freshness; a restored one never blocks.
-  const ownerReleased =
+  return isOwnerReleased(owner, previous, context) ? 'claim' : 'guest'
+}
+
+// Why: only an owner the host cannot check falls back to freshness; a restored one never blocks.
+function isOwnerReleased(
+  owner: AgentProcessPresence,
+  previous: AgentHookEventPayload,
+  context: HookPresenceContext
+): boolean {
+  return (
     previous.restoredUnconfirmed === true ||
     (owner.process === undefined &&
       !isFreshNonDoneAgentStatus(
         { state: previous.payload.state, updatedAt: context.rowUpdatedAt ?? 0 },
         context.now
       ))
-  return ownerReleased ? 'claim' : 'guest'
+  )
 }
 
 function withOwnerSession(
@@ -213,22 +221,28 @@ export function transitionHookPresence(
   }
 }
 
-/** Terminal signals (OSC, titles, process-derived rows) never claim and never become guests: they
- *  write the row under its current owner. One naming another agent asks the host to check the owner. */
+/** Terminal signals (OSC, titles, process-derived rows) never claim and never become guests. One
+ *  naming the owner's type, or on an ownerless pane, writes under the current owner; one naming
+ *  another agent leaves a held owner's row unchanged and asks the host to check the owner. */
 export function transitionTerminalPresence(
   incoming: AgentHookEventPayload,
-  previous: AgentHookEventPayload | undefined
-): { event: AgentHookEventPayload; probe?: AgentProcessIdentity } {
+  previous: AgentHookEventPayload | undefined,
+  context: HookPresenceContext
+):
+  | { kind: 'write'; event: AgentHookEventPayload }
+  | { kind: 'keep'; probe?: AgentProcessIdentity } {
   const recorded = previous?.agentPresence?.ended ? undefined : previous?.agentPresence
-  const event = { ...incoming, agentPresence: recorded }
+  const owner = recorded && !previous?.providerSessionOnly ? recorded : undefined
   const agent = incoming.payload.agentType
-  const probe =
-    recorded?.process &&
-    !previous?.providerSessionOnly &&
+  if (
+    owner &&
+    previous &&
     agent &&
     agent !== 'unknown' &&
-    agent !== recorded.agent
-      ? recorded.process
-      : undefined
-  return probe ? { event, probe } : { event }
+    agent !== owner.agent &&
+    !isOwnerReleased(owner, previous, context)
+  ) {
+    return owner.process ? { kind: 'keep', probe: owner.process } : { kind: 'keep' }
+  }
+  return { kind: 'write', event: { ...incoming, agentPresence: recorded } }
 }

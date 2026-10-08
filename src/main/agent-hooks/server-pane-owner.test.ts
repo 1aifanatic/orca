@@ -195,19 +195,40 @@ describe('pane owner rule (local panes)', () => {
     expect(row(server)).toMatchObject({ state: 'done', agentType: 'claude' })
   })
 
-  it('lets terminal signals write under the owner without taking it', async () => {
-    const server = await createServer()
-    await claude(server, 'UserPromptSubmit', { prompt: 'task' })
+  const osc = (server: AgentHookServer, agentType: string, state: 'working' | 'done') =>
     server.ingestTerminalStatus({
       paneKey: PANE,
       tabId: 'tab-1',
       worktreeId: 'wt-1',
-      payload: { state: 'working', prompt: 'osc', agentType: 'codex' }
+      payload: { state, prompt: 'osc', agentType }
     })
+
+  it("leaves a held owner's row unchanged when a terminal signal names another agent", async () => {
+    const server = await createServer()
+    await claude(server, 'UserPromptSubmit', { prompt: 'task' })
+    const before = row(server)
+    osc(server, 'codex', 'done')
     await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce())
-    expect(row(server)).toMatchObject({ agentType: 'codex', prompt: 'osc' })
-    await claude(server, 'Stop')
+    expect(row(server)).toEqual(before)
+    expect(row(server)).toMatchObject({ state: 'working', agentType: 'claude', prompt: 'task' })
+  })
+
+  it('writes the next terminal signal once the check releases the owner', async () => {
+    const server = await createServer()
+    await claude(server, 'UserPromptSubmit', { prompt: 'task' })
+    probe.mockResolvedValue('exited')
+    osc(server, 'codex', 'working')
+    await vi.waitFor(() => expect(row(server)?.providerSessionOnly).toBe(true))
+    osc(server, 'codex', 'working')
+    expect(row(server)).toMatchObject({ state: 'working', agentType: 'codex', prompt: 'osc' })
+  })
+
+  it("lets a terminal signal naming the owner's type update its state", async () => {
+    const server = await createServer()
+    await claude(server, 'UserPromptSubmit', { prompt: 'task' })
+    osc(server, 'claude', 'done')
     expect(row(server)).toMatchObject({ state: 'done', agentType: 'claude' })
+    expect(probe).not.toHaveBeenCalled()
   })
 
   it('never lets a terminal signal claim an ownerless pane', async () => {
