@@ -104,7 +104,7 @@ describe("Codex's Interrupt hook", () => {
         paneKey: PANE_KEY,
         source: 'claude',
         connectionId: null,
-        providerSession: { id: 'claude-session' },
+        providerSession: { key: 'session_id', id: 'claude-session' },
         payload: { state: 'working', prompt: 'claude task', agentType: 'claude' }
       })
       post({
