@@ -5,7 +5,8 @@ import type {
   TerminalTopologySlice
 } from '../../../../shared/terminal-topology-slice'
 import { commitTerminalSurfaceClose } from './terminal-surface-close-intent'
-import { pendingTerminalLeafIds } from './terminal-pending-panes'
+import { markTerminalPaneIfAheadOfMain, pendingTerminalLeafIds } from './terminal-pending-panes'
+import { makeWorktree } from '../slices/store-test-helpers'
 
 const WT = 'repo::/wt'
 const LEAF_A = '11111111-1111-4111-8111-111111111111'
@@ -95,6 +96,21 @@ describe('a tab this window creates', () => {
       new Set([LEAF_B])
     )
     apply(slice(2, { a: [LEAF_A, LEAF_B] }))
+    expect(state().pendingTerminalPanes).toEqual([])
+  })
+})
+
+describe('a worktree a paired Orca server hosts', () => {
+  // Main publishes no slice for it, so nothing would ever settle an entry held here.
+  it('holds no pending entry for a tab or pane made here', () => {
+    useAppStore.setState({
+      worktreesByRepo: {
+        repo: [makeWorktree({ id: WT, repoId: 'repo', hostId: 'runtime:env-1' })]
+      }
+    })
+    const tab = state().createTab(WT)
+    markTerminalPaneIfAheadOfMain(state(), { worktreeId: WT, tabId: tab.id, leafId: LEAF_B })
+
     expect(state().pendingTerminalPanes).toEqual([])
   })
 })
