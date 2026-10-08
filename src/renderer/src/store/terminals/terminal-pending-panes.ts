@@ -5,6 +5,8 @@ import type {
   TerminalTopologySlice
 } from '../../../../shared/terminal-topology-slice'
 import { collectLeafIds } from '@/components/terminal-pane/terminal-pane-layout-tree'
+import { isWebClientLocation } from '@/lib/web-client-location'
+import { getExplicitRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '../types'
 import type { TerminalSlice, TerminalStoreSet } from './terminal-state'
 
@@ -101,12 +103,23 @@ const leafSet = (
     .sort()
     .join('\n')
 
-/** Tabs a `runtime:` host publishes share the worktree id but never ride main's slice. */
-export function isRuntimeHostedTab(state: AppState, worktreeId: string, tabId: string): boolean {
+/**
+ * Main's slices carry only local and SSH worktrees. A web client's tabs and a `runtime:` host's
+ * come from the host's snapshot, which never settles a pending entry, so they hold none.
+ */
+export function isTerminalTabMirroredFromMain(
+  state: AppState,
+  worktreeId: string,
+  tabId: string
+): boolean {
   const entry = state.unifiedTabsByWorktree[worktreeId]?.find(
     (tab) => tab.contentType === 'terminal' && (tab.entityId === tabId || tab.id === tabId)
   )
-  return parseExecutionHostId(entry?.executionHostId)?.kind === 'runtime'
+  return (
+    !isWebClientLocation() &&
+    getExplicitRuntimeEnvironmentIdForWorktree(state, worktreeId) === null &&
+    parseExecutionHostId(entry?.executionHostId)?.kind !== 'runtime'
+  )
 }
 
 /** A pane this window made, which main's layout doesn't name yet, stays until main names it. */
@@ -115,7 +128,7 @@ export function markTerminalPaneIfAheadOfMain(
   pane: Required<PendingTerminalPaneKey>
 ): void {
   const named = collectLeafIds(state.terminalLayoutsByTabId[pane.tabId]?.root).includes(pane.leafId)
-  if (!named && !isRuntimeHostedTab(state, pane.worktreeId, pane.tabId)) {
+  if (!named && isTerminalTabMirroredFromMain(state, pane.worktreeId, pane.tabId)) {
     state.markPendingTerminalPane({ ...pane, change: 'add' })
   }
 }

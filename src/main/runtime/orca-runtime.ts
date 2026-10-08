@@ -45,7 +45,7 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
   }
 
   /** The publishSeq of the push holding every topology write made so far, for a reply to name. */
-  settleTerminalTopology(worktreeId?: string): number {
+  settleTerminalTopology(worktreeId?: string): number | undefined {
     return this.terminalTopology.settle(worktreeId)
   }
 

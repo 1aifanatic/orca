@@ -54,10 +54,13 @@ export class TerminalTopologyPublisher {
     }
   }
 
-  /** A publishSeq whose push includes every write made before this call. */
-  settle(worktreeId?: string): number {
+  /**
+   * A publishSeq whose push includes every write made before this call; none for a worktree main
+   * publishes no slice for, since no push will ever carry it.
+   */
+  settle(worktreeId?: string): number | undefined {
     this.flush()
-    return (worktreeId ? this.published.get(worktreeId)?.publishSeq : undefined) ?? this.lastSeq
+    return worktreeId === undefined ? this.lastSeq : this.published.get(worktreeId)?.publishSeq
   }
 
   /** Every current slice, for a window that loaded after pushes it never saw. */
