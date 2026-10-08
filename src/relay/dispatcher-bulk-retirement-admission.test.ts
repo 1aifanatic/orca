@@ -11,6 +11,7 @@ it('admits each bulk frame once when retiring PTY writes releases capacity durin
   }
 
   const failures: { retired: number; sequences: (number | undefined)[] }[] = []
+  let admissionRetryWakeCount = 0
   const midpoint = Math.floor(capacity / 2)
   for (let retired = midpoint - 100; retired <= midpoint + 20; retired++) {
     const harness = createBulkWriteHarness()
@@ -27,9 +28,11 @@ it('admits each bulk frame once when retiring PTY writes releases capacity durin
         data: 'g'.repeat(40 * 1024)
       })
       await nextBulkWriteTurn()
+      expect(harness.dispatcher.capacityRetryCount).toBe(1)
       ptyAdmitted = false
       await harness.drain()
       await completion
+      admissionRetryWakeCount += harness.dispatcher.admissionRetryWakeCount
       const sequences = harness.frames
         .filter((frame) => frame.method === 'git.responseChunk')
         .map((frame) => frame.seq)
@@ -41,4 +44,5 @@ it('admits each bulk frame once when retiring PTY writes releases capacity durin
     }
   }
   expect(failures).toEqual([])
+  expect(admissionRetryWakeCount).toBeGreaterThan(0)
 })

@@ -5,7 +5,6 @@ import type { SinkWriteSettlement } from './dispatcher-client-writer'
 
 class FailedAdmissionDispatcher extends RelayDispatcher {
   attempts = 0
-  failWithError: Error | null = null
 
   wake(): void {
     this.notifyLegacyCapacityIfLow()
@@ -26,9 +25,6 @@ class FailedAdmissionDispatcher extends RelayDispatcher {
       return false
     }
     if (this.attempts === 2) {
-      if (this.failWithError) {
-        onSettled({ ok: false, error: this.failWithError })
-      }
       this.notifyLegacyCapacityIfLow()
       return false
     }
@@ -53,27 +49,6 @@ it('preserves a capacity wake during a failed admission without needing another 
     expect(dispatcher.attempts).toBe(3)
     await completion
     expect(writes).toBe(1)
-    expect(dispatcher.listeners()).toBe(0)
-  } finally {
-    dispatcher.dispose()
-  }
-})
-
-it('keeps synchronous admission failure authoritative instead of retrying its frame', async () => {
-  let writes = 0
-  const dispatcher = new FailedAdmissionDispatcher(() => {
-    writes++
-    return true
-  })
-  const failure = new Error('sink failure during admission')
-  dispatcher.failWithError = failure
-  try {
-    const completion = dispatcher.notifyBulk('git.responseChunk', { streamId: 1, seq: 0 })
-    const assertion = expect(completion).rejects.toBe(failure)
-    await new Promise<void>((resolve) => setImmediate(resolve))
-    dispatcher.wake()
-    await assertion
-    expect(writes).toBe(0)
     expect(dispatcher.listeners()).toBe(0)
   } finally {
     dispatcher.dispose()

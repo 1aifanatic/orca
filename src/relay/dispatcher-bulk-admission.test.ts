@@ -2,6 +2,72 @@ import { describe, expect, it } from 'vitest'
 import { createBulkWriteHarness, nextBulkWriteTurn } from './dispatcher-bulk-write-test-harness'
 
 describe('bulk admission and sink settlement', () => {
+  it('retires a fixed-bulk retry when a closed writer settles it before its client closes', async () => {
+    const harness = createBulkWriteHarness(2048, 800)
+    try {
+      expect(harness.fillProducerQueue()).toBeGreaterThan(1000)
+      const completion = harness.dispatcher.notifyBulk('fs.streamChunk', {
+        streamId: 1,
+        data: 'fixed'
+      })
+      const assertion = expect(completion).rejects.toThrow('Relay writer is closed')
+      await nextBulkWriteTurn()
+      expect(harness.dispatcher.capacityRetryCount).toBe(1)
+      expect(harness.dispatcher.fixedBulkAdmissions).toEqual([])
+      expect(harness.frames).toEqual([{ method: 'pty.data' }])
+      expect(harness.pending).toHaveLength(1)
+      harness.sink.destroy(new Error('stream destroyed'))
+      await nextBulkWriteTurn()
+      const pendingWrite = harness.pending.shift()
+      if (!pendingWrite) {
+        throw new Error('Expected the native writable callback to remain pending')
+      }
+      pendingWrite.complete(new Error('pending native write failed'))
+      await assertion
+      expect(harness.sink.writableLength).toBe(0)
+      expect(harness.dispatcher.fixedBulkAdmissions).toEqual([
+        {
+          clientClosed: false,
+          writerCanAdmitZero: false,
+          retainedProducerBytes: 0,
+          settledBeforeReturn: true,
+          accepted: false
+        }
+      ])
+      expect(harness.dispatcher.capacityRetryCount).toBe(0)
+      expect(harness.dispatcher.retainedPublicationBytes).toBe(0)
+    } finally {
+      harness.dispose()
+    }
+  })
+
+  it('ignores a captured capacity retry after its frame is admitted', async () => {
+    const harness = createBulkWriteHarness()
+    try {
+      harness.fillProducerQueue()
+      const completion = harness.dispatcher.notifyBulk('git.responseChunk', {
+        streamId: 1,
+        seq: 0,
+        data: 'g'.repeat(40 * 1024)
+      })
+      await nextBulkWriteTurn()
+      const retry = harness.dispatcher.lastCapacityRetry
+      if (!retry) {
+        throw new Error('Expected a capacity-blocked retry')
+      }
+      await harness.reachBulk('git.responseChunk')
+      expect(harness.dispatcher.capacityRetryCount).toBe(0)
+      retry()
+      await harness.drain()
+      await completion
+      expect(harness.frames.filter((frame) => frame.method === 'git.responseChunk')).toEqual([
+        { method: 'git.responseChunk', seq: 0 }
+      ])
+    } finally {
+      harness.dispose()
+    }
+  })
+
   it('sends a capacity-blocked frame once and advances the client chain after its callback', async () => {
     const harness = createBulkWriteHarness()
     try {
