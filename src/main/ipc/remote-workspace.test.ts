@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ipcMain } from 'electron'
 import type { Store } from '../persistence'
 import type {
@@ -55,6 +55,7 @@ vi.mock('./remote-workspace-events', () => ({
 import { _resetRemoteWorkspaceCachesForTests } from './remote-workspace'
 import {
   createRemoteWorkspaceExportDriver,
+  passExportWindow,
   type RemoteWorkspaceExportDriver
 } from './remote-workspace-export-test-harness'
 import { remoteWorkspaceSessionMatchesSnapshot } from './remote-workspace-snapshot-normalization'
@@ -212,7 +213,18 @@ describe('main exports a session write to the hosts it agrees with', () => {
     )
   }
 
+  async function pushesAfterExportWindow() {
+    const pushes = driver.nextPushes()
+    await passExportWindow()
+    return pushes
+  }
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
+    vi.useFakeTimers()
     _resetRemoteWorkspaceCachesForTests()
     requestByTargetId.clear()
     muxByTargetId.clear()
@@ -292,7 +304,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
     )
 
     driver.write({ ...baseSession, tabsByWorktree: worktrees })
-    await driver.nextPushes()
+    await pushesAfterExportWindow()
 
     expect(getReposMock).toHaveBeenCalledTimes(1)
   })
@@ -311,7 +323,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
     )
 
     driver.write({ ...baseSession, tabsByWorktree: worktrees })
-    await driver.nextPushes()
+    await pushesAfterExportWindow()
 
     expect(getReposMock).toHaveBeenCalledTimes(1)
     // 6 worktree keys resolved once each, regardless of how many targets are exported to.
@@ -327,7 +339,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
     getReposMock.mockClear()
 
     driver.write(sessionWithTab)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await passExportWindow()
 
     expect(getReposMock).not.toHaveBeenCalled()
     expect(driver.pushes).toEqual([])
@@ -350,7 +362,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
     })
 
     driver.write(sessionWithTab)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await passExportWindow()
 
     expect(getActiveMultiplexerMock).not.toHaveBeenCalled()
     expect(driver.pushes).toEqual([])
@@ -361,7 +373,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
     driver.agree('missing-target', { revision: 7, hostObservationToken: 'unreachable' })
 
     driver.write(sessionWithTab)
-    const [push] = await driver.nextPushes()
+    const [push] = await pushesAfterExportWindow()
 
     expect(push).toMatchObject({ targetId: 'target-1', result: { ok: true } })
     expect(getActiveMultiplexerMock).not.toHaveBeenCalledWith('target-2')
@@ -378,7 +390,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
     await agreeWith('target-1')
 
     driver.write(sessionWithTab)
-    await driver.nextPushes()
+    await pushesAfterExportWindow()
 
     expect(patchRequests('target-1')).toEqual([
       [
@@ -403,7 +415,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
 
     driver.write(sessionWithTab)
 
-    await expect(driver.nextPushes()).resolves.toMatchObject([
+    await expect(pushesAfterExportWindow()).resolves.toMatchObject([
       { targetId: 'target-1', result: { ok: true } }
     ])
   })
@@ -418,11 +430,11 @@ describe('main exports a session write to the hosts it agrees with', () => {
     })
     // The window saves back what it applied from the import.
     driver.write(sessionWithTab)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await passExportWindow()
     expect(patchRequests('target-1')).toEqual([])
 
     driver.write({ ...sessionWithTab, activeTabId: null })
-    await driver.nextPushes()
+    await pushesAfterExportWindow()
     expect(patchRequests('target-1')).toHaveLength(1)
   })
 
@@ -433,11 +445,11 @@ describe('main exports a session write to the hosts it agrees with', () => {
       ?.mockImplementationOnce(async () => ({ ok: false, reason: 'unavailable' }))
 
     driver.write(sessionWithTab)
-    await expect(driver.nextPushes()).resolves.toMatchObject([
+    await expect(pushesAfterExportWindow()).resolves.toMatchObject([
       { result: { ok: false, reason: 'unavailable' } }
     ])
     driver.write({ ...sessionWithTab, activeTabId: null })
-    await expect(driver.nextPushes()).resolves.toMatchObject([{ result: { ok: true } }])
+    await expect(pushesAfterExportWindow()).resolves.toMatchObject([{ result: { ok: true } }])
 
     expect(patchRequests('target-1')).toHaveLength(2)
   })
@@ -449,12 +461,12 @@ describe('main exports a session write to the hosts it agrees with', () => {
     muxByTargetId.delete('target-1')
 
     driver.write(sessionWithTab)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await passExportWindow()
     expect(patchRequests('target-1')).toEqual([])
 
     await agreeWith('target-1')
     driver.write({ ...sessionWithTab, activeTabId: null })
-    await driver.nextPushes()
+    await pushesAfterExportWindow()
     expect(patchRequests('target-1')).toHaveLength(1)
   })
 
@@ -474,7 +486,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
     await vi.waitFor(() => expect(patchRequests('target-1')).toHaveLength(1))
     driver.importPeer({ ...observed, targetId: 'target-1', outcome: 'synced', session: {} })
     finishPatch({ ok: false, reason: 'stale-revision', snapshot: snapshot(emptyRemoteSession, 9) })
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await passExportWindow()
 
     expect(driver.pushes).toEqual([])
   })
@@ -485,12 +497,12 @@ describe('main exports a session write to the hosts it agrees with', () => {
     driver.agree('target-1', observed, 'conflict')
 
     driver.write(sessionWithTab)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await passExportWindow()
     expect(patchRequests('target-1')).toEqual([])
 
     driver.agree('target-1', observed)
     driver.write({ ...sessionWithTab, activeTabId: null })
-    await driver.nextPushes()
+    await pushesAfterExportWindow()
     expect(patchRequests('target-1')).toHaveLength(1)
   })
 
@@ -511,7 +523,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
 
     driver.agree('target-1', observed, 'kept-local')
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await passExportWindow()
     expect(patchRequests('target-1')).toHaveLength(hasTabs ? 1 : 0)
     expect(driver.pushes).toMatchObject(
       hasTabs ? [{ targetId: 'target-1', authority: { revision: 0 }, result: { ok: true } }] : []

@@ -13,6 +13,7 @@ import { toSshExecutionHostId } from '../../shared/execution-host'
 import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
 import { importPeerTopology } from '../persistence/terminal-topology/terminal-topology-commit'
 import { createRemoteWorkspaceExports } from './remote-workspace-export'
+import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { getRemoteWorkspaceNamespace } from './remote-workspace-namespace'
 import { registerRemoteWorkspaceNotificationHandler } from './remote-workspace-events'
 import { CLIENT_ID, type RemoteWorkspaceClientNameSource } from './remote-workspace-client-identity'
@@ -132,7 +133,8 @@ export function handleRemoteWorkspaceNotification(
 export function registerRemoteWorkspaceHandlers(
   store: Store,
   getMainWindow: () => BrowserWindow | null,
-  clientNameSource: RemoteWorkspaceClientNameSource
+  runtime: RemoteWorkspaceClientNameSource &
+    Partial<Pick<OrcaRuntimeService, 'settleTerminalTopology'>>
 ): void {
   mainWindowGetter = getMainWindow
   unregisterRemoteWorkspaceNotifications?.()
@@ -164,10 +166,20 @@ export function registerRemoteWorkspaceHandlers(
       if (!pull || !isValidPeerImport(pull)) {
         return
       }
-      if (!isFrozenOrcadSourceSessionPartition(store, toSshExecutionHostId(pull.targetId))) {
-        importPeerTopology(store, pull.targetId, pull.session)
-      }
-      exports.recordPull(pull)
+      const keptMainRows =
+        !isFrozenOrcadSourceSessionPartition(store, toSshExecutionHostId(pull.targetId)) &&
+        importPeerTopology(
+          store,
+          pull.targetId,
+          pull.session,
+          (worktreeId) =>
+            (runtime.settleTerminalTopology?.(worktreeId) ?? 0) >
+            (pull.mirroredTopologySeqByWorktree?.[worktreeId] ?? 0)
+        )
+      // Rows main kept over the pull are news to the host, so they export.
+      exports.recordPull(
+        keptMainRows && pull.outcome === 'synced' ? { ...pull, outcome: 'kept-local' } : pull
+      )
     }
   )
 
@@ -183,7 +195,7 @@ export function registerRemoteWorkspaceHandlers(
   ipcMain.handle(
     'remoteWorkspace:listConnectedClients',
     async (_event, args?: { targetIds?: string[] }) =>
-      listRemoteWorkspaceConnectedClients(args, clientNameSource)
+      listRemoteWorkspaceConnectedClients(args, runtime)
   )
 
   ipcMain.handle('remoteWorkspace:clientId', () => CLIENT_ID)

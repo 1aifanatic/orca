@@ -10,6 +10,11 @@ import type {
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { registerRemoteWorkspaceHandlers } from './remote-workspace'
 
+/** Past main's export coalescing window and its starvation cap; tests run it on fake timers. */
+export async function passExportWindow(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(5_000)
+}
+
 export const EMPTY_WORKSPACE_SESSION: WorkspaceSessionState = {
   activeRepoId: null,
   activeWorktreeId: null,
