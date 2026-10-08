@@ -1,0 +1,25 @@
+{
+  "sourceHead": "a2114892304d015c77d5bf9ed2c0367eee514178",
+  "target": "config/scripts/mobile-web-app-preview-arm-driver.mjs",
+  "beforeSha256": "04e62d302f28070230d017d1fbda97bc35566d49dc15b30a406f4bd3ce3bd7df",
+  "afterSha256": "12e8d85e3eb2a09d8263cec0dbb8cb36a96dafb7eddba1bcd5ace12205025373",
+  "patchSha256": "b13d34fcec991cab12cbef41e9017b7776b78bf54e0a2cea0108df5bc060534e",
+  "entireOriginalRecoveredByExactBoundaryReversal": true,
+  "originalTestFileSha256": "ed6d4264892ab88ae0828763c40e462121a8d7e687d6183dbbe4133438245424",
+  "allOriginalCallbacksAssertionsControlsSecurityPoliciesDeadlinesUnchanged": true,
+  "fullOriginalCaseCount": 30,
+  "engines": [
+    "chromium",
+    "webkit"
+  ],
+  "additionalObserversOrCdpOrClickListeners": false,
+  "priorFailedBaselineReproduced": false,
+  "causeEstablished": false,
+  "runtimeQualificationPending": true,
+  "performanceClaim": false,
+  "boundaryAssessment": {
+    "path": "notes/bun-migration/performance/mobile-html-preview-boundary-only-current-source-and-observation-assessment.json",
+    "sha256": "4b4da42eb79f16d54d80ca9497203dc62497534368494636623fa40627c58746"
+  },
+  "sourceScope": "Intentional fixture hardening: reject a missing/detached readiness-returned frame and pass that same frame to unchanged actions."
+}
