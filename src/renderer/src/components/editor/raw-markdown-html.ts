@@ -1,17 +1,8 @@
-import { createMarkdownTokenizerStart } from './markdown-tokenizer-start'
-import { Node, mergeAttributes } from '@tiptap/core'
 import { createDetailsMatcher, isEditableDetailsHtmlBlock } from './details-markdown-html'
 import { formatMarkdownDocLinkBody, parseMarkdownDocLink } from './markdown-doc-links'
 import { normalizeMarkdownReferenceLinks } from './markdown-reference-link-normalization'
-import type {
-  RichMarkdownEditorCodec,
-  RichMarkdownSourceKind,
-  RichMarkdownSourceTransport
-} from './rich-markdown-source-transport'
-import {
-  isReservedRichMarkdownTransportBody,
-  skipInlineTransportStartScan
-} from './rich-markdown-source-transport'
+import type { RichMarkdownEditorCodec } from './rich-markdown-source-transport'
+import { isReservedRichMarkdownTransportBody } from './rich-markdown-source-transport'
 import { matchHtmlSuperscriptLinkSource } from './rich-markdown-html-superscript-link-source'
 
 const INLINE_HTML_PATTERN = /^<!--[\s\S]*?-->|^<\/?[A-Za-z][\w.:-]*(?:\s[^<>]*?)?\/?>/
@@ -58,7 +49,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
   const lastCommentClose = normalizedContent.lastIndexOf('-->')
   const { transport } = codec
   let index = 0
-  let isLineStart = true
   let activeFence: '`' | '~' | null = null
   let activeFenceLength = 0
   let result = ''
@@ -68,6 +58,7 @@ export function encodeRawMarkdownHtmlForRichEditor(
   let fenceMatch: RegExpExecArray | null = null
 
   while (index < normalizedContent.length) {
+    const isLineStart = index === 0 || normalizedContent[index - 1] === '\n'
     if (isLineStart) {
       // Reuse the lookahead across blank lines, preserving cross-line fence semantics.
       if (index > fenceProbe) {
@@ -92,7 +83,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
     if (activeFence) {
       const nextChar = normalizedContent[index]
       result += nextChar
-      isLineStart = nextChar === '\n'
       index += 1
       continue
     }
@@ -126,7 +116,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
       if (closingIndex !== -1) {
         const rawSpan = normalizedContent.slice(index, closingIndex + tickCount)
         result += rawSpan
-        isLineStart = rawSpan.endsWith('\n')
         index = closingIndex + tickCount
         continue
       }
@@ -214,132 +203,8 @@ export function encodeRawMarkdownHtmlForRichEditor(
 
     const nextChar = normalizedContent[index]
     result += nextChar
-    isLineStart = nextChar === '\n'
     index += 1
   }
 
   return result
-}
-
-export function createRichMarkdownLiteral(transport: RichMarkdownSourceTransport) {
-  return createRawSourceNode({
-    name: 'richMarkdownLiteral',
-    kind: 'literal',
-    inline: true,
-    transport,
-    marker: 'data-rich-markdown-literal'
-  })
-}
-
-export function createRawMarkdownHtmlInline(transport: RichMarkdownSourceTransport) {
-  return createRawSourceNode({
-    name: 'rawMarkdownHtmlInline',
-    kind: 'inline-html',
-    inline: true,
-    transport,
-    marker: 'data-raw-markdown-html-inline',
-    className: 'raw-markdown-html-inline'
-  })
-}
-
-function createRawSourceNode({
-  name,
-  kind,
-  inline,
-  transport,
-  marker,
-  className
-}: {
-  name: string
-  kind: RichMarkdownSourceKind
-  inline: boolean
-  transport: RichMarkdownSourceTransport
-  marker: string
-  className?: string
-}) {
-  return Node.create({
-    name,
-    inline,
-    group: inline ? 'inline' : 'block',
-    atom: true,
-    selectable: true,
-
-    addAttributes() {
-      return {
-        value: {
-          default: '',
-          rendered: false
-        }
-      }
-    },
-
-    // Why: converting embedded HTML tags into placeholder tokens before the
-    // markdown parser runs keeps marked's built-in paragraph tokenization intact
-    // while still letting Orca round-trip the raw markup verbatim.
-    markdownTokenName: name,
-    markdownTokenizer: {
-      name,
-      level: inline ? 'inline' : 'block',
-      start: inline
-        ? skipInlineTransportStartScan
-        : createMarkdownTokenizerStart(transport.startFor(kind)),
-      tokenize(src) {
-        const matched = transport.match(src, kind)
-        if (!matched) {
-          return undefined
-        }
-
-        return {
-          type: name,
-          raw: matched.raw,
-          text: matched.value,
-          block: !inline
-        }
-      }
-    },
-    parseMarkdown: (token, helpers) => {
-      if (token.type !== name) {
-        return []
-      }
-
-      return helpers.createNode(name, {
-        value: typeof token.text === 'string' ? token.text : ''
-      })
-    },
-    renderMarkdown: (node) => (typeof node.attrs?.value === 'string' ? node.attrs.value : ''),
-    renderText: ({ node }) => (typeof node.attrs.value === 'string' ? node.attrs.value : ''),
-
-    parseHTML() {
-      return [
-        {
-          tag: `${inline ? 'span' : 'div'}[${marker}]`,
-          getAttrs: (element: HTMLElement) => ({ value: element.textContent ?? '' })
-        }
-      ]
-    },
-
-    renderHTML({ HTMLAttributes, node }) {
-      const value = typeof node.attrs.value === 'string' ? node.attrs.value : ''
-      return [
-        inline ? 'span' : 'div',
-        mergeAttributes(HTMLAttributes, {
-          [marker]: '',
-          contenteditable: 'false',
-          class: className
-        }),
-        inline ? value : ['pre', value]
-      ]
-    }
-  })
-}
-
-export function createRawMarkdownHtmlBlock(transport: RichMarkdownSourceTransport) {
-  return createRawSourceNode({
-    name: 'rawMarkdownHtmlBlock',
-    kind: 'block-html',
-    inline: false,
-    transport,
-    marker: 'data-raw-markdown-html-block',
-    className: 'raw-markdown-html-block'
-  })
 }

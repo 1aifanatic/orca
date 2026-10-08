@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { encodeRawMarkdownHtmlForRichEditor } from './raw-markdown-html'
 import { createRichMarkdownEditorCodec } from './rich-markdown-source-transport'
+import * as fenceScanner from './markdown-fence-scanner'
+
+vi.mock('./markdown-fence-scanner', { spy: true })
 
 const key = '0123456789abcdef0123456789abcdef'
-const fenceLinePattern = /[^\r\n]*(?:\r\n|\n|\r|$)/g
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -13,15 +15,13 @@ describe('raw Markdown details fence scanning', () => {
       { length: 50 },
       (_, index) => `<details><summary>Section ${index}</summary>\n\nBody ${index}\n\n</details>`
     ).join('\n\n')
-    const matchAll = vi.spyOn(String.prototype, 'matchAll')
+    const scanFences = vi.mocked(fenceScanner.getMarkdownFenceRanges)
+    scanFences.mockClear()
 
     expect(encodeRawMarkdownHtmlForRichEditor(content, createRichMarkdownEditorCodec(key))).toBe(
       content
     )
-    const scans = matchAll.mock.calls.filter(
-      ([pattern]) => pattern instanceof RegExp && pattern.source === fenceLinePattern.source
-    ).length
-    expect(scans).toBe(1)
+    expect(scanFences).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -30,14 +30,12 @@ describe('raw Markdown details fence scanning', () => {
     '<details open\nStill no opening tag terminator',
     '```html\n<details><summary>Code</summary>\n\nBody\n\n</details>\n```'
   ])('does not scan fences when no opening tag is matched: %j', (content) => {
-    const matchAll = vi.spyOn(String.prototype, 'matchAll')
+    const scanFences = vi.mocked(fenceScanner.getMarkdownFenceRanges)
+    scanFences.mockClear()
     expect(encodeRawMarkdownHtmlForRichEditor(content, createRichMarkdownEditorCodec(key))).toBe(
       content
     )
-    const scans = matchAll.mock.calls.filter(
-      ([pattern]) => pattern instanceof RegExp && pattern.source === fenceLinePattern.source
-    ).length
-    expect(scans).toBe(0)
+    expect(scanFences).toHaveBeenCalledTimes(0)
   })
 
   it('preserves nested and mixed-case editable toggles', () => {
