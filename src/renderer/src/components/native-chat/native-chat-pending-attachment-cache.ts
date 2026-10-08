@@ -10,6 +10,8 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import type { NativeChatComposerDraftOwner } from './native-chat-composer-draft-storage'
+import { appendNativeChatDraftCache } from './native-chat-draft-cache'
+import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
 import {
   appendToNativeChatComposerDraft,
   nativeChatDraftScopeTabId,
@@ -113,6 +115,26 @@ export function settleNativeChatPendingAttachment(
     owner
   )
   return true
+}
+
+/** File results settle only while their operation still belongs to this draft. */
+export function settleNativeChatPendingAttachmentReferences(
+  scopeKey: string,
+  references: { id: string; path: string }[],
+  insertAtCaret?: (paths: string[]) => void
+): void {
+  const owner = pendingOwners.get(scopeKey)
+  const paths = references.flatMap(({ id, path }) =>
+    takeNativeChatPendingAttachment(scopeKey, id) ? [path] : []
+  )
+  if (paths.length === 0) {
+    return
+  }
+  if (insertAtCaret) {
+    insertAtCaret(paths)
+  } else {
+    appendNativeChatDraftCache(scopeKey, paths.map(formatNativeChatFileReference).join(' '), owner)
+  }
 }
 
 /** Shows a pending chip that was held out of sight, such as while a server was asked first. */

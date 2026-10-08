@@ -4,8 +4,9 @@
 // replaces the composer. The real composer, attachment and paste hooks keep the upload, and Send
 // waits for it, whenever the composer comes back; a rich-text paste's image is owed from the start.
 
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
 import type { ClipboardEventLike } from './native-chat-clipboard-payload'
 
 type FieldProps = {
@@ -15,7 +16,15 @@ type FieldProps = {
 }
 
 const mocks = vi.hoisted(() => {
-  const state: { fieldProps: FieldProps | null } = { fieldProps: null }
+  const state: { fieldProps: FieldProps | null; owner: NativeChatAttachmentOwner } = {
+    fieldProps: null,
+    owner: {
+      kind: 'runtime-session',
+      environmentId: 'env-1',
+      pairingRevision: 1,
+      sessionId: 'session-1'
+    }
+  }
   return { state, prepare: vi.fn(), save: vi.fn() }
 })
 
@@ -55,12 +64,7 @@ vi.mock('./use-native-chat-skills', () => ({
 vi.mock('./use-native-chat-external-attachments', () => ({
   useNativeChatExternalAttachments: () => ({
     attachExternalPaths: vi.fn(),
-    resolveAttachmentOwner: () => ({
-      kind: 'runtime-session',
-      environmentId: 'env-1',
-      pairingRevision: 1,
-      sessionId: 'session-1'
-    })
+    resolveAttachmentOwner: () => mocks.state.owner
   })
 }))
 vi.mock('./native-chat-attachment-upload', async (importOriginal) => ({
@@ -147,6 +151,12 @@ beforeEach(() => {
   clearNativeChatAttachmentCacheForTests()
   clearNativeChatDraftCacheForTests()
   mocks.state.fieldProps = null
+  mocks.state.owner = {
+    kind: 'runtime-session',
+    environmentId: 'env-1',
+    pairingRevision: 1,
+    sessionId: 'session-1'
+  }
   mocks.prepare.mockResolvedValue({
     ok: true,
     target: {
@@ -253,4 +263,21 @@ describe('a paste into a chat on a paired server', () => {
     await act(async () => finishUpload(STORED))
     expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ path: STORED }])
   })
+})
+
+it('keeps a local image paste after the real composer closes and reopens', async () => {
+  mocks.state.owner = { kind: 'local' }
+  mocks.save.mockClear()
+  const finishUpload = holdUpload()
+  const first = render(composer())
+  await act(async () => mocks.state.fieldProps?.onPaste?.(imagePaste()))
+  await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+  expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([{ pending: true }])
+  first.unmount()
+  await act(async () => finishUpload('/local/native-chat-pastes/orca-paste-1-image.png'))
+  render(composer())
+  expect(mocks.state.fieldProps?.imageAttachments).toMatchObject([
+    { path: '/local/native-chat-pastes/orca-paste-1-image.png' }
+  ])
+  await waitFor(() => expect(mocks.state.fieldProps?.imageAttachments?.[0]?.pending).toBeFalsy())
 })
