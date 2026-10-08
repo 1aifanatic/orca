@@ -30,24 +30,23 @@ export function rewriteRelayedPhoneRequest(
  * across everything its desktop socket carries.
  */
 export class RelayedPhoneReplies {
-  private readonly openRequests = new Map<string, number[]>()
-  private readonly swallowedRequests = new Set<string>()
+  // Why swallow: requests the relay sends on its own behalf have no phone waiting on them.
+  private readonly openRequests = new Map<string, { hostStreamIds: number[]; swallow: boolean }>()
   private readonly desktopStreamIds = new Map<number, number>()
 
   constructor(private readonly allocateStreamId: () => number) {}
 
   noteForwarded(requestId: string, options: { swallowReplies?: boolean } = {}): void {
-    this.openRequests.set(requestId, [])
-    if (options.swallowReplies) {
-      this.swallowedRequests.add(requestId)
-    }
+    this.openRequests.set(requestId, {
+      hostStreamIds: [],
+      swallow: options.swallowReplies === true
+    })
   }
 
   /** Request ids still waiting on the host; the caller fails them when the socket ends. */
   takeOpenRequestIds(): string[] {
-    const ids = [...this.openRequests.keys()].filter((id) => !this.swallowedRequests.has(id))
+    const ids = [...this.openRequests].filter(([, open]) => !open.swallow).map(([id]) => id)
     this.openRequests.clear()
-    this.swallowedRequests.clear()
     this.desktopStreamIds.clear()
     return ids
   }
@@ -63,18 +62,17 @@ export class RelayedPhoneReplies {
     if (!isRecord(parsed) || typeof parsed.id !== 'string') {
       return plaintext
     }
-    const streamIds = this.openRequests.get(parsed.id)
-    const swallowed = this.swallowedRequests.has(parsed.id)
+    const open = this.openRequests.get(parsed.id)
     const result = parsed.result
     let renumbered = false
-    if (streamIds && isRecord(result) && typeof result.streamId === 'number') {
-      result.streamId = this.desktopStreamId(result.streamId, streamIds)
+    if (open && isRecord(result) && typeof result.streamId === 'number') {
+      result.streamId = this.desktopStreamId(result.streamId, open.hostStreamIds)
       renumbered = true
     }
-    if (streamIds && (parsed.streaming !== true || (isRecord(result) && result.type === 'end'))) {
-      this.finish(parsed.id, streamIds)
+    if (open && (parsed.streaming !== true || (isRecord(result) && result.type === 'end'))) {
+      this.finish(parsed.id, open.hostStreamIds)
     }
-    if (swallowed) {
+    if (open?.swallow) {
       return null
     }
     return renumbered ? JSON.stringify(parsed) : plaintext
@@ -107,7 +105,6 @@ export class RelayedPhoneReplies {
 
   private finish(requestId: string, hostStreamIds: number[]): void {
     this.openRequests.delete(requestId)
-    this.swallowedRequests.delete(requestId)
     for (const hostStreamId of hostStreamIds) {
       this.desktopStreamIds.delete(hostStreamId)
     }

@@ -9,7 +9,7 @@ import { resolveAdvertisedPairingEndpoint } from '../pairing-endpoint'
 import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
 import { MobileDesktopRelay } from '../mobile-desktop-relay/mobile-desktop-relay'
 import type { MobileDesktopRelayHosts } from '../mobile-desktop-relay/mobile-desktop-relay-hosts'
-import type { MobileDesktopRelayHostState } from '../../../shared/mobile-desktop-relay-contract'
+import { DELEGATED_PHONE_NAME_MAX_CHARS } from '../../../shared/delegated-mobile-device-contract'
 import { allocateTerminalSubscriptionStreamId } from '../rpc/methods/terminal/terminal-subscription-stream-id'
 import {
   createWebClientUrl,
@@ -95,18 +95,17 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
       : null
   }
 
-  /** Whether a paired phone can open this server's workspaces through this desktop. */
-  getMobileDesktopRelayHostState(environmentId: string): Promise<MobileDesktopRelayHostState> {
-    return this.mobileDesktopRelay?.hostState(environmentId) ?? Promise.resolve('unavailable')
-  }
-
   private listRelayedPhones(): { phoneKey: string; name: string }[] {
     const computerName = this.runtime.readMachineName()
     return (this.deviceRegistry?.listDevices() ?? [])
-      .filter((device) => device.scope === 'mobile' && device.lastSeenAt > 0)
+      .filter(
+        // Why: phones another desktop relays here are that desktop's to relay, not ours.
+        (device) =>
+          device.scope === 'mobile' && device.lastSeenAt > 0 && device.parentDeviceId === undefined
+      )
       .map((device) => ({
         phoneKey: device.deviceId,
-        name: `${device.name} via ${computerName}`.slice(0, 128)
+        name: `${device.name} via ${computerName}`.slice(0, DELEGATED_PHONE_NAME_MAX_CHARS)
       }))
   }
 

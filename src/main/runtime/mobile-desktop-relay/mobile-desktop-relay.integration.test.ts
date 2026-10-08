@@ -284,15 +284,38 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
 
   it('relays a terminal subscribe, its binary stream, input and a query reply as the phone delegated device', async () => {
     const { host, desktop, children, syncedNames, handle } = await startTopology()
+    // A phone another desktop relays to this one is that desktop's to relay, never re-relayed.
+    const registry = desktop.server.getDeviceRegistry()!
+    const otherDesktop = registry.getDevice(
+      pair(desktop.server, 'runtime', 'Other Mac').pairedDeviceId!
+    )!
+    registry.upsertDelegatedMobileDevices(otherDesktop, [
+      { phoneKey: 'p', name: 'iPad via Other Mac' }
+    ])
     const phone = await connectPhone(desktop.server, 'iPhone')
 
     const streamId = await subscribe(phone, handle)
-    // The snapshot arrives as binary frames under the id the phone was given.
+    // Host and desktop share a process counter here, so compare against the id the host sent.
+    const hostStreamId = z
+      .object({
+        id: z.literal('sub'),
+        result: z.object({ type: z.literal('subscribed'), streamId: z.number() })
+      })
+      .parse(
+        passthroughOpens.hostReplies
+          .map((frame) => JSON.parse(frame))
+          .find((frame) => frame.id === 'sub' && frame.result?.type === 'subscribed')
+      ).result.streamId
+    expect(streamId).not.toBe(hostStreamId)
+    // The snapshot arrives as binary frames under the id the phone was given, never the host's.
     await vi.waitFor(() =>
       expect(
         phone.binaries.some((bytes) => decodeTerminalStreamFrame(bytes)?.streamId === streamId)
       ).toBe(true)
     )
+    expect(
+      phone.binaries.some((bytes) => decodeTerminalStreamFrame(bytes)?.streamId === hostStreamId)
+    ).toBe(false)
     expect(syncedNames).toEqual([[`iPhone via ${desktop.runtime.readMachineName()}`]])
     const delegated = children()[0]!
     // The host seats the phone's delegated device, never the desktop's token for it.
@@ -418,9 +441,15 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     phone.send('garbled', 'terminal.create', create, 'runtime:')
     expect(errorCode(await phone.next('garbled'))).toBe('invalid_argument')
     expect(desktopSpawns).toEqual([])
-    // No target is today's local call.
-    phone.send('local', 'terminal.list', {}, null)
-    expect(isOk(await phone.next('local'))).toBe(true)
+    // No target, `local` and the desktop's own SSH hosts are today's local call.
+    const opensBefore = passthroughOpens.count
+    phone.send('absent', 'terminal.list', {}, null)
+    phone.send('local', 'terminal.list', {}, 'local')
+    phone.send('ssh', 'terminal.list', {}, 'ssh:devbox')
+    for (const id of ['absent', 'local', 'ssh']) {
+      expect(isOk(await phone.next(id))).toBe(true)
+    }
+    expect(passthroughOpens.count).toBe(opensBefore)
   })
 
   it('reports a server without delegated devices as update-needed and relays nothing to it', async () => {
@@ -429,16 +458,13 @@ describe('mobile desktop relay: phone -> desktop -> server', () => {
     const phone = await connectPhone(desktop.server, 'iPhone')
     const opensBefore = passthroughOpens.count
     phone.send('list', 'terminal.list', {})
-    expect(errorCode(await phone.next('list'))).toBe('remote_runtime_unavailable')
-    await expect(desktop.server.getMobileDesktopRelayHostState('env-1')).resolves.toBe(
-      'update-needed'
-    )
-    await expect(desktop.server.getMobileDesktopRelayHostState('env-unknown')).resolves.toBe(
-      'unavailable'
-    )
+    expect(await phone.next('list')).toMatchObject({
+      error: { code: 'remote_runtime_unavailable', message: expect.stringContaining('update') }
+    })
     expect(passthroughOpens.count).toBe(opensBefore)
     state.capable = true
     state.retire('env-1')
-    await expect(desktop.server.getMobileDesktopRelayHostState('env-1')).resolves.toBe('ready')
+    phone.send('updated', 'terminal.list', {})
+    expect(isOk(await phone.next('updated'))).toBe(true)
   })
 })

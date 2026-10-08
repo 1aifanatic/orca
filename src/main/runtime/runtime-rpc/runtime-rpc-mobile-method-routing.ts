@@ -4,7 +4,7 @@ import { PAIRED_DESKTOP_METHODS } from './runtime-rpc-mobile-paired-desktop-meth
 // local) and keeps `paired-desktop` calls; every allowlisted method must pick one (census test).
 export type MobileRpcMethodRoute = 'execution-host' | 'paired-desktop'
 
-const EXECUTION_HOST_METHODS = [
+export const EXECUTION_HOST_METHODS = [
   'agent.launch',
   'agent.launchReplay',
   'agentTeams.prepareLaunch',
@@ -222,6 +222,3 @@ export const MOBILE_RPC_METHOD_ROUTES: ReadonlyMap<string, MobileRpcMethodRoute>
   ...PAIRED_DESKTOP_METHODS.map((method) => [method, 'paired-desktop'] as const),
   ...EXECUTION_HOST_METHODS.map((method) => [method, 'execution-host'] as const)
 ])
-
-export const MOBILE_RPC_METHOD_ROUTE_ENTRY_COUNT =
-  PAIRED_DESKTOP_METHODS.length + EXECUTION_HOST_METHODS.length

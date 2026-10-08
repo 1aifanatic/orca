@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { MOBILE_RPC_METHOD_ALLOWLIST } from './runtime-rpc-mobile-method-allowlist'
 import {
-  MOBILE_RPC_METHOD_ROUTE_ENTRY_COUNT,
+  EXECUTION_HOST_METHODS,
   MOBILE_RPC_METHOD_ROUTES
 } from './runtime-rpc-mobile-method-routing'
+import { PAIRED_DESKTOP_METHODS } from './runtime-rpc-mobile-paired-desktop-methods'
 
 describe('mobile RPC method routing census', () => {
   it('tags every allowlisted method exactly once', () => {
@@ -11,7 +12,9 @@ describe('mobile RPC method routing census', () => {
       (method) => !MOBILE_RPC_METHOD_ROUTES.has(method)
     )
     expect(untagged).toEqual([])
-    expect(MOBILE_RPC_METHOD_ROUTE_ENTRY_COUNT).toBe(MOBILE_RPC_METHOD_ROUTES.size)
+    expect(PAIRED_DESKTOP_METHODS.length + EXECUTION_HOST_METHODS.length).toBe(
+      MOBILE_RPC_METHOD_ROUTES.size
+    )
   })
 
   it('tags nothing outside the allowlist', () => {

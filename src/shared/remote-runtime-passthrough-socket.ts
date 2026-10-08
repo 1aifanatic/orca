@@ -1,29 +1,15 @@
 import WebSocket from 'ws'
 import type { PairingOffer } from './pairing'
 import type { RuntimeCapability } from './protocol-version'
-import {
-  decrypt,
-  decryptBytes,
-  deriveSharedKey,
-  encrypt,
-  generateKeyPair,
-  publicKeyFromBase64,
-  publicKeyToBase64
-} from './e2ee-crypto'
+import { decrypt, decryptBytes, encrypt } from './e2ee-crypto'
 import {
   classifyRemoteRuntimeReadyFrame,
   formatRemoteRuntimeCloseMessage,
   parseRemoteRuntimeAuthenticatedFrame
 } from './remote-runtime-client-handshake'
 import { RemoteRuntimeClientError } from './remote-runtime-client-error'
-import {
-  remoteRuntimeConnectFailureMessage,
-  remoteRuntimeConnectOptions
-} from './remote-runtime-connect-bound'
-import {
-  REMOTE_RUNTIME_MAX_WEBSOCKET_FRAME_BYTES,
-  serializeRemoteRuntimePayload
-} from './remote-runtime-memory-limits'
+import { serializeRemoteRuntimePayload } from './remote-runtime-memory-limits'
+import { openRemoteRuntimeWebSocket } from './remote-runtime-request-websocket'
 import { closeRemoteRuntimeSocket } from './remote-runtime-socket-close'
 import {
   startRemoteRuntimeSocketLiveness,
@@ -56,18 +42,35 @@ export function openRemoteRuntimePassthroughSocket(
   options: RemoteRuntimeSocketLivenessOptions & { timeoutMs: number }
 ): Promise<RemoteRuntimePassthroughSocket> {
   return new Promise((resolve, reject) => {
-    const keyPair = generateKeyPair()
-    const sharedKey = deriveSharedKey(keyPair.secretKey, publicKeyFromBase64(pairing.publicKeyB64))
     let state: 'awaiting_ready' | 'awaiting_authenticated' | 'ready' | 'ended' = 'awaiting_ready'
-    let ws: WebSocket
-    const outbound = new RemoteRuntimeSubscriptionOutbound({ fail: (error) => end(error) })
-    const handle: RemoteRuntimePassthroughSocket = {
-      send: (plaintext) =>
-        state === 'ready' && ws.readyState === WebSocket.OPEN
-          ? outbound.enqueueRequest(ws, encrypt(plaintext, sharedKey))
-          : false,
-      close: () => end(null)
+    const opened = openRemoteRuntimeWebSocket(pairing, {
+      onTextFrame: (_ws, frame) => onTextFrame(frame),
+      onBinaryFrame: (_ws, frame) => {
+        liveness.noteActivity()
+        const bytes = state === 'ready' ? decryptBytes(frame, sharedKey) : null
+        if (!bytes) {
+          end(protocolError('Remote Orca runtime returned an unreadable binary frame.'))
+          return
+        }
+        callbacks.onBinary(bytes)
+      },
+      onError: (_ws, error) => end(error),
+      onClose: (_ws, code, reason) =>
+        end(
+          new RemoteRuntimeClientError(
+            'remote_runtime_unavailable',
+            formatRemoteRuntimeCloseMessage(code, reason)
+          )
+        ),
+      onPong: () => liveness.noteActivity(),
+      onPing: () => liveness.noteActivity()
+    })
+    if (!opened.ok) {
+      reject(opened.error)
+      return
     }
+    const { ws, sharedKey, cleanup } = opened.socket
+    const outbound = new RemoteRuntimeSubscriptionOutbound({ fail: (error) => end(error) })
     const timeout = setTimeout(
       () =>
         end(
@@ -104,13 +107,10 @@ export function openRemoteRuntimePassthroughSocket(
       liveness.stop()
       outbound.releaseQueues()
       outbound.retainSocketMemoryUntilClose(ws)
-      ws.off('message', onMessage)
+      cleanup()
       closeRemoteRuntimeSocket(ws)
       if (!wasReady) {
-        reject(
-          error ??
-            new RemoteRuntimeClientError('remote_runtime_unavailable', 'Remote runtime closed.')
-        )
+        reject(error ?? new RemoteRuntimeClientError('remote_runtime_unavailable', 'Closed.'))
       } else if (error) {
         callbacks.onClose(error)
       }
@@ -120,22 +120,8 @@ export function openRemoteRuntimePassthroughSocket(
       return new RemoteRuntimeClientError('invalid_runtime_response', message)
     }
 
-    function onMessage(data: WebSocket.RawData, isBinary: boolean): void {
+    function onTextFrame(frame: string): void {
       liveness.noteActivity()
-      if (isBinary) {
-        // Why Buffer only: a socket left at the default binaryType delivers nothing else.
-        const bytes =
-          state === 'ready' && Buffer.isBuffer(data)
-            ? decryptBytes(new Uint8Array(data), sharedKey)
-            : null
-        if (!bytes) {
-          end(protocolError('Remote Orca runtime returned an unreadable binary frame.'))
-          return
-        }
-        callbacks.onBinary(bytes)
-        return
-      }
-      const frame = data.toString()
       if (state === 'awaiting_ready') {
         if (classifyRemoteRuntimeReadyFrame(frame) !== 'ready') {
           end(protocolError('Remote Orca runtime returned an invalid E2EE handshake frame.'))
@@ -177,48 +163,13 @@ export function openRemoteRuntimePassthroughSocket(
       }
       state = 'ready'
       clearTimeout(timeout)
-      resolve(handle)
+      resolve({
+        send: (plaintext) =>
+          state === 'ready' && ws.readyState === WebSocket.OPEN
+            ? outbound.enqueueRequest(ws, encrypt(plaintext, sharedKey))
+            : false,
+        close: () => end(null)
+      })
     }
-
-    try {
-      ws = new WebSocket(
-        pairing.endpoint,
-        remoteRuntimeConnectOptions({ maxPayload: REMOTE_RUNTIME_MAX_WEBSOCKET_FRAME_BYTES })
-      )
-    } catch (error) {
-      clearTimeout(timeout)
-      liveness.stop()
-      reject(
-        new RemoteRuntimeClientError(
-          'invalid_argument',
-          `Invalid remote endpoint: ${String(error)}`
-        )
-      )
-      return
-    }
-    ws.once('open', () =>
-      ws.send(
-        JSON.stringify({ type: 'e2ee_hello', publicKeyB64: publicKeyToBase64(keyPair.publicKey) })
-      )
-    )
-    ws.on('error', (error) =>
-      end(
-        new RemoteRuntimeClientError(
-          'remote_runtime_unavailable',
-          remoteRuntimeConnectFailureMessage(error, pairing.endpoint)
-        )
-      )
-    )
-    ws.on('close', (code, reason) =>
-      end(
-        new RemoteRuntimeClientError(
-          'remote_runtime_unavailable',
-          formatRemoteRuntimeCloseMessage(code, reason)
-        )
-      )
-    )
-    ws.on('message', onMessage)
-    ws.on('pong', () => liveness.noteActivity())
-    ws.on('ping', () => liveness.noteActivity())
   })
 }

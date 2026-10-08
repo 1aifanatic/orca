@@ -26,6 +26,8 @@ export type RemoteRuntimeWebSocketCallbacks = {
   onClose: (ws: WebSocket, code: number, reason: Buffer) => void
   onError: (ws: WebSocket, error: RemoteRuntimeClientError) => void
   onTextFrame: (ws: WebSocket, frame: string) => void
+  // Why optional: request sockets treat a binary frame as a protocol error; a relay forwards it.
+  onBinaryFrame?: (ws: WebSocket, frame: Uint8Array<ArrayBufferLike>) => void
   // Why: protocol-level pongs (and server heartbeat pings) are the liveness
   // signal for detecting half-open tunnels that never deliver `close` (#7718).
   onPong?: (ws: WebSocket) => void
@@ -64,6 +66,10 @@ export function openRemoteRuntimeWebSocket(
   }
   const onClose = (code: number, reason: Buffer): void => callbacks.onClose(ws, code, reason)
   const onMessage = (data: WebSocket.RawData, isBinary: boolean): void => {
+    if (isBinary && callbacks.onBinaryFrame && Buffer.isBuffer(data)) {
+      callbacks.onBinaryFrame(ws, new Uint8Array(data))
+      return
+    }
     if (isBinary) {
       callbacks.onError(
         ws,

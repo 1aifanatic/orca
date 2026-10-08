@@ -37,10 +37,7 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcMobileDevices {
     sendBinary: (response: Uint8Array<ArrayBufferLike>) => boolean | void,
     socket: AuthenticatedMobileSocket
   ): boolean {
-    if (request.method === 'runtime.clientCapabilities.update') {
-      this.mobileDesktopRelay?.forwardClientCapabilities(socket.connectionId, rawMessage)
-    }
-    const executionHost: unknown = Reflect.get(request, 'executionHost')
+    const { executionHost } = request
     if (executionHost === undefined) {
       return false
     }
@@ -139,12 +136,17 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcMobileDevices {
       return
     }
 
-    if (
-      device.scope === 'mobile' &&
-      authenticatedSocket &&
-      this.relayMobileRequest(request, rawMessage, reply, sendBinary, authenticatedSocket)
-    ) {
-      return
+    if (device.scope === 'mobile' && authenticatedSocket) {
+      // Why: the phone's open server sockets must see the same capabilities the desktop does.
+      if (request.method === 'runtime.clientCapabilities.update') {
+        this.mobileDesktopRelay?.forwardClientCapabilities(
+          authenticatedSocket.connectionId,
+          rawMessage
+        )
+      }
+      if (this.relayMobileRequest(request, rawMessage, reply, sendBinary, authenticatedSocket)) {
+        return
+      }
     }
 
     // Why: bind deviceToken to this socket so ws.on('close') knows which mobile client disconnected.

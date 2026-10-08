@@ -16,6 +16,8 @@ const sockets = vi.hoisted(() => {
   const opened: FakeSocket[] = []
   return opened
 })
+// Holds every socket open until released, so a test can act while one is still connecting.
+const openGate = vi.hoisted(() => ({ wait: Promise.resolve() }))
 vi.mock('../../../shared/remote-runtime-passthrough-socket', () => ({
   openRemoteRuntimePassthroughSocket: async (
     _pairing: unknown,
@@ -24,6 +26,7 @@ vi.mock('../../../shared/remote-runtime-passthrough-socket', () => ({
   ) => {
     const socket: FakeSocket = { sent: [], capabilities, callbacks, closed: false }
     sockets.push(socket)
+    await openGate.wait
     return {
       send: (frame: string) => {
         socket.sent.push(frame)
@@ -38,25 +41,39 @@ vi.mock('../../../shared/remote-runtime-passthrough-socket', () => ({
 
 const ok = (result: unknown) => ({ id: 'x', ok: true as const, result, _meta: { runtimeId: 'h' } })
 
+const SYNCED = ok({
+  devices: [
+    { phoneKey: 'phone-1', deviceId: 'child', token: 'host-token' },
+    { phoneKey: 'phone-2', deviceId: 'child-2', token: 'host-token-2' }
+  ]
+})
+
 function relayWithPhone(
-  syncResponse: () => RuntimeRpcResponse<unknown> = () =>
-    ok({ devices: [{ phoneKey: 'phone-1', deviceId: 'child', token: 'host-token' }] })
+  syncResponse: () => RuntimeRpcResponse<unknown> | Promise<RuntimeRpcResponse<unknown>> = () =>
+    SYNCED
 ) {
+  const syncCalls: unknown[] = []
   const hosts: MobileDesktopRelayHosts = {
     resolve: async (environmentId) => ({
       environmentId,
       fence: 'f',
       pairing: { v: 2, endpoint: 'ws://127.0.0.1:1', deviceToken: 'desktop', publicKeyB64: 'k' }
     }),
-    call: async (_host, method) =>
-      method === 'status.get'
-        ? ok({ capabilities: [DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY] })
-        : syncResponse(),
+    call: async (_host, method, params) => {
+      if (method === 'status.get') {
+        return ok({ capabilities: [DELEGATED_MOBILE_DEVICES_RUNTIME_CAPABILITY] })
+      }
+      syncCalls.push(params)
+      return syncResponse()
+    },
     onEnvironmentRetired: () => () => {}
   }
   const relay = new MobileDesktopRelay({
     hosts,
-    listPhones: () => [{ phoneKey: 'phone-1', name: 'iPhone via Mac' }],
+    listPhones: () => [
+      { phoneKey: 'phone-1', name: 'iPhone via Mac' },
+      { phoneKey: 'phone-2', name: 'iPad via Mac' }
+    ],
     allocateStreamId: () => 1
   })
   const replies: string[] = []
@@ -69,7 +86,13 @@ function relayWithPhone(
     reply: (frame) => replies.push(frame),
     sendBinary: () => true
   }
-  return { relay, phone, replies, setCapabilities: (next: string[]) => (capabilities = next) }
+  return {
+    relay,
+    phone,
+    replies,
+    syncCalls,
+    setCapabilities: (next: string[]) => (capabilities = next)
+  }
 }
 
 describe('MobileDesktopRelay', () => {
@@ -139,7 +162,7 @@ describe('MobileDesktopRelay', () => {
     relay.forward(phone, 'env-1', { id: 'c', method: 'terminal.list' }, '{"id":"c"}')
     await vi.waitFor(() => expect(sockets).toHaveLength(2))
     relay.closePhoneConnection('conn-1')
-    expect(sockets[1]!.closed).toBe(true)
+    await vi.waitFor(() => expect(sockets[1]!.closed).toBe(true))
   })
 
   it('treats a server whose sync failed as unavailable, and syncs again on the next request', async () => {
@@ -160,11 +183,53 @@ describe('MobileDesktopRelay', () => {
       id: 'a',
       error: { code: 'remote_runtime_unavailable' }
     })
-    await expect(relay.hostState('env-1')).resolves.toBe('unavailable')
     expect(sockets).toHaveLength(0)
 
     failing = false
     relay.forward(phone, 'env-1', { id: 'b', method: 'terminal.list' }, '{"id":"b"}')
     await vi.waitFor(() => expect(sockets[0]?.sent).toHaveLength(1))
+  })
+
+  it('runs one sync when two phones race to the same server', async () => {
+    sockets.length = 0
+    const { relay, phone, syncCalls } = relayWithPhone()
+    const tablet: RelayedPhone = { ...phone, connectionId: 'conn-2', deviceId: 'phone-2' }
+    relay.forward(phone, 'env-1', { id: 'a', method: 'terminal.list' }, '{"id":"a"}')
+    relay.forward(tablet, 'env-1', { id: 'b', method: 'terminal.list' }, '{"id":"b"}')
+    await vi.waitFor(() => expect(sockets.map((socket) => socket.sent.length)).toEqual([1, 1]))
+    expect(syncCalls).toHaveLength(1)
+  })
+
+  it('closes a socket still opening when its server is removed, answering and never sending its requests', async () => {
+    sockets.length = 0
+    let release = () => {}
+    openGate.wait = new Promise((resolve) => (release = resolve))
+    const { relay, phone, replies } = relayWithPhone()
+    relay.forward(phone, 'env-1', { id: 'a', method: 'terminal.list' }, '{"id":"a"}')
+    await vi.waitFor(() => expect(sockets).toHaveLength(1))
+    relay.retireEnvironment('env-1')
+    expect(JSON.parse(replies[0]!)).toMatchObject({
+      id: 'a',
+      error: { code: 'remote_runtime_unavailable' }
+    })
+    release()
+    await vi.waitFor(() => expect(sockets[0]!.closed).toBe(true))
+    expect(sockets[0]!.sent).toEqual([])
+    openGate.wait = Promise.resolve()
+  })
+
+  it('opens nothing for a phone that disconnects while its server syncs, and answers nobody', async () => {
+    sockets.length = 0
+    let finishSync = () => {}
+    const { relay, phone, replies, syncCalls } = relayWithPhone(
+      () => new Promise((resolve) => (finishSync = () => resolve(SYNCED)))
+    )
+    relay.forward(phone, 'env-1', { id: 'a', method: 'terminal.list' }, '{"id":"a"}')
+    await vi.waitFor(() => expect(syncCalls).toHaveLength(1))
+    relay.closePhoneConnection('conn-1')
+    finishSync()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(sockets).toEqual([])
+    expect(replies).toEqual([])
   })
 })

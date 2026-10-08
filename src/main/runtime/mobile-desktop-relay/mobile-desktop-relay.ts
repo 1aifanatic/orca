@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import type { MobileDesktopRelayHostState } from '../../../shared/mobile-desktop-relay-contract'
 import type { DelegatedMobileDeviceSyncParams } from '../../../shared/delegated-mobile-device-contract'
 import type { RuntimeCapability } from '../../../shared/protocol-version'
 import { RemoteRuntimeClientError } from '../../../shared/remote-runtime-client-error'
@@ -28,7 +27,6 @@ export type RelayedPhone = {
 type OpenedRelayLink = { socket: RemoteRuntimePassthroughSocket; hostToken: string }
 
 class RelayLink {
-  socket?: RemoteRuntimePassthroughSocket
   readonly replies: RelayedPhoneReplies
   readonly opened: Promise<OpenedRelayLink>
 
@@ -51,6 +49,7 @@ class RelayLink {
  * - Upstream, the phone's desktop token is swapped wherever it appears, not per field.
  * - Only `execution-host` methods relay (MOBILE_RPC_METHOD_ROUTES); both tables have census tests.
  * - A server without the delegated-devices capability is `update-needed`; nothing relays to it.
+ * - A server-side revoke of a phone is final until the next sync.
  * - Hidden until S2: MOBILE_DESKTOP_RELAY_RUNTIME_CAPABILITY is not advertised yet.
  */
 export class MobileDesktopRelay {
@@ -84,12 +83,19 @@ export class MobileDesktopRelay {
     request: { id: string; method: string },
     frame: string
   ): void {
-    if (
-      MOBILE_RPC_METHOD_ROUTES.get(request.method) !== 'execution-host' ||
-      RELAYED_STREAM_CARRIERS.get(request.method) === 'phone-binary-frames'
-    ) {
+    if (MOBILE_RPC_METHOD_ROUTES.get(request.method) !== 'execution-host') {
       phone.reply(
         failure(request.id, 'forbidden', `Method '${request.method}' runs on the paired desktop`)
+      )
+      return
+    }
+    if (RELAYED_STREAM_CARRIERS.get(request.method) === 'phone-binary-frames') {
+      phone.reply(
+        failure(
+          request.id,
+          'forbidden',
+          `Method '${request.method}' is driven by binary frames, which the desktop does not relay`
+        )
       )
       return
     }
@@ -97,6 +103,10 @@ export class MobileDesktopRelay {
     link.replies.noteForwarded(request.id)
     link.opened.then(
       ({ socket, hostToken }) => {
+        // Why: a link ended while opening already answered this request; never send it late.
+        if (!this.isCurrent(link)) {
+          return
+        }
         if (!socket.send(rewriteRelayedPhoneRequest(frame, phone.deviceToken, hostToken))) {
           this.endLink(link, unavailable('The server connection could not take the request.'))
         }
@@ -118,6 +128,7 @@ export class MobileDesktopRelay {
       link.replies.noteForwarded(id, { swallowReplies: true })
       link.opened.then(
         ({ socket, hostToken }) =>
+          this.isCurrent(link) &&
           socket.send(rewriteRelayedPhoneRequest(frame, link.phone.deviceToken, hostToken, id)),
         () => {}
       )
@@ -146,16 +157,18 @@ export class MobileDesktopRelay {
   phonesChanged(): void {
     for (const environmentId of this.grants.keys()) {
       this.grants.delete(environmentId)
-      void this.hostState(environmentId)
+      void this.resync(environmentId)
     }
   }
 
-  async hostState(environmentId: string): Promise<MobileDesktopRelayHostState> {
+  private async resync(environmentId: string): Promise<void> {
     try {
       const host = await this.options.hosts.resolve(environmentId)
-      return host ? (await this.grantsFor(host, null)).kind : 'unavailable'
+      if (host) {
+        await this.grantsFor(host, null)
+      }
     } catch {
-      return 'unavailable'
+      // An unreachable server syncs again on its next relayed request.
     }
   }
 
@@ -188,6 +201,10 @@ export class MobileDesktopRelay {
     if (grants.kind === 'update-needed') {
       throw unavailable('The server needs an Orca update to open its workspaces from a phone.')
     }
+    // Why: the phone left or the server was retired while syncing; open nothing for it.
+    if (!this.isCurrent(link)) {
+      throw unavailable('The relayed request was cancelled.')
+    }
     const grant = grants.grants.get(phone.deviceId)
     if (!grant || grants.refused.has(phone.deviceId)) {
       throw unavailable('The server does not accept this phone.')
@@ -218,11 +235,6 @@ export class MobileDesktopRelay {
         },
         { timeoutMs: RELAY_CONNECT_TIMEOUT_MS }
       )
-      if (this.links.get(linkKey(phone.connectionId, link.environmentId)) !== link) {
-        socket.close()
-        throw unavailable('The relayed request was cancelled.')
-      }
-      link.socket = socket
       return { socket, hostToken: grant.token }
     } catch (error) {
       if (error instanceof RemoteRuntimeClientError && error.code === 'unauthorized') {
@@ -263,17 +275,23 @@ export class MobileDesktopRelay {
     )
   }
 
+  private isCurrent(link: RelayLink): boolean {
+    return this.links.get(linkKey(link.phone.connectionId, link.environmentId)) === link
+  }
+
   private endLink(link: RelayLink, error: RemoteRuntimeClientError | null): void {
-    const key = linkKey(link.phone.connectionId, link.environmentId)
-    if (this.links.get(key) !== link) {
+    if (!this.isCurrent(link)) {
       return
     }
-    this.links.delete(key)
-    link.socket?.close()
+    this.links.delete(linkKey(link.phone.connectionId, link.environmentId))
+    link.opened.then(
+      ({ socket }) => socket.close(),
+      () => {}
+    )
     const openRequestIds = link.replies.takeOpenRequestIds()
     if (error) {
       for (const id of openRequestIds) {
-        link.phone.reply(failure(id, 'remote_runtime_unavailable', error.message))
+        link.phone.reply(failure(id, error.code, error.message))
       }
     }
   }
