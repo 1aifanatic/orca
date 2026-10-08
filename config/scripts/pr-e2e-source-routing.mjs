@@ -46,6 +46,18 @@ export const PR_E2E_SOURCE_ROUTES = [
         ))
   },
   {
+    id: 'ssh.orcad-browser-drop-owner',
+    specs: ['tests/e2e/ssh-orcad-browser-drop-owner.spec.ts'],
+    matches: (file) =>
+      /^tests\/e2e\/helpers\/(?:orcad-convert-(?:flow|host)|orcad-upgrade-profile|docker-ssh-relay-target|browser-split-(?:guest-probes|page-server))\.ts$/.test(
+        file
+      ) ||
+      (isProductSource(file) &&
+        /^src\/renderer\/src\/(?:lib\/(?:file-preview|workspace-file-drag|worktree-runtime-owner|connection-context)\.ts|components\/(?:right-sidebar\/FileExplorer(?:Row|VirtualRows)\.tsx|browser-pane\/(?:navigate\/use-browser-page-navigation-downloads\.ts|host-guest\/attach-browser-page-webview\.ts)))$/.test(
+          file
+        ))
+  },
+  {
     id: 'ssh.orcad-open-in-owner',
     specs: ['tests/e2e/ssh-orcad-open-in-owner.spec.ts'],
     matches: (file) =>
