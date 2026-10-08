@@ -14,14 +14,20 @@ protected files keeps working after its old executable is deleted.
 
 So a packaged macOS GUI app starts its daemon from a private copy that the updater never touches:
 
-- `macos-daemon-bundle.ts` copies the whole bundle the running main process executes from (APFS
-  clone, regular copy otherwise) into `userData/daemon-host/macos/runtime-*/app.noindex`, then
-  requires `codesign --verify --deep --strict` to pass and the designated requirement to match the
-  source.
-  A partial copy carries neither the signature nor the frameworks the daemon needs.
-- `macos-daemon-launchd.ts` runs the copy's main executable in Node mode as a unique, non-persistent
-  launchd job, so the daemon has Orca's own identity rather than the UI process's replaceable path.
-  The job file is 0600 and deleted right after bootstrap, because the environment may hold
+- Each packaged macOS app ships a signed helper, `Contents/Helpers/Orca Terminal Host.app` (about
+  124 MiB): the pinned Node from `src/shared/node-runtime-pin.ts` as its main executable, the
+  daemon's `out/main` JS and that slice's node-pty. `config/scripts/macos-terminal-host-bundle.cjs`
+  builds and signs it in `afterPack`, boots it through one PTY round trip, and fails the build on any
+  layout, Info.plist, OS floor, architecture or signature drift.
+- `macos-daemon-bundle.ts` copies that helper, never the whole app, from the bundle the running
+  main process executes from (APFS clone, regular copy otherwise) into
+  `userData/daemon-host/macos/runtime-*/app.noindex`, then requires `codesign --verify --deep
+--strict` to pass and the copy's designated requirement to equal the running app's. An app
+  without the helper falls back to the fork.
+- `macos-daemon-launchd.ts` runs the copy's Node on the copy's `daemon-entry.js` as a unique,
+  non-persistent launchd job, so the daemon has Orca's own identity rather than the UI process's
+  replaceable path. `--entry-path` stays the installed app's entry, which the replacement preflight
+  compares. The job file is 0600 and deleted right after bootstrap, because the environment may hold
   credentials. It sets `AssociatedBundleIdentifiers` to `com.stablyai.orca`, which is how a launchd
   job not installed through SMAppService names the app it belongs to for Local Network access.
   Readiness is the normal authenticated handshake, fenced by the launch nonce.
@@ -29,6 +35,36 @@ So a packaged macOS GUI app starts its daemon from a private copy that the updat
 Node servers, SSH hosts, unpackaged builds, Linux and Windows keep the fork launcher. Adopting an
 existing daemon never copies. Telemetry reports a daemon started this way as
 `spawner_path_class=stable-copy`.
+
+Only Developer ID builds exercise the helper path in practice. A local ad hoc build's designated
+requirement is a cdhash, which the helper (a different binary) cannot match, so it falls back to the
+fork.
+
+## Why the helper is `com.stablyai.orca`
+
+TCC records grants against the designated requirement, which for Orca is the identifier plus team.
+Signing the helper with the app's own identifier lets it inherit every existing grant, including Full
+Disk Access, which a user can only add by hand. A distinct identifier would be a new client: new
+folder prompts naming it, and a new Full Disk Access row for every user.
+
+## macOS floor
+
+The helper's Node declares `LC_BUILD_VERSION minos 13.5`, which is also the helper's
+`LSMinimumSystemVersion` and `NODE_RUNTIME_DARWIN_MINIMUM_OS`. Packaging fails if a Node pin bump
+changes it. Below 13.5 the launcher returns before copying and the fork runs, so those Macs keep the
+pre-#25848 behaviour; Orca itself still supports macOS 12.0.
+
+## First launch
+
+On the first exec of a freshly installed helper, the daemon's `/usr/bin/login` preflight can time out
+while macOS assesses the new binary. The daemon then spawns that one shell directly; later shells use
+`login` as usual.
+
+## Security
+
+The helper is a signed "run any JS as Orca" binary: it honours `NODE_OPTIONS` and any script path,
+and Electron's fuses do not apply to it. Orca's own binary already allows the same, because its
+RunAsNode fuse is enabled, so the helper adds no new exposure.
 
 ## Fallback states
 
@@ -61,16 +97,19 @@ Collection matches the directory, not the bundle inside it, so copies made befor
 
 ## LaunchServices and Spotlight
 
-A copy is a full app bundle, so Spotlight would list it as a second Orca and macOS could register
-it as another `com.stablyai.orca` that claims `orca:` links and Markdown/CSV files. Copies sit in
-a `.noindex` folder, which Spotlight skips, and Orca never registers them. Starting the daemon
-through launchd leaves no record, but another process running the copy's executable directly can
-make macOS register it, so retirement runs `lsregister -u` on each bundle before deleting it.
+Copies made by earlier builds of this change are full app bundles, which Spotlight would list as a
+second Orca and macOS could register as another `com.stablyai.orca` that claims `orca:` links and
+Markdown/CSV files. The helper declares no links, documents or types, has a lower
+`CFBundleVersion` and `LSUIElement`, and was not registered in the signed spike, nested or copied.
+Copies still sit in a `.noindex` folder, which Spotlight skips, and Orca never registers them.
+Starting the daemon through launchd leaves no record, but another process running the copy's
+executable directly can make macOS register it, so retirement runs `lsregister -u` on each bundle
+before deleting it.
 
-Local Network access does not depend on LaunchServices: macOS identifies the client by its code
-signature and main-executable UUID, which the clone keeps, and the job's
-`AssociatedBundleIdentifiers` ties it to Orca. Do not register copies explicitly
-(`lsregister -f` or `LSRegisterURL`): that makes them candidates for links and documents.
+The helper's main-executable UUID is Node's, shared by every official Node 24.21.0 binary of that
+architecture, so it is not unique to Orca. Local Network access still passed in the signed spike:
+macOS matched the client by its code signature, and the job's `AssociatedBundleIdentifiers` ties it
+to Orca. Do not register copies explicitly (`lsregister -f` or `LSRegisterURL`).
 
 ## Rollback
 
@@ -79,8 +118,9 @@ at its first line: every launch then takes the fork path. Keep the rest, above a
 `retireAbandonedMacDaemonBundles` call in the launcher's `finally` and
 `macos-daemon-bundle-retirement.ts`, until no copy-launched daemon can remain. Copy-launched
 daemons that are still running are adopted as usual, and their copies retire once their jobs exit.
-Never revert the cleanup: the old code never deletes copies, and each one keeps about 567 MB after
-an update removes the bundle it was cloned from.
+Never revert the cleanup: the old code never deletes copies, and each one keeps about 124 MiB (a
+full-app copy from an earlier build, about 628 MiB) after an update removes the bundle it was cloned
+from.
 
 ## Existing sessions and status
 
