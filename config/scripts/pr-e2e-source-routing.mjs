@@ -15,6 +15,14 @@ const NATIVE_IME_HARNESS =
 
 export const PR_E2E_SOURCE_ROUTES = [
   {
+    id: 'ssh.orcad-explorer-watch-recovery',
+    specs: ['tests/e2e/ssh-orcad-explorer-watch-recovery.spec.ts'],
+    matches: (file) =>
+      isProductSource(file) &&
+      (file === 'src/renderer/src/components/right-sidebar/useFileExplorerWatch.ts' ||
+        file === 'src/renderer/src/hooks/worktree-file-change-event.ts')
+  },
+  {
     id: 'ssh.orcad-editor-watch-recovery',
     specs: ['tests/e2e/ssh-orcad-editor-watch-recovery.spec.ts'],
     matches: (file) =>
