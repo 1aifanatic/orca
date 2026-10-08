@@ -49,6 +49,8 @@ export function startAgentSessionOperationMaintenance(host: JournalHostDatabase)
   }
   const maintenance = new AgentSessionOperationMaintenance(host)
   const timer = setInterval(() => maintenance.run(Date.now()), EXPIRY_INTERVAL_MS)
-  timer.unref()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Node's interval handle has unref; mobile's test typecheck sees React Native timers, typed as a number.
+  const unrefable = timer as unknown as { unref?: () => void }
+  unrefable.unref?.()
   return () => clearInterval(timer)
 }
