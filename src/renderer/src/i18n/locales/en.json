@@ -6986,11 +6986,11 @@
           "agentPermissionsInfo": "Agent permissions info",
           "agentPermissionsTooltip": "Doesn't apply to agents where you've overridden launch arguments.",
           "argumentsUse": {
-            "claude": "Used when Claude runs in a terminal, including terminal chats. Structured chats don't use these; put their settings in ~/.claude/settings.json.",
-            "codex": "Used when Codex runs in a terminal, including terminal chats. Structured chats don't use these; put their settings in ~/.codex/config.toml.",
-            "grok": "Used when Grok runs in a terminal, including terminal chats. Structured chats don't use these; put their settings in ~/.grok/config.toml.",
-            "opencode": "Used when OpenCode runs in a terminal, including terminal chats. Structured chats don't use these; put their settings in ~/.config/opencode/opencode.json.",
-            "omp": "Used when OMP runs in a terminal, including terminal chats. Structured chats don't use these."
+            "claude": "Used in terminal tabs and terminal chats. The updated native chat doesn't use these; put its settings in ~/.claude/settings.json.",
+            "codex": "Used in terminal tabs and terminal chats. The updated native chat doesn't use these; put its settings in ~/.codex/config.toml.",
+            "grok": "Used in terminal tabs and terminal chats. The updated native chat doesn't use these; put its settings in ~/.grok/config.toml.",
+            "opencode": "Used in terminal tabs and terminal chats. The updated native chat doesn't use these; put its settings in ~/.config/opencode/opencode.json.",
+            "omp": "Used in terminal tabs and terminal chats. The updated native chat doesn't use these."
           },
           "agentPermissionsDescription": "Choose whether Orca launches agents with fewer permission prompts or with manual checks.",
           "agentPermissionsYolo": "Yolo",

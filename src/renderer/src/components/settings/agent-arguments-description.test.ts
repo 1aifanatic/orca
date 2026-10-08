@@ -8,18 +8,18 @@ describe('agentArgumentsDescription', () => {
     ['grok', '~/.grok/config.toml'],
     ['opencode', '~/.config/opencode/opencode.json']
   ] as const)('tells %s users where chat settings go instead', (agent, configFile) => {
-    expect(agentArgumentsDescription(agent)).toContain("Structured chats don't use these")
+    expect(agentArgumentsDescription(agent)).toContain("The updated native chat doesn't use these")
     expect(agentArgumentsDescription(agent)).toContain(configFile)
   })
 
   it('names no file for an agent whose config Orca has not verified', () => {
     expect(agentArgumentsDescription('omp')).toBe(
-      "Used when OMP runs in a terminal, including terminal chats. Structured chats don't use these."
+      "Used in terminal tabs and terminal chats. The updated native chat doesn't use these."
     )
   })
 
   // Agents with only terminal chats launch with these Arguments everywhere.
-  it('says nothing for an agent with no structured chat', () => {
+  it('says nothing for an agent without the updated native chat', () => {
     expect(agentArgumentsDescription('gemini')).toBeUndefined()
   })
 })
