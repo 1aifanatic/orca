@@ -17,7 +17,6 @@ import { WorktreeCreate, WorktreePrefetchCreateBase } from './worktree-create-sc
 import {
   WorktreeActivate,
   WorktreeForceDeleteBranch,
-  WorktreeRemovalStateParams,
   WorktreeRemove,
   WorktreeResolveMrBase,
   WorktreeResolvePrBase,
@@ -27,10 +26,12 @@ import {
   WorktreeTeardownMissingTerminalsParams
 } from './worktree-schemas'
 import { WORKTREE_CATALOG_METHODS } from './worktree-catalog-methods'
+import { WORKTREE_REMOVAL_STATE_METHODS } from './worktree-removal-state-method'
 import { readsWorktreeRemovalMarker } from '../worktree-removal-marker-projection'
 
 export const WORKTREE_METHODS = [
   ...WORKTREE_CATALOG_METHODS,
+  ...WORKTREE_REMOVAL_STATE_METHODS,
   defineMethod({
     name: 'worktree.teardownMissingTerminals',
     params: WorktreeTeardownMissingTerminalsParams,
@@ -272,22 +273,6 @@ export const WORKTREE_METHODS = [
         ...(repoId ? { catalogVersion: getLocalWorktreeCatalogVersion(repoId) } : {})
       }
     }
-  }),
-  // Why a read, not a held `worktree.rm`: a caller waiting out a long delete polls this, so it holds
-  // no connection or long-poll slot while Git works.
-  defineMethod({
-    name: 'worktree.removalState',
-    params: WorktreeRemovalStateParams,
-    handler: async (params, { runtime }) =>
-      runtime.readWorktreeRemovalState(
-        params.worktreeId,
-        // Same host spelling worktree.rm acted on, or a paired caller reads the wrong host.
-        resolvePairedCallerHostId(
-          () => runtime.listRepos(),
-          `id:${params.worktreeId}`,
-          params.hostId
-        )
-      )
   }),
   defineMethod({
     name: 'worktree.forceDeleteBranch',
