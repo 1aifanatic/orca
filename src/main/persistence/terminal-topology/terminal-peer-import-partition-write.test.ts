@@ -49,38 +49,56 @@ function leafLayout(tabId: string): WorkspaceSessionState['terminalLayoutsByTabI
   }
 }
 
+function mainSession(revision: number): WorkspaceSessionState {
+  return {
+    ...getDefaultWorkspaceSession(),
+    tabsByWorktree: { [WORKTREE_ID]: [tab('main-tab')] },
+    terminalLayoutsByTabId: { 'main-tab': leafLayout('main-tab') },
+    terminalPtyIncarnationsByPaneKey: { [`main-tab:${LEAF}`]: 'main-incarnation' },
+    terminalTopologyRevisionByRepoId: { 'ssh-repo': revision }
+  }
+}
+
+function importHostPull(store: Store): WorkspaceSessionState {
+  importPeerTopology(
+    store,
+    'target-1',
+    {
+      tabsByWorktree: { [WORKTREE_ID]: [tab('host-tab')] },
+      terminalLayoutsByTabId: { 'host-tab': leafLayout('host-tab') },
+      terminalPtyIncarnationsByPaneKey: { [`host-tab:${LEAF}`]: 'host-incarnation' }
+    },
+    () => false
+  )
+  return store.getWorkspaceSession(HOST_ID)
+}
+
 describe('a host pull into an SSH partition main has published nothing since', () => {
-  // Cross-check: the import is a plain patch, so rows and every record the pull names are the host's.
-  it("replaces main's rows and the pane records the pull names", () => {
+  // As main's membership rebase did: once main fenced the repo, its tabs and panes stand.
+  it("keeps main's tabs and pane records in a repo main has fenced, dropping host-only tabs", () => {
     const store = openStore()
-    store.setWorkspaceSession(
-      {
-        ...getDefaultWorkspaceSession(),
-        tabsByWorktree: { [WORKTREE_ID]: [tab('main-tab')] },
-        terminalLayoutsByTabId: { 'main-tab': leafLayout('main-tab') },
-        terminalPtyIncarnationsByPaneKey: { [`main-tab:${LEAF}`]: 'main-incarnation' },
-        terminalTopologyRevisionByRepoId: { 'ssh-repo': 1 }
-      },
-      HOST_ID
-    )
+    store.setWorkspaceSession(mainSession(1), HOST_ID)
 
-    importPeerTopology(
-      store,
-      'target-1',
-      {
-        tabsByWorktree: { [WORKTREE_ID]: [tab('host-tab')] },
-        terminalLayoutsByTabId: { 'host-tab': leafLayout('host-tab') },
-        terminalPtyIncarnationsByPaneKey: { [`host-tab:${LEAF}`]: 'host-incarnation' }
-      },
-      () => false
-    )
+    const saved = importHostPull(store)
 
-    const saved = store.getWorkspaceSession(HOST_ID)
+    expect(saved.tabsByWorktree[WORKTREE_ID]?.map((row) => row.id)).toEqual(['main-tab'])
+    expect(Object.keys(saved.terminalLayoutsByTabId)).toEqual(['main-tab'])
+    expect(saved.terminalPtyIncarnationsByPaneKey).toEqual({
+      [`main-tab:${LEAF}`]: 'main-incarnation'
+    })
+    expect(saved.terminalTopologyRevisionByRepoId).toEqual({ 'ssh-repo': 1 })
+  })
+
+  it("replaces main's rows and the pane records the pull names in a repo main never fenced", () => {
+    const store = openStore()
+    store.setWorkspaceSession(mainSession(0), HOST_ID)
+
+    const saved = importHostPull(store)
+
     expect(saved.tabsByWorktree[WORKTREE_ID]?.map((row) => row.id)).toEqual(['host-tab'])
     expect(Object.keys(saved.terminalLayoutsByTabId)).toEqual(['host-tab'])
     expect(saved.terminalPtyIncarnationsByPaneKey).toEqual({
       [`host-tab:${LEAF}`]: 'host-incarnation'
     })
-    expect(saved.terminalTopologyRevisionByRepoId).toEqual({ 'ssh-repo': 1 })
   })
 })

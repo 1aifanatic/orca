@@ -152,7 +152,8 @@ describe('persistence.terminal-topology span', () => {
 
   it("commits an SSH import into that target's partition alone", () => {
     const patchWorkspaceSession = vi.fn()
-    const store = { getWorkspaceSession: () => session(), patchWorkspaceSession }
+    const unfenced = { ...session(), terminalTopologyRevisionByRepoId: {} }
+    const store = { getWorkspaceSession: () => unfenced, patchWorkspaceSession }
     importPeerTopology(store, 'target-1', { tabsByWorktree: {} }, () => false)
     importPeerTopology(store, 'target-1', {}, () => false)
 
@@ -250,9 +251,20 @@ describe('an SSH import against a mirror main has published past', () => {
   })
 
   it('applies the pull as the window merged it when main has published nothing since', () => {
-    const { kept, written } = importInto(mainAfterWindowRead(), false)
+    const unfenced = { ...mainAfterWindowRead(), terminalTopologyRevisionByRepoId: {} }
+    const { kept, written } = importInto(unfenced, false)
 
     expect(written).toEqual(windowPull())
     expect(kept).toBe(false)
+  })
+
+  it("keeps main's rows and adds no host tab in a repo main fenced, as its rebase did", () => {
+    const { written } = importInto(mainAfterWindowRead(), false)
+
+    expect(written.tabsByWorktree?.[WORKTREE_ID]?.map((row) => row.id)).toEqual([
+      SPLIT_TAB,
+      PINNED_TAB,
+      NEW_TAB
+    ])
   })
 })
