@@ -1,5 +1,6 @@
 import { parseExecutionHostId } from '../../../../shared/execution-host'
-import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
+import type { TerminalPaneLayoutNode, TerminalTab } from '../../../../shared/terminal-tab-types'
+import { terminalPanePlacementRow } from '@/lib/terminal-pane-placement-row'
 import type { TerminalSurfaceCreateRequest } from '../../../../shared/terminal-surface-create'
 import type {
   TerminalTopologyReply,
@@ -123,28 +124,44 @@ export function isTerminalTabMirroredFromMain(
   )
 }
 
-/**
- * Commits a tab or pane this window created into main, unbound, and shows it here until the push
- * holding main's reply. The entry names the tab for a new tab, else the pane.
- */
-export function commitTerminalSurfaceCreate(
-  state: AppState,
+/** A creation's pending entry: the tab for a new tab, else the pane. */
+function pendingTerminalSurfaceCreate({
+  worktreeId,
+  tabId,
+  leafId,
+  placement
+}: TerminalSurfaceCreateRequest): PendingTerminalPane {
+  return {
+    worktreeId,
+    tabId,
+    ...(placement.kind !== 'new-tab' && leafId ? { leafId } : {}),
+    change: 'add'
+  }
+}
+
+/** A new tab's creation commit, and the entry that shows it here until main's reply. */
+export function newTerminalTabCreate(
+  tab: TerminalTab,
+  leafId: string | undefined
+): { request: TerminalSurfaceCreateRequest; entry: PendingTerminalPane } {
+  const request: TerminalSurfaceCreateRequest = {
+    worktreeId: tab.worktreeId,
+    tabId: tab.id,
+    ...(leafId ? { leafId } : {}),
+    placement: { kind: 'new-tab', row: terminalPanePlacementRow(tab) }
+  }
+  return { request, entry: pendingTerminalSurfaceCreate(request) }
+}
+
+/** Commits a creation this window shows as `entry` into main, unbound; main's reply settles it. */
+export function sendTerminalSurfaceCreate(
+  store: Pick<TerminalSlice, 'settlePendingTerminalPane'>,
+  entry: PendingTerminalPane,
   request: TerminalSurfaceCreateRequest
 ): void {
-  const { worktreeId, tabId, leafId, placement } = request
-  if (!isTerminalTabMirroredFromMain(state, worktreeId, tabId)) {
-    return
-  }
-  commitPendingTerminalChange(
-    state,
-    {
-      worktreeId,
-      tabId,
-      ...(placement.kind !== 'new-tab' && leafId ? { leafId } : {}),
-      change: 'add'
-    },
+  settlePendingTerminalChangeOnReply(store, entry, () =>
     // Why optional: an older preload can linger through an in-place renderer reload.
-    () => globalThis.window?.api?.session?.createTerminalSurface?.(request)
+    globalThis.window?.api?.session?.createTerminalSurface?.(request)
   )
 }
 
@@ -153,8 +170,13 @@ export function commitTerminalPaneIfAheadOfMain(
   state: AppState,
   pane: TerminalSurfaceCreateRequest & { leafId: string }
 ): void {
-  if (!collectLeafIds(state.terminalLayoutsByTabId[pane.tabId]?.root).includes(pane.leafId)) {
-    commitTerminalSurfaceCreate(state, pane)
+  if (
+    !collectLeafIds(state.terminalLayoutsByTabId[pane.tabId]?.root).includes(pane.leafId) &&
+    isTerminalTabMirroredFromMain(state, pane.worktreeId, pane.tabId)
+  ) {
+    const entry = pendingTerminalSurfaceCreate(pane)
+    state.markPendingTerminalPane(entry)
+    sendTerminalSurfaceCreate(state, entry, pane)
   }
 }
 
@@ -234,6 +256,15 @@ export function commitPendingTerminalChange(
   send: () => Promise<TerminalTopologyReply | undefined> | undefined
 ): void {
   store.markPendingTerminalPane(entry)
+  settlePendingTerminalChangeOnReply(store, entry, send)
+}
+
+/** Settles `entry`, which this window already shows, once `send`'s reply names main's push. */
+function settlePendingTerminalChangeOnReply(
+  store: Pick<TerminalSlice, 'settlePendingTerminalPane'>,
+  entry: PendingTerminalPane,
+  send: () => Promise<TerminalTopologyReply | undefined> | undefined
+): void {
   void Promise.resolve(send()).then(
     (reply) => store.settlePendingTerminalPane(entry, reply?.publishSeq),
     (error: unknown) => {

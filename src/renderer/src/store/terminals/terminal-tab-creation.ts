@@ -20,8 +20,12 @@ import { createBrowserUuid } from '@/lib/browser-uuid'
 import { ownsGlobalSelection } from '../global-selection-owner'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import type { TerminalSlice, TerminalStoreGet, TerminalStoreSet } from './terminal-state'
-import { commitTerminalSurfaceCreate } from './terminal-pending-panes'
-import { terminalPanePlacementRow } from '@/lib/terminal-pane-placement-row'
+import {
+  isTerminalTabMirroredFromMain,
+  newTerminalTabCreate,
+  sendTerminalSurfaceCreate,
+  withPendingTerminalPane
+} from './terminal-pending-panes'
 import {
   getRemoteConnectionIdForWorktree,
   resolveCreatedTabShellOverride,
@@ -63,7 +67,7 @@ export function createTerminalTabCreationActions(
   return {
     createTab: (worktreeId, targetGroupId, shellOverride, options) => {
       let tab!: TerminalTab
-      let initialLeafId: string | undefined
+      let created: ReturnType<typeof newTerminalTabCreate> | undefined
       set((s) => {
         const orphanTerminalIds = getOrphanTerminalIds(s, worktreeId)
         const orphanCleanupPatch = buildOrphanTerminalCleanupPatch(s, worktreeId, orphanTerminalIds)
@@ -92,7 +96,7 @@ export function createTerminalTabCreationActions(
             : undefined
         // Why: startup delivery is pane-owned; pin its first leaf so an aborted/remounted renderer retries against the same spawn reservation.
         // Why a bare leaf id too: a host launch lays out its pane before the process it attaches to exists.
-        initialLeafId =
+        const initialLeafId =
           options?.initialPtyId || options?.pendingStartup || requestedInitialLeafId
             ? (requestedInitialLeafId ?? createBrowserUuid())
             : undefined
@@ -139,6 +143,10 @@ export function createTerminalTabCreationActions(
           ...(options?.agentLaunchPane ? { agentLaunchPane: options.agentLaunchPane } : {}),
           // Why: mark click-caused (not work-caused) spawns so updateTabPtyId skips the activity/sortEpoch bump that would reorder Recent/Smart on click.
           ...(options?.pendingActivationSpawn ? { pendingActivationSpawn: true } : {})
+        }
+        // Main records the tab now, so it outlives a spawn that fails or never starts.
+        if (isTerminalTabMirroredFromMain(s, worktreeId, id)) {
+          created = newTerminalTabCreate(tab, initialLeafId)
         }
         if (options?.launchAgent === 'zcode') {
           // Why here: this is where a ZCode launch is first known, and it runs before the
@@ -232,6 +240,10 @@ export function createTerminalTabCreationActions(
             ...orphanCleanupPatch.tabsByWorktree,
             [worktreeId]: [...existing, tab]
           },
+          // Shown before main's push names it; the reply to `created` settles it.
+          ...(created && {
+            pendingTerminalPanes: withPendingTerminalPane(s.pendingTerminalPanes, created.entry)
+          }),
           // Why: publish the unified tab atomically with the runtime tab so a transient legacy mount can't race the split host.
           unifiedTabsByWorktree: {
             ...s.unifiedTabsByWorktree,
@@ -287,13 +299,9 @@ export function createTerminalTabCreationActions(
           }
         }
       })
-      // Main records the tab now, so it outlives a spawn that fails or never starts.
-      commitTerminalSurfaceCreate(get(), {
-        worktreeId,
-        tabId: tab.id,
-        ...(initialLeafId ? { leafId: initialLeafId } : {}),
-        placement: { kind: 'new-tab', row: terminalPanePlacementRow(tab) }
-      })
+      if (created) {
+        sendTerminalSurfaceCreate(get(), created.entry, created.request)
+      }
       if (options?.initialPtyId) {
         // Why: a tab born with a live PTY (CLI/runtime create) wakes the workspace like any other bind.
         clearWorktreeSleepIntent(worktreeId)
