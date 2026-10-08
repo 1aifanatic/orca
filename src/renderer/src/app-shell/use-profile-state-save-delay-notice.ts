@@ -27,12 +27,12 @@ export function useProfileStateSaveDelayNotice(): void {
         return
       }
       toastId = toast.warning(
-        translate('app.saving.delayedTitle', 'Saving is taking longer than usual'),
+        translate('app.saving.delayedTitle', 'Profile storage is taking longer than usual'),
         {
           id: toastId,
           description: translate(
             'app.saving.delayedDescription',
-            'Recent changes haven’t been confirmed saved yet. Orca is still trying.'
+            'Further saves may be delayed while this operation finishes.'
           ),
           duration: Infinity,
           dismissible: false,

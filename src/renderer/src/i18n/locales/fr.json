@@ -1,8 +1,8 @@
 {
   "app": {
     "saving": {
-      "delayedTitle": "L’enregistrement prend plus de temps que d’habitude",
-      "delayedDescription": "L’enregistrement des modifications récentes n’a pas encore été confirmé. Orca continue d’essayer."
+      "delayedTitle": "Le stockage du profil prend plus de temps que d’habitude",
+      "delayedDescription": "Les prochains enregistrements peuvent être retardés jusqu’à la fin de cette opération."
     },
     "recoverableError": {
       "rootTitle": "Orca a rencontré une erreur de rendu.",

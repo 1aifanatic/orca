@@ -25,14 +25,12 @@ test('shows one delayed-save notice, restores it after reload, and clears on rec
   }
 
   const notice = orcaPage.locator('[data-sonner-toast]').filter({
-    hasText: 'Saving is taking longer than usual'
+    hasText: 'Profile storage is taking longer than usual'
   })
   await setSaveDelayed(true)
   await expect(notice).toHaveCount(1)
   await expect(notice).toBeVisible()
-  await expect(notice).toContainText(
-    'Recent changes haven’t been confirmed saved yet. Orca is still trying.'
-  )
+  await expect(notice).toContainText('Further saves may be delayed while this operation finishes.')
   await expect(notice.getByRole('button')).toHaveCount(0)
   await expect(notice).toHaveCSS('opacity', '1')
   const screenshot = testInfo.outputPath('delayed-save-notice.png')

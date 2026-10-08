@@ -1,8 +1,8 @@
 {
   "app": {
     "saving": {
-      "delayedTitle": "保存耗时比平时更长",
-      "delayedDescription": "尚未确认最近的更改已保存。Orca 仍在尝试保存。"
+      "delayedTitle": "配置存储操作耗时比平时更长",
+      "delayedDescription": "在此操作完成前，后续保存可能会延迟。"
     },
     "recoverableError": {
       "rootTitle": "Orca 遇到渲染器错误。",

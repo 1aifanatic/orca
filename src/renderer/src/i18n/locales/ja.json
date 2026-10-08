@@ -1,8 +1,8 @@
 {
   "app": {
     "saving": {
-      "delayedTitle": "保存に通常より時間がかかっています",
-      "delayedDescription": "最近の変更が保存されたことをまだ確認できていません。Orca は引き続き保存を試みています。"
+      "delayedTitle": "プロファイルのストレージ処理に通常より時間がかかっています",
+      "delayedDescription": "この処理が完了するまで、その後の保存が遅れる場合があります。"
     },
     "recoverableError": {
       "rootTitle": "Orca でレンダラーエラーが発生しました。",

@@ -57,13 +57,16 @@ it('restores a persistent warning from main and clears it on completion', async 
   renderHook(useProfileStateSaveDelayNotice)
   expect(subscribe.mock.invocationCallOrder[0]).toBeLessThan(read.mock.invocationCallOrder[0])
   await resolveSnapshot(true)
-  expect(notice.warning).toHaveBeenCalledExactlyOnceWith('Saving is taking longer than usual', {
-    id: undefined,
-    description: 'Recent changes haven’t been confirmed saved yet. Orca is still trying.',
-    duration: Infinity,
-    dismissible: false,
-    closeButton: false
-  })
+  expect(notice.warning).toHaveBeenCalledExactlyOnceWith(
+    'Profile storage is taking longer than usual',
+    {
+      id: undefined,
+      description: 'Further saves may be delayed while this operation finishes.',
+      duration: Infinity,
+      dismissible: false,
+      closeButton: false
+    }
+  )
   publish(false)
   expect(notice.dismiss).toHaveBeenLastCalledWith(notice.warning.mock.results[0].value)
 })

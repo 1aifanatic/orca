@@ -7,7 +7,7 @@ import { useProfileStateSaveDelayNotice } from './use-profile-state-save-delay-n
 
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 
-const title = 'Saving is taking longer than usual'
+const title = 'Profile storage is taking longer than usual'
 const frames: FrameRequestCallback[] = []
 const listeners = new Set<(delayed: boolean) => void>()
 
