@@ -58,6 +58,18 @@ export const PR_E2E_SOURCE_ROUTES = [
         ))
   },
   {
+    id: 'ssh.orcad-copy-file-owner',
+    specs: ['tests/e2e/ssh-orcad-copy-file-owner.spec.ts'],
+    matches: (file) =>
+      /^tests\/e2e\/helpers\/(?:native-file-clipboard-recorder|orcad-convert-(?:flow|host)|orcad-upgrade-profile|docker-ssh-relay-target)\.ts$/.test(
+        file
+      ) ||
+      (isProductSource(file) &&
+        /^src\/(?:renderer\/src\/components\/right-sidebar\/file-explorer-row-(?:action-visibility|file-transfer|context-menu)\.tsx?|main\/window\/clipboard-(?:ipc-handlers|file-copy|remote-file-copy)\.ts)$/.test(
+          file
+        ))
+  },
+  {
     id: 'ssh.orcad-idle-exit',
     specs: ['tests/e2e/ssh-orcad-idle-exit.spec.ts'],
     matches: (file) =>
