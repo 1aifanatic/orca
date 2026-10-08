@@ -119,14 +119,15 @@ export function nextStructuredQueuedMessage(input: {
   record: AgentSessionRecord | null
   fence: number
 }): QueuedMessageHeader | null {
-  const next = oldestActionableQueuedMessage(input.journal)
   const { journal, fence } = input
-  // The gate's cheap `working` first: publication asks on every streamed frame, and the gate's
-  // prompt check walks the whole fold.
+  // Token-frame publication checks working before reading the queue or walking prompts.
   if (
-    next === null ||
     isStructuredAgentSessionMainAgentWorking(journal.activeTurnId(), journal.submissions(), fence)
   ) {
+    return null
+  }
+  const next = oldestActionableQueuedMessage(journal)
+  if (next === null) {
     return null
   }
   return structuredQueueHold(input) === null ? next : null
@@ -283,12 +284,12 @@ export class StructuredAgentSessionQueuedMessageDrain {
     try {
       if (
         !journal.queuedMessages.settlementOwed() &&
-        (oldestActionableQueuedMessage(journal) === null ||
-          isStructuredAgentSessionMainAgentWorking(
-            journal.activeTurnId(),
-            journal.submissions(),
-            this.deps.conversationFence(sessionId)
-          ))
+        (isStructuredAgentSessionMainAgentWorking(
+          journal.activeTurnId(),
+          journal.submissions(),
+          this.deps.conversationFence(sessionId)
+        ) ||
+          oldestActionableQueuedMessage(journal) === null)
       ) {
         return
       }

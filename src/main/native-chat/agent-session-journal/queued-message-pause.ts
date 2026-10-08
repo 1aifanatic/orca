@@ -251,6 +251,9 @@ export function resumableQueuePause(
   pauses: readonly DerivedQueuePause[],
   cards: Iterable<QueueCard>
 ): DerivedQueuePause | null {
+  if (pauses.length === 0) {
+    return null
+  }
   for (const card of cards) {
     if (card.state === 'returned') {
       return null

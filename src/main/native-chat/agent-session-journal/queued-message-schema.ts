@@ -1,6 +1,10 @@
 // The draft table's shape, created and healed at every writable open.
 
 import type Database from '../../sqlite/sync-database'
+import {
+  READABLE_QUEUED_MESSAGE,
+  READABLE_UNSETTLED_QUEUED_MESSAGE
+} from './queued-message-readability'
 
 /** Columns a later build added, so an older draft table can gain them in place. */
 const NULLABLE_COLUMNS: readonly (readonly [name: string, type: string])[] = [
@@ -69,8 +73,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS queued_messages_consumed_as
   ON queued_messages (session_id, consumed_as) WHERE consumed_as IS NOT NULL;
 CREATE INDEX IF NOT EXISTS queued_messages_position
   ON queued_messages (session_id, position);
-CREATE INDEX IF NOT EXISTS queued_messages_unsettled_position
-  ON queued_messages (session_id, position) WHERE state IN ('waiting', 'returned');
+CREATE INDEX IF NOT EXISTS queued_messages_readable_position
+  ON queued_messages (session_id, position) WHERE ${READABLE_QUEUED_MESSAGE};
+CREATE INDEX IF NOT EXISTS queued_messages_readable_unsettled_position
+  ON queued_messages (session_id, position) WHERE ${READABLE_UNSETTLED_QUEUED_MESSAGE};
+CREATE INDEX IF NOT EXISTS queued_messages_consume_state
+  ON queued_messages (session_id, consumed_as, state) WHERE consumed_as IS NOT NULL;
 CREATE INDEX IF NOT EXISTS queued_messages_state_settled
   ON queued_messages (session_id, state, settled_at, message_id);
 `)

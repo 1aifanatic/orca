@@ -16,6 +16,10 @@ import type {
 import type { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../shared/agent-session-queued-message-wire'
 import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredQueuedMessageRow } from './queued-message-stored-row'
+import {
+  READABLE_QUEUED_MESSAGE_BODY,
+  READABLE_UNSETTLED_QUEUED_MESSAGE
+} from './queued-message-readability'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
 
@@ -78,6 +82,7 @@ export type QueuedMessageRow = QueuedMessageHeader & {
 
 const COLUMNS =
   'session_id, message_id, position, body_json, fingerprint, created_at, host_instance, state, hold_reason, returned_reason, returned_rejection, settled_at, settled_by_op, consumed_as, carried_from, queued_epoch, queued_sequence'
+const READ_COLUMNS = `${COLUMNS}, (${READABLE_QUEUED_MESSAGE_BODY}) AS readable_body`
 
 export function insertQueuedMessage(
   db: Database.Database,
@@ -139,8 +144,8 @@ export function insertQueuedMessage(
 export function listQueuedMessages(db: Database.Database, sessionId: string): QueuedMessageRow[] {
   return db
     .prepare(
-      `SELECT ${COLUMNS} FROM queued_messages
-       WHERE session_id = ? AND state IN ('waiting', 'returned') ORDER BY position ASC`
+      `SELECT ${READ_COLUMNS} FROM queued_messages
+       WHERE session_id = ? AND ${READABLE_UNSETTLED_QUEUED_MESSAGE} ORDER BY position ASC`
     )
     .all(sessionId)
     .flatMap((row) => readStoredQueuedMessageRow(row) ?? [])
@@ -152,7 +157,7 @@ export function getQueuedMessage(
   messageId: string
 ): QueuedMessageRow | null {
   const row = db
-    .prepare(`SELECT ${COLUMNS} FROM queued_messages WHERE session_id = ? AND message_id = ?`)
+    .prepare(`SELECT ${READ_COLUMNS} FROM queued_messages WHERE session_id = ? AND message_id = ?`)
     .get(sessionId, messageId)
   return row === undefined ? null : readStoredQueuedMessageRow(row)
 }
@@ -244,8 +249,7 @@ export function withdrawQueuedMessageInTransaction(
       .prepare(
         `UPDATE queued_messages
          SET state = 'withdrawn', hold_reason = NULL, settled_at = ?, settled_by_op = ?
-         WHERE session_id = ? AND message_id = ? AND state IN ('waiting', 'returned')
-           AND json_valid(body_json)`
+         WHERE session_id = ? AND message_id = ? AND ${READABLE_UNSETTLED_QUEUED_MESSAGE}`
       )
       .run(input.now, input.settledByOp, input.sessionId, input.messageId).changes
   )
@@ -303,7 +307,7 @@ export function queuedMessagesSettledByOp(
 ): QueuedMessageRow[] {
   return db
     .prepare(
-      `SELECT ${COLUMNS} FROM queued_messages
+      `SELECT ${READ_COLUMNS} FROM queued_messages
        WHERE session_id = ? AND settled_by_op = ? ORDER BY position ASC`
     )
     .all(sessionId, settledByOp)

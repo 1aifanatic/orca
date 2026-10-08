@@ -41,6 +41,7 @@ function* owedQueuedMessageSettlements(
 ): IterableIterator<AgentJournalSubmission> {
   for (const submission of submissions.values()) {
     if (
+      submission.queuedMessageId !== undefined &&
       consumedSubmissionWasRejected(submission) &&
       dispatchedQueuedMessageHeader(db, sessionId, submission.clientMessageId)
     ) {

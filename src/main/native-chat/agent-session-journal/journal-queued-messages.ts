@@ -39,6 +39,7 @@ import {
 } from './queued-message-table'
 import {
   hasReadableQueuedMessage,
+  hasWaitingQueuedMessage,
   getQueuedMessageHeader,
   queuedMessageAwaitingReopen,
   queuedMessageHeaders,
@@ -112,7 +113,9 @@ export class JournalQueuedMessages {
   }
 
   nextSendable() {
-    return nextSendableQueuedCard(this.pauses(), this.headers('unsettled'))
+    return hasWaitingQueuedMessage(this.deps.database().db, this.deps.sessionId)
+      ? nextSendableQueuedCard(this.pauses(), this.headers('unsettled'))
+      : null
   }
 
   get(messageId: string): QueuedMessageRow | null {
@@ -359,13 +362,10 @@ export class JournalQueuedMessages {
    */
   repairAndPrune(): Promise<void> {
     // No draft, no work, and no write.
-    if (
-      this.deps.readOnly() ||
-      !hasReadableQueuedMessage(this.deps.database().db, this.deps.sessionId)
-    ) {
+    const { sessionId } = this.deps
+    if (this.deps.readOnly() || !hasReadableQueuedMessage(this.deps.database().db, sessionId)) {
       return Promise.resolve()
     }
-    const { sessionId } = this.deps
     return this.transact(
       (db) => {
         const [now, state] = [this.deps.now(), this.deps.state()]

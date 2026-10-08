@@ -326,10 +326,14 @@ describe('indexed bookkeeping', () => {
     const state = createJournalReducerState(SESSION, EPOCH)
     state.submissions.set('rejected', {
       ...submission('rejected', 'rejected'),
+      queuedMessageId: 'owed',
       rejection: agentSessionFailureFact('providerRejected')
     })
     state.submissions.set('accepted', submission('accepted', 'accepted'))
-    state.submissions.set('corrupt-ref', submission('corrupt-ref', 'rejected'))
+    state.submissions.set('corrupt-ref', {
+      ...submission('corrupt-ref', 'rejected'),
+      queuedMessageId: 'corrupt'
+    })
     const prepare = vi.spyOn(db, 'prepare')
     const parse = vi.spyOn(JSON, 'parse')
     expect(queuedMessageSettlementOwed(db, SESSION, state.submissions)).toBe(true)
@@ -411,13 +415,17 @@ describe('indexed bookkeeping', () => {
     hasWaitingQueuedMessage(db, SESSION)
     const queries = prepare.mock.calls.map(([sql]) => sql)
     prepare.mockRestore()
-    expect(queryPlan(queries[0], [SESSION])).toContain('queued_messages_unsettled_position')
-    expect(queryPlan(queries[1], [SESSION, 'handoff'])).toContain('queued_messages_consumed_as')
+    expect(queryPlan(queries[0], [SESSION])).toContain(
+      'queued_messages_readable_unsettled_position'
+    )
+    expect(queryPlan(queries[1], [SESSION, 'handoff'])).toContain('queued_messages_consume_state')
     expect(queryPlan(queries[2], [SESSION, 900])).toContain('queued_messages_state_settled')
     expect(queryPlan(queries[3], [SESSION, 900, 1, 'dispatched'])).toContain(
       'queued_messages_state_settled'
     )
-    expect(queryPlan(queries[4], [SESSION])).toContain('queued_messages_state_settled')
+    expect(queryPlan(queries[4], [SESSION])).toContain(
+      'queued_messages_readable_unsettled_position'
+    )
     expect(
       queryPlan('SELECT MAX(position) FROM queued_messages WHERE session_id = ?', [SESSION])
     ).toContain('queued_messages_position')

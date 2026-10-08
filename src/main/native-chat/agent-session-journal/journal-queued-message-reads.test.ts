@@ -146,3 +146,12 @@ it('a publication read inside a rolled-back consume cannot survive invalidation'
   expect(publication()).toEqual(first)
   expect(journal.queuedMessages.list().map((row) => row.messageId)).toEqual(['head'])
 })
+
+it('does not derive pauses when no readable card is waiting', async () => {
+  await queue('returned')
+  const db = openTestJournalHostDatabase(root).db
+  db.prepare("UPDATE queued_messages SET state = 'returned'").run()
+  const pauses = vi.spyOn(journal.queuedMessages, 'pauses')
+  expect(journal.queuedMessages.nextSendable()).toBeNull()
+  expect(pauses).not.toHaveBeenCalled()
+})
