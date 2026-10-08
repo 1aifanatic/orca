@@ -236,9 +236,6 @@ export class StructuredAgentSessionHost {
 
   reconcileRestartLeases = (): Promise<void> => this.restore.reconcileRestartLeases()
 
-  restoreReadableSessions = (sessionIds?: readonly string[]): Promise<void> =>
-    this.restore.restoreReadableSessions(sessionIds)
-
   /** Startup, after the lease check: see `structured-agent-session-saved-status-restore`. */
   restoreSavedStatuses = (listed: readonly string[], owedMail?: readonly string[]): Promise<void> =>
     this.restore.restoreSavedStatuses(listed, owedMail)
@@ -363,6 +360,8 @@ export class StructuredAgentSessionHost {
     runtimeState: this.runtimeState,
     conversationDelivery: this.conversationDelivery,
     lifetime: this.lifetime,
-    serialize: this.serialize
+    serialize: this.serialize,
+    /** The open-and-settle pass startup runs for the chats a restart owes, over any ids. */
+    restoreReadableSessions: this.restore.restoreReadableSessions
   })
 }

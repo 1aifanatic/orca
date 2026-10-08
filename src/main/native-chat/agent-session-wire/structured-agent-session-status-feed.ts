@@ -9,7 +9,7 @@ import type { StructuredAgentSessionStatusObserverOptions } from './structured-a
 // The last projection is kept after the session's provider child is evicted: an idle session is
 // still idle without a process, and a renderer that reloads must not lose every settled row until
 // each chat is reopened. Across a restart the sink keeps each chat's last status, and startup
-// restores it here until the chat's own open republishes it.
+// restores a settled chat's here until that chat's own open republishes it.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {
@@ -255,7 +255,7 @@ export class StructuredAgentSessionStatusFeed {
       firstInputSubmissionKey: projection.firstInputSubmissionKey
     })
     if (summaryChanged) {
-      this.sink(summary, session.params.location, session.child?.fence)
+      this.sink(summary, session.params.location)
       this.broadcast({ type: 'status', session: summary })
     }
     if (summary.hostExecutionPhase === 'ready' && previous?.hostExecutionPhase !== 'ready') {
@@ -357,11 +357,10 @@ export class StructuredAgentSessionStatusFeed {
   /** A failing sink must never cost the subscribers their status event. */
   private sink(
     summary: AgentSessionStatusSummary,
-    location?: AgentSessionRecord['location'],
-    turnFence?: number
+    location?: AgentSessionRecord['location']
   ): void {
     try {
-      this.ownership.publish(summary, location, turnFence)
+      this.ownership.publish(summary, location)
     } catch (error) {
       this.logFailure('status-sink-publish', 'status sink publish failed', summary.sessionId, error)
     }

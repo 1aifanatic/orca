@@ -10,11 +10,7 @@ import {
   serializeAgentStatusSubject,
   type AgentStatusStructuredSessionSubject
 } from '../../../shared/agent-status-subject'
-import {
-  savedStructuredSessionStatusChanged,
-  savedStructuredSessionSummary,
-  type SavedStructuredSessionStatus
-} from '../../../shared/structured-agent-session-saved-status'
+import type { SavedStructuredSessionEntry } from '../../../shared/structured-agent-session-saved-status'
 
 export type StructuredAgentSessionStatusSink = {
   publish: (
@@ -30,10 +26,9 @@ export type StructuredAgentSessionStatusSink = {
   ) => void
   /** The child records the sink holds for that subject, as the views every surface reads. */
   readChildWork?: (subject: AgentStatusStructuredSessionSubject) => AgentChildWorkView[]
-  /** What a restart shows for the chat before anything opens it. */
-  saveStatus?: (saved: SavedStructuredSessionStatus) => void
+  /** Each chat's status as the last run saved it, for startup to show before anything opens. */
+  readSavedStatuses?: () => SavedStructuredSessionEntry[]
   dropSavedStatus?: (sessionId: string) => void
-  readSavedStatuses?: () => SavedStructuredSessionStatus[]
 }
 
 /** Retain the owner address because record removal may precede the final status callback. */
@@ -43,7 +38,6 @@ export class StructuredAgentSessionStatusOwnership {
   // forget a row that did land, but "we hold an address" is not evidence the row is there. Only a
   // publish that returned proves that, and only that proof may suppress the re-offer below.
   private readonly landed = new Set<string>()
-  private readonly saved = new Map<string, SavedStructuredSessionStatus>()
 
   constructor(private readonly sink: () => StructuredAgentSessionStatusSink | undefined) {}
 
@@ -58,12 +52,7 @@ export class StructuredAgentSessionStatusOwnership {
     )
   }
 
-  /** `turnFence`: the lease fence of the child running the session, which writes its turns. */
-  publish(
-    summary: AgentSessionStatusSummary,
-    location?: AgentSessionExecutionLocation,
-    turnFence?: number
-  ): void {
+  publish(summary: AgentSessionStatusSummary, location?: AgentSessionExecutionLocation): void {
     const sink = this.sink()
     if (!sink || (!location && !this.subjects.has(summary.sessionId))) {
       return
@@ -89,28 +78,6 @@ export class StructuredAgentSessionStatusOwnership {
     this.landed.delete(summary.sessionId)
     sink.publish(summary, subject)
     this.landed.add(summary.sessionId)
-    this.save(sink, summary, turnFence)
-  }
-
-  /** Only on what a restart would show: a status or verdict edge, or a new child under a turn. */
-  private save(
-    sink: StructuredAgentSessionStatusSink,
-    summary: AgentSessionStatusSummary,
-    turnFence: number | undefined
-  ): void {
-    const saved = savedStructuredSessionSummary(summary)
-    const fence = saved?.status === 'idle' ? undefined : turnFence
-    const previous = this.saved.get(summary.sessionId)
-    if (
-      !saved ||
-      (!savedStructuredSessionStatusChanged(previous?.summary, saved) &&
-        previous?.turnFence === fence)
-    ) {
-      return
-    }
-    const entry = { summary: saved, ...(fence === undefined ? {} : { turnFence: fence }) }
-    this.saved.set(summary.sessionId, entry)
-    sink.saveStatus?.(entry)
   }
 
   /** Children ride the address the parent landed under: without that proof the store would
@@ -138,11 +105,7 @@ export class StructuredAgentSessionStatusOwnership {
       return
     }
     this.landed.delete(sessionId)
-    this.saved.delete(sessionId)
-    const sink = this.sink()
-    sink?.forget(subject)
+    this.sink()?.forget(subject)
     this.subjects.delete(sessionId)
-    // The host let go of an unlisted chat: no restart lists it, so its saved status dies too.
-    sink?.dropSavedStatus?.(sessionId)
   }
 }

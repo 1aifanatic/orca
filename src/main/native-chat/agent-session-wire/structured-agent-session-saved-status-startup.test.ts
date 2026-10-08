@@ -1,18 +1,14 @@
-// After a crash, a chat's status is listed from what was saved, without opening its history. A
-// chat the crash cut mid-turn is the one exception: startup opens it, so its journal settles at
-// the restart boundary, and what the list said agrees with what the open wrote.
+// After a crash, a settled chat lists with the status the last run saved, without opening its
+// history. A chat the crash cut mid-turn shows nothing saved: startup opens it, and the verdict its
+// journal's settle writes is the first and only one its row shows.
 
+import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
-import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import { claudeProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
-import type { SavedStructuredSessionStatus } from '../../../shared/structured-agent-session-saved-status'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import {
   openTestAgentSessionRecordStore,
@@ -23,7 +19,6 @@ import {
   openTestJournalHostDatabase,
   updateTestJournalRowJson
 } from '../agent-session-journal/journal-host-database-test-support'
-import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   HOST_TEST_LOCATION as LOCATION,
@@ -31,118 +26,34 @@ import {
 } from './structured-agent-session-host-test-data'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
+import {
+  NEVER_WRITTEN,
+  RELAUNCHED_AT,
+  crashedRecord,
+  lastStatusPath,
+  savedEntry,
+  seedRunningTurn,
+  startStatusStore,
+  writeLastStatus
+} from './structured-agent-session-saved-status-startup.test-fixture'
 
-const PROVIDER_SESSION = 'provider-session-saved-1'
-const FENCE = 13
-const STARTED_AT = 1_800_000_000_000
-const RELAUNCHED_AT = STARTED_AT + 60 * 60 * 1000
+vi.mock('../../telemetry/client', () => ({ track: vi.fn() }))
+vi.mock('../../telemetry/cohort-classifier', () => ({
+  getCohortAtEmit: vi.fn(() => ({ nth_repo_added: 2 }))
+}))
 
 let root: string
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
+let statusStore: Awaited<ReturnType<typeof startStatusStore>>
 
-const NEVER_WRITTEN = 'session-never-written-2'
-
-function crashedRecord(sessionId = SESSION): AgentSessionRecord {
-  return {
-    schemaVersion: 2,
-    sessionId,
-    location: LOCATION,
-    provider: 'claude',
-    providerHandleChain: [
-      {
-        linkId: 'link-13',
-        handle: claudeProviderHandle(PROVIDER_SESSION, null),
-        origin: 'created',
-        mintedAtFence: FENCE,
-        observedAt: STARTED_AT
-      }
-    ],
-    accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
-    createdAt: STARTED_AT,
-    updatedAt: STARTED_AT,
-    lease: {
-      sessionId,
-      runtimeKind: 'native',
-      runtimeFence: FENCE,
-      handoffStage: null,
-      provenHandleLinkId: 'link-13',
-      ownerProcess: {
-        hostId: 'local',
-        pid: 12_546,
-        processStartTimeMs: STARTED_AT,
-        spawnToken: 'spawn-crashed'
-      },
-      reservedSpawnToken: 'spawn-crashed',
-      leaseDeadlineAt: STARTED_AT + 30_000,
-      lastRenewedAt: STARTED_AT,
-      handoffOperationId: null,
-      journalCheckpoint: null,
-      claimKeyId: 'key-1',
-      claimStatus: 'live',
-      unreconciled: false,
-      deathEvidence: null
-    }
-  }
-}
-
-/** A turn the crash left running, under the owner the lease names. */
-async function seedRunningTurn(): Promise<void> {
-  const journal = await openAgentSessionJournal({
-    identity: {
-      sessionId: SESSION,
-      workspaceId: LOCATION.workspaceId,
-      hostId: LOCATION.executionHostId,
-      agent: 'claude',
-      providerHandle: claudeProviderHandle(PROVIDER_SESSION, null)
-    },
-    database: openTestJournalHostDatabase(root),
-    now: () => STARTED_AT
-  })
-  await journal.appendSubmission({
-    clientMessageId: 'send-1',
-    payloadFingerprint: '0'.repeat(64),
-    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'run the loop' }] },
-    fence: FENCE
-  })
-  const identity = { provider: 'claude' as const, sessionId: PROVIDER_SESSION, uuid: 'uuid-turn' }
-  await journal.appendItem(
-    identity,
-    { kind: 'turn', turnId: 'turn-1', state: 'running', startedAt: STARTED_AT },
-    { fence: FENCE, turnScope: { kind: 'turn', turnItemId: agentJournalItemKey(identity) } }
-  )
-  await journal.close()
-}
-
-function savedAs(status: AgentSessionStatusSummary['status']): SavedStructuredSessionStatus {
-  return {
-    summary: {
-      sessionId: SESSION,
-      workspaceId: LOCATION.workspaceId,
-      agent: 'claude',
-      status,
-      latestPrompt: 'what the list showed before the crash',
-      updatedAt: STARTED_AT
-    },
-    turnFence: FENCE
-  }
-}
-
-function sinkWith(saved: SavedStructuredSessionStatus[]) {
-  return {
-    publish: vi.fn<(summary: AgentSessionStatusSummary, subject: unknown) => void>(),
-    forget: vi.fn(),
-    readChildWork: vi.fn(() => []),
-    saveStatus: vi.fn(),
-    dropSavedStatus: vi.fn(),
-    readSavedStatuses: () => saved
-  }
-}
-
-function openHost(
-  sink: ReturnType<typeof sinkWith>,
+/** The relaunched app: the status store loads the file, then the host comes up over it. */
+async function relaunch(
+  saved: Record<string, unknown>,
   probe: AgentSessionOwnerProbe = { outcome: 'pid-absent' }
-) {
+): Promise<{ onSessionStatusChanged: ReturnType<typeof vi.fn> }> {
+  writeLastStatus(root, saved)
+  statusStore = await startStatusStore(root)
   const onSessionStatusChanged = vi.fn()
   host = new StructuredAgentSessionHost({
     agents: NO_STRUCTURED_AGENTS,
@@ -161,7 +72,7 @@ function openHost(
     mintSpawnToken: () => 'spawn-new',
     probeOwner: async () => probe,
     now: () => RELAUNCHED_AT,
-    statusSink: sink,
+    statusSink: statusStore.sink,
     onSessionStatusChanged
   })
   return { onSessionStatusChanged }
@@ -173,14 +84,14 @@ async function startUp(listed: string[] = [SESSION]): Promise<void> {
   await host.restoreSavedStatuses(listed)
 }
 
-const published = (sink: ReturnType<typeof sinkWith>) =>
-  sink.publish.mock.calls.map(([summary]) => summary)
-
 async function turnState(): Promise<string | undefined> {
   return (await host.journalSnapshot(SESSION)).items
     .map((item) => readAgentJournalTurn(item.body))
     .find(Boolean)?.state
 }
+
+const savedIds = () =>
+  statusStore.server.readSavedStructuredStatuses().map((entry) => entry.sessionId)
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-saved-status-startup-'))
@@ -188,134 +99,147 @@ beforeEach(async () => {
     records: [crashedRecord(), crashedRecord(NEVER_WRITTEN)]
   })
   store = await openTestAgentSessionRecordStore(root)
-  await seedRunningTurn()
+  await seedRunningTurn(root)
 })
 
 afterEach(async () => {
   await host?.flushAllStreamedEvents()
+  statusStore?.server.stop()
   closeTestJournalHostDatabases()
+  vi.restoreAllMocks()
   await rm(root, { recursive: true, force: true })
 })
 
 describe('a chat a crash cut mid-turn', () => {
   it.each(['working', 'attention'] as const)(
-    'saved %s, reads Interrupted at once, and its startup open writes the same verdict',
+    'saved %s days ago, is settled at startup and shows only the verdict its settle wrote',
     async (status) => {
-      const sink = sinkWith([savedAs(status)])
-      openHost(sink)
+      await relaunch({ [SESSION]: savedEntry(status) })
 
       await startUp()
 
-      const [shown, settled] = published(sink)
-      expect(shown).toMatchObject({ status: 'idle', turnOutcome: 'interruption' })
-      expect(host.hasSession(SESSION)).toBe(true)
       expect(await turnState()).toBe('interrupted')
-      // The open's own publish replaces the saved one, and agrees with it.
-      expect(settled).toMatchObject({
-        status: 'idle',
-        turnOutcome: 'interruption',
-        latestPrompt: 'run the loop'
-      })
-      expect(host.readStatusSummary(SESSION)).toEqual(settled)
+      const rows = statusStore.rowsFor(SESSION)
+      expect(rows.length).toBeGreaterThan(0)
+      // Every row is the open's own: none carries what was saved, or any other verdict.
+      for (const row of rows) {
+        expect(row).toMatchObject({
+          status: 'idle',
+          turnOutcome: 'interruption',
+          latestPrompt: 'run the loop'
+        })
+      }
+      expect(statusStore.server.readSavedStructuredStatuses()).toEqual([
+        { sessionId: SESSION, saved: { summary: expect.objectContaining({ status: 'idle' }) } }
+      ])
     }
   )
 
-  it("reads Couldn't confirm when its agent may still be running, as its open does", async () => {
+  it("reads Couldn't confirm when its agent may still be running, as its open writes", async () => {
     // An owner proven alive that this platform does not stop: released with no proof of death.
-    const sink = sinkWith([savedAs('working')])
-    openHost(sink, { outcome: 'identity-matched', matchedOn: ['spawn-token'] })
+    await relaunch(
+      { [SESSION]: savedEntry('working') },
+      { outcome: 'identity-matched', matchedOn: ['spawn-token'] }
+    )
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
 
     await startUp()
 
-    expect(published(sink)[0]).toMatchObject({ status: 'idle', turnOutcome: 'unconfirmed' })
     expect(await turnState()).toBe('unverifiable')
-    expect(host.readStatusSummary(SESSION)).toMatchObject({
+    expect(statusStore.rowsFor(SESSION).at(-1)).toMatchObject({
       status: 'idle',
       turnOutcome: 'unconfirmed'
     })
   })
 
   it('is settled, closed and forgotten when no tab lists it', async () => {
-    const sink = sinkWith([savedAs('working')])
-    openHost(sink)
+    await relaunch({ [SESSION]: savedEntry('working') })
 
     await startUp([])
 
     expect(host.hasSession(SESSION)).toBe(false)
-    expect(sink.dropSavedStatus).toHaveBeenCalledWith(SESSION)
+    expect(savedIds()).toEqual([])
     expect(await turnState()).toBe('interrupted')
   })
 
-  it('still lists, settled, when its history cannot open', async () => {
+  it('still lists, with no status shown, when its history cannot open', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     updateTestJournalRowJson(openTestJournalHostDatabase(root).db, SESSION, 1, '}{')
-    const sink = sinkWith([savedAs('working')])
-    openHost(sink)
+    await relaunch({ [SESSION]: savedEntry('working') })
 
     await expect(startUp()).resolves.toBeUndefined()
 
     expect(host.hasSession(SESSION)).toBe(false)
-    expect(published(sink)).toEqual([
-      expect.objectContaining({ status: 'idle', turnOutcome: 'interruption' })
-    ])
+    expect(statusStore.rowsFor(SESSION)).toEqual([])
     expect(host.listSessionTabs([SESSION])).toEqual([
       { sessionId: SESSION, workspaceId: LOCATION.workspaceId, agent: 'claude' }
     ])
   })
 })
 
-describe('a chat that was idle at the restart', () => {
-  it('lists with its saved status, opens nothing and re-drives nothing', async () => {
-    const sink = sinkWith([{ summary: { ...savedAs('idle').summary, turnOutcome: 'success' } }])
-    const { onSessionStatusChanged } = openHost(sink)
+describe('a chat that was settled at the restart', () => {
+  const idle = savedEntry('idle', { turnOutcome: 'success', lastAssistantMessage: 'Shipped' })
+
+  it('saved days ago, lists with that status, opens nothing and re-drives nothing', async () => {
+    const { onSessionStatusChanged } = await relaunch({ [SESSION]: idle })
     const status: unknown[] = []
     host.subscribeStatus({ id: 'list', emit: (event) => status.push(event) })
 
     await startUp()
 
     expect(host.hasSession(SESSION)).toBe(false)
-    expect(published(sink)).toEqual([
-      expect.objectContaining({ status: 'idle', turnOutcome: 'success' })
-    ])
-    expect(status).toContainEqual({
-      type: 'status',
-      session: expect.objectContaining({ sessionId: SESSION, turnOutcome: 'success' })
-    })
-    expect(host.listSessionTabs([SESSION])).toHaveLength(1)
+    // The journal's half as saved; the record's half from the record.
+    const restored = {
+      ...idle.summary,
+      workspaceId: LOCATION.workspaceId,
+      agent: 'claude',
+      conversationName: 'Named on the record'
+    }
+    expect(statusStore.rowsFor(SESSION)).toEqual([expect.objectContaining(restored)])
+    expect(status).toContainEqual({ type: 'status', session: expect.objectContaining(restored) })
     // Mail, naming and first-turn renames listen here; a saved status is not a journal edge.
     expect(onSessionStatusChanged).not.toHaveBeenCalled()
   })
 
+  it('writes nothing at startup: restoring a saved status is not a new one', async () => {
+    await relaunch({ [SESSION]: idle })
+    const before = readFileSync(lastStatusPath(root), 'utf8')
+
+    await startUp()
+
+    expect(readFileSync(lastStatusPath(root), 'utf8')).toBe(before)
+  })
+
   it('keeps the live status of a chat something opened before startup restored it', async () => {
-    const sink = sinkWith([{ summary: { ...savedAs('idle').summary, turnOutcome: 'success' } }])
-    openHost(sink)
+    await relaunch({ [SESSION]: idle })
     await host.journalSnapshot(SESSION)
+    // What startup read before that open saved over it.
+    statusStore.sink.readSavedStatuses = () => [{ sessionId: SESSION, saved: idle }]
 
     await startUp()
 
     expect(host.readStatusSummary(SESSION)).toMatchObject({ latestPrompt: 'run the loop' })
   })
 
-  it('lists only chats with a history, so one never written founds none', async () => {
-    openHost(sinkWith([]))
+  it('gives a chat with no history no tab and no row, and lets its saved status die', async () => {
+    await relaunch({ [NEVER_WRITTEN]: savedEntry('idle', {}, NEVER_WRITTEN) })
 
     await startUp([SESSION, NEVER_WRITTEN])
 
     expect(host.listSessionTabs([SESSION, NEVER_WRITTEN, SESSION])).toEqual([
       { sessionId: SESSION, workspaceId: LOCATION.workspaceId, agent: 'claude' }
     ])
-    expect(host.hasSession(NEVER_WRITTEN)).toBe(false)
+    expect(statusStore.rowsFor(NEVER_WRITTEN)).toEqual([])
+    expect(savedIds()).toEqual([])
   })
 
   it('is replaced by its own publish once something opens it', async () => {
-    const sink = sinkWith([{ summary: { ...savedAs('idle').summary, turnOutcome: 'success' } }])
-    openHost(sink, { outcome: 'pid-absent' })
+    await relaunch({ [SESSION]: idle })
     await startUp()
 
     await host.journalSnapshot(SESSION)
 
     expect(host.readStatusSummary(SESSION)).toMatchObject({ latestPrompt: 'run the loop' })
-    expect(published(sink).at(-1)).toMatchObject({ latestPrompt: 'run the loop' })
+    expect(statusStore.rowsFor(SESSION).at(-1)).toMatchObject({ latestPrompt: 'run the loop' })
   })
 })

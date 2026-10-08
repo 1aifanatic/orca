@@ -1,11 +1,13 @@
 // Native chat statuses saved in `last-status.json`, beside the CLI agents' rows, so a restart can list
-// them without opening any chat. Chats have no status hooks, so none of this waits on that setting.
+// them without opening any chat. The store saves what it ingests, on the edges a restart would show.
+// Chats have no status hooks, so none of this waits on that setting.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { SavedStructuredSessionStatus } from '../../shared/structured-agent-session-saved-status'
+import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
+import { makeStructuredAgentStatusSubject } from '../../shared/agent-status-subject'
 import { AgentHookServer, _internals } from './server'
 import { PANE, recentTs } from './server.test-fixtures'
 
@@ -14,7 +16,15 @@ vi.mock('../telemetry/cohort-classifier', () => ({
   getCohortAtEmit: vi.fn(() => ({ nth_repo_added: 2 }))
 }))
 
-const DAY_MS = 24 * 60 * 60 * 1000
+const CHAT = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
+const LOCATION = {
+  executionHostId: 'local',
+  wslDistro: null,
+  workspaceId: 'workspace-1',
+  workspaceKind: 'git-worktree'
+} as const
+const SUBJECT = makeStructuredAgentStatusSubject(LOCATION, CHAT)
+const NINE_DAYS_AGO = Date.now() - 9 * 24 * 60 * 60 * 1000
 
 let userDataPath: string
 const servers: AgentHookServer[] = []
@@ -30,11 +40,10 @@ afterEach(() => {
   rmSync(userDataPath, { recursive: true, force: true })
 })
 
-function lastStatusPath(): string {
-  return join(userDataPath, 'agent-hooks', 'last-status.json')
-}
+const lastStatusPath = () => join(userDataPath, 'agent-hooks', 'last-status.json')
 
 function readFile(): {
+  version?: number
   entries?: Record<string, unknown>
   structuredSessions?: Record<string, unknown>
 } {
@@ -46,17 +55,20 @@ function writeFile(file: unknown): void {
   writeFileSync(lastStatusPath(), JSON.stringify(file), 'utf8')
 }
 
-function saved(sessionId: string, updatedAt = Date.now()): SavedStructuredSessionStatus {
+function live(fields: Partial<AgentSessionStatusSummary> = {}): AgentSessionStatusSummary {
   return {
-    summary: {
-      sessionId,
-      workspaceId: 'workspace-1',
-      agent: 'codex',
-      status: 'working',
-      latestPrompt: 'refactor the parser',
-      updatedAt
-    },
-    turnFence: 2
+    sessionId: CHAT,
+    workspaceId: LOCATION.workspaceId,
+    agent: 'codex',
+    status: 'working',
+    latestPrompt: 'refactor the parser',
+    hostExecutionOwned: true,
+    hostExecutionPhase: 'ready',
+    model: 'gpt-live',
+    toolName: 'Bash',
+    lastAssistantMessage: 'Looking at it',
+    updatedAt: Date.now(),
+    ...fields
   }
 }
 
@@ -79,80 +91,171 @@ async function start(statusHooksEnabled = true): Promise<AgentHookServer> {
   return server
 }
 
-describe('saved native chat statuses', () => {
-  it('writes a save at once, under its own key, with no debounce to wait out', async () => {
+const savedChat = () => readFile().structuredSessions?.[CHAT]
+
+describe('saving native chat statuses', () => {
+  it("writes the journal's half at once, under its own key, with no debounce to wait out", async () => {
     const server = await start()
-    const entry = saved('chat-1')
 
-    server.saveStructuredStatus(entry)
+    server.ingestStructuredStatus(live(), SUBJECT)
 
-    expect(readFile()).toEqual({
-      version: 2,
-      entries: {},
-      authorityCommitments: {},
-      structuredSessions: { 'chat-1': entry }
+    expect(readFile()).toMatchObject({ version: 2, entries: {} })
+    expect(savedChat()).toEqual({
+      summary: {
+        sessionId: CHAT,
+        status: 'working',
+        latestPrompt: 'refactor the parser',
+        lastAssistantMessage: 'Looking at it',
+        updatedAt: expect.any(Number)
+      }
     })
   })
 
-  it('loads them on the next start, and drops one when its chat lets go of it', async () => {
-    ;(await start()).saveStructuredStatus(saved('chat-1'))
-    servers.splice(0).forEach((server) => server.stop())
+  it('writes on a status or verdict edge, never for a streamed delta', async () => {
+    const server = await start()
+    server.ingestStructuredStatus(live(), SUBJECT)
+    server.ingestStructuredStatus(
+      live({ lastAssistantMessage: 'Found it', toolName: 'Edit' }),
+      SUBJECT
+    )
+    expect(savedChat()).toMatchObject({ summary: { lastAssistantMessage: 'Looking at it' } })
 
-    const relaunched = await start()
+    server.ingestStructuredStatus(live({ status: 'idle', turnOutcome: 'success' }), SUBJECT)
+    server.ingestStructuredStatus(
+      live({ status: 'idle', turnOutcome: 'success', lastAssistantMessage: 'Done' }),
+      SUBJECT
+    )
+    expect(savedChat()).toMatchObject({
+      summary: { turnOutcome: 'success', lastAssistantMessage: 'Looking at it' }
+    })
 
-    expect(
-      relaunched.readSavedStructuredStatuses().map((entry) => entry.summary.sessionId)
-    ).toEqual(['chat-1'])
-    relaunched.dropSavedStructuredStatus('chat-1')
-    expect(readFile()).not.toHaveProperty('structuredSessions')
+    server.ingestStructuredStatus(live({ status: 'idle', turnOutcome: 'failure' }), SUBJECT)
+    expect(savedChat()).toMatchObject({ summary: { turnOutcome: 'failure' } })
   })
 
-  it('loads and saves with status hooks off, writing back the CLI rows it never hydrated', async () => {
-    writeFile({ version: 2, entries: { [PANE]: cliEntry() }, structuredSessions: {} })
-    const before = readFile().entries
-    const server = await start(false)
-
-    server.saveStructuredStatus(saved('chat-1'))
-
-    expect(readFile().entries).toEqual(before)
-    expect(Object.keys(readFile().structuredSessions ?? {})).toEqual(['chat-1'])
-    expect(server.getStatusSnapshot()).toEqual([])
-  })
-
-  it('retries a save that failed when Orca quits, whatever the status-hooks setting', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const server = await start(false)
-    // A directory where the file goes fails the write's rename.
-    mkdirSync(lastStatusPath(), { recursive: true })
-    server.saveStructuredStatus(saved('chat-1'))
-    rmSync(lastStatusPath(), { recursive: true })
-    expect(existsSync(lastStatusPath())).toBe(false)
-
-    server.stop()
-
-    expect(existsSync(lastStatusPath())).toBe(true)
-    expect(Object.keys(readFile().structuredSessions ?? {})).toEqual(['chat-1'])
-  })
-
-  it('lets a save older than seven days, or a malformed one, die at load', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  it('re-saves nothing a restart restores: what it loaded is what it compares against', async () => {
     writeFile({
       version: 2,
       entries: {},
       structuredSessions: {
-        fresh: saved('fresh'),
-        expired: saved('expired', Date.now() - 8 * DAY_MS),
-        'wrong-key': saved('other'),
-        malformed: { summary: { sessionId: 'malformed' } }
+        [CHAT]: {
+          summary: {
+            sessionId: CHAT,
+            status: 'idle',
+            turnOutcome: 'success',
+            latestPrompt: 'saved',
+            updatedAt: NINE_DAYS_AGO
+          }
+        }
+      }
+    })
+    const before = readFileSync(lastStatusPath(), 'utf8')
+    const server = await start()
+
+    server.ingestStructuredStatus(
+      live({ status: 'idle', turnOutcome: 'success', latestPrompt: 'restored' }),
+      SUBJECT
+    )
+
+    expect(readFileSync(lastStatusPath(), 'utf8')).toBe(before)
+  })
+
+  it('lets the saved status die with the row when the host lets go of the chat', async () => {
+    const server = await start()
+    server.ingestStructuredStatus(live(), SUBJECT)
+
+    server.dropStructuredStatus(SUBJECT)
+
+    expect(readFile()).not.toHaveProperty('structuredSessions')
+  })
+})
+
+describe('loading native chat statuses', () => {
+  it('keeps an entry however old: records and tabs bound it, not its age', async () => {
+    writeFile({
+      version: 2,
+      entries: {},
+      structuredSessions: {
+        [CHAT]: {
+          summary: {
+            sessionId: CHAT,
+            status: 'working',
+            latestPrompt: 'cut',
+            updatedAt: NINE_DAYS_AGO
+          }
+        }
       }
     })
 
     const server = await start()
 
-    expect(server.readSavedStructuredStatuses().map((entry) => entry.summary.sessionId)).toEqual([
-      'fresh'
+    expect(server.readSavedStructuredStatuses()).toEqual([
+      { sessionId: CHAT, saved: { summary: expect.objectContaining({ status: 'working' }) } }
     ])
-    expect(Object.keys(readFile().structuredSessions ?? {})).toEqual(['fresh'])
+  })
+
+  it("writes a newer build's entries back as they were, until this build saves that chat", async () => {
+    const newer = {
+      summary: { sessionId: CHAT, status: 'paused', latestPrompt: 'x', updatedAt: 1 },
+      extra: true
+    }
+    const other = {
+      summary: { sessionId: 'other', status: 'idle', latestPrompt: 'y', updatedAt: 2, future: 1 }
+    }
+    writeFile({ version: 2, entries: {}, structuredSessions: { [CHAT]: newer, other } })
+    const server = await start()
+
+    expect(server.readSavedStructuredStatuses().map((entry) => entry.saved !== null)).toEqual([
+      false,
+      true
+    ])
+    server.dropSavedStructuredStatus('missing')
+    const another = 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e'
+    server.ingestStructuredStatus(
+      live({ sessionId: another }),
+      makeStructuredAgentStatusSubject(LOCATION, another)
+    )
+    expect(readFile().structuredSessions).toMatchObject({ [CHAT]: newer, other })
+
+    server.ingestStructuredStatus(live(), SUBJECT)
+    expect(savedChat()).toMatchObject({ summary: { status: 'working' } })
+  })
+
+  it('loads and saves with status hooks off, writing back the CLI rows it never hydrated', async () => {
+    writeFile({ version: 2, entries: { [PANE]: cliEntry() } })
+    const before = readFile().entries
+    const server = await start(false)
+
+    server.ingestStructuredStatus(live(), SUBJECT)
+
+    expect(readFile().entries).toEqual(before)
+    expect(Object.keys(readFile().structuredSessions ?? {})).toEqual([CHAT])
+  })
+
+  it('never writes over a file it cannot read with status hooks off', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    writeFile({ version: 3, everything: 'a newer build keeps' })
+    const before = readFileSync(lastStatusPath(), 'utf8')
+    const server = await start(false)
+
+    server.ingestStructuredStatus(live(), SUBJECT)
+    server.stop()
+
+    expect(readFileSync(lastStatusPath(), 'utf8')).toBe(before)
+  })
+
+  it('retries a failed write when Orca quits, whatever the status-hooks setting', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const server = await start(false)
+    // A directory where the file goes fails the write's rename.
+    mkdirSync(lastStatusPath(), { recursive: true })
+    server.ingestStructuredStatus(live(), SUBJECT)
+    rmSync(lastStatusPath(), { recursive: true })
+
+    server.stop()
+
+    expect(existsSync(lastStatusPath())).toBe(true)
+    expect(Object.keys(readFile().structuredSessions ?? {})).toEqual([CHAT])
   })
 
   it("reads an older build's file, with no chat statuses, and keeps its CLI rows", async () => {
@@ -162,7 +265,5 @@ describe('saved native chat statuses', () => {
 
     expect(server.readSavedStructuredStatuses()).toEqual([])
     expect(server.getStatusSnapshot().map((row) => row.paneKey)).toEqual([PANE])
-    server.saveStructuredStatus(saved('chat-1'))
-    expect(Object.keys(readFile().entries ?? {})).toEqual([PANE])
   })
 })

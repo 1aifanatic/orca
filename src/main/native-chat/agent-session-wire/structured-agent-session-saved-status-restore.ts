@@ -1,77 +1,80 @@
-// What startup owes native chats. Each listed chat shows its saved status without its history being
-// opened. Only two kinds open, at once: a chat the restart cut mid-turn, so its journal settles at
-// the restart boundary, and a chat undelivered mail waits on, so its idle edge re-drives that mail.
+// What startup owes native chats. Each listed chat that was settled shows its saved status without
+// its history being opened. Only two kinds open, at once: a chat the restart cut mid-turn, whose open
+// settles its journal and publishes the verdict that settle wrote, and a listed chat undelivered mail
+// waits on, whose idle edge re-drives that mail.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
-import { agentTurnVerdict } from '../../../shared/agent-turn-outcome'
-import type { SavedStructuredSessionStatus } from '../../../shared/structured-agent-session-saved-status'
+import type {
+  SavedStructuredSessionEntry,
+  SavedStructuredSessionStatus
+} from '../../../shared/structured-agent-session-saved-status'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { turnVerdictFromDeathEvidence } from './structured-agent-session-stale-turn-verdict'
+import { structuredAgentSessionRecordSummaryFields } from './structured-agent-session-status-summary'
 
 function wasCut(saved: SavedStructuredSessionStatus): boolean {
   return saved.summary.status === 'working' || saved.summary.status === 'attention'
 }
 
-/** What the chat's next open says. Its agent did not outlive the last Orca, so a turn it ran or a
- *  prompt it waited on ends with the verdict the journal's settle gives it, from the same proof. */
-export function settledSavedStructuredSessionSummary(
+/** A settled chat's row as its open would publish it: the journal's half as saved, the rest from
+ *  the record, which a change made while nothing was saved (a model switch, a rename) updates. */
+export function restoredStructuredSessionSummary(
   saved: SavedStructuredSessionStatus,
   record: AgentSessionRecord
 ): AgentSessionStatusSummary {
-  const { conversationName: _saved, statusStartedAt, ...rest } = saved.summary
-  const summary = {
-    ...rest,
-    agent: record.provider,
-    workspaceId: record.location.workspaceId,
-    ...(record.conversationName ? { conversationName: record.conversationName } : {})
-  }
-  if (!wasCut(saved)) {
-    return { ...summary, ...(statusStartedAt ? { statusStartedAt } : {}) }
-  }
-  const verdict = turnVerdictFromDeathEvidence(record.lease.deathEvidence, saved.turnFence)
   return {
-    ...summary,
-    status: 'idle',
-    turnOutcome: agentTurnVerdict({ state: verdict.state, outcome: null }) ?? 'unconfirmed',
-    ...(verdict.state === 'interrupted' ? { statusStartedAt: verdict.completedAt } : {})
+    ...saved.summary,
+    workspaceId: record.location.workspaceId,
+    agent: record.provider,
+    ...structuredAgentSessionRecordSummaryFields(record)
   }
 }
 
-/** Runs after the startup lease check, which writes the death proofs the verdict reads. A failed
- *  settle is logged: the chat still lists, and its own open settles it again. */
+/** Runs after the startup lease check. A failed open is logged: the chat still lists, and its own
+ *  next open settles it again. */
 export async function restoreSavedStructuredAgentSessionStatuses(input: {
+  /** Listed chats, already filtered to the ones the tab list shows. */
   listed: readonly string[]
   /** Chats undelivered orchestration mail waits on. */
   owedMail: readonly string[]
-  saved: readonly SavedStructuredSessionStatus[]
+  saved: readonly SavedStructuredSessionEntry[]
   getRecord: (sessionId: string) => AgentSessionRecord | null
+  /** A record a newer build wrote: its saved status is that build's, so it is kept. */
+  isUnreadable: (sessionId: string) => boolean
   restoreSaved: (
     summary: AgentSessionStatusSummary,
     location: AgentSessionRecord['location']
   ) => void
   dropSaved: (sessionId: string) => void
-  /** Opens each chat, which settles what its gone agent left running. */
+  /** Opens each chat, which settles what its gone agent left running and publishes its row. */
   settle: (sessionIds: readonly string[]) => Promise<void>
   close: (sessionId: string) => Promise<void>
   logger: StructuredAgentSessionLogger
 }): Promise<void> {
   const listed = new Set(input.listed)
   const cut: string[] = []
-  for (const saved of input.saved) {
-    const { sessionId } = saved.summary
+  for (const { sessionId, saved } of input.saved) {
     const record = input.getRecord(sessionId)
-    if (record && listed.has(sessionId)) {
-      input.restoreSaved(settledSavedStructuredSessionSummary(saved, record), record.location)
-    } else if (!record || !wasCut(saved)) {
+    if (!record) {
+      if (!input.isUnreadable(sessionId)) {
+        input.dropSaved(sessionId)
+      }
+      continue
+    }
+    if (!saved) {
+      // Another build's entry: kept as written until this chat's own save replaces it.
+      continue
+    }
+    if (wasCut(saved)) {
+      cut.push(sessionId)
+    } else if (listed.has(sessionId)) {
+      input.restoreSaved(restoredStructuredSessionSummary(saved, record), record.location)
+    } else {
       // Nothing lists it, and nothing of it is left to settle.
       input.dropSaved(sessionId)
     }
-    if (record && wasCut(saved)) {
-      cut.push(sessionId)
-    }
   }
-  const owed = [...new Set([...cut, ...input.owedMail.filter((id) => input.getRecord(id))])]
+  const owed = [...new Set([...cut, ...input.owedMail.filter((id) => listed.has(id))])]
   if (owed.length === 0) {
     return
   }

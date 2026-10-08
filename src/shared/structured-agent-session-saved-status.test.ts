@@ -7,8 +7,6 @@ import {
 
 const summary = {
   sessionId: 'chat-1',
-  workspaceId: 'workspace-1',
-  agent: 'claude',
   status: 'idle',
   latestPrompt: 'ship it',
   turnOutcome: 'success',
@@ -16,16 +14,13 @@ const summary = {
 }
 
 describe('a saved chat status read back from disk', () => {
-  it('keeps a well-formed entry and its turn fence', () => {
-    expect(parseSavedStructuredSessionStatus('chat-1', { summary, turnFence: 4 })).toEqual({
-      summary,
-      turnFence: 4
-    })
+  it('keeps a well-formed entry', () => {
+    expect(parseSavedStructuredSessionStatus('chat-1', { summary })).toEqual({ summary })
   })
 
   it.each([
     ['not an object', 'chat-1', 'idle'],
-    ['no summary', 'chat-1', { turnFence: 4 }],
+    ['no summary', 'chat-1', {}],
     ['a summary under another chat', 'chat-2', { summary }],
     ['an unknown status', 'chat-1', { summary: { ...summary, status: 'thinking' } }],
     ['no clock', 'chat-1', { summary: { ...summary, updatedAt: 'yesterday' } }],
@@ -34,20 +29,21 @@ describe('a saved chat status read back from disk', () => {
     expect(parseSavedStructuredSessionStatus(sessionId, value)).toBeNull()
   })
 
-  it('drops fields of the wrong shape, and a verdict on anything but an idle chat', () => {
+  it("keeps only the journal's half, drops fields of the wrong shape, and a verdict on a busy chat", () => {
     expect(
       savedStructuredSessionSummary({
         ...summary,
+        workspaceId: 'workspace-1',
+        agent: 'claude',
         status: 'working',
-        model: 42,
+        model: 'gpt-live',
+        hostExecutionOwned: true,
+        toolName: 'Bash',
         lastAssistantMessage: '',
-        providerSession: 'not-an-object',
         statusStartedAt: -1
       })
     ).toEqual({
       sessionId: 'chat-1',
-      workspaceId: 'workspace-1',
-      agent: 'claude',
       status: 'working',
       latestPrompt: 'ship it',
       updatedAt: 10
@@ -64,8 +60,6 @@ describe('a saved chat status read back from disk', () => {
 describe('when a save is owed', () => {
   const idle = {
     sessionId: 'chat-1',
-    workspaceId: 'workspace-1',
-    agent: 'claude',
     status: 'idle' as const,
     latestPrompt: 'ship it',
     updatedAt: 10

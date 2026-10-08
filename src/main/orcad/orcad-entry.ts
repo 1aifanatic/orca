@@ -266,7 +266,6 @@ async function startOrcadRuntime(
       publishChildWork: (subject, evidence, provider) =>
         agentHookServer.ingestStructuredChildWork(subject, evidence, provider),
       readChildWork: (subject) => agentHookServer.getStructuredChildWorkViews(subject),
-      saveStatus: (saved) => agentHookServer.saveStructuredStatus(saved),
       dropSavedStatus: (sessionId) => agentHookServer.dropSavedStructuredStatus(sessionId),
       readSavedStatuses: () => agentHookServer.readSavedStructuredStatuses()
     },

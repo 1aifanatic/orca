@@ -12,7 +12,10 @@ import type {
 } from './server-types'
 import { authorityCommitmentsMatch } from './server-persistence-validation'
 import { AgentHookServerHydration } from './server-hydration'
-import type { SavedStructuredSessionStatus } from '../../../shared/structured-agent-session-saved-status'
+import {
+  parseSavedStructuredSessionStatus,
+  type SavedStructuredSessionEntry
+} from '../../../shared/structured-agent-session-saved-status'
 
 export abstract class AgentHookServerPersistence extends AgentHookServerHydration {
   protected serializeStatusFile(): string {
@@ -76,21 +79,18 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
     return JSON.stringify(file)
   }
 
-  /** Written at once, not debounced: it changes only on a chat's status edges, and a crash right
-   *  after a turn ends must still find the end. */
-  saveStructuredStatus(saved: SavedStructuredSessionStatus): void {
-    this.savedStructuredStatuses.set(saved.summary.sessionId, saved)
-    this.runStatusPersist()
-  }
-
   dropSavedStructuredStatus(sessionId: string): void {
     if (this.savedStructuredStatuses.delete(sessionId)) {
       this.runStatusPersist()
     }
   }
 
-  readSavedStructuredStatuses(): SavedStructuredSessionStatus[] {
-    return [...this.savedStructuredStatuses.values()]
+  /** Every saved entry; one this build cannot read is null, and stays in the file as written. */
+  readSavedStructuredStatuses(): SavedStructuredSessionEntry[] {
+    return [...this.savedStructuredStatuses].map(([sessionId, entry]) => ({
+      sessionId,
+      saved: parseSavedStructuredSessionStatus(sessionId, entry)
+    }))
   }
 
   protected scheduleStatusPersist(): void {
@@ -123,7 +123,12 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
   }
 
   protected runStatusPersist(): void {
-    if (!this.lastStatusFilePath || !this.endpointDir) {
+    // Hooks on rewrites a foreign file as it always has; a chat's save alone never does.
+    if (
+      !this.lastStatusFilePath ||
+      !this.endpointDir ||
+      (this.statusFileForeign && !this.statusHooksEnabled)
+    ) {
       return
     }
     const json = this.serializeStatusFile()

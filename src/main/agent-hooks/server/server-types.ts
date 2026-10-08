@@ -7,7 +7,6 @@ import type {
 import type { AgentStatusObservation } from '../../../shared/agent-status-observation'
 import type { AgentKind } from '../../../shared/telemetry-events'
 import type { LegacyPaneKeyAliasEntry } from '../../../shared/persisted-state-types'
-import type { SavedStructuredSessionStatus } from '../../../shared/structured-agent-session-saved-status'
 
 // Why: server-side enrichment — receivedAt = latest event arrival, stateStartedAt = when the current state first appeared; extra fields ride the shared map untouched (it only writes/clears).
 export type EnrichedAgentHookEventPayload = AgentHookEventPayload & {
@@ -130,8 +129,9 @@ export type LastStatusFile = {
   version: number
   entries: Record<string, PersistedAgentHookEventPayload>
   authorityCommitments?: Record<string, PersistedAgentHookAuthorityCommitment>
-  /** Native chats by session id; a build that predates the key ignores it. */
-  structuredSessions?: Record<string, SavedStructuredSessionStatus>
+  /** Native chats' `SavedStructuredSessionStatus` by session id; a build that predates the key
+   *  ignores it. Read entry by entry, so one this build cannot parse is kept as written. */
+  structuredSessions?: Record<string, unknown>
 }
 
 export type AgentPromptSentDedupeEntry = {

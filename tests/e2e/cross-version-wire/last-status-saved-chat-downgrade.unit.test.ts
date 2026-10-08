@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { AgentHookServer } from '../../../src/main/agent-hooks/server'
 import { makePaneKey } from '../../../src/shared/stable-pane-id'
+import { makeStructuredAgentStatusSubject } from '../../../src/shared/agent-status-subject'
 import { importReleaseCheckoutModule, materializeReleaseCheckout } from './release-checkout'
 
 const RELEASE_REF = 'v1.4.222'
@@ -56,19 +57,31 @@ test('the last release loads a file holding chat statuses, and this build loads 
   try {
     const current = new AgentHookServer()
     await current.start({ env: 'production', userDataPath })
-    current.saveStructuredStatus({
-      summary: {
-        sessionId: 'chat-1',
+    const chat = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
+    current.ingestStructuredStatus(
+      {
+        sessionId: chat,
         workspaceId: 'wt-1',
         agent: 'claude',
         status: 'working',
         latestPrompt: 'refactor the parser',
         updatedAt: receivedAt
       },
-      turnFence: 3
-    })
+      makeStructuredAgentStatusSubject(
+        {
+          executionHostId: 'local',
+          wslDistro: null,
+          workspaceId: 'wt-1',
+          workspaceKind: 'git-worktree'
+        },
+        chat
+      )
+    )
     current.stop()
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toHaveProperty('structuredSessions.chat-1')
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toHaveProperty([
+      'structuredSessions',
+      'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
+    ])
 
     const older = await olderHookServer()
     await older.start({ env: 'production', userDataPath })

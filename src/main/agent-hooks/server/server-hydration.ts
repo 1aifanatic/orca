@@ -12,7 +12,6 @@ import { seedCodexStateFromSnapshot } from '../../../shared/agent-hook-listener/
 import { AGENT_STATUS_PERSISTED_HYDRATION_MODE } from '../../../shared/agent-status-legacy-adapter'
 import { HYDRATE_MAX_AGE_MS, LAST_STATUS_FILE_VERSION } from './server-constants'
 import type { LastStatusFile } from './server-types'
-import { parseSavedStructuredSessionStatus } from '../../../shared/structured-agent-session-saved-status'
 import {
   authorityCommitmentsMatch,
   dropHydratedIdleClaudeSubagents,
@@ -29,15 +28,19 @@ export abstract class AgentHookServerHydration extends AgentHookServerReaping {
       return null
     }
     let raw: string
+    this.statusFileForeign = false
     try {
       raw = readFileSync(this.lastStatusFilePath, 'utf8')
     } catch (err) {
       // Why: missing file is normal (first launch); other errors degrade to empty hydration + one warn.
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
         console.warn('[agent-hooks] failed to read last-status file:', err)
+        this.statusFileForeign = true
       }
       return null
     }
+    // Cleared again once the file proves readable.
+    this.statusFileForeign = true
     let parsed: unknown
     try {
       parsed = JSON.parse(raw)
@@ -58,6 +61,7 @@ export abstract class AgentHookServerHydration extends AgentHookServerReaping {
       )
       return null
     }
+    this.statusFileForeign = false
     return { raw, file }
   }
 
@@ -68,18 +72,9 @@ export abstract class AgentHookServerHydration extends AgentHookServerReaping {
     this.unhydratedStatusFile = read
       ? { entries: read.file.entries ?? {}, authorityCommitments: read.file.authorityCommitments }
       : null
-    const ttlCutoff = Date.now() - HYDRATE_MAX_AGE_MS
-    let dropped = 0
-    for (const [sessionId, rawStatus] of Object.entries(read?.file.structuredSessions ?? {})) {
-      const saved = parseSavedStructuredSessionStatus(sessionId, rawStatus)
-      if (saved && saved.summary.updatedAt >= ttlCutoff) {
-        this.savedStructuredStatuses.set(sessionId, saved)
-      } else {
-        dropped += 1
-      }
-    }
-    if (dropped > 0) {
-      this.runStatusPersist()
+    // No age limit: each entry dies with its chat's record or tab, or is replaced by its next save.
+    for (const [sessionId, entry] of Object.entries(read?.file.structuredSessions ?? {})) {
+      this.savedStructuredStatuses.set(sessionId, entry)
     }
   }
 

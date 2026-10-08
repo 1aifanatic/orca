@@ -24,6 +24,7 @@ import type {
   StructuredAgentSessionReveal
 } from './structured-agent-session-host-types'
 import { restoreSavedStructuredAgentSessionStatuses } from './structured-agent-session-saved-status-restore'
+import { listSavedSessionTabs } from './structured-agent-session-host-tabs'
 
 /** Throws its refusal as the code itself. */
 export async function revealStructuredAgentSession(
@@ -53,8 +54,8 @@ export async function revealStructuredAgentSession(
   }
 }
 
-/** The host's startup restore: reconcile, then show each chat's saved status and open only the
- *  chats a restart cut. Its lease bookkeeping is a reader's, which never fails a read or startup. */
+/** The host's startup restore: reconcile, then show each settled chat's saved status and open only
+ *  the chats a restart owes. Its lease bookkeeping is a reader's, which never fails a read or startup. */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
   wiring: Omit<
@@ -98,10 +99,12 @@ export function createStructuredAgentSessionHostRestore(
     restoreReadableSessions,
     restoreSavedStatuses: (listed, owedMail = []) =>
       restoreSavedStructuredAgentSessionStatuses({
-        listed,
+        // The tab list's own filter, so a chat it does not show gets no row either.
+        listed: listSavedSessionTabs(deps, listed).map((tab) => tab.sessionId),
         owedMail,
         saved: deps.statusSink?.readSavedStatuses?.() ?? [],
         getRecord: (sessionId) => deps.store.getRecord(sessionId),
+        isUnreadable: (sessionId) => deps.store.isSessionUnreadable(sessionId),
         restoreSaved,
         dropSaved: (sessionId) => deps.statusSink?.dropSavedStatus?.(sessionId),
         settle: restoreReadableSessions,
