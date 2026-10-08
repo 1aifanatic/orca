@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import {
   normalizeWorktreeRootPathForTerminalLink,
   resolveKnownWorktreeRootPathLink
@@ -7,9 +8,19 @@ import {
 type WorktreeRootPathState = NonNullable<Parameters<typeof resolveKnownWorktreeRootPathLink>[1]>
 
 function createState(
-  worktreesByRepo: Record<string, { id: string; path: string }[]>
+  worktreesByRepo: Record<
+    string,
+    { id: string; path: string; hostId?: ExecutionHostId; runtimeOwnerEnvironmentId?: string }[]
+  >
 ): WorktreeRootPathState {
-  return { worktreesByRepo } as WorktreeRootPathState
+  return {
+    worktreesByRepo: Object.fromEntries(
+      Object.entries(worktreesByRepo).map(([repoId, rows]) => [
+        repoId,
+        rows.map((row) => ({ ...row, repoId, hostId: row.hostId ?? 'local' }))
+      ])
+    )
+  }
 }
 
 describe('resolveKnownWorktreeRootPathLink', () => {
@@ -20,7 +31,8 @@ describe('resolveKnownWorktreeRootPathLink', () => {
 
     expect(resolveKnownWorktreeRootPathLink('/repo/feature', state)).toEqual({
       id: 'wt-1',
-      path: '/repo/feature'
+      path: '/repo/feature',
+      executionHostId: 'local'
     })
   })
 
@@ -102,5 +114,131 @@ describe('resolveKnownWorktreeRootPathLink', () => {
     expect(resolveKnownWorktreeRootPathLink('c:\\users\\alice\\repo', state)?.id).toBe('wt-win')
     expect(resolveKnownWorktreeRootPathLink('//server/share/repo', state)?.id).toBe('wt-unc')
     expect(resolveKnownWorktreeRootPathLink('/users/alice/repo', state)).toBeNull()
+  })
+})
+
+const remoteContext = (environmentId: string, worktreeId = 'source') => ({
+  settings: { activeRuntimeEnvironmentId: environmentId },
+  worktreeId,
+  worktreePath: '/source'
+})
+
+describe('terminal root link ownership', () => {
+  it('does not select a desktop root from a managed terminal', () => {
+    const state = createState({ desktop: [{ id: 'desktop', path: '/collision' }] })
+    expect(
+      resolveKnownWorktreeRootPathLink('/collision', state, remoteContext('remote'))
+    ).toBeNull()
+  })
+
+  it('selects the matching host when three hosts publish the same root', () => {
+    const state = createState({
+      repo: [
+        { id: 'same-id', path: '/collision', hostId: 'local' },
+        { id: 'same-id', path: '/collision', hostId: 'runtime:alpha' },
+        { id: 'same-id', path: '/collision', hostId: 'runtime:beta' }
+      ]
+    })
+    for (const host of ['alpha', 'beta']) {
+      expect(resolveKnownWorktreeRootPathLink('/collision', state, remoteContext(host))).toEqual({
+        id: 'same-id',
+        path: '/collision',
+        executionHostId: `runtime:${host}`
+      })
+    }
+    expect(resolveKnownWorktreeRootPathLink('/collision', state)?.executionHostId).toBe('local')
+  })
+
+  it('does not select another managed host even when its path is unique', () => {
+    const state = createState({
+      repo: [{ id: 'other', path: '/collision', hostId: 'runtime:beta' }]
+    })
+    expect(resolveKnownWorktreeRootPathLink('/collision', state, remoteContext('alpha'))).toBeNull()
+  })
+
+  it('keeps direct SSH roots scoped to their own connection', () => {
+    const state = createState({
+      repo: [
+        { id: 'ssh-a', path: '/collision', hostId: 'ssh:alpha' },
+        { id: 'ssh-b', path: '/collision', hostId: 'ssh:beta' }
+      ]
+    })
+    const context = {
+      settings: null,
+      worktreeId: 'source',
+      worktreePath: '/source',
+      connectionId: 'alpha'
+    }
+    expect(resolveKnownWorktreeRootPathLink('/collision', state, context)?.id).toBe('ssh-a')
+  })
+
+  it('keeps same-host duplicate roots ambiguous', () => {
+    const state = createState({
+      repo: [
+        { id: 'one', path: '/collision', hostId: 'runtime:alpha' },
+        { id: 'two', path: '/collision/', hostId: 'runtime:alpha' }
+      ]
+    })
+    expect(resolveKnownWorktreeRootPathLink('/collision', state, remoteContext('alpha'))).toBeNull()
+  })
+
+  it('uses the explicit pane owner for a non-git folder source', () => {
+    const state = createState({
+      repo: [{ id: 'target', path: '/target', hostId: 'runtime:alpha' }]
+    })
+    expect(
+      resolveKnownWorktreeRootPathLink('/target', state, remoteContext('alpha', 'folder:source'))
+        ?.id
+    ).toBe('target')
+  })
+
+  it('does not use an active host that differs from the retained pane owner', () => {
+    const state = {
+      ...createState({ repo: [{ id: 'target', path: '/target', hostId: 'runtime:beta' }] }),
+      activeWorktreeId: 'source',
+      activeWorkspaceExecutionHostId: 'runtime:alpha' as const
+    }
+    expect(resolveKnownWorktreeRootPathLink('/target', state, remoteContext('beta'))?.id).toBe(
+      'target'
+    )
+  })
+
+  it('keeps a nested SSH target distinct from the paired host serving it', () => {
+    const state = createState({
+      repo: [
+        { id: 'source', path: '/source', hostId: 'ssh:nested', runtimeOwnerEnvironmentId: 'hub' },
+        {
+          id: 'nested',
+          path: '/collision',
+          hostId: 'ssh:nested',
+          runtimeOwnerEnvironmentId: 'hub'
+        },
+        { id: 'hub-root', path: '/collision', hostId: 'runtime:hub' }
+      ]
+    })
+    expect(resolveKnownWorktreeRootPathLink('/collision', state, remoteContext('hub'))).toEqual({
+      id: 'nested',
+      path: '/collision',
+      executionHostId: 'ssh:nested'
+    })
+  })
+
+  it('does not cache a repo owner after that owner changes', () => {
+    const worktreesByRepo = { repo: [{ id: 'target', repoId: 'repo', path: '/target' }] }
+    const first = {
+      worktreesByRepo,
+      repos: [{ id: 'repo', executionHostId: 'runtime:alpha' as const }]
+    }
+    const second = {
+      worktreesByRepo,
+      repos: [{ id: 'repo', executionHostId: 'runtime:beta' as const }]
+    }
+    expect(resolveKnownWorktreeRootPathLink('/target', first, remoteContext('alpha'))?.id).toBe(
+      'target'
+    )
+    expect(resolveKnownWorktreeRootPathLink('/target', second, remoteContext('alpha'))).toBeNull()
+    expect(resolveKnownWorktreeRootPathLink('/target', second, remoteContext('beta'))?.id).toBe(
+      'target'
+    )
   })
 })

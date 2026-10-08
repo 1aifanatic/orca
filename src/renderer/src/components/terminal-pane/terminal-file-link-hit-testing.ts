@@ -1,3 +1,4 @@
+import { useAppStore } from '@/store'
 import type { IBufferLine, IBufferRange } from '@xterm/xterm'
 import { extractTerminalFileLinkCandidates, resolveTerminalFileLink } from '@/lib/terminal-links'
 import { isRemoteRuntimeFileOperation } from '@/runtime/runtime-file-client'
@@ -74,7 +75,9 @@ export function openFilePathLinkAtBufferPosition(
         isRemoteRuntimePath: isRemoteRuntimeFileOperation(fileContext, mappedPath),
         runtimeEnvironmentId: deps.runtimeEnvironmentId
       })
-      const isKnownWorktreeRoot = Boolean(resolveKnownWorktreeRootPathLink(mappedPath))
+      const isKnownWorktreeRoot = Boolean(
+        resolveKnownWorktreeRootPathLink(mappedPath, useAppStore.getState(), fileContext)
+      )
       if (/[\\/]$/.test(parsed.pathText) && !isKnownWorktreeRoot) {
         continue
       }

@@ -55,7 +55,11 @@ export function handleTerminalFileLink(
     deps.worktreePath,
     deps.runtimeEnvironmentId
   )
-  const worktreeRoot = resolveKnownWorktreeRootPathLink(mappedPath)
+  const worktreeRoot = resolveKnownWorktreeRootPathLink(
+    mappedPath,
+    useAppStore.getState(),
+    fileContext
+  )
   const canOpenWithSystemDefault = shouldOpenTerminalFileWithSystemDefault(fileContext, mappedPath)
   const isMac = navigator.userAgent.includes('Mac')
 

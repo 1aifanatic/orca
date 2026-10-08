@@ -65,23 +65,7 @@ test('a managed orcad stops after idling and starts again on the next connect', 
     app = first.app
     await waitForSessionReady(first.page)
     // A managed host is reached through its server, not a relay, so no relay repo is added.
-    const remote = await first.page.evaluate(
-      async (input) => {
-        const { target: created } = await window.api.ssh.addTarget({ target: input })
-        const state = await window.api.ssh.connect({ targetId: created.id })
-        return { targetId: created.id, managedServer: state?.managedServer ?? null }
-      },
-      {
-        label: `orcad idle E2E ${Date.now()}`,
-        host: target.host,
-        port: target.port,
-        username: 'root',
-        identityFile: target.identityFile,
-        identitiesOnly: true,
-        relayGracePeriodSeconds: 1
-      }
-    )
-    expect(remote.managedServer).toMatchObject({ kind: 'managed' })
+    const remote = await connectManagedHost(first.page, target)
     expect(runningOrcadPids(target)).toHaveLength(1)
 
     // While the client is connected the server stays up past its quiet period.
@@ -112,6 +96,13 @@ test('a managed orcad stops after idling and starts again on the next connect', 
     // A start inherited from the launch-time connect this reconnect dropped would report `serving`.
     expect(JSON.parse(connected)).toMatchObject({ kind: 'managed' })
     expect(JSON.parse(connected)).not.toHaveProperty('serving')
+    await expect
+      .poll(
+        async () =>
+          (await callEnvironment(second.page, remote.environmentId, 'terminal.list', {})).ok,
+        { timeout: 60_000 }
+      )
+      .toBe(true)
     expect(runningOrcadPids(target)).toHaveLength(1)
     // The restarted server read the record, so a later crash cannot be mistaken for an idle stop.
     expect(readIdleStopRecord(target)).toBeNull()

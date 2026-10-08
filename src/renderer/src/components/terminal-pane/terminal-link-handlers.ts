@@ -1,3 +1,4 @@
+import { useAppStore } from '@/store'
 import { createTerminalPathExistenceBatch } from './terminal-path-existence-batch'
 import type { IDisposable, ILink, ILinkProvider, Terminal } from '@xterm/xterm'
 import {
@@ -165,7 +166,11 @@ export function createFilePathLinkProvider(
                 isRemoteRuntimePath,
                 runtimeEnvironmentId
               })
-              const worktreeRootLink = resolveKnownWorktreeRootPathLink(mappedPath)
+              const worktreeRootLink = resolveKnownWorktreeRootPathLink(
+                mappedPath,
+                useAppStore.getState(),
+                fileContext
+              )
               if (/[\\/]$/.test(parsed.pathText) && !worktreeRootLink) {
                 return null
               }
