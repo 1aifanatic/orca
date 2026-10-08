@@ -2,6 +2,7 @@ import type { SleepingAgentSessionRecord } from '../../../../shared/agent-sessio
 import { structuralValuesEqual } from '../../../../shared/structural-value-equality'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type {
+  TerminalTabSavedPresentation,
   TerminalTopologyLayout,
   TerminalTopologySlice,
   TerminalTopologyTabRow
@@ -30,13 +31,20 @@ function mirrorTabRow(current: TerminalTab, row: TerminalTopologyTabRow): Termin
   return structuralValuesEqual(next, current) ? current : next
 }
 
-/** A tab main created; its ptyId seeds the window's attachment, as a revealed tab's would. */
-function newTabRow(row: TerminalTopologyTabRow, sortOrder: number): TerminalTab {
+/**
+ * A tab main created; its ptyId seeds the window's attachment, as a revealed tab's would, and the
+ * presentation main saved (a title the creator gave it) is what the window first shows.
+ */
+function newTabRow(
+  row: TerminalTopologyTabRow,
+  presentation: TerminalTabSavedPresentation | undefined,
+  sortOrder: number
+): TerminalTab {
   return {
     ...row,
     title: row.defaultTitle ?? 'Terminal',
-    customTitle: null,
-    color: null,
+    customTitle: presentation?.customTitle ?? null,
+    color: presentation?.color ?? null,
     sortOrder
   }
 }
@@ -106,7 +114,7 @@ export function mirrorTerminalTopologySlice(
   const currentIds = new Set(currentTabs.map((tab) => tab.id))
   const added = slice.tabs
     .filter((row) => !currentIds.has(row.id) && !isPending(row.id, 'remove'))
-    .map((row, index) => newTabRow(row, kept.length + index))
+    .map((row, index) => newTabRow(row, slice.presentation[row.id], kept.length + index))
   const tabs = [...kept, ...added]
   const tabsChanged =
     tabs.length !== currentTabs.length || tabs.some((tab, index) => tab !== currentTabs[index])

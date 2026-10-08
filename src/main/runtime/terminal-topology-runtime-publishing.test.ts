@@ -111,13 +111,13 @@ describe('main publishes terminal topology to the window', () => {
     expect(runtime.settleTerminalTopology(WT)).toBe(pushes[0]!.publishSeq)
   })
 
-  it('pushes nothing for an identical or presentation-only write', async () => {
+  it('pushes nothing for an identical write or a live title change', async () => {
     const { write, pushes } = setup()
 
     write(sessionWithPty('pty-1'))
-    const renamed = sessionWithPty('pty-1')
-    renamed.tabsByWorktree[WT]![0]!.customTitle = 'renamed'
-    write(renamed)
+    const retitled = sessionWithPty('pty-1')
+    retitled.tabsByWorktree[WT]![0]!.title = 'vim'
+    write(retitled)
     await Promise.resolve()
 
     expect(pushes).toEqual([])

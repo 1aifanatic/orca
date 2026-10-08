@@ -17,6 +17,9 @@ export type TerminalTopologyTabRow = Pick<
   | 'quickCommandLabel'
 >
 
+/** The presentation main last saved for a tab; a window shows it on a tab it has not shown yet. */
+export type TerminalTabSavedPresentation = Pick<TerminalTab, 'customTitle' | 'color'>
+
 export type TerminalTopologyLayout = Pick<
   TerminalLayoutSnapshot,
   'root' | 'ptyIdsByLeafId' | 'titlesByLeafId'
@@ -30,6 +33,7 @@ export type TerminalTopologySlice = {
   publishSeq: number
   revision: number
   tabs: TerminalTopologyTabRow[]
+  presentation: Record<string, TerminalTabSavedPresentation>
   layouts: Record<string, TerminalTopologyLayout>
   sleeping: Record<string, SleepingAgentSessionRecord>
 }
