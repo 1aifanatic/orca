@@ -11,7 +11,7 @@ import { getRepoIdFromWorktreeId } from '../../shared/worktree/id'
 
 export type UnsequencedTerminalTopologySlice = Omit<TerminalTopologySlice, 'publishSeq'>
 
-function projectTabRow(tab: TerminalTab): TerminalTopologyTabRow {
+export function projectTabRow(tab: TerminalTab): TerminalTopologyTabRow {
   const { launchAgent, defaultTitle, shellOverride, startupCwd, forceHostRuntime } = tab
   const { quickCommandLabel } = tab
   return {

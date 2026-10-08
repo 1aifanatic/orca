@@ -89,6 +89,8 @@ export function createWebWorkspaceSessionApi(): Partial<PreloadApi> {
       setTerminalLayout: async () => ({ status: 'refused', reason: 'tab_not_held' }),
       // Why refused: web panes attach through the host, which records their bindings.
       bindTerminalLeaf: async () => ({ status: 'refused', reason: 'not_bound' }),
+      // Web clients keep launch agents in their saved session.
+      clearTerminalLaunchAgent: async () => {},
       // Why empty: web clients follow the host's session tabs, not main's topology push.
       getTerminalTopologySlices: async () => [],
       onTerminalTopologyChanged: () => () => {},

@@ -3,7 +3,6 @@ import type { SshRemotePtyLease } from '../../../shared/ssh-types'
 
 export type SshPtyLeaseTombstoneRetentionOperations = {
   state: PersistedState
-  toComparablePtyId: (targetId: string, ptyId: string) => string
 }
 
 /** A routing tombstone with nothing left to route: the operator closed this PTY and no stop is
@@ -17,53 +16,15 @@ function isRetiredRoutingTombstone(lease: SshRemotePtyLease, targetId: string): 
   )
 }
 
-/** Every stored-form relay pty id some persisted pane binding still names for this target.
- *
- *  Reads all partitions, not only the two `clearSshRemotePtyBindingsForLeases` scrubs: this answer
- *  authorizes a delete, so a partition left unscanned would be a binding whose tombstone we dropped.
- */
-function boundRelayPtyIds(
-  operations: SshPtyLeaseTombstoneRetentionOperations,
-  targetId: string
-): Set<string> {
-  const bound = new Set<string>()
-  const sessions = [
-    operations.state.workspaceSession,
-    ...Object.values(operations.state.workspaceSessionsByHostId ?? {})
-  ]
-  for (const session of sessions) {
-    if (!session) {
-      continue
-    }
-    for (const tabs of Object.values(session.tabsByWorktree ?? {})) {
-      for (const tab of tabs) {
-        if (tab.ptyId) {
-          bound.add(operations.toComparablePtyId(targetId, tab.ptyId))
-        }
-      }
-    }
-    for (const layout of Object.values(session.terminalLayoutsByTabId ?? {})) {
-      for (const ptyId of Object.values(layout?.ptyIdsByLeafId ?? {})) {
-        bound.add(operations.toComparablePtyId(targetId, ptyId))
-      }
-    }
-  }
-  return bound
-}
-
 /**
- * Deletes the `terminated` rows nothing can reach, bounding an array that otherwise only grew.
+ * Deletes the `terminated` rows no reader needs, bounding an array that otherwise only grew.
  *
- * `terminated` is written with a binding scrub in the same call, so once no persisted binding names
- * the id the row answers no question any reader asks. Reattach refuses it
+ * The row answers no question any reader asks. Reattach refuses it
  * (`sshRemotePtyLeaseAllowsReattach`), pane recovery matches on `expired` only, the orphan sweep
  * already classes it neither routed nor expired, and `ssh:reset` / `ssh:terminateSessions` skip it
- * outright — every one of those behaves identically on an absent row. A row a persisted binding still
- * names is kept all the same, which is what the reachability test checks. A `pendingKill` is an
- * undelivered stop, so those rows stay until the replay retires them.
- *
- * The reachability test is not redundant with the scrub: a lease freezes its `tabId`, so a pane
- * broken out into a new tab leaves a binding the scrub's tab-qualified match no longer reaches.
+ * outright — every one of those behaves identically on an absent row, whether or not a binding
+ * still names the pty. A `pendingKill` is an undelivered stop, so those rows stay until the replay
+ * retires them.
  *
  * Does not re-arm the local-worktree-metadata prune gate: a `terminated` lease no longer counts as
  * a persisted workspace owner, so dropping one cannot make any metadata row more removable.
@@ -73,13 +34,7 @@ export function pruneRetiredSshRemotePtyLeaseTombstones(
   targetId: string
 ): boolean {
   const leases = operations.state.sshRemotePtyLeases ?? []
-  if (!leases.some((lease) => isRetiredRoutingTombstone(lease, targetId))) {
-    return false
-  }
-  const bound = boundRelayPtyIds(operations, targetId)
-  const retained = leases.filter(
-    (lease) => !isRetiredRoutingTombstone(lease, targetId) || bound.has(lease.ptyId)
-  )
+  const retained = leases.filter((lease) => !isRetiredRoutingTombstone(lease, targetId))
   if (retained.length === leases.length) {
     return false
   }

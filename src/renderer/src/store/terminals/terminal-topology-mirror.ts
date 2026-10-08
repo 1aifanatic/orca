@@ -6,6 +6,7 @@ import type {
   TerminalTopologySlice,
   TerminalTopologyTabRow
 } from '../../../../shared/terminal-topology-slice'
+import { withTopologyRow } from '../../../../shared/terminal-topology-tab-row'
 import { resolvePtyBoundActiveLeafId } from '@/components/terminal-pane/terminal-layout-leaf-ids'
 import { sameStringRecord, terminalLayoutNodeEqual } from '@/lib/terminal-layout-equality'
 import type { AppState } from '../types'
@@ -20,32 +21,12 @@ import {
   terminalStoreReady
 } from './terminal-pending-panes'
 
-const OPTIONAL_ROW_FIELDS = [
-  'launchAgent',
-  'defaultTitle',
-  'shellOverride',
-  'startupCwd',
-  'forceHostRuntime',
-  'quickCommandLabel'
-] as const satisfies readonly (keyof TerminalTopologyTabRow)[]
-
-type _UnmirroredRowField = Exclude<
-  keyof TerminalTopologyTabRow,
-  'id' | 'ptyId' | 'worktreeId' | 'createdAt' | (typeof OPTIONAL_ROW_FIELDS)[number]
->
-void (true satisfies [_UnmirroredRowField] extends [never] ? true : never)
-
 /**
  * Main's row fields replace the window's; presentation stays, and so does `ptyId`. In the window it
  * is the PTY the tab is attached to now (liveness, D1), not main's persisted binding.
  */
 function mirrorTabRow(current: TerminalTab, row: TerminalTopologyTabRow): TerminalTab {
-  const next: TerminalTab = { ...current, ...row, ptyId: current.ptyId }
-  for (const field of OPTIONAL_ROW_FIELDS) {
-    if (!(field in row)) {
-      delete next[field]
-    }
-  }
+  const next = withTopologyRow(current, { ...row, ptyId: current.ptyId })
   return structuralValuesEqual(next, current) ? current : next
 }
 

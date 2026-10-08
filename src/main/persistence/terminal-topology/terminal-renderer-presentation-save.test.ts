@@ -5,7 +5,11 @@ import type { Tab } from '../../../shared/tab-types'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../shared/terminal-tab-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { projectTerminalTopologySlice } from '../../runtime/terminal-topology-projection'
-import { mergeRendererPresentationSave } from './terminal-renderer-presentation-save'
+import {
+  mergeRendererPresentationSave,
+  patchRendererSession
+} from './terminal-renderer-presentation-save'
+import { clearLaunchAgent } from './terminal-topology-commit'
 
 const WORKTREE = 'repo::/worktree'
 const LEFT = '11111111-1111-4111-8111-111111111111'
@@ -170,8 +174,8 @@ describe('mergeRendererPresentationSave', () => {
     const saved = mergeRendererPresentationSave(window, prior, 'local')
 
     expect(saved.tabsByWorktree[WORKTREE]).toEqual([
-      // Row fields are the window's (it clears launchAgent when the launching pane closes).
       row('tab', {
+        launchAgent: 'codex',
         ptyId: 'pty-left',
         title: 'npm test',
         customTitle: 'Tests',
@@ -187,6 +191,75 @@ describe('mergeRendererPresentationSave', () => {
       titlesByLeafId: { [LEFT]: 'Server' }
     })
     expect(saved.unifiedTabs).toEqual(prior.unifiedTabs)
+  })
+
+  it("a save cannot change a tab's creation fields", () => {
+    const prior = mainSession()
+    prior.tabsByWorktree[WORKTREE] = [
+      row('tab', { launchAgent: 'codex', ptyId: 'pty-left', shellOverride: 'zsh' })
+    ]
+    const window: WorkspaceSessionState = {
+      ...prior,
+      tabsByWorktree: {
+        [WORKTREE]: [
+          row('tab', { launchAgent: 'claude', startupCwd: '/elsewhere', customTitle: 'Mine' })
+        ]
+      }
+    }
+
+    const saved = mergeRendererPresentationSave(window, prior, 'local')
+
+    expect(saved.tabsByWorktree[WORKTREE]).toEqual([
+      row('tab', {
+        launchAgent: 'codex',
+        ptyId: 'pty-left',
+        shellOverride: 'zsh',
+        customTitle: 'Mine'
+      })
+    ])
+  })
+
+  it('a push landing between clearing the launched agent and the save does not bring it back', () => {
+    let session = mainSession()
+    const store = {
+      getWorkspaceSession: () => session,
+      patchWorkspaceSession: (patch: Partial<WorkspaceSessionState>) => {
+        session = { ...session, ...patch }
+      }
+    }
+    // The window clears the agent and tells main; a push sent before main's clear then puts it back.
+    clearLaunchAgent(store, { worktreeId: WORKTREE, tabId: 'tab' }, 'local')
+    const resurrected = row('tab', { launchAgent: 'codex', ptyId: 'pty-left' })
+
+    patchRendererSession(
+      { ...store, setWorkspaceSession: () => {}, stageWorkspaceSessionBeforeUnload: () => {} },
+      { tabsByWorktree: { [WORKTREE]: [resurrected] } }
+    )
+
+    expect(session.tabsByWorktree[WORKTREE]?.[0]).not.toHaveProperty('launchAgent')
+    expect(projectTerminalTopologySlice(session, 'local', WORKTREE).tabs[0]).not.toHaveProperty(
+      'launchAgent'
+    )
+  })
+
+  it('a patch carries only the fields it names', () => {
+    const prior = mainSession()
+    const patches: Partial<WorkspaceSessionState>[] = []
+    patchRendererSession(
+      {
+        getWorkspaceSession: () => prior,
+        patchWorkspaceSession: (patch) => patches.push(patch),
+        setWorkspaceSession: () => {},
+        stageWorkspaceSessionBeforeUnload: () => {}
+      },
+      { activeWorktreeId: WORKTREE, sleepingAgentSessionsByPaneKey: {} }
+    )
+    expect(patches).toEqual([
+      {
+        activeWorktreeId: WORKTREE,
+        sleepingAgentSessionsByPaneKey: prior.sleepingAgentSessionsByPaneKey
+      }
+    ])
   })
 
   it('a layout naming other panes is stale, so main keeps its whole layout', () => {

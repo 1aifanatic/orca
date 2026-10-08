@@ -139,6 +139,10 @@ export function createTerminalTabPresentationActions(
         const nextTabs = [...tabs]
         nextTabs[tabIndex] = tabWithoutLaunchAgent
         scheduleRuntimeGraphSync()
+        // Main holds the row; without this its push and the next save bring the agent back.
+        void globalThis.window?.api?.session
+          ?.clearTerminalLaunchAgent?.({ worktreeId: ownerWorktreeId, tabId })
+          ?.catch((error: unknown) => console.warn('[terminal] launch agent not cleared', error))
         return { tabsByWorktree: { ...s.tabsByWorktree, [ownerWorktreeId]: nextTabs } }
       })
     },

@@ -5,7 +5,9 @@ import type {
   WorkspaceSessionPatch,
   WorkspaceSessionState
 } from '../../../shared/workspace-session-state-types'
+import { withTopologyRow } from '../../../shared/terminal-topology-tab-row'
 import { pruneTabGroupLayoutAfterRetirement } from '../../runtime/mobile-session-terminal-retirement'
+import { projectTabRow } from '../../runtime/terminal-topology-projection'
 import type { Store } from '../loading-store/store'
 import { resolveHostId } from '../loading-store/session-host-partitions'
 import { sameTerminalLeafSet } from './terminal-layout-set'
@@ -36,7 +38,12 @@ export function patchRendererSession(
   patch: WorkspaceSessionPatch,
   hostId?: string | null
 ): void {
-  store.patchWorkspaceSession(overMainTopology(store, patch, hostId), hostId)
+  const merged = overMainTopology(store, patch, hostId)
+  // A patch carries only the fields it names; main's fields it omits already stand.
+  store.patchWorkspaceSession(
+    Object.fromEntries(Object.entries(merged).filter(([key]) => Object.hasOwn(patch, key))),
+    hostId
+  )
 }
 
 export function stageRendererSessionBeforeUnload(
@@ -61,8 +68,8 @@ function overMainTopology<T extends WorkspaceSessionPatch>(
 
 /**
  * A window save brings presentation: titles, colours, order, focus, buffers, tab groups. Main keeps
- * what it authors: which tabs and panes exist, their trees and PTY bindings, sleeping records,
- * close records and fences.
+ * what it authors: which tabs and panes exist, their creation fields, trees and PTY bindings,
+ * sleeping records, close records and fences.
  */
 export function mergeRendererPresentationSave<T extends WorkspaceSessionPatch>(
   incoming: T,
@@ -116,9 +123,12 @@ function mainRows(
   return rows
 }
 
-/** The window's row, except `ptyId`: there it is the live attachment, never main's binding. */
+/**
+ * Main's row under the window's presentation. The window's `ptyId` is its live attachment, never
+ * main's binding.
+ */
 function presentationRow(main: TerminalTab, window: TerminalTab | undefined): TerminalTab {
-  return window ? { ...window, ptyId: main.ptyId } : main
+  return window ? withTopologyRow(window, projectTabRow(main)) : main
 }
 
 function mainLayouts(
@@ -137,7 +147,10 @@ function mainLayouts(
     Object.entries(window).filter(([tabId]) => !mainHolds(worktreeOfTab.get(tabId)))
   )
   for (const [worktreeId, tabs] of Object.entries(prior.tabsByWorktree)) {
-    for (const tab of mainHolds(worktreeId) ? tabs : []) {
+    if (!mainHolds(worktreeId)) {
+      continue
+    }
+    for (const tab of tabs) {
       const main = prior.terminalLayoutsByTabId?.[tab.id]
       if (main) {
         layouts[tab.id] = presentationLayout(main, window[tab.id])
@@ -202,13 +215,13 @@ function placementOfMainTabs(
     } else {
       delete tabGroupLayouts[worktreeId]
     }
-    if (!validTabIds.has(activeTabIdByWorktree[worktreeId] ?? '')) {
-      const priorActive = prior.activeTabIdByWorktree?.[worktreeId]
-      activeTabIdByWorktree[worktreeId] =
-        (priorActive && validTabIds.has(priorActive)
-          ? priorActive
-          : (groups[0]?.activeTabId ?? mainTabs[0]?.id)) ?? null
-    }
+    activeTabIdByWorktree[worktreeId] =
+      [
+        activeTabIdByWorktree[worktreeId],
+        prior.activeTabIdByWorktree?.[worktreeId],
+        groups[0]?.activeTabId,
+        mainTabs[0]?.id
+      ].find((tabId) => tabId != null && validTabIds.has(tabId)) ?? null
   }
   return {
     ...(incoming.unifiedTabs && { unifiedTabs }),

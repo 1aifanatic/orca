@@ -19,6 +19,7 @@ import type {
 import { sleepingAgentSessionsByPaneKeySchema } from '../../shared/workspace-session-sleeping-agents'
 import {
   bindLeaf,
+  clearLaunchAgent,
   commitSleepingRecords
 } from '../persistence/terminal-topology/terminal-topology-commit'
 import {
@@ -98,6 +99,20 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
         (worktreeId) => runtime.getTerminalTopologyHomeHostId(worktreeId),
         isFenced
       )
+    }
+  )
+
+  // The window saw a tab's launched agent go; main's row drops it so no save or push brings it back.
+  ipcMain.handle(
+    'session:terminal-clear-launch-agent',
+    (_event, args: { worktreeId?: unknown; tabId?: unknown } | undefined) => {
+      if (typeof args?.worktreeId !== 'string' || typeof args.tabId !== 'string') {
+        return
+      }
+      const hostId = runtime.getTerminalTopologyHomeHostId(args.worktreeId)
+      if (hostId && !isFenced(hostId)) {
+        clearLaunchAgent(store, { worktreeId: args.worktreeId, tabId: args.tabId }, hostId)
+      }
     }
   )
 

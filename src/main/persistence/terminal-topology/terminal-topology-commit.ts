@@ -93,6 +93,26 @@ export function setLayout(
   )
 }
 
+/** The agent a tab launched is gone, so the tab stops naming it, in `hostId`, the worktree's home. */
+export function clearLaunchAgent(
+  store: Pick<Store, 'getWorkspaceSession' | 'patchWorkspaceSession'>,
+  request: { worktreeId: string; tabId: string },
+  hostId: ExecutionHostId
+): void {
+  const session = store.getWorkspaceSession(hostId)
+  const tabs = session.tabsByWorktree[request.worktreeId] ?? []
+  if (!tabs.some((tab) => tab.id === request.tabId && tab.launchAgent !== undefined)) {
+    return
+  }
+  const cleared = tabs.map((tab) =>
+    tab.id === request.tabId ? { ...tab, launchAgent: undefined } : tab
+  )
+  store.patchWorkspaceSession(
+    { tabsByWorktree: { ...session.tabsByWorktree, [request.worktreeId]: cleared } },
+    hostId
+  )
+}
+
 /** A window's own sleeping-record changes, each written in its worktree's home partition. */
 export function commitSleepingRecords(
   store: Pick<

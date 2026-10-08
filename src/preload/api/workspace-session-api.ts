@@ -48,6 +48,8 @@ export type WorkspaceSessionApi = {
     bindTerminalLeaf: (
       args: TerminalLeafBindRequest
     ) => Promise<TerminalLeafBindResult & TerminalTopologyReply>
+    /** Drops a tab's launched agent from main's row once the window sees the agent gone. */
+    clearTerminalLaunchAgent: (args: { worktreeId: string; tabId: string }) => Promise<void>
     /** Sleeping-agent records this window wrote or dropped, committed beside their tabs in main. */
     commitTerminalSleepingRecords: (changes: TerminalSleepingRecordChanges) => Promise<void>
     /** Every worktree's current terminal topology; pull after subscribing to the pushes. */

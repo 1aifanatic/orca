@@ -117,20 +117,6 @@ export function leafRecordEquivalent(
   return leftEntries.every(([key, value]) => rightRecord[key] === value)
 }
 
-export function preserveMissingLeafRecordEntries(
-  priorRecord: Record<string, string> | undefined,
-  incomingRecord: Record<string, string> | undefined,
-  liveLeafIds: Set<string>
-): Record<string, string> | undefined {
-  const preserved = Object.fromEntries(
-    Object.entries(priorRecord ?? {}).filter(
-      ([leafId]) => liveLeafIds.has(leafId) && incomingRecord?.[leafId] === undefined
-    )
-  )
-  const next = { ...preserved, ...incomingRecord }
-  return Object.keys(next).length > 0 ? next : undefined
-}
-
 export function normalizeTerminalLayoutSnapshotForPersistence(
   snapshot: TerminalLayoutSnapshot,
   preferredLayout?: TerminalLayoutSnapshot

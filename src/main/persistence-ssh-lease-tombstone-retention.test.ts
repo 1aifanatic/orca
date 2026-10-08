@@ -66,15 +66,13 @@ describe('operator-closed SSH lease tombstones', () => {
     return store
   }
 
-  it('keeps the tombstone while a binding the scrub could not reach still names the pty', async () => {
+  it('retires the tombstone even while a binding the scrub could not reach still names the pty', async () => {
     const store = await storeWithDetachedPaneBinding()
 
     store.markSshRemotePtyLease('ssh-1', 'ssh:ssh-1@@remote-pty', 'terminated')
 
-    // A persisted binding still names the pty, so the row stays.
-    expect(store.getSshRemotePtyLeases('ssh-1')).toEqual([
-      expect.objectContaining({ ptyId: 'remote-pty', state: 'terminated' })
-    ])
+    // No reader tells a terminated row from an absent one, binding or not.
+    expect(store.getSshRemotePtyLeases('ssh-1')).toEqual([])
     expect(store.getWorkspaceSession().terminalLayoutsByTabId['tab-new'].ptyIdsByLeafId).toEqual({
       [TEST_LEAF_1]: 'ssh:ssh-1@@remote-pty'
     })
