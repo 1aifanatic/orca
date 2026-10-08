@@ -243,3 +243,24 @@ describe('a catalog read that finds a held reason', () => {
     })
   })
 })
+
+describe('a prewarm probe', () => {
+  it('sets and clears the reason as a read’s probe does, re-checking it however fresh the catalog', async () => {
+    const { store, probe, service, answerWith, pastTtl } = rig(async () => ({
+      ...listing('gpt-gateway', 'probe'),
+      unavailable: SIGNED_OUT
+    }))
+    // A saved catalog marks the agent as used here.
+    store.recordSuccess(FINGERPRINT, 'codex', listing('gpt-live', 'live-session'), 'live')
+    await service.prewarm()
+    expect(store.failure(FINGERPRINT)?.unavailable).toEqual(SIGNED_OUT)
+    answerWith(async () => listing('gpt-probe', 'probe'))
+    await service.prewarm()
+    expect(probe).toHaveBeenCalledTimes(1)
+    pastTtl()
+    expect(store.isStale(store.get(FINGERPRINT)!)).toBe(false)
+    await service.prewarm()
+    expect(probe).toHaveBeenCalledTimes(2)
+    expect(store.failure(FINGERPRINT)).toBeNull()
+  })
+})
