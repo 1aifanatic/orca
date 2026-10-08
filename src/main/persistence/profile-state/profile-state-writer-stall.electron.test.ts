@@ -9,9 +9,7 @@ import { resolveElectronProbeLaunch } from '../../browser/electron-probe-display
 
 const root = mkdtempSync(join(tmpdir(), 'orca-writer-electron-'))
 const entry = join(root, 'main.cjs')
-// Windows CI worker startup competes with parallel Electron probes.
-const defaultTimeoutMs = process.platform === 'win32' ? 10_000 : 2_000
-const timeoutMs = Number(process.env.ORCA_PROFILE_STALL_TIMEOUT_MS ?? defaultTimeoutMs)
+const timeoutMs = Number(process.env.ORCA_PROFILE_STALL_TIMEOUT_MS ?? 2_000)
 const processTimeoutMs = timeoutMs * 6 + 30_000
 
 beforeAll(async () => {
