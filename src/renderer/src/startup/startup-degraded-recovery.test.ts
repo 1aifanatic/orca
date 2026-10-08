@@ -11,7 +11,8 @@ vi.mock('../store', async () => {
   const useAppStore = create(() => ({
     startupWorktreeRefreshCompleted: false,
     terminalStartupRestorationReady: false,
-    workspaceSessionReady: false
+    workspaceSessionReady: false,
+    applyTerminalTopologySlices: vi.fn()
   }))
   return { useAppStore }
 })
@@ -22,16 +23,20 @@ import { recoverFromDegradedStartup } from './startup-degraded-recovery'
 function recover(args: {
   isCancelled: () => boolean
   reconnectPersistedTerminals: () => Promise<void>
+  terminalTopologyFollowed?: boolean
 }): Promise<void> {
   return recoverFromDegradedStartup({
     error: new Error('hydration failed'),
     uiHydrated: true,
     reconnectStarted: false,
+    terminalTopologyFollowed: true,
     hydratePersistedUI: vi.fn(),
     abortSignal: new AbortController().signal,
     ...args
   })
 }
+
+const SLICE = { worktreeId: 'repo::/wt', publishSeq: 3 }
 
 describe('recoverFromDegradedStartup', () => {
   beforeEach(() => {
@@ -44,6 +49,10 @@ describe('recoverFromDegradedStartup', () => {
           awaitFirstWindowStartupServices: async () => undefined,
           recoverLegacyWorkerTerminalsForRendererStartup: async () => undefined,
           relaunch: vi.fn()
+        },
+        session: {
+          onTerminalTopologyChanged: vi.fn(() => () => undefined),
+          getTerminalTopologySlices: async () => [SLICE]
         }
       }
     })
@@ -70,5 +79,25 @@ describe('recoverFromDegradedStartup', () => {
     })
 
     expect(useAppStore.getState().terminalStartupRestorationReady).toBe(false)
+  })
+
+  it("follows main's terminal topology when startup failed before the follow began", async () => {
+    await recover({
+      isCancelled: () => false,
+      reconnectPersistedTerminals: async () => undefined,
+      terminalTopologyFollowed: false
+    })
+
+    expect(window.api.session.onTerminalTopologyChanged).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().applyTerminalTopologySlices).toHaveBeenCalledWith([SLICE])
+  })
+
+  it('does not follow twice when the success path already follows', async () => {
+    await recover({
+      isCancelled: () => false,
+      reconnectPersistedTerminals: async () => undefined
+    })
+
+    expect(window.api.session.onTerminalTopologyChanged).not.toHaveBeenCalled()
   })
 })

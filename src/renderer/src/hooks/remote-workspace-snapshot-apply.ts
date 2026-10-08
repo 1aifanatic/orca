@@ -267,7 +267,16 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
         buildWorkspaceSessionHostPatches(mergedFields(merged, current), currentStore).find(
           ({ hostId }) => hostId === toSshExecutionHostId(authority.targetId)
         )?.patch ?? {}
-    }).catch((error: unknown) => console.warn('[remote-workspace] import commit failed:', error))
+    }).catch((error: unknown) => {
+      // Main holds none of the import, so the target is not synced, whatever this apply showed.
+      if (isArrivalCurrent(authority.targetId, arrival) && isPreparationTokenCurrent(token)) {
+        store.getState().setRemoteWorkspaceSyncStatus(authority.targetId, {
+          phase: 'error',
+          direction: 'pull',
+          message: error instanceof Error ? error.message : 'Workspace sync failed'
+        })
+      }
+    })
     currentStore.hydrateWorkspaceSession(merged, {
       directSshAuthority: authority,
       replaceWorkspaceKeys

@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '../store'
 import { getStartupErrorFallbackUI } from '../lib/startup-ui-hydration'
+import { followTerminalTopology } from '../lib/terminal-topology-follow'
 import {
   collectTerminalProviderSnapshotPtyIds,
   refreshTerminalProviderSnapshotCapabilities
@@ -13,6 +14,8 @@ type DegradedStartupRecoveryArgs = {
   uiHydrated: boolean
   /** Whether the success path already began terminal reconnect over now-partial state. */
   reconnectStarted: boolean
+  /** Whether the success path already follows main's terminal topology. */
+  terminalTopologyFollowed: boolean
   isCancelled: () => boolean
   hydratePersistedUI: ReturnType<typeof useAppStore.getState>['hydratePersistedUI']
   reconnectPersistedTerminals: (signal: AbortSignal) => Promise<void>
@@ -44,6 +47,7 @@ export async function recoverFromDegradedStartup(args: DegradedStartupRecoveryAr
     error,
     uiHydrated,
     reconnectStarted,
+    terminalTopologyFollowed,
     isCancelled,
     hydratePersistedUI,
     reconnectPersistedTerminals,
@@ -84,6 +88,14 @@ export async function recoverFromDegradedStartup(args: DegradedStartupRecoveryAr
     // Why (issue #1158): re-running reconnect over its partially-mutated state would double-set ptyIds and drain pending* twice — force the flag, clear pending*.
     forceWorkspaceSessionReady()
     return
+  }
+  // Why: without main's pushes no pending terminal change settles, so the session stays stuck.
+  if (!terminalTopologyFollowed) {
+    await followTerminalTopology(
+      window.api.session,
+      useAppStore.getState().applyTerminalTopologySlices,
+      abortSignal
+    )
   }
   try {
     await window.api.app.awaitFirstWindowStartupServices()

@@ -85,6 +85,51 @@ describe('registerSessionHandlers', () => {
     expect(store.setWorkspaceSession).toHaveBeenCalledTimes(2)
   })
 
+  it("refuses a window's topology commits to a fenced home and writes nothing", async () => {
+    const store = {
+      getSshTarget: vi.fn(() => ({ orcadFence: { environmentId: 'env-1' } })),
+      getWorkspaceSessionHostIds: vi.fn(() => ['ssh:fenced']),
+      getWorkspaceSession: vi.fn(() => sessionWithTab('tab')),
+      patchWorkspaceSession: vi.fn(),
+      createTerminalSurface: vi.fn(),
+      setTerminalTabLayout: vi.fn(),
+      persistPtyBinding: vi.fn()
+    }
+    const runtime = {
+      getTerminalTopologyHomeHostId: vi.fn(() => 'ssh:fenced'),
+      settleTerminalTopology: vi.fn(() => 0)
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handlers under test touch only the store and runtime methods stubbed above.
+    registerSessionHandlers(store as never, runtime as never)
+    const leafId = '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+    const pane = { worktreeId: WORKTREE, tabId: 'tab', leafId }
+    const refused = { status: 'refused', reason: 'home_unresolved', publishSeq: 0 }
+
+    await expect(
+      handlers.get('session:terminal-create-surface')?.(
+        {},
+        { ...pane, placement: { kind: 'root' } }
+      )
+    ).resolves.toEqual(refused)
+    await expect(
+      handlers.get('session:terminal-set-layout')?.(
+        {},
+        { worktreeId: WORKTREE, tabId: 'tab', root: { type: 'leaf', leafId } }
+      )
+    ).resolves.toEqual(refused)
+    await expect(
+      handlers.get('session:terminal-bind-leaf')?.({}, { ...pane, ptyId: 'pty-1' })
+    ).resolves.toEqual(refused)
+    handlers.get('session:terminal-clear-launch-agent')?.(
+      {},
+      { worktreeId: WORKTREE, tabId: 'tab' }
+    )
+    expect(store.createTerminalSurface).not.toHaveBeenCalled()
+    expect(store.setTerminalTabLayout).not.toHaveBeenCalled()
+    expect(store.persistPtyBinding).not.toHaveBeenCalled()
+    expect(store.patchWorkspaceSession).not.toHaveBeenCalled()
+  })
+
   it('set, set-sync, patch and the quit stage all keep the tabs main holds', async () => {
     const written: WorkspaceSessionState['tabsByWorktree'][] = []
     const record = (session: Partial<WorkspaceSessionState>): void => {

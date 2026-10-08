@@ -14,6 +14,7 @@ import {
   parseTerminalLeafBindRequest,
   type TerminalLeafBindResult
 } from '../../shared/terminal-leaf-bind'
+import type { ExecutionHostId } from '../../shared/execution-host'
 import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
 import { markAgentLaunchesClosedByUser } from '../agent-launch/agent-launch-pane-attachment'
 import type {
@@ -35,6 +36,11 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
   // Why: renderer saves would change a fenced host's frozen source partition.
   const isFenced = (hostId?: string | null): boolean =>
     isFrozenOrcadSourceSessionPartition(store, hostId)
+  // A window's topology commits replace its saves, so a fenced home is no home for them either.
+  const windowWritableHome = (worktreeId: string): ExecutionHostId | null => {
+    const hostId = runtime.getTerminalTopologyHomeHostId(worktreeId)
+    return hostId && !isFenced(hostId) ? hostId : null
+  }
 
   // Why: hostId is an optional second arg so an older renderer that invokes
   // these channels without it keeps reading/writing the 'local' partition
@@ -100,8 +106,7 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
             ? changes.wake.filter((paneKey) => typeof paneKey === 'string')
             : []
         },
-        (worktreeId) => runtime.getTerminalTopologyHomeHostId(worktreeId),
-        isFenced
+        windowWritableHome
       )
     }
   )
@@ -113,8 +118,8 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
       if (typeof args?.worktreeId !== 'string' || typeof args.tabId !== 'string') {
         return
       }
-      const hostId = runtime.getTerminalTopologyHomeHostId(args.worktreeId)
-      if (hostId && !isFenced(hostId)) {
+      const hostId = windowWritableHome(args.worktreeId)
+      if (hostId) {
         clearLaunchAgent(store, { worktreeId: args.worktreeId, tabId: args.tabId }, hostId)
       }
     }
@@ -126,7 +131,7 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
     if (!request) {
       return { status: 'refused', reason: 'invalid_request' } satisfies TerminalSurfaceCreateResult
     }
-    const hostId = runtime.getTerminalTopologyHomeHostId(request.worktreeId)
+    const hostId = windowWritableHome(request.worktreeId)
     const result: TerminalSurfaceCreateResult = hostId
       ? await store.createTerminalSurface(request, hostId)
       : { status: 'refused', reason: 'home_unresolved' }
@@ -140,7 +145,7 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
       return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLayoutSetResult
     }
     // One home per worktree; an unresolved one is unverifiable, so nothing is written.
-    const hostId = runtime.getTerminalTopologyHomeHostId(request.worktreeId)
+    const hostId = windowWritableHome(request.worktreeId)
     const result: TerminalLayoutSetResult = hostId
       ? await store.setTerminalTabLayout(request, hostId)
       : { status: 'refused', reason: 'home_unresolved' }
@@ -153,7 +158,7 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
     if (!request) {
       return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLeafBindResult
     }
-    const hostId = runtime.getTerminalTopologyHomeHostId(request.worktreeId)
+    const hostId = windowWritableHome(request.worktreeId)
     const bound = hostId !== null && (await bindLeaf(store, request, hostId))
     const result: TerminalLeafBindResult = bound
       ? { status: 'bound' }

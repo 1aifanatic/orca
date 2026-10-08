@@ -72,6 +72,7 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
     let uiHydrated = false
     // Why (issue #1158): track whether success-path reconnect started so the catch doesn't re-run it — re-entering on partially-mutated state would double-set ptyIds and drain pending* twice.
     let reconnectStarted = false
+    let terminalTopologyFollowed = false
     void (async () => {
       const startupStartedAt = performance.now()
       logRendererStartupDiagnostic('startup-chain-start')
@@ -211,6 +212,7 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
               abortController.signal
             )
           )
+          terminalTopologyFollowed = true
           await timeRendererStartupStep('prepare-terminal-startup-restoration', () =>
             window.api.app.prepareTerminalStartupRestoration()
           )
@@ -348,6 +350,7 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
           error,
           uiHydrated,
           reconnectStarted,
+          terminalTopologyFollowed,
           isCancelled: () => cancelled,
           hydratePersistedUI: actions.hydratePersistedUI,
           reconnectPersistedTerminals: actions.reconnectPersistedTerminals,

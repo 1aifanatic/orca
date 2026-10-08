@@ -280,12 +280,7 @@ async function runSeed(seed: number): Promise<string[]> {
   const save = (): void => setRendererSession(store, window.snapshot())
   // The window's own sleeping-record changes commit to main; its saves no longer carry them.
   const commitSleeping = (changes: TerminalSleepingRecordChanges): void =>
-    commitSleepingRecords(
-      store,
-      changes,
-      () => LOCAL_EXECUTION_HOST_ID,
-      () => false
-    )
+    commitSleepingRecords(store, changes, () => LOCAL_EXECUTION_HOST_ID)
   const panes = () =>
     [...model].flatMap(([tabId, tab]) =>
       [...tab.leaves].map(([leafId, pane]) => ({ tabId, leafId, tab, pane }))

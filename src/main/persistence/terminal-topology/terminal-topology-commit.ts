@@ -135,13 +135,9 @@ export function commitSleepingRecords(
     'getWorkspaceSessionHostIds' | 'getWorkspaceSession' | 'patchWorkspaceSession'
   >,
   changes: TerminalSleepingRecordChanges,
-  homeHostId: (worktreeId: string) => ExecutionHostId | null,
-  isFenced: (hostId: ExecutionHostId) => boolean
+  homeHostId: (worktreeId: string) => ExecutionHostId | null
 ): void {
   for (const hostId of store.getWorkspaceSessionHostIds()) {
-    if (isFenced(hostId)) {
-      continue
-    }
     const isHome = (worktreeId: string): boolean => homeHostId(worktreeId) === hostId
     const session = store.getWorkspaceSession(hostId)
     const next = sleepLeaf(wakeLeaf(session, changes.wake, isHome), changes.sleep, isHome)

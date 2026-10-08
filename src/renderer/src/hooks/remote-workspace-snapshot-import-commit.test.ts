@@ -227,4 +227,31 @@ describe('direct SSH snapshot import commit', () => {
       vi.useRealTimers()
     }
   })
+
+  it('reports an error, not synced, when main fails to commit the import', async () => {
+    const store = createTestStore()
+    seedCatalog(store)
+    const setRemoteWorkspaceSyncStatus = vi.fn()
+    store.setState({ setRemoteWorkspaceSyncStatus })
+
+    await applyDirectSshRemoteWorkspaceSnapshot({
+      store,
+      snapshot: snapshot(6, ['host-tab']),
+      token: token(6),
+      arrival: 1,
+      isArrivalCurrent: () => true,
+      isPreparationTokenCurrent: () => true,
+      waitForWorkspaceSessionReady: async () => true,
+      finalizeHydratedTerminals: () => 0,
+      importPeerTopology: async () => {
+        throw new Error('import failed')
+      }
+    })
+
+    expect(setRemoteWorkspaceSyncStatus).toHaveBeenLastCalledWith(TARGET_ID, {
+      phase: 'error',
+      direction: 'pull',
+      message: 'import failed'
+    })
+  })
 })
