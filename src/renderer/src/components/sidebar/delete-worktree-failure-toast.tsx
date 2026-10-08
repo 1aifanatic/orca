@@ -1,11 +1,9 @@
 import { toast } from 'sonner'
-import { useId, useState } from 'react'
 import { Button } from '../ui/button'
-import { Checkbox } from '../ui/checkbox'
-import { Label } from '../ui/label'
 import { getDeleteWorktreeToastCopy } from './delete-worktree-toast'
 import { translate } from '@/i18n/i18n'
 import { DeleteNestedWorktreesDialog } from './DeleteNestedWorktreesDialog'
+import { WorktreeForceDeleteButton } from './WorktreeForceDeleteButton'
 import { isNestedWorktreeRemovalError } from '../../../../shared/worktree/nested-removal'
 import {
   isLockedWorktreeRemovalError,
@@ -62,29 +60,9 @@ function DeleteWorktreeFailureToastBody({
   worktreeName: string
   onNestedDeleted?: () => void
 }): React.JSX.Element {
-  const preferenceId = useId()
-  const [alwaysForceDelete, setAlwaysForceDelete] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
   const viewChanges = (): void => {
     toast.dismiss(toastId)
     onViewChanges()
-  }
-  const forceDelete = async (): Promise<void> => {
-    if (alwaysForceDelete && onAlwaysForceDelete) {
-      setIsSaving(true)
-      try {
-        await onAlwaysForceDelete()
-      } catch (error) {
-        setIsSaving(false)
-        toast.error(
-          translate('workspaceDeletion.preferenceSaveFailed', 'Could not save deletion preference'),
-          { description: error instanceof Error ? error.message : String(error) }
-        )
-        return
-      }
-    }
-    toast.dismiss(toastId)
-    onForceDelete()
   }
   const deleteAnyway = (): void => {
     toast.dismiss(toastId)
@@ -95,28 +73,6 @@ function DeleteWorktreeFailureToastBody({
     <div className="flex w-full flex-col gap-3">
       {description ? (
         <p className="text-sm leading-5 text-popover-foreground/80">{description}</p>
-      ) : null}
-      {canForceDelete && onAlwaysForceDelete ? (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id={preferenceId}
-              checked={alwaysForceDelete}
-              disabled={isSaving}
-              onCheckedChange={(checked) => setAlwaysForceDelete(checked === true)}
-              aria-describedby={`${preferenceId}-description`}
-            />
-            <Label htmlFor={preferenceId}>
-              {translate('workspaceDeletion.alwaysForceDelete', 'Always force delete')}
-            </Label>
-          </div>
-          <p id={`${preferenceId}-description`} className="text-xs text-muted-foreground">
-            {translate(
-              'workspaceDeletion.alwaysForceDeleteDescription',
-              'Future deletions discard changes, even if terminal shutdown cannot be verified. Change this in Settings.'
-            )}
-          </p>
-        </div>
       ) : null}
       <div className="flex flex-wrap justify-end gap-2">
         {showViewChanges ? (
@@ -133,15 +89,11 @@ function DeleteWorktreeFailureToastBody({
           />
         ) : null}
         {canForceDelete ? (
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            disabled={isSaving}
-            onClick={forceDelete}
-          >
-            {translate('auto.components.sidebar.delete.worktree.flow.2b20ce87b3', 'Force Delete')}
-          </Button>
+          <WorktreeForceDeleteButton
+            toastId={toastId}
+            onForceDelete={onForceDelete}
+            onAlwaysForceDelete={onAlwaysForceDelete}
+          />
         ) : null}
         {canWaiveArchiveHook ? (
           <Button type="button" variant="destructive" size="sm" onClick={deleteAnyway}>

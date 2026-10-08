@@ -6,7 +6,6 @@ import { SettingsSubsectionHeader, SettingsSwitchRow } from './SettingsFormContr
 import { WorkspaceDirectorySetting } from './WorkspaceDirectorySetting'
 import { translate } from '@/i18n/i18n'
 import { GlobalWorktreeVisibilitySourcesSetting } from './GlobalWorktreeVisibilitySourcesSetting'
-import { AlwaysForceDeleteWorkspacesSetting } from './AlwaysForceDeleteWorkspacesSetting'
 import { GLOBAL_WORKTREE_VISIBILITY_SETTINGS_TARGET_ID } from '@/lib/settings-navigation-types'
 
 type GeneralWorkspaceSettingsSectionProps = {
@@ -135,8 +134,6 @@ export function GeneralWorkspaceSettingsSection({
           />
         </SearchableSetting>
       </div>
-
-      <AlwaysForceDeleteWorkspacesSetting settings={settings} updateSettings={updateSettings} />
 
       <div id="general-skip-delete-automation-confirm" className="scroll-mt-6">
         <SearchableSetting

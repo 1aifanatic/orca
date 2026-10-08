@@ -4,6 +4,7 @@ import { act, isValidElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
+import { TooltipProvider } from '../ui/tooltip'
 import { showDeleteWorktreeFailureToast } from './delete-worktree-failure-toast'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }))
@@ -12,6 +13,7 @@ let root: Root | undefined
 
 function renderRecovery(onAlwaysForceDelete: () => Promise<void>, canForceDelete = true) {
   const onForceDelete = vi.fn()
+  const onOutsideBlur = vi.fn()
   showDeleteWorktreeFailureToast({
     error: 'branch has changes',
     canForceDelete,
@@ -32,8 +34,22 @@ function renderRecovery(onAlwaysForceDelete: () => Promise<void>, canForceDelete
   const container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
-  act(() => root?.render(description))
-  return { container, onForceDelete }
+  act(() =>
+    root?.render(
+      <TooltipProvider delayDuration={0}>
+        <div
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              onOutsideBlur()
+            }
+          }}
+        >
+          {description}
+        </div>
+      </TooltipProvider>
+    )
+  )
+  return { container, onForceDelete, onOutsideBlur }
 }
 
 function click(container: HTMLElement, selector: string): void {
@@ -44,6 +60,17 @@ function click(container: HTMLElement, selector: string): void {
   element.click()
 }
 
+async function selectAlwaysForceDelete(container: HTMLElement): Promise<void> {
+  await act(async () => {
+    const trigger = container.querySelector('button[aria-label="More force delete options"]')
+    if (!(trigger instanceof HTMLElement)) {
+      throw new Error('Missing dropdown trigger')
+    }
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  })
+  await act(async () => click(document.body, '[role="menuitem"]'))
+}
+
 afterEach(() => {
   act(() => root?.unmount())
   root = undefined
@@ -51,15 +78,35 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-it('keeps Force Delete a one-time action unless the checkbox is selected', async () => {
+it('keeps the main Force Delete button a one-time action', async () => {
   const savePreference = vi.fn().mockResolvedValue(undefined)
   const { container, onForceDelete } = renderRecovery(savePreference)
-  expect(container.querySelector('[role="checkbox"]')?.getAttribute('aria-checked')).toBe('false')
+  expect(container.querySelector('button[aria-label="More force delete options"]')).not.toBeNull()
+  expect(document.querySelector('[role="menuitem"]')).toBeNull()
 
   await act(async () => click(container, 'button[data-variant="destructive"]'))
 
   expect(savePreference).not.toHaveBeenCalled()
   expect(onForceDelete).toHaveBeenCalledOnce()
+})
+
+it('keeps portaled menu focus from triggering toast focus restoration', async () => {
+  const { container, onOutsideBlur } = renderRecovery(vi.fn())
+  const trigger = container.querySelector('button[aria-label="More force delete options"]')
+  if (!(trigger instanceof HTMLElement)) {
+    throw new Error('Missing dropdown trigger')
+  }
+  await act(async () => {
+    trigger.focus()
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  })
+  const item = document.querySelector('[role="menuitem"]')
+  if (!(item instanceof HTMLElement)) {
+    throw new Error('Missing preference menu item')
+  }
+  await act(async () => item.focus())
+  expect(onOutsideBlur).not.toHaveBeenCalled()
+  expect(document.querySelector('[role="menu"]')).not.toBeNull()
 })
 
 it('waits for the preference to persist before force-deleting and dismissing', async () => {
@@ -71,9 +118,7 @@ it('waits for the preference to persist before force-deleting and dismissing', a
       })
   )
   const { container, onForceDelete } = renderRecovery(savePreference)
-  await act(async () => click(container, '[role="checkbox"]'))
-  expect(savePreference).not.toHaveBeenCalled()
-  await act(async () => click(container, 'button[data-variant="destructive"]'))
+  await selectAlwaysForceDelete(container)
 
   expect(savePreference).toHaveBeenCalledOnce()
   expect(
@@ -90,8 +135,7 @@ it('keeps recovery available when saving the preference fails', async () => {
   const { container, onForceDelete } = renderRecovery(
     vi.fn().mockRejectedValue(new Error('Disk full'))
   )
-  await act(async () => click(container, '[role="checkbox"]'))
-  await act(async () => click(container, 'button[data-variant="destructive"]'))
+  await selectAlwaysForceDelete(container)
 
   expect(onForceDelete).not.toHaveBeenCalled()
   expect(toast.dismiss).not.toHaveBeenCalled()
@@ -105,5 +149,5 @@ it('keeps recovery available when saving the preference fails', async () => {
 
 it('does not offer the preference for a failure that cannot be force-deleted', () => {
   const { container } = renderRecovery(vi.fn(), false)
-  expect(container.querySelector('[role="checkbox"]')).toBeNull()
+  expect(container.querySelector('button[aria-label="More force delete options"]')).toBeNull()
 })

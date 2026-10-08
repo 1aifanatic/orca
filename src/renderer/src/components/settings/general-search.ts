@@ -73,22 +73,6 @@ export const getGeneralWorkspaceSearchEntries = createLocalizedCatalog(() => [
     ]
   },
   {
-    title: translate('workspaceDeletion.settingTitle', 'Always Force Delete Workspaces'),
-    description: translate(
-      'workspaceDeletion.settingDescription',
-      'Discard uncommitted changes and delete even when terminal shutdown cannot be verified. Archive hook failures and locked worktrees still require attention.'
-    ),
-    keywords: searchKeywords([
-      'delete',
-      'force',
-      'worktree',
-      'workspace',
-      'always',
-      'changes',
-      'terminal'
-    ])
-  },
-  {
     title: translate(
       'auto.components.settings.general.search.d0a65b27fd',
       'Ask Before Deleting Automations'
