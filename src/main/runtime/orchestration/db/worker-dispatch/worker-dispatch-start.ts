@@ -37,6 +37,7 @@ export function createStartingWorkerDispatch(
       requestId: string
       method: string
       payloadHash: string
+      requestRetry?: true
     }
     /** Who is dispatching, for nesting depth. Required so a new caller must decide. */
     creator: DispatchCreator

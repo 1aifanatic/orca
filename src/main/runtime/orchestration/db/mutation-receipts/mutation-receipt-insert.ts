@@ -1,14 +1,13 @@
-import {
-  ORCHESTRATION_RETRY_WINDOW_MS,
-  orchestrationRetryRequestIssuedAtMs
-} from '../../../../../shared/orchestration-retry-request-id'
+import { orchestrationRetryRequestIssuedAtMs } from '../../../../../shared/orchestration-retry-request-id'
 import { OrchestrationError } from '../../orchestration-error'
 import type { MutationReceiptRow } from '../../types'
 import type { OrchestrationDb } from '../orchestration-db'
+import { isWatermarkMutationReceipt } from './mutation-receipt-retention'
 
 export type MutationReceiptInput = {
   callerFingerprint: string
   requestId: string
+  requestRetry?: true
   method: string
   payloadHash: string
   receipt?: string
@@ -37,32 +36,44 @@ export function insertMutationReceiptIfAbsent(
     }
   }
   const issuedAtMs = orchestrationRetryRequestIssuedAtMs(params.requestId)
-  if (issuedAtMs !== null) {
-    const boundary = store.db
-      .prepare('SELECT retired_before_ms FROM mutation_receipt_retirement WHERE singleton = 1')
-      .get()?.retired_before_ms
-    if (typeof boundary !== 'number' || !Number.isSafeInteger(boundary)) {
-      throw new Error('Mutation receipt retirement boundary is missing or invalid')
+  if (params.requestRetry === true && issuedAtMs !== null) {
+    let boundary: unknown
+    try {
+      boundary = store.db
+        .prepare('SELECT retired_before_ms FROM mutation_receipt_retirement WHERE singleton = 1')
+        .get()?.retired_before_ms
+    } catch {
+      // Missing retirement proof makes only an absent declared retry ambiguous.
     }
-    if (issuedAtMs < Date.now() - ORCHESTRATION_RETRY_WINDOW_MS || issuedAtMs < boundary) {
+    if (
+      typeof boundary !== 'number' ||
+      !Number.isSafeInteger(boundary) ||
+      boundary < 0 ||
+      issuedAtMs <= boundary
+    ) {
       throw new OrchestrationError(
         'operation_unknown',
-        `Request ${params.requestId} is older than Orca's 30-day retry window, so Orca can't tell whether it already ran. Check the work it would have created, or run the command again without --retry-request.`,
-        { requestId: params.requestId }
+        `Orca no longer keeps a record of request ${params.requestId} (records are kept for 30 days), so it can't tell whether it already ran. Check the work it would have created; to do it again, run the command without --retry-request.`,
+        { requestId: params.requestId, reason: 'retry_record_retired' }
       )
     }
   }
+  const retentionFloor =
+    issuedAtMs ?? (isWatermarkMutationReceipt(params.method, params.requestId) ? 0 : null)
   store.db
     .prepare(`INSERT INTO mutation_receipts (
-      caller_fingerprint, request_id, method, payload_hash, state, receipt, request_issued_at_ms
-    ) VALUES (?, ?, ?, ?, 'pending', ?, ?)`)
+      caller_fingerprint, request_id, method, payload_hash, state, receipt, retain_from_ms
+    ) VALUES (?, ?, ?, ?, 'pending', ?, CASE
+      WHEN ? IS NOT NULL THEN max(?, CAST(round((julianday('now') - 2440587.5) * 86400000) AS INTEGER))
+      ELSE NULL END)`)
     .run(
       params.callerFingerprint,
       params.requestId,
       params.method,
       params.payloadHash,
       params.receipt ?? null,
-      issuedAtMs
+      retentionFloor,
+      retentionFloor
     )
   return { inserted: true }
 }

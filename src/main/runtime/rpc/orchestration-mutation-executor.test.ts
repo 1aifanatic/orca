@@ -67,16 +67,24 @@ describe('terminal prompt mutation receipt retry boundary', () => {
     vi.restoreAllMocks()
   })
 
-  it('refuses an expired absent prompt before invoking its external effect', async () => {
+  it('refuses a retired absent prompt retry before invoking its external effect', async () => {
     const { db, executor } = createHarness()
     databases.push(db)
     const requestId = createOrchestrationRetryRequestId(
       Date.now() - ORCHESTRATION_RETRY_WINDOW_MS - 1000
     )
+    db.db.prepare('UPDATE mutation_receipt_retirement SET retired_before_ms = ?').run(Date.now())
     const invoke = vi.fn()
     await expect(
-      executor.run(promptRequest(requestId), promptParams, invoke)
-    ).rejects.toMatchObject({ code: 'operation_unknown', data: { requestId } })
+      executor.run(
+        { ...promptRequest(requestId), orchestrationRequestRetry: true },
+        promptParams,
+        invoke
+      )
+    ).rejects.toMatchObject({
+      code: 'operation_unknown',
+      data: { requestId, reason: 'retry_record_retired' }
+    })
     expect(invoke).not.toHaveBeenCalled()
     expect(
       db.getMutationReceipt(db.getOrCreateLocalMutationCallerFingerprint(), requestId)

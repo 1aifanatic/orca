@@ -22,6 +22,7 @@ export function createRemoteDispatchAttachment(
       requestId: string
       method: string
       payloadHash: string
+      requestRetry?: true
     }
   }
 ): RemoteDispatchAttachmentRow {

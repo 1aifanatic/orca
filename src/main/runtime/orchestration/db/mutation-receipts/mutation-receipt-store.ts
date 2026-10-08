@@ -41,6 +41,7 @@ export function beginMutationReceipt(
     requestId: string
     method: string
     payloadHash: string
+    requestRetry?: true
   }
 ):
   | { disposition: 'started'; row: MutationReceiptRow }

@@ -131,8 +131,8 @@ describe('legacy mutation receipt count schema', () => {
     db.close()
     db = undefined
     const old = new Database(path)
-    old.exec(`DROP INDEX idx_mutation_receipts_issued_at;
-      ALTER TABLE mutation_receipts DROP COLUMN request_issued_at_ms;
+    old.exec(`DROP INDEX idx_mutation_receipts_retain_from;
+      ALTER TABLE mutation_receipts DROP COLUMN retain_from_ms;
       DROP TABLE mutation_receipt_retirement; PRAGMA user_version = 43;`)
     old.close()
     db = new OrchestrationDb(path)
@@ -145,7 +145,7 @@ describe('legacy mutation receipt count schema', () => {
       downgraded.prepare('SELECT receipt_count FROM mutation_receipt_ledger').get()?.receipt_count
     ).toBe(1)
     expect(db.getMutationReceipt('old', '11111111-2222-4333-8444-555555555555')).toMatchObject({
-      request_issued_at_ms: null
+      retain_from_ms: null
     })
     downgraded.close()
   })

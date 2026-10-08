@@ -6,11 +6,9 @@ const MAX_BATCHES_PER_RUN = 100
 export const RETIRE_MUTATION_RECEIPT_BATCH_SQL = `DELETE FROM mutation_receipts
   WHERE rowid IN (
     SELECT rowid FROM mutation_receipts
-    WHERE request_issued_at_ms < (
-      SELECT retired_before_ms FROM mutation_receipt_retirement WHERE singleton = 1
-    )
-    ORDER BY request_issued_at_ms, rowid LIMIT ?
-  )`
+    WHERE retain_from_ms < ?
+    ORDER BY retain_from_ms, rowid LIMIT ?
+  ) RETURNING retain_from_ms`
 
 export type MutationReceiptMaintenance = { stop: () => void }
 
@@ -51,20 +49,39 @@ export async function retireMutationReceipts(
   if (isStopped()) {
     return
   }
-  withNoBusyWait(db, () => {
-    db.prepare(`UPDATE mutation_receipt_retirement
-      SET retired_before_ms = max(retired_before_ms, ?) WHERE singleton = 1`).run(
-      Date.now() - ORCHESTRATION_RETRY_WINDOW_MS
-    )
-  })
+  const cutoff = Date.now() - ORCHESTRATION_RETRY_WINDOW_MS
   for (let batch = 0; batch < MAX_BATCHES_PER_RUN && !isStopped(); batch++) {
-    const removed = withNoBusyWait(db, () =>
-      db.prepare(RETIRE_MUTATION_RECEIPT_BATCH_SQL).run(PRUNE_BATCH_SIZE)
-    )
-    if (removed.changes < PRUNE_BATCH_SIZE) {
+    const removed = withNoBusyWait(db, () => retireBatch(db, cutoff))
+    if (removed < PRUNE_BATCH_SIZE) {
       break
     }
     await new Promise<void>((resolve) => setImmediate(resolve))
+  }
+}
+
+function retireBatch(db: Database.Database, cutoff: number): number {
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.prepare('INSERT OR IGNORE INTO mutation_receipt_retirement VALUES (1, 0)').run()
+    const removed = db.prepare(RETIRE_MUTATION_RECEIPT_BATCH_SQL).all(cutoff, PRUNE_BATCH_SIZE)
+    if (removed.length > 0) {
+      const maximum = Math.max(
+        ...removed.map((row) => {
+          if (typeof row.retain_from_ms !== 'number' || !Number.isSafeInteger(row.retain_from_ms)) {
+            throw new Error('Invalid mutation receipt retention time')
+          }
+          return row.retain_from_ms
+        })
+      )
+      // Deleted issue times are <= their retention keys, including the newest deleted row.
+      db.prepare(`UPDATE mutation_receipt_retirement
+        SET retired_before_ms = max(retired_before_ms, ?) WHERE singleton = 1`).run(maximum)
+    }
+    db.exec('COMMIT')
+    return removed.length
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
   }
 }
 

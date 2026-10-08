@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { createOrchestrationRetryRequestId } from '../../../shared/orchestration-retry-request-id'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import type { FederatedLifecycleSettlement } from './federation-lifecycle-settlement'
 import { ORCHESTRATION_FEDERATION_LIFECYCLE_SETTLEMENT_PROTOCOL_VERSION } from '../../../shared/protocol-version'
@@ -205,7 +204,7 @@ async function syncFederatedDispatchPages(
           ...(settlements.length > 0 ? { settlements } : {})
         },
         15_000,
-        { orchestrationRequestId: createOrchestrationRetryRequestId() },
+        undefined,
         { expectedEnvironmentPairingRevision: currentServer.pairingRevision }
       )
     )
@@ -234,18 +233,18 @@ async function syncFederatedDispatchPages(
       ? db.listPendingFederationRelay(dispatchId, 'to_worker')
       : []
   if (toWorker.length > 0) {
-    const delivered = z.object({ acknowledgedThrough: z.number().int().nonnegative() }).parse(
-      await runtime.callOrchestrationWorkerServer(
-        federated.environment_id,
-        'orchestration.federationImport',
-        { dispatchId, items: toWorker },
-        15_000,
-        {
-          orchestrationRequestId: createOrchestrationRetryRequestId()
-        },
-        { expectedEnvironmentPairingRevision: currentServer.pairingRevision }
+    const delivered = z
+      .object({ acknowledgedThrough: z.number().int().nonnegative() })
+      .parse(
+        await runtime.callOrchestrationWorkerServer(
+          federated.environment_id,
+          'orchestration.federationImport',
+          { dispatchId, items: toWorker },
+          15_000,
+          undefined,
+          { expectedEnvironmentPairingRevision: currentServer.pairingRevision }
+        )
       )
-    )
     db.acknowledgeFederationRelay({
       dispatchId,
       direction: 'to_worker',

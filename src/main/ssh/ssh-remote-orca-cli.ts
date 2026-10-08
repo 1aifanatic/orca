@@ -159,13 +159,15 @@ async function dispatchRemoteCli(
   const orchestrationCompatibilityEvidence = runtimeAuthority
     ? { ...inheritedEvidence, host: runtimeAuthority }
     : inheritedEvidence
+  const retryRequestId = readRemoteRetryRequestFlag(parsed.flags)
   const compatibilityEnvelope: RuntimeOrchestrationEnvelope = {
     compatibilityInvocationId: randomUUID(),
     orchestrationRequestId:
-      readRemoteRetryRequestFlag(parsed.flags) ??
+      retryRequestId ??
       (command === 'orchestration check' || command === 'orchestration ask'
         ? createOrchestrationRetryRequestId()
         : undefined),
+    orchestrationRequestRetry: retryRequestId ? true : undefined,
     orchestrationCompatibilityEvidence
   }
   const linearResponse = await tryDispatchRemoteLinearCli(dispatcher, parsed, env, stdin)
@@ -313,6 +315,7 @@ async function call(
       ? ORCHESTRATION_CONTRACT_VERSION
       : undefined,
     orchestrationRequestId: envelope?.orchestrationRequestId,
+    orchestrationRequestRetry: envelope?.orchestrationRequestRetry,
     compatibilityInvocationId:
       envelope?.orchestrationRequestId ?? envelope?.compatibilityInvocationId,
     orchestrationCompatibilityEvidence: envelope?.orchestrationCompatibilityEvidence

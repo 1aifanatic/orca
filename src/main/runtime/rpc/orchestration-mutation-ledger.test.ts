@@ -118,17 +118,22 @@ describe('durable orchestration mutation ledger', () => {
     db.close()
   })
 
-  it('does not execute or insert an absent expired request', async () => {
+  it('does not execute or insert an absent retired request retry', async () => {
     const { db, dispatcher, effect } = createHarness()
     const mutationId = createOrchestrationRetryRequestId(
       Date.now() - ORCHESTRATION_RETRY_WINDOW_MS - 1000
     )
-    const result = await dispatcher.dispatch(
-      request({ rpcId: 'expired', mutationId, subject: 'hello' })
-    )
+    db.db.prepare('UPDATE mutation_receipt_retirement SET retired_before_ms = ?').run(Date.now())
+    const result = await dispatcher.dispatch({
+      ...request({ rpcId: 'expired', mutationId, subject: 'hello' }),
+      orchestrationRequestRetry: true
+    })
     expect(result).toMatchObject({
       ok: false,
-      error: { code: 'operation_unknown', data: { requestId: mutationId } }
+      error: {
+        code: 'operation_unknown',
+        data: { requestId: mutationId, reason: 'retry_record_retired' }
+      }
     })
     expect(effect).not.toHaveBeenCalled()
     expect(

@@ -134,6 +134,8 @@ export class RuntimeClient {
         ? ORCHESTRATION_CONTRACT_VERSION
         : undefined,
       orchestrationRequestId,
+      orchestrationRequestRetry:
+        durableMutation && options?.orchestrationRequestId ? (true as const) : undefined,
       ...compatibilityEnvelope
     }
     if (this.remotePairing) {

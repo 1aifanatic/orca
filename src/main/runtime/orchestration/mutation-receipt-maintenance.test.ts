@@ -26,7 +26,7 @@ function seed(
 ): string[] {
   const ids: string[] = []
   const insert = store.db.prepare(`INSERT INTO mutation_receipts
-    (caller_fingerprint, request_id, method, payload_hash, state, request_issued_at_ms, updated_at)
+    (caller_fingerprint, request_id, method, payload_hash, state, retain_from_ms, updated_at)
     VALUES ('caller', ?, 'orchestration.send', 'hash', ?, ?, '2000-01-01 00:00:00')`)
   for (let i = 0; i < count; i++) {
     const id = createOrchestrationRetryRequestId(time ?? 0)
@@ -66,7 +66,7 @@ describe('mutation receipt retirement', () => {
     }
   })
 
-  it('retires both states by issue time, preserves the boundary, live ids and legacy inserts', async () => {
+  it('retires both states by retention time, preserves the boundary, live ids and legacy inserts', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW)
     db = new OrchestrationDb(':memory:')
     seed(db, 3, EXPIRED)
@@ -83,7 +83,7 @@ describe('mutation receipt retirement', () => {
       expect(db.getMutationReceipt('caller', id)).toBeDefined()
     }
     expect(db.getMutationReceipt('caller', '11111111-2222-4333-8444-555555555555')).toMatchObject({
-      request_issued_at_ms: null
+      retain_from_ms: null
     })
   })
 
@@ -100,11 +100,12 @@ describe('mutation receipt retirement', () => {
     await retireMutationReceipts(db.db)
     expect(
       db.db.prepare('SELECT retired_before_ms FROM mutation_receipt_retirement').get()
-    ).toEqual({ retired_before_ms: EXPIRED + 1 })
+    ).toEqual({ retired_before_ms: EXPIRED })
     expect(() =>
       db?.beginMutationReceipt({
         callerFingerprint: 'caller',
         requestId: id ?? '',
+        requestRetry: true,
         method: 'orchestration.send',
         payloadHash: 'hash'
       })
@@ -112,14 +113,73 @@ describe('mutation receipt retirement', () => {
     expect(count(db)).toBe(0)
   })
 
-  it('uses the issue-time index without scanning or sorting receipts', () => {
+  it('does not advance an empty database boundary during a forward clock excursion', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(NOW + 2 * ORCHESTRATION_RETRY_WINDOW_MS)
+    db = new OrchestrationDb(':memory:')
+    await retireMutationReceipts(db.db)
+    expect(
+      db.db.prepare('SELECT retired_before_ms FROM mutation_receipt_retirement').get()
+    ).toEqual({ retired_before_ms: 0 })
+    clock.mockReturnValue(NOW)
+    expect(fresh(db)).toMatchObject({ disposition: 'started' })
+  })
+
+  it('advances only to the maximum deleted retention key and keeps it across rollback', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(NOW)
+    db = new OrchestrationDb(':memory:')
+    seed(db, 1, EXPIRED - 1000)
+    seed(db, 1, EXPIRED)
+    seed(db, 1, NOW)
+    await retireMutationReceipts(db.db)
+    expect(
+      db.db.prepare('SELECT retired_before_ms FROM mutation_receipt_retirement').get()
+    ).toEqual({ retired_before_ms: EXPIRED })
+    clock.mockReturnValue(NOW - 2 * ORCHESTRATION_RETRY_WINDOW_MS)
+    await retireMutationReceipts(db.db)
+    expect(
+      db.db.prepare('SELECT retired_before_ms FROM mutation_receipt_retirement').get()
+    ).toEqual({ retired_before_ms: EXPIRED })
+    expect(fresh(db)).toMatchObject({ disposition: 'started' })
+  })
+
+  it('retains an in-flight edge request for 30 days from host insertion', async () => {
+    db = new OrchestrationDb(':memory:')
+    const beforeInsert = Date.now()
+    const input = {
+      callerFingerprint: 'caller',
+      requestId: createOrchestrationRetryRequestId(
+        beforeInsert - ORCHESTRATION_RETRY_WINDOW_MS + 1
+      ),
+      method: 'orchestration.send',
+      payloadHash: 'hash',
+      requestRetry: true as const
+    }
+    const row = db.beginMutationReceipt(input).row
+    expect(row.retain_from_ms).toBeGreaterThanOrEqual(beforeInsert)
+    vi.spyOn(Date, 'now').mockReturnValue(beforeInsert + 60_000)
+    await retireMutationReceipts(db.db)
+    expect(db.completeMutationReceipt({ ...input, receipt: '{}' })).toMatchObject({
+      state: 'completed'
+    })
+  })
+
+  it('recreates a missing boundary singleton without advancing it when no rows retire', async () => {
+    db = new OrchestrationDb(':memory:')
+    db.db.exec('DELETE FROM mutation_receipt_retirement')
+    await retireMutationReceipts(db.db)
+    expect(
+      db.db.prepare('SELECT retired_before_ms FROM mutation_receipt_retirement').get()
+    ).toEqual({ retired_before_ms: 0 })
+  })
+
+  it('uses the retention-time index without scanning or sorting receipts', () => {
     db = new OrchestrationDb(':memory:')
     const plan = db.db
       .prepare(`EXPLAIN QUERY PLAN ${RETIRE_MUTATION_RECEIPT_BATCH_SQL}`)
-      .all(256)
+      .all(NOW, 256)
       .map((row) => String(row.detail))
       .join('\n')
-    expect(plan).toContain('idx_mutation_receipts_issued_at')
+    expect(plan).toContain('idx_mutation_receipts_retain_from')
     expect(plan).not.toContain('USE TEMP B-TREE')
     expect(plan).not.toMatch(/SCAN mutation_receipts(?:\n|$)/)
   })
@@ -185,6 +245,10 @@ describe('mutation receipt retirement', () => {
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'cleanup unavailable' })
       )
+      expect(count(db)).toBe(1)
+      expect(
+        db.db.prepare('SELECT retired_before_ms FROM mutation_receipt_retirement').get()
+      ).toEqual({ retired_before_ms: 0 })
       expect(fresh(db)).toMatchObject({ disposition: 'started' })
       db.db.exec('DROP TRIGGER refuse_cleanup')
       await vi.advanceTimersByTimeAsync(10_000)
