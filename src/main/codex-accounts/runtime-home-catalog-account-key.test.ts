@@ -2,6 +2,7 @@
 // answers; the chat it launches saves under the key launch preparation pins. Both run for real
 // here, wired as the runtime service wires them, so a drift between the two fails this test.
 
+import type * as NodeOs from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import { createSettings } from './runtime-home-settings-test-fixtures'
@@ -24,7 +25,7 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('node:os', async () => {
-  const actual = await vi.importActual<typeof import('node:os')>('node:os') // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.importActual requires inline import()
+  const actual = await vi.importActual<typeof NodeOs>('node:os')
   return {
     ...actual,
     homedir: () => testState.fakeHomeDir

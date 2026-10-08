@@ -6,18 +6,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentModelCatalogService } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
+import type * as ModelCatalogWiring from './structured-agent-model-catalog-wiring'
 import {
   ensureStructuredAgentSessionHost,
   stopStructuredAgentSessionRuntime
 } from './structured-agent-session-runtime'
 import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
-const catalog = vi.hoisted(() => ({
-  service: null as AgentModelCatalogService | null
-}))
+const catalog = vi.hoisted((): { service: AgentModelCatalogService | null } => ({ service: null }))
 
 vi.mock('./structured-agent-model-catalog-wiring', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./structured-agent-model-catalog-wiring')>()), // eslint-disable-line @typescript-eslint/consistent-type-imports -- importOriginal requires inline import()
+  ...(await importOriginal<typeof ModelCatalogWiring>()),
   modelCatalogHostDeps: async () => (catalog.service ? { modelCatalog: catalog.service } : {})
 }))
 

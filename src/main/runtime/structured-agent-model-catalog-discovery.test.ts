@@ -10,7 +10,7 @@ import { acpLaunchSpecFor } from '../acp/acp-launch-specs'
 import type { StructuredAgentModelCatalogContext } from './structured-agent-runtime-registrations'
 
 // What each probe would have spawned; nothing is.
-const spawned = vi.hoisted(() => ({ commands: [] as string[] }))
+const spawned = vi.hoisted((): { commands: string[] } => ({ commands: [] }))
 vi.mock('../provider-process/managed-provider-process', () => ({
   spawnManagedProviderProcess: (launch: { command: string }) => {
     spawned.commands.push(launch.command)
