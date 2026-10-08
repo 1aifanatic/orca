@@ -21,11 +21,14 @@ import type {
 } from '../../../../shared/agent-session-wire'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
 import { promptHoldingComposerSlot } from './native-chat-composer-slot'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 import { nativeChatComposerDraftWriteSettled } from './native-chat-composer-draft-store'
 import {
   newestSteerableQueuedMessageCard,
   projectQueuedMessageCards,
+  pendingQueueSendsOnTheirWay,
   queuedMessagesQueuePause,
+  sendingQueuedMessageCards,
   type QueuedMessageCard
 } from './structured-agent-session-queued-cards'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
@@ -67,6 +70,8 @@ export type StructuredAgentSessionQueueResume = {
   resuming: boolean
 }
 
+const NO_SENDS: readonly StructuredAgentSessionPendingSend[] = []
+
 function alreadySentNotice(): void {
   toast.error(
     translate('components.native-chat.queuedMessages.alreadySent', 'This message was already sent.')
@@ -83,22 +88,36 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   prompts: readonly { body: AgentJournalItemBody }[]
   /** A turn is running, whoever started it, or the queue is about to send its next card. */
   isWorking: boolean
+  /** This pane's sends without a host record yet show as sending cards. */
+  sending?: readonly StructuredAgentSessionPendingSend[]
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, mutate, prompts, queuedMessages, submissions } = args
-  const { queuePause } = args
+  const { isWorking, queuePause } = args
+  const sending = args.sending ?? NO_SENDS
   const hasPendingPrompt = prompts.length > 0
   // A prompt card standing in the composer's slot leaves no composer to take Edit's text.
   const promptInComposerSlot = promptHoldingComposerSlot(prompts)
 
   const cards = useMemo(
-    () =>
-      projectQueuedMessageCards(queuedMessages, submissions, {
+    () => [
+      ...projectQueuedMessageCards(queuedMessages, submissions, {
         hasPendingPrompt,
+        // A command card offers no send while the agent works.
+        agentWorking: isWorking,
         queuePaused: queuePause !== null
       }),
-    [hasPendingPrompt, queuePause, queuedMessages, submissions]
+      ...sendingQueuedMessageCards(
+        pendingQueueSendsOnTheirWay(
+          sending,
+          (queuedMessages ?? []).map((message) => message.messageId),
+          isWorking,
+          submissions
+        )
+      )
+    ],
+    [hasPendingPrompt, isWorking, sending, queuePause, queuedMessages, submissions]
   )
   const cardsRef = useRef(cards)
   useEffect(() => {
@@ -167,7 +186,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         // never a wire payload. Without a composer to hold it, or with a prompt card hiding
         // it, deleting would make the text vanish, so the draft then stays a card.
         const card = cardsRef.current.find((entry) => entry.messageId === messageId)
-        if (!card || !composerScopeKey || promptInComposerSlot) {
+        if (!card || card.command || !composerScopeKey || promptInComposerSlot) {
           return
         }
         appendNativeChatDraftCache(composerScopeKey, card.text)
@@ -229,7 +248,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   // Resume and the "Send message?" choice only where the queue could send now: no turn runs (the
   // queue's coming send counts, as the host names it) and no prompt waits, which holds the queue
   // too; the composer shows beside a prompt only when this build cannot answer it.
-  const held = enabled && pause !== null && !args.isWorking && !hasPendingPrompt
+  const held = enabled && pause !== null && !isWorking && !hasPendingPrompt
   const queueResume = useMemo(
     () => (held ? { resume, resuming } : undefined),
     [held, resume, resuming]

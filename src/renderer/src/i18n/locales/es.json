@@ -16150,7 +16150,6 @@
             "deb5293610": "Anotaciones del navegador no disponibles en runtime remoto",
             "90d021f2ad": "Agregar",
             "0cb3bd6221": "Intención de anotación",
-            "8f87e6c2e5": "Intención",
             "532bac48c5": "Describe aquí lo que el agente debería cambiar...",
             "d2a7092e6e": "Comentario de anotación",
             "b472c5fe03": "Agregar anotación del navegador",
@@ -17845,6 +17844,8 @@
         "providerRetryNumberOf": "Reintento {{attempt}} de {{maxRetries}}.",
         "providerRetryLastError": "Último error: {{detail}}.",
         "previousExitUnverifiable": "No se pudo detener la ejecución anterior de {{agent}}.",
+        "runCommandWhenDone": "Ejecute /{{command}} cuando termine.",
+        "commandAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /{{command}}.",
         "sessionNotRestored": "{{agent}} no pudo reabrir su sesión anterior, así que este chat continúa en una nueva. {{agent}} no recuerda los mensajes anteriores."
       },
       "writeNotice": {
@@ -17907,7 +17908,16 @@
         "recordUnreadable": "Orca no pudo leer el estado guardado de este chat.",
         "chatNotFound": "Orca no encuentra este chat.",
         "startNewChat": "Inicie un chat nuevo para continuar.",
-        "tryAgain": "Vuelva a intentarlo."
+        "tryAgain": "Vuelva a intentarlo.",
+        "agentStillWorking": "El agente todavía está trabajando.",
+        "runClearWhenDone": "Ejecute /clear cuando termine.",
+        "clearAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /clear.",
+        "runCompactWhenDone": "Ejecute /compact cuando termine.",
+        "compactAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /compact.",
+        "clearAfterRetry": "Reintente su mensaje anterior y luego ejecute /clear.",
+        "compactAfterRetry": "Reintente su mensaje anterior y luego ejecute /compact.",
+        "clearAfterSending": "Su mensaje anterior todavía se está enviando. Ejecute /clear cuando se haya enviado.",
+        "compactAfterSending": "Su mensaje anterior todavía se está enviando. Ejecute /compact cuando se haya enviado."
       },
       "composer": {
         "imageUnsupported": "Este agente no admite pegar imágenes.",
@@ -18234,7 +18244,8 @@
         "sendConfirmBody_other": "Estás a punto de enviar un mensaje. ¿Quieres borrar los {{count}} mensajes que había en cola?",
         "sendConfirmClear": "Vaciar cola",
         "sendConfirmSend": "Enviar mensaje",
-        "from": "De {{names}}"
+        "from": "De {{names}}",
+        "pausedSendFailedWaiting": "No se pudo enviar. Cuando el agente termine, pulsa Enviar para reintentar."
       },
       "thought": "Pensó",
       "thoughtForDuration": "Pensó durante {{duration}}",

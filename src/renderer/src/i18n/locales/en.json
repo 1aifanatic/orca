@@ -16379,7 +16379,6 @@
             "deb5293610": "Browser annotations unavailable in remote runtime",
             "90d021f2ad": "Add",
             "0cb3bd6221": "Annotation intent",
-            "8f87e6c2e5": "Intent",
             "532bac48c5": "Describe what the agent should change here...",
             "d2a7092e6e": "Annotation comment",
             "b472c5fe03": "Add browser annotation",
@@ -18067,7 +18066,9 @@
         "argumentsMissingValue": "Saved Arguments need a value for {{option}}.",
         "argumentsMultipleValues": "Saved Arguments give {{option}} more than one value.",
         "argumentsPositionalPrompt": "Saved Arguments include a prompt.",
-        "editSavedArguments": "Edit them in Settings > Agents > Arguments."
+        "editSavedArguments": "Edit them in Settings > Agents > Arguments.",
+        "runCommandWhenDone": "Run /{{command}} when it's done.",
+        "commandAfterAnswer": "Answer the agent's question or approval, then run /{{command}}."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -18129,7 +18130,16 @@
         "recordUnreadable": "Orca couldn't read this chat's saved state.",
         "chatNotFound": "Orca can't find this chat.",
         "startNewChat": "Start a new chat to continue.",
-        "tryAgain": "Try again."
+        "tryAgain": "Try again.",
+        "agentStillWorking": "The agent is still working.",
+        "runClearWhenDone": "Run /clear when it's done.",
+        "clearAfterAnswer": "Answer the agent's question or approval, then run /clear.",
+        "runCompactWhenDone": "Run /compact when it's done.",
+        "compactAfterAnswer": "Answer the agent's question or approval, then run /compact.",
+        "clearAfterRetry": "Retry your earlier message, then run /clear.",
+        "compactAfterRetry": "Retry your earlier message, then run /compact.",
+        "clearAfterSending": "Your earlier message is still being sent. Run /clear once it has gone.",
+        "compactAfterSending": "Your earlier message is still being sent. Run /compact once it has gone."
       },
       "taskList": {
         "title": "Tasks",
@@ -18623,7 +18633,8 @@
         "sendConfirmBody_other": "You are about to send a message. Do you want to clear the {{count}} messages previously queued?",
         "sendConfirmClear": "Clear queue",
         "sendConfirmSend": "Send message",
-        "from": "From {{names}}"
+        "from": "From {{names}}",
+        "pausedSendFailedWaiting": "Couldn't send — press Send to retry once the agent finishes."
       },
       "thought": "Thought",
       "thoughtForDuration": "Thought for {{duration}}",
