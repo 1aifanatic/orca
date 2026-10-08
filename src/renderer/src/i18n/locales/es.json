@@ -17868,7 +17868,7 @@
         "messagesUnsettled": "Un mensaje que envió antes todavía no está confirmado.",
         "settleEarlierMessage": "Espere a que se entregue su mensaje anterior o vuelva a intentarlo.",
         "queueTooLarge": "Hay demasiado texto esperando en la cola.",
-        "shrinkQueue": "Envíe o elimine un mensaje de la cola y vuelva a intentarlo.",
+        "shrinkQueue": "Elimine un mensaje de la cola o espere a que se entregue uno y vuelva a intentarlo.",
         "optionRejected": "El agente no aceptó este ajuste.",
         "goalsUnsupported": "Este agente no admite objetivos.",
         "agentRefused": "El agente lo rechazó.",

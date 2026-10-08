@@ -17,10 +17,7 @@ import { createStructuredAgentSessionOperationId } from '../../../shared/structu
 import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
 import { structuredAgentSessionSendBlock } from './structured-agent-session-send-preparation'
-import { unsettledQueuedMessages } from './structured-agent-session-queued-stop'
-import { refuse } from '../../../shared/agent-session-wire-refusals'
-import { REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES } from '../../../shared/remote-runtime-memory-limits'
-import { AGENT_SESSION_HISTORY_MAX_PAGE_BYTES } from './agent-session-history-page-bounds'
+import { queuedMessagesPublishedBytesRefusal } from './structured-agent-session-queued-published-bytes'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { isStructuredAgentSessionMainAgentWorking } from '../../../shared/structured-agent-session-main-agent-working'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -36,11 +33,6 @@ import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { agentSessionAttachmentExpiredRefusal } from './structured-agent-session-turns'
 import { isAgentSessionAttachmentExpiredError } from '../agent-session-attachments/agent-session-attachment-claims'
-
-/** A frame bound, not a queue limit: every unsettled card's body rides each hydrating frame and
- *  history answer beside a full page, and a frame past the outbound cap closes the remote session. */
-export const QUEUED_MESSAGES_PUBLISHED_MAX_BYTES =
-  (REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES - AGENT_SESSION_HISTORY_MAX_PAGE_BYTES) / 2
 
 /** Text-only v1: any image block routes to the immediate path. */
 export function queuedMessageBodyIsTextOnly(body: AgentJournalMessageItem): boolean {
@@ -171,28 +163,6 @@ export function shouldQueueStructuredAgentSessionSend(input: {
   return oldestActionableQueuedMessage(input.journal) !== null
 }
 
-/** Refused readably rather than trimmed, when the published cards would outgrow their frame room. */
-export function queuedMessagesPublishedBytesRefusal(
-  journal: AgentSessionJournal,
-  body: AgentJournalMessageItem
-): AgentSessionWireRefusal | null {
-  const bytes = unsettledQueuedMessages(journal).reduce(
-    (sum, row) => sum + publishedBodyBytes(row.body),
-    publishedBodyBytes(body)
-  )
-  return bytes > QUEUED_MESSAGES_PUBLISHED_MAX_BYTES
-    ? refuse(
-        'agent_session_operation_invalid',
-        { reason: 'queueTooLarge' },
-        'The queued messages would outgrow the published frame; send or delete one first.'
-      )
-    : null
-}
-
-function publishedBodyBytes(body: AgentJournalMessageItem): number {
-  return Buffer.byteLength(JSON.stringify(body), 'utf8')
-}
-
 /**
  * The accept branch: a capable send while the session is working (or behind an
  * actionable backlog) becomes a draft instead of a submission. Returns null for
@@ -210,6 +180,8 @@ export async function maybeQueueStructuredAgentSessionSend(
     delivery?: 'queue-if-active'
     /** A person's send at a chat surface: every attachment it names must still be stored. */
     userSend?: true
+    /** A person's message the host sends for them. */
+    personsMessage?: true
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -239,7 +211,11 @@ export async function maybeQueueStructuredAgentSessionSend(
   ) {
     return null
   }
-  const refusal = queuedMessagesPublishedBytesRefusal(ctx.journal, params.body)
+  const refusal = queuedMessagesPublishedBytesRefusal(
+    ctx.journal,
+    params.body,
+    params.userSend === true || params.personsMessage === true
+  )
   if (refusal) {
     return { ok: false, refusal }
   }

@@ -579,4 +579,30 @@ describe('NativeChatQueuedMessageList', () => {
       expect(owner.steer).toHaveBeenCalledWith('kept')
     }
   )
+
+  // A long queue scrolls inside its own bounded box; a card the person queues is scrolled to,
+  // while another agent's card leaves the view on the next card to send.
+  it("scrolls only to a card the person just queued, inside the list's own bound", () => {
+    const from = { kind: 'agent' as const, senders: [], orchestration: null }
+    const first = [card({ messageId: 'a', position: 1 }), card({ messageId: 'b', position: 2 })]
+    const view = renderList(controller(first))
+    const list = screen.getByRole('list', { name: 'Queued messages' })
+    expect(list.className).toMatch(/\bmax-h-40\b/)
+    expect(list.className).toMatch(/\boverflow-y-auto\b/)
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 500 })
+    const rerender = (cards: QueuedMessageCard[]): void =>
+      view.rerender(
+        <TooltipProvider delayDuration={0}>
+          <NativeChatQueuedMessageList controller={controller(cards)} />
+        </TooltipProvider>
+      )
+    rerender([...first, card({ messageId: 'mail', position: 3, from })])
+    expect(list.scrollTop).toBe(0)
+    rerender([
+      ...first,
+      card({ messageId: 'mail', position: 3, from }),
+      card({ messageId: 'mine', position: 4 })
+    ])
+    expect(list.scrollTop).toBe(500)
+  })
 })

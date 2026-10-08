@@ -17903,7 +17903,7 @@
         "messagesUnsettled": "以前に送信したメッセージはまだ確認されていません。",
         "settleEarlierMessage": "以前のメッセージが届くまで待つか、再試行してください。",
         "queueTooLarge": "キューで待機中のテキストが多すぎます。",
-        "shrinkQueue": "キュー内のメッセージを送信するか削除してから、もう一度お試しください。",
+        "shrinkQueue": "キュー内のメッセージを削除するか、送信されるまで待ってから、もう一度お試しください。",
         "optionRejected": "Agent はこの設定を受け入れませんでした。",
         "goalsUnsupported": "この Agent は目標に対応していません。",
         "agentRefused": "Agent がこれを拒否しました。",
