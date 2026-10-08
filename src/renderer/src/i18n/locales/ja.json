@@ -13496,7 +13496,8 @@
             "resumeInChatConflict": "別のチャットですでにこの会話が行われています。",
             "resumeInChatTranscriptMissing": "この会話の履歴を読み込めなかったため、チャットで再開できません。",
             "resumeInChatFailed": "新規チャットでこのセッションを再開できませんでした。",
-            "resumeInNewCliUnavailable": "このセッションは CLI で開けません。"
+            "resumeInNewCliUnavailable": "このセッションは CLI で開けません。",
+            "resumeInNewCliHostTooOld": "このチャットを新しい CLI で再開するには、チャットを実行しているホストの Orca を更新してください。"
           },
           "AiVaultPanelControls": {
             "scanningSessions": "セッションをスキャンしています",
