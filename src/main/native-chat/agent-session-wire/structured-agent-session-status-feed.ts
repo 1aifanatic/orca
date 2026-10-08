@@ -1,6 +1,7 @@
 import type {
   StatusFeedSession,
   StructuredAgentSessionStatusFeedDeps,
+  StructuredAgentSessionStatusPublication,
   StructuredAgentSessionStatusSubscriber
 } from './structured-agent-session-status-feed-types'
 export type {
@@ -9,6 +10,7 @@ export type {
 } from './structured-agent-session-status-feed-types'
 import {
   projectStructuredOrchestrationSessionId,
+  publishCommittedStructuredOrchestrationOwnership,
   refreshStructuredOrchestrationPublications,
   createStructuredOrchestrationProjection,
   type StructuredOrchestrationProjection
@@ -52,13 +54,7 @@ export class StructuredAgentSessionStatusFeed {
   )
   private readonly subscribers = new Map<string, StructuredAgentSessionStatusSubscriber>()
   // Never evicted: chats are named only while in here, and AI Vault reads closed ones' names here.
-  private readonly published = new Map<
-    string,
-    {
-      summary: AgentSessionStatusSummary
-      firstInputSubmissionKey: string | null
-    }
-  >()
+  private readonly published = new Map<string, StructuredAgentSessionStatusPublication>()
   /** The user's newest accepted send each session was last projected with; a new one retires
    *  settled children. */
   private readonly acceptedSends = new Map<string, string>()
@@ -160,6 +156,15 @@ export class StructuredAgentSessionStatusFeed {
       session: retained
     })
   }
+
+  /** A committed record command can move ownership without a journal write or an open handle. */
+  publishConversationCommand = (sessionId: string): void =>
+    publishCommittedStructuredOrchestrationOwnership(
+      sessionId,
+      this.published,
+      this.deps,
+      (session) => this.broadcast({ type: 'status', session })
+    )
 
   /** The record's name changed outside the journal. A closed chat's retained row follows it too,
    *  so every list still showing that conversation learns the name without a tab. */

@@ -91,6 +91,9 @@ export class StructuredAgentSessionClientDelivery {
 
   publishStatus = (sessionId: string): void => this.statusFeed.publish(sessionId)
 
+  publishConversationCommand = (sessionId: string): void =>
+    this.statusFeed.publishConversationCommand(sessionId)
+
   publishConversationName = (sessionId: string): void =>
     this.statusFeed.publishConversationName(sessionId)
 

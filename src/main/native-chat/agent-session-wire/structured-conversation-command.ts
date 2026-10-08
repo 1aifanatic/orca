@@ -164,6 +164,7 @@ export function runStructuredConversationCommand(
             claimKeyId: context.deps.claimKeyId,
             now: context.now()
           })
+          context.publishConversationCommand(sessionId)
           // Carry the source's drafts to the replacement, the same for every client version:
           // the cards stay visible where the user now is, and no text rides the wire.
           // Bookkeeping — a failure is reported and never fails the clear.

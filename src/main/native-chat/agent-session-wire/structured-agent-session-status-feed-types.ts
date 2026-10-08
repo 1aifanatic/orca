@@ -14,6 +14,11 @@ export type StructuredAgentSessionStatusSubscriber = {
   emit: (event: AgentSessionStatusEvent) => void
 }
 
+export type StructuredAgentSessionStatusPublication = {
+  summary: AgentSessionStatusSummary
+  firstInputSubmissionKey: string | null
+}
+
 export type StatusFeedSession = {
   journal: AgentSessionJournal
   params: { location: AgentSessionRecord['location']; provider: AgentSessionRecord['provider'] }

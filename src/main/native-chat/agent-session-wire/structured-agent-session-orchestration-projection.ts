@@ -9,6 +9,7 @@ import {
 } from '../../runtime/orchestration/structured-session-lineage'
 import { isOrcaSessionId, type OrcaSessionId } from '../../../shared/orca-session-address'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
+import type { StructuredAgentSessionStatusFeedDeps } from './structured-agent-session-status-feed-types'
 
 export type StructuredOrchestrationProjection = (
   sessionId: string,
@@ -58,7 +59,7 @@ export function projectStructuredOrchestrationSessionId(
   return running.kind === 'here' && running.sessionId === sessionId ? root : null
 }
 
-/** Re-read retained projections before reload snapshots, including closed historical sessions. */
+/** Re-read retained projections on reload or ownership change, including closed sessions. */
 export function refreshStructuredOrchestrationPublications<
   T extends { summary: AgentSessionStatusSummary }
 >(
@@ -81,5 +82,30 @@ export function refreshStructuredOrchestrationPublications<
     const summary = { ...publication.summary, orchestrationSessionId: root }
     published.set(sessionId, { ...publication, summary })
     broadcast(summary)
+  }
+}
+
+/** A publication failure must not reject an already committed conversation command. */
+export function publishCommittedStructuredOrchestrationOwnership<
+  T extends { summary: AgentSessionStatusSummary }
+>(
+  sessionId: string,
+  published: Map<string, T>,
+  deps: StructuredAgentSessionStatusFeedDeps,
+  broadcast: (summary: AgentSessionStatusSummary) => void
+): void {
+  try {
+    refreshStructuredOrchestrationPublications(
+      published,
+      deps,
+      broadcast,
+      createStructuredOrchestrationProjection(deps)
+    )
+  } catch (error) {
+    deps.logger.warn('publishing committed conversation ownership failed', {
+      scope: 'conversation-command-status',
+      sessionId,
+      error
+    })
   }
 }

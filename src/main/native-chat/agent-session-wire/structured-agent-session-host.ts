@@ -279,6 +279,7 @@ export class StructuredAgentSessionHost {
       deps: this.deps,
       sessions: this.sessions,
       publish: (sessionId, journal) => this.subscribers.publish(sessionId, journal),
+      publishConversationCommand: this.clientDelivery.publishConversationCommand,
       conversation: this.lifetime.conversation,
       readChildWork: this.clientDelivery.readChildWork,
       serialize: (sessionId, task) => this.serialize(sessionId, task),
