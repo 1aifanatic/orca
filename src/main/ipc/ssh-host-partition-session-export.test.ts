@@ -137,24 +137,23 @@ beforeEach(() => {
       [target, otherTarget].find((candidate) => candidate.id === targetId)
   })
   getActiveMultiplexerMock.mockReset()
+  const connection = {
+    request: (method: string, params: Record<string, unknown>) => {
+      if (method === 'workspace.get') {
+        return Promise.resolve(hostSnapshot)
+      }
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: params.patch crosses the IPC boundary as unknown; this suite only ever sends a session patch.
+      const patch = params.patch as { session: RemoteWorkspaceSession }
+      hostSnapshot = {
+        ...hostSnapshot,
+        revision: hostSnapshot.revision + 1,
+        session: patch.session
+      }
+      return Promise.resolve({ ok: true, snapshot: hostSnapshot })
+    }
+  }
   getActiveMultiplexerMock.mockImplementation((targetId: string) =>
-    targetId === TARGET_ID
-      ? {
-          request: (method: string, params: Record<string, unknown>) => {
-            if (method === 'workspace.get') {
-              return Promise.resolve(hostSnapshot)
-            }
-            // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: params.patch crosses the IPC boundary as unknown; this suite only ever sends a session patch.
-            const patch = params.patch as { session: RemoteWorkspaceSession }
-            hostSnapshot = {
-              ...hostSnapshot,
-              revision: hostSnapshot.revision + 1,
-              session: patch.session
-            }
-            return Promise.resolve({ ok: true, snapshot: hostSnapshot })
-          }
-        }
-      : undefined
+    targetId === TARGET_ID ? connection : undefined
   )
 })
 

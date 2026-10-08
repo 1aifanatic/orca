@@ -73,12 +73,9 @@ vi.mock('electron', () => ({
 vi.mock('./remote-workspace-events', () => ({
   registerRemoteWorkspaceNotificationHandler: () => () => {}
 }))
-vi.mock('./ssh', () => ({
-  getSshConnectionStore: () => ({
-    listTargets: () => [TARGET],
-    getTarget: () => TARGET
-  }),
-  getActiveMultiplexer: () => ({
+vi.mock('./ssh', () => {
+  // One connection for the whole suite: an agreement holds only over the connection it was made on.
+  const connection = {
     request: async (method: string, { baseRevision, clientId, patch }: RelayPatchParams) => {
       if (method === 'workspace.get') {
         return relaySnapshot()
@@ -99,8 +96,15 @@ vi.mock('./ssh', () => ({
       }
       return { ok: true, snapshot }
     }
-  })
-}))
+  }
+  return {
+    getSshConnectionStore: () => ({
+      listTargets: () => [TARGET],
+      getTarget: () => TARGET
+    }),
+    getActiveMultiplexer: () => connection
+  }
+})
 
 type Desktop = {
   driver: ExportDriverModule.RemoteWorkspaceExportDriver
