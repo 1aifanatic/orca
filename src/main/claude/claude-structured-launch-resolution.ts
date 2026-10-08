@@ -1,4 +1,5 @@
 import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
+import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import type {
   Options as ClaudeAgentSdkOptions,
   PermissionMode
@@ -192,9 +193,10 @@ export function createClaudeStructuredLaunchResolver(
         `claude structured sessions run on the local host, not ${record.location.executionHostId}`
       )
     }
+    const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
     const pinned = CLAUDE_STRUCTURED_AGENT.accountHomeVariable
-    if (record.accountHome.variable !== pinned) {
-      throw new Error(`claude sessions pin ${pinned}, not ${record.accountHome.variable}`)
+    if (accountHome.variable !== pinned) {
+      throw new Error(`claude sessions pin ${pinned}, not ${accountHome.variable}`)
     }
     const router = getClaudeProfileRouter()
     // A Claude record's chain holds only Claude handles; the attach admission refuses anything else.
@@ -243,7 +245,7 @@ export function createClaudeStructuredLaunchResolver(
         ),
       sources
     )
-    const launchHome = await resolveClaudeStructuredLaunchHome(router, env, record.accountHome.path)
+    const launchHome = await resolveClaudeStructuredLaunchHome(router, env, accountHome.path)
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
     const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null
