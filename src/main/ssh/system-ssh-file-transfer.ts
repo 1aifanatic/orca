@@ -103,10 +103,14 @@ export async function uploadDirectoryViaSystemSsh(
   }
 }
 
+/** What local tar says when its output, not its input, failed: the far end went away. */
+const DOWNSTREAM_WRITE_FAILURE = /write error|cannot write|broken pipe|EPIPE/i
+
 /**
- * Waits for all three, then names the cause. A remote exit the host answered wins when local tar
- * finished or only died of the broken pipe; otherwise a local tar failure is the cause, since the
- * remote tar only saw its truncated stream. A broken pipe alone is a symptom of either.
+ * Waits for all three, then names the cause. A remote exit the host answered wins over a local
+ * tar failure that only followed it: local tar finished, was signalled, failed after ssh closed,
+ * or reported a write/pipe error (BSD tar exits 1 with "Write error", no signal). A local tar
+ * that failed on its own input first (missing directory, unreadable file) is the client's fault.
  */
 async function settleUploadPipeline(
   tarProcess: ChildProcess,
@@ -114,15 +118,29 @@ async function settleUploadPipeline(
   remote: Promise<ProcessResult>,
   pipe: Promise<void>
 ): Promise<readonly [ProcessResult, ProcessResult]> {
-  const [tar, ssh, piped] = await Promise.allSettled([local, remote, pipe])
+  let settled = 0
+  let localAt = 0
+  let remoteAt = 0
+  const stamp = <T>(promise: Promise<T>, record: (at: number) => void): Promise<T> =>
+    promise.finally(() => record(++settled))
+  const [tar, ssh, piped] = await Promise.allSettled([
+    stamp(local, (at) => (localAt = at)),
+    stamp(remote, (at) => (remoteAt = at)),
+    pipe
+  ])
   const remoteAnswered =
     ssh.status === 'rejected' &&
     ssh.reason instanceof SystemSshCommandExitError &&
     ssh.reason.exitCode !== null &&
     ssh.reason.exitCode !== SYSTEM_SSH_TRANSPORT_EXIT_CODE
+  const localFollowedRemote =
+    tar.status === 'fulfilled' ||
+    tarProcess.signalCode !== null ||
+    remoteAt < localAt ||
+    (tar.reason instanceof Error && DOWNSTREAM_WRITE_FAILURE.test(tar.reason.message))
   if (
     ssh.status === 'rejected' &&
-    (tar.status === 'fulfilled' || (remoteAnswered && tarProcess.signalCode !== null))
+    (tar.status === 'fulfilled' || (remoteAnswered && localFollowedRemote))
   ) {
     throw ssh.reason
   }

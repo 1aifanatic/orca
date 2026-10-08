@@ -2,6 +2,7 @@
  * The real producers behind the relay ladder's "did the host answer?" question: system-ssh
  * directory upload, system sftp, and the warm runtime check. Each runs real processes where it can.
  */
+import { randomBytes } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -70,6 +71,27 @@ describe.runIf(posix)('system-ssh directory upload', () => {
     )
     expect(String(error)).toContain('No space left on device')
     expect(isAnsweredHostFailure(error)).toBe(true)
+  })
+
+  it('keeps the remote ENOSPC when the far end closes mid-stream and local tar then fails to write', async () => {
+    // Why 8 MiB of noise: tar is still writing when ssh exits, so it fails downstream (BSD tar:
+    // exit 1 "Write error", no signal) instead of finishing first.
+    const dir = join(scratch, 'large')
+    await mkdir(dir)
+    await writeFile(join(dir, 'runtime.bin'), randomBytes(8 * 1024 * 1024))
+    vi.mocked(findSystemSsh).mockReturnValue(
+      await script(
+        'ssh',
+        'head -c 1024 >/dev/null\necho "tar: Cannot write: No space left on device" >&2\nexit 2'
+      )
+    )
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const error = await uploadDirectoryViaSystemSsh(target, dir, '/remote').catch(
+        (e: unknown) => e
+      )
+      expect(String(error)).toContain('No space left on device')
+      expect(isAnsweredHostFailure(error)).toBe(true)
+    }
   })
 
   it("keeps ssh's own exit 255 (contact lost) retryable", async () => {
