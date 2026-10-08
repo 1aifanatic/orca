@@ -1,3 +1,5 @@
+import { toast } from 'sonner'
+import { translate } from '@/i18n/i18n'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import type { TerminalPaneLayoutNode, TerminalTab } from '../../../../shared/terminal-tab-types'
 import { terminalPanePlacementRow } from '@/lib/terminal-pane-placement-row'
@@ -11,6 +13,11 @@ import { isWebClientLocation } from '@/lib/web-client-location'
 import { getExplicitRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '../types'
 import type { TerminalSlice, TerminalStoreSet } from './terminal-state'
+
+export type PendingTerminalChangeStore = Pick<
+  TerminalSlice,
+  'settlePendingTerminalPane' | 'restoreTerminalTopologySlice'
+>
 
 /** A whole tab when `leafId` is absent. */
 export type PendingTerminalPaneKey = { worktreeId: string; tabId: string; leafId?: string }
@@ -155,7 +162,7 @@ export function newTerminalTabCreate(
 
 /** Commits a creation this window shows as `entry` into main, unbound; main's reply settles it. */
 export function sendTerminalSurfaceCreate(
-  store: Pick<TerminalSlice, 'settlePendingTerminalPane'>,
+  store: PendingTerminalChangeStore,
   entry: PendingTerminalPane,
   request: TerminalSurfaceCreateRequest
 ): void {
@@ -251,7 +258,7 @@ export function terminalTabPanesNamed(
  * reply is applied. A later change to the same target replaces `entry`; this reply then settles nothing.
  */
 export function commitPendingTerminalChange(
-  store: Pick<TerminalSlice, 'markPendingTerminalPane' | 'settlePendingTerminalPane'>,
+  store: PendingTerminalChangeStore & Pick<TerminalSlice, 'markPendingTerminalPane'>,
   entry: PendingTerminalPane,
   send: () => Promise<TerminalTopologyReply | undefined> | undefined
 ): void {
@@ -261,17 +268,46 @@ export function commitPendingTerminalChange(
 
 /** Settles `entry`, which this window already shows, once `send`'s reply names main's push. */
 function settlePendingTerminalChangeOnReply(
-  store: Pick<TerminalSlice, 'settlePendingTerminalPane'>,
+  store: PendingTerminalChangeStore,
   entry: PendingTerminalPane,
-  send: () => Promise<TerminalTopologyReply | undefined> | undefined
+  send: () => Promise<(TerminalTopologyReply & { status?: string }) | undefined> | undefined
 ): void {
   void Promise.resolve(send()).then(
-    (reply) => store.settlePendingTerminalPane(entry, reply?.publishSeq),
-    (error: unknown) => {
-      console.warn(`[terminal-topology] main did not commit the ${entry.change}`, error)
-      store.settlePendingTerminalPane(entry)
-    }
+    (reply) =>
+      reply?.status === 'refused'
+        ? restoreMainTerminalTopology(store, entry, reply)
+        : store.settlePendingTerminalPane(entry, reply?.publishSeq),
+    (error: unknown) => restoreMainTerminalTopology(store, entry, error)
   )
+}
+
+/**
+ * Main refused `entry` or rolled its write back, so no push will ever undo what this window shows;
+ * main's slice for the worktree replaces it now.
+ */
+async function restoreMainTerminalTopology(
+  store: PendingTerminalChangeStore,
+  entry: PendingTerminalPane,
+  cause: unknown
+): Promise<void> {
+  console.warn(`[terminal-topology] main did not commit the ${entry.change}`, cause)
+  store.settlePendingTerminalPane(entry)
+  toast.error(
+    translate(
+      'terminal.topologyChange.refused',
+      "Couldn't save that terminal change, so it was undone."
+    )
+  )
+  try {
+    const slices = await globalThis.window?.api?.session?.getTerminalTopologySlices?.()
+    const slice = slices?.find((candidate) => candidate.worktreeId === entry.worktreeId)
+    if (slice) {
+      store.restoreTerminalTopologySlice(slice)
+    }
+  } catch (error) {
+    // The next push for the worktree still restores main's topology.
+    console.warn("[terminal-topology] could not pull main's topology", error)
+  }
 }
 
 export function createTerminalPendingPaneActions(

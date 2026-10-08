@@ -58,7 +58,7 @@ function slice(publishSeq: number, root: TerminalPaneLayoutNode): TerminalTopolo
 const state = () => useAppStore.getState()
 const rootInStore = () => state().terminalLayoutsByTabId[TAB]?.root
 const apply = (publishSeq: number, root: TerminalPaneLayoutNode) =>
-  state().applyTerminalTopologySlice(slice(publishSeq, root))
+  state().applyTerminalTopologySlices([slice(publishSeq, root)])
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 /** What the drag end does: the window takes its own tree, then commits it to main. */

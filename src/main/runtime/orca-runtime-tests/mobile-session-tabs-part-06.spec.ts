@@ -295,10 +295,11 @@ describe('OrcaRuntimeService', () => {
     })
   })
 
-  it('keeps a client title and expand edit when its pane tree is stale', async () => {
+  it("keeps main's whole layout when a client's pane tree is stale", async () => {
     const session = makeWorkspaceSessionWithHeadlessTerminal()
     const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(session)
     const runtime = new OrcaRuntimeService(runtimeStore as never)
+    const before = structuredClone(getSession().terminalLayoutsByTabId['host-tab'])
 
     await runtime.updateMobileSessionPaneLayout(`id:${TEST_WORKTREE_ID}`, {
       tabId: 'host-tab',
@@ -308,14 +309,12 @@ describe('OrcaRuntimeService', () => {
         first: { type: 'leaf', leafId: HEADLESS_LEAF_ID },
         second: { type: 'leaf', leafId: 'leaf-gone' }
       },
-      expandedLeafId: HEADLESS_LEAF_ID,
-      titlesByLeafId: { [HEADLESS_LEAF_ID]: 'Pane A' }
+      expandedLeafId: 'leaf-gone',
+      chatLeafId: 'leaf-gone',
+      titlesByLeafId: { 'leaf-gone': 'Pane B' }
     })
 
-    const persisted = getSession().terminalLayoutsByTabId['host-tab']!
-    expect(persisted.root).toEqual({ type: 'leaf', leafId: HEADLESS_LEAF_ID })
-    expect(persisted.expandedLeafId).toBe(HEADLESS_LEAF_ID)
-    expect(persisted.titlesByLeafId).toEqual({ [HEADLESS_LEAF_ID]: 'Pane A' })
+    expect(getSession().terminalLayoutsByTabId['host-tab']).toEqual(before)
   })
 
   it('persists headless tab color + pin and surfaces them through a cold rehydrate', async () => {

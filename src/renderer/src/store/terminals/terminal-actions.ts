@@ -286,8 +286,10 @@ export type TerminalActions = {
   setDeferredSshReconnectTargets: (targetIds: string[]) => void
   removeDeferredSshReconnectTarget: (targetId: string) => void
   removeDeferredSshSessionId: (tabId: string) => void
-  /** Mirrors main's terminal topology for one worktree; a slice older than the last applied is ignored. */
-  applyTerminalTopologySlice: (slice: TerminalTopologySlice) => void
+  /** Mirrors main's terminal topology per worktree; a slice older than the last applied is ignored. */
+  applyTerminalTopologySlices: (slices: readonly TerminalTopologySlice[]) => void
+  /** Re-applies main's latest slice over a change of this window's that main refused. */
+  restoreTerminalTopologySlice: (slice: TerminalTopologySlice) => void
   markPendingTerminalPane: (entry: PendingTerminalPane) => void
   /** Main answered `entry`'s commit; it ends once the mirror holds `publishSeq`. */
   settlePendingTerminalPane: (entry: PendingTerminalPane, publishSeq?: number) => void

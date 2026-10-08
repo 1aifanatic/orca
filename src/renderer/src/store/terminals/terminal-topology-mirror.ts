@@ -76,14 +76,18 @@ function mirrorLayout(
   return { ...presentation, ...layout, activeLeafId }
 }
 
+/** One pass over the window's records for the whole batch, however many worktrees it holds. */
 function mirrorSleepingRecords(
   current: Record<string, SleepingAgentSessionRecord>,
-  slice: TerminalTopologySlice
+  slices: readonly TerminalTopologySlice[]
 ): Record<string, SleepingAgentSessionRecord> {
-  const others = Object.entries(current).filter(
-    ([, record]) => record.worktreeId !== slice.worktreeId
+  const replaced = new Set(slices.map((slice) => slice.worktreeId))
+  const next = Object.fromEntries(
+    Object.entries(current).filter(([, record]) => !replaced.has(record.worktreeId))
   )
-  const next = { ...Object.fromEntries(others), ...slice.sleeping }
+  for (const slice of slices) {
+    Object.assign(next, slice.sleeping)
+  }
   return structuralValuesEqual(next, current) ? current : next
 }
 
@@ -92,7 +96,7 @@ function mirrorSleepingRecords(
  * before main names them, or hidden before main drops them); everything else is the window's.
  * Unchanged rows and layouts keep their identity, so an identical slice changes only the seq.
  */
-export function mirrorTerminalTopologySlice(
+function mirrorTerminalTopologySlice(
   state: AppState,
   slice: TerminalTopologySlice
 ): Partial<AppState> {
@@ -143,13 +147,9 @@ export function mirrorTerminalTopologySlice(
       (tabId) => layouts[tabId] !== state.terminalLayoutsByTabId[tabId]
     )
 
-  const sleeping = mirrorSleepingRecords(state.sleepingAgentSessionsByPaneKey, slice)
   return {
     ...(tabsChanged ? { tabsByWorktree: { ...state.tabsByWorktree, [worktreeId]: tabs } } : {}),
     ...(layoutsChanged ? { terminalLayoutsByTabId: layouts } : {}),
-    ...(sleeping !== state.sleepingAgentSessionsByPaneKey
-      ? { sleepingAgentSessionsByPaneKey: sleeping }
-      : {}),
     ...mirrorTerminalUnifiedTabs(state, worktreeId, added, removedIds),
     ...(pending !== state.pendingTerminalPanes ? { pendingTerminalPanes: pending } : {}),
     terminalTopologySeqByWorktree: {
@@ -159,16 +159,37 @@ export function mirrorTerminalTopologySlice(
   }
 }
 
+function mirrorTerminalTopologySlices(
+  state: AppState,
+  slices: readonly TerminalTopologySlice[]
+): Partial<AppState> {
+  let next = state
+  for (const slice of slices) {
+    next = { ...next, ...mirrorTerminalTopologySlice(next, slice) }
+  }
+  const sleeping = mirrorSleepingRecords(state.sleepingAgentSessionsByPaneKey, slices)
+  return sleeping === state.sleepingAgentSessionsByPaneKey
+    ? next
+    : { ...next, sleepingAgentSessionsByPaneKey: sleeping }
+}
+
+const appliedSeq = (state: AppState, slice: TerminalTopologySlice): number =>
+  state.terminalTopologySeqByWorktree[slice.worktreeId] ?? 0
+
 export function createTerminalTopologyMirrorActions(
   set: TerminalStoreSet
-): Pick<TerminalSlice, 'applyTerminalTopologySlice'> {
+): Pick<TerminalSlice, 'applyTerminalTopologySlices' | 'restoreTerminalTopologySlice'> {
   return {
-    applyTerminalTopologySlice: (slice) => {
-      set((s) =>
+    applyTerminalTopologySlices: (slices) => {
+      set((s) => {
         // Pushes and the startup pull race; the higher publishSeq is the newer slice.
-        slice.publishSeq > (s.terminalTopologySeqByWorktree[slice.worktreeId] ?? 0)
-          ? mirrorTerminalTopologySlice(s, slice)
-          : s
+        const newer = slices.filter((slice) => slice.publishSeq > appliedSeq(s, slice))
+        return newer.length > 0 ? mirrorTerminalTopologySlices(s, newer) : s
+      })
+    },
+    restoreTerminalTopologySlice: (slice) => {
+      set((s) =>
+        slice.publishSeq >= appliedSeq(s, slice) ? mirrorTerminalTopologySlices(s, [slice]) : s
       )
     }
   }

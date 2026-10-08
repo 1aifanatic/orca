@@ -6,6 +6,7 @@ import {
 } from '../../../shared/execution-host'
 import { parseWorkspaceSessionSalvaging } from '../../../shared/workspace-session-salvage'
 import { withoutRedundantGlobalFields } from '../../../shared/workspace-session-host-field-ownership'
+import { applyLegacyTerminalSurfaceTombstones } from '../../runtime/mobile-session-terminal-persistence-retirement'
 
 export function workspaceSessionSalvageLogDetails(result: {
   droppedCount: number
@@ -54,10 +55,10 @@ export function parseWorkspaceSessionsByHostId(
     }
     // Runs before the defaults spread, so a field the type requires comes back at its default
     // rather than going missing.
-    partitions[hostId] = {
+    partitions[hostId] = applyLegacyTerminalSurfaceTombstones({
       ...defaults,
       ...withoutRedundantGlobalFields(result.value, localSession)
-    }
+    })
   }
   return { partitions, repaired }
 }

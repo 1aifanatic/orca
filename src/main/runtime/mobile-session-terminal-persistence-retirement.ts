@@ -218,3 +218,17 @@ export function retireTerminalSurfaceFromPersistence(
     paneKey
   )
 }
+
+/** Applies the close records an older build left for its next write to apply, then drops them. */
+export function applyLegacyTerminalSurfaceTombstones(
+  session: WorkspaceSessionState
+): WorkspaceSessionState {
+  const tombstones = Object.values(session.terminalSurfaceTombstonesByPaneKey ?? {})
+  if (tombstones.length === 0) {
+    return session
+  }
+  return {
+    ...tombstones.reduce(retireTerminalSurfaceFromPersistence, session),
+    terminalSurfaceTombstonesByPaneKey: {}
+  }
+}

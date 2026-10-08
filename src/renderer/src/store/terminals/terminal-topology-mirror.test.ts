@@ -106,11 +106,11 @@ function seed(): void {
     groupsByWorktree: { [WT]: [{ ...group, tabOrder: ['a', 'b', '/wt/readme.md'] }] },
     activeGroupIdByWorktree: { [WT]: 'group' }
   })
-  useAppStore.getState().applyTerminalTopologySlice(slice(1))
+  useAppStore.getState().applyTerminalTopologySlices([slice(1)])
 }
 
 const apply = (next: TerminalTopologySlice) =>
-  useAppStore.getState().applyTerminalTopologySlice(next)
+  useAppStore.getState().applyTerminalTopologySlices([next])
 const state = () => useAppStore.getState()
 
 afterEach(() => {
@@ -118,7 +118,7 @@ afterEach(() => {
   useAppStore.setState(initial, true)
 })
 
-describe('applyTerminalTopologySlice', () => {
+describe('applyTerminalTopologySlices', () => {
   beforeEach(seed)
 
   it('keeps presentation, liveness and activation state while replacing topology', () => {
@@ -379,6 +379,49 @@ describe('applyTerminalTopologySlice', () => {
       `b:${LEAF_B}`,
       'other:leaf'
     ])
+  })
+
+  it("reads the window's sleeping records a fixed number of times per batch, however many worktrees", () => {
+    const enumerationsFor = (worktreeCount: number): number => {
+      let enumerations = 0
+      useAppStore.setState({
+        sleepingAgentSessionsByPaneKey: new Proxy<Record<string, SleepingAgentSessionRecord>>(
+          {},
+          {
+            ownKeys: (target) => {
+              enumerations += 1
+              return Reflect.ownKeys(target)
+            }
+          }
+        )
+      })
+      const worktreeIds = Array.from(
+        { length: worktreeCount },
+        (_, index) => `repo::/wt-${worktreeCount}-${index}`
+      )
+      state().applyTerminalTopologySlices(
+        worktreeIds.map((worktreeId) =>
+          slice(10, { worktreeId, tabs: [row(`t-${worktreeId}`, { worktreeId })], layouts: {} })
+        )
+      )
+      return enumerations
+    }
+
+    const single = enumerationsFor(1)
+    expect(single).toBeGreaterThan(0)
+    expect(enumerationsFor(50)).toBe(single)
+  })
+
+  it('restores main’s slice at the applied seq over this window’s refused change', () => {
+    apply(slice(3))
+    useAppStore.setState({
+      tabsByWorktree: { [WT]: [...state().tabsByWorktree[WT], windowTab('refused')] }
+    })
+
+    state().restoreTerminalTopologySlice(slice(2))
+    expect(state().tabsByWorktree[WT].map((tab) => tab.id)).toEqual(['a', 'b', 'refused'])
+    state().restoreTerminalTopologySlice(slice(3))
+    expect(state().tabsByWorktree[WT].map((tab) => tab.id)).toEqual(['a', 'b'])
   })
 
   it('ignores a slice older than the last one applied', () => {

@@ -19370,6 +19370,9 @@
     "paneMove": {
       "failed": "Impossible de déplacer le volet vers un nouvel onglet."
     },
+    "topologyChange": {
+      "refused": "Impossible d'enregistrer cette modification du terminal ; elle a été annulée."
+    },
     "paneTopBanner": {
       "openNewTerminal": "Ouvrir un nouveau terminal",
       "learnMore": "Apprendre encore plus",

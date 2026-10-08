@@ -5,6 +5,7 @@ import {
 } from '../../../shared/project-catalog-row-normalization'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { parseWorkspaceSessionSalvaging } from '../../../shared/workspace-session-salvage'
+import { applyLegacyTerminalSurfaceTombstones } from '../../runtime/mobile-session-terminal-persistence-retirement'
 import {
   backfillAutomationRunNumbers,
   pruneAutomationRuns
@@ -35,7 +36,7 @@ export function normalizeLoadedLocalSession(
     // Why: salvage repairs only the in-memory session; without a save the corrupt entries stay on disk and get re-dropped every launch.
     markNeedsSave()
   }
-  return { ...defaults.workspaceSession, ...result.value }
+  return applyLegacyTerminalSurfaceTombstones({ ...defaults.workspaceSession, ...result.value })
 }
 
 export function normalizeLoadedHostSessions(

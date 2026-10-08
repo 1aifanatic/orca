@@ -19338,6 +19338,9 @@
     "paneMove": {
       "failed": "No se pudo mover el panel a una pestaña nueva."
     },
+    "topologyChange": {
+      "refused": "No se pudo guardar ese cambio en la terminal, así que se deshizo."
+    },
     "paneTopBanner": {
       "openNewTerminal": "Abrir terminal nuevo",
       "learnMore": "Más información",

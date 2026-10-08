@@ -28,11 +28,27 @@ export function projectTabRow(tab: TerminalTab): TerminalTopologyTabRow {
   }
 }
 
+export type SleepingRecordsByWorktree = Map<string, Record<string, SleepingAgentSessionRecord>>
+
+/** One pass over a partition's sleeping-agent records, so projecting each worktree needn't rescan. */
+export function groupSleepingRecordsByWorktree(
+  session: WorkspaceSessionState
+): SleepingRecordsByWorktree {
+  const grouped: SleepingRecordsByWorktree = new Map()
+  for (const [paneKey, record] of Object.entries(session.sleepingAgentSessionsByPaneKey ?? {})) {
+    const records = grouped.get(record.worktreeId) ?? {}
+    records[paneKey] = record
+    grouped.set(record.worktreeId, records)
+  }
+  return grouped
+}
+
 /** Pure; reads only the worktree's own rows from the partition that owns it. */
 export function projectTerminalTopologySlice(
   session: WorkspaceSessionState,
   hostId: ExecutionHostId,
-  worktreeId: string
+  worktreeId: string,
+  sleepingByWorktree: SleepingRecordsByWorktree = groupSleepingRecordsByWorktree(session)
 ): UnsequencedTerminalTopologySlice {
   const rows = session.tabsByWorktree?.[worktreeId] ?? []
   const tabs = rows.map(projectTabRow)
@@ -51,12 +67,6 @@ export function projectTerminalTopologySlice(
       ...(layout.titlesByLeafId ? { titlesByLeafId: layout.titlesByLeafId } : {})
     }
   }
-  const sleeping: Record<string, SleepingAgentSessionRecord> = {}
-  for (const [paneKey, record] of Object.entries(session.sleepingAgentSessionsByPaneKey ?? {})) {
-    if (record.worktreeId === worktreeId) {
-      sleeping[paneKey] = record
-    }
-  }
   return {
     hostId,
     worktreeId,
@@ -64,7 +74,7 @@ export function projectTerminalTopologySlice(
     tabs,
     presentation,
     layouts,
-    sleeping
+    sleeping: sleepingByWorktree.get(worktreeId) ?? {}
   }
 }
 

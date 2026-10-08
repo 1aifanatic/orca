@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import type {
   TerminalTopologyReply,
@@ -12,12 +13,14 @@ import {
 } from './terminal-pending-panes'
 import { makeWorktree } from '../slices/store-test-helpers'
 
+vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
+
 const WT = 'repo::/wt'
 const LEAF_A = '11111111-1111-4111-8111-111111111111'
 const LEAF_B = '22222222-2222-4222-8222-222222222222'
 const initial = useAppStore.getState()
 const state = () => useAppStore.getState()
-const apply = (next: TerminalTopologySlice) => state().applyTerminalTopologySlice(next)
+const apply = (next: TerminalTopologySlice) => state().applyTerminalTopologySlices([next])
 const tabIds = () => (state().tabsByWorktree[WT] ?? []).map((tab) => tab.id)
 const unifiedIds = () => (state().unifiedTabsByWorktree[WT] ?? []).map((tab) => tab.entityId)
 
@@ -49,30 +52,37 @@ function slice(publishSeq: number, tabs: Record<string, string[]>): TerminalTopo
   }
 }
 
-/** Main's replies are released by the test, so either order can be driven. */
-function stubReplies(method: 'closeTerminalSurface' | 'createTerminalSurface'): {
-  reply: (answer: TerminalTopologyReply | Error) => void
+type Reply = TerminalTopologyReply & { status?: string }
+
+/** Main's replies are released by the test, so either order can be driven; `held` is main's topology. */
+function stubReplies(
+  method: 'closeTerminalSurface' | 'createTerminalSurface',
+  held: TerminalTopologySlice[] = []
+): {
+  reply: (answer: Reply | Error) => void
   calls: ReturnType<typeof vi.fn>
 } {
-  const pending: ((answer: TerminalTopologyReply | Error) => void)[] = []
+  const pending: ((answer: Reply | Error) => void)[] = []
   const calls = vi.fn(
     () =>
-      new Promise<TerminalTopologyReply>((resolve, reject) => {
+      new Promise<Reply>((resolve, reject) => {
         pending.push((answer) => (answer instanceof Error ? reject(answer) : resolve(answer)))
       })
   )
-  vi.stubGlobal('window', { api: { session: { [method]: calls } } })
+  const getTerminalTopologySlices = async () => held
+  vi.stubGlobal('window', { api: { session: { [method]: calls, getTerminalTopologySlices } } })
   return { reply: (answer) => pending.shift()?.(answer), calls }
 }
 
-const stubCloseReplies = () => {
-  const { reply, calls } = stubReplies('closeTerminalSurface')
+const stubCloseReplies = (held?: TerminalTopologySlice[]) => {
+  const { reply, calls } = stubReplies('closeTerminalSurface', held)
   return { reply, closeTerminalSurface: calls }
 }
 
 const settled = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 beforeEach(() => {
+  vi.mocked(toast.error).mockClear()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   apply(slice(1, { a: [LEAF_A] }))
 })
@@ -115,6 +125,18 @@ describe('a tab this window creates', () => {
     apply(slice(2, { a: [LEAF_A] }))
     expect(tabIds()).toEqual(['a'])
     expect(state().pendingTerminalPanes).toEqual([])
+  })
+
+  it('is dropped at once, and says so, when main refuses it', async () => {
+    const main = stubReplies('createTerminalSurface', [slice(1, { a: [LEAF_A] })])
+    const tab = state().createTab(WT)
+    expect(tabIds()).toEqual(['a', tab.id])
+
+    main.reply({ status: 'refused', publishSeq: 1 })
+    await settled()
+    expect(tabIds()).toEqual(['a'])
+    expect(state().pendingTerminalPanes).toEqual([])
+    expect(toast.error).toHaveBeenCalledOnce()
   })
 
   it('keeps a pane main has not named yet, and only that one', () => {
@@ -178,16 +200,17 @@ describe('a tab this window closes', () => {
     expect(state().pendingTerminalPanes).toEqual([])
   })
 
-  it('shows main’s copy again when main refuses the close', async () => {
+  it('shows main’s copy again at once, and says so, when main refuses the close', async () => {
     apply(slice(10, { a: [LEAF_A], b: [LEAF_B] }))
-    const main = stubCloseReplies()
+    const main = stubCloseReplies([slice(10, { a: [LEAF_A], b: [LEAF_B] })])
     state().closeTab('b')
+    expect(tabIds()).toEqual(['a'])
+
     main.reply(new Error('write failed'))
     await settled()
     expect(state().pendingTerminalPanes).toEqual([])
-
-    apply(slice(11, { a: [LEAF_A], b: [LEAF_B] }))
     expect(tabIds()).toEqual(['a', 'b'])
+    expect(toast.error).toHaveBeenCalledOnce()
   })
 })
 
