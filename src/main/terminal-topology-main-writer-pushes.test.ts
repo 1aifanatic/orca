@@ -109,7 +109,9 @@ describe('a window showing a worktree learns of main-side writes that remove or 
     const { initial, pushesAfter } = watchPushes(store)
     expect(initial).toHaveLength(1)
 
-    expect(pushesAfter(() => store.removeProject('r1'))).toEqual([withdrawn('local', 'r1::/repo')])
+    expect(pushesAfter(() => store.removeProjectForHost('r1', 'local'))).toEqual([
+      withdrawn('local', 'r1::/repo')
+    ])
   })
 
   it("withdraws one host's worktree when a shared repo id is removed from that host only", () => {
