@@ -1,5 +1,6 @@
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { translate } from '@/i18n/i18n'
+import { useLocalStructuredAgentSessionsHeld } from '@/runtime/local-structured-chats'
 import { Label } from '../ui/label'
 import { NativeChatShellEnvironmentSetting } from './NativeChatShellEnvironmentSetting'
 import { NativeChatQueueFollowUpsSetting } from './NativeChatQueueFollowUpsSetting'
@@ -22,6 +23,7 @@ export function ChatUiSetting({
 }: ChatUiSettingProps): React.JSX.Element {
   const nativeChatEnabled = settings.experimentalNativeChat === true
   const resumeOnRestartEnabled = settings.nativeChatResumeWorkOnRestart === true
+  const holdsStructuredChats = useLocalStructuredAgentSessionsHeld()
 
   return (
     <div className="w-full max-w-3xl space-y-3">
@@ -44,7 +46,7 @@ export function ChatUiSetting({
         </div>
       </SearchableSetting>
 
-      {nativeChatEnabled ? (
+      {nativeChatEnabled || holdsStructuredChats ? (
         <div className="ml-4 space-y-4 border-l border-border pl-4">
           {showHostOwnedRows ? (
             <SearchableSetting

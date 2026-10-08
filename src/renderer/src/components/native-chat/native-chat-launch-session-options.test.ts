@@ -3,7 +3,6 @@ import { resolveInitialNativeChatSessionOptions } from './native-chat-launch-ses
 
 const settings = {
   experimentalNativeChat: true,
-  openAgentTabsInChatByDefault: true,
   nativeChatSessionOptions: {
     codex: {
       model: 'gpt-5.2-codex',
@@ -16,7 +15,7 @@ describe('resolveInitialNativeChatSessionOptions', () => {
   it('omits native-chat preferences from terminal-default launches', () => {
     expect(
       resolveInitialNativeChatSessionOptions(
-        { ...settings, openAgentTabsInChatByDefault: false },
+        { ...settings, experimentalNativeChat: false },
         { agent: 'codex' }
       )
     ).toBeUndefined()
@@ -29,17 +28,17 @@ describe('resolveInitialNativeChatSessionOptions', () => {
     })
   })
 
-  it('omits preferences when a draft forces the initial view back to terminal', () => {
+  it('retains saved options for structured drafts beyond the terminal mirror limit', () => {
     expect(
       resolveInitialNativeChatSessionOptions(settings, {
         agent: 'codex',
         promptDelivery: 'draft',
         launchDraftText: 'one\u2028two'
       })
-    ).toBeUndefined()
+    ).toEqual({ model: 'gpt-5.2-codex', effort: 'medium' })
   })
 
-  it('omits preferences when a remote transcript forces the initial view to terminal', () => {
+  it('retains saved options for a registered structured agent regardless of transcript location', () => {
     const grokSettings = {
       ...settings,
       nativeChatSessionOptions: { grok: { model: 'grok-4.5' } }
@@ -49,6 +48,6 @@ describe('resolveInitialNativeChatSessionOptions', () => {
         agent: 'grok',
         nativeChatTranscriptIsLocalReadable: false
       })
-    ).toBeUndefined()
+    ).toEqual({ model: 'grok-4.5' })
   })
 })

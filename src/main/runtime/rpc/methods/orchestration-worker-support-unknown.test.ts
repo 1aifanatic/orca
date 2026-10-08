@@ -7,8 +7,7 @@ import {
 const mode = decideWorkerStartMode({
   params: { agent: 'claude' },
   settings: {
-    experimentalNativeChat: true,
-    openAgentTabsInChatByDefault: true
+    experimentalNativeChat: true
   }
 })
 

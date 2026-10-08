@@ -3,7 +3,8 @@ title: Chat UI (native chat)
 description: Optional chat surface for supported agent sessions — skills, model pickers, and transcript view.
 ---
 
-Chat UI is a chat surface for supported agent sessions. New local **Claude** and **Codex** chats run as chat sessions Orca drives directly, with no terminal behind them. Other agents, and Claude or Codex chats Orca can't start that way (for example on WSL, over SSH, or on a remote server), show chat over their agent terminal, which stays the source of truth. Transcript decoding covers **Claude**, **Codex**, **Grok**, and **OMP** — OMP sessions open in Chat UI like the others instead of staying raw-terminal-only.
+Chat UI is a chat surface for supported agent sessions. New supported agents run as chats without a terminal. Unsupported agents and execution hosts continue in the terminal. Chats that already exist stay available when you turn Chat UI off.
+
 
 ## Enable
 
@@ -11,8 +12,6 @@ Chat UI is a chat surface for supported agent sessions. New local **Claude** and
 1. Turn **Chat UI** on.
 
 Chat appearance and naming settings remain available on this page while Chat UI is off. The Chat UI switch enables the structured chat view; there is no default view selector.
-
-For chats shown over an agent terminal, toggle Chat UI ↔ terminal from the agent pane.
 
 ## Composer
 

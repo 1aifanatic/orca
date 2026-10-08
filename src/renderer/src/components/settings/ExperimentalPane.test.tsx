@@ -171,13 +171,12 @@ describe('ExperimentalPane', () => {
     expect(markup).toContain('aria-checked="true"')
   })
 
-  it('does not render Chat UI after graduation to its own pane', () => {
+  it('does not render Chat UI in Experimental', () => {
     const markup = renderToStaticMarkup(
       <ExperimentalPane
         settings={{
           ...getDefaultSettings('/tmp'),
-          experimentalNativeChat: true,
-          openAgentTabsInChatByDefault: true
+          experimentalNativeChat: true
         }}
         updateSettings={vi.fn()}
       />

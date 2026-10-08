@@ -32,12 +32,28 @@ vi.mock('./opencode-go-usage-source-selection', () => ({
   fetchOpenCodeGoUsage: vi.fn()
 }))
 
+vi.mock('./zcode-usage-fetcher', () => ({
+  fetchZcodeRateLimits: vi.fn()
+}))
+
+vi.mock('./antigravity-usage-fetcher', () => ({
+  fetchAntigravityRateLimits: vi.fn()
+}))
+
 vi.mock('./minimax/minimax-fetcher', () => ({
   fetchMiniMaxRateLimits: vi.fn()
 }))
 
 vi.mock('./grok-fetcher', () => ({
   fetchGrokRateLimits: vi.fn()
+}))
+
+vi.mock('./cursor-fetcher', () => ({
+  fetchCursorRateLimits: vi.fn()
+}))
+
+vi.mock('./cursor-auth', () => ({
+  readCursorAuthSession: vi.fn()
 }))
 
 vi.mock('./grok-auth', () => ({
@@ -535,9 +551,7 @@ describe('RateLimitService', () => {
 
   it('does not cache host Claude usage under an outgoing WSL account', async () => {
     const service = new RateLimitService()
-    service.setInactiveClaudeAccountsResolver(() => [
-      { id: 'wsl-account-1', managedAuthPath: '/tmp/account-1/auth' }
-    ])
+    service.setInactiveClaudeAccountsResolver(() => [{ id: 'wsl-account-1' }])
     service.setClaudeAuthPreparationResolver(async (target) => ({
       configDir:
         target?.runtime === 'wsl'

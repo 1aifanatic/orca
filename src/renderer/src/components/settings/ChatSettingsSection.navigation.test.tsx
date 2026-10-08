@@ -39,7 +39,7 @@ function NavigationHarness({
     isMac: false,
     isWindows: false,
     isWebClient: false,
-    chatUiEnabled: enabled,
+    nativeChatEnabled: enabled,
     repos: []
   })
   const pendingNavSectionRef = useRef<string | null>('chat')

@@ -1,3 +1,4 @@
+import type { ProjectGroupingModel } from '@/components/sidebar/worktree-list/grouping/project-grouping'
 import type { Repo } from '../../../shared/repo-types'
 
 export type SettingsNavigationBuildOptions = {
@@ -6,10 +7,12 @@ export type SettingsNavigationBuildOptions = {
   isLocalWindowsHost: boolean
   isWindowsTerminalHost: boolean
   isWebClient: boolean
-  chatUiEnabled: boolean
+  nativeChatEnabled: boolean
+  holdsStructuredChats: boolean
   managedBrowserCreationEnabled: boolean
   mobileEmulatorCreationEnabled: boolean
   isDev: boolean
   isLinearConnected: boolean
   repos: readonly Repo[]
+  projectGrouping?: ProjectGroupingModel
 }

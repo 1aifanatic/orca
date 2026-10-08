@@ -1,15 +1,13 @@
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { SessionOptionValue } from '../../../../shared/native-chat-session-options'
-import {
-  decideInitialAgentTabViewMode,
-  type NativeChatLaunchPromptDelivery
-} from '@/lib/native-chat-initial-view-mode'
+import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
+import type { NativeChatLaunchPromptDelivery } from '@/lib/native-chat-launch-prompt-delivery'
 import { resolveNativeChatLaunchSessionOptions } from './native-chat-session-option-enrichment'
 
 type NativeChatLaunchSettings = Pick<
   GlobalSettings,
-  'experimentalNativeChat' | 'openAgentTabsInChatByDefault' | 'nativeChatSessionOptions'
+  'experimentalNativeChat' | 'nativeChatSessionOptions'
 >
 
 export type InitialNativeChatSessionOptionsArgs = {
@@ -23,12 +21,7 @@ export function resolveInitialNativeChatSessionOptions(
   settings: NativeChatLaunchSettings | null | undefined,
   args: InitialNativeChatSessionOptionsArgs
 ): Record<string, SessionOptionValue> | undefined {
-  const viewMode = decideInitialAgentTabViewMode({
-    experimentalNativeChat: settings?.experimentalNativeChat,
-    openAgentTabsInChatByDefault: settings?.openAgentTabsInChatByDefault,
-    ...args
-  })
-  return viewMode === 'chat'
+  return isNativeChatEnabled(settings)
     ? resolveNativeChatLaunchSessionOptions(settings?.nativeChatSessionOptions, args.agent)
     : undefined
 }

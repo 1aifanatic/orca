@@ -43,7 +43,7 @@ export function ChatSettingsSection({
       title={title}
       description={translate(
         'settings.chat.description',
-        'Choose how chats look and get their names.'
+        'Choose how new agents open, how chats look, and how they get their names.'
       )}
       searchEntries={searchEntries}
       forceVisible={hasUnsavedChatPromptChanges}

@@ -2,9 +2,9 @@ import type { SessionTabsPublicationEpochHistory } from '../web-session-tabs-syn
 import type { StructuredSessionTabPublicationVersion } from '../local-structured-session-tab-retirement'
 
 // Which publisher instance the renderer is listening to, which publication it
-// already accepted per worktree, and the one-shot startup restore. A response in
-// flight for a superseded instance must never reach the mirror, so every async
-// entry point carries the generation it was started under and re-checks it.
+// already accepted per worktree, and the one-shot startup restore. Every async
+// entry point carries the generation it was started under and re-checks it
+// before applying, so a test reset fences responses still in flight.
 let syncGeneration = 0
 let restorePromise: Promise<void> | null = null
 
@@ -36,7 +36,6 @@ export function latchLocalStructuredSessionRestore(start: () => Promise<void>): 
 
 export function resetLocalStructuredSessionVersionForTests(): void {
   syncGeneration += 1
-  restorePromise = null
   localStructuredSessionVersionByWorktree.clear()
   localStructuredSessionEpochHistoryByWorktree.clear()
 }

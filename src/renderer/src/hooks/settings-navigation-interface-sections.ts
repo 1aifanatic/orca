@@ -15,7 +15,8 @@ export function buildInterfaceSettingsSections({
   isMac,
   isWindows,
   isWebClient,
-  chatUiEnabled,
+  nativeChatEnabled,
+  holdsStructuredChats,
   managedBrowserCreationEnabled,
   mobileEmulatorCreationEnabled
 }: SettingsNavigationBuildOptions): SettingsNavSection[] {
@@ -41,13 +42,13 @@ export function buildInterfaceSettingsSections({
       title: translate('settings.appearance.chat.title', 'Chat'),
       description: translate(
         'settings.chat.description',
-        'Choose how chats look and get their names.'
+        'Choose how new agents open, how chats look, and how they get their names.'
       ),
       icon: MessageSquare,
       searchEntries: [
         ...getChatUiSearchEntries({
           includeHostOwnedRows: showDesktopOnlySettings,
-          includeEnabledRows: chatUiEnabled
+          includeEnabledRows: nativeChatEnabled || holdsStructuredChats
         }),
         ...getChatAppearanceSearchEntries(),
         ...(showDesktopOnlySettings ? [getChatNamingSearchEntry()] : [])

@@ -14,6 +14,7 @@ export type LaunchFunnelSettings = {
   activeRuntimeEnvironmentId: string | null
   terminalWindowsShell?: string
   experimentalNativeChat?: boolean
+  experimentalStructuredNativeChat?: boolean
   openAgentTabsInChatByDefault?: boolean
   nativeChatSessionOptions?: Record<
     string,
@@ -106,4 +107,11 @@ export function createdTabOptions(store: LaunchFunnelStore): Record<string, unkn
 /** The tab group `createTab` was asked to place the new tab in (its 2nd argument). */
 export function createdTabGroupId(store: LaunchFunnelStore): string | undefined {
   return store.createTab.mock.calls[0]?.[1]
+}
+
+/** The `agent.launchReplay` request a launch sent its host, or undefined when the window planned it. */
+export function hostLaunchRequest(
+  callRuntimeRpc: ReturnType<typeof vi.fn>
+): Record<string, unknown> | undefined {
+  return callRuntimeRpc.mock.calls.find(([, method]) => method === 'agent.launchReplay')?.[2]
 }

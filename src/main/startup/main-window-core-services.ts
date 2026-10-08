@@ -87,11 +87,7 @@ export function attachMainWindowCoreServices(
       onBeforeRelaunch: async () => {
         state.isQuitting = true
         state.desktopRelayService?.fenceAndCloseNow()
-        await preserveAgentAuthBeforeRestart({
-          codexRuntimeHome,
-          claudeRuntimeAuth,
-          store
-        })
+        await preserveAgentAuthBeforeRestart({ codexRuntimeHome, store })
       },
       onOrcaProfileAuthMutation: () => state.desktopRelayService?.authMutated(),
       // Sign-out is the one fence a paired phone can be told about; quit and
@@ -126,8 +122,11 @@ export function attachMainWindowCoreServices(
       isRecoveryReloadInFlight,
       onCodexHomePtySpawned: handleCodexHomePtySpawned,
       onPtyExit: handlePtyExit,
-      onBeforeUpdateQuit: () =>
-        preserveAgentAuthBeforeRestart({ codexRuntimeHome, claudeRuntimeAuth, store }),
+      onBeforeUpdateQuit: async () => {
+        await preserveAgentAuthBeforeRestart({ codexRuntimeHome, store })
+        await store.flushPendingOrThrowAsync({ fullCheckpoint: true })
+      },
+      onBeforeUpdateQuitFailure: 'abort',
       updateInstallMode: resolveUpdateInstallMode(state.isServeMode),
       onWorktreeLifecycle: emitPluginWorktreeLifecycle
     }

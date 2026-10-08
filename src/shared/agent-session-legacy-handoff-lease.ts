@@ -1,9 +1,10 @@
 /**
- * Lease values only the removed terminal handoff wrote.
+ * Lease values only older builds wrote.
  *
- * Records an older build persisted can still carry a terminal owner (`runtimeKind: 'tui'`) or a
- * handoff stage (`preparing`, `old-owner-stopped`). They are accepted on disk and mapped here, once,
- * at decode, so no in-memory lease holds a value nothing in this build produces.
+ * Records an older build persisted can still carry a terminal owner (`runtimeKind: 'tui'`), a
+ * handoff stage (`preparing`, `old-owner-stopped`), or the removed ownerless-reservation latch
+ * (`manual-recovery`). They are accepted on disk and mapped here, once, at decode, so no in-memory
+ * lease holds a value nothing in this build produces.
  */
 
 import type {
@@ -12,9 +13,10 @@ import type {
   AgentSessionOwnerRuntimeKind,
   AgentSessionRecord
 } from './agent-session-record'
+import type { PersistedAgentSessionProviderHandleLink } from './agent-session-provider-handle'
 
 type LegacyHandoffRuntimeKind = 'tui'
-type LegacyHandoffStage = 'preparing' | 'old-owner-stopped'
+type LegacyHandoffStage = 'preparing' | 'old-owner-stopped' | 'manual-recovery'
 
 export type PersistedAgentSessionRuntimeKind =
   | AgentSessionOwnerRuntimeKind
@@ -27,8 +29,13 @@ export type PersistedAgentSessionLease = Omit<AgentSessionLease, 'runtimeKind' |
   handoffStage: PersistedAgentSessionHandoffStage | null
 }
 
-export type PersistedAgentSessionRecord = Omit<AgentSessionRecord, 'lease'> & {
+/** A record as a row stores it. Decode through `decodePersistedAgentSessionRecord`. */
+export type PersistedAgentSessionRecord = Omit<
+  AgentSessionRecord,
+  'lease' | 'providerHandleChain'
+> & {
   lease: PersistedAgentSessionLease
+  providerHandleChain: PersistedAgentSessionProviderHandleLink[]
 }
 
 export function isPersistedAgentSessionRuntimeKind(
@@ -49,21 +56,21 @@ export function isPersistedAgentSessionHandoffStage(
   )
 }
 
+function isLegacyHandoffStage(
+  stage: PersistedAgentSessionHandoffStage | null
+): stage is LegacyHandoffStage {
+  return stage === 'preparing' || stage === 'old-owner-stopped' || stage === 'manual-recovery'
+}
+
 export function leaseCarriesLegacyHandoffValues(lease: PersistedAgentSessionLease): boolean {
-  return (
-    lease.runtimeKind === 'tui' ||
-    lease.handoffStage === 'preparing' ||
-    lease.handoffStage === 'old-owner-stopped'
-  )
+  return lease.runtimeKind === 'tui' || isLegacyHandoffStage(lease.handoffStage)
 }
 
 /** Identity for every lease this build writes. */
 export function normalizeLegacyHandoffLease(lease: PersistedAgentSessionLease): AgentSessionLease {
   const { runtimeKind, handoffStage } = lease
-  const stage =
-    handoffStage === 'preparing' || handoffStage === 'old-owner-stopped'
-      ? 'recovering'
-      : handoffStage
+  // Why: every one of these awaited proof about an owner, which is what `recovering` resolves.
+  const stage = isLegacyHandoffStage(handoffStage) ? 'recovering' : handoffStage
   if (runtimeKind === 'native') {
     return { ...lease, runtimeKind, handoffStage: stage }
   }
@@ -77,13 +84,10 @@ export function normalizeLegacyHandoffLease(lease: PersistedAgentSessionLease): 
   }
 }
 
-/** The in-memory record, plus whether decode changed anything the store must write back. */
-export function normalizeLegacyHandoffRecord(record: PersistedAgentSessionRecord): {
-  record: AgentSessionRecord
-  normalized: boolean
-} {
-  return {
-    record: { ...record, lease: normalizeLegacyHandoffLease(record.lease) },
-    normalized: leaseCarriesLegacyHandoffValues(record.lease)
-  }
+/** A `conflicted` claim is a terminal agent an older build recorded, and only its exit frees the chat. */
+export function terminalOwnerRefusalMessage(lease: AgentSessionLease): string {
+  // Why: without a start time the pid may since belong to an unrelated process.
+  const owner = lease.ownerProcess
+  const process = owner?.processStartTimeMs != null ? ` (process ${owner.pid})` : ''
+  return `This chat is still open in a terminal agent${process}. Quit that agent to continue the chat here.`
 }

@@ -2,22 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   leaseCarriesLegacyHandoffValues,
   normalizeLegacyHandoffLease,
-  normalizeLegacyHandoffRecord,
+  terminalOwnerRefusalMessage,
   type PersistedAgentSessionLease
 } from './agent-session-legacy-handoff-lease'
 import type { AgentSessionClaimStatus, AgentSessionHandoffStage } from './agent-session-record'
-import {
-  agentSessionLeaseFixture,
-  agentSessionRecordFixture
-} from './agent-session-record.test-fixture'
+import { agentSessionLeaseFixture } from './agent-session-record.test-fixture'
 
 const CLAIMS: AgentSessionClaimStatus[] = ['reserved', 'live', 'conflicted', 'released']
-const STAGES: (AgentSessionHandoffStage | null)[] = [
-  null,
-  'new-owner-proving',
-  'recovering',
-  'manual-recovery'
-]
+const STAGES: (AgentSessionHandoffStage | null)[] = [null, 'new-owner-proving', 'recovering']
 
 function persisted(overrides: Partial<PersistedAgentSessionLease>): PersistedAgentSessionLease {
   return { ...agentSessionLeaseFixture(), ...overrides }
@@ -36,7 +28,7 @@ describe('normalizing a lease the removed terminal handoff wrote', () => {
     }
   })
 
-  it.each(['preparing', 'old-owner-stopped'] as const)(
+  it.each(['preparing', 'old-owner-stopped', 'manual-recovery'] as const)(
     'maps the %s stage to recovering and keeps its operation id',
     (handoffStage) => {
       const lease = persisted({ handoffStage, handoffOperationId: 'op-handoff' })
@@ -74,14 +66,25 @@ describe('normalizing a lease the removed terminal handoff wrote', () => {
       claimStatus: 'conflicted'
     })
   })
+})
 
-  it('reports whether a record needed normalizing', () => {
-    const record = agentSessionRecordFixture()
-    expect(normalizeLegacyHandoffRecord(record)).toEqual({ record, normalized: false })
-    const legacy = { ...record, lease: persisted({ runtimeKind: 'tui' }) }
-    expect(normalizeLegacyHandoffRecord(legacy)).toEqual({
-      record: { ...record, lease: { ...record.lease, claimStatus: 'conflicted' } },
-      normalized: true
+describe('the refusal for a chat a terminal agent holds', () => {
+  const owner = { hostId: 'local', pid: 4242, spawnToken: 'token' }
+
+  it('names the process only when its start time can tell it from a reused pid', () => {
+    const verifiable = agentSessionLeaseFixture({
+      claimStatus: 'conflicted',
+      ownerProcess: { ...owner, processStartTimeMs: 1_000 }
     })
+    const reusable = agentSessionLeaseFixture({
+      claimStatus: 'conflicted',
+      ownerProcess: { ...owner, processStartTimeMs: null }
+    })
+    expect(terminalOwnerRefusalMessage(verifiable)).toBe(
+      'This chat is still open in a terminal agent (process 4242). Quit that agent to continue the chat here.'
+    )
+    expect(terminalOwnerRefusalMessage(reusable)).toBe(
+      'This chat is still open in a terminal agent. Quit that agent to continue the chat here.'
+    )
   })
 })

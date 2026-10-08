@@ -10,11 +10,13 @@ import {
   BROWSER_CERTIFICATE_TRUST_RUNTIME_CAPABILITY,
   BROWSER_HEADLESS_RUNTIME_CAPABILITY,
   BROWSER_IDENTITY_RUNTIME_CAPABILITY,
+  MANAGED_SERVER_RUNTIME_CAPABILITY,
   MIN_COMPATIBLE_RUNTIME_CLIENT_VERSION,
   REMOTE_RUNTIME_SHARED_CONTROL_CAPABILITY,
   RUNTIME_CAPABILITIES,
   RUNTIME_PROTOCOL_VERSION,
   SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY,
+  TERMINAL_PROMPT_DELIVERY_RUNTIME_CAPABILITY,
   TERMINAL_PAIRED_PARKING_RUNTIME_CAPABILITY
 } from '../../shared/protocol-version'
 import {
@@ -37,6 +39,7 @@ import { parsePaneKey } from '../../shared/stable-pane-id'
 import { wakeFolderRepoGitUpgradeWatch } from '../ipc/folder-repo-git-upgrade-wake'
 import { runWorktreeChangeInvalidators } from '../ipc/worktree-change-invalidators'
 import { MACHINE_NAME_PUBLISH_WAIT_MS } from './runtime-machine-name'
+import { getManagedServerActions } from './managed-server-actions-registry'
 
 type RuntimeStatusHost = {
   getAvailableAuthoritativeWindow(): unknown
@@ -44,6 +47,17 @@ type RuntimeStatusHost = {
     ptyIds: Iterable<string>,
     terminalHandlesByPtyId: Readonly<Record<string, readonly string[]>>
   ): string[]
+}
+
+function supportsDurableTerminalPromptDelivery(): boolean {
+  if (typeof process.getBuiltinModule !== 'function') {
+    return false
+  }
+  try {
+    return process.getBuiltinModule('node:sqlite') !== undefined
+  } catch {
+    return false
+  }
 }
 
 export class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithGetRuntimeId {
@@ -63,8 +77,9 @@ export class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithGetRuntimeId {
     const hasOffscreen = !hasRenderer && Boolean(this.offscreenBrowserBackend)
     const hasHeadlessCommands = runtimeBrowserCommandsFactoryIsHeadless()
     const canBrowse = hasRenderer || hasOffscreen
-    // This field reports current Windows process-identity proof. Structured RPC
-    // support itself stays advertised; agentSession.createSupport owns current eligibility.
+    // TEMPORARY: nothing on this host reads it any more. Clients older than this build keep
+    // re-probing their WSL capabilities until it is true, so it is published for one
+    // compatibility window and then removed.
     const windowsProcessStartTimeAvailable =
       process.platform === 'win32' && isWindowsProcessStartTimeAvailable()
     const capabilities: RuntimeCapability[] = RUNTIME_CAPABILITIES.filter(
@@ -76,7 +91,9 @@ export class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithGetRuntimeId {
         (process.env.ORCA_E2E_DISABLE_PAIRED_TERMINAL_PARKING !== '1' ||
           capability !== TERMINAL_PAIRED_PARKING_RUNTIME_CAPABILITY) &&
         (process.env.ORCA_E2E_DISABLE_AUTHORITATIVE_SESSION_TABS_INVENTORY !== '1' ||
-          capability !== SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY)
+          capability !== SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY) &&
+        (capability !== TERMINAL_PROMPT_DELIVERY_RUNTIME_CAPABILITY ||
+          supportsDurableTerminalPromptDelivery())
     )
     if (hasOffscreen || hasHeadlessCommands) {
       capabilities.push(BROWSER_HEADLESS_RUNTIME_CAPABILITY)
@@ -92,6 +109,9 @@ export class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithGetRuntimeId {
     // can host a page so remote clients can surface Proceed Anyway (Unsafe).
     if (canBrowse) {
       capabilities.push(BROWSER_CERTIFICATE_TRUST_RUNTIME_CAPABILITY)
+    }
+    if (getManagedServerActions()) {
+      capabilities.push(MANAGED_SERVER_RUNTIME_CAPABILITY)
     }
     // Why not a static capability: dev trees and `orca serve` installs may carry no
     // out/mobile-web, and advertising a bundle this install cannot produce would promise a

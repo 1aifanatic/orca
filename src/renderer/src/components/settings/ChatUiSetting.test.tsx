@@ -1,15 +1,54 @@
 // @vitest-environment happy-dom
 
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
+import { AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
+import { resetLocalStructuredChatsForTests } from '@/runtime/local-structured-chats'
 import { useAppStore } from '../../store'
 import { ChatUiSetting } from './ChatUiSetting'
 
 afterEach(() => {
   cleanup()
   useAppStore.setState({ settingsSearchQuery: '' })
+  setLocalRuntimeCapabilitiesForTests(null)
+  resetLocalStructuredChatsForTests()
+  vi.unstubAllGlobals()
+})
+
+describe('Chat UI held-session options', () => {
+  it('shows host-owned options with Chat UI off while this machine still holds chats', async () => {
+    vi.stubGlobal('api', {
+      app: {
+        holdsStructuredAgentSessions: async () => true,
+        onStructuredAgentSessionsHeldChanged: () => () => undefined
+      }
+    })
+    const { container } = renderSetting({ experimentalNativeChat: false })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(container.querySelector(RESUME_TOGGLE)).not.toBeNull()
+    expect(container.querySelector(SHELL_ENV_TOGGLE)).not.toBeNull()
+  })
+
+  it('shows queue follow-ups only when the local host supports it', () => {
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY])
+    const updateSettings = vi.fn()
+    const { container } = renderSetting({ experimentalNativeChat: true }, updateSettings)
+    const queueToggle = container.querySelector('[aria-label="Toggle queue follow-ups"]')
+    expect(container.textContent).toContain('Messages with images send right away.')
+    fireEvent.click(queueToggle!)
+    expect(updateSettings).toHaveBeenCalledWith({ nativeChatQueueFollowUps: false })
+  })
+
+  it('hides queue follow-ups when the host cannot queue messages', () => {
+    setLocalRuntimeCapabilitiesForTests([])
+    const { container } = renderSetting({ experimentalNativeChat: true })
+    expect(container.querySelector('[aria-label="Toggle queue follow-ups"]')).toBeNull()
+  })
 })
 
 const CHAT_UI_TOGGLE = '#chat-ui button[role="switch"]'

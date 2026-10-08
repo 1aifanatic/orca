@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { getDefaultOnboardingState, getDefaultSettings } from '../../../../shared/constants'
+import { getDefaultSettings } from '../../../../shared/constants'
+import { getDefaultOnboardingState } from '../../../../shared/onboarding-defaults'
 import {
   buildDismissedOnboardingFolderAgentStartup,
   buildOnboardingFolderAgentStartup,
@@ -44,8 +45,7 @@ describe('buildOnboardingFolderAgentStartup', () => {
     const startup = buildOnboardingFolderAgentStartup({
       ...getDefaultSettings('/tmp/orca-workspaces'),
       defaultTuiAgent: 'codex',
-      experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: false,
+      experimentalNativeChat: false,
       nativeChatSessionOptions: {
         codex: {
           model: 'gpt-5.2-codex',
@@ -63,7 +63,6 @@ describe('buildOnboardingFolderAgentStartup', () => {
       ...getDefaultSettings('/tmp/orca-workspaces'),
       defaultTuiAgent: 'codex',
       experimentalNativeChat: true,
-      openAgentTabsInChatByDefault: true,
       nativeChatSessionOptions: {
         codex: {
           model: 'gpt-5.2-codex',
