@@ -28,15 +28,12 @@ import {
   clearNativeChatPendingAttachments,
   revealNativeChatPendingAttachment,
   settleNativeChatPendingAttachment,
+  settleNativeChatPendingAttachmentReferences,
   takeNativeChatPendingAttachment,
   useNativeChatPendingAttachments
 } from './native-chat-pending-attachment-cache'
-import {
-  appendNativeChatAttachmentCache,
-  appendNativeChatDraftCache
-} from './native-chat-draft-cache'
+import { appendNativeChatAttachmentCache } from './native-chat-draft-cache'
 import { useNativeChatComposerAttachmentPreviews } from './use-native-chat-composer-attachment-previews'
-import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
 import { createUuidV4 } from '../../../../shared/uuid-v4'
 
 export type UseNativeChatComposerAttachmentsArgs = {
@@ -242,14 +239,13 @@ export function useNativeChatComposerAttachments({
       drop: dropPendingImageAttachment,
       // At the caret, as every attach does; mid-composition or once the composer is gone, into the
       // scope's draft, which keeps it until the composition settles or the composer comes back.
-      attachReferences: (paths) => {
-        if (mountedRef.current && !isComposing()) {
-          attachResolvedPaths(paths, null)
-          return
-        }
-        appendNativeChatDraftCache(
+      attachReferences: (references) => {
+        settleNativeChatPendingAttachmentReferences(
           attachmentScopeKey,
-          paths.map(formatNativeChatFileReference).join(' ')
+          references,
+          mountedRef.current && !isComposing()
+            ? (paths) => attachResolvedPaths(paths, null)
+            : undefined
         )
       }
     }),

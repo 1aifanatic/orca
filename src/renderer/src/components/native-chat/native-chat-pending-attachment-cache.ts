@@ -10,6 +10,8 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import type { NativeChatComposerDraftOwner } from './native-chat-composer-draft-storage'
+import { appendNativeChatDraftCache } from './native-chat-draft-cache'
+import { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'
 import {
   appendToNativeChatComposerDraft,
   nativeChatDraftScopeTabId,
@@ -88,7 +90,7 @@ export function addNativeChatPendingAttachment(
 }
 
 /** Current ownership of an operation, including callbacks held by its earlier composer. */
-function pendingScope(scopeKey: string, id: string): string {
+export function nativeChatPendingAttachmentScope(scopeKey: string, id: string): string | undefined {
   if (nativeChatPendingAttachmentSnapshot(scopeKey).some((chip) => chip.id === id)) {
     return scopeKey
   }
@@ -97,11 +99,7 @@ function pendingScope(scopeKey: string, id: string): string {
       return scope
     }
   }
-  return scopeKey
-}
-
-export function nativeChatPendingAttachmentMoved(scopeKey: string, id: string): boolean {
-  return pendingScope(scopeKey, id) !== scopeKey
+  return undefined
 }
 
 /** Pending work follows the draft; its original callbacks still address the same operation. */
@@ -128,7 +126,11 @@ export function takeNativeChatPendingAttachment(
   scopeKey: string,
   id: string
 ): NativeChatComposerImageAttachment | undefined {
-  scopeKey = pendingScope(scopeKey, id)
+  const scope = nativeChatPendingAttachmentScope(scopeKey, id)
+  if (scope === undefined) {
+    return undefined
+  }
+  scopeKey = scope
   const current = nativeChatPendingAttachmentSnapshot(scopeKey)
   const taken = current.find((attachment) => attachment.id === id)
   if (taken) {
@@ -148,7 +150,11 @@ export function settleNativeChatPendingAttachment(
   path: string,
   connectionId?: string | null
 ): boolean {
-  scopeKey = pendingScope(scopeKey, id)
+  const scope = nativeChatPendingAttachmentScope(scopeKey, id)
+  if (scope === undefined) {
+    return false
+  }
+  scopeKey = scope
   const owner = pendingOwners.get(scopeKey)
   if (!takeNativeChatPendingAttachment(scopeKey, id)) {
     return false
@@ -161,9 +167,43 @@ export function settleNativeChatPendingAttachment(
   return true
 }
 
+/** Settles references against their operation owners before releasing their pending chips. */
+export function settleNativeChatPendingAttachmentReferences(
+  scopeKey: string,
+  references: { id: string; path: string }[],
+  insertAtCaret?: (paths: string[]) => void
+): void {
+  const batches = new Map<
+    string,
+    { paths: string[]; owner: NativeChatComposerDraftOwner | undefined }
+  >()
+  for (const { id, path } of references) {
+    const scope = nativeChatPendingAttachmentScope(scopeKey, id)
+    if (scope === undefined) {
+      continue
+    }
+    const batch = batches.get(scope) ?? { paths: [], owner: pendingOwners.get(scope) }
+    if (takeNativeChatPendingAttachment(scope, id)) {
+      batch.paths.push(path)
+      batches.set(scope, batch)
+    }
+  }
+  for (const [scope, { paths, owner }] of batches) {
+    if (scope === scopeKey && insertAtCaret) {
+      insertAtCaret(paths)
+    } else {
+      appendNativeChatDraftCache(scope, paths.map(formatNativeChatFileReference).join(' '), owner)
+    }
+  }
+}
+
 /** Shows a pending chip that was held out of sight, such as while a server was asked first. */
 export function revealNativeChatPendingAttachment(scopeKey: string, id: string): void {
-  scopeKey = pendingScope(scopeKey, id)
+  const scope = nativeChatPendingAttachmentScope(scopeKey, id)
+  if (scope === undefined) {
+    return
+  }
+  scopeKey = scope
   const current = nativeChatPendingAttachmentSnapshot(scopeKey)
   if (current.some((attachment) => attachment.id === id && attachment.hidden)) {
     writePending(

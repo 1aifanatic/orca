@@ -1,12 +1,9 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
-import { nativeChatPendingAttachmentMoved } from './native-chat-pending-attachment-cache'
+import { nativeChatPendingAttachmentScope } from './native-chat-pending-attachment-cache'
 
 /**
- * The pending chips of pastes this composer started, released when it unmounts or changes target.
- * A paste uploading into a paired server's store outlives the composer, which a prompt card
- * unmounts: its chip stays pending in the scope's attachment cache, where its result settles for
- * the composer's return (`native-chat-pending-attachment-cache.ts`).
+ * Preview URLs belong to this composer; pending uploads belong to the draft's attachment cache.
  */
 export function useNativeChatPasteLifetime(args: {
   targetKey?: string
@@ -65,7 +62,7 @@ export function useNativeChatPasteLifetime(args: {
         }
         if (
           lifetime.uploads.get(id)?.kind !== 'runtime-session' &&
-          !(attachmentScopeKey && nativeChatPendingAttachmentMoved(attachmentScopeKey, id))
+          !(attachmentScopeKey && nativeChatPendingAttachmentScope(attachmentScopeKey, id))
         ) {
           dropPendingRef.current(id)
         }
@@ -129,7 +126,7 @@ export function useNativeChatPasteLifetime(args: {
       const owner = lifetime.uploads.get(pendingId)
       if (
         owner?.kind !== 'runtime-session' &&
-        !(attachmentScopeKey && nativeChatPendingAttachmentMoved(attachmentScopeKey, pendingId))
+        !(attachmentScopeKey && nativeChatPendingAttachmentScope(attachmentScopeKey, pendingId))
       ) {
         lifetime.uploads.delete(pendingId)
         return false

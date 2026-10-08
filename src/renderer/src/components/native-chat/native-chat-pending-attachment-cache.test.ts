@@ -7,6 +7,7 @@ import {
   nativeChatPendingAttachmentSnapshot,
   revealNativeChatPendingAttachment,
   settleNativeChatPendingAttachment,
+  settleNativeChatPendingAttachmentReferences,
   subscribeToNativeChatPendingAttachments,
   takeNativeChatPendingAttachment
 } from './native-chat-pending-attachment-cache'
@@ -87,6 +88,25 @@ describe('the pane pending attachment cache', () => {
     expect(readNativeChatComposerDraft(conversation).images).toHaveLength(1)
     deleteNativeChatComposerDraftsOwnedBy(OWNER)
     expect(readNativeChatComposerDraft(conversation).images).toEqual([])
+  })
+
+  it('keeps reference settlement owned by the workspace after its chat closes', () => {
+    const conversation = structuredAgentSessionDraftScopeKey('session-1')
+    let open = true
+    setNativeChatComposerDraftOwnerResolver((scopeKey) =>
+      open && scopeKey === conversation ? OWNER : undefined
+    )
+    addPending(conversation, 'file')
+    open = false
+
+    settleNativeChatPendingAttachmentReferences(conversation, [
+      { id: 'file', path: '/store/a.pdf' }
+    ])
+
+    expect(readNativeChatComposerDraft(conversation).text).toBe('@/store/a.pdf')
+    expect(nativeChatPendingAttachmentSnapshot(conversation)).toEqual([])
+    deleteNativeChatComposerDraftsOwnedBy(OWNER)
+    expect(readNativeChatComposerDraft(conversation).text).toBe('')
   })
 
   it('drops the chips begun in a removed workspace on that host only', () => {
