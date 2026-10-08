@@ -52,7 +52,7 @@ export function journalDatabaseHoldsAgentSessions(dbPath: string): boolean {
 }
 
 /** A launch-record field whose presence means the host still owes that launch work. */
-export type LaunchOperationObligation = 'promptDelivery' | 'launchFollowUp'
+export type LaunchOperationObligation = 'launchFollowUp'
 
 /** Whether any unexpired launch record holds `field`, read-only: an expired one is skipped by
  *  everything that reads it, and nothing prunes it until the store next opens. */

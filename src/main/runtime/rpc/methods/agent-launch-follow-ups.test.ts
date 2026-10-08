@@ -7,7 +7,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
+import {
+  AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
+} from '../../../../shared/agent-launch-runtime-capability'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
 import type { RpcContext } from '../core'
@@ -20,12 +23,7 @@ import {
   type AgentLaunchRuntimeStub
 } from './agent-launch.test-fixture'
 
-const deliverTerminalPrompt = vi.hoisted(() =>
-  vi.fn(async (args: { beginPromptWrite?: () => Promise<unknown> }): Promise<boolean> => {
-    await args.beginPromptWrite?.()
-    return true
-  })
-)
+const deliverTerminalPrompt = vi.hoisted(() => vi.fn(async (): Promise<boolean> => true))
 const persisted = vi.hoisted(() => ({ followUps: true }))
 vi.mock('../../agent-launch-persisted-obligations', () => ({
   hasPersistedLaunchObligation: () => persisted.followUps
@@ -53,7 +51,10 @@ const LAUNCH = {
 const DESKTOP: Partial<RpcContext> = {
   caller: DESKTOP_RPC_CALLER,
   clientKind: 'runtime',
-  clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
+  clientCapabilities: [
+    AGENT_LAUNCH_RUNTIME_CAPABILITY,
+    AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
+  ]
 }
 const PHONE: Partial<RpcContext> = {
   clientKind: 'mobile',
@@ -88,7 +89,8 @@ function take(runtime: AgentLaunchRuntimeStub, context: Partial<RpcContext>, ope
 
 beforeEach(async () => {
   persisted.followUps = true
-  deliverTerminalPrompt.mockClear()
+  deliverTerminalPrompt.mockReset()
+  deliverTerminalPrompt.mockResolvedValue(true)
   directory = await mkdtemp(join(tmpdir(), 'orca-agent-launch-follow-ups-'))
   store = await openTestAgentSessionRecordStore(directory)
   setAgentLaunchRecordStore(store)
@@ -162,6 +164,91 @@ describe('a click’s follow-up on its launch’s record', () => {
 
     const after = await take(host(), DESKTOP)
     expect(after.taken.map((entry) => entry.operationId)).toEqual([OPERATION_ID])
+  })
+
+  it('keeps a reloaded window pending until the live host finishes its one prompt', async () => {
+    const runtime = host()
+    let complete: (value: boolean) => void = () => {}
+    let started: () => void = () => {}
+    const promptStarted = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    deliverTerminalPrompt.mockImplementationOnce(() => {
+      started()
+      return new Promise<boolean>((resolve) => {
+        complete = resolve
+      })
+    })
+    const running = launch(runtime)
+    await promptStarted
+    // Flush the provisional receipt fired before the live prompt started.
+    await store.recordOperationOutcome({
+      callerKey: 'absent',
+      operationId: 'absent',
+      outcome: { status: 'unknown' }
+    })
+
+    const expectedPending = {
+      taken: [],
+      pending: [{ operationId: OPERATION_ID, followUp: FOLLOW_UP }]
+    }
+    await expect(take(runtime, DESKTOP)).resolves.toEqual(expectedPending)
+    announceSettledLaunchFollowUps(runtime)
+    expect(runtime.reportAgentLaunchPromptSettled).not.toHaveBeenCalled()
+    const replay = launch(runtime)
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+
+    complete(true)
+    const [result, retry] = await Promise.all([running, replay])
+    expect(retry).toEqual(result)
+    expect(runtime.reportAgentLaunchPromptSettled).toHaveBeenCalledExactlyOnceWith(OPERATION_ID)
+    expect((await take(runtime, DESKTOP)).taken[0]).toMatchObject({ promptHandedOver: true })
+    await expect(take(runtime, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+  })
+
+  it('consumes a restarted interrupted launch without executing its follow-up or pasting later', async () => {
+    let started: () => void = () => {}
+    const promptStarted = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    deliverTerminalPrompt.mockImplementationOnce(() => {
+      started()
+      return new Promise<boolean>(() => {})
+    })
+    void launch(host())
+    await promptStarted
+    await store.recordOperationOutcome({
+      callerKey: 'absent',
+      operationId: 'absent',
+      outcome: { status: 'unknown' }
+    })
+    store = await openTestAgentSessionRecordStore(directory)
+    setAgentLaunchRecordStore(store)
+
+    const restarted = host()
+    const result = await launch(restarted)
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'unconfirmed' })
+    expect((await take(restarted, DESKTOP)).taken[0]).toMatchObject({ promptHandedOver: false })
+    await expect(take(restarted, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
+    expect(restarted.createTerminal).not.toHaveBeenCalled()
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+  })
+
+  it('does not authorize a follow-up on bare terminal creation', async () => {
+    const runtime = host()
+    await launch(runtime, { ...LAUNCH, prompt: undefined })
+
+    expect((await take(runtime, DESKTOP)).taken[0]).toMatchObject({ promptHandedOver: false })
+    expect(deliverTerminalPrompt).not.toHaveBeenCalled()
+  })
+
+  it('allows concurrent callers to take a settled follow-up only once', async () => {
+    const runtime = host()
+    await launch(runtime)
+    const results = await Promise.all([take(runtime, DESKTOP), take(runtime, DESKTOP)])
+    expect(results.flatMap((result) => result.taken)).toHaveLength(1)
+    await expect(take(runtime, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
   })
 
   it('is not recorded over the size cap, and the launch still runs', async () => {

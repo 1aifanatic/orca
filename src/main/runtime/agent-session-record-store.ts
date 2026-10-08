@@ -313,7 +313,7 @@ export class AgentSessionRecordStore {
     await this.transact((draft) => settleAgentSessionOperationInto(draft, args))
   }
 
-  /** One ledger write composed elsewhere (`agent-launch-owed-prompt-record`). */
+  /** Takes recorded launch follow-ups in one serialized ledger write. */
   transactOperations = <T>(apply: (draft: AgentSessionStoreState) => T) => this.transact(apply)
 
   /** The same settlement, committed by the journal write that makes it true. It changes only the

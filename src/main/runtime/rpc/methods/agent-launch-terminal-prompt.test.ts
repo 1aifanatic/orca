@@ -513,76 +513,6 @@ async function runWriteGuard(options: Record<string, unknown>): Promise<void> {
   await beforeWrite('pty-1')
 }
 
-describe('the record write that marks the paste begun (W2)', () => {
-  /** A send that runs the write guard before the paste and before Enter, as the runtime does. */
-  function sendThroughGuard(events: string[]): SendFn {
-    return async (_handle, _text, options) => {
-      await runWriteGuard(options)
-      events.push('paste')
-      await runWriteGuard(options)
-      events.push('enter')
-      return { handle: 'term_1', accepted: true, bytesWritten: 12 }
-    }
-  }
-
-  it('commits after the guard passes and strictly before the first byte, once', async () => {
-    const events: string[] = []
-    const stub = runtimeStub({ composerSignal: true, send: sendThroughGuard(events) })
-    stub.readLaunchedAgentForeground.mockImplementation(async () => {
-      events.push('guard')
-      return 'agent'
-    })
-    const delivered = await deliverTerminalAgentLaunchPrompt({
-      runtime: stub.runtime,
-      handle: 'term_1',
-      agent: 'claude',
-      freshLaunch: true,
-      text: 'fix the checks',
-      beginPromptWrite: async () => {
-        events.push('W2')
-        return 'began'
-      }
-    })
-    expect(delivered).toBe(true)
-    expect(events).toEqual(['guard', 'W2', 'paste', 'enter'])
-  })
-
-  it.each(['taken', 'expired'] as const)(
-    'writes nothing when the record says %s: another writer began it, or its deadline passed',
-    async (start) => {
-      const events: string[] = []
-      const stub = runtimeStub({ composerSignal: true, send: sendThroughGuard(events) })
-      const delivered = await deliverTerminalAgentLaunchPrompt({
-        runtime: stub.runtime,
-        handle: 'term_1',
-        agent: 'claude',
-        freshLaunch: true,
-        text: 'fix the checks',
-        beginPromptWrite: async () => start
-      })
-      expect(delivered).toBe(false)
-      expect(events).toEqual([])
-    }
-  )
-
-  it('still writes when the record cannot be written: bookkeeping never gates the prompt', async () => {
-    const events: string[] = []
-    const stub = runtimeStub({ composerSignal: true, send: sendThroughGuard(events) })
-    const delivered = await deliverTerminalAgentLaunchPrompt({
-      runtime: stub.runtime,
-      handle: 'term_1',
-      agent: 'claude',
-      freshLaunch: true,
-      text: 'fix the checks',
-      beginPromptWrite: async () => {
-        throw new Error('SQLITE_BUSY')
-      }
-    })
-    expect(delivered).toBe(true)
-    expect(events).toEqual(['paste', 'enter'])
-  })
-})
-
 describe('the prompt text and the logs', () => {
   it('never passes the prompt text to the console, on any path that logs', async () => {
     const secret = 'SECRET-PROMPT-TEXT-1234'
@@ -605,10 +535,7 @@ describe('the prompt text and the logs', () => {
         handle: 'term_1',
         agent: 'claude',
         freshLaunch: true,
-        text: secret,
-        beginPromptWrite: async () => {
-          throw new Error('SQLITE_BUSY')
-        }
+        text: secret
       })
     }
     const logged = spies.flatMap((spy) => spy.mock.calls).map((args) => JSON.stringify(args))
@@ -679,53 +606,5 @@ describe('the write guard on a host that cannot find the agent in front (tempora
         })
       ).resolves.toBe(false)
     }
-  })
-})
-
-describe('finishing an owed prompt after a restart (resumed)', () => {
-  const sendThroughGuard: SendFn = async (_handle, _text, options) => {
-    await runWriteGuard(options)
-    return { handle: 'term_1', accepted: true, bytesWritten: 12 }
-  }
-
-  it.each([
-    ['the record could not mark it begun', async () => 'absent' as const],
-    [
-      'the record write failed',
-      async (): Promise<'began'> => {
-        throw new Error('SQLITE_BUSY')
-      }
-    ]
-  ])('writes nothing when %s: it would paste again at every start', async (_label, begin) => {
-    const stub = runtimeStub({ composerSignal: true })
-    stub.sendTerminalAgentPrompt.mockImplementation(sendThroughGuard)
-    const delivered = await deliverTerminalAgentLaunchPrompt({
-      runtime: stub.runtime,
-      handle: 'term_1',
-      agent: 'claude',
-      freshLaunch: false,
-      text: 'fix the checks',
-      callerKey: DESKTOP,
-      resumed: true,
-      beginPromptWrite: begin
-    })
-    expect(delivered).toBe(false)
-  })
-
-  it('refuses on a host that cannot find the agent, even for the desktop: main never resumed', async () => {
-    const stub = runtimeStub({ composerSignal: true, foreground: 'unknown' })
-    Object.assign(stub.runtime, { launchedAgentHostProvesAgent: () => false })
-    stub.sendTerminalAgentPrompt.mockImplementation(sendThroughGuard)
-    const delivered = await deliverTerminalAgentLaunchPrompt({
-      runtime: stub.runtime,
-      handle: 'term_1',
-      agent: 'claude',
-      freshLaunch: false,
-      text: 'fix the checks',
-      callerKey: DESKTOP,
-      resumed: true,
-      beginPromptWrite: async () => 'began'
-    })
-    expect(delivered).toBe(false)
   })
 })

@@ -4,12 +4,18 @@ import {
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
 import type { AgentLaunchResult } from '../../shared/agent-launch-intent'
-import { takeLaunchFollowUpsInto } from './agent-launch-follow-up-record'
+import {
+  listSettledLaunchFollowUps,
+  takeLaunchFollowUpsInto
+} from './agent-launch-follow-up-record'
 
 const DESKTOP = 'trusted-local:desktop'
 const FOLLOW_UP = { kind: 'review-notes-delivered', version: 1, payload: { noteIds: ['n1'] } }
 
-function launch(promptOutcome: 'handed-to-terminal' | 'not-delivered', unobserved = false) {
+function launch(
+  promptOutcome: 'handed-to-terminal' | 'not-delivered' | 'unconfirmed',
+  unobserved = false
+) {
   const result: AgentLaunchResult = {
     outcome: { kind: 'terminal', handle: 'term_1', paneKey: 'tab:leaf' },
     worktreeId: 'wt-1',
@@ -90,19 +96,31 @@ describe('taking a click’s follow-up off its launch’s row', () => {
     expect(take(state).taken[0]).toMatchObject({ promptHandedOver: true, composerUnobserved: true })
   })
 
-  it('reports a follow-up whose prompt is still owed, read-only', () => {
+  it('reports a provisional prompt as pending only while its original launch runs', () => {
     const state = rows(
       row('op-1', {
-        promptDelivery: { state: 'owed', text: 't', agent: 'claude', deadline: 9_000, terminal: null }
+        outcome: { status: 'succeeded', sessionId: '', launch: launch('unconfirmed') }
       })
     )
-    expect(take(state)).toEqual({
+    const key = agentSessionOperationKey(DESKTOP, 'op-1')
+    expect(take(state, { running: [key] })).toEqual({
       taken: [],
-      pending: [{ operationId: 'op-1', followUp: FOLLOW_UP, deadline: 9_000 }]
+      pending: [{ operationId: 'op-1', followUp: FOLLOW_UP }]
     })
-    expect(state.operations.get(agentSessionOperationKey(DESKTOP, 'op-1'))?.launchFollowUp).toEqual(
-      FOLLOW_UP
+    expect(state.operations.get(key)?.launchFollowUp).toEqual(FOLLOW_UP)
+    expect(listSettledLaunchFollowUps(state.operations.values(), DESKTOP, 100, () => true)).toEqual(
+      []
     )
+    expect(take(state).taken[0]).toMatchObject({ promptHandedOver: false })
+  })
+
+  it('takes a final handoff even while its operation promise is finishing', () => {
+    const state = rows(row('op-1'))
+    const key = agentSessionOperationKey(DESKTOP, 'op-1')
+    expect(listSettledLaunchFollowUps(state.operations.values(), DESKTOP, 100, () => true)).toEqual(
+      ['op-1']
+    )
+    expect(take(state, { running: [key] }).taken[0]).toMatchObject({ promptHandedOver: true })
   })
 
   it('takes, with nothing to run, a launch that never handed its prompt over', () => {
@@ -121,12 +139,28 @@ describe('taking a click’s follow-up off its launch’s row', () => {
     ])
   })
 
-  it('waits on a prompt whose state this build cannot read, rather than dropping its follow-up', () => {
-    const state = rows(Object.assign(row('op-1'), { promptDelivery: { state: 'paused' } }))
-    expect(take(state)).toEqual({
-      taken: [],
-      pending: [{ operationId: 'op-1', followUp: FOLLOW_UP }]
-    })
+  it.each(['owed', 'writing', 'paused'])(
+    'ignores an old %s prompt field and consumes an interrupted follow-up without running it',
+    (state) => {
+      const saved = Object.assign(
+        row('op-1', {
+          outcome: { status: 'succeeded', sessionId: '', launch: launch('unconfirmed') }
+        }),
+        { promptDelivery: { state, text: 'old text' } }
+      )
+      const operations = rows(saved)
+      expect(take(operations).taken[0]).toMatchObject({ promptHandedOver: false })
+      expect(take(operations)).toEqual({ taken: [], pending: [] })
+    }
+  )
+
+  it('consumes a bare terminal creation without authorizing the follow-up', () => {
+    const result = launch('handed-to-terminal')
+    delete result.prompt
+    const state = rows(
+      row('op-1', { outcome: { status: 'succeeded', sessionId: '', launch: result } })
+    )
+    expect(take(state).taken[0]).toMatchObject({ promptHandedOver: false })
   })
 
   it('waits on a launch this process is still running', () => {

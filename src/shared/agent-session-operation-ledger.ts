@@ -26,7 +26,6 @@ import {
   isAgentSessionConversationCommandResult,
   type AgentSessionConversationCommandResult
 } from './agent-session-conversation-command'
-import type { AgentLaunchOwedPrompt } from './agent-launch-owed-prompt'
 import type { AgentLaunchFollowUp } from './agent-launch-follow-up'
 
 export const AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT = 512
@@ -88,12 +87,6 @@ export type AgentSessionOperationRow = {
    * malformed value costs that pane its verdict, never the row.
    */
   ownedPane?: AgentSessionOperationOwnedPane
-  /**
-   * A launch's first prompt while the host still owes it to the agent's terminal. Gone once the
-   * launch settles, and with the row at its expiry, so the text lives no longer than the obligation.
-   * Not checked by `isAgentSessionOperationRow`, like `ownedPane`.
-   */
-  promptDelivery?: AgentLaunchOwedPrompt
   /** What the click owes once its prompt lands (`agent-launch-follow-up`): written with the claim,
    *  gone when its caller takes it or with the row. Unchecked by the row validator, like `ownedPane`. */
   launchFollowUp?: AgentLaunchFollowUp

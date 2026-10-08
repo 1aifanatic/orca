@@ -19,7 +19,7 @@ import {
 
 /** How long past the host's own deadline a waiting window takes once more, then lets go. */
 const PAST_DEADLINE_GRACE_MS = 15_000
-/** For a launch whose deadline the host could not say: its owed-prompt deadline. */
+/** Bounds this window's hold if a live launch never announces settlement. */
 const FALLBACK_WAIT_MS = 5 * 60_000
 /** A click's own take that missed is asked again once this soon: the host's word came before it. */
 const CLICK_RETAKE_MS = 3_000

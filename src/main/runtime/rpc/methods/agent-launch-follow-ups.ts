@@ -36,7 +36,8 @@ export function announceSettledLaunchFollowUps(
     for (const operationId of listSettledLaunchFollowUps(
       store.listOperationRows(),
       desktop,
-      Date.now()
+      Date.now(),
+      (operationKey) => activeAgentLaunchesFor(runtime).has(operationKey)
     )) {
       runtime.reportAgentLaunchPromptSettled?.(operationId)
     }

@@ -64,7 +64,6 @@ import {
   type AgentLaunchSurfaceFactory,
   type AgentLaunchWorkspaceFactory
 } from './agent-launch-surface-factories'
-import type { OwedLaunchPromptWriteStart } from '../runtime/agent-launch-owed-prompt-record'
 
 export type AgentLaunchExecution = {
   runtime: Pick<OrcaRuntimeService, 'getStructuredAgentSessionCreateSupport' | 'getClientSettings'>
@@ -78,8 +77,6 @@ export type AgentLaunchExecution = {
   onStage?: (stage: 'worktree_create' | 'mode_settle' | 'surface_create') => void
   /** The surface exists and its tab is published; runs before any prompt delivery. Must not throw. */
   onSurfacePublished?: (surface: AgentLaunchPublishedSurface) => void
-  /** W2 of a replay-safe launch: the prompt's first byte is about to be written. */
-  beginPromptWrite?: () => Promise<OwedLaunchPromptWriteStart>
 }
 
 /**
