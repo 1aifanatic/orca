@@ -142,6 +142,8 @@ export type AgentSessionPreSpawnReason = Extract<
   | 'managedAccountUnsupported'
   | 'launchFolderMissing'
   | 'historyInOtherAccount'
+  | 'claudeAccountFolderMissing'
+  | 'claudeAccountSetupFailed'
   | 'agentCommandNotRunnable'
 >
 

@@ -19,7 +19,6 @@ export type ClaudeModelCatalogProbeDeps = Pick<
   ClaudeStructuredLaunchResolverDeps,
   'resolveCommand' | 'resolveEnv' | 'resolveInheritedEnv' | 'resolveAuthPolicy'
 > & {
-  authSwitchSettleTimeoutMs?: number
   /** Test seam; production runs the shared supervised listing. */
   runListing?: typeof runAgentModelCatalogListing
 }
