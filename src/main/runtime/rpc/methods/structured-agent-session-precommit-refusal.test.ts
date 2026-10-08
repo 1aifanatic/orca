@@ -122,15 +122,20 @@ beforeEach(() => {
 })
 
 describe('new chat options from the client', () => {
-  const hostOptions = { model: 'host-model', effort: 'low', permissionMode: 'bypass' }
+  const hostOptions = {
+    model: 'host-model',
+    effort: 'low',
+    fastMode: 'true',
+    permissionMode: 'bypass'
+  }
   const resolveHostIntent = async (input: { envelope: unknown }) => ({
     envelope: input.envelope,
     ...resolvedIntent,
     options: hostOptions
   })
 
-  it('honours explicit client choices instead of the host defaults', async () => {
-    const options = { model: 'client-model', effort: 'high', permissionMode: 'ask' }
+  it.each(['true', 'false'])('honours client choices including Fast %s', async (fastMode) => {
+    const options = { model: 'client-model', effort: 'high', fastMode, permissionMode: 'ask' }
     const params = createParams()
     const response = await create(
       { resolveStructuredAgentSessionCreateIntent: resolveHostIntent },

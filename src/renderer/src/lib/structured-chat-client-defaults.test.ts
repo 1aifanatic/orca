@@ -14,8 +14,8 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: vi.fn()
 }))
 
-const CLIENT_OPTIONS = { model: 'sonnet', effort: 'high', permissionMode: 'ask' }
-const HOST_OPTIONS = { model: 'opus', effort: 'low', permissionMode: 'bypass' }
+const CLIENT_OPTIONS = { model: 'sonnet', effort: 'high', fastMode: 'true', permissionMode: 'ask' }
+const HOST_OPTIONS = { model: 'opus', effort: 'low', fastMode: 'false', permissionMode: 'bypass' }
 const initialSettings = useAppStore.getState().settings
 
 beforeEach(() => {
@@ -24,7 +24,7 @@ beforeEach(() => {
       ...initialSettings!,
       nativeChatPermissionMode: 'ask',
       nativeChatSessionOptions: {
-        claude: { model: 'sonnet', valuesByModel: { sonnet: { effort: 'high' } } }
+        claude: { model: 'sonnet', valuesByModel: { sonnet: { effort: 'high', fastMode: true } } }
       }
     }
   })

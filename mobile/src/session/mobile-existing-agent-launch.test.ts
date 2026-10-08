@@ -50,7 +50,7 @@ it('carries paired-host chat preferences explicitly and keeps them through a los
       settings: {
         nativeChatPermissionMode: 'ask',
         nativeChatSessionOptions: {
-          claude: { model: 'sonnet', valuesByModel: { sonnet: { effort: 'high' } } }
+          claude: { model: 'sonnet', valuesByModel: { sonnet: { effort: 'high', fastMode: true } } }
         }
       }
     },
@@ -72,7 +72,7 @@ it('carries paired-host chat preferences explicitly and keeps them through a los
     'agent.launchReplay'
   ])
   expect(sendRequest.mock.calls[1]?.[1]).toMatchObject({
-    sessionOptions: { model: 'sonnet', effort: 'high', permissionMode: 'ask' }
+    sessionOptions: { model: 'sonnet', effort: 'high', fastMode: 'true', permissionMode: 'ask' }
   })
   expect(sendRequest.mock.calls[2]?.[1]).toEqual(sendRequest.mock.calls[1]?.[1])
 })

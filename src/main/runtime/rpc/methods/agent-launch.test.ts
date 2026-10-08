@@ -447,16 +447,32 @@ describe('whose window a new workspace moves', () => {
 })
 
 describe('the structured session factory', () => {
-  it('preserves the client permission choice alongside its model and effort', async () => {
+  it('uses the stricter mode when a client sends an unknown permission choice', async () => {
+    await launch(
+      { ...CREATE_LAUNCH, sessionOptions: { model: 'sonnet', permissionMode: 'future-mode' } },
+      runtimeStub()
+    )
+    expect(createStructuredSession.mock.calls[0]?.[0]).toMatchObject({
+      options: { model: 'sonnet', permissionMode: 'ask' }
+    })
+  })
+
+  it.each(['true', 'false'])('keeps Fast %s in a legacy model-only request', async (fastMode) => {
+    const options = { model: 'sonnet', effort: 'high', fastMode }
+    await launch({ ...CREATE_LAUNCH, sessionOptions: options }, runtimeStub())
+    expect(createStructuredSession.mock.calls[0]?.[0]).toMatchObject({ options })
+  })
+
+  it.each(['true', 'false'])('preserves the client choices alongside Fast %s', async (fastMode) => {
     await launch(
       {
         ...CREATE_LAUNCH,
-        sessionOptions: { model: 'sonnet', effort: 'high', permissionMode: 'ask' }
+        sessionOptions: { model: 'sonnet', effort: 'high', fastMode, permissionMode: 'ask' }
       },
       runtimeStub()
     )
     expect(createStructuredSession.mock.calls[0]?.[0]).toMatchObject({
-      options: { model: 'sonnet', effort: 'high', permissionMode: 'ask' }
+      options: { model: 'sonnet', effort: 'high', fastMode, permissionMode: 'ask' }
     })
   })
 

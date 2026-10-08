@@ -46,7 +46,10 @@ describe('mobile structured agent-session launch', () => {
           settings: {
             nativeChatPermissionMode: 'ask',
             nativeChatSessionOptions: {
-              codex: { model: 'gpt-client', valuesByModel: { 'gpt-client': { effort: 'high' } } }
+              codex: {
+                model: 'gpt-client',
+                valuesByModel: { 'gpt-client': { effort: 'high', fastMode: false } }
+              }
             }
           }
         }
@@ -63,7 +66,7 @@ describe('mobile structured agent-session launch', () => {
       'agentSession.create'
     ])
     expect(client.sendRequest.mock.calls[2]?.[1]).toMatchObject({
-      options: { model: 'gpt-client', effort: 'high', permissionMode: 'ask' }
+      options: { model: 'gpt-client', effort: 'high', fastMode: 'false', permissionMode: 'ask' }
     })
   })
 

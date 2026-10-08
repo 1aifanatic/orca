@@ -14,10 +14,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import {
-  narrowStructuredLaunchSeedOptions,
-  parseStructuredLaunchSeedOptions
-} from '../../../../shared/native-chat-session-option-defaults'
+import { parseStructuredLaunchSeedOptions } from '../../../../shared/native-chat-session-option-defaults'
 import { normalizeStructuredChatLaunchOptions } from '../../../../shared/structured-chat-launch-options'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { structuredAgentSessionTabId } from '../../../../shared/structured-agent-session-projection'
@@ -72,9 +69,9 @@ export function agentLaunchSurfaceFactory(
       const seeded =
         options === undefined
           ? undefined
-          : parsed?.permissionMode !== undefined
-            ? normalizeStructuredChatLaunchOptions(agent, parsed)
-            : (narrowStructuredLaunchSeedOptions(options) ?? {})
+          : options.permissionMode !== undefined
+            ? normalizeStructuredChatLaunchOptions(agent, options)
+            : (parsed ?? {})
       const created = await createStructuredAgentSessionForWorktree({
         runtime: context.runtime,
         ensureHost: async () => {

@@ -6,20 +6,25 @@ import {
   agentChatPermissionModes
 } from './agent-chat-permission-mode'
 import {
-  narrowStructuredLaunchSeedOptions,
+  parseStructuredLaunchSeedOptions,
   resolveStructuredLaunchSeedOptions
 } from './native-chat-session-option-defaults'
 
-/** Reviewer intent is retained for the execution host to confirm before a turn. */
+/** The wire already encodes Fast; reviewer intent stays with the execution host. */
 export function normalizeStructuredChatLaunchOptions(
   agent: string,
-  options: Readonly<Record<string, string>>
+  options: Readonly<Record<string, unknown>>
 ): Record<string, string> {
-  const seeded = narrowStructuredLaunchSeedOptions(options) ?? {}
+  const { permissionMode: _permissionMode, ...seeded } =
+    parseStructuredLaunchSeedOptions(options) ?? {}
   return agentChatPermissionModes(agent)
     ? {
         ...seeded,
-        [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: agentChatLaunchPermissionMode(agent, options, 'ask')
+        [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: agentChatLaunchPermissionMode(
+          agent,
+          null,
+          options[AGENT_CHAT_PERMISSION_MODE_OPTION_ID]
+        )
       }
     : seeded
 }
