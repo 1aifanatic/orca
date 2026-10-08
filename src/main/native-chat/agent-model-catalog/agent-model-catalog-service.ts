@@ -4,6 +4,7 @@ import type {
   AgentSessionRecord
 } from '../../../shared/agent-session-record'
 import { isLegacyAgentSessionAccountHome } from '../../../shared/agent-session-account-home'
+import type { StructuredAgentRegistry } from '../agent-session-wire/structured-agent-registry'
 import {
   agentModelCatalogFingerprint,
   agentModelCatalogFingerprintForRecord
@@ -24,6 +25,8 @@ export type AgentModelCatalogServiceDeps = {
    *  the SAME resolver the create path fills `record.accountHome` with, so a
    *  record-less read can never answer from another account's listing. */
   resolveAccountHome: (agent: string) => Promise<AgentSessionAccountHome>
+  /** The registered provider policy for remembered session choices. */
+  agents?: Pick<StructuredAgentRegistry, 'definition'>
   /** Session-less listers, one per agent that has one on this host. */
   probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
   /** Whether the workspace's own config could pick a model other than the listed default. */
@@ -147,10 +150,22 @@ export function createAgentModelCatalogService(
           return { origin: 'unknown' }
         }
       }
-      return resultFromEntry(
+      const catalog = resultFromEntry(
         entry,
         await workspaceKeepsListedDefault(deps, params.agent, params.workspacePath, accountHomePath)
       )
+      const projectOptions = deps.agents?.definition(params.agent)?.restingOptions.projectOptions
+      if (!projectOptions) {
+        return catalog
+      }
+      // A host listing is remembered evidence, even when another child just published it.
+      const projected = projectOptions(catalog, { model: scoped?.options?.model ?? '' })
+      return {
+        origin: entry.origin,
+        models: projected.models,
+        ...(projected.fastModeSupport ? { fastModeSupport: projected.fastModeSupport } : {}),
+        fetchedAt: entry.fetchedAt
+      }
     }
   }
 }
