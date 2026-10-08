@@ -55,7 +55,7 @@ describe('relay runtime ladder (design D6)', () => {
 
   it('keeps a Windows host on host Node after any rung A refusal, since B and C do not exist there', () => {
     const ladder = relayRuntimeLadder('pinned-node')
-    const windows = { hostOs: 'win32' as const, clientArtifactGap: false }
+    const windows = { hostOs: 'win32' as const }
     for (const reason of [
       'missing_lib',
       'security_software',
@@ -67,18 +67,27 @@ describe('relay runtime ladder (design D6)', () => {
     expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'missing_lib', true, windows)).toBe('legacy')
   })
 
-  it('never settles D on a client artifact gap, unless the host proved noexec or no Node', () => {
+  it('falls back past a refused ladder to host Node, and to D only on proof', () => {
     const ladder = relayRuntimeLadder('pinned-node')
-    const gap = { hostOs: 'linux' as const, clientArtifactGap: true }
-    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'artifacts_unavailable', false, gap)).toBe('B')
-    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'artifacts_unavailable', false, gap)).toBe(
-      'legacy'
+    const linux = { hostOs: 'linux' as const }
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'artifacts_unavailable', false, linux)).toBe(
+      'B'
     )
-    // Rung C already proved there is no host Node to fall back to.
-    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'host_node_missing', false, gap)).toBe('D')
-    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'noexec', false, gap)).toBe('D')
-    const noGap = { hostOs: 'linux' as const, clientArtifactGap: false }
-    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'host_node_missing', false, noGap)).toBe('D')
+    for (const reason of [
+      'artifacts_unavailable',
+      'host_node_missing',
+      'libc_floor',
+      'target_unresolved'
+    ] as const) {
+      expect(relayRuntimeStepAfterRefusal(ladder, 'C', reason, false, linux)).toBe('legacy')
+    }
+    // A proved noexec defeats the host-npm relay too; a remembered one is re-proved.
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'noexec', false, linux)).toBe('D')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'noexec', false, linux)).toBe('D')
+    // Only the fallback itself proving no host Node lands on D.
+    expect(relayRuntimeStepAfterRefusal(ladder, 'legacy', 'host_node_missing', false, linux)).toBe(
+      'D'
+    )
   })
 
   it('chooses rung B only when a listed compat runtime serves the host', () => {

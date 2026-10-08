@@ -30,6 +30,8 @@ export type SshRemoteRuntimeResolution = {
   rung: SshRemoteRuntimeRung
   /** The classified refusal that stepped off Orca's pinned Node, when one did. */
   pinnedRefusal?: string
+  /** Epoch ms the refusal was proved; a refusal the host can lose expires from it. */
+  refusedAt?: number
   glibc: string | null
   runtimeSha256: string
   orcaMajor: number

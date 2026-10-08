@@ -43,9 +43,9 @@ async function proveHostNodeForFallback(
   conn: SshConnection,
   host: RemoteHostPlatform,
   signal?: AbortSignal
-): Promise<void> {
+): Promise<string> {
   try {
-    await resolveRemoteNodePath(conn, host, { signal, strict: true })
+    return await resolveRemoteNodePath(conn, host, { signal, strict: true })
   } catch (error) {
     if (error instanceof RemoteNodeNotFoundError) {
       throw new PinnedRelayFallbackError('host_node_missing', 'no host Node.js 18+ with npm')
@@ -63,7 +63,7 @@ export async function planRelayRuntimeStep(
   switch (step) {
     case 'legacy':
       if (run.hostNodeFallback) {
-        await proveHostNodeForFallback(conn, host, signal)
+        run.hostNodePath = await proveHostNodeForFallback(conn, host, signal)
       }
       return undefined
     case 'A': {

@@ -14,7 +14,7 @@ import type { OrcadDeploymentTargetFacts } from './orcad-deployment-target'
 import { isPinnedRuntimeRefusal, type RelayRuntimeFallbackReason } from './ssh-relay-pinned-node'
 import {
   forgetPinnedRuntimeRefusal,
-  isMutablePinnedRuntimeRefusal
+  isPinnedRefusalExpired
 } from './ssh-relay-pinned-refusal-cache'
 import {
   remoteRuntimeUnavailableMessage,
@@ -72,8 +72,8 @@ export function persistedPinnedRefusal(
     return null
   }
   const refusal = decision.pinnedRefusal
-  // Why: records written before mutable refusals stopped persisting must not pin a repaired host.
-  return isPinnedRuntimeRefusal(refusal) && !isMutablePinnedRuntimeRefusal(refusal, facts.target)
+  return isPinnedRuntimeRefusal(refusal) &&
+    !isPinnedRefusalExpired(refusal, facts.target, decision.refusedAt)
     ? refusal
     : null
 }
@@ -85,12 +85,16 @@ export class RelayRuntimeLadderRun {
   firstRefusal: RelayRuntimeFallbackReason | null = null
   lastRefusal: RelayRuntimeFallbackReason | null = null
   pinnedRefusal: PinnedRuntimeRefusal | null = null
+  /** The pinned refusal was replayed from a cache rather than proved on this pass. */
+  pinnedRefusalRemembered = false
   /** A noexec this pass replayed from a cache rather than proved. */
   noexecRemembered = false
   /** A rung refused because this client lacked Orca's artifacts; nothing it proves is the host's. */
   clientArtifactGap = false
-  /** The ladder chose host Node in place of D, so a host with no Node lands on D, not a failed connect. */
+  /** The ladder fell back to host Node, so a host with no Node lands on D, not a failed connect. */
   hostNodeFallback = false
+  /** The Node the fallback's strict probe found, reused by the launch. */
+  hostNodePath: string | null = null
   selfTest: RelayRuntimeSelfTestOutcome = 'not_run'
   runtimeTransfer: RelayRuntimeTransfer = 'none'
   hostNode: HostNodeVersion | null = null
@@ -115,6 +119,7 @@ export class RelayRuntimeLadderRun {
     }
     if (step === 'A' && isPinnedRuntimeRefusal(reason)) {
       this.pinnedRefusal = reason
+      this.pinnedRefusalRemembered = remembered
     }
   }
 
@@ -176,17 +181,18 @@ export class RelayRuntimeLadderRun {
     if (!this.store || !this.facts) {
       return
     }
-    // Why only immutable refusals: a mutable one would outlive the host's repair across restarts.
-    const lasting =
-      this.pinnedRefusal && !isMutablePinnedRuntimeRefusal(this.pinnedRefusal, this.facts.target)
-        ? this.pinnedRefusal
-        : null
+    const previous = this.store.read(this.targetId)
+    // Why keep the earlier time on a replay: a replayed refusal must still expire on schedule.
+    const refusedAt =
+      this.pinnedRefusalRemembered && previous?.pinnedRefusal === this.pinnedRefusal
+        ? (previous.refusedAt ?? Date.now())
+        : Date.now()
     const next: SshRemoteRuntimeResolution = {
       rung,
-      ...(lasting ? { pinnedRefusal: lasting } : {}),
+      ...(this.pinnedRefusal ? { pinnedRefusal: this.pinnedRefusal } : {}),
+      ...(this.pinnedRefusal ? { refusedAt } : {}),
       ...relayRuntimeDecisionKey(this.facts)
     }
-    const previous = this.store.read(this.targetId)
     if (JSON.stringify(previous) !== JSON.stringify(next)) {
       try {
         this.store.write(this.targetId, next)

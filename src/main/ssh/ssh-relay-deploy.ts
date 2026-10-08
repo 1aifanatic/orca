@@ -463,21 +463,19 @@ async function deployAndLaunchRelayInner(
       }
       return result
     } catch (err) {
-      const fallbackRefused = step === 'legacy' && run.hostNodeFallback
+      // Why opt-in legacy is excluded: it is the user's choice, not a fallback with a D below it.
       if (
         err instanceof PinnedRelayFallbackError &&
-        (fallbackRefused || (step !== 'legacy' && step !== 'D'))
+        step !== 'D' &&
+        (step !== 'legacy' || run.hostNodeFallback)
       ) {
         console.warn(
           `[ssh-relay] Relay runtime rung ${step} unavailable (${err.reason}): ${err.detail}`
         )
         run.refused(step, err.reason, err.remembered)
-        step = fallbackRefused
-          ? 'D'
-          : relayRuntimeStepAfterRefusal(ladder, step, err.reason, err.remembered, {
-              hostOs: run.host?.os ?? null,
-              clientArtifactGap: run.clientArtifactGap
-            })
+        step = relayRuntimeStepAfterRefusal(ladder, step, err.reason, err.remembered, {
+          hostOs: run.host?.os ?? null
+        })
         run.hostNodeFallback = step === 'legacy'
         run.enter(step)
         continue
@@ -592,7 +590,15 @@ async function deployAndLaunchRelayOnRuntime({
         prebuilt,
         deploySignal
       )
-    : await resolveRelayBootstrapState(conn, hostPlatform, fullVersion, deploySignal)
+    : run.hostNodePath
+      ? // Why: the fallback's strict probe already found this Node; don't resolve it twice.
+        {
+          ...(await resolveRemoteInstallState(conn, hostPlatform, fullVersion, {
+            signal: deploySignal
+          })),
+          nodePath: run.hostNodePath
+        }
+      : await resolveRelayBootstrapState(conn, hostPlatform, fullVersion, deploySignal)
   console.log(`[ssh-relay] Remote dir: ${remoteRelayDir}`)
   console.log(`[ssh-relay] Already installed at ${fullVersion}: ${alreadyInstalled}`)
   const pinnedContext = prebuilt

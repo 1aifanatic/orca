@@ -8,7 +8,7 @@ import {
   type RemoteNodeResolutionOptions
 } from './ssh-remote-node-install-guidance'
 import { execCommand } from './ssh-relay-deploy-helpers'
-import { isSshExecTimeout } from './ssh-relay-exec-command'
+import { isSshCommandExitError } from './ssh-relay-exec-command'
 import {
   buildPosixNodeToolchainProbe,
   buildWindowsNodeToolchainProbe,
@@ -68,8 +68,9 @@ type ResolvedCandidate<T> = { nodePath: string; result: T }
 /** `strict` rethrows unanswered probes rather than reading them as "no Node here". */
 export type ProbeOptions = RemoteNodeResolutionOptions & { strict?: boolean }
 
+/** Only a command that ran and exited answered; a refused channel, session limit or timeout did not. */
 function isUnansweredExec(err: unknown): boolean {
-  return isSshExecTimeout(err) || (err instanceof Error && 'sshChannelCloseConfirmed' in err)
+  return !isSshCommandExitError(err)
 }
 
 // Probe the on-disk install directories of every common Node version manager

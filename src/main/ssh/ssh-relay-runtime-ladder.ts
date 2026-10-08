@@ -6,8 +6,8 @@
  *   C  the host's Node >= 18 + Orca's N-API prebuilds, no npm
  *   D  nothing runs: plain SSH terminals and SFTP, recording the classified reason
  *
- * The host's Node + npm install (`legacy`) sits outside the ladder, reached by opting in, or in
- * place of D where the ladder could not judge the host (see `relayRuntimeStepAfterRefusal`).
+ * The host's Node + npm install (`legacy`) sits outside the ladder, reached by opting in, or as
+ * the fallback past a refused ladder (see `relayRuntimeStepAfterRefusal`).
  *
  * The ladder steps down only on a classified refusal (a `PinnedRelayFallbackError`); an
  * unverifiable probe or self-test throws and the next connect retries the same rung.
@@ -142,17 +142,14 @@ export function nextRelayRuntimeStep(
 }
 
 /** What a ladder pass knows beyond the refusal it is stepping past. */
-export type RelayRuntimeStepContext = {
-  hostOs: RemoteOperatingSystem | null
-  /** A rung was refused because this client lacked Orca's artifacts, which says nothing of the host. */
-  clientArtifactGap: boolean
-}
+export type RelayRuntimeStepContext = { hostOs: RemoteOperatingSystem | null }
 
 /**
- * `nextRelayRuntimeStep`, except where D would strand a host the ladder never judged: Windows,
- * where B and C don't exist yet, and a client missing Orca's artifacts. Both keep the host-Node
- * route they had before the ladder, marked unsupported. A proved noexec or missing host Node
- * still lands on D, as does a host-Node fallback that finds no Node.
+ * The invariant: no host does worse than the pre-ladder default. A, B and C are tried first
+ * (no host compile where Orca's runtime works); any refusal past them falls back to exactly
+ * that default, the host-Node relay (`legacy`, marked unsupported). D is reached only when
+ * that fallback proved the host has no usable Node, or a proved noexec home would defeat it
+ * too. Windows has no B or C yet, so it falls back straight after A.
  */
 export function relayRuntimeStepAfterRefusal(
   ladder: readonly RelayRuntimeStep[],
@@ -161,20 +158,18 @@ export function relayRuntimeStepAfterRefusal(
   remembered: boolean,
   context: RelayRuntimeStepContext
 ): RelayRuntimeStep {
+  if (current === 'legacy') {
+    return 'D'
+  }
   if (context.hostOs === 'win32') {
     return 'legacy'
   }
   const next = nextRelayRuntimeStep(ladder, current, reason, remembered)
-  // Why not after host_node_missing: rung C already proved the host has no Node to fall back to.
-  if (
-    next === 'D' &&
-    context.clientArtifactGap &&
-    reason !== 'noexec' &&
-    reason !== 'host_node_missing'
-  ) {
-    return 'legacy'
+  if (next !== 'D') {
+    return next
   }
-  return next
+  // Why noexec: the host-npm relay loads its addons from the same noexec tree, so it fails too.
+  return reason === 'noexec' && !remembered ? 'D' : 'legacy'
 }
 
 /** The machine-readable part of a rung D failure; the message is what the user reads. */
@@ -201,7 +196,8 @@ const REMOTE_RUNTIME_UNAVAILABLE_MESSAGES: Record<RemoteRuntimeUnavailableReason
     'unavailable until an administrator allows exec there.',
   no_runtime:
     "Orca can't run its remote runtime on this host: its bundled Node.js was refused and no " +
-    'Node.js 18 or newer was found on the host. Install Node.js 18+ on the host, then reconnect.'
+    'Node.js 18 or newer with npm was found on the host. Install Node.js 18+ and npm on the ' +
+    'host, then reconnect.'
 }
 
 // Why its own wording: a host Node would load addons from the same noexec tree, so installing one cannot help.

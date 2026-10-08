@@ -136,7 +136,7 @@ export const HOSTILE_HOST_CELLS: readonly HostileHostCell[] = [
   },
   {
     // The musl Node links libstdc++, so its self-test proves the missing library; B has no
-    // compat runtime yet and C finds no host Node.
+    // compat runtime yet, C finds no host Node, and the host-Node fallback proves it has none.
     id: 'alpine-musl-no-libstdcxx',
     dockerfile: [`FROM ${ALPINE_3_20}`, ALPINE_SSHD],
     expect: {
@@ -145,7 +145,8 @@ export const HOSTILE_HOST_CELLS: readonly HostileHostCell[] = [
       refusals: [
         { step: 'A', reason: 'missing_lib' },
         { step: 'B', reason: 'runtime_unavailable' },
-        { step: 'C', reason: 'host_node_missing' }
+        { step: 'C', reason: 'host_node_missing' },
+        { step: 'legacy', reason: 'host_node_missing' }
       ]
     }
   },

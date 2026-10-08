@@ -691,11 +691,24 @@ describe('resolveRemoteNodePath', () => {
       Object.assign(new Error('channel closed'), { sshChannelCloseConfirmed: false })
 
     it('proves a Windows host has no Node when the discovery script answers none', async () => {
-      execCommandMock.mockRejectedValueOnce(new Error('Node.js not found (exit 1)'))
+      execCommandMock.mockRejectedValueOnce(
+        Object.assign(new Error('Node.js not found (exit 1)'), { exitCode: 1, stdout: '' })
+      )
 
       await expect(
         resolveRemoteNodePath(conn, getRemoteHostPlatform('win32-x64'), { strict: true })
       ).rejects.toBeInstanceOf(RemoteNodeNotFoundError)
+    })
+
+    it('rethrows a refused channel (MaxSessions) instead of calling it "no Node"', async () => {
+      const refused = Object.assign(new Error('(SSH) Channel open failure: open failed'), {
+        reason: 2
+      })
+      execCommandMock.mockRejectedValueOnce(refused)
+
+      await expect(
+        resolveRemoteNodePath(conn, getRemoteHostPlatform('win32-x64'), { strict: true })
+      ).rejects.toBe(refused)
     })
 
     it('rethrows a Windows probe the host never answered', async () => {
