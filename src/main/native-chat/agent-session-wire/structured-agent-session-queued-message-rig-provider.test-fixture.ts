@@ -39,6 +39,7 @@ export function createQueuedRigProvider(
   // Every start the host asks for; one `holdNextStart` holds stays in its spawn until released.
   const starts: Mock<() => void> = vi.fn()
   let startHold: Promise<void> | null = null
+  let startFailure: Error | null = null
   // The provider's receipt of a /compact; its end arrives later, as `finishCompact` writes it.
   const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(async () => ({
     state: 'accepted' as const,
@@ -58,6 +59,11 @@ export function createQueuedRigProvider(
       const hold = startHold
       startHold = null
       await hold
+      const failure = startFailure
+      startFailure = null
+      if (failure) {
+        throw failure
+      }
       events = sink
       const record = store.getRecord(identity.sessionId)
       const context = record ? activeProviderContext(record) : null
@@ -122,6 +128,11 @@ export function createQueuedRigProvider(
     return () => release()
   }
 
+  /** Fails the next start in its spawn, as an agent that cannot start does. */
+  function failNextStart(error: Error): void {
+    startFailure = error
+  }
+
   /** The event sink the provider writes through. */
   function providerEvents(): StructuredAgentSessionEventSink {
     if (!events) {
@@ -135,6 +146,7 @@ export function createQueuedRigProvider(
     dispatch,
     starts,
     holdNextStart,
+    failNextStart,
     compact,
     cancelTurn,
     closeSession,

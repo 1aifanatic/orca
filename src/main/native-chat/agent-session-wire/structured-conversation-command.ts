@@ -7,6 +7,7 @@ import type {
   AgentSessionMutationResult
 } from '../../../shared/agent-session-wire'
 import { admitAndRunAgentSessionMutation } from './structured-agent-session-mutation-admission'
+import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { sendPreparation } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
@@ -36,6 +37,10 @@ export function conversationCommandFailure(
 export type ConversationCommandParams = {
   envelope: AgentSessionMutationEnvelope
   command: AgentSessionConversationCommand
+  /** /compact only: wait as a card while the agent works, as a queued send does. */
+  delivery?: 'queue-if-active'
+  /** Host-local, set by the client-facing command RPC as for an ordinary send. */
+  userSend?: true
 }
 /** Stop the provider and record a fresh-context boundary in the same conversation. */
 export function runStructuredConversationCommand(
@@ -129,7 +134,8 @@ export function runStructuredConversationCommand(
           }
           await ctx.journal.context.clear(
             providerContextBoundaryForClear(clear),
-            ctx.operationReceipt
+            ctx.operationReceipt,
+            agentSessionOperationKey(caller.callerKey, clientOperationId)
           )
           return { ok: true, value: completed }
         }

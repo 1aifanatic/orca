@@ -29,7 +29,9 @@ export class StructuredConversationCommandController {
 
   run = (caller: StructuredAgentSessionCaller, params: ConversationCommandParams) => {
     if (params.command === 'compact') {
-      return runStructuredCompaction(this.context(), this.host, caller, params)
+      return runStructuredCompaction(this.context(), this.host, caller, params, {
+        clearInFlight: this.pending.has(params.envelope.sessionId)
+      })
     }
     const key = JSON.stringify([caller.callerKey, params.envelope.clientOperationId])
     const pending = this.pending.get(params.envelope.sessionId)

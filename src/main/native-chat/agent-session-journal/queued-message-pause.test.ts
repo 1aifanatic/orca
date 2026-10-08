@@ -68,7 +68,8 @@ function queueDraft(journal: AgentSessionJournal, messageId: string) {
 function clearContext(journal: AgentSessionJournal) {
   return journal.context.clear(
     { operationId: `clear-${++clock}`, afterFence: 0, clearedAt: clock },
-    { write: () => {}, committed: () => {} }
+    { write: () => {}, committed: () => {} },
+    `caller-clear-${clock}`
   )
 }
 

@@ -70,6 +70,7 @@ export async function withdrawQueuedMessagesForOperation(
   })
 }
 
+
 /** Draft actions run like any mutation: admitted on the session's lane, the
  *  conversation opened for the write. */
 function mutateQueued<TValue>(
@@ -149,6 +150,11 @@ export function sendQueuedStructuredAgentMessage(
         return submission
           ? { ok: true, value: { clientMessageId: submission.clientMessageId, submission } }
           : invalid('This queued message was already sent.')
+      }
+      // A command never steers: handed over mid-turn it would only be refused. Clients offer its
+      // Send only while the agent is idle; this answers an older one that offers it mid-turn.
+      if (hold === 'working' && row.body.command) {
+        return invalid("A command can't be sent while the agent is working.")
       }
       const submissionId = operationId
       try {

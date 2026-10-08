@@ -237,6 +237,21 @@ export class JournalQueuedMessages {
     )
   }
 
+  /** Withdraw commands with the clear's divider and receipt on the same connection. */
+  withdrawInTransaction(
+    db: Database.Database,
+    input: { messageIds: readonly string[]; settledByOp: string }
+  ): void {
+    if (this.deps.database().db !== db) {
+      throw new AgentSessionJournalError('journal_closed', 'withdraw crossed database handles')
+    }
+    this.changeRevision += withdrawQueuedMessages(db, {
+      ...input,
+      sessionId: this.deps.sessionId,
+      now: this.deps.now()
+    }).length
+  }
+
   /** One standalone draft-table transaction on the journal's queue; one that
    *  changed rows bumps the revision and notifies after COMMIT, `adopted` first. */
   private transact<T>(

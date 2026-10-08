@@ -10,6 +10,7 @@ import {
   type AgentSessionConversationClear
 } from './agent-session-conversation-command-record'
 import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
+import { agentSessionOperationKey } from '../../shared/agent-session-operation-ledger'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { openTestAgentSessionRecordStore } from './agent-session-record-store-test-harness'
@@ -126,9 +127,26 @@ async function prepare(released = true) {
   const append = (input = completed) =>
     journal.context.clear(
       providerContextBoundaryForClear(input),
-      store.conversationReceipts.clear(() => input, operation)
+      store.conversationReceipts.clear(() => input, operation),
+      agentSessionOperationKey(operation.callerKey, operation.operationId)
     )
   return { store, journal, completed, operation, append }
+}
+
+async function queueClearCards(journal: AgentSessionJournal) {
+  for (const messageId of ['first', 'command', 'last']) {
+    await journal.queuedMessages.insert({
+      messageId,
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: messageId }],
+        ...(messageId === 'command' ? { command: { name: 'compact' } } : {})
+      },
+      fingerprint: messageId,
+      hostInstance: 'host-1'
+    })
+  }
 }
 
 describe('clear transaction', () => {
@@ -136,6 +154,7 @@ describe('clear transaction', () => {
     const { store, journal, completed, operation, append } = await prepare()
     const before = store.getRecord(SOURCE)!
     expect(before.providerHandleChain).toHaveLength(1)
+    await queueClearCards(journal)
     const epoch = journal.cursor().epoch
     await append()
     const reopened = await open()
@@ -151,6 +170,11 @@ describe('clear transaction', () => {
     expect(reopened.getSessionTabId(SOURCE)).toBe('tab-alpha')
     expect(JSON.stringify(reopened.getRecord(SOURCE))).not.toContain('pre-clear-provider-context')
     expect(journal.cursor().epoch).toBe(epoch)
+    expect(journal.queuedMessages.get('command')).toMatchObject({
+      state: 'withdrawn',
+      settledByOp: agentSessionOperationKey(operation.callerKey, operation.operationId)
+    })
+    expect(journal.queuedMessages.pauses()).toMatchObject([{ messageIds: ['first', 'last'] }])
     expect(
       reopened.getOperationRow(operation.callerKey, operation.operationId)?.outcome.status
     ).toBe('succeeded')
@@ -158,6 +182,7 @@ describe('clear transaction', () => {
 
   it('rolls the divider and receipt back when the fence moved', async () => {
     const { store, journal, completed, operation, append } = await prepare()
+    await queueClearCards(journal)
     const before = journal.cursor()
     const previousChain = store.getRecord(SOURCE)!.providerHandleChain
     const refused = await append({ ...completed, fence: completed.fence + 1 }).catch(
@@ -165,6 +190,10 @@ describe('clear transaction', () => {
     )
     expect(isAgentSessionRefusalError(refused)).toBe(true)
     expect(journal.cursor()).toEqual(before)
+    expect(
+      journal.queuedMessages.list().map(({ messageId, state }) => ({ messageId, state }))
+    ).toEqual(['first', 'command', 'last'].map((messageId) => ({ messageId, state: 'waiting' })))
+    expect(journal.queuedMessages.pauses()).toEqual([])
     expect((await open()).getRecord(SOURCE)?.providerContextBoundary).toBeUndefined()
     expect((await open()).getRecord(SOURCE)?.providerHandleChain).toEqual(previousChain)
     expect(store.getOperationRow(operation.callerKey, operation.operationId)?.outcome.status).toBe(

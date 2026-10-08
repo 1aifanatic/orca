@@ -235,7 +235,8 @@ describe('claims written with the message', () => {
     })
     await journal.context.clear(
       { operationId: 'clear', afterFence: 0, clearedAt: 1000 },
-      { write: () => {}, committed: () => {} }
+      { write: () => {}, committed: () => {} },
+      'caller-clear'
     )
     await journals.closeAll()
     const reopened = await open()

@@ -118,7 +118,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
       await ensureHostInstalled(ctx)
       const host = requireSessionHost(ctx, params.envelope.sessionId)
       await host.revealSession(params.envelope.sessionId)
-      return host.conversationCommand(callerFor(ctx), params)
+      return host.conversationCommand(callerFor(ctx), { ...params, userSend: true })
     }
   }),
   defineMethod({

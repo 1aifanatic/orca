@@ -8,6 +8,7 @@ import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
 import { agentSessionCurrentContextRows } from '../../../shared/agent-session-context-clear'
+import { isUnansweredStructuredAgentSessionDispatch } from '../../../shared/structured-agent-session-unanswered-dispatch'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
@@ -87,13 +88,13 @@ export function conversationCommandBlocked(
         : 'Wait for background tasks to finish before using this command.'
     )
   }
+  // The Working indicator's own rule, so "unsettled" is exactly what the chat shows as working.
+  // At handover the queued messages are those behind this command, waiting for it.
   if (
     submissions.some(
       (entry) =>
-        (entry.dispatchState === 'pending' &&
-          !(admission === 'handover' && isQueuedAgentJournalSubmission(entry))) ||
-        // Doubt left by an earlier child is not this one's work in flight.
-        (entry.dispatchState === 'unknown' && entry.recovered !== true && entry.fence === ctx.fence)
+        !(admission === 'handover' && isQueuedAgentJournalSubmission(entry)) &&
+        isUnansweredStructuredAgentSessionDispatch(entry, ctx.fence)
     )
   ) {
     return blocked(
