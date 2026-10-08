@@ -45,7 +45,8 @@ export function resumeTreeMachines(
   focus: RestartMachineKey | null
 ): ResumeTreeMachines {
   const machineOfRow = new Map<ResumeCandidate, MachineView>()
-  const machineByHost = new Map<ExecutionHostId, MachineView>()
+  // Keyed by plain string: the tree names a machine node by its host id inside a string key.
+  const machineByHost = new Map<string, MachineView>()
   const rowByKey = new Map<string, { machine: MachineView; sessionId: string }>()
   for (const machine of machines) {
     for (const row of machine.rows) {
