@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type * as AgentStatusModule from '@/lib/agent-status'
 import type { AgentLaunchTabPublishRequest } from '../../../shared/agent-launch-tab-publication'
 import { createTabsSliceMockApi } from '../store/slices/tabs-slice-test-harness'
@@ -30,7 +30,7 @@ vi.mock('@/hooks/ipc-events/terminal-command-state', async (importOriginal) => (
   focusTerminalInitiatedTab
 }))
 
-createTabsSliceMockApi()
+const mockApi = createTabsSliceMockApi()
 
 const { publishAgentLaunchTab } = await import('./agent-launch-tab-publication')
 const { agentLaunchPanePrompt } = await import('./agent-launch-pane-prompt')
@@ -86,6 +86,23 @@ describe('publishing a launch tab before its agent exists', () => {
       leafId: LEAF_ID
     })
     expect(launchTab()?.viewMode).toBe('chat')
+  })
+
+  it('records the tab, its launch and its pane in main before the agent exists', () => {
+    const createTerminalSurface = vi.fn()
+    vi.stubGlobal('window', { api: { ...mockApi, session: { createTerminalSurface } } })
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
+
+    publishAgentLaunchTab(request())
+
+    expect(createTerminalSurface).toHaveBeenCalledWith({
+      worktreeId: WT,
+      tabId: TAB_ID,
+      leafId: LEAF_ID,
+      placement: { kind: 'new-tab', row: expect.objectContaining({ launchAgent: 'claude' }) }
+    })
   })
 
   it('keeps the prompt for the pane to offer if its agent does not start', () => {
