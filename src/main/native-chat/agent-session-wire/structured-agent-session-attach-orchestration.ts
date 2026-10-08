@@ -217,23 +217,14 @@ async function runAttachUnderAbort(
           : (context.runtimeState.currentEventSink(sessionId) ?? attemptSink)
         if (acquiredOwner) {
           // Before the drain: the buffered events are the new child's, never a stale row's.
-          try {
-            await settleStaleStructuredAgentSessionState({
-              journal: attached.journal,
-              sessionId,
-              fence,
-              acquisitionGeneration,
-              deathEvidence: priorDeathEvidence,
-              failureTextContext: structuredAgentSessionFailureWordsContext(priorRecord)
-            })
-          } catch (error) {
-            // The next open or acquire re-derives unfinished work from the journal.
-            context.deps.logger.warn("settling a gone agent's work on attach failed", {
-              scope: 'attach-dead-generation',
-              sessionId,
-              error
-            })
-          }
+          await settleStaleStructuredAgentSessionState({
+            journal: attached.journal,
+            sessionId,
+            fence,
+            acquisitionGeneration,
+            deathEvidence: priorDeathEvidence,
+            failureTextContext: structuredAgentSessionFailureWordsContext(priorRecord)
+          })
         }
         await bindAndDrain(eventSink, attached.journal, fence, (activity) =>
           context.subscribers.publish(sessionId, attached.journal, activity)
