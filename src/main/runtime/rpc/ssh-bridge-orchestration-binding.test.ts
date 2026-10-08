@@ -5,14 +5,9 @@ import type { OrcaRuntimeService } from '../orca-runtime'
 import type { RpcResponse } from './core'
 import { RpcDispatcher } from './dispatcher'
 import { createOrchestrationRpcHarness } from './methods/orchestration/rpc-test-harness'
-import type { RpcCallerScope } from './rpc-caller-scope'
 import { ORCHESTRATION_CONTRACT_VERSION } from '../../../shared/protocol-version'
+import { HOST_BOUND_SSH_BRIDGE_SCOPE as HOST_BOUND } from '../../ssh/ssh-bridge-caller-scope.test-fixture'
 
-const HOST_BOUND: RpcCallerScope = {
-  kind: 'ssh-bridge',
-  targetId: 'box-1',
-  remoteCliControl: false
-}
 const SentMessageResult = z.object({ message: z.object({ id: z.string() }) })
 const WORKER_PANE = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const SIBLING_PANE = 'tab_sibling:cccccccc-cccc-4ccc-8ccc-cccccccccccc'

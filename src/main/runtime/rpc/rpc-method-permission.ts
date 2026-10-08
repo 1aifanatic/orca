@@ -20,6 +20,12 @@ export type RpcMethodPermission =
   /** Updates, managed servers, SSH connections, plugins and network tunnels on this host. */
   | 'host-admin'
 
+/** Administrative permissions a paired runtime client holds only when granted at pairing time. */
+export const RUNTIME_DEVICE_GRANTS = [
+  'desktop-control'
+] as const satisfies readonly RpcMethodPermission[]
+export type RuntimeDeviceGrant = (typeof RUNTIME_DEVICE_GRANTS)[number]
+
 export const RPC_METHOD_PERMISSIONS: readonly RpcMethodPermission[] = [
   'workspace',
   'desktop-control',

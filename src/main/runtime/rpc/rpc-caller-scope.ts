@@ -6,7 +6,7 @@
  * reachable only when its declared permission is in the row.
  */
 import { MOBILE_RPC_METHOD_ALLOWLIST } from '../runtime-rpc/runtime-rpc-mobile-method-allowlist'
-import type { RpcMethodPermission } from './rpc-method-permission'
+import type { RpcMethodPermission, RuntimeDeviceGrant } from './rpc-method-permission'
 import {
   bindSshBridgeCall,
   SSH_BRIDGE_HOST_BOUND_METHODS,
@@ -14,8 +14,7 @@ import {
   type SshBridgeHostBindingRuntime
 } from './ssh-bridge-host-binding'
 
-/** Administrative permissions a paired runtime client holds only when granted at pairing time. */
-export type RuntimeDeviceGrant = Extract<RpcMethodPermission, 'desktop-control'>
+export type { RuntimeDeviceGrant }
 
 export type RpcCallerScope =
   | { kind: 'owner' }

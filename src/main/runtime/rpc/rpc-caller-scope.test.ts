@@ -6,17 +6,11 @@ import { RpcDispatcher } from './dispatcher'
 import { ALL_RPC_METHODS } from './methods'
 import type { RpcCallerScope } from './rpc-caller-scope'
 import { RPC_METHOD_PERMISSIONS } from './rpc-method-permission'
+import {
+  CONTROL_GRANTED_SSH_BRIDGE_SCOPE as CONTROL_GRANTED,
+  HOST_BOUND_SSH_BRIDGE_SCOPE as HOST_BOUND
+} from '../../ssh/ssh-bridge-caller-scope.test-fixture'
 
-const HOST_BOUND: RpcCallerScope = {
-  kind: 'ssh-bridge',
-  targetId: 'box-1',
-  remoteCliControl: false
-}
-const CONTROL_GRANTED: RpcCallerScope = {
-  kind: 'ssh-bridge',
-  targetId: 'box-1',
-  remoteCliControl: true
-}
 const PAIRED: RpcCallerScope = { kind: 'runtime-paired', grants: [] }
 
 function request(method: string, params?: unknown): RpcRequest {
