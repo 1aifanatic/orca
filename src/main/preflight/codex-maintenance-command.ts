@@ -1,6 +1,4 @@
-import { readFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
-import { z } from 'zod'
+import { dirname, join } from 'node:path'
 import { createStructuredAgentEnvironmentResolvers } from '../runtime/structured-agent-shell-environment'
 import {
   configuredCodexInvocationSources,
@@ -16,8 +14,7 @@ import type { ProcessSpec } from '../../shared/child-process/run-process'
 import { resolveCodexStructuredInvocation } from '../codex/codex-structured-launch-resolution'
 import { listLocalCommandPaths, resolveLocalExecutionCommand } from '../ipc/command-path-resolver'
 import { codexCliPackagePaths, readCodexCliInstallationEvidence } from './codex-cli-installation'
-
-const Package = z.object({ name: z.literal('@openai/codex') })
+import { readCodexNpmInstallationLayout } from './codex-npm-installation-layout'
 
 export type CodexMaintenanceContext = { cwd?: string; commandSettings?: CodexCommandSettings }
 export type ResolvedCodexMaintenanceCommand = {
@@ -55,26 +52,9 @@ async function resolveMaintenanceInvocation(
   }
   const { installation, ...evidence } = await readCodexCliInstallationEvidence(launch)
   const packagePaths = selected.status === 'resolved' ? await codexCliPackagePaths(launch) : []
-  const npmPackages = (
-    await Promise.all(
-      packagePaths.map(async (file) => {
-        try {
-          return Package.safeParse(JSON.parse(await readFile(file, 'utf8'))).success ? file : null
-        } catch {
-          return null
-        }
-      })
-    )
-  ).filter((file): file is string => file !== null)
-  const npmInstalled = npmPackages.length > 0
-  const moduleDirectory = npmPackages
-    .map((file) => dirname(dirname(dirname(file))))
-    .find((directory) => basename(directory) === 'node_modules')
-  const prefixDirectory = moduleDirectory ? dirname(moduleDirectory) : null
-  const npmPrefix =
-    prefixDirectory && basename(prefixDirectory) === 'lib' && process.platform !== 'win32'
-      ? dirname(prefixDirectory)
-      : prefixDirectory
+  const npmLayout = await readCodexNpmInstallationLayout(packagePaths, program)
+  const npmInstalled = npmLayout !== null
+  const npmPrefix = npmLayout?.kind === 'global' ? npmLayout.prefix : null
   let action = codexMaintenanceAction(installation, npmInstalled)
   if (
     action &&
@@ -83,7 +63,7 @@ async function resolveMaintenanceInvocation(
       (installation.status === 'unsupported' && (!npmInstalled || !npmPrefix)))
   ) {
     action = codexMaintenanceManualAction(
-      program,
+      npmLayout?.packageRoot ?? program,
       installation.minimumVersion,
       installation.status === 'missing' ? 'install' : 'update'
     )
