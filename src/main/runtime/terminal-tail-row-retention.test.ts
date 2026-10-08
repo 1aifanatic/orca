@@ -75,6 +75,31 @@ describe('retained terminal tail row storage', () => {
     expect(retained).toBeLessThan(4 * 1024 * 1024)
   })
 
+  it.each([
+    ['half', 0.5],
+    ['quarter', 0.75]
+  ])('does not pin a 64 KiB row that chained erases shrink by a %s at a time', (_, ratio) => {
+    const shrinkChunk = (index: number): string => {
+      const char = String.fromCharCode(65 + (index % 26))
+      let chunk = `\x1b[0A${char.repeat(65_536)}`
+      // Each \r + identical prefix + CSI K keeps at least half of the current row.
+      for (let keep = Math.floor(65_536 * ratio); keep >= 16; keep = Math.floor(keep * ratio)) {
+        chunk += `\r${char.repeat(keep)}\x1b[K`
+      }
+      return `${chunk}\n`
+    }
+    let lines = appendNormalizedToTailBuffer([], '', shrinkChunk(0)).lines
+    const before = collectHeap()
+    for (let index = 1; index <= 200; index += 1) {
+      lines = appendNormalizedToTailBuffer(lines, '', shrinkChunk(index)).lines
+    }
+    const retained = collectHeap() - before
+
+    expect(lines.at(-1)).toMatch(/^[A-Z]{1,20}$/)
+    // Nested slices pinned each completed row's 64 KiB original: about 13 MB.
+    expect(retained).toBeLessThan(4 * 1024 * 1024)
+  })
+
   it('routes every retained row and partial line through ownRetainedString', () => {
     const own = vi.spyOn(ownership, 'ownRetainedString')
     try {
