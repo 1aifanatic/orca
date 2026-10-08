@@ -73,8 +73,8 @@ async function restartWithRunningTurn(extra: readonly LeftoverItem[] = []): Prom
   await crashRestart()
 }
 
-/** A Claude tool call's input is journaled whole, so a large file write can outgrow any one
- *  cleanup row; and a request the dead agent was waiting on. */
+/** A tool call larger than any cleanup row (a defensive case: no provider writes one in normal
+ *  use), and a request the dead agent was waiting on. */
 function leftoverWork(): LeftoverItem[] {
   return [
     {
@@ -151,7 +151,7 @@ function expectLeftoverWorkSettled(): void {
   })
 }
 
-it('resumes a chat whose dead agent left a tool call too large for one cleanup row, then sends', async () => {
+it('resumes a chat whose dead agent left an item larger than any cleanup row, then sends', async () => {
   await restartWithRunningTurn(leftoverWork())
 
   const attached = await rig.host.attach(

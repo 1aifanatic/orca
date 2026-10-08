@@ -171,9 +171,9 @@ describe('dead structured-session generation settlement', () => {
     expect(tool?.body).toMatchObject({ state: 'failed', endedAs: 'interrupted' })
   })
 
-  it('ends a call too large for any one batch row, and adds no row twice on a re-run', async () => {
+  it('ends an item larger than any batch row, and adds no row twice on a re-run', async () => {
     await seedUnfinishedWork()
-    // A tool input is journaled whole: one large file write outgrows the batch row bound.
+    // Defensive: no provider writes an item this large in normal use.
     await journal.appendItem(
       { provider: 'orca', clientMessageId: 'claude-tool:s:toolu-big' },
       {

@@ -252,9 +252,9 @@ export async function settleStaleStructuredAgentSessionState(input: {
   return mutations.length
 }
 
-/** A settlement in as many batch rows as it needs. An item too large for any batch row (a call
- *  whose whole input was journaled) is revised in an item row, as it was written live, so the
- *  settlement can always land. A re-run re-derives from the fold and rewrites no settled item. */
+/** A settlement in as many batch rows as it needs. An item larger than any batch row goes in an
+ *  item row: no current provider writes one in normal use, but the settle would otherwise fail
+ *  every time it met one. A re-run re-derives from the fold and rewrites no settled item. */
 async function appendSettlementMutations(
   journal: Pick<AgentSessionJournal, 'appendLifecycleBatch' | 'appendItem'>,
   settlementId: string,
