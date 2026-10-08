@@ -1,4 +1,5 @@
 import { makePaneKey } from '../../../../shared/stable-pane-id'
+import { bindProviderPtyInput } from '../provider/input-binding'
 import { claimRuntimePaneCreate, makePaneSpawnReservationKey } from '../pane/spawn-reservation'
 import type { PtyRuntimeControllerDeps } from './controller-deps'
 import { spawnPtyFromRuntimeController } from './spawn'
@@ -38,6 +39,7 @@ export function installPtyRuntimeController(deps: PtyRuntimeControllerDeps): voi
   const { runtime, adoptStablePane, requestSerializedBuffer } = deps
 
   runtime?.setPtyController({
+    bindInput: bindProviderPtyInput,
     claimStablePaneCreate: (args) => {
       const paneKey = makePaneKey(args.tabId, args.leafId)
       const ownerKey = makePaneSpawnReservationKey(args.worktreeId, args.connectionId, paneKey)

@@ -26,10 +26,13 @@ export class OrcaRuntimeWithWriteOrchestrationPointerPty extends OrcaRuntimeWith
     ptyId: string,
     data: string
   ): WriteSettlement | Promise<WriteSettlement> {
-    return writeOrchestrationPointerWithSettlement({
-      ptyId,
-      data,
-      controller: this.ptyController
+    return this.runTerminalInputTransaction(ptyId, (transaction) => {
+      transaction.handoff()
+      return writeOrchestrationPointerWithSettlement({
+        ptyId,
+        data,
+        controller: this.ptyController
+      })
     })
   }
 

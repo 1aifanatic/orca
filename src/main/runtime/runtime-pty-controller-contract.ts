@@ -14,6 +14,7 @@ import type { PtyProviderBufferSnapshot, PtyProcessInfo, PtySpawnResult } from '
 import type { PtyProcessInspection } from '../providers/pty-process-inspection'
 import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
+import type { PtyInputBinding } from './pty-input-transactions'
 
 export type PtyInventoryRefreshOptions = {
   includeForegroundProcessEvidence?: boolean
@@ -21,6 +22,7 @@ export type PtyInventoryRefreshOptions = {
 }
 
 export type RuntimePtyController = {
+  bindInput?(ptyId: string): PtyInputBinding
   claimStablePaneCreate?(args: {
     worktreeId: string
     connectionId: string | null

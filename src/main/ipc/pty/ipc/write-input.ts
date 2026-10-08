@@ -12,6 +12,13 @@ import { tryGetProviderForPty } from '../provider/registry'
 import type { TerminalInputKind } from '../../../../shared/terminal-input-kind'
 import { interactiveOutputCharsByPty, lastInputAtByPty } from '../delivery/visibility-state'
 import { isSettledWrite, type WriteSettlement } from '../../../../shared/pty-write-settlement'
+import { bindProviderPtyInput } from '../provider/input-binding'
+import { isTerminalQueryReply } from '../../../../shared/terminal-query-reply'
+import {
+  ptyInputTransactions,
+  type PtyInputTransaction
+} from '../../../runtime/pty-input-transactions'
+import { countPtyInputChunkWrites } from '../../../runtime/pty-input-hold'
 
 export function isMainWindowPtyIpcEvent(
   event: IpcMainEvent | IpcMainInvokeEvent,
@@ -70,18 +77,27 @@ export function createPtyWriteInput(deps: {
     provider: IPtyProvider,
     id: string,
     data: string,
-    verify = false
+    verify: boolean,
+    transaction?: PtyInputTransaction
   ): boolean | Promise<boolean> => {
     const chunks = iterateTerminalInputChunks(data)
     const first = chunks.next()
     if (first.done) {
-      return writeChunk(provider, id, data, verify)
+      return writeChunk(provider, id, data, verify, transaction)
     }
     const second = chunks.next()
     if (second.done) {
-      return writeChunk(provider, id, first.value, verify)
+      return writeChunk(provider, id, first.value, verify, transaction)
     }
-    return writePtyProviderInputChunks(provider, id, chunks, first.value, second.value, verify)
+    return writePtyProviderInputChunks(
+      provider,
+      id,
+      chunks,
+      first.value,
+      second.value,
+      verify,
+      transaction
+    )
   }
 
   const acceptedSettlement = (id: string, settlement: WriteSettlement): boolean => {
@@ -100,15 +116,23 @@ export function createPtyWriteInput(deps: {
     provider: IPtyProvider,
     id: string,
     data: string,
-    verify: boolean
+    verify: boolean,
+    transaction?: PtyInputTransaction
   ): boolean | Promise<boolean> => {
+    if (runtime?.getDriver(id).kind === 'mobile') {
+      return false
+    }
+    transaction?.handoff()
     if (!verify) {
       return provider.write(id, data) !== false
     }
     const settlement = provider.writeWithSettlement(id, data)
     return isSettledWrite(settlement)
       ? acceptedSettlement(id, settlement)
-      : settlement.then((settled) => acceptedSettlement(id, settled))
+      : settlement.then((settled) => {
+          transaction?.assertWithinHold()
+          return acceptedSettlement(id, settled)
+        })
   }
 
   const failedWrite = (id: string, error: unknown, verify: boolean): false => {
@@ -123,19 +147,22 @@ export function createPtyWriteInput(deps: {
     provider: IPtyProvider,
     id: string,
     data: string,
-    verify = false
+    verify: boolean,
+    transaction?: PtyInputTransaction
   ): boolean | Promise<boolean> => {
     try {
       const tooLarge = isTerminalInputTooLargeWithDeferredMeasurement(data)
       if (typeof tooLarge === 'boolean') {
-        return tooLarge ? false : writePtyProviderInputWithinLimit(provider, id, data, verify)
+        return tooLarge
+          ? false
+          : writePtyProviderInputWithinLimit(provider, id, data, verify, transaction)
       }
       return tooLarge
         .then((result) => {
           if (result) {
             return false
           }
-          return writePtyProviderInputWithinLimit(provider, id, data, verify)
+          return writePtyProviderInputWithinLimit(provider, id, data, verify, transaction)
         })
         .catch((error) => {
           return failedWrite(id, error, verify)
@@ -151,14 +178,15 @@ export function createPtyWriteInput(deps: {
     chunks: Iterator<string>,
     firstChunk: string,
     secondChunk: string,
-    verify: boolean
+    verify: boolean,
+    transaction?: PtyInputTransaction
   ): Promise<boolean> => {
     try {
       let chunk: IteratorResult<string> = { done: false, value: firstChunk }
       let nextChunk: IteratorResult<string> = { done: false, value: secondChunk }
       let wroteChunk = false
       while (!chunk.done) {
-        const accepted = writeChunk(provider, id, chunk.value, verify)
+        const accepted = writeChunk(provider, id, chunk.value, verify, transaction)
         if (!(typeof accepted === 'boolean' ? accepted : await accepted)) {
           if (wroteChunk) {
             // An accepted prefix is already in the PTY, so this is not a clean refusal.
@@ -220,8 +248,21 @@ export function createPtyWriteInput(deps: {
       }
       return accepted
     }
-    const result = writePtyProviderInput(provider, args.id, args.data, verify)
-    return typeof result === 'boolean' ? observe(result) : result.then(observe)
+    const write = (transaction?: PtyInputTransaction): boolean | Promise<boolean> => {
+      noteRendererPtyInput(args)
+      const result = writePtyProviderInput(provider, args.id, args.data, verify, transaction)
+      return typeof result === 'boolean' ? observe(result) : result.then(observe)
+    }
+    if (args.inputKind === 'query-reply' && isTerminalQueryReply(args.data)) {
+      return write()
+    }
+    const result = ptyInputTransactions.run(bindProviderPtyInput(args.id), write, {
+      interrupt: args.data === '\x03',
+      hold: { writeCount: countPtyInputChunkWrites(args.data) }
+    })
+    return typeof result === 'boolean'
+      ? result
+      : result.catch((error) => failedWrite(args.id, error, verify))
   }
 
   const writePtyInput = (args: PtyWritePayload): boolean | Promise<boolean> => {
@@ -234,7 +275,6 @@ export function createPtyWriteInput(deps: {
       return false
     }
     try {
-      noteRendererPtyInput(args)
       return writeAndObserveInput(provider, args)
     } catch {
       return false
@@ -249,7 +289,6 @@ export function createPtyWriteInput(deps: {
     if (!provider?.hasPty?.(args.id)) {
       return false
     }
-    noteRendererPtyInput(args)
     return writeAndObserveInput(provider, args, true)
   }
 
@@ -269,7 +308,6 @@ export function createPtyWriteInput(deps: {
       return false
     }
     try {
-      noteRendererPtyInput(args)
       return writeAndObserveInput(provider, args)
     } catch {
       return false
