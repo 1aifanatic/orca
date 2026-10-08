@@ -89,7 +89,13 @@ export function useNativeChatPasteLifetime(args: {
         }
         // Through the scope's cache, so it shows even in a composer that came back since.
         const reveal = (): void => {
-          if (!id) {
+          if (
+            !id ||
+            (attachmentScopeKey &&
+              !nativeChatPendingAttachmentSnapshot(attachmentScopeKey).some(
+                (chip) => chip.id === id
+              ))
+          ) {
             return
           }
           const previewUrl = lifetime.active ? URL.createObjectURL(imageFile) : undefined
@@ -112,7 +118,7 @@ export function useNativeChatPasteLifetime(args: {
       }
       return { id, reveal: () => {} }
     },
-    [beginPendingImageAttachment, lifetime, revealPendingImageAttachment, track]
+    [attachmentScopeKey, beginPendingImageAttachment, lifetime, revealPendingImageAttachment, track]
   )
   const keepStoreUploadAfterUnmount = useCallback(
     (pendingId: string | null, saved: { status: string; tempPath?: string }): boolean => {

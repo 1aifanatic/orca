@@ -256,6 +256,22 @@ export function useNativeChatComposerPaste({
         }
         return
       }
+      const hasImage = await window.api.ui.clipboardHasImage().catch((error) => {
+        if (canPaste()) {
+          setNativeChatPasteFailure(setNotice, error)
+        }
+        return null
+      })
+      if (hasImage !== true) {
+        const read = await textRead
+        if (read?.labelsFiles) {
+          insertText(read.text)
+        }
+        return
+      }
+      if (!canPaste()) {
+        return
+      }
       // Ownership starts before saving; a thumbnail only supplies its preview.
       const pendingId = beginPendingImageAttachment()
       if (pendingId) {

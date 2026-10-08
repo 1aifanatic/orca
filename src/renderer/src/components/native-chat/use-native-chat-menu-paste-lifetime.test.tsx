@@ -77,6 +77,7 @@ async function fixture(
       ui: {
         readClipboardText: async () => '',
         readClipboardFilePaths: async () => [],
+        clipboardHasImage: async () => true,
         readClipboardImageThumbnail: () => thumbnail.promise,
         saveClipboardImageAsTempFile: saveCall
       }

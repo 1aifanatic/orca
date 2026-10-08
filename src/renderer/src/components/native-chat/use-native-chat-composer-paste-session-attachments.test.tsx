@@ -149,7 +149,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocks.readClipboardText.mockResolvedValue('')
   mocks.readClipboardImageThumbnail.mockResolvedValue(null)
-  mocks.clipboardHasImage.mockResolvedValue(false)
+  mocks.clipboardHasImage.mockResolvedValue(true)
   mocks.readClipboardFilePaths.mockResolvedValue([])
   mocks.prepareNativeChatSessionAttachmentUpload.mockResolvedValue({
     ok: true,

@@ -184,7 +184,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocks.readClipboardText.mockResolvedValue('')
   mocks.readClipboardImageThumbnail.mockResolvedValue(null)
-  mocks.clipboardHasImage.mockResolvedValue(false)
+  mocks.clipboardHasImage.mockResolvedValue(true)
   mocks.readClipboardFilePaths.mockResolvedValue([])
   mocks.saveClipboardImageAsTempFile.mockResolvedValue(null)
 })
@@ -430,8 +430,7 @@ describe('useNativeChatComposerPaste', () => {
   })
 
   it('still falls through to text when the clipboard holds no image', async () => {
-    mocks.readClipboardImageThumbnail.mockResolvedValue(null)
-    mocks.saveClipboardImageAsTempFile.mockResolvedValue(null)
+    mocks.clipboardHasImage.mockResolvedValue(false)
     mocks.readClipboardText.mockResolvedValue('hello')
     const insertTypedText = vi.fn()
     const store = createChipStore()
@@ -806,6 +805,7 @@ describe('file-manager copies', () => {
     })
 
     it('types the label when no image came with the files', async () => {
+      mocks.clipboardHasImage.mockResolvedValue(false)
       mocks.readClipboardText.mockResolvedValue('notes.txt')
       mocks.readClipboardFilePaths.mockResolvedValue(['/Users/me/notes.txt'])
       const insertTypedText = vi.fn(() => true)
