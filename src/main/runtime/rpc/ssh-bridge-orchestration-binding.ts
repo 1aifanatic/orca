@@ -8,14 +8,13 @@
  * mailboxes the caller's live pane reads, never to a Run it merely shares.
  */
 import { z } from 'zod'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import type { OrchestrationDb } from '../orchestration/db'
 import {
   resolveTerminalOwnedMailboxes,
   type TerminalOwnedMailboxes
 } from './methods/orchestration/messaging/terminal-owned-mailboxes'
-
-export type SshBridgeOrchestrationRuntime = OrcaRuntimeService
 
 const TERMINAL_CALLER_METHODS: ReadonlySet<string> = new Set([
   'orchestration.check',
@@ -31,14 +30,14 @@ export const SSH_BRIDGE_ORCHESTRATION_METHODS: ReadonlySet<string> = new Set([
 
 /** The refused subject, or null when the call stays inside the caller's own orchestration. */
 export async function findSshBridgeOrchestrationViolation(
-  runtime: SshBridgeOrchestrationRuntime,
-  isOwnTerminal: (handle: string) => Promise<boolean>,
+  runtime: OrcaRuntimeService,
+  hostId: ExecutionHostId,
   methodName: string,
   params: unknown
 ): Promise<string | null> {
   const callerKey = TERMINAL_CALLER_METHODS.has(methodName) ? 'terminal' : 'from'
   const caller = readStringParam(params, callerKey)
-  if (!caller || !(await isOwnTerminal(caller))) {
+  if (!caller || !(await isHostTerminal(runtime, hostId, caller))) {
     return `terminal '${caller ?? ''}'`
   }
   const paneKey = runtime.getTerminalPaneKey(caller) ?? undefined
@@ -83,11 +82,11 @@ export async function findSshBridgeOrchestrationViolation(
   if (
     !to ||
     (ownDispatch?.creator_handle && to === ownDispatch.creator_handle) ||
-    (await isOwnCanonicalRecipient(db, owned, isOwnTerminal, to))
+    (await isOwnCanonicalRecipient(db, owned, runtime, hostId, to))
   ) {
     return null
   }
-  return (await isOwnTerminal(to)) ? null : `recipient '${to}'`
+  return (await isHostTerminal(runtime, hostId, to)) ? null : `recipient '${to}'`
 }
 
 // A canonical address is in scope when it is the caller's own mailbox, the Run mailbox its held
@@ -95,7 +94,8 @@ export async function findSshBridgeOrchestrationViolation(
 async function isOwnCanonicalRecipient(
   db: OrchestrationDb,
   owned: TerminalOwnedMailboxes,
-  isOwnTerminal: (handle: string) => Promise<boolean>,
+  runtime: OrcaRuntimeService,
+  hostId: ExecutionHostId,
   to: string
 ): Promise<boolean> {
   if (owned.addresses.has(to) || (owned.dispatch && to === `run:${owned.dispatch.run_id}`)) {
@@ -108,8 +108,27 @@ async function isOwnCanonicalRecipient(
   return (
     dispatch?.run_id === owned.runId &&
     dispatch.assignee_handle !== null &&
-    (await isOwnTerminal(dispatch.assignee_handle))
+    (await isHostTerminal(runtime, hostId, dispatch.assignee_handle))
   )
+}
+
+export async function isHostTerminal(
+  runtime: OrcaRuntimeService,
+  hostId: ExecutionHostId,
+  handle: string
+): Promise<boolean> {
+  return (await resolveTerminalHost(runtime, handle)) === hostId
+}
+
+async function resolveTerminalHost(
+  runtime: OrcaRuntimeService,
+  handle: string
+): Promise<ExecutionHostId | null> {
+  try {
+    return (await runtime.showTerminal(handle)).executionHostId ?? null
+  } catch {
+    return null
+  }
 }
 
 function readPayloadDispatchId(params: unknown): string | null {

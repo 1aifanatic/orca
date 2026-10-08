@@ -7,11 +7,12 @@
  */
 import { MOBILE_RPC_METHOD_ALLOWLIST } from '../runtime-rpc/runtime-rpc-mobile-method-allowlist'
 import type { RpcMethodPermission, RuntimeDeviceGrant } from './rpc-method-permission'
+import type { OrcaRuntimeService } from '../orca-runtime'
 import {
   bindSshBridgeCall,
   SSH_BRIDGE_HOST_BOUND_METHODS,
-  type SshBridgeCallBinding,
-  type SshBridgeHostBindingRuntime
+  SSH_BRIDGE_REMOTE_CONTROL_HINT,
+  type SshBridgeCallBinding
 } from './ssh-bridge-host-binding'
 
 export type { RuntimeDeviceGrant }
@@ -68,7 +69,7 @@ export function denyRpcMethodForCaller(
   }
   return permission === 'workspace' && SSH_BRIDGE_HOST_BOUND_METHODS.has(methodName)
     ? null
-    : `Method '${methodName}' is not available to the orca CLI on SSH host '${scope.targetId}'. To let that host's CLI control this Orca, enable "Allow this host's orca CLI to control Orca" in Settings > SSH for that host.`
+    : `Method '${methodName}' is not available to the orca CLI on SSH host '${scope.targetId}'. ${SSH_BRIDGE_REMOTE_CONTROL_HINT}`
 }
 
 /**
@@ -77,7 +78,7 @@ export function denyRpcMethodForCaller(
  */
 export function bindRpcCallToCallerScope(
   scope: RpcCallerScope,
-  runtime: SshBridgeHostBindingRuntime,
+  runtime: OrcaRuntimeService,
   methodName: string,
   params: unknown
 ): Promise<SshBridgeCallBinding> | null {
