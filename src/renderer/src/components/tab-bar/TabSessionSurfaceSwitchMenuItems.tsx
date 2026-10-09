@@ -9,7 +9,6 @@ import { AiVaultSessionSurfaceSwitchMenuItems } from '../right-sidebar/AiVaultSe
 import { useAiVaultSessionLaunchActions } from '../right-sidebar/ai-vault-session-launch-actions'
 import {
   lookupTabSessionHistoryRow,
-  readCachedTabSessionHistoryRow,
   resolveTabSessionHistorySubject,
   resolveTabSessionSwitch,
   type TabSessionHistorySubject,
@@ -40,11 +39,8 @@ function useTabSessionSwitch(
       structuredSessionId
     })
   )
-  // The panel's cached list gives the first paint; the fresh answer below always replaces it,
-  // because chat ownership is projected per response and a cached row can predate a takeover.
-  const [resolved, setResolved] = useState<ResolvedTabSessionSwitch | null>(() =>
-    subject ? resolveMove(readCachedTabSessionHistoryRow(subject), subject) : null
-  )
+  // Only a fresh reply carries current chat ownership, so nothing is offered before it lands.
+  const [resolved, setResolved] = useState<ResolvedTabSessionSwitch | null>(null)
   useEffect(() => {
     if (!subject) {
       return

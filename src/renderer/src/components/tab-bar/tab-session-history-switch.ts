@@ -26,7 +26,6 @@ import { resolveAiVaultTargetWorkspacePath } from '../right-sidebar/ai-vault-ses
 import { resolveAiVaultSessionWorktreeDisplay } from '../right-sidebar/ai-vault-session-worktree'
 import {
   aiVaultSessionListArgs,
-  readCachedAiVaultSessionList,
   type AiVaultSessionListRequest
 } from '../right-sidebar/ai-vault-session-list-request'
 import { resolveAiVaultPanelSessionListRequest } from '../right-sidebar/ai-vault-panel-session-list-request'
@@ -164,17 +163,9 @@ export function resolveTabSessionSwitch(
     : null
 }
 
-/** The row as the panel last listed it, so a warm menu shows the move at first paint. */
-export function readCachedTabSessionHistoryRow(
-  subject: TabSessionHistorySubject
-): AiVaultSession | null {
-  const cached = readCachedAiVaultSessionList(subject.request)
-  const row = cached ? findTabSessionHistoryRow(cached.sessions, subject) : null
-  return row && isAiVaultSessionResumableContent(row) ? row : null
-}
-
-/** Reads the row through the panel's own list request. It only reads the panel's renderer cache:
- *  a write here would let a later-opened panel paint this pre-launch list without asking the host.
+/** Reads the row through the panel's own list request. It never uses the panel's renderer cache:
+ *  cached rows miss chat ownership the host projects per reply, and a write here would let a
+ *  later-opened panel paint this pre-launch list without asking the host.
  *  Resolves `undefined` when it got no answer (cancelled), as opposed to `null` for "no row". */
 export async function lookupTabSessionHistoryRow(
   subject: TabSessionHistorySubject,

@@ -194,19 +194,8 @@ describe('TabSessionSurfaceSwitchMenuItems', () => {
     expect(mocks.handleResumeInNewChat).toHaveBeenCalledWith(cliRow, 'wt-1')
   })
 
-  it("shows the move at first paint from the panel's cached list, then revalidates it", async () => {
-    cacheAiVaultSessionList(PANEL_REQUEST, listResult([CHAT_ROW]), { replaceHostEntries: false })
-    mocks.subject = CHAT_SUBJECT
-    mocks.move = { action: 'resume-in-new-cli', worktreeId: 'wt-1' }
-    renderItemsNow('orca-chat-1')
-
-    expect(screen.getByRole('menuitem', { name: 'Resume in New CLI' })).toBeTruthy()
-    await act(async () => {})
-    expect(mocks.listSessions).toHaveBeenCalledWith(expect.objectContaining({ force: undefined }))
-    expect(screen.getByRole('menuitem', { name: 'Resume in New CLI' })).toBeTruthy()
-  })
-
-  it('hides a cached move once the fresh list shows a chat has taken the conversation', async () => {
+  it('offers nothing before the fresh answer and never shows a stale cached row', async () => {
+    // The cached row predates a chat taking the conversation; only the fresh reply knows.
     const cliRow = { ...CHAT_ROW, structuredSession: undefined }
     cacheAiVaultSessionList(PANEL_REQUEST, listResult([cliRow]), { replaceHostEntries: false })
     mocks.listSessions.mockResolvedValue(listResult([CHAT_ROW]))
@@ -214,9 +203,20 @@ describe('TabSessionSurfaceSwitchMenuItems', () => {
     mocks.move = { action: 'resume-in-new-chat', worktreeId: 'wt-1' }
     renderItemsNow()
 
-    expect(screen.getByRole('menuitem', { name: 'Resume in New Native Chat' })).toBeTruthy()
-    await act(async () => {})
     expect(screen.queryByRole('menuitem')).toBeNull()
+    await act(async () => {})
+    expect(mocks.listSessions).toHaveBeenCalledWith(expect.objectContaining({ force: undefined }))
+    expect(screen.queryByRole('menuitem')).toBeNull()
+  })
+
+  it('offers the move once the fresh answer has it', async () => {
+    mocks.subject = CHAT_SUBJECT
+    mocks.move = { action: 'resume-in-new-cli', worktreeId: 'wt-1' }
+    renderItemsNow('orca-chat-1')
+
+    expect(screen.queryByRole('menuitem')).toBeNull()
+    await act(async () => {})
+    expect(screen.getByRole('menuitem', { name: 'Resume in New CLI' })).toBeTruthy()
   })
 
   it('ignores a lookup that settles after the menu closed', async () => {

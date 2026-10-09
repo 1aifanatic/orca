@@ -15,7 +15,6 @@ import {
 import {
   findTabSessionHistoryRow,
   lookupTabSessionHistoryRow,
-  readCachedTabSessionHistoryRow,
   resolveTabSessionHistorySubject,
   resolveTabSessionSwitch,
   type TabSessionHistorySubject
@@ -357,25 +356,5 @@ describe('lookupTabSessionHistoryRow', () => {
     ).resolves.toBeUndefined()
     expect(listSessions).toHaveBeenCalledTimes(1)
     expect(readCachedAiVaultSessionList(PANEL_REQUEST)).toBeNull()
-  })
-})
-
-describe('readCachedTabSessionHistoryRow', () => {
-  const cache = (sessions: AiVaultSession[]) =>
-    cacheAiVaultSessionList(
-      PANEL_REQUEST,
-      { sessions, issues: [], scannedAt: 'now' },
-      { replaceHostEntries: false }
-    )
-
-  it("answers from the panel's cached list", () => {
-    cache([row()])
-    expect(readCachedTabSessionHistoryRow(cliSubject)?.id).toBe('row-1')
-  })
-
-  it('needs a lookup when the cached row is missing or has no saved turns', () => {
-    expect(readCachedTabSessionHistoryRow(cliSubject)).toBeNull()
-    cache([row({ messageCount: 0, previewMessages: [] })])
-    expect(readCachedTabSessionHistoryRow(cliSubject)).toBeNull()
   })
 })
