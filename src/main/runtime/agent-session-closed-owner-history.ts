@@ -1,9 +1,7 @@
-import type Database from '../sqlite/sync-database'
 import type {
   AgentSessionDeathEvidence,
   AgentSessionRecord
 } from '../../shared/agent-session-record'
-import { readJournalSessionEpoch } from '../native-chat/agent-session-journal/journal-row-table'
 import { agentSessionClosedOwnerKey, closedAgentSessionOwner } from './agent-session-closed-owner'
 import type { AgentSessionStoreState } from './agent-session-store-state'
 import { agentSessionRuntimeIncarnation } from './agent-session-runtime-attribution'
@@ -44,8 +42,7 @@ export function retainAgentSessionClosedOwner(
 /** Captures every proof writer after runtime attribution, before the draft's rows are written. */
 export function captureAgentSessionClosedOwners(
   published: AgentSessionStoreState,
-  draft: AgentSessionStoreState,
-  db: Database.Database
+  draft: AgentSessionStoreState
 ): void {
   for (const [sessionId, record] of draft.records) {
     const before = published.records.get(sessionId)
@@ -68,23 +65,12 @@ export function captureAgentSessionClosedOwners(
       runtime && runtime !== agentSessionRuntimeIncarnation()
         ? draft.runtimeEnds?.get(runtime)
         : undefined
-    const epoch = readJournalSessionEpoch(db, fact.sessionId)
-    const sequence = epoch
-      ? (db
-          .prepare(
-            'SELECT MAX(seq) AS sequence FROM journal_rows WHERE session_id = ? AND epoch = ?'
-          )
-          .get(fact.sessionId, epoch)?.sequence ?? 0)
-      : undefined
-    draft.closedOwners.set(key, {
-      ...fact,
-      evidence:
-        fact.evidence.runtimeEnd === undefined &&
-        runtimeEnd &&
-        before?.lease.claimStatus !== 'conflicted'
-          ? { ...fact.evidence, runtimeEnd }
-          : fact.evidence,
-      journalBoundary: epoch && typeof sequence === 'number' ? { epoch, sequence } : null
-    })
+    if (
+      fact.evidence.runtimeEnd === undefined &&
+      runtimeEnd &&
+      before?.lease.claimStatus !== 'conflicted'
+    ) {
+      draft.closedOwners.set(key, { ...fact, evidence: { ...fact.evidence, runtimeEnd } })
+    }
   }
 }

@@ -16,15 +16,40 @@ function parsed(value: unknown): unknown {
   }
 }
 
+function closedOwnersTableExists(db: Database.Database): boolean {
+  return (
+    db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get('agent_session_closed_owners') !== undefined
+  )
+}
+
+/**
+ * Created at EVERY writable open with no `user_version` bump (see `ensureQueuedMessagesTable`), and
+ * run inside one transaction: no older build creates the table, so its absence is what says the
+ * one-time migration has not run. Running it again would bring back a fact a receipt retired.
+ */
+export function ensureAgentSessionClosedOwnersTable(db: Database.Database): void {
+  const migrated = closedOwnersTableExists(db)
+  db.exec(`
+CREATE TABLE IF NOT EXISTS agent_session_closed_owners (
+  owner_key  TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES agent_session_records(session_id) ON DELETE CASCADE,
+  fact_json  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS agent_session_closed_owners_session
+  ON agent_session_closed_owners (session_id);
+`)
+  if (!migrated) {
+    migrateAgentSessionClosedOwnerRows(db)
+  }
+}
+
 export function loadAgentSessionClosedOwnerRows(
   db: Database.Database
 ): Map<string, AgentSessionClosedOwner> {
   const facts = new Map<string, AgentSessionClosedOwner>()
-  if (
-    !db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
-      .get('agent_session_closed_owners')
-  ) {
+  if (!closedOwnersTableExists(db)) {
     return facts
   }
   for (const row of db
@@ -62,8 +87,8 @@ export function writeAgentSessionClosedOwnerRows(
   }
 }
 
-/** One-time schema migration: an older proof cannot recover a cleared process or past cutoff. */
-export function migrateAgentSessionClosedOwnerRows(db: Database.Database): void {
+/** An older proof cannot recover a cleared process or past cutoff. */
+function migrateAgentSessionClosedOwnerRows(db: Database.Database): void {
   for (const row of db.prepare('SELECT session_id, record_json FROM agent_session_records').all()) {
     const stored = parsed(row.record_json)
     if (!isPersistedAgentSessionRecord(stored) || stored.sessionId !== row.session_id) {

@@ -172,6 +172,8 @@ export const SQLITE_RUNTIME_INCLUDE = [
   'src/main/orcad/orcad-local-serve-selection.test.ts',
   'src/main/orcad/serve-profile-ssh-targets.test.ts',
   'src/main/pi/rpc-launch-resolution.test.ts',
+  'src/main/runtime/agent-session-closed-owner-acquisition.test.ts',
+  'src/main/runtime/agent-session-closed-owner-history.test.ts',
   'src/main/runtime/agent-session-conversation-clear-commit.test.ts',
   'src/main/runtime/agent-session-conversation-name-store.test.ts',
   'src/main/runtime/agent-session-death-evidence-persistence.test.ts',

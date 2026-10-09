@@ -10,7 +10,7 @@
 /** DB shape version, carried in `PRAGMA user_version`. Independent of the row body version
  *  (`JournalRow.v`): a newer build can change either alone. A newer version is opened read-only here
  *  and its chats are refused as a newer Orca's, so every change stays additive. */
-export const JOURNAL_DB_SCHEMA_VERSION = 5
+export const JOURNAL_DB_SCHEMA_VERSION = 4
 
 /** The first version a release wrote; 1 and 2 only ever came from development builds. */
 export const JOURNAL_DB_OLDEST_RELEASED_VERSION = 3
@@ -57,13 +57,6 @@ CREATE TABLE IF NOT EXISTS agent_session_records (
   session_id  TEXT PRIMARY KEY,
   record_json TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS agent_session_closed_owners (
-  owner_key  TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL REFERENCES agent_session_records(session_id) ON DELETE CASCADE,
-  fact_json  TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS agent_session_closed_owners_session
-  ON agent_session_closed_owners (session_id);
 CREATE TABLE IF NOT EXISTS agent_session_operations (
   operation_key TEXT PRIMARY KEY,
   row_json      TEXT NOT NULL

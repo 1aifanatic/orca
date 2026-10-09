@@ -194,8 +194,7 @@ describe('committed closed-owner facts', () => {
         deadOwnerFence: 7,
         location: original.location,
         process: { hostId: 'local', pid: 4242, processStartTimeMs: 1_700_000_000_000 },
-        evidence: { ownerFence: 7 },
-        journalBoundary: { epoch: 'epoch-1', sequence: 1 }
+        evidence: { ownerFence: 7 }
       })
       expect(fact.process).not.toHaveProperty('spawnToken')
       if ('path' in original.accountHome) {
@@ -492,37 +491,72 @@ describe('retiring a fact', () => {
 })
 
 describe('host schema and legacy proof migration', () => {
-  it('migrates an attributed old proof once, leaving unknown identity and boundary null', async () => {
-    await loadedOwner(
-      agentSessionRecordFixture(
-        agentSessionLeaseFixture({
-          claimStatus: 'released',
-          ownerProcess: null,
-          reservedSpawnToken: null,
-          runtimeFence: 8,
-          deathEvidence: { kind: 'pid-absent', detail: 'old proof', observedAt: NOW, ownerFence: 7 }
-        })
-      )
-    )
-    hostDatabase().db.exec('DROP TABLE agent_session_closed_owners')
-    hostDatabase().db.pragma('user_version = 4')
-    closeTestJournalHostDatabases()
-    const migrated = await openTestAgentSessionRecordStore(directory)
-    expect(hostDatabase().db.pragma('user_version', { simple: true })).toBe(5)
-    expect(requiredFact(migrated)).toMatchObject({
-      deadOwnerFence: 7,
-      process: null,
-      journalBoundary: null
+  const legacyProof = agentSessionRecordFixture(
+    agentSessionLeaseFixture({
+      claimStatus: 'released',
+      ownerProcess: null,
+      reservedSpawnToken: null,
+      runtimeFence: 8,
+      deathEvidence: { kind: 'pid-absent', detail: 'old proof', observedAt: NOW, ownerFence: 7 }
     })
+  )
+
+  /** A database a build without the closed-owner table wrote, at `userVersion`. */
+  async function databaseWithoutClosedOwners(
+    record: AgentSessionRecord,
+    userVersion = JOURNAL_DB_SCHEMA_VERSION
+  ): Promise<void> {
+    await seedTestAgentSessionRecordStore(directory, { records: [record] })
+    hostDatabase().db.exec('DROP TABLE agent_session_closed_owners')
+    hostDatabase().db.pragma(`user_version = ${userVersion}`)
+    closeTestJournalHostDatabases()
+  }
+
+  function closedOwnersTableExists(): boolean {
+    return (
+      hostDatabase()
+        .db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get('agent_session_closed_owners') !== undefined
+    )
+  }
+
+  it('migrates an attributed old proof once without changing the schema version', async () => {
+    await databaseWithoutClosedOwners(legacyProof)
+    const migrated = await openTestAgentSessionRecordStore(directory)
+    expect(hostDatabase().db.pragma('user_version', { simple: true })).toBe(
+      JOURNAL_DB_SCHEMA_VERSION
+    )
+    expect(requiredFact(migrated)).toMatchObject({ deadOwnerFence: 7, process: null })
     const receipt = migrated.closedOwnerReceipt(requiredFact(migrated))
     hostDatabase().transaction(receipt.write)
     receipt.committed()
     closeTestJournalHostDatabases()
-    expect((await openTestAgentSessionRecordStore(directory)).closedOwners(SESSION)).toEqual([])
+    // The old proof is still on the lease; a second migration would bring the retired fact back.
+    const reopened = await openTestAgentSessionRecordStore(directory)
+    expect(requiredRecord(reopened).lease.deathEvidence?.ownerFence).toBe(7)
+    expect(reopened.closedOwners(SESSION)).toEqual([])
+    expect(factCount()).toBe(0)
+  })
+
+  it('never migrates into a table that already exists', async () => {
+    await seedTestAgentSessionRecordStore(directory, { records: [legacyProof] })
+    expect(closedOwnersTableExists()).toBe(true)
+    closeTestJournalHostDatabases()
+    const store = await openTestAgentSessionRecordStore(directory)
+    expect(store.closedOwners(SESSION)).toEqual([])
+    expect(factCount()).toBe(0)
+  })
+
+  it('neither creates nor migrates on a read-only open of a newer schema', async () => {
+    await databaseWithoutClosedOwners(legacyProof, JOURNAL_DB_SCHEMA_VERSION + 1)
+    const olderHost = await openTestAgentSessionRecordStore(directory)
+    expect(olderHost.readOnly).toBe(true)
+    expect(olderHost.closedOwners(SESSION)).toEqual([])
+    expect(closedOwnersTableExists()).toBe(false)
   })
 
   it('leaves legacy evidence without a named generation alone', async () => {
-    await loadedOwner(
+    await databaseWithoutClosedOwners(
       agentSessionRecordFixture(
         agentSessionLeaseFixture({
           claimStatus: 'released',
@@ -532,9 +566,6 @@ describe('host schema and legacy proof migration', () => {
         })
       )
     )
-    hostDatabase().db.exec('DROP TABLE agent_session_closed_owners')
-    hostDatabase().db.pragma('user_version = 4')
-    closeTestJournalHostDatabases()
     const store = await openTestAgentSessionRecordStore(directory)
     expect(store.closedOwners(SESSION)).toEqual([])
     expect(requiredRecord(store).lease.deathEvidence?.detail).toBe('unknown owner')

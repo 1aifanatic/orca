@@ -8,7 +8,6 @@
 // the async boundary every awaiting caller was written against.
 
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
-import type Database from '../sqlite/sync-database'
 import type { JournalOperationReceipt } from '../native-chat/agent-session-journal/journal-row-writer'
 import { journalOpenRefusalError } from '../native-chat/agent-session-journal/journal-open-failure'
 import { AgentSessionJournalError } from '../native-chat/agent-session-journal/journal-write-guards'
@@ -142,7 +141,7 @@ export class AgentSessionStoreTransactions {
         if (this.journalDatabase.readOnly) {
           throw readOnlyStoreRefusal()
         }
-        staged = this.stage(apply, db)
+        staged = this.stage(apply, true)
         const writes = staged.writes
         if (writes) {
           writeAgentSessionStoreRows(db, writes)
@@ -160,29 +159,26 @@ export class AgentSessionStoreTransactions {
     if (readOnly && !inMemoryWhenReadOnly) {
       throw readOnlyStoreRefusal()
     }
-    const staged = readOnly
-      ? this.stage(apply)
-      : this.journalDatabase.transaction((db) => {
-          const transaction = this.stage(apply, db)
-          if (transaction.writes) {
-            writeAgentSessionStoreRows(db, transaction.writes)
-          }
-          return transaction
-        })
+    const staged = this.stage(apply, !readOnly)
+    const writes = staged.writes
+    if (writes && !readOnly) {
+      this.journalDatabase.transaction((db) => writeAgentSessionStoreRows(db, writes))
+    }
     staged.adopt()
     return staged.result
   }
 
+  /** Only a write that lands records closed owners: a read-only verdict lives in memory only. */
   private stage<T>(
     apply: (draft: AgentSessionStoreState) => T,
-    db?: Database.Database
+    persisted: boolean
   ): StagedStoreTransaction<T> {
     const published = this.published
     const draft = draftAgentSessionStoreState(published)
     const result = apply(draft)
     attributeAgentSessionRuntime(published, draft)
-    if (db) {
-      captureAgentSessionClosedOwners(published, draft, db)
+    if (persisted) {
+      captureAgentSessionClosedOwners(published, draft)
     }
     const writes = agentSessionStoreDraftRowWrites(published, draft)
     return {

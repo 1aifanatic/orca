@@ -329,7 +329,7 @@ export class AgentSessionRecordStore {
   operationOutcomeReceipt = (args: AgentSessionOperationSettlement): JournalOperationReceipt =>
     this.transactions.receipt((draft) => settleAgentSessionOperationInto(draft, args))
 
-  /** Retires a past ownership fact in the same transaction as the journal result it describes. */
+  /** Retires a closed owner in the same transaction as the journal write that settles its work. */
   closedOwnerReceipt = (fact: AgentSessionClosedOwner): JournalOperationReceipt =>
     this.transactions.receipt((draft) => {
       draft.closedOwners.delete(agentSessionClosedOwnerKey(fact))

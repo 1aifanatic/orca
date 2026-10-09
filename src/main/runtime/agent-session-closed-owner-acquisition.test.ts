@@ -94,8 +94,7 @@ describe('closed-owner proofs during failed acquisition', () => {
         expect.objectContaining({
           deadOwnerFence: fence,
           evidence: expect.objectContaining({ ownerFence: fence }),
-          process: exitProof === 'processless' ? null : expect.objectContaining({ pid: 4242 }),
-          journalBoundary: null
+          process: exitProof === 'processless' ? null : expect.objectContaining({ pid: 4242 })
         })
       ])
       expect((await openTestAgentSessionRecordStore(directory)).closedOwners(SESSION)).toEqual(

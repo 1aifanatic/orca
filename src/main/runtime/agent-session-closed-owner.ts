@@ -1,4 +1,3 @@
-import type { AgentJournalCursor } from '../../shared/agent-session-journal-types'
 import {
   agentSessionScopeKey,
   isAgentSessionDeathEvidence,
@@ -10,7 +9,8 @@ import {
   type AgentSessionRecord
 } from '../../shared/agent-session-record'
 
-/** A past ownership fact, scoped to its execution host; never an outstanding cleanup flag. */
+/** A proven-ended owner generation whose leftover work is not yet settled, scoped to its execution
+ *  host; it dies with its settlement's journal commit (receipt) or its chat record. */
 export type AgentSessionClosedOwner = {
   schemaVersion: 1
   sessionId: string
@@ -18,7 +18,6 @@ export type AgentSessionClosedOwner = {
   deadOwnerFence: number
   evidence: AgentSessionDeathEvidence & { ownerFence: number }
   process: Omit<AgentSessionProcessIdentity, 'spawnToken'> | null
-  journalBoundary: AgentJournalCursor | null
 }
 
 export function agentSessionClosedOwnerKey(
@@ -66,8 +65,7 @@ export function closedAgentSessionOwner(
           processStartTimeMs: owner.processStartTimeMs,
           ...(owner.runtime ? { runtime: owner.runtime } : {})
         }
-      : null,
-    journalBoundary: null
+      : null
   }
 }
 
@@ -97,17 +95,6 @@ function isClosedOwnerProcess(value: unknown): value is AgentSessionClosedOwner[
   )
 }
 
-function isJournalBoundary(value: unknown): value is AgentJournalCursor | null {
-  return (
-    value === null ||
-    (typeof value === 'object' &&
-      'epoch' in value &&
-      bounded(value.epoch) &&
-      'sequence' in value &&
-      natural(value.sequence))
-  )
-}
-
 export function isReadableAgentSessionClosedOwner(
   key: string,
   value: unknown
@@ -128,8 +115,6 @@ export function isReadableAgentSessionClosedOwner(
     value.evidence.ownerFence === value.deadOwnerFence &&
     'process' in value &&
     isClosedOwnerProcess(value.process) &&
-    'journalBoundary' in value &&
-    isJournalBoundary(value.journalBoundary) &&
     key ===
       agentSessionClosedOwnerKey({
         sessionId: value.sessionId,
