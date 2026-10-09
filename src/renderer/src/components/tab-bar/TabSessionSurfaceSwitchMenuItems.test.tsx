@@ -136,6 +136,7 @@ function renderItemsNow(structuredSessionId?: string): void {
           <TabSessionSurfaceSwitchMenuItems
             tab={{ id: 'tab-1', worktreeId: 'wt-1', launchAgent: 'claude' }}
             structuredSessionId={structuredSessionId}
+            leadingSeparator
           />
         </DropdownMenuContent>
       </DropdownMenu>

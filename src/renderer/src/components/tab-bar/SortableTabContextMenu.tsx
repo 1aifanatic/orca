@@ -1,5 +1,4 @@
 import {
-  MessageSquare,
   PanelLeftClose,
   PanelRightClose,
   Pin,
@@ -154,6 +153,9 @@ export function SortableTabContextMenu({
 
   const closeShortcut = useOptionalShortcutLabel('tab.close')
   const renameShortcut = useOptionalShortcutLabel('tab.rename')
+  // Why: switching a tab into chat view is hidden while that toggle is removed; a tab already in
+  // chat view keeps its way back.
+  const showTerminalViewSwitch = canToggleViewMode && isChatView && onToggleViewMode !== undefined
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
@@ -176,27 +178,23 @@ export function SortableTabContextMenu({
           splitDownShortcut={splitDownShortcut}
           showTerminalSplit={canSplitTerminal}
         />
-        {canToggleViewMode && onToggleViewMode ? (
+        {showTerminalViewSwitch ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onToggleViewMode}>
-              {isChatView ? (
-                <SquareTerminal className="size-3.5 shrink-0" />
-              ) : (
-                <MessageSquare className="size-3.5 shrink-0" />
+              <SquareTerminal className="size-3.5 shrink-0" />
+              {translate(
+                'components.tab.bar.SortableTabContextMenu.switchToTerminalView',
+                'Switch to terminal view'
               )}
-              {isChatView
-                ? translate(
-                    'components.tab.bar.SortableTabContextMenu.switchToTerminalView',
-                    'Switch to terminal view'
-                  )
-                : translate(
-                    'components.tab.bar.SortableTabContextMenu.switchToChatView',
-                    'Switch to chat view'
-                  )}
             </DropdownMenuItem>
           </>
         ) : null}
+        <TabSessionSurfaceSwitchMenuItems
+          tab={tab}
+          structuredSessionId={structuredSessionId}
+          leadingSeparator={!showTerminalViewSwitch}
+        />
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onTogglePin}>
           {isPinned ? (
@@ -266,8 +264,6 @@ export function SortableTabContextMenu({
             })}
           </div>
         </div>
-        {/* Last, so an item that appears after its lookup shifts nothing the pointer is aiming at. */}
-        <TabSessionSurfaceSwitchMenuItems tab={tab} structuredSessionId={structuredSessionId} />
       </DropdownMenuContent>
     </DropdownMenu>
   )

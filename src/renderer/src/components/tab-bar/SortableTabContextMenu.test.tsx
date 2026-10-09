@@ -77,15 +77,18 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('./TabSessionSurfaceSwitchMenuItems', () => ({
   TabSessionSurfaceSwitchMenuItems: ({
     tab,
-    structuredSessionId
+    structuredSessionId,
+    leadingSeparator
   }: {
     tab: { id: string }
     structuredSessionId?: string
+    leadingSeparator: boolean
   }) => (
     <div
       data-testid="session-surface-switch"
       data-tab-id={tab.id}
       data-structured-session-id={structuredSessionId ?? ''}
+      data-leading-separator={String(leadingSeparator)}
     />
   )
 }))
@@ -241,29 +244,41 @@ describe('SortableTabContextMenu', () => {
     expect(container.textContent).not.toContain('Switch to chat view')
   })
 
-  // It can appear after its lookup settles, so it goes where it shifts nothing the pointer aims at.
-  it('offers the session-history chat/CLI move last, after the tab color row', () => {
+  it('hides switching a terminal-view tab into chat view', () => {
+    const { container } = renderMenu({ canToggleViewMode: true, onToggleViewMode: vi.fn() })
+
+    expect(container.textContent).not.toContain('Switch to chat view')
+  })
+
+  it('keeps the way back for a tab already in chat view, in the chat/CLI move section', () => {
+    const onToggleViewMode = vi.fn()
+    const { container } = renderMenu({
+      canToggleViewMode: true,
+      isChatView: true,
+      onToggleViewMode
+    })
+    const marker = getSurfaceSwitchMarker(container)
+
+    expect(getButton(container, 'Switch to terminal view').compareDocumentPosition(marker)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(marker.getAttribute('data-leading-separator')).toBe('false')
+    act(() => getButton(container, 'Switch to terminal view').click())
+    expect(onToggleViewMode).toHaveBeenCalled()
+  })
+
+  it('offers the session-history chat/CLI move right above Pin Tab', () => {
     const { container } = renderMenu({ structuredSessionId: 'orca-chat-1' })
     const marker = getSurfaceSwitchMarker(container)
 
     expect(marker.getAttribute('data-tab-id')).toBe('term-1')
     expect(marker.getAttribute('data-structured-session-id')).toBe('orca-chat-1')
-    expect(marker.parentElement?.lastElementChild).toBe(marker)
-    expect(getButton(container, 'Change Title').compareDocumentPosition(marker)).toBe(
+    expect(marker.getAttribute('data-leading-separator')).toBe('true')
+    expect(getButton(container, 'Split terminal').compareDocumentPosition(marker)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     )
-  })
-
-  it('keeps the chat/CLI move last when the view switch is shown', () => {
-    const { container } = renderMenu({
-      canToggleViewMode: true,
-      onToggleViewMode: vi.fn()
-    })
-    const marker = getSurfaceSwitchMarker(container)
-
-    expect(marker.parentElement?.lastElementChild).toBe(marker)
-    expect(marker.compareDocumentPosition(getButton(container, 'Switch to chat view'))).toBe(
-      Node.DOCUMENT_POSITION_PRECEDING
+    expect(marker.compareDocumentPosition(getButton(container, 'Pin Tab'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
     )
   })
 

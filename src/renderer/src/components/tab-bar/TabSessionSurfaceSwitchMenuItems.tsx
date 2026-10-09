@@ -70,10 +70,12 @@ function useTabSessionSwitch(
  *  that shows that session and hidden wherever the row would not offer it. */
 export function TabSessionSurfaceSwitchMenuItems({
   tab,
-  structuredSessionId
+  structuredSessionId,
+  leadingSeparator
 }: {
   tab: Pick<TerminalTab, 'id' | 'worktreeId' | 'launchAgent'>
   structuredSessionId?: string
+  leadingSeparator: boolean
 }): React.JSX.Element | null {
   const resolved = useTabSessionSwitch(tab, structuredSessionId)
   const targetState = useAppStore(
@@ -98,7 +100,7 @@ export function TabSessionSurfaceSwitchMenuItems({
   const { session, move } = resolved
   return (
     <>
-      <DropdownMenuSeparator />
+      {leadingSeparator ? <DropdownMenuSeparator /> : null}
       <AiVaultSessionSurfaceSwitchMenuItems
         menuKind="dropdown"
         tooltipSide="right"
