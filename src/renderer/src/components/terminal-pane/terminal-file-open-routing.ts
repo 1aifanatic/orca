@@ -23,6 +23,7 @@ import {
   type ExecutionHostId
 } from '../../../../shared/execution-host'
 import { statUserOpenedPath } from '@/lib/user-opened-local-path'
+import { isFloatingWorkspaceId } from '../../../../shared/floating-workspace-worktree'
 
 export type FileOpenFailure = {
   /** `missing` is a verified absence; `unverifiable` means the host could not answer (dropped SSH, timeout, denied path). */
@@ -241,6 +242,7 @@ export function openDetectedFilePath(
         relativePath = maybeRelative
       }
     } else if (
+      !isFloatingWorkspaceId(worktreeId) &&
       store.openFiles.some(
         (openFile) => openFile.filePath === mappedFilePath && openFile.worktreeId !== worktreeId
       )
