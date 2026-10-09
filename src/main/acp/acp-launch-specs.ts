@@ -111,12 +111,12 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
         : undefined,
   account: directoryAccountBinding('GROK_HOME', (homePath) => join(homePath, '.grok')),
   installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : []),
-  // Grok computes its model state in `initialize`, before and without any session.
-  // With no session, Grok's `currentModelId` is the account's configured model.
+  // Grok lists its models in `initialize`, before and without any session. Its `currentModelId`
+  // there can differ from what a session runs, so a chat started with no pick names the default.
   modelDiscovery: {
     kind: 'initialize',
     read: readGrokModelCatalog,
-    listingNamesConfiguredModel: true
+    listingNamesConfiguredModel: false
   },
   visualsSkill: loadGrokVisualsSkill
 }
@@ -152,7 +152,7 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
     kind: 'command',
     args: OPENCODE_MODEL_LISTING_ARGS,
     parse: parseOpenCodeModelListing,
-    // The listing marks no default, and a project's `opencode.json` may pick the model.
+    // The listing marks no default; a chat started with no pick names it.
     listingNamesConfiguredModel: false
   },
   visualsSkill: loadOpenCodeVisualsSkill

@@ -63,15 +63,20 @@ export type AgentModelCatalogConfiguredDefault = {
   at: number
 }
 
-/** A live options answer whose model rows are the account's listing as the child reported it. */
+/** A live options answer whose model rows are the account's listing as the child reported it,
+ *  with what its no-pick launch resolved when the session can say. */
 export function withLiveCatalogListing<
   T extends Pick<AgentModelCatalogLiveListing, 'models' | 'fastModeSupport'>
->(options: T): T & { catalogListing: AgentModelCatalogLiveListing } {
+>(
+  options: T,
+  configuredDefault?: AgentModelCatalogConfiguredChoice | null
+): T & { catalogListing: AgentModelCatalogLiveListing } {
   return {
     ...options,
     catalogListing: {
       models: options.models,
-      ...(options.fastModeSupport ? { fastModeSupport: options.fastModeSupport } : {})
+      ...(options.fastModeSupport ? { fastModeSupport: options.fastModeSupport } : {}),
+      ...(configuredDefault !== undefined ? { configuredDefault } : {})
     }
   }
 }

@@ -212,6 +212,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     if (!write) {
       throw new Error(`${session.spec.agent} offers no session option named ${input.key}`)
     }
+    session.options.notePick(input.key)
     // Bounded, and abandoned by a close or Stop: the session's queue waits on it.
     await writeAcpSessionOption(session.connection, session.options, write, {
       agent: session.spec.agent,
@@ -221,8 +222,10 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     return session.options.reported()
   }
 
-  readOptions = async (input: { sessionId: string; fence: number }) =>
-    withLiveCatalogListing(this.live(input.sessionId).options.read())
+  readOptions = async (input: { sessionId: string; fence: number }) => {
+    const { options } = this.live(input.sessionId)
+    return withLiveCatalogListing(options.read(), options.configuredDefault())
+  }
 
   readOptionRestoreFailures = (sessionId: string): readonly string[] =>
     this.sessions.get(sessionId)?.restoreSkipped ?? []

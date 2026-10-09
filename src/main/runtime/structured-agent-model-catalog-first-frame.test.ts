@@ -55,7 +55,7 @@ const GROK_EFFORT_META = {
   ]
 }
 
-// What Grok's `initialize` reports with no session: `currentModelId` is the configured model.
+// What Grok's `initialize` reports with no session; its `currentModelId` names no default.
 const GROK_LISTING = grokModelCatalogFromState({
   currentModelId: 'grok-4',
   availableModels: [
@@ -129,15 +129,13 @@ async function newChatFirstFrame(
 }
 
 describe('a new chat’s first frame from the host catalog', () => {
-  it('names a warm Grok account’s configured model and shows its effort pill', async () => {
+  it('lists a warm Grok account’s models without naming the one `initialize` computed', async () => {
     const catalog = service(new AgentModelCatalogStore(), { grok: GROK_LISTING })
-    // A workspace path is checked too: Grok's default model has no project-level config.
-    const { host, state, model, effort } = await newChatFirstFrame(catalog, 'grok', '/repo')
-    expect(host).toMatchObject({ origin: 'probe', listingNamesConfiguredModel: true })
-    expect(model?.currentValue).toBe('grok-4')
-    expect(effort?.choices.map((choice) => choice.value)).toEqual(['low', 'high'])
-    expect(effort?.currentValue).toBe('high')
-    // Shown as what the launch runs, never stored as a pick the next launch replays.
+    const { host, state, model } = await newChatFirstFrame(catalog, 'grok', '/repo')
+    // A session can run another model; a chat started with no pick names the default instead.
+    expect(host).toMatchObject({ origin: 'probe', listingNamesConfiguredModel: false })
+    expect(model?.choices.map((choice) => choice.value)).toEqual(['grok-4', 'grok-3-mini'])
+    expect(model?.currentValue).toBeUndefined()
     expect(state.record.model).toBeUndefined()
   })
 
@@ -189,9 +187,9 @@ describe('a running chat’s listing, saved for the next chat', () => {
       'grok-3-mini',
       'grok-code'
     ])
-    // The account's configured model is still the default, not the one the session picked.
-    expect(model?.currentValue).toBe('grok-4')
-    expect(effort?.currentValue).toBe('high')
+    // A loaded session's model is its own, never the account's default.
+    expect(model?.currentValue).toBeUndefined()
+    expect(effort).toBeNull()
   })
 
   it('keeps per-model efforts a session only knows for the model it runs', async () => {

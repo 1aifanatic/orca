@@ -12,6 +12,7 @@ import { isAcpStructuredOptionKey } from './acp-structured-agent-definitions'
 import { AcpRpcError } from './acp-errors'
 import type { AcpStructuredConnection } from './acp-structured-connection'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
+import type { AgentModelCatalogConfiguredChoice } from '../native-chat/agent-model-catalog/agent-model-catalog-entry'
 import {
   SessionConfigSelectGroupSchema,
   SessionConfigSelectOptionSchema,
@@ -54,14 +55,26 @@ export class AcpStructuredOptions {
   private configOptions: SessionConfigOption[] = []
   private models: SessionModelState | null = null
   private commands: AgentSessionSlashCommand[] | undefined
+  // A loaded session keeps the model it ran; only a new one resolves the agent's own config.
+  private resolvesConfig = false
+  private readonly picked = new Set<string>()
 
   /** The session state a new, load or resume response reported. */
-  adoptSession(response: {
-    configOptions?: SessionConfigOption[] | null
-    models?: SessionModelState | null
-  }): void {
+  adoptSession(
+    response: {
+      configOptions?: SessionConfigOption[] | null
+      models?: SessionModelState | null
+    },
+    origin: 'new' | 'loaded' = 'loaded'
+  ): void {
     this.configOptions = response.configOptions ?? []
     this.models = response.models ?? null
+    this.resolvesConfig = origin === 'new'
+  }
+
+  /** Orca sent `key` to the session, or the chat's saved options hold a value for it. */
+  notePick(key: string): void {
+    this.picked.add(key)
   }
 
   adoptConfigOptions(configOptions: SessionConfigOption[] | null | undefined): void {
@@ -154,6 +167,27 @@ export class AcpStructuredOptions {
     }
   }
 
+  /** With no model sent since a new session began, what it runs is the agent's own config
+   *  resolution: that scope's configured default. Null when that names no listed model; undefined
+   *  when this session can't say. */
+  configuredDefault(): AgentModelCatalogConfiguredChoice | null | undefined {
+    if (!this.resolvesConfig || this.picked.has('model')) {
+      return undefined
+    }
+    const { models, current } = this.read()
+    if (!current.model) {
+      return undefined
+    }
+    if (!models.some((model) => model.id === current.model)) {
+      return null
+    }
+    return {
+      modelId: current.model,
+      // An effort this session picked is its own and says nothing of the config's.
+      ...(this.picked.has('effort') ? {} : { effort: current.effort ?? null })
+    }
+  }
+
   /** The values the agent reports now, as the record's options would name them. */
   reported(): Readonly<Record<string, string>> {
     const { current } = this.read()
@@ -220,8 +254,11 @@ export async function restoreAcpSessionOptions(
 ): Promise<string[]> {
   const skipped: string[] = []
   for (const [key, value] of Object.entries(saved ?? {})) {
-    const reported = options.reported()
-    if (!isAcpStructuredOptionKey(key) || reported[key] === value) {
+    if (!isAcpStructuredOptionKey(key)) {
+      continue
+    }
+    options.notePick(key)
+    if (options.reported()[key] === value) {
       continue
     }
     const write = options.write(key, value)

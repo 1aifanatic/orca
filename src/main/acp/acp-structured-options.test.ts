@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AcpStructuredOptions } from './acp-structured-options'
+import { AcpStructuredOptions, restoreAcpSessionOptions } from './acp-structured-options'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
 
 const configOptions = [
@@ -116,5 +116,47 @@ describe('ACP session options', () => {
       { value: 'high', label: 'High' }
     ])
     expect(modelB?.defaultEffort).toBeUndefined()
+  })
+})
+
+describe('what a new session with no pick says about the configured default', () => {
+  const connection = {
+    setConfigOption: async () => ({ configOptions }),
+    setModel: async () => ({})
+  }
+
+  it('is the model and effort the agent chose for itself', () => {
+    const options = new AcpStructuredOptions()
+    options.adoptSession({ configOptions }, 'new')
+    expect(options.configuredDefault()).toEqual({ modelId: 'model-b', effort: 'high' })
+  })
+
+  it('says nothing of a loaded session, which keeps the model it ran', () => {
+    const options = new AcpStructuredOptions()
+    options.adoptSession({ configOptions })
+    expect(options.configuredDefault()).toBeUndefined()
+  })
+
+  it('says nothing once the chat holds a model pick, even one the session already runs', async () => {
+    const options = new AcpStructuredOptions()
+    options.adoptSession({ configOptions }, 'new')
+    await restoreAcpSessionOptions(connection, options, { model: 'model-b' })
+    expect(options.configuredDefault()).toBeUndefined()
+  })
+
+  it('keeps the model but not an effort the chat picked', async () => {
+    const options = new AcpStructuredOptions()
+    options.adoptSession({ configOptions }, 'new')
+    await restoreAcpSessionOptions(connection, options, { effort: 'low' })
+    expect(options.configuredDefault()).toEqual({ modelId: 'model-b' })
+  })
+
+  it('retires a saved default when the session runs a model it does not list', () => {
+    const options = new AcpStructuredOptions()
+    options.adoptSession(
+      { configOptions: [{ ...configOptions[0]!, currentValue: 'model-z' }] },
+      'new'
+    )
+    expect(options.configuredDefault()).toBeNull()
   })
 })

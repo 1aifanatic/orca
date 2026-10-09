@@ -36,11 +36,12 @@ export type AgentModelCatalogServiceDeps = {
   recordWorkspacePath?: (record: AgentSessionRecord) => Promise<string | null>
   /** False for an agent whose model no project config can pick; its default holds everywhere. */
   agentReadsProjectModelConfig?: (agent: string) => boolean
-  /** Whether the workspace's own config could pick a model other than the listed default. */
+  /** Whether the workspace's own config could pick a model other than the listed default;
+   *  `accountHomePath` is the agent's own home folder, which is account config, not a layer. */
   workspaceMayOverrideDefaultModel?: (input: {
     agent: string
     workspacePath: string
-    accountHomePath: string
+    accountHomePath: string | null
   }) => Promise<boolean>
   /** Whether this host keeps any chat of the agent; with a saved catalog, what marks it in use. */
   hasChatRecords?: (agent: string) => boolean
@@ -104,7 +105,7 @@ async function workspaceKeepsListedDefault(
   if (workspacePath === undefined) {
     return true
   }
-  if (workspacePath === null || !accountHomePath || !deps.workspaceMayOverrideDefaultModel) {
+  if (workspacePath === null || !deps.workspaceMayOverrideDefaultModel) {
     return false
   }
   try {
@@ -143,7 +144,6 @@ async function recordConfiguredDefault(
   const accountHome = record.accountHome
   if (
     record.location.wslDistro !== null ||
-    !isLegacyAgentSessionAccountHome(accountHome) ||
     !deps.recordWorkspacePath ||
     !deps.workspaceMayOverrideDefaultModel
   ) {
@@ -155,7 +155,7 @@ async function recordConfiguredDefault(
     (await deps.workspaceMayOverrideDefaultModel({
       agent: record.provider,
       workspacePath,
-      accountHomePath: accountHome.path
+      accountHomePath: isLegacyAgentSessionAccountHome(accountHome) ? accountHome.path : null
     }))
   ) {
     return
@@ -195,6 +195,9 @@ export function createAgentModelCatalogService(
 ): AgentModelCatalogService {
   // One per host: stopping it ends every listing this service started.
   const lifetime = new AbortController()
+  // A chat's configured default still being checked against its workspace, per catalog: a read
+  // answers after it, so the chat that reported it is followed by an answer naming it.
+  const recordingDefaults = new Map<string, Promise<void>>()
   const listWith =
     (probe: AgentModelCatalogProbe, home: AgentSessionAccountHome) =>
     (): Promise<AgentModelCatalogSuccess> =>
@@ -228,6 +231,7 @@ export function createAgentModelCatalogService(
       }
       const accountHomePath =
         probeHome && isLegacyAgentSessionAccountHome(probeHome) ? probeHome.path : null
+      await recordingDefaults.get(fingerprint)
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
       const home = probeHome
@@ -309,7 +313,16 @@ export function createAgentModelCatalogService(
         'live'
       )
       if (saved && configuredDefault !== undefined) {
-        void recordConfiguredDefault(deps, record, fingerprint, configuredDefault).catch(() => {})
+        // In report order, so the latest chat's resolution is the one kept.
+        const recording = (recordingDefaults.get(fingerprint) ?? Promise.resolve())
+          .then(() => recordConfiguredDefault(deps, record, fingerprint, configuredDefault))
+          .catch(() => {})
+          .then(() => {
+            if (recordingDefaults.get(fingerprint) === recording) {
+              recordingDefaults.delete(fingerprint)
+            }
+          })
+        recordingDefaults.set(fingerprint, recording)
       }
     },
     async prewarm() {

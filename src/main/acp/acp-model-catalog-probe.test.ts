@@ -108,7 +108,8 @@ describe('ACP model catalog probes', () => {
       {
         id: 'grok-build',
         label: 'Grok Build',
-        isDefault: true,
+        // `initialize`'s currentModelId is not what a session runs, so it names no default.
+        isDefault: false,
         // Grok's option ids, which its effort config option takes, and its own default only.
         efforts: [
           { value: 'fast', label: 'Fast' },

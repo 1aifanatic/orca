@@ -1,5 +1,5 @@
 // Grok's own model facts: the per-model effort menu it writes in each model's `_meta`, and the
-// model state it computes during `initialize` (or serves from `x.ai/models/list`) with no session.
+// models it lists during `initialize` (or serves from `x.ai/models/list`) with no session.
 
 import { z } from 'zod'
 import type {
@@ -90,13 +90,14 @@ export function grokModelEfforts(model: Pick<ModelInfo, '_meta'>): {
   return { efforts, ...(defaultEffort ? { defaultEffort } : {}) }
 }
 
-/** With no session, `currentModelId` is the account's configured model, so it is the default. */
+/** Names no default: a session's own model can differ from the `currentModelId` computed without
+ *  one (Grok resolves its default from remote config too), so a no-pick chat reports it instead. */
 export function grokModelCatalogFromState(state: SessionModelState): AgentSessionModelOption[] {
   return state.availableModels.map((model) => ({
     id: model.modelId,
     label: model.name,
     ...(model.description ? { description: model.description } : {}),
-    isDefault: model.modelId === state.currentModelId,
+    isDefault: false,
     ...grokModelEfforts(model)
   }))
 }

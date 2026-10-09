@@ -258,7 +258,7 @@ export async function acquireAcpStructuredSession(input: {
       started = await connection.start({ cwd: launch.cwd, mcpServers: [], ...auth })
       liveLane = makeLane(started.sessionId)
     }
-    options.adoptSession(started.response)
+    options.adoptSession(started.response, started.kind === 'new' ? 'new' : 'loaded')
     liveLane.apply(liveLane.translator.contextModels(started.response.models, now()))
     const restoreSkipped = await restoreAcpSessionOptions(connection, options, acquire.options)
     const process = await identity.read(pid)

@@ -76,8 +76,9 @@ describe('the model catalog contract on every registration', () => {
       STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
       context()
     )
-    // Codex's `model/list` and Grok's session-free `currentModelId` name it; the rest may be overridden.
-    expect([...listingNamesConfiguredModel].sort()).toEqual(['codex', 'grok'])
+    // Codex's `model/list` names it. Grok's session-free `currentModelId` can differ from what a
+    // session runs, so Grok, like the rest, learns it from a chat with no pick.
+    expect([...listingNamesConfiguredModel].sort()).toEqual(['codex'])
   })
 
   it('maps an ACP agent with no session-free listing to an unavailable registration', () => {
