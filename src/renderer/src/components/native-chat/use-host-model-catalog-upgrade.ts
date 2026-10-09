@@ -36,10 +36,11 @@ import {
  * When the host says its first listing for the account is running, one more
  * read waits for it — one per chat, joined by every later run and remount.
  * Reports that wait, and why the host's latest answer says no chat can start
- * (kept until the next answer replaces it; a failed read is unknown). Only
- * while it says so, the window gaining focus or a turn starting or ending
- * reads again: the host pushes no change, the fix (signing in, installing)
- * happens elsewhere, and a started chat makes the host re-check.
+ * (kept until the next answer replaces it; a failed read is unknown). The
+ * chat's agent starting or stopping reads again; only while a reason is said,
+ * the window gaining focus or a turn starting or ending does too: the host
+ * pushes no change, the fix (signing in, installing) happens elsewhere, and a
+ * started chat makes the host re-check.
  */
 export function useHostModelCatalogUpgrade(args: {
   agent: AgentType
@@ -55,6 +56,8 @@ export function useHostModelCatalogUpgrade(args: {
   fence: number | null
   /** The chat's running turn: one running proves its start, which the host re-checks against. */
   turnId?: string | null
+  /** The host runs the chat's agent: a reason its start gave ends with it. */
+  providerRunning?: boolean
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
@@ -85,6 +88,9 @@ export function useHostModelCatalogUpgrade(args: {
   const recheck = useCallback(() => setRereads((count) => count + 1), [])
   const said = unavailable !== null
   const turnWhileSaid = said ? (args.turnId ?? null) : null
+  // A reason the agent's own start gave ends with that agent: its start or stop reads again,
+  // dropping an answer read before it.
+  const running = args.providerRunning === true
   useEffect(() => {
     if (!said) {
       return
@@ -163,6 +169,7 @@ export function useHostModelCatalogUpgrade(args: {
     namesDefault,
     optionCatalog,
     rereads,
+    running,
     sessionId,
     turnWhileSaid,
     target,

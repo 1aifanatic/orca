@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
+import type { AgentSessionUnavailable } from '../../shared/agent-session-availability'
 import { agentSessionFailureFact } from '../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
 import {
@@ -232,6 +233,17 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
   }
   holdsDispatch(id: string): boolean {
     return this.sessions.get(id)?.turns.holdsDispatch ?? false
+  }
+  /** Started with no model listed: Pi keeps a placeholder, so every prompt this child takes fails
+   *  as not signed in, even after a sign-in, which only a new Pi reads. */
+  startUnavailable(id: string): AgentSessionUnavailable | undefined {
+    const session = this.sessions.get(id)
+    return session &&
+      !session.connection.closed &&
+      session.connection.rootVerdict !== 'exited' &&
+      session.options?.models.length === 0
+      ? { reason: 'notSignedIn' }
+      : undefined
   }
 
   async closeSession(id: string, requested = true): Promise<boolean> {
