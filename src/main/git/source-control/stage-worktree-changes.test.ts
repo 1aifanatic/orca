@@ -180,6 +180,53 @@ describe('stageWorktreeChanges', () => {
       ])
     })
 
+    // Why these spellings: the Shared Paths setting saves them as typed, and git prints neither.
+    describe.each(['./node_modules', 'node_modules/'])('saved as %s', (sharedPath) => {
+      it('never stages the shared link', async () => {
+        const { repo } = await createSharedLinkWorktree()
+
+        await stageWorktreeChanges(repo, 'all', { sharedLinkPaths: [sharedPath] })
+
+        expect(names(repo, ['diff', '--cached', '--name-only'])).toEqual(['new.txt'])
+      })
+
+      it('never stages the shared link while a conflict is unresolved', async () => {
+        const repo = await createConflictRepo()
+        const owner = await mkdtemp(path.join(tmpdir(), 'orca-stage-owner-'))
+        tempRoots.push(owner)
+        await symlink(owner, path.join(repo, 'node_modules'))
+
+        await stageWorktreeChanges(repo, 'all', { sharedLinkPaths: [sharedPath] })
+
+        expect(names(repo, ['diff', '--cached', '--name-only', '--diff-filter=A'])).toEqual([
+          'untracked.txt'
+        ])
+      })
+
+      it('never stages the shared link from an over-cap listing with a conflict', async () => {
+        const repo = await createConflictRepo()
+        const owner = await mkdtemp(path.join(tmpdir(), 'orca-stage-owner-'))
+        tempRoots.push(owner)
+        await mkdir(path.join(owner, 'node_modules'))
+        await writeFile(path.join(repo, '.gitignore'), 'node_modules/\n')
+        await symlink(path.join(owner, 'node_modules'), path.join(repo, 'node_modules'))
+        await mkdir(path.join(repo, 'big'))
+        for (let i = 0; i < OVER_CAP; i++) {
+          await writeFile(path.join(repo, 'big', `f${String(i).padStart(5, '0')}.txt`), 'a\n')
+        }
+        expect((await getStatus(repo)).didHitLimit).toBe(true)
+
+        await stageWorktreeChanges(repo, 'all', { sharedLinkPaths: [sharedPath] })
+
+        const added = names(repo, ['diff', '--cached', '--name-only', '--diff-filter=A'])
+        expect(added).toHaveLength(OVER_CAP + 2)
+        expect(added).not.toContain('node_modules')
+        expect(names(repo, ['ls-files', '--others', '--exclude-standard'])).toEqual([
+          'node_modules'
+        ])
+      })
+    })
+
     it('still stages a regular file the user put at a shared name', async () => {
       const repo = await createRepo()
       git(repo, ['commit', '-q', '--allow-empty', '-m', 'initial'])
