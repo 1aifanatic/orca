@@ -30,6 +30,12 @@ function makeFolderWorkspace(overrides: Partial<FolderWorkspace> = {}): FolderWo
 }
 
 describe('folderWorkspaceToWorktree', () => {
+  it('preserves the metadata timestamp without inventing one for old workspaces', () => {
+    expect(
+      folderWorkspaceToWorktree(makeFolderWorkspace({ metadataUpdatedAt: 123 })).metadataUpdatedAt
+    ).toBe(123)
+    expect(folderWorkspaceToWorktree(makeFolderWorkspace()).metadataUpdatedAt).toBeUndefined()
+  })
   it('preserves multiple attachments and projects a bare Linear task without enabling review checks', () => {
     const linkedItems: WorkspaceAttachment[] = [
       { provider: 'github', type: 'pr', number: 7 },
