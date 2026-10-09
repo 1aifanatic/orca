@@ -111,6 +111,9 @@ export type AgentLaunchWorkspaceFactory = {
     /** Offered only alongside a `startupAgent` whose CLI takes the prompt on argv: agent-first
      *  creation builds the startup command, so that is where the typed line is measured. */
     startupPrompt?: string
+    /** Set instead of `startupPrompt` under the `legacy-host` prompt policy: this create owns the
+     *  text for any agent and length, as `worktree.create` always has. */
+    legacyPrompt?: AgentLaunchPrompt
     /** Inputs needed when this terminal is created as the worktree's startup surface. */
     agentArgs?: string | null
     cwd?: string
