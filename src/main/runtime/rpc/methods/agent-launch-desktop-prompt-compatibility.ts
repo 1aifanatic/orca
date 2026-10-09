@@ -1,7 +1,4 @@
-import {
-  AGENT_LAUNCH_RUNTIME_CAPABILITIES,
-  supportsDesktopNewTabAgentLaunch
-} from '../../../../shared/agent-launch-runtime-capability'
+import { supportsDesktopNewTabAgentLaunch } from '../../../../shared/agent-launch-runtime-capability'
 import { isDesktopNewTabPrompt } from '../../../../shared/desktop-new-tab-prompt'
 import { isDesktopLaunchCaller } from './agent-launch-desktop-caller'
 import { agentLaunchOperationCallerKey } from './agent-launch-replay'
@@ -15,7 +12,6 @@ export function requireDesktopPromptCompatibility(
   if (
     isDesktopNewTabPrompt(params.prompt) &&
     !(
-      supportsDesktopNewTabAgentLaunch(AGENT_LAUNCH_RUNTIME_CAPABILITIES) &&
       supportsDesktopNewTabAgentLaunch(context.clientCapabilities) &&
       isDesktopLaunchCaller(agentLaunchOperationCallerKey(context))
     )

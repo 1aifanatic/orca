@@ -11,7 +11,7 @@ import { methodNamed } from './agent-launch.test-fixture'
 import { DESKTOP_RPC_CALLER } from '../rpc-caller-identity'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY
 } from '../../../../shared/agent-launch-runtime-capability'
 import { desktopNewTabPromptDelivery } from '../../../../shared/desktop-new-tab-prompt'
 import { wrapTerminalBracketedPasteText } from '../../../../shared/terminal-bracketed-paste-text'
@@ -90,7 +90,7 @@ describe('desktop live input uses the existing optional-identity public route', 
           clientKind: 'runtime',
           clientCapabilities: [
             AGENT_LAUNCH_RUNTIME_CAPABILITY,
-            AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+            AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY
           ]
         }
         const params = LAUNCH.params.parse({

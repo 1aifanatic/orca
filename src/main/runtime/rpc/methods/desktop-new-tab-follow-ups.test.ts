@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentLaunchFollowUpTake } from '../../../../shared/agent-launch-follow-up'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
 } from '../../../../shared/agent-launch-runtime-capability'
 import { DESKTOP_RPC_CALLER } from '../rpc-caller-identity'
@@ -36,7 +36,7 @@ const CALLER = {
   clientKind: 'runtime',
   clientCapabilities: [
     AGENT_LAUNCH_RUNTIME_CAPABILITY,
-    AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+    AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
     AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
   ]
 } as const

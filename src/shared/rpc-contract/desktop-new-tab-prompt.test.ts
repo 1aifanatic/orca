@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { AgentLaunch, AgentLaunchReplay } from './agent-launch-params'
 import { computeAgentLaunchFingerprint } from '../agent-launch-operation'
 import {
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
   supportsDesktopNewTabAgentLaunch
 } from '../agent-launch-runtime-capability'
 import { RUNTIME_CAPABILITIES } from '../protocol-version'
@@ -94,15 +94,15 @@ describe('negotiated desktop startup prompt contract', () => {
       }).prompt?.transport
     ).toBe('paste')
   })
-  it('advertises through the host protocol while requiring client negotiation', () => {
+  it('is negotiated by the client and never published in the host capability list', () => {
     expect(supportsDesktopNewTabAgentLaunch(undefined)).toBe(false)
     expect(
       supportsDesktopNewTabAgentLaunch(['agent.launch.v2', 'agent.launch.prompt-carry.v1'])
     ).toBe(false)
-    expect(
-      supportsDesktopNewTabAgentLaunch([AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY])
-    ).toBe(true)
-    expect(supportsDesktopNewTabAgentLaunch(RUNTIME_CAPABILITIES)).toBe(true)
+    expect(supportsDesktopNewTabAgentLaunch([AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY])).toBe(
+      true
+    )
+    expect(supportsDesktopNewTabAgentLaunch(RUNTIME_CAPABILITIES)).toBe(false)
     const oldHost = z.object({
       prompt: z.object({
         text: z.string(),

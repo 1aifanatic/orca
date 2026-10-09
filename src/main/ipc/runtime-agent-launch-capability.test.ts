@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeCapability } from '../../shared/protocol-version'
 import {
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
   AGENT_LAUNCH_RUNTIME_CAPABILITY
 } from '../../shared/agent-launch-runtime-capability'
 import { AgentLaunch } from '../../shared/rpc-contract/agent-launch-params'
@@ -174,7 +174,7 @@ describe('desktop renderer reaching agent.launch on its own main process', () =>
           rpcContext(runtime, {
             ...client,
             clientCapabilities: client.clientCapabilities?.filter(
-              (capability) => capability !== AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+              (capability) => capability !== AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY
             )
           })
         )

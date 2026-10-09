@@ -8,7 +8,7 @@ import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
 import { desktopNewTabPromptDelivery } from '../../../../shared/desktop-new-tab-prompt'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
 } from '../../../../shared/agent-launch-runtime-capability'
 import { admitAgentLaunchOperation } from './agent-launch-replay'
@@ -47,7 +47,7 @@ const CALLER = {
   clientKind: 'runtime',
   clientCapabilities: [
     AGENT_LAUNCH_RUNTIME_CAPABILITY,
-    AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+    AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
     AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
   ]
 } as const
