@@ -87,6 +87,27 @@ async function launchHomes(f: ReturnType<typeof coveredAccount>) {
   }
 }
 
+const mainRoot = join(__dirname, '..')
+
+function mainSourceFiles(): string[] {
+  const files: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(path)
+      } else if (
+        entry.name.endsWith('.ts') &&
+        !/\.test\.|test-(?:support|fixture|harness)/.test(entry.name)
+      ) {
+        files.push(relative(mainRoot, path).split('\\').join('/'))
+      }
+    }
+  }
+  walk(mainRoot)
+  return files
+}
+
 describe('one router decision for every Claude launch', () => {
   it('sends every entry point to System default, then to the account once it signs in', async () => {
     const f = coveredAccount()
@@ -142,28 +163,13 @@ describe('one router decision for every Claude launch', () => {
   // Terminals, chats, AI commit messages and automations launch through
   // ClaudeRuntimeAuthService.prepareForClaudeLaunch; usage through prepareForRateLimitFetch.
   it('keeps the Claude selection and account folders out of every launch path but the router', () => {
-    const mainRoot = join(__dirname, '..')
     const routing =
       /\b(?:getSelectedClaudeAccountIdForTarget|activeClaudeManagedAccountIds?(?:ByRuntime)?|describeClaudeProfile|wslClaudeProfile|isHostManagedClaudeAccount)\b|\.accountHome\(/
     // Maps settings keys to the provider whose model catalog they expire; it routes nothing.
     const allowed = new Set([
       'native-chat/agent-model-catalog/agent-model-catalog-account-expiry.ts'
     ])
-    const files: string[] = []
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const path = join(dir, entry.name)
-        if (entry.isDirectory()) {
-          walk(path)
-        } else if (
-          entry.name.endsWith('.ts') &&
-          !/\.test\.|test-(?:support|fixture|harness)/.test(entry.name)
-        ) {
-          files.push(relative(mainRoot, path).split('\\').join('/'))
-        }
-      }
-    }
-    walk(mainRoot)
+    const files = mainSourceFiles()
     // Presence: the scan reaches the router, and the pattern finds what the router reads.
     expect(files).toContain('claude-accounts/claude-profile-router.ts')
     expect(
@@ -176,5 +182,29 @@ describe('one router decision for every Claude launch', () => {
         routing.test(readFileSync(join(mainRoot, file), 'utf8'))
     )
     expect(bypassing).toEqual([])
+  })
+
+  // Terminals and AI commit messages run `claude` by agent id through generic launchers, which call
+  // prepareForClaudeLaunch for it; a new generic launcher is covered by the entry-point test above.
+  it('lets only router-aware modules resolve the claude binary or load the Agent SDK', () => {
+    const spawning = /\bresolveClaudeCommand\b|\bloadClaudeAgentSdk\b/
+    const reviewed: Record<string, string> = {
+      'claude/claude-structured-child-env.ts':
+        'chat child; its home comes from router.prepareLaunch',
+      'claude/claude-stream-json-connection.ts': 'spawns the chat child with that launch env',
+      'claude-accounts/claude-profile-router.ts': 'the router: a `--version` probe only',
+      'claude-accounts/claude-command-process.ts': 'sign-in into a named account folder',
+      'runtime/structured-claude-runtime-adapter.ts': 'wires the routed chat resolver',
+      'runtime/structured-agent-session-runtime.ts': 'passes the resolver through',
+      'runtime/structured-agent-runtime-registrations.ts': 'passes the resolver through',
+      'runtime/structured-agent-model-catalog-wiring.ts': 'model listing on the routed chat env',
+      'runtime/orca-runtime-get-worktree-ps.ts': 'wires the routed chat resolver'
+    }
+    const found = mainSourceFiles().filter((file) =>
+      spawning.test(readFileSync(join(mainRoot, file), 'utf8'))
+    )
+    // Reach: every reviewed module still exists and still matches, so the list cannot rot quietly.
+    expect(found.filter((file) => file in reviewed).sort()).toEqual(Object.keys(reviewed).sort())
+    expect(found.filter((file) => !(file in reviewed))).toEqual([])
   })
 })
