@@ -48,6 +48,22 @@ describe('negotiated desktop startup prompt contract', () => {
       AgentLaunch.safeParse({ ...BASE, prompt: { ...BASE.prompt, delivery: 'submit' } }).success
     ).toBe(false)
   })
+  it('refuses an unknown agent with a desktop prompt as a validation issue, not a throw', () => {
+    const bogus = {
+      ...BASE,
+      agent: 'bogus',
+      prompt: {
+        text: 'hello',
+        delivery: 'draft',
+        transport: { kind: 'desktop-new-tab', promptDelivery: 'auto-submit' }
+      }
+    }
+    for (const schema of [AgentLaunch, AgentLaunchReplay]) {
+      const parsed = schema.safeParse(bogus)
+      expect(parsed.success).toBe(false)
+      expect(parsed.error?.issues.map((issue) => issue.message)).toContain('Unknown TUI agent')
+    }
+  })
   it('represents stdin auto input as an unsent draft and argv auto input as submitted startup', () => {
     const auto = {
       text: 'hello',

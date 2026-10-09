@@ -184,7 +184,8 @@ function refuseInvalidDesktopPrompt(
   launch: z.infer<typeof AgentLaunchFields>,
   ctx: z.RefinementCtx
 ): void {
-  if (!isDesktopNewTabPrompt(launch.prompt)) {
+  // Refinements still run after the agent check fails; that issue already explains the refusal.
+  if (!isDesktopNewTabPrompt(launch.prompt) || !isTuiAgent(launch.agent)) {
     return
   }
   if (launch.target.kind !== 'existing' || launch.reuseTerminal) {
