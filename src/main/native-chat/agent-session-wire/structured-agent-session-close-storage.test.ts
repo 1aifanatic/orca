@@ -97,3 +97,48 @@ it('hold-sends and reopen-marker failures still allow provider shutdown', async 
   expect(mark).toHaveBeenCalled()
   expect(rig.closeSession).toHaveBeenCalledOnce()
 })
+
+it.each(['settling', 'reopen-marking'] as const)(
+  'Close ends the provider while %s its waiting message is still pending',
+  async (step) => {
+    // A start that never answers holds the message queued; a running turn queues it behind.
+    rig = await createQueuedMessageTestRig(
+      step === 'settling' ? { starting: true, startUnanswered: true } : {}
+    )
+    if (step === 'reopen-marking') {
+      await rig.workingSend()
+    }
+    const waiting = rig.send('waiting at Close', 'queue-if-active')
+    expect(await waiting.result).toMatchObject({ ok: true })
+    setStructuredAgentSessionHost(rig.host)
+    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
+    if (!journal) {
+      throw new Error('expected attached conversation')
+    }
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const settle = journal.resolveDispatch.bind(journal)
+    const mark = journal.appendQueueReopen.bind(journal)
+    const write =
+      step === 'settling'
+        ? vi
+            .spyOn(journal, 'resolveDispatch')
+            .mockImplementationOnce((...args) => held.then(() => settle(...args)))
+        : vi
+            .spyOn(journal, 'appendQueueReopen')
+            .mockImplementationOnce((...args) => held.then(() => mark(...args)))
+    const dispatched = rig.dispatch.mock.calls.length
+    const closing = call('agentSession.close', { sessionId: HOST_TEST_SESSION }, STRUCTURED_CLIENT)
+    try {
+      await vi.waitFor(() => expect(write).toHaveBeenCalled())
+      expect(rig.closeSession).toHaveBeenCalledOnce()
+    } finally {
+      release()
+    }
+    expect(await closing).toMatchObject({ ok: true })
+    expect(rig.closeSession).toHaveBeenCalledOnce()
+    // Nothing handed over after Close: the message stays a card for the chat's next turn.
+    expect(rig.dispatch).toHaveBeenCalledTimes(dispatched)
+    expect(await rig.drafts()).toEqual([{ messageId: waiting.id, state: 'waiting' }])
+  }
+)
