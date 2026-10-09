@@ -172,6 +172,6 @@ describe('a federated worker through the launch executor', () => {
     ])
     expect(f.runtime.createManagedWorktree).not.toHaveBeenCalled()
     expect(f.runtime.getStructuredAgentSessionCreateSupport).not.toHaveBeenCalled()
-    expect(run.stagesSeen.every((stage) => stage === 'terminal_create')).toBe(true)
+    expect(run.stagesSeen).toEqual(['terminal_create', 'terminal_create'])
   })
 })

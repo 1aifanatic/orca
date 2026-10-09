@@ -21,6 +21,8 @@ import {
 } from './federation-effects'
 import type { FederationAttachStartInput } from './federation-start-schema'
 
+const TERMINAL_ONLY_MESSAGE = 'A federated worker starts a terminal agent only.'
+
 export async function launchFederatedWorkerAgent(args: {
   runtime: OrcaRuntimeService
   db: OrchestrationDb
@@ -59,16 +61,20 @@ export async function launchFederatedWorkerAgent(args: {
     onStage: (stage) =>
       args.onStage(stage === 'worktree_create' ? 'worktree_create' : 'terminal_create'),
     workspaces: {
-      createWorktree: async () => {
-        db.recordRemoteAttachmentStage({
-          dispatchId: params.dispatchId,
-          stage: 'worktree_creating'
-        })
+      createWorktree: async ({ startupAgent }) => {
+        // Agent-first is the only create here; a structured pre-flight must not reach it.
+        if (startupAgent === undefined) {
+          throw new Error(TERMINAL_ONLY_MESSAGE)
+        }
         const { repo, name } = params
         if (!repo || !name) {
           // Validation refuses this before the attachment exists; this only narrows the types.
           throw new Error('A remote new-top-level worktree requires --name and an explicit --repo.')
         }
+        db.recordRemoteAttachmentStage({
+          dispatchId: params.dispatchId,
+          stage: 'worktree_creating'
+        })
         const setupDecision = params.setup ?? 'run'
         const result = await runtime.createManagedWorktree({
           repoSelector: repo,
@@ -119,7 +125,7 @@ export async function launchFederatedWorkerAgent(args: {
     },
     surfaces: {
       createStructuredSession: () => {
-        throw new Error('A federated worker starts a terminal agent only.')
+        throw new Error(TERMINAL_ONLY_MESSAGE)
       },
       createTerminalAgent: async ({ worktreeId }) => {
         const terminal = await runtime.createTerminal(`id:${worktreeId}`, {

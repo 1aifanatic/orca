@@ -5,10 +5,14 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentLaunchModeReceipt } from '../../../../../agent-launch/agent-launch-mode'
+import {
+  downgradeAgentLaunchModeForHost,
+  type AgentLaunchModeReceipt
+} from '../../../../../agent-launch/agent-launch-mode'
 import { setStructuredAgentSessionHost } from '../../../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import type { OrchestrationDb } from '../../../../orchestration/db'
+import { WORKER_START_VOCABULARY } from '../../orchestration-worker-start-mode'
 import { structuredWorkerIdentities } from '../../../../structured-worker-identity'
 import type { WorkerEffect } from './worker-topology'
 import { WorkerStartParams } from './worker-start-schema'
@@ -51,7 +55,11 @@ function fakes() {
       terminals: [{ handle: 'term_startup', title: 'claude', tabId: 'tab_1', leafId: 'leaf_1' }]
     })),
     createTerminal: vi.fn(async () => ({ handle: 'term_worker', surface: 'background' })),
-    getStructuredAgentSessionCreateSupport: vi.fn(async () => ({ supported: true })),
+    getStructuredAgentSessionCreateSupport: vi.fn(
+      async (): Promise<{ supported: boolean; reason?: 'agent' | 'remote' | 'wsl' }> => ({
+        supported: true
+      })
+    ),
     getClientSettings: vi.fn(() => ({})),
     ensureStructuredAgentSessionHost: async () => {}
   }
@@ -170,6 +178,46 @@ describe('a fresh worker through the launch executor', () => {
     expect(f.failedStages).toEqual(['worktree_create', 'terminal_create', 'terminal_create'])
     expect(placed.worktree.id).toBe('wt_new')
     expect(placed.structuredSession).not.toBeNull()
+  })
+
+  it('starts a worker-<task> terminal in the worktree it created when the host refuses a chat', async () => {
+    const f = fakes()
+    f.runtime.getStructuredAgentSessionCreateSupport.mockResolvedValue({
+      supported: false,
+      reason: 'agent'
+    })
+
+    const placed = await place(f, { mode: STRUCTURED })
+
+    expect(f.runtime.createManagedWorktree).toHaveBeenCalledWith(
+      expect.not.objectContaining({ startupAgent: expect.anything() })
+    )
+    expect(f.runtime.createTerminal).toHaveBeenCalledTimes(1)
+    expect(f.runtime.createTerminal).toHaveBeenCalledWith('id:wt_new', {
+      startupAgent: 'claude',
+      launchSource: 'orchestration',
+      title: 'worker-task_1',
+      surfaceOwner: false
+    })
+    expect(f.stages).toEqual(['worktree_creating', 'worktree_created', 'terminal_creating'])
+    expect(f.failedStages).toEqual(['worktree_create', 'terminal_create', 'terminal_create'])
+    expect(placed.mode).toEqual(
+      downgradeAgentLaunchModeForHost(
+        STRUCTURED,
+        { supported: false, reason: 'agent' },
+        WORKER_START_VOCABULARY
+      )
+    )
+    expect(placed.mode.reason).toBe('structured_unsupported_on_host')
+    expect(placed).toMatchObject({ terminalHandle: 'term_worker', structuredSession: null })
+    expect(f.effects.at(-1)).toEqual({
+      kind: 'terminal',
+      role: 'agent',
+      action: 'created',
+      id: 'term_worker',
+      surface: 'background',
+      warning: undefined
+    })
   })
 
   it('creates a terminal worker’s worktree agent-first: no host question and no surface stage', async () => {

@@ -23,6 +23,7 @@ import {
   WORKER_START_VOCABULARY,
   type WorkerStartModeReceipt
 } from '../../orchestration-worker-start-mode'
+import { tearDownFailedWorkerStart } from './failed-worker-start-teardown'
 import type { WorkerStartInput } from './worker-start-schema'
 import {
   createExistingWorktreeWorkerTerminal,
@@ -107,45 +108,56 @@ async function launchWorkerAgent(
   const agent = requireAgent(args.agent)
   let created: Awaited<ReturnType<typeof createWorkerWorktree>> | undefined
   let structuredSession: WorkerStructuredSession | null = null
-  const launched = await executeAgentLaunch({
-    runtime: args.runtime,
-    intent: {
-      agent,
-      // The worker's own factory builds the create from the dispatch, so the target carries none.
-      target: existing
-        ? { kind: 'existing', worktree: existing.id }
-        : { kind: 'create-worktree', create: {} },
-      launchSource: 'orchestration'
-    },
-    decidedMode: args.mode,
-    vocabulary: WORKER_START_VOCABULARY,
-    onStage: (stage) =>
-      args.onStage(stage === 'worktree_create' ? 'worktree_create' : 'terminal_create'),
-    workspaces: {
-      createWorktree: async ({ startupAgent }) => {
-        created = await createWorkerWorktree({
-          runtime: args.runtime,
-          db: args.db,
-          dispatchId: args.dispatchId,
-          requestedWorktree: args.requestedWorktree,
-          coordinatorWorktree: requireWorktree(args.creationWorktree),
-          params: args.params,
-          agent,
-          // The executor withholds the startup agent exactly when the worker is to be a session.
-          withAgentTerminal: startupAgent !== undefined,
-          ...(args.launchPreferences ? { launchPreferences: args.launchPreferences } : {}),
-          effects: args.effects
-        })
-        return {
-          worktreeId: created.worktree.id,
-          startupTerminalHandle: created.terminalHandle
+  let launched: Awaited<ReturnType<typeof executeAgentLaunch>>
+  try {
+    launched = await executeAgentLaunch({
+      runtime: args.runtime,
+      intent: {
+        agent,
+        // The worker's own factory builds the create from the dispatch, so the target carries none.
+        target: existing
+          ? { kind: 'existing', worktree: existing.id }
+          : { kind: 'create-worktree', create: {} },
+        launchSource: 'orchestration'
+      },
+      decidedMode: args.mode,
+      vocabulary: WORKER_START_VOCABULARY,
+      onStage: (stage) =>
+        args.onStage(stage === 'worktree_create' ? 'worktree_create' : 'terminal_create'),
+      workspaces: {
+        createWorktree: async ({ startupAgent }) => {
+          created = await createWorkerWorktree({
+            runtime: args.runtime,
+            db: args.db,
+            dispatchId: args.dispatchId,
+            requestedWorktree: args.requestedWorktree,
+            coordinatorWorktree: requireWorktree(args.creationWorktree),
+            params: args.params,
+            agent,
+            // The executor withholds the startup agent exactly when the worker is to be a session.
+            withAgentTerminal: startupAgent !== undefined,
+            ...(args.launchPreferences ? { launchPreferences: args.launchPreferences } : {}),
+            effects: args.effects
+          })
+          return {
+            worktreeId: created.worktree.id,
+            startupTerminalHandle: created.terminalHandle
+          }
         }
-      }
-    },
-    surfaces: workerSurfaceFactory(args, agent, (session) => {
-      structuredSession = session
+      },
+      surfaces: workerSurfaceFactory(args, agent, (session) => {
+        structuredSession = session
+      })
     })
-  })
+  } catch (error) {
+    // The caller only sees a returned placement, so a session made before this throw is ours.
+    await tearDownFailedWorkerStart({
+      runtime: args.runtime,
+      structuredSession,
+      dispatchId: args.dispatchId
+    })
+    throw error
+  }
   return {
     mode: launched.receipt,
     worktree: existing ?? requireWorktree(created?.worktree),

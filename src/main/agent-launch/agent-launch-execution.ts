@@ -44,13 +44,21 @@ export type AgentLaunchSurfaceExecution = AgentLaunchExecutionBase & {
   /** Host-internal, never on the wire: settles a terminal agent whatever the chat default says, for
    *  a caller whose contract is a terminal handle. */
   terminalOnly?: boolean
-  /** Host-internal: the pre-flight a caller decided itself because it records the receipt before
-   *  the launch runs (an orchestration dispatch). For an existing workspace it must already carry
-   *  that host's answer; the executor asks the host only about a workspace it creates. */
-  decidedMode?: AgentLaunchModeReceipt
   /** The launch's own delivery: argv only when the typed line carries it, else a paste. */
   promptPolicy?: undefined
-}
+} & (
+    | { decidedMode?: undefined }
+    | {
+        /** Host-internal: the pre-flight a caller decided itself because it records the receipt
+         *  before the launch runs (an orchestration dispatch). For an existing workspace it must
+         *  already carry that host's answer; the executor asks the host only about a workspace it
+         *  creates. It replaces the pre-flight, so the inputs that pre-flight reads are refused.
+         *  Temporary until one planner settles every launch. */
+        decidedMode: AgentLaunchModeReceipt
+        terminalOnly?: never
+        callerRendersStructured?: never
+      }
+  )
 
 /**
  * Host-internal, never on the wire. `legacy-host` is `worktree.create`'s own delivery, kept for the

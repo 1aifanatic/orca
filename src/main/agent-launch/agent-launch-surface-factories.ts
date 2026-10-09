@@ -123,8 +123,8 @@ export type AgentLaunchWorkspaceFactory = {
     options?: Readonly<Record<string, unknown>>
   }): Promise<{
     worktreeId: string
-    /** The new workspace's SSH connection; `null` is local. Decides what its agent tab can show;
-     *  absent when the caller's own surface factory never asks (orchestration's). */
+    /** The new workspace's SSH connection; `null` is local. The executor carries it but nothing
+     *  reads it yet; absent when the factory did not resolve it. */
     connectionId?: string | null
     startupTerminalHandle: string | undefined
     /** The pane minted with the startup terminal, when the runtime reported one. */
