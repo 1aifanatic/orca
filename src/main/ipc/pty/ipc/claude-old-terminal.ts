@@ -1,7 +1,18 @@
 import { getClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
 import { getPtyIpc } from '../../pty-host-bindings'
-import { CLAUDE_ACCOUNT_FUNCTION_DAEMON_PROTOCOL_VERSION } from '../../../daemon/daemon-protocol-version'
-import { isTerminalFromBeforeDaemonProtocol } from '../../../daemon/daemon-provider-state'
+import {
+  CLAUDE_ACCOUNT_FUNCTION_DAEMON_PROTOCOL_VERSION,
+  CLAUDE_ACCOUNT_FUNCTION_REVERTED_DAEMON_PROTOCOL_VERSION
+} from '../../../daemon/daemon-protocol-version'
+import { isTerminalOnLegacyDaemon } from '../../../daemon/daemon-provider-state'
+
+// Why not every older daemon: v42 shipped the same claude function and pointer; only v43, the revert, lacked them.
+function lacksClaudeFunction(protocolVersion: number): boolean {
+  return (
+    protocolVersion < CLAUDE_ACCOUNT_FUNCTION_DAEMON_PROTOCOL_VERSION ||
+    protocolVersion === CLAUDE_ACCOUNT_FUNCTION_REVERTED_DAEMON_PROTOCOL_VERSION
+  )
+}
 
 type Deps = { getLocalPtyProviderStartupPromise: () => Promise<void> | undefined }
 
@@ -18,10 +29,7 @@ export function installPtyClaudeOldTerminalIpcHandler(deps: Deps): void {
       // Why also the account: when System default is signed in to the selected one, this
       // terminal's claude already runs it.
       return (
-        isTerminalFromBeforeDaemonProtocol(
-          args.id,
-          CLAUDE_ACCOUNT_FUNCTION_DAEMON_PROTOCOL_VERSION
-        ) &&
+        isTerminalOnLegacyDaemon(args.id, lacksClaudeFunction) &&
         (getClaudeProfileRouter()?.systemDefaultRunsAnotherAccount() ?? true)
       )
     }
