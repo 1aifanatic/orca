@@ -176,6 +176,10 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     }
     // Why the consuming agent: the foreground process reads the bytes; launchAgent covers startup.
     const payloadFor = (ptyId: string): string => {
+      // The desktop writer pastes the prompt itself; wrapping it here too only copied up to 16 MiB.
+      if (options.desktopNewTab) {
+        return ''
+      }
       // Why: a launch prompt replaced the desktop's draft paste, so it sends that paste's bytes.
       if (options.inputKind === 'launch') {
         return wrapTerminalBracketedPasteText(prompt)
@@ -209,7 +213,8 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
           })
         }
       )
-      const bytesWritten = Buffer.byteLength(payload, 'utf8') + delivery.submits
+      const bytesWritten =
+        delivery.bytesWritten ?? Buffer.byteLength(payload, 'utf8') + delivery.submits
       return {
         handle,
         accepted: true,
@@ -240,7 +245,8 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
         promptForSchedule: prompt
       })
     })
-    const bytesWritten = Buffer.byteLength(payload, 'utf8') + delivery.submits
+    const bytesWritten =
+      delivery.bytesWritten ?? Buffer.byteLength(payload, 'utf8') + delivery.submits
     return {
       handle,
       accepted: true,
