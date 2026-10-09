@@ -4092,8 +4092,8 @@
             "remaining": "{{value0}} % restants"
           },
           "StatusBarUsageChangeNotices": {
-            "compactTitle": "L’utilisation est désormais compacte",
-            "compactBody": "Une mesure principale par fournisseur. Choisissez Détaillé dans le menu Utilisation pour afficher plus de limites."
+            "compactTitle": "L’affichage de l’utilisation est désormais compact",
+            "compactBody": "Une mesure principale par fournisseur. Choisissez <detailed>Détaillé</detailed> dans le menu Utilisation pour afficher plus de limites."
           },
           "UsagePercentageDisplayChangeNotice": {
             "title": "L'utilisation affiche désormais le pourcentage consommé",
@@ -12484,6 +12484,7 @@
           },
           "loadFailed": "Orca n'a pas pu charger les hôtes SSH et les déplacements inachevés. Rouvrez les Paramètres pour réessayer.",
           "outcome": {
+            "activeServer": "Non effectué : choisissez un autre Serveur actif dans Avancé avant d’arrêter ce serveur.",
             "live": "Non effectué : des terminaux sont encore en cours sur ce serveur. Fermez-les et réessayez.",
             "unverifiable": "Non effectué : Orca n'a pas pu confirmer ce qui tourne sur ce serveur. Réessayez lorsque l'hôte est joignable.",
             "migration": "Non effectué : un déplacement vers ce serveur est inachevé. Reprenez-le d'abord.",
@@ -12500,7 +12501,7 @@
           "connecting": "Connexion au serveur Orca géré…",
           "updating": "Mise à jour du serveur géré…",
           "starting": "Démarrage du serveur géré…",
-          "notServing": "Le serveur Orca géré n'est pas démarré et n'a pas pu être démarré.",
+          "notServing": "Orca n’a pas pu confirmer que le serveur géré répond.",
           "hostNewer": "Exécute un serveur Orca géré issu d'une version plus récente d'Orca ; il conserve cette version.",
           "terminalsLive": "Exécute le relais jusqu'à la fermeture de ses {{count}} terminaux ouverts, puis bascule vers un serveur géré.",
           "terminalsLive_one": "Exécute le relais jusqu'à la fermeture de son {{count}} terminal ouvert, puis bascule vers un serveur géré.",
@@ -18507,7 +18508,7 @@
         "sendConfirmBody_other": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer les {{count}} messages déjà en file d'attente ?",
         "sendConfirmClear": "Vider la file d'attente",
         "sendConfirmSend": "Envoyer le message",
-        "from": "De {{names}}",
+        "fromSender": "De",
         "pausedSendFailedWaiting": "Envoi impossible. Quand l'agent aura terminé, appuyez sur Envoyer pour réessayer."
       },
       "thought": "A réfléchi",

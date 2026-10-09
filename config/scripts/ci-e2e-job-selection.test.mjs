@@ -50,7 +50,10 @@ it('skips the general consumer only when every requested spec has a dedicated ow
   }
   expect(classify(DEDICATED_E2E_SPECS).e2e_run_changed).toBe(false)
   const future = 'tests/e2e/future-unclassified.spec.ts'
-  expect(classify([future])).toEqual({ e2e_run_changed: true, e2e_needs_build: true })
+  expect(classify([future])).toEqual({
+    e2e_run_changed: true,
+    e2e_needs_build: true
+  })
   expect(selectGeneralE2eSpecs([...DEDICATED_E2E_SPECS, future])).toEqual([future])
   expect(classify([...DEDICATED_E2E_SPECS, future]).e2e_run_changed).toBe(true)
 })
@@ -171,4 +174,64 @@ it('runs remaining SSH tests after real failures and stops them when a run is ca
   for (const step of steps.filter((step) => step.name?.startsWith('Keep '))) {
     expect(step.if).toContain('always()')
   }
+})
+
+it.each([
+  'src/renderer/src/runtime/web-session-tabs-sync/mirrored-editor-file-identity.ts',
+  'src/renderer/src/runtime/web-session-tabs-sync/tab-builders.ts',
+  'src/renderer/src/runtime/web-session-tabs-sync/apply-preparation-browser.ts',
+  'src/renderer/src/runtime/web-session-existing-tab-index.ts'
+])('routes %s to the template-building editor ownership lane', (file) => {
+  const spec = 'tests/e2e/ssh-orcad-editor-ownership.spec.ts'
+  expect(selectPrE2eSpecs([file])).toContain(spec)
+  expect(classify([spec])).toEqual({
+    e2e_run_changed: false,
+    e2e_needs_build: true
+  })
+  const job = workflow.jobs['orcad-auto-convert-docker']
+  expect(job.if).toContain(spec)
+  expect(job.steps.find((step) => step.name === 'Convert a relay-era Docker host').run).toContain(
+    spec
+  )
+})
+
+const MARKDOWN_CONVERSION_SPEC = 'tests/e2e/ssh-orcad-markdown-conversion.spec.ts'
+const MARKDOWN_LINK_REFRESH_SPEC = 'tests/e2e/ssh-orcad-markdown-link-refresh.spec.ts'
+const MARKDOWN_LIVE_DOCUMENTS_SPEC = 'tests/e2e/ssh-orcad-markdown-live-documents.spec.ts'
+
+it.each([
+  ['src/renderer/src/components/editor/useMarkdownDocuments.ts', MARKDOWN_CONVERSION_SPEC],
+  [
+    'src/renderer/src/components/editor/restored-editor-workspace-runtime-owner.ts',
+    MARKDOWN_CONVERSION_SPEC
+  ],
+  [
+    'src/renderer/src/components/editor/migrate-restored-editor-file-owner.ts',
+    MARKDOWN_CONVERSION_SPEC
+  ],
+  ['src/renderer/src/components/editor/rich-markdown-doc-link.ts', MARKDOWN_LINK_REFRESH_SPEC],
+  [
+    'src/renderer/src/components/editor/useRichMarkdownProgrammaticSync.ts',
+    MARKDOWN_LINK_REFRESH_SPEC
+  ],
+  ['src/renderer/src/components/editor/useMarkdownDocuments.ts', MARKDOWN_LIVE_DOCUMENTS_SPEC],
+  [
+    'src/renderer/src/components/editor/use-markdown-document-watch-refresh.ts',
+    MARKDOWN_LIVE_DOCUMENTS_SPEC
+  ],
+  [
+    'src/renderer/src/components/editor/markdown-document-list-request.ts',
+    MARKDOWN_LIVE_DOCUMENTS_SPEC
+  ]
+])('routes %s to the template-building Markdown lane %s', (file, spec) => {
+  expect(selectPrE2eSpecs([file])).toContain(spec)
+  expect(classify([spec])).toEqual({
+    e2e_run_changed: false,
+    e2e_needs_build: true
+  })
+  const job = workflow.jobs['orcad-auto-convert-docker']
+  expect(job.if).toContain(spec)
+  expect(job.steps.find((step) => step.name === 'Convert a relay-era Docker host').run).toContain(
+    spec
+  )
 })

@@ -364,6 +364,39 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
       expect(state.addForward).toHaveBeenCalledOnce()
     })
 
+    it.each(['serving', 'unverifiable'] as const)(
+      'rebuilds a joined tunnel when its %s server check completes on a retired transport',
+      async (verdict) => {
+        const state = setup()
+        let finishCheck!: () => void
+        state.ensureServing.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishCheck = () =>
+                resolve(
+                  verdict === 'serving'
+                    ? { state: verdict }
+                    : { state: verdict, detail: 'SSH operation was cancelled' }
+                )
+            })
+        )
+        const first = state.manager.ensure(environment())
+        const firstOutcome = first.then(
+          () => 'resolved',
+          (error: unknown) => String(error)
+        )
+        await vi.waitFor(() => expect(state.ensureServing).toHaveBeenCalledOnce())
+        state.setTransportGeneration(4)
+        const joined = state.manager.ensure(environment())
+        finishCheck()
+        await joined
+        expect(state.addForward).toHaveBeenCalledTimes(2)
+        expect(state.ensureServing).toHaveBeenCalledTimes(2)
+        expect(state.removeForwardAndWait).toHaveBeenCalledWith('forward-1')
+        expect(await firstOutcome).toContain('superseded')
+      }
+    )
+
     it('hands a joiner the joined run’s auth failure instead of prompting again', async () => {
       const state = setup()
       const auth = new Error('All configured authentication methods failed')

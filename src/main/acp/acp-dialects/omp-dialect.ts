@@ -96,7 +96,6 @@ function normalizeToolUpdate(update: ToolCallUpdate): ToolCallUpdate {
 
 export const OMP_ACP_DIALECT: AcpDialect = {
   normalizeToolUpdate,
-  promptErrorDetail: (error) => promptErrorDataSchema.safeParse(error.data).data?.details,
   authenticationRequired: (error) => {
     const details = promptErrorDataSchema.safeParse(error.data).data?.details
     return (

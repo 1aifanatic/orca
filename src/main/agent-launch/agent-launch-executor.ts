@@ -1,6 +1,7 @@
 /**
- * The one place an agent is actually started — for the surfaces moved onto it, which today is
- * `agent.launch` alone. Orchestration dispatch, mobile create, CLI create and the desktop agent
+ * The one place an agent launch is sequenced — for the surfaces moved onto it: `agent.launch`, and
+ * `worktree.create` (CLI and mobile create) through `createWorktreeWithStartupAgent`, whose
+ * `legacy-host` create still starts the agent itself. Orchestration dispatch and the desktop agent
  * tab each still start agents their own way; moving them here is later stack work.
  *
  * The mode decision is shared, not copied: `agent-launch-mode` owns it, and
@@ -37,7 +38,6 @@ import {
   argvLaunchPrompt,
   deliverTerminalLaunchPrompt,
   HANDED_TO_TERMINAL,
-  launchCommandPrompt,
   promptReceipt,
   settledAtCreation,
   settleLaunchPromptDisposal
@@ -46,7 +46,6 @@ import {
   workspaceKindForWorktreeId,
   type WorkspaceLaunchKind
 } from '../../shared/workspace-launch-kind'
-import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../shared/agent-session-definitive-refusal'
 import {
   decideAgentLaunchMode,
@@ -58,33 +57,21 @@ import {
   warnStructuredLaunchDowngrade
 } from './agent-launch-mode'
 import {
+  assertLegacyHostTarget,
+  createLaunchPromptInputs,
+  legacyHostCreateResult
+} from './agent-launch-legacy-host'
+import {
   AgentLaunchStructuredSessionRefusedError,
-  type AgentLaunchStructuredSurface,
-  type AgentLaunchSurfaceFactory,
-  type AgentLaunchWorkspaceFactory
+  type AgentLaunchStructuredSurface
 } from './agent-launch-surface-factories'
+import type {
+  AgentLaunchExecution,
+  AgentLaunchPublishedSurface,
+  AgentLaunchSurfaceExecution
+} from './agent-launch-execution'
 
-export type AgentLaunchExecution = {
-  runtime: Pick<OrcaRuntimeService, 'getStructuredAgentSessionCreateSupport' | 'getClientSettings'>
-  intent: AgentLaunchIntent
-  surfaces: AgentLaunchSurfaceFactory
-  workspaces?: AgentLaunchWorkspaceFactory
-  vocabulary?: AgentLaunchModeVocabulary
-  /** False when the calling client cannot show the agent's chat; absent for the host's own callers. */
-  callerRendersStructured?: boolean
-  /** Attributes a throw to the step that was running, the way a dispatch's own stages do. */
-  onStage?: (stage: 'worktree_create' | 'mode_settle' | 'surface_create') => void
-  /** The surface exists and its tab is published; runs before any prompt delivery. Must not throw. */
-  onSurfacePublished?: (surface: AgentLaunchPublishedSurface) => void
-}
-
-/**
- * The launch as it stands once its surface exists: a complete result whose prompt receipt says only
- * what creation itself settled — carried on the launch command, a draft the host never delivers, or
- * a submit still `unconfirmed`. Complete so a host that dies during the delivery still leaves a
- * truthful answer behind.
- */
-export type AgentLaunchPublishedSurface = AgentLaunchResult
+export type { AgentLaunchExecution, AgentLaunchPublishedSurface } from './agent-launch-execution'
 
 export async function executeAgentLaunch(
   execution: AgentLaunchExecution
@@ -107,8 +94,15 @@ export async function executeAgentLaunch(
       ...(execution.callerRendersStructured === false ? { callerRendersStructured: false } : {})
     },
     settings,
+    ...(execution.terminalOnly ? { terminalOnly: true } : {}),
     vocabulary
   })
+  // The create's startup terminal is this launch's only surface, and the create delivers the text.
+  if (execution.promptPolicy === 'legacy-host') {
+    assertLegacyHostTarget(execution)
+    const placed = await resolveWorkspace(execution, preflight)
+    return published(execution, legacyHostCreateResult(execution, placed, preflight))
+  }
 
   // A reused terminal already downgraded in the pre-flight; there is nothing to create. Its agent
   // was running before this launch existed, so argv is unreachable and the PTY is the only way in.
@@ -252,14 +246,13 @@ async function resolveWorkspace(
     throw new Error('agent_launch_workspace_factory_required')
   }
   execution.onStage?.('worktree_create')
-  const startupPrompt = launchCommandPrompt(intent, preflight.mode)
   const created = await workspaces.createWorktree({
     // A caller migrating from `worktree.create` passes its existing params; a stale `startupAgent`
     // in there would re-create the agent-first path this executor exists to replace. The launch
     // owns the prompt for the same reason, so it re-supplies its own rather than honouring theirs.
     create: withoutReservedAgentCreateFields(intent.target.create),
     startupAgent: preflight.mode === 'structured' ? undefined : intent.agent,
-    ...(startupPrompt ? { startupPrompt } : {}),
+    ...createLaunchPromptInputs(execution, preflight.mode),
     ...(preflight.mode === 'structured' ? {} : terminalLaunchInputs(intent))
   })
   // Only when a startup terminal actually came back: a create that produced none ran no command,
@@ -281,7 +274,7 @@ export type CreatedSurface = {
 }
 
 async function createSurface(
-  execution: AgentLaunchExecution,
+  execution: AgentLaunchSurfaceExecution,
   workspace: { worktreeId: string; connectionId: string | null | undefined },
   settled: AgentLaunchModeReceipt
 ): Promise<CreatedSurface> {
@@ -342,7 +335,7 @@ function terminalLaunchInputs(intent: AgentLaunchIntent) {
  * surface — carrying the same argv prompt — as a launch that chose a terminal outright.
  */
 async function createTerminalSurface(
-  execution: AgentLaunchExecution,
+  execution: AgentLaunchSurfaceExecution,
   workspace: { worktreeId: string; connectionId: string | null | undefined }
 ): Promise<CreatedSurface> {
   const { intent, surfaces } = execution
