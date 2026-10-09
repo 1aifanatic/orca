@@ -1,4 +1,5 @@
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-client'
+import { BROWSER_UNAVAILABLE_ERROR_CODE } from '../../../../../shared/runtime-session-contracts'
 import {
   remoteBrowserStreamLostNotice,
   remoteBrowserStreamRestartFailedNotice,
@@ -96,7 +97,7 @@ export function resolveRemoteBrowserStreamFailure(
   phase: 'opening' | 'restart' = 'restart'
 ): RemoteBrowserStreamFailure {
   // Browser setup can recover without the server connection changing.
-  if (readErrorCode(error) === 'browser_unavailable') {
+  if (readErrorCode(error) === BROWSER_UNAVAILABLE_ERROR_CODE) {
     return {
       message: remoteBrowserServiceUnavailableNotice(),
       shouldRetry: true,
