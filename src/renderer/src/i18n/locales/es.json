@@ -19068,10 +19068,10 @@
   "featureTips": {
     "nativeChatUpgrade": {
       "eyebrow": "Nuevo",
-      "title": "El chat nativo ha mejorado",
-      "intro": "Los chats nuevos con agentes compatibles ahora se abren en la vista de chat mejorada. Para pasar del chat a la CLI y viceversa, abre {{panel}} en la barra lateral derecha:",
+      "title": "El chat nativo mejora",
+      "intro": "Los chats nuevos de agentes compatibles usan la vista de chat mejorada. Para alternar entre chat y CLI, abre {{panel}} (barra lateral derecha):",
       "resumeInNativeChat": "{{action}} abre una conversación de CLI compatible en el chat nativo.",
-      "resumeInCli": "{{action}} copia un chat de Claude o Codex en una nueva sesión de CLI. El chat original no cambia.",
+      "resumeInCli": "{{action}} copia un chat de Claude/Codex a una CLI nueva sin tocar el original.",
       "settingsInstruction": "Administra Chat UI en",
       "settingsLink": "Ajustes → Experimental",
       "gotIt": "Entendido"

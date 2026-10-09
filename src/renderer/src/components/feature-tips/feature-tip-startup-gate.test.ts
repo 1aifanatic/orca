@@ -62,7 +62,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -81,7 +80,6 @@ describe('feature tip startup gate', () => {
         onboarding: firstTimeOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -100,7 +98,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: true,
@@ -119,7 +116,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -138,7 +134,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(true),
         suppressedByOnboardingThisSession: false,
@@ -157,7 +152,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -176,7 +170,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -195,7 +188,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(false),
         suppressedByOnboardingThisSession: false,
@@ -214,7 +206,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -233,7 +224,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -252,7 +242,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -273,7 +262,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         inNativeChatUpgradeTipAudience: false,
-        resumeOnRestartDialogOpen: false,
         promptedThisSession: false,
         settings: makeSettings(),
         suppressedByOnboardingThisSession: false,
@@ -312,7 +300,6 @@ describe('feature tip startup gate', () => {
       onboarding: existingUserOnboarding,
       persistedUIReady: true,
       inNativeChatUpgradeTipAudience: false,
-      resumeOnRestartDialogOpen: false,
       promptedThisSession: false,
       settings: makeSettings(false, args.sessionSearchEnabled),
       suppressedByOnboardingThisSession: false,
@@ -356,7 +343,6 @@ describe('feature tip startup gate', () => {
     function decide(args: {
       inNativeChatUpgradeTipAudience: boolean | null
       featureTipsSeenIds?: ('native-chat-upgrade' | 'agent-session-search')[]
-      resumeOnRestartDialogOpen?: boolean
     }): ReturnType<typeof getFeatureTipsAppOpenDecision> {
       return getFeatureTipsAppOpenDecision({
         activeModal: 'none',
@@ -367,7 +353,6 @@ describe('feature tip startup gate', () => {
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
         promptedThisSession: false,
-        resumeOnRestartDialogOpen: args.resumeOnRestartDialogOpen ?? false,
         settings: makeSettings(false, false),
         suppressedByOnboardingThisSession: false,
         webClient: false
@@ -399,12 +384,6 @@ describe('feature tip startup gate', () => {
           featureTipsSeenIds: ['native-chat-upgrade']
         })
       ).toEqual({ kind: 'open', tipId: 'agent-session-search' })
-    })
-
-    it('waits while the native chat resume dialog is open', () => {
-      expect(
-        decide({ inNativeChatUpgradeTipAudience: true, resumeOnRestartDialogOpen: true })
-      ).toEqual({ kind: 'skip' })
     })
   })
 })

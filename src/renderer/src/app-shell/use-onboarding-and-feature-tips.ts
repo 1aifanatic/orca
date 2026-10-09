@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { onOnboardingReopened } from '../components/onboarding/show-onboarding-event'
 import { shouldShowOnboarding } from '../components/onboarding/should-show-onboarding'
@@ -10,10 +10,6 @@ import {
   trackCmdJPaletteFeatureTipShown,
   trackOrcaCliFeatureTipShown
 } from '../components/feature-tips/feature-tip-telemetry'
-import {
-  getNativeChatResumeOnRestartDialogRequest,
-  subscribeNativeChatResumeOnRestartDialog
-} from '../components/native-chat-resume-on-restart-dialog'
 import { useAppStore } from '../store'
 import { isWebClientLocation } from '../lib/web-client-location'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
@@ -38,11 +34,6 @@ export function useOnboardingAndFeatureTips() {
   const featureInteractions = useAppStore((s) => s.featureInteractions)
   const inNativeChatUpgradeTipAudience = useAppStore((s) => s.inNativeChatUpgradeTipAudience)
   const contextualToursAutoEligible = useAppStore((s) => s.contextualToursAutoEligible)
-  const resumeOnRestartDialogOpen = useSyncExternalStore(
-    subscribeNativeChatResumeOnRestartDialog,
-    getNativeChatResumeOnRestartDialogRequest,
-    getNativeChatResumeOnRestartDialogRequest
-  )
   const actions = useAppStore(
     useShallow((s) => ({
       openModal: s.openModal,
@@ -136,7 +127,6 @@ export function useOnboardingAndFeatureTips() {
       onboarding,
       persistedUIReady,
       promptedThisSession: promptedThisSessionRef.current,
-      resumeOnRestartDialogOpen,
       settings,
       suppressedByOnboardingThisSession: suppressedByOnboardingThisSessionRef.current,
       webClient: isWebClientLocation()
@@ -173,7 +163,6 @@ export function useOnboardingAndFeatureTips() {
     inNativeChatUpgradeTipAudience,
     onboarding,
     persistedUIReady,
-    resumeOnRestartDialogOpen,
     settings
   ])
 

@@ -183,4 +183,17 @@ describe('native chat upgrade tip audience', () => {
       'nativeChatUpgradeTipAudience'
     )
   })
+
+  it('keeps the tip dismissed when a stale client writes an older seen list', async () => {
+    writeDataFile({ settings: preUpgradeSettings(true) })
+    const store = createStore()
+    store.updateUI({ featureTipsSeenIds: ['native-chat-upgrade'] })
+    // A paired client hydrated before the tip was shown marks another tip seen.
+    store.updateUI({ featureTipsSeenIds: ['voice-dictation'] })
+    store.flush()
+    expect((await reopen()).getUI().featureTipsSeenIds).toEqual([
+      'native-chat-upgrade',
+      'voice-dictation'
+    ])
+  })
 })

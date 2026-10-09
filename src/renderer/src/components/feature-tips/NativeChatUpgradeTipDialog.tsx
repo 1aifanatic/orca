@@ -74,7 +74,8 @@ export function NativeChatUpgradeTipDialog({
       onOpenChange={onOpenChange}
       onOpenAutoFocus={(event) => {
         event.preventDefault()
-        primaryButtonRef.current?.focus()
+        // Why: longer locales overflow the fixed frame; scrolling to the button would hide the title.
+        primaryButtonRef.current?.focus({ preventScroll: true })
       }}
       visual={<NativeChatUpgradeFeatureTipVisual />}
     >

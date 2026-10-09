@@ -66,8 +66,6 @@ export function getFeatureTipsAppOpenDecision(args: {
   onboarding: OnboardingState | null
   persistedUIReady: boolean
   promptedThisSession: boolean
-  /** The native chat resume dialog is not an app modal, so a tip would stack on it. */
-  resumeOnRestartDialogOpen: boolean
   settings: FeatureTipSettings | null | undefined
   suppressedByOnboardingThisSession: boolean
   webClient: boolean
@@ -83,7 +81,6 @@ export function getFeatureTipsAppOpenDecision(args: {
     !args.settings ||
     args.onboarding === null ||
     args.activeModal !== 'none' ||
-    args.resumeOnRestartDialogOpen ||
     args.cliInstalled === null ||
     args.inNativeChatUpgradeTipAudience === null ||
     shouldShowOnboarding(args.onboarding)

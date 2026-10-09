@@ -111,8 +111,9 @@ export function NativeChatUpgradeFeatureTipVisual(): JSX.Element {
 
   return (
     <DemoSessionPanel>
-      {/* Dimming the other rows keeps the eye on the open menu. */}
-      <div className="min-h-0 flex-1 overflow-hidden [&>[data-focused=false]]:opacity-55">
+      {/* Dimming the other rows keeps the eye on the open menu. Not clipped, so an upward menu
+          can overlap the header like the real one; the panel still clips the rows. */}
+      <div className="min-h-0 flex-1 [&>[data-focused=false]]:opacity-55">
         {getSessionSearchDemoRecentRows().map((row, index) => {
           const focused = index === shownScene
           let menu: ReactNode = null

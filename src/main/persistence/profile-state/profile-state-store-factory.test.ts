@@ -303,6 +303,30 @@ describe('profile state Store authority factory', () => {
     })
   })
 
+  it.each([
+    [{ experimentalNativeChat: true, openAgentTabsInChatByDefault: false }, false, true],
+    [{ experimentalNativeChat: false, openAgentTabsInChatByDefault: false }, true, false]
+  ])(
+    'decides the native chat upgrade tip audience once from the startup snapshot (%o)',
+    (settings, laterChatUi, inAudience) => {
+      const options = createOptions()
+      writeFileSync(options.dataFile, JSON.stringify({ settings }))
+      const first = createProfileStateStore({ ...options })
+      expect(first.store.isInNativeChatUpgradeTipAudience()).toBe(inAudience)
+
+      // Why: a later Chat UI change must never move a profile into or out of the audience.
+      first.store.updateSettings({ experimentalNativeChat: laterChatUi })
+      first.store.flushOrThrow()
+      rmSync(options.dataFile)
+      const restarted = createProfileStateStore({ ...options })
+
+      expect(restarted.store.isInNativeChatUpgradeTipAudience()).toBe(inAudience)
+      expect(JSON.parse(restarted.store.prepareProfileStateExport().json)).toMatchObject({
+        nativeChatUpgradeTipAudience: { membership: inAudience ? 'eligible' : 'excluded' }
+      })
+    }
+  )
+
   it('initializes a valid empty SQLite profile instead of falling back to legacy JSON', () => {
     const options = createOptions()
     const opened = openProfileStateDatabase(options.databaseFile, options.profileId)
