@@ -8,6 +8,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { AiVaultSession } from '../../../../shared/ai-vault-types'
+import { resetAiVaultForcedRescanThrottleForTest } from '../right-sidebar/ai-vault-session-refresh'
+import { cacheAiVaultSessionList } from '../right-sidebar/ai-vault-session-list-request'
 import { TabSessionSurfaceSwitchMenuItems } from './TabSessionSurfaceSwitchMenuItems'
 
 const mocks = vi.hoisted(() => {
@@ -20,6 +22,7 @@ const mocks = vi.hoisted(() => {
     ...state,
     handleResumeInNewChat: vi.fn(),
     handleResumeInNewCli: vi.fn(),
+    resolveSwitch: vi.fn(),
     listSessions: vi.fn(),
     cancelListSessions: vi.fn(async () => {})
   }
@@ -35,7 +38,7 @@ vi.mock('../../store', () => ({
 vi.mock('./tab-session-history-switch', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   resolveTabSessionHistorySubject: () => mocks.subject,
-  resolveTabSessionSwitch: () => mocks.move
+  resolveTabSessionSwitch: mocks.resolveSwitch
 }))
 
 vi.mock('../right-sidebar/ai-vault-session-launch-actions', () => ({
@@ -72,20 +75,32 @@ const CHAT_ROW: AiVaultSession = {
   structuredSession: { sessionId: 'orca-chat-1', workspaceId: 'wt-1' }
 }
 
+const PANEL_REQUEST = {
+  scopePaths: ['/repo/wt'],
+  executionHostScope: 'local',
+  sessionLimit: 250
+} as const
+
 const CHAT_SUBJECT = {
   kind: 'chat',
   sessionId: 'orca-chat-1',
   workspaceId: 'wt-1',
-  workspacePath: '/repo/wt',
-  executionHostId: 'local'
+  request: PANEL_REQUEST
+}
+
+function listResult(sessions: AiVaultSession[]) {
+  return { sessions, issues: [], scannedAt: 'now' }
 }
 
 beforeEach(() => {
+  resetAiVaultForcedRescanThrottleForTest()
   mocks.subject = null
   mocks.move = null
   mocks.launchActionArgs = []
   mocks.handleResumeInNewChat.mockReset()
   mocks.handleResumeInNewCli.mockReset()
+  mocks.resolveSwitch.mockReset()
+  mocks.resolveSwitch.mockImplementation(() => mocks.move)
   mocks.listSessions.mockReset()
   mocks.listSessions.mockResolvedValue({
     sessions: [CHAT_ROW],
@@ -104,7 +119,7 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-async function renderItems(structuredSessionId?: string): Promise<void> {
+function renderItemsNow(structuredSessionId?: string): void {
   render(
     <TooltipProvider>
       <DropdownMenu open>
@@ -113,12 +128,15 @@ async function renderItems(structuredSessionId?: string): Promise<void> {
           <TabSessionSurfaceSwitchMenuItems
             tab={{ id: 'tab-1', worktreeId: 'wt-1', launchAgent: 'claude' }}
             structuredSessionId={structuredSessionId}
-            leadingSeparator
           />
         </DropdownMenuContent>
       </DropdownMenu>
     </TooltipProvider>
   )
+}
+
+async function renderItems(structuredSessionId?: string): Promise<void> {
+  renderItemsNow(structuredSessionId)
   await act(async () => {})
 }
 
@@ -164,8 +182,7 @@ describe('TabSessionSurfaceSwitchMenuItems', () => {
       agent: 'claude',
       providerSessionId: 'claude-session-1',
       workspaceId: 'wt-1',
-      workspacePath: '/repo/wt',
-      executionHostId: 'local'
+      request: PANEL_REQUEST
     }
     mocks.move = { action: 'resume-in-new-chat', worktreeId: 'wt-1' }
     await renderItems()
@@ -173,6 +190,41 @@ describe('TabSessionSurfaceSwitchMenuItems', () => {
     expect(screen.queryByText('Resume in New CLI')).toBeNull()
     fireEvent.click(screen.getByRole('menuitem', { name: 'Resume in New Native Chat' }))
     expect(mocks.handleResumeInNewChat).toHaveBeenCalledWith(cliRow, 'wt-1')
+  })
+
+  it("shows the move at first paint from the panel's cached list, without a lookup", () => {
+    cacheAiVaultSessionList(PANEL_REQUEST, listResult([CHAT_ROW]), { replaceHostEntries: false })
+    mocks.subject = CHAT_SUBJECT
+    mocks.move = { action: 'resume-in-new-cli', worktreeId: 'wt-1' }
+    renderItemsNow('orca-chat-1')
+
+    expect(screen.getByRole('menuitem', { name: 'Resume in New CLI' })).toBeTruthy()
+    expect(mocks.listSessions).not.toHaveBeenCalled()
+  })
+
+  it('ignores a lookup that settles after the menu closed', async () => {
+    let settle: (result: ReturnType<typeof listResult>) => void = () => {}
+    mocks.listSessions.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve
+      })
+    )
+    mocks.subject = CHAT_SUBJECT
+    mocks.move = { action: 'resume-in-new-cli', worktreeId: 'wt-1' }
+    await renderItems('orca-chat-1')
+    cleanup()
+    await act(async () => settle(listResult([CHAT_ROW])))
+
+    expect(mocks.resolveSwitch).not.toHaveBeenCalled()
+  })
+
+  it('shows nothing when the lookup fails', async () => {
+    mocks.listSessions.mockRejectedValue(new Error('scanner crashed'))
+    mocks.subject = CHAT_SUBJECT
+    mocks.move = { action: 'resume-in-new-cli', worktreeId: 'wt-1' }
+    await renderItems('orca-chat-1')
+
+    expect(screen.queryByRole('menuitem')).toBeNull()
   })
 
   it('cancels its lookup when the menu closes', async () => {

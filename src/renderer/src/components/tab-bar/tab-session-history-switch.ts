@@ -4,31 +4,37 @@
 import type { AppState } from '@/store/types'
 import { getIndexedAllWorktrees } from '@/store/worktree-repo-index'
 import { collectAiVaultTitleRequests } from '@/lib/ai-vault-tab-title-requests'
-import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import {
   isAiVaultSessionResumableContent,
   type AiVaultListArgs,
   type AiVaultListResult,
   type AiVaultSession
 } from '../../../../shared/ai-vault-types'
-import type { ExecutionHostId } from '../../../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import {
   isAgentSessionHandleProvider,
   type AgentSessionHandleProvider
 } from '../../../../shared/agent-session-provider-handle'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
-import { resolveAiVaultHistorySessionResumeState } from '../right-sidebar/ai-vault-session-resume'
 import { resolveAiVaultSessionSurfaceSwitchTargets } from '../right-sidebar/ai-vault-session-surface-switch'
-import { resolveAiVaultSessionResumeInChatForWorkspace } from '../right-sidebar/ai-vault-session-resume-in-chat-workspace'
+import { resolveAiVaultHistoryRowResume } from '../right-sidebar/ai-vault-session-resume-in-chat-workspace'
 import { resolveAiVaultTargetWorkspacePath } from '../right-sidebar/ai-vault-session-launch-target'
-import { resolveAiVaultSessionWorktreeInfo } from '../right-sidebar/ai-vault-session-worktree'
+import { resolveAiVaultSessionWorktreeDisplay } from '../right-sidebar/ai-vault-session-worktree'
+import {
+  aiVaultSessionListArgs,
+  cacheAiVaultSessionList,
+  readCachedAiVaultSessionList,
+  type AiVaultSessionListRequest
+} from '../right-sidebar/ai-vault-session-list-request'
+import { resolveAiVaultPanelSessionListRequest } from '../right-sidebar/ai-vault-panel-session-list-request'
+import { claimAiVaultForcedRescan } from '../right-sidebar/ai-vault-session-refresh'
 
 /** What a tab's history row is found by: a native chat tab by the chat it shows, a terminal tab by
  *  the provider conversation its agent reported. */
 export type TabSessionHistorySubject = {
   workspaceId: string
-  workspacePath: string
-  executionHostId: ExecutionHostId
+  /** The panel's own list request for this workspace, so both share one cached list. */
+  request: AiVaultSessionListRequest
 } & (
   | { kind: 'chat'; sessionId: string }
   | {
@@ -52,14 +58,13 @@ export function resolveTabSessionHistorySubject(
   }
 ): TabSessionHistorySubject | null {
   const workspace = (workspaceId: string) => {
-    const workspacePath = resolveAiVaultTargetWorkspacePath(state, workspaceId)
-    return workspacePath
-      ? {
-          workspaceId,
-          workspacePath,
-          executionHostId: getExecutionHostIdForWorktree(state, workspaceId)
-        }
-      : null
+    if (!resolveAiVaultTargetWorkspacePath(state, workspaceId)) {
+      return null
+    }
+    const request = resolveAiVaultPanelSessionListRequest(state, workspaceId)
+    // Both moves need a row recorded on this machine: chat ownership is projected only onto local
+    // rows, and resume-in-chat refuses any other host, so a remote lookup could never offer either.
+    return request.executionHostScope === LOCAL_EXECUTION_HOST_ID ? { workspaceId, request } : null
   }
   if (args.structuredSessionId !== undefined) {
     // Only these providers have history rows either move can act on.
@@ -69,16 +74,16 @@ export function resolveTabSessionHistorySubject(
     return target ? { ...target, kind: 'chat', sessionId: args.structuredSessionId } : null
   }
   // The same pane-to-conversation mapping tab titles use: live agent, then sleeping, then retained.
-  const request = collectAiVaultTitleRequests(state).find(
+  const titleRequest = collectAiVaultTitleRequests(state).find(
     (candidate) => candidate.tabId === args.tab.id
   )
-  const target = request ? workspace(request.worktreeId) : null
-  return request && target
+  const target = titleRequest ? workspace(titleRequest.worktreeId) : null
+  return titleRequest && target
     ? {
         ...target,
         kind: 'cli',
-        agent: request.agent,
-        providerSessionId: request.providerSession.id
+        agent: titleRequest.agent,
+        providerSessionId: titleRequest.providerSession.id
       }
     : null
 }
@@ -112,34 +117,21 @@ export function resolveTabSessionSwitch(
   subject: TabSessionHistorySubject
 ): TabSessionSwitch | null {
   const worktrees = getIndexedAllWorktrees(state.worktreesByRepo)
-  const worktreeInfo = resolveAiVaultSessionWorktreeInfo({
+  const { resumeState, resumeInChat } = resolveAiVaultHistoryRowResume({
     session,
-    repos: state.repos,
-    worktrees,
-    activeWorktreeId: subject.workspaceId
-  })
-  const resumeState = resolveAiVaultHistorySessionResumeState({
-    session,
-    worktreeInfo,
+    worktreeInfo: resolveAiVaultSessionWorktreeDisplay({
+      session,
+      repos: state.repos,
+      worktrees,
+      activeWorktreeId: subject.workspaceId
+    }),
     activeWorktreeId: subject.workspaceId,
     worktrees,
     repos: state.repos,
-    targetState: state
+    targetState: state,
+    settings: state.settings
   })
-  const targets = resolveAiVaultSessionSurfaceSwitchTargets(
-    session,
-    resumeState,
-    // A chat row never resumes into another chat, so only a CLI tab asks.
-    subject.kind === 'cli'
-      ? resolveAiVaultSessionResumeInChatForWorkspace({
-          session,
-          resumeState,
-          activeWorkspaceId: subject.workspaceId,
-          targetState: state,
-          settings: state.settings
-        })
-      : null
-  )
+  const targets = resolveAiVaultSessionSurfaceSwitchTargets(session, resumeState, resumeInChat)
   if (subject.kind === 'chat') {
     return targets.resumeInNewCliWorktreeId
       ? {
@@ -156,28 +148,37 @@ export function resolveTabSessionSwitch(
     : null
 }
 
-/** Reads the row through the Session History list, scoped to the tab's workspace and host. */
+/** The row as the panel last listed it, so a warm menu shows the move at first paint. */
+export function readCachedTabSessionHistoryRow(
+  subject: TabSessionHistorySubject
+): AiVaultSession | null {
+  const cached = readCachedAiVaultSessionList(subject.request)
+  const row = cached ? findTabSessionHistoryRow(cached.sessions, subject) : null
+  return row && isAiVaultSessionResumableContent(row) ? row : null
+}
+
+/** Reads the row through the panel's own list request, keeping the panel's cache as it would. */
 export async function lookupTabSessionHistoryRow(
   subject: TabSessionHistorySubject,
   listSessions: (args: AiVaultListArgs) => Promise<AiVaultListResult>,
   requestToken: string
 ): Promise<AiVaultSession | null> {
-  const list = (force: boolean): Promise<AiVaultListResult> =>
-    listSessions({
-      scopePaths: [subject.workspacePath],
-      executionHostScope: subject.executionHostId,
-      requestToken,
-      ...(force ? { force: true } : {})
-    })
-  const cached = await list(false)
-  if (cached.cancelled) {
+  const { request } = subject
+  const listed = await listSessions(aiVaultSessionListArgs(request, { requestToken }))
+  if (listed.cancelled) {
     return null
   }
-  const row = findTabSessionHistoryRow(cached.sessions, subject)
-  if (row && isAiVaultSessionResumableContent(row)) {
+  cacheAiVaultSessionList(request, listed, { replaceHostEntries: false })
+  const row = findTabSessionHistoryRow(listed.sessions, subject)
+  // The host caches the list for a minute, so a conversation newer than that needs a fresh scan,
+  // taken from the panel's forced-rescan budget so right-clicks cannot amplify full scans.
+  if ((row && isAiVaultSessionResumableContent(row)) || !claimAiVaultForcedRescan()) {
     return row
   }
-  // The host caches the list for a minute, so a conversation newer than that needs a fresh scan.
-  const fresh = await list(true)
-  return fresh.cancelled ? null : findTabSessionHistoryRow(fresh.sessions, subject)
+  const fresh = await listSessions(aiVaultSessionListArgs(request, { force: true, requestToken }))
+  if (fresh.cancelled) {
+    return null
+  }
+  cacheAiVaultSessionList(request, fresh, { replaceHostEntries: true })
+  return findTabSessionHistoryRow(fresh.sessions, subject)
 }

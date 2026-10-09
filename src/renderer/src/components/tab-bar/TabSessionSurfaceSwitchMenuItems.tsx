@@ -9,8 +9,10 @@ import { AiVaultSessionSurfaceSwitchMenuItems } from '../right-sidebar/AiVaultSe
 import { useAiVaultSessionLaunchActions } from '../right-sidebar/ai-vault-session-launch-actions'
 import {
   lookupTabSessionHistoryRow,
+  readCachedTabSessionHistoryRow,
   resolveTabSessionHistorySubject,
   resolveTabSessionSwitch,
+  type TabSessionHistorySubject,
   type TabSessionSwitch
 } from './tab-session-history-switch'
 
@@ -19,19 +21,38 @@ type ResolvedTabSessionSwitch = {
   move: TabSessionSwitch
 }
 
+type TabSessionSwitchLookup = {
+  subject: TabSessionHistorySubject | null
+  /** The row from the panel's cached list; when set, no lookup runs. */
+  cachedRow: AiVaultSession | null
+}
+
+function resolveMove(
+  session: AiVaultSession | null,
+  subject: TabSessionHistorySubject
+): ResolvedTabSessionSwitch | null {
+  const move = session ? resolveTabSessionSwitch(useAppStore.getState(), session, subject) : null
+  return session && move ? { session, move } : null
+}
+
 // Mounted only while the menu is open, so the history lookup runs per right-click, not per tab.
 function useTabSessionSwitch(
   tab: Pick<TerminalTab, 'id' | 'worktreeId' | 'launchAgent'>,
   structuredSessionId: string | undefined
 ): ResolvedTabSessionSwitch | null {
-  const [resolved, setResolved] = useState<ResolvedTabSessionSwitch | null>(null)
-  const { id, worktreeId, launchAgent } = tab
-  useEffect(() => {
+  const [lookup] = useState<TabSessionSwitchLookup>(() => {
     const subject = resolveTabSessionHistorySubject(useAppStore.getState(), {
-      tab: { id, worktreeId, launchAgent },
+      tab: { id: tab.id, worktreeId: tab.worktreeId, launchAgent: tab.launchAgent },
       structuredSessionId
     })
-    if (!subject) {
+    return { subject, cachedRow: subject ? readCachedTabSessionHistoryRow(subject) : null }
+  })
+  const [resolved, setResolved] = useState<ResolvedTabSessionSwitch | null>(() =>
+    lookup.subject ? resolveMove(lookup.cachedRow, lookup.subject) : null
+  )
+  useEffect(() => {
+    const { subject, cachedRow } = lookup
+    if (!subject || cachedRow) {
       return
     }
     let cancelled = false
@@ -42,11 +63,9 @@ function useTabSessionSwitch(
       requestToken
     )
       .then((session) => {
-        if (cancelled || !session) {
-          return
+        if (!cancelled) {
+          setResolved(resolveMove(session, subject))
         }
-        const move = resolveTabSessionSwitch(useAppStore.getState(), session, subject)
-        setResolved(move ? { session, move } : null)
       })
       // A failed lookup only means the move is not offered; the rest of the menu is unaffected.
       .catch(() => {})
@@ -54,7 +73,7 @@ function useTabSessionSwitch(
       cancelled = true
       void window.api.aiVault.cancelListSessions({ requestToken }).catch(() => {})
     }
-  }, [id, worktreeId, launchAgent, structuredSessionId])
+  }, [lookup])
   return resolved
 }
 
@@ -62,12 +81,10 @@ function useTabSessionSwitch(
  *  that shows that session and hidden wherever the row would not offer it. */
 export function TabSessionSurfaceSwitchMenuItems({
   tab,
-  structuredSessionId,
-  leadingSeparator
+  structuredSessionId
 }: {
   tab: Pick<TerminalTab, 'id' | 'worktreeId' | 'launchAgent'>
   structuredSessionId?: string
-  leadingSeparator: boolean
 }): React.JSX.Element | null {
   const resolved = useTabSessionSwitch(tab, structuredSessionId)
   const targetState = useAppStore(
@@ -92,7 +109,7 @@ export function TabSessionSurfaceSwitchMenuItems({
   const { session, move } = resolved
   return (
     <>
-      {leadingSeparator ? <DropdownMenuSeparator /> : null}
+      <DropdownMenuSeparator />
       <AiVaultSessionSurfaceSwitchMenuItems
         menuKind="dropdown"
         tooltipSide="right"

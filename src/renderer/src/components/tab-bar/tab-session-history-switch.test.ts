@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
-import { makeTerminalTab, makeWorktree } from '../worktree-jump-palette-test-fixtures'
+import { makeRepo, makeTerminalTab, makeWorktree } from '../worktree-jump-palette-test-fixtures'
 import { makeAgentStatusEntry } from '@/runtime/sync-runtime-graph-test-harness'
 import type { AiVaultListArgs, AiVaultSession } from '../../../../shared/ai-vault-types'
+import { resetAiVaultForcedRescanThrottleForTest } from '../right-sidebar/ai-vault-session-refresh'
+import {
+  cacheAiVaultSessionList,
+  readCachedAiVaultSessionList
+} from '../right-sidebar/ai-vault-session-list-request'
 import {
   findTabSessionHistoryRow,
   lookupTabSessionHistoryRow,
+  readCachedTabSessionHistoryRow,
   resolveTabSessionHistorySubject,
   resolveTabSessionSwitch,
   type TabSessionHistorySubject
@@ -14,26 +20,17 @@ import {
 
 const mocks = vi.hoisted(() => {
   const state: {
-    hostId: string
     resumeState: { blocked: boolean; worktreeId: string | null }
-  } = { hostId: 'local', resumeState: { blocked: false, worktreeId: 'repo-1::/repo/wt' } }
+  } = { resumeState: { blocked: false, worktreeId: 'repo-1::/repo/wt' } }
   return { ...state, resumeInChat: vi.fn() }
 })
 
-vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getExecutionHostIdForWorktree: () => mocks.hostId
-}))
-
-vi.mock('../right-sidebar/ai-vault-session-resume', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  resolveAiVaultHistorySessionResumeState: () => ({
-    ...mocks.resumeState,
-    usesSessionWorktree: true
-  })
-}))
-
+// Parity with the panel's real composition is pinned in tab-session-history-switch.parity.test.ts.
 vi.mock('../right-sidebar/ai-vault-session-resume-in-chat-workspace', () => ({
-  resolveAiVaultSessionResumeInChatForWorkspace: mocks.resumeInChat
+  resolveAiVaultHistoryRowResume: () => ({
+    resumeState: { ...mocks.resumeState, usesSessionWorktree: true },
+    resumeInChat: mocks.resumeInChat()
+  })
 }))
 
 const WORKTREE_ID = 'repo-1::/repo/wt'
@@ -64,17 +61,36 @@ function row(overrides: Partial<AiVaultSession> = {}): AiVaultSession {
   }
 }
 
-function makeState(agentStatusByPaneKey: AppState['agentStatusByPaneKey'] = {}): AppState {
+const SIBLING_ID = 'repo-1::/repo/sibling'
+
+function makeState(
+  agentStatusByPaneKey: AppState['agentStatusByPaneKey'] = {},
+  repo: Partial<ReturnType<typeof makeRepo>> = {}
+): AppState {
   useAppStore.setState(useAppStore.getInitialState(), true)
   useAppStore.setState({
     agentStatusByPaneKey,
+    activeRepoId: 'repo-1',
+    activeWorktreeId: WORKTREE_ID,
+    repos: [{ ...makeRepo(), ...repo }],
     tabsByWorktree: { [WORKTREE_ID]: [makeTerminalTab('term-1', WORKTREE_ID, 'claude')] },
     worktreesByRepo: {
-      'repo-1': [makeWorktree(WORKTREE_ID, 'wt', { path: '/repo/wt' })]
+      'repo-1': [
+        makeWorktree(WORKTREE_ID, 'wt', { path: '/repo/wt' }),
+        makeWorktree(SIBLING_ID, 'sibling', { path: '/repo/sibling' })
+      ]
     }
   })
   return useAppStore.getState()
 }
+
+// What the Session History panel sends for this workspace: every path of its project, at the
+// panel's default depth, on the workspace's own host.
+const PANEL_REQUEST = {
+  scopePaths: ['/repo/wt', '/repo/sibling', '/repos/repo-1'],
+  executionHostScope: 'local',
+  sessionLimit: 250
+} as const
 
 const liveClaudeEntry = {
   'term-1:leaf-1': makeAgentStatusEntry({
@@ -90,8 +106,7 @@ const chatSubject: TabSessionHistorySubject = {
   kind: 'chat',
   sessionId: 'orca-chat-1',
   workspaceId: WORKTREE_ID,
-  workspacePath: '/repo/wt',
-  executionHostId: 'local'
+  request: PANEL_REQUEST
 }
 
 const cliSubject: TabSessionHistorySubject = {
@@ -99,12 +114,11 @@ const cliSubject: TabSessionHistorySubject = {
   agent: 'claude',
   providerSessionId: 'claude-session-1',
   workspaceId: WORKTREE_ID,
-  workspacePath: '/repo/wt',
-  executionHostId: 'local'
+  request: PANEL_REQUEST
 }
 
 beforeEach(() => {
-  mocks.hostId = 'local'
+  resetAiVaultForcedRescanThrottleForTest()
   mocks.resumeState = { blocked: false, worktreeId: WORKTREE_ID }
   mocks.resumeInChat.mockReset()
 })
@@ -128,13 +142,25 @@ describe('resolveTabSessionHistorySubject', () => {
     ).toBeNull()
   })
 
-  it('finds a terminal tab by the conversation its agent reported, on its own host', () => {
-    mocks.hostId = 'ssh:dev-box'
+  it('finds a terminal tab by the conversation its agent reported', () => {
     expect(
       resolveTabSessionHistorySubject(makeState(liveClaudeEntry), {
         tab: { id: 'term-1', worktreeId: WORKTREE_ID }
       })
-    ).toEqual({ ...cliSubject, executionHostId: 'ssh:dev-box' })
+    ).toEqual(cliSubject)
+  })
+
+  it('looks nothing up on a remote host, where neither move is ever offered', () => {
+    const state = makeState(liveClaudeEntry, { connectionId: 'dev-box' })
+    expect(
+      resolveTabSessionHistorySubject(state, { tab: { id: 'term-1', worktreeId: WORKTREE_ID } })
+    ).toBeNull()
+    expect(
+      resolveTabSessionHistorySubject(state, {
+        tab: { id: 'unified-1', worktreeId: WORKTREE_ID, launchAgent: 'claude' },
+        structuredSessionId: 'orca-chat-1'
+      })
+    ).toBeNull()
   })
 
   it('skips a plain shell tab', () => {
@@ -183,7 +209,6 @@ describe('resolveTabSessionSwitch', () => {
       action: 'resume-in-new-cli',
       worktreeId: WORKTREE_ID
     })
-    expect(mocks.resumeInChat).not.toHaveBeenCalled()
   })
 
   it('hides Resume in New CLI for an empty or unresumable chat', () => {
@@ -207,9 +232,6 @@ describe('resolveTabSessionSwitch', () => {
       action: 'resume-in-new-chat',
       worktreeId: WORKTREE_ID
     })
-    expect(mocks.resumeInChat).toHaveBeenCalledWith(
-      expect.objectContaining({ activeWorkspaceId: WORKTREE_ID })
-    )
     mocks.resumeInChat.mockReturnValue({ available: false, reason: 'empty' })
     expect(resolveTabSessionSwitch(makeState(), row(), cliSubject)).toBeNull()
   })
@@ -222,38 +244,75 @@ describe('lookupTabSessionHistoryRow', () => {
     scannedAt: 'now',
     ...(cancelled ? { cancelled: true as const } : {})
   })
+  const emptyRow = row({ messageCount: 0, previewMessages: [] })
 
-  it('reads the list scoped to the tab workspace and host, without forcing a rescan', async () => {
+  it("sends the panel's own request and keeps its result in the panel's cache", async () => {
     const listSessions = vi.fn(async (_args: AiVaultListArgs) => listResult([row()]))
-    await expect(
-      lookupTabSessionHistoryRow(
-        { ...cliSubject, executionHostId: 'ssh:dev-box' },
-        listSessions,
-        't'
-      )
-    ).resolves.toMatchObject({ id: 'row-1' })
+    await expect(lookupTabSessionHistoryRow(cliSubject, listSessions, 't')).resolves.toMatchObject({
+      id: 'row-1'
+    })
     expect(listSessions).toHaveBeenCalledTimes(1)
     expect(listSessions).toHaveBeenCalledWith({
-      scopePaths: ['/repo/wt'],
-      executionHostScope: 'ssh:dev-box',
+      includeAntigravityIdeSessions: true,
+      limit: 250,
+      unlimited: false,
+      scopePaths: PANEL_REQUEST.scopePaths,
+      executionHostScope: 'local',
+      force: undefined,
       requestToken: 't'
     })
+    expect(readCachedAiVaultSessionList(PANEL_REQUEST)?.sessions.map((s) => s.id)).toEqual([
+      'row-1'
+    ])
   })
 
-  it('rescans once when the cached list predates the conversation or its first turn', async () => {
+  it('rescans once on a miss, from the shared forced-rescan budget', async () => {
     const listSessions = vi
       .fn()
-      .mockResolvedValueOnce(listResult([row({ messageCount: 0, previewMessages: [] })]))
+      .mockResolvedValueOnce(listResult([emptyRow]))
       .mockResolvedValueOnce(listResult([row()]))
     await expect(lookupTabSessionHistoryRow(cliSubject, listSessions, 't')).resolves.toMatchObject({
       messageCount: 2
     })
+    expect(listSessions).toHaveBeenCalledTimes(2)
     expect(listSessions).toHaveBeenLastCalledWith(expect.objectContaining({ force: true }))
+  })
+
+  it('does not force another scan while the budget is spent', async () => {
+    const listSessions = vi.fn(async (_args: AiVaultListArgs) => listResult([emptyRow]))
+    await lookupTabSessionHistoryRow(cliSubject, listSessions, 't')
+    listSessions.mockClear()
+    await expect(lookupTabSessionHistoryRow(cliSubject, listSessions, 't')).resolves.toMatchObject({
+      messageCount: 0
+    })
+    expect(listSessions).toHaveBeenCalledTimes(1)
+    expect(listSessions).toHaveBeenCalledWith(expect.objectContaining({ force: undefined }))
   })
 
   it('stops when the lookup is cancelled', async () => {
     const listSessions = vi.fn().mockResolvedValue(listResult([], true))
     await expect(lookupTabSessionHistoryRow(cliSubject, listSessions, 't')).resolves.toBeNull()
     expect(listSessions).toHaveBeenCalledTimes(1)
+    expect(readCachedAiVaultSessionList(PANEL_REQUEST)).toBeNull()
+  })
+})
+
+describe('readCachedTabSessionHistoryRow', () => {
+  const cache = (sessions: AiVaultSession[]) =>
+    cacheAiVaultSessionList(
+      PANEL_REQUEST,
+      { sessions, issues: [], scannedAt: 'now' },
+      { replaceHostEntries: false }
+    )
+
+  it("answers from the panel's cached list", () => {
+    cache([row()])
+    expect(readCachedTabSessionHistoryRow(cliSubject)?.id).toBe('row-1')
+  })
+
+  it('needs a lookup when the cached row is missing or has no saved turns', () => {
+    expect(readCachedTabSessionHistoryRow(cliSubject)).toBeNull()
+    cache([row({ messageCount: 0, previewMessages: [] })])
+    expect(readCachedTabSessionHistoryRow(cliSubject)).toBeNull()
   })
 })

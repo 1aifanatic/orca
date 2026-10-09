@@ -154,7 +154,6 @@ export function SortableTabContextMenu({
 
   const closeShortcut = useOptionalShortcutLabel('tab.close')
   const renameShortcut = useOptionalShortcutLabel('tab.rename')
-  const showViewModeToggle = canToggleViewMode && onToggleViewMode !== undefined
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
@@ -177,7 +176,7 @@ export function SortableTabContextMenu({
           splitDownShortcut={splitDownShortcut}
           showTerminalSplit={canSplitTerminal}
         />
-        {showViewModeToggle ? (
+        {canToggleViewMode && onToggleViewMode ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onToggleViewMode}>
@@ -198,11 +197,6 @@ export function SortableTabContextMenu({
             </DropdownMenuItem>
           </>
         ) : null}
-        <TabSessionSurfaceSwitchMenuItems
-          tab={tab}
-          structuredSessionId={structuredSessionId}
-          leadingSeparator={!showViewModeToggle}
-        />
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onTogglePin}>
           {isPinned ? (
@@ -272,6 +266,8 @@ export function SortableTabContextMenu({
             })}
           </div>
         </div>
+        {/* Last, so an item that appears after its lookup shifts nothing the pointer is aiming at. */}
+        <TabSessionSurfaceSwitchMenuItems tab={tab} structuredSessionId={structuredSessionId} />
       </DropdownMenuContent>
     </DropdownMenu>
   )
