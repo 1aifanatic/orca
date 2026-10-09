@@ -26,7 +26,6 @@ import { resolveAiVaultTargetWorkspacePath } from '../right-sidebar/ai-vault-ses
 import { resolveAiVaultSessionWorktreeDisplay } from '../right-sidebar/ai-vault-session-worktree'
 import {
   aiVaultSessionListArgs,
-  cacheAiVaultSessionList,
   readCachedAiVaultSessionList,
   type AiVaultSessionListRequest
 } from '../right-sidebar/ai-vault-session-list-request'
@@ -174,7 +173,8 @@ export function readCachedTabSessionHistoryRow(
   return row && isAiVaultSessionResumableContent(row) ? row : null
 }
 
-/** Reads the row through the panel's own list request, keeping the panel's cache as it would.
+/** Reads the row through the panel's own list request. It only reads the panel's renderer cache:
+ *  a write here would let a later-opened panel paint this pre-launch list without asking the host.
  *  Resolves `undefined` when it got no answer (cancelled), as opposed to `null` for "no row". */
 export async function lookupTabSessionHistoryRow(
   subject: TabSessionHistorySubject,
@@ -187,7 +187,6 @@ export async function lookupTabSessionHistoryRow(
   if (listed.cancelled) {
     return undefined
   }
-  cacheAiVaultSessionList(request, listed, { replaceHostEntries: false })
   const row = findTabSessionHistoryRow(listed.sessions, subject)
   if (row && isAiVaultSessionResumableContent(row)) {
     return row
@@ -206,6 +205,5 @@ export async function lookupTabSessionHistoryRow(
   if (fresh.cancelled) {
     return undefined
   }
-  cacheAiVaultSessionList(request, fresh, { replaceHostEntries: true })
   return findTabSessionHistoryRow(fresh.sessions, subject)
 }

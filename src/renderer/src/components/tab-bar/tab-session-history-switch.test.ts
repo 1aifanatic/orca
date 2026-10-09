@@ -266,7 +266,7 @@ describe('lookupTabSessionHistoryRow', () => {
   const emptyRow = row({ messageCount: 0, previewMessages: [] })
   const lookupOptions = { requestToken: 't', isCancelled: () => false }
 
-  it("sends the panel's own request and keeps its result in the panel's cache", async () => {
+  it("sends the panel's own request without writing the panel's cache", async () => {
     const listSessions = vi.fn(async (_args: AiVaultListArgs) => listResult([row()]))
     await expect(
       lookupTabSessionHistoryRow(cliSubject, listSessions, lookupOptions)
@@ -283,8 +283,19 @@ describe('lookupTabSessionHistoryRow', () => {
       force: undefined,
       requestToken: 't'
     })
+    expect(readCachedAiVaultSessionList(PANEL_REQUEST)).toBeNull()
+  })
+
+  it("leaves the panel's cached list as it was, even after a forced rescan", async () => {
+    cacheAiVaultSessionList(PANEL_REQUEST, listResult([row({ id: 'panel-row' })]), {
+      replaceHostEntries: false
+    })
+    const listSessions = vi.fn(async (_args: AiVaultListArgs) => listResult([emptyRow]))
+    await lookupTabSessionHistoryRow(cliSubject, listSessions, lookupOptions)
+
+    expect(listSessions).toHaveBeenLastCalledWith(expect.objectContaining({ force: true }))
     expect(readCachedAiVaultSessionList(PANEL_REQUEST)?.sessions.map((s) => s.id)).toEqual([
-      'row-1'
+      'panel-row'
     ])
   })
 
