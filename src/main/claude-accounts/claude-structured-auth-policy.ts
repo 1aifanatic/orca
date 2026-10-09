@@ -1,12 +1,15 @@
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { getClaudeProfileRouter } from './claude-profile-installed-router'
-import { shouldStripClaudeAuthEnvForAccount } from './environment'
+import { isHostManagedClaudeAccount } from './environment'
 import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
 
 /** The structured mirror of the terminal preflight's `prepareClaudeAuth` result:
  *  the one field a launch resolution needs from the managed-account state. */
 export type ClaudeStructuredAuthPolicy = {
   stripAuthEnv: boolean
+  /** Which login a failed sign-in names; absent, it follows `stripAuthEnv`. */
+  account?: AgentSessionAccountKind
 }
 
 /**
@@ -31,13 +34,12 @@ export function claudeStructuredAuthPolicyForSettings(
 ): ClaudeStructuredAuthPolicy {
   // Why the router first: it decides whether the account or System default runs, as for terminals.
   const router = getClaudeProfileRouter()
-  if (router) {
-    return { stripAuthEnv: router.routesToAccount() }
-  }
-  return {
-    stripAuthEnv: shouldStripClaudeAuthEnvForAccount(
-      settings.claudeManagedAccounts,
-      getSelectedClaudeAccountIdForTarget(settings, { runtime: 'host' })
-    )
-  }
+  const managed = router
+    ? router.routesToAccount()
+    : isHostManagedClaudeAccount(
+        settings.claudeManagedAccounts,
+        getSelectedClaudeAccountIdForTarget(settings, { runtime: 'host' })
+      )
+  // Why never strip: a shell proxy's key must travel with its ANTHROPIC_BASE_URL, on every account.
+  return { stripAuthEnv: false, account: managed ? 'managed' : 'system' }
 }

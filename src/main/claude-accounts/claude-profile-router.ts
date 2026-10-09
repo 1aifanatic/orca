@@ -323,7 +323,8 @@ export class ClaudeProfileRouter {
       wslDistro: null,
       wslLinuxConfigDir: null,
       envPatch: this.launchEnv(),
-      stripAuthEnv: home !== null,
+      // Why never: a shell proxy's key must travel with its ANTHROPIC_BASE_URL, as on System default.
+      stripAuthEnv: false,
       provenance: home ? `profile:${profile?.accountId}` : 'system'
     }
   }
@@ -344,7 +345,7 @@ export class ClaudeProfileRouter {
     return !email || !systemDefault || !sameClaudeEmail(email, systemDefault)
   }
 
-  /** Whether launches run in an account's folder, which owns their auth, rather than System default. */
+  /** Whether launches run in an account's folder rather than System default's. */
   routesToAccount(): boolean {
     return this.routedProfile() !== null
   }
@@ -364,7 +365,7 @@ export class ClaudeProfileRouter {
     return {
       configDir: home,
       envPatch: { CLAUDE_CONFIG_DIR: home },
-      stripAuthEnv: true,
+      stripAuthEnv: false,
       provenance: `profile:${accountId}`
     }
   }

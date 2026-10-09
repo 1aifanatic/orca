@@ -66,14 +66,8 @@ export function applyClaudeEnvPatch(
 export const CLAUDE_AUTH_ENV_CONFLICT_MESSAGE =
   'This Claude launch defines explicit Anthropic auth environment variables. Remove those overrides before using a managed Claude account.'
 
-/**
- * Whether a launch on the host runtime must drop inherited Anthropic auth.
- *
- * Only a pinned host-managed account owns the credential, so only it may strip:
- * with no managed account the user's own `ANTHROPIC_*` is their sign-in, and
- * removing it signs them out of a CLI that would otherwise have worked.
- */
-export function shouldStripClaudeAuthEnvForAccount(
+/** Whether the selected account is a host-managed one; an id no account explains counts as one. */
+export function isHostManagedClaudeAccount(
   accounts: readonly ClaudeManagedAccount[] | undefined,
   activeAccountId: string | null | undefined
 ): boolean {

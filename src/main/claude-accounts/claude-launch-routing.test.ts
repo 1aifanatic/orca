@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
+import { claudeChildEnv } from '../claude/claude-structured-child-env'
 import { resolveClaudeStructuredLaunchHome } from '../claude/claude-structured-launch-home'
 import { resolveStructuredClaudeAccountHomePath } from '../runtime/structured-agent-account-home'
 import {
@@ -11,6 +12,7 @@ import {
 } from './claude-profile-installed-router'
 import { ClaudeProfileRouter, type ClaudeProfileRouterSettings } from './claude-profile-router'
 import { claudeStructuredAuthPolicyForSettings } from './claude-structured-auth-policy'
+import { applyClaudeEnvPatch } from './environment'
 
 const roots: string[] = []
 afterEach(() => {
@@ -78,7 +80,8 @@ async function launchHomes(f: ReturnType<typeof coveredAccount>) {
       wslDistro: null,
       getClaudeConfigDirectory: () => f.router.systemDefaultHome()
     }),
-    chatStripsAuth: claudeStructuredAuthPolicyForSettings(f.settings).stripAuthEnv,
+    chatAuth: claudeStructuredAuthPolicyForSettings(f.settings),
+    terminalStripsAuth: f.router.preparation().stripAuthEnv,
     usage: f.router.preparation().configDir,
     inactiveUsage: f.router.accountUsagePreparation('a').configDir
   }
@@ -93,7 +96,8 @@ describe('one router decision for every Claude launch', () => {
       chat: f.systemHome,
       chatEnv: undefined,
       chatRecord: f.systemHome,
-      chatStripsAuth: false,
+      chatAuth: { stripAuthEnv: false, account: 'system' },
+      terminalStripsAuth: false,
       usage: f.systemHome,
       inactiveUsage: f.systemHome
     })
@@ -104,10 +108,35 @@ describe('one router decision for every Claude launch', () => {
       chat: f.accountHome,
       chatEnv: f.accountHome,
       chatRecord: f.accountHome,
-      chatStripsAuth: true,
+      // A shell proxy's key stays with its address on the account too.
+      chatAuth: { stripAuthEnv: false, account: 'managed' },
+      terminalStripsAuth: false,
       usage: f.accountHome,
       inactiveUsage: f.accountHome
     })
+  })
+
+  it("keeps a shell proxy's key with its address on a signed-in account's launches", async () => {
+    const f = coveredAccount()
+    signIn(f.accountHome, 'a@example.test')
+    const shell = {
+      PATH: '/usr/bin',
+      ANTHROPIC_BASE_URL: 'https://proxy.example.test',
+      ANTHROPIC_API_KEY: 'proxy-key',
+      ANTHROPIC_AUTH_TOKEN: 'proxy-token'
+    }
+    const prepared = await f.router.prepareLaunch()
+    // The env patch every launcher (terminal, commit message, split) applies to its own env.
+    const env = applyClaudeEnvPatch({ ...shell }, prepared.envPatch, {
+      stripAuthEnv: prepared.stripAuthEnv
+    })
+    expect(env).toMatchObject({ ...shell, CLAUDE_CONFIG_DIR: f.accountHome })
+    expect(
+      claudeChildEnv(
+        { command: 'claude', inheritedEnv: { ...shell }, overlay: undefined },
+        claudeStructuredAuthPolicyForSettings(f.settings).stripAuthEnv
+      )
+    ).toMatchObject(shell)
   })
 
   // Terminals, chats, AI commit messages and automations launch through
@@ -115,7 +144,7 @@ describe('one router decision for every Claude launch', () => {
   it('keeps the Claude selection and account folders out of every launch path but the router', () => {
     const mainRoot = join(__dirname, '..')
     const routing =
-      /\b(?:getSelectedClaudeAccountIdForTarget|activeClaudeManagedAccountIds?(?:ByRuntime)?|describeClaudeProfile|wslClaudeProfile|shouldStripClaudeAuthEnvForAccount)\b|\.accountHome\(/
+      /\b(?:getSelectedClaudeAccountIdForTarget|activeClaudeManagedAccountIds?(?:ByRuntime)?|describeClaudeProfile|wslClaudeProfile|isHostManagedClaudeAccount)\b|\.accountHome\(/
     // Maps settings keys to the provider whose model catalog they expire; it routes nothing.
     const allowed = new Set([
       'native-chat/agent-model-catalog/agent-model-catalog-account-expiry.ts'

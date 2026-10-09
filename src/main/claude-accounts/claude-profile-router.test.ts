@@ -134,7 +134,7 @@ describe('ClaudeProfileRouter', () => {
     signIn(f.home('a'), 'a@example.test')
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({
       configDir: f.home('a'),
-      stripAuthEnv: true
+      stripAuthEnv: false
     })
     expect(readFileSync(f.router.pointerPath, 'utf8')).toBe(f.home('a'))
     expect(f.router.coveredBySystemDefault('a')).toBe(false)
@@ -337,7 +337,7 @@ describe('ClaudeProfileRouter', () => {
     mkdirSync(f.home('a'), { recursive: true })
     expect(f.router.preparation()).toMatchObject({
       configDir: f.home('a'),
-      stripAuthEnv: true,
+      stripAuthEnv: false,
       envPatch: {
         ORCA_CLAUDE_PROFILE_POINTER: f.router.pointerPath,
         CLAUDE_CONFIG_DIR: f.home('a'),

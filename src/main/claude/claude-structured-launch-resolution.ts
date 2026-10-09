@@ -176,7 +176,7 @@ export async function resolveClaudeStructuredInvocation(
   return {
     command: sources.command,
     env: claudeChildEnv(sources, auth.stripAuthEnv, decorateEnv),
-    account: auth.stripAuthEnv ? 'managed' : 'system'
+    account: auth.account ?? (auth.stripAuthEnv ? 'managed' : 'system')
   }
 }
 

@@ -4,7 +4,7 @@ import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import {
   CLAUDE_AUTH_ENV_VARS,
   hasClaudeAuthEnvConflict,
-  shouldStripClaudeAuthEnvForAccount
+  isHostManagedClaudeAccount
 } from './environment'
 import {
   normalizeTuiAgentEnvRecord,
@@ -33,34 +33,29 @@ function settings(
   } as Parameters<typeof claudeStructuredAuthPolicyForSettings>[0]
 }
 
-// The predicate now backs BOTH transports (runtime-auth-preparation.ts and the
-// structured wiring), so it needs a test of its own: forcing it to a constant used
-// to leave ~1000 tests green.
-describe('shouldStripClaudeAuthEnvForAccount', () => {
-  it('does not strip when no managed account is selected', () => {
-    expect(shouldStripClaudeAuthEnvForAccount([HOST_ACCOUNT], null)).toBe(false)
-    expect(shouldStripClaudeAuthEnvForAccount([HOST_ACCOUNT], undefined)).toBe(false)
-    expect(shouldStripClaudeAuthEnvForAccount([HOST_ACCOUNT], '')).toBe(false)
+describe('isHostManagedClaudeAccount', () => {
+  it('is false when no managed account is selected', () => {
+    expect(isHostManagedClaudeAccount([HOST_ACCOUNT], null)).toBe(false)
+    expect(isHostManagedClaudeAccount([HOST_ACCOUNT], undefined)).toBe(false)
+    expect(isHostManagedClaudeAccount([HOST_ACCOUNT], '')).toBe(false)
   })
 
-  it('strips for a host-managed account', () => {
-    expect(shouldStripClaudeAuthEnvForAccount([HOST_ACCOUNT, WSL_ACCOUNT], 'host-a')).toBe(true)
+  it('is true for a host-managed account', () => {
+    expect(isHostManagedClaudeAccount([HOST_ACCOUNT, WSL_ACCOUNT], 'host-a')).toBe(true)
   })
 
-  it('strips for an account with no explicit runtime (the legacy host shape)', () => {
-    expect(shouldStripClaudeAuthEnvForAccount([LEGACY_ACCOUNT], 'legacy-c')).toBe(true)
+  it('is true for an account with no explicit runtime (the legacy host shape)', () => {
+    expect(isHostManagedClaudeAccount([LEGACY_ACCOUNT], 'legacy-c')).toBe(true)
   })
 
-  it('does not strip for a WSL-managed account, matching runtime-auth-preparation', () => {
-    expect(shouldStripClaudeAuthEnvForAccount([HOST_ACCOUNT, WSL_ACCOUNT], 'wsl-b')).toBe(false)
+  it('is false for a WSL-managed account', () => {
+    expect(isHostManagedClaudeAccount([HOST_ACCOUNT, WSL_ACCOUNT], 'wsl-b')).toBe(false)
   })
 
-  it('strips for a selected id no account list explains', () => {
-    // Fail-safe: an id we cannot resolve is treated as a pinned account, never as
-    // "no account", so an unreadable settings blob cannot open the strip.
-    expect(shouldStripClaudeAuthEnvForAccount([HOST_ACCOUNT], 'deleted-d')).toBe(true)
-    expect(shouldStripClaudeAuthEnvForAccount(undefined, 'deleted-d')).toBe(true)
-    expect(shouldStripClaudeAuthEnvForAccount([], 'deleted-d')).toBe(true)
+  it('is true for a selected id no account list explains', () => {
+    expect(isHostManagedClaudeAccount([HOST_ACCOUNT], 'deleted-d')).toBe(true)
+    expect(isHostManagedClaudeAccount(undefined, 'deleted-d')).toBe(true)
+    expect(isHostManagedClaudeAccount([], 'deleted-d')).toBe(true)
   })
 })
 
@@ -73,19 +68,22 @@ describe('claudeStructuredAuthPolicyForSettings', () => {
           activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: {} }
         })
       )
-    ).toEqual({ stripAuthEnv: true })
+    ).toEqual({ stripAuthEnv: false, account: 'managed' })
   })
 
-  it('strips when a host account is pinned by runtime selection', () => {
+  it('names a host account pinned by runtime selection, keeping its shell auth', () => {
     expect(
       claudeStructuredAuthPolicyForSettings(
         settings({ activeClaudeManagedAccountIdsByRuntime: { host: 'host-a', wsl: {} } })
       )
-    ).toEqual({ stripAuthEnv: true })
+    ).toEqual({ stripAuthEnv: false, account: 'managed' })
   })
 
-  it('does not strip for system auth, so an API-key-only user keeps their sign-in', () => {
-    expect(claudeStructuredAuthPolicyForSettings(settings({}))).toEqual({ stripAuthEnv: false })
+  it('names System default when no account is selected', () => {
+    expect(claudeStructuredAuthPolicyForSettings(settings({}))).toEqual({
+      stripAuthEnv: false,
+      account: 'system'
+    })
   })
 
   it('ignores a WSL-only selection: the structured child is always a native host process', () => {
@@ -95,7 +93,7 @@ describe('claudeStructuredAuthPolicyForSettings', () => {
           activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: { Ubuntu: 'wsl-b' } }
         })
       )
-    ).toEqual({ stripAuthEnv: false })
+    ).toEqual({ stripAuthEnv: false, account: 'system' })
   })
 })
 
