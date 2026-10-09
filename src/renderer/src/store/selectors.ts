@@ -261,6 +261,9 @@ export function selectKnownWorktreeById(
 }
 export const useWorktreeById = (worktreeId: string | null, executionHostId?: ExecutionHostId) =>
   useAppStore((s) => selectKnownWorktreeById(s, worktreeId, executionHostId))
+// File-list callers resolve operation ownership separately from the UI's active host.
+export const useKnownWorktreeById = (worktreeId: string | null) =>
+  useAppStore((s) => (worktreeId ? (findKnownWorktreeById(s, worktreeId) ?? null) : null))
 export const useActiveWorktree = () => {
   const activeWorktreeId = useActiveWorktreeId()
   return useAppStore((s) =>
