@@ -87,7 +87,9 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
           // grid, so the restorer must replay it there — the request path has
           // always carried these; the pushes silently dropped them.
           cols: info?.cols,
-          rows: info?.rows
+          rows: info?.rows,
+          // Absent counts as none: older hosts push desktop images screen-only.
+          carriesHistory: (info?.scrollbackRows ?? 0) > 0
         }
         if (matchesPendingRequest) {
           pendingRequest.resolve({

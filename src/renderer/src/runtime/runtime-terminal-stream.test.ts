@@ -575,7 +575,9 @@ describe('remote runtime terminal multiplex ACK gate', () => {
       pendingEscapeTailAnsi: undefined,
       // The host's serialization grid; the restorer replays there, not at the pane's own.
       cols: 120,
-      rows: 40
+      rows: 40,
+      // No scrollbackRows: an older host's screen-only image.
+      carriesHistory: false
     })
     expect(onSubscribed).toHaveBeenCalledTimes(1)
 
@@ -596,7 +598,8 @@ describe('remote runtime terminal multiplex ACK gate', () => {
     expect(onSnapshot).toHaveBeenCalledWith(`\x1b[?2026l\x1b[2J\x1b[3J\x1b[H${'recovered state'}`, {
       pendingEscapeTailAnsi: undefined,
       cols: 120,
-      rows: 40
+      rows: 40,
+      carriesHistory: true
     })
     expect(onSubscribed).toHaveBeenCalledTimes(1)
 
@@ -616,7 +619,8 @@ describe('remote runtime terminal multiplex ACK gate', () => {
     expect(onSnapshot).toHaveBeenCalledWith('\x1b[?2026l\x1b[2J\x1b[3J\x1b[H', {
       pendingEscapeTailAnsi: undefined,
       cols: 120,
-      rows: 40
+      rows: 40,
+      carriesHistory: false
     })
     expect(onSubscribed).toHaveBeenCalledTimes(1)
 

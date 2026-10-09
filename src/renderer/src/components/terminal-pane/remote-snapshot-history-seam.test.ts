@@ -112,9 +112,9 @@ describe('pushed remote snapshots never splice stale history above the image', (
     return { onReplayData, push }
   }
 
-  async function paint(data: string): Promise<string[]> {
+  async function paint(data: string, meta?: Record<string, unknown>): Promise<string[]> {
     const term = await paneWithStaleHistory()
-    const writes = buildFoldedImageReplayWrites(data, false)
+    const writes = buildFoldedImageReplayWrites(data, false, meta?.carriesHistory === true)
     await writeHeadlessTerminal(term, writes.preamble)
     await writeHeadlessTerminal(term, writes.payload)
     const result = lines(term)
@@ -170,7 +170,51 @@ describe('pushed remote snapshots never splice stale history above the image', (
       `${hostHistory}\r\n${SCREEN}`
     )
     await expect.poll(() => onReplayData.mock.calls.length, { timeout: 5000 }).toBe(2)
-    const [data] = onReplayData.mock.calls[1]!
-    expect(await paint(data)).toEqual(Array.from({ length: 8 }, (_, i) => `LINE-${1956 + i}`))
+    const [data, meta] = onReplayData.mock.calls[1]!
+    expect(meta).toMatchObject({ carriesHistory: true })
+    expect(await paint(data, meta)).toEqual(Array.from({ length: 8 }, (_, i) => `LINE-${1956 + i}`))
+  })
+
+  // A reconnect while a TUI runs: the pane's normal buffer froze when the TUI entered alt,
+  // and an image without history has nothing to replace that pre-TUI scrollback with.
+  async function paintOverLiveTui(data: string, meta?: Record<string, unknown>) {
+    const term = new Terminal({ cols: COLS, rows: ROWS, scrollback: 1000, allowProposedApi: true })
+    const history = Array.from({ length: 30 }, (_, i) => `HIST-${i}`).join('\r\n')
+    await writeHeadlessTerminal(term, `${history}\r\n$ claude\x1b[?1049h\x1b[HAGENT-FRAME`)
+    const writes = buildFoldedImageReplayWrites(data, true, meta?.carriesHistory === true)
+    await writeHeadlessTerminal(term, writes.preamble)
+    await writeHeadlessTerminal(term, writes.payload)
+    const result = { normal: lines(term), active: term.buffer.active.type }
+    term.dispose()
+    return result
+  }
+
+  it('an older host’s screen-only image over a live TUI keeps the pre-TUI scrollback', async () => {
+    const { onReplayData, push } = await attach()
+    push(
+      { cols: COLS, rows: ROWS, seq: 7, source: 'headless' },
+      'HIST-28\r\nHIST-29\r\n$ claude\x1b[?1049h\x1b[HAGENT-FRAME-2'
+    )
+    await expect.poll(() => onReplayData.mock.calls.length, { timeout: 5000 }).toBe(1)
+    const [data, meta] = onReplayData.mock.calls[0]!
+    const painted = await paintOverLiveTui(data, meta)
+    expect(painted.active).toBe('alternate')
+    expect(painted.normal).toEqual([
+      ...Array.from({ length: 30 }, (_, i) => `HIST-${i}`),
+      '$ claude'
+    ])
+  })
+
+  it('an image with history over a live TUI replaces the normal buffer with the host’s', async () => {
+    const { onReplayData, push } = await attach()
+    push(
+      { cols: COLS, rows: ROWS, seq: 7, source: 'headless', scrollbackRows: 4 },
+      'MISSED-0\r\nMISSED-1\r\nMISSED-2\r\nMISSED-3\r\n$ next\x1b[?1049h\x1b[HAGENT-FRAME-2'
+    )
+    await expect.poll(() => onReplayData.mock.calls.length, { timeout: 5000 }).toBe(1)
+    const [data, meta] = onReplayData.mock.calls[0]!
+    const painted = await paintOverLiveTui(data, meta)
+    expect(painted.active).toBe('alternate')
+    expect(painted.normal).toEqual(['MISSED-0', 'MISSED-1', 'MISSED-2', 'MISSED-3', '$ next'])
   })
 })

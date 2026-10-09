@@ -106,6 +106,8 @@ type HostStream = {
   ptyId: string
   outputPaused: boolean
   ackRecoverySnapshotInFlight: boolean
+  ackRecoveryHistoryOwed: boolean
+  ackInFlightBytes: number
   ackOutputSourceRanges: boolean
   ackPendingOutput: unknown[]
   ackPendingOutputBytes: number
@@ -115,6 +117,7 @@ type HostConnection = {
   runtime: HostRuntime
   streams: Map<number, HostStream>
   closed: boolean
+  ackTotalInFlightBytes: number
   sendFrame: (streamId: number, opcode: number, payload?: Uint8Array<ArrayBufferLike>) => boolean
   sendStreamError: (streamId: number, message: string) => void
   sendAckRecoverySnapshot?: (stream: HostStream) => Promise<void>
@@ -271,6 +274,8 @@ async function publishHostRecovery(
     ptyId: PTY_ID,
     outputPaused: false,
     ackRecoverySnapshotInFlight: false,
+    ackRecoveryHistoryOwed: false,
+    ackInFlightBytes: 0,
     ackOutputSourceRanges: false,
     ackPendingOutput: [],
     ackPendingOutputBytes: 0,
@@ -280,6 +285,7 @@ async function publishHostRecovery(
     runtime: host,
     streams: new Map([[streamId, stream]]),
     closed: false,
+    ackTotalInFlightBytes: 0,
     sendFrame,
     sendStreamError: (_id, message) => {
       throw new Error(message)

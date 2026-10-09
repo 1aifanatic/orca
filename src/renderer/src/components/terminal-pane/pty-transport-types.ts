@@ -72,6 +72,8 @@ export type PtyReplayDataMeta = {
   /** An image that starts on the normal buffer and enters alt itself; absent for
    *  raw byte replays such as an SSH relay's ring buffer. */
   carriesNormalBuffer?: boolean
+  /** The image folds host history above its screen; absent for screen-only images. */
+  carriesHistory?: boolean
 }
 
 export type LocalPtySessionMetadata = {
