@@ -25,6 +25,7 @@ import { runClaudeProfileSetupInWorker } from './claude-profile-setup-worker'
 import type { ClaudeEnvPatch } from './environment'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 import {
+  findClaudeAccount,
   getSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
@@ -34,7 +35,7 @@ import {
   claudeStateFile,
   readClaudeFolderLogin,
   removeClaudeAccountFolder,
-  sameClaudeEmail,
+  isSameClaudeLogin,
   type ClaudeFolderLogin
 } from './claude-account-folder'
 import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
@@ -115,11 +116,9 @@ export class ClaudeProfileRouter {
     if (this.accountLogin(accountId)) {
       return false
     }
-    const email = this.args
-      .getSettings()
-      .claudeManagedAccounts.find((account) => account.id === accountId)?.email
-    const systemDefault = this.systemDefaultLogin()?.email
-    return Boolean(email && systemDefault && sameClaudeEmail(email, systemDefault))
+    const saved = findClaudeAccount(this.args.getSettings(), accountId)
+    const systemDefault = this.systemDefaultLogin()
+    return Boolean(saved && systemDefault && isSameClaudeLogin(saved, systemDefault))
   }
 
   /** The user's System default: their own CLAUDE_CONFIG_DIR, else ~/.claude. */
@@ -338,11 +337,11 @@ export class ClaudeProfileRouter {
     if (!profile) {
       return null
     }
-    const email =
-      this.accountLogin(profile.accountId)?.email ??
-      this.args.getSettings().claudeManagedAccounts.find((a) => a.id === profile.accountId)?.email
-    const systemDefault = this.systemDefaultLogin(5_000)?.email
-    return !email || !systemDefault || !sameClaudeEmail(email, systemDefault)
+    const selected =
+      this.accountLogin(profile.accountId) ??
+      findClaudeAccount(this.args.getSettings(), profile.accountId)
+    const systemDefault = this.systemDefaultLogin(5_000)
+    return !selected || !systemDefault || !isSameClaudeLogin(selected, systemDefault)
   }
 
   /** Whether launches run in an account's folder rather than System default's. */

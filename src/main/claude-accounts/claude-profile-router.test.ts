@@ -103,11 +103,11 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
   return { root, userHome, dataRoot, settings, router, home, setup }
 }
 
-function signIn(stateDir: string, email: string): void {
+function signIn(stateDir: string, email: string, organizationUuid?: string): void {
   mkdirSync(stateDir, { recursive: true })
   writeFileSync(
     join(stateDir, '.claude.json'),
-    JSON.stringify({ oauthAccount: { emailAddress: email } })
+    JSON.stringify({ oauthAccount: { emailAddress: email, organizationUuid } })
   )
 }
 
@@ -162,6 +162,22 @@ describe('ClaudeProfileRouter', () => {
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
     writeFileSync(join(f.userHome, '.claude.json'), '{}')
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
+  })
+
+  it('never covers an account saved for another organization of the same email', () => {
+    const f = fixture()
+    f.settings.claudeManagedAccounts = f.settings.claudeManagedAccounts.map((account) => ({
+      ...account,
+      organizationUuid: account.id === 'a' ? 'org-a' : null
+    }))
+    signIn(f.userHome, 'a@example.test', 'org-b')
+    expect(f.router.coveredBySystemDefault('a')).toBe(false)
+    expect(f.router.systemDefaultRunsAnotherAccount()).toBe(true)
+    signIn(f.userHome, 'a@example.test', 'org-a')
+    expect(f.router.coveredBySystemDefault('a')).toBe(true)
+    // Either side naming no organization compares by email alone.
+    signIn(f.userHome, 'b@example.test', 'org-b')
+    expect(f.router.coveredBySystemDefault('b')).toBe(true)
   })
 
   it("compares against the user's own CLAUDE_CONFIG_DIR login when they set one", async () => {

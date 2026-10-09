@@ -16,10 +16,18 @@ import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
 import { claudeProfileMarkerPath, type ClaudeProfileDescriptor } from './claude-profile-paths'
 import type { ClaudeProfileRouterSettings } from './claude-profile-router'
 import { claudeProfileMissing, claudeProfileSetupFailed } from './claude-profile-launch-errors'
-import { claudeStateLogin, sameClaudeEmail } from './claude-account-folder'
+import {
+  claudeStateLogin,
+  isSameClaudeLogin,
+  type ClaudeFolderLogin
+} from './claude-account-folder'
 import { wslClaudeProfile, wslClaudeProfilePointer } from './claude-profile-wsl-paths'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
-import { getClaudeWslSelectionKey, getSelectedClaudeAccountIdForTarget } from './runtime-selection'
+import {
+  findClaudeAccount,
+  getClaudeWslSelectionKey,
+  getSelectedClaudeAccountIdForTarget
+} from './runtime-selection'
 
 type WslSetup = (distro: string, guestHome: string, accountId: string) => Promise<void>
 
@@ -75,11 +83,9 @@ export class ClaudeWslProfileRouter {
     if (!selected || (await guestLogin(distro, posix.join(selected.home, '.claude.json')))) {
       return selected
     }
-    const email = this.args
-      .getSettings()
-      .claudeManagedAccounts.find((account) => account.id === selected.accountId)?.email
+    const saved = findClaudeAccount(this.args.getSettings(), selected.accountId)
     const systemDefault = await guestLogin(distro, posix.join(home, '.claude.json'))
-    return email && systemDefault && sameClaudeEmail(email, systemDefault) ? null : selected
+    return saved && systemDefault && isSameClaudeLogin(saved, systemDefault) ? null : selected
   }
 
   private selectedProfile(home: string, distro: string): ClaudeProfileDescriptor | null {
@@ -214,11 +220,11 @@ export class ClaudeWslProfileRouter {
 }
 
 /** The login a guest state file names, read over the share like the marker. */
-async function guestLogin(distro: string, stateFile: string): Promise<string | null> {
+async function guestLogin(distro: string, stateFile: string): Promise<ClaudeFolderLogin | null> {
   try {
     const state: unknown = JSON.parse(await readFile(toWindowsWslPath(stateFile, distro), 'utf8'))
     return state && typeof state === 'object' && !Array.isArray(state)
-      ? (claudeStateLogin(Object.fromEntries(Object.entries(state)))?.email ?? null)
+      ? claudeStateLogin(Object.fromEntries(Object.entries(state)))
       : null
   } catch {
     return null

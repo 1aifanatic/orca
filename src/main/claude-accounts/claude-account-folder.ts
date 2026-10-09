@@ -48,8 +48,18 @@ const logins = new Map<
   { mtimeMs: number; size: number; readAt: number; login: ClaudeFolderLogin | null }
 >()
 
-export function sameClaudeEmail(left: string, right: string): boolean {
-  return left.trim().toLowerCase() === right.trim().toLowerCase()
+/** Whether two logins name one account: the same email, and the same organization when both
+ *  name one, so one email in two organizations stays two accounts. */
+export function isSameClaudeLogin(
+  left: { email: string; organizationUuid?: string | null },
+  right: { email: string; organizationUuid?: string | null }
+): boolean {
+  return (
+    left.email.trim().toLowerCase() === right.email.trim().toLowerCase() &&
+    (!left.organizationUuid ||
+      !right.organizationUuid ||
+      left.organizationUuid === right.organizationUuid)
+  )
 }
 
 /** The login parsed Claude state names; null before Claude finishes a sign-in. */

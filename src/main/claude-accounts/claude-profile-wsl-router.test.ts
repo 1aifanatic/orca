@@ -290,8 +290,19 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     })
     expect(readFileSync(f.pointer, 'utf8')).toBe(f.profileHome)
 
-    // Another email in the guest's ~/.claude never stands in for the account.
+    // Another organization of the same email never stands in for the account.
     rmSync(join(f.profileHome, '.claude.json'))
+    f.settings.claudeManagedAccounts = [{ ...f.account('a'), organizationUuid: 'org-a' }]
+    writeFileSync(
+      join(guest.home, '.claude.json'),
+      JSON.stringify({
+        oauthAccount: { emailAddress: 'a@example.test', organizationUuid: 'org-b' }
+      })
+    )
+    await expect(f.router.prepareLaunch('Ubuntu')).resolves.toMatchObject({
+      wslLinuxConfigDir: f.profileHome
+    })
+    // Another email in the guest's ~/.claude never stands in for the account either.
     login(guest.home, 'b@example.test')
     await expect(f.router.prepareLaunch('Ubuntu')).resolves.toMatchObject({
       wslLinuxConfigDir: f.profileHome
