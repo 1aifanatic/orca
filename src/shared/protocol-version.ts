@@ -58,10 +58,7 @@ import {
   SKILL_MANAGEMENT_CAPABILITY,
   SKILL_UPLOAD_CAPABILITY
 } from './skill-install-capability'
-import {
-  AGENT_LAUNCH_RUNTIME_CAPABILITIES,
-  AGENT_LAUNCH_RUNTIME_CAPABILITY
-} from './agent-launch-runtime-capability'
+import * as launch from './agent-launch-runtime-capability'
 
 // Why: declares the Orca runtime RPC compatibility contract. Desktop,
 // headless server, CLI, and mobile builds may drift in app version, but
@@ -250,6 +247,9 @@ export const AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY =
 // gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
+// Why: queue pages and lossless body parts are separate from typed queueing. History/subscribe
+// params are strict on old hosts: send queueView: 'paged-v1' only after this host capability.
+export const AGENT_SESSION_QUEUE_PAGES_RUNTIME_CAPABILITY = 'agent-session.queue-pages.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
@@ -330,7 +330,7 @@ export const NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES = [
   REPO_SEARCH_QUALIFIED_REFS_RUNTIME_CAPABILITY,
   AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY,
   AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_RUNTIME_CAPABILITY
+  launch.AGENT_LAUNCH_RUNTIME_CAPABILITY
 ] as const
 
 export const ANTIGRAVITY_CONFIGURED_MODEL_RUNTIME_CAPABILITY =
@@ -405,6 +405,7 @@ export const RUNTIME_CAPABILITIES = [
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RECOVERY_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUE_PAGES_RUNTIME_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY,
@@ -435,7 +436,7 @@ export const RUNTIME_CAPABILITIES = [
   AUTOMATION_OWNER_FENCING_RUNTIME_CAPABILITY,
   AUTOMATION_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
   NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY,
-  ...AGENT_LAUNCH_RUNTIME_CAPABILITIES
+  ...launch.AGENT_LAUNCH_RUNTIME_CAPABILITIES
 ] as const
 
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number] | (string & {})

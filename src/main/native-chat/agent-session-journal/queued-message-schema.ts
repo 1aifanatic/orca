@@ -1,6 +1,7 @@
 // The draft table's shape, created and healed at every writable open.
 
 import type Database from '../../sqlite/sync-database'
+import { QUEUED_MESSAGE_SOURCE_SQL } from './queued-message-source-index'
 
 /** Columns a later build added, so an older draft table can gain them in place. */
 const NULLABLE_COLUMNS: readonly (readonly [name: string, type: string])[] = [
@@ -73,5 +74,14 @@ CREATE INDEX IF NOT EXISTS queued_messages_unsettled_position
   ON queued_messages (session_id, position) WHERE state IN ('waiting', 'returned');
 CREATE INDEX IF NOT EXISTS queued_messages_state_settled
   ON queued_messages (session_id, state, settled_at, message_id);
+CREATE INDEX IF NOT EXISTS queued_messages_unsettled_source_position
+  ON queued_messages (session_id, ${QUEUED_MESSAGE_SOURCE_SQL}, position, message_id)
+  WHERE state IN ('waiting', 'returned') AND json_valid(body_json);
+CREATE INDEX IF NOT EXISTS queued_messages_unsettled_source_created
+  ON queued_messages (session_id, ${QUEUED_MESSAGE_SOURCE_SQL}, created_at, position, message_id)
+  WHERE state IN ('waiting', 'returned') AND json_valid(body_json);
+CREATE INDEX IF NOT EXISTS queued_messages_unsettled_keyset
+  ON queued_messages (session_id, position, message_id)
+  WHERE state IN ('waiting', 'returned') AND json_valid(body_json);
 `)
 }

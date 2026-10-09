@@ -5,6 +5,7 @@
 // working status, teardown, or the idle sweep.
 
 import type Database from '../../sqlite/sync-database'
+import { JournalQueuedMessagePages } from './journal-queued-message-pages'
 import type {
   AgentJournalCursor,
   AgentJournalMessageItem
@@ -83,15 +84,17 @@ export class JournalQueuedMessages {
   /** Bumped on every draft-table write, so publication memos recompute only when they must. */
   private changeRevision = 0
 
-  constructor(private readonly deps: JournalQueuedMessagesDeps) {}
+  readonly pages: JournalQueuedMessagePages
+
+  constructor(private readonly deps: JournalQueuedMessagesDeps) {
+    this.pages = new JournalQueuedMessagePages(deps.database, deps.sessionId)
+  }
 
   get sessionId(): string {
     return this.deps.sessionId
   }
 
-  revision(): number {
-    return this.changeRevision
-  }
+  revision = (): number => this.changeRevision
 
   /** A journal transaction rolled back: nothing read inside it may stay cached. */
   invalidate(): void {
