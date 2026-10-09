@@ -1,4 +1,9 @@
-import { resolveTerminalFileLink, type ParsedTerminalFileLink } from '@/lib/terminal-links'
+import {
+  isPathInsideWorktree,
+  resolveTerminalFileLink,
+  type ParsedTerminalFileLink
+} from '@/lib/terminal-links'
+import { isWslUncPath } from '../../../../shared/wsl-paths'
 import {
   isRemoteRuntimeFileOperation,
   type RuntimeFileOperationArgs
@@ -77,6 +82,22 @@ export function resolveFileLinkTarget(
     }),
     isKnownWorktreeRoot
   }
+}
+
+/**
+ * Whether this target may be checked with no click or hover. A check on this machine of a network
+ * share outside the workspace may not: on Windows that stat opens SMB to the named server and sends
+ * the user's credentials.
+ */
+export function mayCheckFileLinkTargetUnprompted(
+  target: FileLinkTarget,
+  host: FileLinkHost
+): boolean {
+  if (target.isKnownWorktreeRoot || target.fileContext.connectionId || target.isRemoteRuntimePath) {
+    return true
+  }
+  const isNetworkShare = /^[\\/]{2}/.test(target.absolutePath) && !isWslUncPath(target.absolutePath)
+  return !isNetworkShare || isPathInsideWorktree(target.absolutePath, host.worktreePath)
 }
 
 /** Rejects when the host cannot answer, so callers never mistake an outage for a missing file. */

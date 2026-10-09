@@ -16,7 +16,7 @@ vi.mock('@/lib/connection-context', () => ({
 vi.mock('@/components/terminal-pane/terminal-file-link-target', async (importOriginal) => ({
   ...(await importOriginal<typeof FileLinkTargetModule>()),
   resolveFileLinkTarget: (link: ParsedTerminalFileLink) => ({
-    absolutePath: `/repo/${link.pathText}`,
+    absolutePath: /^[\\/]{2}/.test(link.pathText) ? link.pathText : `/repo/${link.pathText}`,
     line: null,
     column: null,
     fileContext: {},
@@ -316,6 +316,37 @@ describe('createNativeChatFileLinkExistence', () => {
     await settle()
 
     expect(pathExists).not.toHaveBeenCalled()
+  })
+
+  it('never asks this machine about a network share outside the workspace', async () => {
+    const { pathExists } = hostWith(() => true)
+    const { watcher } = watching(createNativeChatFileLinkExistence(host, pathExists))
+
+    for (const path of [
+      String.raw`\\evil.example\share\a.ts`,
+      '//evil.example/share/notes.md',
+      String.raw`\\?\UNC\evil.example\share\a.ts`
+    ]) {
+      expect(watcher.getSnapshot().check(link(path))).toBe(false)
+    }
+    await settle()
+
+    expect(pathExists).not.toHaveBeenCalled()
+  })
+
+  it('still checks paths inside a workspace on a network share, and WSL paths', async () => {
+    const { asked, pathExists } = hostWith(() => true)
+    const shareHost = { ...host, worktreePath: String.raw`\\FileServer\share\repo` }
+    const { watcher } = watching(createNativeChatFileLinkExistence(shareHost, pathExists))
+
+    watcher.getSnapshot().check(link(String.raw`\\fileserver\share\repo\src\a.ts`))
+    watcher.getSnapshot().check(link(String.raw`\\wsl.localhost\Ubuntu\home\me\a.ts`))
+    await settle()
+
+    expect(asked).toEqual([
+      String.raw`\\fileserver\share\repo\src\a.ts`,
+      String.raw`\\wsl.localhost\Ubuntu\home\me\a.ts`
+    ])
   })
 
   it('links a known workspace root without asking', () => {

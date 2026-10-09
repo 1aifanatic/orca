@@ -8,6 +8,7 @@ import {
   writeTerminalPathExistsCache
 } from '@/components/terminal-pane/terminal-path-exists-cache'
 import {
+  mayCheckFileLinkTargetUnprompted,
   resolveFileLinkTarget,
   type FileLinkHost,
   type FileLinkPathExistence,
@@ -173,7 +174,8 @@ export function createNativeChatFileLinkExistence(
     if (target?.isKnownWorktreeRoot) {
       return true
     }
-    if (!target || isHostUnresolved(target)) {
+    // Why: chat checks without a click, so a network share outside the workspace is never asked about.
+    if (!target || isHostUnresolved(target) || !mayCheckFileLinkTargetUnprompted(target, host)) {
       return false
     }
     const key = target.cacheKey
