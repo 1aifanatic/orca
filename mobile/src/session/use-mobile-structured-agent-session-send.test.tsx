@@ -10,6 +10,12 @@ import { fieldsOf, ok } from './use-mobile-structured-agent-session-queued.test-
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { structuredSendResultFixture } from './structured-agent-send-result.test-fixture'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
+import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
+import {
+  useMobileNativeChatSendError,
+  mobileNativeChatSendErrorMessage,
+  type MobileNativeChatSendErrorDetails
+} from './use-mobile-native-chat-send-error'
 
 const asyncStorage = vi.hoisted(() => ({
   getItem: vi.fn(),
@@ -57,6 +63,7 @@ function snapshotEvent(): Extract<AgentSessionSubscribeEvent, { type: 'snapshot'
 describe('mobile structured send actions', () => {
   let renderer: ReactTestRenderer | null = null
   let hook: ReturnType<typeof useMobileStructuredAgentSession> | null = null
+  let banner: ReturnType<typeof useMobileNativeChatSendError> | null = null
   let listener: ((value: unknown) => void) | null = null
   let storedOperations: Map<string, string>
   const onSendError = vi.fn()
@@ -77,7 +84,9 @@ describe('mobile structured send actions', () => {
     close: () => {}
   }
 
-  function Harness(): null {
+  function Harness() {
+    banner = useMobileNativeChatSendError({ scopeKey: 'session-1', showToast: vi.fn() })
+    banner.bannerMountedRef.current = true
     hook = useMobileStructuredAgentSession({
       client,
       sessionId: 'session-1',
@@ -88,7 +97,11 @@ describe('mobile structured send actions', () => {
       hostSupport: null,
       onSendError
     })
-    return null
+    return createElement(
+      'span',
+      null,
+      mobileNativeChatSendErrorMessage(banner, hook.session.messages)
+    )
   }
 
   async function mountSession(): Promise<void> {
@@ -111,6 +124,9 @@ describe('mobile structured send actions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    onSendError.mockImplementation((message: string, details?: MobileNativeChatSendErrorDetails) =>
+      banner?.show(message, details)
+    )
 
     storedOperations = new Map()
     asyncStorage.getItem.mockImplementation(
@@ -131,6 +147,7 @@ describe('mobile structured send actions', () => {
     act(() => renderer?.unmount())
     renderer = null
     hook = null
+    banner = null
     listener = null
   })
 
@@ -232,6 +249,59 @@ describe('mobile structured send actions', () => {
       expect(calls()).toHaveLength(2)
       expect(sentIds()[1]).not.toBe(request.envelope.clientOperationId)
       expect(asyncStorage.getItem).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['reply-before-row', 'row-before-commit'] as const)(
+    'states delivery once and leaves auth guidance in the transcript for %s',
+    async (order) => {
+      const fact = {
+        kind: 'notSignedIn',
+        detail: { text: 'The provider key expired.', audience: 'person' }
+      } as const
+      const words = agentSessionFailureWords(fact, { agentName: 'Codex', surface: 'row' })
+      const event = snapshotEvent()
+      event.page.items = [
+        {
+          itemId: 'auth-row',
+          sequence: 1,
+          revision: 1,
+          observedAt: 1,
+          body: { kind: 'status', tone: 'error', ...words }
+        }
+      ]
+      const value = structuredSendResultFixture('rejected', words.text)
+      if (!('submission' in value)) {
+        throw new Error('expected submission')
+      }
+      value.submission.rejection = fact
+      sendRequest.mockImplementation(async (method) => {
+        if (method !== 'agentSession.send') {
+          return ok({ models: [], current: {} })
+        }
+        if (order === 'row-before-commit') {
+          listener?.(event)
+        }
+        return ok({
+          ok: true,
+          replayed: false,
+          fence: 3,
+          cursor: { epoch: 'epoch-1', sequence: 1 },
+          value
+        })
+      })
+      await mountSession()
+      await act(async () => {
+        expect(await hook!.sendWithOutcome('my message')).toBe('rejected')
+      })
+      expect(onSendError).toHaveBeenCalledExactlyOnceWith(words.text, { failure: fact })
+      if (order === 'reply-before-row') {
+        expect(renderer!.root.findByType('span').children.join('')).toBe(words.text)
+        act(() => listener?.(event))
+      }
+      expect(renderer!.root.findByType('span').children.join('')).toBe('Your message was not sent.')
+      expect(JSON.stringify(hook!.session.messages)).toContain(words.text)
+      expect(onSendError).toHaveBeenCalledTimes(1)
     }
   )
 

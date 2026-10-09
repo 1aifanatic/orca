@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, vi } from 'vitest'
+import { activeProviderContext } from '../../../shared/agent-session-provider-context'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
@@ -190,7 +191,7 @@ export async function createQueuedMessageTestRig(
       clientMessageId: id,
       providerIdentity: {
         provider: 'codex',
-        threadId: THREAD,
+        threadId: activeProviderContext(store.getRecord(SESSION)!).head?.handle.nativeId ?? THREAD,
         turnId: `turn-${itemId}`,
         ordinal: 0
       }
@@ -286,6 +287,7 @@ export async function createQueuedMessageTestRig(
     compact,
     starts: provider.starts,
     holdNextStart: provider.holdNextStart,
+    failNextStart: provider.failNextStart,
     finishCompact: provider.finishCompact,
     providerEvents: provider.providerEvents,
     envelope,

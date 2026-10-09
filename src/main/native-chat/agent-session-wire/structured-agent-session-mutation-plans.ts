@@ -13,15 +13,12 @@ import {
   USER_MESSAGE_SOURCE,
   type AgentSessionMessageSource
 } from '../../../shared/agent-session-message-source'
-import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
-import type { AgentSessionStopTarget } from '../../../shared/agent-session-stop-target'
-import { targetedAgentSessionBackgroundTaskIds } from '../../../shared/agent-session-background-stop-target'
 import type {
-  AgentSessionCancelResult,
   AgentSessionMutationEnvelope,
   AgentSessionOptionResult,
   AgentSessionPromptResult,
+  AgentSessionQueuedSendReceipt,
   AgentSessionSendResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionConversationCommandResult } from '../../../shared/agent-session-conversation-command'
@@ -35,7 +32,6 @@ import {
   structuredAgentSessionCompactBody
 } from './structured-agent-session-command-turn'
 import {
-  performCancel,
   performPrompt,
   performSend,
   performSetOption,
@@ -44,7 +40,7 @@ import {
 } from './structured-agent-session-turns'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
-import { agentSessionOperationOutcomeUnknown } from './structured-agent-session-replay-outcome'
+import type { JournalOperationReceipt } from '../agent-session-journal/journal-row-writer'
 
 export type MutationPlan<TValue> = {
   method: string
@@ -61,11 +57,10 @@ export type MutationPlan<TValue> = {
   recoverUnknownFromDurableState?: boolean
 } & (
   | {
-      /** Its success is the row its run writes, so it commits in that row's transaction
-       *  (`AgentSessionTurnContext.operationReceipt`): a row left pending wrote nothing. That
-       *  success is fixed before the value exists, so it records no `settledOutcome`. */
+      /** Commits success with its row; paths without a committed receipt use fallback settlement. */
       settlesWithWrite: true
-      settledOutcome?: never
+      successReceipt?: () => JournalOperationReceipt
+      settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
     }
   | {
       settlesWithWrite?: never
@@ -171,13 +166,17 @@ export function sendPlan(params: {
 
 export type ConversationCommandAcceptance =
   | { clientMessageId: string }
+  /** Held as a card, keyed by the operation id, behind work in flight. */
+  | { queued: AgentSessionQueuedSendReceipt }
   /** What an older build's run of this operation recorded. */
   | { recorded: AgentSessionConversationCommandResult }
 
 /** `/compact` accepted like a send: one submission, keyed by the operation id, that the delivery
- *  loop carries out as the command's own turn. */
+ *  loop carries out as the command's own turn — or, asked with `delivery`, a card while the
+ *  agent works, which the queue's drain turns into that submission. */
 export function conversationCommandPlan(params: {
   envelope: AgentSessionMutationEnvelope
+  delivery?: 'queue-if-active'
   priorRecord: () => AgentSessionConversationCommandResult | null
 }): MutationPlan<ConversationCommandAcceptance> {
   const clientMessageId = params.envelope.clientOperationId
@@ -185,7 +184,10 @@ export function conversationCommandPlan(params: {
     method: 'agentSession.conversationCommand',
     conversationWrite: true,
     settlesWithWrite: true,
-    fields: { command: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND },
+    fields: {
+      command: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND,
+      ...(params.delivery ? { delivery: params.delivery } : {})
+    },
     recoverUnknownFromDurableState: true,
     run: async (ctx) => {
       const sent = await performSend(ctx, {
@@ -202,105 +204,23 @@ export function conversationCommandPlan(params: {
       if (outcome.status === 'succeeded' && outcome.conversationCommand) {
         return { recorded: outcome.conversationCommand }
       }
+      // A card answers from itself until drained, then from the submission it became; only a
+      // command that asked to wait can have one, as for a send.
+      const queued =
+        params.delivery === 'queue-if-active'
+          ? queuedSendAnswer(ctx.journal, clientMessageId)
+          : null
+      if (queued) {
+        return 'queued' in queued
+          ? { queued: queued.queued }
+          : { clientMessageId: queued.submission.clientMessageId }
+      }
       if (ctx.journal.submissions().some((entry) => entry.clientMessageId === clientMessageId)) {
         return { clientMessageId }
       }
       const prior = params.priorRecord()
       return prior ? { recorded: prior } : null
     }
-  }
-}
-
-type BackgroundStopObservation =
-  | { verdict: 'live'; children: readonly AgentChildWorkView[] }
-  | { verdict: 'exited' }
-  | { verdict: 'unverifiable' }
-
-export function cancelPlan(params: {
-  envelope: AgentSessionMutationEnvelope
-  turnId?: string
-  scope?: 'background-tasks'
-  taskId?: string
-  stopTarget?: AgentSessionStopTarget
-  prompt?: { itemId: string; expectedRevision: number }
-  /** The session's child records, which name the tasks a background Stop reaches. */
-  childWork?: () => readonly AgentChildWorkView[] | undefined
-}): MutationPlan<AgentSessionCancelResult> {
-  const observeBackgroundTarget = (): BackgroundStopObservation | undefined => {
-    if (params.scope !== 'background-tasks' || params.stopTarget?.kind !== 'background-tasks') {
-      return undefined
-    }
-    const children = params.childWork?.()
-    if (children === undefined) {
-      return { verdict: 'unverifiable' }
-    }
-    return targetedAgentSessionBackgroundTaskIds(children, params.stopTarget, params.taskId)
-      .length > 0
-      ? { verdict: 'live', children }
-      : { verdict: 'exited' }
-  }
-  // Admission and execution share the observation; an exempt no-op can never become a provider write.
-  let backgroundObservation: BackgroundStopObservation | undefined
-  const admissionObservation = () => (backgroundObservation ??= observeBackgroundTarget())
-  return {
-    method: 'agentSession.cancel',
-    // An ended target needs no writer; a real background stop still checks execution ownership.
-    get conversationWrite() {
-      return (!params.scope && !params.prompt) || admissionObservation()?.verdict === 'exited'
-        ? true
-        : undefined
-    },
-    // A Stop must reach the agent even when storage refuses the row recording it.
-    runsWithoutLedgerRow: true,
-    ...(params.stopTarget ? { receiptPolicy: 'none' as const } : {}),
-    fields: {
-      ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
-      ...(params.scope ? { scope: params.scope } : {}),
-      ...(params.taskId ? { taskId: params.taskId } : {}),
-      ...(params.stopTarget ? { stopTarget: params.stopTarget } : {}),
-      ...(params.prompt ? { prompt: params.prompt } : {})
-    },
-    run: async (ctx) => {
-      const admitted = admissionObservation()
-      // Unavailable evidence already paid the writer check; retry through the same host authority.
-      const observed = admitted?.verdict === 'unverifiable' ? observeBackgroundTarget() : admitted
-      if (observed?.verdict === 'unverifiable') {
-        return {
-          ok: false,
-          refusal: agentSessionOperationOutcomeUnknown(params.envelope.clientOperationId)
-        }
-      }
-      if (observed?.verdict === 'exited') {
-        return {
-          ok: true,
-          value: {
-            ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
-            cancelled: false
-          }
-        }
-      }
-      return performCancel(ctx, {
-        clientOperationId: params.envelope.clientOperationId,
-        ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
-        ...(params.scope ? { scope: params.scope } : {}),
-        ...(params.taskId ? { taskId: params.taskId } : {}),
-        ...(params.stopTarget?.kind === 'background-tasks'
-          ? { backgroundStopTarget: params.stopTarget }
-          : {}),
-        ...(params.prompt ? { prompt: params.prompt } : {}),
-        ...(observed?.verdict === 'live'
-          ? { childWork: () => observed.children }
-          : params.childWork
-            ? { childWork: params.childWork }
-            : {})
-      })
-    },
-    // Interrupting twice would kill a turn the client never asked to stop, so a
-    // replay reports the turn as already handled.
-    replay: () => ({
-      ...(params.turnId !== undefined ? { turnId: params.turnId } : {}),
-      cancelled: false
-    })
   }
 }
 
