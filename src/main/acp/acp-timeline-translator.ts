@@ -15,7 +15,7 @@ import {
   acpAuthenticationRequired,
   acpPromptErrorDetail
 } from './acp-turn-failures'
-import { AcpTurnMessages } from './acp-turn-messages'
+import { acpNamedTextKey, AcpTurnMessages, type AcpTextDrop } from './acp-turn-messages'
 import type { PromptResponse } from './generated/acp-protocol.generated'
 
 export { acpTurnEnd } from './acp-prompt-turns'
@@ -35,6 +35,7 @@ export type AcpTimelineTranslatorOptions = {
   dialect?: AcpDialect
   /** The agent's display name, for a failed turn the provider gave no words for. */
   agentName?: string
+  onTextDropped?: (drop: AcpTextDrop) => void
 }
 
 /** Consumes each frame once; the host retries the returned grammar events. Lives exactly as long
@@ -180,8 +181,26 @@ export class AcpTimelineTranslator {
       (update !== undefined && SUBSTANTIVE_UPDATES.includes(update.sessionUpdate)) ||
       extension?.end !== undefined ||
       extension?.started === true
-    const turn =
+    const offeredTurn =
       providerTurn ?? (this.prompts.current?.opened ? this.prompts.current.turn : this.activeTurn)
+    const owner = update ? this.messages.owner(offeredTurn, update) : { turn: offeredTurn }
+    const turn = owner.turn
+    if (
+      owner.settled &&
+      (update?.sessionUpdate === 'agent_message_chunk' ||
+        update?.sessionUpdate === 'agent_thought_chunk') &&
+      update.messageId
+    ) {
+      const channel = update.sessionUpdate === 'agent_thought_chunk' ? 'reasoning' : 'assistant'
+      this.options.onTextDropped?.({
+        reason: 'turn-settled',
+        itemId: acpNamedTextKey(update.messageId, channel),
+        channel,
+        threadId: this.options.sessionId,
+        turnId: turn
+      })
+      return []
+    }
     const events: ProviderTimelineEvent[] = []
     if (turn && opens) {
       events.push(...this.start(turn, extension?.at ?? at))
