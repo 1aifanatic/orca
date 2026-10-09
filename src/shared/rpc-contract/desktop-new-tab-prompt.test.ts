@@ -20,15 +20,13 @@ const BASE = {
 } as const
 
 describe('negotiated desktop startup prompt contract', () => {
-  it('preserves exact desktop intent and boolean options without accepting prepared commands', () => {
-    const parsed = AgentLaunch.parse({
-      ...BASE,
-      sessionOptions: { model: 'opus', fastMode: true },
-      command: 'arbitrary payload'
-    })
+  it('preserves exact desktop intent without accepting prepared commands or boolean options', () => {
+    const parsed = AgentLaunch.parse({ ...BASE, command: 'arbitrary payload' })
     expect(parsed.prompt).toEqual(BASE.prompt)
-    expect(parsed.sessionOptions).toEqual({ model: 'opus', fastMode: true })
     expect(parsed).not.toHaveProperty('command')
+    expect(AgentLaunch.safeParse({ ...BASE, sessionOptions: { fastMode: true } }).success).toBe(
+      false
+    )
     expect(AgentLaunchReplay.parse(BASE).prompt).toEqual(BASE.prompt)
   })
   it('allows deliberate unrecorded fresh launches while replay still requires identity', () => {

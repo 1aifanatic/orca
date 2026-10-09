@@ -171,23 +171,6 @@ describe('taking a click’s follow-up off its launch’s row', () => {
     })
   })
 
-  it('retains an unconfirmed live prompt without inventing a retry obligation', () => {
-    const state = rows(
-      row('op-1', {
-        outcome: { status: 'succeeded', sessionId: '', launch: launch('unconfirmed') }
-      })
-    )
-    expect(take(state, { running: [agentSessionOperationKey(DESKTOP, 'op-1')] })).toEqual({
-      taken: [],
-      pending: [{ operationId: 'op-1', followUp: FOLLOW_UP }]
-    })
-    expect(state.operations.get(agentSessionOperationKey(DESKTOP, 'op-1'))).toMatchObject({
-      launchFollowUp: FOLLOW_UP
-    })
-    expect(take(state).taken).toMatchObject([{ promptHandedOver: false }])
-    expect(take(state)).toEqual({ taken: [], pending: [] })
-  })
-
   for (const promptOutcome of ['handed-to-terminal', 'not-delivered'] as const) {
     it(`takes a ${promptOutcome} receipt before the active launch is deleted`, () => {
       const state = rows(

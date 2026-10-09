@@ -24,7 +24,6 @@ import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimeAgentRowSnapshot } from './runtime-worktree-agent-rows'
 import type { WorkerTerminalHostScope } from './orchestration/worker-terminal-process-liveness'
 import type { DesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
-import type { SessionOptionValue } from '../../shared/native-chat-session-options'
 
 export type TerminalCreateOptions = {
   command?: string
@@ -57,7 +56,6 @@ export type TerminalCreateOptions = {
   startupPrompt?: string
   /** Internal desktop intent; the host still builds command, environment and resume config. */
   desktopPrompt?: DesktopNewTabPrompt
-  desktopSessionOptions?: Record<string, SessionOptionValue>
   /** Main-internal: whether `startupPrompt` rode the launch command. Called once the plan is built. */
   onStartupPromptCarry?: (carried: boolean) => void
   /**
