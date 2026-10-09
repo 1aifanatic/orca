@@ -5,7 +5,8 @@
 // submission's append. Until then it lives here, `session_id`-keyed so it
 // survives epoch rollover and replacement (`journal-row-table.ts` deletes only
 // `journal_rows`). After a refusal its text survives as a `returned` row a
-// rewind cannot delete; after a withdrawal it waits again.
+// rewind cannot delete — a command refused in its own turn is spent instead, its
+// turn's row saying why; after a withdrawal it waits again.
 
 import type Database from '../../sqlite/sync-database'
 import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -16,18 +17,9 @@ import type {
 import type { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../shared/agent-session-queued-message-wire'
 import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredQueuedMessageRow } from './queued-message-stored-row'
+import { READABLE_UNSETTLED_QUEUED_MESSAGE } from './queued-message-readability'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
-
-export class QueuedMessageNotConsumableError extends Error {
-  constructor(
-    readonly messageId: string,
-    readonly expected: 'waiting' | 'returned'
-  ) {
-    super(`queued message ${messageId} is no longer ${expected}`)
-    this.name = 'QueuedMessageNotConsumableError'
-  }
-}
 
 /** Why ONE waiting draft is held from auto-sending: its conversion failed (`send_failed`). Stored
  *  on the row, so it survives handle eviction and restart; a wire marker (it publishes as
@@ -63,8 +55,7 @@ export type QueuedMessageHeader = {
    *  card, cleared when a withdrawal sends it back to waiting. Host-only; the published link is
    *  the submission's `queuedMessageId`. */
   consumedAs: string | null
-  /** The conversation /clear carried this card from; null for a card written here. What the
-   *  replacement's 'cleared' pause is derived from. */
+  /** Inert historical column; current inserts write null. */
   carriedFrom: string | null
   /** Where the journal stood when it was queued: a Stop's pause holds only cards queued before
    *  it. Null on rows from builds before it was recorded, which read as queued before any Stop. */
@@ -87,7 +78,6 @@ export function insertQueuedMessage(
     body: AgentJournalMessageItem
     fingerprint: string
     hostInstance: string
-    carriedFrom?: string
     queuedAt: AgentJournalCursor
     now: number
     /** Absent: after every other card. */
@@ -112,7 +102,7 @@ export function insertQueuedMessage(
     input.now,
     input.hostInstance,
     input.holdReason ?? null,
-    input.carriedFrom ?? null,
+    null,
     input.queuedAt.epoch,
     input.queuedAt.sequence
   )
@@ -131,7 +121,7 @@ export function insertQueuedMessage(
     settledAt: null,
     settledByOp: null,
     consumedAs: null,
-    carriedFrom: input.carriedFrom ?? null,
+    carriedFrom: null,
     queuedAt: input.queuedAt
   }
 }
@@ -140,7 +130,7 @@ export function listQueuedMessages(db: Database.Database, sessionId: string): Qu
   return db
     .prepare(
       `SELECT ${COLUMNS} FROM queued_messages
-       WHERE session_id = ? AND state IN ('waiting', 'returned') ORDER BY position ASC`
+       WHERE session_id = ? AND ${READABLE_UNSETTLED_QUEUED_MESSAGE} ORDER BY position ASC`
     )
     .all(sessionId)
     .flatMap((row) => readStoredQueuedMessageRow(row) ?? [])
@@ -244,8 +234,7 @@ export function withdrawQueuedMessageInTransaction(
       .prepare(
         `UPDATE queued_messages
          SET state = 'withdrawn', hold_reason = NULL, settled_at = ?, settled_by_op = ?
-         WHERE session_id = ? AND message_id = ? AND state IN ('waiting', 'returned')
-           AND json_valid(body_json)`
+         WHERE session_id = ? AND message_id = ? AND ${READABLE_UNSETTLED_QUEUED_MESSAGE}`
       )
       .run(input.now, input.settledByOp, input.sessionId, input.messageId).changes
   )
@@ -255,8 +244,7 @@ export function withdrawQueuedMessageInTransaction(
  * dispatched → returned, or back to waiting (`rejectedDraftSettlement`),
  * matched on the draft's CURRENT hand-off (`consumed_as`), so a re-send refused
  * again still settles while a late duplicate of an earlier refusal matches
- * nothing. A draft back to waiting keeps its position and carries no refusal; its spent
- * submissions stay findable by their `queuedMessageId` link.
+ * nothing. A withdrawal keeps its position; a command refused in its own turn is spent.
  */
 export function settleRejectedQueuedMessage(
   db: Database.Database,
@@ -265,10 +253,19 @@ export function settleRejectedQueuedMessage(
     consumedRef: string
     reason: string | null
     rejection: UnreadAgentSessionFailureFact | undefined
+    /** The refused submission's command turn exists, so its own row says why. */
+    commandTurnReported: boolean
     now: number
   }
 ): boolean {
   const settlement = rejectedDraftSettlement(input)
+  if (
+    settlement.state === 'returned' &&
+    input.commandTurnReported &&
+    spendRefusedCommandCard(db, input)
+  ) {
+    return true
+  }
   const changed =
     settlement.state === 'waiting'
       ? db
@@ -293,6 +290,26 @@ export function settleRejectedQueuedMessage(
             input.consumedRef
           )
   return Number(changed.changes ?? 0) > 0
+}
+
+/**
+ * A command card refused in its own turn is spent, not returned: that turn's row says why, once,
+ * and a returned card would hold every card behind it. Refused before any turn (a failed start),
+ * it is returned like any card; a restart or a close leaves it waiting under the queue's pause.
+ * False when the dispatched card is not a command.
+ */
+function spendRefusedCommandCard(
+  db: Database.Database,
+  input: { sessionId: string; consumedRef: string; now: number }
+): boolean {
+  const spent = db
+    .prepare(
+      `UPDATE queued_messages SET state = 'withdrawn', settled_at = ?
+       WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?
+         AND json_extract(body_json, '$.command') IS NOT NULL`
+    )
+    .run(input.now, input.sessionId, input.consumedRef)
+  return Number(spent.changes ?? 0) > 0
 }
 
 /** Replay receipts: every row a given caller-scoped operation settled. */

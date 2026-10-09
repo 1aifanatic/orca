@@ -194,35 +194,22 @@ describe('body-free queue reads', () => {
   })
 
   it.each([
-    { name: 'head', position: 0, carried: null, hold: null, state: 'returned', body: '{' },
-    { name: 'middle', position: 2, carried: null, hold: null, state: 'returned', body: '{' },
-    { name: 'carried', position: 0, carried: 'source', hold: null, state: 'waiting', body: '{' },
-    {
-      name: 'held',
-      position: 0,
-      carried: 'source',
-      hold: 'send_failed',
-      state: 'waiting',
-      body: '{'
-    },
-    {
-      name: 'unknown state',
-      position: 0,
-      carried: 'source',
-      hold: null,
-      state: 'future',
-      body: '{}'
-    }
+    { name: 'head', position: 0, hold: null, state: 'returned', body: '{' },
+    { name: 'middle', position: 2, hold: null, state: 'returned', body: '{' },
+    { name: 'cleared', position: 0, hold: null, state: 'waiting', body: '{' },
+    { name: 'held', position: 0, hold: 'send_failed', state: 'waiting', body: '{' },
+    { name: 'unknown state', position: 0, hold: null, state: 'future', body: '{}' }
   ])('an unreadable $name row is never shown, selected, or a pause/reopen obligation', (bad) => {
     insert('first', 1)
     insert('last', 3)
     insert('bad', bad.position)
     db.prepare(
-      `UPDATE queued_messages SET body_json = ?, state = ?, carried_from = ?, hold_reason = ?, queued_sequence = 0
+      `UPDATE queued_messages SET body_json = ?, state = ?, hold_reason = ?, queued_sequence = 0
        WHERE message_id = 'bad'`
-    ).run(bad.body, bad.state, bad.carried, bad.hold)
+    ).run(bad.body, bad.state, bad.hold)
     const state = createJournalReducerState(SESSION, EPOCH)
     state.queuePauseMarks.reopenedSequence = 5
+    state.queuePauseMarks.cleared = { sequence: 4, operationId: 'clear', messageIds: ['bad'] }
     const cards = [...queuedMessageHeaders(db, SESSION, 'unsettled')]
     const pauses = deriveQueuePauses({
       epoch: EPOCH,
@@ -256,11 +243,9 @@ describe('body-free queue reads', () => {
     db.prepare(
       "UPDATE queued_messages SET queued_sequence = 2 WHERE message_id = 'before-stop'"
     ).run()
-    db.prepare(
-      "UPDATE queued_messages SET carried_from = 'old-session' WHERE message_id = 'carried'"
-    ).run()
     const state = createJournalReducerState(SESSION, EPOCH)
     state.queuePauseMarks.latestStop = { sequence: 5, event: { reason: 'user-stop', at: 1 } }
+    state.queuePauseMarks.cleared = { sequence: 6, operationId: 'clear', messageIds: ['carried'] }
     state.queuePauseMarks.reopenedSequence = 8
     const input = {
       epoch: EPOCH,
@@ -293,12 +278,19 @@ describe('body-free queue reads', () => {
     ).toBe('carried')
   })
 
-  it('stops pause derivation once its carried and pre-reopen existence questions are answered', () => {
-    const card = insert('carried')
+  it('stops pause derivation once every cleared card and the pre-reopen card are found', () => {
+    const first = insert('cleared-1')
+    const second = insert('cleared-2')
     const state = createJournalReducerState(SESSION, EPOCH)
     state.queuePauseMarks.reopenedSequence = 20
+    state.queuePauseMarks.cleared = {
+      sequence: 19,
+      operationId: 'clear',
+      messageIds: ['cleared-1', 'cleared-2']
+    }
     function* cards() {
-      yield { ...card, carriedFrom: 'source' }
+      yield first
+      yield second
       throw new Error('the rest of the queue must not be read')
     }
     expect(
@@ -308,8 +300,15 @@ describe('body-free queue reads', () => {
         latestAcceptedTurnSequence: 0,
         cards: cards(),
         reopenFloor: null
-      }).map((pause) => pause.reason)
-    ).toEqual(['cleared', 'restarted'])
+      })
+    ).toEqual([
+      {
+        reason: 'cleared',
+        since: { epoch: EPOCH, sequence: 19 },
+        messageIds: ['cleared-1', 'cleared-2']
+      },
+      { reason: 'restarted', since: { epoch: EPOCH, sequence: 20 } }
+    ])
   })
 })
 
@@ -326,10 +325,14 @@ describe('indexed bookkeeping', () => {
     const state = createJournalReducerState(SESSION, EPOCH)
     state.submissions.set('rejected', {
       ...submission('rejected', 'rejected'),
+      queuedMessageId: 'owed',
       rejection: agentSessionFailureFact('providerRejected')
     })
     state.submissions.set('accepted', submission('accepted', 'accepted'))
-    state.submissions.set('corrupt-ref', submission('corrupt-ref', 'rejected'))
+    state.submissions.set('corrupt-ref', {
+      ...submission('corrupt-ref', 'rejected'),
+      queuedMessageId: 'corrupt'
+    })
     const prepare = vi.spyOn(db, 'prepare')
     const parse = vi.spyOn(JSON, 'parse')
     expect(queuedMessageSettlementOwed(db, SESSION, state.submissions)).toBe(true)
@@ -411,13 +414,17 @@ describe('indexed bookkeeping', () => {
     hasWaitingQueuedMessage(db, SESSION)
     const queries = prepare.mock.calls.map(([sql]) => sql)
     prepare.mockRestore()
-    expect(queryPlan(queries[0], [SESSION])).toContain('queued_messages_unsettled_position')
+    expect(queryPlan(queries[0], [SESSION])).toContain(
+      'queued_messages_readable_unsettled_position'
+    )
     expect(queryPlan(queries[1], [SESSION, 'handoff'])).toContain('queued_messages_consumed_as')
     expect(queryPlan(queries[2], [SESSION, 900])).toContain('queued_messages_state_settled')
     expect(queryPlan(queries[3], [SESSION, 900, 1, 'dispatched'])).toContain(
       'queued_messages_state_settled'
     )
-    expect(queryPlan(queries[4], [SESSION])).toContain('queued_messages_state_settled')
+    expect(queryPlan(queries[4], [SESSION])).toContain(
+      'queued_messages_readable_unsettled_position'
+    )
     expect(
       queryPlan('SELECT MAX(position) FROM queued_messages WHERE session_id = ?', [SESSION])
     ).toContain('queued_messages_position')

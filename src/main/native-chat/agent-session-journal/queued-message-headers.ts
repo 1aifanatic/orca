@@ -5,18 +5,20 @@ import type { SqliteBindings } from '../../sqlite/sqlite-statement'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { readStoredQueuedMessageHeader } from './queued-message-stored-row'
 import type { QueuedMessageHeader } from './queued-message-table'
+import {
+  READABLE_QUEUED_MESSAGE,
+  READABLE_UNSETTLED_QUEUED_MESSAGE
+} from './queued-message-readability'
 
 const HEADER_COLUMNS =
   'session_id, message_id, position, fingerprint, created_at, host_instance, state, hold_reason, returned_reason, settled_at, settled_by_op, consumed_as, carried_from, queued_epoch, queued_sequence'
-const READABLE =
-  "state IN ('waiting', 'returned', 'dispatched', 'withdrawn') AND json_valid(body_json)"
 
 export type QueuedMessageHeaderSelection = 'all' | 'unsettled' | 'waiting'
 
 const SELECTIONS = {
-  all: '1',
-  unsettled: "state IN ('waiting', 'returned')",
-  waiting: "state = 'waiting'"
+  all: READABLE_QUEUED_MESSAGE,
+  unsettled: READABLE_UNSETTLED_QUEUED_MESSAGE,
+  waiting: `${READABLE_UNSETTLED_QUEUED_MESSAGE} AND state = 'waiting'`
 } as const
 
 export function* queuedMessageHeaders(
@@ -24,10 +26,11 @@ export function* queuedMessageHeaders(
   sessionId: string,
   selection: QueuedMessageHeaderSelection = 'all'
 ): IterableIterator<QueuedMessageHeader> {
+  // Close each walk before reusing its cached statement; for-of also closes on early return.
   for (const row of db
     .prepare(
       `SELECT ${HEADER_COLUMNS} FROM queued_messages
-       WHERE session_id = ? AND ${SELECTIONS[selection]} AND ${READABLE} ORDER BY position ASC`
+       WHERE session_id = ? AND ${SELECTIONS[selection]} ORDER BY position ASC`
     )
     .iterate(sessionId)) {
     const header = readStoredQueuedMessageHeader(row)
@@ -42,7 +45,7 @@ export function hasWaitingQueuedMessage(db: Database.Database, sessionId: string
     db
       .prepare(
         `SELECT 1 FROM queued_messages
-         WHERE session_id = ? AND state = 'waiting' AND json_valid(body_json) LIMIT 1`
+         WHERE session_id = ? AND ${SELECTIONS.waiting} ORDER BY position ASC LIMIT 1`
       )
       .get(sessionId) !== undefined
   )
@@ -51,7 +54,10 @@ export function hasWaitingQueuedMessage(db: Database.Database, sessionId: string
 export function hasReadableQueuedMessage(db: Database.Database, sessionId: string): boolean {
   return (
     db
-      .prepare(`SELECT 1 FROM queued_messages WHERE session_id = ? AND ${READABLE} LIMIT 1`)
+      .prepare(
+        `SELECT 1 FROM queued_messages WHERE session_id = ? AND ${READABLE_QUEUED_MESSAGE}
+         ORDER BY position ASC LIMIT 1`
+      )
       .get(sessionId) !== undefined
   )
 }
@@ -65,7 +71,7 @@ export function dispatchedQueuedMessageHeader(
     .prepare(
       `SELECT ${HEADER_COLUMNS} FROM queued_messages
        WHERE session_id = ? AND consumed_as = ? AND consumed_as IS NOT NULL
-         AND state = 'dispatched' AND json_valid(body_json)`
+         AND state = 'dispatched' AND ${READABLE_QUEUED_MESSAGE}`
     )
     .get(sessionId, consumedAs)
   return row ? readStoredQueuedMessageHeader(row) : null
@@ -79,7 +85,7 @@ export function getQueuedMessageHeader(
   const row = db
     .prepare(
       `SELECT ${HEADER_COLUMNS} FROM queued_messages
-       WHERE session_id = ? AND message_id = ? AND ${READABLE}`
+       WHERE session_id = ? AND message_id = ? AND ${READABLE_QUEUED_MESSAGE}`
     )
     .get(sessionId, messageId)
   return row ? readStoredQueuedMessageHeader(row) : null
@@ -95,6 +101,7 @@ export function queuedMessageAwaitingReopen(
   }
   for (const submission of submissions.values()) {
     if (
+      submission.queuedMessageId !== undefined &&
       (submission.dispatchState === 'pending' || submission.dispatchState === 'unknown') &&
       dispatchedQueuedMessageHeader(db, sessionId, submission.clientMessageId)
     ) {
@@ -122,7 +129,7 @@ export function* expiredDispatchedQueuedMessageHeaders(
       .prepare(
         `SELECT ${HEADER_COLUMNS} FROM queued_messages
          WHERE session_id = ? AND state = 'dispatched' AND settled_at < ?
-           AND json_valid(body_json)
+           AND ${READABLE_QUEUED_MESSAGE}
            ${settledAt === null ? '' : 'AND (settled_at, message_id) > (?, ?)'}
          ORDER BY settled_at, message_id LIMIT 1`
       )
@@ -145,7 +152,7 @@ export function unsettledQueuedMessageBodyBytes(db: Database.Database, sessionId
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(length(CAST(body_json AS BLOB))), 0) AS bytes FROM queued_messages
-       WHERE session_id = ? AND state IN ('waiting', 'returned') AND json_valid(body_json)`
+       WHERE session_id = ? AND ${READABLE_UNSETTLED_QUEUED_MESSAGE}`
     )
     .get(sessionId)
   return typeof row?.bytes === 'number' ? row.bytes : 0

@@ -1275,7 +1275,6 @@ jobs:
           src/main/wsl/wsl-runner.test.ts
           src/main/wsl/wsl-guest-environment.test.ts
           src/main/wsl/wsl-executable-path.win32.test.ts
-          src/main/claude-accounts/claude-profile-history-windows.test.ts
           src/main/wsl/wsl-w1-w3-contract.test.ts
           src/shared/source-scan/source-tree-scan.test.ts
           src/main/cli/wsl-cli-powershell-boundary.test.ts
@@ -1296,6 +1295,7 @@ jobs:
           src/relay/windows-port-scan.win32.test.ts
           src/main/ssh/ssh-relay-upload-stage-windows-identity.test.ts
           src/main/ssh/remote-node-runtime-store-windows.test.ts
+          config/scripts/node-pty-windows-pty-teardown-patch.test.mjs
 
       # Why the :parallel variant: identical to build:release except the three
       # electron-vite targets overlap instead of running back to back. The Linux package

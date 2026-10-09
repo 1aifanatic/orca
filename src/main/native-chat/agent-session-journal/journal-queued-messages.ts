@@ -10,10 +10,6 @@ import type {
   AgentJournalCursor,
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
-import {
-  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
-  AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
-} from '../../../shared/agent-session-host-authority'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
@@ -32,7 +28,6 @@ import {
   getQueuedMessage,
   insertQueuedMessage,
   listQueuedMessages,
-  QueuedMessageNotConsumableError,
   queuedMessagesSettledByOp,
   withdrawQueuedMessages,
   type QueuedMessageHoldReason,
@@ -40,6 +35,7 @@ import {
 } from './queued-message-table'
 import {
   hasReadableQueuedMessage,
+  hasWaitingQueuedMessage,
   getQueuedMessageHeader,
   queuedMessageAwaitingReopen,
   queuedMessageHeaders,
@@ -48,7 +44,7 @@ import {
 } from './queued-message-headers'
 import { draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
 import { moveQueuedMessages, type QueuedMessagePositionMove } from './queued-message-positions'
-import { pruneQueuedMessages, retainedSubmissionVerdict } from './queued-message-retention'
+import { repairAndPruneQueuedMessages } from './queued-message-retention'
 import {
   queuedMessageSettlementOwed,
   settleOwedQueuedMessages,
@@ -57,10 +53,10 @@ import {
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
 import type { JournalAttachmentClaim } from './journal-submission-hook'
 import type { JournalWriteBody, JournalWriteResult } from './journal-write-queue'
+import { QueuedMessageNotConsumableError } from './queued-message-consume-error'
+export { QueuedMessageNotConsumableError } from './queued-message-consume-error'
 
-/** Tombstones must outlive the window in which their operation id could still be admitted as new. */
-export const QUEUED_MESSAGE_REPLAY_WINDOW_MS =
-  AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS + AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
+export { QUEUED_MESSAGE_REPLAY_WINDOW_MS } from './queued-message-retention'
 
 export type JournalQueuedMessagesDeps = {
   sessionId: string
@@ -101,7 +97,7 @@ export class JournalQueuedMessages {
     this.changeRevision++
   }
 
-  /** Full bodies only for v1 publication and /clear's carry, filtered in SQL. */
+  /** Full bodies only for v1 publication and /clear's command withdrawal, filtered in SQL. */
   list(): readonly QueuedMessageRow[] {
     return listQueuedMessages(this.deps.database().db, this.deps.sessionId)
   }
@@ -110,12 +106,13 @@ export class JournalQueuedMessages {
     return queuedMessageHeaders(this.deps.database().db, this.deps.sessionId, selection)
   }
 
-  publishedBodyBytes(): number {
-    return unsettledQueuedMessageBodyBytes(this.deps.database().db, this.deps.sessionId)
-  }
+  publishedBodyBytes = (): number =>
+    unsettledQueuedMessageBodyBytes(this.deps.database().db, this.deps.sessionId)
 
   nextSendable() {
-    return nextSendableQueuedCard(this.pauses(), this.headers('unsettled'))
+    return hasWaitingQueuedMessage(this.deps.database().db, this.deps.sessionId)
+      ? nextSendableQueuedCard(this.pauses(), this.headers('unsettled'))
+      : null
   }
 
   get(messageId: string): QueuedMessageRow | null {
@@ -127,18 +124,13 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
-  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused;
-   *  `holdReason` carries a hold of its own over with it.
-   *  `requireAttachments`: a client's own draft, refused whole when an attachment it names is no
-   *  longer stored; the host's own writes (the carry) claim best effort.
-   *  `receipt`: the send's ledger answer, committed with the draft only when this inserts it. */
+  /** Attachments and the send receipt commit with the card. */
   insert(
     input: {
       messageId: string
       body: AgentJournalMessageItem
       fingerprint: string
       hostInstance: string
-      carriedFrom?: string
       requireAttachments?: true
       holdReason?: QueuedMessageHoldReason
     },
@@ -249,6 +241,21 @@ export class JournalQueuedMessages {
         }),
       (withdrawn) => withdrawn.length > 0
     )
+  }
+
+  /** Withdraw commands with the clear's divider and receipt on the same connection. */
+  withdrawInTransaction(
+    db: Database.Database,
+    input: { messageIds: readonly string[]; settledByOp: string }
+  ): void {
+    if (this.deps.database().db !== db) {
+      throw new AgentSessionJournalError('journal_closed', 'withdraw crossed database handles')
+    }
+    this.changeRevision += withdrawQueuedMessages(db, {
+      ...input,
+      sessionId: this.deps.sessionId,
+      now: this.deps.now()
+    }).length
   }
 
   /** One standalone draft-table transaction on the journal's queue; one that
@@ -362,29 +369,18 @@ export class JournalQueuedMessages {
    */
   repairAndPrune(): Promise<void> {
     // No draft, no work, and no write.
-    if (
-      this.deps.readOnly() ||
-      !hasReadableQueuedMessage(this.deps.database().db, this.deps.sessionId)
-    ) {
+    const { sessionId } = this.deps
+    if (this.deps.readOnly() || !hasReadableQueuedMessage(this.deps.database().db, sessionId)) {
       return Promise.resolve()
     }
-    const { sessionId } = this.deps
     return this.transact(
-      (db) => {
-        const [now, state] = [this.deps.now(), this.deps.state()]
-        return (
-          settleOwedQueuedMessages(db, { sessionId, state, now }) +
-          pruneQueuedMessages(db, {
-            sessionId,
-            now,
-            replayWindowMs: QUEUED_MESSAGE_REPLAY_WINDOW_MS,
-            submissionVerdict: retainedSubmissionVerdict(state.submissions)
-          })
-        )
-      },
+      (db) =>
+        repairAndPruneQueuedMessages(db, {
+          sessionId,
+          state: this.deps.state(),
+          now: this.deps.now()
+        }),
       (changed) => changed > 0
     ).then(() => undefined)
   }
 }
-
-export { QueuedMessageNotConsumableError }

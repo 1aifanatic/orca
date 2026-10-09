@@ -11,6 +11,8 @@ import {
   journalDispatchRowNewlyRejects
 } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { structuredAgentSessionCommandTurnIdentity } from '../../../shared/structured-agent-session-command-turn-identity'
 import type { JournalRow } from './journal-row-schema'
 import {
   draftDeliveredByEcho,
@@ -41,6 +43,7 @@ function* owedQueuedMessageSettlements(
 ): IterableIterator<AgentJournalSubmission> {
   for (const submission of submissions.values()) {
     if (
+      submission.queuedMessageId !== undefined &&
       consumedSubmissionWasRejected(submission) &&
       dispatchedQueuedMessageHeader(db, sessionId, submission.clientMessageId)
     ) {
@@ -63,6 +66,7 @@ export function settleOwedQueuedMessages(
       consumedRef: submission.clientMessageId,
       reason: submission.reason ?? null,
       rejection: submission.rejection,
+      commandTurnReported: commandTurnReported(input.state, submission.clientMessageId),
       now: input.now
     })
     settled += changed ? 1 : 0
@@ -125,7 +129,15 @@ export function settleQueuedMessagesForRow(
     consumedRef: row.clientMessageId,
     reason: row.reason,
     rejection: row.rejection,
+    commandTurnReported: commandTurnReported(input.state, row.clientMessageId),
     now: input.now
   })
   return changed + (settled ? 1 : 0)
+}
+
+/** The submission's command turn is in the journal: its own row reports the refusal. */
+function commandTurnReported(state: JournalReducerState, clientMessageId: string): boolean {
+  return state.items.has(
+    agentJournalItemKey(structuredAgentSessionCommandTurnIdentity(clientMessageId))
+  )
 }
