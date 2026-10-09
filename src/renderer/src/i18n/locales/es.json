@@ -3978,6 +3978,10 @@
             "used": "{{value0}}% usado",
             "remaining": "{{value0}}% restante"
           },
+          "StatusBarUsageChangeNotices": {
+            "compactTitle": "El uso ahora es compacto",
+            "compactBody": "Una métrica principal por proveedor. Elige «Detailed» en el menú «Usage» para ver más límites."
+          },
           "UsagePercentageDisplayChangeNotice": {
             "title": "Usage now shows % used",
             "body": "Prefer remaining? Change it in Settings.",
@@ -16150,7 +16154,6 @@
             "deb5293610": "Anotaciones del navegador no disponibles en runtime remoto",
             "90d021f2ad": "Agregar",
             "0cb3bd6221": "Intención de anotación",
-            "8f87e6c2e5": "Intención",
             "532bac48c5": "Describe aquí lo que el agente debería cambiar...",
             "d2a7092e6e": "Comentario de anotación",
             "b472c5fe03": "Agregar anotación del navegador",
@@ -16849,6 +16852,16 @@
         "runHistory": {
           "occurrencesWithLatest": "{{times}} veces, la más reciente {{date}}",
           "occurrences": "{{times}} veces"
+        },
+        "extraAgentArgs": {
+          "advanced": "Avanzado",
+          "clear": "Borrar argumentos",
+          "unsupported": "Este agente aún no admite argumentos adicionales.",
+          "label": "Argumentos adicionales del agente",
+          "needsFreshSession": "Los argumentos adicionales requieren una sesión nueva en cada ejecución.",
+          "useFreshSessions": "Usar sesiones nuevas",
+          "helper": "Se añaden a los argumentos predeterminados de este host en cada sesión nueva.",
+          "detailLabel": "Argumentos adicionales"
         }
       },
       "agent": {
@@ -17778,10 +17791,10 @@
         "couldNotStart": "{{agent}} no pudo iniciarse.",
         "editSavedArguments": "Edítalos en Ajustes > Agentes > Argumentos.",
         "couldNotRestart": "{{agent}} no pudo reiniciarse.",
-        "notSignedIn": "{{agent}} no tiene la sesión iniciada con la cuenta seleccionada.",
-        "claudeSystemNotSignedIn": "Claude no ha iniciado sesión. Ejecuta `claude` e inicia sesión con /login, o elige una cuenta en la configuración de Cuentas de Claude.",
+        "notSignedIn": "{{agent}} no ha iniciado sesión.",
+        "claudeSystemNotSignedIn": "Claude no ha iniciado sesión. Ejecuta `{{loginCommand}}` o elige una cuenta en los ajustes de Cuentas de Claude.",
         "claudeManagedNotSignedIn": "Esta cuenta de Claude no ha iniciado sesión. Vuelve a iniciar sesión en la configuración de Cuentas de Claude.",
-        "codexSystemNotSignedIn": "Codex no ha iniciado sesión. Ejecuta `codex login`.",
+        "codexSystemNotSignedIn": "Codex no ha iniciado sesión. Ejecuta `{{loginCommand}}`.",
         "codexManagedNotSignedIn": "Esta cuenta de Codex no ha iniciado sesión. Vuelve a iniciar sesión en la configuración de Cuentas de Codex.",
         "cliMissing": "No se encontró {{agent}} en el equipo que ejecuta este chat. Instálelo o revise su Comando en Ajustes → Agentes.",
         "signInFirst": "Inicie sesión primero.",
@@ -17845,6 +17858,13 @@
         "providerRetryNumberOf": "Reintento {{attempt}} de {{maxRetries}}.",
         "providerRetryLastError": "Último error: {{detail}}.",
         "previousExitUnverifiable": "No se pudo detener la ejecución anterior de {{agent}}.",
+        "sessionNotRestored": "{{agent}} no pudo reabrir su sesión anterior, así que este chat continúa en una nueva. {{agent}} no recuerda los mensajes anteriores.",
+        "agentCommandNotSignedIn": "Inicia sesión en {{agent}} con `{{loginCommand}}` en el equipo donde se ejecuta este chat.",
+        "interactiveAgentNotSignedIn": "Inicia sesión en {{agent}} ejecutando `{{loginCommand}}` y usando `{{slashCommand}}` en el equipo donde se ejecuta este chat.",
+        "agentNotSignedIn": "Inicia sesión en {{agent}}.",
+        "thenSendAgain": "Después, envía tu mensaje de nuevo.",
+        "runCommandWhenDone": "Ejecute /{{command}} cuando termine.",
+        "commandAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /{{command}}.",
         "sessionNotRestored": "{{agent}} no pudo reabrir su sesión anterior, así que este chat continúa en una nueva. {{agent}} no recuerda los mensajes anteriores."
       },
       "writeNotice": {
@@ -17907,7 +17927,16 @@
         "recordUnreadable": "Orca no pudo leer el estado guardado de este chat.",
         "chatNotFound": "Orca no encuentra este chat.",
         "startNewChat": "Inicie un chat nuevo para continuar.",
-        "tryAgain": "Vuelva a intentarlo."
+        "tryAgain": "Vuelva a intentarlo.",
+        "agentStillWorking": "El agente todavía está trabajando.",
+        "runClearWhenDone": "Ejecute /clear cuando termine.",
+        "clearAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /clear.",
+        "runCompactWhenDone": "Ejecute /compact cuando termine.",
+        "compactAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /compact.",
+        "clearAfterRetry": "Reintente su mensaje anterior y luego ejecute /clear.",
+        "compactAfterRetry": "Reintente su mensaje anterior y luego ejecute /compact.",
+        "clearAfterSending": "Su mensaje anterior todavía se está enviando. Ejecute /clear cuando se haya enviado.",
+        "compactAfterSending": "Su mensaje anterior todavía se está enviando. Ejecute /compact cuando se haya enviado."
       },
       "composer": {
         "imageUnsupported": "Este agente no admite pegar imágenes.",
@@ -17972,6 +18001,7 @@
         "commands": "Comandos",
         "skills": "Habilidades",
         "loadingSkills": "Cargando habilidades…",
+        "clearDescription": "Borrar el contexto de la conversación",
         "skillsUnavailableHost": "Las habilidades no se pueden listar en los chats SSH",
         "skillsLoadFailed": "No se pudieron cargar las habilidades",
         "retrySkills": "Reintentar",
@@ -18103,6 +18133,13 @@
         "toggleDetails": "Alternar detalles del turno"
       },
       "jumpToLatest": "Saltar a lo último",
+      "find": {
+        "label": "Buscar en el chat",
+        "noResults": "Sin resultados",
+        "previousMatch": "Coincidencia anterior",
+        "nextMatch": "Siguiente coincidencia",
+        "close": "Cerrar"
+      },
       "transcriptLabel": "Conversación",
       "toggle": {
         "showTerminal": "Mostrar terminal",
@@ -18230,7 +18267,8 @@
         "sendConfirmBody_other": "Estás a punto de enviar un mensaje. ¿Quieres borrar los {{count}} mensajes que había en cola?",
         "sendConfirmClear": "Vaciar cola",
         "sendConfirmSend": "Enviar mensaje",
-        "from": "De {{names}}"
+        "from": "De {{names}}",
+        "pausedSendFailedWaiting": "No se pudo enviar. Cuando el agente termine, pulsa Enviar para reintentar."
       },
       "thought": "Pensó",
       "thoughtForDuration": "Pensó durante {{duration}}",
@@ -18311,6 +18349,7 @@
         "recorded": "Totales de las ediciones registradas en este turno."
       },
       "notices": {
+        "contextCleared": "Contexto borrado",
         "compaction": "Contexto compactado",
         "details": "Detalles",
         "plan": "Plan",
@@ -19040,6 +19079,16 @@
     }
   },
   "featureTips": {
+    "nativeChatUpgrade": {
+      "eyebrow": "Nuevo",
+      "title": "El chat nativo mejora",
+      "intro": "Los chats nuevos de agentes compatibles usan la vista de chat mejorada. Para alternar entre chat y CLI, abre {{panel}} (barra lateral derecha):",
+      "resumeInNativeChat": "{{action}} abre una conversación de CLI compatible en el chat nativo.",
+      "resumeInCli": "{{action}} copia un chat de Claude/Codex a una CLI nueva sin tocar el original.",
+      "settingsInstruction": "Administra Chat UI en",
+      "settingsLink": "Ajustes → Experimental",
+      "gotIt": "Entendido"
+    },
     "sessionSearch": {
       "ageHours": "2 h",
       "ageMinutes": "12 min",
