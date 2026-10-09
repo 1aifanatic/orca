@@ -125,9 +125,7 @@ function launchParams(args: HostAgentLaunchArgs) {
     ...(args.followUp ? { followUp: args.followUp } : {}),
     ...(args.agentArgs !== undefined ? { agentArgs: args.agentArgs } : {}),
     ...(args.cwd ? { cwd: args.cwd } : {}),
-    ...(args.desktopPrompt && args.sessionOptions
-      ? { sessionOptions: args.sessionOptions }
-      : stringSessionOptions(args.sessionOptions)),
+    ...stringSessionOptions(args.sessionOptions),
     ...(args.launchSource ? { launchSource: args.launchSource } : {}),
     ...(args.groupId ? { placement: { groupId: args.groupId } } : {}),
     presentation:

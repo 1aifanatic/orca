@@ -309,30 +309,6 @@ describe('the instant tab', () => {
     }
   )
 
-  it.each(['background', 'focused'] as const)(
-    'keeps the reserved pane for an unrecorded desktop %s launch',
-    async (presentation) => {
-      const runtime = hostWithWindow({ terminalPaneKey: PANE_KEY })
-
-      const result = await plainLaunch(runtime, { paneKey: PANE_KEY, presentation }, DESKTOP)
-
-      expect(runtime.published).toEqual([])
-      expect(result.outcome).toMatchObject({ kind: 'terminal', paneKey: PANE_KEY })
-      expect(terminalOptions(runtime)).toMatchObject({
-        tabId: TAB_ID,
-        leafId: LEAF_ID,
-        requireFreshPane: true
-      })
-      if (presentation === 'background') {
-        expect(terminalOptions(runtime)).toMatchObject({ presentation, surfaceOwner: false })
-      } else {
-        expect(terminalOptions(runtime)).not.toHaveProperty('presentation')
-        expect(terminalOptions(runtime)).not.toHaveProperty('surfaceOwner')
-      }
-      expect(runtime.createTerminal).toHaveBeenCalledTimes(1)
-    }
-  )
-
   it('records the pane it showed with the launch, and lets the pane attach once the agent runs', async () => {
     const runtime = hostWithWindow({ terminalPaneKey: PANE_KEY })
 

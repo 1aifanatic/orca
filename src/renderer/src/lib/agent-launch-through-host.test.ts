@@ -107,7 +107,7 @@ beforeEach(() => {
 })
 
 describe('a desktop launch through the host', () => {
-  it('keeps desktop draft transport, boolean options and floating activation through admission', () => {
+  it('keeps desktop draft transport and floating activation through admission', () => {
     callRuntimeRpc.mockReturnValue(new Promise(() => {}))
     const desktopPrompt = {
       text: 'editable notes',
@@ -119,16 +119,11 @@ describe('a desktop launch through the host', () => {
       worktreeId: WT,
       prompt: desktopPrompt.text,
       desktopPrompt,
-      sessionOptions: { model: 'chosen', thinking: true },
       activate: false,
       pendingActivationSpawn: true,
       quickCommandLabel: 'Review'
     })
-    expect(lastParams()).toMatchObject({
-      prompt: desktopPrompt,
-      sessionOptions: { model: 'chosen', thinking: true },
-      presentation: 'background'
-    })
+    expect(lastParams()).toMatchObject({ prompt: desktopPrompt, presentation: 'background' })
     expect(store.getState().activeTabId).not.toBe(tabId)
     expect(launchTab(tabId)).toMatchObject({
       quickCommandLabel: 'Review',

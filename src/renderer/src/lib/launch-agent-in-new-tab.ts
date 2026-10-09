@@ -209,7 +209,7 @@ export function launchAgentInNewTab(args: LaunchAgentInNewTabArgs): LaunchAgentI
     }
   }
   if (!args.launchPurpose && newTabTerminalLaunchesThroughHost()) {
-    return launchFreshTerminalTabThroughHost(args, startupPlan, pasteDraftAfterLaunch, 'terminal')
+    return launchFreshTerminalTabThroughHost(args, startupPlan, pasteDraftAfterLaunch)
   }
   // Why: queue startup BEFORE TerminalPane mounts — it snapshots pendingStartupByTabId in useState on first render.
   const tab = store.createTab(worktreeId, groupId, undefined, {

@@ -48,6 +48,8 @@ export function createDesktopAgentLaunchRig(
   options: {
     selectOther?: boolean
     failure?: 'before' | 'after'
+    /** The record store fails to open at admission. */
+    admissionError?: string
     deferWorkspace?: boolean
     activate?: boolean
     canPublish?: boolean
@@ -138,6 +140,9 @@ export function createDesktopAgentLaunchRig(
   runtime.openAgentSessionRecordStore.mockImplementation(async () => {
     admitted.resolve()
     await admission.promise
+    if (options.admissionError) {
+      throw new Error(options.admissionError)
+    }
     return open()
   })
   let livePane: string | null = null
@@ -202,7 +207,7 @@ export function createDesktopAgentLaunchRig(
     activate: options.activate ?? false,
     agentArgs: null,
     cwd: options.rootCwd ? '/tmp/wt-7' : '/tmp/wt-7/src',
-    sessionOptions: options.structuredAi ? { model: 'chosen' } : { model: 'chosen', thinking: true }
+    ...(options.structuredAi ? { sessionOptions: { model: 'chosen' } } : {})
   } as const
   const launch = () => launchAgentThroughHost(launchArgs)
   const launchPrompt = () =>

@@ -23,7 +23,6 @@ import type {
   LaunchAgentInNewTabArgs,
   LaunchAgentInNewTabResult
 } from './launch-agent-in-new-tab-contract'
-import type { Tab } from '../../../shared/tab-types'
 
 /** `followUpDeferred`: the click's recorded follow-up was left for the next start; don't run it. */
 export type NewTabPromptDeliveryResult = {
@@ -51,8 +50,7 @@ export function newTabTerminalLaunchesThroughHost(): boolean {
 export function launchFreshTerminalTabThroughHost(
   args: LaunchAgentInNewTabArgs,
   startupPlan: AgentStartupPlan,
-  pasteDraftAfterLaunch: string | null,
-  viewMode: Tab['viewMode']
+  pasteDraftAfterLaunch: string | null
 ): NonNullable<LaunchAgentInNewTabResult> {
   const prompt = args.prompt?.trim() ?? ''
   const promptDelivery = args.promptDelivery ?? 'auto-submit'
@@ -70,12 +68,10 @@ export function launchFreshTerminalTabThroughHost(
     seedSubmittedChatCopy: pasteDraftAfterLaunch !== null,
     ...(args.agentArgs !== undefined ? { agentArgs: args.agentArgs } : {}),
     ...(args.initialCwd?.trim() ? { cwd: args.initialCwd } : {}),
-    sessionOptions: startupPlan.sessionOptions,
     launchSource: args.launchSource ?? 'tab_bar_quick_launch',
     quickCommandLabel: args.quickCommandLabel,
     pendingActivationSpawn: args.pendingActivationSpawn,
     activate: args.activate,
-    viewMode,
     ...(args.onPromptDelivered ? { onPromptDelivered: args.onPromptDelivered } : {}),
     ...(args.onPromptDeliveryUnconfirmed
       ? { onPromptDeliveryUnconfirmed: args.onPromptDeliveryUnconfirmed }

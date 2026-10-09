@@ -119,9 +119,7 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
     await r.workspaceRequested.promise
     expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(true)
     r.runtime.getClientSettings.mockReturnValue({
-      experimentalNativeChat: true,
-      experimentalStructuredNativeChat: true,
-      openAgentTabsInChatByDefault: true
+      experimentalNativeChat: true
     })
     r.start.resolve()
     r.workspace.resolve()
@@ -138,8 +136,7 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
         desktopPrompt: PROMPT,
         agentArgs: null,
         cwd: '/tmp/wt-7',
-        viewMode: 'terminal',
-        desktopSessionOptions: { model: 'chosen', thinking: true }
+        viewMode: 'terminal'
       })
     )
     expect(deliver).toHaveBeenCalledExactlyOnceWith(
@@ -171,9 +168,7 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
       markAgentLaunchesClosedByUser(WT, { kind: 'tab', tabId })
       store.getState().closeTab(tabId)
       r.runtime.getClientSettings.mockReturnValue({
-        experimentalNativeChat: true,
-        experimentalStructuredNativeChat: true,
-        openAgentTabsInChatByDefault: true
+        experimentalNativeChat: true
       })
       r.workspace.resolve()
       await expect(promptDeliveryResult).resolves.toMatchObject({ delivered: false })
@@ -234,9 +229,7 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
       const { tabId, promptDeliveryResult } = r.launchPrompt()
       await r.workspaceRequested.promise
       r.runtime.getClientSettings.mockReturnValue({
-        experimentalNativeChat: true,
-        experimentalStructuredNativeChat: true,
-        openAgentTabsInChatByDefault: true
+        experimentalNativeChat: true
       })
       r.workspace.resolve()
       await Promise.race([
@@ -306,9 +299,7 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
     const { outcome } = r.launch()
     await r.workspaceRequested.promise
     r.runtime.getClientSettings.mockReturnValue({
-      experimentalNativeChat: true,
-      experimentalStructuredNativeChat: true,
-      openAgentTabsInChatByDefault: true
+      experimentalNativeChat: true
     })
     r.workspace.resolve()
     await expect(outcome).resolves.toEqual({ kind: 'pane-says' })
@@ -339,9 +330,7 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
       markAgentLaunchesClosedByUser(WT, { kind: 'tab', tabId })
       store.getState().closeTab(tabId)
       r.runtime.getClientSettings.mockReturnValue({
-        experimentalNativeChat: true,
-        experimentalStructuredNativeChat: true,
-        openAgentTabsInChatByDefault: true
+        experimentalNativeChat: true
       })
       r.start.resolve()
       r.workspace.resolve()
@@ -383,9 +372,7 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
       const { tabId, promptDeliveryResult } = r.launchPrompt()
       await r.workspaceRequested.promise
       r.runtime.getClientSettings.mockReturnValue({
-        experimentalNativeChat: true,
-        experimentalStructuredNativeChat: true,
-        openAgentTabsInChatByDefault: true
+        experimentalNativeChat: true
       })
       r.workspace.resolve()
       await entered.promise
@@ -432,6 +419,22 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
     }
   )
 
+  it('withdraws the published pane when admission cannot open the launch record', async () => {
+    const r = rig({ admissionError: 'agent_session_record_store_location_changed' })
+    const { tabId, outcome } = r.launch()
+    await r.admitted.promise
+    r.admission.resolve()
+    // The host took the pane when it showed the tab, so the pane says how the launch ended.
+    await expect(outcome).resolves.toEqual({ kind: 'pane-says' })
+    await vi.waitFor(() => expect(r.mount.verdict).toEqual({ kind: 'withdrawn' }))
+    expect(tab(tabId)).toBeUndefined()
+    expect(r.runtime.createTerminal).not.toHaveBeenCalled()
+    expect(deliver).not.toHaveBeenCalled()
+    expect(callRuntimeRpc).toHaveBeenCalledOnce()
+    expect(r.mount.shellStarts).toBe(0)
+    expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
+  })
+
   it.each([false, true])(
     'binds once without a shell or selection drift (other workspace %s)',
     async (selectOther) => {
@@ -461,8 +464,7 @@ describe('a desktop fresh-tab launch keeps its original published pane', () => {
         cwd: '/tmp/wt-7/src',
         desktopPrompt: PROMPT,
         presentation: 'background',
-        surfaceOwner: false,
-        desktopSessionOptions: { model: 'chosen', thinking: true }
+        surfaceOwner: false
       })
       expect(store.getState().activeTabId).toBe(r.selected)
       expect(
