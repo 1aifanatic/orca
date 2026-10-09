@@ -1,10 +1,10 @@
-import { isClipboardTextByteLengthOverLimit } from '../../../../shared/clipboard-text'
+import { isClipboardTextByteLengthOverLimit } from '../../../shared/clipboard-text'
 
-export const MARKDOWN_PREVIEW_SEARCH_QUERY_MAX_BYTES = 2 * 1024
+export const TEXT_SEARCH_QUERY_MAX_BYTES = 2 * 1024
 
-export function isMarkdownPreviewSearchQueryTooLarge(
+export function isTextSearchQueryTooLarge(
   query: string,
-  maxBytes = MARKDOWN_PREVIEW_SEARCH_QUERY_MAX_BYTES
+  maxBytes = TEXT_SEARCH_QUERY_MAX_BYTES
 ): boolean {
   return isClipboardTextByteLengthOverLimit(query, maxBytes)
 }
@@ -22,7 +22,7 @@ export function findTextMatchRanges(
   if (!query) {
     return []
   }
-  if (isMarkdownPreviewSearchQueryTooLarge(query)) {
+  if (isTextSearchQueryTooLarge(query)) {
     return []
   }
 

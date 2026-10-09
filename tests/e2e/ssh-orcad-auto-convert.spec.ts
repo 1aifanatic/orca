@@ -219,8 +219,9 @@ test('a relay host converts to managed orcad on connect and keeps its source', a
   })
 })
 
-test('a relay-era profile converts its SSH host on the first connect after upgrading', async (// oxlint-disable-next-line no-empty-pattern -- Playwright's second fixture arg is testInfo; the first must be an object destructure to opt out of the default fixture set.
-{}, testInfo) => {
+test('a relay-era profile converts its SSH host on the first connect after upgrading', async ({
+  testRepoPath
+}, testInfo) => {
   test.setTimeout(20 * 60_000)
   const host = startHost(testInfo)
   const session = createRestartSession(testInfo, {
@@ -232,6 +233,7 @@ test('a relay-era profile converts its SSH host on the first connect after upgra
     const first = await session.launch()
     app = first.app
     await waitForSessionReady(first.page)
+    await first.page.evaluate((repoPath) => window.api.repos.add({ path: repoPath }), testRepoPath)
     await session.close(app)
     app = null
     const seeded = seedRelayEraProfile(session.userDataDir, host.input, {
@@ -250,14 +252,30 @@ test('a relay-era profile converts its SSH host on the first connect after upgra
     app = upgraded.app
     await waitForSessionReady(upgraded.page)
     await convertAndRetain(upgraded.page, session.userDataDir, seeded)
-    if (!host.exec) {
-      return
-    }
     const environment = (
       await upgraded.page.evaluate(() => window.api.runtimeEnvironments.list())
     ).find((entry) => entry.orcadDeployment?.sshTargetId === seeded.targetId)
     if (!environment) {
-      throw new Error('Managed server is not registered')
+      throw new Error('Converted host is missing from the environment catalog')
+    }
+    const hostId = `runtime:${environment.id}` as const
+    await upgraded.page.evaluate((hostId) => {
+      const state = window.__store!.getState()
+      state.setGroupBy('none')
+      window.__store!.setState({ visibleWorkspaceHostIds: ['local', hostId] })
+    }, hostId)
+    const folder = upgraded.page.getByText('orcad upgrade folder', { exact: true })
+    await expect(folder).toBeVisible()
+    await upgraded.page.screenshot({ path: testInfo.outputPath('managed-folder-host-section.png') })
+    const sectionHeader = folder.locator('xpath=preceding::*[@data-host-header-drag-id][1]')
+    await expect(sectionHeader).toHaveAttribute('data-host-header-drag-id', hostId)
+    const managedHeader = upgraded.page.locator(`[data-host-header-drag-id="${hostId}"]`)
+    await managedHeader.click()
+    await expect(folder).toBeHidden()
+    await managedHeader.click()
+    await expect(folder).toBeVisible()
+    if (!host.exec) {
+      return
     }
     await upgraded.page.evaluate(
       ({ worktreeId, environmentId }) => {
