@@ -1,7 +1,7 @@
-import { win32 } from 'node:path'
-import { windowsSystem32Binary } from './windows-system-binary'
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
+import { win32 } from 'node:path'
 import { admitProcessTreeKill } from './process-tree-kill-gate'
+import { windowsSystem32Binary } from './windows-system-binary'
 
 const PROBE_INTERVAL_MS = 25
 const SUBPROCESS_TIMEOUT_MS = 2_000

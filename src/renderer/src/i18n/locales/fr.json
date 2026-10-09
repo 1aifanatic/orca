@@ -18056,6 +18056,7 @@
         "skills": "Skills",
         "loadingSkills": "Chargement des skills...",
         "skillsLoaded": "Skills chargées",
+        "clearDescription": "Effacer le contexte de la conversation",
         "skillsUnavailableHost": "Les skills ne peuvent pas être listées dans les chats SSH",
         "skillsLoadFailed": "Impossible de charger les skills",
         "retrySkills": "Réessayer",
@@ -18323,6 +18324,7 @@
         "cancelledBy": "Annulé le {{device}}"
       },
       "notices": {
+        "contextCleared": "Contexte effacé",
         "compaction": "Contexte compacté",
         "details": "Détails",
         "plan": "Plan",
@@ -19044,6 +19046,16 @@
     }
   },
   "featureTips": {
+    "nativeChatUpgrade": {
+      "eyebrow": "Nouveau",
+      "title": "Le chat natif évolue",
+      "intro": "Les nouveaux chats des agents compatibles utilisent la vue améliorée. Pour alterner entre chat et CLI, ouvrez {{panel}} (barre latérale droite) :",
+      "resumeInNativeChat": "{{action}} ouvre une conversation CLI compatible dans le chat natif.",
+      "resumeInCli": "{{action}} copie un chat Claude/Codex dans une CLI neuve ; l'original reste intact.",
+      "settingsInstruction": "Gérez Chat UI dans",
+      "settingsLink": "Paramètres → Expérimental",
+      "gotIt": "Compris"
+    },
     "voice": {
       "demoPrompt": "Relisez ce diff à la recherche de cas limites et ajoutez des tests pour tout ce que vous trouvez.",
       "startDictation": "Démarrer la dictée",
