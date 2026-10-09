@@ -21,12 +21,6 @@ type ResolvedTabSessionSwitch = {
   move: TabSessionSwitch
 }
 
-type TabSessionSwitchLookup = {
-  subject: TabSessionHistorySubject | null
-  /** The row from the panel's cached list; when set, no lookup runs. */
-  cachedRow: AiVaultSession | null
-}
-
 function resolveMove(
   session: AiVaultSession | null,
   subject: TabSessionHistorySubject
@@ -40,30 +34,29 @@ function useTabSessionSwitch(
   tab: Pick<TerminalTab, 'id' | 'worktreeId' | 'launchAgent'>,
   structuredSessionId: string | undefined
 ): ResolvedTabSessionSwitch | null {
-  const [lookup] = useState<TabSessionSwitchLookup>(() => {
-    const subject = resolveTabSessionHistorySubject(useAppStore.getState(), {
+  const [subject] = useState(() =>
+    resolveTabSessionHistorySubject(useAppStore.getState(), {
       tab: { id: tab.id, worktreeId: tab.worktreeId, launchAgent: tab.launchAgent },
       structuredSessionId
     })
-    return { subject, cachedRow: subject ? readCachedTabSessionHistoryRow(subject) : null }
-  })
+  )
+  // The panel's cached list gives the first paint; the fresh answer below always replaces it,
+  // because chat ownership is projected per response and a cached row can predate a takeover.
   const [resolved, setResolved] = useState<ResolvedTabSessionSwitch | null>(() =>
-    lookup.subject ? resolveMove(lookup.cachedRow, lookup.subject) : null
+    subject ? resolveMove(readCachedTabSessionHistoryRow(subject), subject) : null
   )
   useEffect(() => {
-    const { subject, cachedRow } = lookup
-    if (!subject || cachedRow) {
+    if (!subject) {
       return
     }
     let cancelled = false
     const requestToken = createBrowserUuid()
-    void lookupTabSessionHistoryRow(
-      subject,
-      (args) => window.api.aiVault.listSessions(args),
-      requestToken
-    )
+    void lookupTabSessionHistoryRow(subject, (args) => window.api.aiVault.listSessions(args), {
+      requestToken,
+      isCancelled: () => cancelled
+    })
       .then((session) => {
-        if (!cancelled) {
+        if (!cancelled && session !== undefined) {
           setResolved(resolveMove(session, subject))
         }
       })
@@ -73,7 +66,7 @@ function useTabSessionSwitch(
       cancelled = true
       void window.api.aiVault.cancelListSessions({ requestToken }).catch(() => {})
     }
-  }, [lookup])
+  }, [subject])
   return resolved
 }
 

@@ -88,6 +88,14 @@ const CHAT_SUBJECT = {
   request: PANEL_REQUEST
 }
 
+const CLI_SUBJECT = {
+  kind: 'cli',
+  agent: 'claude',
+  providerSessionId: 'claude-session-1',
+  workspaceId: 'wt-1',
+  request: PANEL_REQUEST
+}
+
 function listResult(sessions: AiVaultSession[]) {
   return { sessions, issues: [], scannedAt: 'now' }
 }
@@ -177,13 +185,7 @@ describe('TabSessionSurfaceSwitchMenuItems', () => {
       issues: [],
       scannedAt: 'now'
     })
-    mocks.subject = {
-      kind: 'cli',
-      agent: 'claude',
-      providerSessionId: 'claude-session-1',
-      workspaceId: 'wt-1',
-      request: PANEL_REQUEST
-    }
+    mocks.subject = CLI_SUBJECT
     mocks.move = { action: 'resume-in-new-chat', worktreeId: 'wt-1' }
     await renderItems()
 
@@ -192,14 +194,29 @@ describe('TabSessionSurfaceSwitchMenuItems', () => {
     expect(mocks.handleResumeInNewChat).toHaveBeenCalledWith(cliRow, 'wt-1')
   })
 
-  it("shows the move at first paint from the panel's cached list, without a lookup", () => {
+  it("shows the move at first paint from the panel's cached list, then revalidates it", async () => {
     cacheAiVaultSessionList(PANEL_REQUEST, listResult([CHAT_ROW]), { replaceHostEntries: false })
     mocks.subject = CHAT_SUBJECT
     mocks.move = { action: 'resume-in-new-cli', worktreeId: 'wt-1' }
     renderItemsNow('orca-chat-1')
 
     expect(screen.getByRole('menuitem', { name: 'Resume in New CLI' })).toBeTruthy()
-    expect(mocks.listSessions).not.toHaveBeenCalled()
+    await act(async () => {})
+    expect(mocks.listSessions).toHaveBeenCalledWith(expect.objectContaining({ force: undefined }))
+    expect(screen.getByRole('menuitem', { name: 'Resume in New CLI' })).toBeTruthy()
+  })
+
+  it('hides a cached move once the fresh list shows a chat has taken the conversation', async () => {
+    const cliRow = { ...CHAT_ROW, structuredSession: undefined }
+    cacheAiVaultSessionList(PANEL_REQUEST, listResult([cliRow]), { replaceHostEntries: false })
+    mocks.listSessions.mockResolvedValue(listResult([CHAT_ROW]))
+    mocks.subject = CLI_SUBJECT
+    mocks.move = { action: 'resume-in-new-chat', worktreeId: 'wt-1' }
+    renderItemsNow()
+
+    expect(screen.getByRole('menuitem', { name: 'Resume in New Native Chat' })).toBeTruthy()
+    await act(async () => {})
+    expect(screen.queryByRole('menuitem')).toBeNull()
   })
 
   it('ignores a lookup that settles after the menu closed', async () => {

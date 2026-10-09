@@ -10,7 +10,11 @@ import {
   type AiVaultListResult,
   type AiVaultSession
 } from '../../../../shared/ai-vault-types'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
+import {
+  LOCAL_EXECUTION_HOST_ID,
+  parseExecutionHostId,
+  type ExecutionHostScope
+} from '../../../../shared/execution-host'
 import {
   isAgentSessionHandleProvider,
   type AgentSessionHandleProvider
@@ -49,6 +53,19 @@ export type TabSessionSwitch = {
   worktreeId: string
 }
 
+/** Skips lookups on hosts where the row's gate can never pass, so no remote scan runs for nothing. */
+function canHostOfferTabSessionMove(
+  kind: TabSessionHistorySubject['kind'],
+  hostScope: ExecutionHostScope
+): boolean {
+  if (hostScope === LOCAL_EXECUTION_HOST_ID) {
+    return true
+  }
+  // Resume-in-chat refuses any row not recorded on this machine. A chat's row is owned only where an
+  // Orca host projects chat ownership: this machine or a runtime server, never an SSH relay.
+  return kind === 'chat' && parseExecutionHostId(hostScope)?.kind === 'runtime'
+}
+
 export function resolveTabSessionHistorySubject(
   state: AppState,
   args: {
@@ -57,19 +74,19 @@ export function resolveTabSessionHistorySubject(
     structuredSessionId?: string
   }
 ): TabSessionHistorySubject | null {
-  const workspace = (workspaceId: string) => {
+  const workspace = (workspaceId: string, kind: TabSessionHistorySubject['kind']) => {
     if (!resolveAiVaultTargetWorkspacePath(state, workspaceId)) {
       return null
     }
     const request = resolveAiVaultPanelSessionListRequest(state, workspaceId)
-    // Both moves need a row recorded on this machine: chat ownership is projected only onto local
-    // rows, and resume-in-chat refuses any other host, so a remote lookup could never offer either.
-    return request.executionHostScope === LOCAL_EXECUTION_HOST_ID ? { workspaceId, request } : null
+    return canHostOfferTabSessionMove(kind, request.executionHostScope)
+      ? { workspaceId, request }
+      : null
   }
   if (args.structuredSessionId !== undefined) {
     // Only these providers have history rows either move can act on.
     const target = isAgentSessionHandleProvider(args.tab.launchAgent)
-      ? workspace(args.tab.worktreeId)
+      ? workspace(args.tab.worktreeId, 'chat')
       : null
     return target ? { ...target, kind: 'chat', sessionId: args.structuredSessionId } : null
   }
@@ -77,7 +94,7 @@ export function resolveTabSessionHistorySubject(
   const titleRequest = collectAiVaultTitleRequests(state).find(
     (candidate) => candidate.tabId === args.tab.id
   )
-  const target = titleRequest ? workspace(titleRequest.worktreeId) : null
+  const target = titleRequest ? workspace(titleRequest.worktreeId, 'cli') : null
   return titleRequest && target
     ? {
         ...target,
@@ -157,27 +174,37 @@ export function readCachedTabSessionHistoryRow(
   return row && isAiVaultSessionResumableContent(row) ? row : null
 }
 
-/** Reads the row through the panel's own list request, keeping the panel's cache as it would. */
+/** Reads the row through the panel's own list request, keeping the panel's cache as it would.
+ *  Resolves `undefined` when it got no answer (cancelled), as opposed to `null` for "no row". */
 export async function lookupTabSessionHistoryRow(
   subject: TabSessionHistorySubject,
   listSessions: (args: AiVaultListArgs) => Promise<AiVaultListResult>,
-  requestToken: string
-): Promise<AiVaultSession | null> {
+  options: { requestToken: string; isCancelled: () => boolean }
+): Promise<AiVaultSession | null | undefined> {
   const { request } = subject
+  const { requestToken } = options
   const listed = await listSessions(aiVaultSessionListArgs(request, { requestToken }))
   if (listed.cancelled) {
-    return null
+    return undefined
   }
   cacheAiVaultSessionList(request, listed, { replaceHostEntries: false })
   const row = findTabSessionHistoryRow(listed.sessions, subject)
+  if (row && isAiVaultSessionResumableContent(row)) {
+    return row
+  }
   // The host caches the list for a minute, so a conversation newer than that needs a fresh scan,
-  // taken from the panel's forced-rescan budget so right-clicks cannot amplify full scans.
-  if ((row && isAiVaultSessionResumableContent(row)) || !claimAiVaultForcedRescan()) {
+  // taken from the panel's forced-rescan budget so right-clicks cannot amplify full scans. A closed
+  // menu checks first: its cancel may have landed before this scan was registered.
+  if (
+    options.isCancelled() ||
+    request.executionHostScope !== LOCAL_EXECUTION_HOST_ID ||
+    !claimAiVaultForcedRescan()
+  ) {
     return row
   }
   const fresh = await listSessions(aiVaultSessionListArgs(request, { force: true, requestToken }))
   if (fresh.cancelled) {
-    return null
+    return undefined
   }
   cacheAiVaultSessionList(request, fresh, { replaceHostEntries: true })
   return findTabSessionHistoryRow(fresh.sessions, subject)

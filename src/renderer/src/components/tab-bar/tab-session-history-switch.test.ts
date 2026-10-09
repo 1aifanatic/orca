@@ -4,7 +4,10 @@ import type { AppState } from '@/store/types'
 import { makeRepo, makeTerminalTab, makeWorktree } from '../worktree-jump-palette-test-fixtures'
 import { makeAgentStatusEntry } from '@/runtime/sync-runtime-graph-test-harness'
 import type { AiVaultListArgs, AiVaultSession } from '../../../../shared/ai-vault-types'
-import { resetAiVaultForcedRescanThrottleForTest } from '../right-sidebar/ai-vault-session-refresh'
+import {
+  claimAiVaultForcedRescan,
+  resetAiVaultForcedRescanThrottleForTest
+} from '../right-sidebar/ai-vault-session-refresh'
 import {
   cacheAiVaultSessionList,
   readCachedAiVaultSessionList
@@ -150,7 +153,7 @@ describe('resolveTabSessionHistorySubject', () => {
     ).toEqual(cliSubject)
   })
 
-  it('looks nothing up on a remote host, where neither move is ever offered', () => {
+  it('looks nothing up over SSH, where neither move is ever offered', () => {
     const state = makeState(liveClaudeEntry, { connectionId: 'dev-box' })
     expect(
       resolveTabSessionHistorySubject(state, { tab: { id: 'term-1', worktreeId: WORKTREE_ID } })
@@ -160,6 +163,22 @@ describe('resolveTabSessionHistorySubject', () => {
         tab: { id: 'unified-1', worktreeId: WORKTREE_ID, launchAgent: 'claude' },
         structuredSessionId: 'orca-chat-1'
       })
+    ).toBeNull()
+  })
+
+  it('looks a chat up on a remote Orca server, which owns its chats, but never a CLI there', () => {
+    const state = makeState(liveClaudeEntry, { executionHostId: 'runtime:server-1' })
+    expect(
+      resolveTabSessionHistorySubject(state, {
+        tab: { id: 'unified-1', worktreeId: WORKTREE_ID, launchAgent: 'claude' },
+        structuredSessionId: 'orca-chat-1'
+      })
+    ).toMatchObject({
+      kind: 'chat',
+      request: { executionHostScope: 'runtime:server-1' }
+    })
+    expect(
+      resolveTabSessionHistorySubject(state, { tab: { id: 'term-1', worktreeId: WORKTREE_ID } })
     ).toBeNull()
   })
 
@@ -245,10 +264,13 @@ describe('lookupTabSessionHistoryRow', () => {
     ...(cancelled ? { cancelled: true as const } : {})
   })
   const emptyRow = row({ messageCount: 0, previewMessages: [] })
+  const lookupOptions = { requestToken: 't', isCancelled: () => false }
 
   it("sends the panel's own request and keeps its result in the panel's cache", async () => {
     const listSessions = vi.fn(async (_args: AiVaultListArgs) => listResult([row()]))
-    await expect(lookupTabSessionHistoryRow(cliSubject, listSessions, 't')).resolves.toMatchObject({
+    await expect(
+      lookupTabSessionHistoryRow(cliSubject, listSessions, lookupOptions)
+    ).resolves.toMatchObject({
       id: 'row-1'
     })
     expect(listSessions).toHaveBeenCalledTimes(1)
@@ -271,7 +293,9 @@ describe('lookupTabSessionHistoryRow', () => {
       .fn()
       .mockResolvedValueOnce(listResult([emptyRow]))
       .mockResolvedValueOnce(listResult([row()]))
-    await expect(lookupTabSessionHistoryRow(cliSubject, listSessions, 't')).resolves.toMatchObject({
+    await expect(
+      lookupTabSessionHistoryRow(cliSubject, listSessions, lookupOptions)
+    ).resolves.toMatchObject({
       messageCount: 2
     })
     expect(listSessions).toHaveBeenCalledTimes(2)
@@ -280,18 +304,46 @@ describe('lookupTabSessionHistoryRow', () => {
 
   it('does not force another scan while the budget is spent', async () => {
     const listSessions = vi.fn(async (_args: AiVaultListArgs) => listResult([emptyRow]))
-    await lookupTabSessionHistoryRow(cliSubject, listSessions, 't')
+    await lookupTabSessionHistoryRow(cliSubject, listSessions, lookupOptions)
     listSessions.mockClear()
-    await expect(lookupTabSessionHistoryRow(cliSubject, listSessions, 't')).resolves.toMatchObject({
+    await expect(
+      lookupTabSessionHistoryRow(cliSubject, listSessions, lookupOptions)
+    ).resolves.toMatchObject({
       messageCount: 0
     })
     expect(listSessions).toHaveBeenCalledTimes(1)
     expect(listSessions).toHaveBeenCalledWith(expect.objectContaining({ force: undefined }))
   })
 
-  it('stops when the lookup is cancelled', async () => {
+  it('starts no forced scan once the menu has closed, and leaves the budget free', async () => {
+    let menuOpen = true
+    const listSessions = vi.fn(async (_args: AiVaultListArgs) => {
+      menuOpen = false
+      return listResult([emptyRow])
+    })
+    await lookupTabSessionHistoryRow(cliSubject, listSessions, {
+      requestToken: 't',
+      isCancelled: () => !menuOpen
+    })
+    expect(listSessions).toHaveBeenCalledTimes(1)
+    expect(claimAiVaultForcedRescan()).toBe(true)
+  })
+
+  it('forces no scan on a remote Orca server', async () => {
+    const listSessions = vi.fn(async (_args: AiVaultListArgs) => listResult([]))
+    await lookupTabSessionHistoryRow(
+      { ...chatSubject, request: { ...PANEL_REQUEST, executionHostScope: 'runtime:server-1' } },
+      listSessions,
+      lookupOptions
+    )
+    expect(listSessions).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports no answer when the lookup is cancelled', async () => {
     const listSessions = vi.fn().mockResolvedValue(listResult([], true))
-    await expect(lookupTabSessionHistoryRow(cliSubject, listSessions, 't')).resolves.toBeNull()
+    await expect(
+      lookupTabSessionHistoryRow(cliSubject, listSessions, lookupOptions)
+    ).resolves.toBeUndefined()
     expect(listSessions).toHaveBeenCalledTimes(1)
     expect(readCachedAiVaultSessionList(PANEL_REQUEST)).toBeNull()
   })
