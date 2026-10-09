@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { existsSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
@@ -5,6 +6,7 @@ import {
   resolveClaudeGlobalConfigFile,
   updateClaudeGlobalConfig
 } from '../claude/claude-folder-trust-file'
+import { publishFileWithoutOverwrite } from '../codex-accounts/fs-utils'
 import { CLAUDE_PROFILE_HISTORY_DIRS } from './claude-profile-history'
 import { readClaudeProfileObject, resolveClaudeDefaultHome } from './claude-profile-paths'
 import { lstatIfPresent } from './claude-profile-prompt-history'
@@ -191,17 +193,18 @@ async function copyState(source: string, target: string): Promise<ClaudeProfileS
   }
   const shared = Object.entries(input.value).filter(([key]) => !isAccountBoundState(key))
   if (!lstatIfPresent(target)) {
+    const staged = `${target}.${process.pid}.${randomUUID()}.tmp`
     try {
-      // Why exclusive: Claude may create its own state file meanwhile; that one wins.
-      writeFileSync(target, `${JSON.stringify(Object.fromEntries(shared), null, 2)}\n`, {
+      writeFileSync(staged, `${JSON.stringify(Object.fromEntries(shared), null, 2)}\n`, {
         flag: 'wx',
         mode: 0o600
       })
-      return 'synced'
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) {
-        throw error
+      // Why a link, not a rename: whole or absent, and Claude's own file, created meanwhile, wins.
+      if (publishFileWithoutOverwrite(staged, target)) {
+        return 'synced'
       }
+    } finally {
+      rmSync(staged, { force: true })
     }
   }
   // Why no deletions: a key the default home lacks may be one Claude added only in this folder.

@@ -52,7 +52,11 @@ const fsAllowances: Record<string, readonly string[]> = {
     'writeFileSync',
     'writeFileAtomically'
   ],
-  'claude-accounts/claude-profile-provisioning.ts': ['rmSync', 'writeFileSync'],
+  'claude-accounts/claude-profile-provisioning.ts': [
+    'publishFileWithoutOverwrite',
+    'rmSync',
+    'writeFileSync'
+  ],
   'claude-accounts/claude-profile-sharing.ts': [
     'mkdirSync',
     'rmdirSync',

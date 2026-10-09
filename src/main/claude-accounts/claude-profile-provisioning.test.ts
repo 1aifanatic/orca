@@ -199,6 +199,8 @@ describe('Claude profile refresh from the default home', () => {
     // A folder with no state file yet gets one without a login, so Claude asks for its own.
     expect((await provision(f)).surfaces['.claude.json']).toBe('synced')
     expect(f.read(join(f.profileHome, '.claude.json'))).toEqual(shared)
+    // Published whole through a staged file, which is gone afterwards.
+    expect(fs.readdirSync(f.profileHome).filter((name) => name.endsWith('.tmp'))).toEqual([])
     expect(fs.existsSync(join(f.profileHome, '.credentials.json'))).toBe(false)
 
     fs.writeFileSync(join(f.profileHome, '.credentials.json'), 'PROFILE_CREDENTIAL_BYTES')
