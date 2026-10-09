@@ -4312,6 +4312,10 @@
             "resumingTooltip": "Restoring interrupted chats and asking them to carry on…",
             "resumingProgressLabel": "Resuming chats {{value0}}/{{value1}}",
             "resumingProgressAria": "Resuming chats, {{value0}} of {{value1}} done. Click to open details."
+          },
+          "StatusBarUsageChangeNotices": {
+            "compactTitle": "Usage is now compact",
+            "compactBody": "One headline metric per provider. Choose Detailed in the Usage menu to show more limits."
           }
         }
       },

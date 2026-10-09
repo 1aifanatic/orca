@@ -276,6 +276,52 @@ describe('createUISlice hydratePersistedUI', () => {
     }
   )
 
+  it('hydrates and permanently dismisses the Compact change notice', () => {
+    const setUI = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('window', { api: { ui: { set: setUI } } })
+    const store = createUIStore()
+    expect(store.getState().statusBarCompactChangeNoticeDismissed).toBe(true)
+
+    store
+      .getState()
+      .hydratePersistedUI(makePersistedUI({ statusBarCompactChangeNoticeDismissed: false }))
+    expect(store.getState().statusBarCompactChangeNoticeDismissed).toBe(false)
+    setUI.mockClear()
+    store.getState().dismissStatusBarCompactChangeNotice()
+    expect(store.getState().statusBarCompactChangeNoticeDismissed).toBe(true)
+    expect(setUI).toHaveBeenCalledWith({ statusBarCompactChangeNoticeDismissed: true })
+    store.getState().dismissStatusBarCompactChangeNotice()
+    expect(setUI).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['verbose', 'compact'] as const)(
+    'dismisses the Compact notice when choosing %s',
+    (mode) => {
+      const setUI = vi.fn().mockResolvedValue(undefined)
+      vi.stubGlobal('window', { api: { ui: { set: setUI } } })
+      const store = createUIStore()
+      store
+        .getState()
+        .hydratePersistedUI(makePersistedUI({ statusBarCompactChangeNoticeDismissed: false }))
+
+      store.getState().setStatusBarUsageMode(mode)
+
+      expect(store.getState().statusBarCompactChangeNoticeDismissed).toBe(true)
+      expect(setUI).toHaveBeenCalledWith({
+        statusBarUsageMode: mode,
+        statusBarCompactChangeNoticeDismissed: true
+      })
+    }
+  )
+
+  it('keeps the Compact notice hidden with an older host that omits its flag', () => {
+    const store = createUIStore()
+    const ui = makePersistedUI()
+    delete ui.statusBarCompactChangeNoticeDismissed
+    store.getState().hydratePersistedUI(ui)
+    expect(store.getState().statusBarCompactChangeNoticeDismissed).toBe(true)
+  })
+
   it('clamps persisted workspace board column width', () => {
     const store = createUIStore()
 
