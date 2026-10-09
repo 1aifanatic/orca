@@ -19045,7 +19045,7 @@
     "nativeChatUpgrade": {
       "eyebrow": "Nouveau",
       "title": "Le chat natif évolue",
-      "intro": "Les nouveaux chats des agents compatibles utilisent la vue améliorée. Pour passer du chat à la CLI, ouvrez {{panel}} (barre latérale droite) :",
+      "intro": "Les nouveaux chats des agents compatibles utilisent la vue améliorée. Pour alterner entre chat et CLI, ouvrez {{panel}} (barre latérale droite) :",
       "resumeInNativeChat": "{{action}} ouvre une conversation CLI compatible dans le chat natif.",
       "resumeInCli": "{{action}} copie un chat Claude/Codex dans une CLI neuve ; l'original reste intact.",
       "settingsInstruction": "Gérez Chat UI dans",

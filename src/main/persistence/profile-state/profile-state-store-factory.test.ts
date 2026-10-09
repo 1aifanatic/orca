@@ -304,11 +304,21 @@ describe('profile state Store authority factory', () => {
   })
 
   it.each([
-    [{ experimentalNativeChat: true, openAgentTabsInChatByDefault: false }, false, true],
-    [{ experimentalNativeChat: false, openAgentTabsInChatByDefault: false }, true, false]
+    [
+      { experimentalNativeChat: true, openAgentTabsInChatByDefault: false },
+      false,
+      true,
+      'chat-ui-on'
+    ],
+    [
+      { experimentalNativeChat: false, openAgentTabsInChatByDefault: false },
+      true,
+      false,
+      'chat-ui-off'
+    ]
   ])(
     'decides the native chat upgrade tip audience once from the startup snapshot (%o)',
-    (settings, laterChatUi, inAudience) => {
+    (settings, laterChatUi, inAudience, basis) => {
       const options = createOptions()
       writeFileSync(options.dataFile, JSON.stringify({ settings }))
       const first = createProfileStateStore({ ...options })
@@ -322,7 +332,7 @@ describe('profile state Store authority factory', () => {
 
       expect(restarted.store.isInNativeChatUpgradeTipAudience()).toBe(inAudience)
       expect(JSON.parse(restarted.store.prepareProfileStateExport().json)).toMatchObject({
-        nativeChatUpgradeTipAudience: { membership: inAudience ? 'eligible' : 'excluded' }
+        nativeChatUpgradeTipAudience: { membership: inAudience ? 'eligible' : 'excluded', basis }
       })
     }
   )
