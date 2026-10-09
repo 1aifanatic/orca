@@ -62,7 +62,7 @@ export function structuredAgentSessionRejectionParts(
   }
   // A reason-only row cannot identify its author or recover its cause; use a named neutral lead.
   const parts = rejectionFactParts(write, { kind: 'providerRejected' }, context)
-  if (!isProviderDiagnosticPersonText(reason) || /\bprovider\b/i.test(reason)) {
+  if (!isProviderDiagnosticPersonText(reason)) {
     return parts
   }
   const alreadyNamed =

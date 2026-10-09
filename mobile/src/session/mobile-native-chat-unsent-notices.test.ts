@@ -110,6 +110,41 @@ describe('the line under a message the host recorded and did not deliver', () =>
     )
   })
 
+  it.each([
+    [
+      'keeps the sign-in steps when only a subagent row states them',
+      'child-1',
+      "Codex isn't signed in. Run `codex login`."
+    ],
+    [
+      'says only that it was not sent under a visible sign-in row',
+      undefined,
+      'Your message was not sent.'
+    ]
+  ])('%s', (_name, agentId, expected) => {
+    const notSignedIn: AgentSessionFailureFact = { kind: 'notSignedIn' }
+    const authRow: AgentJournalRenderItem = {
+      itemId: 'auth-row',
+      ...(agentId ? { agentId } : {}),
+      revision: 1,
+      sequence: 1,
+      observedAt: 1,
+      body: {
+        kind: 'status',
+        tone: 'error',
+        ...agentSessionFailureWords(notSignedIn, { agentName: 'Codex', surface: 'row' })
+      }
+    }
+    const notices = mobileNativeChatUnsentNotices(
+      {
+        items: [authRow],
+        submissions: [rejected({ reason: 'Written by the host.', rejection: notSignedIn })]
+      },
+      'codex'
+    )
+    expect(notices.get(agentJournalSubmissionKey('sent-elsewhere'))).toBe(expected)
+  })
+
   it('has nothing to say when no send was rejected', () => {
     expect(
       mobileNativeChatUnsentNotices(

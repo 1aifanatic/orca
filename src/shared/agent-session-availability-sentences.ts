@@ -40,9 +40,7 @@ export function notSignedInSentence(
         ? say(signIn ? 'thenSendAgain' : 'signInThenSend')
         : undefined
   const detail =
-    fact.detail?.audience === 'person' &&
-    isProviderDiagnosticPersonText(fact.detail.text) &&
-    !/\bprovider\b/i.test(fact.detail.text)
+    fact.detail?.audience === 'person' && isProviderDiagnosticPersonText(fact.detail.text)
       ? fact.detail.text
       : undefined
   const detailSentence =

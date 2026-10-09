@@ -121,6 +121,19 @@ describe('the words written beside a failure fact', () => {
     ).toBe(`Claude didn't accept this message: ${text}.`)
   })
 
+  it('withholds a quoted explanation that talks about a provider', () => {
+    expect(
+      agentSessionFailureSentence(
+        {
+          kind: 'providerRejected',
+          detail: { text: 'The provider did not accept this message.', audience: 'person' }
+        },
+        'rejection',
+        { agentName: 'Codex' }
+      )
+    ).toBe("Codex didn't accept this message.")
+  })
+
   describe.each(SURFACES)('on the %s surface', (surface) => {
     it.each(AGENT_SESSION_FAILURE_KINDS)('for %s are one sentence a person can read', (kind) => {
       for (const fact of factsFor(kind)) {

@@ -134,6 +134,15 @@ describe('the line under each of the chat own messages', () => {
       ).toEqual([startFailed])
     })
 
+    it("skips a subagent's sign-in row, which the conversation does not show", () => {
+      const notSignedIn: AgentSessionFailureFact = { kind: 'notSignedIn' }
+      const root = statusRow('root-auth', notSignedIn)
+      expect(
+        structuredAgentSessionStartFailureFacts([{ ...root, itemId: 'child-auth', agentId: 'c1' }])
+      ).toEqual([])
+      expect(structuredAgentSessionStartFailureFacts([root])).toEqual([notSignedIn])
+    })
+
     it('says only that it was not sent, and words a rejection no row states in full', () => {
       const facts = structuredAgentSessionStartFailureFacts([statusRow(startRowKey, startFailed)])
       const recorded = (id: string) =>

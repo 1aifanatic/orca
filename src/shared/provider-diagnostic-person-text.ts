@@ -14,6 +14,9 @@ const TECHNICAL_TEXT = [
   /\b\w+\.(?:[cm]?[jt]s|py|rs|go):\d+(?::\d+)?\b/
 ]
 
+// Users know agents, not "providers": an explanation using that word is withheld.
+const INTERNAL_WORD = /\bprovider\b/i
+
 function hasControlCharacters(text: string): boolean {
   for (const character of text) {
     const code = character.charCodeAt(0)
@@ -28,6 +31,7 @@ export function isProviderDiagnosticPersonText(text: string): boolean {
   return (
     text.trim().length > 0 &&
     !hasControlCharacters(text) &&
+    !INTERNAL_WORD.test(text) &&
     !TECHNICAL_TEXT.some((pattern) => pattern.test(text))
   )
 }

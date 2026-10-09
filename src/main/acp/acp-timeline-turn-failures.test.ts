@@ -40,6 +40,13 @@ const promptComplete = (promptId: string, stopReason: string, agentResult: strin
   agentResult
 })
 const rpcError = new AcpAgentError(-32603, 'Internal error', { message: REASON })
+// The reason is an API record, so the row names Grok and keeps the reason on its fact.
+const FAILED_ROW = {
+  kind: 'status',
+  tone: 'error',
+  text: 'Grok ran into a problem. Check the chat before trying again.',
+  failure: { kind: 'providerError', detail: { text: REASON, audience: 'person' } }
+}
 
 function statusRows(rows: AgentJournalRenderItem[]) {
   return rows.flatMap((row) => (row.body.kind === 'status' ? [{ row, body: row.body }] : []))
@@ -55,7 +62,7 @@ describe('a failed ACP turn says why', () => {
     f.apply(
       lane.notification('_x.ai/session_notification', ended(prompt.promptId, 'error', REASON), 1003)
     )
-    expect(statusRows(await f.rig.rows())[0]?.body.text).toBe(REASON)
+    expect(statusRows(await f.rig.rows())[0]?.body).toEqual(FAILED_ROW)
     f.apply(
       lane.notification(
         '_x.ai/session/prompt_complete',
@@ -82,8 +89,8 @@ describe('a failed ACP turn says why', () => {
     const rows = await f.rig.rows()
     const failures = statusRows(rows)
     expect(failures).toHaveLength(1)
-    // The turn ran, so the row reads as Codex's turn-ending error does: no refusal sentence or fact.
-    expect(failures[0]?.body).toEqual({ kind: 'status', tone: 'error', text: REASON })
+    // The turn ran, so the row reads as Codex's turn-ending error does: no refusal sentence.
+    expect(failures[0]?.body).toEqual(FAILED_ROW)
     const turns = await f.rig.turns()
     expect(turns.map((turn) => [turn.state, turn.outcome])).toEqual([
       ['completed', 'failure'],
@@ -113,7 +120,7 @@ describe('a failed ACP turn says why', () => {
     f.apply(lane.promptFailed('c1', rpcError, 1004))
     const failures = statusRows(await f.rig.rows())
     expect(failures).toHaveLength(1)
-    expect(failures[0]?.body).toEqual({ kind: 'status', tone: 'error', text: REASON })
+    expect(failures[0]?.body).toEqual(FAILED_ROW)
   })
 
   it.each(['retry_state', 'turn_completed', 'prompt_complete', 'prompt error answer'] as const)(
@@ -149,7 +156,7 @@ describe('a failed ACP turn says why', () => {
         )
       )
       const failures = statusRows(await f.rig.rows())
-      expect(failures.map((failure) => failure.body.text)).toEqual([REASON])
+      expect(failures.map((failure) => failure.body)).toEqual([FAILED_ROW])
     }
   )
 
@@ -162,7 +169,7 @@ describe('a failed ACP turn says why', () => {
     f.apply(lane.notification('_x.ai/session_notification', ended(prompt.promptId, 'error'), 1003))
     f.apply(lane.promptFailed('c1', new AcpAgentError(-32603, 'Internal error'), 1004))
     const failures = statusRows(await f.rig.rows())
-    expect(failures.map((failure) => failure.body.text)).toEqual([REASON])
+    expect(failures.map((failure) => failure.body)).toEqual([FAILED_ROW])
   })
 
   it('names a rate-limited turn the provider gave no words for, without inventing a reason', async () => {

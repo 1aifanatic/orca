@@ -43,10 +43,10 @@ export function acpSignInRequiredRefusal(
   )
 }
 
-/** One error row per failed turn, in the provider's own words, as a Codex turn-ending error reads:
- *  the message was accepted and the turn ran, so it is no refusal. Providers send that reason several
- *  times (beside the end, after it, in the prompt's error answer), so a later copy only adds a
- *  reason the row still lacks. */
+/** One error row per failed turn, named and quoting the agent's reason only when a person can read
+ *  it, as a Codex turn-ending error reads: the message was accepted and the turn ran, so it is no
+ *  refusal. Providers send that reason several times (beside the end, after it, in the prompt's
+ *  error answer), so a later copy only adds a reason the row still lacks. */
 export class AcpTurnFailures {
   /** The reason each failed turn's row holds; '' for none yet. */
   private readonly rows = new BoundedMap<string, { text: string; notSignedIn: boolean }>({
@@ -102,14 +102,15 @@ export class AcpTurnFailures {
         body: {
           kind: 'status',
           tone: 'error',
-          ...(authenticationRequired
+          ...(authenticationRequired || diagnostic
             ? agentSessionFailureWords(
-                agentSessionFailureFact('notSignedIn', { detail: diagnostic }),
+                agentSessionFailureFact(authenticationRequired ? 'notSignedIn' : 'providerError', {
+                  detail: diagnostic
+                }),
                 { agentName: this.agentName, surface: 'row' }
               )
             : {
                 text:
-                  diagnostic?.text ??
                   this.dialect.failedTurnText?.(stopReason) ??
                   `${this.agentName ?? 'The agent'} ended this turn with an error.`
               })
