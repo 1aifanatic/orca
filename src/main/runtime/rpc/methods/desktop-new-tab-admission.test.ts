@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
   AGENT_LAUNCH_RUNTIME_CAPABILITY
 } from '../../../../shared/agent-launch-runtime-capability'
 import { DESKTOP_RPC_CALLER } from '../rpc-caller-identity'
@@ -22,7 +22,7 @@ const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
 const REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 const CAPABLE_CLIENT = [
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY
 ] as const
 const REFUSED_CALLERS: { name: string; context: Partial<RpcContext> }[] = [
   {

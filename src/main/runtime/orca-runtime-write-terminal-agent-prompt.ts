@@ -31,7 +31,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     generation: number,
     pastePayload: string,
     options: RuntimeAgentPromptWriteOptions
-  ): Promise<{ submits: number; prompt?: RuntimeTerminalPromptDelivery }> {
+  ): Promise<{ submits: number; prompt?: RuntimeTerminalPromptDelivery; bytesWritten?: number }> {
     assertAgentPromptRequestActive(options.signal)
     this.assertAgentPromptGeneration(ptyId, generation)
     const permissionBaseline = this.getAgentPromptActivity(handle, ptyId)
@@ -39,6 +39,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     if (options.desktopNewTab) {
       const controller = this.ptyController
       let writeFailure: { error: unknown } | undefined
+      let bytesWritten = 0
       const assertWritable = (): void => {
         assertAgentPromptRequestActive(options.signal)
         this.assertAgentPromptGeneration(ptyId, generation)
@@ -56,7 +57,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
           this.getAgentPromptActivity(handle, ptyId)
         )
       }
-      return writeDesktopNewTabPrompt({
+      const delivery = await writeDesktopNewTabPrompt({
         text: options.promptForSchedule ?? '',
         agent: this.getPtyAgent(ptyId),
         submit: options.desktopNewTab.submit,
@@ -84,6 +85,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
             if (settlement?.outcome !== 'accepted') {
               throw new Error('terminal_not_writable')
             }
+            bytesWritten += Buffer.byteLength(data, 'utf8')
             return true
           } catch (error) {
             // A failed live sequence cannot resume through the shared paste's cleanup write.
@@ -92,6 +94,7 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
           }
         }
       })
+      return { ...delivery, bytesWritten }
     }
     const writeHostPlatform = this.getPtyWriteHostPlatform(ptyId)
     const pty = this.ptysById.get(ptyId)

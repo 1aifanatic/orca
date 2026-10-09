@@ -52,14 +52,15 @@ export const AGENT_LAUNCH_UNSTARTED_TAB_CLIENT_CAPABILITY = 'agent.launch.unstar
 // `agent_session_operation_unknown` for it, as before the host knew.
 export const AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY = 'agent.launch.tab-closed.v1' as const
 
-// Host-advertised desktop startup and live input contract; clients must negotiate it.
-export const AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY =
+// Client-advertised only, by the desktop renderer to its own main: the host accepts a desktop
+// new-tab startup prompt only from that caller, so no remote client is told it exists.
+export const AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY =
   'agent.launch.desktop-new-tab.v1' as const
 
 export function supportsDesktopNewTabAgentLaunch(
   capabilities: readonly string[] | null | undefined
 ): boolean {
-  return capabilities?.includes(AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY) === true
+  return capabilities?.includes(AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY) === true
 }
 
 export const AGENT_LAUNCH_RUNTIME_CAPABILITIES = [
@@ -69,6 +70,5 @@ export const AGENT_LAUNCH_RUNTIME_CAPABILITIES = [
   AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_PLACEMENT_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_FOLLOW_UPS_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+  AGENT_LAUNCH_FOLLOW_UPS_RUNTIME_CAPABILITY
 ] as const

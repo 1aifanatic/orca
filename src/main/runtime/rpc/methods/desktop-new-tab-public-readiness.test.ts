@@ -3,7 +3,7 @@ import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { TerminalProcessInspection } from '../../../../shared/terminal-process-inspection'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY
 } from '../../../../shared/agent-launch-runtime-capability'
 import { wrapTerminalBracketedPasteText } from '../../../../shared/terminal-bracketed-paste-text'
 import { createAgentPromptSubmissionRuntime } from '../../agent-prompt-submission-runtime-test-fixture'
@@ -71,7 +71,7 @@ async function publicLaunchRig({
     clientKind: 'runtime',
     clientCapabilities: [
       AGENT_LAUNCH_RUNTIME_CAPABILITY,
-      AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+      AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY
     ]
   }
   const params = LAUNCH.params.parse({
