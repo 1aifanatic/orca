@@ -195,12 +195,25 @@ it.each([
   )
 })
 
+const MARKDOWN_CONVERSION_SPEC = 'tests/e2e/ssh-orcad-markdown-conversion.spec.ts'
+const MARKDOWN_LINK_REFRESH_SPEC = 'tests/e2e/ssh-orcad-markdown-link-refresh.spec.ts'
+
 it.each([
-  'src/renderer/src/components/editor/useMarkdownDocuments.ts',
-  'src/renderer/src/components/editor/restored-editor-workspace-runtime-owner.ts',
-  'src/renderer/src/components/editor/migrate-restored-editor-file-owner.ts'
-])('routes %s to the template-building Markdown conversion lane', (file) => {
-  const spec = 'tests/e2e/ssh-orcad-markdown-conversion.spec.ts'
+  ['src/renderer/src/components/editor/useMarkdownDocuments.ts', MARKDOWN_CONVERSION_SPEC],
+  [
+    'src/renderer/src/components/editor/restored-editor-workspace-runtime-owner.ts',
+    MARKDOWN_CONVERSION_SPEC
+  ],
+  [
+    'src/renderer/src/components/editor/migrate-restored-editor-file-owner.ts',
+    MARKDOWN_CONVERSION_SPEC
+  ],
+  ['src/renderer/src/components/editor/rich-markdown-doc-link.ts', MARKDOWN_LINK_REFRESH_SPEC],
+  [
+    'src/renderer/src/components/editor/useRichMarkdownProgrammaticSync.ts',
+    MARKDOWN_LINK_REFRESH_SPEC
+  ]
+])('routes %s to the template-building Markdown lane %s', (file, spec) => {
   expect(selectPrE2eSpecs([file])).toContain(spec)
   expect(classify([spec])).toEqual({
     e2e_run_changed: false,
