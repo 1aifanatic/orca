@@ -6,9 +6,9 @@
  * host), `process-exited` (exit proven by a completed-stop receipt). Only the last may commit.
  */
 import {
-  coreOrcadActivationRecord,
   serializeOrcadActivationRecord,
   withDeactivatedVersion,
+  withDeactivatedVersionCommitted,
   type OrcadActivationRecord
 } from './orcad-activation-record'
 import { ORCAD_ACTIVATION_TRANSACTION_SCHEMA_VERSION } from './orcad-activation-transaction-schema'
@@ -77,12 +77,9 @@ export function orcadDecommissionTransactionDefect(
   if (transaction.recordBefore.active !== transaction.activeVersion) {
     return 'decommission version does not match recordBefore'
   }
-  // Core fields only: a peer that predates the advisory app-version fields journals without them.
   if (
-    serializeOrcadActivationRecord(coreOrcadActivationRecord(transaction.recordAfter)) !==
-    serializeOrcadActivationRecord(
-      coreOrcadActivationRecord(withDeactivatedVersion(transaction.recordBefore))
-    )
+    serializeOrcadActivationRecord(transaction.recordAfter) !==
+    serializeOrcadActivationRecord(withDeactivatedVersion(transaction.recordBefore))
   ) {
     return 'recordAfter is not the deactivated recordBefore'
   }
@@ -104,15 +101,22 @@ export function planOrcadDecommissionRecovery(
     return {
       action: 'confirm-decommissioned',
       version: transaction.activeVersion,
-      record: transaction.recordAfter
+      record: committedOrcadDecommissionRecord(transaction)
     }
   }
   if (transaction.phase === 'stop-dispatched' && transaction.request) {
     return {
       action: 'resume-stop',
       request: transaction.request,
-      record: transaction.recordAfter
+      record: committedOrcadDecommissionRecord(transaction)
     }
   }
   return { action: 'keep-serving', version: transaction.activeVersion }
+}
+
+/** The record a finished stop writes: the journaled `recordAfter` plus its advisory fields. */
+export function committedOrcadDecommissionRecord(
+  transaction: OrcadDecommissionTransaction
+): OrcadActivationRecord {
+  return withDeactivatedVersionCommitted(transaction.recordBefore)
 }

@@ -82,11 +82,12 @@ function planStoppedHostRedeploy(
   if (record.previous === candidateVersion) {
     return { action: 'update' }
   }
-  // Why absent is not older here: builds that wrote stops before the field existed omit it too.
-  if (!record.previousAppVersion) {
+  // A stop keeps the stopped build's activeAppVersion. Absent is not older here: a stop committed
+  // by a build that predates keeping it omits it too.
+  if (!record.activeAppVersion) {
     return { action: 'skip', reason: 'stopped-version-unknown' }
   }
-  return compareAppVersions(record.previousAppVersion, appVersion) > 0
+  return compareAppVersions(record.activeAppVersion, appVersion) > 0
     ? { action: 'skip', reason: 'host-newer' }
     : { action: 'update' }
 }
@@ -125,9 +126,10 @@ export function autoUpdateManagedOrcadEnvironment(
       return { outcome: 'skipped', reason: 'migrating' }
     }
     const context = await resolveLinkedOrcadContext(managed.environment, managed.deployment)
+    const candidateVersion = await bundledOrcadVersion(context.serverTarget)
     const plan = planManagedOrcadAutoUpdate({
       record: context.activationRecord,
-      candidateVersion: await bundledOrcadVersion(context.serverTarget),
+      candidateVersion,
       appVersion: args.appVersion,
       failedBefore: args.failedBefore
     })
@@ -135,8 +137,27 @@ export function autoUpdateManagedOrcadEnvironment(
       return { outcome: 'skipped', reason: plan.reason }
     }
     args.onUpdating()
+    let lockedSkip: ManagedOrcadAutoUpdateSkip | null = null
     try {
-      const result = await runManagedOrcadUpdate(userDataPath, managed, context, {})
+      const result = await runManagedOrcadUpdate(userDataPath, managed, context, {
+        // Why again under the fence: another desktop may activate or stop a newer build mid-upload.
+        admitRecord: (record) => {
+          const locked = planManagedOrcadAutoUpdate({
+            record,
+            candidateVersion,
+            appVersion: args.appVersion,
+            failedBefore: false
+          })
+          if (locked.action === 'update') {
+            return null
+          }
+          lockedSkip = locked.reason
+          return `Auto-update skipped under the host fence: ${locked.reason}.`
+        }
+      })
+      if (lockedSkip) {
+        return { outcome: 'skipped', reason: lockedSkip }
+      }
       if (result.outcome !== 'deferred') {
         return { outcome: 'updated', activeVersion: result.activeVersion }
       }

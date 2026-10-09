@@ -124,6 +124,7 @@ export async function createManagedOrcadEnvironment(
         census: context.activationRecord.active
           ? { liveSessions: null, startedSinceActivation: null, daemonProtocolVersion: null }
           : { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: null },
+        censusRecord: context.activationRecord,
         force: args.force,
         appVersion: getAppEnvironment().getVersion()
       })

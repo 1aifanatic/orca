@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SshTarget } from '../../shared/ssh-types'
 import { recheckFencedManagedServer } from './managed-server-fence-recheck'
-import { withDeactivatedVersion, type OrcadActivationRecord } from './orcad-activation-record'
+import {
+  withDeactivatedVersion,
+  withDeactivatedVersionCommitted,
+  type OrcadActivationRecord
+} from './orcad-activation-record'
 import { planManagedOrcadAutoUpdate } from './orcad-managed-auto-update'
+import { compareAppVersions } from '../../shared/app-version'
 import {
   MANAGED_ORCAD_FENCED_DETAIL,
   MANAGED_ORCAD_NOT_ACTIVATED_DETAIL
@@ -86,7 +91,7 @@ describe('a linked server another desktop stopped (P1-D)', () => {
     }
     expect(
       planManagedOrcadAutoUpdate({
-        record: withDeactivatedVersion(served),
+        record: withDeactivatedVersionCommitted(served),
         candidateVersion: '1.0.0+abc',
         appVersion: '1.0.0',
         failedBefore: false
@@ -113,16 +118,26 @@ describe('redeploying a host another desktop stopped, across Orca versions', () 
     })
 
   it('never lets an older desktop downgrade a host a newer desktop stopped', () => {
-    const stopped = withDeactivatedVersion(servedBy('1.5.0', '1.5.0+new'))
+    const stopped = withDeactivatedVersionCommitted(servedBy('1.5.0', '1.5.0+new'))
     expect(plan(stopped, '1.4.0')).toEqual({ action: 'skip', reason: 'host-newer' })
     expect(plan(stopped, '1.5.0')).toEqual({ action: 'update' })
     expect(plan(stopped, '1.6.0')).toEqual({ action: 'update' })
   })
 
+  it('keeps released desktops, which plan on activeAppVersion alone, from downgrading it', () => {
+    // Frozen copy of the planner shipped before stopped hosts had their own policy.
+    const releasedPlan = (record: OrcadActivationRecord, appVersion: string): string =>
+      record.activeAppVersion && compareAppVersions(record.activeAppVersion, appVersion) > 0
+        ? 'host-newer'
+        : 'update'
+    const stopped = withDeactivatedVersionCommitted(servedBy('1.5.0', '1.5.0+new'))
+    expect(releasedPlan(stopped, '1.4.0')).toBe('host-newer')
+    expect(releasedPlan(stopped, '1.5.0')).toBe('update')
+  })
+
   it('does not guess for a stop recorded without the app version', () => {
-    const { previousAppVersion: _app, ...legacy } = withDeactivatedVersion(
-      servedBy('1.5.0', '1.5.0+new')
-    )
+    // What a stop committed by a build that predates keeping the app version leaves.
+    const legacy = withDeactivatedVersion(servedBy('1.5.0', '1.5.0+new'))
     expect(plan(legacy, '1.6.0')).toEqual({ action: 'skip', reason: 'stopped-version-unknown' })
     // The same build that was stopped is always safe to start again.
     expect(
@@ -136,7 +151,7 @@ describe('redeploying a host another desktop stopped, across Orca versions', () 
   })
 
   it('retries the redeploy after an earlier failure, since nothing serves', () => {
-    const stopped = withDeactivatedVersion(servedBy('1.4.0', '1.4.0+old'))
+    const stopped = withDeactivatedVersionCommitted(servedBy('1.4.0', '1.4.0+old'))
     expect(plan(stopped, '1.4.0', true)).toEqual({ action: 'update' })
     // A host that still serves keeps the once-per-version suppression.
     expect(plan(servedBy('1.4.0', '1.4.0+old'), '1.5.0', true)).toEqual({
@@ -147,7 +162,7 @@ describe('redeploying a host another desktop stopped, across Orca versions', () 
 
   it('never reactivates a build an explicit rollback left, after a stop', () => {
     const rolledBack = { ...servedBy('1.5.0', '1.5.0+old'), rolledBackFrom: '1.5.0+cand' }
-    expect(plan(withDeactivatedVersion(rolledBack), '1.5.0')).toEqual({
+    expect(plan(withDeactivatedVersionCommitted(rolledBack), '1.5.0')).toEqual({
       action: 'skip',
       reason: 'rolled-back'
     })
