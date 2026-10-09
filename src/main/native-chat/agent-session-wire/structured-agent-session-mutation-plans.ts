@@ -17,6 +17,7 @@ import type {
   AgentSessionMutationEnvelope,
   AgentSessionOptionResult,
   AgentSessionPromptResult,
+  AgentSessionQueuedSendReceipt,
   AgentSessionSendResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionConversationCommandResult } from '../../../shared/agent-session-conversation-command'
@@ -39,6 +40,7 @@ import {
 } from './structured-agent-session-turns'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
+import type { JournalOperationReceipt } from '../agent-session-journal/journal-row-writer'
 
 export type MutationPlan<TValue> = {
   method: string
@@ -54,12 +56,22 @@ export type MutationPlan<TValue> = {
   recoverUnknownFromDurableState?: boolean
 } & (
   | {
-      /** Accepts with a submission or draft; its receipt commits in that write's transaction. */
-      settlesWithWrite: true
+      /** Accepts with a submission or draft; its command receipt commits in that write's transaction. */
+      acceptsWithCommandReceipt: true
+      settlesWithWrite?: never
+      successReceipt?: never
       settledOutcome?: never
     }
   | {
+      /** Commits success with its row; paths without a committed receipt use fallback settlement. */
+      settlesWithWrite: true
+      acceptsWithCommandReceipt?: never
+      successReceipt?: () => JournalOperationReceipt
+      settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
+    }
+  | {
       settlesWithWrite?: never
+      acceptsWithCommandReceipt?: never
       settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
     }
 )
@@ -95,7 +107,7 @@ export function sendPlan(params: {
     method: 'agentSession.send',
     operationIdScope: 'global',
     conversationWrite: true,
-    settlesWithWrite: true,
+    acceptsWithCommandReceipt: true,
     // `delivery` joins the OPERATION fingerprint only; the submission row keeps
     // the body-only fingerprint the reducer's echo-aliasing recomputes.
     fields: {
@@ -162,13 +174,17 @@ export function sendPlan(params: {
 
 export type ConversationCommandAcceptance =
   | { clientMessageId: string }
+  /** Held as a card, keyed by the operation id, behind work in flight. */
+  | { queued: AgentSessionQueuedSendReceipt }
   /** What an older build's run of this operation recorded. */
   | { recorded: AgentSessionConversationCommandResult }
 
 /** `/compact` accepted like a send: one submission, keyed by the operation id, that the delivery
- *  loop carries out as the command's own turn. */
+ *  loop carries out as the command's own turn — or, asked with `delivery`, a card while the
+ *  agent works, which the queue's drain turns into that submission. */
 export function conversationCommandPlan(params: {
   envelope: AgentSessionMutationEnvelope
+  delivery?: 'queue-if-active'
   priorRecord: () => AgentSessionConversationCommandResult | null
 }): MutationPlan<ConversationCommandAcceptance> {
   const clientMessageId = params.envelope.clientOperationId
@@ -176,8 +192,11 @@ export function conversationCommandPlan(params: {
     method: 'agentSession.conversationCommand',
     operationIdScope: 'global',
     conversationWrite: true,
-    settlesWithWrite: true,
-    fields: { command: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND },
+    acceptsWithCommandReceipt: true,
+    fields: {
+      command: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND,
+      ...(params.delivery ? { delivery: params.delivery } : {})
+    },
     recoverUnknownFromDurableState: true,
     run: async (ctx) => {
       const sent = await performSend(ctx, {
@@ -191,6 +210,17 @@ export function conversationCommandPlan(params: {
       return sent.ok ? { ok: true, value: { clientMessageId } } : sent
     },
     replay: (ctx) => {
+      // A card answers from itself until drained, then from the submission it became; only a
+      // command that asked to wait can have one, as for a send.
+      const queued =
+        params.delivery === 'queue-if-active'
+          ? queuedSendAnswer(ctx.journal, clientMessageId)
+          : null
+      if (queued) {
+        return 'queued' in queued
+          ? { queued: queued.queued }
+          : { clientMessageId: queued.submission.clientMessageId }
+      }
       if (ctx.journal.submissions().some((entry) => entry.clientMessageId === clientMessageId)) {
         return { clientMessageId }
       }

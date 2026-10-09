@@ -82,7 +82,6 @@ export type AgentSessionMutationRequest<TValue> = {
   ) => Promise<AgentSessionMutationSessionPreparation>
   publish: (journal: AgentSessionJournal) => void
   wakeDelivery?: (sessionId: string) => void
-  providerChildPhase?: AgentSessionTurnContext['providerChildPhase']
   now: () => number
 }
 
@@ -99,7 +98,7 @@ export async function admitAndRunAgentSessionMutation<TValue>(
   if (conflict) {
     return refuseAgentSessionMutation(conflict)
   }
-  if (plan.settlesWithWrite) {
+  if (plan.acceptsWithCommandReceipt) {
     return admitCommandReceiptMutation(request, hostFingerprint)
   }
   if (request.prepareSession) {
