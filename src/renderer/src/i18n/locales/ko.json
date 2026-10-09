@@ -12396,7 +12396,7 @@
           "connecting": "관리형 Orca 서버에 연결 중…",
           "updating": "관리형 서버 업데이트 중…",
           "starting": "관리형 서버 시작 중…",
-          "notServing": "관리형 Orca 서버가 실행 중이 아니며 시작할 수도 없었습니다.",
+          "notServing": "Orca가 관리형 서버의 응답 여부를 확인하지 못했습니다.",
           "hostNewer": "더 새로운 Orca의 관리형 Orca 서버를 실행합니다. 해당 버전을 유지합니다.",
           "terminalsLive": "열린 터미널 {{count}}개가 닫힐 때까지 릴레이를 실행한 다음 관리형 서버로 이동합니다.",
           "terminalsLive_one": "열린 터미널 {{count}}개가 닫힐 때까지 릴레이를 실행한 다음 관리형 서버로 이동합니다.",

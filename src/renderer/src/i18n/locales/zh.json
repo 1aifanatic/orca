@@ -12396,7 +12396,7 @@
           "connecting": "正在连接到受管的 Orca 服务器…",
           "updating": "正在更新受管服务器…",
           "starting": "正在启动受管服务器…",
-          "notServing": "受管的 Orca 服务器未运行，且无法启动。",
+          "notServing": "Orca 无法确认受管服务器是否正在响应。",
           "hostNewer": "运行来自较新版本 Orca 的受管 Orca 服务器；它会保留该版本。",
           "terminalsLive": "在其 {{count}} 个打开的终端全部关闭前运行中继，然后迁移到受管服务器。",
           "terminalsLive_one": "在其 {{count}} 个打开的终端关闭前运行中继，然后迁移到受管服务器。",

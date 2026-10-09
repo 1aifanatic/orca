@@ -12501,7 +12501,7 @@
           "connecting": "Connexion au serveur Orca géré…",
           "updating": "Mise à jour du serveur géré…",
           "starting": "Démarrage du serveur géré…",
-          "notServing": "Le serveur Orca géré n'est pas démarré et n'a pas pu être démarré.",
+          "notServing": "Orca n’a pas pu confirmer que le serveur géré répond.",
           "hostNewer": "Exécute un serveur Orca géré issu d'une version plus récente d'Orca ; il conserve cette version.",
           "terminalsLive": "Exécute le relais jusqu'à la fermeture de ses {{count}} terminaux ouverts, puis bascule vers un serveur géré.",
           "terminalsLive_one": "Exécute le relais jusqu'à la fermeture de son {{count}} terminal ouvert, puis bascule vers un serveur géré.",
