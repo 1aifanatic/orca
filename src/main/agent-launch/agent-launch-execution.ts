@@ -11,7 +11,7 @@ import type {
   AgentLaunchTarget
 } from '../../shared/agent-launch-intent'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
-import type { AgentLaunchModeVocabulary } from './agent-launch-mode'
+import type { AgentLaunchModeReceipt, AgentLaunchModeVocabulary } from './agent-launch-mode'
 import type {
   AgentLaunchSurfaceFactory,
   AgentLaunchWorkspaceFactory
@@ -44,6 +44,10 @@ export type AgentLaunchSurfaceExecution = AgentLaunchExecutionBase & {
   /** Host-internal, never on the wire: settles a terminal agent whatever the chat default says, for
    *  a caller whose contract is a terminal handle. */
   terminalOnly?: boolean
+  /** Host-internal: the pre-flight a caller decided itself because it records the receipt before
+   *  the launch runs (an orchestration dispatch). For an existing workspace it must already carry
+   *  that host's answer; the executor asks the host only about a workspace it creates. */
+  decidedMode?: AgentLaunchModeReceipt
   /** The launch's own delivery: argv only when the typed line carries it, else a paste. */
   promptPolicy?: undefined
 }
@@ -64,6 +68,7 @@ export type AgentLaunchLegacyHostExecution = AgentLaunchExecutionBase & {
   terminalOnly: true
   workspaces: AgentLaunchWorkspaceFactory
   surfaces?: never
+  decidedMode?: never
 }
 
 export type AgentLaunchExecution = AgentLaunchSurfaceExecution | AgentLaunchLegacyHostExecution
