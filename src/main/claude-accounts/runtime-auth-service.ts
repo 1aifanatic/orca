@@ -6,7 +6,10 @@ import type { Store } from '../persistence'
 import { getDefaultWslDistro, getWslHome } from '../wsl'
 import { ClaudeProfileRouter } from './claude-profile-router'
 import { ClaudeWslProfileRouter } from './claude-profile-wsl-router'
-import { installClaudeProfileRouter } from './claude-profile-installed-router'
+import {
+  installClaudeProfileRouter,
+  installClaudeWslProfileRouter
+} from './claude-profile-installed-router'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 
@@ -27,6 +30,7 @@ export class ClaudeRuntimeAuthService {
     this.router = new ClaudeProfileRouter(args)
     installClaudeProfileRouter(this.router)
     this.wslRouter = process.platform === 'win32' ? new ClaudeWslProfileRouter(args) : undefined
+    installClaudeWslProfileRouter(this.wslRouter)
     void this.publishAll().catch((error: unknown) => {
       console.warn('[claude-runtime-auth] Failed to publish the Claude account selection:', error)
     })

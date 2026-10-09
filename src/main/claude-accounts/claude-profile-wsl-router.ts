@@ -147,6 +147,16 @@ export class ClaudeWslProfileRouter {
     return this.preparationFor(distro, home, profile)
   }
 
+  /** Where an unselected account's usage is read in the guest: where its launches would run. */
+  async accountUsagePreparation(
+    distro: string,
+    accountId: string
+  ): Promise<ClaudeRuntimeAuthPreparation> {
+    const { home } = await this.resolve(distro)
+    const { profile } = wslClaudeProfile(home, distro, accountId)
+    return this.preparationFor(distro, home, await this.routed(distro, home, profile))
+  }
+
   async preparation(distro: string): Promise<ClaudeRuntimeAuthPreparation> {
     const { home, profile } = await this.resolve(distro)
     await this.assertPresent(distro, profile)
