@@ -1,6 +1,7 @@
 /**
- * The one place an agent is actually started — for the surfaces moved onto it, which today is
- * `agent.launch` alone. Orchestration dispatch, mobile create, CLI create and the desktop agent
+ * The one place an agent launch is sequenced — for the surfaces moved onto it: `agent.launch`, and
+ * `worktree.create` (CLI and mobile create) through `createWorktreeWithStartupAgent`, whose
+ * `legacy-host` create still starts the agent itself. Orchestration dispatch and the desktop agent
  * tab each still start agents their own way; moving them here is later stack work.
  *
  * The mode decision is shared, not copied: `agent-launch-mode` owns it, and
@@ -45,7 +46,6 @@ import {
   workspaceKindForWorktreeId,
   type WorkspaceLaunchKind
 } from '../../shared/workspace-launch-kind'
-import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../shared/agent-session-definitive-refusal'
 import {
   decideAgentLaunchMode,
@@ -56,47 +56,22 @@ import {
   DEFAULT_LAUNCH_VOCABULARY,
   warnStructuredLaunchDowngrade
 } from './agent-launch-mode'
-import { createLaunchPromptInputs, legacyHostCreateResult } from './agent-launch-legacy-host'
+import {
+  assertLegacyHostTarget,
+  createLaunchPromptInputs,
+  legacyHostCreateResult
+} from './agent-launch-legacy-host'
 import {
   AgentLaunchStructuredSessionRefusedError,
-  requireAgentLaunchSurfaces,
-  type AgentLaunchStructuredSurface,
-  type AgentLaunchSurfaceFactory,
-  type AgentLaunchWorkspaceFactory
+  type AgentLaunchStructuredSurface
 } from './agent-launch-surface-factories'
+import type {
+  AgentLaunchExecution,
+  AgentLaunchPublishedSurface,
+  AgentLaunchSurfaceExecution
+} from './agent-launch-execution'
 
-export type AgentLaunchExecution = {
-  runtime: Pick<OrcaRuntimeService, 'getStructuredAgentSessionCreateSupport' | 'getClientSettings'>
-  intent: AgentLaunchIntent
-  /** Absent only for a `legacy-host` create, whose startup terminal is its only surface. */
-  surfaces?: AgentLaunchSurfaceFactory
-  workspaces?: AgentLaunchWorkspaceFactory
-  /** Host-internal, never on the wire: settles a terminal agent whatever the chat default says, for
-   *  a caller whose contract is a terminal handle. */
-  terminalOnly?: boolean
-  /**
-   * Host-internal, never on the wire. `legacy-host` is `worktree.create`'s own delivery, kept for
-   * the host's legacy producers: the create folds a submit into the command at any length (the
-   * shell-ready staging carries long lines), sends it once a post-start agent is up, and pastes a
-   * draft unsent. Absent is the launch's own: argv only when the typed line carries it, else a paste.
-   */
-  promptPolicy?: 'legacy-host'
-  vocabulary?: AgentLaunchModeVocabulary
-  /** False when the calling client cannot show the agent's chat; absent for the host's own callers. */
-  callerRendersStructured?: boolean
-  /** Attributes a throw to the step that was running, the way a dispatch's own stages do. */
-  onStage?: (stage: 'worktree_create' | 'mode_settle' | 'surface_create') => void
-  /** The surface exists and its tab is published; runs before any prompt delivery. Must not throw. */
-  onSurfacePublished?: (surface: AgentLaunchPublishedSurface) => void
-}
-
-/**
- * The launch as it stands once its surface exists: a complete result whose prompt receipt says only
- * what creation itself settled — carried on the launch command, a draft the host never delivers, or
- * a submit still `unconfirmed`. Complete so a host that dies during the delivery still leaves a
- * truthful answer behind.
- */
-export type AgentLaunchPublishedSurface = AgentLaunchResult
+export type { AgentLaunchExecution, AgentLaunchPublishedSurface } from './agent-launch-execution'
 
 export async function executeAgentLaunch(
   execution: AgentLaunchExecution
@@ -122,6 +97,12 @@ export async function executeAgentLaunch(
     ...(execution.terminalOnly ? { terminalOnly: true } : {}),
     vocabulary
   })
+  // The create's startup terminal is this launch's only surface, and the create delivers the text.
+  if (execution.promptPolicy === 'legacy-host') {
+    assertLegacyHostTarget(execution)
+    const placed = await resolveWorkspace(execution, preflight)
+    return published(execution, legacyHostCreateResult(execution, placed, preflight))
+  }
 
   // A reused terminal already downgraded in the pre-flight; there is nothing to create. Its agent
   // was running before this launch existed, so argv is unreachable and the PTY is the only way in.
@@ -144,9 +125,6 @@ export async function executeAgentLaunch(
   }
 
   const placed = await resolveWorkspace(execution, preflight)
-  if (execution.promptPolicy === 'legacy-host') {
-    return published(execution, legacyHostCreateResult(execution, placed, preflight))
-  }
   // Agent-first creation already produced the agent, so the pre-flight verdict is final.
   if (placed.startupTerminalHandle) {
     const startup = published(execution, {
@@ -296,15 +274,15 @@ export type CreatedSurface = {
 }
 
 async function createSurface(
-  execution: AgentLaunchExecution,
+  execution: AgentLaunchSurfaceExecution,
   workspace: { worktreeId: string; connectionId: string | null | undefined },
   settled: AgentLaunchModeReceipt
 ): Promise<CreatedSurface> {
-  const { intent } = execution
+  const { intent, surfaces } = execution
   if (settled.mode === 'structured') {
     // One reservation serves either route: the tab half of the reserved pane is the chat's tab.
     const reservedTabId = intent.paneKey ? parsePaneKey(intent.paneKey)?.tabId : undefined
-    const session = await requireAgentLaunchSurfaces(execution).createStructuredSession({
+    const session = await surfaces.createStructuredSession({
       worktreeId: workspace.worktreeId,
       agent: intent.agent,
       ...(intent.sessionOptions ? { options: intent.sessionOptions } : {}),
@@ -357,12 +335,12 @@ function terminalLaunchInputs(intent: AgentLaunchIntent) {
  * surface — carrying the same argv prompt — as a launch that chose a terminal outright.
  */
 async function createTerminalSurface(
-  execution: AgentLaunchExecution,
+  execution: AgentLaunchSurfaceExecution,
   workspace: { worktreeId: string; connectionId: string | null | undefined }
 ): Promise<CreatedSurface> {
-  const { intent } = execution
+  const { intent, surfaces } = execution
   const startupPrompt = argvLaunchPrompt(intent)
-  const terminal = await requireAgentLaunchSurfaces(execution).createTerminalAgent({
+  const terminal = await surfaces.createTerminalAgent({
     worktreeId: workspace.worktreeId,
     agent: intent.agent,
     ...(startupPrompt ? { startupPrompt } : {}),

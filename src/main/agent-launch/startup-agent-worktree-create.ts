@@ -5,26 +5,36 @@
  * itself; that is `worktree.create`'s contract, so the launch is `terminalOnly` with the
  * `legacy-host` prompt policy. Request and result are the create's own, so a caller swaps
  * `runtime.createManagedWorktree` for this and nothing a client sends or reads changes.
+ *
+ * This is the one `legacy-host` producer: host-side creates that start an agent call it rather than
+ * the executor, so the no-agent outcome below is caught in one place.
  */
 
 import type { AgentLaunchPrompt } from '../../shared/agent-launch-intent'
+import { getRepoSshConnectionId } from '../../shared/execution-host'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import type { RuntimeManagedWorktreeCreateArgs } from '../runtime/runtime-managed-worktree-create-types'
 import { executeAgentLaunch, type AgentLaunchExecution } from './agent-launch-executor'
-import { AgentLaunchStartupAgentNotCreatedError } from './agent-launch-surface-factories'
+import { AgentLaunchStartupAgentNotCreatedError } from './agent-launch-legacy-host'
 
 type StartupAgentCreateRuntime = AgentLaunchExecution['runtime'] &
   Pick<OrcaRuntimeService, 'createManagedWorktree' | 'showRepo' | 'resolveStartupDraftAgent'>
+
+type StartupAgentLaunch = {
+  agent: TuiAgent
+  prompt: AgentLaunchPrompt | undefined
+  connectionId: string | null
+}
 
 export async function createWorktreeWithStartupAgent(
   runtime: StartupAgentCreateRuntime,
   args: RuntimeManagedWorktreeCreateArgs
 ): Promise<CreateWorktreeResult> {
   const launch = await resolveStartupAgentLaunch(runtime, args)
-  if (!launch) {
-    return runtime.createManagedWorktree(args)
+  if ('passthrough' in launch) {
+    return runtime.createManagedWorktree(launch.passthrough)
   }
   let created: CreateWorktreeResult | undefined
   try {
@@ -41,10 +51,10 @@ export async function createWorktreeWithStartupAgent(
       workspaces: {
         // Reads the typed request it was built from; the executor's `create` is the same minus the
         // agent fields, which come back as arguments here.
-        createWorktree: async ({ startupAgent, legacyPrompt, launchSource }) => {
+        createWorktree: async ({ legacyPrompt, launchSource }) => {
           created = await runtime.createManagedWorktree({
             ...withoutStartupAgentFields(args),
-            ...legacyStartupFields(startupAgent, legacyPrompt),
+            ...legacyStartupFields(launch.agent, legacyPrompt),
             ...(launchSource ? { startupLaunchSource: launchSource } : {})
           })
           return {
@@ -71,52 +81,45 @@ export async function createWorktreeWithStartupAgent(
   return created
 }
 
-/** The launch a create asks for, or null when it starts no agent. Mirrors the create's own order: a
- *  prebuilt command wins, then `startupAgent`, then a linked draft's agent. */
+/** The launch a create asks for, or the create to run as is when it starts no agent. Mirrors the
+ *  create's own order: a prebuilt command wins, then `startupAgent`, then a linked draft's agent. */
 async function resolveStartupAgentLaunch(
   runtime: StartupAgentCreateRuntime,
   args: RuntimeManagedWorktreeCreateArgs
-): Promise<{
-  agent: TuiAgent
-  prompt: AgentLaunchPrompt | undefined
-  connectionId: string | null
-} | null> {
+): Promise<StartupAgentLaunch | { passthrough: RuntimeManagedWorktreeCreateArgs }> {
   if (args.startup || (!args.startupAgent && !args.startupDraft?.trim())) {
-    return null
+    return { passthrough: args }
   }
   const repo = await runtime.showRepo(args.repoSelector)
-  const connectionId = repo.connectionId ?? null
+  const connectionId = getRepoSshConnectionId(repo)
   if (args.startupAgent) {
     return {
       agent: args.startupAgent,
-      // An empty prompt is still the caller's; the create launches the agent bare for it.
-      prompt:
-        args.startupPrompt !== undefined
-          ? { text: args.startupPrompt, delivery: 'submit' }
-          : undefined,
+      // A blank prompt is no prompt: the create launches the agent bare for it, sending nothing.
+      prompt: args.startupPrompt?.trim()
+        ? { text: args.startupPrompt, delivery: 'submit' }
+        : undefined,
       connectionId
     }
   }
   const agent = await runtime.resolveStartupDraftAgent(repo, args.createdWithAgent)
-  return agent
-    ? {
-        agent,
-        prompt: { text: args.startupDraft ?? '', delivery: 'draft' },
-        connectionId
-      }
-    : null
+  if (!agent) {
+    // The draft starts no agent, and the create would only run detection again to learn that.
+    const { startupDraft: _draft, ...withoutDraft } = args
+    return { passthrough: withoutDraft }
+  }
+  return { agent, prompt: { text: args.startupDraft ?? '', delivery: 'draft' }, connectionId }
 }
 
-/** A draft starts its agent through `startupDraft`, which a `startupAgent` would override. */
+/** A draft starts its agent through `startupDraft`, which a `startupAgent` would override. The
+ *  chosen agent rides `startupDraftAgent` so the create neither chooses again nor records it as
+ *  the agent the caller asked for: `createdWithAgent` stays the request's. */
 function legacyStartupFields(
-  agent: TuiAgent | undefined,
+  agent: TuiAgent,
   prompt: AgentLaunchPrompt | undefined
 ): Partial<RuntimeManagedWorktreeCreateArgs> {
-  if (!agent) {
-    throw new Error('agent_launch_legacy_create_requires_terminal')
-  }
   if (prompt?.delivery === 'draft') {
-    return { createdWithAgent: agent, startupDraft: prompt.text }
+    return { startupDraftAgent: agent, startupDraft: prompt.text }
   }
   return {
     startupAgent: agent,
@@ -131,6 +134,7 @@ function withoutStartupAgentFields(
     startupAgent: _agent,
     startupPrompt: _prompt,
     startupDraft: _draft,
+    startupDraftAgent: _draftAgent,
     startupLaunchSource: _source,
     ...rest
   } = args
