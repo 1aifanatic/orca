@@ -103,6 +103,10 @@ export function useStructuredAgentSessionOptions(args: {
     ...(launch?.worktree ? { worktree: launch.worktree } : {}),
     fence,
     turnId,
+    reportedUnpickedModel:
+      launch?.kind === 'new' &&
+      launchSeedOptions?.model === undefined &&
+      optionState.catalogSource === 'live',
     activeOptionRecordRef,
     updateOptionState
   })

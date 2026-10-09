@@ -53,6 +53,9 @@ export function useHostModelCatalogUpgrade(args: {
   fence: number | null
   /** The chat's running turn: one running proves its start, which the host re-checks against. */
   turnId?: string | null
+  /** A new chat that named no model has reported what it runs: the host may now name that as the
+   *  configured default, so the next chat's first frame reads it again. */
+  reportedUnpickedModel?: boolean
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
@@ -80,6 +83,7 @@ export function useHostModelCatalogUpgrade(args: {
   const recheck = useCallback(() => setRereads((count) => count + 1), [])
   const said = unavailable !== null
   const turnWhileSaid = said ? (args.turnId ?? null) : null
+  const reportedUnpickedModel = args.reportedUnpickedModel === true
   useEffect(() => {
     if (!said) {
       return
@@ -166,6 +170,7 @@ export function useHostModelCatalogUpgrade(args: {
     fence,
     newLaunch,
     optionCatalog,
+    reportedUnpickedModel,
     rereads,
     sessionId,
     turnWhileSaid,

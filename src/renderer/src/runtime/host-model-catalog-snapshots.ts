@@ -87,7 +87,11 @@ export function recordHostModelCatalogSnapshot(
     return
   }
   entry.byWorktree.set(worktree, catalog)
-  snapshots.set(key, entry)
+  // A default no workspace can replace is every new chat's, wherever it runs.
+  snapshots.set(
+    key,
+    catalog.defaultHoldsInEveryWorkspace === true ? { ...entry, account: catalog } : entry
+  )
 }
 
 /** Drops a host's answers, for every agent or only `agents`: the account they were for may not be
