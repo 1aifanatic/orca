@@ -166,6 +166,7 @@ it('coalesces mutations while output is blocked, keeps the newest revision, and 
       if (frames.length === 1) {
         return blocked
       }
+      return undefined
     }
   })
   const revision = summary(frames[0])?.revision ?? 0
@@ -190,7 +191,7 @@ it('coalesces multi-page journal catch-up without advancing past an unsent batch
     await rig.journal.appendItem(
       { provider: 'claude', sessionId: 'native', uuid: `row-${index}` },
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'row' }] },
-      { fence: 1 }
+      { fence: 1, turnScope: { kind: 'thread' } }
     )
   }
   const frames: AgentSessionSubscribeEvent[] = []
@@ -210,6 +211,7 @@ it('coalesces multi-page journal catch-up without advancing past an unsent batch
       if (frames.length === 1) {
         return blocked
       }
+      return undefined
     }
   })
   expect(frames).toHaveLength(1)
@@ -242,6 +244,7 @@ it('replays a coalesced snapshot only to the subscriber whose output was blocked
       if (blockedFrames.length === 1) {
         return blocked
       }
+      return undefined
     }
   })
   registry.open({
@@ -289,6 +292,7 @@ it('re-derives a blocked reader from the execution host after journal eviction',
       if (frames.length === 1) {
         return blocked
       }
+      return undefined
     }
   })
   const generation = summary(frames[0])?.generation

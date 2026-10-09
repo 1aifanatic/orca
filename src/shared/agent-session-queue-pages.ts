@@ -7,6 +7,9 @@ export const AGENT_SESSION_QUEUE_PAGE_MAX_SIZE = 200
 export const AGENT_SESSION_QUEUE_PAGE_DEFAULT_SIZE = 40
 export const AGENT_SESSION_QUEUE_SOURCES = ['person', 'agent', 'unknown'] as const
 export type AgentSessionQueueSource = (typeof AGENT_SESSION_QUEUE_SOURCES)[number]
+export function isAgentSessionQueueSource(value: unknown): value is AgentSessionQueueSource {
+  return AGENT_SESSION_QUEUE_SOURCES.some((source) => source === value)
+}
 export type AgentSessionQueueView = 'paged-v1'
 
 export type AgentSessionQueueSummary = {

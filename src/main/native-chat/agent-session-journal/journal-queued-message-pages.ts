@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentSessionQueueSource } from '../../../shared/agent-session-queue-pages'
+import {
+  isAgentSessionQueueSource,
+  type AgentSessionQueueSource
+} from '../../../shared/agent-session-queue-pages'
 import type { SqliteBindings } from '../../sqlite/sqlite-statement'
 import type { JournalHostDatabase } from './journal-host-database'
 import { getQueuedMessageHeader } from './queued-message-headers'
@@ -63,10 +66,7 @@ export class JournalQueuedMessagePages {
       FROM queued_messages WHERE session_id = ? AND ${QUEUED_MESSAGE_UNSETTLED_SQL}
       GROUP BY ${QUEUED_MESSAGE_SOURCE_SQL}`)
       .all(this.sessionId)) {
-      if (
-        (row.source === 'person' || row.source === 'agent' || row.source === 'unknown') &&
-        typeof row.count === 'number'
-      ) {
+      if (isAgentSessionQueueSource(row.source) && typeof row.count === 'number') {
         counts[row.source] = row.count
       }
     }
@@ -129,11 +129,7 @@ export class JournalQueuedMessagePages {
       .iterate(this.sessionId, ...bindings, size)) {
       const row = readStoredQueuedMessageRow(stored)
       const source = stored.source
-      if (
-        row &&
-        typeof stored.body_bytes === 'number' &&
-        (source === 'person' || source === 'agent' || source === 'unknown')
-      ) {
+      if (row && typeof stored.body_bytes === 'number' && isAgentSessionQueueSource(source)) {
         yield { row, source, bodyBytes: stored.body_bytes }
       }
     }
