@@ -1,3 +1,4 @@
+import type { CommandReceiptInsert } from '../../../../../shared/command-receipt-insert'
 import { orchestrationRetryRequestIssuedAtMs } from '../../../../../shared/orchestration-retry-request-id'
 import { OrchestrationError } from '../../orchestration-error'
 import type { MutationReceiptRow } from '../../types'
@@ -13,9 +14,7 @@ export type MutationReceiptInput = {
   receipt?: string
 }
 
-export type MutationReceiptInsert =
-  | { inserted: true }
-  | { inserted: false; reason: 'duplicate' | 'conflict'; existing: MutationReceiptRow }
+export type MutationReceiptInsert = CommandReceiptInsert<MutationReceiptRow>
 
 export function insertMutationReceiptIfAbsent(
   store: OrchestrationDb,

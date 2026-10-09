@@ -1,5 +1,5 @@
-import type Database from '../../sqlite/sync-database'
-import { ORCHESTRATION_RETRY_WINDOW_MS } from '../../../shared/orchestration-retry-request-id'
+import type Database from '../../../../sqlite/sync-database'
+import { ORCHESTRATION_RETRY_WINDOW_MS } from '../../../../../shared/orchestration-retry-request-id'
 
 const PRUNE_BATCH_SIZE = 256
 const MAX_BATCHES_PER_RUN = 100

@@ -13,7 +13,7 @@ import {
   retireMutationReceipts,
   startMutationReceiptMaintenance,
   RETIRE_MUTATION_RECEIPT_BATCH_SQL
-} from './mutation-receipt-maintenance'
+} from './db/mutation-receipts/mutation-receipt-maintenance'
 
 const NOW = Date.parse('2026-10-08T12:00:00Z')
 const EXPIRED = NOW - ORCHESTRATION_RETRY_WINDOW_MS - 1

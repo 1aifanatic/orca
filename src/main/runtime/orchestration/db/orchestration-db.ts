@@ -2,7 +2,7 @@ import Database from '../../../sqlite/sync-database'
 import {
   startMutationReceiptMaintenance,
   type MutationReceiptMaintenance
-} from '../mutation-receipt-maintenance'
+} from './mutation-receipts/mutation-receipt-maintenance'
 import { attachOrchestrationDbMethods } from './attach-orchestration-db-methods'
 import { hardenOrchestrationDatabaseFiles } from './database-file-permissions'
 import { backfillFederatedStubHomeRuns } from './federation/federated-stub-home-run-backfill'

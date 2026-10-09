@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import Database from '../../sqlite/sync-database'
 import { OrchestrationDb } from './db'
-const PREVIOUS_RECEIPT_LIMIT = 10_000
 import { SCHEMA_VERSION } from './db/contract-constants'
+
+const PREVIOUS_RECEIPT_LIMIT = 10_000
 
 function sqliteFor(db: OrchestrationDb): Database.Database {
   return db.db
@@ -67,7 +68,7 @@ describe('legacy mutation receipt count schema', () => {
          WHERE state = 'completed'
            AND updated_at < datetime('now', ?)`
       )
-      .all('-30 days') as { detail: string }[]
+      .all('-30 days')
     const capacityPlan = sqlite
       .prepare(
         `EXPLAIN QUERY PLAN
@@ -76,8 +77,8 @@ describe('legacy mutation receipt count schema', () => {
          ORDER BY updated_at ASC, rowid ASC
          LIMIT ?`
       )
-      .all(64) as { detail: string }[]
-    const details = [...agePlan, ...capacityPlan].map((row) => row.detail).join('\n')
+      .all(64)
+    const details = [...agePlan, ...capacityPlan].map((row) => String(row.detail)).join('\n')
 
     expect(details).toContain('idx_mutation_receipts_completed_updated')
     expect(details).not.toContain('USE TEMP B-TREE')

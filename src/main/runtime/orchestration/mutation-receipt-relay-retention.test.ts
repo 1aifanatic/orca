@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import Database from '../../sqlite/sync-database'
 import { ORCHESTRATION_RETRY_WINDOW_MS } from '../../../shared/orchestration-retry-request-id'
 import { OrchestrationDb } from './db'
-import { retireMutationReceipts } from './mutation-receipt-maintenance'
+import { retireMutationReceipts } from './db/mutation-receipts/mutation-receipt-maintenance'
 
 const LEGACY_UUID = '11111111-2222-4333-8444-555555555555'
 const cases = [
