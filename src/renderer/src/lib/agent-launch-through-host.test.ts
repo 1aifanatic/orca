@@ -238,9 +238,9 @@ describe('a desktop launch through the host', () => {
     await expect(launch().outcome).resolves.toEqual({ kind: 'closed-by-user' })
   })
 
-  it('reads the host capacity fallback receipt without making another desktop request', async () => {
-    const unrecorded = deferred<unknown>()
-    callRuntimeRpc.mockReturnValueOnce(unrecorded.promise)
+  it('launches a desktop fresh tab in the background without moving the selection', async () => {
+    const reply = deferred<unknown>()
+    callRuntimeRpc.mockReturnValueOnce(reply.promise)
     const selectedTab = store.getState().createTab(WT).id
     const desktopPrompt = {
       text: 'editable notes',
@@ -258,48 +258,17 @@ describe('a desktop launch through the host', () => {
     expect(callRuntimeRpc).toHaveBeenCalledOnce()
 
     const [, method, params] = callRuntimeRpc.mock.calls[0]!
-    expect(method).toBe('agent.launch')
+    expect(method).toBe('agent.launchReplay')
     expect(params).toMatchObject({ prompt: desktopPrompt, paneKey, presentation: 'background' })
     expect(params).toHaveProperty('operationId')
     expect(store.getState().activeTabId).toBe(selectedTab)
     const leafId = launchTab(tabId)!.agentLaunchPane!.leafId
     expect(agentLaunchPaneSpawnHold(tabId, leafId)).not.toBeNull()
 
-    unrecorded.resolve({ ...terminalResult(paneKey), recorded: false })
-    await expect(outcome).resolves.toEqual({ kind: 'started', unrecorded: true })
+    reply.resolve(terminalResult(paneKey))
+    await expect(outcome).resolves.toEqual({ kind: 'started' })
     expect(launchTab(tabId)).toBeDefined()
     expect(store.getState().activeTabId).toBe(selectedTab)
     expect(store.getState().tabsByWorktree[WT]).toHaveLength(2)
   })
-
-  it('a desktop capacity error never sends a second public request', async () => {
-    callRuntimeRpc.mockRejectedValueOnce(rpcError('agent_session_operation_capacity'))
-    const { tabId, outcome } = launchAgentThroughHost({
-      agent: 'claude',
-      worktreeId: WT,
-      prompt: '',
-      desktopPrompt: {
-        text: '',
-        delivery: 'submit',
-        transport: { kind: 'desktop-new-tab', promptDelivery: 'auto-submit' }
-      }
-    })
-    await expect(outcome).resolves.toMatchObject({
-      kind: 'not-started',
-      code: 'agent_session_operation_capacity'
-    })
-    expect(callRuntimeRpc).toHaveBeenCalledOnce()
-    expect(launchTab(tabId)).toBeUndefined()
-  })
-
-  it.each([null, 'false', 0])(
-    'does not claim an unrecorded start from a malformed recorded field %s',
-    async (recorded) => {
-      const reply = deferred<unknown>()
-      callRuntimeRpc.mockReturnValueOnce(reply.promise)
-      const { outcome } = launch()
-      reply.resolve({ ...terminalResult(lastPaneKey()), recorded })
-      await expect(outcome).resolves.toEqual({ kind: 'pane-says' })
-    }
-  )
 })

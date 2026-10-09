@@ -91,7 +91,7 @@ describe('launchAgentInNewTab initial cwd', () => {
 
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launch',
+      'agent.launchReplay',
       expect.objectContaining({ cwd: '/repo/worktree/packages/app' })
     )
     expect(mockQueueTabInitialCwd).not.toHaveBeenCalled()

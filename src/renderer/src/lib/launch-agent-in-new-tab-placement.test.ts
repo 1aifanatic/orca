@@ -111,7 +111,7 @@ describe('launchAgentInNewTab terminal tab activation', () => {
       expect(mockQueueTabStartupCommand).not.toHaveBeenCalled()
       expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
         { kind: 'local' },
-        'agent.launch',
+        'agent.launchReplay',
         expect.objectContaining({ target: { kind: 'existing', worktree: `id:${worktreeId}` } })
       )
     }

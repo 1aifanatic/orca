@@ -9,7 +9,7 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/main/ssh/ssh-remote-commands.test.ts',
   'src/shared/child-process/run-process.test.ts',
   'tests/e2e/cursor-quota-transport.unit.test.ts',
-  'tests/e2e/desktop-agent-launch-capacity.unit.test.ts',
+  'tests/e2e/desktop-agent-launch-composed.unit.test.ts',
   'src/main/ai-vault-search/session-search-index-writer.test.ts',
   'src/main/ai-vault/session-scanner-unlimited-dedup.test.ts',
   'src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts',

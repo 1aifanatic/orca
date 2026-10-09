@@ -7,10 +7,6 @@ import type { AgentSessionAttachResult } from '../../src/shared/agent-session-wi
 import type * as AgentStatusModule from '../../src/renderer/src/lib/agent-status'
 import { createTabsSliceMockApi } from '../../src/renderer/src/store/slices/tabs-slice-test-harness'
 import { createTestStore } from '../../src/renderer/src/store/slices/store-test-helpers'
-import {
-  agentSessionOperationKey,
-  pendingAgentSessionOperationRow
-} from '../../src/shared/agent-session-operation-ledger'
 import type { AgentLaunchResult } from '../../src/shared/agent-launch-intent'
 import {
   isAgentLaunchRunningIn,
@@ -18,10 +14,7 @@ import {
   resetAgentLaunchPanesForTests
 } from '../../src/main/agent-launch/agent-launch-pane-attachment'
 import { openTestAgentSessionRecordStore } from '../../src/main/runtime/agent-session-record-store-test-harness'
-import {
-  methodNamed,
-  setAgentLaunchRecordStore
-} from '../../src/main/runtime/rpc/methods/agent-launch.test-fixture'
+import { setAgentLaunchRecordStore } from '../../src/main/runtime/rpc/methods/agent-launch.test-fixture'
 import { activeAgentLaunchesFor } from '../../src/main/runtime/rpc/methods/agent-launch-active-operations'
 import { setStructuredAgentSessionHost } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
 import { installDesktopStructuredTestHost } from './desktop-agent-launch-structured-test-host'
@@ -51,9 +44,6 @@ vi.mock('../../src/renderer/src/runtime/runtime-rpc-client', async (original) =>
   callRuntimeRpc
 }))
 createTabsSliceMockApi()
-const { AGENT_LAUNCH_METHODS } = await import('../../src/main/runtime/rpc/methods/agent-launch')
-const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
-const REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 
 const WT = 'wt-7'
 const PROMPT = {
@@ -76,19 +66,8 @@ beforeEach(async () => {
   callRuntimeRpc.mockReset()
   deliver.mockClear()
   vi.mocked(toast.error).mockClear()
-  directory = await mkdtemp(join(process.env.ORCA_STEP4_TEST_STATE_DIR ?? tmpdir(), 'b-capacity-'))
+  directory = await mkdtemp(join(process.env.ORCA_STEP4_TEST_STATE_DIR ?? tmpdir(), 'b-composed-'))
   record = await openTestAgentSessionRecordStore(directory)
-  const now = Date.now()
-  await record.transactOperations((draft) => {
-    for (let index = 0; index < 512; index += 1) {
-      const operationId = `${now}-${index.toString(16).padStart(32, '0')}`
-      const callerKey = 'trusted-local:desktop'
-      draft.operations.set(
-        agentSessionOperationKey(callerKey, operationId),
-        pendingAgentSessionOperationRow({ callerKey, operationId, fingerprint: 'seeded', now })
-      )
-    }
-  })
   setAgentLaunchRecordStore(record)
 })
 
@@ -108,9 +87,8 @@ function tab(tabId: string) {
   return store.getState().tabsByWorktree[WT]?.find((candidate) => candidate.id === tabId)
 }
 
-describe('desktop capacity fallback keeps the original published pane', () => {
+describe('a desktop fresh-tab launch keeps its original published pane', () => {
   it('a lost desktop creation reply without early publication retains its uncertainty notice after close', async () => {
-    await record.transactOperations((draft) => draft.operations.clear())
     const r = rig({ failure: 'after', rootCwd: true, canPublish: false })
     r.admission.resolve()
     const { tabId, promptDeliveryResult } = r.launchPrompt()
@@ -133,65 +111,57 @@ describe('desktop capacity fallback keeps the original published pane', () => {
     expect(tab(tabId)).toBeUndefined()
   })
 
-  it.each([false, true])(
-    'keeps the captured terminal and original input when the chat default changes (capacity=%s)',
-    async (capacity) => {
-      if (!capacity) {
-        await record.transactOperations((draft) => draft.operations.clear())
-      }
-      const r = rig({ deferWorkspace: true, rootCwd: true })
-      structured = installDesktopStructuredTestHost(r.runtime, record, directory)
-      r.admission.resolve()
-      const { tabId, outcome } = r.launch()
-      await r.workspaceRequested.promise
-      expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(true)
-      r.runtime.getClientSettings.mockReturnValue({
-        experimentalNativeChat: true,
-        experimentalStructuredNativeChat: true,
-        openAgentTabsInChatByDefault: true
+  it('keeps the captured terminal and original input when the chat default changes', async () => {
+    const r = rig({ deferWorkspace: true, rootCwd: true })
+    structured = installDesktopStructuredTestHost(r.runtime, record, directory)
+    r.admission.resolve()
+    const { tabId, outcome } = r.launch()
+    await r.workspaceRequested.promise
+    expect(isAgentLaunchRunningIn(WT, { kind: 'tab', tabId })).toBe(true)
+    r.runtime.getClientSettings.mockReturnValue({
+      experimentalNativeChat: true,
+      experimentalStructuredNativeChat: true,
+      openAgentTabsInChatByDefault: true
+    })
+    r.start.resolve()
+    r.workspace.resolve()
+    await expect(outcome).resolves.toMatchObject({ kind: 'started' })
+    const result = await callRuntimeRpc.mock.results[0]?.value
+    expect(result).toMatchObject({
+      outcome: { kind: 'terminal', handle: 'term_1' },
+      prompt: { outcome: 'handed-to-terminal' }
+    })
+    expect(r.runtime.createTerminal).toHaveBeenCalledExactlyOnceWith(
+      `id:${WT}`,
+      expect.objectContaining({
+        tabId,
+        desktopPrompt: PROMPT,
+        agentArgs: null,
+        cwd: '/tmp/wt-7',
+        viewMode: 'terminal',
+        desktopSessionOptions: { model: 'chosen', thinking: true }
       })
-      r.start.resolve()
-      r.workspace.resolve()
-      await expect(outcome).resolves.toMatchObject({ kind: 'started' })
-      const result = await callRuntimeRpc.mock.results[0]?.value
-      expect(result).toMatchObject({
-        outcome: { kind: 'terminal', handle: 'term_1' },
-        prompt: { outcome: 'handed-to-terminal' },
-        ...(capacity ? { recorded: false } : {})
-      })
-      expect(r.runtime.createTerminal).toHaveBeenCalledExactlyOnceWith(
-        `id:${WT}`,
-        expect.objectContaining({
-          tabId,
-          desktopPrompt: PROMPT,
-          agentArgs: null,
-          cwd: '/tmp/wt-7',
-          viewMode: 'terminal',
-          desktopSessionOptions: { model: 'chosen', thinking: true }
-        })
-      )
-      expect(deliver).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ text: PROMPT.text, prompt: PROMPT })
-      )
-      expect(tab(tabId)?.viewMode ?? 'terminal').toBe('terminal')
-      expect(r.runtime.publishAgentLaunchTab).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ tabId, viewMode: 'terminal' })
-      )
-      expect(structured.attach).not.toHaveBeenCalled()
-      expect(structured.publish).not.toHaveBeenCalled()
-      expect(structured.send).not.toHaveBeenCalled()
-      expect(structured.acquire).not.toHaveBeenCalled()
-      expect(record.getVisibleSessionTabIndex().sessionIds).toEqual([])
-      expect(callRuntimeRpc).toHaveBeenCalledOnce()
-      expect(r.mount.attachments).toBe(1)
-      expect(r.mount.shellStarts).toBe(0)
-    }
-  )
+    )
+    expect(deliver).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ text: PROMPT.text, prompt: PROMPT })
+    )
+    expect(tab(tabId)?.viewMode ?? 'terminal').toBe('terminal')
+    expect(r.runtime.publishAgentLaunchTab).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ tabId, viewMode: 'terminal' })
+    )
+    expect(structured.attach).not.toHaveBeenCalled()
+    expect(structured.publish).not.toHaveBeenCalled()
+    expect(structured.send).not.toHaveBeenCalled()
+    expect(structured.acquire).not.toHaveBeenCalled()
+    expect(record.getVisibleSessionTabIndex().sessionIds).toEqual([])
+    expect(callRuntimeRpc).toHaveBeenCalledOnce()
+    expect(r.mount.attachments).toBe(1)
+    expect(r.mount.shellStarts).toBe(0)
+  })
 
   it.each([false, true])(
     'closed existing AI owner prevents structured effects after intent lookup (activate=%s)',
     async (activate) => {
-      await record.transactOperations((draft) => draft.operations.clear())
       const r = rig({ deferWorkspace: true, rootCwd: true, structuredAi: true, activate })
       structured = installDesktopStructuredTestHost(r.runtime, record, directory)
       r.admission.resolve()
@@ -222,7 +192,6 @@ describe('desktop capacity fallback keeps the original published pane', () => {
   it.each(['attach', 'publication', 'send', 'lost-attach'] as const)(
     'settles a close during structured %s honestly without another launch',
     async (waitAt) => {
-      await record.transactOperations((draft) => draft.operations.clear())
       const r = rig({ deferWorkspace: true, rootCwd: true, structuredAi: true })
       const s = installDesktopStructuredTestHost(r.runtime, record, directory)
       structured = s
@@ -330,7 +299,6 @@ describe('desktop capacity fallback keeps the original published pane', () => {
   )
 
   it('an existing AI owner permits the current chat default and journals the exact original prompt once', async () => {
-    await record.transactOperations((draft) => draft.operations.clear())
     const r = rig({ deferWorkspace: true, rootCwd: true, structuredAi: true })
     const s = installDesktopStructuredTestHost(r.runtime, record, directory)
     structured = s
@@ -360,17 +328,9 @@ describe('desktop capacity fallback keeps the original published pane', () => {
     expect(s.close).not.toHaveBeenCalled()
   })
 
-  it.each([
-    { activate: false, capacity: true },
-    { activate: true, capacity: true },
-    { activate: false, capacity: false },
-    { activate: true, capacity: false }
-  ])(
+  it.each([{ activate: false }, { activate: true }])(
     'closed owner prevents effects when chat default changes during workspace lookup (%j)',
     async (options) => {
-      if (!options.capacity) {
-        await record.transactOperations((draft) => draft.operations.clear())
-      }
       const r = rig({ ...options, deferWorkspace: true, rootCwd: true })
       structured = installDesktopStructuredTestHost(r.runtime, record, directory)
       r.admission.resolve()
@@ -402,7 +362,6 @@ describe('desktop capacity fallback keeps the original published pane', () => {
   it.each(['intent', 'host'] as const)(
     'close during structured %s preparation prevents attachment',
     async (waitAt) => {
-      await record.transactOperations((draft) => draft.operations.clear())
       const r = rig({ deferWorkspace: true, rootCwd: true, structuredAi: true })
       structured = installDesktopStructuredTestHost(r.runtime, record, directory)
       const entered = deferred<void>()
@@ -445,18 +404,13 @@ describe('desktop capacity fallback keeps the original published pane', () => {
   )
 
   it.each([
-    { activate: false, capacity: true },
-    { activate: true, capacity: true },
-    { activate: false, capacity: false },
-    { activate: true, capacity: false },
-    { activate: false, capacity: true, canPublish: false },
-    { activate: false, capacity: true, workspaceError: true }
+    { activate: false },
+    { activate: true },
+    { activate: false, canPublish: false },
+    { activate: false, workspaceError: true }
   ])(
     'closing before workspace resolution prevents tab recreation and input (%j)',
     async (options) => {
-      if (!options.capacity) {
-        await record.transactOperations((draft) => draft.operations.clear())
-      }
       const r = rig({ ...options, deferWorkspace: true })
       r.admission.resolve()
       const { tabId, promptDeliveryResult } = r.launchPrompt()
@@ -478,21 +432,6 @@ describe('desktop capacity fallback keeps the original published pane', () => {
     }
   )
 
-  it('never falls back when admission loses its answer, even with capacity in the error text', async () => {
-    const r = rig({ admissionError: 'agent_session_operation_capacity' })
-    const { tabId, outcome } = r.launch()
-    await r.admitted.promise
-    r.admission.resolve()
-    await outcome
-    await vi.waitFor(() => expect(r.mount.verdict).toEqual({ kind: 'withdrawn' }))
-    expect(tab(tabId)).toBeUndefined()
-    expect(r.runtime.createTerminal).not.toHaveBeenCalled()
-    expect(deliver).not.toHaveBeenCalled()
-    expect(callRuntimeRpc).toHaveBeenCalledOnce()
-    expect(r.mount.shellStarts).toBe(0)
-    expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
-  })
-
   it.each([false, true])(
     'binds once without a shell or selection drift (other workspace %s)',
     async (selectOther) => {
@@ -508,7 +447,7 @@ describe('desktop capacity fallback keeps the original published pane', () => {
       expect(r.mount.verdict).toBeNull()
       expect(r.mount.shellStarts).toBe(0)
       r.start.resolve()
-      await expect(outcome).resolves.toMatchObject({ kind: 'started', unrecorded: true })
+      await expect(outcome).resolves.toMatchObject({ kind: 'started' })
       await vi.waitFor(() => expect(r.mount.attachments).toBe(1))
       expect(r.mount.shellStarts).toBe(0)
       expect(r.verdicts).not.toContainEqual({ kind: 'withdrawn' })
@@ -530,7 +469,7 @@ describe('desktop capacity fallback keeps the original published pane', () => {
         store.getState().unifiedTabsByWorktree[WT]?.find((item) => item.entityId === tabId)?.groupId
       ).toBe(r.groupId)
       expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
-      expect(record.listOperationRows()).toHaveLength(512)
+      expect(record.listOperationRows()).toHaveLength(1)
     }
   )
 
@@ -559,7 +498,7 @@ describe('desktop capacity fallback keeps the original published pane', () => {
     }
   )
 
-  it('closing the published tab before capacity is decided prevents every effect', async () => {
+  it('closing the published tab before admission is decided prevents every effect', async () => {
     const r = rig()
     const { tabId, outcome } = r.launch()
     await r.admitted.promise
@@ -567,7 +506,10 @@ describe('desktop capacity fallback keeps the original published pane', () => {
     store.getState().closeTab(tabId)
     r.admission.resolve()
     await expect(outcome).resolves.toEqual({ kind: 'closed-by-user' })
-    await vi.waitFor(() => expect(r.mount.verdict).toEqual({ kind: 'withdrawn' }))
+    // The record answers the closed tab; nothing spawned, so the pane never proceeds.
+    await vi.waitFor(() =>
+      expect(r.mount.verdict).toEqual({ kind: 'not-started', code: 'agent_launch_tab_closed' })
+    )
     expect(r.runtime.createTerminal).not.toHaveBeenCalled()
     expect(deliver).not.toHaveBeenCalled()
     expect(r.mount.shellStarts).toBe(0)
@@ -592,82 +534,7 @@ describe('desktop capacity fallback keeps the original published pane', () => {
     expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
   })
 
-  it.each(['optional', 'replay'] as const)(
-    'coalesces optional callers while strict Replay refuses (%s first)',
-    async (first) => {
-      const r = rig()
-      let launched: ReturnType<typeof r.launch> | undefined
-      let replay: Promise<AgentLaunchResult>
-      if (first === 'optional') {
-        launched = r.launch()
-        await r.admitted.promise
-        replay = REPLAY.handler(REPLAY.params.parse(r.requests[0]), r.context)
-      } else {
-        const tabId = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
-        const leafId = '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
-        const params = {
-          agent: 'claude',
-          target: { kind: 'existing', worktree: `id:${WT}` },
-          operationId: `${Date.now()}-ffffffffffffffffffffffffffffffff`,
-          paneKey: `${tabId}:${leafId}`,
-          prompt: PROMPT,
-          presentation: 'background',
-          agentArgs: null
-        }
-        replay = REPLAY.handler(REPLAY.params.parse(params), r.context)
-        r.requests.push(params)
-        await r.admitted.promise
-      }
-      const strict = expect(replay).rejects.toThrow('agent_session_operation_capacity')
-      const duplicate = LAUNCH.handler(LAUNCH.params.parse(r.requests[0]), r.context)
-      const another = LAUNCH.handler(LAUNCH.params.parse(r.requests[0]), r.context)
-      void duplicate.catch(() => {})
-      void another.catch(() => {})
-      r.admission.resolve()
-      await strict
-      await vi.waitFor(() => expect(r.runtime.createTerminal).toHaveBeenCalledOnce())
-      const live = activeAgentLaunchesFor(r.context.runtime)
-      expect(live.size).toBe(1)
-      r.start.resolve()
-      await expect(duplicate).resolves.toMatchObject({
-        recorded: false,
-        outcome: { kind: 'terminal' }
-      })
-      expect(await another).toEqual(await duplicate)
-      if (launched) {
-        await expect(launched.outcome).resolves.toMatchObject({ unrecorded: true })
-      }
-      expect(r.runtime.createTerminal).toHaveBeenCalledOnce()
-      expect(live.size).toBe(0)
-      expect(r.mount.shellStarts).toBe(0)
-    }
-  )
-
-  it('a strict Replay alone still refuses capacity and withdraws its unused tab', async () => {
-    const r = rig()
-    const tabId = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
-    const params = REPLAY.params.parse({
-      agent: 'claude',
-      target: { kind: 'existing', worktree: `id:${WT}` },
-      operationId: `${Date.now()}-ffffffffffffffffffffffffffffffff`,
-      paneKey: `${tabId}:3f2504e0-4f89-41d3-9a0c-0305e82c3301`,
-      prompt: PROMPT,
-      presentation: 'background'
-    })
-    const answer = expect(REPLAY.handler(params, r.context)).rejects.toThrow(
-      'agent_session_operation_capacity'
-    )
-    await r.admitted.promise
-    r.admission.resolve()
-    await answer
-    await vi.waitFor(() => expect(r.mount.verdict).toEqual({ kind: 'withdrawn' }))
-    expect(tab(tabId)).toBeUndefined()
-    expect(r.runtime.createTerminal).not.toHaveBeenCalled()
-    expect(deliver).not.toHaveBeenCalled()
-    expect(activeAgentLaunchesFor(r.context.runtime).size).toBe(0)
-  })
-
-  it('an older optional request finishing cannot release a replacement active owner', async () => {
+  it('an older request finishing cannot release a replacement active owner', async () => {
     const r = rig()
     const { outcome } = r.launch()
     await r.admitted.promise

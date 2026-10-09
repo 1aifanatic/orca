@@ -121,7 +121,7 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(store.getState().pendingStartupByTabId[tabId]).toBeUndefined()
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launch',
+      'agent.launchReplay',
       expect.objectContaining({
         paneKey: `${tabId}:${tab?.agentLaunchPane?.leafId}`,
         prompt: {
@@ -154,7 +154,7 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(result?.tabId).toBeDefined()
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launch',
+      'agent.launchReplay',
       expect.objectContaining({
         launchSource: 'quick_command',
         placement: { groupId },
@@ -178,7 +178,7 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(launchDashboardAgent({ worktreeId: MAIN_WORKTREE_ID, agent: 'codex' })).toBe(true)
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launch',
+      'agent.launchReplay',
       expect.objectContaining({
         target: { kind: 'existing', worktree: `id:${MAIN_WORKTREE_ID}` },
         launchSource: 'unknown'
@@ -215,7 +215,7 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(result?.surface.kind).toBe('local-terminal')
     expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
       { kind: 'local' },
-      'agent.launch',
+      'agent.launchReplay',
       expect.objectContaining({
         target: { kind: 'existing', worktree: `id:${MAIN_WORKTREE_ID}` }
       })

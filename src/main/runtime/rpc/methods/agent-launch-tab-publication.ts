@@ -106,7 +106,7 @@ export type EarlyAgentLaunchTab = {
   closedByUser(): boolean
   /** The launch is over, however it ended. A tab this request made goes when nothing will ever run
    *  in it: never admitted, or its surface landed elsewhere. A failed launch's tab stays to say why. */
-  finish(verdict?: AgentLaunchPaneVerdict): void
+  finish(): void
   /** Where the window placed the tab, once it has said. */
   placement(): AgentLaunchPlacementReceipt | undefined
 }
@@ -263,7 +263,7 @@ function trackAgentLaunchPaneView(args: {
     paneKey,
     ownedPane,
     publishing,
-    finishRunning: (tabTakenBack, verdict) => running.finish({ tabTakenBack, verdict }),
+    finishRunning: (tabTakenBack) => running.finish({ tabTakenBack }),
     agentBound: () => running.agentBound(),
     paneIsLive: () => runtime.hasLiveTerminalForPaneKey(paneKey),
     closedByUser: () => running.closedByUser(),
@@ -291,7 +291,7 @@ function trackEarlyAgentLaunchTab(args: {
   paneKey: string
   ownedPane: AgentSessionOperationOwnedPane
   publishing: Promise<AgentLaunchTabPublished> | null
-  finishRunning: (tabTakenBack: boolean, verdict?: AgentLaunchPaneVerdict) => void
+  finishRunning: (tabTakenBack: boolean) => void
   agentBound: () => void
   paneIsLive: () => boolean
   closedByUser: () => boolean
@@ -301,7 +301,6 @@ function trackEarlyAgentLaunchTab(args: {
   let reply: AgentLaunchTabPublished | null = null
   let executing = false
   let ranHere: boolean | null = null
-  let finished = false
   const published =
     args.publishing?.then(
       (answer) => {
@@ -329,14 +328,10 @@ function trackEarlyAgentLaunchTab(args: {
     },
     windowShowsTab: () => reply !== null,
     closedByUser: args.closedByUser,
-    finish: (verdict) => {
-      if (finished) {
-        return
-      }
-      finished = true
+    finish: () => {
       if (ranHere === true) {
         // The agent's spawn bound the pane; its own spawn settles the tab.
-        args.finishRunning(verdict?.kind === 'withdrawn', verdict)
+        args.finishRunning(false)
         return
       }
       void published.then((answer) => {
@@ -344,12 +339,9 @@ function trackEarlyAgentLaunchTab(args: {
         // a running agent holds (a replay can remake a tab whose agent survived).
         const nothingWillRunHere = !executing || ranHere === false
         const takeBack = answer?.created === true && nothingWillRunHere && !args.paneIsLive()
-        const final = takeBack
-          ? { kind: 'withdrawn' as const }
-          : (verdict ?? args.unspawnedVerdict())
-        args.finishRunning(takeBack, final)
+        args.finishRunning(takeBack)
         // Every shown pane nothing spawned into ends in a verdict: taken back, or what the record says.
-        args.report(final)
+        args.report(takeBack ? { kind: 'withdrawn' } : args.unspawnedVerdict())
       })
     },
     placement: () => reply?.placement

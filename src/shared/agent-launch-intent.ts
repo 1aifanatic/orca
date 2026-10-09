@@ -213,8 +213,6 @@ export type AgentLaunchResult = {
   /** Absent when no window placed the tab: an older host, no requested placement, or a host with no
    *  window owning the layout. */
   placement?: AgentLaunchPlacementReceipt
-  /** Desktop capacity fallback ran without a record; absent keeps the existing replay contract. */
-  recorded?: false
 }
 
 export type AgentLaunchMode = 'structured' | 'terminal'
@@ -266,8 +264,7 @@ export function isAgentLaunchResult(value: unknown): value is AgentLaunchResult 
     isAgentLaunchModeReceipt(result.receipt) &&
     (result.warning === undefined || typeof result.warning === 'string') &&
     (result.prompt === undefined || isAgentLaunchPromptReceipt(result.prompt)) &&
-    (result.placement === undefined || isAgentLaunchPlacementReceipt(result.placement)) &&
-    (result.recorded === undefined || result.recorded === false)
+    (result.placement === undefined || isAgentLaunchPlacementReceipt(result.placement))
   )
 }
 

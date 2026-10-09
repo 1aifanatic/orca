@@ -108,7 +108,7 @@ async function launchOnLinux(): Promise<void> {
   expect(mockQueueTabStartupCommand).not.toHaveBeenCalled()
   expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
     { kind: 'local' },
-    'agent.launch',
+    'agent.launchReplay',
     expect.objectContaining({
       target: { kind: 'existing', worktree: 'id:wt-1' },
       prompt: expect.objectContaining({

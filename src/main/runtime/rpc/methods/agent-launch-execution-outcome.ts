@@ -35,24 +35,6 @@ export function assertAgentLaunchSurfaceOwnerOpen(
   }
 }
 
-/** Optional identity keeps its original errors; desktop input never retries an ambiguous effect. */
-export function throwOptionalAgentLaunchFailure(
-  error: unknown,
-  context: RpcContext,
-  desktop: boolean
-): never {
-  if (error instanceof AgentLaunchExecutionError) {
-    if (error.cause instanceof AgentLaunchTabClosedError) {
-      throw agentLaunchTabClosedAnswer(context)
-    }
-    if (desktop && !error.failedWithoutEffects) {
-      throw new Error('agent_session_operation_unknown', { cause: error.cause })
-    }
-    throw error.cause
-  }
-  throw error
-}
-
 export function settleQuietly(settlement: Promise<void>): Promise<void> {
   return settlement.catch((error: unknown) => {
     console.warn('[agent-launch] the launch settled, its operation row did not', error)
@@ -88,7 +70,7 @@ export async function settleLaunchWhoseTabWasClosed(
     failedWithoutEffects: boolean
     error?: unknown
     result?: AgentLaunchResult
-    admission?: {
+    admission: {
       fail: (code: string) => Promise<void>
       settle: (result: AgentLaunchResult) => Promise<void>
     }
@@ -111,9 +93,9 @@ export async function settleLaunchWhoseTabWasClosed(
       await context.runtime.closeTerminal(handle).catch(() => {})
     }
   }
-  if (admission && failedWithoutEffects) {
+  if (failedWithoutEffects) {
     await settleQuietly(admission.fail(AGENT_LAUNCH_TAB_CLOSED_CODE))
-  } else if (admission && result) {
+  } else if (result) {
     await settleQuietly(admission.settle(result))
   }
   const confirmedClose =

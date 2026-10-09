@@ -47,19 +47,6 @@ export function clientRendersStructuredAgent(
   )
 }
 
-/** `agent.launch.v2` already vouches for Claude and Codex; other chats need explicit support. */
-export function callerRendersLaunchedChat(
-  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>,
-  agent: string
-): boolean {
-  return (
-    context.clientKind === undefined ||
-    agent === 'claude' ||
-    agent === 'codex' ||
-    clientRendersStructuredAgent(context.clientCapabilities, agent)
-  )
-}
-
 /** Preserve the existing session audience for every agent except Pi. */
 export function clientReadsStructuredSessionAgent(
   context: Pick<RpcContext, 'clientCapabilities' | 'clientKind'>,

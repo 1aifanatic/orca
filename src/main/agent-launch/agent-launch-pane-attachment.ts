@@ -22,13 +22,11 @@ import type {
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import type { TerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
 
-type RunningLaunchSettlement = { tabTakenBack: boolean; verdict?: AgentLaunchPaneVerdict }
-
 type RunningLaunch = {
   pane: AgentSessionOperationOwnedPane
   /** The launch's agent holds the pane, or the launch is over: whichever comes first. */
-  settled: Promise<RunningLaunchSettlement>
-  finished: Promise<RunningLaunchSettlement>
+  settled: Promise<{ tabTakenBack: boolean }>
+  finished: Promise<{ tabTakenBack: boolean }>
   /** The user closed the launch's tab or pane while it ran; set by main's commit of that close. */
   closedByUser: boolean
 }
@@ -43,7 +41,7 @@ export type RunningAgentLaunchPane = {
   /** The launch's agent runs in the pane: a waiting spawn attaches now, not once the prompt lands. */
   agentBound(): void
   /** The launch is over; its record says how. `tabTakenBack`: the host is closing the tab. */
-  finish(outcome: RunningLaunchSettlement): void
+  finish(outcome: { tabTakenBack: boolean }): void
   /** The user closed this launch's tab or pane: the launch must not run, or must stop. */
   closedByUser(): boolean
 }
@@ -53,8 +51,8 @@ export function trackRunningAgentLaunchPane(
   pane: AgentSessionOperationOwnedPane
 ): RunningAgentLaunchPane {
   const key = paneKeyOf(pane)
-  let resolve!: (outcome: RunningLaunchSettlement) => void
-  let settle!: (outcome: RunningLaunchSettlement) => void
+  let resolve!: (outcome: { tabTakenBack: boolean }) => void
+  let settle!: (outcome: { tabTakenBack: boolean }) => void
   const running: RunningLaunch = {
     pane,
     settled: new Promise((done) => {
@@ -172,12 +170,8 @@ async function settleVerdict(
     if (evidence.isPaneLive(pane.paneKey)) {
       return { kind: 'proceed' }
     }
-    const finished = await running.finished
-    if (finished.tabTakenBack) {
+    if ((await running.finished).tabTakenBack) {
       return { kind: 'withdrawn' }
-    }
-    if (finished.verdict && !evidence.isPaneLive(pane.paneKey)) {
-      return finished.verdict
     }
   }
   if (evidence.isPaneLive(pane.paneKey)) {

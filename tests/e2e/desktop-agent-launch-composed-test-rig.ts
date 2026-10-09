@@ -24,7 +24,6 @@ import { launchNewTabPromptThroughHost } from '../../src/renderer/src/lib/launch
 import { publishAgentLaunchTab } from '../../src/renderer/src/lib/agent-launch-tab-publication'
 import { applyAgentLaunchPaneVerdict } from '../../src/renderer/src/lib/agent-launch-pane-verdict-application'
 
-const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
 const REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 const WT = 'wt-7'
 const OTHER = 'wt-other'
@@ -49,7 +48,6 @@ export function createDesktopAgentLaunchRig(
   options: {
     selectOther?: boolean
     failure?: 'before' | 'after'
-    admissionError?: string
     deferWorkspace?: boolean
     activate?: boolean
     canPublish?: boolean
@@ -79,7 +77,7 @@ export function createDesktopAgentLaunchRig(
   const runtime = runtimeStub({
     settings: {},
     publishAgentLaunchTab: async (request) => {
-      const answer = publishAgentLaunchTab({ ...request, requestId: 'capacity-publication' })
+      const answer = publishAgentLaunchTab({ ...request, requestId: 'composed-publication' })
       const waiting = resolveAgentLaunchPaneVerdict(
         { worktreeId: request.worktreeId, paneKey: `${request.tabId}:${request.leafId}` },
         {
@@ -140,9 +138,6 @@ export function createDesktopAgentLaunchRig(
   runtime.openAgentSessionRecordStore.mockImplementation(async () => {
     admitted.resolve()
     await admission.promise
-    if (options.admissionError) {
-      throw new Error(options.admissionError)
-    }
     return open()
   })
   let livePane: string | null = null
@@ -180,15 +175,14 @@ export function createDesktopAgentLaunchRig(
   })
   callRuntimeRpc.mockImplementation(async (_target, method, params) => {
     requests.push(params)
-    const launchMethod = options.structuredAi ? REPLAY : LAUNCH
-    if (method !== (options.structuredAi ? 'agent.launchReplay' : 'agent.launch')) {
+    if (method !== 'agent.launchReplay') {
       throw new Error(`unexpected desktop method ${method}`)
     }
     try {
-      return await launchMethod.handler(launchMethod.params.parse(params), context)
+      return await REPLAY.handler(REPLAY.params.parse(params), context)
     } catch (error) {
       throw new RuntimeRpcCallError(
-        mapRuntimeError('desktop-capacity', { runtimeId: 'capacity-runtime' }, error)
+        mapRuntimeError('desktop-composed', { runtimeId: 'composed-runtime' }, error)
       )
     }
   })

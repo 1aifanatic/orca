@@ -126,7 +126,7 @@ describe('launchAgentInNewTab Windows shell quoting', () => {
     if (!mockIsWebRuntimeSessionActive()) {
       expect(callRuntimeRpc).toHaveBeenCalledExactlyOnceWith(
         { kind: 'local' },
-        'agent.launch',
+        'agent.launchReplay',
         expect.objectContaining({
           prompt: expect.objectContaining({
             transport: expect.objectContaining({ kind: 'desktop-new-tab' })
