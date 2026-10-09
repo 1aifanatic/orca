@@ -101,6 +101,9 @@ export type JournalTombstoneRow = JournalRowBase & {
   /** On a reopen mark written after the chat stopped: where it stopped, so a send accepted since
    *  lifts it. Absent: the mark's own row. */
   queueReopenSince?: number
+  queueClear?: { operationId: string; messageIds: string[]; lifted?: true }
+  /** A rewind retires the removed send's echo claimant as well as its visible item. */
+  retireSubmission?: true
 }
 
 /** One Stop that took effect. Temporary carrier: a tombstone's extra key, which every host ignores,
@@ -124,6 +127,7 @@ export type JournalStopOrResumeRow = JournalTombstoneRow &
     | { stopEvent: NonNullable<JournalTombstoneRow['stopEvent']> }
     | { queueResume: NonNullable<JournalTombstoneRow['queueResume']> }
     | { queueReopen: NonNullable<JournalTombstoneRow['queueReopen']> }
+    | { queueClear: NonNullable<JournalTombstoneRow['queueClear']> }
   )
 
 /** A Stop's event, a Resume or a reopen mark. Any value counts, so a newer build's mark never
@@ -131,7 +135,10 @@ export type JournalStopOrResumeRow = JournalTombstoneRow &
 export function isJournalStopOrResumeRow(row: JournalRow): row is JournalStopOrResumeRow {
   return (
     row.kind === 'tombstone' &&
-    (row.stopEvent !== undefined || row.queueResume !== undefined || row.queueReopen !== undefined)
+    (row.stopEvent !== undefined ||
+      row.queueResume !== undefined ||
+      row.queueReopen !== undefined ||
+      row.queueClear !== undefined)
   )
 }
 
@@ -228,16 +235,11 @@ export function serializeJournalRow(row: JournalRow): string {
   return JSON.stringify(row)
 }
 
-type JournalRowAdmission = 'read' | 'write'
-
 /**
  * Parse one persisted line. Older versions are upcast; newer versions and newer
  * kinds are reported as unreadable so the caller fails closed.
  */
-export function parseJournalRow(
-  line: string,
-  admission: JournalRowAdmission = 'read'
-): JournalRowParse {
+export function parseJournalRow(line: string): JournalRowParse {
   let parsed: unknown
   try {
     parsed = JSON.parse(line)
@@ -257,10 +259,10 @@ export function parseJournalRow(
   }
   const upcast = upcastRow(record, version)
   dropUnusableRowAnnotations(upcast)
-  if (isJournalRow(upcast, admission)) {
+  if (isJournalRow(upcast)) {
     return { ok: true, row: upcast }
   }
-  return { ok: false, unreadable: journalRowContent(upcast, admission) === 'unreadable' }
+  return { ok: false, unreadable: journalRowContent(upcast) === 'unreadable' }
 }
 
 /** Read-time upcast chain. Each step raises a row exactly one version. */
@@ -285,27 +287,21 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *  Render BODIES are the exception and validate against the canonical deep
  *  schema — their nested shapes are dereferenced unguarded all the way to the
  *  rendered surface, so a JSON-valid corruption must fail here, not there. */
-function journalRowContent(
-  record: Record<string, unknown>,
-  admission: JournalRowAdmission
-): AgentJournalContentVerdict {
+function journalRowContent(record: Record<string, unknown>): AgentJournalContentVerdict {
   if (!hasJournalRowEnvelope(record)) {
     return 'malformed'
   }
   const { kind } = record
   const contentCheck = typeof kind === 'string' ? KNOWN_ROW_KINDS.get(kind) : undefined
   if (contentCheck) {
-    return contentCheck(record, admission)
+    return contentCheck(record)
   }
   // A newer build's kind is placed by the envelope every row keeps.
   return isJournalTag(kind) ? 'unreadable' : 'malformed'
 }
 
-function isJournalRow(
-  record: Record<string, unknown>,
-  admission: JournalRowAdmission
-): record is JournalRow {
-  return journalRowContent(record, admission) === 'readable'
+function isJournalRow(record: Record<string, unknown>): record is JournalRow {
+  return journalRowContent(record) === 'readable'
 }
 
 /** A newer build's content anywhere wins over damage beside it: never delete what it wrote. */
@@ -324,21 +320,17 @@ function fieldsContent(hold: boolean): AgentJournalContentVerdict {
  *  to compile, never reads as a newer build's kind. */
 const ROW_CONTENT_CHECK_BY_KIND: Record<
   JournalRow['kind'],
-  (record: Record<string, unknown>, admission: JournalRowAdmission) => AgentJournalContentVerdict
+  (record: Record<string, unknown>) => AgentJournalContentVerdict
 > = {
   epoch: (record) =>
     fieldsContent(typeof record.reason === 'string' && isPlainObject(record.providerHandle)),
-  item: (record, admission) =>
+  item: (record) =>
     combinedContent(
-      fieldsContent(
-        typeof record.itemId === 'string' && isJournalRevision(record.revision, admission)
-      ),
+      fieldsContent(typeof record.itemId === 'string' && Number.isInteger(record.revision)),
       readAgentJournalItemBody(record.body)
     ),
-  tombstone: (record, admission) =>
-    fieldsContent(
-      typeof record.itemId === 'string' && isJournalRevision(record.revision, admission)
-    ),
+  tombstone: (record) =>
+    fieldsContent(typeof record.itemId === 'string' && Number.isInteger(record.revision)),
   submission: (record) =>
     combinedContent(
       fieldsContent(
@@ -358,7 +350,7 @@ const ROW_CONTENT_CHECK_BY_KIND: Record<
         (record.providerItemId === null || typeof record.providerItemId === 'string') &&
         (record.reason === null || typeof record.reason === 'string')
     ),
-  'lifecycle-batch': (record, admission) => {
+  'lifecycle-batch': (record) => {
     const mutations = Array.isArray(record.mutations) ? record.mutations : []
     return combinedContent(
       fieldsContent(
@@ -368,7 +360,7 @@ const ROW_CONTENT_CHECK_BY_KIND: Record<
           mutations.length <= MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS &&
           Buffer.byteLength(JSON.stringify(record), 'utf8') + 1 <= MAX_JOURNAL_LIFECYCLE_BATCH_BYTES
       ),
-      ...mutations.map((mutation) => lifecycleMutationContent(mutation, admission))
+      ...mutations.map((mutation) => lifecycleMutationContent(mutation))
     )
   }
 }
@@ -389,43 +381,29 @@ function hasJournalRowEnvelope(record: Record<string, unknown>): boolean {
 /** Each mutation kind's own fields, keyed like the row kinds and for the same reason. */
 const MUTATION_CONTENT_CHECK_BY_KIND: Record<
   JournalLifecycleMutation['kind'],
-  (mutation: Record<string, unknown>, admission: JournalRowAdmission) => AgentJournalContentVerdict
+  (mutation: Record<string, unknown>) => AgentJournalContentVerdict
 > = {
-  item: (mutation, admission) =>
+  item: (mutation) =>
     combinedContent(
-      fieldsContent(
-        typeof mutation.itemId === 'string' && isJournalRevision(mutation.revision, admission)
-      ),
+      fieldsContent(typeof mutation.itemId === 'string' && Number.isInteger(mutation.revision)),
       readAgentJournalItemBody(mutation.body)
     ),
-  tombstone: (mutation, admission) =>
-    fieldsContent(
-      typeof mutation.itemId === 'string' && isJournalRevision(mutation.revision, admission)
-    )
+  tombstone: (mutation) =>
+    fieldsContent(typeof mutation.itemId === 'string' && Number.isInteger(mutation.revision))
 }
 export const KNOWN_MUTATION_KINDS = new Map(Object.entries(MUTATION_CONTENT_CHECK_BY_KIND))
 
 /** The kind first: a newer build's kind needs none of the fields this build's kinds have. */
-function lifecycleMutationContent(
-  value: unknown,
-  admission: JournalRowAdmission
-): AgentJournalContentVerdict {
+function lifecycleMutationContent(value: unknown): AgentJournalContentVerdict {
   if (!isPlainObject(value)) {
     return 'malformed'
   }
   const { kind } = value
   const contentCheck = typeof kind === 'string' ? KNOWN_MUTATION_KINDS.get(kind) : undefined
   if (contentCheck) {
-    return contentCheck(value, admission)
+    return contentCheck(value)
   }
   return isJournalTag(kind) ? 'unreadable' : 'malformed'
-}
-
-/** Legacy rows keep their read contract; new writes require positive safe integer revisions. */
-function isJournalRevision(value: unknown, admission: JournalRowAdmission): boolean {
-  return admission === 'write'
-    ? typeof value === 'number' && Number.isSafeInteger(value) && value > 0
-    : Number.isInteger(value)
 }
 
 /** Approximate on-disk cost of a row, used for the per-session size bound. */

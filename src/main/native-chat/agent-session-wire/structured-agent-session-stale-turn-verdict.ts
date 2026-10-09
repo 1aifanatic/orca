@@ -197,7 +197,7 @@ function turnLifecycleRevision(
   ]
 }
 
-/** The verdict replaces the previous end; the body converter keeps only schema-known fields. */
+/** The verdict replaces the previous end and preserves fields this build does not know. */
 function settledLifecycle(
   lifecycle: AgentJournalTurnLifecycle,
   verdict: StructuredAgentSessionTurnVerdict

@@ -47,6 +47,8 @@ import {
 } from '../../observability/agent-session-instrumentation'
 import type { PlacedProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
 import { sampleProviderHistoryWindow } from './structured-agent-session-history-sample'
+import type { StructuredAgentSessionStartupAttempt } from './structured-agent-session-startup-attempt-contract'
+import type { StructuredAgentSessionStartupProgress } from './structured-agent-session-startup-attempt'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
@@ -63,6 +65,13 @@ export type AttachFlowInput = {
   recordPhase?: AgentSessionCreatePhaseRecorder
   /** Aborted when a close, or a Stop admitted now, must not wait behind this attach's acquire. */
   acquireSignal?: AbortSignal
+  /** The attempt this attach's acquire runs under, minted before the adapter is called; what it
+   *  answers learns of the child's spawn and output. */
+  onStartupAttempt?: (
+    attempt: StructuredAgentSessionStartupAttempt
+  ) => StructuredAgentSessionStartupProgress
+  /** The conversation's option revision, which the child's reports are stamped with. */
+  optionRevision: () => number
   /** Publishes the journal before clients can send against the new owner. `acquiredOwner` is
    *  true only when this attach spawned the provider child, so a re-attach to a live one is not
    *  mistaken for a cold acquire. */

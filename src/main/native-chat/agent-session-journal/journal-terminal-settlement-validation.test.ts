@@ -150,26 +150,17 @@ it.each([{ kind: 'tool-call' }, { providerTurnId: '' }])(
   }
 )
 
-it('leaves an unsafe saved revision untouched while the rest commits and a fresh send writes', async () => {
-  const oldKey = agentJournalItemKey(identity)
-  const saved = {
-    v: 3,
-    kind: 'item' as const,
-    epoch: journal.epoch,
-    seq: 2,
-    ts: 900,
-    fence: 7,
-    itemId: oldKey,
-    revision: Number.MAX_SAFE_INTEGER + 1,
-    body: { kind: 'turn' as const, turnId: 'old', state: 'running' as const },
-    turnScope: AGENT_JOURNAL_THREAD_SCOPE
+it.each([Number.MAX_SAFE_INTEGER + 1, 1e100])(
+  'leaves exhausted saved revision %s untouched while other work commits once and a fresh send writes',
+  async (revision) => {
+    await expectUnadvanceableItemUntouched({
+      itemId: agentJournalItemKey(identity),
+      revision,
+      body: { kind: 'turn', turnId: 'old', state: 'running' }
+    })
+    await expectSendStillWritable()
   }
-  const { db } = openTestJournalHostDatabase(root)
-  expect(parseJournalRow(JSON.stringify(saved), 'write').ok).toBe(false)
-  expect(() => rowTable.insertJournalRow(db, 'validation', saved)).toThrow('would not read back')
-  await expectUnadvanceableItemUntouched(saved)
-  await expectSendStillWritable()
-})
+)
 
 async function expectUnadvanceableItemUntouched(saved: {
   itemId: string
@@ -240,10 +231,15 @@ it.each([
   ['untimed renewal', 1_000, 0],
   ['timed exit', 1_000, undefined]
 ] as const)(
-  'builds admitted settlement rows without unknown fields or invalid times for %s',
+  'builds admitted settlement rows preserving extensions without invalid known times for %s',
   async (_name, observedAt, lastProvenAliveAt) => {
     const long = 'x'.repeat(1025)
     const running = { turnId: 'old', state: 'running' }
+    const laterContextUsage = {
+      window: { tokens: 100, capturedAt: 1, laterWindowField: true },
+      used: { kind: 'unknown', capturedAt: 1, laterUsedField: true },
+      laterUsageField: { kept: true }
+    }
     const extensionBodies = [
       { ...running, kind: 'tool-call' },
       { ...running, providerTurnId: '' },
@@ -254,7 +250,7 @@ it.each([
       {
         ...running,
         providerTurnId: 'provider',
-        contextUsage: { window: { tokens: 100, capturedAt: 1, extra: true } }
+        contextUsage: laterContextUsage
       },
       { ...running, laterField: { kind: 'tool-call' } }
     ]
@@ -297,7 +293,7 @@ it.each([
     const rows: JournalRow[] = []
     const insert = rowTable.insertJournalRow
     vi.spyOn(rowTable, 'insertJournalRow').mockImplementation((database, sessionId, row) => {
-      expect(parseJournalRow(JSON.stringify(row), 'write')).toMatchObject({ ok: true })
+      expect(parseJournalRow(JSON.stringify(row))).toMatchObject({ ok: true })
       const bodies =
         row.kind === 'item'
           ? [row.body]
@@ -305,7 +301,7 @@ it.each([
             ? row.mutations.flatMap((mutation) => (mutation.kind === 'item' ? [mutation.body] : []))
             : []
       for (const body of bodies) {
-        expect(AgentJournalItemBodySchema.parse(body)).toEqual(body)
+        expect(body).toMatchObject(AgentJournalItemBodySchema.parse(body))
         expectRewriteTimes(body)
       }
       rows.push(row)
@@ -331,6 +327,8 @@ it.each([
         expect(body.state).toBe('failed')
       }
     }
+    expect(journal.itemBody('orca:extension-7')).toHaveProperty('laterField', { kind: 'tool-call' })
+    expect(journal.itemBody('orca:extension-6')).toHaveProperty('contextUsage', laterContextUsage)
     expect(journal.activeTurnId()).toBeNull()
     expect(journal.snapshot().items).toHaveLength(inputs.length + 1)
     const ended = journal.snapshot()
@@ -347,11 +345,52 @@ it.each([
   }
 )
 
-it('leaves the last safe saved revision untouched while the rest commits and a fresh send writes', async () => {
-  await expectUnadvanceableItemUntouched({
-    itemId: agentJournalItemKey(identity),
-    revision: Number.MAX_SAFE_INTEGER,
-    body: { kind: 'turn', turnId: 'old', state: 'running' }
-  })
+it.each([Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER - 1])(
+  'advances readable saved revision %s using the existing integer admission',
+  async (revision) => {
+    await saveOldItems([
+      {
+        itemId: agentJournalItemKey(identity),
+        revision,
+        body: { kind: 'turn', turnId: 'old', state: 'running' }
+      }
+    ])
+    await settle()
+    expect(journal.snapshot().items[0]).toMatchObject({
+      revision: Math.max(revision, 0) + 1,
+      body: { state: 'interrupted' }
+    })
+    await expectSendStillWritable()
+  }
+)
+
+it('admits an answer on an exhausted approval without changing the saved item', async () => {
+  await saveOldItems([
+    {
+      itemId: agentJournalItemKey(identity),
+      revision: Number.MAX_SAFE_INTEGER + 1,
+      body: pendingApproval()
+    }
+  ])
+  const before = journal.snapshot().items[0]
+  const cursor = journal.cursor()
+  await expect(
+    journal.appendItem(
+      identity,
+      {
+        ...pendingApproval(),
+        kind: 'approval',
+        resolution: {
+          state: 'resolved',
+          selectedOptionId: null,
+          resolvedBy: 'user',
+          resolvedAt: 1_000
+        }
+      },
+      { fence: 8, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+    )
+  ).resolves.toBeDefined()
+  expect(journal.cursor().sequence).toBe(cursor.sequence + 1)
+  expect(journal.snapshot().items[0]).toEqual(before)
   await expectSendStillWritable()
 })

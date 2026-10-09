@@ -203,7 +203,7 @@ describe('running turn lifecycle revisions', () => {
     ])
   })
 
-  it('keeps known turn fields and drops extensions from the rewrite', () => {
+  it('keeps known turn fields and extensions in the rewrite', () => {
     const contextUsage = {
       used: {
         kind: 'estimate' as const,
@@ -222,7 +222,6 @@ describe('running turn lifecycle revisions', () => {
       requestedAt: 29,
       userItemId: 'user-2',
       contextUsage,
-      // The saved extension remains in history, outside the rewritten body.
       laterField: { kept: true },
       outcome: 'success' as const,
       durationMs: 7
@@ -234,7 +233,8 @@ describe('running turn lifecycle revisions', () => {
       startedAt: 30,
       requestedAt: 29,
       userItemId: 'user-2',
-      contextUsage
+      contextUsage,
+      laterField: { kept: true }
     }
     expect(
       runningTurnLifecycleRevisions(items, { state: 'interrupted', completedAt: 40 })[0]

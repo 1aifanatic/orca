@@ -29,6 +29,7 @@ import {
 import { boundInlineText, DEFAULT_JOURNAL_PAYLOAD_LIMITS } from './journal-payload-bounds'
 import { assertSubmissionIdUnused } from './journal-write-guards'
 import { turnEndAfterStop } from './journal-stop-turn-end'
+import { nextJournalItemRevision } from './journal-item-revision'
 import type { ResolveDispatchInput } from './journal-store-contracts'
 import {
   journalLifecycleMutationItemId,
@@ -50,7 +51,8 @@ export function journalItemRowBuilder(
   state: () => JournalReducerState,
   address: AgentJournalItemIdentity | string,
   body: AgentJournalItemBody,
-  options: AgentJournalRowAttribution & { fence: number; observedAt?: number; recovered?: true }
+  options: AgentJournalRowAttribution & { fence: number; observedAt?: number; recovered?: true },
+  revisions?: Map<string, number>
 ): RowBuilder<JournalItemRow> {
   return (seq, ts) =>
     buildJournalItemRow({
@@ -62,16 +64,19 @@ export function journalItemRowBuilder(
       ts: options.observedAt ?? ts,
       recovered: options.recovered,
       linkage: options,
-      turnScope: options.turnScope
+      turnScope: options.turnScope,
+      revisions
     })
 }
 
 export function journalTombstoneRowBuilder(
   state: () => JournalReducerState,
   itemId: string,
-  fence: number
+  fence: number,
+  revisions?: Map<string, number>
 ): RowBuilder<JournalTombstoneRow> {
-  return (seq, ts) => buildJournalTombstoneRow({ state: state(), itemId, seq, fence, ts })
+  return (seq, ts) =>
+    buildJournalTombstoneRow({ state: state(), itemId, seq, fence, ts, revisions })
 }
 
 export function journalSubmissionRowBuilder(
@@ -163,24 +168,19 @@ export function journalLifecycleBatchRowBuilder(
    *  An item mutation names its own, or none to keep the row's existing one.
    *  The reducer still reads row-level linkage as the fallback for a mutation
    *  that names none, because a row may come from a host that wrote one. */
-  options: { fence: number; recovered?: true }
+  options: { fence: number; recovered?: true },
+  revisions?: Map<string, number>
 ): RowBuilder<JournalLifecycleBatchRow> {
   return (seq, ts) => {
     if (mutations.length === 0 || mutations.length > MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS) {
       throw new Error('journal_lifecycle_batch_mutation_bound_exceeded')
     }
     const current = state()
-    const revisions = new Map<string, number>()
+    const runningRevisions = revisions ?? new Map<string, number>()
     const built: JournalLifecycleMutation[] = mutations.map((mutation) => {
       const itemId = journalLifecycleMutationItemId(mutation)
       const resolved = current.aliases.get(itemId) ?? itemId
-      const revision =
-        (revisions.get(resolved) ??
-          Math.max(
-            current.items.get(resolved)?.revision ?? 0,
-            current.tombstones.get(resolved) ?? 0
-          )) + 1
-      revisions.set(resolved, revision)
+      const revision = nextJournalItemRevision(current, itemId, runningRevisions)
       return journalLifecycleMutationRow(
         mutation.kind === 'item'
           ? { ...mutation, body: turnEndAfterStop(current, resolved, mutation.body) }
@@ -229,17 +229,14 @@ export function buildJournalItemRow(
     recovered?: true
     linkage?: AgentJournalProducerLinkage
     turnScope: AgentJournalTurnScope
+    revisions?: Map<string, number>
   }
 ): JournalItemRow {
   const itemId = journalLifecycleMutationItemId(input)
   const resolved = input.state.aliases.get(itemId) ?? itemId
   // A tombstoned row keeps its revision in `tombstones`, and the reducer drops
   // any item at or below it — so a re-add has to outrank the tombstone too.
-  const revision =
-    Math.max(
-      input.state.items.get(resolved)?.revision ?? 0,
-      input.state.tombstones.get(resolved) ?? 0
-    ) + 1
+  const revision = nextJournalItemRevision(input.state, itemId, input.revisions)
   const body = turnEndAfterStop(input.state, resolved, input.body)
   return {
     kind: 'item',
@@ -259,8 +256,8 @@ export function buildJournalTombstoneRow(input: {
   seq: number
   fence: number
   ts: number
+  revisions?: Map<string, number>
 }): JournalTombstoneRow {
-  const resolved = input.state.aliases.get(input.itemId) ?? input.itemId
   return {
     kind: 'tombstone',
     itemId: input.itemId,
@@ -268,11 +265,7 @@ export function buildJournalTombstoneRow(input: {
     // re-add is what keeps the two maps disjoint, and that invariant lives in the
     // reducer. Outranking both here means a repeat removal cannot be dropped as a
     // stale revision if it ever stops holding.
-    revision:
-      Math.max(
-        input.state.items.get(resolved)?.revision ?? 0,
-        input.state.tombstones.get(resolved) ?? 0
-      ) + 1,
+    revision: nextJournalItemRevision(input.state, input.itemId, input.revisions),
     ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts)
   }
 }

@@ -70,8 +70,6 @@ export class JournalLifecycleBatchAppender {
     input: JournalResolvedLifecycleBatchInput
   ): ((seq: number, ts: number) => JournalRow)[] {
     const mutations = input.resolve()
-    // Every chunk is built before any commits, so a second chunk naming the same item would
-    // reuse the first chunk's revision.
     this.assertDistinctItems(mutations)
     return this.planMutations(input, mutations)
   }
@@ -84,19 +82,21 @@ export class JournalLifecycleBatchAppender {
       return []
     }
     const current = this.deps.state()
-    // Unadvanceable saved revisions stay untouched without vetoing the other items.
-    const advanceable = mutations.filter((mutation) => {
-      const itemId = journalLifecycleMutationItemId(mutation)
-      const resolved = current.aliases.get(itemId) ?? itemId
-      return [
-        current.items.get(resolved)?.revision ?? 0,
-        current.tombstones.get(resolved) ?? 0
-      ].every((revision) => Number.isSafeInteger(revision) && revision < Number.MAX_SAFE_INTEGER)
-    })
     const options = { ...input, epoch: current.epoch }
+    // Every row in this transaction must advance past the rows planned before it.
+    const revisions = new Map<string, number>()
+    const plannedItems = new Set<string>()
     let namedSettlement = false
-    return partitionJournalLifecycleMutations(input.settlementId, advanceable, options).flatMap(
+    return partitionJournalLifecycleMutations(input.settlementId, mutations, options).flatMap(
       (chunk): ((seq: number, ts: number) => JournalRow)[] => {
+        const previouslyPlanned = chunk.mutations.some((mutation) => {
+          const itemId = journalLifecycleMutationItemId(mutation)
+          return plannedItems.has(current.aliases.get(itemId) ?? itemId)
+        })
+        for (const mutation of chunk.mutations) {
+          const itemId = journalLifecycleMutationItemId(mutation)
+          plannedItems.add(current.aliases.get(itemId) ?? itemId)
+        }
         const [only] = chunk.mutations
         if (
           chunk.mutations.length === 1 &&
@@ -106,8 +106,13 @@ export class JournalLifecycleBatchAppender {
           const itemId = journalLifecycleMutationItemId(only)
           const resolved = current.aliases.get(itemId) ?? itemId
           if (only.kind === 'tombstone') {
-            const build = journalTombstoneRowBuilder(this.deps.state, itemId, input.fence)
-            return current.tombstones.has(resolved)
+            const build = journalTombstoneRowBuilder(
+              this.deps.state,
+              itemId,
+              input.fence,
+              revisions
+            )
+            return !previouslyPlanned && current.tombstones.has(resolved)
               ? []
               : [
                   (seq, ts) => ({
@@ -118,7 +123,8 @@ export class JournalLifecycleBatchAppender {
           }
           const existing = current.items.get(resolved)
           // An all-oversized settlement has no batch receipt; its terminal bodies are its receipt.
-          return existing &&
+          return !previouslyPlanned &&
+            existing &&
             isDeepStrictEqual(existing.body, only.body) &&
             (only.linkage === undefined ||
               isDeepStrictEqual(
@@ -127,12 +133,18 @@ export class JournalLifecycleBatchAppender {
               ))
             ? []
             : [
-                journalItemRowBuilder(this.deps.state, itemId, only.body, {
-                  ...only.linkage,
-                  turnScope: only.turnScope,
-                  fence: input.fence,
-                  recovered: input.recovered
-                })
+                journalItemRowBuilder(
+                  this.deps.state,
+                  itemId,
+                  only.body,
+                  {
+                    ...only.linkage,
+                    turnScope: only.turnScope,
+                    fence: input.fence,
+                    recovered: input.recovered
+                  },
+                  revisions
+                )
               ]
         }
         // One bounded row remembers the generation even when the re-derived plan has fewer items.
@@ -140,7 +152,15 @@ export class JournalLifecycleBatchAppender {
         namedSettlement = true
         return this.wasApplied(id)
           ? []
-          : [journalLifecycleBatchRowBuilder(this.deps.state, id, chunk.mutations, input)]
+          : [
+              journalLifecycleBatchRowBuilder(
+                this.deps.state,
+                id,
+                chunk.mutations,
+                input,
+                revisions
+              )
+            ]
       }
     )
   }

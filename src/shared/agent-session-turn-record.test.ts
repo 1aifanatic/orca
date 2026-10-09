@@ -66,19 +66,24 @@ describe('agentJournalTurnBody', () => {
     expect(agentJournalTurnBody(complete)).toEqual({ kind: 'turn', ...complete })
   })
 
-  it('rewrites only known fields without changing the saved lifecycle', () => {
+  it('normalizes known fields and preserves extensions without changing the saved lifecycle', () => {
     const saved = {
       ...turn,
       kind: 'tool-call',
       laterField: { kept: true },
       providerTurnId: '',
-      contextUsage: { window: { tokens: 10, capturedAt: 1 }, unexpected: true }
+      contextUsage: {
+        window: { tokens: 10, capturedAt: 1, laterWindowField: true },
+        used: { kind: 'unknown' as const, capturedAt: 1, laterUsedField: true },
+        laterUsageField: { kept: true }
+      }
     }
     const before = structuredClone(saved)
     expect(agentJournalTurnBody(saved)).toEqual({
       kind: 'turn',
       ...turn,
-      contextUsage: { window: { tokens: 10, capturedAt: 1 } }
+      laterField: { kept: true },
+      contextUsage: saved.contextUsage
     })
     expect(saved).toEqual(before)
   })
