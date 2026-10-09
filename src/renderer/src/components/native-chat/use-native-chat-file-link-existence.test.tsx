@@ -3,7 +3,10 @@ import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatFileLinkContext } from './native-chat-file-link'
 import type * as ExistenceModule from './native-chat-file-link-existence'
-import { NativeChatFileLinkExistenceProvider } from './use-native-chat-file-link-existence'
+import {
+  NativeChatFileLinkExistenceProvider,
+  useRecheckNativeChatFileLinksWhenTurnEnds
+} from './use-native-chat-file-link-existence'
 
 type StoreState = {
   connectionId: string | null | undefined
@@ -27,6 +30,9 @@ vi.mock('@/store', () => ({
 vi.mock('@/lib/connection-context', () => ({
   getConnectionIdFromState: (state: StoreState) => state.connectionId
 }))
+vi.mock('./use-native-chat-file-link-context', () => ({
+  useNativeChatFileLinkContext: () => context
+}))
 vi.mock('./native-chat-file-link-existence', async (importOriginal) => ({
   ...(await importOriginal<typeof ExistenceModule>()),
   createNativeChatFileLinkExistence: () => {
@@ -42,12 +48,21 @@ const context: NativeChatFileLinkContext = {
   runtimeEnvironmentId: null
 }
 
-function renderProvider(isWorking: boolean) {
-  return render(
-    <NativeChatFileLinkExistenceProvider context={context} isWorking={isWorking}>
-      {null}
+function TurnState({ isWorking }: { isWorking: boolean }): null {
+  useRecheckNativeChatFileLinksWhenTurnEnds(isWorking)
+  return null
+}
+
+function chat(isWorking: boolean): React.JSX.Element {
+  return (
+    <NativeChatFileLinkExistenceProvider tabId="tab-1">
+      <TurnState isWorking={isWorking} />
     </NativeChatFileLinkExistenceProvider>
   )
+}
+
+function renderProvider(isWorking: boolean) {
+  return render(chat(isWorking))
 }
 
 describe('NativeChatFileLinkExistenceProvider', () => {
@@ -60,18 +75,10 @@ describe('NativeChatFileLinkExistenceProvider', () => {
 
   it('rechecks when a turn ends, not when the chat mounts', () => {
     const view = renderProvider(false)
-    view.rerender(
-      <NativeChatFileLinkExistenceProvider context={context} isWorking>
-        {null}
-      </NativeChatFileLinkExistenceProvider>
-    )
+    view.rerender(chat(true))
     expect(mocks.created[0].recheck).not.toHaveBeenCalled()
 
-    view.rerender(
-      <NativeChatFileLinkExistenceProvider context={context} isWorking={false}>
-        {null}
-      </NativeChatFileLinkExistenceProvider>
-    )
+    view.rerender(chat(false))
 
     expect(mocks.created).toHaveLength(1)
     expect(mocks.created[0].recheck).toHaveBeenCalledOnce()
@@ -84,11 +91,7 @@ describe('NativeChatFileLinkExistenceProvider', () => {
     mocks.store.sshConnectionStates = new Map([
       ['ssh-1', { status: 'connected', connectionGeneration: 2 }]
     ])
-    view.rerender(
-      <NativeChatFileLinkExistenceProvider context={context} isWorking={false}>
-        {null}
-      </NativeChatFileLinkExistenceProvider>
-    )
+    view.rerender(chat(false))
 
     expect(mocks.created[0].recheck).toHaveBeenCalledOnce()
   })
@@ -99,11 +102,7 @@ describe('NativeChatFileLinkExistenceProvider', () => {
 
     for (const status of ['reconnecting', 'connecting', 'deploying-relay']) {
       mocks.store.sshConnectionStates = new Map([['ssh-1', { status }]])
-      view.rerender(
-        <NativeChatFileLinkExistenceProvider context={context} isWorking={false}>
-          {null}
-        </NativeChatFileLinkExistenceProvider>
-      )
+      view.rerender(chat(false))
     }
 
     expect(mocks.created[0].recheck).not.toHaveBeenCalled()
@@ -114,11 +113,7 @@ describe('NativeChatFileLinkExistenceProvider', () => {
     const view = renderProvider(false)
 
     mocks.store.connectionId = 'ssh-1'
-    view.rerender(
-      <NativeChatFileLinkExistenceProvider context={context} isWorking={false}>
-        {null}
-      </NativeChatFileLinkExistenceProvider>
-    )
+    view.rerender(chat(false))
 
     expect(mocks.created).toHaveLength(2)
     expect(mocks.created[0].recheck).not.toHaveBeenCalled()

@@ -21,7 +21,7 @@ import { useNativeChatFontSize } from './use-native-chat-font-size'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
 import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
-import { NativeChatFileLinkExistenceProvider } from './use-native-chat-file-link-existence'
+import { useRecheckNativeChatFileLinksWhenTurnEnds } from './use-native-chat-file-link-existence'
 import { useNativeChatTabOwnerWorktreeId } from './use-native-chat-tab-owner'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 import { useNativeChatImageRuntimeContext } from './native-chat-image-runtime-context'
@@ -87,6 +87,7 @@ export function NativeChatStructuredSession(
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
+  useRecheckNativeChatFileLinksWhenTurnEnds(controller.isWorking)
   const stopControls = nativeChatStructuredStopControls(controller, hostExecution.stopping)
   const launchDraftSignal = useNativeChatLaunchDraftSignal({
     terminalTabId: props.tabId,
@@ -230,7 +231,7 @@ export function NativeChatStructuredSession(
   if (hostNotice) {
     notices.push(hostNotice)
   }
-  const view = (
+  return (
     <div
       ref={rootRef}
       data-native-chat-root="true"
@@ -367,10 +368,5 @@ export function NativeChatStructuredSession(
       {paneCommands.menu}
       <LinkActionPopover request={linkActionRequest} onClose={closeLinkActions} />
     </div>
-  )
-  return (
-    <NativeChatFileLinkExistenceProvider context={fileLinkContext} isWorking={controller.isWorking}>
-      {view}
-    </NativeChatFileLinkExistenceProvider>
   )
 }

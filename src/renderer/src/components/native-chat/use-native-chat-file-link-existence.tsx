@@ -6,7 +6,7 @@ import {
   onRuntimeEnvironmentRevisionsChanged
 } from '@/runtime/runtime-environment-revision'
 import type { FileLinkExists } from '@/components/sidebar/comment-markdown-native-chat-file-links'
-import type { NativeChatFileLinkContext } from './native-chat-file-link'
+import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
 import {
   createNativeChatFileLinkExistence,
   NativeChatFileLinkExistenceContext,
@@ -44,44 +44,55 @@ function useFileLinkHostEpoch(
   return { sshUp, runtime: `${runtimeStatus}|${pairing ?? ''}` }
 }
 
-/** Asks again about watched paths when a turn ends or the workspace's host comes back. */
-function useRecheckFileLinks(
+/** Asks again about watched paths when the workspace's host comes back. */
+function useRecheckWhenHostReturns(
   existence: NativeChatFileLinkExistence | null,
-  isWorking: boolean,
   { sshUp, runtime }: FileLinkHostEpoch
 ): void {
   const seen = useRef<{
     existence: NativeChatFileLinkExistence | null
-    isWorking: boolean
     sshUp: string | null
     runtime: string
   } | null>(null)
   useEffect(() => {
     const previous = seen.current
-    seen.current = { existence, isWorking, sshUp, runtime }
+    seen.current = { existence, sshUp, runtime }
     // Why: a fresh checker has nothing to recheck; its messages are asking right now.
     if (!existence || previous?.existence !== existence) {
       return
     }
-    const turnEnded = previous.isWorking && !isWorking
     // Why: only a host coming back (or a new connection) can change answers; going down cannot.
     const sshReturned = sshUp !== null && sshUp !== previous.sshUp
-    if (turnEnded || sshReturned || runtime !== previous.runtime) {
+    if (sshReturned || runtime !== previous.runtime) {
       existence.recheck()
     }
-  }, [existence, isWorking, sshUp, runtime])
+  }, [existence, sshUp, runtime])
+}
+
+/** For the chat view that knows its turn state: a finished turn may have changed the files. */
+export function useRecheckNativeChatFileLinksWhenTurnEnds(isWorking: boolean): void {
+  const existence = useContext(NativeChatFileLinkExistenceContext)
+  const seen = useRef<{ existence: NativeChatFileLinkExistence | null; isWorking: boolean } | null>(
+    null
+  )
+  useEffect(() => {
+    const previous = seen.current
+    seen.current = { existence, isWorking }
+    if (existence && previous?.existence === existence && previous.isWorking && !isWorking) {
+      existence.recheck()
+    }
+  }, [existence, isWorking])
 }
 
 /** One per chat view: paths in its transcript are checked on the workspace's host. */
 export function NativeChatFileLinkExistenceProvider({
-  context,
-  isWorking,
+  tabId,
   children
 }: {
-  context: NativeChatFileLinkContext | null
-  isWorking: boolean
+  tabId: string
   children: ReactNode
 }): React.JSX.Element {
+  const context = useNativeChatFileLinkContext(tabId)
   const worktreeId = context?.worktreeId
   const worktreePath = context?.worktreePath
   const runtimeEnvironmentId = context?.runtimeEnvironmentId ?? null
@@ -101,8 +112,7 @@ export function NativeChatFileLinkExistenceProvider({
         : null,
     [connectionId, runtimeEnvironmentId, worktreeId, worktreePath]
   )
-  const hostEpoch = useFileLinkHostEpoch(connectionId, runtimeEnvironmentId)
-  useRecheckFileLinks(existence, isWorking, hostEpoch)
+  useRecheckWhenHostReturns(existence, useFileLinkHostEpoch(connectionId, runtimeEnvironmentId))
   return (
     <NativeChatFileLinkExistenceContext.Provider value={existence}>
       {children}

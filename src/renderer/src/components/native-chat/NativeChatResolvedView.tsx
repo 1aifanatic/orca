@@ -55,7 +55,7 @@ import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
 import type { NativeChatResolvedViewProps } from './native-chat-view-types'
 import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
-import { NativeChatFileLinkExistenceProvider } from './use-native-chat-file-link-existence'
+import { useRecheckNativeChatFileLinksWhenTurnEnds } from './use-native-chat-file-link-existence'
 import { useNativeChatLocalCommandAnswer } from './use-native-chat-local-command-answer'
 import { matchNativeChatSplitShortcut } from './native-chat-split-shortcut'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
@@ -312,6 +312,7 @@ export function NativeChatResolvedView({
     hasPromptCard: promptCard !== null
   })
   const turnTiming = useNativeChatTerminalTurnTiming(paneKey, session.messages, turnActive)
+  useRecheckNativeChatFileLinksWhenTurnEnds(turnActive)
 
   const stopAgent = useCallback(() => {
     setWorkingInterrupted(true)
@@ -331,7 +332,7 @@ export function NativeChatResolvedView({
   useNativeChatFontSize(isConversation && isVisible && isFocusedGroup, rootRef)
   const appearanceStyle = useNativeChatStoreAppearanceStyle()
 
-  const view = (
+  return (
     <div
       ref={rootRef}
       data-native-chat-root="true"
@@ -440,10 +441,5 @@ export function NativeChatResolvedView({
       {contextMenu.menu}
       <LinkActionPopover request={linkActionRequest} onClose={closeLinkActions} />
     </div>
-  )
-  return (
-    <NativeChatFileLinkExistenceProvider context={fileLinkContext} isWorking={turnActive}>
-      {view}
-    </NativeChatFileLinkExistenceProvider>
   )
 }
