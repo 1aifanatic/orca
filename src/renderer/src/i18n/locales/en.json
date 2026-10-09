@@ -4314,8 +4314,8 @@
             "resumingProgressAria": "Resuming chats, {{value0}} of {{value1}} done. Click to open details."
           },
           "StatusBarUsageChangeNotices": {
-            "compactTitle": "Usage is now compact",
-            "compactBody": "One headline metric per provider. Choose Detailed in the Usage menu to show more limits."
+            "compactTitle": "Usage display is now compact",
+            "compactBody": "One headline metric per provider. Choose <detailed>Detailed</detailed> in the Usage menu to show more limits."
           }
         }
       },

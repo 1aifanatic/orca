@@ -3980,7 +3980,7 @@
           },
           "StatusBarUsageChangeNotices": {
             "compactTitle": "사용량이 이제 간략하게 표시됩니다",
-            "compactBody": "공급자별로 주요 지표 하나를 표시합니다. 더 많은 한도를 보려면 사용량 메뉴에서 상세를 선택하세요."
+            "compactBody": "공급자별로 주요 지표 하나를 표시합니다. 더 많은 한도를 보려면 사용량 메뉴에서 <detailed>상세</detailed>를 선택하세요."
           },
           "UsagePercentageDisplayChangeNotice": {
             "title": "사용량이 이제 사용된 %로 표시됩니다",

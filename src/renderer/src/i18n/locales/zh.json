@@ -3979,8 +3979,8 @@
             "remaining": "剩余 {{value0}}%"
           },
           "StatusBarUsageChangeNotices": {
-            "compactTitle": "用量现以紧凑模式显示",
-            "compactBody": "每个服务提供商显示一个主要指标。在用量菜单中选择“详细”即可查看更多限额。"
+            "compactTitle": "用量显示现已精简",
+            "compactBody": "每个服务提供商显示一个主要指标。在用量菜单中选择“<detailed>详细</detailed>”即可查看更多限额。"
           },
           "UsagePercentageDisplayChangeNotice": {
             "title": "用量现在显示已用百分比",

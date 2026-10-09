@@ -3979,8 +3979,8 @@
             "remaining": "{{value0}}% restante"
           },
           "StatusBarUsageChangeNotices": {
-            "compactTitle": "El uso ahora es compacto",
-            "compactBody": "Una métrica principal por proveedor. Elige «Detailed» en el menú «Usage» para ver más límites."
+            "compactTitle": "La visualización del uso ahora es compacta",
+            "compactBody": "Una métrica principal por proveedor. Elige «<detailed>Detailed</detailed>» en el menú «Usage» para ver más límites."
           },
           "UsagePercentageDisplayChangeNotice": {
             "title": "Usage now shows % used",
