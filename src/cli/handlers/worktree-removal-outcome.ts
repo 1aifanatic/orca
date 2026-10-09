@@ -5,6 +5,7 @@ import type {
 } from '../../shared/runtime-types'
 import { isRecoverableRemoteRuntimeConnectionError } from '../../shared/remote-runtime-client-error-classification'
 import { RuntimeClientError, type RuntimeClient, type RuntimeRpcSuccess } from '../runtime-client'
+import { RuntimeRequestNotSentError } from '../runtime/types'
 
 export type WorktreeRemovalRequest = {
   worktree: string
@@ -94,16 +95,16 @@ export function formatWorktreeRemoval(value: RuntimeWorktreeRemoveResult): strin
 }
 
 /**
- * Sends `worktree.rm`. A dropped connection hides whether the host got it (a socket at its
- * connection limit drops one that was written, unread), so the host's own state decides: a delete
- * it accepted is waited on and never sent again; one it is not running is sent again, unless the
- * archive hook may already have run for it.
+ * Sends `worktree.rm`. A request that provably never left is sent again. Any other dropped
+ * connection hides whether the host got it (a socket at its connection limit drops one that was
+ * written, unread), so the host's own state decides: a delete it accepted is waited on and never
+ * sent again; one it is not running is sent again, unless the archive hook may already have run.
  */
 async function sendRemoval(
   client: RuntimeClient,
   request: WorktreeRemovalRequest & { worktreeId: string }
 ): Promise<RuntimeRpcSuccess<RuntimeWorktreeRemoveResult>> {
-  const { worktreeId, ...params } = request
+  const { worktreeId: _worktreeId, ...params } = request
   for (let attempt = 1; ; attempt += 1) {
     const sent = await client.call<RuntimeWorktreeRemoveResult>('worktree.rm', params).then(
       (response) => ({ response }),
@@ -112,31 +113,56 @@ async function sendRemoval(
     if ('response' in sent) {
       return sent.response
     }
-    if (!isDroppedConnection(sent.error) || attempt === DROPPED_CONNECTIONS_BEFORE_GIVING_UP) {
+    if (!isDroppedConnection(sent.error)) {
       throw sent.error
     }
-    await pollDelay(attempt - 1)
-    const read = await readRemovalState(client, worktreeId, request.hostId).then(
-      (reply) => ({ reply }),
-      (error: unknown) => ({ error })
-    )
-    if ('error' in read) {
-      if (isDroppedConnection(read.error)) {
-        continue
+    if (sent.error instanceof RuntimeRequestNotSentError) {
+      if (attempt === DROPPED_CONNECTIONS_BEFORE_GIVING_UP) {
+        throw sent.error
       }
-      throw sent.error
+      await pollDelay(attempt - 1)
+      continue
     }
-    if (!read.reply) {
-      // An older host can't say whether it got the request.
-      throw sent.error
-    }
-    if (read.reply.result.state !== 'present') {
-      return { ...read.reply, result: { removed: true, removing: true } }
+    const reply = await readStateAfterDroppedRequest(client, request, sent.error)
+    if (reply.result.state !== 'present') {
+      return { ...reply, result: { removed: true, removing: true } }
     }
     if (request.runHooks) {
       throw new RuntimeClientError(
         'worktree_removal_unconfirmed',
         `Orca did not confirm it received the removal of ${request.worktree}, and the workspace is still there. It was not sent again because its archive hook may already have run; run the command again to remove it.`
+      )
+    }
+    if (attempt === DROPPED_CONNECTIONS_BEFORE_GIVING_UP) {
+      throw sent.error
+    }
+  }
+}
+
+/** Asks the host what became of a request whose reply was lost; never sends it again itself. */
+async function readStateAfterDroppedRequest(
+  client: RuntimeClient,
+  request: WorktreeRemovalRequest & { worktreeId: string },
+  dropped: unknown
+): Promise<RuntimeRpcSuccess<RuntimeWorktreeRemovalState>> {
+  for (let attempt = 0; ; attempt += 1) {
+    await pollDelay(attempt)
+    const read = await readRemovalState(client, request.worktreeId, request.hostId).then(
+      (reply) => ({ reply }),
+      (error: unknown) => ({ error })
+    )
+    if (!('error' in read)) {
+      if (!read.reply) {
+        // An older host can't say whether it got the request.
+        throw dropped
+      }
+      return read.reply
+    }
+    if (!isDroppedConnection(read.error) || attempt + 1 === DROPPED_CONNECTIONS_BEFORE_GIVING_UP) {
+      throw new RuntimeClientError(
+        'worktree_removal_unconfirmed',
+        `Orca stopped responding before confirming the removal of ${request.worktree}. If it received the request, the removal finishes when Orca runs again; once Orca responds, run \`orca worktree rm --worktree ${request.worktree}\` again to confirm it.`,
+        { cause: read.error instanceof Error ? read.error.message : String(read.error) }
       )
     }
   }

@@ -22,7 +22,7 @@ vi.mock('./runtime-client', async () => {
 vi.mock('node:timers/promises', () => ({ setTimeout: vi.fn(async () => undefined) }))
 
 import { main } from './index'
-import { RuntimeClientError } from './runtime/types'
+import { RuntimeClientError, RuntimeRequestNotSentError } from './runtime/types'
 import { okFixture, queueFixtures } from './test-fixtures'
 
 const WORKTREE_ID = 'repo::/tmp/wt-1'
@@ -259,7 +259,7 @@ describe('worktree rm reports the removal outcome, not its acceptance', () => {
       )
     })
 
-    it('gives the original error when Orca stays unreachable', async () => {
+    it('never sends it again blind when the host cannot be asked', async () => {
       showThenDrop()
       for (let index = 0; index < 8; index += 1) {
         callMock.mockRejectedValueOnce(dropped())
@@ -267,9 +267,51 @@ describe('worktree rm reports the removal outcome, not its acceptance', () => {
 
       await run('--json')
 
-      expect(rmCalls()).toHaveLength(5)
+      expect(rmCalls()).toHaveLength(1)
       expect(process.exitCode).toBe(1)
-      expect(printed()).toContain('closed before responding')
+      expect(printed()).toContain('worktree_removal_unconfirmed')
+      expect(printed()).toContain(
+        'If it received the request, the removal finishes when Orca runs again'
+      )
+    })
+
+    it('sends a request that provably never left again, without asking the host', async () => {
+      queueFixtures(
+        callMock,
+        okFixture('req_show', { worktree: { id: WORKTREE_ID, hostId: 'local' } })
+      )
+      callMock.mockRejectedValueOnce(
+        new RuntimeRequestNotSentError('runtime_unavailable', 'Could not connect')
+      )
+      queueFixtures(callMock, okFixture('req_rm', { removed: true }))
+
+      await run('--json')
+
+      expect(rmCalls()).toHaveLength(2)
+      expect(removalStateCalls()).toHaveLength(0)
+      expect(JSON.parse(printed()).result).toEqual({ removed: true })
+    })
+
+    it('gives the original error when Orca is not running at all', async () => {
+      queueFixtures(
+        callMock,
+        okFixture('req_show', { worktree: { id: WORKTREE_ID, hostId: 'local' } })
+      )
+      for (let index = 0; index < 5; index += 1) {
+        callMock.mockRejectedValueOnce(
+          new RuntimeRequestNotSentError(
+            'runtime_unavailable',
+            'Could not connect to the running Orca app.'
+          )
+        )
+      }
+
+      await run('--json')
+
+      expect(rmCalls()).toHaveLength(5)
+      expect(removalStateCalls()).toHaveLength(0)
+      expect(process.exitCode).toBe(1)
+      expect(printed()).toContain('Could not connect to the running Orca app.')
     })
 
     it('gives the original error when an older host cannot say whether it got the request', async () => {
