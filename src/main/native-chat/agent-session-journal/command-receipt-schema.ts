@@ -79,7 +79,7 @@ export const commandReceiptSchema = z.discriminatedUnion('status', [
 
 export type CommandReceipt = z.infer<typeof commandReceiptSchema>
 
-/** Additive and inert until cutover; a version bump here would prevent older builds writing. */
+/** Additive, so no version bump: one would stop older builds writing this database. */
 export function ensureCommandReceiptsTable(db: Database.Database): void {
   db.exec(`
 CREATE TABLE IF NOT EXISTS agent_session_command_receipts (

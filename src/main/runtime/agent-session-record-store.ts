@@ -310,8 +310,8 @@ export class AgentSessionRecordStore {
     await this.transact((draft) => settleAgentSessionOperationInto(draft, args))
   }
 
-  /** The same settlement, committed by the journal write that makes it true. It changes only the
-   *  ledger, so no record listener is owed. */
+  /** That settlement, or an accepted row inserted if absent, committed by the journal write that
+   *  makes it true. It changes only the ledger, so no record listener is owed. */
   operationOutcomeReceipt = (args: Parameters<typeof agentSessionOperationOutcomeReceipt>[1]) =>
     agentSessionOperationOutcomeReceipt(this.transactions, args)
 

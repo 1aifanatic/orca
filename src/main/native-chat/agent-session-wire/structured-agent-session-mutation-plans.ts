@@ -1,7 +1,8 @@
 // One plan per mutating method: what it fingerprints, what it does, and how its
 // answer is rebuilt on a replay.
 //
-// The receipt proves acceptance; the journal projects its current answer.
+// Send and /compact prove acceptance by their command receipt, the rest by their ledger row; the
+// journal projects the current answer.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
@@ -189,10 +190,7 @@ export function conversationCommandPlan(params: {
       })
       return sent.ok ? { ok: true, value: { clientMessageId } } : sent
     },
-    replay: (ctx, outcome) => {
-      if (outcome.status === 'succeeded' && outcome.conversationCommand) {
-        return { recorded: outcome.conversationCommand }
-      }
+    replay: (ctx) => {
       if (ctx.journal.submissions().some((entry) => entry.clientMessageId === clientMessageId)) {
         return { clientMessageId }
       }
