@@ -11,14 +11,19 @@ import {
   getGeneralEditorSearchEntries,
   getGeneralNavigationSearchEntries,
   getGeneralPaneSearchEntries,
+  getTabOrderControlSearchKeywords,
   getGeneralSupportSearchEntries,
   getGeneralUpdateSearchEntries,
   getGeneralWorkspaceSearchEntries
 } from './general-search'
-import { getGeneralProjectRuntimeSearchEntries } from './general-project-runtime-search'
+import {
+  getGeneralProjectRuntimeSearchEntries,
+  shouldShowProjectRuntimeSection
+} from './general-project-runtime-search'
+import { getDesktopPlatformFromUserAgent } from './general-settings-platform'
 import { RecentTabOrderControl } from './RecentTabOrderControl'
 import { SettingsSectionStack } from './SettingsSectionStack'
-import { matchesSettingsSearch, type SettingsSearchEntry } from './settings-search'
+import { matchesSettingsSearch } from './settings-search'
 import { SearchableSetting } from './SearchableSetting'
 import { SettingsSubsectionHeader, SettingsSwitchRow } from './SettingsFormControls'
 import { translate } from '@/i18n/i18n'
@@ -32,48 +37,9 @@ export {
 } from './auto-save-delay-draft'
 export { shouldCommitOpenInApplicationsDraft } from './OpenInMenuSetting'
 
-type GeneralSearchEntry = ReturnType<typeof getGeneralNavigationSearchEntries>[number]
-
-export function getDesktopPlatformFromUserAgent(userAgent: string): 'darwin' | 'win32' | 'other' {
-  if (userAgent.includes('Mac')) {
-    return 'darwin'
-  }
-  if (userAgent.includes('Windows')) {
-    return 'win32'
-  }
-  return 'other'
-}
-
-export { getGeneralPaneSearchEntries }
-
-/**
- * The Project Runtime section is Windows-only. Gate on the platform directly:
- * an empty search query makes matchesSettingsSearch return true even for an
- * empty entries array, which would otherwise render an orphaned header (the
- * inner control self-hides) on non-Windows hosts.
- */
-export function shouldShowProjectRuntimeSection(
-  wslSupportedPlatform: boolean | undefined,
-  searchQuery: string,
-  projectRuntimeSearchEntries: SettingsSearchEntry[]
-): boolean {
-  return (
-    Boolean(wslSupportedPlatform) && matchesSettingsSearch(searchQuery, projectRuntimeSearchEntries)
-  )
-}
-
-export function getTabOrderControlSearchKeywords(
-  navigationEntries: GeneralSearchEntry[] = getGeneralNavigationSearchEntries()
-): string[] {
-  const tabOrderSearchEntry = navigationEntries[0]
-  return tabOrderSearchEntry
-    ? [
-        tabOrderSearchEntry.title,
-        tabOrderSearchEntry.description ?? '',
-        ...(tabOrderSearchEntry.keywords ?? [])
-      ]
-    : []
-}
+export { getGeneralPaneSearchEntries, getTabOrderControlSearchKeywords }
+export { getDesktopPlatformFromUserAgent } from './general-settings-platform'
+export { shouldShowProjectRuntimeSection } from './general-project-runtime-search'
 
 const EMPTY_WSL_DISTROS: string[] = []
 

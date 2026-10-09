@@ -270,3 +270,18 @@ export function getGeneralPaneSearchEntries(
     ...getGeneralSupportSearchEntries()
   ]
 }
+
+type GeneralSearchEntry = ReturnType<typeof getGeneralNavigationSearchEntries>[number]
+
+export function getTabOrderControlSearchKeywords(
+  navigationEntries: GeneralSearchEntry[] = getGeneralNavigationSearchEntries()
+): string[] {
+  const tabOrderSearchEntry = navigationEntries[0]
+  return tabOrderSearchEntry
+    ? [
+        tabOrderSearchEntry.title,
+        tabOrderSearchEntry.description ?? '',
+        ...(tabOrderSearchEntry.keywords ?? [])
+      ]
+    : []
+}

@@ -1,6 +1,7 @@
 import { translate } from '@/i18n/i18n'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
 import { translateSearchKeyword } from './settings-search-keywords'
+import { matchesSettingsSearch, type SettingsSearchEntry } from './settings-search'
 
 export const getGeneralProjectRuntimeSearchEntries = createLocalizedCatalog(() => [
   {
@@ -28,3 +29,19 @@ export const getGeneralProjectRuntimeSearchEntries = createLocalizedCatalog(() =
     ]
   }
 ])
+
+/**
+ * The Project Runtime section is Windows-only. Gate on the platform directly:
+ * an empty search query makes matchesSettingsSearch return true even for an
+ * empty entries array, which would otherwise render an orphaned header (the
+ * inner control self-hides) on non-Windows hosts.
+ */
+export function shouldShowProjectRuntimeSection(
+  wslSupportedPlatform: boolean | undefined,
+  searchQuery: string,
+  projectRuntimeSearchEntries: SettingsSearchEntry[]
+): boolean {
+  return (
+    Boolean(wslSupportedPlatform) && matchesSettingsSearch(searchQuery, projectRuntimeSearchEntries)
+  )
+}

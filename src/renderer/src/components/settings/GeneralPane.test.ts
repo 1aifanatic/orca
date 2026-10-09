@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   createAutoSaveDelayDraftState,
-  getDesktopPlatformFromUserAgent,
-  getGeneralPaneSearchEntries,
-  getTabOrderControlSearchKeywords,
-  shouldShowProjectRuntimeSection,
   updateAutoSaveDelayDraftState
-} from './GeneralPane'
+} from './auto-save-delay-draft'
+import { getDesktopPlatformFromUserAgent } from './general-settings-platform'
+import { getGeneralPaneSearchEntries, getTabOrderControlSearchKeywords } from './general-search'
+import { shouldShowProjectRuntimeSection } from './general-project-runtime-search'
 import { matchesSettingsSearch } from './settings-search'
 
 describe('GeneralPane auto-save delay drafts', () => {
