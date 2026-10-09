@@ -187,8 +187,8 @@ describe('ClaudeProfileRouter', () => {
     signIn(f.userHome, 'b@example.test')
     signIn(own, 'a@example.test')
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: own })
-    // A covered account's folder need not exist yet; it is set up in the background.
-    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+    // A covered account's folder is neither needed nor refreshed for the launch.
+    expect(f.setup.calls).toBe(0)
   })
 
   it('prepares an account folder for sign-in only when setup succeeds', async () => {

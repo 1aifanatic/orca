@@ -181,9 +181,6 @@ export class ClaudeProfileRouter {
     this.writePointer()
     const profile = this.routedProfile()
     if (!profile) {
-      if (selected) {
-        this.setUpInBackground(selected)
-      }
       return this.preparation()
     }
     // Why the marker: setup writes it last, so a missing folder is set up too.
