@@ -18444,6 +18444,13 @@
         "groupTasks": "Tasks"
       },
       "jumpToLatest": "Jump to latest",
+      "find": {
+        "label": "Find in chat",
+        "noResults": "No results",
+        "previousMatch": "Previous match",
+        "nextMatch": "Next match",
+        "close": "Close"
+      },
       "transcriptLabel": "Conversation",
       "toggle": {
         "showTerminal": "Show terminal",

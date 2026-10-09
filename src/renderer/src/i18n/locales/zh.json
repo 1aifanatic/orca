@@ -18129,6 +18129,13 @@
         "toggleDetails": "切换回合详情"
       },
       "jumpToLatest": "跳到最新消息",
+      "find": {
+        "label": "在聊天中查找",
+        "noResults": "没有结果",
+        "previousMatch": "上一个结果",
+        "nextMatch": "下一个结果",
+        "close": "关闭"
+      },
       "transcriptLabel": "对话",
       "toggle": {
         "showTerminal": "显示终端",

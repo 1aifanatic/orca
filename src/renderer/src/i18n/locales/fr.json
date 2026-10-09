@@ -18230,6 +18230,13 @@
         "toggleDetails": "Basculer les détails du tour"
       },
       "jumpToLatest": "Aller au dernier message",
+      "find": {
+        "label": "Rechercher dans le chat",
+        "noResults": "Aucun résultat",
+        "previousMatch": "Correspondance précédente",
+        "nextMatch": "Correspondance suivante",
+        "close": "Fermer"
+      },
       "transcriptLabel": "Conversation",
       "toggle": {
         "showTerminal": "Afficher le terminal",
