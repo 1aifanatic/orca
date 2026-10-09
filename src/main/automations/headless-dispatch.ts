@@ -22,6 +22,16 @@ export type HeadlessAutomationDispatchLaunch = {
   }>
 }
 
+/** A launch that failed after creating a workspace it keeps, so the failed run still names it. */
+export class HeadlessAutomationDispatchError extends Error {
+  constructor(
+    message: string,
+    readonly workspace: { id: string; displayName: string | null }
+  ) {
+    super(message)
+  }
+}
+
 export type HeadlessAutomationDispatcher = (request: {
   automation: Automation
   run: AutomationRun

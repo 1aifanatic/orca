@@ -17,6 +17,7 @@ import {
   TUI_AGENT_CONFIG
 } from '../../shared/tui-agent-config'
 import { buildHeadlessAutomationWorktreeCreateArgs } from './headless-workspace-create'
+import { HeadlessAutomationDispatchError } from './headless-dispatch'
 import { createRuntimeAutomationRunTerminalObserver } from './runtime-terminal-run-observer'
 
 const MAX_REMEMBERED_LAUNCHES = 256
@@ -62,9 +63,10 @@ export function createRuntimeAutomationService(input: {
               buildHeadlessAutomationWorktreeCreateArgs({ automation, run, repo: target.repo })
             )
             if (!created.startupTerminal?.handle) {
-              throw new Error(
+              throw new HeadlessAutomationDispatchError(
                 created.warning ||
-                  'Automation workspace was created, but no agent terminal started.'
+                  'Automation workspace was created, but no agent terminal started.',
+                { id: created.worktree.id, displayName: created.worktree.displayName ?? null }
               )
             }
             terminal = created.startupTerminal
