@@ -21,6 +21,17 @@ it.each([
   expect(selectPrE2eSpecs([path])).toContain('tests/e2e/ssh-orcad-browser-capabilities.spec.ts')
 })
 
+it.each(['errors', 'status', 'lifecycle', 'restart-attempt'])(
+  'routes the real browser service status check from %s changes',
+  (name) => {
+    expect(
+      selectPrE2eSpecs([
+        `src/renderer/src/components/browser-pane/stream-remote/remote-browser-stream-${name}.ts`
+      ])
+    ).toContain('tests/e2e/ssh-orcad-browser-service-status.spec.ts')
+  }
+)
+
 const workflow = parse(readFileSync('.github/workflows/e2e.yml', 'utf8'))
 const prWorkflow = parse(readFileSync('.github/workflows/pr.yml', 'utf8'))
 const classify = (specs, ssh = 'false') => classifyE2eJobs(JSON.stringify(specs), ssh)
