@@ -226,33 +226,39 @@ describe('Claude profile refresh from the default home', () => {
     )
   })
   itLinks(
-    "shares every other top-level entry, never Claude's daemon, live sessions or login files",
+    "shares user content, never Claude's runtime state, live sessions or login files",
     async () => {
       const f = fixture()
-      const unshared = [
+      const unsharedDirs = [
         'daemon',
         'jobs',
         'state',
         'sessions',
-        'cache',
-        'debug',
-        'telemetry',
-        'statsig',
-        'backups',
-        'usage-data',
-        'logs'
+        'teams',
+        'ide',
+        'remote-control',
+        'shares',
+        'uploads',
+        'storage-v2',
+        'downloads',
+        'scratch',
+        'agent-memory-local',
+        '.hidden-dir'
       ]
-      for (const name of [...unshared, 'teams', 'ide', 'skills']) {
+      for (const name of [...unsharedDirs, 'skills', 'plugins', 'my-own-dir']) {
         fs.mkdirSync(join(f.source, name))
       }
       const unsharedFiles = [
-        'daemon.json',
-        'daemon.log',
-        'daemon.lock',
         'daemon.status.json',
         '.credentials.json',
+        '.session_ingress_token',
+        'hfi-auth.json',
+        'server-sessions.json',
+        'active-time.json',
+        'computer-use.lock',
+        'gh-pr-status-cache.json',
+        'loop.md',
         'policy-limits.json',
-        'remote-settings.json',
         'mcp-needs-auth-cache.json',
         'stats-cache.json',
         '.last-update-check',
@@ -263,15 +269,20 @@ describe('Claude profile refresh from the default home', () => {
       for (const name of unsharedFiles) {
         fs.writeFileSync(join(f.source, name), 'x')
       }
+      // The account's own runtime file is never overwritten from the default home.
+      fs.writeFileSync(join(f.profileHome, 'server-sessions.json'), 'mine')
       await provision(f)
-      for (const name of ['teams', 'ide', 'skills']) {
+      for (const name of ['skills', 'plugins', 'my-own-dir']) {
         expect(fs.realpathSync(join(f.profileHome, name))).toBe(
           fs.realpathSync(join(f.source, name))
         )
       }
-      for (const name of [...unshared, ...unsharedFiles]) {
+      for (const name of [...unsharedDirs, ...unsharedFiles].filter(
+        (name) => name !== 'server-sessions.json'
+      )) {
         expect(fs.existsSync(join(f.profileHome, name))).toBe(false)
       }
+      expect(fs.readFileSync(join(f.profileHome, 'server-sessions.json'), 'utf8')).toBe('mine')
     }
   )
   it('skips the state write while Claude holds its lock and records nothing for it', async () => {

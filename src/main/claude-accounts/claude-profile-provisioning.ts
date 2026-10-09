@@ -21,41 +21,92 @@ import { copyClaudeProfileFile, linkClaudeProfileDirectory } from './claude-prof
 const CLAUDE_PROFILE_MEMORY_IMPORT = '@~/.claude/CLAUDE.md\n'
 
 /**
- * Top-level default-home entries a profile never shares: Claude's per-folder daemon, jobs and
- * live-process registry, the login and account-bound files, per-install throwaways, the two
- * config files copied below, and history, which setup links the other way.
+ * Mirrors the list Claude itself leaves out when it seeds a fresh config folder from ~/.claude
+ * (its self-hosted runner's host-config snapshot): login, live runtime state and caches.
  */
-const UNSHARED_ENTRIES: ReadonlySet<string> = new Set([
-  'daemon',
-  'daemon.json',
-  'daemon.log',
-  'daemon.lock',
-  'daemon.status.json',
-  'jobs',
-  'state',
-  'sessions',
+const CLAUDE_RUNTIME_STATE_ENTRIES = [
+  '.claude.json',
+  '.claude.json.backup',
   '.credentials.json',
-  'policy-limits.json',
-  'remote-settings.json',
-  'mcp-needs-auth-cache.json',
-  'cache',
-  'debug',
-  'telemetry',
-  'statsig',
+  '.session_ingress_token',
+  'active-time.json',
+  'antproto.json',
+  'api-dumps',
   'backups',
-  'stats-cache.json',
-  'usage-data',
-  'logs',
-  'settings.json',
-  // Claude's legacy state file, which holds the login like .claude.json.
-  '.config.json',
+  'bridge-spawn',
+  'cache',
+  'ccr',
+  'ccr-home-seed.json',
+  'chrome',
+  'computer-use.lock',
+  'daemon',
+  'debug',
+  'downloads',
+  'dump-prompts',
+  'feedback',
+  'feedback-bundles',
+  'file-history',
+  'file-transfers',
+  'gh-pr-status-cache.json',
+  'hfi-auth.json',
   'history.jsonl',
+  'ide',
+  'image-cache',
+  'jobs',
+  'local',
+  'local-settings',
+  'logs',
+  'loop.md',
+  'mcp-discovery-cache',
+  'mcp-needs-auth-cache.json',
+  'mcp-skill-archives',
+  'paste-cache',
+  'plans',
+  'policy-limits.json',
+  'project-settings',
+  'projects',
+  'remote',
+  'remote-control',
+  'remote-settings.json',
+  'scratch',
+  'seed-admin',
+  'server-sessions.json',
+  'server.lock',
+  'session-env',
+  'sessions',
+  'shares',
+  'shell-snapshots',
+  'startup-perf',
+  'state',
+  'stats-cache.json',
+  'statsig',
+  'storage-v2',
+  'systemd',
+  'tasks',
+  'teams',
+  'telemetry',
+  'todos',
+  'traces',
+  'uploads',
+  'usage-data'
+] as const
+
+/** Never linked or copied: runtime state, settings.json (copied whole) and history (linked the other way). */
+const UNSHARED_ENTRIES: ReadonlySet<string> = new Set<string>([
+  ...CLAUDE_RUNTIME_STATE_ENTRIES,
+  'settings.json',
   ...CLAUDE_PROFILE_HISTORY_DIRS
 ])
 
 function isSharedEntry(name: string): boolean {
-  // Why `.claude`: with the user's own CLAUDE_CONFIG_DIR its state file, backups and locks sit here.
-  return !UNSHARED_ENTRIES.has(name) && !name.startsWith('.last-') && !name.startsWith('.claude')
+  // Why the prefixes: Claude's own seeding skips every hidden entry (state files, tokens, locks),
+  // daemon files and per-folder agent memory too.
+  return (
+    !UNSHARED_ENTRIES.has(name) &&
+    !name.startsWith('.') &&
+    !name.startsWith('daemon') &&
+    !name.startsWith('agent-memory')
+  )
 }
 
 /** Install ids Claude writes before any sign-in; each folder keeps its own. */
