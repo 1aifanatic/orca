@@ -8,6 +8,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTranscriptPane, TRANSCRIPT_PANE_PTY_ID } from './agent-transcript-pane-test-harness'
 
+// A runtime-hosted agent is named from its command line, which tests cannot read from a real PTY.
+vi.mock('./local-pty-foreground-command-line', () => ({
+  readLocalPtyForegroundCommandLine: async () => 'node /opt/agents/bin/codex --full-auto'
+}))
+
 const POLL_INTERVAL_MS = 2_000
 
 async function launch(command: string | undefined, foregroundProcess: string) {
@@ -29,7 +34,7 @@ async function launch(command: string | undefined, foregroundProcess: string) {
 }
 
 const MARKED_LAUNCH = (command: string) => `\x1b]133;A\x07~/repo % ${command}\r\n\x1b]133;C\x07`
-const DSH_DONE = '\x1b]9999;{"state":"done","agentType":"dsh"}\x07'
+const CODEX_READY_TITLE = '\x1b]0;Codex ready\x07'
 
 describe('tui-idle on a command Orca launched', () => {
   afterEach(() => {
@@ -55,26 +60,28 @@ describe('tui-idle on a command Orca launched', () => {
   })
 
   it('settles a flagged agent on its own rest signal', async () => {
-    const pane = await launch('dsh-tui . --resume', 'dsh-tui')
-    pane.write(`${MARKED_LAUNCH('dsh-tui . --resume')}\x1b[?1049h\x1b[HDSH starting...`)
+    const command = 'codex --full-auto'
+    const pane = await launch(command, 'codex')
+    pane.write(`${MARKED_LAUNCH(command)}\x1b[?1049h\x1b[H>_ codex starting`)
 
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 5)
     expect(pane.settled).not.toHaveBeenCalled()
 
-    pane.write(DSH_DONE)
+    pane.write(CODEX_READY_TITLE)
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2)
     await expect(pane.wait).resolves.toMatchObject({ satisfied: true })
   })
 
-  it('reads a launched wrapper that execs an agent as that agent', async () => {
-    // The launch command names only the wrapper; the foreground process names the agent.
-    const pane = await launch('/opt/agents/dsh-wrapper .', 'dsh-tui')
-    pane.write(`${MARKED_LAUNCH('/opt/agents/dsh-wrapper .')}\x1b[?1049h\x1b[HDSH starting...`)
+  it('reads a launched wrapper that execs a runtime-hosted agent as that agent', async () => {
+    // The launch command names only the wrapper, the process only the runtime; its command line
+    // names the agent.
+    const pane = await launch('/opt/agents/codex-wrapper', 'node')
+    pane.write(`${MARKED_LAUNCH('/opt/agents/codex-wrapper')}\x1b[?1049h\x1b[H>_ codex starting`)
 
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 5)
     expect(pane.settled).not.toHaveBeenCalled()
 
-    pane.write(DSH_DONE)
+    pane.write(CODEX_READY_TITLE)
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2)
     await expect(pane.wait).resolves.toMatchObject({ satisfied: true })
   })
