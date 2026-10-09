@@ -10,7 +10,7 @@ import {
 } from '../../shared/claude-profile-routing'
 import { claudeProfileMissing, claudeProfileSetupFailed } from './claude-profile-launch-errors'
 import type { GlobalSettings } from '../../shared/global-settings-types'
-import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
+import { probeRecentClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import {
@@ -41,7 +41,6 @@ import {
 import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
 
 const REFRESH_WAIT_MS = 5_000
-const CLAUDE_VERSION_REUSE_MS = 5 * 60_000
 
 export type ClaudeProfileRouterSettings = Pick<
   GlobalSettings,
@@ -59,9 +58,9 @@ export type ClaudeProfileRouterSettings = Pick<
 export class ClaudeProfileRouter {
   readonly pointerPath: string
   private readonly setups = new Map<string, Promise<ClaudeProfileSetupReport>>()
-  private version: { at: number; value: Promise<string | null> } | undefined
   private env: NodeJS.ProcessEnv
   private readonly envReady: Promise<unknown>
+  private envResolved: boolean
   constructor(
     private readonly args: {
       getSettings: () => ClaudeProfileRouterSettings
@@ -78,9 +77,19 @@ export class ClaudeProfileRouter {
     this.pointerPath = join(args.dataRoot, 'claude-profiles', 'selected-host')
     this.env = args.env ?? process.env
     // Why the login shell's: a Dock launch lacks the CLAUDE_CONFIG_DIR an rc exports. Chats share it.
+    this.envResolved = Boolean(args.env)
     this.envReady = args.env
       ? Promise.resolve()
-      : resolveLoginShellEnvironment().then((env) => (this.env = env))
+      : resolveLoginShellEnvironment().then((env) => {
+          this.env = env
+          this.envResolved = true
+          // Why: a pointer written before then compared against the wrong System default.
+          try {
+            this.writePointer()
+          } catch (error) {
+            console.warn('[claude-profile] Could not update the Claude account pointer:', error)
+          }
+        })
   }
 
   private get userHome(): string {
@@ -249,19 +258,10 @@ export class ClaudeProfileRouter {
     return run
   }
 
-  /** Why remembered: every launch refreshes, and the hook plan needs only a recent version. */
-  private claudeVersion(): Promise<string | null> {
-    const now = Date.now()
-    if (!this.version || now - this.version.at > CLAUDE_VERSION_REUSE_MS) {
-      this.version = { at: now, value: probeClaudeCliVersion(resolveClaudeCommand()) }
-    }
-    return this.version.value
-  }
-
   private async runSetup(profile: ClaudeProfileDescriptor): Promise<ClaudeProfileSetupReport> {
     await this.envReady
     const hooks = isAgentStatusHooksEnabledForAgent(this.args.getSettings(), 'claude')
-    const claudeVersion = hooks ? await this.claudeVersion() : null
+    const claudeVersion = hooks ? await probeRecentClaudeCliVersion(resolveClaudeCommand()) : null
     const report = await (this.args.runSetup ?? runClaudeProfileSetupInWorker)({
       dataRoot: this.args.dataRoot,
       profile,
@@ -291,6 +291,11 @@ export class ClaudeProfileRouter {
     // Why only the pointer: the guest's `claude` reads it, so a pane never waits on the guest.
     if (target?.runtime === 'wsl') {
       return { [CLAUDE_PROFILE_POINTER_ENV]: `~/${wslClaudeProfilePointer(this.args.dataRoot)}` }
+    }
+    // Why only the pointer before the login shell's env: which home runs depends on its
+    // CLAUDE_CONFIG_DIR, and the pane's `claude` reads the pointer rewritten once it arrives.
+    if (!this.envResolved) {
+      return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath }
     }
     try {
       this.writePointer()

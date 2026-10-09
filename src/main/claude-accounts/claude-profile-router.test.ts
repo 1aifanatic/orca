@@ -429,6 +429,21 @@ describe('ClaudeProfileRouter', () => {
     expect(existsSync(join(f.dataRoot, 'claude-profiles', 'a'))).toBe(false)
   })
 
+  it("gives a pane only the pointer until the login shell's env arrives, then rewrites it", async () => {
+    const f = fixture()
+    mkdirSync(f.home('a'), { recursive: true })
+    signIn(f.home('a'), 'a@example.test')
+    const router = new ClaudeProfileRouter({
+      getSettings: () => f.settings,
+      dataRoot: f.dataRoot,
+      userHome: f.userHome,
+      runSetup: async () => ({ outcome: 'prepared', warnings: [], surfaces: {} })
+    })
+    expect(router.terminalEnv()).toEqual({ ORCA_CLAUDE_PROFILE_POINTER: router.pointerPath })
+    await vi.waitFor(() => expect(readFileSync(router.pointerPath, 'utf8')).toBe(f.home('a')))
+    expect(router.terminalEnv()).toMatchObject({ CLAUDE_CONFIG_DIR: f.home('a') })
+  })
+
   it('takes System default from the login shell, which a Dock launch does not inherit', async () => {
     const f = fixture()
     f.settings.activeClaudeManagedAccountId = null
