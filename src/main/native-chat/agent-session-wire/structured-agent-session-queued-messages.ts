@@ -1,6 +1,7 @@
 // Mid-turn queueing: the accept decision that turns a send into a host-held
 // draft, the serialized drain that converts one draft into an ordinary
-// submission when the session stops owing work, and the published draft list.
+// submission when the session stops owing work (or runs a /clear card itself),
+// and the published draft list.
 //
 // Drafts are never owed work: they feed no reducer, no working status, no
 // teardown and no idle sweep. The drain re-reads every gate inside its own
@@ -31,6 +32,7 @@ import {
 } from './structured-agent-session-queued-pause'
 import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { isQueuedClearCard } from './structured-conversation-clear'
 import { agentSessionAttachmentExpiredRefusal } from './structured-agent-session-turns'
 import { isAgentSessionAttachmentExpiredError } from '../agent-session-attachments/agent-session-attachment-claims'
 
@@ -257,13 +259,16 @@ export type QueuedMessageDrainDeps = {
   /** The consumed submission is ordinary #22821 work from here on. */
   wakeDelivery: (sessionId: string) => void
   logger: StructuredAgentSessionLogger
+  /** Runs a /clear card itself, inside the step's serialize (`runQueuedConversationClear`). */
+  runClear: (sessionId: string, card: QueuedMessageRow) => Promise<unknown>
 }
 
 /**
  * The serialized drain. Woken by every journal commit (turn, submission, prompt,
  * command and Stop settlements are all commits), by draft mutations, and by the
  * conversation opening; each step re-derives everything and consumes at most one
- * draft — the consumed submission then owes work, which gates the next.
+ * draft — the consumed submission then owes work, which gates the next. A /clear
+ * card is run, never consumed: its commit wakes the step that sends the card behind it.
  */
 export class StructuredAgentSessionQueuedMessageDrain {
   private readonly scheduled = new Set<string>()
@@ -342,6 +347,10 @@ export class StructuredAgentSessionQueuedMessageDrain {
     const record = this.deps.getRecord(sessionId)
     const next = nextStructuredQueuedMessage({ journal, record, fence })
     if (this.disposed || !next) {
+      return
+    }
+    if (isQueuedClearCard(next)) {
+      await this.deps.runClear(sessionId, next)
       return
     }
     // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.

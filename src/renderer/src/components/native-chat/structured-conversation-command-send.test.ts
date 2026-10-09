@@ -8,6 +8,7 @@ import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-labe
 import {
   sendStructuredConversationCommand,
   structuredConversationCommandHold,
+  structuredConversationCommandRunner,
   type StructuredConversationCommandCauses
 } from './structured-conversation-command-send'
 
@@ -225,6 +226,26 @@ describe('a /compact the host holds in line', () => {
     )
   })
 
+  it('a /clear the host holds is not refused here for background tasks: the host waits them out', () => {
+    expect(
+      structuredConversationCommandHold({
+        ...idle,
+        waitsInLine: true,
+        agentWorking: true,
+        backgroundTasksRunning: true,
+        waitsOutBackgroundTasks: true
+      })
+    ).toBeNull()
+    // A host that can't hold a /clear still gets the check here.
+    expect(
+      structuredConversationCommandHold({
+        ...idle,
+        agentWorking: true,
+        backgroundTasksRunning: true
+      })
+    ).toBe('background')
+  })
+
   it('against a host that cannot hold it, and for /clear, keeps every check in true words', () => {
     expect(structuredConversationCommandHold(idle)).toBeNull()
     expect(structuredConversationCommandHold({ ...idle, agentWorking: true })).toBe('working')
@@ -378,5 +399,55 @@ describe('a refusal names what it waits on only while the chat shows it', () => 
     expect(
       await hostAnswers(hostResult('compact', COMPACTION_FAILED), shown('working'))
     ).not.toHaveProperty('refusedWhile')
+  })
+})
+
+describe('a /clear the host runs from the queue', () => {
+  function runner(clearWaits: boolean, backgroundTasks = { isMonitoring: false, show: false }) {
+    const send = vi.fn(async () => ({
+      kind: 'done' as const,
+      value: {
+        command: 'clear' as const,
+        state: 'completed' as const,
+        queued: { messageId: 'op-1', position: 1, state: 'waiting' as const }
+      }
+    }))
+    const { runConversationCommand } = structuredConversationCommandRunner({
+      agentName: 'Claude',
+      pending: { current: false },
+      commandsWait: true,
+      clearWaits,
+      chat: {
+        turnId: 'turn-1',
+        isWorking: true,
+        queueSendsNext: false,
+        backgroundTasks,
+        submissions: []
+      },
+      prompts: [],
+      rewindInFlight: { current: false },
+      sends: [],
+      items: () => [],
+      send
+    })
+    return { run: () => runConversationCommand('clear'), send }
+  }
+
+  it('asks to wait while the agent works, and its card is the answer', async () => {
+    const { run, send } = runner(true)
+    expect(await run()).toEqual({ accepted: true, error: null })
+    expect(send).toHaveBeenCalledWith('clear', 'queue-if-active')
+  })
+
+  it('asks to wait past background tasks too: the host holds the card until they end', async () => {
+    const { run, send } = runner(true, { isMonitoring: true, show: true })
+    expect(await run()).toEqual({ accepted: true, error: null })
+    expect(send).toHaveBeenCalledWith('clear', 'queue-if-active')
+  })
+
+  it('against a host that cannot hold it, is refused here as before and nothing is sent', async () => {
+    const { run, send } = runner(false)
+    expect(await run()).toMatchObject({ accepted: false, refusedWhile: 'working' })
+    expect(send).not.toHaveBeenCalled()
   })
 })

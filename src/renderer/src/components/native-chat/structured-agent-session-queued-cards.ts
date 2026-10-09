@@ -1,6 +1,10 @@
 // What the queued-message cards above the composer show, derived per publish —
 // the wire carries no hold label (§ labels are client policy, not host state).
 
+import {
+  nextActionableQueuedMessage,
+  queuedClearWaitsOnBackgroundTasks
+} from '../../../../shared/structured-agent-session-queue-selection'
 import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type {
@@ -17,6 +21,8 @@ import { handedOffQueuedMessageIds } from '../../../../shared/structured-agent-s
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
   | 'turn'
+  /** A /clear next in line, which the host runs only once background tasks end. */
+  | 'background-tasks'
   /** The whole queue is paused: the header row says why and offers Resume, so the card makes
    *  no promise about when it sends — not even after an answer, which does not drain it. */
   | 'queue-paused'
@@ -39,6 +45,9 @@ export type QueuedMessageCard = {
   command?: true
   /** A command card while the agent works: it offers no send until the agent is idle. */
   waitsForAgent?: true
+  /** A /clear next in line that nothing but background tasks holds: the queue runs it without a
+   *  press, so it offers no Send (which could only run it early or be refused). */
+  runsOnItsOwn?: true
   pausedReason?: string
   returnedReason?: string | null
   /** The typed fact the returned card's submission settled with; read like its `rejection`. */
@@ -61,7 +70,15 @@ function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string 
 export function projectQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined,
   submissions: readonly AgentJournalSubmission[],
-  session: { hasPendingPrompt: boolean; queuePaused?: boolean; agentWorking?: boolean }
+  session: {
+    hasPendingPrompt: boolean
+    queuePaused?: boolean
+    agentWorking?: boolean
+    /** The queue is about to send its next card: a command card offers no Send yet either. */
+    queueSendsNext?: boolean
+    /** Background tasks run: a /clear next in line waits them out on the host. */
+    backgroundTasksRunning?: boolean
+  }
 ): QueuedMessageCard[] {
   const handedOff = handedOffQueuedMessageIds(
     submissions.filter((submission) => submission.dispatchState !== 'rejected')
@@ -69,8 +86,15 @@ export function projectQueuedMessageCards(
   const ordered = [...(queuedMessages ?? [])]
     .sort((left, right) => left.position - right.position)
     .filter((message) => message.state === 'returned' || !handedOff.has(message.messageId))
+  const next = nextActionableQueuedMessage(
+    ordered,
+    (message) => message.paused === true,
+    () => session.queuePaused === true
+  )
   let behindReturned = false
   return ordered.map((message) => {
+    // Said only while it is what holds the card: nothing ahead of it, and the agent idle.
+    const waitsOnTasks = queuedClearWaitsOnBackgroundTasks(message, next, session)
     const hold: QueuedMessageCardHold =
       message.state === 'returned'
         ? 'returned'
@@ -82,8 +106,14 @@ export function projectQueuedMessageCards(
               ? 'queue-paused'
               : session.hasPendingPrompt
                 ? 'awaiting-answer'
-                : 'turn'
+                : waitsOnTasks
+                  ? 'background-tasks'
+                  : 'turn'
     behindReturned = behindReturned || message.state === 'returned'
+    const runsOnItsOwn =
+      message === next &&
+      message.body.command?.name === 'clear' &&
+      (hold === 'turn' || hold === 'background-tasks')
     const from = readAgentMessageSource(message.body.from)
     return {
       messageId: message.messageId,
@@ -94,7 +124,10 @@ export function projectQueuedMessageCards(
       ...(message.body.command !== undefined
         ? {
             command: true as const,
-            ...(session.agentWorking ? { waitsForAgent: true as const } : {})
+            ...(session.agentWorking || session.queueSendsNext
+              ? { waitsForAgent: true as const }
+              : {}),
+            ...(runsOnItsOwn ? { runsOnItsOwn: true as const } : {})
           }
         : {}),
       ...(message.pausedReason !== undefined ? { pausedReason: message.pausedReason } : {}),

@@ -6,7 +6,10 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChildWorkView } from '../../../src/shared/agent-status-child-work-view'
-import type { AgentSessionSubscribeEvent } from '../../../src/shared/agent-session-wire'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionSubscribeEvent
+} from '../../../src/shared/agent-session-wire'
 import type { RpcClient } from '../transport/rpc-client'
 import {
   backgroundTaskRowMeta,
@@ -41,8 +44,11 @@ function childView(id: string): AgentChildWorkView {
   }
 }
 
-function withChildren(hostNow?: number): AgentSessionSubscribeEvent {
-  const snapshot = snapshotEvent()
+function withChildren(
+  hostNow?: number,
+  queuedMessages?: AgentSessionQueuedMessage[]
+): AgentSessionSubscribeEvent {
+  const snapshot = snapshotEvent(queuedMessages ? { queuedMessages } : undefined)
   return snapshot.type === 'snapshot'
     ? {
         ...snapshot,
@@ -167,6 +173,28 @@ describe('mobile structured session background tasks', () => {
     expect(hook?.backgroundTasks.rowContext.hostClockOffsetMs).toBe(40_000)
     expect(stripElapsed()).toBe('59s')
     clock.mockRestore()
+  })
+
+  it('a /clear next in line once the turn ended says it waits on the tasks, with no Send', async () => {
+    const card = (messageId: string, text: string, position: number) => ({
+      messageId,
+      position,
+      state: 'waiting' as const,
+      body: {
+        kind: 'message' as const,
+        role: 'user' as const,
+        blocks: [{ type: 'text' as const, text }],
+        ...(text === '/clear' ? { command: { name: 'clear' as const } } : {})
+      }
+    })
+    await mount(withChildren(undefined, [card('clear-1', '/clear', 1), card('after', 'After', 2)]))
+    expect(hook?.isWorking).toBe(false)
+    expect(hook?.queued.cards[0]).toMatchObject({
+      messageId: 'clear-1',
+      caption: 'Waiting for background tasks to finish',
+      runsOnItsOwn: true
+    })
+    expect(hook?.queued.cards[1]?.caption).toBeNull()
   })
 
   it("stops one child through the host's background-task cancel", async () => {

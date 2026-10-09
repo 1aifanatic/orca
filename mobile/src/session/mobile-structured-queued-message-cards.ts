@@ -3,6 +3,10 @@
 // draft's own state plus the live facts the client already holds.
 
 import {
+  nextActionableQueuedMessage,
+  queuedClearWaitsOnBackgroundTasks
+} from '../../../src/shared/structured-agent-session-queue-selection'
+import {
   readWholeAgentSessionFailureFact,
   type AgentSessionFailureFact
 } from '../../../src/shared/agent-session-failure'
@@ -38,6 +42,9 @@ export type MobileQueuedMessageCard = {
   command?: true
   /** A command card while the agent works: it offers no send until the agent is idle. */
   waitsForAgent?: true
+  /** A /clear next in line that nothing but background tasks holds: the queue runs it without a
+   *  press, so it offers no Send. */
+  runsOnItsOwn?: true
 }
 
 function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string {
@@ -115,6 +122,8 @@ export function mobileQueuedMessageCards(
     pendingPrompt: boolean
     queuePaused?: boolean
     agentWorking?: boolean
+    /** Background tasks run: a /clear next in line waits them out on the host. */
+    backgroundTasksRunning?: boolean
     agentName?: string
     statedFailures?: readonly AgentSessionFailureFact[]
   }
@@ -129,12 +138,17 @@ export function mobileQueuedMessageCards(
         : []
     )
   )
+  const shown = queuedMessages.filter(
+    (draft) => draft.state === 'returned' || !handedOff.has(draft.messageId)
+  )
+  const next = nextActionableQueuedMessage(
+    shown,
+    (draft) => draft.paused === true,
+    () => facts.queuePaused === true
+  )
   let behindReturned = false
   const cards: MobileQueuedMessageCard[] = []
-  for (const draft of queuedMessages) {
-    if (draft.state !== 'returned' && handedOff.has(draft.messageId)) {
-      continue
-    }
+  for (const draft of shown) {
     const paused = draft.paused === true
     const caption =
       draft.state === 'returned'
@@ -151,7 +165,15 @@ export function mobileQueuedMessageCards(
                 null
               : facts.pendingPrompt
                 ? 'Waiting for your answer'
-                : null
+                : queuedClearWaitsOnBackgroundTasks(draft, next, facts)
+                  ? 'Waiting for background tasks to finish'
+                  : null
+    const runsOnItsOwn =
+      draft === next &&
+      draft.body.command?.name === 'clear' &&
+      !behindReturned &&
+      facts.queuePaused !== true &&
+      !facts.pendingPrompt
     cards.push({
       messageId: draft.messageId,
       text: queuedMessageBodyText(draft.body),
@@ -165,7 +187,8 @@ export function mobileQueuedMessageCards(
       ...(draft.body.command !== undefined
         ? {
             command: true as const,
-            ...(facts.agentWorking ? { waitsForAgent: true as const } : {})
+            ...(facts.agentWorking ? { waitsForAgent: true as const } : {}),
+            ...(runsOnItsOwn ? { runsOnItsOwn: true as const } : {})
           }
         : {})
     })

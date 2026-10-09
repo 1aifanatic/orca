@@ -79,15 +79,22 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
   hasPendingPrompt: boolean
-  /** A turn is running, whoever started it, or the queue is about to send its next card. */
+  /** A turn is running, whoever started it. */
   isWorking: boolean
+  /** The queue is about to send its next card; nothing runs yet. */
+  queueSendsNext?: boolean
+  backgroundTasksRunning?: boolean
   /** This pane's sends without a host record yet show as sending cards. */
   sending?: readonly StructuredAgentSessionPendingSend[]
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
-  const { isWorking, queuePause } = args
+  const { queuePause, backgroundTasksRunning } = args
+  const agentWorking = args.isWorking
+  const queueSendsNext = args.queueSendsNext === true
+  // The queue's coming send counts as working everywhere but the background-tasks caption.
+  const isWorking = agentWorking || queueSendsNext
   const sending = args.sending ?? NO_SENDS
 
   const cards = useMemo(
@@ -95,7 +102,9 @@ export function useStructuredAgentSessionQueuedMessages(args: {
       ...projectQueuedMessageCards(queuedMessages, submissions, {
         hasPendingPrompt,
         // A command card offers no send while the agent works.
-        agentWorking: isWorking,
+        agentWorking,
+        queueSendsNext,
+        backgroundTasksRunning,
         queuePaused: queuePause !== null
       }),
       ...sendingQueuedMessageCards(
@@ -107,7 +116,17 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         )
       )
     ],
-    [hasPendingPrompt, isWorking, sending, queuePause, queuedMessages, submissions]
+    [
+      hasPendingPrompt,
+      agentWorking,
+      isWorking,
+      queueSendsNext,
+      backgroundTasksRunning,
+      sending,
+      queuePause,
+      queuedMessages,
+      submissions
+    ]
   )
   const cardsRef = useRef(cards)
   useEffect(() => {

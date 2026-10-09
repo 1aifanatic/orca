@@ -8,6 +8,7 @@ import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-labe
 import { takeBackStructuredLaunchPrompts } from '@/lib/structured-agent-session-launch-prompt'
 import { supportsStructuredAgentSessionPromptCancel } from '@/runtime/structured-agent-session-client'
 import {
+  useStructuredAgentSessionHostQueuesClear,
   useStructuredAgentSessionHostQueuesCommands,
   useStructuredAgentSessionHostQueuesMessagesState
 } from '@/runtime/structured-agent-session-host-capability'
@@ -207,11 +208,11 @@ export function useStructuredAgentSession(args: {
     transportState.submissions
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
-    // Its published list, pause and submissions; the rest is named below.
+    // Its published list, pause, submissions and working facts; the rest is named below.
     ...transportState,
     enabled: queueCapability === 'supported' && transportState.fence !== null,
     hasPendingPrompt: prompts.length > 0,
-    isWorking,
+    backgroundTasksRunning: transportState.backgroundTasks.isMonitoring,
     // Hidden from the transcript, a queue send on its way reads as sending among the cards.
     sending: pending,
     composerScopeKey,
@@ -224,9 +225,11 @@ export function useStructuredAgentSession(args: {
     ...structuredConversationCommandRunner({
       agentName: structuredAgentLabel(agent),
       pending: commandPending,
-      // A /compact waits in line only where its card renders.
+      // A command waits in line only where its card renders.
       commandsWait:
         useStructuredAgentSessionHostQueuesCommands(target) && queueCapability === 'supported',
+      clearWaits:
+        useStructuredAgentSessionHostQueuesClear(target) && queueCapability === 'supported',
       chat: transportState,
       prompts,
       rewindInFlight: rewind.blockedRef,

@@ -102,6 +102,97 @@ describe('mobileQueuedMessageCards', () => {
     ).toMatchObject({ command: true, waitsForAgent: true })
   })
 
+  it('a /clear next in line that nothing holds offers no Send: the queue is about to run it', () => {
+    const clear = (overrides: Partial<AgentSessionQueuedMessage> = {}) =>
+      draft({
+        messageId: 'c',
+        body: {
+          kind: 'message',
+          role: 'user',
+          blocks: [{ type: 'text', text: '/clear' }],
+          command: { name: 'clear' }
+        },
+        ...overrides
+      })
+    const idle = { pendingPrompt: false }
+    expect(mobileQueuedMessageCards([clear()], [], idle)[0]).toMatchObject({ runsOnItsOwn: true })
+    // Anything the person must act on keeps its Send, as does a /clear behind another card.
+    for (const [cards, facts] of [
+      [[clear()], { ...idle, queuePaused: true }],
+      [[clear()], { pendingPrompt: true }],
+      [[clear({ paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED })], idle],
+      [[draft({ messageId: 'a' }), clear()], idle]
+    ] as const) {
+      expect(mobileQueuedMessageCards(cards, [], facts).some((card) => card.runsOnItsOwn)).toBe(
+        false
+      )
+    }
+  })
+
+  it('a /clear next in line that only background tasks hold says so; nothing else does', () => {
+    const clear = draft({
+      messageId: 'c',
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/clear' }],
+        command: { name: 'clear' }
+      }
+    })
+    const tasks = { pendingPrompt: false, backgroundTasksRunning: true }
+    const [first, second] = mobileQueuedMessageCards(
+      [clear, draft({ messageId: 'm', position: 2 })],
+      [],
+      tasks
+    )
+    expect(first).toMatchObject({
+      caption: 'Waiting for background tasks to finish',
+      runsOnItsOwn: true
+    })
+    expect(second?.caption).toBeNull()
+    // Behind a turn or an answer, that is what it waits on; behind another card, its turn.
+    expect(
+      mobileQueuedMessageCards([clear], [], { ...tasks, agentWorking: true })[0]?.caption
+    ).toBeNull()
+    expect(
+      mobileQueuedMessageCards([clear], [], { ...tasks, pendingPrompt: true })[0]?.caption
+    ).toBe('Waiting for your answer')
+    expect(
+      mobileQueuedMessageCards([draft({ messageId: 'm' }), { ...clear, position: 2 }], [], tasks)[1]
+        ?.caption
+    ).toBeNull()
+  })
+
+  it('skips a failed card ahead of clear, respecting returned and queue-pause barriers', () => {
+    const clear = draft({
+      messageId: 'clear',
+      position: 2,
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/clear' }],
+        command: { name: 'clear' }
+      }
+    })
+    const held = draft({
+      messageId: 'held',
+      paused: true,
+      pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED
+    })
+    expect(
+      mobileQueuedMessageCards([held, clear], [], { pendingPrompt: false })[1]?.runsOnItsOwn
+    ).toBe(true)
+    expect(
+      mobileQueuedMessageCards([{ ...held, state: 'returned' }, clear], [], {
+        pendingPrompt: false
+      })[1]?.runsOnItsOwn
+    ).toBeUndefined()
+    expect(
+      mobileQueuedMessageCards([held, clear], [], { pendingPrompt: false, queuePaused: true })[1]
+        ?.runsOnItsOwn
+    ).toBeUndefined()
+  })
+
   it("a send-failed command card's caption names Send only when Send is there", () => {
     const failed = draft({
       messageId: 'c',

@@ -58,6 +58,8 @@ export function useMobileStructuredQueuedMessageControls(args: {
   pendingPrompt: boolean
   /** The chat shows the agent working: a command card offers no send then. */
   agentWorking?: boolean
+  /** Background tasks run: a /clear next in line says it waits them out. */
+  backgroundTasksRunning?: boolean
   mutate: MobileStructuredAgentMutate
   /** The active pane's live composer, Edit's copy target; absent = Edit refuses. False when
    *  nothing was copied. */
@@ -78,11 +80,13 @@ export function useMobileStructuredQueuedMessageControls(args: {
     submissions
   } = args
   const agentWorking = args.agentWorking === true
+  const backgroundTasksRunning = args.backgroundTasksRunning === true
   const cards = useMemo(
     () =>
       mobileQueuedMessageCards(queuedMessages, submissions, {
         pendingPrompt,
         agentWorking,
+        backgroundTasksRunning,
         agentName: args.agentName,
         statedFailures: queuedMessages?.some((draft) => draft.state === 'returned')
           ? agentSessionVisibleFailureFacts(args.journalItems ?? [])
@@ -91,6 +95,7 @@ export function useMobileStructuredQueuedMessageControls(args: {
       }),
     [
       agentWorking,
+      backgroundTasksRunning,
       args.agentName,
       args.journalItems,
       pendingPrompt,

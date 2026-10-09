@@ -18621,6 +18621,7 @@
       "visualClose": "Close visualization",
       "queuedMessages": {
         "behindReturnedHold": "Waiting — a message ahead needs attention",
+        "waitingForBackgroundTasks": "Waiting for background tasks to finish",
         "awaitingAnswerHold": "Waiting for your answer",
         "steer": "Steer",
         "send": "Send",
