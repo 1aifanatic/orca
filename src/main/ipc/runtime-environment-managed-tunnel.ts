@@ -5,7 +5,7 @@ import type {
   SshTarget
 } from '../../shared/ssh-types'
 import { managedServerUpdateDeps } from '../ssh/managed-server-update-deps'
-import { ensureOrcadManagedTunnel } from '../ssh/orcad-managed-tunnel'
+import { ensureOrcadManagedTunnel, rebuildOrcadManagedTunnel } from '../ssh/orcad-managed-tunnel'
 import { verifyOrcadManagedServing } from '../ssh/orcad-managed-serving-verify'
 import {
   MANAGED_ORCAD_NOT_ACTIVATED_DETAIL,
@@ -40,7 +40,8 @@ export async function resolveManagedRuntimeEnvironment(
   if (isStoppedElsewhere(serving)) {
     // Why awaited: this call needs the server, and another desktop's stop can land mid-session.
     if (await redeployStoppedManagedOrcad(environment.id, createDeps)) {
-      await ensureOrcadManagedTunnel(userDataPath, environment.id)
+      // Why rebuild: the redeployed server may bind another port than the reused forward targets.
+      await rebuildOrcadManagedTunnel(userDataPath, environment.id)
     }
   } else {
     // Why here: an auto-restored host may never see an SSH connect, so it would never update.

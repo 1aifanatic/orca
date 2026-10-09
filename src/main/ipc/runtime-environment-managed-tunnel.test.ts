@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   ensureTunnel: vi.fn(async () => {}),
+  rebuildTunnel: vi.fn(async () => {}),
   verify: vi.fn(),
   restoreUpdate: vi.fn(() => null),
   redeploy: vi.fn(async () => true)
@@ -14,7 +15,10 @@ vi.mock('../../shared/runtime-environment-store', () => ({
   })
 }))
 vi.mock('../ssh/managed-server-update-deps', () => ({ managedServerUpdateDeps: () => ({}) }))
-vi.mock('../ssh/orcad-managed-tunnel', () => ({ ensureOrcadManagedTunnel: mocks.ensureTunnel }))
+vi.mock('../ssh/orcad-managed-tunnel', () => ({
+  ensureOrcadManagedTunnel: mocks.ensureTunnel,
+  rebuildOrcadManagedTunnel: mocks.rebuildTunnel
+}))
 vi.mock('../ssh/orcad-managed-serving-verify', () => ({
   verifyOrcadManagedServing: mocks.verify
 }))
@@ -41,8 +45,9 @@ describe('resolving a managed runtime for a call', () => {
     await resolveManagedRuntimeEnvironment('/u', 'env-1')
     expect(mocks.redeploy).toHaveBeenCalledWith('env-1', expect.any(Function))
     expect(mocks.restoreUpdate).not.toHaveBeenCalled()
-    // The tunnel is ensured again for the server the redeploy started.
-    expect(mocks.ensureTunnel).toHaveBeenCalledTimes(2)
+    // The forward is rebuilt for the port the redeployed server bound, not reused.
+    expect(mocks.ensureTunnel).toHaveBeenCalledTimes(1)
+    expect(mocks.rebuildTunnel).toHaveBeenCalledWith('/u', 'env-1')
   })
 
   it('leaves a serving server to the once-per-session update check', async () => {
