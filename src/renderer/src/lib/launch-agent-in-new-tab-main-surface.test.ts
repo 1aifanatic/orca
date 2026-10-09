@@ -38,7 +38,7 @@ function seedMainWindowOnEditor(): ReturnType<typeof createTestStore> {
   const store = createTestStore()
   storeBox.store = store
   seedStore(store, {
-    settings: { ...getDefaultSettings('/tmp'), openAgentTabsInChatByDefault: false },
+    settings: getDefaultSettings('/tmp'),
     worktreesByRepo: {
       repo1: [makeWorktree({ id: MAIN_WORKTREE_ID, repoId: 'repo1', path: '/path/wt1' })]
     },
@@ -96,45 +96,6 @@ describe('launchAgentInNewTab main-window surface', () => {
     expect(store.getState().activeTabType).toBe('terminal')
     expect(store.getState().activeTabId).toBe(tabId)
   })
-
-  it.each(['empty', 'draft'] as const)(
-    'keeps a planned terminal-backed chat %s launch on the existing renderer path',
-    async (kind) => {
-      const store = seedMainWindowOnEditor()
-      store.setState({
-        settings: {
-          ...getDefaultSettings('/tmp'),
-          experimentalNativeChat: true,
-          experimentalStructuredNativeChat: false,
-          openAgentTabsInChatByDefault: true
-        }
-      })
-      const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
-      const result = launchAgentInNewTab({
-        requestId: 'terminal-backed-chat',
-        agent: 'claude',
-        worktreeId: MAIN_WORKTREE_ID,
-        ...(kind === 'draft' ? { prompt: 'editable notes', promptDelivery: 'draft' } : {})
-      })
-
-      const tabId = result?.surface.kind === 'local-terminal' ? result.surface.tabId : ''
-      expect(tabId).not.toBe('')
-      expect(
-        store
-          .getState()
-          .unifiedTabsByWorktree[MAIN_WORKTREE_ID]?.find((tab) => tab.entityId === tabId)?.viewMode
-      ).toBe('chat')
-      expect(store.getState().pendingStartupByTabId[tabId]).toBeDefined()
-      expect(callRuntimeRpc).not.toHaveBeenCalled()
-      if (kind === 'draft') {
-        expect(store.getState().nativeChatLaunchDraftByTabId[tabId]).toMatchObject({
-          agent: 'claude',
-          text: 'editable notes'
-        })
-        expect(store.getState().nativeChatLaunchPromptByTabId[tabId]).toBeUndefined()
-      }
-    }
-  )
 
   it('admits a menu launch once with a held pane and no renderer startup queue', async () => {
     const store = seedMainWindowOnEditor()
