@@ -77,6 +77,17 @@ export type AgentLaunchSurfaceFactory = {
   }): Promise<boolean>
 }
 
+/** Every launch that builds or writes to a surface itself needs the factory; a `legacy-host` create
+ *  never does, because its startup terminal is its only surface. */
+export function requireAgentLaunchSurfaces(execution: {
+  surfaces?: AgentLaunchSurfaceFactory
+}): AgentLaunchSurfaceFactory {
+  if (!execution.surfaces) {
+    throw new Error('agent_launch_surface_factory_required')
+  }
+  return execution.surfaces
+}
+
 /** `fence` is the lease the create was admitted at, carried so the launch prompt's send can fill its
  *  envelope without re-reading the session; the host does not check a write's fence. */
 export type AgentLaunchStructuredSurface = {
@@ -98,6 +109,21 @@ export class AgentLaunchStructuredSessionRefusedError extends Error {
   }
 }
 
+/**
+ * Under the `legacy-host` prompt policy the create's startup terminal is the launch's only surface:
+ * a create that could not spawn it here handed it to the window's activation or reported why in its
+ * warning, so building another would start the agent twice. The workspace exists; no agent came back.
+ */
+export class AgentLaunchStartupAgentNotCreatedError extends Error {
+  readonly worktreeId: string
+
+  constructor(worktreeId: string) {
+    super('agent_launch_startup_agent_not_created')
+    this.name = 'AgentLaunchStartupAgentNotCreatedError'
+    this.worktreeId = worktreeId
+  }
+}
+
 /** Creating the workspace, when the intent asks for one. Injected so orchestration keeps recording
  *  its own worktree stages and residual-resource effects around the same call. */
 export type AgentLaunchWorkspaceFactory = {
@@ -111,6 +137,9 @@ export type AgentLaunchWorkspaceFactory = {
     /** Offered only alongside a `startupAgent` whose CLI takes the prompt on argv: agent-first
      *  creation builds the startup command, so that is where the typed line is measured. */
     startupPrompt?: string
+    /** Set instead of `startupPrompt` under the `legacy-host` prompt policy: this create owns the
+     *  text for any agent and length, as `worktree.create` always has. */
+    legacyPrompt?: AgentLaunchPrompt
     /** Inputs needed when this terminal is created as the worktree's startup surface. */
     agentArgs?: string | null
     cwd?: string
