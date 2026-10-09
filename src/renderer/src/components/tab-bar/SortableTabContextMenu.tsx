@@ -22,6 +22,7 @@ import { useAppStore } from '../../store'
 import { formatShortcutLabel, useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
 import { translate } from '@/i18n/i18n'
 import { TerminalTabSplitMenuSection } from './TerminalTabSplitMenuSection'
+import { TabSessionSurfaceSwitchMenuItems } from './TabSessionSurfaceSwitchMenuItems'
 import { TAB_CONTEXT_MENU_CONTENT_CLASS } from './tab-context-menu-sizing'
 
 const TAB_COLORS = [
@@ -117,6 +118,8 @@ type SortableTabContextMenuProps = {
   /** Toggle the tab between terminal and native chat view. */
   onToggleViewMode?: () => void
   canSplitTerminal?: boolean
+  /** Set only for a native chat tab: the chat session it shows. */
+  structuredSessionId?: string
 }
 
 export function SortableTabContextMenu({
@@ -142,7 +145,8 @@ export function SortableTabContextMenu({
   canToggleViewMode = false,
   isChatView = false,
   onToggleViewMode,
-  canSplitTerminal = true
+  canSplitTerminal = true,
+  structuredSessionId
 }: SortableTabContextMenuProps): React.JSX.Element {
   const keybindings = useAppStore((state) => state.keybindings)
   const splitRightShortcut = formatShortcutLabel('terminal.splitRight', keybindings)
@@ -150,6 +154,7 @@ export function SortableTabContextMenu({
 
   const closeShortcut = useOptionalShortcutLabel('tab.close')
   const renameShortcut = useOptionalShortcutLabel('tab.rename')
+  const showViewModeToggle = canToggleViewMode && onToggleViewMode !== undefined
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
@@ -172,7 +177,7 @@ export function SortableTabContextMenu({
           splitDownShortcut={splitDownShortcut}
           showTerminalSplit={canSplitTerminal}
         />
-        {canToggleViewMode && onToggleViewMode ? (
+        {showViewModeToggle ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onToggleViewMode}>
@@ -193,6 +198,11 @@ export function SortableTabContextMenu({
             </DropdownMenuItem>
           </>
         ) : null}
+        <TabSessionSurfaceSwitchMenuItems
+          tab={tab}
+          structuredSessionId={structuredSessionId}
+          leadingSeparator={!showViewModeToggle}
+        />
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onTogglePin}>
           {isPinned ? (
