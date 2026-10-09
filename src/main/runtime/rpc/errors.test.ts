@@ -71,6 +71,14 @@ describe('mapRuntimeError', () => {
     }
   )
 
+  it('tells a caller refused the desktop new-tab prompt exactly that', () => {
+    const code = 'agent_launch_desktop_new_tab_unsupported'
+    expect(mapRuntimeError('req_1', { runtimeId: 'runtime-1' }, new Error(code))).toMatchObject({
+      ok: false,
+      error: { code, message: code }
+    })
+  })
+
   it.each([
     'remote_update_manual_required',
     'remote_update_not_available',
