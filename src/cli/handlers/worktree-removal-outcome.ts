@@ -17,7 +17,14 @@ export type WorktreeRemovalRequest = {
 
 // Why short first: most deletes finish in well under a second; a long one settles to 1 s polls.
 const POLL_DELAYS_MS = [100, 250, 500, 1_000]
-const UNREACHABLE_POLLS_BEFORE_GIVING_UP = 3
+// About 3 s of an unreachable app before giving up.
+const DROPPED_CONNECTIONS_BEFORE_GIVING_UP = 5
+
+// Why jittered: a burst of CLIs dropped together at the host's connection limit must not retry together.
+function pollDelay(attempt: number): Promise<unknown> {
+  const base = POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)]
+  return delay(Math.round(base * (0.5 + Math.random())))
+}
 
 /**
  * Removes the worktree and answers with the delete's outcome: `removed: true` only once Git has
@@ -30,23 +37,23 @@ export async function removeWorktreeAndWait(
   client: RuntimeClient,
   request: WorktreeRemovalRequest & { worktreeId: string }
 ): Promise<RuntimeRpcSuccess<RuntimeWorktreeRemoveResult>> {
-  const { worktreeId, ...params } = request
-  const response = await client.call<RuntimeWorktreeRemoveResult>('worktree.rm', params)
+  const { worktreeId } = request
+  const response = await sendRemoval(client, request)
   if (!response.result.removing) {
     return response
   }
   let unreachable = 0
   for (let attempt = 0; ; attempt += 1) {
-    await delay(POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)])
+    await pollDelay(attempt)
     const read = await readRemovalState(client, worktreeId, request.hostId).then(
-      (state) => ({ state }),
+      (reply) => ({ state: reply?.result }),
       (error: unknown) => ({ error })
     )
     if ('error' in read) {
       unreachable = isDroppedConnection(read.error) ? unreachable + 1 : 0
       // Why retry: a socket at its connection limit, or a network blip on a paired connection, drops
       // a connection the same way a gone app does.
-      if (unreachable > 0 && unreachable < UNREACHABLE_POLLS_BEFORE_GIVING_UP) {
+      if (unreachable > 0 && unreachable < DROPPED_CONNECTIONS_BEFORE_GIVING_UP) {
         continue
       }
       throw unconfirmedRemovalError(request.worktree, read.error)
@@ -86,19 +93,66 @@ export function formatWorktreeRemoval(value: RuntimeWorktreeRemoveResult): strin
     : `removed: ${value.removed}`
 }
 
+/**
+ * Sends `worktree.rm`. A dropped connection hides whether the host got it (a socket at its
+ * connection limit drops one that was written, unread), so the host's own state decides: a delete
+ * it accepted is waited on and never sent again; one it is not running is sent again, unless the
+ * archive hook may already have run for it.
+ */
+async function sendRemoval(
+  client: RuntimeClient,
+  request: WorktreeRemovalRequest & { worktreeId: string }
+): Promise<RuntimeRpcSuccess<RuntimeWorktreeRemoveResult>> {
+  const { worktreeId, ...params } = request
+  for (let attempt = 1; ; attempt += 1) {
+    const sent = await client.call<RuntimeWorktreeRemoveResult>('worktree.rm', params).then(
+      (response) => ({ response }),
+      (error: unknown) => ({ error })
+    )
+    if ('response' in sent) {
+      return sent.response
+    }
+    if (!isDroppedConnection(sent.error) || attempt === DROPPED_CONNECTIONS_BEFORE_GIVING_UP) {
+      throw sent.error
+    }
+    await pollDelay(attempt - 1)
+    const read = await readRemovalState(client, worktreeId, request.hostId).then(
+      (reply) => ({ reply }),
+      (error: unknown) => ({ error })
+    )
+    if ('error' in read) {
+      if (isDroppedConnection(read.error)) {
+        continue
+      }
+      throw sent.error
+    }
+    if (!read.reply) {
+      // An older host can't say whether it got the request.
+      throw sent.error
+    }
+    if (read.reply.result.state !== 'present') {
+      return { ...read.reply, result: { removed: true, removing: true } }
+    }
+    if (request.runHooks) {
+      throw new RuntimeClientError(
+        'worktree_removal_unconfirmed',
+        `Orca did not confirm it received the removal of ${request.worktree}, and the workspace is still there. It was not sent again because its archive hook may already have run; run the command again to remove it.`
+      )
+    }
+  }
+}
+
 /** Undefined from a host that predates the read. */
 async function readRemovalState(
   client: RuntimeClient,
   worktreeId: string,
   hostId: string
-): Promise<RuntimeWorktreeRemovalState | undefined> {
+): Promise<RuntimeRpcSuccess<RuntimeWorktreeRemovalState> | undefined> {
   try {
-    return (
-      await client.call<RuntimeWorktreeRemovalState>('worktree.removalState', {
-        worktreeId,
-        hostId
-      })
-    ).result
+    return await client.call<RuntimeWorktreeRemovalState>('worktree.removalState', {
+      worktreeId,
+      hostId
+    })
   } catch (error) {
     if (error instanceof RuntimeClientError && error.code === 'method_not_found') {
       return undefined

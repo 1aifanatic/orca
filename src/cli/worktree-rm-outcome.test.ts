@@ -156,8 +156,12 @@ describe('worktree rm reports the removal outcome, not its acceptance', () => {
       }
       drop()
       drop()
+      drop()
+      drop()
       queueFixtures(callMock, okFixture('req_state_1', { state: 'removing' }))
-      // The count resets on an answer, so two more drops after it still wait it out.
+      // The count resets on an answer, so four more drops after it still wait it out.
+      drop()
+      drop()
       drop()
       drop()
       queueFixtures(callMock, okFixture('req_state_2', { state: 'removed' }))
@@ -169,8 +173,8 @@ describe('worktree rm reports the removal outcome, not its acceptance', () => {
   )
 
   it.each([
-    ['runtime_unavailable', 3],
-    ['remote_runtime_unavailable', 3],
+    ['runtime_unavailable', 5],
+    ['remote_runtime_unavailable', 5],
     ['runtime_timeout', 1]
   ])(
     'says the removal may still be running when Orca stops answering (%s)',
@@ -200,5 +204,85 @@ describe('worktree rm reports the removal outcome, not its acceptance', () => {
     expect(process.exitCode).toBe(1)
     expect(printed()).toContain('could not report how it ended')
     expect(printed()).not.toContain('selector_ambiguous')
+  })
+
+  describe('when the connection drops before the delete request is answered', () => {
+    const rmCalls = () => callMock.mock.calls.filter(([method]) => method === 'worktree.rm')
+    const dropped = () => new RuntimeClientError('runtime_unavailable', 'closed before responding')
+
+    function showThenDrop(): void {
+      queueFixtures(
+        callMock,
+        okFixture('req_show', { worktree: { id: WORKTREE_ID, hostId: 'local' } })
+      )
+      callMock.mockRejectedValueOnce(dropped())
+    }
+
+    it('waits on a delete the host accepted, without sending it again', async () => {
+      showThenDrop()
+      queueFixtures(
+        callMock,
+        okFixture('req_state_0', { state: 'removing' }),
+        okFixture('req_state_1', { state: 'removed' })
+      )
+
+      await run('--json')
+
+      expect(rmCalls()).toHaveLength(1)
+      expect(JSON.parse(printed()).result).toEqual({ removed: true })
+    })
+
+    it('sends it again when the host is not deleting the workspace', async () => {
+      showThenDrop()
+      queueFixtures(
+        callMock,
+        okFixture('req_state_0', { state: 'present' }),
+        okFixture('req_rm', { removed: true })
+      )
+
+      await run('--json')
+
+      expect(rmCalls()).toHaveLength(2)
+      expect(JSON.parse(printed()).result).toEqual({ removed: true })
+    })
+
+    it('never sends it again once an archive hook may have run', async () => {
+      showThenDrop()
+      queueFixtures(callMock, okFixture('req_state_0', { state: 'present' }))
+
+      await run('--run-hooks', '--json')
+
+      expect(rmCalls()).toHaveLength(1)
+      expect(process.exitCode).toBe(1)
+      expect(printed()).toContain(
+        'It was not sent again because its archive hook may already have run'
+      )
+    })
+
+    it('gives the original error when Orca stays unreachable', async () => {
+      showThenDrop()
+      for (let index = 0; index < 8; index += 1) {
+        callMock.mockRejectedValueOnce(dropped())
+      }
+
+      await run('--json')
+
+      expect(rmCalls()).toHaveLength(5)
+      expect(process.exitCode).toBe(1)
+      expect(printed()).toContain('closed before responding')
+    })
+
+    it('gives the original error when an older host cannot say whether it got the request', async () => {
+      showThenDrop()
+      callMock.mockRejectedValueOnce(
+        new RuntimeClientError('method_not_found', 'Unknown method: worktree.removalState')
+      )
+
+      await run('--json')
+
+      expect(rmCalls()).toHaveLength(1)
+      expect(process.exitCode).toBe(1)
+      expect(printed()).toContain('closed before responding')
+    })
   })
 })

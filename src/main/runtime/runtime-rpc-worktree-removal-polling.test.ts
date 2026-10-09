@@ -55,8 +55,8 @@ async function removeAndPoll(
   worktreeId: string,
   timing: { startMs: number; pollMs: number }
 ): Promise<object> {
-  // Why staggered: separate CLI processes never connect in the same instant, and the socket's
-  // 32-connection limit (unchanged, and the same for a plain `worktree.rm` on main) drops the rest.
+  // Why staggered: this stand-in client does not recover a dropped `worktree.rm`; the CLI's own
+  // recovery from the socket's 32-connection limit is src/cli/worktree-rm-connection-limit.test.ts.
   await sleep(timing.startMs)
   const accepted = await call('worktree.rm', { worktree: `id:${worktreeId}`, hostId: 'local' })
   expect(accepted).toMatchObject({ ok: true, result: { removing: true } })
