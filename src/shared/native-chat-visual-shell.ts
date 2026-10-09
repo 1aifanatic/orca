@@ -24,6 +24,10 @@ export const NATIVE_CHAT_VISUAL_CDN_ORIGINS = [
 const ASSET_SOURCES = `'unsafe-inline' data: blob: ${NATIVE_CHAT_VISUAL_CDN_ORIGINS.join(' ')}`
 const MEDIA_SOURCES = `data: blob: ${NATIVE_CHAT_VISUAL_CDN_ORIGINS.join(' ')}`
 
+// A srcdoc page otherwise resolves '#x' against Orca's own URL, so an in-page link would leave it.
+// It precedes the CSP, whose `base-uri 'none'` then refuses any base the visual declares.
+const INERT_BASE = '<base href="about:srcdoc">'
+
 export const NATIVE_CHAT_VISUAL_CSP = [
   "default-src 'none'",
   `script-src ${ASSET_SOURCES}`,
@@ -194,6 +198,7 @@ export function buildNativeChatVisualDocument(args: {
 <html class="${scheme}">
 <head>
 <meta charset="utf-8">
+${INERT_BASE}
 <meta http-equiv="Content-Security-Policy" content="${NATIVE_CHAT_VISUAL_CSP}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style id="orca-visual-theme">${nativeChatVisualThemeCss(args.theme)}</style>

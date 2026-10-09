@@ -77,6 +77,15 @@ describe('buildNativeChatVisualDocument', () => {
     expect(document).toContain('"channel":"abc123"')
   })
 
+  it('resolves in-page links against the visual itself, ahead of the policy that bars any other base', () => {
+    const baseAt = document.indexOf('<base href="about:srcdoc">')
+    expect(baseAt).toBeGreaterThan(0)
+    expect(baseAt).toBeLessThan(document.indexOf('http-equiv="Content-Security-Policy"'))
+    // A srcdoc page otherwise resolves '#x' against Orca's own URL and navigates away.
+    expect(new URL('#overview', 'about:srcdoc').href).toBe('about:srcdoc#overview')
+    expect(() => new URL('page-2.html', 'about:srcdoc')).toThrow()
+  })
+
   it('checks the theme message comes from the host window', () => {
     expect(document).toContain('event.source !== host')
   })
