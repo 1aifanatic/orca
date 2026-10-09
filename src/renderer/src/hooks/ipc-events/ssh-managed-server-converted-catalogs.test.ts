@@ -259,6 +259,69 @@ describe('a host that just moved to its managed server', () => {
     warningLog.mockRestore()
   })
 
+  it('replays a reconnect that arrived while the failed catalog read was still pending', async () => {
+    const warningLog = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const targetId = 'ssh-overlap'
+    const firstRead = Promise.withResolvers<never>()
+    let repoListCalls = 0
+    const call = vi.fn(async (args: RuntimeEnvironmentCallRequest) => {
+      if (args.method === 'repo.list' && ++repoListCalls === 1) {
+        return firstRead.promise
+      }
+      return serverReply(args)
+    })
+    Object.assign(window.api.runtimeEnvironments, { call })
+    store.setState({
+      repos: [{ ...repo, connectionId: targetId, executionHostId: `ssh:${targetId}` }],
+      worktreesByRepo: {
+        'repo-1': [
+          makeWorktree({ id: worktreeId, repoId: 'repo-1', hostId: `ssh:${targetId}` }),
+          makeWorktree({ id: worktreeId, repoId: 'repo-1', hostId: 'runtime:env-1' })
+        ]
+      },
+      projectGroups: [{ ...group, connectionId: targetId }],
+      activeRepoId: 'repo-1',
+      activeWorktreeId: worktreeId,
+      activeWorkspaceExecutionHostId: `ssh:${targetId}`
+    })
+    const managed = { kind: 'managed', environmentId: 'env-1' } as const
+    const settingUp = { kind: 'setting-up', phase: 'connecting' } as const
+    applySshManagedServerTransition(targetId, undefined, managed)
+    await vi.waitFor(() => expect(repoListCalls).toBe(1))
+    applySshManagedServerTransition(targetId, managed, settingUp)
+    applySshManagedServerTransition(targetId, settingUp, managed)
+    firstRead.reject(new Error('half-open connection timed out'))
+
+    await vi.waitFor(() =>
+      expect(store.getState().activeWorkspaceExecutionHostId).toBe('runtime:env-1')
+    )
+    expect(repoListCalls).toBe(2)
+    warningLog.mockRestore()
+    errorLog.mockRestore()
+  })
+
+  it('drops a pending reconnect replay when the host returns to the relay', async () => {
+    const warningLog = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const firstList = Promise.withResolvers<never>()
+    const list = vi.mocked(window.api.runtimeEnvironments.list)
+    list.mockReturnValueOnce(firstList.promise)
+    const managed = { kind: 'managed', environmentId: 'env-1' } as const
+    const settingUp = { kind: 'setting-up', phase: 'connecting' } as const
+    applySshManagedServerTransition('ssh-overlap-relay', undefined, managed)
+    applySshManagedServerTransition('ssh-overlap-relay', managed, settingUp)
+    applySshManagedServerTransition('ssh-overlap-relay', settingUp, managed)
+    applySshManagedServerTransition('ssh-overlap-relay', managed, {
+      kind: 'relay',
+      reason: 'orcad_unavailable'
+    })
+    firstList.reject(new Error('environment catalog unavailable'))
+    await vi.waitFor(() => expect(warningLog).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(list).toHaveBeenCalledTimes(1)
+    warningLog.mockRestore()
+  })
+
   it('abandons an in-flight conversion refresh when the host returns to the relay', async () => {
     const pending =
       Promise.withResolvers<Awaited<ReturnType<typeof window.api.runtimeEnvironments.list>>>()

@@ -24,15 +24,12 @@ export function applySshManagedServerTransition(
 ): void {
   if (next?.kind === 'managed') {
     // Starts and wakes keep the same owner; only a new server or a failed load needs a refresh.
-    if (catalogLoadByTarget.get(targetId)?.environmentId !== next.environmentId) {
-      const load = { environmentId: next.environmentId }
-      catalogLoadByTarget.set(targetId, load)
-      void loadManagedServerCatalogs(targetId, load).catch((error: unknown) => {
-        if (catalogLoadByTarget.get(targetId) === load) {
-          catalogLoadByTarget.delete(targetId)
-        }
-        console.warn('[ssh] Could not load the managed server catalogs:', error)
-      })
+    const current = catalogLoadByTarget.get(targetId)
+    if (current?.environmentId !== next.environmentId) {
+      startManagedServerCatalogLoad(targetId, next.environmentId)
+    } else if (current.pending && previous?.kind !== 'managed') {
+      // Why: a reconnect during a doomed read must not be lost; replay it once if that read fails.
+      current.reconnectedWhilePending = true
     }
     return
   }
@@ -62,13 +59,38 @@ export function applySshManagedServerTransition(
   }
 }
 
-const catalogLoadByTarget = new Map<string, { environmentId: string }>()
+type CatalogLoad = {
+  environmentId: string
+  pending: boolean
+  reconnectedWhilePending: boolean
+}
+
+const catalogLoadByTarget = new Map<string, CatalogLoad>()
+
+function startManagedServerCatalogLoad(targetId: string, environmentId: string): void {
+  const load: CatalogLoad = { environmentId, pending: true, reconnectedWhilePending: false }
+  catalogLoadByTarget.set(targetId, load)
+  void loadManagedServerCatalogs(targetId, load).then(
+    () => {
+      load.pending = false
+    },
+    (error: unknown) => {
+      load.pending = false
+      console.warn('[ssh] Could not load the managed server catalogs:', error)
+      // Why: relay fallback and server replacement swap the record, which drops any replay.
+      if (catalogLoadByTarget.get(targetId) !== load) {
+        return
+      }
+      catalogLoadByTarget.delete(targetId)
+      if (load.reconnectedWhilePending) {
+        startManagedServerCatalogLoad(targetId, environmentId)
+      }
+    }
+  )
+}
 
 /** Loads a newly managed host's server and the local catalogs, then drops its relay-era rows. */
-async function loadManagedServerCatalogs(
-  targetId: string,
-  load: { environmentId: string }
-): Promise<void> {
+async function loadManagedServerCatalogs(targetId: string, load: CatalogLoad): Promise<void> {
   const { environmentId } = load
   const isCurrent = (): boolean => catalogLoadByTarget.get(targetId) === load
   const store = useAppStore.getState()
