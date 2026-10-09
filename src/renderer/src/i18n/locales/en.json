@@ -18640,6 +18640,8 @@
         "delete": "Delete",
         "moreActions": "More actions",
         "editMessage": "Edit message",
+        "showFullMessage": "Show full message",
+        "showLess": "Show less",
         "turnOffQueueing": "Turn off queueing",
         "listLabel": "Queued messages",
         "alreadySent": "This message was already sent.",

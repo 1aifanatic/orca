@@ -524,11 +524,16 @@ describe('NativeChatQueuedMessageList', () => {
         .getByRole('button', { name: 'Steer' })
         .querySelector('.lucide-corner-down-right')
     ).not.toBeNull()
-    expect(waiting!.firstElementChild?.classList.contains('lucide-list-end')).toBe(true)
+    // The card's row (its first child) leads with the glyph.
+    expect(
+      waiting!.firstElementChild?.firstElementChild?.classList.contains('lucide-list-end')
+    ).toBe(true)
     expect(
       within(failed!).getByRole('button', { name: 'Send' }).querySelector('.lucide-send')
     ).not.toBeNull()
-    expect(failed!.firstElementChild?.classList.contains('lucide-circle-alert')).toBe(true)
+    expect(
+      failed!.firstElementChild?.firstElementChild?.classList.contains('lucide-circle-alert')
+    ).toBe(true)
     expect(container.querySelectorAll('.lucide-list-end')).toHaveLength(1)
   })
 
@@ -664,6 +669,42 @@ describe('NativeChatQueuedMessageList', () => {
     expect(screen.getByRole('listitem').textContent).toContain(
       'Waiting — a message ahead needs attention'
     )
+  })
+
+  it('a clipped card opens to its whole text, line breaks kept, and folds back', () => {
+    // happy-dom lays nothing out: a line wider than its box is what a clipped card measures.
+    const width = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(900)
+    const box = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300)
+    try {
+      const text = 'You have 1 orchestration message.\nRun `orca orchestration check --run run_e99`'
+      renderList(controller([card({ messageId: 'mail', text })]))
+      const open = screen.getByRole('button', { name: 'Show full message' })
+      expect(open.getAttribute('aria-expanded')).toBe('false')
+      // A native button in the tab order: Enter or Space opens it from the keyboard.
+      expect(open.tagName).toBe('BUTTON')
+      expect(open.getAttribute('tabindex')).not.toBe('-1')
+      open.focus()
+      expect(document.activeElement).toBe(open)
+      fireEvent.click(open)
+      const fold = screen.getByRole('button', { name: 'Show less' })
+      expect(fold.getAttribute('aria-expanded')).toBe('true')
+      const whole = document.getElementById(fold.getAttribute('aria-controls') ?? '')
+      expect(whole?.textContent).toBe(text)
+      expect(whole?.className).toContain('whitespace-pre-wrap')
+      expect(whole?.className).not.toContain('truncate')
+      // Opened below the row, at the card's width, not squeezed beside its actions.
+      expect(whole?.parentElement?.tagName).toBe('LI')
+      fireEvent.click(fold)
+      expect(screen.getByRole('button', { name: 'Show full message' })).toBeTruthy()
+    } finally {
+      width.mockRestore()
+      box.mockRestore()
+    }
+  })
+
+  it('a card whose text fits its line offers no toggle', () => {
+    renderList(controller([card({ messageId: 'short', text: 'ok' })]))
+    expect(screen.queryByRole('button', { name: 'Show full message' })).toBeNull()
   })
 
   it('the menu offers Edit message and Turn off queueing', async () => {
