@@ -93,6 +93,24 @@ it('targets an unanswered submission without growing receipts or interrupting a 
   expect(rig.cancelTurn).toHaveBeenCalledTimes(calls)
 })
 
+it('stops a waiting submission even when a later send is queued before the Stop lands', async () => {
+  rig = await createQueuedMessageTestRig({ restartable: true })
+  const first = await rig.workingSend()
+  const stopTarget = { kind: 'submission' as const, clientMessageId: first }
+  const later = rig.send('sent just before Stop')
+  expect(await later.result).toMatchObject({ ok: true })
+  const queued = await rig.submission(later.id)
+  expect(queued).toMatchObject({ handoverRecorded: true, dispatchState: 'pending' })
+  expect(queued?.handedOverAt).toBeUndefined()
+  const id = hostTestOperationId()
+  const params = { stopTarget, envelope: rig.envelope({ stopTarget }, 'agentSession.cancel', id) }
+  expect(await rig.host.cancel(QUEUED_RIG_CALLER, params)).toMatchObject({
+    ok: true,
+    value: { cancelled: true }
+  })
+  expect(rig.cancelTurn).toHaveBeenCalled()
+})
+
 it('keeps target and fingerprint validation when a Stop cannot write its receipt', async () => {
   rig = await createQueuedMessageTestRig({ restartable: true })
   await rig.workingSend()

@@ -19,7 +19,7 @@ const pending: AgentJournalSubmission = {
   resolvedAt: null
 }
 
-it('follows an unanswered send into its own turn and excludes a later turn or send', () => {
+it('follows an unanswered send into its own turn and excludes a later turn', () => {
   const target = agentSessionStopTarget(null, [pending], 1)
   if (!target) {
     throw new Error('expected target')
@@ -38,17 +38,23 @@ it('follows an unanswered send into its own turn and excludes a later turn or se
   expect(agentSessionStopTargetIsLive(target, 'one', [accepted], 1)).toBe(true)
   expect(agentSessionStopTargetIsLive(target, 'two', [accepted], 1)).toBe(false)
   expect(
-    agentSessionStopTargetIsLive(
-      target,
-      null,
-      [pending, { ...pending, clientMessageId: 'send-2' }],
-      1
-    )
-  ).toBe(false)
-  expect(
     agentSessionStopTargetIsLive(target, null, [{ ...pending, dispatchState: 'rejected' }], 1)
   ).toBe(false)
   expect(agentSessionStopTargetIsLive(target, 'one', [accepted], 2)).toBe(false)
+})
+
+it('never names a queued send, and a waiting send stays live whatever arrives after it', () => {
+  const handedOver = { ...pending, handoverRecorded: true as const, handedOverAt: 2 }
+  const queued = { ...pending, clientMessageId: 'send-2', handoverRecorded: true as const }
+  expect(agentSessionStopTarget(null, [handedOver, queued], 1)).toEqual({
+    kind: 'submission',
+    clientMessageId: 'send-1'
+  })
+  expect(agentSessionStopTarget(null, [queued], 1)).toBeUndefined()
+  const target = { kind: 'submission' as const, clientMessageId: 'send-1' }
+  const laterSent = { ...pending, clientMessageId: 'send-3' }
+  expect(agentSessionStopTargetIsLive(target, null, [handedOver, queued], 1)).toBe(true)
+  expect(agentSessionStopTargetIsLive(target, null, [handedOver, laterSent], 1)).toBe(true)
 })
 
 it('uses the host turn linkage for a provider whose item identity does not carry a turn id', () => {

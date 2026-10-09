@@ -1,5 +1,6 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
 import { isUnansweredStructuredAgentSessionDispatch } from './structured-agent-session-unanswered-dispatch'
+import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import { parseAgentJournalItemKey } from './agent-session-journal-item-key'
 import type { AgentSessionBackgroundStopTarget } from './agent-session-background-stop-target'
 
@@ -17,15 +18,19 @@ export function agentSessionStopTarget(
   if (turnId) {
     return { kind: 'turn', turnId }
   }
-  const submission = submissions.findLast((entry) =>
-    isUnansweredStructuredAgentSessionDispatch(entry, fence)
+  // A queued send never started, so it is no Stop target: the unnamed Stop withdraws it.
+  const submission = submissions.findLast(
+    (entry) =>
+      !isQueuedAgentJournalSubmission(entry) &&
+      isUnansweredStructuredAgentSessionDispatch(entry, fence)
   )
   return submission
     ? { kind: 'submission', clientMessageId: submission.clientMessageId }
     : undefined
 }
 
-/** A submission target stops only work still awaiting its turn, never a later turn. */
+/** A submission target stops only work still awaiting its turn, never a later turn. Decided by the
+ *  named send's own state: whatever was sent after it does not end it. */
 export function agentSessionStopTargetIsLive(
   target: AgentSessionStopTarget,
   activeTurnId: string | null,
@@ -44,11 +49,7 @@ export function agentSessionStopTargetIsLive(
       return false
     }
     if (activeTurnId === null) {
-      return (
-        submissions.findLast((candidate) =>
-          isUnansweredStructuredAgentSessionDispatch(candidate, fence)
-        )?.clientMessageId === target.clientMessageId
-      )
+      return isUnansweredStructuredAgentSessionDispatch(entry, fence)
     }
     if (entry.providerItemId !== null && entry.providerItemId === activeUserItemId) {
       return entry.fence === fence

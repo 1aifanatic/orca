@@ -40,7 +40,10 @@ import { cancelPlan } from './structured-agent-session-cancel-plan'
 import { agentSessionMutationAdmitsNow } from './structured-agent-session-mutation-admits-now'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
-import { mutateWithChatStop } from './structured-agent-session-chat-stop'
+import {
+  mutateWithChatStop,
+  type StructuredAgentSessionChatStopRun
+} from './structured-agent-session-chat-stop'
 import { performSetOption } from './structured-agent-session-turns-options'
 import type { AgentSessionStopTarget } from '../../../shared/agent-session-stop-target'
 import { observeStructuredAgentSessionStopTarget } from './structured-agent-session-stop-target-observation'
@@ -140,34 +143,39 @@ export function cancelStructuredAgentSessionTurn(
   const stopped = prompt ? { envelope: params.envelope } : params
   return mutateWithChatStop(context, caller, stopped, plan, async (ctx, stop) => {
     const target = params.stopTarget
-    const observed = target ? observeStructuredAgentSessionStopTarget(ctx, target) : undefined
     const unconfirmed = () => ({
       ok: false as const,
       refusal: agentSessionOperationOutcomeUnknown(params.envelope.clientOperationId)
     })
-    if (observed?.verdict === 'unverifiable') {
-      return unconfirmed()
-    }
-    if (observed?.verdict === 'exited') {
-      return { ok: true, value: { cancelled: false } }
+    // The target bounds only the Stop: a card names itself, so its own route still settles it.
+    const stopTarget = async (): Promise<StructuredAgentSessionChatStopRun> => {
+      const observed = target ? observeStructuredAgentSessionStopTarget(ctx, target) : undefined
+      if (observed?.verdict === 'unverifiable') {
+        return { outcome: unconfirmed(), endsSession: false }
+      }
+      if (observed?.verdict === 'exited') {
+        return { outcome: { ok: true, value: { cancelled: false } }, endsSession: false }
+      }
+      const run = await stop(observed?.turnId)
+      const { outcome } = run
+      if (
+        target?.kind === 'submission' &&
+        outcome.ok &&
+        !outcome.value.cancelled &&
+        observeStructuredAgentSessionStopTarget(ctx, target).verdict !== 'exited'
+      ) {
+        return { ...run, outcome: unconfirmed() }
+      }
+      return run
     }
     if (prompt) {
       return cancelStructuredAgentSessionPrompt(
         ctx,
         { ...(params.turnId !== undefined ? { turnId: params.turnId } : {}), prompt },
-        { stop, interrupt: () => plan.run(ctx) }
+        { stop: stopTarget, interrupt: () => plan.run(ctx) }
       )
     }
-    const { outcome } = await stop(observed?.turnId)
-    if (
-      target?.kind === 'submission' &&
-      outcome.ok &&
-      !outcome.value.cancelled &&
-      observeStructuredAgentSessionStopTarget(ctx, target).verdict !== 'exited'
-    ) {
-      return unconfirmed()
-    }
-    return outcome
+    return (await stopTarget()).outcome
   })
 }
 

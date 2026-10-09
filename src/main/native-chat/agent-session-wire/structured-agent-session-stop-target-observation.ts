@@ -1,6 +1,8 @@
-import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalSubmissionKey,
+  parseAgentJournalItemKey
+} from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
-import { isUnansweredStructuredAgentSessionDispatch } from '../../../shared/structured-agent-session-unanswered-dispatch'
 import {
   agentSessionStopTargetIsLive,
   type AgentSessionStopTarget
@@ -79,14 +81,27 @@ export function observeStructuredAgentSessionStopTarget(
   if (observed?.verdict === 'exited') {
     return observed
   }
-  if (activeTurnId === null && agentSessionStopTargetIsLive(target, null, submissions, ctx.fence)) {
-    return { verdict: 'live' }
+  if (activeTurnId !== null) {
+    return { verdict: 'unverifiable' }
   }
+  // A Stop of everything in flight, recorded after the send reached the agent, already ended it.
+  const latestStop = ctx.journal.stopMarks.latest()
+  const reachedAgentAt =
+    ctx.journal.item(agentJournalSubmissionKey(submission.clientMessageId))?.sequence ??
+    submission.submittedSequence
   if (
-    activeTurnId === null &&
-    submissions.findLast((entry) => isUnansweredStructuredAgentSessionDispatch(entry, ctx.fence))
+    latestStop !== null &&
+    latestStop.event.turnId === undefined &&
+    reachedAgentAt !== undefined &&
+    latestStop.sequence > reachedAgentAt
   ) {
     return { verdict: 'exited' }
   }
-  return { verdict: 'unverifiable' }
+  if (agentSessionStopTargetIsLive(target, null, submissions, ctx.fence)) {
+    return { verdict: 'live' }
+  }
+  // Answered, and no turn runs now: its own turn already ended.
+  return submission.dispatchState === 'accepted'
+    ? { verdict: 'exited' }
+    : { verdict: 'unverifiable' }
 }
