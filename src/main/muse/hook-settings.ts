@@ -9,6 +9,7 @@ import {
   type HookDefinition
 } from '../agent-hooks/installer-utils'
 import { readManagedHookEventsFromJson } from '../agent-hooks/managed-hooks-json-events'
+import { wrapWindowsDirectCmdHookCommand } from '../agent-hooks/windows-direct-cmd-hook-command'
 
 const MUSE_SCRIPT_BASE = 'muse-hook'
 
@@ -64,7 +65,7 @@ export function getMuseRemoteManagedHooksPath(remoteHome: string): string {
 
 export function getMuseManagedCommand(scriptPath: string): string {
   return process.platform === 'win32'
-    ? wrapWindowsHookCommand(scriptPath)
+    ? (wrapWindowsDirectCmdHookCommand(scriptPath) ?? wrapWindowsHookCommand(scriptPath))
     : wrapPosixHookCommand(scriptPath)
 }
 
