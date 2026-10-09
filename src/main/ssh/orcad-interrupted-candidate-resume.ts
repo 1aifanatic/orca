@@ -12,25 +12,29 @@ import { writeOrcadActivationTransaction } from './orcad-activation-transaction-
 import { withOrcadActivationCandidateReady } from './orcad-activation-transaction-transitions'
 import { OrcadActiveReadinessError } from './orcad-active-readiness'
 import {
+  ORCAD_RECOVERY_CHANGED_STATE_CODE,
+  type OrcadManagedRefusal
+} from '../../shared/orcad-managed-runtime'
+import {
   ensureOrcadSlotServing,
   orcadSlotDir,
   resolveOrcadSlotIdentity,
-  slotLiveness,
-  type OrcadSlotOptions
+  slotLiveness
 } from './orcad-recovery-slot'
+import type { OrcadIncumbentRecoveryOptions } from './orcad-incumbent-recovery'
 
-/** Runs under a held fence. Null when the candidate cannot commit, so the caller undoes it. */
+/**
+ * Runs under a held fence. Null when the candidate cannot commit, so the caller undoes it; a
+ * refusal leaves the host untouched for an operator.
+ */
 export async function resumeInterruptedOrcadCandidate(
-  options: OrcadSlotOptions,
+  options: OrcadIncumbentRecoveryOptions,
   transaction: OrcadActivateTransaction
-): Promise<ServeReadiness | null> {
+): Promise<ServeReadiness | OrcadManagedRefusal | null> {
   const snapshotState = transaction.snapshot.state
   const incumbent = transaction.recordBefore.active
   if (
     transaction.phase !== 'snapshot-captured' ||
-    // A journal from before the field cannot say which app started it; committing without that
-    // drops the host-newer guard and lets an older desktop downgrade over migrated state.
-    transaction.candidateAppVersion === undefined ||
     snapshotState === 'pending' ||
     // A serving incumbent holds the port and instance lock; undo keeps it.
     (incumbent !== null &&
@@ -39,8 +43,30 @@ export async function resumeInterruptedOrcadCandidate(
     return null
   }
   const candidate = await resolveOrcadSlotIdentity(options, transaction.candidateVersion)
+  const candidateLiveness = await slotLiveness(options, candidate.remoteDir)
+  // A journal from before the field cannot say which app started it; committing without that
+  // drops the host-newer guard. Undoing a candidate that may be serving stops it, so only an
+  // operator who accepts losing its changes may.
+  if (transaction.candidateAppVersion === undefined) {
+    if (candidateLiveness === 'DEAD' || options.acceptChangedState) {
+      return null
+    }
+    if (candidateLiveness === 'UNKNOWN') {
+      throw new Error(`Could not tell whether orcad ${transaction.candidateVersion} is running.`)
+    }
+    return {
+      outcome: 'refused',
+      verdict: 'live',
+      code: ORCAD_RECOVERY_CHANGED_STATE_CODE,
+      reason:
+        `An older Orca left version ${transaction.candidateVersion} running without finishing ` +
+        'its update, and did not record which app started it, so it was neither committed nor ' +
+        'stopped. Recover to stop it, restore the prelaunch snapshot and restart the previous ' +
+        'build; what it changed is discarded.'
+    }
+  }
   // An unprovable candidate process is left to undo, which rules it out before anything starts.
-  if ((await slotLiveness(options, candidate.remoteDir)) === 'UNKNOWN') {
+  if (candidateLiveness === 'UNKNOWN') {
     return null
   }
   let readiness: ServeReadiness

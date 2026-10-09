@@ -120,6 +120,9 @@ export async function reconcileOrcadTransaction(
   }
   if (transaction.operation === 'activate' && plan.launchedVersion) {
     const readiness = await resumeInterruptedOrcadCandidate(options, transaction)
+    if (readiness && 'outcome' in readiness) {
+      return readiness
+    }
     if (readiness) {
       return {
         outcome: 'recovered',

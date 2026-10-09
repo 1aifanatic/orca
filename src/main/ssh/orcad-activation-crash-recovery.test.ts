@@ -286,15 +286,33 @@ describe('recovery refusals keep the fence', () => {
     })
   })
 
-  it('does not commit a journal too old to name the app that started it', async () => {
-    await interruptedAfterCandidateLaunch(deployFromNewerApp)
+  function dropCandidateAppVersion(): void {
     const journal = JSON.parse(host.journal ?? 'null')
     delete journal.candidateAppVersion
     host.journal = JSON.stringify(journal)
-    expect(await recoverInterruptedOrcadActivation(slot)).not.toMatchObject({
-      resolution: 'committed'
+  }
+
+  it('neither commits nor stops a serving candidate a journal too old to name its app left', async () => {
+    await interruptedAfterCandidateLaunch(deployFromNewerApp)
+    dropCandidateAppVersion()
+    const data = host.data
+    expect(await recoverInterruptedOrcadActivation(slot)).toMatchObject({
+      outcome: 'refused',
+      verdict: 'live',
+      code: 'orcad_recovery_changed_state'
     })
+    expect([...host.alive]).toEqual([NEW])
+    expect(host.data).toBe(data)
     expect(host.record).not.toContain(`"active": "${NEW}"`)
+    expect(host.fence).toBe(true)
+
+    // The operator's Restore undoes it.
+    await expect(
+      recoverInterruptedOrcadActivation({ ...slot, acceptChangedState: true })
+    ).resolves.toMatchObject({ outcome: 'recovered', resolution: 'restored-incumbent' })
+    expect(host.fence).toBe(false)
+    expectExactlyTheRecordedSlot()
+    expect(host.activeVersion()).toBe(OLD)
   })
 
   it('keeps changed state, unverifiable, until an operator accepts restoring over it', async () => {
@@ -431,6 +449,19 @@ describe('a wake over an update its client abandoned', () => {
     })
     expect(host.alive.size).toBe(0)
     expect(host.journal).not.toBeNull()
+  })
+
+  it('leaves serving a candidate whose too-old journal it cannot commit', async () => {
+    await abandonedAfterCandidateLaunch(deployFromNewerApp)
+    host.alive.add(NEW)
+    const journal = JSON.parse(host.journal ?? 'null')
+    delete journal.candidateAppVersion
+    host.journal = JSON.stringify(journal)
+    expect(await wakeStoppedManagedOrcad(wakeSlot)).toMatchObject({
+      outcome: 'recovery-refused'
+    })
+    expect([...host.alive]).toEqual([NEW])
+    expect(host.fence).toBe(true)
   })
 
   it('reports why when only an operator can finish it', async () => {
