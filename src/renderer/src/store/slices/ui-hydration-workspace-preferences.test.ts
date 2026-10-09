@@ -237,33 +237,44 @@ describe('createUISlice hydratePersistedUI', () => {
     expect(store.getState().usagePercentageDisplay).toBe('used')
   })
 
-  it('persists and hydrates the status bar usage mode', () => {
-    const setUI = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('window', { api: { ui: { set: setUI } } })
-    const store = createUIStore()
-
-    expect(store.getState().statusBarUsageMode).toBe('verbose')
-
-    store.getState().setStatusBarUsageMode('compact')
-
-    expect(store.getState().statusBarUsageMode).toBe('compact')
-    expect(setUI).toHaveBeenCalledWith({ statusBarUsageMode: 'compact' })
-
-    store.getState().hydratePersistedUI(makePersistedUI({ statusBarUsageMode: 'verbose' }))
-    expect(store.getState().statusBarUsageMode).toBe('verbose')
+  it('initializes new users with compact status bar usage', () => {
+    expect(createUIStore().getState().statusBarUsageMode).toBe('compact')
   })
 
-  it('defaults invalid status bar usage modes to verbose', () => {
-    const store = createUIStore()
+  it.each(['verbose', 'compact'] as const)(
+    'persists and hydrates explicit %s usage mode',
+    (mode) => {
+      const setUI = vi.fn().mockResolvedValue(undefined)
+      vi.stubGlobal('window', { api: { ui: { set: setUI } } })
+      const store = createUIStore()
 
-    store.getState().hydratePersistedUI(
-      makePersistedUI({
-        statusBarUsageMode: 'expanded' as PersistedUIState['statusBarUsageMode']
-      })
-    )
+      store.getState().setStatusBarUsageMode(mode)
 
-    expect(store.getState().statusBarUsageMode).toBe('verbose')
-  })
+      expect(store.getState().statusBarUsageMode).toBe(mode)
+      expect(setUI).toHaveBeenCalledWith({ statusBarUsageMode: mode })
+
+      const restoredStore = createUIStore()
+      restoredStore.getState().hydratePersistedUI(makePersistedUI({ statusBarUsageMode: mode }))
+      expect(restoredStore.getState().statusBarUsageMode).toBe(mode)
+    }
+  )
+
+  it.each([undefined, null, 'expanded'])(
+    'hydrates missing or invalid status bar usage mode %j as compact',
+    (value) => {
+      const store = createUIStore()
+      const ui = makePersistedUI()
+      if (value === undefined) {
+        delete ui.statusBarUsageMode
+      } else {
+        Reflect.set(ui, 'statusBarUsageMode', value)
+      }
+
+      store.getState().hydratePersistedUI(ui)
+
+      expect(store.getState().statusBarUsageMode).toBe('compact')
+    }
+  )
 
   it('clamps persisted workspace board column width', () => {
     const store = createUIStore()
