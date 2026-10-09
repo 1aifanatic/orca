@@ -129,6 +129,40 @@ describe('mobileQueuedMessageCards', () => {
     }
   })
 
+  it('a /clear next in line that only background tasks hold says so; nothing else does', () => {
+    const clear = draft({
+      messageId: 'c',
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/clear' }],
+        command: { name: 'clear' }
+      }
+    })
+    const tasks = { pendingPrompt: false, backgroundTasksRunning: true }
+    const [first, second] = mobileQueuedMessageCards(
+      [clear, draft({ messageId: 'm', position: 2 })],
+      [],
+      tasks
+    )
+    expect(first).toMatchObject({
+      caption: 'Waiting for background tasks to finish',
+      runsOnItsOwn: true
+    })
+    expect(second?.caption).toBeNull()
+    // Behind a turn or an answer, that is what it waits on; behind another card, its turn.
+    expect(
+      mobileQueuedMessageCards([clear], [], { ...tasks, agentWorking: true })[0]?.caption
+    ).toBeNull()
+    expect(
+      mobileQueuedMessageCards([clear], [], { ...tasks, pendingPrompt: true })[0]?.caption
+    ).toBe('Waiting for your answer')
+    expect(
+      mobileQueuedMessageCards([draft({ messageId: 'm' }), { ...clear, position: 2 }], [], tasks)[1]
+        ?.caption
+    ).toBeNull()
+  })
+
   it('skips a failed card ahead of clear, respecting returned and queue-pause barriers', () => {
     const clear = draft({
       messageId: 'clear',

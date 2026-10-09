@@ -97,6 +97,10 @@ describe('a /clear card waiting on background tasks', () => {
       projectQueuedMessageCards([clearCard('c', 1)], [], { ...tasks, agentWorking: true })[0]?.hold
     ).toBe('turn')
     expect(projectQueuedMessageCards([clearCard('c', 1)], [], IDLE)[0]?.hold).toBe('turn')
+    // The queue's coming send is not the agent working: the tasks still hold it, and no Send shows.
+    expect(
+      projectQueuedMessageCards([clearCard('c', 1)], [], { ...tasks, queueSendsNext: true })[0]
+    ).toMatchObject({ hold: 'background-tasks', waitsForAgent: true, runsOnItsOwn: true })
     // A /compact is refused at hand-over instead; a /clear behind another card waits its turn.
     expect(projectQueuedMessageCards([draft('m', 1), clearCard('c', 2)], [], tasks)[1]?.hold).toBe(
       'turn'

@@ -223,6 +223,7 @@ export function useMobileStructuredAgentSession(args: {
     submissions: state.submissions,
     pendingPrompt: approvalPrompt !== null || questionPrompt !== null,
     agentWorking: isStructuredAgentSessionMainAgentWorking(turnId, state.submissions, state.fence),
+    backgroundTasksRunning: backgroundTasks.view.isMonitoring,
     mutate,
     appendComposerText,
     onSendError,

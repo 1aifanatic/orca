@@ -1,7 +1,10 @@
 // What the queued-message cards above the composer show, derived per publish —
 // the wire carries no hold label (§ labels are client policy, not host state).
 
-import { nextActionableQueuedMessage } from '../../../../shared/structured-agent-session-queue-selection'
+import {
+  nextActionableQueuedMessage,
+  queuedClearWaitsOnBackgroundTasks
+} from '../../../../shared/structured-agent-session-queue-selection'
 import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type {
@@ -71,6 +74,8 @@ export function projectQueuedMessageCards(
     hasPendingPrompt: boolean
     queuePaused?: boolean
     agentWorking?: boolean
+    /** The queue is about to send its next card: a command card offers no Send yet either. */
+    queueSendsNext?: boolean
     /** Background tasks run: a /clear next in line waits them out on the host. */
     backgroundTasksRunning?: boolean
   }
@@ -89,11 +94,7 @@ export function projectQueuedMessageCards(
   let behindReturned = false
   return ordered.map((message) => {
     // Said only while it is what holds the card: nothing ahead of it, and the agent idle.
-    const waitsOnTasks =
-      message === next &&
-      session.backgroundTasksRunning === true &&
-      session.agentWorking !== true &&
-      message.body.command?.name === 'clear'
+    const waitsOnTasks = queuedClearWaitsOnBackgroundTasks(message, next, session)
     const hold: QueuedMessageCardHold =
       message.state === 'returned'
         ? 'returned'
@@ -123,7 +124,9 @@ export function projectQueuedMessageCards(
       ...(message.body.command !== undefined
         ? {
             command: true as const,
-            ...(session.agentWorking ? { waitsForAgent: true as const } : {}),
+            ...(session.agentWorking || session.queueSendsNext
+              ? { waitsForAgent: true as const }
+              : {}),
             ...(runsOnItsOwn ? { runsOnItsOwn: true as const } : {})
           }
         : {}),

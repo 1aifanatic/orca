@@ -7,7 +7,10 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type {
+  AgentSessionBackgroundTaskState,
+  AgentSessionQueuedMessage
+} from '../../../../shared/agent-session-wire'
 import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 const mocks = vi.hoisted(() => ({
@@ -17,6 +20,8 @@ const mocks = vi.hoisted(() => ({
 }))
 let items: AgentJournalRenderItem[] = []
 let queuedMessages: AgentSessionQueuedMessage[] | undefined
+let nextQueuedMessageId: string | null = null
+let backgroundTasks: AgentSessionBackgroundTaskState | null = null
 /** A replaced chat's messages the carry is asking about, drawn in this chat's transcript. */
 let askedEntries: StructuredAgentSessionPendingSend[] = []
 
@@ -34,7 +39,9 @@ vi.mock('./use-structured-agent-session-read', () => ({
       status: 'ready',
       error: null,
       hasOlder: false,
-      ...(queuedMessages !== undefined ? { queuedMessages } : {})
+      ...(queuedMessages !== undefined ? { queuedMessages } : {}),
+      nextQueuedMessageId,
+      backgroundTasks
     },
     loadingOlder: false,
     loadOlder: vi.fn()
@@ -115,6 +122,8 @@ beforeEach(() => {
   mocks.call.mockImplementation(async () => null)
   items = [RUNNING_TURN]
   queuedMessages = undefined
+  nextQueuedMessageId = null
+  backgroundTasks = null
   askedEntries = []
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
@@ -189,6 +198,24 @@ describe('a /clear against a host that runs it from the queue', () => {
     ]
     render(false)
     expect(mocks.sendArgs.at(-1)?.queue).toEqual({ capability: 'supported', enabled })
+  })
+
+  it('next in line once the turn ended, held only by background tasks: says so and offers no Send', () => {
+    setLocalRuntimeCapabilitiesForTests(CLEAR_WAITS)
+    items = []
+    backgroundTasks = { state: 'monitoring', tasks: [{ id: 'task-1', kind: 'command' }] }
+    queuedMessages = [
+      { ...draft('clear-1'), body: { ...draft('clear-1').body, command: { name: 'clear' } } },
+      { ...draft('after-1'), position: 2 }
+    ]
+    // The host names the /clear as its next send; it runs only once the tasks end.
+    nextQueuedMessageId = 'clear-1'
+    const { result } = render()
+    expect(result.current.queuedMessages.cards[0]).toMatchObject({
+      messageId: 'clear-1',
+      hold: 'background-tasks',
+      runsOnItsOwn: true
+    })
   })
 
   it.each([

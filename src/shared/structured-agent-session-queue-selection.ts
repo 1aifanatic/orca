@@ -18,3 +18,20 @@ export function nextActionableQueuedMessage<T extends { state: string }>(
   }
   return null
 }
+
+/** A /clear next in line that only background tasks hold, read from the agent's own work (not the
+ *  queue's coming send, which the host still names): the host runs it once they end. */
+export function queuedClearWaitsOnBackgroundTasks<
+  T extends { body: { command?: { name: string } } }
+>(
+  card: T,
+  next: T | null,
+  live: { agentWorking?: boolean; backgroundTasksRunning?: boolean }
+): boolean {
+  return (
+    card === next &&
+    live.backgroundTasksRunning === true &&
+    live.agentWorking !== true &&
+    card.body.command?.name === 'clear'
+  )
+}

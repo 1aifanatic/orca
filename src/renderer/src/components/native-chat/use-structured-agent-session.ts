@@ -217,12 +217,11 @@ export function useStructuredAgentSession(args: {
     transportState.submissions
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
-    // Its published list, pause and submissions; the rest is named below.
+    // Its published list, pause, submissions and working facts; the rest is named below.
     ...transportState,
     enabled: queueCapable && transportState.fence !== null,
     hasPendingPrompt: prompts.length > 0,
     backgroundTasksRunning: transportState.backgroundTasks.isMonitoring,
-    isWorking,
     // Hidden from the transcript, a queue send on its way reads as sending among the cards.
     sending: pending,
     composerScopeKey,

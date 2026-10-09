@@ -2,7 +2,10 @@
 // The wire carries no hold copy on purpose: the caption is derived here from the
 // draft's own state plus the live facts the client already holds.
 
-import { nextActionableQueuedMessage } from '../../../src/shared/structured-agent-session-queue-selection'
+import {
+  nextActionableQueuedMessage,
+  queuedClearWaitsOnBackgroundTasks
+} from '../../../src/shared/structured-agent-session-queue-selection'
 import type { AgentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureStatedByRow } from '../../../src/shared/agent-session-visible-failures'
 import {
@@ -36,8 +39,8 @@ export type MobileQueuedMessageCard = {
   command?: true
   /** A command card while the agent works: it offers no send until the agent is idle. */
   waitsForAgent?: true
-  /** A /clear next in line that nothing this client sees holds: the queue runs it without a
-   *  press (once any background tasks end), so it offers no Send. */
+  /** A /clear next in line that nothing but background tasks holds: the queue runs it without a
+   *  press, so it offers no Send. */
   runsOnItsOwn?: true
 }
 
@@ -119,6 +122,8 @@ export function mobileQueuedMessageCards(
     pendingPrompt: boolean
     queuePaused?: boolean
     agentWorking?: boolean
+    /** Background tasks run: a /clear next in line waits them out on the host. */
+    backgroundTasksRunning?: boolean
     agentName?: string
     statedFailures?: readonly AgentSessionFailureFact[]
   }
@@ -160,7 +165,9 @@ export function mobileQueuedMessageCards(
                 null
               : facts.pendingPrompt
                 ? 'Waiting for your answer'
-                : null
+                : queuedClearWaitsOnBackgroundTasks(draft, next, facts)
+                  ? 'Waiting for background tasks to finish'
+                  : null
     const runsOnItsOwn =
       draft === next &&
       draft.body.command?.name === 'clear' &&
