@@ -46,6 +46,12 @@ import {
   startOrcadConvertHost,
   type OrcadConvertHost
 } from './helpers/orcad-convert-host'
+import {
+  callEnvironment,
+  createPairedHostTerminal,
+  openPairedClientTab
+} from './helpers/paired-host-terminal'
+import { expectTerminalAccessibilityText } from './helpers/terminal-accessibility-tree'
 import { toSshExecutionHostId } from '../../src/shared/execution-host'
 
 const HOST = process.env[ORCAD_CONVERT_HOST_ENV]
@@ -268,6 +274,35 @@ test('a relay-era profile converts its SSH host on the first connect after upgra
     await expect(folder).toBeHidden()
     await managedHeader.click()
     await expect(folder).toBeVisible()
+    if (!host.exec) {
+      return
+    }
+    await upgraded.page.evaluate(
+      ({ worktreeId, environmentId }) => {
+        window.__store!.getState().setActiveWorktree(worktreeId, `runtime:${environmentId}`)
+      },
+      { worktreeId: seeded.worktreeId, environmentId: environment.id }
+    )
+    const terminal = await createPairedHostTerminal(
+      upgraded.page,
+      environment.id,
+      seeded.worktreeId,
+      'bash'
+    )
+    await openPairedClientTab(upgraded.page, seeded.worktreeId, terminal.webTabId)
+    await callEnvironment(upgraded.page, environment.id, 'terminal.send', {
+      terminal: terminal.terminal,
+      text: "orca status --json > /tmp/orca-cli-status.json && orca worktree ps --json > /tmp/orca-cli-workers.json && printf 'QA_%s\\n' 'CLI_READY'",
+      enter: true
+    })
+    await expectTerminalAccessibilityText(upgraded.page, terminal.webTabId, 'QA_CLI_READY')
+    const status = JSON.parse(host.exec('cat /tmp/orca-cli-status.json'))
+    expect(status.result.runtime).toMatchObject({
+      reachable: true,
+      runtimeId: environment.runtimeId
+    })
+    expect(status.result.app.desktopWindowStatus).toBe('blocked')
+    await upgraded.page.screenshot({ path: testInfo.outputPath('managed-cli-ready.png') })
   } finally {
     if (app) {
       await session.close(app)
