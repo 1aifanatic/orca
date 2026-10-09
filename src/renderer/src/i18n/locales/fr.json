@@ -19042,6 +19042,16 @@
     }
   },
   "featureTips": {
+    "nativeChatUpgrade": {
+      "eyebrow": "Nouveau",
+      "title": "Le chat natif a été amélioré",
+      "intro": "Les nouveaux chats avec les agents pris en charge s'ouvrent désormais dans la vue de chat améliorée. Pour passer du chat à la CLI et inversement, ouvrez {{panel}} dans la barre latérale droite :",
+      "resumeInNativeChat": "{{action}} ouvre une conversation CLI prise en charge dans le chat natif.",
+      "resumeInCli": "{{action}} copie un chat Claude ou Codex dans une nouvelle session CLI. Le chat d'origine reste inchangé.",
+      "settingsInstruction": "Gérez Chat UI dans",
+      "settingsLink": "Paramètres → Expérimental",
+      "gotIt": "Compris"
+    },
     "voice": {
       "demoPrompt": "Relisez ce diff à la recherche de cas limites et ajoutez des tests pour tout ce que vous trouvez.",
       "startDictation": "Démarrer la dictée",

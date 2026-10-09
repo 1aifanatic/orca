@@ -40,6 +40,7 @@ export function getPendingFeatureTips(args: {
   seenTipIds: readonly FeatureTipId[]
   cliInstalled: boolean
   featureInteractions: FeatureInteractionState
+  inNativeChatUpgradeTipAudience: boolean
   settings: FeatureTipSettings | null | undefined
   webClient: boolean
 }): FeatureTip[] {
@@ -49,6 +50,7 @@ export function getPendingFeatureTips(args: {
       cliInstalled: args.cliInstalled,
       voiceDictationEnabled: args.settings?.voice?.enabled === true,
       sessionSearchTipCompleted: isSessionSearchFeatureTipCompleted(args.settings, args.webClient),
+      inNativeChatUpgradeTipAudience: args.inNativeChatUpgradeTipAudience,
       featureInteractions: args.featureInteractions
     })
   })
@@ -59,9 +61,13 @@ export function getFeatureTipsAppOpenDecision(args: {
   cliInstalled: boolean | null
   featureTipsSeenIds: readonly FeatureTipId[]
   featureInteractions: FeatureInteractionState
+  /** Null until main answers. */
+  inNativeChatUpgradeTipAudience: boolean | null
   onboarding: OnboardingState | null
   persistedUIReady: boolean
   promptedThisSession: boolean
+  /** The native chat resume dialog is not an app modal, so a tip would stack on it. */
+  resumeOnRestartDialogOpen: boolean
   settings: FeatureTipSettings | null | undefined
   suppressedByOnboardingThisSession: boolean
   webClient: boolean
@@ -77,7 +83,9 @@ export function getFeatureTipsAppOpenDecision(args: {
     !args.settings ||
     args.onboarding === null ||
     args.activeModal !== 'none' ||
+    args.resumeOnRestartDialogOpen ||
     args.cliInstalled === null ||
+    args.inNativeChatUpgradeTipAudience === null ||
     shouldShowOnboarding(args.onboarding)
   ) {
     return { kind: 'skip' }
@@ -87,6 +95,7 @@ export function getFeatureTipsAppOpenDecision(args: {
     seenTipIds: args.featureTipsSeenIds,
     cliInstalled: args.cliInstalled,
     featureInteractions: args.featureInteractions,
+    inNativeChatUpgradeTipAudience: args.inNativeChatUpgradeTipAudience,
     settings: args.settings,
     webClient: args.webClient
   })[0]
