@@ -18435,8 +18435,7 @@
       },
       "visualUnavailable": "可视化不可用",
       "visualLoading": "正在加载可视化",
-      "visualOpenInSidebar": "在侧边栏中打开",
-      "visualClose": "关闭可视化"
+      "visualOpenInNewTab": "在新标签页中打开"
     },
     "tab": {
       "bar": {

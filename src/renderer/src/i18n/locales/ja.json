@@ -18470,8 +18470,7 @@
       },
       "visualUnavailable": "ビジュアライゼーションを利用できません",
       "visualLoading": "ビジュアライゼーションを読み込み中",
-      "visualOpenInSidebar": "サイドバーで開く",
-      "visualClose": "ビジュアライゼーションを閉じる"
+      "visualOpenInNewTab": "新しいタブで開く"
     },
     "tab": {
       "bar": {

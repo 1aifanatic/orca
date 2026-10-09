@@ -14,6 +14,7 @@ import {
 } from '../tabs/untitled-file-cleanup'
 import { unifiedTabsKeepWorktreeSelected } from './unified-tabs-keep-worktree-selected'
 import { isSameEditorOwner, mayShareEditorBackingFile } from '../file-ids/editor-file-ids'
+import { isEditorTabContentType } from '../tabs/editor-tab-content-type'
 
 function isSameDocumentOwner(candidate: OpenFile, closedFile: OpenFile): boolean {
   const expectedRoute = closedFile.operationProvenance?.generation.route
@@ -98,11 +99,7 @@ export function createCloseFileAction(
           tabs
             .filter(
               (entry) =>
-                fileIdsToClose.has(entry.entityId) &&
-                (entry.contentType === 'editor' ||
-                  entry.contentType === 'diff' ||
-                  entry.contentType === 'conflict-review' ||
-                  entry.contentType === 'check-details')
+                fileIdsToClose.has(entry.entityId) && isEditorTabContentType(entry.contentType)
             )
             .map((entry) => entry.id)
       )
@@ -244,7 +241,8 @@ export function createCloseFileAction(
           closedFile &&
           wtRecent &&
           !shouldDeleteFromDisk &&
-          closedFile.mode !== 'markdown-preview'
+          closedFile.mode !== 'markdown-preview' &&
+          closedFile.mode !== 'chat-visual'
         ) {
           const {
             id: _id,

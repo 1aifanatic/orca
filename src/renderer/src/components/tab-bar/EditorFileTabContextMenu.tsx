@@ -235,7 +235,7 @@ export function EditorFileTabContextMenu({
           )}
         </DropdownMenuItem>
         {/* Why: virtual editor tabs use synthetic ids instead of on-disk paths. */}
-        {file.mode !== 'check-details' && (
+        {file.mode !== 'check-details' && file.mode !== 'chat-visual' && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem

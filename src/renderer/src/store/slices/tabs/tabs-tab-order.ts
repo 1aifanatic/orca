@@ -1,5 +1,6 @@
 import type { Tab } from '../../../../../shared/tab-types'
 import { dedupeTabOrder } from '../tab-group-state'
+import { isEditorTabContentType } from '../editor/tabs/editor-tab-content-type'
 
 export function partitionPinnedTabOrder(
   tabOrder: string[],
@@ -47,12 +48,7 @@ export function insertTabIdIntoOrder(
 }
 
 export function isReplaceablePreviewContentType(contentType: Tab['contentType']): boolean {
-  return (
-    contentType === 'editor' ||
-    contentType === 'diff' ||
-    contentType === 'conflict-review' ||
-    contentType === 'check-details'
-  )
+  return isEditorTabContentType(contentType)
 }
 
 export function canReplacePreviewContentType(

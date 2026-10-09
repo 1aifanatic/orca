@@ -157,7 +157,10 @@ export function updateGroup(groups: TabGroup[], updated: TabGroup): TabGroup[] {
 
 export function isTransientEditorContentType(contentType: TabContentType): boolean {
   return (
-    contentType === 'diff' || contentType === 'conflict-review' || contentType === 'check-details'
+    contentType === 'diff' ||
+    contentType === 'conflict-review' ||
+    contentType === 'check-details' ||
+    contentType === 'chat-visual'
   )
 }
 

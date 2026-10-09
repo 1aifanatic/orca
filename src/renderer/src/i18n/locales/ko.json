@@ -18470,8 +18470,7 @@
       },
       "visualUnavailable": "시각화를 사용할 수 없습니다",
       "visualLoading": "시각화 로드 중",
-      "visualOpenInSidebar": "사이드바에서 열기",
-      "visualClose": "시각화 닫기"
+      "visualOpenInNewTab": "새 탭에서 열기"
     },
     "tab": {
       "bar": {

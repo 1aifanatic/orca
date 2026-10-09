@@ -14,9 +14,9 @@ export type EditorHeaderOpenFileState = {
   canOpen: boolean
 }
 
-/** Whether the panel shows its own path header; check-details names the document itself. */
+/** Whether the panel shows its own path header; virtual tabs name the document themselves. */
 export function shouldShowEditorPanelHeader(file: OpenFile, isCombinedDiff: boolean): boolean {
-  return !isCombinedDiff && file.mode !== 'check-details'
+  return !isCombinedDiff && file.mode !== 'check-details' && file.mode !== 'chat-visual'
 }
 
 export function getEditorHeaderCopyState(file: OpenFile): EditorHeaderCopyState {

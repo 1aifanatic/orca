@@ -18617,8 +18617,7 @@
       },
       "visualUnavailable": "Visualization unavailable",
       "visualLoading": "Loading visualization",
-      "visualOpenInSidebar": "Open in sidebar",
-      "visualClose": "Close visualization",
+      "visualOpenInNewTab": "Open in new tab",
       "queuedMessages": {
         "behindReturnedHold": "Waiting — a message ahead needs attention",
         "awaitingAnswerHold": "Waiting for your answer",

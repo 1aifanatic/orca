@@ -18435,8 +18435,7 @@
       },
       "visualUnavailable": "Visualización no disponible",
       "visualLoading": "Cargando visualización",
-      "visualOpenInSidebar": "Abrir en la barra lateral",
-      "visualClose": "Cerrar visualización"
+      "visualOpenInNewTab": "Abrir en una pestaña nueva"
     },
     "tab": {
       "bar": {
