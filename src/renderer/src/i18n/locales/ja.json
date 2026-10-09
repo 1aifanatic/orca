@@ -3978,6 +3978,10 @@
             "used": "{{value0}}% 使用済み",
             "remaining": "残り {{value0}}%"
           },
+          "StatusBarUsageChangeNotices": {
+            "compactTitle": "使用量がコンパクト表示になりました",
+            "compactBody": "プロバイダーごとに主要な指標を1つ表示します。より多くの上限を表示するには、使用量メニューで「詳細」を選択してください。"
+          },
           "UsagePercentageDisplayChangeNotice": {
             "title": "使用状況に、使用済みの割合を表示するようになりました",
             "body": "残量表示にしたい場合は、[設定] で変更できます。",

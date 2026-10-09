@@ -115,6 +115,8 @@ export type UISliceContextual = {
   dismissProjectOrderManualDefaultNotice: () => void
   usagePercentageDisplayChangeNoticeDismissed: boolean
   dismissUsagePercentageDisplayChangeNotice: () => void
+  statusBarCompactChangeNoticeDismissed: boolean
+  dismissStatusBarCompactChangeNotice: () => void
   usageEmptyStateDismissed: boolean
   dismissUsageEmptyState: () => void
   codexTerminalServerIsolationNoticeSeen: boolean
