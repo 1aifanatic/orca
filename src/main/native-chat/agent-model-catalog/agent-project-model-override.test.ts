@@ -11,7 +11,11 @@ function write(path: string, content = ''): void {
   writeFileSync(path, content)
 }
 
-function mayOverride(agent: string, workspacePath: string, accountHomePath = '/homes/a') {
+function mayOverride(
+  agent: string,
+  workspacePath: string,
+  accountHomePath: string | null = '/homes/a'
+) {
   return workspaceMayOverrideDefaultModel({ agent, workspacePath, accountHomePath })
 }
 
@@ -127,6 +131,78 @@ describe('workspaceMayOverrideDefaultModel', () => {
   })
 
   it('never vouches for an agent whose project config it does not know', async () => {
-    expect(await mayOverride('opencode', join(root, 'anywhere'))).toBe(true)
+    expect(await mayOverride('pi', join(root, 'anywhere'))).toBe(true)
+  })
+
+  it('ignores OpenCode project config that picks no model, effort or provider', async () => {
+    const worktree = join(root, 'oc-plain')
+    write(join(worktree, '.git'), 'gitdir: /elsewhere')
+    expect(await mayOverride('opencode', worktree, null)).toBe(false)
+    // JSONC with comments, MCP servers, permissions and a subagent prompt.
+    write(
+      join(worktree, 'opencode.jsonc'),
+      '{\n  // team MCP\n  "mcp": { "docs": { "type": "local" } },\n  "permission": { "edit": "ask" },\n  "agent": { "review": { "prompt": "be brief" } },\n}\n'
+    )
+    write(join(worktree, '.opencode', 'agent', 'review.md'), '---\ndescription: Reviews\n---\nBody')
+    expect(await mayOverride('opencode', worktree, null)).toBe(false)
+  })
+
+  it.each([
+    ['a model', 'opencode.json', { model: 'anthropic/claude-sonnet-5' }],
+    ['a default agent', 'opencode.json', { default_agent: 'plan' }],
+    ['an agent model', '.opencode/opencode.json', { agent: { build: { model: 'x/y' } } }],
+    ['a 2.x agent variant', 'opencode.jsonc', { agents: { build: { variant: 'high' } } }],
+    ['a mode model', 'opencode.json', { mode: { build: { model: 'x/y' } } }],
+    ['its providers', 'opencode.json', { enabled_providers: ['openai'] }],
+    ['a 2.x provider table', 'opencode.json', { providers: { openai: {} } }]
+  ])('counts OpenCode project config that sets %s', async (_name, file, config) => {
+    const worktree = join(root, 'oc-model')
+    write(join(worktree, '.git'), 'gitdir: /elsewhere')
+    write(join(worktree, file), JSON.stringify(config))
+    expect(await mayOverride('opencode', worktree, null)).toBe(true)
+  })
+
+  it('counts an OpenCode agent file whose frontmatter picks a model, and invalid JSONC', async () => {
+    const worktree = join(root, 'oc-agent-file')
+    write(join(worktree, '.git'), 'gitdir: /elsewhere')
+    write(join(worktree, '.opencode', 'agents', 'nested', 'build.md'), '---\nmodel: x/y\n---\n')
+    expect(await mayOverride('opencode', worktree, null)).toBe(true)
+    rmSync(join(worktree, '.opencode'), { recursive: true })
+    write(join(worktree, 'opencode.json'), '{ "model": ')
+    expect(await mayOverride('opencode', worktree, null)).toBe(true)
+  })
+
+  it('reads OpenCode config above the repository root too, as OpenCode 2.x does', async () => {
+    const repo = join(root, 'oc-above', 'repo')
+    write(join(repo, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+    write(join(root, 'oc-above', 'opencode.json'), '{"model":"x/y"}')
+    expect(await mayOverride('opencode', repo, null)).toBe(true)
+  })
+
+  it.each([
+    ['.omp/config.yml', 'modelRoles:\n  default: openai/gpt-6\n'],
+    ['.omp/settings.json', '{"defaultThinkingLevel":"low"}'],
+    ['.omp/settings.json', '{"enabledModels":["openai/*"]}'],
+    ['.claude/settings.json', '{"modelRoles":{"default":"x/y"}}'],
+    ['opencode.json', '{"modelProviderOrder":["openai"]}'],
+    ['.codex/config.toml', 'defaultThinkingLevel = "low"\n'],
+    ['.omp/config.yml', 'modelRoles: [\n']
+  ])(
+    'counts OMP project settings in %s that pick a model or thinking level',
+    async (file, text) => {
+      const worktree = join(root, 'omp-model')
+      write(join(worktree, '.git'), 'gitdir: /elsewhere')
+      write(join(worktree, file), text)
+      expect(await mayOverride('omp', worktree, join(root, 'omp-home'))).toBe(true)
+    }
+  )
+
+  it('ignores OMP project settings that pick no model', async () => {
+    const worktree = join(root, 'omp-plain')
+    write(join(worktree, '.git'), 'gitdir: /elsewhere')
+    write(join(worktree, '.omp', 'config.yml'), 'theme.dark: nord\n')
+    write(join(worktree, '.claude', 'settings.json'), '{"model":"opus"}')
+    write(join(worktree, 'opencode.json'), '{"mcp":{}}')
+    expect(await mayOverride('omp', worktree, join(root, 'omp-home'))).toBe(false)
   })
 })
