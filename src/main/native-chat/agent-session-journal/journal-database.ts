@@ -14,6 +14,7 @@ import {
 } from './journal-database-schema'
 import { JournalUnreleasedSchemaError } from './journal-open-failure'
 import { ensureQueuedMessagesTable } from './queued-message-schema'
+import { ensureAgentSessionAttachmentClaimTables } from '../agent-session-attachments/agent-session-attachment-claims'
 
 export const JOURNAL_BUSY_TIMEOUT_MS = 5000
 /** Bounds the WAL a checkpoint leaves behind; SQLite truncates it back to this after a reset. */
@@ -51,7 +52,7 @@ export function journalDatabaseHoldsAgentSessions(dbPath: string): boolean {
 }
 
 /** A launch-record field whose presence means the host still owes that launch work. */
-export type LaunchOperationObligation = 'promptDelivery' | 'launchFollowUp'
+export type LaunchOperationObligation = 'launchFollowUp'
 
 /** Whether any unexpired launch record holds `field`, read-only: an expired one is skipped by
  *  everything that reads it, and nothing prunes it until the store next opens. */
@@ -110,6 +111,7 @@ export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
     // already at the current version, and this table must exist at EVERY
     // writable open with no `user_version` bump (see `ensureQueuedMessagesTable`).
     ensureQueuedMessagesTable(probe)
+    ensureAgentSessionAttachmentClaimTables(probe)
     hardenSqliteDatabaseFiles(dbPath)
     transferred = true
     return { db: probe, readOnly: false }

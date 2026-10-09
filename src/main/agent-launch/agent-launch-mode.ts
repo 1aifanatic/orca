@@ -28,7 +28,7 @@ import { isDesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
 import { RUNTIME_CAPABILITIES } from '../../shared/protocol-version'
 import { STRUCTURED_AGENT_RUNTIME_REGISTRATIONS } from '../runtime/structured-agent-runtime-registrations'
 import {
-  prefersStructuredNativeChatByDefault,
+  isNativeChatEnabled,
   resolveStructuredNativeChatSupport,
   type NativeChatDefaultSettings,
   type StructuredNativeChatBlocker
@@ -141,7 +141,7 @@ export function decideAgentLaunchMode(args: {
   const { placement, settings } = args
   const vocabulary = args.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
   // Desktop startup transport preserves the terminal choice already made at the click.
-  if (isDesktopNewTabPrompt(args.prompt) || !prefersStructuredNativeChatByDefault(settings)) {
+  if (isDesktopNewTabPrompt(args.prompt) || !isNativeChatEnabled(settings)) {
     return {
       mode: 'terminal',
       preferred: 'terminal',
@@ -257,6 +257,16 @@ function downgraded(
     preferred: 'structured',
     reason,
     detail: `Your default is a structured chat session, but ${why}; started ${vocabulary.terminal} instead.`
+  }
+}
+
+/** One main-log line when a launch the user's default asked to be a chat opened a terminal. */
+export function warnStructuredLaunchDowngrade(
+  agent: string,
+  receipt: AgentLaunchModeReceipt
+): void {
+  if (receipt.mode === 'terminal' && receipt.preferred === 'structured') {
+    console.warn(`[agent-launch] ${agent} opened a terminal: ${receipt.reason}`)
   }
 }
 

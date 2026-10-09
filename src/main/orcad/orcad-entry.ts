@@ -104,6 +104,8 @@ export type OrcadOptions = {
   pairingAddress?: string
   /** Desktop `orca serve` parity: a mobile-scoped offer with a terminal QR. */
   mobilePairing?: boolean
+  /** Lets the paired runtime client drive this machine's desktop (computer.*). */
+  grantDesktopControl?: boolean
   /** Desktop `orca serve` parity: print only the ephemeral-VM recipe line. */
   recipeJson?: boolean
   projectRoot?: string
@@ -326,7 +328,6 @@ async function startOrcadRuntime(
   runtime.rehydrateClientHostedBrowserPages()
 
   await runtime.refreshRestoredOrchestrationAuthority()
-  void resumeOwedAgentLaunchPrompts(runtime)
   await runtime.reconcileLegacyWorkerTerminals()
 
   // A retry armed during recovery would otherwise write after the final profile flush.
@@ -406,7 +407,6 @@ export {
   ORCAD_EXIT_CONFIGURATION,
   resolveOrcadExitCode
 } from './orcad-exit-code'
-import { resumeOwedAgentLaunchPrompts } from '../runtime/rpc/methods/agent-launch-owed-prompt-host'
 
 /** Bounded so a wedged transport cannot hold a supervisor's stop past its own deadline. */
 export { ORCAD_SHUTDOWN_DEADLINE_MS } from './orcad-lifecycle'

@@ -28,7 +28,7 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true })
 })
 
-function launchRow(promptDelivery?: AgentSessionOperationRow['promptDelivery']) {
+function launchRow(launchFollowUp?: AgentSessionOperationRow['launchFollowUp']) {
   const row: AgentSessionOperationRow = {
     ...REF,
     fingerprint: 'fp',
@@ -36,7 +36,7 @@ function launchRow(promptDelivery?: AgentSessionOperationRow['promptDelivery']) 
     recordedAt: 1,
     expiresAt: Number.MAX_SAFE_INTEGER,
     outcome: { status: 'succeeded', sessionId: '', launch: { stub: true } },
-    ...(promptDelivery ? { promptDelivery } : {})
+    ...(launchFollowUp ? { launchFollowUp } : {})
   }
   return row
 }
@@ -50,45 +50,45 @@ async function leaveLaunchRecords(row: AgentSessionOperationRow): Promise<void> 
   closeTestJournalHostDatabase(directory)
 }
 
-describe('whether a restarted host owes a launch its prompt, read before opening the store', () => {
-  it('finds an owed prompt in a profile that only ever launched terminal agents', async () => {
-    await leaveLaunchRecords(
-      launchRow({ state: 'owed', text: 'fix it', agent: 'claude', deadline: 9_000, terminal: null })
-    )
-    expect(hasPersistedLaunchObligation(directory, 'promptDelivery')).toBe(true)
-    // The chat-store check sees no chat, so it cannot answer for launches.
+const FOLLOW_UP = { kind: 'review-notes-delivered', version: 1, payload: {} }
+
+describe('whether launch records have a follow-up left for the window', () => {
+  it('finds a follow-up in a profile that only ever launched terminal agents', async () => {
+    await leaveLaunchRecords(launchRow(FOLLOW_UP))
+    expect(hasPersistedLaunchObligation(directory, 'launchFollowUp')).toBe(true)
     expect(hasPersistedStructuredAgentSessionStore(directory)).toBe(false)
   })
 
-  it('finds nothing once every prompt settled', async () => {
+  it('finds nothing once the window took every follow-up', async () => {
     await leaveLaunchRecords(launchRow())
-    expect(hasPersistedLaunchObligation(directory, 'promptDelivery')).toBe(false)
+    expect(hasPersistedLaunchObligation(directory, 'launchFollowUp')).toBe(false)
   })
 
-  it('skips an owed prompt whose record has expired, which nothing reads any more', async () => {
-    const row = launchRow({
-      state: 'owed',
-      text: 'fix it',
-      agent: 'claude',
-      deadline: 9_000,
-      terminal: null
-    })
+  it('skips a follow-up whose row has expired', async () => {
+    const row = launchRow(FOLLOW_UP)
     row.expiresAt = 50_000
     await leaveLaunchRecords(row)
-    expect(hasPersistedLaunchObligation(directory, 'promptDelivery', 49_999)).toBe(true)
-    expect(hasPersistedLaunchObligation(directory, 'promptDelivery', 50_000)).toBe(false)
+    expect(hasPersistedLaunchObligation(directory, 'launchFollowUp', 49_999)).toBe(true)
+    expect(hasPersistedLaunchObligation(directory, 'launchFollowUp', 50_000)).toBe(false)
   })
 
-  it('finds a recorded follow-up the window has not taken yet', async () => {
-    const row = launchRow()
-    row.launchFollowUp = { kind: 'review-notes-delivered', version: 1, payload: {} }
-    await leaveLaunchRecords(row)
-    expect(hasPersistedLaunchObligation(directory, 'launchFollowUp')).toBe(true)
-    expect(hasPersistedLaunchObligation(directory, 'promptDelivery')).toBe(false)
+  it('ignores an old owed prompt without a follow-up', async () => {
+    await leaveLaunchRecords(
+      Object.assign(launchRow(), {
+        promptDelivery: {
+          state: 'owed',
+          text: 'fix it',
+          agent: 'claude',
+          deadline: 9_000,
+          terminal: null
+        }
+      })
+    )
+    expect(hasPersistedLaunchObligation(directory, 'launchFollowUp')).toBe(false)
   })
 
   it('never creates the database of a profile that has none', () => {
-    expect(hasPersistedLaunchObligation(directory, 'promptDelivery')).toBe(false)
+    expect(hasPersistedLaunchObligation(directory, 'launchFollowUp')).toBe(false)
     expect(existsSync(journalDatabasePath(directory))).toBe(false)
   })
 })

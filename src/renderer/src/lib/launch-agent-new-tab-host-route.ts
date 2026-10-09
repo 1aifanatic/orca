@@ -239,14 +239,7 @@ export function launchNewTabPromptThroughHost(
         seedSubmittedChatCopy &&
         args.desktopPrompt?.delivery !== 'draft' &&
         seedChatCopy(tabId, args.agent, pasteContent, clickedAt)
-      // A launch past the record's cap kept no follow-up: the click runs its own, as main did.
-      const recorded = launched.unrecorded ? undefined : followUp
-      return settleHostPrompt(
-        args,
-        { tabId, operationId, followUp: recorded },
-        launched.prompt,
-        seeded
-      )
+      return settleHostPrompt(args, { tabId, operationId, followUp }, launched.prompt, seeded)
     }
     // The pane, or this notice for a tab that went, already says why: never a second notice.
     showLaunchNotStartedNotice(launched, args.prompt)

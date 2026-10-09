@@ -7,7 +7,6 @@ import {
   onStructuredAgentSessionsHeldChanged,
   structuredAgentSessionsHeld
 } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { resumeOwedAgentLaunchPrompts } from '../runtime/rpc/methods/agent-launch-owed-prompt-host'
 
 export function registerMainProcessIpcHandlers(): void {
   ipcMain.handle('app:awaitFirstWindowStartupServices', async () => {
@@ -29,10 +28,6 @@ export function registerMainProcessIpcHandlers(): void {
       state.managedWslCliStartupBarrierReady
     ])
     await state.runtime?.prepareStructuredAgentSessionStartupRestoration()
-    // The surviving terminals are known now; a launch prompt owed to one is finished in the background.
-    if (state.runtime) {
-      void resumeOwedAgentLaunchPrompts(state.runtime)
-    }
   })
   // Whether this runtime holds a structured chat (a saved record or one a client created here), which
   // is when the renderer has chats of this machine's to mirror. Many non-chat paths build the host.

@@ -51,7 +51,6 @@ export type TakenAgentLaunchFollowUp = {
 export type AgentLaunchFollowUpTake = {
   /** Removed from the record: this caller now owns running them. */
   taken: TakenAgentLaunchFollowUp[]
-  /** Still waiting on their prompt; left on the record, read-only. `deadline`: when the host stops
-   *  trying to deliver it, for a waiting window to stop holding what it acts on. */
+  /** Still waiting on a live launch; left on the record. Older hosts may include a deadline. */
   pending: { operationId: string; followUp: AgentLaunchFollowUp; deadline?: number }[]
 }

@@ -81,17 +81,14 @@ function lastPaneKey(): string {
   return String(lastParams().paneKey)
 }
 
-const FOLLOW_UP = { kind: 'review-notes-delivered', version: 1, payload: {} }
-
-function launch(extra: { followUp?: typeof FOLLOW_UP } = {}) {
+function launch() {
   return launchAgentThroughHost({
     agent: 'claude',
     worktreeId: WT,
     groupId: store.getState().activeGroupIdByWorktree[WT],
     prompt: 'fix the failing checks',
     agentArgs: null,
-    launchSource: 'source_control_recovery',
-    ...extra
+    launchSource: 'source_control_recovery'
   })
 }
 
@@ -239,43 +236,6 @@ describe('a desktop launch through the host', () => {
   it('says nothing more when the user closed the tab while it started', async () => {
     callRuntimeRpc.mockRejectedValueOnce(rpcError('agent_launch_tab_closed'))
     await expect(launch().outcome).resolves.toEqual({ kind: 'closed-by-user' })
-  })
-
-  it('still starts the agent in the same tab when the launch record is full', async () => {
-    const unrecorded = deferred<unknown>()
-    callRuntimeRpc
-      .mockRejectedValueOnce(rpcError('agent_session_operation_capacity'))
-      .mockReturnValueOnce(unrecorded.promise)
-    const { tabId, outcome } = launch({ followUp: FOLLOW_UP })
-    const paneKey = lastPaneKey()
-    await vi.waitFor(() => expect(callRuntimeRpc).toHaveBeenCalledTimes(2))
-
-    const [, method, params] = callRuntimeRpc.mock.calls[1]!
-    expect(method).toBe('agent.launch')
-    expect(params).not.toHaveProperty('operationId')
-    // Nothing records it: the click keeps its follow-up and runs it live.
-    expect(params).not.toHaveProperty('followUp')
-    // The same pane, held until the answer.
-    expect(params.paneKey).toBe(paneKey)
-    const leafId = launchTab(tabId)!.agentLaunchPane!.leafId
-    expect(agentLaunchPaneSpawnHold(tabId, leafId)).not.toBeNull()
-
-    unrecorded.resolve(terminalResult(paneKey))
-    await expect(outcome).resolves.toEqual({ kind: 'started', unrecorded: true })
-  })
-
-  it('takes its tab back when the unrecorded launch fails before the host revealed it', async () => {
-    callRuntimeRpc
-      .mockRejectedValueOnce(rpcError('agent_session_operation_capacity'))
-      .mockRejectedValueOnce(rpcError('worktree_not_found'))
-    const { tabId, outcome } = launch()
-
-    await expect(outcome).resolves.toEqual({
-      kind: 'not-started',
-      unconfirmed: false,
-      code: 'worktree_not_found'
-    })
-    expect(launchTab(tabId)).toBeUndefined()
   })
 
   it('reads the host capacity fallback receipt without making another desktop request', async () => {

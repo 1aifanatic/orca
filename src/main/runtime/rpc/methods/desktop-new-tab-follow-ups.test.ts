@@ -98,7 +98,6 @@ describe('a reloaded desktop retains its live compatibility follow-up', () => {
         outcome: { status: 'succeeded', launch: { prompt: { outcome: 'unconfirmed' } } },
         launchFollowUp: FOLLOW_UP
       })
-      expect(store.listOperationRows()[0]?.promptDelivery).toBeUndefined()
       expect(activeAgentLaunchesFor(context.runtime).size).toBe(1)
       expect(await take()).toEqual({
         taken: [],
@@ -144,7 +143,6 @@ describe('a reloaded desktop retains its live compatibility follow-up', () => {
       store = await openTestAgentSessionRecordStore(directory)
       setAgentLaunchRecordStore(store)
       expect(await take()).toEqual({ taken: [], pending: [] })
-      expect(store.listOperationRows()[0]?.promptDelivery).toBeUndefined()
       if (outcome !== 'interrupted') {
         expect(await LAUNCH.handler(params, context)).toEqual(settled)
       }

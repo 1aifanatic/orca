@@ -222,7 +222,6 @@ export function agentLaunchSurfaceFactory(
       agent,
       freshLaunch,
       prompt,
-      beginPromptWrite,
       onComposerUnobserved,
       onWriteUnconfirmed
     }) =>
@@ -233,7 +232,6 @@ export function agentLaunchSurfaceFactory(
         freshLaunch,
         text: prompt.text,
         ...(isDesktopNewTabPrompt(prompt) ? { prompt } : {}),
-        ...(beginPromptWrite ? { beginPromptWrite } : {}),
         ...(onComposerUnobserved ? { onComposerUnobserved } : {}),
         ...(onWriteUnconfirmed ? { onWriteUnconfirmed } : {}),
         callerKey:

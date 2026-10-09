@@ -56,10 +56,6 @@ import {
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
 import { joinActiveAgentLaunch } from './agent-launch-active-operations'
-import {
-  launchedTerminal,
-  settleOwedLaunchPromptBeforeReplay
-} from './agent-launch-owed-prompt-host'
 import { announceSettledLaunchFollowUps } from './agent-launch-follow-ups'
 import { callerRendersLaunchedChat } from './structured-agent-session-policy'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
@@ -68,7 +64,6 @@ import {
   withPlacement,
   type AgentLaunchView
 } from './agent-launch-tab-publication'
-import type { OwedLaunchPromptWriteStart } from '../../agent-launch-owed-prompt-record'
 import { isDesktopNewTabPrompt } from '../../../../shared/desktop-new-tab-prompt'
 import { runDesktopCapacityFallback } from './agent-launch-capacity-fallback'
 
@@ -94,12 +89,8 @@ type ReplaySafeLaunch = {
   attachOperationId: string
   callerKey: string
   terminalSpawn: TerminalSpawnDispatch
-  /** Records the surface the moment it exists, an owed prompt as `unconfirmed`. Fired, never
-   *  awaited: the ledger's transactions run in order, so the final settle still lands after it, and
-   *  the prompt never waits on bookkeeping. */
+  /** Records the surface before delivery, with its prompt unconfirmed until settlement. */
   recordSurface: (provisional: AgentLaunchResult) => void
-  /** W2: queued behind `recordSurface`'s write, so it finds the prompt that write owed. */
-  beginPromptWrite: () => Promise<OwedLaunchPromptWriteStart>
 }
 
 async function runAgentLaunch(
@@ -124,7 +115,6 @@ async function runAgentLaunch(
     ),
     workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
     ...(callerRendersLaunchedChat(context, intent.agent) ? {} : { callerRendersStructured: false }),
-    ...(replaySafe ? { beginPromptWrite: replaySafe.beginPromptWrite } : {}),
     // The tab is shown as it is published, not after a prompt that can take a minute to land.
     onSurfacePublished: (surface) => {
       view.early?.surfacePublished(surface)
@@ -175,11 +165,6 @@ async function executeReplaySafeAgentLaunch(
 ): Promise<AgentLaunchResult> {
   // The tab is the host's first act: admission has a cold cost the user should not watch.
   const early = await publishEarlyTab(params, context)
-  // A replay of a launch whose host stopped mid-prompt answers once that prompt is settled.
-  await settleOwedLaunchPromptBeforeReplay(context.runtime, {
-    callerKey: agentLaunchOperationCallerKey(context),
-    operationId: params.operationId
-  }).catch(() => {})
   let admission: Awaited<ReturnType<typeof admitAgentLaunchOperation>>
   try {
     admission = await admitAgentLaunchOperation(
@@ -241,11 +226,7 @@ async function executeAdmittedAgentLaunch(
       attachOperationId: admission.attachOperationId,
       callerKey: admission.callerKey,
       terminalSpawn,
-      recordSurface: (provisional) =>
-        void settleQuietly(
-          admission.record(provisional, launchedTerminal(context.runtime, provisional))
-        ),
-      beginPromptWrite: admission.beginPromptWrite
+      recordSurface: (provisional) => void settleQuietly(admission.record(provisional))
     })
   } catch (error) {
     const failedWithoutEffects = launchFailureWithoutEffectsCode(
@@ -273,8 +254,7 @@ async function executeAdmittedAgentLaunch(
       admission
     })
   }
-  // Bookkeeping: a failure leaves the first write, whose owed prompt replays as `unconfirmed` (or as
-  // `unknown` to a caller that cannot read it), never as `not-delivered`.
+  // A missed settlement leaves the provisional unconfirmed receipt, never an invitation to resend.
   await settleQuietly(admission.settle(result))
   return result
 }
@@ -285,9 +265,10 @@ function runReplaySafeAgentLaunch(
   desktopCapacityFallback = false
 ): Promise<AgentLaunchResult> {
   const fingerprint = computeAgentLaunchFingerprint(params)
+  const callerKey = agentLaunchOperationCallerKey(context)
   return joinActiveAgentLaunch({
     runtime: context.runtime,
-    key: agentSessionOperationKey(agentLaunchOperationCallerKey(context), params.operationId),
+    key: agentSessionOperationKey(callerKey, params.operationId),
     fingerprint,
     desktopRequest: desktopCapacityFallback,
     execute: (preserveCapacityTab) =>
@@ -299,8 +280,13 @@ function runReplaySafeAgentLaunch(
           )
       : undefined,
     onSettled: () => {
+      // Every way a launch ends, once it no longer reads as running: a window that reloaded mid-launch
+      // holds its follow-up's notes and threads until it hears.
       if (params.followUp) {
-        announceSettledLaunchFollowUps(context.runtime)
+        announceSettledLaunchFollowUps(context.runtime, {
+          callerKey,
+          operationId: params.operationId
+        })
       }
     }
   })
@@ -309,6 +295,7 @@ function runReplaySafeAgentLaunch(
 export const AGENT_LAUNCH_METHODS = [
   defineMethod({
     name: 'agent.launchReplay',
+    permission: 'workspace',
     params: AgentLaunchReplay,
     handler: async (params, context): Promise<AgentLaunchResult> => {
       if (!supportsAgentLaunch(context)) {
@@ -339,6 +326,7 @@ export const AGENT_LAUNCH_METHODS = [
   }),
   defineMethod({
     name: 'agent.launch',
+    permission: 'workspace',
     params: AgentLaunch,
     handler: async (params, context): Promise<AgentLaunchResult> => {
       if (!supportsAgentLaunch(context)) {
