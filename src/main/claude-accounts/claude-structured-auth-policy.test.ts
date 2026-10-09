@@ -68,20 +68,19 @@ describe('claudeStructuredAuthPolicyForSettings', () => {
           activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: {} }
         })
       )
-    ).toEqual({ stripAuthEnv: false, account: 'managed' })
+    ).toEqual({ account: 'managed' })
   })
 
-  it('names a host account pinned by runtime selection, keeping its shell auth', () => {
+  it('names a host account pinned by runtime selection', () => {
     expect(
       claudeStructuredAuthPolicyForSettings(
         settings({ activeClaudeManagedAccountIdsByRuntime: { host: 'host-a', wsl: {} } })
       )
-    ).toEqual({ stripAuthEnv: false, account: 'managed' })
+    ).toEqual({ account: 'managed' })
   })
 
   it('names System default when no account is selected', () => {
     expect(claudeStructuredAuthPolicyForSettings(settings({}))).toEqual({
-      stripAuthEnv: false,
       account: 'system'
     })
   })
@@ -93,7 +92,7 @@ describe('claudeStructuredAuthPolicyForSettings', () => {
           activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: { Ubuntu: 'wsl-b' } }
         })
       )
-    ).toEqual({ stripAuthEnv: false, account: 'system' })
+    ).toEqual({ account: 'system' })
   })
 })
 

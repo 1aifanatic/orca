@@ -18,7 +18,7 @@ import type {
 type DiscoverInput = Parameters<typeof discoverModelsLocal>[0]
 type DiscoverResult = Awaited<ReturnType<typeof discoverModelsLocal>>
 
-const AUTH_POLICY = { stripAuthEnv: false } as const
+const AUTH_POLICY = { account: 'system' } as const
 
 function probeDeps(command = `"${process.execPath}"`): {
   resolveCommand: () => string
@@ -228,7 +228,9 @@ describe('Claude catalog fake-child contract', () => {
       const probe = createClaudeModelCatalogProbe({
         ...probeDeps(),
         resolveEnv: () => ({}),
-        resolveAuthPolicy: () => ({ stripAuthEnv: managed }),
+        resolveAuthPolicy: () => ({
+          account: managed ? ('managed' as const) : ('system' as const)
+        }),
         spawnAgent
       })
       const result = await probe('/homes/a')

@@ -56,7 +56,7 @@ function makeExecutable(path: string): void {
 function resolverFor(
   value: AgentSessionRecord | null,
   resolveEnv?: () => Record<string, string>,
-  stripAuthEnv = false,
+  account: 'managed' | 'system' = 'system',
   // Manual by default so a test that is not about permissions is not silently about them.
   agentDefaultArgs: Record<string, string> = { claude: '' },
   hasTranscript: () => Promise<boolean> = async () => true,
@@ -67,7 +67,7 @@ function resolverFor(
     store: { getRecord: () => value, pinLaunchDirectory: vi.fn() },
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
-    resolveAuthPolicy: () => ({ stripAuthEnv }),
+    resolveAuthPolicy: () => ({ account }),
     resolvePermissionMode: () => claudeStructuredPermissionModeForSettings({ agentDefaultArgs }),
     hasTranscript,
     resolveLaunchArgs: resolveLaunchArgs ?? (() => value?.launchArgs ?? []),
@@ -215,7 +215,7 @@ describe('claude structured launch resolution', () => {
         ] as AgentSessionRecord['providerHandleChain']
       }),
       undefined,
-      false,
+      'system',
       { claude: '' },
       hasTranscript
     )({ identity: identityAt(null) })
@@ -242,7 +242,9 @@ describe('claude structured launch resolution', () => {
     ['--dangerously-skip-permissions --model Opus'],
     ['--model Opus --dangerously-skip-permissions']
   ])('starts a Yolo session in bypassPermissions for args %s', async (claude) => {
-    const launch = await resolverFor(record(), undefined, false, { claude })({ identity: IDENTITY })
+    const launch = await resolverFor(record(), undefined, 'system', { claude })({
+      identity: IDENTITY
+    })
 
     expect(launch.options.extraArgs).toEqual({
       'replay-user-messages': null,
@@ -256,7 +258,7 @@ describe('claude structured launch resolution', () => {
   // default for the key it did not write is the bypass flag — the posture the terminal has
   // always given these users.
   it('starts a session that never opened Agent settings in bypassPermissions', async () => {
-    const launch = await resolverFor(record(), undefined, false, {})({ identity: IDENTITY })
+    const launch = await resolverFor(record(), undefined, 'system', {})({ identity: IDENTITY })
 
     expect(launch.options.extraArgs).toEqual({
       'replay-user-messages': null,
@@ -268,7 +270,7 @@ describe('claude structured launch resolution', () => {
   it.each([[''], ['--model Opus']])(
     'leaves a Manual session prompting for args %s',
     async (claude) => {
-      const launch = await resolverFor(record(), undefined, false, { claude })({
+      const launch = await resolverFor(record(), undefined, 'system', { claude })({
         identity: IDENTITY
       })
 
@@ -306,7 +308,7 @@ describe('claude structured launch resolution', () => {
     const resolve = resolverFor(
       record({ ...RESUMABLE, launchArgs: ['--model', 'stale'] }),
       undefined,
-      false,
+      'system',
       { claude: '' },
       async () => true,
       () => args
@@ -362,45 +364,11 @@ describe('claude structured launch resolution', () => {
     expect((await resolver({ identity: IDENTITY })).env?.ANTHROPIC_AUTH_TOKEN).toBe('rotated-token')
   })
 
-  // Stripping is the managed-account rule the terminal preflight computes at
-  // runtime-auth-preparation.ts:72; claude-structured-auth-parity.test.ts covers
-  // the system-auth half, where the user's own key has to survive.
-  it('strips ambient Anthropic auth under a managed account but keeps the rest of the env', async () => {
-    const restore = {
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-      ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
-      CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-      ORCA_LAUNCH_RESOLUTION_MARKER: process.env.ORCA_LAUNCH_RESOLUTION_MARKER
-    }
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-SHELL-LEAK'
-    process.env.ANTHROPIC_AUTH_TOKEN = 'tok-SHELL-LEAK'
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'oauth-SHELL-LEAK'
-    process.env.ORCA_LAUNCH_RESOLUTION_MARKER = 'inherited'
-    try {
-      const launch = await resolverFor(record(), undefined, true)({ identity: IDENTITY })
-
-      expect(launch.env?.ANTHROPIC_API_KEY).toBeUndefined()
-      expect(launch.env?.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
-      expect(launch.env?.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
-      // The inherited env is still the base — only auth is removed from it.
-      expect(launch.env?.ORCA_LAUNCH_RESOLUTION_MARKER).toBe('inherited')
-      expect(launch.env?.PATH ?? launch.env?.Path).toBeTruthy()
-    } finally {
-      for (const [key, value] of Object.entries(restore)) {
-        if (value === undefined) {
-          delete process.env[key]
-        } else {
-          process.env[key] = value
-        }
-      }
-    }
-  })
-
   it("lets the agent read the host's chat attachment store, outside the workspace", async () => {
     const launch = await resolverFor(
       record(),
       undefined,
-      false,
+      'system',
       { claude: '' },
       async () => true,
       undefined,
@@ -415,7 +383,7 @@ describe('claude structured launch resolution', () => {
     const launch = await resolverFor(
       record(),
       undefined,
-      false,
+      'system',
       { claude: '' },
       async () => true,
       () => ['--add-dir', '/extra'],
@@ -434,7 +402,7 @@ describe('claude structured launch resolution', () => {
       store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
-      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      resolveAuthPolicy: () => ({ account: 'system' }),
       resolveInheritedEnv: async () => ({ PATH: '/shell/bin', SHELL_ONLY_MARKER: 'from-shell' })
     })({ identity: IDENTITY })
 
@@ -447,7 +415,7 @@ describe('claude structured launch resolution', () => {
       store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
-      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      resolveAuthPolicy: () => ({ account: 'system' }),
       resolveInheritedEnv: async () => ({
         PATH: '/shell/bin',
         CLAUDE_CONFIG_DIR: '/shell/claude',
@@ -466,7 +434,7 @@ describe('claude structured launch resolution', () => {
       store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
-      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      resolveAuthPolicy: () => ({ account: 'system' }),
       resolveEnv: () => ({ CLAUDE_CONFIG_DIR: '/accounts/selected/home' }),
       resolveInheritedEnv: async () => ({ PATH: '/shell/bin', CLAUDE_CONFIG_DIR: '/shell/claude' })
     })({ identity: IDENTITY })
@@ -474,17 +442,24 @@ describe('claude structured launch resolution', () => {
     expect(launch.env?.CLAUDE_CONFIG_DIR).toBe('/accounts/selected/home')
   })
 
-  it('still strips an inherited auth key under a managed account', async () => {
+  it("keeps the shell's auth key under a managed account, beside its proxy address", async () => {
     const launch = await createClaudeStructuredLaunchResolver({
       resolveLaunchArgs: () => [],
       store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
-      resolveAuthPolicy: () => ({ stripAuthEnv: true }),
-      resolveInheritedEnv: async () => ({ PATH: '/shell/bin', ANTHROPIC_API_KEY: 'listed-key' })
+      resolveAuthPolicy: () => ({ account: 'managed' }),
+      resolveInheritedEnv: async () => ({
+        PATH: '/shell/bin',
+        ANTHROPIC_API_KEY: 'listed-key',
+        ANTHROPIC_BASE_URL: 'https://proxy.example.test'
+      })
     })({ identity: IDENTITY })
 
-    expect(launch.env?.ANTHROPIC_API_KEY).toBeUndefined()
+    expect(launch.env).toMatchObject({
+      ANTHROPIC_API_KEY: 'listed-key',
+      ANTHROPIC_BASE_URL: 'https://proxy.example.test'
+    })
   })
 
   it('lets an explicit Claude env overlay override ambient auth under system auth', async () => {
@@ -518,7 +493,7 @@ describe('claude structured launch resolution', () => {
       store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => claudeCommand,
-      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      resolveAuthPolicy: () => ({ account: 'system' }),
       resolveEnv: () => ({
         PATH: '/usr/bin',
         CLAUDE_CONFIG_DIR: '/accounts/selected/home'
@@ -563,7 +538,7 @@ describe('readable Claude thinking', () => {
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveLaunchArgs: () => launchArgs,
       resolveCommand: () => command,
-      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      resolveAuthPolicy: () => ({ account: 'system' }),
       resolveEnv: () => ({ PROJECT_SHIM: '1', ANTHROPIC_API_KEY: 'sk-user' }),
       hasTranscript: async () => false,
       ...(cliFlags ? { cliFlags } : {})

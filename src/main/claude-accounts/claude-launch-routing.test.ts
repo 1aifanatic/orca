@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
-import { claudeChildEnv } from '../claude/claude-structured-child-env'
+import { resolveClaudeStructuredInvocation } from '../claude/claude-structured-launch-resolution'
 import { resolveClaudeStructuredLaunchHome } from '../claude/claude-structured-launch-home'
 import { resolveStructuredClaudeAccountHomePath } from '../runtime/structured-agent-account-home'
 import {
@@ -117,7 +117,7 @@ describe('one router decision for every Claude launch', () => {
       chat: f.systemHome,
       chatEnv: undefined,
       chatRecord: f.systemHome,
-      chatAuth: { stripAuthEnv: false, account: 'system' },
+      chatAuth: { account: 'system' },
       terminalStripsAuth: false,
       usage: f.systemHome,
       inactiveUsage: f.systemHome
@@ -130,7 +130,7 @@ describe('one router decision for every Claude launch', () => {
       chatEnv: f.accountHome,
       chatRecord: f.accountHome,
       // A shell proxy's key stays with its address on the account too.
-      chatAuth: { stripAuthEnv: false, account: 'managed' },
+      chatAuth: { account: 'managed' },
       terminalStripsAuth: false,
       usage: f.accountHome,
       inactiveUsage: f.accountHome
@@ -152,12 +152,12 @@ describe('one router decision for every Claude launch', () => {
       stripAuthEnv: prepared.stripAuthEnv
     })
     expect(env).toMatchObject({ ...shell, CLAUDE_CONFIG_DIR: f.accountHome })
-    expect(
-      claudeChildEnv(
-        { command: 'claude', inheritedEnv: { ...shell }, overlay: undefined },
-        claudeStructuredAuthPolicyForSettings(f.settings).stripAuthEnv
-      )
-    ).toMatchObject(shell)
+    const chat = await resolveClaudeStructuredInvocation({
+      resolveCommand: () => 'claude',
+      resolveInheritedEnv: async () => ({ ...shell }),
+      resolveAuthPolicy: () => claudeStructuredAuthPolicyForSettings(f.settings)
+    })
+    expect(chat).toMatchObject({ env: shell, account: 'managed' })
   })
 
   // Terminals, chats, AI commit messages and automations launch through

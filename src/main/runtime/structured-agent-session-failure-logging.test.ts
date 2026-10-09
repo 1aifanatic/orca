@@ -308,7 +308,7 @@ describe('installing the runtime', () => {
           claimKeyId: 'key-1',
           resolveWorkspacePath: async () => root,
           resolveLaunchArgs: () => [],
-          resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true })
+          resolveClaudeAuthPolicy: () => ({ account: 'managed' })
         } as unknown as Parameters<typeof ensureStructuredAgentSessionHost>[0]
       )
     ).rejects.toThrow(STRUCTURED_AGENT_SESSION_LOGGER_REQUIRED)
@@ -325,7 +325,7 @@ describe('installing the runtime', () => {
       resolveWorkspacePath: async () => root,
       resolveEnvironment: async () => ({}),
       resolveLaunchArgs: () => [],
-      resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+      resolveClaudeAuthPolicy: () => ({ account: 'managed' }),
       logger: {
         warn: () => {
           throw new Error('logger broke')
