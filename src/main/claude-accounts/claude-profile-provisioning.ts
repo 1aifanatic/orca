@@ -154,6 +154,30 @@ function copySettings(source: string, target: string): ClaudeProfileSurfaceOutco
   return outcome
 }
 
+/** Keyed by folder path or server name: entries the account recorded on its own are kept. */
+const MERGED_BY_ENTRY: ReadonlySet<string> = new Set(['projects', 'mcpServers'])
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function mergeEntries(key: string, current: unknown, source: unknown): unknown {
+  if (!isPlainRecord(current) || !isPlainRecord(source)) {
+    return source
+  }
+  const merged: Record<string, unknown> = { ...current, ...source }
+  if (key === 'projects') {
+    for (const [path, entry] of Object.entries(source)) {
+      const own = current[path]
+      // Why: a folder trusted in the account, often by Orca just before launch, stays trusted.
+      if (isPlainRecord(own) && own.hasTrustDialogAccepted === true && isPlainRecord(entry)) {
+        merged[path] = { ...entry, hasTrustDialogAccepted: true }
+      }
+    }
+  }
+  return merged
+}
+
 async function copyState(source: string, target: string): Promise<ClaudeProfileSurfaceOutcome> {
   if (lstatIfPresent(target)?.isSymbolicLink()) {
     return 'user-owned'
@@ -184,7 +208,7 @@ async function copyState(source: string, target: string): Promise<ClaudeProfileS
   const outcome = await updateClaudeGlobalConfig(target, (current) => {
     const config = { ...current }
     for (const [key, value] of shared) {
-      config[key] = value
+      config[key] = MERGED_BY_ENTRY.has(key) ? mergeEntries(key, current[key], value) : value
     }
     return JSON.stringify(config) === JSON.stringify(current)
       ? { kind: 'unchanged' }

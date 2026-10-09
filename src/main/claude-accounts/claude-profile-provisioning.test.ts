@@ -285,6 +285,34 @@ describe('Claude profile refresh from the default home', () => {
       expect(fs.readFileSync(join(f.profileHome, 'server-sessions.json'), 'utf8')).toBe('mine')
     }
   )
+  it('merges trusted folders and MCP servers per entry, never untrusting an account folder', async () => {
+    const f = fixture()
+    f.json(join(f.userHome, '.claude.json'), {
+      projects: {
+        '/shared': { hasTrustDialogAccepted: false, allowedTools: ['Read'] },
+        '/default-only': { hasTrustDialogAccepted: true }
+      },
+      mcpServers: { shared: { command: 'default' } }
+    })
+    f.json(join(f.profileHome, '.claude.json'), {
+      oauthAccount: LOGIN,
+      projects: {
+        '/shared': { hasTrustDialogAccepted: true },
+        '/account-only': { hasTrustDialogAccepted: true, allowedTools: ['Bash'] }
+      },
+      mcpServers: { shared: { command: 'account' }, mine: { command: 'mine' } }
+    })
+    await provision(f)
+    expect(f.read(join(f.profileHome, '.claude.json'))).toEqual({
+      oauthAccount: LOGIN,
+      projects: {
+        '/shared': { hasTrustDialogAccepted: true, allowedTools: ['Read'] },
+        '/account-only': { hasTrustDialogAccepted: true, allowedTools: ['Bash'] },
+        '/default-only': { hasTrustDialogAccepted: true }
+      },
+      mcpServers: { shared: { command: 'default' }, mine: { command: 'mine' } }
+    })
+  })
   it('skips the state write while Claude holds its lock and records nothing for it', async () => {
     const f = fixture()
     f.json(join(f.userHome, '.claude.json'), { theme: 'dark' })
