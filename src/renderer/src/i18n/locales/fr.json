@@ -12484,6 +12484,7 @@
           },
           "loadFailed": "Orca n'a pas pu charger les hôtes SSH et les déplacements inachevés. Rouvrez les Paramètres pour réessayer.",
           "outcome": {
+            "activeServer": "Non effectué : choisissez un autre Serveur actif dans Avancé avant d’arrêter ce serveur.",
             "live": "Non effectué : des terminaux sont encore en cours sur ce serveur. Fermez-les et réessayez.",
             "unverifiable": "Non effectué : Orca n'a pas pu confirmer ce qui tourne sur ce serveur. Réessayez lorsque l'hôte est joignable.",
             "migration": "Non effectué : un déplacement vers ce serveur est inachevé. Reprenez-le d'abord.",

@@ -12561,6 +12561,7 @@
           },
           "loadFailed": "Orca couldn’t load SSH hosts and unfinished moves. Reopen Settings to try again.",
           "outcome": {
+            "activeServer": "Not done: choose another Active Server in Advanced before stopping this server.",
             "live": "Not done: terminals on this server are still running. Close them and try again.",
             "unverifiable": "Not done: Orca couldn’t confirm what is running on this server. Try again when the host is reachable.",
             "migration": "Not done: a move onto this server is unfinished. Resume it first.",
