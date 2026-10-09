@@ -19128,6 +19128,16 @@
     }
   },
   "featureTips": {
+    "nativeChatUpgrade": {
+      "eyebrow": "New",
+      "title": "Native chat got an upgrade",
+      "intro": "New chats with supported agents now open in the upgraded chat view. To move between chat and CLI, open {{panel}} in the right sidebar:",
+      "resumeInNativeChat": "{{action}} opens a supported CLI conversation in native chat.",
+      "resumeInCli": "{{action}} copies a Claude or Codex chat into a new CLI session. The original chat stays as it is.",
+      "settingsInstruction": "Manage Chat UI in",
+      "settingsLink": "Settings → Experimental",
+      "gotIt": "Got it"
+    },
     "voice": {
       "demoPrompt": "Review this diff for edge cases and add tests for anything you find.",
       "startDictation": "Start dictation",
