@@ -18442,7 +18442,7 @@
         "sendConfirmBody_other": "メッセージを送信しようとしています。キューに入っている {{count}} 件のメッセージを消去しますか？",
         "sendConfirmClear": "キューを消去",
         "sendConfirmSend": "メッセージを送信",
-        "from": "送信元: {{names}}",
+        "fromSender": "送信元:",
         "pausedSendFailedWaiting": "送信できませんでした。Agent の処理が終わったら「送信」を押して再試行してください。"
       },
       "thought": "考えました",

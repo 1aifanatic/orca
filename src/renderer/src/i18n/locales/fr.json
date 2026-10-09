@@ -18508,7 +18508,7 @@
         "sendConfirmBody_other": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer les {{count}} messages déjà en file d'attente ?",
         "sendConfirmClear": "Vider la file d'attente",
         "sendConfirmSend": "Envoyer le message",
-        "from": "De {{names}}",
+        "fromSender": "De",
         "pausedSendFailedWaiting": "Envoi impossible. Quand l'agent aura terminé, appuyez sur Envoyer pour réessayer."
       },
       "thought": "A réfléchi",

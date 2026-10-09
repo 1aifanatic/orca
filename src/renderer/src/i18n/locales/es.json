@@ -18270,7 +18270,7 @@
         "sendConfirmBody_other": "Estás a punto de enviar un mensaje. ¿Quieres borrar los {{count}} mensajes que había en cola?",
         "sendConfirmClear": "Vaciar cola",
         "sendConfirmSend": "Enviar mensaje",
-        "from": "De {{names}}",
+        "fromSender": "De",
         "pausedSendFailedWaiting": "No se pudo enviar. Cuando el agente termine, pulsa Enviar para reintentar."
       },
       "thought": "Pensó",

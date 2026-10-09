@@ -18407,7 +18407,7 @@
         "sendConfirmBody_other": "你即将发送一条消息。是否清除之前排队的 {{count}} 条消息？",
         "sendConfirmClear": "清空队列",
         "sendConfirmSend": "发送消息",
-        "from": "来自 {{names}}",
+        "fromSender": "来自",
         "pausedSendFailedWaiting": "无法发送。智能体完成后，点按发送以重试。"
       },
       "thought": "已思考",

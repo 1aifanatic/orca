@@ -18442,7 +18442,7 @@
         "sendConfirmBody_other": "메시지를 보내려고 합니다. 대기열에 있는 메시지 {{count}}개를 지울까요?",
         "sendConfirmClear": "대기열 지우기",
         "sendConfirmSend": "메시지 보내기",
-        "from": "보낸 사람: {{names}}",
+        "fromSender": "보낸 사람:",
         "pausedSendFailedWaiting": "보낼 수 없습니다. 에이전트가 끝나면 보내기를 눌러 다시 시도하세요."
       },
       "thought": "생각함",
