@@ -222,6 +222,9 @@ describe('a /clear card the queue cannot run yet', () => {
       { messageId: after, state: 'waiting' }
     ])
     expect(await dividers()).toBe(0)
+    // Not named as the queue's next send while it waits, so no client reads the chat as busy.
+    const page = await rig.host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.nextQueuedMessageId).toBeNull()
     // Its Send says why it waits, and changes nothing on the card.
     expect(await rig.sendNow(clearId)).toMatchObject({
       ok: false,

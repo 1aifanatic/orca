@@ -17,6 +17,8 @@ import {
 import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 import { nextStructuredQueuedMessage } from './structured-agent-session-queued-messages'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
+import { isQueuedClearCard, queuedClearWaits } from './structured-conversation-clear'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 
@@ -28,16 +30,23 @@ export type QueuePublication = {
   nextQueuedMessageId: string | null
 }
 
-/** What the drain's gate reads beyond the journal; resolved per read. */
-export type QueueSendGate = () => { record: AgentSessionRecord | null; fence: number }
+/** What the drain's gate reads beyond the journal; resolved per read. `childWork` is read only
+ *  when a /clear card is next. */
+export type QueueSendGate = () => {
+  record: AgentSessionRecord | null
+  fence: number
+  childWork?: () => readonly AgentChildWorkView[] | undefined
+}
 
 export function structuredQueueSendGate(
   store: Pick<AgentSessionRecordStore, 'getRecord'>,
-  sessionId: string
+  sessionId: string,
+  readChildWork?: (sessionId: string) => readonly AgentChildWorkView[] | undefined
 ): QueueSendGate {
   return () => ({
     record: store.getRecord(sessionId),
-    fence: structuredAgentSessionConversationFence(store, sessionId)
+    fence: structuredAgentSessionConversationFence(store, sessionId),
+    ...(readChildWork ? { childWork: () => readChildWork(sessionId) } : {})
   })
 }
 
@@ -135,7 +144,13 @@ export function readQueuePublication(
     resumable && !queuePauseLiftOnItsWay(resumable, journal.submissions()) ? resumable : null
   // The test narrows the type.
   const queuePause = pause?.reason === 'stopped' ? { reason: pause.reason } : null
-  const nextQueuedMessageId = nextStructuredQueuedMessage({ journal, ...gate() })?.messageId ?? null
+  const read = gate()
+  const next = nextStructuredQueuedMessage({ journal, ...read })
+  // A /clear the drain would only find waiting is not the queue's next send: the chat isn't busy.
+  const nextQueuedMessageId =
+    next && !(isQueuedClearCard(next) && queuedClearWaits(read.record, read.childWork?.()))
+      ? next.messageId
+      : null
   const previous = publications.get(journal)
   if (
     previous &&

@@ -5,6 +5,9 @@
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import {
   agentSessionRefusalReference,
   type AgentSessionWireRefusal
@@ -95,6 +98,17 @@ export async function clearConversationUnderSerialize(
 /** Refusals that end on their own: the card keeps waiting, and the drain runs it once they end
  *  (it wakes on child work and on a handoff ending), as it waits for a turn. */
 const WAITS_FOR = new Set(['backgroundTasksRunning', 'handoffInFlight'])
+
+/** Whether a /clear card's turn would only find one of those waits, read without running it. */
+export function queuedClearWaits(
+  record: Pick<AgentSessionRecord, 'lease'> | null,
+  childWork: readonly AgentChildWorkView[] | undefined
+): boolean {
+  return (
+    agentChildWorkLiveness(childWork) !== null ||
+    Boolean(record?.lease.handoffStage || record?.lease.handoffOperationId)
+  )
+}
 
 export type QueuedClearOutcome =
   | { kind: 'cleared' }
