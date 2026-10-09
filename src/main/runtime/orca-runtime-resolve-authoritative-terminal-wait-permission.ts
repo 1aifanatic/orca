@@ -213,7 +213,6 @@ export class OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission extends O
               reason,
               record: read.record,
               rendererTitle: read.rendererTitle,
-              agent: this.getPaneAgentForTuiIdle(ptyId),
               firstPartyStatus: this.tuiIdleEvidenceSource.getFirstPartyAgentStatus(ptyId),
               explicitStatus: readExplicit(),
               blockedAt: read.record.waitBlockedAt

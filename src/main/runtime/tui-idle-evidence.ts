@@ -369,7 +369,6 @@ export function judgeScreenBlockedText(input: {
   reason: RuntimeTerminalWaitBlockedReason | null
   record: TuiIdleEvidenceRecord
   rendererTitle?: string | null
-  agent: TuiAgent | null | undefined
   firstPartyStatus: FirstPartyAgentStatus
   explicitStatus: { status: AgentStatus; updatedAt: number } | null
   /** When the tail scan stamped this pane's blocker; null when the tail never saw one. */
@@ -386,7 +385,7 @@ export function judgeScreenBlockedText(input: {
     input.record.lastAgentStatus === 'working' ||
     (hasFreshWorkingFirstPartyStatus(input.firstPartyStatus) &&
       input.firstPartyStatus?.state === 'working') ||
-    hasFreshDoneFirstPartyStatus(input.agent, input.firstPartyStatus) ||
+    hasFreshDoneFirstPartyStatus(input.firstPartyStatus) ||
     hasExplicitIdleTitle(input.record, input.rendererTitle)
   ) {
     return null
