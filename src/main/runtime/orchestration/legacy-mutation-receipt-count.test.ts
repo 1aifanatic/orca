@@ -51,8 +51,11 @@ describe('legacy mutation receipt count schema', () => {
   afterEach(() => {
     secondDb?.close()
     db?.close()
+    secondDb = undefined
+    db = undefined
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true })
+      tempDir = undefined
     }
   })
 
@@ -187,5 +190,25 @@ describe('legacy mutation receipt count schema', () => {
     expect(sqlite.prepare('SELECT receipt_count FROM mutation_receipt_ledger').get()).toEqual({
       receipt_count: PREVIOUS_RECEIPT_LIMIT + 2
     })
+  })
+
+  it.each([
+    ['the count table is dropped', 'DROP TABLE mutation_receipt_ledger'],
+    ['its count row is deleted', 'DELETE FROM mutation_receipt_ledger']
+  ])('repairs the legacy count on open when %s', (_label, damage) => {
+    tempDir = mkdtempSync(join(tmpdir(), 'orca-mutation-receipt-repair-'))
+    const dbPath = join(tempDir, 'orchestration.db')
+    db = new OrchestrationDb(dbPath)
+    insertReceipts(sqliteFor(db), 3, 'pending')
+    sqliteFor(db).exec(damage)
+    db.close()
+    db = undefined
+
+    db = new OrchestrationDb(dbPath)
+    beginReceipt(db, 'after-repair')
+
+    expect(
+      sqliteFor(db).prepare('SELECT receipt_count FROM mutation_receipt_ledger').get()
+    ).toEqual({ receipt_count: 4 })
   })
 })

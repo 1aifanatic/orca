@@ -34,3 +34,20 @@ export function migrateLegacyMutationReceiptCount(db: Database.Database): void {
     END;
   `)
 }
+
+// Why: the count triggers fire on every receipt insert, so a missing count table would refuse every command.
+export function repairLegacyMutationReceiptCount(db: Database.Database): void {
+  const ledger = db
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'mutation_receipt_ledger'"
+    )
+    .get()
+  if (ledger && db.prepare('SELECT 1 FROM mutation_receipt_ledger WHERE singleton = 1').get()) {
+    return
+  }
+  try {
+    migrateLegacyMutationReceiptCount(db)
+  } catch (error) {
+    console.warn('[orchestration] could not repair the legacy mutation receipt count', error)
+  }
+}

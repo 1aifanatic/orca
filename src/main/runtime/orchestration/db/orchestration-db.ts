@@ -4,6 +4,7 @@ import {
   type MutationReceiptMaintenance
 } from './mutation-receipts/mutation-receipt-maintenance'
 import { attachOrchestrationDbMethods } from './attach-orchestration-db-methods'
+import { repairLegacyMutationReceiptCount } from './schema/legacy-mutation-receipt-count'
 import { hardenOrchestrationDatabaseFiles } from './database-file-permissions'
 import { backfillFederatedStubHomeRuns } from './federation/federated-stub-home-run-backfill'
 import type { OrchestrationDbMethods } from './orchestration-db-methods'
@@ -37,6 +38,7 @@ class OrchestrationDbCore {
     this.db.pragma('busy_timeout = 5000')
     createTables.call(this as unknown as OrchestrationDb)
     migrate.call(this as unknown as OrchestrationDb)
+    repairLegacyMutationReceiptCount(this.db)
     createRunCoordinatorAddressTriggers(this.db)
     backfillFederatedStubHomeRuns(this.db)
     backfillStructuredWorkerOrcaSessionIds(this.db)
