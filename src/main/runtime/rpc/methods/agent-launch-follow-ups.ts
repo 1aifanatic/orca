@@ -25,20 +25,28 @@ import { agentLaunchOperationCallerKey } from './agent-launch-replay'
  */
 export function announceSettledLaunchFollowUps(
   runtime: Pick<OrcaRuntimeService, 'openedAgentSessionRecordStore'> &
-    Partial<Pick<OrcaRuntimeService, 'reportAgentLaunchPromptSettled'>>
+    Partial<Pick<OrcaRuntimeService, 'reportAgentLaunchPromptSettled'>>,
+  completed?: { callerKey: string; operationId: string }
 ): void {
   try {
+    const desktop = rpcCallerOperationKey(DESKTOP_RPC_CALLER)
+    const completedId = completed?.callerKey === desktop ? completed.operationId : undefined
+    if (completedId) {
+      runtime.reportAgentLaunchPromptSettled?.(completedId)
+    }
     const store = runtime.openedAgentSessionRecordStore()
     if (!store) {
       return
     }
-    const desktop = rpcCallerOperationKey(DESKTOP_RPC_CALLER)
     for (const operationId of listSettledLaunchFollowUps(
       store.listOperationRows(),
       desktop,
-      Date.now()
+      Date.now(),
+      (operationKey) => activeAgentLaunchesFor(runtime).has(operationKey)
     )) {
-      runtime.reportAgentLaunchPromptSettled?.(operationId)
+      if (operationId !== completedId) {
+        runtime.reportAgentLaunchPromptSettled?.(operationId)
+      }
     }
   } catch (error) {
     // Bookkeeping: a missed word leaves the follow-up for the window's next look.
@@ -49,6 +57,7 @@ export function announceSettledLaunchFollowUps(
 export const AGENT_LAUNCH_FOLLOW_UP_METHODS = [
   defineMethod({
     name: 'agent.takeLaunchFollowUps',
+    permission: 'workspace',
     params: AgentTakeLaunchFollowUps,
     handler: async (params, context): Promise<AgentLaunchFollowUpTake> => {
       const callerKey = agentLaunchOperationCallerKey(context)

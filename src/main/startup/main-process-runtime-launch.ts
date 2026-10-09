@@ -26,7 +26,8 @@ import { prepareCodexRuntimeHomeForLaunch } from './codex-launch-preparation'
 import { prepareCodexSessionResumeForLaunch } from './codex-session-resume-launch'
 import { startWindowsDesktopBeforeShellPathReady } from './windows-desktop-shell-path-startup'
 import { repairKnownPoisonedInstallDirBeforeWindow } from './windows-install-dir-acl-recovery'
-import { registerServeSignalHandlers } from './serve-signal-handlers'
+import { installServeQuitHandling } from './serve-quit-handling'
+import { registerHeadlessServeSshHandlers } from './headless-serve-ssh-registration'
 import { settleServeDesktopActivation } from './serve-desktop-activation'
 import {
   recordRuntimeRpcStartFailure,
@@ -42,7 +43,6 @@ import { logStartupMilestone } from './startup-diagnostics'
 import { scheduleAgentLaunchRecordWarmup } from './agent-launch-record-warmup'
 import { emitServeBrowserIdentityActionLine } from '../server/serve-stdout-boundary'
 import { getBrowserIdentityModeStatus } from '../browser/browser-identity-mode-store'
-import { resumeOwedAgentLaunchPrompts } from '../runtime/rpc/methods/agent-launch-owed-prompt-host'
 
 type RuntimeService = NonNullable<typeof state.runtime>
 
@@ -149,7 +149,6 @@ async function launchServeMode(
     { onCodexHomePtySpawned: handleCodexHomePtySpawned, onPtyExit: handlePtyExit }
   )
   await runtime.refreshRestoredOrchestrationAuthority()
-  void resumeOwedAgentLaunchPrompts(runtime)
   await runtime.reconcileLegacyWorkerTerminals()
   // Why: headless servers can't mount <webview> panes; use offscreen WebContents, gated on a real display so browser.headless.v1 stays honest.
   if (state.headlessBrowserDisplayAvailable) {
@@ -160,6 +159,8 @@ async function launchServeMode(
     )
   }
   publishHeadlessRuntimeGraph(runtime)
+  // Why before RPC binds: the first paired client must already see this host's SSH targets.
+  registerHeadlessServeSshHandlers(state.store!, runtime)
   await runtimeRpc.start().catch((error) => {
     console.error('[runtime] Failed to start headless RPC transport:', error)
     throw error
@@ -169,8 +170,7 @@ async function launchServeMode(
   // it simply never receives a push, because nothing dispatches notifications here.
   startDesktopPushService(runtimeRpc)
   settleDesktopActivation()
-  // Why: every attempt must reach app.quit(); a page beforeunload can veto an earlier signal.
-  registerServeSignalHandlers(process, () => app.quit())
+  installServeQuitHandling()
   // Why: headless serve has no renderer to run the normal cli:install flow; do it here for macOS/Linux only (Windows-excluded: install() only mutates registry PATH, not child terminals).
   if (process.platform === 'darwin' || process.platform === 'linux') {
     try {

@@ -1,7 +1,7 @@
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AgentLaunchReplay } from '../../../../shared/rpc-contract/agent-launch-params'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
@@ -22,7 +22,6 @@ import {
 import { AGENT_LAUNCH_METHODS } from './agent-launch'
 import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
-import { resumeOwedLaunchPrompts } from '../../../agent-launch/agent-launch-owed-prompt-resume'
 import {
   settledAtCreation,
   promptReceipt
@@ -98,11 +97,7 @@ describe('desktop compatibility records admission without a new future paste', (
           receipt,
           ...promptReceipt(params, settledAtCreation(params, {}))
         }
-        await admitted.record(provisional, {
-          ptyId: 'first-pty',
-          incarnationId: 'first-incarnation'
-        })
-        expect(store.listOperationRows()[0]?.promptDelivery).toBeUndefined()
+        await admitted.record(provisional)
         if (scenario.text.trim()) {
           expect(provisional.prompt).toEqual({
             delivery: params.prompt?.delivery,
@@ -113,7 +108,6 @@ describe('desktop compatibility records admission without a new future paste', (
         }
         const written: string[] = []
         if (scenario.text.trim()) {
-          expect(await admitted.beginPromptWrite()).toBe('absent')
           await expect(
             writeDesktopNewTabPrompt({
               text: params.prompt?.text.trim() ?? '',
@@ -132,22 +126,8 @@ describe('desktop compatibility records admission without a new future paste', (
         }
         const expectedWrites = wroteFirstByte && scenario.text.trim() ? [BRACKETED_PASTE_START] : []
         expect(written).toEqual(expectedWrites)
-        const deliver = vi.fn(async () => true)
         store = await openTestAgentSessionRecordStore(directory)
         setAgentLaunchRecordStore(store)
-        expect(
-          await resumeOwedLaunchPrompts({
-            store,
-            terminalForPane: () => ({
-              handle: 'surviving-handle',
-              terminal: { ptyId: 'first-pty', incarnationId: 'first-incarnation' }
-            }),
-            deliver,
-            isLaunchRunning: () => false,
-            now: () => Date.now()
-          })
-        ).toBe(false)
-        expect(deliver).not.toHaveBeenCalled()
         const replayed = await admitAgentLaunchOperation(context, params, fingerprint)
         expect(replayed).toEqual({
           decision: 'replay',
@@ -167,34 +147,4 @@ describe('desktop compatibility records admission without a new future paste', (
       })
     }
   }
-  it('retains the existing bounded legacy desktop submitted-paste obligation', async () => {
-    const params = AgentLaunchReplay.parse({
-      agent: 'claude',
-      target: { kind: 'existing', worktree: 'folder:test' },
-      operationId: `${Date.now()}-0123456789abcdef0123456789abcdef`,
-      prompt: { text: 'legacy paste', delivery: 'submit', transport: 'paste' }
-    })
-    const admitted = await admitAgentLaunchOperation(
-      rpcContext(runtimeStub({ settings: {} }), CALLER),
-      params,
-      computeAgentLaunchFingerprint(params)
-    )
-    if (admitted.decision !== 'execute') {
-      throw new Error('missing admission')
-    }
-    await admitted.record(
-      {
-        outcome: { kind: 'terminal', handle: 'legacy', paneKey: PANE },
-        worktreeId: 'folder:test',
-        receipt,
-        prompt: { delivery: 'submit', outcome: 'unconfirmed' }
-      },
-      { ptyId: 'first-pty', incarnationId: null }
-    )
-    expect(store.listOperationRows()[0]?.promptDelivery).toMatchObject({
-      state: 'owed',
-      text: 'legacy paste',
-      terminal: { ptyId: 'first-pty', incarnationId: null }
-    })
-  })
 })

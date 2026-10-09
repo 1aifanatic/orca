@@ -155,7 +155,6 @@ describe('desktop live input uses the existing optional-identity public route', 
           expect(store.listOperationRows()[0]?.launchFollowUp).toMatchObject({
             kind: 'review-notes-delivered'
           })
-          expect(store.listOperationRows()[0]?.promptDelivery).toBeUndefined()
           expect(await REPLAY.handler(REPLAY.params.parse(params), context)).toEqual(result)
           expect(spawn).toHaveBeenCalledOnce()
         } else {

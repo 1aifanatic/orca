@@ -18,6 +18,7 @@ import {
 import { translate } from '@/i18n/i18n'
 import { newAgentPromptOutcome } from '@/lib/new-agent-prompt-outcome'
 import type { AgentLaunchFollowUp } from '../../../../shared/agent-launch-follow-up'
+import { activeAgentNotesSendFailureMessage } from '@/lib/active-agent-note-send-result'
 
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
@@ -150,7 +151,9 @@ function QuickLaunchAgentMenuItemsInner({
         ...(promptDelivery !== undefined ? { promptDelivery } : {}),
         ...(launchSource !== undefined ? { launchSource } : {}),
         ...(onPromptDelivered !== undefined ? { onPromptDelivered } : {}),
-        ...(durableFollowUp !== undefined ? { durableFollowUp } : {})
+        ...(durableFollowUp !== undefined ? { durableFollowUp } : {}),
+        // Notes keep their text until it goes out, so the new chat's composer never gets a copy.
+        ...(onPromptHandedOff ? { promptKeptByCaller: true as const } : {})
       })
       if (!result) {
         toast.error(
@@ -163,15 +166,24 @@ function QuickLaunchAgentMenuItemsInner({
         return
       }
       if (onPromptHandedOff && result.promptDeliveryResult) {
-        onPromptHandedOff(
-          newAgentPromptOutcome({
-            prompt: prompt ?? '',
-            ...(result.surface.kind === 'local-agent-session'
-              ? { sessionId: result.surface.sessionId }
-              : {}),
-            delivery: result.promptDeliveryResult
-          })
-        )
+        const outcome = newAgentPromptOutcome({ delivery: result.promptDeliveryResult })
+        onPromptHandedOff(outcome)
+        // The notes keep the text, so they say once why it did not go, as a send to a chat does.
+        void outcome.then(({ failure }) => {
+          if (failure) {
+            toast.error(
+              translate('auto.store.slices.ui.53883b7bc3', "Couldn't send to {{value0}}", {
+                value0: label
+              }),
+              {
+                description: activeAgentNotesSendFailureMessage(failure.status, {
+                  explicitTarget: true,
+                  code: failure.code
+                })
+              }
+            )
+          }
+        })
       }
       if (result.surface.kind !== 'local-terminal') {
         return

@@ -216,7 +216,6 @@ describe('agent turn send boundary', () => {
     ).toEqual(
       [
         // agent.launch finishing its own owed first prompt after a restart.
-        'runtime/rpc/methods/agent-launch-owed-prompt-host.ts',
         'runtime/rpc/methods/agent-launch-structured-prompt.ts',
         'runtime/rpc/methods/agent-launch-terminal-prompt.ts',
         'runtime/rpc/methods/agent-launch-surfaces.ts'

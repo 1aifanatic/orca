@@ -48,6 +48,8 @@ vi.mock('@/i18n/i18n', () => ({
     fallback.replace('{{value0}}', values?.value0 ?? '')
 }))
 const launchMock = vi.hoisted(() => vi.fn())
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({ toast: { error: toastError, message: vi.fn(), success: vi.fn() } }))
 vi.mock('@/lib/launch-agent-in-new-tab', () => ({ launchAgentInNewTab: launchMock }))
 
 type DivProps = { disabled?: boolean; title?: string; onSelect?: () => void }
@@ -67,7 +69,7 @@ function registerLaunch(
     kind: 'first',
     requestId: `${agent}-pick`,
     blank: true,
-    stagedEntry: null
+    stagedPrompt: null
   }
 ): void {
   const sessionId = `${agent}-session`
@@ -149,7 +151,7 @@ describe('QuickLaunchAgentMenuItems launches', () => {
   it('gives each pick its own request, so a second pick opens its own chat', () => {
     launchMock.mockReset()
     launchMock.mockReturnValue({
-      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' }
+      surface: { kind: 'host-published' }
     })
     render(
       <QuickLaunchAgentMenuItems
@@ -173,7 +175,7 @@ describe('QuickLaunchAgentMenuItems launches', () => {
   it("hands the launch's own delivery outcome to the notes menu", async () => {
     const delivery = Promise.resolve({ delivered: true, failureNotified: false })
     launchMock.mockReturnValue({
-      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' },
+      surface: { kind: 'host-published' },
       promptDeliveryResult: delivery
     })
     const onPromptHandedOff = vi.fn()
@@ -194,9 +196,39 @@ describe('QuickLaunchAgentMenuItems launches', () => {
     await expect(onPromptHandedOff.mock.calls[0][0]).resolves.toEqual({ delivered: true })
   })
 
+  // The notes keep their text, so they are the one place that says it did not go.
+  it('tells the notes menu once why its notes did not reach the new agent', async () => {
+    launchMock.mockReturnValue({
+      surface: { kind: 'host-published' },
+      promptDeliveryResult: Promise.resolve({
+        delivered: false,
+        failureNotified: false,
+        unconfirmed: true
+      })
+    })
+    toastError.mockClear()
+
+    render(
+      <QuickLaunchAgentMenuItems
+        worktreeId={WORKTREE_ID}
+        groupId="group-1"
+        onFocusTerminal={vi.fn()}
+        prompt="review notes"
+        promptDelivery="submit-after-ready"
+        onPromptHandedOff={vi.fn()}
+      />
+    )
+    fireEvent.click(document.querySelector('[title="Launch Codex in a new terminal"]')!)
+
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalledOnce())
+    expect(toastError).toHaveBeenCalledWith(expect.stringContaining("Couldn't send to"), {
+      description: expect.stringContaining("Orca couldn't confirm your message reached the agent")
+    })
+  })
+
   it('records the menu’s follow-up on the launch it starts', () => {
     launchMock.mockReturnValue({
-      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' },
+      surface: { kind: 'host-published' },
       promptDeliveryResult: Promise.resolve({ delivered: true, failureNotified: false })
     })
     const durableFollowUp = { kind: 'review-notes-delivered', version: 1, payload: {} }

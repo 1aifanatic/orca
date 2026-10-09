@@ -15,7 +15,6 @@ import {
   agentSessionOperationKey,
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
-import { launchPromptUnsettled, readOwedLaunchPrompt } from './agent-launch-owed-prompt-record'
 
 type OperationRows = { operations: Map<string, AgentSessionOperationRow> }
 
@@ -24,9 +23,6 @@ function settledPrompt(
   row: AgentSessionOperationRow,
   isLaunchRunning: (operationKey: string) => boolean
 ): { handedOver: boolean; composerUnobserved: boolean } | null {
-  if (launchPromptUnsettled(row)) {
-    return null
-  }
   const { outcome } = row
   if (outcome.status === 'succeeded') {
     const prompt = isAgentLaunchResult(outcome.launch) ? outcome.launch.prompt : undefined
@@ -74,11 +70,9 @@ export function takeLaunchFollowUpsInto(
     }
     const settled = settledPrompt(row, args.isLaunchRunning)
     if (!settled) {
-      const owed = readOwedLaunchPrompt(row)
       take.pending.push({
         operationId: row.operationId,
-        followUp,
-        ...(owed?.state === 'owed' ? { deadline: owed.deadline } : {})
+        followUp
       })
       continue
     }
@@ -102,7 +96,8 @@ export function takeLaunchFollowUpsInto(
 export function listSettledLaunchFollowUps(
   rows: Iterable<AgentSessionOperationRow>,
   callerKey: string,
-  now: number
+  now: number,
+  isLaunchRunning: (operationKey: string) => boolean
 ): string[] {
   const settled: string[] = []
   for (const row of rows) {
@@ -110,7 +105,7 @@ export function listSettledLaunchFollowUps(
       row.callerKey === callerKey &&
       row.expiresAt > now &&
       isAgentLaunchFollowUp(row.launchFollowUp) &&
-      !launchPromptUnsettled(row)
+      settledPrompt(row, isLaunchRunning) !== null
     ) {
       settled.push(row.operationId)
     }

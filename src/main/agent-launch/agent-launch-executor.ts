@@ -47,7 +47,6 @@ import {
   type WorkspaceLaunchKind
 } from '../../shared/workspace-launch-kind'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
-import { deriveAgentLaunchTerminalViewMode } from './agent-launch-view-mode'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../shared/agent-session-definitive-refusal'
 import {
   decideAgentLaunchMode,
@@ -55,7 +54,8 @@ import {
   resolveAgentLaunchModeOnHost,
   type AgentLaunchModeReceipt,
   type AgentLaunchModeVocabulary,
-  DEFAULT_LAUNCH_VOCABULARY
+  DEFAULT_LAUNCH_VOCABULARY,
+  warnStructuredLaunchDowngrade
 } from './agent-launch-mode'
 import {
   AgentLaunchStructuredSessionRefusedError,
@@ -64,7 +64,6 @@ import {
   type AgentLaunchSurfaceFactory,
   type AgentLaunchWorkspaceFactory
 } from './agent-launch-surface-factories'
-import type { OwedLaunchPromptWriteStart } from '../runtime/agent-launch-owed-prompt-record'
 import { isDesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
 
 export type AgentLaunchExecution = {
@@ -79,8 +78,6 @@ export type AgentLaunchExecution = {
   onStage?: (stage: 'worktree_create' | 'mode_settle' | 'surface_create') => void
   /** The surface exists and its tab is published; runs before any prompt delivery. Must not throw. */
   onSurfacePublished?: (surface: AgentLaunchPublishedSurface) => void
-  /** W2 of a replay-safe launch: the prompt's first byte is about to be written. */
-  beginPromptWrite?: () => Promise<OwedLaunchPromptWriteStart>
 }
 
 /** Provisional receipt recorded before live delivery, leaving a replayable answer on interruption. */
@@ -208,10 +205,8 @@ export async function executeAgentLaunch(
   }
 }
 
-function published(
-  execution: AgentLaunchExecution,
-  surface: AgentLaunchPublishedSurface
-): AgentLaunchPublishedSurface {
+function published(execution: AgentLaunchExecution, surface: AgentLaunchResult): AgentLaunchResult {
+  warnStructuredLaunchDowngrade(execution.intent.agent, surface.receipt)
   execution.onSurfacePublished?.(surface)
   return surface
 }
@@ -339,12 +334,7 @@ async function createTerminalSurface(
     ...(startupPrompt ? { startupPrompt } : {}),
     ...(isDesktopNewTabPrompt(intent.prompt) ? { desktopPrompt: intent.prompt } : {}),
     ...terminalLaunchInputs(intent),
-    viewMode: deriveAgentLaunchTerminalViewMode({
-      settings: readAgentLaunchModeSettings(execution.runtime),
-      agent: intent.agent,
-      ...(intent.prompt ? { prompt: intent.prompt } : {}),
-      connectionId: workspace.connectionId
-    })
+    viewMode: 'terminal'
   })
   return {
     outcome: {

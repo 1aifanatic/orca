@@ -32,7 +32,6 @@ import {
   type LaunchedAgentLaunchReadinessRuntime
 } from '../../launched-agent-composer-readiness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
-import type { OwedLaunchPromptWriteStart } from '../../agent-launch-owed-prompt-record'
 import {
   isDesktopLaunchCaller,
   launchPromptGuardOnUnprovableHost
@@ -100,34 +99,6 @@ async function waitThroughBlockingPrompts(
 }
 
 /**
- * The guard before every write, and W2 once, after the guard's first pass. For a live launch a W2
- * that cannot be recorded still lets the write through: bookkeeping never gates the prompt. A
- * resume writes only on a recorded W2: without it, a resume whose settle also failed would paste
- * again at every start until the row expired.
- */
-function beforeFirstByte(
-  guard: (ptyId: string) => Promise<void>,
-  beginPromptWrite: (() => Promise<OwedLaunchPromptWriteStart>) | undefined,
-  writeOnlyWhenRecorded: boolean
-): (ptyId: string) => Promise<void> {
-  let began = !beginPromptWrite
-  return async (ptyId) => {
-    await guard(ptyId)
-    if (began || !beginPromptWrite) {
-      return
-    }
-    began = true
-    const start = await beginPromptWrite().catch((error: unknown) => {
-      console.warn('[agent-launch] could not record that its prompt write began', error)
-      return 'absent' as const
-    })
-    if (start === 'taken' || start === 'expired' || (writeOnlyWhenRecorded && start !== 'began')) {
-      throw new Error('agent_launch_prompt_write_taken')
-    }
-  }
-}
-
-/**
  * Whether the text reached the pane.
  *
  * `false` is the answer for every failure, on the same rule the structured twin follows: a launch
@@ -150,13 +121,8 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   text: string
   prompt?: AgentLaunchPrompt
   clock?: ReadinessClock
-  /** W2 of `agent-launch-owed-prompt-record`, once the guard has passed and before the first byte. */
-  beginPromptWrite?: () => Promise<OwedLaunchPromptWriteStart>
   /** Whose launch this is, which picks the guard's answer on a host that cannot find the agent. */
   callerKey?: string
-  /** Finishing an owed prompt after a restart, which main never did: the guard refuses on a host
-   *  that cannot find the agent, whoever launched, and nothing is written without a recorded W2. */
-  resumed?: boolean
   /** The text was written once the agent held the pane, its composer never seen ready. */
   onComposerUnobserved?: () => void
   onWriteUnconfirmed?: () => void
@@ -167,7 +133,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   // Before the paste and again before Enter, for a reused pane too: a ready signal can come from a
   // shell whose agent exited, so only a read that finds the agent in front lets the text through.
   const guard = createLaunchedAgentWriteGuard(args.runtime, args.agent, {
-    unprovableHost: args.resumed ? 'refuse' : launchPromptGuardOnUnprovableHost(args.callerKey),
+    unprovableHost: launchPromptGuardOnUnprovableHost(args.callerKey),
     // Main's window pasted into a plain-SSH pane, whose terminals report no process.
     processlessHostUnprovable: true
   })
@@ -205,11 +171,6 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       )
       return false
     }
-    const beforeWrite = beforeFirstByte(
-      guard.beforeWrite,
-      args.beginPromptWrite,
-      args.resumed === true
-    )
     if (desktop && !composerSeen) {
       args.onComposerUnobserved?.()
     }
@@ -233,7 +194,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
         composerReady: args.freshLaunch,
         beforeWrite: async (ptyId) => {
           assertOriginal(ptyId)
-          await beforeWrite(ptyId)
+          await guard.beforeWrite(ptyId)
           assertOriginal(ptyId)
         },
         // Paired: together these take the queued path, which settles an unobserved turn start into

@@ -216,20 +216,39 @@ describe('a window that reloaded mid-launch runs what its launches recorded', ()
     expect(t.listeners).toBe(1)
   })
 
-  it('takes once more just past the host’s deadline, then lets go of a launch still pending', async () => {
+  it('takes once more past an older host’s deadline and stays subscribed while the host reports pending', async () => {
     const stillPending = {
       taken: [],
       pending: [{ operationId: 'op-1', followUp: NOTES, deadline: 60_000 }]
     }
-    state.answers.push(stillPending, stillPending)
+    state.answers.push(stillPending, stillPending, { taken: [taken('op-1', NOTES)], pending: [] })
     const t = manualClock()
     const run = runRecordedLaunchFollowUps(t.clock)
     await vi.waitFor(() => expect(t.timers).toBe(1))
     t.advance(60_000 + 14_999)
     expect(state.calls).toHaveLength(1)
     t.advance(1)
+    await vi.waitFor(() => expect(state.calls).toHaveLength(2))
+    expect(t.listeners).toBe(1)
+    expect(state.clearDeliveredDiffComments).not.toHaveBeenCalled()
+    t.settle('op-1')
     await run
-    expect(state.calls).toHaveLength(2)
+    expect(state.calls).toHaveLength(3)
+    expect(state.clearDeliveredDiffComments).toHaveBeenCalledOnce()
+    await expect(state.held[0]!.settled).resolves.toBeUndefined()
+    expect(t.listeners).toBe(0)
+  })
+
+  it('releases the hold at the existing last probe when the host cannot answer', async () => {
+    state.answers.push(
+      { taken: [], pending: [{ operationId: 'op-1', followUp: NOTES, deadline: 60_000 }] },
+      new Error('runtime_unavailable')
+    )
+    const t = manualClock()
+    const run = runRecordedLaunchFollowUps(t.clock)
+    await vi.waitFor(() => expect(t.timers).toBe(1))
+    t.advance(75_000)
+    await run
     expect(state.clearDeliveredDiffComments).not.toHaveBeenCalled()
     await expect(state.held[0]!.settled).resolves.toBeUndefined()
     expect(t.listeners).toBe(0)
@@ -262,6 +281,28 @@ describe('a window that reloaded mid-launch runs what its launches recorded', ()
 })
 
 describe('waiting on a launch’s follow-up, one take at a time', () => {
+  it('releases a failed lookup for a settlement heard during startup, without applying the follow-up', async () => {
+    let answerFirst: (take: AgentLaunchFollowUpTake) => void = () => {}
+    state.answers.push(
+      new Promise<AgentLaunchFollowUpTake>((resolve) => (answerFirst = resolve)),
+      new Error('runtime_unavailable')
+    )
+    const t = manualClock()
+    let finished = false
+    const run = runRecordedLaunchFollowUps(t.clock).then(() => {
+      finished = true
+    })
+    await vi.waitFor(() => expect(t.listeners).toBe(1))
+    t.settle('op-1')
+    answerFirst({ taken: [], pending: [{ operationId: 'op-1', followUp: NOTES }] })
+    await vi.waitFor(() => expect(finished).toBe(true))
+    await run
+    expect(state.clearDeliveredDiffComments).not.toHaveBeenCalled()
+    await expect(state.held[0]!.settled).resolves.toBeUndefined()
+    expect(t.listeners).toBe(0)
+    expect(t.timers).toBe(0)
+  })
+
   it('keeps the host’s word that arrives while startup’s first take is still asking', async () => {
     let answerFirst: (take: AgentLaunchFollowUpTake) => void = () => {}
     state.answers.push(new Promise<AgentLaunchFollowUpTake>((resolve) => (answerFirst = resolve)), {
@@ -333,5 +374,22 @@ describe('waiting on a launch’s follow-up, one take at a time', () => {
     expect(state.calls).toEqual([['agent.takeLaunchFollowUps', { operationId: 'op-1' }]])
     expect(state.runResolution).toHaveBeenCalledOnce()
     expect(t.timers).toBe(0)
+  })
+
+  it('keeps a failed click retake held until its existing final probe', async () => {
+    state.answers.push(new Error('runtime_unavailable'), {
+      taken: [taken('op-1', RESOLUTION)],
+      pending: []
+    })
+    const t = manualClock()
+    const waited = waitForRecordedLaunchFollowUp('op-1', RESOLUTION, undefined, t.clock)
+    t.advance(3_000)
+    await vi.waitFor(() => expect(state.calls).toHaveLength(1))
+    expect(t.listeners).toBe(1)
+    expect(state.runResolution).not.toHaveBeenCalled()
+    t.advance(312_000)
+    await waited
+    expect(state.runResolution).toHaveBeenCalledOnce()
+    expect(t.listeners).toBe(0)
   })
 })

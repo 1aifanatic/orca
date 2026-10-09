@@ -15,9 +15,7 @@ import type { AgentLaunchIntent, AgentLaunchResult } from '../../shared/agent-la
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 
 const STRUCTURED_PREFERENCE = {
-  experimentalNativeChat: true,
-  experimentalStructuredNativeChat: true,
-  openAgentTabsInChatByDefault: true
+  experimentalNativeChat: true
 }
 
 function harness(options: {
@@ -157,6 +155,31 @@ describe('a structured launch that creates its own worktree', () => {
     const result = await h.run(CREATE_INTENT)
     expect(result.outcome.kind).toBe('terminal')
     expect(result.receipt).toMatchObject({ reason: 'structured_support_unknown' })
+  })
+
+  it('keeps Pi on the terminal path when its RPC version is unsupported', async () => {
+    const h = harness({ createSupport: { supported: false, reason: 'agent' } })
+    const result = await h.run({
+      ...CREATE_INTENT,
+      agent: 'pi',
+      prompt: { text: 'continue my task', delivery: 'submit' }
+    })
+    expect(h.calls).toEqual([
+      'createWorktree(startupAgent=undefined)',
+      'createSupport',
+      'createTerminalAgent'
+    ])
+    expect(h.createStructuredSession).not.toHaveBeenCalled()
+    expect(h.createTerminalAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startupPrompt: 'continue my task'
+      })
+    )
+    expect(result.outcome).toEqual({ kind: 'terminal', handle: 'term_1' })
+    expect(result.receipt).toMatchObject({
+      mode: 'terminal',
+      reason: 'structured_unsupported_on_host'
+    })
   })
 
   it('falls back only for a definitive structured refusal after the worktree exists', async () => {
@@ -711,7 +734,7 @@ describe('the surface is published as the launch stands, before its prompt is de
 describe('a new local worktree whose startup terminal did not come up', () => {
   it('opens its agent in the view a local workspace allows, as an existing one would', async () => {
     const h = harness({
-      settings: { experimentalNativeChat: true, openAgentTabsInChatByDefault: true }
+      settings: { experimentalNativeChat: true }
     })
     h.createWorktree.mockImplementationOnce(async () => ({
       worktreeId: 'wt-new',
@@ -721,8 +744,7 @@ describe('a new local worktree whose startup terminal did not come up', () => {
 
     await h.run({ ...CREATE_INTENT, agent: 'opencode' })
 
-    expect(h.createTerminalAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ viewMode: 'chat' })
-    )
+    expect(h.createStructuredSession).toHaveBeenCalled()
+    expect(h.createTerminalAgent).not.toHaveBeenCalled()
   })
 })

@@ -7,7 +7,6 @@
 import type { AgentLaunchIntent, AgentLaunchPrompt } from '../../shared/agent-launch-intent'
 import type { StructuredAgentId } from '../../shared/agent-session-provider-handle'
 import type { TuiAgent } from '../../shared/tui-agent'
-import type { OwedLaunchPromptWriteStart } from '../runtime/agent-launch-owed-prompt-record'
 import type { DesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
 
 /** How a surface is built once the executor has decided which one. Injected because an
@@ -77,8 +76,6 @@ export type AgentLaunchSurfaceFactory = {
     /** False for a reused terminal, which has no fresh launch readiness to wait for. */
     freshLaunch: boolean
     prompt: AgentLaunchPrompt
-    /** Recorded immediately before the first byte, so a restart never writes the prompt twice. */
-    beginPromptWrite?: () => Promise<OwedLaunchPromptWriteStart>
     /** Written once the agent held the pane, its composer never seen ready. */
     onComposerUnobserved?: () => void
     /** A desktop write may have started; an interrupted paste must not invite a resend. */
