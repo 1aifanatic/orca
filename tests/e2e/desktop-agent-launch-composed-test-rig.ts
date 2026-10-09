@@ -12,7 +12,7 @@ import {
 } from '../../src/main/runtime/rpc/methods/agent-launch.test-fixture'
 import { DESKTOP_RPC_CALLER } from '../../src/main/runtime/rpc/rpc-caller-identity'
 import {
-  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
 } from '../../src/shared/agent-launch-runtime-capability'
@@ -114,7 +114,7 @@ export function createDesktopAgentLaunchRig(
     clientKind: 'runtime',
     clientCapabilities: [
       AGENT_LAUNCH_RUNTIME_CAPABILITY,
-      AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+      AGENT_LAUNCH_DESKTOP_NEW_TAB_CLIENT_CAPABILITY,
       AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
     ]
   })
