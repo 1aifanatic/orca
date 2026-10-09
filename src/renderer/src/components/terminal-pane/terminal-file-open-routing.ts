@@ -65,6 +65,16 @@ export function getTerminalFileContext(
   return buildWorkspaceFileContext(worktreeId, worktreePath, runtimeEnvironmentId)
 }
 
+/** The WSL distro a workspace's paths live in; `null` from the pane runtime means none. */
+export function terminalPathWslDistro(
+  worktreePath: string,
+  wslDistro?: string | null
+): string | null {
+  return wslDistro === null
+    ? null
+    : wslDistro?.trim() || parseWslUncPath(worktreePath)?.distro || null
+}
+
 // Why: a WSL-runtime pane prints POSIX paths even when the worktree lives on a
 // Windows drive, so the distro must come from the pane runtime, not the path shape.
 export function mapTerminalFilePath(
@@ -72,8 +82,7 @@ export function mapTerminalFilePath(
   worktreePath: string,
   wslDistro?: string | null
 ): string {
-  const distro =
-    wslDistro === null ? null : wslDistro?.trim() || parseWslUncPath(worktreePath)?.distro
+  const distro = terminalPathWslDistro(worktreePath, wslDistro)
   if (!distro || !filePath.startsWith('/')) {
     return filePath
   }

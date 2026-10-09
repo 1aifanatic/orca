@@ -3,7 +3,8 @@ import {
   resolveTerminalFileLink,
   type ParsedTerminalFileLink
 } from '@/lib/terminal-links'
-import { isWslUncPath } from '../../../../shared/wsl-paths'
+import { normalizeAbsolutePath } from '@/lib/terminal-path-normalization'
+import { parseWslUncPath } from '../../../../shared/wsl-paths'
 import {
   isRemoteRuntimeFileOperation,
   type RuntimeFileOperationArgs
@@ -11,7 +12,8 @@ import {
 import {
   getTerminalFileContext,
   mapTerminalFilePath,
-  terminalLinkWslDistro
+  terminalLinkWslDistro,
+  terminalPathWslDistro
 } from './terminal-file-open-routing'
 import type { createTerminalPathExistenceBatch } from './terminal-path-existence-batch'
 import {
@@ -85,19 +87,30 @@ export function resolveFileLinkTarget(
 }
 
 /**
- * Whether this target may be checked with no click or hover. A check on this machine of a network
- * share outside the workspace may not: on Windows that stat opens SMB to the named server and sends
- * the user's credentials.
+ * Whether this target may be checked with no click or hover. A network share outside the workspace
+ * may not, on any host: on Windows (this machine or an SSH host) that stat opens SMB to the named
+ * server and can send the user's credentials. The workspace's own WSL distro is not a share.
  */
 export function mayCheckFileLinkTargetUnprompted(
   target: FileLinkTarget,
   host: FileLinkHost
 ): boolean {
-  if (target.isKnownWorktreeRoot || target.fileContext.connectionId || target.isRemoteRuntimePath) {
+  const { absolutePath } = target
+  if (
+    target.isKnownWorktreeRoot ||
+    target.isRemoteRuntimePath ||
+    !/^[\\/]{2}/.test(absolutePath) ||
+    isPathInsideWorktree(absolutePath, host.worktreePath)
+  ) {
     return true
   }
-  const isNetworkShare = /^[\\/]{2}/.test(target.absolutePath) && !isWslUncPath(target.absolutePath)
-  return !isNetworkShare || isPathInsideWorktree(target.absolutePath, host.worktreePath)
+  const ownDistro = terminalPathWslDistro(
+    host.worktreePath,
+    terminalLinkWslDistro(host.wslDistro, host.runtimeEnvironmentId)
+  )
+  // Why normalized: `..` must not stand in for a distro name.
+  const wsl = parseWslUncPath(normalizeAbsolutePath(absolutePath)?.normalized ?? absolutePath)
+  return Boolean(ownDistro && wsl && wsl.distro.toLowerCase() === ownDistro.toLowerCase())
 }
 
 /** Rejects when the host cannot answer, so callers never mistake an outage for a missing file. */

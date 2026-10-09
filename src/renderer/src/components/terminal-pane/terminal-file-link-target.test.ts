@@ -38,31 +38,37 @@ function mayCheck(pathText: string, workspace: string): boolean {
 }
 
 describe('mayCheckFileLinkTargetUnprompted', () => {
-  it('refuses a local check of a network share outside the workspace', () => {
-    for (const workspace of [String.raw`C:\Users\me\repo`, '/Users/me/repo']) {
-      expect(mayCheck(String.raw`\\evil.example\share\a.ts`, workspace)).toBe(false)
-      expect(mayCheck('//evil.example/share/notes.md', workspace)).toBe(false)
+  it('refuses a network share outside the workspace, on this machine or over SSH', () => {
+    for (const connectionId of [undefined, 'ssh-1']) {
+      routing.connectionId = connectionId
+      try {
+        for (const workspace of [String.raw`C:\Users\me\repo`, '/home/me/repo']) {
+          expect(mayCheck(String.raw`\\evil.example\share\a.ts`, workspace)).toBe(false)
+          expect(mayCheck('//evil.example/share/notes.md', workspace)).toBe(false)
+        }
+        expect(mayCheck('src/a.ts', '/home/me/repo')).toBe(true)
+      } finally {
+        routing.connectionId = undefined
+      }
     }
   })
 
-  it('allows workspace paths, WSL paths and checks another host makes', () => {
+  it('allows paths inside a workspace on a network share', () => {
     expect(mayCheck('src/a.ts', String.raw`C:\Users\me\repo`)).toBe(true)
     expect(mayCheck('src/a.ts', String.raw`\\FileServer\share\repo`)).toBe(true)
     expect(
       mayCheck(String.raw`\\FILESERVER\Share\repo\src\a.ts`, String.raw`\\fileserver\share\repo`)
     ).toBe(true)
-    expect(mayCheck('/home/me/repo/a.ts', String.raw`\\wsl.localhost\Ubuntu\home\me\repo`)).toBe(
-      true
-    )
+  })
+
+  it("allows only the workspace's own WSL distro", () => {
+    const wslWorkspace = String.raw`\\wsl.localhost\Ubuntu\home\me\repo`
+    expect(mayCheck('/home/me/repo/a.ts', wslWorkspace)).toBe(true)
+    expect(mayCheck(String.raw`\\wsl.localhost\ubuntu\etc\hosts.txt`, wslWorkspace)).toBe(true)
+    expect(mayCheck(String.raw`\\wsl.localhost\Debian\etc\hosts.txt`, wslWorkspace)).toBe(false)
+    expect(mayCheck('//wsl.localhost/../evil/share/a.ts', wslWorkspace)).toBe(false)
     expect(
       mayCheck(String.raw`\\wsl.localhost\Debian\etc\hosts.txt`, String.raw`C:\Users\me\repo`)
-    ).toBe(true)
-
-    routing.connectionId = 'ssh-1'
-    try {
-      expect(mayCheck('//evil.example/share/notes.md', '/home/me/repo')).toBe(true)
-    } finally {
-      routing.connectionId = undefined
-    }
+    ).toBe(false)
   })
 })

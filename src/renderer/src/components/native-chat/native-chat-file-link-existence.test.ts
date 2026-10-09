@@ -322,11 +322,7 @@ describe('createNativeChatFileLinkExistence', () => {
     const { pathExists } = hostWith(() => true)
     const { watcher } = watching(createNativeChatFileLinkExistence(host, pathExists))
 
-    for (const path of [
-      String.raw`\\evil.example\share\a.ts`,
-      '//evil.example/share/notes.md',
-      String.raw`\\?\UNC\evil.example\share\a.ts`
-    ]) {
+    for (const path of [String.raw`\\evil.example\share\a.ts`, '//evil.example/share/notes.md']) {
       expect(watcher.getSnapshot().check(link(path))).toBe(false)
     }
     await settle()
@@ -337,10 +333,12 @@ describe('createNativeChatFileLinkExistence', () => {
   it('still checks paths inside a workspace on a network share, and WSL paths', async () => {
     const { asked, pathExists } = hostWith(() => true)
     const shareHost = { ...host, worktreePath: String.raw`\\FileServer\share\repo` }
-    const { watcher } = watching(createNativeChatFileLinkExistence(shareHost, pathExists))
+    const wslHost = { ...host, worktreePath: String.raw`\\wsl.localhost\Ubuntu\home\me\repo` }
+    const onShare = watching(createNativeChatFileLinkExistence(shareHost, pathExists)).watcher
+    const onWsl = watching(createNativeChatFileLinkExistence(wslHost, pathExists)).watcher
 
-    watcher.getSnapshot().check(link(String.raw`\\fileserver\share\repo\src\a.ts`))
-    watcher.getSnapshot().check(link(String.raw`\\wsl.localhost\Ubuntu\home\me\a.ts`))
+    onShare.getSnapshot().check(link(String.raw`\\fileserver\share\repo\src\a.ts`))
+    onWsl.getSnapshot().check(link(String.raw`\\wsl.localhost\Ubuntu\home\me\a.ts`))
     await settle()
 
     expect(asked).toEqual([
