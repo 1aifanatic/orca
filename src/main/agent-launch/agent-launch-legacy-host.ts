@@ -26,9 +26,9 @@ import {
  * another would start the agent twice. The workspace exists; no agent came back.
  *
  * Caught only by `createWorktreeWithStartupAgent`, which answers with the create's own result as
- * `worktree.create` always has. That shared entry is the only `legacy-host` producer, so every
- * host-side create-with-agent (headless automations, federation) goes through it rather than
- * repeating this catch; orchestration workers are not `legacy-host` and never see it.
+ * `worktree.create` always has. That shared entry is the only `legacy-host` producer; headless
+ * automations and federation, which still call `createManagedWorktree` directly, are to move onto
+ * it rather than repeat this catch. Orchestration workers are not `legacy-host` and never see it.
  */
 export class AgentLaunchStartupAgentNotCreatedError extends Error {
   readonly worktreeId: string

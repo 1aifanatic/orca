@@ -6,8 +6,9 @@
  * `legacy-host` prompt policy. Request and result are the create's own, so a caller swaps
  * `runtime.createManagedWorktree` for this and nothing a client sends or reads changes.
  *
- * This is the one `legacy-host` producer: host-side creates that start an agent call it rather than
- * the executor, so the no-agent outcome below is caught in one place.
+ * This is the one `legacy-host` producer, so the no-agent outcome below is caught in one place.
+ * The host's other agent-first creates (headless automations, federation) still call
+ * `createManagedWorktree` directly; they are to call this entry, not the executor.
  */
 
 import type { AgentLaunchPrompt } from '../../shared/agent-launch-intent'
