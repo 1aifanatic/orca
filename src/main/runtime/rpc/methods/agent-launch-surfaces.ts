@@ -14,7 +14,6 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { sessionOptionValueIsValid } from '../../../../shared/agent-session-option-catalog'
 import { isDesktopNewTabPrompt } from '../../../../shared/desktop-new-tab-prompt'
 import { narrowStructuredLaunchSeedOptions } from '../../../../shared/native-chat-session-option-defaults'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
@@ -158,13 +157,6 @@ export function agentLaunchSurfaceFactory(
         ...(desktopPrompt
           ? {
               desktopPrompt,
-              desktopSessionOptions: options
-                ? Object.fromEntries(
-                    Object.entries(options).filter((entry): entry is [string, string | boolean] =>
-                      sessionOptionValueIsValid(entry[1])
-                    )
-                  )
-                : undefined,
               onStartupPromptCarry: (carried: boolean) => {
                 promptRodeLaunchCommand = carried
               }

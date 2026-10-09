@@ -105,7 +105,7 @@ export const AgentLaunchFields = z.object({
     })
     .optional(),
   /** A chat seeds the options it accepts; a terminal launch reads the model, effort and mode. */
-  sessionOptions: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+  sessionOptions: z.record(z.string(), z.string()).optional(),
   reuseTerminal: z.object({ handle: z.string().min(1, 'Missing terminal handle') }).optional(),
   /** Nullable on purpose: `null` is "no arguments", absent is "use the settings default". */
   agentArgs: z.string().nullable().optional(),
@@ -185,13 +185,6 @@ function refuseInvalidDesktopPrompt(
   ctx: z.RefinementCtx
 ): void {
   if (!isDesktopNewTabPrompt(launch.prompt)) {
-    if (Object.values(launch.sessionOptions ?? {}).some((value) => typeof value !== 'string')) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['sessionOptions'],
-        message: 'Expected string session options'
-      })
-    }
     return
   }
   if (launch.target.kind !== 'existing' || launch.reuseTerminal) {

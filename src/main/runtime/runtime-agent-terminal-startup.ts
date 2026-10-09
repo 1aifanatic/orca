@@ -44,19 +44,14 @@ export async function buildRuntimeAgentTerminalStartupOptions(
 
   if (opts.desktopPrompt) {
     const selected = planLaunchAgentStartupPrompt({
-      base: {
-        ...resolveAgentStartupPlanInputs({
-          agent,
-          settings,
-          platform,
-          isRemote,
-          ...(opts.agentArgs !== undefined ? { agentArgs: opts.agentArgs } : {}),
-          windowsShellOverride: opts.shellOverride,
-          sessionOptions: opts.desktopSessionOptions
-        }),
-        // Main's desktop builder lets trailing arguments override session options.
-        sessionOptionsOverrideAgentArgs: false
-      },
+      base: resolveAgentStartupPlanInputs({
+        agent,
+        settings,
+        platform,
+        isRemote,
+        ...(opts.agentArgs !== undefined ? { agentArgs: opts.agentArgs } : {}),
+        windowsShellOverride: opts.shellOverride
+      }),
       prompt: opts.desktopPrompt.text.trim(),
       promptDelivery: opts.desktopPrompt.transport.promptDelivery,
       isFollowupPath: TUI_AGENT_CONFIG[agent].promptInjectionMode === 'stdin-after-start'

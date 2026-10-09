@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../shared/constants'
 import type { TuiAgent } from '../../shared/tui-agent'
-import type { SessionOptionValue } from '../../shared/native-chat-session-options'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 import {
   resolveTuiAgentLaunchArgs,
@@ -52,7 +51,6 @@ async function compareMainInputs(args: {
   text: string
   host: (typeof hosts)[number]
   agentArgs?: string | null
-  options?: Record<string, SessionOptionValue>
   command?: string
 }) {
   const settings = {
@@ -82,8 +80,7 @@ async function compareMainInputs(args: {
       args.agentArgs !== undefined
         ? args.agentArgs
         : resolveTuiAgentLaunchArgs(args.agent, settings.agentDefaultArgs),
-    agentEnv: resolveTuiAgentLaunchEnv(args.agent, settings.agentDefaultEnv),
-    sessionOptions: args.options
+    agentEnv: resolveTuiAgentLaunchEnv(args.agent, settings.agentDefaultEnv)
   }
   const text = args.text.trim()
   const empty = () => buildAgentStartupPlan({ ...base, prompt: '', allowEmptyPromptLaunch: true })
@@ -106,7 +103,6 @@ async function compareMainInputs(args: {
         delivery: desktopNewTabPromptDelivery(args.agent, args.mode),
         transport: { kind: 'desktop-new-tab', promptDelivery: args.mode }
       },
-      desktopSessionOptions: args.options,
       ...(args.agentArgs !== undefined ? { agentArgs: args.agentArgs } : {}),
       onStartupPromptCarry: carry
     },
@@ -191,7 +187,6 @@ describe('desktop startup keeps named main planner inputs', () => {
         mode: 'auto-submit',
         text: 'hello',
         agentArgs,
-        options: { model: 'opus', effort: 'high', fastMode: true },
         command: 'claude --model haiku'
       })
     })
@@ -202,8 +197,7 @@ describe('desktop startup keeps named main planner inputs', () => {
       agent: 'opencode',
       mode: 'auto-submit',
       text: 'hello',
-      command: 'opencode run --model custom/provider',
-      options: { model: 'custom/provider' }
+      command: 'opencode run --model custom/provider'
     })
   })
   it('Hermes refuses an oversize automatic native query rather than silently changing to paste', async () => {
