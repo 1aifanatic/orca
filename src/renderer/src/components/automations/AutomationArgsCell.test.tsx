@@ -23,7 +23,7 @@ describe('argument details', () => {
     expect((await screen.findByRole('tooltip')).textContent).toContain(value)
     await user.keyboard('{Enter}')
     expect(screen.getByRole('dialog').textContent).toContain(value)
-    expect(screen.getByRole('dialog').querySelector('[tabindex="0"]')).toBeDefined()
+    expect(screen.getByRole('dialog').querySelector('[tabindex="0"]')).not.toBeNull()
     expect(onOpenRun).not.toHaveBeenCalled()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).toBeNull()
