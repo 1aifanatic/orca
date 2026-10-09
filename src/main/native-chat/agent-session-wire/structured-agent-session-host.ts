@@ -124,6 +124,8 @@ export class StructuredAgentSessionHost {
       trackStart: (start) => this.tasks.trackAttach(start),
       ensureProviderChild: (sessionId, startedFor) =>
         agentStart.ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
+      // Put to rest like an idle agent: the stop writes nothing, and the next start is new.
+      stopSignedOutAgent: (id) => this.lifetime.stopAgent(id, { cause: 'evict', resting: true }),
       clientDelivery: this.clientDelivery
     })
     this.restore = reveal.createStructuredAgentSessionHostRestore(deps, {
@@ -314,7 +316,6 @@ export class StructuredAgentSessionHost {
 
   conversationCommand = (...args: Parameters<StructuredConversationCommandController['run']>) =>
     this.conversationCommands.run(...args)
-  conversationReplacements = () => this.conversationCommands.replacements()
   /** Undefined means unavailable; an empty array is an authoritative catalog. */
   readCommands = (sessionId: string) => ({ commands: this.clientDelivery.readCommands(sessionId) })
 

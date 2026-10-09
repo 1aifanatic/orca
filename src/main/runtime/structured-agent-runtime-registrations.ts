@@ -142,6 +142,7 @@ function nativeChatVisualsFor(deps: StructuredAgentSessionRuntimeDeps): {
 function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
   const { deps, store, followUps, host } = context
   return new CodexStructuredSessionAdapter({
+    resolveAccountKind: deps.resolveCodexAccountKind,
     resolveLaunch: createCodexStructuredLaunchResolver({
       store,
       resolveWorkspacePath: deps.resolveWorkspacePath,

@@ -16150,7 +16150,6 @@
             "deb5293610": "浏览器注释在远程运行时不可用",
             "90d021f2ad": "添加",
             "0cb3bd6221": "注释意图",
-            "8f87e6c2e5": "意图",
             "532bac48c5": "描述智能体应该在这里改变什么......",
             "d2a7092e6e": "注释评论",
             "b472c5fe03": "添加浏览器注释",
@@ -16849,6 +16848,16 @@
         "runHistory": {
           "occurrencesWithLatest": "{{times}} 次，最近一次 {{date}}",
           "occurrences": "{{times}} 次"
+        },
+        "extraAgentArgs": {
+          "advanced": "高级",
+          "clear": "清除参数",
+          "unsupported": "此智能体暂不支持额外参数。",
+          "label": "额外的智能体参数",
+          "needsFreshSession": "额外参数要求每次运行都使用新会话。",
+          "useFreshSessions": "使用新会话",
+          "helper": "每次新会话时附加到此主机的默认参数之后。",
+          "detailLabel": "额外参数"
         }
       },
       "agent": {
@@ -17778,10 +17787,10 @@
         "couldNotStart": "{{agent}} 无法启动。",
         "editSavedArguments": "请在设置 > 智能体 > 参数中编辑。",
         "couldNotRestart": "{{agent}} 无法重新启动。",
-        "notSignedIn": "{{agent}} 未使用所选账户登录。",
-        "claudeSystemNotSignedIn": "Claude 尚未登录。运行 `claude` 并使用 /login 登录，或在 Claude 账户设置中选择一个账户。",
+        "notSignedIn": "{{agent}} 尚未登录。",
+        "claudeSystemNotSignedIn": "Claude 尚未登录。请运行 `{{loginCommand}}`，或在 Claude 账户设置中选择账户。",
         "claudeManagedNotSignedIn": "此 Claude 账户尚未登录。请在 Claude 账户设置中重新登录。",
-        "codexSystemNotSignedIn": "Codex 尚未登录。请运行 `codex login`。",
+        "codexSystemNotSignedIn": "Codex 尚未登录。请运行 `{{loginCommand}}`。",
         "codexManagedNotSignedIn": "此 Codex 账户尚未登录。请在 Codex 账户设置中重新登录。",
         "cliMissing": "在运行此聊天的计算机上找不到 {{agent}}。请安装它，或检查设置 → 智能体中的命令。",
         "signInFirst": "请先登录。",
@@ -17845,6 +17854,13 @@
         "providerRetryNumberOf": "第 {{attempt}} 次重试，共 {{maxRetries}} 次。",
         "providerRetryLastError": "上次错误：{{detail}}。",
         "previousExitUnverifiable": "无法停止之前的 {{agent}}。",
+        "sessionNotRestored": "{{agent}} 无法重新打开之前的会话，因此此聊天将在新会话中继续。{{agent}} 不记得之前的消息。",
+        "agentCommandNotSignedIn": "请在运行此聊天的电脑上使用 `{{loginCommand}}` 登录 {{agent}}。",
+        "interactiveAgentNotSignedIn": "请在运行此聊天的电脑上启动 `{{loginCommand}}` 并使用 `{{slashCommand}}` 登录 {{agent}}。",
+        "agentNotSignedIn": "请登录 {{agent}}。",
+        "thenSendAgain": "然后再次发送消息。",
+        "runCommandWhenDone": "完成后再运行 /{{command}}。",
+        "commandAfterAnswer": "请先回答智能体的问题或审批，然后再运行 /{{command}}。",
         "sessionNotRestored": "{{agent}} 无法重新打开之前的会话，因此此聊天将在新会话中继续。{{agent}} 不记得之前的消息。"
       },
       "writeNotice": {
@@ -17907,7 +17923,16 @@
         "recordUnreadable": "Orca 无法读取此聊天的已保存状态。",
         "chatNotFound": "Orca 找不到此聊天。",
         "startNewChat": "请开始新的聊天以继续。",
-        "tryAgain": "请重试。"
+        "tryAgain": "请重试。",
+        "agentStillWorking": "智能体仍在工作。",
+        "runClearWhenDone": "完成后再运行 /clear。",
+        "clearAfterAnswer": "请先回答智能体的问题或审批，然后再运行 /clear。",
+        "runCompactWhenDone": "完成后再运行 /compact。",
+        "compactAfterAnswer": "请先回答智能体的问题或审批，然后再运行 /compact。",
+        "clearAfterRetry": "请先重试您之前的消息，然后再运行 /clear。",
+        "compactAfterRetry": "请先重试您之前的消息，然后再运行 /compact。",
+        "clearAfterSending": "您之前的消息仍在发送中。发送完成后再运行 /clear。",
+        "compactAfterSending": "您之前的消息仍在发送中。发送完成后再运行 /compact。"
       },
       "composer": {
         "imageUnsupported": "此智能体不支持粘贴图片。",
@@ -17968,6 +17993,7 @@
         "commands": "命令",
         "skills": "技能",
         "loadingSkills": "正在加载技能…",
+        "clearDescription": "清除对话上下文",
         "skillsUnavailableHost": "SSH 聊天中无法列出技能",
         "skillsLoadFailed": "无法加载技能",
         "retrySkills": "重试",
@@ -18103,6 +18129,13 @@
         "toggleDetails": "切换回合详情"
       },
       "jumpToLatest": "跳到最新消息",
+      "find": {
+        "label": "在聊天中查找",
+        "noResults": "没有结果",
+        "previousMatch": "上一个结果",
+        "nextMatch": "下一个结果",
+        "close": "关闭"
+      },
       "transcriptLabel": "对话",
       "toggle": {
         "showTerminal": "显示终端",
@@ -18195,6 +18228,7 @@
         "cancelledBy": "于 {{device}} 取消"
       },
       "notices": {
+        "contextCleared": "上下文已清除",
         "compaction": "上下文压缩",
         "details": "细节",
         "plan": "计划",
@@ -18366,7 +18400,8 @@
         "sendConfirmBody_other": "你即将发送一条消息。是否清除之前排队的 {{count}} 条消息？",
         "sendConfirmClear": "清空队列",
         "sendConfirmSend": "发送消息",
-        "from": "来自 {{names}}"
+        "from": "来自 {{names}}",
+        "pausedSendFailedWaiting": "无法发送。智能体完成后，点按发送以重试。"
       },
       "thought": "已思考",
       "thoughtForDuration": "思考了 {{duration}}",
@@ -19068,6 +19103,16 @@
     }
   },
   "featureTips": {
+    "nativeChatUpgrade": {
+      "eyebrow": "新功能",
+      "title": "本机聊天已升级",
+      "intro": "受支持智能体的新聊天现在会在升级后的聊天视图中打开。要在聊天和 CLI 之间切换，请打开右侧边栏中的{{panel}}：",
+      "resumeInNativeChat": "{{action}}：在本机聊天中打开受支持的 CLI 对话。",
+      "resumeInCli": "{{action}}：将 Claude 或 Codex 聊天复制到新的 CLI 会话中。原始聊天保持不变。",
+      "settingsInstruction": "可在以下位置管理 Chat UI：",
+      "settingsLink": "设置 → 实验性",
+      "gotIt": "知道了"
+    },
     "voice": {
       "demoPrompt": "查看此差异以了解边缘情况，并为您发现的任何内容添加测试。",
       "startDictation": "开始听写",
