@@ -57,6 +57,7 @@ import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
 import type { NativeChatResolvedViewProps } from './native-chat-view-types'
 import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
+import { useRecheckNativeChatFileLinksWhenTurnEnds } from './use-native-chat-file-link-existence'
 import { useNativeChatLocalCommandAnswer } from './use-native-chat-local-command-answer'
 import { matchNativeChatSplitShortcut } from './native-chat-split-shortcut'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
@@ -121,7 +122,7 @@ export function NativeChatResolvedView({
   const canSend = useNativeChatCanSend(targetPtyId)
   // Reuse the verified composer send path for interactive cards and composer
   // stop (Stop sends ESC, the agent-TUI interrupt key).
-  const send = useNativeChatInteractiveSend(terminalTabId, paneKey, targetPtyId, agent)
+  const send = useNativeChatInteractiveSend(paneKey, targetPtyId, agent)
   // Every send this pane makes brings the latest into view, wherever the reader had scrolled.
   const { messageListRef, revealLatest } = useNativeChatRevealLatest()
   const interactiveSend = useNativeChatInteractiveSendReveal(send, targetPtyId, revealLatest)
@@ -156,7 +157,7 @@ export function NativeChatResolvedView({
     () => ({ paneKey, agent, sessionId }),
     [paneKey, agent, sessionId]
   )
-  const delivery = useNativeChatPendingDelivery({ paneKey, agent, messages: session.messages })
+  const delivery = useNativeChatPendingDelivery({ paneKey, agent, session })
   const { pending, record, clear } = delivery
   // Slash commands aren't chat turns, so they get a small local "Ran /clear"
   // system line instead of a user bubble. Capped + cached per conversation.
@@ -313,6 +314,7 @@ export function NativeChatResolvedView({
     hasPromptCard: promptCard !== null
   })
   const turnTiming = useNativeChatTerminalTurnTiming(paneKey, session.messages, turnActive)
+  useRecheckNativeChatFileLinksWhenTurnEnds(turnActive)
 
   const stopAgent = useCallback(() => {
     setWorkingInterrupted(true)
