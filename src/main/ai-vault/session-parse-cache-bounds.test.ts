@@ -55,9 +55,42 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-it('loads the newest 4096 unique rows across duplicate-heavy input and keeps in-process entries', async () => {
-  const entries = Array.from({ length: 4200 }, (_, index) => row(`p${index}`, index))
-  entries.push(...Array.from({ length: 5000 }, (_, index) => row('p4199', 5000 + index)))
+it.each([false, true])(
+  'reuses 4274 candidates on an ordered rescan (restart=%s)',
+  async (restart) => {
+    const misses = [0, 0]
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 1 && restart) {
+        scheduleSessionParseCachePersist(stats)
+        await flushSessionParseCachePersist()
+        resetSessionParseCacheForTests()
+        await ensureSessionParseCacheLoaded()
+      }
+      for (let index = 0; index < 4274; index++) {
+        const path = `session-${index}.jsonl`
+        if (!getSessionParseCacheEntry(path)) {
+          misses[pass]++
+          storeSessionParseCacheEntry(path, { ...entry(index), resume: null })
+        }
+      }
+    }
+    expect(misses).toEqual([4274, 0])
+  }
+)
+
+it('evicts the oldest entry when a scan exceeds 8192 candidates', () => {
+  for (let index = 0; index < 8193; index++) {
+    storeSessionParseCacheEntry(`p${index}`, { ...entry(index), resume: null })
+  }
+  expect(snapshotSessionParseCacheForPersistence()).toHaveLength(8192)
+  expect(getSessionParseCacheEntry('p0')).toBeUndefined()
+  expect(getSessionParseCacheEntry('p1')?.mtimeMs).toBe(1)
+  expect(getSessionParseCacheEntry('p8192')?.mtimeMs).toBe(8192)
+})
+
+it('loads the newest 8192 unique rows across duplicate-heavy input and keeps in-process entries', async () => {
+  const entries = Array.from({ length: 8300 }, (_, index) => row(`p${index}`, index))
+  entries.push(...Array.from({ length: 5000 }, (_, index) => row('p8299', 10_000 + index)))
   entries.push(row('in-process', 1))
   seedSessionParseCache([row('in-process', 20_000)])
   await writeFile(
@@ -69,25 +102,25 @@ it('loads the newest 4096 unique rows across duplicate-heavy input and keeps in-
     })
   )
   await ensureSessionParseCacheLoaded()
-  expect(snapshotSessionParseCacheForPersistence()).toHaveLength(4096)
-  expect(getSessionParseCacheEntry('p4199')?.mtimeMs).toBe(9999)
-  expect(getSessionParseCacheEntry('p104')).toBeUndefined()
-  expect(getSessionParseCacheEntry('p105')?.mtimeMs).toBe(105)
+  expect(snapshotSessionParseCacheForPersistence()).toHaveLength(8192)
+  expect(getSessionParseCacheEntry('p8299')?.mtimeMs).toBe(14_999)
+  expect(getSessionParseCacheEntry('p108')).toBeUndefined()
+  expect(getSessionParseCacheEntry('p109')?.mtimeMs).toBe(109)
   expect(getSessionParseCacheEntry('in-process')?.mtimeMs).toBe(20_000)
 })
 
 it('seeds newest unique rows directly without retaining an unbounded iterable', () => {
   function* entries() {
-    for (let index = 0; index < 5000; index++) {
+    for (let index = 0; index < 9000; index++) {
       yield row(`p${index}`, index)
     }
-    yield row('p4999', 6000)
+    yield row('p8999', 10_000)
   }
   seedSessionParseCache(entries())
-  expect(snapshotSessionParseCacheForPersistence()).toHaveLength(4096)
-  expect(getSessionParseCacheEntry('p903')).toBeUndefined()
-  expect(getSessionParseCacheEntry('p904')?.mtimeMs).toBe(904)
-  expect(getSessionParseCacheEntry('p4999')?.mtimeMs).toBe(6000)
+  expect(snapshotSessionParseCacheForPersistence()).toHaveLength(8192)
+  expect(getSessionParseCacheEntry('p807')).toBeUndefined()
+  expect(getSessionParseCacheEntry('p808')?.mtimeMs).toBe(808)
+  expect(getSessionParseCacheEntry('p8999')?.mtimeMs).toBe(10_000)
 })
 
 it('rejects an oversized sparse file before decoding and preserves resident work', async () => {
@@ -106,7 +139,7 @@ it('rejects excessive tokens, depth, and malformed older rows before seeding any
     JSON.stringify({
       schemaVersion: SESSION_PARSE_CACHE_SCHEMA_VERSION,
       appVersion: 'old',
-      entries: [['bad', {}], ...Array.from({ length: 4200 }, (_, index) => row(`p${index}`, index))]
+      entries: [['bad', {}], ...Array.from({ length: 8300 }, (_, index) => row(`p${index}`, index))]
     })
   ]) {
     await writeFile(file, raw)

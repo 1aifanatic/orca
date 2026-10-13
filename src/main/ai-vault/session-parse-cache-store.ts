@@ -4,9 +4,8 @@ import type { SessionSidecarObservation } from './session-sidecar-stat'
 import type { TranscriptMessageChannel } from './session-transcript-channel'
 import type { SkippedTranscriptRecord } from './session-transcript-record-budget'
 
-// Sized past the default recency cap (1000) plus the in-scope cap (2000) so a
-// full steady-state result set stays resident between forced rescans.
-export const MAX_CACHE_ENTRIES = 4096
+// Keep moderately larger full-history scans resident between forced rescans.
+export const MAX_CACHE_ENTRIES = 8192
 
 export type SessionParseResumePoint = {
   state: ResumableSessionParseState
