@@ -225,15 +225,23 @@ export function applyManagedHooks(
 
   for (const event of plan.install) {
     const current = nextHooks[event.eventName]
-    const previousAsync = (Array.isArray(current) ? current : [])
-      .flatMap((definition) => (Array.isArray(definition?.hooks) ? definition.hooks : []))
-      .find(
-        (previous) =>
-          previous?.type === 'command' &&
-          typeof previous.command === 'string' &&
-          isManagedCommand(previous.command) &&
-          typeof previous.async === 'boolean'
-      )?.async
+    const previousDirectAsync = (Array.isArray(current) ? current : []).find(
+      (definition) =>
+        typeof definition.async === 'boolean' &&
+        [definition.command, definition.bash, definition.powershell].some(isManagedCommand)
+    )?.async
+    const previousAsync =
+      typeof previousDirectAsync === 'boolean'
+        ? previousDirectAsync
+        : (Array.isArray(current) ? current : [])
+            .flatMap((definition) => (Array.isArray(definition?.hooks) ? definition.hooks : []))
+            .find(
+              (previous) =>
+                previous?.type === 'command' &&
+                typeof previous.command === 'string' &&
+                isManagedCommand(previous.command) &&
+                typeof previous.async === 'boolean'
+            )?.async
     const cleaned = Array.isArray(current) ? removeManagedCommands(current, isManagedCommand) : []
     const hook = hookForEvent(event.eventName)
     const definition: HookDefinition = {

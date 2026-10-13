@@ -54,6 +54,31 @@ function expectUserSettingsKept(config: HooksConfig): void {
 }
 
 describe('Claude managed hook events by resolved version', () => {
+  it.each(
+    ['command', 'bash', 'powershell'].flatMap((key) =>
+      [true, false].map((async) => ({ key, async }))
+    )
+  )('preserves direct $key async=$async without borrowing user preferences', ({ key, async }) => {
+    const userDefinition = { [key]: 'echo user-hook', async: !async }
+    const config: HooksConfig = {
+      hooks: {
+        PreToolUse: [userDefinition, { [key]: '/old/.orca/agent-hooks/claude-hook.cmd', async }],
+        PostToolUse: [userDefinition]
+      }
+    }
+    const written = install(config, '2.1.32')
+    expect(written.hooks?.PreToolUse).toEqual([
+      userDefinition,
+      { matcher: '*', hooks: [{ ...managedHook, async }] }
+    ])
+    expect(written.hooks?.PostToolUse).toEqual([
+      userDefinition,
+      { matcher: '*', hooks: [managedHook] }
+    ])
+    expect(install(written, '2.1.32')).toEqual(written)
+    expect(managedHook).not.toHaveProperty('async')
+  })
+
   it.each([true, false])(
     'preserves an explicit async=%s when replacing a managed command',
     (async) => {
