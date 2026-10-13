@@ -1,13 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const { execute, generations } = vi.hoisted(() => ({
-  execute: vi.fn(),
-  generations: new Map<string, number>()
-}))
+const { execute } = vi.hoisted(() => ({ execute: vi.fn() }))
 vi.mock('../git/runner', () => ({ glabExecFileAsync: execute }))
-vi.mock('../providers/ssh-git-dispatch', () => ({
-  getSshGitProviderGeneration: (id: string) => generations.get(id) ?? 0
-}))
 
 import {
   _getKnownHostsCacheSize,
@@ -20,7 +14,6 @@ import { NEGATIVE_ENTRY_TTL_MS } from '../git/remote-ref-probe-cache'
 
 beforeEach(() => {
   _resetKnownHostsCache()
-  generations.clear()
   execute.mockReset().mockRejectedValue(new Error('keyring locked'))
   vi.spyOn(Date, 'now').mockReturnValue(1_000)
 })
@@ -43,6 +36,18 @@ it('coalesces failures and suppresses repeated polls until the retry boundary', 
   expect(execute).toHaveBeenCalledTimes(2)
 })
 
+it('retains the retry deadline when an authentication refresh finds no hosts', async () => {
+  await getGlabKnownHosts()
+  rememberGlabKnownHosts([])
+  vi.mocked(Date.now).mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS - 1)
+  await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com'])
+  expect(execute).toHaveBeenCalledTimes(1)
+  vi.mocked(Date.now).mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS)
+  execute.mockResolvedValueOnce({ stdout: 'Logged in to recovered.test as user', stderr: '' })
+  await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com', 'recovered.test'])
+  expect(execute).toHaveBeenCalledTimes(2)
+})
+
 it('lets an explicit authentication refresh replace the failure fallback immediately', async () => {
   await getGlabKnownHosts()
   rememberGlabKnownHosts(['gitlab.com'])
@@ -53,7 +58,7 @@ it('lets an explicit authentication refresh replace the failure fallback immedia
   await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com', 'self-hosted.test'])
 })
 
-it('isolates failures by execution context and retires them on reconnect', async () => {
+it('isolates failures by execution context', async () => {
   for (let index = 0; index < 2; index++) {
     await getGlabKnownHosts()
     await getGlabKnownHosts(undefined, { wslDistro: 'Ubuntu' })
@@ -61,9 +66,6 @@ it('isolates failures by execution context and retires them on reconnect', async
     await getGlabKnownHosts('connection')
   }
   expect(execute).toHaveBeenCalledTimes(4)
-  generations.set('connection', 1)
-  await getGlabKnownHosts('connection')
-  expect(execute).toHaveBeenCalledTimes(5)
 })
 
 it('keeps the failure cache bounded', async () => {
