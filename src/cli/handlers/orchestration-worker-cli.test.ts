@@ -89,6 +89,36 @@ describe('orchestration worker-start CLI contract', () => {
     }
   )
 
+  it.each([
+    [true, '--parent-worktree requires a value; it was passed with none.'],
+    ['', 'Missing required --parent-worktree']
+  ])('rejects an invalid parent operand (%s) before any RPC', async (parent, message) => {
+    await expect(
+      invokeWorkerStart(
+        new Map<string, string | boolean>([
+          ['worktree', 'new-child'],
+          ['parent-worktree', parent]
+        ])
+      )
+    ).rejects.toMatchObject({ code: 'invalid_argument', message })
+    expect(callMock).not.toHaveBeenCalled()
+  })
+
+  it('reports a valueless worktree flag before validating parent placement', async () => {
+    await expect(
+      invokeWorkerStart(
+        new Map<string, string | boolean>([
+          ['worktree', true],
+          ['parent-worktree', 'id:integration']
+        ])
+      )
+    ).rejects.toMatchObject({
+      code: 'invalid_argument',
+      message: '--worktree requires a value; it was passed with none.'
+    })
+    expect(callMock).not.toHaveBeenCalled()
+  })
+
   it('rejects a remote parent placement before consulting or mutating a host', async () => {
     await expect(
       invokeWorkerStart(

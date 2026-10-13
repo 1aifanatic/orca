@@ -1,6 +1,6 @@
 import type { CommandHandler } from '../../dispatch'
 import { printResult } from '../../format'
-import { getOptionalStringFlag } from '../../flags'
+import { getOptionalStringFlag, getRequiredStringFlag } from '../../flags'
 import { getRequiredWorktreeSelector } from '../../selectors'
 import { RuntimeClientError } from '../../runtime-client'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
@@ -19,8 +19,12 @@ export const ORCHESTRATION_WORKER_LAUNCH_HANDLER: Record<string, CommandHandler>
   'orchestration worker-start': async ({ flags, client, cwd, json }) => {
     const model = getOptionalStringFlag(flags, 'model')
     const effort = getOptionalStringFlag(flags, 'effort')
+    const worktree = getOptionalStringFlag(flags, 'worktree')
     const hasParentWorktree = flags.has('parent-worktree')
-    if (hasParentWorktree && (flags.get('worktree') !== 'new-child' || flags.has('on'))) {
+    if (hasParentWorktree) {
+      getRequiredStringFlag(flags, 'parent-worktree')
+    }
+    if (hasParentWorktree && (worktree !== 'new-child' || flags.has('on'))) {
       throw new RuntimeClientError(
         'invalid_argument',
         '--parent-worktree requires --worktree new-child on the Run host (without --on)'
@@ -78,7 +82,7 @@ export const ORCHESTRATION_WORKER_LAUNCH_HANDLER: Record<string, CommandHandler>
       ...(deps ? { deps } : {}),
       ...(parent ? { parent } : {}),
       on: getOptionalStringFlag(flags, 'on'),
-      worktree: getOptionalStringFlag(flags, 'worktree'),
+      worktree,
       name: getOptionalStringFlag(flags, 'name'),
       repo: getOptionalStringFlag(flags, 'repo'),
       baseBranch: getOptionalStringFlag(flags, 'base-branch'),
