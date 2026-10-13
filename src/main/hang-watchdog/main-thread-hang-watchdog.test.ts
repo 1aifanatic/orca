@@ -55,6 +55,19 @@ function fakeWorker() {
 
 describe('installMainThreadHangWatchdog', () => {
   beforeEach(() => {
+    for (const name of [
+      'CI',
+      'GITHUB_ACTIONS',
+      'GITLAB_CI',
+      'CIRCLECI',
+      'TRAVIS',
+      'BUILDKITE',
+      'JENKINS_URL',
+      'TEAMCITY_VERSION',
+      'ORCA_DIAGNOSTICS_DISABLED'
+    ]) {
+      vi.stubEnv(name, '')
+    }
     vi.useFakeTimers()
     workerState.calls = []
     workerState.instance = null
@@ -73,18 +86,48 @@ describe('installMainThreadHangWatchdog', () => {
         listener()
       }
     }
+    vi.unstubAllEnvs()
     vi.useRealTimers()
     delete process.env.ORCA_HANG_WATCHDOG_FORCE
     delete process.env.ORCA_HANG_WATCHDOG_TIMEOUT_MS
     delete process.env.ORCA_HANG_WATCHDOG_CHECK_INTERVAL_MS
   })
 
-  it('is a no-op on Linux', () => {
-    expect(
-      withPlatform('linux', () => installMainThreadHangWatchdog({ userDataPath: '/ud' }))
-    ).toBeNull()
-    expect(workerState.calls).toHaveLength(0)
+  it.each(['linux'] as const)('creates no worker or timers on %s', (platform) => {
+    for (const isPackaged of [false, true]) {
+      for (const forced of [false, true]) {
+        appMock.isPackaged = isPackaged
+        if (forced) {
+          process.env.ORCA_HANG_WATCHDOG_FORCE = '1'
+        } else {
+          delete process.env.ORCA_HANG_WATCHDOG_FORCE
+        }
+        expect(
+          withPlatform(platform, () => installMainThreadHangWatchdog({ userDataPath: '/ud' }))
+        ).toBeNull()
+        expect(workerState.calls).toHaveLength(0)
+        expect(vi.getTimerCount()).toBe(0)
+        expect(appMock.on).not.toHaveBeenCalled()
+      }
+    }
   })
+
+  it.each(['darwin', 'win32'] as const)(
+    'respects development and diagnostics gates on %s',
+    (platform) => {
+      appMock.isPackaged = false
+      expect(
+        withPlatform(platform, () => installMainThreadHangWatchdog({ userDataPath: '/ud' }))
+      ).toBeNull()
+      process.env.ORCA_HANG_WATCHDOG_FORCE = '1'
+      vi.stubEnv('ORCA_DIAGNOSTICS_DISABLED', '1')
+      expect(
+        withPlatform(platform, () => installMainThreadHangWatchdog({ userDataPath: '/ud' }))
+      ).toBeNull()
+      vi.unstubAllEnvs()
+      expect(workerState.calls).toHaveLength(0)
+    }
+  )
 
   it('records Windows span activity and removes the subscription on stop', () => {
     const worker = fakeWorker()
@@ -113,6 +156,29 @@ describe('installMainThreadHangWatchdog', () => {
       worker.postMessage.mockClear()
       startSpan('after-stop').end()
       expect(worker.postMessage).not.toHaveBeenCalled()
+    } finally {
+      handle?.stop()
+      setActiveSink(null)
+    }
+  })
+
+  it('redacts complete secrets before bounding span names', () => {
+    const worker = fakeWorker()
+    workerState.instance = worker
+    const handle = withPlatform('win32', () =>
+      installMainThreadHangWatchdog({ userDataPath: '/ud' })
+    )
+    setActiveSink({ push: vi.fn(), flush: vi.fn(), close: vi.fn() })
+    try {
+      const name = `-----BEGIN PRIVATE KEY-----\n${'private-material'.repeat(20)}\n-----END PRIVATE KEY-----`
+      const span = startSpan(name)
+      expect(worker.postMessage).toHaveBeenLastCalledWith({
+        type: 'span',
+        spanId: span.spanId,
+        name: '[redacted:pem]',
+        active: true
+      })
+      span.end()
     } finally {
       handle?.stop()
       setActiveSink(null)
