@@ -3,12 +3,16 @@ import { ORCA_SESSION_ADDRESS_PREFIX } from '../../../shared/orca-session-addres
 
 export const KEEPALIVE_INTERVAL_MS = 10_000
 
-// Why: cap long-polls at half the 32-slot connection budget so they can't starve short RPCs; overflow → runtime_busy. See §7 risk #2.
+// The local transport reserves at least as many connections for short RPCs as for long polls.
 export const LONG_POLL_CAP = 16
+const MAX_LONG_POLL_CAP = 128
 
-export function configuredLongPollCap(): number {
-  const configured = Number(process.env.ORCA_RPC_LONG_POLL_CAP)
-  return Number.isSafeInteger(configured) && configured > 0 ? configured : LONG_POLL_CAP
+export function configuredLongPollCap(
+  configured = Number(process.env.ORCA_RPC_LONG_POLL_CAP)
+): number {
+  return Number.isSafeInteger(configured) && configured > 0
+    ? Math.min(MAX_LONG_POLL_CAP, Math.max(2, configured))
+    : LONG_POLL_CAP
 }
 
 // Why: orchestration.ask blocks on a human/agent reply for minutes, an order of

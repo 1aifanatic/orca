@@ -1,6 +1,6 @@
 // Why: this is the original Unix socket / named pipe transport extracted from
 // runtime-rpc.ts. It preserves the exact same behavior: newline-delimited JSON,
-// 30s idle timeout, 1MB max message, 32 max connections, chmod 0o600 on Unix.
+// 30s idle timeout, 1MB max message, 32 connections by default, chmod 0o600 on Unix.
 // It also owns the keepalive timer and per-connection abort signal so the
 // server-side handler can cancel long-poll dispatches when the client goes
 // away. See design doc §3.1.
@@ -10,12 +10,13 @@ import type { RpcMessageContext, RpcTransport } from './transport'
 
 const MAX_RUNTIME_RPC_MESSAGE_BYTES = 1024 * 1024
 const RUNTIME_RPC_SOCKET_IDLE_TIMEOUT_MS = 30_000
-const MAX_RUNTIME_RPC_CONNECTIONS = 32
+export const DEFAULT_MAX_RUNTIME_RPC_CONNECTIONS = 32
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 10_000
 
 export type UnixSocketTransportOptions = {
   endpoint: string
   kind: 'unix' | 'named-pipe'
+  maxConnections?: number
   // Why: how often to write `{"_keepalive":true}\n` frames while a dispatch
   // is pending. Each write resets both the server-side idle timer and, once
   // the client honours them, the client-side idle timer. Tests override this
@@ -33,14 +34,16 @@ export class UnixSocketTransport implements RpcTransport {
   private readonly endpoint: string
   private readonly kind: 'unix' | 'named-pipe'
   private readonly keepaliveIntervalMs: number
+  private readonly maxConnections: number
   private server: Server | null = null
   private messageHandler: MessageHandler | null = null
   private readonly activeSockets = new Set<Socket>()
 
-  constructor({ endpoint, kind, keepaliveIntervalMs }: UnixSocketTransportOptions) {
+  constructor({ endpoint, kind, keepaliveIntervalMs, maxConnections }: UnixSocketTransportOptions) {
     this.endpoint = endpoint
     this.kind = kind
     this.keepaliveIntervalMs = keepaliveIntervalMs ?? DEFAULT_KEEPALIVE_INTERVAL_MS
+    this.maxConnections = maxConnections ?? DEFAULT_MAX_RUNTIME_RPC_CONNECTIONS
   }
 
   onMessage(handler: MessageHandler): void {
@@ -59,7 +62,7 @@ export class UnixSocketTransport implements RpcTransport {
     const server = createServer((socket) => {
       this.handleConnection(socket)
     })
-    server.maxConnections = MAX_RUNTIME_RPC_CONNECTIONS
+    server.maxConnections = this.maxConnections
 
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)

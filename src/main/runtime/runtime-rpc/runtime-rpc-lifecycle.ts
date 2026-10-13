@@ -2,7 +2,10 @@ import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../shared/agent-launch-ru
 import type { RuntimeTransportMetadata } from '../../../shared/runtime-bootstrap'
 import { watchRuntimeMetadataOwnership } from '../runtime-metadata-ownership-watch'
 import type { RpcTransport } from '../rpc/transport'
-import { UnixSocketTransport } from '../rpc/unix-socket-transport'
+import {
+  DEFAULT_MAX_RUNTIME_RPC_CONNECTIONS,
+  UnixSocketTransport
+} from '../rpc/unix-socket-transport'
 import { WebSocketTransport } from '../rpc/ws-transport'
 import { readWsFallbackPort, writeWsFallbackPort } from '../rpc/ws-fallback-port-store'
 import type { DeviceRegistry } from '../device-registry'
@@ -41,7 +44,9 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
     const socketTransport = new UnixSocketTransport({
       endpoint: transportMeta.endpoint,
       kind: transportMeta.kind as 'unix' | 'named-pipe',
-      keepaliveIntervalMs: this.keepaliveIntervalMs
+      keepaliveIntervalMs: this.keepaliveIntervalMs,
+      // Separate check clients must leave connection headroom as well as dispatch headroom.
+      maxConnections: Math.max(DEFAULT_MAX_RUNTIME_RPC_CONNECTIONS, this.longPollCap * 2)
     })
 
     // Why: the `.catch` guarantees reply() always fires so a throw can't strand the client or leak the AbortController.

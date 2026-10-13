@@ -8,11 +8,48 @@ import { configuredLongPollCap } from './runtime-rpc/runtime-rpc-long-poll'
 
 afterEach(() => vi.unstubAllEnvs())
 
-it.each(['', '0', '-1', '1.5', 'NaN', 'Infinity'])(
+it.each(['', '0', '-1', '1.5', 'NaN', 'Infinity', '9007199254740992'])(
   'uses the default for an invalid configured cap (%s)',
   (value) => {
     vi.stubEnv('ORCA_RPC_LONG_POLL_CAP', value)
     expect(configuredLongPollCap()).toBe(16)
+  }
+)
+
+it.each(['environment', 'option'] as const)(
+  'bounds the %s pool and preserves a launch slot at its minimum',
+  (source) => {
+    const directory = mkdtempSync(join(tmpdir(), 'orca-check-cap-bounds-'))
+    try {
+      for (const [value, expected] of [
+        [1, 2],
+        [2, 2],
+        [64, 64],
+        [128, 128],
+        [129, 128],
+        [Number.MAX_SAFE_INTEGER, 128],
+        [0, 16],
+        [-1, 16],
+        [1.5, 16],
+        [Number.NaN, 16],
+        [Infinity, 16],
+        [Number.MAX_SAFE_INTEGER + 1, 16]
+      ] as const) {
+        vi.stubEnv('ORCA_RPC_LONG_POLL_CAP', source === 'environment' ? String(value) : '64')
+        const server = new OrcaRuntimeRpcServer({
+          runtime: new OrcaRuntimeService(),
+          userDataPath: directory,
+          ...(source === 'option' ? { longPollCap: value } : {}),
+          methods: []
+        })
+        expect(server['longPollCap'], `${source}=${value}`).toBe(expected)
+        expect(server['admitLongPoll']('check')).toBeNull()
+        expect(server['admitLongPoll']('wait')).toBeNull()
+        expect(server['specializedLongPollCap']).toBeLessThan(expected)
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   }
 )
 
