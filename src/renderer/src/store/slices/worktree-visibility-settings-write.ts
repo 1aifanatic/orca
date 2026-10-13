@@ -1,4 +1,5 @@
-import { callRuntimeRpc, getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
+import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
+import { defaultScopeHost } from '@/lib/default-creation-host'
 import {
   LOCAL_EXECUTION_HOST_ID,
   toRuntimeExecutionHostId
@@ -7,7 +8,7 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { AppState } from '../types'
 
 export async function persistLocalBaseRefSettings(
-  target: ReturnType<typeof getActiveRuntimeTarget>,
+  target: ReturnType<typeof defaultScopeHost>,
   updates: Partial<
     Pick<GlobalSettings, 'refreshLocalBaseRefOnWorktreeCreate' | 'localBaseRefSuggestionDismissed'>
   >
@@ -54,7 +55,8 @@ export async function persistVisibilityAwareSettings(args: {
     shouldPublish = () => true,
     set
   } = args
-  const target = getActiveRuntimeTarget(currentSettings)
+  // Why: the write lands on the default scope host whose defaults the store mirrors.
+  const target = defaultScopeHost(currentSettings)
   if (
     target.kind === 'environment' &&
     ('refreshLocalBaseRefOnWorktreeCreate' in normalizedUpdates ||
@@ -77,7 +79,7 @@ export async function persistVisibilityAwareSettings(args: {
     }
     if (shouldPublish()) {
       set((state) => {
-        const active = getActiveRuntimeTarget(state.settings)
+        const active = defaultScopeHost(state.settings)
         return active.kind === 'environment' &&
           active.environmentId === target.environmentId &&
           state.settings
@@ -126,7 +128,7 @@ export async function persistVisibilityAwareSettings(args: {
       } catch (error) {
         if (localSettings && shouldPublish()) {
           set((state) => {
-            const currentTarget = getActiveRuntimeTarget(state.settings)
+            const currentTarget = defaultScopeHost(state.settings)
             const stillFocused =
               currentTarget.kind === 'environment' &&
               currentTarget.environmentId === target.environmentId
@@ -153,7 +155,7 @@ export async function persistVisibilityAwareSettings(args: {
       return
     }
     set((state) => {
-      const currentTarget = getActiveRuntimeTarget(state.settings)
+      const currentTarget = defaultScopeHost(state.settings)
       const stillFocused =
         currentTarget.kind === 'environment' && currentTarget.environmentId === target.environmentId
       return {
