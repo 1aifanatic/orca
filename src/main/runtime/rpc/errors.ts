@@ -34,6 +34,11 @@ import { WORKTREE_CREATE_COLLISION_CODE } from '../../../shared/new-workspace/wo
 import { AGENT_LAUNCH_PANE_ALREADY_LIVE_CODE } from '../../../shared/agent-launch-pane-already-live'
 import { AGENT_LAUNCH_SESSION_ALREADY_EXISTS_CODE } from '../../../shared/agent-launch-session-already-exists'
 import { AGENT_LAUNCH_TAB_CLOSED_CODE } from '../../../shared/agent-launch-tab-closed'
+import { AGENT_LAUNCH_TARGET_FORBIDDEN_CODE } from '../../../shared/agent-launch-target-forbidden'
+import {
+  parseTerminalSpawnDeferral,
+  TERMINAL_SPAWN_DEFERRED_CODE
+} from '../../../shared/host-spawn-admission'
 
 export function successResponse(id: string, meta: RpcEnvelopeMeta, result: unknown): RpcSuccess {
   return {
@@ -68,6 +73,7 @@ const RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   AGENT_LAUNCH_PANE_ALREADY_LIVE_CODE,
   AGENT_LAUNCH_SESSION_ALREADY_EXISTS_CODE,
   AGENT_LAUNCH_TAB_CLOSED_CODE,
+  AGENT_LAUNCH_TARGET_FORBIDDEN_CODE,
   'agent_launch_replay_unsupported',
   'runtime_unavailable',
   'selector_not_found',
@@ -223,6 +229,11 @@ export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknow
   }
   if (RUNTIME_PASSTHROUGH_CODES.has(message)) {
     return errorResponse(id, meta, message, message)
+  }
+  const deferral = parseTerminalSpawnDeferral(message)
+  if (deferral) {
+    // Why: only a caller that sent spawnIntent can be deferred, so the code is new to no client.
+    return errorResponse(id, meta, TERMINAL_SPAWN_DEFERRED_CODE, message, { reason: deferral })
   }
   const skillInstallFailure = classifySkillInstallFailureCode(message)
   if (skillInstallFailure) {
