@@ -5,7 +5,7 @@ import type { RuntimeStore } from './runtime-store-contract'
 
 describe('buildRuntimeWorktreePsSummaries', () => {
   it('preserves persisted host ownership over the resolved row fallback', () => {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the summary builder reads only the resolved row fields supplied by this fixture.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the summary builder reads only these worktree fields.
     const worktree = {
       id: 'repo-1::/workspace/app',
       repoId: 'repo-1',
@@ -19,10 +19,15 @@ describe('buildRuntimeWorktreePsSummaries', () => {
       lineage: null,
       lastActivityAt: 0
     } as unknown as ResolvedWorktree
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the summary builder reads only the store members supplied by this fixture.
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the summary builder reads only these store methods.
     const store = {
       getRepos: () => [],
-      getWorktreeMeta: () => ({ hostId: 'ssh:persisted-host', metadataUpdatedAt: 123 }),
+      getWorktreeMeta: () => ({
+        hostId: 'ssh:persisted-host',
+        metadataUpdatedAt: 123,
+        linkedPR: 42,
+        linkedItems: [{ provider: 'github', type: 'pr', number: 57 }]
+      }),
       getAllWorktreeMeta: () => ({}),
       getFolderWorkspaces: () => [],
       getProjectGroups: () => []
@@ -36,6 +41,10 @@ describe('buildRuntimeWorktreePsSummaries', () => {
 
     expect(summary?.hostId).toBe('ssh:persisted-host')
     expect(summary?.metadataUpdatedAt).toBe(123)
+    expect(summary?.linkedItems).toEqual([
+      { provider: 'github', type: 'pr', number: 57 },
+      { provider: 'github', type: 'pr', number: 42 }
+    ])
   })
 
   it('carries the error of a failed delete the host still lists', () => {

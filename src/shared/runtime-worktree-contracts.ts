@@ -64,6 +64,7 @@ export type RuntimeWorktreePsSummary = {
   linkedLinearIssue: string | null
   linkedGitLabMR: number | null
   linkedGitLabIssue: number | null
+  linkedItems?: Worktree['linkedItems']
   comment: string
   /** Host time in milliseconds of the last comment or workspaceStatus change; absent for legacy data. */
   metadataUpdatedAt?: number
