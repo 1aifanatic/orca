@@ -8,28 +8,28 @@ import type {
   StructuredAgentRuntimeAdapter,
   StructuredAgentRuntimeRegistration
 } from '../runtime/structured-agent-runtime-registrations'
+import {
+  composeStructuredLaunch,
+  structuredAgentLaunchSources
+} from '../runtime/structured-agent-launch-composition'
 import { PI_RPC_AGENT } from './rpc-agent-definition'
 import {
-  createPiRpcLaunchResolver,
+  piRpcLaunchPart,
   piRpcVersionSupported,
   resolvePiRpcCommand
 } from './rpc-launch-resolution'
 import { PiRpcSessionAdapter } from './rpc-session-adapter'
+import { createPiModelCatalogProbe } from './rpc-model-catalog-probe'
+import { PI_SESSION_HISTORY } from './pi-session-history'
 
 function createPiRpcAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
   const { deps } = context
   return new PiRpcSessionAdapter({
-    resolveLaunch: createPiRpcLaunchResolver({
-      store: context.store,
-      resolveWorkspacePath: deps.resolveWorkspacePath,
-      resolveEnvironment: async () => ({
-        ...(await context.environment.resolveBaseEnvironment()),
-        ...deps.resolveAgentLaunchEnv?.('pi')
-      }),
-      ...(deps.resolveAgentCommandSettings
-        ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
-        : {})
-    }),
+    resolveLaunch: composeStructuredLaunch(
+      PI_RPC_AGENT,
+      structuredAgentLaunchSources(context),
+      piRpcLaunchPart({})
+    ),
     ...(deps.openPiConnection ? { openConnection: deps.openPiConnection } : {}),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
     onLifecycle: context.deliverLifecycle,
@@ -51,6 +51,20 @@ function createPiRpcAdapter(context: StructuredAgentAdapterContext): StructuredA
 export const PI_RPC_RUNTIME_REGISTRATION: StructuredAgentRuntimeRegistration = {
   definition: PI_RPC_AGENT,
   createAdapter: createPiRpcAdapter,
+  modelCatalog: (context) => ({
+    kind: 'probe',
+    // `--list-models` marks no model as the one Pi runs by default.
+    listingNamesConfiguredModel: false,
+    probe: createPiModelCatalogProbe({
+      // The environment a chat's launch starts from too.
+      resolveEnvironment: () => context.environment.resolveAgentEnvironment('pi'),
+      ...(context.deps.resolveAgentCommandSettings
+        ? { resolveCommandSettings: context.deps.resolveAgentCommandSettings }
+        : {})
+    })
+  }),
+  transcriptImport: null,
+  sessionHistory: PI_SESSION_HISTORY,
   supportsLocation: supportsSupervisedProviderChildLocation,
   supportsLaunch: async ({ cwd, env, commandSettings }) => {
     let command: string
