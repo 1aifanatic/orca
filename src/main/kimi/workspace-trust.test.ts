@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync }
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { applyAgentWorkspaceTrust } from '../agent-workspace-trust'
 import { applyWorkspaceTrustOnThisHost } from '../execution-host-workspace-trust'
-import { applyRelayAgentWorkspaceTrust } from '../../relay/agent-workspace-trust-spawn'
 import { markKimiWorkspaceTrusted } from './workspace-trust'
 
 let root: string
@@ -67,14 +67,14 @@ describe('Kimi workspace trust', () => {
     expect(existsSync(join(home, '.kimi-code'))).toBe(false)
   })
 
-  it('honors a custom runtime home on the executing relay', async () => {
+  it('honors a custom runtime home on the executing host', async () => {
     const kimiHome = join(root, 'custom-kimi')
-    await applyRelayAgentWorkspaceTrust(
-      { workspacePath: workspace },
-      'kimi',
-      { HOME: home, USERPROFILE: home, KIMI_CODE_HOME: kimiHome },
-      { wslShell: false }
-    )
+    await applyAgentWorkspaceTrust('kimi', workspace, {
+      env: { HOME: home, USERPROFILE: home, KIMI_CODE_HOME: kimiHome },
+      claudeAuth: null,
+      wslDistro: null,
+      connectionId: null
+    })
     expect(readdirSync(join(kimiHome, 'workspace-trust'))).toHaveLength(1)
     expect(existsSync(join(home, '.kimi-code'))).toBe(false)
   })

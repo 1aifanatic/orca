@@ -12,6 +12,11 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
+// A card's sender line opens and names agents through modules this test does not exercise.
+vi.mock('@/lib/open-agent-message-sender', () => ({ openAgentMessageSender: vi.fn() }))
+vi.mock('@/runtime/structured-conversation-name', () => ({
+  useStructuredChatTabConversationName: () => null
+}))
 vi.mock('../../store', () => {
   const state = { updateSettings: mocks.updateSettings }
   const useAppStore = (selector: (value: typeof state) => unknown): unknown => selector(state)
@@ -41,6 +46,7 @@ function renderList(
   return render(
     <TooltipProvider delayDuration={0}>
       <NativeChatQueuedMessageList
+        chatWorktreeId={null}
         controller={owner}
         agentName={agentName}
         statedFailures={statedFailures}
@@ -72,6 +78,8 @@ function controller(
   return {
     cards,
     queueCapable,
+    editCapable: true,
+    editor: undefined,
     pause,
     resume: vi.fn(async () => false),
     resuming: false,
@@ -102,7 +110,8 @@ function waitingDraft(
  *  Nothing runs after a Stop or a /clear. */
 function renderHeldQueue(
   queuedMessages: AgentSessionQueuedMessage[],
-  queuePause: AgentSessionQueuePause | null
+  queuePause: AgentSessionQueuePause | null,
+  hasPendingPrompt = false
 ) {
   const mutate = vi.fn(async (..._call: [string, string, Record<string, unknown>]) => null)
   function HeldQueue(): React.JSX.Element {
@@ -111,13 +120,19 @@ function renderHeldQueue(
       queuedMessages,
       queuePause,
       submissions: [],
-      hasPendingPrompt: false,
+      hasPendingPrompt,
       isWorking: false,
       composerScopeKey: undefined,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the list only awaits mutate; its answer is never read.
-      mutate: mutate as StructuredAgentSessionMutate
+      mutate: mutate as StructuredAgentSessionMutate,
+      editTransport: {
+        target: { kind: 'local' },
+        sessionId: 'session',
+        capable: false,
+        write: async () => ({ kind: 'dropped' })
+      }
     })
-    return <NativeChatQueuedMessageList controller={owner} />
+    return <NativeChatQueuedMessageList chatWorktreeId={null} controller={owner} />
   }
   const view = render(
     <TooltipProvider delayDuration={0}>
@@ -199,7 +214,10 @@ describe('NativeChatQueuedMessageList', () => {
     const region = container.querySelector('[aria-live="polite"]')
     rerender(
       <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={controller([card({ messageId: 'draft-1' })])} />
+        <NativeChatQueuedMessageList
+          chatWorktreeId={null}
+          controller={controller([card({ messageId: 'draft-1' })])}
+        />
       </TooltipProvider>
     )
     expect(container.querySelector('[aria-live="polite"]')).toBe(region)
@@ -295,7 +313,7 @@ describe('NativeChatQueuedMessageList', () => {
     const owner = controller([card({ messageId: 'draft-1', position: 1 })])
     render(
       <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={owner} steerHeld />
+        <NativeChatQueuedMessageList chatWorktreeId={null} controller={owner} steerHeld />
       </TooltipProvider>
     )
     const steer = screen.getByRole('button', { name: 'Steer' })
@@ -313,7 +331,11 @@ describe('NativeChatQueuedMessageList', () => {
       const owner = controller([card({ messageId: 'draft-1', position: 1 })])
       render(
         <TooltipProvider delayDuration={0}>
-          <NativeChatQueuedMessageList controller={owner} focusComposer={focusComposer} />
+          <NativeChatQueuedMessageList
+            chatWorktreeId={null}
+            controller={owner}
+            focusComposer={focusComposer}
+          />
         </TooltipProvider>
       )
       const action = screen.getByRole('button', { name })
@@ -451,6 +473,21 @@ describe('NativeChatQueuedMessageList', () => {
     }
   )
 
+  it('a card behind an open question shows no caption and keeps its actions', () => {
+    const { mutate } = renderHeldQueue([waitingDraft('mail', 1)], null, true)
+    const row = screen.getByRole('listitem')
+    // The open question below already says the agent waits; the text is the card's only line.
+    expect(row.querySelectorAll('p')).toHaveLength(1)
+    expect(within(row).getByRole('button', { name: 'Delete' })).toBeTruthy()
+    expect(within(row).getByRole('button', { name: 'More actions' })).toBeTruthy()
+    fireEvent.click(within(row).getByRole('button', { name: 'Steer' }))
+    expect(mutate).toHaveBeenCalledWith(
+      'agentSession.queuedMessageSend',
+      'agentSession.queuedMessageSend',
+      { messageId: 'mail' }
+    )
+  })
+
   it('a paused queue holds every card, in order, under one header', () => {
     renderHeldQueue([waitingDraft('a', 1), waitingDraft('b', 2)], { reason: 'stopped' })
     expect(screen.getByText('Queue paused because you interrupted')).toBeTruthy()
@@ -489,7 +526,11 @@ describe('NativeChatQueuedMessageList', () => {
     }
     render(
       <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={owner} focusComposer={focusComposer} />
+        <NativeChatQueuedMessageList
+          chatWorktreeId={null}
+          controller={owner}
+          focusComposer={focusComposer}
+        />
       </TooltipProvider>
     )
     const resume = screen.getByRole('button', { name: 'Resume' })
@@ -501,7 +542,11 @@ describe('NativeChatQueuedMessageList', () => {
     })
     render(
       <TooltipProvider delayDuration={0}>
-        <NativeChatQueuedMessageList controller={idle} focusComposer={focusComposer} />
+        <NativeChatQueuedMessageList
+          chatWorktreeId={null}
+          controller={idle}
+          focusComposer={focusComposer}
+        />
       </TooltipProvider>
     )
     const enabled = screen.getByRole('button', { name: 'Resume' })
@@ -609,7 +654,7 @@ describe('NativeChatQueuedMessageList', () => {
   })
 
   it('every card still waiting on the queue reads Steer; one held on its own or returned, Send', () => {
-    for (const hold of ['turn', 'awaiting-answer', 'behind-returned', 'queue-paused'] as const) {
+    for (const hold of ['turn', 'behind-returned', 'queue-paused'] as const) {
       expect(queuedMessageCardSendNow(card({ messageId: hold, hold }))).toEqual({
         steers: true,
         label: 'Steer',
@@ -755,7 +800,7 @@ describe('NativeChatQueuedMessageList', () => {
     const rerender = (cards: QueuedMessageCard[]): void =>
       view.rerender(
         <TooltipProvider delayDuration={0}>
-          <NativeChatQueuedMessageList controller={controller(cards)} />
+          <NativeChatQueuedMessageList chatWorktreeId={null} controller={controller(cards)} />
         </TooltipProvider>
       )
     rerender([...first, card({ messageId: 'mail', position: 3, from })])
@@ -777,6 +822,7 @@ describe('NativeChatQueuedMessageList', () => {
     view.rerender(
       <TooltipProvider delayDuration={0}>
         <NativeChatQueuedMessageList
+          chatWorktreeId={null}
           controller={controller([
             card({ messageId: 'a', position: 1 }),
             card({ messageId: 'b', position: 2 })

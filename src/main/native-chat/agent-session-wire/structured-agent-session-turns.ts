@@ -43,6 +43,7 @@ import {
 } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { isAgentSessionAttachmentExpiredError } from '../agent-session-attachments/agent-session-attachment-claims'
+import { CommandReceiptExistsError } from '../agent-session-journal/command-receipt-transaction'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 export { performSetOption } from './structured-agent-session-turns-options'
 export { performPrompt } from './structured-agent-session-turns-prompt'
@@ -67,9 +68,17 @@ export type AgentSessionTurnContext = {
   publish: () => void
   /** Who a Stop's refusal row names. */
   failureTextContext?: AgentSessionFailureWordsContext
-  /** The operation's success, committed with the row that accepts it (`MutationPlan.settlesWithWrite`). */
-  operationReceipt?: JournalOperationReceipt
+  /** The operation's success, committed with the row that accepts it (`settlesWithWrite` or `commandReceipt`). */
+  operationReceipt?: AgentSessionOperationReceipt
   now: () => number
+}
+
+/** What accepts an operation: written with the row that accepts it, or committed alone. */
+export type AgentSessionOperationReceipt = JournalOperationReceipt & {
+  /** Whether it has committed, with a row or alone. */
+  isCommitted: () => boolean
+  /** Commits it naming no row; nothing once it has committed. */
+  commitAlone: () => Promise<void>
 }
 
 export type TurnOutcome<TValue> =
@@ -161,6 +170,14 @@ export async function performSend(
       ctx.operationReceipt
     )
   } catch (error) {
+    if (error instanceof CommandReceiptExistsError) {
+      throw error
+    }
+    ctx.logger.warn('recording a message failed', {
+      scope: 'send-journal-write',
+      sessionId: ctx.sessionId,
+      error
+    })
     if (isAgentSessionAttachmentExpiredError(error)) {
       return agentSessionAttachmentExpiredRefusal()
     }
