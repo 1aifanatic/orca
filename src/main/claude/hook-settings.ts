@@ -4,6 +4,7 @@ import {
   buildManagedCommandHook,
   createManagedCommandMatcher,
   getSharedManagedScriptPath,
+  hookHasManagedCommand,
   isPlainObject,
   isSafeUnicodeWindowsBatchHookPath,
   MANAGED_HOOK_TIMEOUT_SECONDS,
@@ -237,10 +238,8 @@ export function applyManagedHooks(
             .flatMap((definition) => (Array.isArray(definition?.hooks) ? definition.hooks : []))
             .find(
               (previous) =>
-                previous?.type === 'command' &&
-                typeof previous.command === 'string' &&
-                isManagedCommand(previous.command) &&
-                typeof previous.async === 'boolean'
+                typeof previous?.async === 'boolean' &&
+                hookHasManagedCommand(previous, isManagedCommand)
             )?.async
     const cleaned = Array.isArray(current) ? removeManagedCommands(current, isManagedCommand) : []
     const hook = hookForEvent(event.eventName)
