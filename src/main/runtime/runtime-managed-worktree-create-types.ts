@@ -65,6 +65,8 @@ export type RuntimeManagedWorktreeCreateArgs = {
   startupLaunchSource?: string
   /** A caller-minted `tabId:leafId` for the startup terminal's pane. */
   startupPaneKey?: string
+  /** Account routing env merged over the startup agent's own env. */
+  startupAccountEnv?: Record<string, string>
   pendingFirstAgentMessageRename?: boolean
   automationProvenance?: AutomationWorkspaceProvenance
   /**
@@ -76,6 +78,9 @@ export type RuntimeManagedWorktreeCreateArgs = {
   creatorProvenance?: Worktree['creatorProvenance']
   startup?: WorktreeStartupLaunch
   startupDraft?: string
+  /** Main-internal: the agent a launch already chose for `startupDraft`, so the create does not
+   *  choose again. Steers only the draft; `createdWithAgent` stays what the caller asked for. */
+  startupDraftAgent?: TuiAgent
   startupDraftPaste?: WorktreeStartupDraftPaste
   lineage?: {
     parentWorkspace?: string
