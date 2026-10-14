@@ -16,7 +16,11 @@ import {
   type CommentMarkdownLinkClickHandler,
   type DocumentCodeBlockRenderer
 } from './comment-markdown-element-renderers'
-import { remarkNativeChatFileLinks } from './comment-markdown-native-chat-file-links'
+import {
+  remarkNativeChatFileLinks,
+  type FileLinkExists
+} from './comment-markdown-native-chat-file-links'
+import { CommentMarkdownBlockLineContext } from './comment-markdown-code-renderers'
 import { rehypeWordFade } from './comment-markdown-word-fade'
 import { CommentMarkdownWords } from './CommentMarkdownWords'
 import {
@@ -226,7 +230,8 @@ type CommentMarkdownProps = React.ComponentPropsWithoutRef<'div'> & {
   githubRepo?: GitHubRepoReference | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
-  linkifyFilePaths?: boolean
+  /** Turns detected file paths into links, keeping only those this confirms exist. */
+  fileLinkExists?: FileLinkExists
   expandImages?: boolean
   renderCodeBlock?: DocumentCodeBlockRenderer
   renderMermaid?: boolean
@@ -248,7 +253,7 @@ const MemoizedMarkdown = React.memo(Markdown)
 function useMarkdownBlocks(content: string, growing: boolean): readonly MarkdownBlock[] {
   const [previous, setPrevious] = React.useState<MarkdownBlockSplit | null>(null)
   if (!growing && previous === null) {
-    return [{ start: 0, text: content }]
+    return [{ start: 0, line: 1, text: content }]
   }
   if (previous?.source === content) {
     return previous.blocks
@@ -270,7 +275,7 @@ const CommentMarkdown = React.memo(
       githubRepo,
       onLinkClick,
       allowFileUriLinks = false,
-      linkifyFilePaths = false,
+      fileLinkExists,
       expandImages = false,
       renderCodeBlock,
       renderMermaid = true,
@@ -305,12 +310,12 @@ const CommentMarkdown = React.memo(
       [extension]
     )
     const activeRemarkPlugins = React.useMemo(() => {
-      const plugins = linkifyFilePaths
-        ? [...remarkPlugins, remarkNativeChatFileLinks]
+      const plugins = fileLinkExists
+        ? [...remarkPlugins, remarkNativeChatFileLinks(fileLinkExists)]
         : remarkPlugins
       const withExtension = extension ? [...plugins, ...extension.remarkPlugins] : plugins
       return githubRepo ? [...withExtension, remarkGitHubReferences(githubRepo)] : withExtension
-    }, [extension, githubRepo, linkifyFilePaths])
+    }, [extension, fileLinkExists, githubRepo])
     const blocks = useMarkdownBlocks(content, growing)
     const [hadWordFade, setHadWordFade] = React.useState(fadeWords)
     if (fadeWords && !hadWordFade) {
@@ -338,21 +343,22 @@ const CommentMarkdown = React.memo(
             {...rest}
           >
             {blocks.map((block, index) => (
-              <MemoizedMarkdown
-                key={block.start}
-                remarkPlugins={activeRemarkPlugins}
-                rehypePlugins={wrapsWords ? fadingRehypePlugins : activeRehypePlugins}
-                components={wrapsWords ? fadingComponents : components}
-                urlTransform={
-                  allowFileUriLinks
-                    ? commentMarkdownFileUriUrlTransform
-                    : commentMarkdownUrlTransform
-                }
-              >
-                {growing && index === blocks.length - 1
-                  ? remend(block.text, { linkMode: 'text-only' })
-                  : block.text}
-              </MemoizedMarkdown>
+              <CommentMarkdownBlockLineContext.Provider key={block.start} value={block.line}>
+                <MemoizedMarkdown
+                  remarkPlugins={activeRemarkPlugins}
+                  rehypePlugins={wrapsWords ? fadingRehypePlugins : activeRehypePlugins}
+                  components={wrapsWords ? fadingComponents : components}
+                  urlTransform={
+                    allowFileUriLinks
+                      ? commentMarkdownFileUriUrlTransform
+                      : commentMarkdownUrlTransform
+                  }
+                >
+                  {growing && index === blocks.length - 1
+                    ? remend(block.text, { linkMode: 'text-only' })
+                    : block.text}
+                </MemoizedMarkdown>
+              </CommentMarkdownBlockLineContext.Provider>
             ))}
           </div>
         </CommentMarkdownMermaidSourceContext.Provider>
