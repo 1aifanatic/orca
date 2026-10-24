@@ -230,7 +230,6 @@ describe('getGlabKnownHosts', () => {
       'gitlab.com',
       'gitlab.example.com:8080'
     ])
-    // A second probe for the same connection is served from cache.
     await expect(getGlabKnownHosts('conn-1')).resolves.toEqual([
       'gitlab.com',
       'gitlab.example.com:8080'
