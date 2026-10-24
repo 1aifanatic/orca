@@ -4,13 +4,14 @@ const { execute } = vi.hoisted(() => ({ execute: vi.fn() }))
 vi.mock('../git/runner', () => ({ glabExecFileAsync: execute }))
 
 import {
-  _getKnownHostsCacheSize,
   _resetKnownHostsCache,
   getGlabKnownHosts,
-  KNOWN_HOSTS_CACHE_MAX_ENTRIES,
+  KNOWN_HOSTS_FAILURE_INITIAL_BACKOFF_MS,
   rememberGlabKnownHosts
 } from './gitlab-known-host-probe'
 import { NEGATIVE_ENTRY_TTL_MS } from '../git/remote-ref-probe-cache'
+
+const RECOVERED = { stdout: 'Logged in to recovered.test as user', stderr: '' }
 
 beforeEach(() => {
   _resetKnownHostsCache()
@@ -27,35 +28,47 @@ it('coalesces failures and suppresses repeated polls until the retry boundary', 
     await getGlabKnownHosts()
   }
   expect(execute).toHaveBeenCalledTimes(1)
-  vi.mocked(Date.now).mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS - 1)
+  vi.mocked(Date.now).mockReturnValue(1_000 + KNOWN_HOSTS_FAILURE_INITIAL_BACKOFF_MS - 1)
   await getGlabKnownHosts()
   expect(execute).toHaveBeenCalledTimes(1)
-  vi.mocked(Date.now).mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS)
-  execute.mockResolvedValueOnce({ stdout: 'Logged in to recovered.test as user', stderr: '' })
+  vi.mocked(Date.now).mockReturnValue(1_000 + KNOWN_HOSTS_FAILURE_INITIAL_BACKOFF_MS)
+  execute.mockResolvedValueOnce(RECOVERED)
   await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com', 'recovered.test'])
   expect(execute).toHaveBeenCalledTimes(2)
 })
 
-it('retains the retry deadline when an authentication refresh finds no hosts', async () => {
+it('doubles the retry delay on repeated failures up to the negative-entry TTL', async () => {
+  let now = 1_000
+  const retryDelays: number[] = []
+  for (let attempt = 0; attempt < 7; attempt++) {
+    await getGlabKnownHosts()
+    let delay = 0
+    while (execute.mock.calls.length === attempt + 1) {
+      delay += 1_000
+      vi.mocked(Date.now).mockReturnValue(now + delay)
+      await getGlabKnownHosts()
+    }
+    retryDelays.push(delay)
+    now += delay
+  }
+  const initial = KNOWN_HOSTS_FAILURE_INITIAL_BACKOFF_MS
+  expect(retryDelays.slice(0, 4)).toEqual([initial, initial * 2, initial * 4, initial * 8])
+  expect(retryDelays.at(-1)).toBe(NEGATIVE_ENTRY_TTL_MS)
+})
+
+it('lets an authentication refresh retry immediately', async () => {
   await getGlabKnownHosts()
   rememberGlabKnownHosts([])
-  vi.mocked(Date.now).mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS - 1)
-  await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com'])
-  expect(execute).toHaveBeenCalledTimes(1)
-  vi.mocked(Date.now).mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS)
-  execute.mockResolvedValueOnce({ stdout: 'Logged in to recovered.test as user', stderr: '' })
+  execute.mockResolvedValueOnce(RECOVERED)
   await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com', 'recovered.test'])
   expect(execute).toHaveBeenCalledTimes(2)
 })
 
-it('lets an explicit authentication refresh replace the failure fallback immediately', async () => {
+it('lets an explicit reset retry immediately', async () => {
   await getGlabKnownHosts()
-  rememberGlabKnownHosts(['gitlab.com'])
-  vi.mocked(Date.now).mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS)
-  await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com'])
-  expect(execute).toHaveBeenCalledTimes(1)
-  rememberGlabKnownHosts(['self-hosted.test'])
-  await expect(getGlabKnownHosts()).resolves.toEqual(['gitlab.com', 'self-hosted.test'])
+  _resetKnownHostsCache()
+  await getGlabKnownHosts()
+  expect(execute).toHaveBeenCalledTimes(2)
 })
 
 it('isolates failures by execution context', async () => {
@@ -66,13 +79,6 @@ it('isolates failures by execution context', async () => {
     await getGlabKnownHosts('connection')
   }
   expect(execute).toHaveBeenCalledTimes(4)
-})
-
-it('keeps the failure cache bounded', async () => {
-  for (let index = 0; index < KNOWN_HOSTS_CACHE_MAX_ENTRIES + 10; index++) {
-    await getGlabKnownHosts(`connection-${index}`)
-  }
-  expect(_getKnownHostsCacheSize()).toBe(KNOWN_HOSTS_CACHE_MAX_ENTRIES)
 })
 
 it('does not publish an old failure after an explicit reset', async () => {

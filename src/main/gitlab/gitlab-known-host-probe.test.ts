@@ -10,9 +10,9 @@ import {
   getGlabKnownHosts,
   KNOWN_HOSTS_CACHE_MAX_ENTRIES,
   rememberGlabKnownHost,
-  rememberGlabKnownHosts
+  rememberGlabKnownHosts,
+  KNOWN_HOSTS_FAILURE_INITIAL_BACKOFF_MS
 } from './gitlab-known-host-probe'
-import { NEGATIVE_ENTRY_TTL_MS } from '../git/remote-ref-probe-cache'
 
 describe('getGlabKnownHosts', () => {
   // A locally-keyed probe must never answer from the default WSL distro.
@@ -246,10 +246,9 @@ describe('getGlabKnownHosts', () => {
         stderr: ''
       })
 
-    // First probe fails → canonical default, cached until the retry window expires.
+    // Failed probes only back off briefly so recovery can discover the actual host.
     await expect(getGlabKnownHosts('conn-1')).resolves.toEqual(['gitlab.com'])
-    clock.mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS)
-    // A later probe discovers the recovered host.
+    clock.mockReturnValue(1_000 + KNOWN_HOSTS_FAILURE_INITIAL_BACKOFF_MS)
     await expect(getGlabKnownHosts('conn-1')).resolves.toEqual([
       'gitlab.com',
       'gitlab.example.com:8080'
@@ -278,7 +277,7 @@ describe('getGlabKnownHosts', () => {
       ['gitlab.com'],
       ['gitlab.com']
     ])
-    clock.mockReturnValue(1_000 + NEGATIVE_ENTRY_TTL_MS)
+    clock.mockReturnValue(1_000 + KNOWN_HOSTS_FAILURE_INITIAL_BACKOFF_MS)
     await expect(getGlabKnownHosts(undefined, { wslDistro: 'Ubuntu' })).resolves.toEqual([
       'gitlab.com',
       'recovered.test'
