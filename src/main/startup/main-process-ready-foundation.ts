@@ -17,10 +17,8 @@ import { ensureActiveOrcaProfile } from '../orca-profiles/profile-index-store'
 import { initializeTeamCapabilities } from '../orca-profiles/cloud-auth/initialize-team-capabilities'
 import { getCanonicalUserDataPath } from '../persistence/loading-store/user-data-path'
 import { getAppEnvironment } from '../../shared/app-lifecycle/app-environment'
-import { loadWslMappedDriveAnswers } from '../wsl/filesystem/wsl-mapped-drive-answers-file'
 import { loadWslMoveFence } from '../persistence/moving-wsl-projects/quiescence/wsl-move-scope-guard'
-import { startWslMoveStartup } from '../persistence/moving-wsl-projects/startup/wsl-move-startup'
-import { wslHostsGateOpen } from '../wsl/host-lifecycle/wsl-host-gate'
+import { wslHostsGateOpen, wslHostsServing } from '../wsl/host-lifecycle/wsl-host-gate'
 import { createProfileStateStoreForStartup } from '../persistence/profile-state/startup/profile-state-startup-authority'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { initializeBrowserClientHostId } from '../browser/client-hosts/lifecycle/browser-client-host-id'
@@ -160,7 +158,11 @@ export async function initializeReadyFoundation(): Promise<void> {
   // Why before the store loads: its pane normalization tells a moved project's retained rows from
   // a rival host's, and no handler or runtime may give a moving project a new terminal.
   // Saved drive answers first: the fence and the move prune read them and never a drive.
-  await loadWslMappedDriveAnswers(getAppEnvironment().getPath('userData'))
+  if (process.platform === 'win32') {
+    const { loadWslMappedDriveAnswers } =
+      await import('../wsl/filesystem/wsl-mapped-drive-answers-file')
+    await loadWslMappedDriveAnswers(getAppEnvironment().getPath('userData'))
+  }
   loadWslMoveFence(getAppEnvironment().getPath('userData'))
   const profileState = await createProfileStateStoreForStartup({
     userDataPath: getProfileUserDataPath(),
@@ -190,10 +192,12 @@ export async function initializeReadyFoundation(): Promise<void> {
   }
   setNodeDistMirrorSettingReader(() => store.getSettings().nodeDistMirrorUrl)
   // Main-process-ready waits on interrupted moves being reset or finished, bounded.
-  state.wslMoveStartupRewriteReady = startWslMoveStartup(
-    getAppEnvironment().getPath('userData'),
-    store
-  )
+  state.wslMoveStartupRewriteReady = wslHostsServing()
+    ? import('../persistence/moving-wsl-projects/startup/wsl-move-startup').then(
+        ({ startWslMoveStartup }) =>
+          startWslMoveStartup(getAppEnvironment().getPath('userData'), store)
+      )
+    : Promise.resolve()
   // Publish proxy readiness before guarding default-session requests; network awaits it, while window creation can proceed.
   state.initialProxyApplicationReady = applyElectronProxySettings(
     nativeSettings.getSettings()

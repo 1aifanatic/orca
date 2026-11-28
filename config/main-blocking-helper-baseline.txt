@@ -1353,7 +1353,7 @@
 2 src/main/startup/main-process-observers.ts
 1 src/main/startup/main-process-preflight-failure.ts
 23 src/main/startup/main-process-preflight.ts
-14 src/main/startup/main-process-ready-foundation.ts
+13 src/main/startup/main-process-ready-foundation.ts
 2 src/main/startup/main-process-ready-runtime.ts
 4 src/main/startup/main-process-ready.ts
 1 src/main/startup/main-window/main-process-i18n-menu.ts
