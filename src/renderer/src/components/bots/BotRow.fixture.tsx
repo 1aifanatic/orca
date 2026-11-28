@@ -4,7 +4,6 @@ import { defineFixture } from '../../component-fixtures/component-fixture'
 import { publishBots } from '@/lib/bot-catalog-snapshot'
 import { makeFolderWorkspace } from '@/store/folder-workspaces/folder-workspace.test-fixture'
 import WorktreeCard from '@/components/sidebar/workspace-card/surface/WorktreeCard'
-import { structuredAgentSessionStatusPaneKey } from '../../../../shared/agent-session/view/structured-agent-session-tab'
 import type { AgentStatusEntry } from '../../../../shared/agent-status/contracts/agent-status-types'
 import type { Bot } from '../../../../shared/bot-types'
 import type { ExternalConversationLink } from '../../../../shared/connectors/external-conversation-link'
@@ -14,6 +13,7 @@ import { folderWorkspaceKey } from '../../../../shared/workspace/identity/worksp
 import { ConfirmationDialogProvider } from '../dismiss/confirmation/confirmation-dialog'
 import { BotRow } from './BotRow'
 import { BOT_WORKSPACE_LINE_INDENT } from './BotSidebarEntry'
+import { chatPaneKey } from '../../../../shared/agent-session/view/structured-agent-session-projection'
 
 const now = Date.now()
 const MIN = 60_000
@@ -62,7 +62,7 @@ function session(
   fields: Partial<AgentStatusEntry> & Pick<AgentStatusEntry, 'state' | 'updatedAt'>
 ): AgentStatusEntry {
   return {
-    paneKey: structuredAgentSessionStatusPaneKey(sessionId),
+    paneKey: chatPaneKey(sessionId),
     worktreeId: folderWorkspaceKey(owner.folderWorkspaceId),
     agentType: 'claude',
     prompt: '',
@@ -84,7 +84,7 @@ function thread(
     externalId: `T1:${sessionId}`,
     sessionId,
     agent: 'claude',
-    paneKey: structuredAgentSessionStatusPaneKey(sessionId),
+    paneKey: chatPaneKey(sessionId),
     title,
     place,
     lastTurn,
@@ -183,14 +183,14 @@ const workerAgentRows: [string, string, string, AgentStatusEntry['state']][] = [
   ['sweep', 'sweep-1', 'claude', 'working'],
   ['sweep', 'sweep-2', 'claude', 'working'],
   ['sweep', 'sweep-3', 'codex', 'working'],
-  ['sweep', 'sweep-4', 'gemini', 'blocked'],
+  ['sweep', 'sweep-4', 'antigravity', 'blocked'],
   ['sweep', 'sweep-5', 'grok', 'working'],
   ['pair', 'pair-1', 'claude', 'working'],
   ['pair', 'pair-2', 'codex', 'working']
 ]
 const workerAgents: AgentStatusEntry[] = workerAgentRows.map(
   ([worktreeId, pane, agentType, state]) => ({
-    paneKey: structuredAgentSessionStatusPaneKey(`worker-${pane}`),
+    paneKey: chatPaneKey(`worker-${pane}`),
     worktreeId,
     agentType,
     state,
@@ -210,10 +210,10 @@ function home(owner: Bot, fields: Parameters<typeof makeFolderWorkspace>[0] = {}
   })
 }
 
-const fold = (folded: boolean) => ({
+const fold = (folded: boolean, working = 1) => ({
   folded,
   total: 2,
-  counts: { permission: 0, working: 1, failed: 0 },
+  counts: { permission: 0, working, failed: 0 },
   onToggle: () => {}
 })
 
@@ -230,6 +230,16 @@ const releaseRow = row(release, {
   })
 })
 
+const replyingRow = (folded?: boolean) =>
+  row(replying, {
+    home: home(replying, {
+      externalConversations: [
+        thread('slack-replying', 'slack', 'can you check the nightly?', '#bots')
+      ]
+    }),
+    fold: folded === undefined ? null : fold(folded)
+  })
+
 const CASES: [string, number, React.ReactNode][] = [
   ['Idle bot', 280, row(disk)],
   ['Working in its Chat', 280, row(triage, { isActive: true })],
@@ -245,17 +255,7 @@ const CASES: [string, number, React.ReactNode][] = [
       })
     })
   ],
-  [
-    'Slack thread, no status yet',
-    280,
-    row(replying, {
-      home: home(replying, {
-        externalConversations: [
-          thread('slack-replying', 'slack', 'can you check the nightly?', '#bots')
-        ]
-      })
-    })
-  ],
+  ['Slack thread, no status yet', 280, replyingRow()],
   ['Waiting on something', 280, row(waiting)],
   ['No activity, says its purpose', 280, row(cos, { fold: fold(false) })],
   ['Long name, no activity', 280, row(quiet)],
@@ -264,6 +264,8 @@ const CASES: [string, number, React.ReactNode][] = [
     280,
     row(release, { home: home(release, { isUnread: true }), fold: fold(true) })
   ],
+  ['Replying, workers folded', 280, replyingRow(true)],
+  ['Replying, workers unfolded', 280, replyingRow(false)],
   [
     'Workers: one agent, two kinds, five agents of four kinds',
     280,
@@ -322,7 +324,14 @@ const CASES: [string, number, React.ReactNode][] = [
     <>
       {releaseRow}
       {row(builder, { fold: fold(true) })}
+      {row(
+        { ...triage, name: 'Triage for launch posts and weekly digest' },
+        { fold: fold(true, 0) }
+      )}
+      {row(release, { fold: fold(false) })}
       {row(cos, { fold: fold(false) })}
+      {replyingRow(false)}
+      {replyingRow()}
     </>
   ]
 ]
@@ -358,6 +367,7 @@ export const botRowCases = defineFixture({
           <div key={label} className="flex flex-col gap-1.5">
             <div className="text-[11px] text-muted-foreground">{label}</div>
             <div
+              data-case={label}
               className="flex flex-col rounded-lg border border-border bg-worktree-sidebar py-1 pr-1.5 text-worktree-sidebar-foreground"
               style={{ width }}
             >

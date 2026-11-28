@@ -1,12 +1,17 @@
 import '../../orca-profiles/constants'
 import { ORCA_BROWSER_BLANK_URL } from '../browser-blank-page'
+import { kagiQueryWithoutToken } from './kagi-token-query'
 import { getCurrentLocalPlatform } from '../../execution-host/execution-host'
+import { encodeWellFormedURIComponent } from '../../text/well-formed-uri-component'
 
 const LOCAL_ADDRESS_PATTERN =
   /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[[0-9a-f:]+\])(?::\d+)?(?:[/?#].*)?$/i
 
 // Treat dotted domain-like inputs as navigation; bare prose such as react hooks remains search.
 const LOOKS_LIKE_URL_PATTERN = /^[^\s]+\.[a-z]{2,}(\/.*)?$/i
+// Single-label internal hosts with an explicit path, query, or fragment (e.g. intranet/docs?token=x, go/design) must navigate rather than leak to search.
+const SINGLE_LABEL_HOST_URL_PATTERN =
+  /^(?=[a-z0-9-]{0,62}[a-z])[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\/.*|\?[^\s]+|#[^\s]*)$/i
 const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/].*$/
 const WINDOWS_UNC_PATH_PATTERN = /^\\\\[^\s\\/]+[\\/][^\\/]+(?:[\\/].*)?$/
 const UNIX_ABSOLUTE_PATH_PATTERN = /^\/.*$/
@@ -32,9 +37,6 @@ const SEARCH_ENGINE_URLS: Record<SearchEngine, string> = {
 }
 
 export const DEFAULT_SEARCH_ENGINE: SearchEngine = 'google'
-
-// Lone surrogates make encodeURIComponent throw. Not toWellFormed() (Android WebView <111) and no lookbehind (WebKit <16.4).
-const LONE_SURROGATE = /[\uD800-\uDFFF]/gu
 
 export function classifySchemeLessLocalDevAddress(rawInput: string): URL | null {
   const trimmed = rawInput.trim()
@@ -66,7 +68,11 @@ function isValidDnsName(name: string): boolean {
     )
 }
 
-/** Avoids parsing a dotted host and port as a scheme; .localhost defaults to HTTP. */
+function isHttpDefaultLocalHostname(hostname: string): boolean {
+  return hostname.endsWith('.localhost') || hostname.endsWith('.local')
+}
+
+/** Avoids parsing a dotted host and port as a scheme; .localhost and .local default to HTTP. */
 function classifySchemeLessDomainPortAddress(input: string): URL | null {
   const match = /^([^\s/\\:@?#]+):\d+(?:[/?#].*)?$/.exec(input)
   if (!match || !match[1].includes('.')) {
@@ -78,7 +84,7 @@ function classifySchemeLessDomainPortAddress(input: string): URL | null {
     if (!isValidDnsName(hostname)) {
       return null
     }
-    return hostname.endsWith('.localhost') ? new URL(`http://${input}`) : url
+    return isHttpDefaultLocalHostname(hostname) ? new URL(`http://${input}`) : url
   } catch {
     return null
   }
@@ -177,17 +183,25 @@ export function normalizeKagiSessionLink(rawLink: string): string | null {
 }
 
 export function redactKagiSessionToken(rawUrl: string): string {
+  if (!rawUrl.includes('?')) {
+    return rawUrl
+  }
   try {
-    const parsed = new URL(rawUrl)
+    const parsed = new URL(normalizeBrowserNavigationUrl(rawUrl) ?? rawUrl)
     const hostname = parsed.hostname.toLowerCase()
     if (
       parsed.protocol === 'https:' &&
       (hostname === 'kagi.com' || hostname === 'www.kagi.com') &&
-      (parsed.pathname === '/search' || parsed.pathname === '/search/') &&
       parsed.searchParams.has('token')
     ) {
-      // Strip Kagi bearer tokens before display, history or persisted tab state.
-      parsed.searchParams.delete('token')
+      // Strip Kagi bearer tokens before display, history or persisted tab state, keeping the
+      // rest of the query as written; an undecodable query falls back to re-serializing it.
+      const kept = kagiQueryWithoutToken(parsed.search)
+      if (kept === null) {
+        parsed.searchParams.delete('token')
+      } else {
+        parsed.search = kept
+      }
       return parsed.toString()
     }
   } catch {
@@ -200,10 +214,7 @@ function buildKagiSessionSearchUrl(
   query: string,
   sessionLink: string | null | undefined
 ): string | null {
-  if (!sessionLink) {
-    return null
-  }
-  const normalized = normalizeKagiSessionLink(sessionLink)
+  const normalized = sessionLink ? normalizeKagiSessionLink(sessionLink) : null
   if (!normalized) {
     return null
   }
@@ -223,20 +234,17 @@ export function buildSearchUrl(
       return sessionSearchUrl
     }
   }
-  return `${SEARCH_ENGINE_URLS[engine]}${encodeURIComponent(query.replace(LONE_SURROGATE, '\uFFFD'))}`
+  return `${SEARCH_ENGINE_URLS[engine]}${encodeWellFormedURIComponent(query)}`
 }
 
 export function looksLikeSearchQuery(input: string): boolean {
-  if (input.includes(' ')) {
-    return true
-  }
-  if (LOOKS_LIKE_URL_PATTERN.test(input)) {
-    return false
-  }
-  if (input.includes('.') || input.includes(':')) {
-    return false
-  }
-  return true
+  return (
+    input.includes(' ') ||
+    (!LOOKS_LIKE_URL_PATTERN.test(input) &&
+      !SINGLE_LABEL_HOST_URL_PATTERN.test(input) &&
+      !input.includes('.') &&
+      !input.includes(':'))
+  )
 }
 
 /** True for input shaped like an absolute filesystem path (POSIX, Windows drive, or UNC). */
@@ -311,7 +319,10 @@ export function normalizeBrowserNavigationUrl(
     try {
       const withScheme = new URL(`https://${trimmed}`)
       if (!searchEnabled || !looksLikeSearchQuery(trimmed)) {
-        return withScheme.toString()
+        const hostname = normalizeCertificateHostname(withScheme.hostname)
+        return isValidDnsName(hostname) && isHttpDefaultLocalHostname(hostname)
+          ? new URL(`http://${trimmed}`).toString()
+          : withScheme.toString()
       }
     } catch {
       // Not a valid URL even with https:// prefix

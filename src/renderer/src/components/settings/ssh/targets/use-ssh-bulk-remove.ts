@@ -8,7 +8,7 @@ import { useMountedRef } from '@/hooks/useMountedRef'
 import { extractIpcErrorMessage } from '@/runtime/errors/ipc-error'
 import { useTranslate } from '@/i18n/use-translate'
 import { resolveSshHostRemoval } from '../../../sidebar/host-lifecycle/ssh-host-remove-resolution'
-import { isManagedServerSshHost } from './SshManagedHostRemoveDialog'
+import { refusesManagedSshHostRemoval } from './SshManagedHostRemoveDialog'
 import type { SshBulkRemoveRequest, SshBulkRemoveResult } from './SshTargetDestructiveActions'
 import { planSshBulkRemove, type SshBulkRemovePlan } from './ssh-target-list-model'
 import { summarizeSshBulkRemove } from './ssh-bulk-remove-summary'
@@ -76,15 +76,13 @@ export function useSshBulkRemove(args: {
     const state = useAppStore.getState()
     const worktrees = getIndexedAllWorktrees(selectWorktreesByRepo(state))
     const plan = planSshBulkRemove(chosen, (target) => {
-      if (isManagedServerSshHost(target)) {
+      const hasWorkspaces =
+        resolveSshHostRemoval({ targetId: target.id, repos: state.repos, worktrees })
+          .workspaceCount > 0
+      if (refusesManagedSshHostRemoval(target, hasWorkspaces)) {
         return 'managed-server'
       }
-      const resolution = resolveSshHostRemoval({
-        targetId: target.id,
-        repos: state.repos,
-        worktrees
-      })
-      return resolution.workspaceCount > 0 ? 'workspaces' : null
+      return hasWorkspaces ? 'workspaces' : null
     })
     skippedRef.current = plan.skipped
     if (plan.removable.length === 0) {

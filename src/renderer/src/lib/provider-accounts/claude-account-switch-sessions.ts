@@ -10,11 +10,20 @@ import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import {
   announceHostMove,
   announceRestart,
+  dismissHostAskToast,
   warnSharedSessions,
   warnStrandedSessions,
   warnUncheckedSessions
 } from './claude-account-switch-toasts'
 import { getClaudeAccountLabel } from './claude-account-label'
+import {
+  createAccountSwitchPromptStore,
+  currentPtyIds,
+  pickedSwitchSessions,
+  type AccountSwitchPrompt,
+  type AccountSwitchPromptAnswer
+} from './account-switch-prompt'
+import { moveUnheldClaudeSessions } from './claude-account-switch-unheld-sessions'
 import {
   claudeLaunchAccountId,
   type ClaudeHostFolders
@@ -32,68 +41,48 @@ export type ClaudeAccountSwitchPromptSessions = {
   cantMove: ClaudeSwitchSessions['cantMove']
 }
 
-export type ClaudeAccountSwitchPrompt = {
-  id: number
+export type ClaudeAccountSwitchPrompt = Omit<AccountSwitchPrompt, 'sessions'> & {
   sessions: ClaudeAccountSwitchPromptSessions
-  /** Opened from the restart toast: the outgoing account's sessions are already restarting. */
-  review?: true
-  previousAccountLabel: string
-  nextAccountLabel: string
 }
 
 let switchGeneration = 0
-let prompt: ClaudeAccountSwitchPrompt | null = null
-const promptListeners = new Set<() => void>()
+const hostAskGenerationByOwner = new Map<string, number>()
+const promptStore = createAccountSwitchPromptStore<ClaudeAccountSwitchPrompt>()
+const setPrompt = promptStore.set
+export const getClaudeAccountSwitchPrompt = promptStore.get
+export const subscribeClaudeAccountSwitchPrompt = promptStore.subscribe
 
-function setPrompt(next: ClaudeAccountSwitchPrompt | null): void {
-  prompt = next
-  for (const listener of promptListeners) {
-    listener()
-  }
+function hostOwnerKey(owner: RuntimeClientTarget): string {
+  return owner.kind === 'local' ? 'local' : `environment:${owner.environmentId}`
 }
 
-export function getClaudeAccountSwitchPrompt(): ClaudeAccountSwitchPrompt | null {
-  return prompt
+function hostAskToastId(ownerKey: string): string {
+  return `claude-account-switch-host-ask:${ownerKey}`
 }
 
-export function subscribeClaudeAccountSwitchPrompt(listener: () => void): () => void {
-  promptListeners.add(listener)
-  return () => promptListeners.delete(listener)
+function nextHostAskGeneration(ownerKey: string): number {
+  const next = (hostAskGenerationByOwner.get(ownerKey) ?? 0) + 1
+  hostAskGenerationByOwner.set(ownerKey, next)
+  dismissHostAskToast(hostAskToastId(ownerKey))
+  return next
 }
 
 function queueClaudeRestarts(ptyIds: string[]): void {
   useAppStore.getState().queuePaneAccountRestarts(ptyIds, 'claude')
 }
 
-/** Why now: a reattach can rebind a pane while the dialog is open, and a closed pane has none. */
-function currentPtyIds(sessions: readonly ClaudeSessionMoveCandidate[]): string[] {
-  const layouts = useAppStore.getState().terminalLayoutsByTabId
-  return sessions.flatMap((session) => {
-    const ptyId = layouts[session.tabId]?.ptyIdsByLeafId?.[session.leafId]
-    return ptyId ? [ptyId] : []
-  })
-}
-
 /** Answers the open dialog. "Don't ask again" only turns restarts on, as native chat's resume prompt does. */
-export function answerClaudeAccountSwitchPrompt(
-  answer: 'restart' | 'keep',
-  options: {
-    /** The sessions the user ticked; every listed session when absent. */
-    ptyIds?: readonly string[]
-    dontAskAgain?: boolean
-  } = {}
-): void {
-  const request = prompt
+export const answerClaudeAccountSwitchPrompt: AccountSwitchPromptAnswer = (
+  answer,
+  options = {}
+) => {
+  const request = promptStore.get()
   if (!request) {
     return
   }
   setPrompt(null)
   if (answer === 'restart') {
-    const chosen = options.ptyIds
-    // Why filtered: only sessions this question listed may restart.
-    const listed = [...request.sessions.onAccount, ...request.sessions.elsewhere]
-    const picked = chosen ? listed.filter((session) => chosen.includes(session.ptyId)) : listed
-    queueClaudeRestarts(currentPtyIds(picked))
+    queueClaudeRestarts(currentPtyIds(pickedSwitchSessions(request.sessions, options.ptyIds)))
   }
   if (options.dontAskAgain) {
     void useAppStore.getState().updateSettings({ claudeAccountSwitchRunningSessions: 'restart' })
@@ -116,19 +105,36 @@ export async function handleRunningClaudeSessionsAfterSwitch(args: {
   /** What a server did with its own running sessions; absent from older servers. */
   hostMove?: ClaudeHostRunningSessionsMove
 }): Promise<'show-confirmation' | 'handled'> {
+  const ownerKey = hostOwnerKey(args.owner)
+  const toastId = hostAskToastId(ownerKey)
   // Why: a server moves its own sessions and reports them; nothing here runs on it.
   if (args.owner.kind !== 'local') {
-    const { owner, after } = args
-    return announceHostMove(args.hostMove, args.before, after, async () => {
-      // Answers the Ask the server left open; it does nothing once a later switch has replaced it.
-      const reply = await callRuntimeRpc<ClaudeAccountSelectResult>(
-        owner,
-        'accounts.selectClaude',
-        { accountId: after.accountId, runningSessions: 'restart', answersAsk: true },
-        { timeoutMs: 30_000 }
-      )
-      return reply.runningSessions
-    })
+    const ownerGeneration = nextHostAskGeneration(ownerKey)
+    const { owner, after, hostMove } = args
+    return announceHostMove(
+      hostMove,
+      args.before,
+      after,
+      async () => {
+        if (hostAskGenerationByOwner.get(ownerKey) !== ownerGeneration) {
+          return undefined
+        }
+        // Answers the Ask the server left open; it does nothing once a later switch has replaced it.
+        const reply = await callRuntimeRpc<ClaudeAccountSelectResult>(
+          owner,
+          'accounts.selectClaude',
+          {
+            accountId: after.accountId,
+            runningSessions: 'restart',
+            answersAsk: true,
+            ...(hostMove?.askId ? { answersAskId: hostMove.askId } : {})
+          },
+          { timeoutMs: 30_000 }
+        )
+        return reply.runningSessions
+      },
+      toastId
+    )
   }
   const fromAccountId = claudeLaunchAccountId(args.before.state, args.before.accountId)
   const toAccountId = claudeLaunchAccountId(args.after.state, args.after.accountId)
@@ -136,6 +142,7 @@ export async function handleRunningClaudeSessionsAfterSwitch(args: {
     return 'show-confirmation'
   }
   const generation = ++switchGeneration
+  const ownerGeneration = nextHostAskGeneration(ownerKey)
   setPrompt(null)
   // Why the new list: main read its folders and logins as it applied the switch.
   const host = args.after.state
@@ -152,6 +159,14 @@ export async function handleRunningClaudeSessionsAfterSwitch(args: {
   if (readClaudeRunningSessionsPolicy() === 'keep') {
     return 'show-confirmation'
   }
+  const { target, before, after } = args
+  // Why: terminals no pane here is bound to have no other owner; the host moves them by this window's rule.
+  const unheld = moveUnheldClaudeSessions({
+    target,
+    before,
+    after,
+    runningSessions: readClaudeRunningSessionsPolicy(args.madeElsewhere)
+  })
   let uncheckedCount = 0
   let sharedCount = 0
   let strandedPtyIds: ReadonlySet<string> = new Set()
@@ -178,8 +193,22 @@ export async function handleRunningClaudeSessionsAfterSwitch(args: {
     console.warn('[claude-account-switch] session scan failed:', error)
     return null
   })
+  const hostMove = await unheld
   if (generation !== switchGeneration) {
     return 'handled'
+  }
+  const restartUnheld = () => {
+    if (hostAskGenerationByOwner.get(ownerKey) !== ownerGeneration) {
+      return Promise.resolve(undefined)
+    }
+    return moveUnheldClaudeSessions({
+      target,
+      before,
+      after,
+      runningSessions: 'restart',
+      answersAskFor: after.accountId,
+      ...(hostMove?.askId ? { answersAskId: hostMove.askId } : {})
+    })
   }
   // Why re-read: the setting may change while the scan runs.
   const policy = readClaudeRunningSessionsPolicy(args.madeElsewhere)
@@ -229,15 +258,19 @@ export async function handleRunningClaudeSessionsAfterSwitch(args: {
         })
       )
     }
-    return 'show-confirmation'
+    return announceHostMove(hostMove, before, after, restartUnheld, toastId)
   }
   if (policy === 'restart') {
     queueClaudeRestarts(sessions.onAccount.map((candidate) => candidate.ptyId))
-    const others = sessions.elsewhere.length + sessions.cantMove.length
-    announceRestart(sessions.onAccount.length, nextAccountLabel, others, () => openReview())
+    const listed = sessions.elsewhere.length + sessions.cantMove.length
+    const restarting = sessions.onAccount.length + (hostMove?.restarting ?? 0)
+    // The host's terminals have no rows here, so Review lists only this window's.
+    const review = listed > 0 ? () => openReview() : undefined
+    announceRestart(restarting, nextAccountLabel, listed + (hostMove?.notMoved ?? 0), review)
     return 'handled'
   }
   setPrompt({ id: generation, sessions, ...labels })
+  announceHostMove(hostMove, before, after, restartUnheld, toastId)
   return 'handled'
 }
 
@@ -247,9 +280,4 @@ export function readClaudeRunningSessionsPolicy(
   const policy = useAppStore.getState().settings?.claudeAccountSwitchRunningSessions ?? 'ask'
   // Why: no one at the phone sees a dialog here.
   return policy === 'ask' && madeElsewhere ? 'restart' : policy
-}
-
-export function resetClaudeAccountSwitchSessionsForTests(): void {
-  switchGeneration = 0
-  setPrompt(null)
 }

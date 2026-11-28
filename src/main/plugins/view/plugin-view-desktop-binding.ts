@@ -1,13 +1,10 @@
 import { app, nativeImage, type BrowserWindow } from 'electron'
-import { setPluginViewForRpc } from '../../runtime/rpc/methods/plugins/plugin-view'
-import { listPluginsForClients } from '../discovery/plugin-client-list'
+import { setPluginViewForRpc } from '../../runtime/rpc/methods/plugins/plugin-rpc-slots'
 import type { PluginService } from '../plugin-service'
 import {
   livePluginFrameGuests,
   setPluginFrameGuestLogSink
 } from '../panels/guest-isolation/plugin-frame-guest-diagnostics'
-import { createPluginViewDesktop } from './plugin-view-desktop'
-import { isPluginShotWindowShown } from './plugin-shot-policy'
 import { setPluginHostRendererRequest } from './plugin-host-renderer-actions'
 import { requestPluginViewFromRenderer } from './plugin-view-renderer-relay'
 
@@ -33,8 +30,14 @@ export function bindPluginDesktopViews(
       ? requestPluginViewFromRenderer(window.webContents, body, HOST_ACTION_TIMEOUT_MS)
       : null
   })
-  setPluginViewForRpc(
-    createPluginViewDesktop({
+  setPluginViewForRpc(async () => {
+    const [{ createPluginViewDesktop }, { isPluginShotWindowShown }, { listPluginsForClients }] =
+      await Promise.all([
+        import('./plugin-view-desktop'),
+        import('./plugin-shot-policy'),
+        import('../discovery/plugin-client-list')
+      ])
+    return createPluginViewDesktop({
       rendererContents: () => {
         const window = getMainWindow()
         return window && !window.isDestroyed() ? window.webContents : null
@@ -52,5 +55,5 @@ export function bindPluginDesktopViews(
       imageFromBitmap: (bitmap, size) => nativeImage.createFromBitmap(bitmap, size),
       shotScratchRoot: () => app.getPath('temp')
     })
-  )
+  })
 }

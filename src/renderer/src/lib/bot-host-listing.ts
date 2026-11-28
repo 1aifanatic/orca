@@ -32,6 +32,7 @@ import {
 import { keptBotHomes } from './bot-host-kept-homes'
 import { retainListedBotGroupHosts } from './bot-group-catalog-snapshot'
 import { emitBotsChangedWindowEvent } from './bots-changed-window-event'
+import { advanceBotHostGeneration, noteBotHostCameBack } from './bot-host-link-read'
 
 type BotHostListingStoreState = Pick<
   AppState,
@@ -108,18 +109,34 @@ export function syncBotHostListing(input: BotHostListingInput, webClient: boolea
     },
     { webClient }
   )
-  const becameLive = setBotHostListing(listing)
+  // It may have changed while away: no view acts on a read from before, or one still out from then.
+  // Counted before the listing shows it live, so a read sent as it publishes is one of this return.
+  const becameLive = setBotHostListing(listing, (hosts) => hosts.forEach(advanceBotHostGeneration))
   retainListedBotGroupHosts()
   for (const hostId of becameLive) {
+    noteBotHostCameBack(hostId, true)
     emitBotsChangedWindowEvent(hostId)
   }
 }
 
-/** A paired server's bots changed, or its stream came back: every bot view re-reads that server, if listed. */
+/** A paired server's bots changed: every bot view re-reads that server, if listed. */
 export function emitPairedBotsChanged(environmentId: string, scope?: BotChangeScope): void {
   const hostId = toRuntimeExecutionHostId(environmentId)
   if (readBotHostState(hostId) === 'live') {
     emitBotsChangedWindowEvent(hostId, scope)
+  }
+}
+
+/**
+ * A paired server's event stream came back after changes were lost, though the server stayed listed:
+ * as when it comes back from offline, nothing acts on a read from before, or one still out from then,
+ * and every bot view re-reads it.
+ */
+export function emitPairedBotsStreamCameBack(environmentId: string): void {
+  const hostId = toRuntimeExecutionHostId(environmentId)
+  if (readBotHostState(hostId) === 'live') {
+    noteBotHostCameBack(hostId)
+    emitBotsChangedWindowEvent(hostId)
   }
 }
 

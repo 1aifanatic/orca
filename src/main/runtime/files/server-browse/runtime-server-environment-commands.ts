@@ -4,10 +4,6 @@ import type { Dirent } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import type { DirEntry } from '../../../../shared/file-listing/directory-entry'
 import type { FilesystemPathFlavor } from '../../../../shared/file-access/filesystem-path-flavor'
-import { sortDirEntries } from '../../../../shared/file-listing/file-name-sort'
-import { probeGitAvailability } from '../../../git/command-runner/host-routing/git-availability'
-import { gitExecFileAsync } from '../../../git/command-runner/git-exec-file'
-import { isServerDriveListRequest, listWindowsDrives } from './windows-drive-listing'
 
 function resolveServerBrowsePath(pathValue: string): string {
   const trimmed = pathValue.trim() || '~'
@@ -42,11 +38,16 @@ async function isBrowseEntryDirectory(dirPath: string, entry: Dirent): Promise<b
 }
 
 export class RuntimeServerEnvironmentCommands {
-  async browseDirectory(pathValue: string): Promise<{
+  async browseDirectory(
+    pathValue: string,
+    options: { markGitRepos?: boolean } = {}
+  ): Promise<{
     resolvedPath: string
-    entries: DirEntry[]
+    entries: (DirEntry & { isGitRepo?: true })[]
     pathFlavor: FilesystemPathFlavor
+    isGitRepo?: boolean
   }> {
+    const { isServerDriveListRequest, listWindowsDrives } = await import('./windows-drive-listing')
     if (isServerDriveListRequest(pathValue)) {
       return listWindowsDrives()
     }
@@ -65,15 +66,26 @@ export class RuntimeServerEnvironmentCommands {
           isSymlink: entry.isSymbolicLink()
         }))
     )
+    const { sortDirEntries } = await import('../../../../shared/file-listing/file-name-sort')
     sortDirEntries(mapped)
-    return {
-      resolvedPath: dirPath,
-      entries: mapped,
-      pathFlavor: process.platform === 'win32' ? 'win32' : 'posix'
+    const pathFlavor = process.platform === 'win32' ? 'win32' : 'posix'
+    if (!options.markGitRepos) {
+      return { resolvedPath: dirPath, entries: mapped, pathFlavor }
     }
+    // Opt-in: the phone's Add project browser badges repos; other browsers skip the extra stats.
+    const { hasGitMarker, markGitRepoEntries } = await import('./browse-git-repo-marker')
+    const [marked, isGitRepo] = await Promise.all([
+      markGitRepoEntries(dirPath, mapped),
+      hasGitMarker(dirPath)
+    ])
+    return { resolvedPath: dirPath, entries: marked, pathFlavor, isGitRepo }
   }
 
   async isGitAvailable(): Promise<boolean> {
+    const [{ probeGitAvailability }, { gitExecFileAsync }] = await Promise.all([
+      import('../../../git/command-runner/host-routing/git-availability'),
+      import('../../../git/command-runner/git-exec-file')
+    ])
     return probeGitAvailability(gitExecFileAsync, { cwd: process.cwd(), timeout: 3000 })
   }
 }

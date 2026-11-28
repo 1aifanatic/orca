@@ -272,6 +272,11 @@ export function closePlainSshTerminalsOwnedBy(owner: number): void {
   }
 }
 
+/** Whether any plain SSH terminal is open or opening in this process (quit would end it). */
+export function hasPlainSshTerminalSessions(): boolean {
+  return slots.size > 0 || [...sessions.values()].some((session) => !session.hungUp)
+}
+
 /** Kill ephemeral sessions on quit and wait for their exits. */
 export async function closeAllPlainSshTerminals(): Promise<void> {
   quitting = true
@@ -281,11 +286,4 @@ export async function closeAllPlainSshTerminals(): Promise<void> {
     hangUp(session, QUIT_FORCE_KILL_AFTER_MS)
   }
   await Promise.all(pending.map((session) => session.exited))
-}
-
-/** Test seam: quit is one-way in a real app. */
-export function resetPlainSshTerminalsForTests(): void {
-  quitting = false
-  slots.clear()
-  sessions.clear()
 }

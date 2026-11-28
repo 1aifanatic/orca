@@ -8,12 +8,9 @@ import type {
   StructuredAgentSessionAcquireInput,
   StructuredAgentSessionAdapter
 } from '../../native-chat/agent-session-wire/providers/structured-agent-session-adapter'
-import { stopCurrentClaudeBackgroundTasks } from './turns/claude-structured-control-actions'
+import * as controlActions from './turns/claude-structured-control-actions'
 import { claudeHeldSends, claudeHoldsDispatch } from './turns/claude-command-lifecycle'
-import {
-  releaseClaudeAcquisition,
-  type ClaudeReleaseRequest
-} from './lifecycle/claude-structured-acquisition-release'
+import * as acquisitionRelease from './lifecycle/claude-structured-acquisition-release'
 import { acquireClaudeSession } from './lifecycle/claude-structured-session-acquisition'
 import { supportsClaudeStructuredLocation } from './launch/claude-structured-location-support'
 import * as claudeOptions from './launch/claude-structured-options'
@@ -36,11 +33,8 @@ import {
   settleClaudeUnexpectedExit,
   type ClaudeExitLifecycle
 } from './lifecycle/claude-structured-session-exit-lifecycle'
-import { drainClaudeChildWork } from '../child-work/claude-child-work-evidence'
-import {
-  deliverClaudeConnectionEvent,
-  emitClaudeStructuredSessionEvent
-} from './lifecycle/claude-structured-event-delivery'
+import { ClaudeChildWorkPublisher } from './lifecycle/claude-child-work-publisher'
+import * as eventDelivery from './lifecycle/claude-structured-event-delivery'
 import {
   answerClaudeStructuredPrompt,
   cancelClaudeStructuredTurn,
@@ -52,6 +46,7 @@ import { claudeForkForRewind } from '../transcripts/claude-rewind-fork'
 import { copyClaudeConversation } from '../transcripts/claude-conversation-copy'
 import { ClaudeConversationNaming } from '../conversation-naming/claude-conversation-naming'
 import { syncClaudePromptSuggestionPause } from './claude-prompt-suggestion-pause'
+import * as keptPermission from '../relay/claude-kept-permission'
 
 export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAdapter {
   private readonly sessions = new Map<string, ClaudeSession>()
@@ -63,9 +58,11 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   private readonly naming: ClaudeConversationNaming | undefined
   /** Sessions a reader shows prompt suggestions for; a process for any other is paused. */
   private readonly suggestionReaders = new Set<string>()
+  private readonly childWork: ClaudeChildWorkPublisher
 
   constructor(private readonly deps: ClaudeStructuredSessionAdapterDeps) {
     const { namingInputs: snapshot, requestTimeoutMs: timeoutMs } = deps
+    this.childWork = new ClaudeChildWorkPublisher(deps, (id) => this.sessions.get(id))
     this.naming = snapshot && new ClaudeConversationNaming({ snapshot, timeoutMs })
     this.atRestCommands = deps.atRestCommands
     this.exitLifecycle = {
@@ -96,7 +93,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
       callbacks: {
         publish: start.publish,
         deliver: (attempt, sessionId, event, payload) =>
-          deliverClaudeConnectionEvent(
+          eventDelivery.deliverClaudeConnectionEvent(
             this.sessions,
             this.exits,
             attempt,
@@ -143,7 +140,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   drainObservedExits = (): Promise<void> => drainClaudeObservedExits(this.exits)
 
   private emit(session: ClaudeSession | null, event: ClaudeStructuredSessionEvent): void {
-    emitClaudeStructuredSessionEvent({
+    eventDelivery.emitClaudeStructuredSessionEvent({
       session,
       event,
       deps: this.deps,
@@ -151,21 +148,16 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     })
   }
 
-  /** Publish child records after the frame's journal rows and parent record. */
   private publishChildWork(
     sessionId: string,
     session: ClaudeSession | null | undefined = this.sessions.get(sessionId),
     message: Record<string, unknown> | null = null
   ): void {
-    const evidence = drainClaudeChildWork(session, message, this.deps.now?.() ?? Date.now())
-    if (evidence.length > 0) {
-      this.deps.onChildWorkEvidence?.(sessionId, evidence, session?.events)
-    }
+    this.childWork.publish(sessionId, session, message)
   }
 
-  bindPromptItemId(sessionId: string, journalItemId: string, promptKey: string): void {
+  bindPromptItemId = (sessionId: string, journalItemId: string, promptKey: string): void =>
     this.sessions.get(sessionId)?.prompts.bindJournalItemId(journalItemId, promptKey)
-  }
 
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) => {
     const { requestTimeoutMs, logger } = this.deps
@@ -200,23 +192,26 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   stopBackgroundTasks: NonNullable<StructuredAgentSessionAdapter['stopBackgroundTasks']> = async (
     input
   ) =>
-    stopCurrentClaudeBackgroundTasks({
+    controlActions.stopCurrentClaudeBackgroundTasks({
       ...input,
       sessions: this.sessions,
       session: this.session(input.sessionId),
       timeoutMs: this.deps.requestTimeoutMs
     })
-  backgroundTaskStops = (sessionId: string) =>
-    this.sessions.has(sessionId) ? { supportsTaskStop: true, supportsStopAll: true } : undefined
-  readCommands: NonNullable<StructuredAgentSessionAdapter['readCommands']> = (sessionId) =>
-    this.sessions.get(sessionId)?.commands.commands
+  backgroundTaskStops = controlActions.claudeBackgroundTaskStops(this.sessions)
+  relayOpenWork = controlActions.claudeRelayOpenWorkOf(this.sessions)
+  readCommands = (id: string) => this.sessions.get(id)?.commands.commands
   manageMcp: NonNullable<StructuredAgentSessionAdapter['manageMcp']> = (record, operation) =>
     manageClaudeMcp(this.sessions, record.sessionId, operation)
   readonly atRestCommands: ClaudeStructuredSessionAdapterDeps['atRestCommands']
   holdsDispatch = (sessionId: string): boolean => claudeHoldsDispatch(this.sessions.get(sessionId))
   requiresModelTransitionRestart = claudeOptions.claudeModelTransitionRestart(this.sessions)
-  liveTurnId = (sessionId: string): string | null | undefined =>
-    this.sessions.get(sessionId)?.translator?.currentTurnId
+  permissionModeRequiresAcquisition = keptPermission.requiresAcquisition(this.sessions)
+  keptLaunchOutgrown = keptPermission.launchOutgrown(this.sessions)
+  applyPermissionMode = keptPermission.applyLive(this.sessions, () => this.deps.requestTimeoutMs)
+  permissionPickedWhileStarting = keptPermission.pickedWhileStarting(this.sessions)
+  runningPermissionMode = keptPermission.runningMode(this.sessions)
+  liveTurnId = (id: string) => this.sessions.get(id)?.translator?.currentTurnId
   heldSends = (sessionId: string): ReadonlySet<string> | undefined => {
     const session = this.sessions.get(sessionId) ?? this.exits.get(sessionId)?.session
     const held = session && claudeHeldSends(session)
@@ -246,17 +241,19 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
       endings: this.endings,
       deps: this.deps,
       emit: (session, event) => this.emit(session, event),
-      promptSuggestionsWanted: (sessionId) => this.suggestionReaders.has(sessionId)
+      promptSuggestionsWanted: (sessionId) => this.suggestionReaders.has(sessionId),
+      publishChildWork: this.publishChildWork.bind(this)
     })
+  noteModelPick = (input: { sessionId: string; fence: number }) =>
+    claudeOptions.noteClaudeModelPick(this.sessions, input, this.emit.bind(this))
   readOptions = (input: { sessionId: string; fence: number }) =>
     readClaudeStructuredSessionOptions(this.session(input.sessionId))
-  releaseAcquisition = (input: ClaudeReleaseRequest): Promise<boolean> => {
+  releaseAcquisition = (input: acquisitionRelease.ClaudeReleaseRequest): Promise<boolean> => {
     this.endings.retire(input.sessionId)
     return this.afterClose(input.sessionId, () => this.releaseProviderSession(input))
   }
-  acknowledgeSessionRelease = (sessionId: string): void => {
-    this.settledExitErrors.delete(sessionId)
-  }
+  acknowledgeSessionRelease = (sessionId: string): void =>
+    void this.settledExitErrors.delete(sessionId)
   startupEnding = (sessionId: string, generation: string) => this.endings.get(sessionId, generation)
   retireStartup = (id: string, generation: string) => this.endings.retire(id, generation)
   hasOwnedAcquisition = (sessionId: string): boolean =>
@@ -266,6 +263,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
 
   /** A close clears the session's tasks outside `emit`; its ending still reaches the host. */
   private async afterClose(sessionId: string, close: () => Promise<boolean>): Promise<boolean> {
+    this.childWork.close(sessionId)
     const session = this.sessions.get(sessionId)
     try {
       const closed = await close()
@@ -279,8 +277,10 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     }
   }
 
-  private releaseProviderSession = (request: ClaudeReleaseRequest): Promise<boolean> =>
-    releaseClaudeAcquisition({
+  private releaseProviderSession = (
+    request: acquisitionRelease.ClaudeReleaseRequest
+  ): Promise<boolean> =>
+    acquisitionRelease.releaseClaudeAcquisition({
       ...request,
       sessions: this.sessions,
       acquisitions: this.acquisitions,
@@ -304,6 +304,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
 
   closeAll = (): Promise<void> => {
     this.endings.clear()
+    this.childWork.closeAll()
     return closeAllClaudeSessions({
       sessions: this.sessions,
       acquisitions: this.acquisitions,

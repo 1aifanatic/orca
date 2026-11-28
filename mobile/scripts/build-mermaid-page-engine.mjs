@@ -28,12 +28,9 @@ async function main() {
     bundle: true,
     format: 'esm',
     splitting: false,
-    // Metro transforms this module again; preserve enum assignments for its export analysis.
-    minifyWhitespace: true,
-    minifyIdentifiers: true,
-    minifySyntax: false,
-    // The floor the shell's WebViews hold, the same pair the terminal engine is built for.
-    target: ['chrome74', 'safari15'],
+    minify: true,
+    // Page-only artifact (imported exclusively by mermaid-page-engine.web.ts); match the page bundle's es2022 target.
+    target: ['es2022'],
     write: false,
     charset: 'utf8',
     legalComments: 'none',

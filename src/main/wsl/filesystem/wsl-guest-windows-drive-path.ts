@@ -1,5 +1,6 @@
 // WSL-host orcad must ignore Windows CLI shims; identify mounts by type because the automount root is configurable.
 import { existsSync, readFileSync } from 'node:fs'
+import { access, readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { resolveCliCommand } from '../../../shared/shell/command-resolution/node-cli-command-resolution'
 
@@ -25,6 +26,22 @@ export function isWslGuestProcess(
     return false
   }
   return Boolean(env.WSL_DISTRO_NAME?.trim() || env.WSL_INTEROP?.trim()) || interopRegistered()
+}
+
+export async function isWslGuestProcessAsync(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): Promise<boolean> {
+  if (platform !== 'linux') {
+    return false
+  }
+  if (env.WSL_DISTRO_NAME?.trim() || env.WSL_INTEROP?.trim()) {
+    return true
+  }
+  return access('/proc/sys/fs/binfmt_misc/WSLInterop').then(
+    () => true,
+    () => false
+  )
 }
 
 export function isWslHostOrcadProcess(
@@ -85,9 +102,20 @@ export function readGuestWindowsDriveMounts(): readonly string[] {
   return mounts
 }
 
-/** Stand in for /proc/mounts so call-site tests can model a Windows drive; null re-reads. */
-export function _setGuestWindowsDriveMountsForTests(mounts: readonly string[] | null): void {
+export async function readGuestWindowsDriveMountsAsync(): Promise<readonly string[]> {
+  if (cachedGuestMounts) {
+    return cachedGuestMounts
+  }
+  let mounts: string[] = []
+  if (process.env[ORCAD_WSL_HOST_ENV] === '1' && (await isWslGuestProcessAsync())) {
+    try {
+      mounts = parseWindowsDriveMountPoints(await readFile('/proc/mounts', 'utf8'))
+    } catch {
+      // Unreadable: keep PATH as is rather than guess which entries are Windows drives.
+    }
+  }
   cachedGuestMounts = mounts
+  return mounts
 }
 
 /** Keep CLI launches consistent with detection by removing Windows drive PATH entries only in WSL-host orcad. */
@@ -166,8 +194,4 @@ function hasWindowsDriveCopy(
   }
   verdicts.set(key, { windowsOnly, checkedAt: now })
   return windowsOnly
-}
-
-export function _resetWindowsCopyVerdictsForTests(): void {
-  windowsCopyVerdicts = new WeakMap()
 }

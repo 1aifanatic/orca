@@ -7,6 +7,12 @@ import {
   useWslHostChatOfferSettingUp
 } from '@/lib/agent-session/launch/structured-chat-wsl-host-offer'
 import { useNativeChatHostSetup } from '../../host-access/native-chat-host-setup'
+import {
+  nativeChatAgySignedOutBeforeSend,
+  nativeChatSignInAccount
+} from '../../host-access/native-chat-sign-in-account'
+import { useAntigravityChatAuthDetection } from '@/runtime/provider-accounts/sign-in/antigravity-chat-auth-detection'
+import { isAntigravityGoogleMethod } from '@/components/provider-accounts/antigravity-chat-runtime-sign-in-policy'
 import { useNativeChatAvailabilityNotice } from './use-native-chat-availability-notice'
 import { structuredSessionNotices } from './native-chat-structured-session-notices'
 import { structuredAgentSessionHostPlace } from '../../pane/ownership/use-structured-agent-session-host-label'
@@ -22,6 +28,7 @@ import type { useNativeChatHostSendGate } from '../../host-access/use-native-cha
 import type { NativeChatComposerNotice } from '../../composer/controls/native-chat-composer-notice'
 import type { AgentSessionFailureFact } from '../../../../../../shared/agent-session/failures/agent-session-failure'
 import { useTranslate } from '../../../../i18n/use-translate'
+import { rowsBesideStreamedText } from '../../../../../../shared/agent-session/view/structured-agent-session-streamed-text-rows'
 
 export function useNativeChatStructuredPaneNotices({
   props,
@@ -82,24 +89,38 @@ export function useNativeChatStructuredPaneNotices({
       retryLaunch()
     }
   }, [demandModelCatalog, launchFailed, retryLaunch])
+  // A Google-method Antigravity chat hears agy is signed out before its first send; advisory, as
+  // the host's other verdicts: Send isn't held, since a login agy gets elsewhere isn't seen at once.
+  const detection = useAntigravityChatAuthDetection(install.antigravityAuth?.host ?? null)
+  const agySignedOut = isAntigravityGoogleMethod(detection?.method) && detection?.agySignedOut
+  const unavailable =
+    controller.unavailable ?? nativeChatAgySignedOutBeforeSend(agySignedOut, controller.submissions)
+  // The host names which account is signed out; a managed-account sign-in can't fix the system one.
+  // Failures are status and turn rows, so a streamed reply's text revision keeps the last walk.
+  const structureRows = rowsBesideStreamedText(controller.journalItems)
+  const account = useMemo(
+    () =>
+      nativeChatSignInAccount({
+        unavailable,
+        launchDetails: details,
+        items: structureRows,
+        submissions: controller.submissions,
+        kickoff: kickoffSignIn
+      }),
+    [unavailable, details, structureRows, controller.submissions, kickoffSignIn]
+  )
   const setup = useNativeChatHostSetup({
     ...props,
     worktreeId: ownerWorktreeId,
-    // The host names which account is signed out; a managed-account sign-in can't fix the system one.
-    account:
-      controller.unavailable?.reason === 'notSignedIn'
-        ? controller.unavailable.account
-        : details && 'account' in details
-          ? details.account
-          : kickoffSignIn?.account,
+    account,
     failure: provisionalLaunch.failure,
     startFailures,
     journalItems: controller.journalItems,
     onRechecked
   })
   const availability = useNativeChatAvailabilityNotice({
-    // While Install shows, it already says the agent is missing and offers the one fix.
-    unavailable: installing ? null : controller.unavailable,
+    // While Install or the sign-in strip shows, it already says what is missing and offers the fix.
+    unavailable: installing || install.signIn ? null : unavailable,
     setup,
     agent: props.agent,
     wslDistro: continuation.view.wslDistro,

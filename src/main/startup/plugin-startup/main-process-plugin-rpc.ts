@@ -7,8 +7,10 @@ import type { PluginService } from '../../plugins/plugin-service'
 import type { PluginCliCatalogs } from '../../plugins/cli/plugin-cli-catalog-candidates'
 import { clearPluginFrameStorage } from '../../plugins/panels/guest-isolation/plugin-frame-guest-sessions'
 import { openPluginFrameGuestDevTools } from '../../plugins/panels/guest-isolation/plugin-frame-guest-diagnostics'
-import { setPluginServiceForRpc } from '../../runtime/rpc/methods/plugins/plugins'
-import { setPluginInstallServicesForRpc } from '../../runtime/rpc/methods/plugins/plugin-install-methods'
+import {
+  setPluginInstallServicesForRpc,
+  setPluginServiceForRpc
+} from '../../runtime/rpc/methods/plugins/plugin-rpc-slots'
 
 /** Headless RPC resolves these too; consent shares the desktop hash-keyed write path. */
 export function bindPluginRpcServices(

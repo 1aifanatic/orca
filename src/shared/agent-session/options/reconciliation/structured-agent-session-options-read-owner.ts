@@ -108,11 +108,19 @@ export function createStructuredAgentSessionOptionsReadOwner(
           isCurrentRead() &&
           support &&
           same(support.owner, attached.owner) &&
-          support.result.canSwitchAccount === true
+          (support.result.canSwitchAccount === true ||
+            support.result.canSwitchAntigravityAccount === true)
         ) {
           snapshot = {
             ...snapshot,
-            support: { ...support, result: { ...support.result, canSwitchAccount: false } }
+            support: {
+              ...support,
+              result: {
+                ...support.result,
+                canSwitchAccount: false,
+                canSwitchAntigravityAccount: false
+              }
+            }
           }
           notify()
         }
@@ -198,6 +206,7 @@ export function createStructuredAgentSessionOptionsReadOwner(
           record: cloneStructuredAgentSessionOptionRecord(current.record),
           reportedPermissionMode: undefined,
           reportedEffort: undefined,
+          fallbackModel: undefined,
           sessionNeverStarted: undefined,
           catalogNamesConfiguredModel: undefined,
           ...(current.acceptedInputSources ? { acceptedInputSources: {} } : {})
@@ -217,6 +226,7 @@ export function createStructuredAgentSessionOptionsReadOwner(
                 record: cloneStructuredAgentSessionOptionRecord(current.record),
                 reportedPermissionMode: undefined,
                 reportedEffort: undefined,
+                fallbackModel: undefined,
                 sessionNeverStarted: undefined
               }
             : context.seed()

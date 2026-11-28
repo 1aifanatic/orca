@@ -6,10 +6,6 @@ import { cn } from '@/lib/class-names'
 import { translate } from '@/i18n/i18n'
 import type { Translate } from '@/i18n/use-translate'
 import type { DaemonActionsApi } from '../../../shared/useDaemonActions'
-import type {
-  getResourceCommitMetricCopy,
-  getResourceMemoryMetricCopy
-} from './resource-memory-metric-copy'
 import { formatMemory } from './resource-usage-metrics'
 import type { ResourceOwnerSplit } from './resource-owner-split'
 import { resourceOwnerLabels, type ResourceOwnerKey } from './resource-owner-labels'
@@ -28,9 +24,7 @@ export function renderResourceUsagePopoverHeader(
     <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
       <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-foreground">
         <MemoryStick className="size-3 shrink-0 text-muted-foreground" />
-        <span className="truncate">
-          {t('auto.components.status.bar.StatusBar.d1e1a7a6bf', 'Resource Manager')}
-        </span>
+        <span className="truncate">{t('resourceManager.resources', 'Resources')}</span>
       </div>
 
       <div className="flex items-center gap-0.5">
@@ -163,16 +157,12 @@ function barWidths(split: ResourceOwnerSplit): Record<ResourceOwnerKey, number> 
 export function renderResourceUsageSummary(
   {
     ownerSplit,
-    memoryMetricCopy,
     commitBadgeLabel,
-    commitMetricCopy,
     commitToneClass,
     orphanCount
   }: {
     ownerSplit: ResourceOwnerSplit
-    memoryMetricCopy: ReturnType<typeof getResourceMemoryMetricCopy>
     commitBadgeLabel: string | null
-    commitMetricCopy: ReturnType<typeof getResourceCommitMetricCopy> | null
     commitToneClass: string | null
     orphanCount: number
   },
@@ -180,8 +170,10 @@ export function renderResourceUsageSummary(
 ): React.JSX.Element {
   const labels = resourceOwnerLabels(t)
   const widths = barWidths(ownerSplit)
-  const privateLabel = t('resourceManager.owner.privateBytes', 'Committed by Orca and terminals')
-  const showCommit = commitBadgeLabel !== null && commitMetricCopy !== null
+  const privateLabel = t(
+    'resourceManager.owner.privateBytes',
+    'Committed by Orca, agents and terminals'
+  )
   return (
     <div className="shrink-0 border-b border-border px-3 pt-2 pb-1.5 text-xs tabular-nums">
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
@@ -209,9 +201,9 @@ export function renderResourceUsageSummary(
           />
         ))}
       </div>
-      {(showCommit && commitToneClass) || orphanCount > 0 ? (
+      {(commitBadgeLabel !== null && commitToneClass) || orphanCount > 0 ? (
         <div className="mt-1 flex flex-wrap items-baseline gap-x-3 text-2xs text-muted-foreground">
-          {showCommit && commitToneClass && (
+          {commitBadgeLabel !== null && commitToneClass && (
             <span className={cn('whitespace-nowrap', commitToneClass)}>
               {privateLabel} {commitBadgeLabel}
             </span>
@@ -227,25 +219,6 @@ export function renderResourceUsageSummary(
           )}
         </div>
       ) : null}
-      <details className="mt-1.5 text-muted-foreground">
-        <summary className="cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          {t('resourceManager.metricDetails', 'Metric details')}
-        </summary>
-        <div className="mt-1.5 space-y-1.5">
-          <p>
-            {t(
-              'resourceManager.owner.description',
-              "Orca is the app. Agents are terminals running an agent; Other terminals are the rest you run in Orca. The bar shows each one's share of their combined memory."
-            )}
-          </p>
-          <p>{memoryMetricCopy.description}</p>
-          {commitMetricCopy && showCommit ? (
-            <p>
-              {privateLabel} {commitBadgeLabel}. {commitMetricCopy.description}
-            </p>
-          ) : null}
-        </div>
-      </details>
     </div>
   )
 }

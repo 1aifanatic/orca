@@ -3,6 +3,7 @@
 import type { AgentListVerdict } from '../../shared/agent-status/presentation/agent-list-status'
 import type { AgentStatusIpcPayload } from '../../shared/agent-status/contracts/agent-status-ipc-payload'
 import { getAutomationRunLastRunAt } from '../../shared/automations/history/automation-run'
+import { getToneForAutomationRunStatus } from '../../shared/automation-last-run'
 import type { Automation } from '../../shared/automations/automation-definition'
 import type { AutomationRun } from '../../shared/automations/history/automation-run'
 import { automationRunDot } from '../../shared/bots/bot-activity-model'
@@ -17,7 +18,7 @@ export function chatLive(row: AgentStatusIpcPayload | undefined): BotChatFacts['
 
 /** Unread as the desktop window's Agents list says; a host without a window says nothing. */
 export function chatReadUnread(verdict: AgentListVerdict | undefined): boolean {
-  return verdict?.listed === true && verdict.unread
+  return verdict?.unread === true
 }
 
 /** Automation runs with no chat of their own, each listed as a chat row like a run that has one. */
@@ -28,7 +29,7 @@ export function terminalRunChats(
 ): BotChatFacts[] {
   return runs.flatMap((run): BotChatFacts[] => {
     const automation = automationById.get(run.automationId)
-    if (run.chatSessionId || !automation) {
+    if (run.chatSessionId || skippedBeforeLaunch(run) || !automation) {
       return []
     }
     const running = automationRunDot(run.status) === 'working'
@@ -52,6 +53,16 @@ export function terminalRunChats(
       }
     ]
   })
+}
+
+/** A skip that never opened a terminal or chat (a failed precheck, say) has nothing to show as a chat. */
+function skippedBeforeLaunch(run: AutomationRun): boolean {
+  return (
+    run.launchedAt === undefined &&
+    !run.terminalPaneKey &&
+    !run.terminalSessionId &&
+    getToneForAutomationRunStatus(run.status) === 'skipped'
+  )
 }
 
 export function terminalRunChatId(runId: string): string {

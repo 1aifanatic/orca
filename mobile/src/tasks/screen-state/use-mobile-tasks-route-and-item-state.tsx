@@ -7,7 +7,7 @@ import type {
 import type { GitHubRepoSlugCacheEntry } from '../project-board/github-project-repo-match'
 import { useHostClient } from '../../transport/connection/host-client-hooks'
 import { useHostRepoList } from '../repositories/use-host-repo-list'
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { reconcileRepoSelection } from '../repositories/hosted-repo-selection'
 import {
   useLastConnectedAt,
@@ -55,8 +55,13 @@ import type {
 import { getTaskPresetQuery } from '../../../../src/shared/work-items/task-preset-query'
 import { useMobileTasksItemState } from '../item-detail/use-mobile-tasks-item-state'
 import { useTaskCommentDraft, useTaskCreateDraft } from '../item-detail/task-draft-rows'
+import {
+  bindTrackerAccountClient,
+  type TrackerAccountBinding
+} from '../task-list/tracker-account-host'
 import { useMobileJiraConnectionState } from '../providers/jira/use-mobile-jira-connection-state'
 import type { JiraIssueFilter } from '../../../../src/shared/jira/jira-types'
+import { JIRA_MOBILE_CONNECT_RUNTIME_CAPABILITY } from '../../../../src/shared/work-items/task-source-runtime-capabilities'
 
 export function useMobileTasksRouteAndItemState() {
   const { hostId, taskSource } = useLocalSearchParams<{ hostId: string; taskSource?: string }>()
@@ -97,8 +102,6 @@ export function useMobileTasksRouteAndItemState() {
   const [jiraConnection, setJiraConnection] = useMobileJiraConnectionState(client, connState)
   const jiraStatusRequestIdRef = useRef(0)
   const [jiraFilter, setJiraFilter] = useState<JiraIssueFilter>('assigned')
-  const [showJiraFilterPicker, setShowJiraFilterPicker] = useState(false)
-  const [showJiraSitePicker, setShowJiraSitePicker] = useState(false)
   const [githubMode, setGithubMode] = useState<'items' | 'project'>('items')
   const [githubKind, setGithubKind] = useState<GitHubTaskKind>('issues')
   const [githubPreset, setGithubPreset] = useState<GitHubPreset>('issues')
@@ -119,10 +122,23 @@ export function useMobileTasksRouteAndItemState() {
   )
   const [selectedLinearTeamIds, setSelectedLinearTeamIds] = useState<Set<string>>(new Set())
   const defaultLinearTeamSelectionRef = useRef<string[] | null>(null)
-  const [showLinearWorkspacePicker, setShowLinearWorkspacePicker] = useState(false)
-  const [showLinearTeamPicker, setShowLinearTeamPicker] = useState(false)
-  const [showLinearDisplayPicker, setShowLinearDisplayPicker] = useState(false)
   const [showLinearConnect, setShowLinearConnect] = useState(false)
+  const linearAccountBindingRef = useRef<TrackerAccountBinding | null>(null)
+  // Called as Linear setup opens; its status, connect and workspace switch then share one host.
+  const bindLinearAccountHost = useCallback(() => {
+    linearAccountBindingRef.current = client
+      ? { base: client, client: bindTrackerAccountClient(client, hostCapabilities) }
+      : null
+  }, [client, hostCapabilities])
+  const jiraConnectSupported = hostCapabilities.includes(JIRA_MOBILE_CONNECT_RUNTIME_CAPABILITY)
+  const [showJiraConnect, setShowJiraConnect] = useState(false)
+  const jiraAccountBindingRef = useRef<TrackerAccountBinding | null>(null)
+  // Called as Jira setup opens; its connect and the status read after it share one host.
+  const bindJiraAccountHost = useCallback(() => {
+    jiraAccountBindingRef.current = client
+      ? { base: client, client: bindTrackerAccountClient(client, hostCapabilities) }
+      : null
+  }, [client, hostCapabilities])
   const [linearApiKeyDraft, setLinearApiKeyDraft] = useState('')
   const [linearConnectState, setLinearConnectState] = useState<'idle' | 'connecting' | 'error'>(
     'idle'
@@ -142,10 +158,8 @@ export function useMobileTasksRouteAndItemState() {
   const [githubPages, setGithubPages] = useState<
     Array<Extract<TaskItem, { provider: 'github' }>[]>
   >([])
-  const [githubCurrentPage, setGithubCurrentPage] = useState(0)
   const [githubCountedTotalPages, setGithubCountedTotalPages] = useState<number | null>(null)
   const [githubPaginationLoading, setGithubPaginationLoading] = useState(false)
-  const [githubLoadingTargetPage, setGithubLoadingTargetPage] = useState<number | null>(null)
   const [githubRepoSources, setGithubRepoSources] = useState<Record<string, GitHubRepoSources>>({})
   const [githubSourceErrors, setGithubSourceErrors] = useState<GitHubIssueSourceError[]>([])
   const [githubSourceFallbacks, setGithubSourceFallbacks] = useState<GitHubIssueSourceFallback[]>(
@@ -159,15 +173,7 @@ export function useMobileTasksRouteAndItemState() {
   >({})
   const [query, setQuery] = useState(getTaskPresetQuery('issues'))
   const [appliedQuery, setAppliedQuery] = useState(getTaskPresetQuery('issues'))
-  const [showGitHubKindPicker, setShowGitHubKindPicker] = useState(false)
-  const [showGitHubPresetPicker, setShowGitHubPresetPicker] = useState(false)
-  const [showGitLabViewPicker, setShowGitLabViewPicker] = useState(false)
-  const [showGitLabFilterPicker, setShowGitLabFilterPicker] = useState(false)
-  const [showLinearFilterPicker, setShowLinearFilterPicker] = useState(false)
   const [showFilterSheet, setShowFilterSheet] = useState(false)
-  const [showRepoPicker, setShowRepoPicker] = useState(false)
-  const [showGitHubIssueSourcePicker, setShowGitHubIssueSourcePicker] = useState(false)
-  const [showGitHubPagePicker, setShowGitHubPagePicker] = useState(false)
   const [showCreateTask, setShowCreateTask] = useState(false)
   const [showCreateTargetPicker, setShowCreateTargetPicker] = useState(false)
   const { createTitle, setCreateTitle, createBody, setCreateBody } =
@@ -231,10 +237,6 @@ export function useMobileTasksRouteAndItemState() {
     jiraStatusRequestIdRef,
     jiraFilter,
     setJiraFilter,
-    showJiraFilterPicker,
-    setShowJiraFilterPicker,
-    showJiraSitePicker,
-    setShowJiraSitePicker,
     githubMode,
     setGithubMode,
     githubKind,
@@ -266,14 +268,15 @@ export function useMobileTasksRouteAndItemState() {
     selectedLinearTeamIds,
     setSelectedLinearTeamIds,
     defaultLinearTeamSelectionRef,
-    showLinearWorkspacePicker,
-    setShowLinearWorkspacePicker,
-    showLinearTeamPicker,
-    setShowLinearTeamPicker,
-    showLinearDisplayPicker,
-    setShowLinearDisplayPicker,
     showLinearConnect,
     setShowLinearConnect,
+    linearAccountBindingRef,
+    bindLinearAccountHost,
+    jiraConnectSupported,
+    showJiraConnect,
+    setShowJiraConnect,
+    jiraAccountBindingRef,
+    bindJiraAccountHost,
     linearApiKeyDraft,
     setLinearApiKeyDraft,
     linearConnectState,
@@ -289,14 +292,10 @@ export function useMobileTasksRouteAndItemState() {
     setItems,
     githubPages,
     setGithubPages,
-    githubCurrentPage,
-    setGithubCurrentPage,
     githubCountedTotalPages,
     setGithubCountedTotalPages,
     githubPaginationLoading,
     setGithubPaginationLoading,
-    githubLoadingTargetPage,
-    setGithubLoadingTargetPage,
     githubRepoSources,
     setGithubRepoSources,
     githubSourceErrors,
@@ -311,24 +310,8 @@ export function useMobileTasksRouteAndItemState() {
     setQuery,
     appliedQuery,
     setAppliedQuery,
-    showGitHubKindPicker,
-    setShowGitHubKindPicker,
-    showGitHubPresetPicker,
-    setShowGitHubPresetPicker,
-    showGitLabViewPicker,
-    setShowGitLabViewPicker,
-    showGitLabFilterPicker,
-    setShowGitLabFilterPicker,
-    showLinearFilterPicker,
-    setShowLinearFilterPicker,
     showFilterSheet,
     setShowFilterSheet,
-    showRepoPicker,
-    setShowRepoPicker,
-    showGitHubIssueSourcePicker,
-    setShowGitHubIssueSourcePicker,
-    showGitHubPagePicker,
-    setShowGitHubPagePicker,
     showCreateTask,
     setShowCreateTask,
     showCreateTargetPicker,

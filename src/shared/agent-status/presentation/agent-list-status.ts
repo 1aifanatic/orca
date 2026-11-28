@@ -34,7 +34,8 @@ export const AGENT_LIST_STATUS_RANK: Record<AgentListStatus, number> = {
 
 /** How the desktop Agents list shows one agent pane; unlisted panes are not in the list at all. */
 export type AgentListVerdict =
-  | { listed: false }
+  /** `unread`: a closed chat's finished turn not yet read, for its chat row. */
+  | { listed: false; unread?: true }
   | {
       listed: true
       status: AgentListStatus
@@ -55,10 +56,23 @@ export type AgentListPublication = {
   verdicts: Record<string, AgentListVerdict>
 }
 
+/** What the window sends main: the whole list, or the verdicts that changed since its last send. */
+export type AgentListVerdictUpdate =
+  | { kind: 'reset'; publication: AgentListPublication }
+  | {
+      kind: 'changes'
+      publishedAt: number
+      /** Changed or added verdicts by pane key. */
+      changed: Record<string, AgentListVerdict>
+      removed: string[]
+    }
+
 /** A paired client's Agents-list change; the desktop window applies it with its own Activity actions. */
 export type AgentPaneActivityChange = {
   kind: 'read' | 'unread' | 'clear'
   paneKeys: string[]
+  /** When set on a `read`, skip panes that already received a newer turn than this timestamp. */
+  upToTimestamp?: number
 }
 
 export type AgentPaneActivityRequest = AgentPaneActivityChange & { requestId: string }

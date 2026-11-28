@@ -1,4 +1,5 @@
 import type { WorkspaceAttachmentMutation } from '../../../shared/workspace-attachments/workspace-attachment-mutation'
+import type { DiffCommentBaseMutation } from '../../../shared/file-review/diff-comment-mutation'
 import type { FolderWorkspaceCreateResult } from '../../../shared/folder-workspaces/folder-workspace-create'
 import type { RuntimeGroupFolderCreateInput } from '../workspaces/creation/runtime-group-folder-setup'
 import type { FolderWorkspace } from '../../../shared/folder-workspaces/folder-workspace-types'
@@ -20,6 +21,7 @@ export type RuntimeProjectGroupDependencies = {
   ) => Promise<{ finish(removed: boolean): Promise<void> }>
   cleanupRemovedFolderWorkspaceState: (worktreeId: string) => void | Promise<void>
   emitWorktreeLifecycle: (event: RuntimeWorktreeLifecycleEvent) => void
+  isBotGroupHome?: (folderWorkspaceId: string) => boolean | Promise<boolean>
   finishFolderCreation?: (
     input: RuntimeGroupFolderCreateInput,
     group: ProjectGroup,
@@ -49,4 +51,5 @@ export type FolderWorkspaceUpdates = Partial<
     | 'diffComments'
   >
 > &
-  WorkspaceAttachmentMutation
+  WorkspaceAttachmentMutation &
+  DiffCommentBaseMutation

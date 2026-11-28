@@ -1,12 +1,8 @@
 // The bounded read behind a connector conversation's working state: only its workers that may still
 // run, read off the runtime's thread, then projected with the runtime's liveness evidence.
 import type { OrchestrationSessionWorker } from '../../../../../../shared/orchestration-session-workers'
-import type { SessionPartyReader } from '../../../../orchestration/addressing/session-party-reader'
-import { structuredWorkerProcessIncarnation } from '../../../../orchestration/terminal-authority/structured-sessions/structured-worker-identity'
-import type {
-  ChatPartyRows,
-  ConnectorWorkerCandidate
-} from '../../../../orchestration/db/connector-workers/connector-worker-candidates'
+import { prefetchedSessionParties } from '../../../../orchestration/addressing/session-party-reader'
+import type { ConnectorWorkerCandidate } from '../../../../orchestration/db/connector-workers/connector-worker-candidates'
 import {
   ORCHESTRATION_FLEET_PAGE_MAX,
   type FleetDurableWorker
@@ -23,16 +19,19 @@ import {
   projectDispatchFleet,
   readDispatchFleetEvidence,
   sessionWorkerActivity,
-  sessionWorkerState,
   withStructuredLiveness,
   type SessionWorkersRuntime
 } from './session-workers-method'
+import { sessionWorkerState } from './session-worker-state'
 
 /** What a connector conversation's activity needs of each worker that may still run. */
 export type SessionWorkerActivityFacts = Pick<
   OrchestrationSessionWorker,
   'state' | 'activity' | 'pendingQuestion'
->
+> & {
+  /** Workers it started are still open: an idle lead waiting on them still has work running. */
+  helpersRunning: boolean
+}
 
 /**
  * The connector-started workers of each of these chats that may still run, by chat: their database
@@ -60,9 +59,12 @@ export async function readConnectorWorkerActivity(
   }
   const now = Date.now()
   const evidence = readDispatchFleetEvidence(runtime)
-  const parties = prefetchedParties(db, chatParties)
+  const parties = prefetchedSessionParties(db, chatParties)
   const sessionOf = new Map(
     candidates.map((candidate) => [candidate.row.dispatchId, candidate.sessionId])
+  )
+  const helpersOf = new Set(
+    candidates.flatMap((candidate) => (candidate.openChildren ? [candidate.row.dispatchId] : []))
   )
   // Projected in as few passes as keep each conversation's status owners its own (see packConversations),
   // one after another: a later pass then finds a paired host that missed its deadline marked overdue
@@ -107,7 +109,8 @@ export async function readConnectorWorkerActivity(
                 chatStatusRows
               )
             : 'unknown',
-        pendingQuestion: hasPendingQuestion(worker)
+        pendingQuestion: hasPendingQuestion(worker),
+        helpersRunning: helpersOf.has(projected.dispatchId)
       })
     }
   }
@@ -170,29 +173,4 @@ function identityKeys(row: ConnectorWorkerCandidate['row']): string[] {
   }
   const handle = `handle:${identity.terminalHandle}`
   return identity.kind === 'pane_and_terminal' ? [handle, `pane:${identity.paneKey}`] : [handle]
-}
-
-/** The chats' party rows as the reader read them; a session it did not read asks the database. */
-function prefetchedParties(
-  db: OrchestrationDb,
-  rows: readonly ChatPartyRows[]
-): SessionPartyReader {
-  const bySession = new Map(rows.map((row) => [row.sessionId, row]))
-  const byProcess = new Map(
-    rows.map((row) => [structuredWorkerProcessIncarnation(row.sessionId), row])
-  )
-  return {
-    getWorkerTerminalResourceByProcessIncarnation: (process) => {
-      const read = byProcess.get(process)
-      return read
-        ? (read.resource ?? undefined)
-        : db.getWorkerTerminalResourceByProcessIncarnation(process)
-    },
-    hasRecordedStructuredWorkerSession: (session, process) => {
-      const read = bySession.get(session)
-      return read && byProcess.get(process) === read
-        ? read.recordedWorker
-        : db.hasRecordedStructuredWorkerSession(session, process)
-    }
-  }
 }

@@ -8,16 +8,20 @@ import {
 import {
   claudeLaunchAccountId,
   isClaudePaneOnAccount,
-  resolveClaudePaneFolder,
-  type ClaudePaneFolder
+  type ClaudeHostSelectionChange
 } from '../../../../shared/agent-accounts/claude/claude-pane-account-folder'
-import { readClaudeForeground } from './claude-pane-foreground-read'
-import { claudeHostAccountSwitch } from './claude-host-account-switch'
+import { readAgentPaneForeground } from './agent-pane-foreground-read'
+import {
+  answeredClaudeMove,
+  buildClaudeHostMoveSummary,
+  claudeHostAccountSwitch,
+  countClaudeSessionHolders,
+  resolveHostClaudePaneFolder,
+  type AskedClaudeMove
+} from './claude-host-account-switch'
 import type {
   ClaudeAccountSelectionChange,
-  ClaudeHostRunningSessionsMove,
-  ClaudeManagedAccount,
-  ClaudeRateLimitAccountsState
+  ClaudeHostRunningSessionsMove
 } from '../../../../shared/agent-accounts/managed-account-types'
 import type { RuntimePtyWorktreeRecord } from '../../terminal/records/runtime-terminal-state-records'
 
@@ -28,8 +32,8 @@ type ClaudePane = {
 }
 type ClaudePaneRestart = ClaudePane & { session: AgentProviderSessionMetadata }
 
-/** On a host with no window (serve, orcad), the host moves its own running Claude terminals when its
- *  account switches, as a desktop window does for its panes. */
+/** The host moves its own running Claude terminals when its account switches: all of them on a host
+ *  with no window (serve, orcad), and on a desktop the ones its window doesn't hold. */
 export abstract class OrcaRuntimeWithClaudeRunningPaneAccountMove extends OrcaRuntimeWithRestartAgentPaneInPlace {
   private claudePanePlans: Promise<unknown> = Promise.resolve()
   private claudePaneRestarts: Promise<unknown> = Promise.resolve()
@@ -44,21 +48,35 @@ export abstract class OrcaRuntimeWithClaudeRunningPaneAccountMove extends OrcaRu
   /** Bumped by every switch, so a restart can tell its spawn may have read another selection. */
   private claudeSelectionEpoch = 0
   /** The last switch that left panes running under Ask, for its answer to restart them. */
-  private askedClaudeMove: ClaudeAccountSelectionChange | undefined
+  private askedClaudeMove: AskedClaudeMove | undefined
   /** Counts the switches that moved the host's account: a plan from before the latest opens no Ask. */
   private claudeHostSwitches = 0
 
-  /** A window moves its own panes; a host without one moves its own and says what it did. */
+  /** A window moves its own panes and hands over the rest; a host without one moves them all. */
   protected onClaudeAccountSelected(
     change: ClaudeAccountSelectionChange
   ): Promise<ClaudeHostRunningSessionsMove | undefined> {
     if (this.authoritativeWindowId !== HEADLESS_RUNTIME_WINDOW_ID) {
-      this.notifier?.claudeAccountSelected?.(change)
+      this.notifier?.accountSelectedElsewhere?.('claude', change)
+      return Promise.resolve(undefined)
+    }
+    return this.moveRunningClaudePanes(change)
+  }
+
+  /** Moves this host's running Claude terminals off the account a switch left, except the ones a
+   *  window holds (it moves those itself); says what it did. */
+  moveRunningClaudePanes(
+    change: ClaudeHostSelectionChange,
+    heldPtyIds: ReadonlySet<string> = new Set()
+  ): Promise<ClaudeHostRunningSessionsMove | undefined> {
+    const current = this.accounts.getClaudeAccountsSnapshot()
+    const answered = answeredClaudeMove(this.askedClaudeMove, change, current)
+    // An answer to an Ask a later switch replaced moves nothing: its snapshots are stale.
+    if (change.answersAskFor !== undefined && !answered) {
       return Promise.resolve(undefined)
     }
     this.claudeSelectionEpoch += 1
-    const answered = this.answeredClaudeMove(change)
-    const move = answered ?? change
+    const move = answered?.change ?? change
     // A selection that moves nothing on the host (the same account again, a WSL lane) leaves the Ask open.
     if (answered || claudeHostAccountSwitch(change).movesHost) {
       this.askedClaudeMove = undefined
@@ -67,7 +85,7 @@ export abstract class OrcaRuntimeWithClaudeRunningPaneAccountMove extends OrcaRu
     const hostSwitch = this.claudeHostSwitches
     // The switch is already saved: a failed plan must not fail its reply.
     const planned = this.claudePanePlans
-      .then(() => this.planClaudePaneMove(move, hostSwitch))
+      .then(() => this.planClaudePaneMove(move, hostSwitch, heldPtyIds, answered?.ptyIds))
       .catch((error: unknown) => {
         console.warn('[runtime] could not plan moving running Claude terminals', error)
         return undefined
@@ -86,25 +104,11 @@ export abstract class OrcaRuntimeWithClaudeRunningPaneAccountMove extends OrcaRu
     return planned.then((plan) => plan?.summary)
   }
 
-  /** An answer restarts what its Ask left, unless a later switch moved the host off that account. */
-  private answeredClaudeMove(
-    change: ClaudeAccountSelectionChange
-  ): ClaudeAccountSelectionChange | undefined {
-    const asked = this.askedClaudeMove
-    if (!asked || change.answersAskFor === undefined) {
-      return undefined
-    }
-    const { state } = change.after
-    const selected = claudeLaunchAccountId(state, change.after.accountId)
-    return selected === claudeLaunchAccountId(state, change.answersAskFor) &&
-      selected === claudeLaunchAccountId(asked.after.state, asked.after.accountId)
-      ? { ...asked, after: change.after, runningSessions: 'restart' }
-      : undefined
-  }
-
   private async planClaudePaneMove(
-    change: ClaudeAccountSelectionChange,
-    hostSwitch: number
+    change: ClaudeHostSelectionChange,
+    hostSwitch: number,
+    heldPtyIds: ReadonlySet<string>,
+    onlyPtyIds?: ReadonlySet<string>
   ): Promise<
     | {
         summary: ClaudeHostRunningSessionsMove
@@ -122,24 +126,30 @@ export abstract class OrcaRuntimeWithClaudeRunningPaneAccountMove extends OrcaRu
     const saved = settings?.claudeManagedAccounts ?? []
     const host = change.after.state
     const panes = this.listClaudePanes()
-    const holders = new Map<string, number>()
-    for (const { session } of panes) {
-      if (session) {
-        holders.set(session.id, (holders.get(session.id) ?? 0) + 1)
-      }
-    }
+    const holders = countClaudeSessionHolders(panes)
     const restart: ClaudePaneRestart[] = []
+    const canRestartPtyIds = new Set<string>()
     let notMoved = 0
     let canRestart = 0
     for (const pane of panes) {
-      const folder = this.claudePaneFolder(pane, saved, host)
+      if (onlyPtyIds && !onlyPtyIds.has(pane.pty.ptyId)) {
+        continue
+      }
+      const folder = resolveHostClaudePaneFolder(
+        this.restartedClaudePanes.get(pane.pty.ptyId),
+        pane.session?.transcriptPath,
+        saved,
+        host,
+        process.platform
+      )
       const onOutgoing = isClaudePaneOnAccount(folder, fromAccountId, host)
       // The renderer's rule: an unread folder or session may be on the outgoing account.
       const mayBeOnOutgoing = !pane.session || !folder || onOutgoing
-      if (folder?.kind === 'own-folder' || !mayBeOnOutgoing) {
+      // A window that holds the pane moves it itself.
+      if (heldPtyIds.has(pane.pty.ptyId) || folder?.kind === 'own-folder' || !mayBeOnOutgoing) {
         continue
       }
-      const running = await readClaudeForeground(this.ptyController, pane.pty.ptyId)
+      const running = await readAgentPaneForeground(this.ptyController, pane.pty.ptyId, 'claude')
       if (running === false) {
         continue
       }
@@ -150,7 +160,8 @@ export abstract class OrcaRuntimeWithClaudeRunningPaneAccountMove extends OrcaRu
         !folder ||
         (handle !== undefined && this.claudeAgentTeams.holdsHandle(handle)) ||
         (holders.get(pane.session.id) ?? 0) > 1 ||
-        !this.terminalViewSubscribers.everyRemoteViewFollowsHostRespawn(pane.pty.ptyId)
+        // A restart would refuse it: counted here, so the switch's toast says it stayed behind.
+        this.restartRefusalBeforeStop(pane.pty) !== null
       ) {
         notMoved += 1
         continue
@@ -159,37 +170,19 @@ export abstract class OrcaRuntimeWithClaudeRunningPaneAccountMove extends OrcaRu
       if (policy !== 'restart') {
         notMoved += 1
         canRestart += 1
+        canRestartPtyIds.add(pane.pty.ptyId)
         continue
       }
       restart.push({ ...pane, session: pane.session })
       this.restartingClaudePanes.add(pane.paneKey)
     }
+    let askId: string | undefined
     if (canRestart > 0 && hostSwitch === this.claudeHostSwitches) {
-      this.askedClaudeMove = change
+      askId = String(hostSwitch)
+      this.askedClaudeMove = { change, askId, ptyIds: canRestartPtyIds }
     }
-    return restart.length + notMoved > 0
-      ? {
-          summary: { restarting: restart.length, notMoved, ...(canRestart ? { canRestart } : {}) },
-          restart
-        }
-      : undefined
-  }
-
-  private claudePaneFolder(
-    pane: ClaudePane,
-    saved: readonly ClaudeManagedAccount[],
-    host: ClaudeRateLimitAccountsState
-  ): ClaudePaneFolder | undefined {
-    const restarted = this.restartedClaudePanes.get(pane.pty.ptyId)
-    if (restarted) {
-      if (restarted.accountId === undefined) {
-        return undefined
-      }
-      return restarted.accountId === null
-        ? { kind: 'system-default' }
-        : { kind: 'account', accountId: restarted.accountId }
-    }
-    return resolveClaudePaneFolder(pane.session?.transcriptPath, saved, host, process.platform)
+    const summary = buildClaudeHostMoveSummary(restart.length, notMoved, canRestart, askId)
+    return summary ? { summary, restart } : undefined
   }
 
   /** This host's own live terminals with Claude evidence: a status row, a saved record or the launch. */
@@ -278,14 +271,22 @@ export abstract class OrcaRuntimeWithClaudeRunningPaneAccountMove extends OrcaRu
     const saved = this.store?.getSettings().claudeManagedAccounts ?? []
     if (
       isClaudePaneOnAccount(
-        this.claudePaneFolder(pane, saved, host),
+        resolveHostClaudePaneFolder(
+          this.restartedClaudePanes.get(pane.pty.ptyId),
+          pane.session?.transcriptPath,
+          saved,
+          host,
+          process.platform
+        ),
         claudeLaunchAccountId(host, host.activeAccountId),
         host
       )
     ) {
       return false
     }
-    return justRestarted || (await readClaudeForeground(this.ptyController, ptyId)) === true
+    return (
+      justRestarted || (await readAgentPaneForeground(this.ptyController, ptyId, 'claude')) === true
+    )
   }
 
   /** A switch landing during the restart leaves unknown which account its spawn read: restart again

@@ -11,7 +11,7 @@ export const BOT_SHARE_RECEIVE_METHODS = [
     params: BotShareReviewParams,
     handler: async ({ shareId, versionId }, context) => {
       assertTrustedCaller(context)
-      return { review: await context.runtime.botShares().review(shareId, versionId) }
+      return { review: await (await context.runtime.botShares()).review(shareId, versionId) }
     }
   })
 ]

@@ -1,3 +1,4 @@
+import type { SleepingMailChange } from '../../../../shared/workspace/lifecycle/sleeping-mail-change'
 import type { BotChangeScope } from '../../../../shared/bots/bot-change-scope'
 import type { WorkspaceMetadataSet } from '../../../../shared/worktree/metadata/workspace-metadata-set'
 import type { WorkspaceCleanupRunFinishedEvent } from '../../../../shared/workspace-cleanup/workspace-cleanup-run'
@@ -6,6 +7,7 @@ import type {
   RuntimeFileOpenPosition
 } from '../../../../shared/file-access/runtime-editor-file-open'
 import type { ClaudeAccountSelectionChange } from '../../../../shared/agent-accounts/managed-account-types'
+import type { AntigravityAccountSelectionChange } from '../../../../shared/agent-accounts/antigravity/antigravity-account-types'
 import type { AgentLaunchPaneVerdictEvent } from '../../../../shared/agent-launch/contracts/agent-launch-pane-verdict'
 import type { SleepingAgentLaunchConfig } from '../../../../shared/agent-session/lifecycle/agent-session-resume'
 import type { PaneLaunchRecipe } from '../../../../shared/terminal/pty/lifecycle/terminal-attachment-launch-result'
@@ -61,6 +63,8 @@ export type RuntimeNotifier = {
   /** A bot, its automations or its Activity's work changed; debounced by the runtime. */
   botsChanged?(scope: BotChangeScope): void
   orchestrationSessionWorkersChanged?(sessionId: string): void
+  peerMailReturned?(): void
+  mcpServersChanged?(): void
   workspaceCleanupRunFinished?(run: WorkspaceCleanupRunFinishedEvent['run']): void
   activateWorktree(
     repoId: string,
@@ -120,6 +124,8 @@ export type RuntimeNotifier = {
   agentLaunchPaneVerdict?(event: AgentLaunchPaneVerdictEvent): void
   /** A launch's recipe when no reveal carried it, so resume can replay it. */
   rememberLaunchRecipe?(recipe: PaneLaunchRecipe): void
+  /** A terminal worker's restart resume now waits on a person beside the cut chats. */
+  restartOffersChanged?(): void
   resolveLegacyWorkerTerminalRecovery?(
     paneKey: string,
     resolution: 'adopted' | 'exited' | 'rolled_back',
@@ -177,7 +183,14 @@ export type RuntimeNotifier = {
   /** A sleep main runs, for the window to follow; optional as only the real bridge wires it. */
   workspaceSleepChanged?(notice: WorkspaceSleepNotice): void
   // Only the host renderer owns slept-agent wake records; phones request navigation-free wake through this optional bridge.
-  resumeSleepingAgents?(worktreeId: string): void
+  /** False when the window could not take it (reloading, gone); the next send is then the whole set. */
+  sleepingMailChanged?(change: SleepingMailChange): boolean | void
+  resumeSleepingAgents?(
+    worktreeId: string,
+    paneKey?: string,
+    prepareOnly?: boolean,
+    launchToken?: string
+  ): void | Promise<boolean>
   /** The window applies a client's Agents-list change with its own actions and answers with the verdicts it leaves. */
   applyAgentPaneActivity?(change: AgentPaneActivityChange): Promise<AgentListPublication>
   terminalFitOverrideChanged(
@@ -195,5 +208,14 @@ export type RuntimeNotifier = {
   browserDriverChanged?(browserPageId: string, driver: RuntimeTerminalDriverState): void
   browserRemoteViewersChanged?(browserPageId: string, hasRemoteViewers: boolean): void
   clientHostedBrowserRowsChanged?(event: ClientHostedBrowserRowsEvent): void
-  claudeAccountSelected?(change: ClaudeAccountSelectionChange): void
+  /** The CLI, a phone or another client switched an agent's account on this host. */
+  accountSelectedElsewhere?<A extends keyof AccountSelectedElsewhere>(
+    agent: A,
+    change: AccountSelectedElsewhere[A]
+  ): void
+}
+
+type AccountSelectedElsewhere = {
+  claude: ClaudeAccountSelectionChange
+  antigravity: AntigravityAccountSelectionChange
 }

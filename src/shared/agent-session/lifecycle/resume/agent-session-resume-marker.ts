@@ -2,6 +2,7 @@
 // No expiry: remove on a non-continuation start, successful resume, dismissal or chat close.
 
 import { z } from 'zod'
+import { lazyZodSchema } from '../../../schema/lazy-zod-schema'
 import { AGENT_STATUS_STATES } from '../../../agent-status/contracts/agent-status-types'
 import { AGENT_CHILD_WORK_KINDS } from '../../../agent-status/child-work/agent-status-child-work'
 import {
@@ -61,45 +62,55 @@ export type AgentSessionResumeMarker = {
 const MAX_FIELD_LENGTH = 512
 
 /** Bounded because a marker is read back from a file this process did not necessarily write. */
-const markerField = z.string().min(1).max(MAX_FIELD_LENGTH)
+const markerField = lazyZodSchema(() => z.string().min(1).max(MAX_FIELD_LENGTH))
 
-const agentSessionResumeWorkSchema = z.object({
-  kind: z.enum(['turn', 'submission']),
-  id: markerField
-})
+const agentSessionResumeWorkSchema = lazyZodSchema(() =>
+  z.object({
+    kind: z.enum(['turn', 'submission']),
+    id: markerField
+  })
+)
 
-const activityLabel = z.string().max(AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH)
+const activityLabel = lazyZodSchema(() =>
+  z.string().max(AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH)
+)
 
-const agentSessionRestartActivitySchema = z.object({
-  state: z.enum(AGENT_STATUS_STATES),
-  prompts: z
-    .array(z.object({ kind: z.enum(['approval', 'question']), label: activityLabel }))
-    .max(AGENT_SESSION_RESTART_ACTIVITY_MAX_PROMPTS),
-  tasks: z
-    .array(z.object({ kind: z.enum(AGENT_CHILD_WORK_KINDS), label: activityLabel }))
-    .max(AGENT_SESSION_RESTART_ACTIVITY_MAX_TASKS)
-})
+const agentSessionRestartActivitySchema = lazyZodSchema(() =>
+  z.object({
+    state: z.enum(AGENT_STATUS_STATES),
+    prompts: z
+      .array(z.object({ kind: z.enum(['approval', 'question']), label: activityLabel }))
+      .max(AGENT_SESSION_RESTART_ACTIVITY_MAX_PROMPTS),
+    tasks: z
+      .array(z.object({ kind: z.enum(AGENT_CHILD_WORK_KINDS), label: activityLabel }))
+      .max(AGENT_SESSION_RESTART_ACTIVITY_MAX_TASKS)
+  })
+)
 
 /** Parse foreign/recovered capsule JSON once before unguarded consumers can launch children. Preserve unknown keys for newer builds; drop unreadable display activity without losing the offer. */
-const agentSessionResumeMarkerSchema = z.object({
-  sessionId: markerField,
-  work: agentSessionResumeWorkSchema,
-  latestUserItemId: markerField.nullable().optional(),
-  recordedAt: z.number().int().nonnegative(),
-  trigger: z.enum(AGENT_SESSION_RESUME_MARKER_TRIGGERS),
-  providerHandleRoot: markerField,
-  teardownId: markerField,
-  /** A crash offer is stored as a quit plus this, since released builds reject a capsule naming an
-   *  unknown trigger but strip unknown keys; a rollback then still reads every offer. */
-  cause: z.literal('crash').optional().catch(undefined),
-  exitUnproven: z.literal(true).optional().catch(undefined),
-  contextClearOperationId: markerField.optional().catch(undefined),
-  journalCursor: z
-    .object({ epoch: markerField, sequence: z.number().int().nonnegative() })
-    .optional()
-    .catch(undefined),
-  activity: agentSessionRestartActivitySchema.optional().catch(undefined)
-})
+const agentSessionResumeMarkerSchema = lazyZodSchema(() =>
+  z.object({
+    sessionId: markerField,
+    work: agentSessionResumeWorkSchema,
+    latestUserItemId: markerField.nullable().optional(),
+    recordedAt: z.number().int().nonnegative(),
+    trigger: z.enum(AGENT_SESSION_RESUME_MARKER_TRIGGERS),
+    providerHandleRoot: markerField,
+    teardownId: markerField,
+    /** A crash offer is stored as a quit plus this, since released builds reject a capsule naming an
+     *  unknown trigger but strip unknown keys; a rollback then still reads every offer. */
+    cause: z.literal('crash').optional().catch(undefined),
+    exitUnproven: z.literal(true).optional().catch(undefined),
+    contextClearOperationId: markerField.optional().catch(undefined),
+    journalCursor: z
+      .object({ epoch: markerField, sequence: z.number().int().nonnegative() })
+      .optional()
+      .catch(undefined),
+    activity: agentSessionRestartActivitySchema.optional().catch(undefined),
+    /** State the guard replaced; null when the offer had no activity. */
+    unguardedState: z.enum(AGENT_STATUS_STATES).nullable().optional().catch(undefined)
+  })
+)
 
 /** Malformed advisory markers drop as null, never throw and make sessions unreadable. */
 export function parseAgentSessionResumeMarker(value: unknown): AgentSessionResumeMarker | null {
@@ -107,14 +118,48 @@ export function parseAgentSessionResumeMarker(value: unknown): AgentSessionResum
   if (!parsed.success) {
     return null
   }
-  const { activity, journalCursor, cause, exitUnproven, ...marker } = parsed.data
+  const { activity, journalCursor, cause, exitUnproven, unguardedState, ...marker } = parsed.data
+  const readActivity = exitUnproven ? withoutManualOnlyGuard(activity, unguardedState) : activity
   return {
     ...marker,
     ...(exitUnproven ? { exitUnproven } : {}),
     ...(cause === 'crash' ? { trigger: 'crash' as const } : {}),
     ...(journalCursor === undefined ? {} : { journalCursor }),
-    ...(activity === undefined ? {} : { activity })
+    ...(readActivity === undefined ? {} : { activity: readActivity })
   }
+}
+
+/** Builds that predate `exitUnproven` drop it, then continue a quit offer on their own unless it is
+ *  blocked on a person. The stored copy carries one such prompt, so a rollback keeps it manual. */
+const MANUAL_ONLY_GUARD_LABEL = 'Orca could not confirm this chat stopped. Continue it yourself.'
+
+function withManualOnlyGuard(
+  activity: AgentSessionRestartActivity | undefined
+): AgentSessionRestartActivity | undefined {
+  // An offer already asking about a prompt is blocked on a person in every build.
+  if (activity && activity.prompts.length > 0) {
+    return activity
+  }
+  return {
+    state: 'blocked',
+    tasks: activity?.tasks ?? [],
+    prompts: [{ kind: 'question', label: MANUAL_ONLY_GUARD_LABEL }]
+  }
+}
+
+function withoutManualOnlyGuard(
+  activity: AgentSessionRestartActivity | undefined,
+  unguardedState: AgentSessionRestartActivity['state'] | null | undefined
+): AgentSessionRestartActivity | undefined {
+  if (!activity?.prompts.some((prompt) => prompt.label === MANUAL_ONLY_GUARD_LABEL)) {
+    return activity
+  }
+  const prompts = activity.prompts.filter((prompt) => prompt.label !== MANUAL_ONLY_GUARD_LABEL)
+  if (prompts.length === 0 && activity.tasks.length === 0 && unguardedState === null) {
+    return undefined
+  }
+  const state = prompts.length > 0 ? 'blocked' : (unguardedState ?? 'working')
+  return { ...activity, prompts, state }
 }
 
 /** The marker as the capsule file stores it; see `cause`. */
@@ -124,8 +169,17 @@ export function storedAgentSessionResumeMarker(marker: AgentSessionResumeMarker)
 > & {
   trigger: AgentSessionResumeTrigger
   cause?: 'crash'
+  unguardedState?: AgentSessionRestartActivity['state'] | null
 } {
-  return marker.trigger === 'crash'
-    ? { ...marker, trigger: 'quit', cause: 'crash' }
-    : { ...marker, trigger: marker.trigger }
+  const guarded = marker.exitUnproven && !(marker.activity && marker.activity.prompts.length > 0)
+  const stored = marker.exitUnproven
+    ? {
+        ...marker,
+        activity: withManualOnlyGuard(marker.activity),
+        ...(guarded ? { unguardedState: marker.activity?.state ?? null } : {})
+      }
+    : marker
+  return stored.trigger === 'crash'
+    ? { ...stored, trigger: 'quit', cause: 'crash' }
+    : { ...stored, trigger: stored.trigger }
 }

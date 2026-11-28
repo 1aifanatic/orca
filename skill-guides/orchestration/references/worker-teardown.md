@@ -1,28 +1,88 @@
-# When a worker ends
+# Worker teardown
 
-| What ended     | Evidence                                                     | What you can rely on                                                                                                                                                                                                                              |
-| -------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The assignment | A `worker_done` verdict, or an observed exit before a report | A successful report completes the Task and Dispatch. A failed report fails them. An unreported exit escalates to the coordinator with `exited`, or `lost` when the pane was deliberately closed. Read that escalation before deciding on a retry. |
-| The session    | The worker tab has closed                                    | The Task and Dispatch records persist. An eligible finished worker auto-closes after the agent comes to rest. A user-kept worker stays open. A local Dispatch follow-up can reopen a resumable session.                                           |
-| The process    | Confirmed termination of the recorded process incarnation    | A stop needs positive exit evidence. Release addresses the exact owned terminal, preserves its output reference when available and returns a receipt. A reused or user-kept terminal can be retained.                                             |
+A worker has three distinct endings: **settled** (attempt/Task outcome),
+**ended** (dormant session), and **destroyed** (process proven gone). Keep Task
+outcome, Dispatch attempt, and process/resource liveness separate. Silence, a
+timeout, or `unverifiable` liveness supplies no proof of exit; a settled Task
+can still have live or unverifiable resources.
 
-Read `ORCA orchestration worker-show --dispatch <dispatch_id> --json` and follow its `next` or recovery instruction.
+## Settled: attempt and Task outcome
 
-- `unverifiable` means the host cannot establish liveness. Treat the process as possibly live.
-- `stop_unknown` means the stop lacks confirmation. Later exit evidence or host reconciliation can settle it. A timeout or a missing tab supplies no exit evidence.
-- `release_pending` means cleanup is waiting for recovery, such as rediscovery of the terminal. `release_unknown` means Orca could not verify the outcome. Inspect the current receipt before retrying. When it calls for a new release attempt, omit `--retry-request` to start a new attempt.
-- `worker-abandon` fences the assignment. Its process and resources may still be live. Use the recovery guide for user-directed cancellation or reassignment.
+- `worker_done` settles the Dispatch and its Task: `succeeded` completes both,
+  `failed` fails both. A reported failure is a conclusion; never mark it
+  completed.
+- If a terminal worker exits without reporting, Orca fails the Dispatch (the
+  Task ordinarily returns to `ready`, or becomes `failed` at the circuit
+  breaker) and mails the coordinator; a remote worker's stop relay carries the
+  report home. A pending or unknown stop takes a separate path and can suppress
+  the exit escalation.
+- `exited` and `lost` are `stopReason` values; `unverifiable` is a liveness
+  verdict. `exited` confirms process exit. `lost` is non-exhaustive — it can
+  follow a deliberate pane close, restart recovery that cannot confirm exit or
+  continuation (including a chat with no terminal), a failed start, or an
+  app-server drop. The original agent may still be running: inspect
+  `worker-show` before sending mail or retrying, and if liveness remains
+  `unverifiable`, stop automatic recovery and report the uncertainty rather than
+  launching a second agent.
+- Three consecutive Dispatch failures in one `--retry-of` chain trip
+  `circuit_broken` and fail the Task (a worker's own `worker_done --outcome
+  failed` report does not advance that count); see
+  [Recovery and cleanup](recovery-and-cleanup.md).
 
-## A short follow-up after a report
+## Ended: the session is dormant, not destroyed
 
-For a quick question to a worker on this Orca while its agent is running in the original terminal, address its exact handle.
+- An accepted report can arm automatic release when supported; auto-close runs
+  only while the agent rests, while a working or needs-input agent keeps its
+  terminal. `--keep-open` (or `worker-keep-open`) prevents automatic close.
+  Auto-close and keep-open never change the Task's outcome.
+- Records persist after close. A plain `send --to dispatch:<id>` (without
+  `--on`) on local Orca or a paired server advertising
+  `orchestration.remote-owned-workers.v1` can reuse an eligible open agent,
+  reopen a resumable session, start fresh with prior context, or refuse when the
+  workspace or restartable agent is missing; the receipt says what occurred.
+- Only legacy paired-server attachments refuse `send` with `dispatch_inactive`;
+  on that refusal, start new work there with `worker-start --on <server>`.
+
+### Ask a short question after the worker reports
+
+If the worker's agent is still running in its original terminal, send it ordinary
+mail to continue the conversation without starting a new Task or repeating the brief.
 
 ```text
-ORCA orchestration send --to <worker_terminal_handle> --type question --subject "One detail" --body "Which browser did you use?"
+ORCA orchestration send --to <worker_terminal_handle> --type question --subject "Test run" --body "Which platform did you test?"
 ```
 
-This sends ordinary mailbox mail without launching a new Task or injecting the assignment preamble. A send receipt records the message. The worker’s reply confirms it received the question. Closing the terminal can strand its unread mail.
+A receipt confirms storage. Wait for the worker's reply to confirm it read the
+question. A delivery-hold warning means the message is queued, and closing the
+terminal can strand unread mail. If the agent has exited or you need another
+supervised result, address the settled Dispatch directly:
 
-If the agent exited, an open terminal can still accept mail. A delivery-hold warning means the message is queued. Check the terminal and worker state before sending it again.
+```text
+ORCA orchestration send --to dispatch:<dispatch_id> --subject "Verify the fix" --body "Please run the same check on Windows and report the result."
+```
 
-When the agent is gone, the terminal has closed, or you need another supervised result, send to the local settled Dispatch at `dispatch:<dispatch_id>`. The message types `status` (the default), `dispatch`, and `handoff` can start a follow-up Task and reopen the saved session. Put a question in the body of one of these messages if you need the worker to start again. A message of type `question` alone does not start a follow-up Task.
+## Destroyed: the process is proven gone
+
+- `worker-stop` settles an unsettled worker on confirmed stop or observed exit
+  (a context-only `dispatch` is fenced with `processAction: none`). Otherwise
+  it exits 1 with `stop_unknown` (which may coexist with
+  `closed_agent_terminal`). A later observed exit or restart recovery can
+  reconcile a pending stop; read the receipt and `worker-show` before acting
+  again.
+- `worker-release` performs post-completion cleanup for a settled worker and
+  can also reclaim an eligible live terminal left by a failed start (which
+  `worker-stop` / `worker-abandon` do not close), respecting custody and
+  returning `retained` or `already_released` when no close is performed.
+  `release_pending` exits 0 and recovery retries after inventory or reconnect.
+  `release_unknown` exits 1: inspect `worker-show` and retry without
+  `--retry-request` (a fresh request ID; reusing the ID replays the receipt),
+  never with a broad `terminal close`.
+- `worker-abandon` fences and settles the assignment while retaining
+  possibly-live resources; it performs no process or filesystem action, refuses
+  a same-runtime in-flight stop, and can leave the Task blocked.
+- The settled-worker sweep releases only on a proven process exit; a live or
+  unverifiable process keeps its terminal.
+
+`ORCA orchestration worker-list --run <run_id> --include-remote` (paginated;
+remote coverage is capability-dependent) reports each worker's liveness
+(`live`, `exited`, `unverifiable`) and conditional `next` action; follow it.

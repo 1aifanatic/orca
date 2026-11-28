@@ -16,7 +16,7 @@ import type {
 
 const WORKER_FILENAME = 'workspace-space-scan-worker-entry.js'
 const WORKER_TIMEOUT_MS = 5 * 60_000
-const IDLE_TEARDOWN_MS = 60_000
+const IDLE_TEARDOWN_MS = 10_000
 
 function createWorker(): HostedWorkerThread {
   const path = resolveWorkerThreadEntryPath(currentWorkerEntryLayout(__dirname), WORKER_FILENAME)

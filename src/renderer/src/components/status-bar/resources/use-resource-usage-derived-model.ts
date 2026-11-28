@@ -7,6 +7,11 @@ import {
   parseExecutionHostId
 } from '../../../../../shared/execution-host/execution-host'
 import { mergeSnapshotAndSessions } from './workspace-attribution/merge-snapshot-and-sessions'
+import { createResourceMergeCache } from './workspace-attribution/resource-chat-row-groups'
+import {
+  resolveResourceFolderWorkspace,
+  resolveResourceWorkspaceHost
+} from './workspace-attribution/resource-workspace-host'
 import type { RuntimeHostResourceSample } from './workspace-attribution/resource-usage-merge-types'
 import type { PtyListedSession as DaemonSession } from '../../../../../shared/terminal/pty/lifecycle/pty-listed-session'
 
@@ -20,11 +25,14 @@ import {
 } from './popover/resource-manager-terminal-copy'
 import {
   getCommitPressureToneClass,
-  getResourceCommitMetricCopy,
   getResourceMemoryMetricCopy
 } from './popover/resource-memory-metric-copy'
-import { formatMemory } from './popover/resource-usage-metrics'
-import { readAgentPaneKeys, splitSnapshotByOwner } from './popover/resource-owner-split'
+import { formatMemory, formatMemoryCompact } from './popover/resource-usage-metrics'
+import {
+  readAgentPaneKeys,
+  sharedAgentProcessUsage,
+  splitSnapshotByOwner
+} from './popover/resource-owner-split'
 import {
   findAmbiguousWorktreeIds,
   findDuplicateIds
@@ -37,7 +45,6 @@ export function useResourceUsageDerivedModel({
   runtimeHostResources,
   sessions,
   resourceSessionBindings,
-  runtimePaneTitlesByTabId,
   repos,
   allWorktrees,
   projectGroups,
@@ -45,16 +52,17 @@ export function useResourceUsageDerivedModel({
   workspaceSessionReady,
   sessionCount,
   sessionsError,
+  sessionsRereading,
   memorySnapshotError,
   snapshot,
-  spaceScanReady
+  spaceScanReady,
+  appMemoryBytes
 }: {
   open: boolean
   resourceSnapshot: MemorySnapshot | null
   runtimeHostResources: readonly RuntimeHostResourceSample[]
   sessions: readonly DaemonSession[]
   resourceSessionBindings: ResourceSessionBindingInputs
-  runtimePaneTitlesByTabId: AppState['runtimePaneTitlesByTabId']
   repos: AppState['repos']
   allWorktrees: Worktree[]
   projectGroups: AppState['projectGroups']
@@ -62,9 +70,12 @@ export function useResourceUsageDerivedModel({
   workspaceSessionReady: boolean
   sessionCount: number | null
   sessionsError: boolean
+  /** The terminal list is being read again because it was outdated; it can't back an end action. */
+  sessionsRereading: boolean
   memorySnapshotError: string | null
   snapshot: MemorySnapshot | null
   spaceScanReady: boolean
+  appMemoryBytes: number | null
 }) {
   const t = useTranslate()
   const repoDisplayNameById = useMemo(() => {
@@ -112,6 +123,8 @@ export function useResourceUsageDerivedModel({
   // Keep duplicate workspace IDs in the catalog; gate host attribution where the resource identity is ambiguous.
   const ambiguousWorktreeIds = useMemo(() => findAmbiguousWorktreeIds(allWorktrees), [allWorktrees])
 
+  // A fresh cache per open, so a closed panel holds no rows.
+  const mergeCache = useMemo(() => (open ? createResourceMergeCache() : undefined), [open])
   // Why: skip the merge when closed; the always-mounted segment recomputing on every keystroke-driven store mutation made the app laggy.
   const unifiedRepos = useMemo(
     () =>
@@ -122,7 +135,6 @@ export function useResourceUsageDerivedModel({
             {
               // Share all binding inputs with bulk selection so deferred SSH sessions also require single-row kill confirmation.
               ...resourceSessionBindings,
-              runtimePaneTitlesByTabId,
               repoDisplayNameById,
               repoConnectionIdById,
               repoRuntimeHostIdById,
@@ -131,15 +143,16 @@ export function useResourceUsageDerivedModel({
               worktreeById,
               ambiguousWorktreeIds
             },
-            t
+            t,
+            mergeCache
           )
         : [],
     [
+      mergeCache,
       open,
       resourceSnapshot,
       sessions,
       resourceSessionBindings,
-      runtimePaneTitlesByTabId,
       repoDisplayNameById,
       repoConnectionIdById,
       repoRuntimeHostIdById,
@@ -161,13 +174,39 @@ export function useResourceUsageDerivedModel({
     [open, resourceSnapshot, sessions]
   )
 
+  // Once per shown sample or host placement change; title and binding churn never rewalk it.
+  const sharedAgentUsage = useMemo(() => {
+    if (!open || !resourceSnapshot) {
+      return null
+    }
+    const hostCtx = {
+      worktreeById,
+      ambiguousWorktreeIds,
+      repoConnectionIdById,
+      repoRuntimeHostIdById
+    }
+    // The merge leaves out local samples for workspaces a paired machine hosts, chats included; those stay shared.
+    return sharedAgentProcessUsage(resourceSnapshot, (worktree) => {
+      const repoId =
+        resolveResourceFolderWorkspace(hostCtx, worktree.worktreeId)?.repoId ?? worktree.repoId
+      return !resolveResourceWorkspaceHost(hostCtx, worktree.worktreeId, repoId).runtimeHostId
+    })
+  }, [
+    open,
+    resourceSnapshot,
+    worktreeById,
+    ambiguousWorktreeIds,
+    repoConnectionIdById,
+    repoRuntimeHostIdById
+  ])
+
   // Why: orphan detection needs daemon inventory; keep it open-only so the closed badge never triggers a background global session scan.
   const orphanCount = useMemo(() => {
-    if (!open || !workspaceSessionReady) {
+    if (!open || !workspaceSessionReady || sessionsRereading) {
       return 0
     }
     return countUnboundDaemonSessions(sessions, resourceSessionBindings)
-  }, [open, sessions, resourceSessionBindings, workspaceSessionReady])
+  }, [open, sessions, resourceSessionBindings, workspaceSessionReady, sessionsRereading])
 
   // Share daemon inventory for open and closed counts; wake hints are bindings, not a live session count.
   const triggerSessionCount = sessionCount
@@ -176,10 +215,6 @@ export function useResourceUsageDerivedModel({
     resourceSnapshot?.processMemoryMetric ?? 'rss',
     t
   )
-  // Missing commit support on Unix/older hosts means unknown, not zero committed bytes.
-  const commitMetricCopy = resourceSnapshot?.processCommitMetric
-    ? getResourceCommitMetricCopy(t)
-    : null
   const { totalPrivateMemory, commitToneClass } = useMemo(() => {
     const privateMemory = resourceSnapshot?.totalPrivateMemory
     return {
@@ -190,24 +225,30 @@ export function useResourceUsageDerivedModel({
       })
     }
   }, [resourceSnapshot])
+  // Missing commit support on Unix/older hosts means unknown, not zero committed bytes.
   const commitBadgeLabel =
-    commitMetricCopy && totalPrivateMemory !== undefined ? formatMemory(totalPrivateMemory) : null
+    resourceSnapshot?.processCommitMetric && totalPrivateMemory !== undefined
+      ? formatMemory(totalPrivateMemory)
+      : null
 
   // Why: memorySnapshotError null means "succeeded" OR "never fetched"; a sessions failure before any snapshot still counts as daemon-unreachable.
   const daemonUnreachable = sessionsError && (memorySnapshotError !== null || snapshot === null)
   // Why: sessions IPC can fail while snapshot IPC works; flag it so the empty session list isn't mistaken for healthy.
   const sessionsOnlyError = sessionsError && memorySnapshotError === null
+  const appMemoryLabel = appMemoryBytes === null ? null : formatMemoryCompact(appMemoryBytes)
   const resourceManagerTooltipLines = getResourceManagerTooltipLines(
     {
       sessionCount: triggerSessionCount,
-      spaceScanReady
+      spaceScanReady,
+      appMemoryLabel
     },
     t
   )
   const resourceManagerAriaLabel = getResourceManagerAriaLabel(
     {
       sessionCount: triggerSessionCount,
-      spaceScanReady
+      spaceScanReady,
+      appMemoryLabel
     },
     t
   )
@@ -215,15 +256,16 @@ export function useResourceUsageDerivedModel({
   return {
     unifiedRepos,
     ownerSplit,
+    sharedAgentUsage,
     orphanCount,
     triggerSessionCount,
     memoryMetricCopy,
-    commitMetricCopy,
     commitToneClass,
     commitBadgeLabel,
     daemonUnreachable,
     sessionsOnlyError,
     resourceManagerTooltipLines,
-    resourceManagerAriaLabel
+    resourceManagerAriaLabel,
+    appMemoryLabel
   }
 }

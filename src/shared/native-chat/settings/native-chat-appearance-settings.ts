@@ -20,9 +20,13 @@ export type AgentDefaultSurface = 'chat' | 'terminal'
 export type NativeChatGlobalSettings = {
   /** Unlisted agents follow this default; absent means terminal. */
   agentDefaultSurface?: AgentDefaultSurface
+  /** A paired client saved agentDefaultSurface here, so a headless host's Terminal is a choice, not its untouched default. */
+  agentDefaultSurfaceChosen?: boolean
   nativeChatAppearance?: NativeChatAppearanceSettings
   /** Off keeps chats unnamed without running a naming agent. Absent means on. */
   nativeChatAutoName?: boolean
+  /** Antigravity chats name themselves with agy, on the chat's own sign-in. Absent means off. */
+  antigravityChatNaming?: boolean
   /** Explicit per-agent overrides of the default surface. */
   nativeChatProviders?: NativeChatProviderChoices
   /** Own sends bring the latest into view; off keeps a reader who scrolled up in place. Absent means on. */

@@ -17,18 +17,16 @@ import {
   fetchResolveReviewThread,
   fetchUpdateIssueComment
 } from '../../github-operations/github-pr-mutations'
-import '../../github-operations/github-pr-mutation-outcome'
 import type { GitHubPrMutationOutcome } from '../../github-operations/github-pr-mutation-outcome'
 import { fetchAddPRReviewComment } from '../../github-operations/github-pr-review-line-mutations'
 import type { GitHubPrRepoSlug } from '../../github-operations/github-pr-repo-slug'
 import {
-  acceptPrComments,
   patchPrDetails,
   prQueryKeys,
-  readPrComments,
   type PrDetailsInput,
   type PrQueryScope
 } from '../mobile-pr-queries'
+import { acceptPrComments, readPrComments } from './pr-comment-read'
 import type {
   AddRootCommentParams,
   DeleteCommentParams,

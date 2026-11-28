@@ -18,9 +18,45 @@ export function canonicalWorktreePath(pathValue: string, platform = process.plat
     : canonicalPosixPath(pathValue, platform)
 }
 
+function hasDotSegment(pathValue: string): boolean {
+  const len = pathValue.length
+  let idx = pathValue.indexOf('/.')
+  while (idx !== -1) {
+    const after = idx + 2
+    if (after === len || pathValue.charCodeAt(after) === 47) {
+      return true
+    }
+    if (
+      pathValue.charCodeAt(after) === 46 &&
+      (after + 1 === len || pathValue.charCodeAt(after + 1) === 47)
+    ) {
+      return true
+    }
+    idx = pathValue.indexOf('/.', after)
+  }
+  return false
+}
+
+function isAlreadyNormalizedPosixAbsolutePath(pathValue: string): boolean {
+  if (pathValue.charCodeAt(0) !== 47) {
+    return false
+  }
+  if (pathValue.length === 1) {
+    return true
+  }
+  return (
+    pathValue.charCodeAt(pathValue.length - 1) !== 47 &&
+    !pathValue.includes('//') &&
+    !hasDotSegment(pathValue)
+  )
+}
+
 // macOS Git reports /tmp checkouts as /private/tmp.
 function canonicalPosixPath(pathValue: string, platform: NodeJS.Platform): string {
-  const normalized = posix.normalize(posix.resolve(pathValue))
+  // posix.resolve already normalizes; skip it completely for already-canonical absolute POSIX paths.
+  const normalized = isAlreadyNormalizedPosixAbsolutePath(pathValue)
+    ? pathValue
+    : posix.resolve(pathValue)
   if (platform !== 'darwin') {
     return normalized
   }
@@ -47,6 +83,9 @@ export function areWorktreePathsEqual(
   rightPath: string,
   platform = process.platform
 ): boolean {
+  if (leftPath === rightPath) {
+    return true
+  }
   const leftIsPosix = looksLikePosixAbsolutePath(leftPath)
   if (leftIsPosix || looksLikePosixAbsolutePath(rightPath)) {
     // win32.resolve would attach a drive to POSIX paths and manufacture cross-filesystem equality.
@@ -112,7 +151,7 @@ export function dedupeWorktreesByPath<T extends { path: string }>(
 }
 
 function looksLikeWindowsPath(pathValue: string): boolean {
-  return /^[A-Za-z]:[\\/]/.test(pathValue) || pathValue.startsWith('\\\\')
+  return isWindowsAbsolutePathLike(pathValue)
 }
 
 // One leading slash only: `//server/share` and WSL UNC aliases are Windows roots, not POSIX paths.
@@ -128,6 +167,23 @@ export function resolveRevParsePath(repoPath: string, value: string): string {
   return looksLikeWindowsPath(repoPath)
     ? win32.resolve(repoPath, value)
     : posix.resolve(repoPath, value)
+}
+
+/**
+ * Prefer the backlink spelling `git worktree list` keys rows by, only when it differs from --show-toplevel
+ * by case or Unicode form (macOS precomposeunicode registers NFC while the toplevel keeps on-disk NFD).
+ */
+export function resolveRegisteredWorktreePath(
+  backlinkFile: string,
+  gitDir: string,
+  topLevel: string
+): string {
+  const backlink = backlinkFile.trimEnd().replace(/\/\.git$/, '')
+  // Skip fs.realpath: it would restore the on-disk spelling; the check below rejects any other divergence from Git.
+  const candidate = win32.isAbsolute(backlink) ? backlink : posix.normalize(`${gitDir}/${backlink}`)
+  return candidate.normalize('NFC').toLowerCase() === topLevel.normalize('NFC').toLowerCase()
+    ? candidate
+    : topLevel
 }
 
 export function translateWorktreePath(

@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native'
-import { colors, feedback, radii, spacing, typography } from '../../../theme/mobile-theme'
+import { radii, spacing, typography } from '../../../theme/mobile-theme'
 import { themedStyleSheet } from '../../../theme/themed-styles'
 
 const DOT = 8
@@ -9,7 +9,7 @@ const CLOSE_SIZE = 32
 /** Where a row's name starts, so the lines under it line up with the name. */
 const NAME_INSET = spacing.md + RING + spacing.sm
 
-export const mcpPanelStyles = themedStyleSheet(() => ({
+export const mcpPanelStylesSheet = themedStyleSheet((colors) => ({
   header: {
     minHeight: CLOSE_SIZE + spacing.xs,
     flexDirection: 'row',
@@ -49,6 +49,21 @@ export const mcpPanelStyles = themedStyleSheet(() => ({
   },
   listContent: {
     paddingBottom: spacing.xs
+  },
+  footer: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.composerBorder
+  },
+  footerText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '500'
   },
   groupLabel: {
     paddingHorizontal: spacing.md,
@@ -123,6 +138,14 @@ export const mcpPanelStyles = themedStyleSheet(() => ({
     paddingBottom: spacing.sm,
     marginTop: -spacing.xs
   },
+  rowHint: {
+    color: colors.textSecondary,
+    fontSize: typography.metaSize,
+    paddingLeft: NAME_INSET,
+    paddingRight: spacing.md,
+    paddingBottom: spacing.sm,
+    marginTop: -spacing.xs
+  },
   pasteBox: {
     paddingLeft: NAME_INSET,
     paddingRight: spacing.sm,
@@ -163,12 +186,6 @@ export const mcpPanelStyles = themedStyleSheet(() => ({
   buttonPlain: {
     paddingHorizontal: spacing.sm
   },
-  buttonPressed: {
-    opacity: feedback.pressedOpacity
-  },
-  buttonDisabled: {
-    opacity: feedback.disabledOpacity
-  },
   buttonLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -180,11 +197,5 @@ export const mcpPanelStyles = themedStyleSheet(() => ({
   buttonLabelPlain: {
     fontWeight: '500',
     color: colors.textSecondary
-  },
-  buttonLabelHidden: {
-    opacity: 0
-  },
-  buttonSpinner: {
-    position: 'absolute'
   }
 }))

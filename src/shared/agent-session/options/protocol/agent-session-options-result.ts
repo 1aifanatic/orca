@@ -21,6 +21,9 @@ export type AgentSessionAcceptedInputSources = Partial<
 export type AgentSessionOptionsResult = {
   /** This host verified that account selection moves this chat with its history intact. */
   canSwitchAccount?: boolean
+  /** Picking another of this host's saved Antigravity accounts moves this usage-limited chat to it.
+   *  Separate from canSwitchAccount, which older phones offer for any agent. */
+  canSwitchAntigravityAccount?: boolean
   accountUsage?: true
   /** Fresh host observation; absent means an older host or unknown conversation. */
   sessionNeverStarted?: boolean
@@ -54,6 +57,8 @@ export type AgentSessionOptionsResult = {
     model?: string
     /** Legacy hosts may include an answer model; clients ignore it when presenting selection. */
     reportedModel?: string
+    /** The current child runs this provider fallback in place of `model`; display only, never sent. */
+    fallbackModel?: string
     effort?: string
     /** Child-scoped actual for display only; effort remains accepted raw input. */
     reportedEffort?: string

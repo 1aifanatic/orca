@@ -11,12 +11,9 @@ import {
   PLUGIN_NOT_FOUND_CODE,
   PluginCliError
 } from '../../../../../shared/plugins/approval/plugin-cli-approval'
-import type { Store } from '../../../../persistence/loading-store/store'
-import type { PluginConsentRequest } from '../../../../../shared/plugins/approval/plugin-consent-request'
 import type { PluginHostListEntry } from '../../../../../shared/plugins/plugin-list-entry'
 import { listPluginsForClients } from '../../../../plugins/discovery/plugin-client-list'
 import type { PluginService } from '../../../../plugins/plugin-service'
-import type { PluginCliCatalogs } from '../../../../plugins/cli/plugin-cli-catalog-candidates'
 import {
   installPluginFromCli,
   type PluginCliInstallDeps
@@ -34,27 +31,21 @@ import {
 import { uninstallInstalledPlugin } from '../../../../plugins/installation/plugin-uninstall'
 import { assertPluginSystemEnabled } from '../../../../plugins/development/plugin-dev-folders'
 
-/** What install, update, uninstall and catalog RPCs need beyond the plugin service. */
-export type PluginInstallRpcServices = {
-  pluginService: PluginService
-  catalogs: PluginCliCatalogs
-  applyConsent: (request: PluginConsentRequest) => Promise<void>
-  store: Pick<Store, 'getSettings' | 'updateSettings'>
-  afterUninstall?: (pluginKey: string) => Promise<void>
-}
+import {
+  getPluginInstallServicesForRpc,
+  setPluginInstallServicesForRpc,
+  type PluginInstallRpcServices
+} from './plugin-rpc-slots'
 
-let installServicesForRpc: PluginInstallRpcServices | null = null
-
-export function setPluginInstallServicesForRpc(services: PluginInstallRpcServices | null): void {
-  installServicesForRpc = services
-}
+export { setPluginInstallServicesForRpc, type PluginInstallRpcServices }
 
 async function requireInstallServices(): Promise<PluginInstallRpcServices> {
-  if (!installServicesForRpc) {
+  const services = getPluginInstallServicesForRpc()
+  if (!services) {
     throw new Error('Plugin installs are not available on this runtime')
   }
-  await installServicesForRpc.pluginService.whenReady()
-  return installServicesForRpc
+  await services.pluginService.whenReady()
+  return services
 }
 
 function installDeps(

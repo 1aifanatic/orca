@@ -1,6 +1,10 @@
 import { MOBILE_AGENT_SESSION_RPC_METHODS } from './runtime-rpc-mobile-agent-session-methods'
 import { PAIRED_DESKTOP_METHODS } from './runtime-rpc-mobile-paired-desktop-methods'
 import { MOBILE_BOT_RPC_METHODS } from './runtime-rpc-mobile-bot-methods'
+import { MOBILE_HOST_UPDATE_RPC_METHODS } from './runtime-rpc-mobile-host-update-methods'
+import { MOBILE_MCP_SERVER_RPC_METHODS } from './runtime-rpc-mobile-mcp-server-methods'
+import { MOBILE_ORCA_ACCOUNT_RPC_METHODS } from './runtime-rpc-mobile-orca-account-methods'
+import { MOBILE_PROJECT_RPC_METHODS } from './runtime-rpc-mobile-project-methods'
 import { DEFAULT_SCOPE_HOST_METHODS } from './runtime-rpc-mobile-tracker-methods'
 
 // Execution-host routes follow the configured target; paired-desktop routes stay with the relaying Mac;
@@ -8,20 +12,16 @@ import { DEFAULT_SCOPE_HOST_METHODS } from './runtime-rpc-mobile-tracker-methods
 export type MobileRpcMethodRoute = 'execution-host' | 'paired-desktop' | 'default-scope-host'
 
 export const EXECUTION_HOST_METHODS = [
-  // Signing in/out needs the same power as running commands on the host (workspace).
-  'orcaAccount.selectOrg',
-  'orcaAccount.signIn.cancel',
-  'orcaAccount.signIn.complete',
-  'orcaAccount.signIn.start',
-  'orcaAccount.signIn.wait',
-  'orcaAccount.signOut',
-  'orcaAccount.status',
-  'orcaAccount.subscribe',
-  'orcaAccount.unsubscribe',
+  ...MOBILE_ORCA_ACCOUNT_RPC_METHODS,
+  // A relayed phone asks the server itself for its own pairing; the server refuses any other caller.
+  'pairing.delegatedMobileDevice.createOffer',
   'ui.getJiraQuickFilters',
   'ui.setJiraQuickFilters',
   'ui.getJiraSavedFilters',
   'ui.mutateJiraSavedFilters',
+  // Saved agy accounts belong to the host whose chats run agy.
+  'accounts.antigravityList',
+  'accounts.antigravitySelect',
   'agent.launch',
   'agent.launchReplay',
   // Agent ids, chat records and transcripts live on the host that runs the agent.
@@ -34,12 +34,15 @@ export const EXECUTION_HOST_METHODS = [
   'agentTeams.prepareLaunch',
   'agentTeams.tmuxCompat',
   ...MOBILE_BOT_RPC_METHODS,
+  ...MOBILE_MCP_SERVER_RPC_METHODS,
+  ...MOBILE_HOST_UPDATE_RPC_METHODS,
   // A bot chat's Slack thread switch and its posts' Retry, Dismiss and Delete, on the bot's host.
   'connector.slackMirror.set',
   'connector.slackMirror.post',
   'connector.slackMirror.status',
   // Transcripts live on the host that ran the agent, which is also where resume launches it.
   'aiVault.listSessions',
+  'aiVault.prepareSessionHandoffPrompt',
   'aiVault.prepareSessionResume',
   'aiVault.resolveSessionTitles',
   'aiVault.searchSessions',
@@ -65,12 +68,16 @@ export const EXECUTION_HOST_METHODS = [
   'browser.mouseMove',
   'browser.mouseUp',
   'browser.mouseWheel',
+  // Answers a streamed page's permission, sign-in or open-app prompt on the host that asked; gated on browser.page-prompts.v1.
+  'browser.pagePromptAnswer',
   // Read-only list so the phone can name a tab's profile and offer the host's profiles for a new tab.
   'browser.profileList',
   'browser.reload',
   'browser.screencast',
   'browser.screencast.ack',
   'browser.screencast.unsubscribe',
+  // Gated on browser.mobile-stop.v1; older hosts refuse it here.
+  'browser.stop',
   'browser.tabCreate',
   'browser.viewport',
   // Pasted images must land on the host whose terminal reads the path.
@@ -95,13 +102,25 @@ export const EXECUTION_HOST_METHODS = [
   'files.readTerminalArtifactChunk',
   'files.readTerminalArtifactPreview',
   'files.resolveTerminalPath',
+  // Files explorer search inside file contents; the host trims the reply to the phone's content budget.
+  'files.search',
   'files.searchPaths',
+  // Upload into a workspace folder (files.upload.staged.v1): bytes stage outside the worktree, the commit never replaces a file.
+  'files.uploadBegin',
+  'files.saveChunk',
+  'files.uploadCommit',
+  'files.saveAbort',
   'files.stat',
   'files.statTerminalArtifact',
+  // Phone edits of workspace files; the host's disk precondition refuses a save over a newer desktop change.
+  'files.writeIfUnchanged',
   'files.writeTerminalArtifact',
-  // A folder row's Delete removes the Orca workspace on its host, as desktop's Remove Workspace does.
-  'folderWorkspace.delete',
-  'folderWorkspace.list',
+  // The Files browser's New Folder, Rename, Duplicate and Delete on the workspace's host; no-clobber, and
+  // owner-fenced like files.createFile. Gated on files.mobile-explorer-mutations.v1. Delete is permanent.
+  'files.copy',
+  'files.createDir',
+  'files.delete',
+  'files.rename',
   'git.abortMerge',
   'git.abortRebase',
   // Read-only: the delete confirm names ignored files (.env) that removing the worktree would lose.
@@ -211,22 +230,21 @@ export const EXECUTION_HOST_METHODS = [
   'orchestration.workerApprovalsSubscribe',
   'orchestration.workerApprovalsUnsubscribe',
   'orchestration.approvalAnswer',
+  // Read-only: the chat's worker strip. Stop and Clear stay on the desktop (the host refuses a phone).
+  'orchestration.workerDockRead',
+  'orchestration.workerDockSubscribe',
+  // Asks from agents on paired servers wait on this computer for its person, as on its phone. The phone
+  // reads and removes Always allow choices; adding one without a card stays on the desktop.
+  'pairedServerAsks.list',
+  'pairedServerAsks.decide',
+  'pairedServerAsks.allowances',
+  'pairedServerAsks.disallow',
   // The worker's own host keeps it open and owns its countdown; older phones still report typing and viewing.
   'orchestration.workerTerminalUserInput',
   'orchestration.workerChatTouch',
   'orchestration.workerAutoClose',
   'orchestration.workerKeepOpen',
-  'projectGroup.list',
-  'project.list',
-  'projectHostSetup.list',
-  'repo.baseRefDefault',
-  'repo.gitAvailable',
-  'repo.hooks',
-  'repo.list',
-  'repo.saveSparsePreset',
-  'repo.searchRefs',
-  'repo.sparsePresets',
-  'repo.update',
+  ...MOBILE_PROJECT_RPC_METHODS,
   'settings.getAgentLaunch',
   // The host that owns the workspace scans its skills.
   'skills.discover',
@@ -263,6 +281,7 @@ export const EXECUTION_HOST_METHODS = [
   'terminal.createAgentSession',
   'terminal.ensureAgentSession',
   'terminal.focus',
+  'terminal.inspectProcess',
   'terminal.isRunningAgent',
   'terminal.list',
   'terminal.multiplex',

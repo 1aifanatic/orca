@@ -12,7 +12,7 @@ import { SkillFreshnessNudge } from './components/skills/freshness/SkillFreshnes
 import PinnedTabCloseDialog from './components/terminal-pane/layout/close/PinnedTabCloseDialog'
 import RunningTerminalCloseDialog from './components/terminal-pane/layout/close/RunningTerminalCloseDialog'
 import WorktreeBaseFallbackDialog from './components/sidebar/workspace-creation/base-ref-update/WorktreeBaseFallbackDialog'
-import ClaudeAccountSwitchDialog from './components/provider-accounts/claude/ClaudeAccountSwitchDialog'
+import AccountSwitchDialog from './components/provider-accounts/account-switch/AccountSwitchDialog'
 import { AppBackgroundServices } from './app-shell/AppBackgroundServices'
 import { AppRootSurfaces } from './app-shell/AppRootSurfaces'
 import { AppWorkspaceShell } from './app-shell/AppWorkspaceShell'
@@ -41,7 +41,7 @@ import { useWindowVisibilityEffects } from './app-shell/chrome/use-window-visibi
 import { SpaceWindowStatePublisher } from './components/workspace-space/SpaceWindowStatePublisher'
 import { PlainSshTerminalPanels } from './components/plain-ssh-terminal/PlainSshTerminalPanels'
 import { PluginShotReplayMount } from './components/plugins/view/PluginShotReplayMount'
-import { AddToChatPointMenuHost } from './components/native-chat/selection-quotes/AddToChatMenu'
+import { AddToChatPointMenuHost } from './components/native-chat/selection-quotes/AddToChatPointMenuHost'
 import { installActiveWorktreeRemovalSuccessor } from './lib/workspace/activation/active-worktree-removal-successor'
 import { useAppStore } from './store'
 
@@ -132,7 +132,8 @@ function App(): React.JSX.Element {
       <SkillFreshnessNudge />
       {/* One account-link confirm at a time, over whatever screen the owner is on. */}
       <WorktreeBaseFallbackDialog />
-      <ClaudeAccountSwitchDialog />
+      <AccountSwitchDialog agent="claude" />
+      <AccountSwitchDialog agent="antigravity" />
       <PinnedTabCloseDialog />
       <RunningTerminalCloseDialog />
       {/* Electron drag hit-testing follows DOM order, ignoring z-index; render controls last to keep them clickable. */}

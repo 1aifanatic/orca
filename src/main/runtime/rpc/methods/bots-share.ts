@@ -40,10 +40,17 @@ export const BOT_SHARE_METHODS = [
     name: 'bots.share.prepare',
     permission: 'workspace',
     params: BotSharePrepare,
-    handler: async ({ botId, setupNote, last, localOnly, ...selection }, context) =>
-      context.runtime
-        .botShares()
-        .prepare(authorizedBot(context, botId), selection, { setupNote, last, localOnly })
+    handler: async (
+      { botId, setupNote, last, localOnly, skillsSession, reuseSkills, ...selection },
+      context
+    ) =>
+      (await context.runtime.botShares()).prepare(authorizedBot(context, botId), selection, {
+        setupNote,
+        last,
+        localOnly,
+        session: skillsSession,
+        reuseSkills
+      })
   }),
   defineMethod({
     name: 'bots.share.publish',
@@ -51,7 +58,7 @@ export const BOT_SHARE_METHODS = [
     params: BotSharePublish,
     handler: async ({ botId, candidateId, setupNote = '', link }, context) => {
       const bot = authorizedBot(context, botId)
-      const shares = context.runtime.botShares()
+      const shares = await context.runtime.botShares()
       return link
         ? shares.update(bot, candidateId, setupNote, link)
         : shares.publish(bot, candidateId, setupNote)
@@ -62,9 +69,9 @@ export const BOT_SHARE_METHODS = [
     permission: 'workspace',
     params: BotSharePartView,
     handler: async ({ botId, candidateId, part }, context) => ({
-      files: await context.runtime
-        .botShares()
-        .view(authorizedBot(context, botId), candidateId, part)
+      files: await (
+        await context.runtime.botShares()
+      ).view(authorizedBot(context, botId), candidateId, part)
     })
   }),
   defineMethod({
@@ -73,7 +80,7 @@ export const BOT_SHARE_METHODS = [
     params: BotShareStop,
     handler: async ({ shareId, botId }, context) => {
       assertTrustedCaller(context)
-      return context.runtime.botShares().stop(shareId, botId)
+      return (await context.runtime.botShares()).stop(shareId, botId)
     }
   }),
   defineMethod({
@@ -83,7 +90,7 @@ export const BOT_SHARE_METHODS = [
     // Every live bot link the owner has; botShareStatusOf reads one bot's from it.
     handler: async ({ botId }, context) => {
       assertTrustedCaller(context)
-      return context.runtime.botShares().list(context.runtime.bots.list(), botId)
+      return (await context.runtime.botShares()).list(context.runtime.bots.list(), botId)
     }
   })
 ]

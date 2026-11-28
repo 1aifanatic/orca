@@ -1,8 +1,4 @@
 import {
-  ORCA_ACCOUNT_APPROVE_IN_BROWSER_RUNTIME_CAPABILITY,
-  ORCA_ACCOUNT_SERVER_SIGN_IN_RUNTIME_CAPABILITY
-} from '../../shared/orca-account-runtime-capabilities'
-import {
   isOrcaAccountApprovalPrompt,
   type OrcaAccountServerStatus,
   type OrcaAccountSignInIntent,
@@ -176,24 +172,9 @@ function toWire(
   return { ...status, provider: intentOf(status.provider) }
 }
 
-let installed: OrcaServerSignIn | null = null
-
-/** One account per host process; the runtime advertises the capability only once installed. */
-export function installOrcaServerSignIn(server: OrcaServerSignIn | null): void {
-  installed?.dispose()
-  installed = server
-}
-
-export function getOrcaServerSignIn(): OrcaServerSignIn | null {
-  return installed
-}
-
-/** Only a host that installed its account sign-in can be signed in by a client. */
-export function orcaAccountRuntimeCapabilities(): string[] {
-  return installed
-    ? [
-        ORCA_ACCOUNT_SERVER_SIGN_IN_RUNTIME_CAPABILITY,
-        ORCA_ACCOUNT_APPROVE_IN_BROWSER_RUNTIME_CAPABILITY
-      ]
-    : []
-}
+export {
+  getOrcaServerSignIn,
+  installOrcaServerSignIn,
+  orcaAccountRuntimeCapabilities,
+  resolveOrcaServerSignIn
+} from './orca-server-sign-in-slot'

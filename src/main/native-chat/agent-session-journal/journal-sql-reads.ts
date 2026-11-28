@@ -1,5 +1,6 @@
 import type { NativeChatTaskList } from '../../../shared/native-chat/input/task-lists/native-chat-task-list'
-import type { JournalRequestMark } from './journal-request-failure'
+import type { JournalTurnAttribution } from './journal-domain-turn-attribution'
+import type { JournalRequestFailureRead, JournalRequestMark } from './journal-request-failure'
 import type { JournalMailAttempt, JournalMailObservation } from './journal-mail-observation'
 import type { JournalRewindCut, JournalRewindSelection } from './journal-domain-rewind-cut'
 import type { JournalForkBoundary, JournalSavedContent } from './journal-domain-fork-reads'
@@ -48,7 +49,10 @@ export type JournalSqlReads = AgentSessionJournalReads & {
   savedContent(): Promise<JournalSavedContent>
   conversationOutline(budgetBytes: number): Promise<AgentSessionConversationOutline>
   requestFailure(kind: JournalRequestMark['kind'], id: string): Promise<AgentJournalSnapshot>
-  runningRequest(stopSettle?: JournalStopSettleFact): Promise<JournalRequestMark | null>
+  runningRequest(
+    stopSettle?: JournalStopSettleFact,
+    exit?: Extract<JournalRequestFailureRead, { kind: 'running-request' }>['exit']
+  ): Promise<JournalRequestMark | null>
   rewindTarget(itemId: string): Promise<JournalRewindTarget>
   rewindCut(target: JournalRewindSelection): Promise<JournalRewindCut | null>
   namingPrompt(hostStartedAt?: number): Promise<string>
@@ -59,6 +63,8 @@ export type JournalSqlReads = AgentSessionJournalReads & {
   automationResultNotes(): Promise<AgentJournalSnapshot>
   /** The rows and sends that place these anchors' turns, never the whole conversation. */
   operationWindow(anchors: JournalOperationWindowAnchors): Promise<JournalOperationWindow>
+  /** Whom a turn acts for, by index over the turn's own rows (never the chat's send history). */
+  turnAttribution(turnId: string, through: number): Promise<JournalTurnAttribution>
   promptItem(end: 'first' | 'last'): Promise<AgentJournalRenderItem | null>
   /** The plan last written in the turn of the chat's newest tool call, or null. */
   latestTaskList(): Promise<NativeChatTaskList | null>
@@ -151,8 +157,8 @@ export function journalSqlReads(
       (await read({ kind: 'conversation-outline', budgetBytes })).outline,
     requestFailure: async (requestKind, id) =>
       (await read({ kind: 'request-failure', requestKind, id })).snapshot,
-    runningRequest: async (stopSettle) =>
-      (await read({ kind: 'running-request', stopSettle })).request,
+    runningRequest: async (stopSettle, exit) =>
+      (await read({ kind: 'running-request', stopSettle, exit })).request,
     rewindTarget: async (itemId) => (await read({ kind: 'rewind-target', itemId })).target,
     rewindCut: async (target) => (await read({ kind: 'rewind-cut', target })).cut,
     namingPrompt: async (hostStartedAt) =>
@@ -162,6 +168,8 @@ export function journalSqlReads(
     botMemorySources: async (after) => (await read({ kind: 'bot-memory-sources', after })).sources,
     automationResultNotes: async () => (await read({ kind: 'automation-result-notes' })).snapshot,
     operationWindow: async (anchors) => (await read({ kind: 'operation-window', anchors })).window,
+    turnAttribution: async (turnId, through) =>
+      (await read({ kind: 'turn-attribution', turnId, through })).attribution,
     promptItem: async (end) => (await read({ kind: 'prompt-item', end })).item,
     latestTaskList: async () => (await read({ kind: 'latest-task-list' })).list,
     runMentions: async (runId) => {
@@ -260,8 +268,14 @@ export function journalSqlReads(
       (await read({ kind: 'claude-history-prompts', sessionId, uuids })).prompts,
     submission: async (clientMessageId) =>
       (await read({ kind: 'submission', clientMessageId })).submission,
-    submissionBody: async (clientMessageId) =>
-      (await read({ kind: 'submission-body', clientMessageId })).body,
+    submissionBody: async (clientMessageId, options) =>
+      (
+        await read({
+          kind: 'submission-body',
+          clientMessageId,
+          ...(options?.family ? { family: true } : {})
+        })
+      ).body,
     receiptFor: async (clientMessageId) =>
       (await read({ kind: 'acceptance', clientMessageId })).receipt,
     lastProviderActivityAt: async (fence) => (await read({ kind: 'provider-activity', fence })).at,

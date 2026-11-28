@@ -24,14 +24,13 @@ import {
   FileOpenTab,
   FilePathSearch,
   FileReadChunk,
-  FileSearch,
   FileDirRead,
   FileTreePath,
   FileUnwatch,
   ResolveTerminalPath,
   ServerDirectoryBrowse
 } from '../../../../../shared/rpc-contract/filesystem/files-params'
-import { limitSearchResultToContentBudget } from '../../../../../shared/file-search/search-result-transport-budget'
+import { FILE_SEARCH_METHODS } from './files-search-methods'
 
 let filesWatchSubscriptionSeq = 0
 
@@ -207,32 +206,12 @@ export const FILE_METHODS = [
     name: 'files.browseServerDir',
     permission: 'workspace',
     params: ServerDirectoryBrowse,
-    handler: async (params, { runtime }) => runtime.browseServerDir(params.path)
+    handler: async (params, { runtime }) =>
+      runtime.browseServerDir(params.path, { markGitRepos: params.markGitRepos })
   }),
   ...FILE_MUTATION_METHODS,
   ...FILE_STAGED_SAVE_METHODS,
-  defineMethod({
-    name: 'files.search',
-    permission: 'workspace',
-    params: FileSearch,
-    handler: async (params, { runtime, clientKind, requestId, signal }) =>
-      limitSearchResultToContentBudget(
-        await runtime.searchRuntimeFiles(
-          params.worktree,
-          {
-            query: params.query,
-            caseSensitive: params.caseSensitive,
-            wholeWord: params.wholeWord,
-            useRegex: params.useRegex,
-            includePattern: params.includePattern,
-            excludePattern: params.excludePattern,
-            maxResults: params.maxResults
-          },
-          { signal }
-        ),
-        remoteFileContentBudget(clientKind, requestId)
-      )
-  }),
+  ...FILE_SEARCH_METHODS,
   defineMethod({
     name: 'files.listAll',
     permission: 'workspace',

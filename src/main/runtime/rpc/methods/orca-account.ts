@@ -1,9 +1,7 @@
 import { defineMethod, defineStreamingMethod, type RpcContext } from '../core'
 import { rpcCallerOperationKey } from '../callers/rpc-caller-identity'
-import {
-  getOrcaServerSignIn,
-  type OrcaServerSignIn
-} from '../../../orca-profiles/orca-server-sign-in'
+import type { OrcaServerSignIn } from '../../../orca-profiles/orca-server-sign-in'
+import { resolveOrcaServerSignIn } from '../../../orca-profiles/orca-server-sign-in-slot'
 import {
   OrcaAccountSelectOrgParams,
   OrcaAccountSignInCompleteParams,
@@ -16,8 +14,8 @@ import {
 // Per-process counter: same-millisecond subscriptions must not evict each other's cleanup.
 let subscriptionSeq = 0
 
-function server(): OrcaServerSignIn {
-  const installed = getOrcaServerSignIn()
+async function server(): Promise<OrcaServerSignIn> {
+  const installed = await resolveOrcaServerSignIn()
   if (!installed) {
     throw new Error('Signing in to Orca is not available on this host. Update Orca on it.')
   }
@@ -37,14 +35,14 @@ export const ORCA_ACCOUNT_METHODS = [
     name: 'orcaAccount.status',
     permission: 'workspace',
     params: null,
-    handler: async () => server().status()
+    handler: async () => (await server()).status()
   }),
   defineMethod({
     name: 'orcaAccount.signIn.start',
     permission: 'workspace',
     params: OrcaAccountSignInStartParams,
     handler: async ({ switchAccount, approveInBrowser }, ctx) =>
-      server().startSignIn(flowOwner(ctx), switchAccount ? 'switch-account' : 'sign-in', {
+      (await server()).startSignIn(flowOwner(ctx), switchAccount ? 'switch-account' : 'sign-in', {
         approveInBrowser
       })
   }),
@@ -53,39 +51,39 @@ export const ORCA_ACCOUNT_METHODS = [
     permission: 'workspace',
     params: OrcaAccountSignInWaitParams,
     handler: async ({ flowId, afterRevision }, ctx) =>
-      server().waitSignIn(flowOwner(ctx), flowId, afterRevision, ctx.signal)
+      (await server()).waitSignIn(flowOwner(ctx), flowId, afterRevision, ctx.signal)
   }),
   defineMethod({
     name: 'orcaAccount.signIn.complete',
     permission: 'workspace',
     params: OrcaAccountSignInCompleteParams,
     handler: async ({ flowId, code, state, redirectUri }, ctx) =>
-      server().completeSignIn(flowOwner(ctx), flowId, { code, state, redirectUri })
+      (await server()).completeSignIn(flowOwner(ctx), flowId, { code, state, redirectUri })
   }),
   defineMethod({
     name: 'orcaAccount.signIn.cancel',
     permission: 'workspace',
     params: OrcaAccountSignInFlowParams,
-    handler: async ({ flowId }, ctx) => server().cancelSignIn(flowOwner(ctx), flowId)
+    handler: async ({ flowId }, ctx) => (await server()).cancelSignIn(flowOwner(ctx), flowId)
   }),
   defineMethod({
     name: 'orcaAccount.selectOrg',
     permission: 'workspace',
     params: OrcaAccountSelectOrgParams,
-    handler: async ({ orgId }) => server().selectOrg(orgId)
+    handler: async ({ orgId }) => (await server()).selectOrg(orgId)
   }),
   defineMethod({
     name: 'orcaAccount.signOut',
     permission: 'workspace',
     params: null,
-    handler: async () => server().signOut()
+    handler: async () => (await server()).signOut()
   }),
   defineStreamingMethod({
     name: 'orcaAccount.subscribe',
     permission: 'workspace',
     params: null,
     handler: async (_params, { runtime, connectionId }, emit) => {
-      const account = server()
+      const account = await server()
       await new Promise<void>((resolve) => {
         const unsubscribe = account.onChanged((status) => emit({ type: 'status', status }))
         const subscriptionId = `orca-account-${connectionId ?? 'inproc'}-${++subscriptionSeq}`

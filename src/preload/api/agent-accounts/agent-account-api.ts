@@ -1,8 +1,11 @@
 import type {
   ClaudeAccountSelectionChange,
+  ClaudeHostRunningSessionsMove,
   ClaudeRateLimitAccountsState,
   CodexRateLimitAccountsState
 } from '../../../shared/agent-accounts/managed-account-types'
+import type { ClaudeHostSelectionChange } from '../../../shared/agent-accounts/claude/claude-pane-account-folder'
+import type { AntigravityAccountSelectionChange } from '../../../shared/agent-accounts/antigravity/antigravity-account-types'
 import type { CodexConfigSyncStatus } from '../../../shared/agent-accounts/codex/codex-config-sync-types'
 import type {
   CursorAccountStatus,
@@ -74,7 +77,17 @@ export type ClaudeAccountsApi = {
     runtime?: 'host' | 'wsl'
     wslDistro?: string | null
   }) => Promise<ClaudeRateLimitAccountsState>
+  /** This desktop's host moves the running Claude terminals its window doesn't hold. */
+  moveUnheldRunningSessions?: (args: {
+    change: ClaudeHostSelectionChange
+    heldPtyIds: string[]
+  }) => Promise<ClaudeHostRunningSessionsMove | undefined>
   onSelectedElsewhere?: (callback: (change: ClaudeAccountSelectionChange) => void) => () => void
+}
+
+export type AntigravityAccountsApi = {
+  /** A CLI or another client switched agy's login on this desktop's host. */
+  onSelectedElsewhere: (callback: (change: AntigravityAccountSelectionChange) => void) => () => void
 }
 
 export type GrokAccountsApi = {

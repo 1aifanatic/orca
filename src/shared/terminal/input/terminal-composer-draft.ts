@@ -34,6 +34,15 @@ const COMPOSER_FRAME_LINE = /^[\u2500\u2501-]{8,}\s*$/
 const COMPOSER_TOP_FRAME_PREFIX = /^[\u2500\u2501-]{8,}/
 // Codex can follow the model with reasoning effort and service tier (`gpt-5.4 high Fast`).
 const CODEX_FOOTER_LINE = /^\s*(?:gpt-\S+|o\d\S*)(?:\s+[\w-]+){0,2}\s+[\u00B7\u2022]\s+\S.*$/i
+// Codex marks a draft scrolled past its top with a dim up arrow (U+2191) right of the prompt row's text.
+const CODEX_SCROLL_INDICATOR_END = /\u2191\s*$/
+
+function isCodexScrolledPromptRow(context: TerminalCursorContext, index: number): boolean {
+  return (
+    CODEX_SCROLL_INDICATOR_END.test(context.rows[index] ?? '') &&
+    !CODEX_SCROLL_INDICATOR_END.test(context.typedRows[index] ?? '')
+  )
+}
 
 function composerContinuationRows(
   context: TerminalCursorContext,
@@ -187,7 +196,9 @@ function detectTerminalComposer(
       } else if (
         context.cursorHidden ||
         context.promptGlyphBoldRows[index] !== true ||
-        codexFooterIndex === -1
+        // Why: a draft taller than the composer's cap takes the footer's rows (#51750). Typed reads
+        // stay null there: callers take their text as the whole draft, and only its tail shows.
+        (codexFooterIndex === -1 && (typedOnly || !isCodexScrolledPromptRow(context, index)))
       ) {
         return null
       }
@@ -308,9 +319,10 @@ export function hasTerminalComposerPlaceholder(
     return false
   }
   // Why: the IME overlay redraws the row from the cursor without cell attributes, so a dim tail turns white.
+  // Exclude boxed composers whose right border sits in rawAfterCursor and may be dim.
   const onlyDimAfterCursor = !context.afterCursor.trim() || isCaretOverDimSuggestion(context)
   return (
-    (onlyDimAfterCursor && readTerminalComposerTypedText(context) !== null) ||
+    (onlyDimAfterCursor && detectTerminalComposer(context, true) !== null) ||
     detectTerminalComposer(context)?.placeholder === true
   )
 }

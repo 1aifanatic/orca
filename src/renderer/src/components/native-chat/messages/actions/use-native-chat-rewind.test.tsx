@@ -1,119 +1,149 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-const toastError = vi.hoisted(() => vi.fn())
-vi.mock('sonner', () => ({ toast: { error: toastError, message: vi.fn() } }))
-
+import type { ReactNode } from 'react'
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import { useAppStore } from '@/store'
+import type { Tab } from '../../../../../../shared/workspace-layout/tab-groups/tab-types'
 import { EMPTY_STRUCTURED_AGENT_SESSION } from '../../../../../../shared/agent-session/view/live-read/structured-agent-session-reducer'
-import type { AgentJournalRenderItem } from '../../../../../../shared/agent-session/journal/agent-session-journal-types'
-
+import type { ConfirmationDialogContextValue } from '@/components/dismiss/confirmation/confirmation-dialog-context'
+import {
+  NativeChatViewTabContext,
+  releaseNativeChatViewTabs
+} from '../../pane/ownership/native-chat-view-memory'
 import { useNativeChatRewind } from './use-native-chat-rewind'
+import type { StructuredAgentSessionWriteOutcome } from '../../session/structured/writes/use-structured-agent-session-mutate'
+import type { AgentSessionRewindResult } from '../../../../../../shared/agent-session/lifecycle/rewind/agent-session-rewind'
 
-import { writeNativeChatDraftCache } from '../../drafts/native-chat-draft-views'
+const TAB = { tabId: 'tab-1', worktreeId: 'wt-1' }
 
-type Input = Parameters<typeof useNativeChatRewind>[0]
+function setTabs(ids: readonly string[]): void {
+  useAppStore.setState({
+    unifiedTabsByWorktree: {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these checks read only a tab's id.
+      [TAB.worktreeId]: ids.map((id) => ({ id }) as Tab)
+    }
+  })
+}
 
-afterEach(cleanup)
-beforeEach(() => {
-  toastError.mockReset()
-  writeNativeChatDraftCache('pane', '')
+const inTab = ({ children }: { children: ReactNode }) => (
+  <NativeChatViewTabContext value={TAB}>{children}</NativeChatViewTabContext>
+)
+
+beforeEach(() => setTabs([TAB.tabId]))
+afterEach(() => {
+  cleanup()
+  releaseNativeChatViewTabs([TAB.tabId])
 })
-const done = { kind: 'done' as const, value: { itemId: 'user', epoch: 'new' } }
-const item = (
-  itemId: string,
-  sequence: number,
-  role: 'user' | 'assistant' = 'user'
-): AgentJournalRenderItem => ({
-  itemId,
-  sequence,
-  revision: 1,
-  observedAt: sequence,
-  body: { kind: 'message', role, blocks: [{ type: 'text', text: `text of ${itemId}` }] }
-})
-function input(): Input & { send: ReturnType<typeof vi.fn> } {
-  return {
+
+it('a chat released mid-rewind keeps refusing sends until the rewound conversation loads', async () => {
+  const sent = Promise.withResolvers<StructuredAgentSessionWriteOutcome<AgentSessionRewindResult>>()
+  const input = {
     sessionId: 'session',
     capturePresentation: () => () => true,
-    composerScopeKey: 'pane',
     state: {
       ...EMPTY_STRUCTURED_AGENT_SESSION,
-      epoch: 'old',
+      epoch: 'e1',
       fence: 1,
       status: 'ready' as const,
-      cursor: { epoch: 'old', sequence: 12 },
-      items: [item('user', 10), item('reply', 11, 'assistant'), item('later', 12)]
+      items: [
+        {
+          itemId: 'user-1',
+          revision: 1,
+          sequence: 1,
+          observedAt: 1,
+          body: { kind: 'message' as const, role: 'user' as const, blocks: [] }
+        }
+      ]
     },
     support: { supported: true as const },
     blocked: false,
-    send: vi.fn().mockResolvedValue(done)
+    send: () => sent.promise
   }
-}
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => {
-    resolve = done
+  const first = renderHook(() => useNativeChatRewind(input), { wrapper: inTab })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the rewind only awaits the confirm's answer.
+  const confirm = (() => Promise.resolve(true)) as unknown as ConfirmationDialogContextValue
+  await act(async () => {
+    void first.result.current.request('user-1', confirm)
+    for (let tick = 0; tick < 5; tick++) {
+      await Promise.resolve()
+    }
   })
-  return { promise, resolve }
-}
-function render(props: Input) {
-  return renderHook((value: Input) => useNativeChatRewind(value), { initialProps: props })
-}
+  expect(first.result.current.admitsSend()).toBe(false)
+  first.unmount()
+  // Remounted before history arrived: no epoch yet.
+  const cold = { ...input, state: { ...input.state, epoch: null } }
+  const again = renderHook(() => useNativeChatRewind(cold), { wrapper: inTab })
+  expect(again.result.current.admitsSend()).toBe(false)
+  await act(async () => {
+    sent.resolve({ kind: 'done', value: { itemId: 'user-1', epoch: 'e2', sequence: 5 } })
+    for (let tick = 0; tick < 5; tick++) {
+      await Promise.resolve()
+    }
+  })
+  expect(again.result.current.admitsSend()).toBe(false)
+  // The rewound conversation loads; a later remount before history arrives holds nothing.
+  again.unmount()
+  const loaded = renderHook(
+    () => useNativeChatRewind({ ...input, state: { ...input.state, epoch: 'e2' } }),
+    { wrapper: inTab }
+  )
+  expect(loaded.result.current.admitsSend()).toBe(true)
+  loaded.unmount()
+  const later = renderHook(() => useNativeChatRewind(cold), { wrapper: inTab })
+  expect(later.result.current.admitsSend()).toBe(true)
+})
 
-describe('structured chat rewind', () => {
-  it('awaits the suffix sequence in the same epoch before unblocking', async () => {
-    const props = input()
-    props.send.mockResolvedValue({
-      kind: 'done',
-      value: { itemId: 'user', epoch: 'old', sequence: 15 }
-    })
-    const view = render(props)
-    await act(() => view.result.current.request('user', vi.fn().mockResolvedValue(true)))
-    expect(view.result.current.pending).toBe(true)
-    expect(view.result.current.blockedRef.current).toBe(true)
-    view.rerender({ ...props, state: { ...props.state, cursor: { epoch: 'old', sequence: 15 } } })
-    expect(view.result.current.pending).toBe(false)
-    expect(view.result.current.blockedRef.current).toBe(false)
+it("a rewind reply landing after the tab moved to another conversation never blocks that conversation's sends", async () => {
+  const sent = Promise.withResolvers<StructuredAgentSessionWriteOutcome<AgentSessionRewindResult>>()
+  const showing = (conversation: string) =>
+    function InConversation({ children }: { children: ReactNode }) {
+      return (
+        <NativeChatViewTabContext value={{ ...TAB, conversation }}>
+          {children}
+        </NativeChatViewTabContext>
+      )
+    }
+  const state = {
+    ...EMPTY_STRUCTURED_AGENT_SESSION,
+    epoch: 'e1',
+    fence: 1,
+    status: 'ready' as const,
+    items: [
+      {
+        itemId: 'user-1',
+        revision: 1,
+        sequence: 1,
+        observedAt: 1,
+        body: { kind: 'message' as const, role: 'user' as const, blocks: [] }
+      }
+    ]
+  }
+  const input = {
+    sessionId: 'session-a',
+    capturePresentation: () => () => true,
+    state,
+    support: { supported: true as const },
+    blocked: false,
+    send: () => sent.promise
+  }
+  const first = renderHook(() => useNativeChatRewind(input), { wrapper: showing('claude:a') })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the rewind only awaits the confirm's answer.
+  const confirm = (() => Promise.resolve(true)) as unknown as ConfirmationDialogContextValue
+  await act(async () => {
+    void first.result.current.request('user-1', confirm)
+    for (let tick = 0; tick < 5; tick++) {
+      await Promise.resolve()
+    }
   })
-
-  it('blocks only while the confirmed request is in flight', async () => {
-    const props = input(),
-      response = deferred<typeof done>()
-    props.send.mockReturnValue(response.promise)
-    const view = render(props)
-    let request!: Promise<void>
-    await act(async () => {
-      request = view.result.current.request('user', async () => true)
-    })
-    expect(view.result.current.pending).toBe(true)
-    expect(view.result.current.blockedRef.current).toBe(true)
-    await act(async () => {
-      view.rerender({ ...props, state: { ...props.state, epoch: 'new', items: [] } })
-      response.resolve(done)
-      await request
-    })
-    expect(view.result.current.pending).toBe(false)
-    expect(view.result.current.blockedRef.current).toBe(false)
+  first.unmount()
+  const other = renderHook(() => useNativeChatRewind({ ...input, sessionId: 'session-b' }), {
+    wrapper: showing('claude:b')
   })
-
-  it("holds only its own chat's sends when the view moves to another chat mid-rewind", async () => {
-    const props = input(),
-      response = deferred<typeof done>()
-    props.send.mockReturnValue(response.promise)
-    const view = render(props)
-    let request!: Promise<void>
-    await act(async () => {
-      request = view.result.current.request('user', async () => true)
-    })
-    view.rerender({ ...props, sessionId: 'other' })
-    expect(view.result.current.disabledReason).toBeNull()
-    expect(view.result.current.admitsSend()).toBe(true)
-    view.rerender(props)
-    expect(view.result.current.admitsSend()).toBe(false)
-    await act(async () => {
-      view.rerender({ ...props, state: { ...props.state, epoch: 'new', items: [] } })
-      response.resolve(done)
-      await request
-    })
+  await act(async () => {
+    sent.resolve({ kind: 'done', value: { itemId: 'user-1', epoch: 'e2', sequence: 5 } })
+    for (let tick = 0; tick < 5; tick++) {
+      await Promise.resolve()
+    }
   })
+  expect(other.result.current.admitsSend()).toBe(true)
 })

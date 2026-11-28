@@ -7,11 +7,11 @@ import {
   MobileOfflineState,
   MobileStateView
 } from '../../../components/feedback/MobileStateView'
-import { useMobileColorScheme } from '../../../theme/use-mobile-color-scheme'
 import { useMobileTranslation } from '../../../i18n/use-mobile-translation'
+import { HostUpdateNotice } from '../../../host-update-notice/HostUpdateNotice'
 import { MobileDiffReviewLines, type LineRange } from './MobileDiffReviewLines'
 import { MobilePanZoomImage } from '../../../files/media/presentation/MobilePanZoomImage'
-import { filePreviewStyles } from '../../../files/preview/mobile-file-preview-styles'
+import { filePreviewStylesSheet } from '../../../files/preview/mobile-file-preview-styles'
 import type {
   ReviewDiffState,
   ReviewScreenState
@@ -21,7 +21,8 @@ import type {
   MobileDiffReviewQueueItem
 } from '../diff-state/mobile-diff-review-queue'
 import type { MobileDiffReviewThread } from '../diff-actions/mobile-diff-review-github'
-import type { PRCommentCardActions } from '../pull-request/comments/PRCommentCard'
+import type { PrThreadActions } from '../pull-request/comments/PrThreadRow'
+import { useThemedStyles } from '../../../theme/themed-styles'
 
 type Props = {
   commentsByLine: ReadonlyMap<number, DiffComment[]>
@@ -31,9 +32,10 @@ type Props = {
   screenState: ReviewScreenState
   staleCommentIds: ReadonlySet<string>
   threadsByLine: ReadonlyMap<number, readonly MobileDiffReviewThread[]>
-  threadActions: PRCommentCardActions | undefined
+  threadActions: PrThreadActions | undefined
   selectedRange: LineRange | null
-  onPickLines: (range: LineRange) => void
+  onSelectLines: (range: LineRange | null) => void
+  onOpenThread: (threadId: string, focusReply: boolean) => void
   /** Scroll to this line once, then report it done. */
   scrollToLine: number | null
   onScrolledToLine: () => void
@@ -56,7 +58,8 @@ export function MobileDiffReviewBody({
   threadsByLine,
   threadActions,
   selectedRange,
-  onPickLines,
+  onSelectLines,
+  onOpenThread,
   scrollToLine,
   onScrolledToLine,
   onEditNote,
@@ -65,7 +68,6 @@ export function MobileDiffReviewBody({
   filter,
   onBack
 }: Props) {
-  useMobileColorScheme()
   const t = useMobileTranslation()
   if (screenState.kind === 'loading') {
     return (
@@ -74,6 +76,9 @@ export function MobileDiffReviewBody({
         title={t('components.diffReviewBody.loadingReview', 'Loading review...')}
       />
     )
+  }
+  if (screenState.kind === 'unavailable' && screenState.hostUpdate) {
+    return <HostUpdateNotice variant="screen" feature={screenState.message} />
   }
   if (screenState.kind === 'unavailable') {
     return (
@@ -147,7 +152,8 @@ export function MobileDiffReviewBody({
       selectedRange={selectedRange}
       scrollToLine={scrollToLine}
       onScrolledToLine={onScrolledToLine}
-      {...(currentItem?.scope === 'commit' ? {} : { onPickLines })}
+      {...(currentItem?.scope === 'commit' ? {} : { onSelectLines })}
+      onOpenThread={onOpenThread}
       onEditNote={onEditNote}
     />
   )
@@ -161,6 +167,7 @@ function DiffImage({
   diffState: Extract<ReviewDiffState, { kind: 'image' }>
   title: string
 }) {
+  const filePreviewStyles = useThemedStyles(filePreviewStylesSheet)
   const t = useMobileTranslation()
   // An image the WebView can't decode stays hidden, so fall back to the binary notice.
   const [failed, setFailed] = useState(false)

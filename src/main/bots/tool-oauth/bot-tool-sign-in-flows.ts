@@ -21,6 +21,9 @@ import {
   type BotToolOAuthKey
 } from './bot-tool-oauth'
 import { beginBotToolSignIn, type BotToolSignInAttempt } from './bot-tool-oauth-sign-in'
+import { getBotToolSignInBrowser, setBotToolSignInBrowser } from './bot-tool-sign-in-browser-slot'
+
+export { setBotToolSignInBrowser }
 
 export const BOT_TOOL_CALLBACK_PATH = '/callback'
 
@@ -34,13 +37,6 @@ export type BotToolSignInFlow = {
 // The latest Connect per bot and tool, kept after it ends so a row can show how it went.
 const flows = new Map<string, BotToolSignInFlow>()
 const flowKey = (key: BotToolOAuthKey): string => keyOf({ ...key, folder: resolve(key.folder) })
-
-let openBrowser: ((url: string) => Promise<void>) | null = null
-
-/** Installed by the desktop app; a host without it (a server) signs in nowhere. */
-export function setBotToolSignInBrowser(open: ((url: string) => Promise<void>) | null): void {
-  openBrowser = open
-}
 
 // A removed tool, a deleted bot or a sign-out ends its Connect; a finished one is forgotten.
 onBotToolCredentialEnded((ended) => {
@@ -260,7 +256,7 @@ export async function serveFlowSignIn(
 export async function connectBotToolSignIn(
   key: BotToolOAuthKey
 ): Promise<{ attemptId: string; authorizationOrigin: string }> {
-  const open = openBrowser
+  const open = getBotToolSignInBrowser()
   if (!open) {
     throw new BotToolSignInError('desktop-only')
   }

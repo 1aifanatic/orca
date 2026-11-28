@@ -2,10 +2,13 @@ import { OrcaRuntimeWithResumeAgentSessionInWorkspace } from './resume-agent-ses
 import { retireReplacedPaneBinding } from '../../../ipc/pty/pane/pane-owner-replacement'
 import { makePaneKey, parsePaneKey } from '../../../../shared/workspace-layout/stable-pane-id'
 import { isRemoteRuntimePtyId } from '../../../../shared/remote-runtime/remote-runtime-pty-id'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host/execution-host'
+import { replacedPaneBindingState } from '../../../persistence/loading-store/terminal-bindings/replaced-pane-binding'
 import type { TuiAgent } from '../../../../shared/agent-launch/catalog/tui-agent'
 import type { WorktreeSleepResumeRecorder } from '../../terminal/stop/worktree-sleep-resume-records'
 import type { AgentProviderSessionMetadata } from '../../../../shared/agent-session/lifecycle/agent-session-resume'
 import type { AgentSessionResumeClaim } from './agent-session-resume-claims'
+import type { RuntimePtyWorktreeRecord } from '../../terminal/records/runtime-terminal-state-records'
 
 export type AgentPaneRestartRefusal =
   /** Not a live terminal of this host's own (an SSH relay or another server's pane). */
@@ -14,6 +17,9 @@ export type AgentPaneRestartRefusal =
   | 'viewer_cannot_follow'
   | 'no_resume_command'
   | 'busy'
+  /** The saved layout gives the pane to another terminal or lacks its tab: the binding retire after
+   *  the stop would refuse, leaving no replacement. */
+  | 'saved_layout_differs'
   /** The stop was sent but its exit unconfirmed: the terminal may still end, with no replacement. */
   | 'stop_failed'
   /** Stopped, but no new terminal took the pane: it is left as a slept pane, so its next view
@@ -31,10 +37,10 @@ export abstract class OrcaRuntimeWithRestartAgentPaneInPlace extends OrcaRuntime
   /** Restarts a pane's agent conversation in a new terminal in the same tab and leaf; the spawn
    *  applies whatever account is selected now. Refusals other than `stop_failed` and
    *  `create_failed` stop nothing. `stillCurrent` confirms, last before the stop, that the pane still
-   *  runs `session` and should move. */
+   *  runs `session` and should move. A null `providerSession` starts the agent afresh. */
   async restartAgentPaneInPlace(
     ptyId: string,
-    session: { agent: TuiAgent; providerSession: AgentProviderSessionMetadata },
+    session: { agent: TuiAgent; providerSession: AgentProviderSessionMetadata | null },
     stillCurrent: () => boolean | Promise<boolean> = () => true
   ): Promise<AgentPaneRestartResult> {
     const pty = this.ptysById.get(ptyId)
@@ -62,21 +68,28 @@ export abstract class OrcaRuntimeWithRestartAgentPaneInPlace extends OrcaRuntime
     let dispatched = false
     try {
       // Resolved before the stop, so nothing after it can leave the pane without its agent.
+      const { providerSession } = session
       const resume = await this.resolveTerminalWorkspaceLaunchScope(`id:${pty.worktreeId}`)
         .then((workspace) =>
-          this.resolveMobileSessionResumeCommand(workspace, {
-            ...session,
-            launchConfig: pty.launchConfig ?? undefined
-          })
+          providerSession
+            ? this.resolveMobileSessionResumeCommand(workspace, {
+                ...session,
+                providerSession,
+                launchConfig: pty.launchConfig ?? undefined
+              })
+            : this.resolveMobileSessionTerminalCommand(workspace, { agent: session.agent })
         )
         .catch(() => null)
       if (!resume) {
         return { ok: false, reason: 'no_resume_command' }
       }
       const ownPaneKey = makePaneKey(tabId, pane.leafId)
+      const resumed = providerSession ? { agent: session.agent, providerSession } : null
       // Held from before the live-pane check, so no other resume can start this conversation
-      // while it runs or in the gap after the stop.
-      const claim = this.agentSessionResumeClaims.claim(session, ownPaneKey)
+      // while it runs or in the gap after the stop. A fresh start has no conversation to hold.
+      const claim = resumed
+        ? this.agentSessionResumeClaims.claim(resumed, ownPaneKey)
+        : { bind: () => {}, settleFailure: () => {} }
       if (!claim) {
         return { ok: false, reason: 'busy' }
       }
@@ -85,7 +98,11 @@ export abstract class OrcaRuntimeWithRestartAgentPaneInPlace extends OrcaRuntime
         claim.settleFailure(false)
         return { ok: false, reason }
       }
-      if (await this.isProviderSessionLiveInAnotherPane(session, ownPaneKey).catch(() => true)) {
+      const liveElsewhere = (): Promise<boolean> =>
+        resumed
+          ? this.isProviderSessionLiveInAnotherPane(resumed, ownPaneKey).catch(() => true)
+          : Promise.resolve(false)
+      if (await liveElsewhere()) {
         return refuse('busy')
       }
       const wasActive =
@@ -111,7 +128,7 @@ export abstract class OrcaRuntimeWithRestartAgentPaneInPlace extends OrcaRuntime
         return refuse('busy')
       }
       // A conversation started outside Orca holds no claim; it may have appeared during that await.
-      if (await this.isProviderSessionLiveInAnotherPane(session, ownPaneKey).catch(() => true)) {
+      if (await liveElsewhere()) {
         return refuse('busy')
       }
       // The awaits above let the pane move, change process or gain a viewer: checked again with no
@@ -124,8 +141,9 @@ export abstract class OrcaRuntimeWithRestartAgentPaneInPlace extends OrcaRuntime
       ) {
         return refuse('not_local')
       }
-      if (!this.terminalViewSubscribers.everyRemoteViewFollowsHostRespawn(ptyId)) {
-        return refuse('viewer_cannot_follow')
+      const refusalBeforeStop = this.restartRefusalBeforeStop(current)
+      if (refusalBeforeStop) {
+        return refuse(refusalBeforeStop)
       }
       let stopped = false
       // Left as a slept pane is: its next view starts it afresh and resumes the conversation.
@@ -180,8 +198,10 @@ export abstract class OrcaRuntimeWithRestartAgentPaneInPlace extends OrcaRuntime
             launchConfig: resume.launchConfig,
             launchAgent: resume.launchAgent,
             launchRuntime: resume.launchRuntime,
-            resumeProviderSession: resume.resumeProviderSession,
+            ...(resumed ? { resumeProviderSession: resumed.providerSession } : {}),
             spawnIntent: 'user-resume',
+            // A desktop window that didn't hold the pane isn't shown or focused to the new terminal.
+            presentation: 'background',
             identity: { tabId, leafId: pane.leafId },
             reopensPane: true,
             onPtySpawnDispatched: () => {
@@ -213,6 +233,31 @@ export abstract class OrcaRuntimeWithRestartAgentPaneInPlace extends OrcaRuntime
     } finally {
       this.agentPaneRestartsByPaneKey.delete(paneKey)
     }
+  }
+
+  /** What a restart refuses last, with no await before its stop: a viewer an older Orca would
+   *  leave on a dead pane, or a saved layout that gives the pane to another terminal or lacks its
+   *  tab, so the binding retire after the stop would refuse. Reads the partition the retire reads. */
+  protected restartRefusalBeforeStop(
+    pty: RuntimePtyWorktreeRecord
+  ): 'viewer_cannot_follow' | 'saved_layout_differs' | null {
+    if (!this.terminalViewSubscribers.everyRemoteViewFollowsHostRespawn(pty.ptyId)) {
+      return 'viewer_cannot_follow'
+    }
+    const recorded = this.paneOfPty(pty)
+    const leafId = parsePaneKey(recorded.paneKey ?? '')?.leafId
+    const saved = this.store?.getWorkspaceSession?.(LOCAL_EXECUTION_HOST_ID)
+    const taken =
+      saved !== undefined &&
+      recorded.tabId !== null &&
+      leafId !== undefined &&
+      replacedPaneBindingState(saved, {
+        worktreeId: pty.worktreeId,
+        tabId: recorded.tabId,
+        leafId,
+        ptyId: pty.ptyId
+      }) === 'taken'
+    return taken ? 'saved_layout_differs' : null
   }
 
   /** The terminal service refuses to reattach a terminal it was told to kill, so the pane's row

@@ -19,6 +19,8 @@ export type HostChatAnswer =
   | 'not-on-host'
   /** The host is Windows, where this agent has no chat. */
   | 'windows'
+  /** The installed CLI on the host is older than chat requires. */
+  | 'too-old'
   | 'no-chats'
 export type ChatProgramObservation = AgentSessionChatProgram | 'unlearned'
 const chatProgramOffered = (program: ChatProgramObservation) =>
@@ -48,6 +50,7 @@ export type ChatUnavailableReason =
   | 'subfolder'
   | 'not-on-host'
   | 'windows'
+  | 'too-old'
 
 export type NewTabAgentMenuRow =
   /** `setup`: the agent isn't installed there, so its chat opens with an offer to install it. */
@@ -60,6 +63,11 @@ export type NewTabAgentMenuRow =
 
 export function agentMenuRowSupportsChat(row: NewTabAgentMenuRow): boolean {
   return row.kind === 'chat' || (row.kind === 'cli' && row.chat === true)
+}
+
+/** Launches the agent as it is on the host now: not a chat that installs it first, not an unavailable one. */
+export function agentMenuRowReady(row: NewTabAgentMenuRow): boolean {
+  return row.kind === 'cli' || row.kind === 'terminal' || (row.kind === 'chat' && !row.setup)
 }
 
 export type NewTabAgentMenuSettings = NativeChatDefaultSettings &
@@ -137,14 +145,17 @@ export function buildNewTabAgentMenuRows(args: {
       ...chatAgents.filter((agent) => needsSetup(agent) && args.hostChatAnswer(agent) === 'yes')
     )
   }
+  const chats = orderAgentLaunchPickerAgents(defaultAgent, runnable).map((agent) => ({
+    kind: 'chat' as const,
+    agent,
+    ...(!args.detectedOnHost?.includes(agent) && !chatProgramInstalled(args.chatProgram(agent))
+      ? { setup: true as const }
+      : {})
+  }))
   return [
-    ...orderAgentLaunchPickerAgents(defaultAgent, runnable).map((agent) => ({
-      kind: 'chat' as const,
-      agent,
-      ...(!args.detectedOnHost?.includes(agent) && !chatProgramInstalled(args.chatProgram(agent))
-        ? { setup: true as const }
-        : {})
-    })),
+    // Chats the host runs now lead the ones that install their agent first.
+    ...chats.filter(agentMenuRowReady),
+    ...chats.filter((row) => !agentMenuRowReady(row)),
     ...orderAgentLaunchPickerAgents(defaultAgent, [...unavailable.keys()]).map((agent) => ({
       kind: 'chat-unavailable' as const,
       agent,

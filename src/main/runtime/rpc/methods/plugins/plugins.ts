@@ -27,56 +27,38 @@ import {
   unloadPluginDevFolder
 } from '../../../../plugins/development/plugin-dev-folders'
 
+import {
+  getPluginServiceForRpc,
+  getPluginServiceWritesForRpc,
+  setPluginServiceForRpc
+} from './plugin-rpc-slots'
+
+export { setPluginServiceForRpc }
+
 /** Expose desktop IPC's plugin consent/actions over serve/headless RPC through the same PluginService permission boundary. */
 
-// Inject the separate composition-root PluginService without widening shared RpcContext.
-let pluginServiceForRpc: PluginService | null = null
-// Consent/enablement need the settings Store too, so the entry injects bound
-// closures instead of the store itself.
-let pluginConsentForRpc: ((request: PluginConsentRequest) => Promise<void>) | null = null
-let pluginEnablementForRpc: ((pluginKey: string, enabled: boolean) => Promise<void>) | null = null
-let pluginDevPathsForRpc: ((paths: string[]) => void) | null = null
-let pluginSystemEnabledForRpc: ((enabled: boolean) => void) | null = null
-// Desktop only: headless hosts have no guest webContents to inspect.
-let pluginFrameDevToolsForRpc: ((pluginKey: string) => number) | null = null
-
-export function setPluginServiceForRpc(
-  service: PluginService | null,
-  writes?: {
-    applyConsent: (request: PluginConsentRequest) => Promise<void>
-    applyEnablement: (pluginKey: string, enabled: boolean) => Promise<void>
-    setDevPluginPaths?: (paths: string[]) => void
-    setPluginSystemEnabled?: (enabled: boolean) => void
-    openFrameDevTools?: (pluginKey: string) => number
-  }
-): void {
-  pluginServiceForRpc = service
-  pluginConsentForRpc = writes?.applyConsent ?? null
-  pluginEnablementForRpc = writes?.applyEnablement ?? null
-  pluginDevPathsForRpc = writes?.setDevPluginPaths ?? null
-  pluginSystemEnabledForRpc = writes?.setPluginSystemEnabled ?? null
-  pluginFrameDevToolsForRpc = writes?.openFrameDevTools ?? null
-}
-
 export function requirePluginService(): PluginService {
-  if (!pluginServiceForRpc) {
+  const service = getPluginServiceForRpc()
+  if (!service) {
     throw new Error('Plugin service is not available on this runtime')
   }
-  return pluginServiceForRpc
+  return service
 }
 
 function requireConsentWrite(): (request: PluginConsentRequest) => Promise<void> {
-  if (!pluginConsentForRpc) {
+  const applyConsent = getPluginServiceWritesForRpc()?.applyConsent
+  if (!applyConsent) {
     throw new Error('Plugin consent is not available on this runtime')
   }
-  return pluginConsentForRpc
+  return applyConsent
 }
 
 function requireDevPathsWrite(): (paths: string[]) => void {
-  if (!pluginDevPathsForRpc) {
+  const setDevPluginPaths = getPluginServiceWritesForRpc()?.setDevPluginPaths
+  if (!setDevPluginPaths) {
     throw new Error('Plugin development folders are not available on this runtime')
   }
-  return pluginDevPathsForRpc
+  return setDevPluginPaths
 }
 
 async function listEntryForRpc(pluginKey: string | null): Promise<PluginHostListEntry | null> {
@@ -151,11 +133,12 @@ export const PLUGIN_METHODS = [
     handler: async (params, context) => {
       const service = requirePluginService()
       await service.whenReady()
-      if (!pluginEnablementForRpc) {
+      const applyEnablement = getPluginServiceWritesForRpc()?.applyEnablement
+      if (!applyEnablement) {
         throw new Error('Plugin enablement is not available on this runtime')
       }
       if (!params.enabled) {
-        await pluginEnablementForRpc(params.pluginKey, false)
+        await applyEnablement(params.pluginKey, false)
         return listForRpc()
       }
       // Enabling grants whatever consent is missing, so it goes through the same approve flag.
@@ -216,10 +199,11 @@ export const PLUGIN_METHODS = [
     handler: async (params) => {
       const service = requirePluginService()
       await service.whenReady()
-      if (!pluginSystemEnabledForRpc) {
+      const setSystemEnabled = getPluginServiceWritesForRpc()?.setPluginSystemEnabled
+      if (!setSystemEnabled) {
         throw new Error('Turning plugins on or off is not available on this runtime')
       }
-      pluginSystemEnabledForRpc(params.enabled)
+      setSystemEnabled(params.enabled)
       // The settings listener's refresh only logs failures; awaiting a chained one surfaces them.
       await service.refresh()
       return { enabled: params.enabled, plugins: await listForRpc() }
@@ -232,10 +216,11 @@ export const PLUGIN_METHODS = [
     handler: async (params) => {
       const service = requirePluginService()
       await service.whenReady()
-      if (!pluginFrameDevToolsForRpc) {
+      const openFrameDevTools = getPluginServiceWritesForRpc()?.openFrameDevTools
+      if (!openFrameDevTools) {
         throw new Error('Plugin frame DevTools are only available in the Orca desktop app')
       }
-      return { pluginKey: params.pluginKey, opened: pluginFrameDevToolsForRpc(params.pluginKey) }
+      return { pluginKey: params.pluginKey, opened: openFrameDevTools(params.pluginKey) }
     }
   }),
   defineMethod({

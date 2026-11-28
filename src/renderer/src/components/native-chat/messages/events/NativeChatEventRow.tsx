@@ -1,8 +1,9 @@
-import { useContext, useId, useLayoutEffect, useRef, useState, type Ref } from 'react'
+import { Children, useContext, useId, useLayoutEffect, useRef, useState, type Ref } from 'react'
 import { ChevronRight, X } from 'lucide-react'
 import { useTranslate } from '@/i18n/use-translate'
 import { cn } from '@/lib/class-names'
 import { AgentWorkingSpinner } from '@/components/agent/status/AgentWorkingSpinner'
+import { AgentQuestionIcon } from '@/components/agent/status/AgentQuestionIcon'
 import {
   NativeChatMessageTimestamp,
   useNativeChatMessageTimeLabel
@@ -18,27 +19,40 @@ const REVEAL_POINTER =
   'can-hover:pointer-events-none group-hover/event-row:pointer-events-auto group-has-[:focus-visible]/event-row:pointer-events-auto'
 export const NATIVE_CHAT_EVENT_ROW_REVEAL = `${REVEAL_OPACITY} ${REVEAL_POINTER}`
 
-export type NativeChatEventBadge = 'running' | 'failed'
+export type NativeChatEventBadge = 'running' | 'failed' | 'needs-input' | 'queued' | 'done'
 
 /** The row's 14px mark with its state in a badge at the bottom right: a spinner while it runs, a red ✕ when it failed. */
-function NativeChatEventIcon({
+export function NativeChatEventIcon({
   children,
-  badge
+  badge,
+  badgeClassName
 }: {
   children: React.ReactNode
   badge?: NativeChatEventBadge | null
+  badgeClassName?: string
 }): React.JSX.Element {
   return (
     <span className="relative flex size-3.5 items-center justify-center">
       {children}
       {badge ? (
-        <span className="absolute -right-1 -bottom-1 flex size-2.5 items-center justify-center rounded-full bg-chat-pane">
+        <span
+          className={cn(
+            'absolute -right-1 -bottom-1 flex size-2.5 items-center justify-center rounded-full bg-chat-pane',
+            badgeClassName
+          )}
+        >
           {badge === 'running' ? (
             <AgentWorkingSpinner className="size-[7px] border-[1.5px]" />
-          ) : (
+          ) : badge === 'failed' ? (
             <span className="flex size-2 items-center justify-center rounded-full bg-destructive text-chat-pane">
               <X className="size-1.5" strokeWidth={4} aria-hidden />
             </span>
+          ) : badge === 'needs-input' ? (
+            <AgentQuestionIcon className="size-2" />
+          ) : badge === 'queued' ? (
+            <span className="size-2 rounded-full border-[1.5px] border-muted-foreground" />
+          ) : (
+            <span className="size-2 rounded-full bg-status-success" />
           )}
         </span>
       ) : null}
@@ -47,7 +61,7 @@ function NativeChatEventIcon({
 }
 
 /** Details cut at about four lines, with Show more, in the quiet fill comments use. */
-function EventDetails({
+export function NativeChatEventDetails({
   id,
   clamp,
   findActive,
@@ -118,6 +132,29 @@ function EventDetails({
       ) : null}
     </div>
   )
+}
+
+/** The row's words as pieces of its one line: a bare text run becomes its own piece, which cuts
+ *  short with an ellipsis and shows whole on hover (a flex row can't shrink bare text). */
+function rowParts(children: React.ReactNode): React.ReactNode[] {
+  const seen = new Map<string, number>()
+  return Children.toArray(children).flatMap((child): React.ReactNode[] => {
+    if (typeof child !== 'string' && typeof child !== 'number') {
+      return [child]
+    }
+    const text = String(child).trim()
+    if (!text) {
+      return []
+    }
+    // Keyed by its words, so a row whose parts change keeps each text piece its own.
+    const repeat = seen.get(text) ?? 0
+    seen.set(text, repeat + 1)
+    return [
+      <span key={`text:${text}:${repeat}`} className="min-w-0 truncate" title={text}>
+        {text}
+      </span>
+    ]
+  })
 }
 
 /**
@@ -192,6 +229,8 @@ export function NativeChatEventRow({
             aria-expanded={shown}
             aria-controls={shown ? detailsId : undefined}
             aria-label={[label, state, time].filter(Boolean).join(', ') || undefined}
+            // The words take no pointer, so a name cut short shows whole here.
+            title={label}
             className="absolute -inset-x-1 -inset-y-0.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => {
               if (openProp === undefined) {
@@ -210,16 +249,18 @@ export function NativeChatEventRow({
         >
           <NativeChatEventIcon badge={badge}>{icon}</NativeChatEventIcon>
         </span>
+        {/* Always one line: its parts sit side by side and the ones that can shrink (chips, names)
+            cut short with an ellipsis; clipping only sideways keeps chip focus rings whole. */}
         <span
           className={cn(
-            'relative min-w-0 line-clamp-2',
+            'relative flex min-w-0 items-center gap-x-1 overflow-x-clip whitespace-nowrap [&>*]:min-w-0 [&>*]:overflow-x-clip [&>*]:text-ellipsis',
             toggles &&
               'pointer-events-none [&_a]:pointer-events-auto [&_button]:pointer-events-auto'
           )}
         >
           {/* A row with no button says its state in its own text. */}
           {state && !toggles ? <span className="sr-only">{state}, </span> : null}
-          {children}
+          {rowParts(children)}
         </span>
         {/* With a pointer the controls lie over the row's end and take no width until shown; touch keeps them in line.
             Over a row button, clicks on the chevron and time fall through to it; only the action takes them. */}
@@ -263,14 +304,14 @@ export function NativeChatEventRow({
         ) : null}
       </div>
       {toggles && shown ? (
-        <EventDetails
+        <NativeChatEventDetails
           id={detailsId}
           clamp={clampDetails}
           findActive={findActive}
           rows={detailsAreRows}
         >
           {details}
-        </EventDetails>
+        </NativeChatEventDetails>
       ) : null}
     </div>
   )

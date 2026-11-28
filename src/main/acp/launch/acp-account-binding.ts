@@ -7,6 +7,8 @@ import {
 } from '../../../shared/agent-session/lifecycle/accounts/agent-session-account-home'
 import { resolveStructuredEnvAccountHomePath } from '../../runtime/agent-session/environment/structured-agent-account-home'
 
+import type { AcpPreparedAccount } from './acp-launch-contract'
+
 type AccountPin = { accountHomeVariable: string } | { accountLocatorKind: 'opencode' }
 
 export type AcpAccountBinding = {
@@ -18,12 +20,13 @@ export type AcpAccountBinding = {
   }): Promise<AgentSessionAccountHome>
   /** Throws if the pinned account belongs to another kind. */
   environment(home: AgentSessionAccountHome, env: Record<string, string>): Record<string, string>
-  /** Runs before every spawn, never on reads. */
+  /** Runs before every spawn, never on reads; `listing` for a model listing, not a chat. */
   prepare?(
     env: Readonly<Record<string, string>>,
     antigravityChatAuth?: AntigravityChatAuthConfig,
-    assertCurrent?: () => void
-  ): Promise<void>
+    assertCurrent?: () => void,
+    purpose?: 'chat' | 'listing'
+  ): Promise<AcpPreparedAccount | void>
 }
 
 export function directoryAccountBinding(

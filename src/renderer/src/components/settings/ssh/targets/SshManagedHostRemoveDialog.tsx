@@ -1,4 +1,5 @@
 import type { SshTarget } from '../../../../../../shared/remote-runtime/ssh/ssh-types'
+import { getManagedOrcadClaimEnvironmentIds } from '../../../../../../shared/remote-runtime/ssh/managed-orcad-ssh-owner'
 import { useAppStore } from '@/store/index'
 import { useTranslate } from '@/i18n/use-translate'
 import { Button } from '../../../ui/button'
@@ -16,6 +17,25 @@ export function isManagedServerSshHost(
   target: Pick<SshTarget, 'orcadFence' | 'orcadProvisioning'>
 ): boolean {
   return target.orcadFence !== undefined || target.orcadProvisioning !== undefined
+}
+
+/**
+ * A claim naming no loaded server is abandoned setup with nothing to Stop or Forget; main decides.
+ * First setup never claims a host with direct workspaces, so those mean a conversion still needs them.
+ */
+export function refusesManagedSshHostRemoval(
+  target: Pick<SshTarget, 'orcadFence' | 'orcadProvisioning'>,
+  hasDirectWorkspaces: boolean
+): boolean {
+  const { runtimeEnvironmentCatalogHydrated, runtimeEnvironments } = useAppStore.getState()
+  return (
+    isManagedServerSshHost(target) &&
+    (hasDirectWorkspaces ||
+      !runtimeEnvironmentCatalogHydrated ||
+      getManagedOrcadClaimEnvironmentIds(target).some((id) =>
+        runtimeEnvironments.some((environment) => environment.id === id)
+      ))
+  )
 }
 
 export function SshManagedHostRemoveDialog({

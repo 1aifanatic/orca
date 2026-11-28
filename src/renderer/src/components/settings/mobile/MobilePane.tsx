@@ -27,6 +27,7 @@ import type { MobileRelayMintFailure } from '../../../../../shared/remote-runtim
 import { useMobilePairingConnectionMode } from '../../mobile/use-mobile-pairing-connection-mode'
 import { useMobilePairingAddressPreference } from '../../mobile/use-mobile-pairing-address-preference'
 import { usePairingOfferExpiry } from '../../mobile/use-pairing-offer-expiry'
+import { useMobileRelayMintRecovery } from '../../mobile/use-mobile-relay-status'
 import { MOBILE_SETTING_ANCHORS, shouldOpenMobilePairingAddress } from './mobile-pane-search'
 
 export function MobilePane(): React.JSX.Element {
@@ -69,30 +70,35 @@ export function MobilePane(): React.JSX.Element {
 
   useEffect(() => {
     qrDisplayedRef.current = qrDataUrl != null
-  }, [qrDataUrl])
-
-  useEffect(() => {
     loadingRef.current = loading
-  }, [loading])
+  }, [qrDataUrl, loading])
 
-  // Policy/endpoint changes invalidate displayed and pending offers; rotate the next credential instead of reusing the discarded one.
-  const invalidatePairing = useCallback((opts: { armRotate?: boolean } = {}): void => {
-    pairingRequestIdRef.current += 1
-    const hadPending = qrDisplayedRef.current || loadingRef.current
+  const clearQrOffer = useCallback((): void => {
     setQrDataUrl(null)
     setQrSize(null)
     setPairingUrl(null)
+    setQrExpiresAt(null)
     setQrError(false)
-    setRelayMintFailure(null)
     setEndpoint(null)
-    // Superseded finally handlers skip loading cleanup; release the spinner here so Generate cannot remain disabled.
-    loadingRef.current = false
-    setLoading(false)
-    // Main rotates on mode mismatch; extra renderer rotation would race other windows off the fresh token.
-    if (hadPending && opts.armRotate !== false) {
-      setRotateNextQr(true)
-    }
   }, [])
+
+  // Policy/endpoint changes invalidate displayed and pending offers; rotate the next credential instead of reusing the discarded one.
+  const invalidatePairing = useCallback(
+    (opts: { armRotate?: boolean } = {}): void => {
+      pairingRequestIdRef.current += 1
+      const hadPending = qrDisplayedRef.current || loadingRef.current
+      clearQrOffer()
+      setRelayMintFailure(null)
+      // Superseded finally handlers skip loading cleanup; release the spinner here so Generate cannot remain disabled.
+      loadingRef.current = false
+      setLoading(false)
+      // Main rotates on mode mismatch; extra renderer rotation would race other windows off the fresh token.
+      if (hadPending && opts.armRotate !== false) {
+        setRotateNextQr(true)
+      }
+    },
+    [clearQrOffer]
+  )
   const invalidatePairingAddress = useCallback(() => invalidatePairing(), [invalidatePairing])
   const {
     selectedAddress,
@@ -160,10 +166,7 @@ export function MobilePane(): React.JSX.Element {
 
   const generateQR = useCallback(
     async (
-      opts: {
-        rotate?: boolean
-        connectionModeOverride?: MobilePairingConnectionMode
-      } = {}
+      opts: { rotate?: boolean; connectionModeOverride?: MobilePairingConnectionMode } = {}
     ) => {
       const preferredMode = opts.connectionModeOverride ?? connectionMode
       // Refuse signed-out Anywhere; never disguise a LAN-only QR under the Relay label.
@@ -200,11 +203,7 @@ export function MobilePane(): React.JSX.Element {
             void loadDevices()
           }
         } else if (mountedRef.current) {
-          setQrDataUrl(null)
-          setQrSize(null)
-          setPairingUrl(null)
-          setQrError(false)
-          setEndpoint(null)
+          clearQrOffer()
           if (result.reason === 'relay_mint_failed' && result.relayFailure) {
             setRelayMintFailure(result.relayFailure)
             // Reread likely revoked auth so guidance can offer sign-in rather than futile retries.
@@ -223,6 +222,8 @@ export function MobilePane(): React.JSX.Element {
         }
       } catch {
         if (mountedRef.current && requestId === pairingRequestIdRef.current) {
+          // Clear any expired offer so a failed refresh never leaves a dead QR displayed as ready.
+          clearQrOffer()
           setRelayMintFailure(null)
           toast.error(
             translate(
@@ -239,6 +240,7 @@ export function MobilePane(): React.JSX.Element {
     },
     [
       clearCodeCopiedResetTimer,
+      clearQrOffer,
       connectionMode,
       loadDevices,
       mountedRef,
@@ -283,19 +285,14 @@ export function MobilePane(): React.JSX.Element {
       return
     }
     try {
-      await window.api.ui.writeClipboardText(
-        JSON.stringify(
-          {
-            kind: 'mobile_pairing_relay_failure',
-            preferredConnectionMode: connectionMode,
-            failure: relayMintFailure,
-            selectedAddress: selectedAddress ?? null,
-            at: new Date().toISOString()
-          },
-          null,
-          2
-        )
-      )
+      const payload = {
+        kind: 'mobile_pairing_relay_failure',
+        preferredConnectionMode: connectionMode,
+        failure: relayMintFailure,
+        selectedAddress: selectedAddress ?? null,
+        at: new Date().toISOString()
+      }
+      await window.api.ui.writeClipboardText(JSON.stringify(payload, null, 2))
       if (mountedRef.current) {
         toast.success(
           translate('auto.components.settings.MobilePane.diagnosticsCopied', 'Diagnostics copied')
@@ -332,6 +329,12 @@ export function MobilePane(): React.JSX.Element {
       void loadDevices()
     }
   }, [devicesLoaded, loadDevices])
+
+  useMobileRelayMintRecovery({
+    failure: connectionMode === 'automatic' ? relayMintFailure : null,
+    busy: loading,
+    onRecover: () => void generateQR({ rotate: true })
+  })
 
   // Refresh ahead of expiry; the old code stays valid for a phone mid-scan.
   usePairingOfferExpiry(pairingUrl != null ? qrExpiresAt : null, () => void generateQR())

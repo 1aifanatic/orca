@@ -1,17 +1,49 @@
-import { useCallback, useContext, useSyncExternalStore } from 'react'
+import { useCallback, useContext, useSyncExternalStore, type ReactNode } from 'react'
 import { Text, View } from 'react-native'
-import { ArrowLeftRight, Play } from 'lucide-react-native'
+import { ArrowLeftRight, Gauge, Play } from 'lucide-react-native'
 import { readWholeAgentSessionFailureFact } from '../../../../../../src/shared/agent-session/failures/agent-session-failure'
 import type { NativeChatTextBlock } from '../../../../../../src/shared/native-chat/native-chat-types'
-import { colors, feedback, spacing, typography } from '../../../../theme/mobile-theme'
-import { themedStyleSheet } from '../../../../theme/themed-styles'
-import { useMobileColorScheme } from '../../../../theme/use-mobile-color-scheme'
-import { useMobileTranslation } from '../../../../i18n/use-mobile-translation'
+import { feedback, spacing, typography } from '../../../../theme/mobile-theme'
+import { themedStyleSheet, useThemedStyles } from '../../../../theme/themed-styles'
+import { useMobileColors } from '../../../../theme/use-mobile-color-scheme'
+import { intlLocaleFor } from '../../../../i18n/ui-intl-locale'
+import { useMobileTranslation, useMobileUiLocale } from '../../../../i18n/use-mobile-translation'
 import { INLINE_TEXT_SELECTION } from '../../../../platform/text-selection/inline-text-selection'
 import { MobileNativeChatNoticePill } from './MobileNativeChatNoticePill'
 import { scaledType } from '../messages/mobile-native-chat-message-styles'
 import { nativeChatUsageLimitStatusText } from './native-chat-usage-limit-copy'
 import { MobileNativeChatNoticeContext } from './mobile-native-chat-notice-context'
+import { MobileNativeChatEventRow } from '../messages/MobileNativeChatEventRow'
+
+/** A usage stop is a pause, not an error: one quiet line, its reset and actions under it. */
+export function MobileNativeChatUsageLimitRow({
+  notice,
+  text,
+  fontScale,
+  onLongPress,
+  details
+}: {
+  notice: NativeChatTextBlock
+  text: string
+  fontScale: number
+  onLongPress?: () => void
+  details: ReactNode
+}): React.JSX.Element {
+  const colors = useMobileColors()
+  return (
+    <MobileNativeChatEventRow
+      icon={<Gauge size={14} color={colors.textMuted} strokeWidth={2} />}
+      label={text}
+      fontScale={fontScale}
+      onLongPress={onLongPress}
+      wordsLines={0}
+      subtitle={<MobileNativeChatUsageLimitStatus notice={notice} fontScale={fontScale} />}
+      details={details}
+    >
+      {text}
+    </MobileNativeChatEventRow>
+  )
+}
 
 /** True from the reset on; re-renders once when it passes. */
 function useResetPassed(resetsAt: number | undefined): boolean {
@@ -38,9 +70,12 @@ export function MobileNativeChatUsageLimitStatus({
   notice: NativeChatTextBlock
   fontScale: number
 }): React.JSX.Element | null {
-  useMobileColorScheme()
+  const styles = useThemedStyles(stylesSheet)
   const t = useMobileTranslation()
-  const { usageLimit, openAccounts } = useContext(MobileNativeChatNoticeContext)
+  const locale = intlLocaleFor(useMobileUiLocale())
+  const { usageLimit, openAccounts, openAntigravityAccounts } = useContext(
+    MobileNativeChatNoticeContext
+  )
   const failure = readWholeAgentSessionFailureFact(notice.failure)
   const resetsAt = failure?.kind === 'usageLimitReached' ? failure.usageLimit?.resetsAt : undefined
   const actions =
@@ -49,14 +84,19 @@ export function MobileNativeChatUsageLimitStatus({
     usageLimit?.turnItemId === notice.usageLimitTurnItemId
       ? usageLimit
       : null
-  // Continue applies at the cut's own reset, or earlier once the host says the chat moved accounts.
+  // Continue applies at the cut's own reset, or earlier once the host says the chat moved accounts;
+  // a move onto an account itself out of quota waits for that account, even past this reset.
+  const movedOutOfQuota = actions?.limitedAccount !== undefined
   const resetPassed = useResetPassed(
     resetsAt !== undefined && actions?.continueAt !== undefined
-      ? Math.min(resetsAt, actions.continueAt)
+      ? movedOutOfQuota
+        ? actions.continueAt
+        : Math.min(resetsAt, actions.continueAt)
       : resetsAt
   )
   // The line names the reset Orca waits for.
-  const shownAt = actions?.autoContinue ? (actions.continueAt ?? resetsAt) : resetsAt
+  const shownAt =
+    actions?.autoContinue || movedOutOfQuota ? (actions?.continueAt ?? resetsAt) : resetsAt
   const shownPassed = useResetPassed(shownAt)
   if (failure?.kind !== 'usageLimitReached') {
     return null
@@ -67,9 +107,14 @@ export function MobileNativeChatUsageLimitStatus({
   }
   const status = nativeChatUsageLimitStatusText(
     { resetsAt: shownAt, resetPassed: shownPassed, autoContinue: actions?.autoContinue ?? null },
-    t
+    t,
+    locale
   )
-  const switchAccount = actions?.canSwitchAccount ? (openAccounts ?? null) : null
+  const switchAccount = actions?.antigravityAccounts
+    ? (openAntigravityAccounts ?? null)
+    : actions?.canSwitchAccount
+      ? (openAccounts ?? null)
+      : null
   const continueNow = actions && resetPassed ? actions.continueNow : null
   if (!status && !switchAccount && !continueNow) {
     return null
@@ -125,7 +170,7 @@ export function MobileNativeChatUsageLimitStatus({
   )
 }
 
-const styles = themedStyleSheet(() => ({
+const stylesSheet = themedStyleSheet((colors) => ({
   block: {
     marginTop: spacing.xs,
     gap: spacing.sm

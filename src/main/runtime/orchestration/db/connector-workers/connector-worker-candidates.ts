@@ -11,11 +11,8 @@ import {
 import { listWorkerTerminalResources } from '../worker-terminal/worker-terminal-listing'
 import { listFederatedDispatchesByIds } from '../../legacy-remote-home/federated-dispatch-store'
 import type { FederatedDispatchRow } from '../orchestration-records'
-import { getWorkerTerminalResourceByProcessIncarnation } from '../worker-terminal/worker-terminal-resource-store'
-import { hasRecordedStructuredWorkerSession } from '../dispatch-context/dispatch-lookup'
+import { readSessionPartyRows, type SessionPartyRows } from '../worker-terminal/session-party-rows'
 import { parseOrcaSessionAddress } from '../../../../../shared/agent-session/identity/orca-session-address'
-import { structuredWorkerProcessIncarnation } from '../../terminal-authority/structured-sessions/structured-worker-incarnation'
-import type { WorkerTerminalResourceRow } from '../../terminal-authority/release/worker-terminal-ownership'
 
 export type ConnectorWorkerRow = ReturnType<typeof listWorkerTerminalResources>[number]
 
@@ -26,13 +23,7 @@ export type ConnectorWorkerCandidates = {
   candidates: ConnectorWorkerCandidate[]
   federated: FederatedDispatchRow[]
   /** For each chat a candidate is assigned to, the two rows that name its party. */
-  chatParties: ChatPartyRows[]
-}
-
-export type ChatPartyRows = {
-  sessionId: string
-  resource: WorkerTerminalResourceRow | null
-  recordedWorker: boolean
+  chatParties: SessionPartyRows[]
 }
 
 /** A worker that may still run, with what its live projection needs from the database. */
@@ -40,6 +31,8 @@ export type ConnectorWorkerCandidate = {
   sessionId: string
   row: ConnectorWorkerRow
   attention: WorkerAttentionInput
+  /** Workers it started itself are still open, though no conversation read lists them. */
+  openChildren: boolean
 }
 
 // Each chat's newest Dispatches through its own index, as readSessionWorkers reads them; connector ones only.
@@ -52,6 +45,13 @@ const CONNECTOR_DISPATCHES_SQL = `
        ORDER BY rowid DESC LIMIT ?2
     )
    WHERE d.creator_turn_source = 'connector'`
+
+// Through idx_dispatch_creator_mailbox_work: which of these Dispatches started one still open.
+const OPEN_CHILDREN_SQL = `
+  SELECT DISTINCT creator_dispatch_id AS id
+    FROM dispatch_contexts
+   WHERE creator_dispatch_id IN (SELECT value FROM json_each(?1))
+     AND status IN ('pending', 'dispatched')`
 
 /**
  * These chats' connector-started workers that may still run. A worker settled by its stop or its
@@ -92,7 +92,7 @@ export function readConnectorWorkerCandidates(
     connection,
     rows.map((row) => row.dispatchId)
   )
-  const candidates = rows.flatMap((row) => {
+  const open = rows.flatMap((row) => {
     const input = attention.get(row.dispatchId)
     const sessionId = sessionByDispatch.get(row.dispatchId)
     if (!input || !sessionId || isSettled(row, input, now)) {
@@ -100,6 +100,14 @@ export function readConnectorWorkerCandidates(
     }
     return [{ sessionId, row, attention: input }]
   })
+  const parents = readOpenChildren(
+    connection,
+    open.map((candidate) => candidate.row.dispatchId)
+  )
+  const candidates = open.map((candidate) => ({
+    ...candidate,
+    openChildren: parents.has(candidate.row.dispatchId)
+  }))
   return {
     candidates,
     federated: listFederatedDispatchesByIds.call(
@@ -110,25 +118,34 @@ export function readConnectorWorkerCandidates(
   }
 }
 
+function readOpenChildren(
+  connection: OrchestrationDbConnection,
+  dispatchIds: readonly string[]
+): Set<string> {
+  if (dispatchIds.length === 0) {
+    return new Set()
+  }
+  const parents = new Set<string>()
+  for (const row of connection.db.prepare(OPEN_CHILDREN_SQL).all(JSON.stringify(dispatchIds))) {
+    if (typeof row.id === 'string') {
+      parents.add(row.id)
+    }
+  }
+  return parents
+}
+
 // What resolveOrcaSessionParty reads for a chat assignee; a chat is no worker, so both usually miss.
 function readChatParties(
   connection: OrchestrationDbConnection,
   candidates: readonly ConnectorWorkerCandidate[]
-): ChatPartyRows[] {
-  const sessions = new Set(
+): SessionPartyRows[] {
+  return readSessionPartyRows.call(
+    connection,
     candidates.flatMap(({ row }) => {
       const chat = row.agentTerminalHandle ? parseOrcaSessionAddress(row.agentTerminalHandle) : null
       return chat ? [chat] : []
     })
   )
-  return [...sessions].map((sessionId) => {
-    const process = structuredWorkerProcessIncarnation(sessionId)
-    return {
-      sessionId,
-      resource: getWorkerTerminalResourceByProcessIncarnation.call(connection, process) ?? null,
-      recordedWorker: hasRecordedStructuredWorkerSession.call(connection, sessionId, process)
-    }
-  })
 }
 
 // The settled half of sessionWorkerState, which no liveness verdict overrides.

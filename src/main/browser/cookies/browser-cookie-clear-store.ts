@@ -3,7 +3,7 @@ import {
   openCookieDebuggerSession,
   type CookieClearDebugger
 } from './browser-cookie-debugger-session'
-import { normalizeCookieDomain } from './policy/cookie-domain'
+import { normalizeCookieDomain } from './policy/cookie-domain-normalization'
 import type {
   CookieClearIdentity,
   CookieClearPartitionKey,
@@ -13,7 +13,7 @@ import type {
 } from './storage/cookie-store-contracts'
 import { restoreEveryCookieIdentity } from './browser-cookie-identity-restore'
 import { normalizeCookiePartitionSite } from './sources/browser-cookie-source-partition'
-import { cdpCookiesFromCommand, type CdpCookie } from './browser-cdp-cookie'
+import { cdpCookiesFromCommand, requireCdpCookies, type CdpCookie } from './browser-cdp-cookie'
 
 export function cdpSameSite(sameSite: Cookie['sameSite']): 'Strict' | 'Lax' | 'None' | undefined {
   if (sameSite === 'strict') {
@@ -200,7 +200,7 @@ export function openCookieClearStore(
     writeCookieIdentity: async (identity) =>
       writeIdentityWithCdp((await attach()).debugger, identity, 'import'),
     readAllCdpCookies: async () =>
-      cdpCookiesFromCommand(await (await attach()).debugger.sendCommand('Network.getAllCookies')),
+      requireCdpCookies(await (await attach()).debugger.sendCommand('Network.getAllCookies')),
     dispose
   }
 }

@@ -4,8 +4,6 @@ import type { AppState } from '../../types'
 import type { PersistedTrustedOrcaHooks } from '../../../../../shared/workspace-setup/orca-yaml-hook-types'
 import type { PersistedUIState } from '../../../../../shared/orca-profiles/persisted-ui-state-types'
 import type {
-  ActivityBarPosition,
-  TaskViewPresetId,
   TopLevelView,
   VisibleWorkspaceHostIds
 } from '../../../../../shared/ui-chrome/ui-chrome-types'
@@ -15,33 +13,26 @@ import {
   WORKSPACE_CLEANUP_CLASSIFIER_VERSION
 } from '../../../../../shared/workspace-cleanup/workspace-cleanup'
 import { isTopLevelView } from '../../../../../shared/ui-chrome/top-level-view'
-import { AGENT_STATUS_HYDRATE_MAX_AGE_MS } from '../../../../../shared/agent-status/contracts/agent-status-freshness'
+import { isWebClientLocation } from '@/app-shell/platform/web-client-location'
 import { resolveVisibleWorkspaceHostIds } from '../../../../../shared/workspace-view/workspace-host-visibility'
 import { persistedUIValuesEqual } from '../../../../../shared/collections/persisted-ui-equality'
 import '../../../../../shared/orca-profiles/constants'
 import type { UISlice } from './ui-slice-contract'
+import { isSafePersistedRecordKey } from '../../../../../shared/agent-session/view/pane-key-timestamp-record'
+
+export {
+  sanitizeActivityBarArrangement,
+  sanitizeActivityBarPosition
+} from './ui-slice-hydration-activity-bar'
+export { preserveStringArrayIdentity } from './ui-slice-hydration-array-identity'
 
 const MIN_SIDEBAR_WIDTH = 220
-
-export function preserveStringArrayIdentity<T extends string>(
-  current: readonly T[] | null,
-  next: T[] | null
-): T[] | null {
-  if (!current || !next) {
-    return next
-  }
-  return current.length === next.length && current.every((value, index) => value === next[index])
-    ? (current as T[])
-    : next
-}
 
 export function isPlainPersistedRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-export function isSafePersistedRecordKey(key: string): boolean {
-  return key !== '__proto__' && key !== 'constructor' && key !== 'prototype'
-}
+export { isSafePersistedRecordKey }
 
 export function sanitizePersistedRepoIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
@@ -106,50 +97,6 @@ export function sanitizePersistedSidebarWidth(
   return Math.min(maxWidth, Math.max(MIN_SIDEBAR_WIDTH, width))
 }
 
-// Any other value would hide the activity bar entirely, since the layout renders only Top or Side.
-export function sanitizeActivityBarPosition(position: unknown): ActivityBarPosition {
-  return position === 'side' ? 'side' : 'top'
-}
-
-export function sanitizePaneKeyTimestampRecord(
-  value: unknown,
-  maxAgeMs: number = AGENT_STATUS_HYDRATE_MAX_AGE_MS
-): Record<string, number> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return {}
-  }
-  const cutoff = Date.now() - maxAgeMs
-  const out: Record<string, number> = {}
-  for (const [key, ackAt] of Object.entries(value as Record<string, unknown>)) {
-    if (!isSafePersistedRecordKey(key)) {
-      continue
-    }
-    if (typeof ackAt !== 'number' || !Number.isFinite(ackAt) || ackAt <= 0 || ackAt < cutoff) {
-      continue
-    }
-    out[key] = ackAt
-  }
-  return out
-}
-
-export const sanitizeAcknowledgedAgentsByPaneKey = sanitizePaneKeyTimestampRecord
-
-// Structured chat rows hydrate at any age, so cutoffs are never age-pruned; the newest clears bound growth instead.
-const ACTIVITY_CLEARED_AT_MAX_ENTRIES = 500
-
-export function sanitizeActivityClearedAtByPaneKey(value: unknown): Record<string, number> {
-  const valid = sanitizePaneKeyTimestampRecord(value, Number.POSITIVE_INFINITY)
-  const entries = Object.entries(valid)
-  if (entries.length <= ACTIVITY_CLEARED_AT_MAX_ENTRIES) {
-    return valid
-  }
-  return Object.fromEntries(
-    entries
-      .toSorted(([, left], [, right]) => right - left)
-      .slice(0, ACTIVITY_CLEARED_AT_MAX_ENTRIES)
-  )
-}
-
 export function sanitizeWorkspaceCleanupDismissals(
   value: unknown
 ): Record<string, WorkspaceCleanupDismissal> {
@@ -186,9 +133,16 @@ export function sanitizeWorkspaceCleanupDismissals(
   return out
 }
 
-export function sanitizeHydratedActiveView(value: PersistedUIState['activeView']): TopLevelView {
+export function sanitizeHydratedActiveView(
+  value: PersistedUIState['activeView'],
+  webClient = isWebClientLocation()
+): TopLevelView {
   // Why: older data (pre-activeView) or a view a different build doesn't have falls back to terminal rather than rendering nothing.
   if (!isTopLevelView(value)) {
+    return 'terminal'
+  }
+  // Why: a paired web client reads the desktop's last view, but plugins run only in the desktop app.
+  if (value === 'plugins' && webClient) {
     return 'terminal'
   }
   return value
@@ -229,24 +183,6 @@ export function clampPetSize(
     return defaults.fallback
   }
   return Math.max(defaults.min, Math.min(defaults.max, Math.round(size)))
-}
-
-export function presetToQuery(presetId: TaskViewPresetId | null): string {
-  switch (presetId) {
-    case 'all':
-    case 'issues':
-      return 'is:issue is:open'
-    case 'my-issues':
-      return 'assignee:@me is:issue is:open'
-    case 'prs':
-      return 'is:pr is:open'
-    case 'review':
-      return 'review-requested:@me is:pr is:open'
-    case 'my-prs':
-      return 'author:@me is:pr is:open'
-    case null:
-      return 'is:issue is:open'
-  }
 }
 
 export function hydrateUnexpectedSignoutDismissal(

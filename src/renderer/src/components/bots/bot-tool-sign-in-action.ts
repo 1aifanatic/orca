@@ -1,10 +1,13 @@
 // A tool's sign-in as every surface shows it (the Connectors row, Settings › Tools, the chat's
 // tool-added card): one status, one line and one action, whether Orca signs in or the agent's CLI.
 import type { BotRef } from '@/lib/bot-hosts'
-import { useState } from 'react'
 import { toast } from 'sonner'
 import { useTranslate, type Translate } from '@/i18n/use-translate'
 import type { BotOwnTool, BotToolProblem } from '../../../../shared/bot-tools'
+import {
+  botToolSignInFace,
+  type BotToolSignInFace
+} from '../../../../shared/bots/bot-tool-sign-in-face'
 import {
   botToolErrorMessage,
   useBotToolHostSignIn,
@@ -12,53 +15,7 @@ import {
   openBotToolSignInPage,
   useBotToolSignIn
 } from './bot-tools-client'
-
-export type BotToolSignInFace =
-  | 'signed-in'
-  | 'needs-sign-in'
-  | 'sign-in-again'
-  | 'waiting'
-  /** The returned code is being exchanged and stored on the bot's host. */
-  | 'finishing'
-  | 'unreachable'
-  | 'unsupported'
-  /** The bot's host runs an Orca that can't sign in for this device. */
-  | 'update-needed'
-
-/** The face of a tool's sign-in; null when it has none to show (a command, a public server). */
-export function botToolSignInFace(
-  tool: BotOwnTool,
-  problem: BotToolProblem | undefined,
-  started: boolean,
-  failure: string | undefined,
-  finishing = false
-): BotToolSignInFace | null {
-  const signIn = tool.signIn
-  if (!signIn) {
-    // The agent's CLI signs in; its check reports a missing sign-in.
-    return problem?.kind === 'sign-in' ? 'needs-sign-in' : null
-  }
-  if (started) {
-    return finishing ? 'finishing' : 'waiting'
-  }
-  if (signIn.state === 'signed-in') {
-    return 'signed-in'
-  }
-  if (failure === 'needs-update') {
-    return 'update-needed'
-  }
-  // The host keeps why the last sign-in couldn't start; this window may know it a moment sooner.
-  const stored =
-    signIn.problem ??
-    (failure === 'unsupported' ? 'unsupported' : failure === 'unavailable' ? 'unreachable' : null)
-  return stored === 'unsupported'
-    ? 'unsupported'
-    : stored === 'unreachable'
-      ? 'unreachable'
-      : signIn.state === 'lost'
-        ? 'sign-in-again'
-        : 'needs-sign-in'
-}
+import { useNativeChatViewGuard } from '../native-chat/pane/ownership/native-chat-view-memory'
 
 /**
  * A sign-in face in words, one mapping for every surface: `line` for a row (Connectors, Settings ›
@@ -121,7 +78,8 @@ export function useBotToolSignInAction(
 ): BotToolSignInAction {
   const t = useTranslate()
   const { active: started, failure, hostName } = useBotToolSignIn(bot, tool.name)
-  const [busy, setBusy] = useState(false)
+  // Kept with the chat tab when shown in a chat: a card released mid-connect returns still connecting.
+  const [busy, setBusy] = useNativeChatViewGuard(`bot-tool-sign-in:${bot.id}:${tool.name}`, false)
   const host = useBotToolHostSignIn(bot, tool.name)
   const hosted = started ? host : null
   const face = botToolSignInFace(tool, problem, started, failure, hosted?.state === 'finishing')

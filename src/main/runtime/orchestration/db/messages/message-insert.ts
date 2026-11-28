@@ -11,6 +11,7 @@ import { runLifecycleWriteTransaction } from '../lifecycle-write-transaction-run
 import { notifyPeerMailQueued } from '../../federation/peer-mail/peer-mail-waiters'
 import { ORCHESTRATION_UNBOUND_RUN_ID as UNBOUND_RUN_ID } from '../../../../../shared/orchestration/orchestration-rpc-contract'
 import { MESSAGE_COLUMN_LIST } from '../row-column-lists'
+import { callerMailProvenance, type OrcaAuthoredMail } from './message-orca-provenance'
 import { recordMessageSenderDispatch } from './message-sender-dispatch'
 
 const MESSAGE_INSERT_SAVEPOINT = 'message_insert_batch'
@@ -29,9 +30,13 @@ export type MessageInsert = {
   senderPaneKey?: string
   runId?: string
   answerSenderSnapshot?: string
+  /** The message this answers: what settles that ask, whatever thread or mailbox the reply lands in. */
+  replyTo?: string
   deliveryContract?: MessageDeliveryContract
   /** The Dispatch whose worker sent this, as the sender's own check found it; names it on every card. */
   senderDispatchId?: string
+  /** Orca wrote this mail itself, so its payload (and for item mail its sender) stands. */
+  orcaAuthored?: OrcaAuthoredMail
 }
 
 export function insertMessage(this: OrchestrationDb, msg: MessageInsert): MessageRow {
@@ -45,6 +50,7 @@ export function insertMessage(this: OrchestrationDb, msg: MessageInsert): Messag
       )
       .run(UNBOUND_RUN_ID)
   }
+  const payload = callerMailProvenance(msg)
   const deliveryContract = msg.deliveryContract ?? 'current_delivery'
   this.requireRun(runId)
   const id = msg.id ?? generateId('msg')
@@ -58,9 +64,10 @@ export function insertMessage(this: OrchestrationDb, msg: MessageInsert): Messag
   const stmt = this.db.prepare(`
     INSERT INTO messages (
       id, run_id, delivery_contract, from_handle, to_handle, subject, body,
-      type, priority, thread_id, payload, sender_pane_key, answer_sender_snapshot, read, delivered_at
+      type, priority, thread_id, payload, sender_pane_key, answer_sender_snapshot, reply_to, read,
+      delivered_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN datetime('now') END)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN datetime('now') END)
   `)
   stmt.run(
     id,
@@ -73,9 +80,10 @@ export function insertMessage(this: OrchestrationDb, msg: MessageInsert): Messag
     type,
     msg.priority ?? 'normal',
     msg.threadId ?? null,
-    msg.payload ?? null,
+    payload ?? null,
     msg.senderPaneKey ?? null,
     msg.answerSenderSnapshot ?? null,
+    msg.replyTo ?? null,
     handled,
     handled
   )

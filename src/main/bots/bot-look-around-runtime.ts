@@ -1,4 +1,8 @@
 // The runtime's one Look around runner, shared by the scheduler tick, Look now and a bot's onboarding.
+import {
+  onSavedAccountSelected,
+  selectedSavedAccount
+} from '../providers/accounts/selected-saved-account'
 import { folderWorkspaceKey } from '../../shared/workspace/identity/workspace-scope'
 import type { AutomationService } from '../automations/automation-service'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
@@ -20,6 +24,15 @@ import { watchBotTurnEnds } from './bot-run-turn-watch'
 const runners = new WeakMap<object, BotLookAroundRunner>()
 const continuedLookWatches = new WeakSet<object>()
 
+export function isRegisteredLookOpening(
+  runtime: OrcaRuntimeService,
+  botId: string,
+  sessionId: string,
+  clientMessageId: string
+): boolean {
+  return runners.get(runtime)?.ownsOpening(botId, sessionId, clientMessageId) ?? false
+}
+
 export function runtimeLookAroundRunner(runtime: OrcaRuntimeService): BotLookAroundRunner {
   watchContinuedLooksOnce(runtime)
   const existing = runners.get(runtime)
@@ -37,8 +50,18 @@ export function runtimeLookAroundRunner(runtime: OrcaRuntimeService): BotLookAro
     usageLimitOf: async (sessionId) => {
       const host = await requireStructuredHost(runtime)
       const cut = await (await host.journalReads(sessionId)).usageLimitCut()
-      return cut ? (cut.resetsAt === undefined ? {} : { resetsAt: cut.resetsAt }) : null
+      if (!cut) {
+        return null
+      }
+      // The saved account the cut's launch ran on, when its record still names that launch.
+      const launched = host.deps.store.getRecord(sessionId)?.launchedAccount
+      const accountId = launched?.fence === cut.fence ? launched?.accountId : undefined
+      return {
+        ...(cut.resetsAt === undefined ? {} : { resetsAt: cut.resetsAt }),
+        ...(accountId ? { accountId } : {})
+      }
     },
+    selectedAccount: selectedSavedAccount,
     usageLimitContinues: async (sessionId) => {
       const host = await requireStructuredHost(runtime)
       const cut = await (await host.journalReads(sessionId)).usageLimitCut()
@@ -76,11 +99,18 @@ function watchContinuedLooksOnce(runtime: OrcaRuntimeService): void {
     })
 }
 
-/** Looks and tidy-ups ride the host's automation scheduler: its minute tick, while it runs. */
+/** Looks, tidy-ups and usage-limit waits ride the host's automation scheduler: its minute tick,
+ *  while it runs. */
 export function bindLookAroundToAutomations(
   service: Pick<AutomationService, 'onTick'>,
   runtime: OrcaRuntimeService
 ): void {
+  // A new saved account lifts a look's wait for the limit another account hit: look now.
+  onSavedAccountSelected(() => {
+    void Promise.resolve()
+      .then(() => runtimeLookAroundRunner(runtime).tick())
+      .catch((error: unknown) => console.warn('[bots] look-around tick failed', error))
+  })
   // Deferred so a failure here, even building a runner, never stops the scheduler's own tick.
   service.onTick = () => {
     void Promise.resolve()
@@ -89,5 +119,9 @@ export function bindLookAroundToAutomations(
     void Promise.resolve()
       .then(() => runtimeTidyUpRunner(runtime).tick())
       .catch((error: unknown) => console.warn('[bots] tidy-up tick failed', error))
+    // A usage-limit wait whose reset passed with no continue scheduled ends on this minute.
+    void Promise.resolve()
+      .then(() => runtime.botItems.usageLimitTick(Date.now()))
+      .catch((error: unknown) => console.warn('[bots] usage-limit tick failed', error))
   }
 }

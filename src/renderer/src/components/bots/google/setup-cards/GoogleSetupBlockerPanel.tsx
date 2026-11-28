@@ -1,7 +1,7 @@
 // Where the setup is stuck, from the host's reading, and the buttons that move it on. A press that
 // fixes something on this computer (a new sign-in, an imported key) then tells the bot with a card
 // answer, so it wakes and checks again instead of waiting for a chat message.
-import React, { useState } from 'react'
+import React from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useTranslate } from '@/i18n/use-translate'
@@ -12,6 +12,7 @@ import {
   type GoogleSetupBlocker
 } from '../../../../../../shared/google/google-setup-blocker'
 import type { GoogleSetupRun } from '../../../../../../shared/google/google-setup-run'
+import { googleSetupActionAnswer } from '../../../../../../shared/google/google-setup-card-view'
 import {
   googleEnableApisUrl,
   withGoogleAccount
@@ -27,6 +28,7 @@ import { useGoogleClientFile } from '../use-google-client-file'
 import type { useGoogleSignIn } from '../use-google-sign-in'
 import { googleSetupActionText, googleSetupBlockerText } from './google-setup-blocker-copy'
 import { answerGoogleSetup } from './google-setup-run-store'
+import { useNativeChatViewGuard } from '../../../native-chat/pane/ownership/native-chat-view-memory'
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -45,16 +47,20 @@ export function GoogleSetupBlockerPanel({
   signIn?: ReturnType<typeof useGoogleSignIn>
 }): React.JSX.Element {
   const t = useTranslate()
-  const [busy, setBusy] = useState(false)
+  // Kept with the chat tab: a panel released mid-answer returns still busy.
+  const [busy, setBusy] = useNativeChatViewGuard(`google-setup-blocker:${run.id}`, false)
   const host = useGoogleHost(botTarget(bot))
   const client = host.status === 'ready' ? host.google.client : null
   const accounts = host.status === 'ready' ? host.google.accounts : []
   const answer = (values: string[]): Promise<void> => answerGoogleSetup(bot, 'step', values)
-  const file = useGoogleClientFile(async (text) => {
-    await importGoogleApp(botTarget(bot), text)
-    const client = run.steps.client?.status
-    await answer(client === 'done' || client === 'skipped' ? ['resume'] : ['done', 'client'])
-  })
+  const file = useGoogleClientFile(
+    async (text) => {
+      await importGoogleApp(botTarget(bot), text)
+      const client = run.steps.client?.status
+      await answer(client === 'done' || client === 'skipped' ? ['resume'] : ['done', 'client'])
+    },
+    { memoryKey: `blocker:${run.id}` }
+  )
   // A new sign-in fixes it on this computer; the bot hears so it runs done again.
   const signInThen = async (
     services: GoogleSetupRun['services'],
@@ -63,7 +69,10 @@ export function GoogleSetupBlockerPanel({
     if (!signIn) {
       return
     }
-    const account = await signIn.connect(services ?? run.services ?? ['gmail'], email)
+    // A setup signs in through the app it made, even for a saved account.
+    const account = await signIn.connect(services ?? run.services ?? ['gmail'], email, {
+      currentApp: true
+    })
     if (account) {
       await answer(['resume'])
     }
@@ -79,20 +88,21 @@ export function GoogleSetupBlockerPanel({
   const press = async (action: GoogleSetupAction): Promise<void> => {
     switch (action.id) {
       case 'make-new-key':
-        return answer(['redo', 'client'])
+      case 'continue-without':
+      case 'keep-account':
+      case 'continue':
+      case 'start-over':
+      case 'let-me':
+      case 'done': {
+        const answered = googleSetupActionAnswer(action, run)
+        return answered ? answerGoogleSetup(bot, answered.card, answered.values) : undefined
+      }
       case 'import-key':
         return file.pick()
       case 'allow':
         return signInThen(action.services, run.account)
       case 'sign-in-again':
         return signInThen(run.services, action.email)
-      case 'continue-without': {
-        const left = (run.services ?? []).filter((choice) => !action.services.includes(choice))
-        // The host offers it only with a service left; an answer needs at least one.
-        return left.length > 0 ? answerGoogleSetup(bot, 'services', left) : undefined
-      }
-      case 'keep-account':
-        return answerGoogleSetup(bot, 'account', [action.email])
       case 'turn-on': {
         // An imported app names no project or account on the run; its key and sign-in do.
         const projectId = run.projectId ?? client?.projectId
@@ -112,14 +122,6 @@ export function GoogleSetupBlockerPanel({
         return
       case 'check-again':
         return checkAgain()
-      case 'continue':
-        return answer(['resume'])
-      case 'start-over':
-        return answer(['start-over'])
-      case 'let-me':
-        return answer(['let-me', action.step])
-      case 'done':
-        return answer(['done', action.step])
     }
   }
   const act = (action: GoogleSetupAction): void => {

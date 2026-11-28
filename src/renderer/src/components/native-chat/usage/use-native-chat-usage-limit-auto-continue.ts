@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useNativeChatViewGuard } from '../pane/ownership/native-chat-view-memory'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { callStructuredAgentSession } from '@/runtime/native-chat/requests/structured-agent-session-call'
@@ -15,6 +16,8 @@ import {
   nativeChatUsageLimitAutoContinueKind,
   nativeChatUsageLimitAutoContinueUnavailable,
   usageLimitContinueAtForCut,
+  usageLimitLimitedAccountForCut,
+  usageLimitContinueResetForCut,
   usageLimitContinueStateForCut
 } from '../../../../../shared/native-chat/transcript/continuation/native-chat-usage-limit-auto-continue'
 import type { NativeChatUsageLimitAutoContinueState } from './native-chat-usage-limit-auto-continue-setting'
@@ -32,6 +35,8 @@ export function useNativeChatUsageLimitAutoContinue(
   unavailable: boolean
   /** When the host lets Continue apply: earlier than the cut's reset once the chat moved accounts. */
   continueAt: number | undefined
+  /** The account the chat moved to, out of quota itself until `continueAt`. */
+  limitedAccount: string | undefined
 } {
   const capability = useStructuredAgentSessionHostCapabilityState(
     target,
@@ -39,11 +44,18 @@ export function useNativeChatUsageLimitAutoContinue(
   )
   const feed = useMemo(() => getStructuredAgentSessionStatusFeed(target), [target])
   const turnItemId = cut?.turnItemId
-  const resetsAt = cut?.resetsAt
-  const knownReset = resetsAt !== undefined
+  const limited = turnItemId !== undefined
+  // An unknown reset still gets one once the chat moves accounts, so every cut listens.
   useEffect(
-    () => (capability === 'supported' && knownReset ? feed.activate() : undefined),
-    [capability, knownReset, feed]
+    () => (capability === 'supported' && limited ? feed.activate() : undefined),
+    [capability, limited, feed]
+  )
+  const subscribe = useCallback(
+    (listener: () => void) => feed.subscribeSession(sessionId, listener),
+    [feed, sessionId]
+  )
+  const resetsAt = useSyncExternalStore(subscribe, () =>
+    usageLimitContinueResetForCut(feed.getSnapshot().get(sessionId)?.usageLimitContinue, cut)
   )
   // Select one primitive: every status event replaces the summary, and the notice rows read this.
   const readCutState = useCallback(
@@ -56,15 +68,19 @@ export function useNativeChatUsageLimitAutoContinue(
           }),
     [feed, sessionId, turnItemId, resetsAt]
   )
-  const subscribe = useCallback(
-    (listener: () => void) => feed.subscribeSession(sessionId, listener),
-    [feed, sessionId]
-  )
   const cutState = useSyncExternalStore(subscribe, readCutState)
   const continueAt = useSyncExternalStore(subscribe, () =>
     turnItemId === undefined
       ? undefined
       : usageLimitContinueAtForCut(feed.getSnapshot().get(sessionId)?.usageLimitContinue, {
+          turnItemId,
+          resetsAt
+        })
+  )
+  const limitedAccount = useSyncExternalStore(subscribe, () =>
+    turnItemId === undefined
+      ? undefined
+      : usageLimitLimitedAccountForCut(feed.getSnapshot().get(sessionId)?.usageLimitContinue, {
           turnItemId,
           resetsAt
         })
@@ -82,7 +98,8 @@ export function useNativeChatUsageLimitAutoContinue(
       )
   )
   useNow(60_000, capability === 'supported' && cutState !== undefined && schedulable)
-  const [cancelling, setCancelling] = useState(false)
+  // Kept with the chat tab: a view released mid-cancel returns still cancelling.
+  const [cancelling, setCancelling] = useNativeChatViewGuard('usage-auto-continue-cancel', false)
   const cancel = useCallback(() => {
     // Read the feed now: the schedule may have changed since this row last rendered.
     if (
@@ -108,7 +125,7 @@ export function useNativeChatUsageLimitAutoContinue(
         )
       })
       .finally(() => setCancelling(false))
-  }, [cancelling, readCutState, target, sessionId, turnItemId, resetsAt])
+  }, [cancelling, setCancelling, readCutState, target, sessionId, turnItemId, resetsAt])
   const auto = useMemo<NativeChatUsageLimitAutoContinueState | null>(() => {
     const kind =
       capability === 'supported'
@@ -131,11 +148,15 @@ export function useNativeChatUsageLimitAutoContinue(
     () => ({
       auto,
       unavailable,
+      // A move onto an account itself out of quota waits for that account, even past this reset.
       continueAt:
         resetsAt === undefined || continueAt === undefined
           ? resetsAt
-          : Math.min(resetsAt, continueAt)
+          : limitedAccount !== undefined
+            ? continueAt
+            : Math.min(resetsAt, continueAt),
+      limitedAccount
     }),
-    [auto, unavailable, resetsAt, continueAt]
+    [auto, unavailable, resetsAt, continueAt, limitedAccount]
   )
 }

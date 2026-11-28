@@ -1,11 +1,8 @@
 import type { OrcaRuntimeService } from '../../runtime/orca-runtime'
+import { agentSessionRecordStoreHostServing } from '../../runtime/agent-session/records/agent-session-record-store-serving'
 import { isHostShuttingDown } from '../quit/host-shutdown-state'
 import { mainProcessState as state } from '../main-process-state'
 import { provideManagedAgentDetection } from '../../runtime/rpc/methods/host-management/managed-copy-detection'
-import {
-  reclaimManagedRuntimeReleasesAtLaunch,
-  startManagedRuntimeAutoUpdates
-} from '../../runtime/rpc/methods/host-management/managed-runtime-install'
 
 // Background chat-journal maintenance waits for this Electron host's serving milestone.
 const serving = Promise.withResolvers<void>()
@@ -14,11 +11,11 @@ let windowFence: Promise<unknown> = Promise.resolve()
 
 /** Serve boots the saved-chat writer now; desktop waits for the first-window fence, so window creation keeps the disk. */
 export function beginChatJournalStartup(
-  runtime: Pick<OrcaRuntimeService, 'beginStructuredAgentSessionStartupOpen' | 'requireStore'>,
+  runtime: Pick<OrcaRuntimeService, 'beginStructuredAgentSessionStartupOpen'>,
   serveMode: boolean
 ): void {
   // Detection counts Orca's copies from launch, before the release reclaim in chatJournalHostServing.
-  provideManagedAgentDetection(runtime)
+  provideManagedAgentDetection()
   if (serveMode) {
     runtime.beginStructuredAgentSessionStartupOpen(serving.promise)
     return
@@ -40,11 +37,18 @@ export function chatJournalHostServing(): void {
   serving.resolve()
   void windowFence
     .catch(() => {})
-    .then(() => {
-      if (state.runtime) {
-        state.runtime.startPullRequestWatches({ admit: true })
-        reclaimManagedRuntimeReleasesAtLaunch(state.runtime)
-        startManagedRuntimeAutoUpdates()
+    .then(async () => {
+      const runtime = state.core.runtime
+      if (!runtime || isHostShuttingDown()) {
+        return
       }
+      agentSessionRecordStoreHostServing(runtime)
+      const { reclaimManagedRuntimeReleasesAtLaunch, startManagedRuntimeAutoUpdates } =
+        await import('../../runtime/rpc/methods/host-management/managed-runtime-install')
+      if (isHostShuttingDown()) {
+        return
+      }
+      reclaimManagedRuntimeReleasesAtLaunch(runtime)
+      startManagedRuntimeAutoUpdates()
     })
 }
