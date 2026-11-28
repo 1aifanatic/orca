@@ -17,12 +17,10 @@ import {
 } from '../bots/bot-look-around-store'
 import { botsRootFolder, localBotHomeFilesystem } from '../bots/bot-home'
 import { journaledItemsNotice } from '../bots/bot-memory-journal-runtime'
-import { BotSharePicksStore } from '../bots/sharing/bot-share-picks-store'
-import { BotShareCandidates } from '../bots/sharing/bot-package-export'
-import type { BotShareClient } from '../bots/sharing/bot-share-client'
+import type { BotSharePicksStore } from '../bots/sharing/bot-share-picks-store'
 import type { BotShareDownloadPolicy } from '../bots/sharing/bot-share-receive'
-import { BotShareService } from '../bots/sharing/bot-share-service'
-import { readBotShareable } from '../bots/sharing/bot-share-sources'
+import type { BotShareService } from '../bots/sharing/bot-share-service'
+import { LazyBotShareServices, type BotShareClientSource } from './orca-runtime-bot-shares'
 import { runtimeBotWork, type BotWorkRuntime } from '../bots/bot-work-runtime'
 import type { WorkspaceKey } from '../../shared/workspace/identity/workspace-scope'
 import { createBotLookupIndex } from '../../shared/bots/bot-lookup-index'
@@ -106,7 +104,7 @@ export abstract class OrcaRuntimeWithBots extends OrcaRuntimeWithLinearCommands 
         : null,
     forgetBot: (botId) => {
       void this.botSharePicks()
-        .forget(botId)
+        .then((picks) => picks.forget(botId))
         .catch(() => undefined)
       this.lookAround.forget(botId)
       void this.botWork.forgetBot(botId)
@@ -115,45 +113,26 @@ export abstract class OrcaRuntimeWithBots extends OrcaRuntimeWithLinearCommands 
     }
   })
 
-  private sharePicks: BotSharePicksStore | null = null
+  private readonly shareServices = new LazyBotShareServices({
+    listAutomations: () => this.store?.listAutomations?.() ?? [],
+    listRepos: () => this.listRepos()
+  })
 
   /** Each bot's last published picks on this host; kept apart from the cloud client so a delete
    *  clears them on a runtime that never shares. */
-  botSharePicks(): BotSharePicksStore {
-    this.sharePicks ??= new BotSharePicksStore(
-      join(getProfileUserDataPath(), 'bot-share-picks.json')
-    )
-    return this.sharePicks
+  botSharePicks(): Promise<BotSharePicksStore> {
+    return this.shareServices.picks()
   }
-
-  private botShareClient: { client: BotShareClient; download: BotShareDownloadPolicy } | null = null
-  private botShareService: BotShareService | null = null
 
   /** The desktop app hands in its Orca Cloud client and where shared bots download; the headless
    *  runtime has none. */
-  setBotShareClient(client: BotShareClient, download: BotShareDownloadPolicy): void {
-    this.botShareClient = { client, download }
-    this.botShareService = null
+  setBotShareClient(client: BotShareClientSource, download: BotShareDownloadPolicy): void {
+    this.shareServices.setClient(client, download)
   }
 
-  /** Sharing bots by link, made on first use (it needs the app's data folder). */
-  botShares(): BotShareService {
-    if (!this.botShareClient) {
-      throw new Error('Sharing a bot needs the Orca desktop app.')
-    }
-    this.botShareService ??= new BotShareService({
-      ...this.botShareClient,
-      candidates: new BotShareCandidates(join(getProfileUserDataPath(), 'bot-share-candidates')),
-      picks: this.botSharePicks(),
-      readShareable: (bot, skills) =>
-        readBotShareable({
-          bot,
-          automations: this.store?.listAutomations?.() ?? [],
-          repos: this.listRepos(),
-          ...skills
-        })
-    })
-    return this.botShareService
+  /** Sharing bots by link, loaded and made on first use (it needs the app's data folder). */
+  botShares(): Promise<BotShareService> {
+    return this.shareServices.service()
   }
 
   /** The scheduler's per-automation lane once bot automations bind to it; until then nothing runs there. */

@@ -34,7 +34,6 @@ import { onRuntimeEnvironmentStatusPublished } from '../../ipc/runtime-environme
 import { installWslOrcadAccountShim } from '../wsl-startup/wsl-orcad-account-env-wiring'
 import { codexStructuredLaunchHomeResolvers } from '../agent-accounts/codex-launch-preparation'
 import type { RuntimeDesktopWindowStatus } from '../../../shared/remote-runtime/session-graph/runtime-session-contracts'
-import { BotShareClient } from '../../bots/sharing/bot-share-client'
 import { skillPackageDownloadOrigins } from '../../skills/runtime-transfer/skill-client-mediated-transfer'
 import { join } from 'node:path'
 import {
@@ -192,11 +191,15 @@ export function configureRuntimeServices(
     throw new Error('Account services must be initialized before runtime wiring')
   }
   configureDesktopCloudServices(runtime, () => store.getSettings(), userDataPath)
-  runtime.setBotShareClient(BotShareClient.forProfile(userDataPath), {
-    temporaryRoot: join(userDataPath, 'bot-share-downloads'),
-    allowedOrigins: skillPackageDownloadOrigins(!isPackaged),
-    requireHttps: isPackaged
-  })
+  runtime.setBotShareClient(
+    async () =>
+      (await import('../../bots/sharing/bot-share-client')).BotShareClient.forProfile(userDataPath),
+    {
+      temporaryRoot: join(userDataPath, 'bot-share-downloads'),
+      allowedOrigins: skillPackageDownloadOrigins(!isPackaged),
+      requireHttps: isPackaged
+    }
+  )
   runtime.setAccountServices({ claudeAccounts, codexAccounts, rateLimits })
   installWslOrcadAccountShim(store)
   runtime.setCommitMessageAgentEnvironmentResolvers({

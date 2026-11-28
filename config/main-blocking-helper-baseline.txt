@@ -1142,7 +1142,7 @@
 1 src/main/runtime/mobile-cloud-relay/desktop-relay-service.ts
 2 src/main/runtime/mobile-cloud-relay/pairing/relay-revoke-outbox.ts
 4 src/main/runtime/mobile-cloud-relay/region-selection/relay-region-preference.ts
-4 src/main/runtime/orca-runtime-bots.ts
+3 src/main/runtime/orca-runtime-bots.ts
 2 src/main/runtime/orca-runtime.ts
 16 src/main/runtime/orchestration/db/attach-orchestration-db-methods.ts
 1 src/main/runtime/orchestration/db/database-file-permissions.ts

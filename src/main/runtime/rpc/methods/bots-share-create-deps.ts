@@ -9,7 +9,7 @@ export function botShareCreateDeps(runtime: OrcaRuntimeService): BotShareCreateD
     bots: runtime.bots,
     filesystem: localBotHomeFilesystem,
     botsRoot: () => botsRootFolder(),
-    reviewed: (reviewId) => runtime.botShares().reviewed(reviewId),
+    reviewed: async (reviewId) => (await runtime.botShares()).reviewed(reviewId),
     createPausedSchedule: async (bot, schedule) => {
       await runtime.createAutomation({
         name: schedule.name,
