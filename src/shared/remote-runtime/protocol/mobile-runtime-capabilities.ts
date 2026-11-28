@@ -8,8 +8,12 @@ export const NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY = 'notifications.remot
 export const NOTIFICATIONS_PUSH_COVERAGE_RUNTIME_CAPABILITY =
   'notifications.push-coverage.v1' as const
 
+// Hosts without this capability refuse a phone's repo.add/clone/create and folderWorkspace.create.
+export const MOBILE_PROJECT_ADMISSION_RUNTIME_CAPABILITY = 'mobile.project-admission.v1' as const
+
 export const MOBILE_RUNTIME_CAPABILITIES = [
   'mobile.tasks.v1',
+  MOBILE_PROJECT_ADMISSION_RUNTIME_CAPABILITY,
   NOTIFICATIONS_REMOTE_PUSH_RUNTIME_CAPABILITY,
   NOTIFICATIONS_DESKTOP_PRESENCE_RUNTIME_CAPABILITY,
   NOTIFICATIONS_PUSH_COVERAGE_RUNTIME_CAPABILITY,

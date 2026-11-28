@@ -4,6 +4,7 @@ import { MOBILE_BOT_RPC_METHODS } from './runtime-rpc-mobile-bot-methods'
 import { MOBILE_HOST_UPDATE_RPC_METHODS } from './runtime-rpc-mobile-host-update-methods'
 import { MOBILE_MCP_SERVER_RPC_METHODS } from './runtime-rpc-mobile-mcp-server-methods'
 import { MOBILE_ORCA_ACCOUNT_RPC_METHODS } from './runtime-rpc-mobile-orca-account-methods'
+import { MOBILE_PROJECT_RPC_METHODS } from './runtime-rpc-mobile-project-methods'
 import { DEFAULT_SCOPE_HOST_METHODS } from './runtime-rpc-mobile-tracker-methods'
 
 // Execution-host routes follow the configured target; paired-desktop routes stay with the relaying Mac;
@@ -120,9 +121,6 @@ export const EXECUTION_HOST_METHODS = [
   'files.createDir',
   'files.delete',
   'files.rename',
-  // A folder row's Delete removes the Orca workspace on its host, as desktop's Remove Workspace does.
-  'folderWorkspace.delete',
-  'folderWorkspace.list',
   'git.abortMerge',
   'git.abortRebase',
   // Read-only: the delete confirm names ignored files (.env) that removing the worktree would lose.
@@ -246,17 +244,7 @@ export const EXECUTION_HOST_METHODS = [
   'orchestration.workerChatTouch',
   'orchestration.workerAutoClose',
   'orchestration.workerKeepOpen',
-  'projectGroup.list',
-  'project.list',
-  'projectHostSetup.list',
-  'repo.baseRefDefault',
-  'repo.gitAvailable',
-  'repo.hooks',
-  'repo.list',
-  'repo.saveSparsePreset',
-  'repo.searchRefs',
-  'repo.sparsePresets',
-  'repo.update',
+  ...MOBILE_PROJECT_RPC_METHODS,
   'settings.getAgentLaunch',
   // The host that owns the workspace scans its skills.
   'skills.discover',

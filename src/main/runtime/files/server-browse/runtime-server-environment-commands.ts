@@ -38,10 +38,14 @@ async function isBrowseEntryDirectory(dirPath: string, entry: Dirent): Promise<b
 }
 
 export class RuntimeServerEnvironmentCommands {
-  async browseDirectory(pathValue: string): Promise<{
+  async browseDirectory(
+    pathValue: string,
+    options: { markGitRepos?: boolean } = {}
+  ): Promise<{
     resolvedPath: string
-    entries: DirEntry[]
+    entries: (DirEntry & { isGitRepo?: true })[]
     pathFlavor: FilesystemPathFlavor
+    isGitRepo?: boolean
   }> {
     const { isServerDriveListRequest, listWindowsDrives } = await import('./windows-drive-listing')
     if (isServerDriveListRequest(pathValue)) {
@@ -64,11 +68,17 @@ export class RuntimeServerEnvironmentCommands {
     )
     const { sortDirEntries } = await import('../../../../shared/file-listing/file-name-sort')
     sortDirEntries(mapped)
-    return {
-      resolvedPath: dirPath,
-      entries: mapped,
-      pathFlavor: process.platform === 'win32' ? 'win32' : 'posix'
+    const pathFlavor = process.platform === 'win32' ? 'win32' : 'posix'
+    if (!options.markGitRepos) {
+      return { resolvedPath: dirPath, entries: mapped, pathFlavor }
     }
+    // Opt-in: the phone's Add project browser badges repos; other browsers skip the extra stats.
+    const { hasGitMarker, markGitRepoEntries } = await import('./browse-git-repo-marker')
+    const [marked, isGitRepo] = await Promise.all([
+      markGitRepoEntries(dirPath, mapped),
+      hasGitMarker(dirPath)
+    ])
+    return { resolvedPath: dirPath, entries: marked, pathFlavor, isGitRepo }
   }
 
   async isGitAvailable(): Promise<boolean> {

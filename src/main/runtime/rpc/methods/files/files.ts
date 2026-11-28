@@ -206,7 +206,8 @@ export const FILE_METHODS = [
     name: 'files.browseServerDir',
     permission: 'workspace',
     params: ServerDirectoryBrowse,
-    handler: async (params, { runtime }) => runtime.browseServerDir(params.path)
+    handler: async (params, { runtime }) =>
+      runtime.browseServerDir(params.path, { markGitRepos: params.markGitRepos })
   }),
   ...FILE_MUTATION_METHODS,
   ...FILE_STAGED_SAVE_METHODS,

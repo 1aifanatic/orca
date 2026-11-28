@@ -112,7 +112,9 @@ export const ServerDirectoryBrowse = lazyZodSchema(() =>
     path: z
       .unknown()
       .transform((v) => (typeof v === 'string' ? v : ''))
-      .pipe(z.string())
+      .pipe(z.string()),
+    // Older hosts strip it and answer without isGitRepo, which callers read as "unknown".
+    markGitRepos: z.boolean().optional()
   })
 )
 
