@@ -19,6 +19,8 @@ export type MobileNativeChatNoticeView = {
   openAccounts?: () => void
   /** Signs the chat's managed account in again on its host; absent where the phone can't. */
   accountSignIn?: ChatAccountSignIn
+  /** Opens the saved Antigravity accounts of the host running this usage-limited chat. */
+  openAntigravityAccounts?: () => void
   /** Rows whose failure no later successful turn resolved; absent when the transcript is unknown. */
   unresolvedFailureRows?: ReadonlySet<string>
 }

@@ -16,10 +16,14 @@ import {
 import {
   AntigravityAccountSection,
   antigravityBusyId,
-  requestAntigravitySelect,
   useProviderAccountSwitch
 } from './antigravity-account-section'
 import { selectDataAccount } from './provider-account-operations'
+import {
+  antigravitySwitchedMessage,
+  antigravitySwitchFailedTitle,
+  requestAntigravitySelect
+} from './antigravity-account-switch'
 
 /** The sections after Claude and Codex: OpenCode and Devin profiles, saved Antigravity accounts, and every other provider's usage. */
 export function ProviderAccountSections({
@@ -32,7 +36,8 @@ export function ProviderAccountSections({
   switchBlocked,
   onBusyAccountId,
   onSwitched,
-  onNotice
+  onNotice,
+  onToast
 }: {
   client: RpcClient | null
   live: boolean
@@ -44,6 +49,7 @@ export function ProviderAccountSections({
   onBusyAccountId: (id: string | null) => void
   onSwitched: () => Promise<void>
   onNotice: (notice: { title: string; message: string }) => void
+  onToast: (message: string) => void
 }) {
   const t = useMobileTranslation()
   const accountSwitch = useProviderAccountSwitch(client, live, reloadKey)
@@ -51,7 +57,11 @@ export function ProviderAccountSections({
     return null
   }
 
-  const runSwitch = async (busyId: string, run: (client: RpcClient) => Promise<void>) => {
+  const runSwitch = async (
+    busyId: string,
+    run: (client: RpcClient) => Promise<void>,
+    failedTitle = t('accounts.screen.switchFailed', 'Could not switch account')
+  ) => {
     if (!client) {
       return
     }
@@ -61,7 +71,7 @@ export function ProviderAccountSections({
       await onSwitched()
     } catch (e) {
       onNotice({
-        title: t('accounts.screen.switchFailed', 'Could not switch account'),
+        title: failedTitle,
         message: e instanceof Error ? e.message : String(e)
       })
     } finally {
@@ -73,9 +83,15 @@ export function ProviderAccountSections({
       selectDataAccount.interpret(await selectDataAccount.request(rpc, { provider, accountId }))
     })
   const selectAntigravity = (accountId: string) =>
-    void runSwitch(antigravityBusyId(accountId), async (rpc) => {
-      accountSwitch.replaceAntigravity(await requestAntigravitySelect(rpc, accountId))
-    })
+    void runSwitch(
+      antigravityBusyId(accountId),
+      async (rpc) => {
+        const next = await requestAntigravitySelect(rpc, accountId)
+        accountSwitch.replaceAntigravity(next)
+        onToast(antigravitySwitchedMessage(t, next, accountId))
+      },
+      antigravitySwitchFailedTitle(t)
+    )
 
   const others = getOtherUsageProviders(snapshot)
   return (

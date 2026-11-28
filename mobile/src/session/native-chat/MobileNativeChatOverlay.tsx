@@ -28,6 +28,7 @@ import type { MobileLinkOpenMode } from '../../storage/preferences'
 import { nativeChatAskRequiresTerminal } from '../../../../src/shared/native-chat/native-chat-agent-support'
 import { tuiAgentDisplayName } from '../../../../src/shared/agent-launch/catalog/tui-agent-display-names'
 import { MobileNativeChatNoticeContext } from './transcript/notices/mobile-native-chat-notice-context'
+import { useMobileAntigravityChatAccountSheet } from './transcript/notices/MobileAntigravityChatAccountSheet'
 import type { MobileNativeChatImageSource } from './visual/mobile-native-chat-image-preview'
 import type { MobileNativeChatHostOutage } from './status/mobile-native-chat-host-outage'
 import { MobileMarkdownLinksContext } from '../../components/markdown/links/mobile-markdown-links-context'
@@ -66,6 +67,7 @@ type Props = {
   onOpenAccounts?: () => void
   /** Signs the chat's managed account in again on its host; absent where the phone can't. */
   accountSignIn?: ChatAccountSignIn
+  onToast?: (message: string, durationMs?: number) => void
   /** Opens tapped links in Orca's browser; absent where the host can't open a browser tab. */
   onOpenUrlInOrca?: (url: string) => void
   linkOpenMode: MobileLinkOpenMode
@@ -123,7 +125,8 @@ function MobileNativeChatOverlayContent({
   onRunInTerminal,
   hostOutage = null,
   onOpenAccounts,
-  accountSignIn
+  accountSignIn,
+  onToast
 }: Props): React.JSX.Element {
   const session = controller.nativeChatSession
   const agent = controller.nativeChatAgent ?? ''
@@ -226,6 +229,10 @@ function MobileNativeChatOverlayContent({
   const runInTerminal = useCallback((command: string) => runInTerminalRef.current(command), [])
   const t = useMobileTranslation()
   const continuation = controller.nativeChatInterruptedContinue
+  const agySheet = useMobileAntigravityChatAccountSheet(
+    controller.nativeChatUsageLimit?.antigravityAccounts,
+    onToast
+  )
   const noticeView = useMemo(
     () => ({
       hostName,
@@ -235,6 +242,7 @@ function MobileNativeChatOverlayContent({
       unresolvedFailureRows: controller.nativeChatUnresolvedFailureRows,
       ...(onOpenAccounts ? { openAccounts: onOpenAccounts } : {}),
       ...(accountSignIn ? { accountSignIn } : {}),
+      ...(agySheet.open ? { openAntigravityAccounts: agySheet.open } : {}),
       ...(continuation
         ? {
             continuation: {
@@ -257,7 +265,8 @@ function MobileNativeChatOverlayContent({
       controller.nativeChatUsageLimit,
       controller.nativeChatUnresolvedFailureRows,
       onOpenAccounts,
-      accountSignIn
+      accountSignIn,
+      agySheet.open
     ]
   )
   const continueFailed = sendErrorMessage === null && continuation?.failed === true
@@ -392,6 +401,7 @@ function MobileNativeChatOverlayContent({
   return (
     <MobileMarkdownSlackPeopleContext.Provider value={slackPeople}>
       {chat}
+      {agySheet.sheet}
     </MobileMarkdownSlackPeopleContext.Provider>
   )
 }
