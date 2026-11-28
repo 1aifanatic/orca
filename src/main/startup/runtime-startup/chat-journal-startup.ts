@@ -3,10 +3,6 @@ import { agentSessionRecordStoreHostServing } from '../../runtime/agent-session/
 import { isHostShuttingDown } from '../quit/host-shutdown-state'
 import { mainProcessState as state } from '../main-process-state'
 import { provideManagedAgentDetection } from '../../runtime/rpc/methods/host-management/managed-copy-detection'
-import {
-  reclaimManagedRuntimeReleasesAtLaunch,
-  startManagedRuntimeAutoUpdates
-} from '../../runtime/rpc/methods/host-management/managed-runtime-install'
 
 // Background chat-journal maintenance waits for this Electron host's serving milestone.
 const serving = Promise.withResolvers<void>()
@@ -41,11 +37,18 @@ export function chatJournalHostServing(): void {
   serving.resolve()
   void windowFence
     .catch(() => {})
-    .then(() => {
-      if (state.core.runtime) {
-        agentSessionRecordStoreHostServing(state.core.runtime)
-        reclaimManagedRuntimeReleasesAtLaunch(state.core.runtime)
-        startManagedRuntimeAutoUpdates()
+    .then(async () => {
+      const runtime = state.core.runtime
+      if (!runtime || isHostShuttingDown()) {
+        return
       }
+      agentSessionRecordStoreHostServing(runtime)
+      const { reclaimManagedRuntimeReleasesAtLaunch, startManagedRuntimeAutoUpdates } =
+        await import('../../runtime/rpc/methods/host-management/managed-runtime-install')
+      if (isHostShuttingDown()) {
+        return
+      }
+      reclaimManagedRuntimeReleasesAtLaunch(runtime)
+      startManagedRuntimeAutoUpdates()
     })
 }
