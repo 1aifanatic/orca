@@ -17,6 +17,7 @@ import {
   antigravityAccountState,
   type AntigravityLoginEvidence as LoginEvidence,
   antigravityLoginMatches,
+  refreshSavedAntigravityLogin,
   type AntigravityQuietRead
 } from './native-account-login-view'
 import { AntigravityKeychainAccessError, withBriefKeychainAccess } from './native-macos-credentials'
@@ -137,15 +138,21 @@ export class AntigravityAccountService {
     })
   }
 
-  /** `switched` runs once agy holds another login than before and the switch is saved. */
-  selectAccount(id: string, switched?: () => void): Promise<AntigravityAccountState> {
+  /** `switched` hears a write of agy's login as soon as it lands, even if a check after it fails,
+   *  with the selection it replaced (read in this serialized step, so each sees its own). */
+  selectAccount(
+    id: string,
+    switched?: (previous: string | null) => void
+  ): Promise<AntigravityAccountState> {
     return this.serialize(async () => {
       const { vault, current } = await this.reconcile(id)
       const selected = vault.accounts.find((account) => account.id === id)
       if (!selected) {
         throw new Error('Antigravity account was not found.')
       }
-      const { readback, switching } = await this.switchNative(selected, current)
+      const { readback } = await this.switchNative(selected, current, () =>
+        switched?.(vault.selectedAccountId ?? null)
+      )
       const latest = await this.store.read()
       if (
         !latest.accounts.some((account) => account.id === id && this.matches(account, readback))
@@ -155,9 +162,6 @@ export class AntigravityAccountService {
       latest.selectedAccountId = id
       this.updateSnapshot(latest, readback)
       await this.store.write(latest)
-      if (switching) {
-        switched?.()
-      }
       return this.state({ vault: latest, current: readback })
     })
   }
@@ -263,11 +267,13 @@ export class AntigravityAccountService {
 
   private async switchNative(
     selected: StoredAntigravityAccount,
-    current: AntigravityNativeCredential | null
+    current: AntigravityNativeCredential | null,
+    wrote?: () => void
   ) {
     const switching = !current || !this.matches(selected, current)
     if (switching) {
       await this.backend.write(selected.credentials, current?.contents ?? null)
+      wrote?.()
     }
     const { current: readback, fingerprint } = await this.logins.read()
     this.logins.note(fingerprint, readback)
@@ -311,18 +317,8 @@ export class AntigravityAccountService {
     return { vault, current }
   }
 
-  private updateSnapshot(
-    vault: AntigravityAccountVault,
-    current: AntigravityNativeCredential
-  ): boolean {
-    const account = vault.accounts.find((entry) => this.matches(entry, current))
-    if (!account || account.credentials === current.contents) {
-      return false
-    }
-    account.credentials = current.contents
-    account.email = current.identity?.email ?? account.email
-    account.updatedAt = this.now()
-    return true
+  private updateSnapshot(vault: AntigravityAccountVault, current: AntigravityNativeCredential) {
+    return refreshSavedAntigravityLogin(vault, current, (a) => this.matches(a, current), this.now())
   }
 
   private state({

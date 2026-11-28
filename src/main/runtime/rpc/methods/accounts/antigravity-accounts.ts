@@ -4,7 +4,9 @@ import { rpcCallerOperationKey } from '../../callers/rpc-caller-identity'
 import type { OrcaRuntimeService } from '../../../orca-runtime'
 import {
   AntigravityAccountMutationParams,
+  AntigravityAccountSelectParams,
   AntigravityAccountTargetParams,
+  AntigravityUnheldTerminalsParams,
   AntigravityChatApiKeySaveParams,
   AntigravityChatSignInCompleteParams,
   AntigravityChatSignInFlowParams,
@@ -12,6 +14,7 @@ import {
 } from '../../../../../shared/rpc-contract/accounts/antigravity-accounts-params'
 import { AntigravityChatAuthConfigSchema } from '../../../../../shared/agent-accounts/antigravity/antigravity-chat-auth-config'
 import { getAntigravityAccountService } from '../../../../antigravity/native-account-host'
+import type { AntigravityAccountSelectResult } from '../../../../../shared/agent-accounts/antigravity/antigravity-account-types'
 import {
   readAgySignInInBackground,
   restartIdleAgyChats,
@@ -24,7 +27,6 @@ import {
 } from '../../../../antigravity/antigravity-chat-route'
 import { readyAntigravityHostAcpVersion } from '../../../../antigravity/antigravity-host-acp'
 import {
-  antigravitySignInHoldsNativeLogin,
   cancelAntigravityChatSignIn,
   completeAntigravityChatSignIn,
   readAntigravityChatSignInStatus,
@@ -32,7 +34,7 @@ import {
   subscribeAntigravityChatSignIn
 } from '../../../../antigravity/antigravity-chat-sign-in'
 import { forgetAgyLogin } from './agy-login-change'
-import { AGY_HOST_SELECTION } from '../../../../antigravity/agy-account-selection'
+import { selectAntigravityAccount } from './antigravity-account-select'
 import { bindStructuredAgentSessionStream } from '../structured-sessions/subscriptions/structured-agent-session-status-stream'
 import { resolveHostStructuredAgentLaunchEnvironment } from '../../../agent-session/launch/structured-agent-launch-support'
 import {
@@ -172,27 +174,16 @@ export const ANTIGRAVITY_ACCOUNT_METHODS = [
   defineMethod({
     name: 'accounts.antigravitySelect',
     permission: 'accounts-admin',
-    params: AntigravityAccountMutationParams,
-    handler: async ({ target, accountId }, ctx) => {
-      // The sign-in writes agy's login itself; a switch now would race it.
-      if (target.runtime === 'host' && antigravitySignInHoldsNativeLogin()) {
-        throw new Error('Antigravity is signing in. Select an account after it finishes.')
-      }
-      const service = await getAntigravityAccountService(target)
-      let switched = false
-      // New chats use the account at once; running ones move at their next send (the selection
-      // noted by the host's vault drives that).
-      const state = await service.selectAccount(accountId, () => (switched = true))
-      if (target.runtime === 'host') {
-        // agy's login now verifiably holds it: chats a failed move held back follow at their next send.
-        AGY_HOST_SELECTION.prepared({ key: accountId, target: accountId })
-        // Chats run only on the host's agy; what they listed belongs to the previous account.
-        if (switched) {
-          forgetAgyLogin(ctx.runtime)
-        }
-      }
-      return withAntigravityChatBackend(ctx.runtime, target, state)
-    }
+    params: AntigravityAccountSelectParams,
+    handler: (params, ctx): Promise<AntigravityAccountSelectResult> =>
+      selectAntigravityAccount(params, ctx.runtime)
+  }),
+  defineMethod({
+    // The window that switched shows no pane for these: the host moves them by its rule.
+    name: 'accounts.antigravityMoveUnheldTerminals',
+    permission: 'accounts-admin',
+    params: AntigravityUnheldTerminalsParams,
+    handler: (move, ctx) => ctx.runtime.moveUnheldAntigravityTerminals(move)
   }),
   defineMethod({
     name: 'accounts.antigravityRemove',

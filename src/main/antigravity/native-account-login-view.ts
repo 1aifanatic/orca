@@ -58,6 +58,24 @@ export function antigravityLoginMatches(
   return account.credentials === current.contents
 }
 
+/** Keeps the saved copy of the account agy holds current with agy's refreshed login; true when it
+ *  changed. */
+export function refreshSavedAntigravityLogin(
+  vault: AntigravityAccountVault,
+  current: AntigravityNativeCredential,
+  matches: (account: StoredAntigravityAccount) => boolean,
+  now: number
+): boolean {
+  const account = vault.accounts.find(matches)
+  if (!account || account.credentials === current.contents) {
+    return false
+  }
+  account.credentials = current.contents
+  account.email = current.identity?.email ?? account.email
+  account.updatedAt = now
+  return true
+}
+
 /** Reads agy's login and remembers, by its keychain item's fingerprint, which account the last read
  *  found, so a listing can name it without the read and the keychain dialog it may raise. */
 export class AntigravityLoginReader {

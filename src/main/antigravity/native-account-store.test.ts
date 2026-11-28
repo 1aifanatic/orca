@@ -425,3 +425,22 @@ describe('protected Antigravity account snapshots', () => {
     }
   )
 })
+
+it("reports a switch as soon as agy's login is written, even when the check after it fails", async () => {
+  const h = harness(credential('b'))
+  await h.service.addCurrentAccount()
+  h.setNative(credential('a'))
+  const accounts = (await h.service.addCurrentAccount()).accounts
+  const b = accounts.find((account) => account.subject === 'b')!.id
+  const write = h.backend.write
+  h.backend.write = vi.fn(async (contents, expected) => {
+    const written = await write(contents, expected)
+    h.backend.read = vi.fn(async () => {
+      throw new Error('keyring unavailable')
+    })
+    return written
+  })
+  const switched = vi.fn()
+  await expect(h.service.selectAccount(b, switched)).rejects.toThrow()
+  expect(switched).toHaveBeenCalledTimes(1)
+})
