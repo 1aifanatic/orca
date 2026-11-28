@@ -4996,7 +4996,7 @@ const ORCHESTRATION_WORKER_TEARDOWN_REFERENCE_MARKDOWN = [
   "",
   "If the agent exited, an open terminal can still accept mail. A delivery-hold warning means the message is queued. Check the terminal and worker state before sending it again.",
   "",
-  "When the agent is gone, the terminal has closed, or you need another supervised result, send to the local settled Dispatch. The message types `status` (the default), `dispatch`, and `handoff` can start a follow-up Task and reopen the saved session. Put a question in the body of one of these messages if you need the worker to start again. A message of type `question` alone does not start a follow-up Task.",
+  "When the agent is gone, the terminal has closed, or you need another supervised result, send to the local settled Dispatch at `dispatch:<dispatch_id>`. The message types `status` (the default), `dispatch`, and `handoff` can start a follow-up Task and reopen the saved session. Put a question in the body of one of these messages if you need the worker to start again. A message of type `question` alone does not start a follow-up Task.",
   "",
 ].join('\n')
 
