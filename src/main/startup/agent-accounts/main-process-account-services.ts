@@ -12,9 +12,9 @@ import { browserManager } from '../../browser/guest-lifecycle/manager/browser-ma
 import type { DesktopCore } from '../../core-desktop/desktop-core'
 import type { Store } from '../../persistence/loading-store/store'
 import { createDesktopOrcaAccountService } from '../desktop-orca-account-service'
-import { installOrcaServerSignIn, OrcaServerSignIn } from '../../orca-profiles/orca-server-sign-in'
+import { installOrcaServerSignIn } from '../../orca-profiles/orca-server-sign-in-slot'
 import { GoogleConnect, installGoogleConnect } from '../../google/google-connect'
-import { setBotToolSignInBrowser } from '../../bots/tool-oauth/bot-tool-sign-in-flows'
+import { setBotToolSignInBrowser } from '../../bots/tool-oauth/bot-tool-sign-in-browser-slot'
 
 export type DesktopAccountServiceDeps = {
   store: Store
@@ -56,8 +56,12 @@ export async function initializeMainProcessAccountServices(
   core.claudeRuntimeAuth = services.claudeRuntimeAuth
   core.claudeAccounts = services.claudeAccounts
   core.orcaAccount = createDesktopOrcaAccountService(openExternal)
+  const orcaAccount = core.orcaAccount
   // A paired client may sign this host in too (D3); the desktop keeps its own window sign-in.
-  installOrcaServerSignIn(new OrcaServerSignIn({ account: core.orcaAccount }))
+  installOrcaServerSignIn(async () => {
+    const { OrcaServerSignIn } = await import('../../orca-profiles/orca-server-sign-in')
+    return new OrcaServerSignIn({ account: orcaAccount })
+  })
   installGoogleConnect(new GoogleConnect({ openBrowser: openExternal }))
   setBotToolSignInBrowser(openExternal)
   // Defer shared-home migration; compatibility launches re-arm non-destructive scans for new rollouts (#4444, #8612, #12480).
