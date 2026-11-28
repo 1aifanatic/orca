@@ -8,18 +8,16 @@ import {
   PluginShotReplayParams
 } from '../../../../../shared/rpc-contract/plugins/plugins-params'
 
-// Desktop only: a headless `orca serve` has no window to show or capture a plugin in.
-let pluginViewForRpc: PluginViewDesktop | null = null
+import { resolvePluginViewForRpc, setPluginViewForRpc } from './plugin-rpc-slots'
 
-export function setPluginViewForRpc(view: PluginViewDesktop | null): void {
-  pluginViewForRpc = view
-}
+export { setPluginViewForRpc }
 
-function requirePluginView(): PluginViewDesktop {
-  if (!pluginViewForRpc) {
+async function requirePluginView(): Promise<PluginViewDesktop> {
+  const view = await resolvePluginViewForRpc()
+  if (!view) {
     throw new Error('Showing plugin panels is only available in the Orca desktop app')
   }
-  return pluginViewForRpc
+  return view
 }
 
 export const PLUGIN_VIEW_METHODS = [
@@ -28,31 +26,31 @@ export const PLUGIN_VIEW_METHODS = [
     name: 'plugins.open',
     permission: 'host-admin',
     params: PluginOpenParams,
-    handler: async (params) => requirePluginView().open(params)
+    handler: async (params) => (await requirePluginView()).open(params)
   }),
   defineMethod({
     name: 'plugins.shot',
     permission: 'host-admin',
     params: PluginShotParams,
-    handler: async (params) => requirePluginView().shot(params)
+    handler: async (params) => (await requirePluginView()).shot(params)
   }),
   defineMethod({
     name: 'plugins.shotEditor',
     permission: 'host-admin',
     params: PluginShotEditorParams,
-    handler: async (params) => requirePluginView().shotEditor(params)
+    handler: async (params) => (await requirePluginView()).shotEditor(params)
   }),
   defineMethod({
     name: 'plugins.shotChrome',
     permission: 'host-admin',
     params: PluginShotChromeParams,
-    handler: async (params) => requirePluginView().shotChrome(params)
+    handler: async (params) => (await requirePluginView()).shotChrome(params)
   }),
   defineMethod({
     // Never opens the plugin's panel or reaches its guest or worker; see plugin-view-replay-shot.
     name: 'plugins.shotReplay',
     permission: 'host-admin',
     params: PluginShotReplayParams,
-    handler: async (params) => requirePluginView().shotReplay(params)
+    handler: async (params) => (await requirePluginView()).shotReplay(params)
   })
 ]
