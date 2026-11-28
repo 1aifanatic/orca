@@ -1,14 +1,5 @@
-import { fetchActiveClaudeRateLimits } from '../providers/claude/claude-active-usage-fetch'
-import { fetchCodexRateLimits } from '../providers/codex/codex-fetcher'
-import { fetchGrokRateLimits } from '../providers/grok/grok-fetcher'
-import { readGrokAuthSession } from '../providers/grok/grok-auth'
-import { fetchCursorRateLimits } from '../providers/cursor/cursor-fetcher'
-import { readCursorAuthSession } from '../providers/cursor/cursor-auth'
-import { fetchZcodeRateLimits } from '../providers/zcode/zcode-usage-fetcher'
 import { ZCODE_PLAN_SITE_BASE_URLS } from '../../../shared/agent-accounts/usage-credentials/zcode-plan-sites'
-import { fetchMiniMaxRateLimits } from '../providers/minimax/minimax-fetcher'
 import { createHash } from 'node:crypto'
-import { fetchOpenCodeGoUsage } from '../providers/opencode-go/opencode-go-usage-source-selection'
 import { RateLimitServiceFetchPolicy } from './service-fetch-policy'
 import type { FetchAllCyclePrepared } from './full-cycle-prepared'
 import type { ProviderRateLimits } from '../../../shared/agent-usage/rate-limits/rate-limit-types'
@@ -57,6 +48,7 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
     const miniMaxEndpoint = miniMaxConfigResult.config.endpoint
     const miniMaxApiKey = miniMaxConfigResult.config.apiKey
     const zcodePlanConfigResult = await this.resolveZcodePlanConfig()
+    const { readGrokAuthSession } = await import('../providers/grok/grok-auth')
     if (signal.aborted) {
       return null
     }
@@ -138,10 +130,14 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
         : this.withFetchingStatus(previousState.zcode, 'zcode')
     })
     // Async Keychain/worker DB reads must not delay other providers.
-    const cursorResultPromise = readCursorAuthSession({
-      retryLinuxKeyringError: options?.force === true
-    })
-      .then((authReadResult) => {
+    const cursorResultPromise = Promise.all([
+      import('../providers/cursor/cursor-auth'),
+      import('../providers/cursor/cursor-fetcher')
+    ])
+      .then(async ([{ readCursorAuthSession }, { fetchCursorRateLimits }]) => {
+        const authReadResult = await readCursorAuthSession({
+          retryLinuxKeyringError: options?.force === true
+        })
         this.cursorAuthConfigured = authReadResult.status === 'ok'
         return fetchCursorRateLimits({ signal, authReadResult })
       })
@@ -152,20 +148,26 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
     const zcodeResultPromise = (
       zcodePlanConfigResult.error
         ? Promise.resolve(this.getZcodePlanCredentialError(zcodePlanConfigResult.error))
-        : fetchZcodeRateLimits({ signal, planCredential: zcodePlanCredential })
+        : import('../providers/zcode/zcode-usage-fetcher').then(({ fetchZcodeRateLimits }) =>
+            fetchZcodeRateLimits({ signal, planCredential: zcodePlanCredential })
+          )
     ).then(
       (value) => ({ status: 'fulfilled', value }) as const,
       (reason) => ({ status: 'rejected', reason }) as const
     )
     const missingWslCodexHome =
       codexFetchGated || codexHomePath ? null : this.getMissingWslCodexHomeResult(codexTarget)
-    const grokResultPromise = fetchGrokRateLimits({
-      signal,
-      authReadResult: grokAuthReadResult
-    }).then(
-      (value) => ({ status: 'fulfilled', value }) as const,
-      (reason) => ({ status: 'rejected', reason }) as const
-    )
+    const grokResultPromise = import('../providers/grok/grok-fetcher')
+      .then(({ fetchGrokRateLimits }) =>
+        fetchGrokRateLimits({
+          signal,
+          authReadResult: grokAuthReadResult
+        })
+      )
+      .then(
+        (value) => ({ status: 'fulfilled', value }) as const,
+        (reason) => ({ status: 'rejected', reason }) as const
+      )
     // Live display does not waive automated Retry-After gates.
     const claudeFetchGated =
       !this.isClaudeOAuthUsageEnabled() ||
@@ -175,51 +177,61 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
       await Promise.allSettled([
         claudeFetchGated
           ? Promise.resolve(previousState.claude as ProviderRateLimits)
-          : fetchActiveClaudeRateLimits({
-              authPreparation: claudeAuthPreparation,
-              allowPtyFallback: this.shouldAllowClaudePtyFallback(claudeAuthPreparation),
-              allowUsagePanelSupplement: this.shouldAllowClaudeUsagePanelSupplement(),
-              networkProxySettings: this.networkProxySettingsResolver?.(),
-              signal: this.claudeUsageFetchSignal(signal)
-            }),
+          : import('../providers/claude/claude-active-usage-fetch').then(
+              ({ fetchActiveClaudeRateLimits }) =>
+                fetchActiveClaudeRateLimits({
+                  authPreparation: claudeAuthPreparation,
+                  allowPtyFallback: this.shouldAllowClaudePtyFallback(claudeAuthPreparation),
+                  allowUsagePanelSupplement: this.shouldAllowClaudeUsagePanelSupplement(),
+                  networkProxySettings: this.networkProxySettingsResolver?.(),
+                  signal: this.claudeUsageFetchSignal(signal)
+                })
+            ),
         codexFetchGated
           ? Promise.resolve(previousState.codex as ProviderRateLimits)
           : (missingWslCodexHome ??
-            fetchCodexRateLimits({
-              codexHomePath,
-              readingAccount: codexHome.readingAccount,
+            import('../providers/codex/codex-fetcher').then(({ fetchCodexRateLimits }) =>
+              fetchCodexRateLimits({
+                codexHomePath,
+                readingAccount: codexHome.readingAccount,
+                networkProxySettings: this.networkProxySettingsResolver?.(),
+                signal
+              })
+            )),
+        import('../providers/opencode-go/opencode-go-usage-source-selection').then(
+          ({ fetchOpenCodeGoUsage }) =>
+            fetchOpenCodeGoUsage({
+              settingsApiKey: openCodeGoApiKey,
+              // Store/env keys become known only when the fetch resolves them.
+              onApiKeyResolved: (resolution) => {
+                // A credential change invalidates stale in-flight presence results.
+                if (opencodeGeneration !== this.opencodeFetchGeneration) {
+                  return
+                }
+                // An undecryptable or briefly unreadable saved key still counts, so the bar stays up.
+                this.openCodeGoApiKeyConfigured =
+                  resolution.status === 'found' ||
+                  openCodeGoApiKeyError !== null ||
+                  openCodeGoApiKeyReadSkipped
+              },
+              cookie,
+              workspaceIdOverride: workspaceIdOverride || undefined,
               networkProxySettings: this.networkProxySettingsResolver?.(),
               signal
-            })),
-        fetchOpenCodeGoUsage({
-          settingsApiKey: openCodeGoApiKey,
-          // Store/env keys become known only when the fetch resolves them.
-          onApiKeyResolved: (resolution) => {
-            // A credential change invalidates stale in-flight presence results.
-            if (opencodeGeneration !== this.opencodeFetchGeneration) {
-              return
-            }
-            // An undecryptable or briefly unreadable saved key still counts, so the bar stays up.
-            this.openCodeGoApiKeyConfigured =
-              resolution.status === 'found' ||
-              openCodeGoApiKeyError !== null ||
-              openCodeGoApiKeyReadSkipped
-          },
-          cookie,
-          workspaceIdOverride: workspaceIdOverride || undefined,
-          networkProxySettings: this.networkProxySettingsResolver?.(),
-          signal
-        }),
+            })
+        ),
         this.fetchKimiWithResolvedHome(),
         miniMaxConfigResult.error
           ? Promise.resolve(this.getMiniMaxCredentialError(miniMaxConfigResult.error))
-          : fetchMiniMaxRateLimits({
-              cookie: miniMaxCookie,
-              groupId: miniMaxGroupId,
-              models: miniMaxModels,
-              endpointMode: miniMaxEndpoint,
-              apiKey: miniMaxApiKey
-            })
+          : import('../providers/minimax/minimax-fetcher').then(({ fetchMiniMaxRateLimits }) =>
+              fetchMiniMaxRateLimits({
+                cookie: miniMaxCookie,
+                groupId: miniMaxGroupId,
+                models: miniMaxModels,
+                endpointMode: miniMaxEndpoint,
+                apiKey: miniMaxApiKey
+              })
+            )
       ])
     if (signal.aborted) {
       return null

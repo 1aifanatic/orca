@@ -1,7 +1,5 @@
 import { RateLimitServiceResultPolicy } from './service-result-policy'
-import { fetchCodexRateLimits } from '../providers/codex/codex-fetcher'
 import { withCodexReadingAccount } from '../providers/codex/codex-reading-account'
-import { fetchKimiRateLimits } from '../providers/kimi/kimi-fetcher'
 import {
   isSystemDefaultClaudeAuth,
   type MiniMaxResolvedConfig,
@@ -69,11 +67,12 @@ export abstract class RateLimitServiceFetchTargets extends RateLimitServiceResul
   }
 
   // WSL home resolution probes wsl.exe; chain it so other providers start immediately.
-  protected fetchKimiWithResolvedHome(): Promise<ProviderRateLimits> {
-    const pendingHome = this.kimiHomeResolver?.()
-    return pendingHome
-      ? pendingHome.then((home) => fetchKimiRateLimits({ home }))
-      : fetchKimiRateLimits({ home: undefined })
+  protected async fetchKimiWithResolvedHome(): Promise<ProviderRateLimits> {
+    const [home, { fetchKimiRateLimits }] = await Promise.all([
+      this.kimiHomeResolver?.(),
+      import('../providers/kimi/kimi-fetcher')
+    ])
+    return fetchKimiRateLimits({ home })
   }
 
   protected isSameCodexTarget(
@@ -138,6 +137,7 @@ export abstract class RateLimitServiceFetchTargets extends RateLimitServiceResul
       }
       const controller = this.beginFetchCycle()
       try {
+        const { fetchCodexRateLimits } = await import('../providers/codex/codex-fetcher')
         fresh = await fetchCodexRateLimits({
           codexHomePath,
           networkProxySettings: this.networkProxySettingsResolver?.(),

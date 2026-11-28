@@ -1,8 +1,4 @@
 import { RateLimitServiceFullCycleApplication } from './service-full-cycle-application'
-import { fetchActiveClaudeRateLimits } from '../providers/claude/claude-active-usage-fetch'
-import { fetchCodexRateLimits } from '../providers/codex/codex-fetcher'
-import { fetchGrokRateLimits } from '../providers/grok/grok-fetcher'
-import { readGrokAuthSession } from '../providers/grok/grok-auth'
 import type { ProviderRateLimits } from '../../../shared/agent-usage/rate-limits/rate-limit-types'
 
 export abstract class RateLimitServiceProviderCycles extends RateLimitServiceFullCycleApplication {
@@ -38,12 +34,14 @@ export abstract class RateLimitServiceProviderCycles extends RateLimitServiceFul
     const codex = await (
       missingWslCodexHome
         ? Promise.resolve(missingWslCodexHome)
-        : fetchCodexRateLimits({
-            codexHomePath,
-            readingAccount: codexHome.readingAccount,
-            networkProxySettings: this.networkProxySettingsResolver?.(),
-            signal
-          })
+        : import('../providers/codex/codex-fetcher').then(({ fetchCodexRateLimits }) =>
+            fetchCodexRateLimits({
+              codexHomePath,
+              readingAccount: codexHome.readingAccount,
+              networkProxySettings: this.networkProxySettingsResolver?.(),
+              signal
+            })
+          )
     ).catch((err): ProviderRateLimits => ({
       provider: 'codex',
       session: null,
@@ -113,20 +111,24 @@ export abstract class RateLimitServiceProviderCycles extends RateLimitServiceFul
       claude: this.withFetchingStatus(previousState.claude, 'claude')
     })
 
-    const claude = await fetchActiveClaudeRateLimits({
-      authPreparation: claudeAuthPreparation,
-      allowPtyFallback: this.shouldAllowClaudePtyFallback(claudeAuthPreparation),
-      allowUsagePanelSupplement: this.shouldAllowClaudeUsagePanelSupplement(),
-      networkProxySettings: this.networkProxySettingsResolver?.(),
-      signal: this.claudeUsageFetchSignal(signal)
-    }).catch((err): ProviderRateLimits => ({
-      provider: 'claude',
-      session: null,
-      weekly: null,
-      updatedAt: Date.now(),
-      error: err instanceof Error ? err.message : 'Unknown error',
-      status: 'error'
-    }))
+    const claude = await import('../providers/claude/claude-active-usage-fetch')
+      .then(({ fetchActiveClaudeRateLimits }) =>
+        fetchActiveClaudeRateLimits({
+          authPreparation: claudeAuthPreparation,
+          allowPtyFallback: this.shouldAllowClaudePtyFallback(claudeAuthPreparation),
+          allowUsagePanelSupplement: this.shouldAllowClaudeUsagePanelSupplement(),
+          networkProxySettings: this.networkProxySettingsResolver?.(),
+          signal: this.claudeUsageFetchSignal(signal)
+        })
+      )
+      .catch((err): ProviderRateLimits => ({
+        provider: 'claude',
+        session: null,
+        weekly: null,
+        updatedAt: Date.now(),
+        error: err instanceof Error ? err.message : 'Unknown error',
+        status: 'error'
+      }))
 
     if (signal.aborted) {
       return
@@ -156,6 +158,13 @@ export abstract class RateLimitServiceProviderCycles extends RateLimitServiceFul
   }
 
   protected async runFetchGrokOnlyCycle(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) {
+      return
+    }
+    const [{ readGrokAuthSession }, { fetchGrokRateLimits }] = await Promise.all([
+      import('../providers/grok/grok-auth'),
+      import('../providers/grok/grok-fetcher')
+    ])
     if (signal.aborted) {
       return
     }

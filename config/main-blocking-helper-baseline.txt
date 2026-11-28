@@ -1095,10 +1095,9 @@
 2 src/main/rate-limits/providers/zcode/zcode-usage-fetcher.ts
 1 src/main/rate-limits/service/service-fetch-targets.ts
 1 src/main/rate-limits/service/service-full-cycle-application.ts
-7 src/main/rate-limits/service/service-full-cycle-preparation.ts
+1 src/main/rate-limits/service/service-full-cycle-preparation.ts
 1 src/main/rate-limits/service/service-inactive-accounts.ts
 1 src/main/rate-limits/service/service-muse-usage-fetch.ts
-3 src/main/rate-limits/service/service-provider-cycles.ts
 1 src/main/rate-limits/service/service-state.ts
 1 src/main/rate-limits/service/service-target-usage-read.ts # the same sync Codex state-db read the poller already does, reached only when the WSL HTTP read fails; bounded by the renderer TTL and Retry-After
 2 src/main/remote-policies/release-asset-policy-live-update.ts

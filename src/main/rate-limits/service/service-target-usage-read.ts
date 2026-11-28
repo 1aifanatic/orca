@@ -1,5 +1,3 @@
-import { fetchCodexRateLimits } from '../providers/codex/codex-fetcher'
-import { fetchActiveClaudeRateLimits } from '../providers/claude/claude-active-usage-fetch'
 import { toErrorMessage } from './service-types'
 import {
   normalizeCodexAccountSelectionTarget,
@@ -77,7 +75,10 @@ export abstract class RateLimitServiceTargetUsageRead extends RateLimitServiceAc
     if (!this.isClaudeOAuthUsageEnabled()) {
       return { reading: null }
     }
-    const preparation = await raceDeadline(this.claudeAuthPreparationResolver?.(target), signal)
+    const [preparation, { fetchActiveClaudeRateLimits }] = await Promise.all([
+      raceDeadline(this.claudeAuthPreparationResolver?.(target), signal),
+      import('../providers/claude/claude-active-usage-fetch')
+    ])
     const reading = await fetchActiveClaudeRateLimits({
       authPreparation: preparation,
       allowPtyFallback: this.shouldAllowClaudePtyFallback(preparation),
@@ -106,6 +107,7 @@ export abstract class RateLimitServiceTargetUsageRead extends RateLimitServiceAc
     if (missingWslHome) {
       return { reading: missingWslHome, readingAccountId }
     }
+    const { fetchCodexRateLimits } = await import('../providers/codex/codex-fetcher')
     const reading = await fetchCodexRateLimits({
       codexHomePath: home.homePath,
       readingAccount: home.readingAccount,
