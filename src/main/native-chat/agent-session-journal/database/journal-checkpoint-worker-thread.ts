@@ -5,7 +5,7 @@ import { journalCheckpointWorkerSource } from './journal-checkpoint-worker-sourc
 import { JOURNAL_SIZE_LIMIT_BYTES } from './journal-database'
 
 export const JOURNAL_CHECKPOINT_FRAMES = 1000
-export const JOURNAL_CHECKPOINT_IDLE_TEARDOWN_MS = 60_000
+export const JOURNAL_CHECKPOINT_IDLE_TEARDOWN_MS = 10_000
 const CHECKPOINT_RETRY_MS = 100
 const CHECKPOINT_PINNED_RETRY_MS = 1000
 const STOP_TIMEOUT_MS = 5000

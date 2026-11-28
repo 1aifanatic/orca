@@ -3,7 +3,7 @@ import { spawnWorkerThread } from '../../worker-threads/worker-thread-spawn'
 import { LazyWorkerThreadHost } from '../../worker-threads/lazy-worker-thread-host'
 import type { WorkerThreadFactory } from '../../worker-threads/worker-thread-transport'
 
-const IDLE_TEARDOWN_MS = 60_000
+const IDLE_TEARDOWN_MS = 10_000
 // A worker that never answers hands checkpoints back rather than letting WALs grow.
 const RESPONSE_DEADLINE_MS = 30_000
 // A file whose checkpoints keep failing goes back to checkpointing itself.

@@ -11,7 +11,7 @@ import type { PdfTextWorkerRequest, PdfTextWorkerResponse } from './google-pdf-t
 
 const WORKER_FILENAME = 'google-pdf-text-worker-entry.js'
 const WORKER_TIMEOUT_MS = 2 * 60_000
-const IDLE_TEARDOWN_MS = 60_000
+const IDLE_TEARDOWN_MS = 10_000
 
 function createWorker(): Worker {
   const path = resolveWorkerThreadEntryPath(currentWorkerEntryLayout(__dirname), WORKER_FILENAME)

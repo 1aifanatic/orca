@@ -13,7 +13,7 @@ const CHECKPOINT_BATCH_FRAMES = 1000
 // 32-byte WAL header + 1000 * (4 KiB page + 24-byte frame header); smaller WALs cannot reach CHECKPOINT_BATCH_FRAMES.
 const WAL_SPAWN_THRESHOLD_BYTES = 32 + CHECKPOINT_BATCH_FRAMES * (4096 + 24)
 const WAL_WATCH_POLL_MS = 5000
-const WORKER_IDLE_RETIRE_MS = 60_000
+const WORKER_IDLE_RETIRE_MS = 10_000
 // Main checkpoints only if the thread falls this far behind (~40 MiB of 4 KiB pages).
 export const MAIN_CHECKPOINT_BACKSTOP_PAGES = 10_000
 
