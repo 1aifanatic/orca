@@ -10,6 +10,15 @@ export function getManagedOrcadFenceEnvironmentId(
   return target?.orcadFence?.environmentId || null
 }
 
+/** Every server id a managed-host claim names: its fence and any unfinished setup. */
+export function getManagedOrcadClaimEnvironmentIds(
+  target: Pick<SshTarget, 'orcadFence' | 'orcadProvisioning'>
+): string[] {
+  return [target.orcadFence?.environmentId, target.orcadProvisioning?.requestId].filter(
+    (id): id is string => id !== undefined
+  )
+}
+
 /** Reads a legacy `owner` fence, only to migrate it to `orcadFence` on load. */
 export function getLegacyManagedOrcadOwnerEnvironmentId(
   owner: SshTargetOwner | undefined
