@@ -167,9 +167,11 @@ export function isHeldAgentPromptDraft(
           HELD_PROMPT_COUNT_SLACK_CHARS
     )
   }
-  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
-  const shown = collapse(draft)
-  const wanted = collapse(expected)
+  // Why drop whitespace: Codex paints its own wraps, which read back as line breaks wherever they
+  // fall, including mid-word and between CJK characters that have no space there (#51750).
+  const unspaced = (text: string): string => text.replace(/\s+/g, '')
+  const shown = unspaced(draft)
+  const wanted = unspaced(expected)
   // Why a long tail only: a scrolled composer shows the paste's end; a short or inner fragment
   // could be the user's own text that recurs in the prompt.
   return shown === wanted || (shown.length >= HELD_PROMPT_TEXT_MIN_CHARS && wanted.endsWith(shown))
