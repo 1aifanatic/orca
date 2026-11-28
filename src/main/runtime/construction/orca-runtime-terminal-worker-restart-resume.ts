@@ -5,13 +5,11 @@ import {
   type TerminalWorkerRestartResumeDeps
 } from '../orchestration/workers/restart-resume/terminal-worker-restart-resume'
 import { TerminalWorkerRestartOffers } from '../orchestration/workers/restart-resume/terminal-worker-restart-offers'
-import { waitForWorkerAgentReady } from '../terminal/wait/launched-agent-composer-readiness'
 import { reconsiderRestAfterWait } from '../orchestration/workers/turn-stops/worker-presence-report'
 import {
   paneConversation,
   paneLiveSessions
 } from '../orchestration/workers/restart-resume/pane-runs-conversation'
-import { reopenWorkerTerminal } from '../rpc/methods/orchestration/worker/follow-up/worker-follow-up-placement'
 import { OrcaRuntimeWithWindowlessTerminalActivity } from '../sidebar-inputs/temporal/orca-runtime-windowless-terminal-activity'
 
 type RestartResumeRuntime = Pick<
@@ -79,8 +77,11 @@ function createTerminalWorkerRestartResume(
     getDb: () => runtime.getExistingOrchestrationDb(),
     closeTerminal: (handle) => runtime.closeTerminal(handle),
     setTimer: unrefTimer,
-    reopen: (worktreeId, session, mutationId) =>
-      reopenWorkerTerminal(runtime, worktreeId, session, mutationId),
+    reopen: async (worktreeId, session, mutationId) => {
+      const { reopenWorkerTerminal } =
+        await import('../rpc/methods/orchestration/worker/follow-up/worker-follow-up-placement')
+      return reopenWorkerTerminal(runtime, worktreeId, session, mutationId)
+    },
     terminalAuthority: (handle) => {
       const authority = runtime.getOrchestrationDispatchAuthority(handle)
       const paneKey = authority?.paneKey ?? runtime.getTerminalPaneKey(handle)
@@ -98,15 +99,18 @@ function createTerminalWorkerRestartResume(
     paneConversation: (paneKey, sessionId) => paneConversation(runtime, paneKey, sessionId),
     paneSessions: (paneKey) => paneLiveSessions(runtime, paneKey),
     // A resumed agent is a fresh launch: its composer must be up, or it drops the prompt.
-    waitForAgentReady: (handle, agent) =>
-      waitForWorkerAgentReady(runtime, handle, {
+    waitForAgentReady: async (handle, agent) => {
+      const { waitForWorkerAgentReady } =
+        await import('../terminal/wait/launched-agent-composer-readiness')
+      return waitForWorkerAgentReady(runtime, handle, {
         agent,
         reusesTerminal: false,
         timeoutMs: ORCHESTRATION_READINESS_TIMEOUT_MS
       }).then(
         (wait) => wait.satisfied,
         () => false
-      ),
+      )
+    },
     sendPrompt: (handle, prompt, requestId) =>
       sendRestartContinuePrompt(runtime, handle, prompt, requestId)
   })
