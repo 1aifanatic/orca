@@ -1,6 +1,8 @@
+import type { JournalKeyedMap, JournalKeyedSet } from '../journal-keyed-storage'
 import { z } from 'zod'
+import { lazyZodSchema } from '../../../../shared/schema/lazy-zod-schema'
 import { AgentJournalTurnScopeSchema } from '../../../../shared/agent-session/journal/agent-session-journal-schemas'
-import { AgentSessionExecutionOptionsSchema } from '../../../../shared/agent-session/options/agent-session-execution-options'
+import { AgentSessionExecutionOptionsSchema } from '../../../../shared/agent-session/options/protocol/agent-session-execution-options'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session/journal/agent-session-journal-types'
 import type { JournalReducerState } from '../projection/journal-reducer'
 import type { JournalHistoryOrigin } from '../context-epochs/journal-history-origin'
@@ -26,55 +28,63 @@ import {
 // those means is a format change too. The golden fixture must keep decoding.
 export const JOURNAL_OUTCOME_FORMAT_1 = 1
 
-const number = z.number().finite()
-const cursor = z.object({ epoch: z.string(), sequence: number })
-const place = z.object({
-  sequence: number,
-  observedAt: number,
-  turnScope: AgentJournalTurnScopeSchema.optional()
-})
-const pauseMarks = z.object({
-  cleared: z
-    .object({
-      sequence: number,
-      operationId: z.string(),
-      messageIds: z.array(z.string()),
-      lifted: z.literal(true).optional()
-    })
-    .optional(),
-  latestStop: z
-    .object({
-      sequence: number,
-      event: z.object({
-        reason: z.string(),
-        at: number,
-        turnId: z.string().optional(),
-        caller: z.string().optional()
+const number = lazyZodSchema(() => z.number().finite())
+const cursor = lazyZodSchema(() => z.object({ epoch: z.string(), sequence: number }))
+const place = lazyZodSchema(() =>
+  z.object({
+    sequence: number,
+    observedAt: number,
+    turnScope: AgentJournalTurnScopeSchema.optional()
+  })
+)
+const pauseMarks = lazyZodSchema(() =>
+  z.object({
+    cleared: z
+      .object({
+        sequence: number,
+        operationId: z.string(),
+        messageIds: z.array(z.string()),
+        lifted: z.literal(true).optional()
       })
-    })
-    .nullable(),
-  resumedSequence: number,
-  reopenedSequence: number
-})
-const card = z.object({
-  messageId: z.string(),
-  position: number,
-  body: storedMessageBody,
-  fingerprint: z.string(),
-  state: z.enum(['waiting', 'dispatched', 'returned', 'withdrawn']),
-  holdReason: z.string().nullable(),
-  returnedReason: z.string().nullable(),
-  returnedRejection: storedFailureFact.nullable(),
-  consumedAs: z.string().nullable(),
-  queuedAt: cursor.nullable(),
-  options: AgentSessionExecutionOptionsSchema.optional()
-})
-const receipt = z.object({
-  clientMessageId: z.string(),
-  providerItemId: z.string(),
-  cursor,
-  acceptedAt: number
-})
+      .optional(),
+    latestStop: z
+      .object({
+        sequence: number,
+        event: z.object({
+          reason: z.string(),
+          at: number,
+          turnId: z.string().optional(),
+          caller: z.string().optional()
+        })
+      })
+      .nullable(),
+    resumedSequence: number,
+    reopenedSequence: number
+  })
+)
+const card = lazyZodSchema(() =>
+  z.object({
+    messageId: z.string(),
+    position: number,
+    body: storedMessageBody,
+    fingerprint: z.string(),
+    state: z.enum(['waiting', 'dispatched', 'returned', 'withdrawn']),
+    holdReason: z.string().nullable(),
+    returnedReason: z.string().nullable(),
+    returnedRejection: storedFailureFact.nullable(),
+    consumedAs: z.string().nullable(),
+    queuedAt: cursor.nullable(),
+    options: AgentSessionExecutionOptionsSchema.optional()
+  })
+)
+const receipt = lazyZodSchema(() =>
+  z.object({
+    clientMessageId: z.string(),
+    providerItemId: z.string(),
+    cursor,
+    acceptedAt: number
+  })
+)
 const entry = <V extends z.ZodType>(value: V) => z.tuple([z.string(), value])
 // Set members are stored as [value, value], as a Set's entries() yields them.
 const member = (value: z.ZodString) =>
@@ -136,11 +146,16 @@ function checked<T>(schema: z.ZodType): z.ZodType<T> {
   // SAFETY: the strict schema admits only keys the type declares (checked at the end of this file);
   // decoding keeps the stored value as it is.
   const strict = strictStorage(schema)
-  return z.custom<T>((value) => strict.safeParse(value).success)
+  return lazyZodSchema(() => z.custom<T>((value) => strict.safeParse(value).success))
 }
 
 type State = JournalReducerState
-type Stored<F> = F extends Map<infer K, infer V> ? [K, V] : F extends Set<infer T> ? [T, T] : never
+type Stored<F> =
+  F extends JournalKeyedMap<infer K, infer V>
+    ? [K, V]
+    : F extends JournalKeyedSet<infer T>
+      ? [T, T]
+      : never
 type Cards = State['queue']['cards']
 const s = outcomeFormat1Stored
 const scalar = outcomeFormat1StoredScalars.shape
@@ -250,13 +265,19 @@ type Collection = (typeof OUTCOME_FORMAT_1_COLLECTIONS)[number]
 type StoredIn<F> = F extends 'items'
   ? AgentJournalRenderItem
   : F extends 'queue.cards'
-    ? [string, Omit<Cards extends Map<string, infer V> ? V : never, 'recovers'>]
+    ? [
+        string,
+        Omit<
+          Cards extends JournalKeyedMap<string, infer V> ? V : never,
+          'recovers' | 'deliveryMode' | 'unattended'
+        >
+      ]
     : F extends keyof State
       ? Stored<State[F]>
       : never
 type Marks = State['queuePauseMarks']
 // Live Stop settlement is never stored (durableQueuePauseMarks).
-type StoredMarks = Omit<Marks, 'latestStop'> & {
+type StoredMarks = Omit<Marks, 'latestStop' | 'manualStop'> & {
   latestStop: { sequence: number; event: JournalStopEvent } | null
 }
 type Scalars = z.output<typeof outcomeFormat1StoredScalars>

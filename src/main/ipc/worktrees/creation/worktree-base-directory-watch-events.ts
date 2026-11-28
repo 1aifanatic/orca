@@ -10,10 +10,12 @@ import {
   invalidateActiveGitStatusRefResolution,
   invalidateGitStatusRefResolutionForPaths
 } from '../git/worktree-git-status-ref-watch'
+import type { WorktreeBaseSubscription } from './worktree-base-directory-poller'
 import type { WorktreeWatcherFailureRefreshCooldown } from './worktree-watcher-failure-refresh-cooldown'
+import { runWorktreeChangeInvalidators } from '../listing/worktree-change-invalidators'
 
 export type ActiveWatch = WorktreeBaseNotificationWatch & {
-  subscription: { unsubscribe: () => Promise<void> }
+  subscription: WorktreeBaseSubscription
   gitStatusRefPaths: Set<string>
   watcherFailureRefresh: WorktreeWatcherFailureRefreshCooldown
 }
@@ -30,12 +32,22 @@ export function handleLocalWatchEvents(
   if (error) {
     console.warn(`[worktree-base-watcher] watcher failed for ${watch.path}:`, error)
     invalidateActiveGitStatusRefResolution(watch, getActiveWatches)
+    // Events were lost: no reader may reuse rows observed before the gap, even while notification is paced.
+    for (const repoId of watch.repos.keys()) {
+      runWorktreeChangeInvalidators(repoId)
+    }
+    const refresh = (): void => {
+      if (!watch.disposed && !watch.mainWindow.isDestroyed()) {
+        scheduleWorktreeBaseNotification(watch, { structureRepoIds: [...watch.repos.keys()] })
+      }
+    }
     if (watch.watcherFailureRefresh.consume()) {
-      scheduleWorktreeBaseNotification(watch, { structureRepoIds: [...watch.repos.keys()] })
+      refresh()
+    } else {
+      watch.watcherFailureRefresh.defer(refresh)
     }
     return
   }
-  watch.watcherFailureRefresh.reset()
   invalidateGitStatusRefResolutionForPaths(
     watch,
     events.map((event) => event.path),
@@ -56,5 +68,8 @@ export function handleWatchOverflow(
     return
   }
   invalidateActiveGitStatusRefResolution(watch, getActiveWatches)
+  for (const repoId of watch.repos.keys()) {
+    runWorktreeChangeInvalidators(repoId)
+  }
   scheduleWorktreeBaseNotification(watch, { structureRepoIds: [...watch.repos.keys()] })
 }

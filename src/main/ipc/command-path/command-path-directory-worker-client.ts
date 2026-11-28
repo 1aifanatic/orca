@@ -12,7 +12,7 @@ import type {
   DetectionDirectoryResponse
 } from './command-path-directory-worker-protocol'
 
-const IDLE_TEARDOWN_MS = 60_000
+const IDLE_TEARDOWN_MS = 10_000
 const REQUEST_TIMEOUT_MS = 10_000
 const MAX_PENDING_LISTINGS = 16
 
@@ -24,7 +24,7 @@ function createWorker(): Worker {
   if (!existsSync(workerPath)) {
     throw new Error(`Detection directory worker entry not found: ${workerPath}`)
   }
-  return spawnWorkerThread(workerPath)
+  return spawnWorkerThread(workerPath, { name: 'orca-command-path-directory' })
 }
 
 /** fs.Dir can synchronously lstat unknown entry types, even during async iteration. */

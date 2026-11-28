@@ -1,4 +1,4 @@
-import type { Repo } from '../../../../../shared/repo-types'
+import type { Repo } from '../../../../../shared/repository/repo-types'
 import type { Worktree } from '../../../../../shared/worktree/types'
 import { useWorktreeCardFoundation } from '../../sidebar/workspace-card/controller/use-worktree-card-foundation'
 import { useWorktreeCardReviewDetails } from '../../sidebar/workspace-card/details/use-worktree-card-review-details'
@@ -18,7 +18,7 @@ export function useBrowserNewTabLinkedItems(
     worktree,
     repo,
     settings: foundation.settings,
-    projectGroups: foundation.projectGroups,
+    hasProjectGroups: foundation.hasProjectGroups,
     cardProps: foundation.cardProps,
     newCardStyle: foundation.newCardStyle
   })

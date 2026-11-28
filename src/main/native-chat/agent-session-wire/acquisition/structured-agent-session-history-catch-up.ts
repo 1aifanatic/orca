@@ -2,10 +2,11 @@
 
 import { createHash } from 'node:crypto'
 import { setImmediate } from 'node:timers/promises'
-import { waitForPromiseWithSignal } from '../../../../shared/abort-signal-reason'
+import { waitForPromiseWithSignal } from '../../../../shared/concurrency/abort-signal-reason'
 import { agentSessionHostStatusBody } from '../../../../shared/agent-session/view/agent-session-host-status-rows'
 import { agentJournalItemKey } from '../../../../shared/agent-session/journal/agent-session-journal-item-key'
 import type { AgentJournalItemBody } from '../../../../shared/agent-session/journal/agent-session-journal-types'
+import type { AgentJournalCursor } from '../../../../shared/agent-session/journal/agent-session-journal-identity'
 import type { JournalLifecycleIdentityMutationInput } from '../../agent-session-journal/writing/journal-lifecycle-mutation'
 import type {
   StructuredAgentSessionEventSink,
@@ -13,7 +14,6 @@ import type {
 } from '../journal-ingress/structured-agent-session-event-sink'
 import type { StructuredAgentSessionHistoryJournal } from '../journal-ingress/structured-agent-session-journal-views'
 import type { StructuredAgentSessionLogger } from '../host/structured-agent-session-logger'
-import type { StructuredAgentSessionTransitionJournal } from '../journal-ingress/structured-agent-session-transition'
 
 export const HISTORY_CATCH_UP_MAX_OPERATIONS = 1_024
 export const HISTORY_CATCH_UP_MAX_BYTES = 16 * 1024 * 1024
@@ -39,6 +39,25 @@ export type HistoryCatchUpPlan = {
   keys: string[]
   reservedBytes: number
   expectedItems?: readonly ExpectedHistoryItem[]
+  expectedCursor?: AgentJournalCursor
+}
+
+export type HistoryCatchUpJournalView = { physicalCursor: AgentJournalCursor }
+
+/** A view certifies every named answer against physical progress, including context cuts. */
+export async function captureHistoryCatchUpView<View>(
+  history: StructuredAgentSessionHistoryJournal,
+  read: (physicalCursor: AgentJournalCursor) => Promise<View>
+): Promise<View & HistoryCatchUpJournalView> {
+  return await history.readInOrder(async () => {
+    const physicalCursor = await history.reads.physicalCursor()
+    const view = await read(physicalCursor)
+    const after = await history.reads.physicalCursor()
+    if (physicalCursor.epoch !== after.epoch || physicalCursor.sequence !== after.sequence) {
+      throw new Error('stale-history')
+    }
+    return { ...view, physicalCursor }
+  })
 }
 
 /** Stage the whole bounded plan before any sink admission. */
@@ -48,15 +67,21 @@ export function createHistoryCatchUpBatch() {
   const expectedItems: ExpectedHistoryItem[] = []
   let bytes = 0
   let admissions = 0
+  // What this commit stages, hashed as it is admitted, so a split import names it without reserializing.
+  const content = createHash('sha256')
   const admit = (serialized: string, expected?: ExpectedHistoryItem) => {
-    bytes += Buffer.byteLength(serialized, 'utf8') + 1
-    if (expected) {
-      bytes += Buffer.byteLength(JSON.stringify(expected), 'utf8') + 1
-    }
-    if (admissions >= HISTORY_CATCH_UP_MAX_OPERATIONS || bytes > HISTORY_CATCH_UP_MAX_BYTES) {
+    const expectedText = expected ? JSON.stringify(expected) : ''
+    const next =
+      bytes +
+      Buffer.byteLength(serialized, 'utf8') +
+      1 +
+      (expected ? Buffer.byteLength(expectedText, 'utf8') + 1 : 0)
+    if (admissions >= HISTORY_CATCH_UP_MAX_OPERATIONS || next > HISTORY_CATCH_UP_MAX_BYTES) {
       throw new Error('too-large')
     }
+    bytes = next
     admissions++
+    content.update(serialized).update('\n').update(expectedText).update('\n')
     if (expected) {
       expectedItems.push(expected)
     }
@@ -74,6 +99,11 @@ export function createHistoryCatchUpBatch() {
     get size(): number {
       return mutations.length
     },
+    get bytes(): number {
+      return bytes
+    },
+    /** What this commit staged, in order; read once, at the end. */
+    contentDigest: (): string => content.digest('hex'),
     push(mutation: JournalLifecycleIdentityMutationInput, serialized = JSON.stringify(mutation)) {
       stage(mutation, serialized)
     },
@@ -111,9 +141,8 @@ export function createHistoryCatchUpBatch() {
 
 export type HistoryCatchUpContext<View> = {
   /** Read journal lazily so empty provider history needs no journal scan. */
-  view: () => View
+  view: () => Promise<View>
   history: StructuredAgentSessionHistoryJournal
-  journal: StructuredAgentSessionTransitionJournal
   signal: AbortSignal
   deadline: number
   /** Enforce cancellation, deadline and current invocation before effects. */
@@ -126,7 +155,7 @@ export type HistoryCatchUpContext<View> = {
 export type HistoryCatchUpOutcome = 'committed' | 'checked' | 'nothing' | 'skipped'
 
 /** Optional reconciliation never gates provider open; an abandoned invocation cannot later write. */
-export async function runHistoryCatchUp<View>(input: {
+export async function runHistoryCatchUp<View extends HistoryCatchUpJournalView>(input: {
   agentName: string
   scope: string
   sessionId: string
@@ -135,12 +164,17 @@ export async function runHistoryCatchUp<View>(input: {
   assertCurrent?: () => void
   timeoutMs: number
   logger?: StructuredAgentSessionLogger
-  readView: (history: StructuredAgentSessionHistoryJournal, signal: AbortSignal) => View
-  /** Reject commits if saved facts changed since planning. */
-  sameView: (planned: View, current: View) => boolean
-  prepare: (context: HistoryCatchUpContext<View>) => Promise<HistoryCatchUpPlan | null>
+  readView: (history: StructuredAgentSessionHistoryJournal, signal: AbortSignal) => Promise<View>
+  /** Several plans commit in order, each on its own (an import past one commit's bound). */
+  prepare: (
+    context: HistoryCatchUpContext<View>
+  ) => Promise<HistoryCatchUpPlan | readonly HistoryCatchUpPlan[] | null>
 }): Promise<HistoryCatchUpOutcome> {
   const controller = new AbortController()
+  const permit = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
+  Atomics.store(permit, 0, 1)
+  const revoke = () => Atomics.store(permit, 0, 0)
+  controller.signal.addEventListener('abort', revoke, { once: true })
   const abort = () => controller.abort(input.signal?.reason)
   input.signal?.addEventListener('abort', abort, { once: true })
   if (input.signal?.aborted) {
@@ -162,84 +196,44 @@ export async function runHistoryCatchUp<View>(input: {
       ...(error === undefined ? {} : { error })
     })
   const { sink } = input
-  try {
-    check()
-    const written = await waitForPromiseWithSignal(
-      sink.written?.() ?? Promise.resolve({ ok: true }),
-      controller.signal
-    )
-    check()
-    const history = sink.journalHistory?.()
-    const journal = sink.journalItems?.()
-    if (!history || !journal || !written.ok || !sink.tryAppendTransition) {
+  // One commit: re-checked against the journal right before it writes.
+  async function commitHistoryCatchUpPlan(
+    history: StructuredAgentSessionHistoryJournal,
+    plan: HistoryCatchUpPlan,
+    expectedCursor: AgentJournalCursor
+  ): Promise<'committed' | 'skipped'> {
+    if (!sink.tryAppendTransition) {
       return 'skipped'
-    }
-    const epoch = history.epoch
-    let planned: { view: View } | undefined
-    const view = (): View => (planned ??= { view: input.readView(history, controller.signal) }).view
-    const plan = await waitForPromiseWithSignal(
-      input.prepare({
-        view,
-        history,
-        journal,
-        signal: controller.signal,
-        deadline,
-        check,
-        yieldTurn: () => setImmediate(),
-        warn
-      }),
-      controller.signal
-    )
-    check()
-    if (!plan) {
-      return 'nothing'
     }
     let resolved = false
     const admission = sink.tryAppendTransition({
       lifecycle: true,
       publish: true,
+      beforeRun: () => {
+        try {
+          check()
+          return sink.journalHistory?.() === history
+        } catch {
+          return false
+        }
+      },
+      onResolved: (
+        outcomes: readonly ({ kind: 'committed'; wrote: boolean } | { kind: 'dropped' })[]
+      ) => {
+        resolved = outcomes[0]?.kind === 'committed'
+      },
       steps: [
         {
           kind: 'settlement',
           settlementId: plan.settlementId,
           reservedBytes: plan.reservedBytes,
-          resolve: (current) => {
-            try {
-              check()
-            } catch {
-              return []
-            }
-            if (
-              current.epoch !== epoch ||
-              sink.journalHistory?.() !== history ||
-              !input.sameView(view(), input.readView(history, controller.signal))
-            ) {
-              return []
-            }
-            const verified = new Set<string>()
-            for (const expected of plan.expectedItems ?? []) {
-              const canonical = current.canonicalItemId(expected.key)
-              if (
-                verified.has(expected.key) ||
-                canonical !== expected.canonicalItemId ||
-                current.item(canonical)?.revision !== expected.revision
-              ) {
-                return []
-              }
-              verified.add(expected.key)
-            }
-            // Submission aliases can make otherwise distinct canonical keys collide.
-            const seen = new Set<string>()
-            for (const mutation of plan.mutations) {
-              const key = agentJournalItemKey(mutation.identity)
-              const canonical = current.canonicalItemId(key)
-              if (seen.has(canonical) || (!verified.has(key) && current.item(canonical) !== null)) {
-                return []
-              }
-              seen.add(canonical)
-            }
-            resolved = true
-            return plan.mutations
+          resolution: {
+            kind: 'history-catch-up',
+            expectedCursor,
+            expectedItems: plan.expectedItems ?? [],
+            mutations: plan.mutations,
+            permit,
+            deadline
           }
         }
       ]
@@ -261,7 +255,58 @@ export async function runHistoryCatchUp<View>(input: {
       warn('stale-history')
       return 'skipped'
     }
-    return plan.mutations.length ? 'committed' : 'checked'
+    return 'committed'
+  }
+  try {
+    check()
+    const written = await waitForPromiseWithSignal(
+      sink.written?.() ?? Promise.resolve({ ok: true }),
+      controller.signal
+    )
+    check()
+    const history = sink.journalHistory?.()
+    if (!history || !written.ok || !sink.tryAppendTransition) {
+      return 'skipped'
+    }
+    let planned: Promise<View> | undefined
+    const view = (): Promise<View> => (planned ??= input.readView(history, controller.signal))
+    const prepared = await waitForPromiseWithSignal(
+      input.prepare({
+        view,
+        history,
+        signal: controller.signal,
+        deadline,
+        check,
+        yieldTurn: () => setImmediate(),
+        warn
+      }),
+      controller.signal
+    )
+    check()
+    if (!prepared) {
+      return 'nothing'
+    }
+    const plans = 'settlementId' in prepared ? [prepared] : prepared
+    let wrote = false
+    for (const [index, plan] of plans.entries()) {
+      // A later commit follows the one before it, with a turn between so main never waits long.
+      if (index > 0) {
+        await setImmediate()
+        check()
+      }
+      const expectedCursor =
+        plan.expectedCursor ??
+        (index === 0
+          ? (await waitForPromiseWithSignal(view(), controller.signal)).physicalCursor
+          : await waitForPromiseWithSignal(history.reads.physicalCursor(), controller.signal))
+      check()
+      const outcome = await commitHistoryCatchUpPlan(history, plan, expectedCursor)
+      if (outcome !== 'committed') {
+        return outcome
+      }
+      wrote ||= plan.mutations.length > 0
+    }
+    return wrote ? 'committed' : 'checked'
   } catch (error) {
     warn('import-skipped', error)
     return 'skipped'

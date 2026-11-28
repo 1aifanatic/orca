@@ -1,42 +1,47 @@
-import { startAndroidForegroundPushPresentation } from '../src/notifications/android-foreground-push'
-import { registerPushDismissalTask } from '../src/notifications/push-background-dismissal'
-import { readNativeNotificationData } from '../src/notifications/native-notification-data'
-import { setNotificationViewingWorkspace } from '../src/notifications/notification-viewing-policy'
+import { startAndroidForegroundPushPresentation } from '../src/notifications/foreground-delivery/android-foreground-push'
+import { registerPushDismissalTask } from '../src/notifications/dismissal/push-background-dismissal'
+import { readNativeNotificationData } from '../src/notifications/payload-identity/native-notification-data'
+import {
+  notificationViewingOfRoute,
+  setNotificationViewingWorkspace
+} from '../src/notifications/delivery-policy/notification-viewing-policy'
 import { useCallback, useEffect } from 'react'
 import { View } from 'react-native'
 import { Stack, useGlobalSearchParams, usePathname } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
 import * as Notifications from 'expo-notifications'
-import { colors } from '../src/theme/mobile-theme'
 import { startMobileAppearance } from '../src/theme/mobile-appearance'
-import { themedStyleSheet } from '../src/theme/themed-styles'
-import { useMobileColorScheme } from '../src/theme/use-mobile-color-scheme'
-import { OrcaLogo } from '../src/components/OrcaLogo'
-import { RpcClientProvider } from '../src/transport/client-context'
+import { themedStyleSheet, useThemedStyles } from '../src/theme/themed-styles'
+import { useMobileColorScheme, useMobileColors } from '../src/theme/use-mobile-color-scheme'
+import { OrcaLogo } from '../src/components/icons/OrcaLogo'
+import { RpcClientProvider } from '../src/transport/connection/client-context'
 import { OrcaQueryProvider } from '../src/query/orca-query-provider'
-import { getNotificationNavigationTarget } from '../src/notifications/notification-routing'
-import { useOpenNotificationRoute } from '../src/notifications/use-open-notification-route'
+import { getNotificationNavigationTarget } from '../src/notifications/navigation/notification-routing'
+import { useOpenNotificationRoute } from '../src/notifications/navigation/use-open-notification-route'
 import {
   isRemotePushTrigger,
   pushNotificationRouteData,
   foregroundNotificationBehavior
-} from '../src/notifications/push-receive'
+} from '../src/notifications/foreground-delivery/push-receive'
 import { startPushTokenSync } from '../src/notifications/push-registration'
-import { ensureDesktopNotificationChannel } from '../src/notifications/desktop-notification-channel'
-import { loadHostCatalog } from '../src/transport/host-store'
+import { ensureDesktopNotificationChannel } from '../src/notifications/foreground-delivery/desktop-notification-channel'
+import { loadHostCatalog } from '../src/host-catalog/host-store'
 import { usePairingLinks } from '../src/navigation/use-pairing-links'
+import { readWorkspaceRouteExecutionHost } from '../src/navigation/route-param-reader'
 import { consumeInitialLaunchIntent } from '../src/navigation/initial-launch-intent'
-import { recoverMobileRelayPairing } from '../src/transport/mobile-relay-pairing-recovery'
-import { appUpdateChecker } from '../src/app-update/app-update-runtime'
+import { recoverMobileRelayPairing } from '../src/pairing/mobile-relay-pairing-recovery'
+import { appUpdateChecker, isRetiredGithubAndroidApp } from '../src/app-update/app-update-runtime'
+import { AppMoveScreen } from '../src/app-move/AppMoveScreen'
 import { SideSafeArea } from '../src/layout/side-safe-area'
+import { BotLinkRouter } from '../src/bots/BotLinkRouter'
 import { SideRailProvider } from '../src/layout/side-rail'
 import { useFollowDeviceUiLocale } from '../src/i18n/use-follow-device-ui-locale'
 import { startMobileUiLanguage } from '../src/i18n/ui-language-preference'
 import { subscribeMobileUiLanguage } from '../src/i18n/mobile-i18n'
 import { startDeviceStore } from '../src/device-store/device-store'
 
-export { NativeScreenRecovery as ErrorBoundary } from '../src/components/NativeScreenRecovery'
+export { NativeScreenRecovery as ErrorBoundary } from '../src/components/feedback/NativeScreenRecovery'
 
 // Keep splash visible until React content is ready to avoid a blank frame.
 SplashScreen.preventAutoHideAsync()
@@ -62,19 +67,24 @@ Notifications.setNotificationHandler({
 const handledNotificationIds = new Set<string>()
 
 export default function RootLayout() {
+  const colors = useMobileColors()
+  const styles = useThemedStyles(stylesSheet)
   const colorScheme = useMobileColorScheme()
   useFollowDeviceUiLocale()
   const pathname = usePathname()
-  const { hostId, worktreeId, executionHost } = useGlobalSearchParams<{
+  const {
+    hostId,
+    worktreeId,
+    executionHost: routeExecutionHost
+  } = useGlobalSearchParams<{
     hostId?: string
     worktreeId?: string
     executionHost?: string
   }>()
+  const executionHost = readWorkspaceRouteExecutionHost(routeExecutionHost)
   useEffect(() => {
     setNotificationViewingWorkspace(
-      pathname.includes('/session/') && typeof hostId === 'string' && typeof worktreeId === 'string'
-        ? { hostId, worktreeId, ...(typeof executionHost === 'string' ? { executionHost } : {}) }
-        : null
+      notificationViewingOfRoute(pathname, { hostId, worktreeId, executionHost })
     )
     return () => setNotificationViewingWorkspace(null)
   }, [pathname, hostId, worktreeId, executionHost])
@@ -217,11 +227,14 @@ export default function RootLayout() {
                 <Stack.Screen name="settings" options={{ headerShown: false }} />
                 <Stack.Screen name="appearance-settings" options={{ headerShown: false }} />
                 <Stack.Screen name="terminal-settings" options={{ headerShown: false }} />
+                <Stack.Screen name="terminal-font-settings" options={{ headerShown: false }} />
+                <Stack.Screen name="terminal-keys" options={{ headerShown: false }} />
                 <Stack.Screen name="native-chat-settings" options={{ headerShown: false }} />
                 <Stack.Screen name="browser-settings" options={{ headerShown: false }} />
                 <Stack.Screen name="voice-settings" options={{ headerShown: false }} />
                 <Stack.Screen name="notifications" options={{ headerShown: false }} />
                 <Stack.Screen name="troubleshoot" options={{ headerShown: false }} />
+                <Stack.Screen name="troubleshoot-issue" options={{ headerShown: false }} />
                 <Stack.Screen name="connection-log" options={{ headerShown: false }} />
                 <Stack.Screen name="about" options={{ headerShown: false }} />
                 <Stack.Screen name="h" options={{ headerShown: false }} />
@@ -237,14 +250,17 @@ export default function RootLayout() {
                 />
               </Stack>
             </SideSafeArea>
+            {/* Last, so its waiting drawer sits above whatever screen the link landed on. */}
+            <BotLinkRouter />
           </SideRailProvider>
+          {isRetiredGithubAndroidApp ? <AppMoveScreen /> : null}
         </View>
       </OrcaQueryProvider>
     </RpcClientProvider>
   )
 }
 
-const styles = themedStyleSheet(() => ({
+const stylesSheet = themedStyleSheet((colors) => ({
   root: {
     flex: 1,
     backgroundColor: colors.bgBase

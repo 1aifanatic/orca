@@ -14,11 +14,11 @@ import {
   type LinearOrderBy,
   type LinearViewMode
 } from '../../../../shared/linear/issue-view-resume-state'
-import { getTaskPresetQuery } from '../../../../shared/task-preset-query'
-import type { GitLabMRInvolvement } from '../../../../shared/gitlab-types'
-import type { GitHubPRStateChip, GitHubPRWhoChip } from './github/task-page-pr-chips'
-import type { TaskProvider } from '../../../../shared/task-providers'
-import type { TaskViewPresetId } from '../../../../shared/ui-chrome-types'
+import { getTaskPresetQuery } from '../../../../shared/work-items/task-preset-query'
+import type { GitLabMRInvolvement } from '../../../../shared/gitlab/gitlab-types'
+import type { GitHubPRStateChip, GitHubPRWhoChip } from './github/listing/task-page-pr-chips'
+import type { TaskProvider } from '../../../../shared/work-items/task-providers'
+import type { TaskViewPresetId } from '../../../../shared/ui-chrome/ui-chrome-types'
 
 export type GitLabTaskFilter = 'opened' | 'merged' | 'closed' | 'all'
 export type GitLabIssueFilter = 'opened' | 'assigned-to-me'
@@ -155,8 +155,8 @@ export const getJiraPresets = createLocalizedCatalog((): JiraPreset[] => [
 ])
 
 export const getGitHubModeButtons = createLocalizedCatalog((): GitHubModeButton[] => [
-  { id: 'issues', label: translate('auto.components.TaskPage.dfc0c79bd8', 'Issues') },
   { id: 'prs', label: translate('auto.components.TaskPage.137e2a8a01', 'PRs') },
+  { id: 'issues', label: translate('auto.components.TaskPage.dfc0c79bd8', 'Issues') },
   { id: 'project', label: translate('auto.components.TaskPage.727069bee5', 'Projects') }
 ])
 

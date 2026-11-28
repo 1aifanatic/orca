@@ -9,7 +9,7 @@ import {
   type AgentSessionQueuedSendReceipt
 } from '../../../../shared/agent-session/agent-session-wire'
 import type { AgentSessionWireRefusal } from '../../../../shared/agent-session/failures/agent-session-wire-refusals'
-import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../../shared/orchestration-timing-budgets'
+import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../../shared/orchestration/orchestration-timing-budgets'
 import { structuredAgentSessionMessageSendMutation } from '../../../../shared/agent-session/requests/structured-agent-session-send-mutation'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/host/structured-agent-session-host'
 import {
@@ -36,6 +36,8 @@ export type StructuredSessionTurn = {
   delivery: AgentTurnDelivery
   /** Host-local admission for an automated send. */
   beforeRun?: () => void
+  /** A person's text relayed by the host, so recovery keeps it as theirs. */
+  personsMessage?: true
 }
 
 export type StructuredSessionTurnSend = {
@@ -61,10 +63,10 @@ export type TerminalTurn = {
   operationId: string
 }
 
-/** The writer's opt-in options a terminal turn may carry; no current caller sets them. */
+/** The writer's opt-in options a terminal turn may carry. */
 type TerminalTurnWriteOptions = Pick<
   RuntimeAgentPromptWriteOptions,
-  'signal' | 'onPermission' | 'expectedBinding'
+  'signal' | 'onPermission' | 'expectedBinding' | 'withholdSubmitOnDialog'
 >
 
 /** Method syntax on purpose: the runtime's own signature takes the wider write options. */
@@ -108,7 +110,8 @@ export function sendAgentTurn<TReceipt>(
         ...(send.beforeWrite ? { beforeWrite: send.beforeWrite } : {}),
         ...(send.signal ? { signal: send.signal } : {}),
         ...(send.onPermission ? { onPermission: send.onPermission } : {}),
-        ...(send.expectedBinding ? { expectedBinding: send.expectedBinding } : {})
+        ...(send.expectedBinding ? { expectedBinding: send.expectedBinding } : {}),
+        ...(send.withholdSubmitOnDialog ? { withholdSubmitOnDialog: true } : {})
       })
   }
 }
@@ -141,7 +144,11 @@ async function sendStructuredSessionTurn(
   })
   const result = await send.host.send(
     { callerKey: send.callerKey },
-    turn.beforeRun ? { ...message, beforeRun: turn.beforeRun } : message
+    {
+      ...message,
+      ...(turn.beforeRun ? { beforeRun: turn.beforeRun } : {}),
+      ...(turn.personsMessage ? { personsMessage: turn.personsMessage } : {})
+    }
   )
   if (!result.ok) {
     return { kind: 'refused', refusal: result.refusal }

@@ -1,22 +1,30 @@
-import type { AgentMessageSource } from '../../../../../shared/agent-session/agent-session-message-source'
+import type { AgentSessionAccountHome } from '../../../../../shared/agent-session/lifecycle/accounts/agent-session-account-home'
+import { readTestJournalSnapshot } from '../../../agent-session-journal/journal-observation.test-support'
+import type { AgentMessageSource } from '../../../../../shared/agent-session/journal/agent-session-message-source'
 import { vi, type Mock } from 'vitest'
+import { parseAgentJournalItemKey } from '../../../../../shared/agent-session/journal/agent-session-journal-item-key'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../../../shared/agent-session/journal/agent-session-journal-types'
-import { activeProviderContext } from '../../../../../shared/agent-session/agent-session-provider-context'
+import { activeProviderContext } from '../../../../../shared/agent-session/conversation-context/agent-session-provider-context'
 import {
   claudeProviderHandle,
   codexProviderHandle
-} from '../../../../../shared/agent-session/lifecycle/agent-session-provider-handle-encoding'
+} from '../../../../../shared/agent-session/lifecycle/provider-handles/agent-session-provider-handle-encoding'
 import type { AgentSessionRecordStore } from '../../../../runtime/agent-session/records/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from '../../providers/structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from '../../journal-ingress/structured-agent-session-event-sink'
 import type { StructuredAgentSessionHost } from '../structured-agent-session-host'
-import { startsWhenPublished } from './structured-agent-session-instant-start.test-support'
+import { startsWhenPublished } from './structured-agent-session-instant-start.test-fixture'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_THREAD as THREAD
-} from './structured-agent-session-host-test-data'
+} from './structured-agent-session-host-test-data.test-fixture'
 
 export type QueuedRigProviderOptions = {
+  acquiredAccountHome?: () => AgentSessionAccountHome
+  /** The saved account each child launches on, and what a start would record now. */
+  accountKey?: () => string
+  /** What a running child should match, when not `accountKey` (null: hold it where it is). */
+  launchAccountKey?: () => string | null
   agent?: 'claude'
   rewind?: NonNullable<StructuredAgentSessionAdapter['rewind']>
   recoverRewind?: NonNullable<StructuredAgentSessionAdapter['recoverRewind']>
@@ -29,7 +37,12 @@ export type QueuedRigProviderOptions = {
   /** The model its child reports running; otherwise the agent's own `default`. */
   reportsModel?: string
   reportsEffort?: string
+  /** The first acquisition hands back a kept agent that had already ended (`KEPT_ENDED`);
+   *  `during-startup`: its open fails as its connection closes. */
+  endedBeforeAcquire?: true | 'during-startup'
 }
+
+export const KEPT_ENDED_GENERATION = 'kept-ended'
 
 /** How long a winding-down child is given after the interrupt before the Stop ends it. */
 export const QUEUED_RIG_STOP_GRACE_MS = 2_000
@@ -58,6 +71,8 @@ export function createQueuedRigProvider(
   const closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>> = vi.fn(
     async () => true
   )
+  const releaseAcquisition: Mock<NonNullable<StructuredAgentSessionAdapter['releaseAcquisition']>> =
+    vi.fn(async () => true)
   let events: StructuredAgentSessionEventSink | undefined
   let proveOpen: (() => void) | null = null
 
@@ -66,12 +81,15 @@ export function createQueuedRigProvider(
     ...(options.reportsEffort ? { effort: options.reportsEffort } : {})
   })
   const scripted: StructuredAgentSessionAdapter = {
-    open: () =>
-      options.starting
-        ? new Promise((resolve) => {
-            proveOpen = () => resolve({ reportedOptions: reported() })
-          })
-        : Promise.resolve({ reportedOptions: reported() }),
+    open: (input) =>
+      options.endedBeforeAcquire === 'during-startup' &&
+      input.acquisitionGeneration === KEPT_ENDED_GENERATION
+        ? Promise.reject(new Error('kept agent connection closed'))
+        : options.starting
+          ? new Promise((resolve) => {
+              proveOpen = () => resolve({ reportedOptions: reported() })
+            })
+          : Promise.resolve({ reportedOptions: reported() }),
     acquire: async ({ identity, fence, spawnToken, events: sink }) => {
       starts()
       const hold = startHold
@@ -89,6 +107,8 @@ export function createQueuedRigProvider(
       const thread = context?.pendingClear
         ? `${THREAD}-context-${record!.providerContextBoundary!.operationId}`
         : (context?.head?.handle.nativeId ?? THREAD)
+      const accountHome = options.acquiredAccountHome?.()
+      const accountKey = options.accountKey?.()
       return {
         process: {
           hostId: 'local',
@@ -96,7 +116,12 @@ export function createQueuedRigProvider(
           processStartTimeMs: 1_700_000_000_000,
           spawnToken
         },
-        acquisitionGeneration: 'generation-1',
+        acquisitionGeneration:
+          options.endedBeforeAcquire && starts.mock.calls.length === 1
+            ? KEPT_ENDED_GENERATION
+            : 'generation-1',
+        ...(accountHome ? { accountHome } : {}),
+        ...(accountKey === undefined ? {} : { accountKey }),
         link: {
           linkId: `link-${fence}`,
           handle:
@@ -110,20 +135,66 @@ export function createQueuedRigProvider(
       }
     },
     dispatch,
+    ...(options.accountKey
+      ? { launchAccountKey: options.launchAccountKey ?? options.accountKey }
+      : {}),
+    captureMessageSteeringInputs: () => ({
+      kind: 'codex',
+      compiler: {
+        active: reported(),
+        activeInput: reported(),
+        defaults: reported(),
+        models: [],
+        listedServiceTiers: []
+      }
+    }),
     closeSession,
-    releaseAcquisition: vi.fn(async () => true),
+    releaseAcquisition,
     compact,
     cancelTurn,
     answerPrompt: vi.fn(async ({ commit }) => commit()),
     setOption,
+    ...(options.endedBeforeAcquire
+      ? {
+          endedBeforeAcquire: (_id: string, generation: string) =>
+            generation === KEPT_ENDED_GENERATION
+        }
+      : {}),
     ...(options.rewind
-      ? { rewind: options.rewind, rewindSupport: () => ({ supported: true as const }) }
+      ? {
+          rewind: options.rewind,
+          rewindSupport: () => ({ supported: true as const }),
+          prepareRewind: async ({ sessionId, beforeTurnId }) => {
+            const record = store.getRecord(sessionId)!
+            const threadId = activeProviderContext(record).head!.handle.nativeId
+            const turns = (
+              await readTestJournalSnapshot(
+                host().collaboratorsForTests().sessions.get(sessionId)!.journal
+              )
+            ).submissions.flatMap(({ providerItemId }) => {
+              const identity = providerItemId ? parseAgentJournalItemKey(providerItemId) : null
+              return identity?.provider === 'codex' && identity.threadId === threadId
+                ? [identity.turnId]
+                : []
+            })
+            const index = turns.indexOf(beforeTurnId)
+            return index === -1
+              ? { ok: false as const, reason: 'invalid-target' as const }
+              : {
+                  ok: true as const,
+                  revert: { threadId, beforeTurnId, keptTurnId: turns[index - 1] ?? null }
+                }
+          }
+        }
       : {}),
     ...(options.recoverRewind ? { recoverRewind: options.recoverRewind } : {}),
     ...(options.windsDown
       ? {
           awaitStoppedRequestEnd: async (sessionId: string, stoppedAt: number) => {
-            while (Date.now() < stoppedAt + QUEUED_RIG_STOP_GRACE_MS && working(sessionId)) {
+            while (
+              Date.now() < stoppedAt + QUEUED_RIG_STOP_GRACE_MS &&
+              (await working(sessionId))
+            ) {
               await new Promise((resolve) => setTimeout(resolve, 5))
             }
           }
@@ -131,8 +202,8 @@ export function createQueuedRigProvider(
       : {})
   }
 
-  function working(sessionId: string): boolean {
-    return host().currentWork(sessionId)?.working() ?? false
+  async function working(sessionId: string): Promise<boolean> {
+    return (await host().currentWork(sessionId))?.working() ?? false
   }
 
   const adapter = options.starting ? scripted : startsWhenPublished(scripted, host)
@@ -181,6 +252,7 @@ export function createQueuedRigProvider(
     cancelTurn,
     setOption,
     closeSession,
+    releaseAcquisition,
     finishCompact,
     providerEvents
   }
@@ -194,4 +266,6 @@ export type RigSendOptions = {
   internal?: true
   from?: AgentMessageSource
   carried?: Readonly<Record<string, string>>
+  /** The runtime fence the client last saw; the rig's first one otherwise. */
+  fence?: number
 }

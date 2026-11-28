@@ -1,0 +1,160 @@
+// The newest release of each agent CLI users install themselves, looked up at most hourly.
+
+import { z } from 'zod'
+import { lazyZodSchema } from '../../shared/schema/lazy-zod-schema'
+import { getMainHttpClient } from '../network/http-client'
+import { CLAUDE_MANAGED_RUNTIME } from '../claude/managed-runtime/claude-managed-runtime'
+import { isMuslHost } from '../node-runtime/linux-libc-probe'
+
+/** Where an agent publishes the release its own update command installs. */
+export type AgentCliReleaseSource =
+  | { kind: 'claude' }
+  | { kind: 'npm'; package: string }
+  | { kind: 'github'; repo: string; tagPrefix: string }
+  | { kind: 'acp-registry'; id: string }
+  /** The manifest `agy update` and Google's installer read for this host's build. */
+  | { kind: 'agy' }
+
+const ACP_REGISTRY = 'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json'
+const AGY_MANIFESTS =
+  'https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests'
+const REFRESH_MS = 60 * 60_000
+/** No single release lookup waits longer than this, so a version check always settles. */
+export const RELEASE_LOOKUP_TIMEOUT_MS = 10_000
+const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
+
+const npmLatestSchema = lazyZodSchema(() => z.object({ version: z.string().regex(VERSION) }))
+const githubReleaseSchema = lazyZodSchema(() => z.object({ tag_name: z.string() }))
+const agyManifestSchema = lazyZodSchema(() => z.object({ version: z.string().regex(VERSION) }))
+// Other entries may change shape; only the agents Orca reads must parse.
+const acpRegistrySchema = lazyZodSchema(() =>
+  z.object({
+    agents: z.array(z.object({ id: z.string(), version: z.unknown() }))
+  })
+)
+
+/** Asks at most hourly with one request in flight; a failure waits out the hour on the last answer. */
+function hourly<T>(name: string, fetchValue: () => Promise<T>): () => Promise<T | null> {
+  let last: { value: T | null; at: number } | null = null
+  let lookup: Promise<void> | null = null
+  return async () => {
+    if (!last || Date.now() - last.at >= REFRESH_MS) {
+      lookup ??= fetchValue()
+        .then((value) => {
+          last = { value, at: Date.now() }
+        })
+        .catch((error: unknown) => {
+          // Waits out the hour too, so an offline host isn't asked again on every chat start.
+          last = { value: last?.value ?? null, at: Date.now() }
+          console.warn(`[agent-cli-update] ${name} release lookup failed:`, error)
+        })
+        .finally(() => {
+          lookup = null
+        })
+      await lookup
+    }
+    return last?.value ?? null
+  }
+}
+
+const versionLookups = new Map<string, () => Promise<string | null>>()
+
+function lookUpVersion(key: string, fetchVersion: () => Promise<string>): Promise<string | null> {
+  let lookup = versionLookups.get(key)
+  if (!lookup) {
+    lookup = hourly(key, fetchVersion)
+    versionLookups.set(key, lookup)
+  }
+  return lookup()
+}
+
+async function fetchJson(url: string, accept?: string): Promise<unknown> {
+  const response = await getMainHttpClient().fetch(url, {
+    ...(accept ? { headers: { Accept: accept } } : {}),
+    signal: AbortSignal.timeout(RELEASE_LOOKUP_TIMEOUT_MS)
+  })
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined)
+    throw new Error(`${url} answered ${response.status}`)
+  }
+  return response.json()
+}
+
+async function npmLatest(pkg: string): Promise<string> {
+  const url = `https://registry.npmjs.org/${pkg.replace('/', '%2f')}/latest`
+  return npmLatestSchema.parse(await fetchJson(url)).version
+}
+
+async function githubLatest(repo: string, tagPrefix: string): Promise<string> {
+  const url = `https://api.github.com/repos/${repo}/releases/latest`
+  const tag = githubReleaseSchema.parse(
+    await fetchJson(url, 'application/vnd.github+json')
+  ).tag_name
+  const version = tag.startsWith(tagPrefix) ? tag.slice(tagPrefix.length) : ''
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error(`${repo} latest release has an unexpected tag ${tag}`)
+  }
+  return version
+}
+
+async function acpRegistryVersions(): Promise<Map<string, string>> {
+  const { agents } = acpRegistrySchema.parse(await fetchJson(ACP_REGISTRY))
+  const versions = new Map<string, string>()
+  for (const { id, version } of agents) {
+    if (typeof version === 'string' && VERSION.test(version)) {
+      versions.set(id, version)
+    }
+  }
+  return versions
+}
+
+const acpRegistryLookup = hourly('ACP registry', acpRegistryVersions)
+
+/** The manifest naming this host's agy build; null where Google ships none. */
+export function agyManifestPlatform(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  musl: boolean = isMuslHost()
+): string | null {
+  const cpu = arch === 'x64' ? 'amd64' : arch === 'arm64' ? 'arm64' : null
+  if (!cpu) {
+    return null
+  }
+  if (platform === 'darwin' || platform === 'win32') {
+    return `${platform === 'darwin' ? 'darwin' : 'windows'}_${cpu}`
+  }
+  return platform === 'linux' ? `linux_${cpu}${musl ? '_musl' : ''}` : null
+}
+
+async function agyLatest(platform: string): Promise<string> {
+  return agyManifestSchema.parse(await fetchJson(`${AGY_MANIFESTS}/${platform}.json`)).version
+}
+
+async function refreshClaudeLatest(): Promise<string | null> {
+  // Shares Orca's own Claude lookup, which follows the user's update channel.
+  await CLAUDE_MANAGED_RUNTIME.refreshPin?.(AbortSignal.timeout(RELEASE_LOOKUP_TIMEOUT_MS)).catch(
+    (error: unknown) => {
+      console.warn('[agent-cli-update] Claude release lookup failed:', error)
+    }
+  )
+  return CLAUDE_MANAGED_RUNTIME.pin()?.version ?? null
+}
+
+export async function latestAgentCliRelease(source: AgentCliReleaseSource): Promise<string | null> {
+  switch (source.kind) {
+    case 'claude':
+      return refreshClaudeLatest()
+    case 'npm':
+      return lookUpVersion(`npm ${source.package}`, () => npmLatest(source.package))
+    case 'github':
+      return lookUpVersion(`GitHub ${source.repo}`, () =>
+        githubLatest(source.repo, source.tagPrefix)
+      )
+    case 'acp-registry':
+      return (await acpRegistryLookup())?.get(source.id) ?? null
+    case 'agy': {
+      const platform = agyManifestPlatform()
+      return platform ? lookUpVersion(`agy ${platform}`, () => agyLatest(platform)) : null
+    }
+  }
+}

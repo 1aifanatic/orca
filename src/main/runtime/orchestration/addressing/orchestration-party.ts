@@ -3,8 +3,8 @@ import {
   isOrcaSessionId,
   parseOrcaSessionAddress,
   type OrcaSessionId
-} from '../../../../shared/orca-session-address'
-import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../../shared/orchestration-session-caller-codes'
+} from '../../../../shared/agent-session/identity/orca-session-address'
+import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../../shared/orchestration/orchestration-session-caller-codes'
 import {
   isRecordedStructuredWorkerSession,
   resolveStructuredWorkerIdentity,
@@ -14,8 +14,9 @@ import type { StructuredWorkerIdentity } from '../terminal-authority/structured-
 import { canonicalOrcaSessionId } from './session-lineage/canonical-orca-session-id'
 import type { AgentSessionRecordReader } from './session-lineage/structured-session-lineage'
 import type { OrchestrationDb } from '../db/orchestration-db'
+import type { SessionPartyReader } from './session-party-reader'
 import { mailboxAddressOf } from './orchestration-caller-identity'
-import type { OrchestrationPartyIdentity as OrchestrationParty } from '../../../../shared/orchestration-party-identity'
+import type { OrchestrationPartyIdentity as OrchestrationParty } from '../../../../shared/orchestration/mailbox/orchestration-party-identity'
 import { OrchestrationError } from '../orchestration-error'
 
 /** A party named by an Orca session id: a structured worker, or a chat. */
@@ -41,7 +42,7 @@ export const ORCHESTRATION_TARGET_PARAM: Readonly<
 /** The party an Orca session id names. Throws when it is a worker this host lost the identity of. */
 export function resolveOrcaSessionParty(
   orcaSessionId: OrcaSessionId,
-  db: OrchestrationDb | null | undefined,
+  db: SessionPartyReader | null | undefined,
   store?: Pick<AgentSessionRecordReader, 'listRecords'> | null
 ): OrchestrationSessionParty {
   const id = canonicalOrcaSessionId(orcaSessionId, store)

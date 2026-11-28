@@ -1,10 +1,10 @@
 import type { AiVaultSessionPreviewMessage } from '../../../shared/ai-vault/contracts/ai-vault-types'
-import { asRecord } from '../session-scanner-record-value'
+import { asRecord } from '../parsing/session-record-fields'
 import {
   isClaudeToolUseContent,
   isClaudeToolResultContent,
   claudeToolResultTextParts
-} from '../../../shared/claude-tool-content'
+} from '../../../shared/agent-hook-listener/providers/claude/transcripts/claude-tool-content'
 
 export type DecodedToolCall = {
   kind: 'tool_call'
@@ -105,7 +105,12 @@ export function decodeSessionMessage(
     if (type !== null && !TEXT_BLOCK_TYPES.has(type) && !reasoning) {
       continue
     }
-    const text = typeof item.text === 'string' ? item.text : item.content
+    const text =
+      typeof item.text === 'string'
+        ? item.text
+        : type === 'thinking' && item.redacted !== true && typeof item.thinking === 'string'
+          ? item.thinking
+          : item.content
     if (typeof text === 'string' && text) {
       blocks.push({ kind: reasoning ? 'reasoning' : 'text', text })
     }

@@ -1,25 +1,28 @@
+import { prWatchStorage } from '../../../github/pr-watch/pr-watch-storage'
 // Open and settle the crash boundary before any reader, command or child: damaged journals fail;
 // handed-over sends remain permanently unknown. Unhanded personal text becomes a paused card,
 // other unhanded sends are rejected (journal-unsent-send-hold.ts / queued-message-pause.ts).
 // Settlement needs no lease and starts no provider child.
 
-import type { JournalHostDatabase } from '../../agent-session-journal/database/journal-host-database'
+import { keptRunningProviderRelayPid } from '../../../provider-relay/app-provider-relays'
+import { structuredAgentSessionKeptAtOpen } from './structured-agent-session-kept-at-open'
+import type { JournalSqlDatabase } from '../../agent-session-journal/database/journal-sql-database'
 import type { AgentSessionJournal } from '../../agent-session-journal/journal-store'
 import { openAgentSessionJournal } from '../../agent-session-journal/journal-store-factory'
-import { holdUnsentSends } from '../../agent-session-journal/queued-messages/journal-unsent-send-hold'
-import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session/lifecycle/agent-session-mutation-envelope'
-import type { AgentSessionConversationView } from '../../../../shared/agent-session/lifecycle/agent-session-conversation-view'
-import type { UsageLimitContinueIdentity } from '../../../../shared/agent-session/lifecycle/agent-session-usage-limit-continue'
+import { restoreJournalSqlFailure } from '../../agent-session-journal/journal-sql-failure'
+import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session/lifecycle/operations/agent-session-mutation-envelope'
+import type { AgentSessionConversationView } from '../../../../shared/agent-session/lifecycle/leases/agent-session-conversation-view'
+import type { UsageLimitContinueIdentity } from '../../../../shared/agent-session/lifecycle/stopping/agent-session-usage-limit-continue'
 import {
   attachFingerprintFields,
   journalIdentityFor,
   type AgentSessionAttachParams
 } from '../acquisition/structured-agent-session-attach'
+import { deliverPendingPullRequestEvents } from '../../../github/pr-watch/pr-event-delivery'
 import type { AgentSessionRecordStore } from '../../../runtime/agent-session/records/agent-session-record-store'
 import '../termination/structured-agent-session-dead-generation-settlement'
 import { settleStaleStructuredAgentSessionState } from '../termination/structured-agent-session-stale-state-settlement'
 import { structuredAgentSessionFailureWordsContext } from '../operations/structured-agent-session-send-preparation'
-import { markStructuredQueueReopen } from '../delivery/structured-agent-session-queued-pause'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -34,7 +37,7 @@ export type StructuredAgentSessionConversationOpenDeps = {
     AgentSessionRecordStore,
     'getConversation' | 'replacedRuntime' | 'usageLimitContinueCancelReceipt'
   >
-  journalDatabase: JournalHostDatabase
+  journalDatabase: JournalSqlDatabase
   logger: StructuredAgentSessionHostDeps['logger']
 }
 
@@ -96,9 +99,30 @@ export async function openStructuredAgentSessionConversationJournal(
   })
   const identity = journalIdentityFor(record, params)
   const { store } = deps
+  // An agent the terminal host kept running is not gone: its turn, sends and queue go on once it
+  // reattaches, so nothing of the last run is recovered or settled here.
+  const kept = !options.acquisition && (await structuredAgentSessionKeptAtOpen(record))
+  // A reattach's own open comes after the launch listing it reattaches from, so no wait here.
+  const keptWriter =
+    kept || (options.acquisition && keptRunningProviderRelayPid(sessionId) !== null)
   const journal = await openAgentSessionJournal({
     identity,
     database: deps.journalDatabase,
+    ...(kept ? {} : { recover: { fence } }),
+    ...(keptWriter ? { keptWriter: true as const } : {}),
+    onRecoveryFailure: ({ step, failure }) => {
+      const messages = {
+        'pending-unknown': 'marking pending sends unknown on open failed',
+        'hold-unsent': 'settling sends an earlier process left queued failed on open',
+        'withdraw-derived': 'withdrawing replaced restart work failed on open',
+        'queue-reopen': 'marking a reopened queue failed'
+      }
+      deps.logger.warn(messages[step], {
+        scope: `open-${step}`,
+        sessionId,
+        error: restoreJournalSqlFailure(failure)
+      })
+    },
     // Without a record store (acquisition-only opens) there is no continuation to withdraw.
     ...(store
       ? {
@@ -107,32 +131,24 @@ export async function openStructuredAgentSessionConversationJournal(
         }
       : {})
   })
-  try {
-    // A handed-over row found here stays doubt: it reads as sent, and nothing narrows it later.
-    await journal.markPendingSubmissionsUnknown(fence)
-  } catch (error) {
-    deps.logger.warn('marking pending sends unknown on open failed', {
-      scope: 'open-pending-unknown',
-      sessionId,
-      error
-    })
-  }
-  try {
-    // Preserve leftover personal sends before any Stop can withdraw them.
-    await holdUnsentSends(journal, { fence, hold: { cause: 'hostRestarted' } })
-  } catch (error) {
-    // Failed leftovers stay queued; delivery retries before handover or rejects all if recovery still fails.
-    deps.logger.warn('settling sends an earlier process left queued failed on open', {
-      scope: 'open-leftover-sends',
-      sessionId,
-      error
-    })
-  }
-  // Mark after recovering cards; idle sweeping never closes handles while cards wait.
-  await markStructuredQueueReopen(sessionId, journal, fence, deps.logger)
   // No local child writes unopened journals; settle the gone generation before readers/new children.
-  if (!options.acquisition) {
+  if (!options.acquisition && !kept) {
     await settleGoneGeneration(deps, record, journal)
+  }
+  try {
+    // CI lines that landed while the chat was closed go in before any new turn can start.
+    await deliverPendingPullRequestEvents({
+      database: prWatchStorage(deps.journalDatabase),
+      journal,
+      sessionId,
+      fence
+    })
+  } catch (error) {
+    deps.logger.warn('appending CI lines on open failed', {
+      scope: 'open-pr-events',
+      sessionId,
+      error
+    })
   }
   return { session: { journal, params, child: null } }
 }
@@ -145,6 +161,18 @@ export async function resettleOpenStructuredAgentSessionConversation(
 ): Promise<void> {
   const record = deps.store.getConversation(sessionId)
   if (session && record?.ownerObservation.deathEvidence) {
+    await settleGoneGeneration(deps, record, session.journal)
+  }
+}
+
+/** A kept agent ended before it could be reattached; its turn settles as any gone one does. */
+export async function settleGoneStructuredAgentSessionGeneration(
+  deps: StructuredAgentSessionConversationOpenDeps,
+  sessionId: string,
+  session: StructuredAgentSessionHostSession
+): Promise<void> {
+  const record = deps.store.getConversation(sessionId)
+  if (record) {
     await settleGoneGeneration(deps, record, session.journal)
   }
 }

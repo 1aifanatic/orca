@@ -1,7 +1,13 @@
 import { defineMethod } from '../../core'
+import type { OrcaRuntimeService } from '../../../orca-runtime'
+import {
+  agentCommandOverrideDetectionOptions,
+  type InstalledAgentDetectionOptions
+} from '../../../../preflight/installed-agent-detection'
 import { resolveQualifiedAgentDetectionHost } from './preflight-workspace-target'
+import { listInstalledWorkspaceAgents } from './installed-agents'
 import { runPreflightCheck } from '../../../../preflight/agent-detection'
-import { detectRemoteWindowsTerminalCapabilities } from '../../../../ipc/preflight-remote-windows-terminal-capabilities'
+import { detectRemoteWindowsTerminalCapabilities } from '../../../../ipc/preflight/preflight-remote-windows-terminal-capabilities'
 
 import {
   assertAgentDetectionHostRunning,
@@ -9,19 +15,40 @@ import {
   refreshAgentsOnHost
 } from '../../../../preflight/workspace-agent-detection'
 import {
+  PreflightAgentRefresh,
   PreflightAgentDetection,
   PreflightProjectAgentDetection,
   PreflightCheck,
   PreflightDetectRemoteAgents,
   PreflightDetectRemoteWindowsTerminalCapabilities
-} from '../../../../../shared/rpc-contract/preflight-params'
+} from '../../../../../shared/rpc-contract/preflight/preflight-params'
+
+/** This host's command overrides, so a configured CLI outside PATH is listed like a detected one. */
+export function hostDetectionOptions(
+  runtime: OrcaRuntimeService
+): InstalledAgentDetectionOptions | undefined {
+  try {
+    return agentCommandOverrideDetectionOptions(
+      runtime.requireStore().getSettings().agentCmdOverrides
+    )
+  } catch {
+    // A runtime without its store still lists PATH-detected agents.
+    return undefined
+  }
+}
 
 export const PREFLIGHT_METHODS = [
+  defineMethod({
+    name: 'preflight.installedAgents',
+    permission: 'workspace',
+    params: PreflightAgentDetection,
+    handler: (params, { runtime }) => listInstalledWorkspaceAgents(runtime, params)
+  }),
   defineMethod({
     name: 'preflight.check',
     permission: 'workspace',
     params: PreflightCheck,
-    handler: async (params) => runPreflightCheck(params.force)
+    handler: (params) => runPreflightCheck(params.force)
   }),
   defineMethod({
     name: 'preflight.detectAgents',
@@ -36,7 +63,7 @@ export const PREFLIGHT_METHODS = [
       const host = await resolveQualifiedAgentDetectionHost(runtime, params)
       // A client's inventory read is background work: it must not start a stopped WSL distro (E9).
       await assertAgentDetectionHostRunning(host)
-      return detectAgentsOnHost(host)
+      return detectAgentsOnHost(host, hostDetectionOptions(runtime))
     }
   }),
   defineMethod({
@@ -55,11 +82,11 @@ export const PREFLIGHT_METHODS = [
   defineMethod({
     name: 'preflight.refreshAgents',
     permission: 'workspace',
-    params: PreflightAgentDetection,
+    params: PreflightAgentRefresh,
     handler: async (params, { runtime }) => {
       const host = await resolveQualifiedAgentDetectionHost(runtime, params)
       await assertAgentDetectionHostRunning(host)
-      return refreshAgentsOnHost(host)
+      return refreshAgentsOnHost(host, hostDetectionOptions(runtime), params.userInitiated)
     }
   })
 ]

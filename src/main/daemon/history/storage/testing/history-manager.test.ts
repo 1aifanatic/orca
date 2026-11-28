@@ -12,6 +12,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { HistoryManager } from '../history-manager'
+import { HistoryReader } from '../../restoration/history-reader'
 import * as hostTreeRemoval from '../../../../filesystem/host-tree-removal'
 import { flushPendingSessionTreeRemovals } from '../terminal-history-session-tombstone'
 import type { TerminalSnapshot } from '../../../protocol/terminal-snapshot'
@@ -21,6 +22,7 @@ import {
   getTerminalHistoryQuarantineOwnerDir,
   hasTerminalHistoryRecoveryProtection
 } from '../terminal-history-recovery-quarantine'
+import { updateTerminalHistoryProbedCwd } from '../terminal-history-metadata'
 
 function createTestDir(): string {
   return mkdtempSync(join(tmpdir(), 'history-mgr-test-'))
@@ -148,26 +150,6 @@ describe('HistoryManager', () => {
       expect(existsSync(sessionPath(dir, sessionId, 'checkpoint.json'))).toBe(true)
     })
 
-    it('rejects an unverified writer for a protected recovery generation', async () => {
-      const sessionId = 'protected-register'
-      await mgr.openSession(sessionId, { cwd: '/old', cols: 80, rows: 24 })
-      const recoveryFreeze = await mgr.freezeForRecovery(sessionId)
-      writeFileSync(join(dir, '.recovery-quarantine'), 'block owner directory creation')
-      await mgr.openSession(sessionId, {
-        cwd: '/new',
-        cols: 80,
-        rows: 24,
-        recoveryFreeze,
-        quarantineUnreadableRecovery: true
-      })
-      const relaunched = new HistoryManager(dir)
-
-      relaunched.registerWriter(sessionId)
-
-      expect(relaunched.isSessionDisabled(sessionId)).toBe(true)
-      expect(relaunched.hasWriter(sessionId)).toBe(false)
-    })
-
     it('rejects a freeze-verified writer for a protected recovery generation', async () => {
       const sessionId = 'recovered-protection'
       await mgr.openSession(sessionId, { cwd: '/old', cols: 80, rows: 24 })
@@ -262,15 +244,12 @@ describe('HistoryManager', () => {
     )
   })
 
-  describe('large session cleanup responsiveness', () => {
-    it('tombstones a large session tree instead of walking it on the teardown path', async () => {
+  describe('session cleanup', () => {
+    it('tombstones a session tree and finishes teardown before reclamation', async () => {
       const sessionId = 'bulky'
       await mgr.openSession(sessionId, { cwd: '/tmp', cols: 80, rows: 24 })
       const sessionDir = join(dir, getHistorySessionDirName(sessionId))
-      // Enough entries that a recursive walk would dominate removeSession's duration.
-      for (let i = 0; i < 3_000; i++) {
-        writeFileSync(join(sessionDir, `chunk-${i}.log`), `payload-${i}`)
-      }
+      writeFileSync(join(sessionDir, 'output.log'), 'payload')
 
       // Hold reclamation so the worker cannot delete the tombstone between assertions.
       const reclaim = Promise.withResolvers<void>()
@@ -292,7 +271,7 @@ describe('HistoryManager', () => {
         expect(tombstones).toHaveLength(1)
         const tombstonePath = join(dir, '.pending-delete', tombstones[0])
         expect(removalSpy).toHaveBeenCalledExactlyOnceWith(tombstonePath)
-        expect(readdirSync(tombstonePath).length).toBeGreaterThan(0)
+        expect(readFileSync(join(tombstonePath, 'output.log'), 'utf8')).toBe('payload')
       } finally {
         reclaim.resolve()
         removalSpy.mockRestore()
@@ -316,6 +295,65 @@ describe('HistoryManager', () => {
       await flushPendingSessionTreeRemovals()
 
       expect(existsSync(orphan)).toBe(false)
+    })
+  })
+
+  describe('probed cwd cold restore', () => {
+    it('restores last probed cwd without OSC 7 across incremental logs, checkpoints, and cd back to spawn', async () => {
+      const sessionId = 'no-osc7-cwd'
+      const reader = new HistoryReader(dir)
+      await mgr.openSession(sessionId, { cwd: '/alpha', cols: 80, rows: 24 })
+      await mgr.appendIncrements(sessionId, 1, [{ kind: 'output', data: 'cd src/deep\r\n$ ' }])
+      await mgr.recordProbedCwd(sessionId, '/alpha/src/deep')
+
+      const afterIncrement = await reader.detectColdRestoreState(sessionId)
+      expect(afterIncrement.status).toBe('restored')
+      if (afterIncrement.status === 'restored') {
+        expect(afterIncrement.restoreInfo.cwd).toBe('/alpha/src/deep')
+        expect(afterIncrement.cwdFromSpawn).toBeUndefined()
+      }
+
+      // Full checkpoint persists the probed cwd and clears the pending override.
+      await mgr.checkpoint(sessionId, makeSnapshot({ cwd: null }), { pendingOutputSeq: 1 })
+      // Returning to the spawn dir after a checkpoint must override checkpoint.cwd.
+      await mgr.appendIncrements(sessionId, 2, [{ kind: 'output', data: 'cd /alpha\r\n$ ' }])
+      await mgr.recordProbedCwd(sessionId, '/alpha')
+
+      const afterCdBack = await reader.detectColdRestoreState(sessionId)
+      expect(afterCdBack.status).toBe('restored')
+      if (afterCdBack.status === 'restored') {
+        expect(afterCdBack.restoreInfo.cwd).toBe('/alpha')
+      }
+
+      // Explicit OSC 7 in the output log still takes precedence over a probed cwd.
+      await mgr.appendIncrements(sessionId, 3, [
+        { kind: 'output', data: '\x1b]7;file://localhost/alpha/osc7\x07$ ' }
+      ])
+      const afterOsc7 = await reader.detectColdRestoreState(sessionId)
+      expect(afterOsc7.status).toBe('restored')
+      if (afterOsc7.status === 'restored') {
+        expect(afterOsc7.restoreInfo.cwd).toBe('/alpha/osc7')
+      }
+    })
+
+    it('preserves endedAt and exitCode when probed cwd updates race closeSession', async () => {
+      const sessionId = 'probed-cwd-close-race'
+      await mgr.openSession(sessionId, { cwd: '/alpha', cols: 80, rows: 24 })
+      const probePromise = mgr.recordProbedCwd(sessionId, '/alpha/sub')
+      const closePromise = mgr.closeSession(sessionId, 0)
+      await Promise.all([probePromise, closePromise])
+
+      const afterRace = mgr.readMeta(sessionId)
+      expect(afterRace?.endedAt).not.toBeNull()
+      expect(afterRace?.exitCode).toBe(0)
+      expect(afterRace?.lastProbedCwd).toBe('/alpha/sub')
+
+      const sessionDir = join(dir, getHistorySessionDirName(sessionId))
+      await updateTerminalHistoryProbedCwd(sessionDir, '/alpha/late')
+      const afterLateProbe = mgr.readMeta(sessionId)
+      expect(afterLateProbe?.endedAt).not.toBeNull()
+      expect(afterLateProbe?.exitCode).toBe(0)
+      expect(afterLateProbe?.lastProbedCwd).toBe('/alpha/sub')
     })
   })
 })

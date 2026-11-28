@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, readdir, realpath, stat, writeFile } from 'node:fs/prom
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runProcess } from '@orca/process-host'
-import { removeTree } from '../../../../shared/windows-transient-lock-removal'
+import { removeTree } from '../../../../shared/file-write/windows-transient-lock-removal'
 import '../../../codex-cli/command'
-import { withCliRuntimeOnPath } from '../../../../shared/node-cli-command-resolution'
+import { withCliRuntimeOnPath } from '../../../../shared/shell/command-resolution/node-cli-command-resolution'
 import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../../../codex-cli/codex-read-only-app-server-args'
 import { collectListedHooks, type CodexListedHook } from '../../app-server/codex-app-server-client'
 import {
@@ -114,6 +114,7 @@ export async function listCodexHooks(
 ): Promise<CodexListedHook[]> {
   const result = await runCodexAppServerSession(
     {
+      allowHost: false,
       command: codexPath,
       // Disable plugin startup to avoid leaving marketplace clones behind short sessions.
       args: [...CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS],
@@ -251,10 +252,22 @@ export async function probeCodexVersion(codexCommand: string): Promise<string | 
 export async function sweepStaleCodexScratchHomes(): Promise<void> {
   const root = tmpdir()
   const names = await readdir(root).catch(() => [])
-  for (const name of names.filter((n) => SCRATCH_PREFIXES.some((p) => n.startsWith(p)))) {
+  const now = Date.now()
+  for (let i = 0; i < names.length; i += 1) {
+    const name = names[i]
+    let matched = false
+    for (let j = 0; j < SCRATCH_PREFIXES.length; j += 1) {
+      if (name.startsWith(SCRATCH_PREFIXES[j])) {
+        matched = true
+        break
+      }
+    }
+    if (!matched) {
+      continue
+    }
     const path = join(root, name)
     const info = await stat(path).catch(() => null)
-    if (info && Date.now() - info.mtimeMs > STALE_SCRATCH_MS) {
+    if (info && now - info.mtimeMs > STALE_SCRATCH_MS) {
       await removeTree(path).catch(() => {})
     }
   }

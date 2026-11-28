@@ -7,12 +7,12 @@ import {
   assertDirListingWithinRemoteBudget,
   remoteFileContentBudget
 } from './files-remote-content-budget'
-import { limitQuickOpenSearchReplyBySerializedBytes } from '../../../../../shared/quick-open-transport-budget'
+import { limitQuickOpenSearchReplyBySerializedBytes } from '../../../../../shared/quick-open/quick-open-transport-budget'
 import {
   FileOpen,
   FileWatch,
   WorktreeSelector
-} from '../../../../../shared/rpc-contract/files-target-params'
+} from '../../../../../shared/rpc-contract/filesystem/files-target-params'
 import { FILE_TERMINAL_ARTIFACT_METHODS } from './files-terminal-artifact-methods'
 import {
   ChatImageRead,
@@ -24,14 +24,13 @@ import {
   FileOpenTab,
   FilePathSearch,
   FileReadChunk,
-  FileSearch,
   FileDirRead,
   FileTreePath,
   FileUnwatch,
   ResolveTerminalPath,
   ServerDirectoryBrowse
-} from '../../../../../shared/rpc-contract/files-params'
-import { limitSearchResultToContentBudget } from '../../../../../shared/search-result-transport-budget'
+} from '../../../../../shared/rpc-contract/filesystem/files-params'
+import { FILE_SEARCH_METHODS } from './files-search-methods'
 
 let filesWatchSubscriptionSeq = 0
 
@@ -79,7 +78,7 @@ export const FILE_METHODS = [
       runtime.openMobileFile(
         params.worktree,
         params.relativePath,
-        params.navigation,
+        params.navigation ?? 'caller',
         ...(params.line === undefined ? [] : [{ line: params.line, column: params.column }])
       )
   }),
@@ -92,7 +91,7 @@ export const FILE_METHODS = [
         params.worktree,
         params.relativePath,
         params.staged === true,
-        params.navigation,
+        params.navigation ?? 'caller',
         ...(params.oldPath ? ([params.oldPath] as const) : [])
       )
   }),
@@ -129,7 +128,8 @@ export const FILE_METHODS = [
         params.implicitRootRelativePath,
         params.authorizedRootRelativePaths,
         params.offset,
-        params.length
+        params.length,
+        params.media === true
       )
   }),
   defineMethod({
@@ -206,32 +206,12 @@ export const FILE_METHODS = [
     name: 'files.browseServerDir',
     permission: 'workspace',
     params: ServerDirectoryBrowse,
-    handler: async (params, { runtime }) => runtime.browseServerDir(params.path)
+    handler: async (params, { runtime }) =>
+      runtime.browseServerDir(params.path, { markGitRepos: params.markGitRepos })
   }),
   ...FILE_MUTATION_METHODS,
   ...FILE_STAGED_SAVE_METHODS,
-  defineMethod({
-    name: 'files.search',
-    permission: 'workspace',
-    params: FileSearch,
-    handler: async (params, { runtime, clientKind, requestId, signal }) =>
-      limitSearchResultToContentBudget(
-        await runtime.searchRuntimeFiles(
-          params.worktree,
-          {
-            query: params.query,
-            caseSensitive: params.caseSensitive,
-            wholeWord: params.wholeWord,
-            useRegex: params.useRegex,
-            includePattern: params.includePattern,
-            excludePattern: params.excludePattern,
-            maxResults: params.maxResults
-          },
-          { signal }
-        ),
-        remoteFileContentBudget(clientKind, requestId)
-      )
-  }),
+  ...FILE_SEARCH_METHODS,
   defineMethod({
     name: 'files.listAll',
     permission: 'workspace',

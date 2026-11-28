@@ -1,6 +1,6 @@
 /**
  * The move orchestrator's production ports and IPC (D3a). Dark: with the internal WSL hosts gate
- * closed, or without a WSL host service, nothing is constructed and the IPC answers empty.
+ * closed, or until a WSL host service exists, nothing is constructed and the IPC answers empty.
  * Automatic starts also stop when ORCA_WSL_MOVE_AUTO=0; explicit user actions still run.
  */
 import { app, ipcMain, type WebContents } from 'electron'
@@ -14,23 +14,22 @@ import {
   type WslMoveOrchestratorUserAction
 } from '../../../shared/wsl-move/wsl-move-orchestrator-types'
 import type { Store } from '../../persistence/loading-store/store'
-import { listWslMoveCutoverChain } from '../../persistence/moving-wsl-projects/wsl-move-cutover-journal'
+import { listWslMoveCutoverChain } from '../../persistence/moving-wsl-projects/cutover-recovery/wsl-move-cutover-journal'
 import { moveProjectsToWslHost } from '../../persistence/moving-wsl-projects/wsl-move-driver'
-import { previewWslMove } from '../../persistence/moving-wsl-projects/wsl-move-driver-preview'
-import { wslMovedDistroVerdict } from '../../persistence/moving-wsl-projects/wsl-move-moved-distro-check'
+import { previewWslMove } from '../../persistence/moving-wsl-projects/execution/wsl-move-driver-preview'
+import { wslMoveDistroMappedDrivesLastKnown } from './wsl-move-mapped-drive-ports'
+import { onNextWslMappedDriveAnswer } from '../../wsl/filesystem/wsl-mapped-drive-last-known'
+import { wslMovedDistroVerdict } from '../../persistence/moving-wsl-projects/quiescence/wsl-move-moved-distro-check'
 import { WslMoveOrchestrator } from '../../persistence/moving-wsl-projects/wsl-move-orchestrator'
 import type {
   WslMoveFinishedMove,
   WslMoveHostReadiness
-} from '../../persistence/moving-wsl-projects/wsl-move-orchestrator-ports'
-import { prepareWslMoveHost } from '../../persistence/moving-wsl-projects/wsl-move-host-readiness'
+} from '../../persistence/moving-wsl-projects/orchestration/wsl-move-orchestrator-ports'
+import { prepareWslMoveHost } from '../../persistence/moving-wsl-projects/quiescence/wsl-move-host-readiness'
 import { readConfirmedRunningWslDistros } from '../../wsl/discovery/wsl-background-distro-gate'
 import { defaultWslOrcadEnvironmentId } from '../../wsl/orcad/wsl-orcad-deploy'
-import {
-  readWslMoveOrchestratorRecords,
-  writeWslMoveOrchestratorRecords
-} from '../../persistence/moving-wsl-projects/wsl-move-orchestrator-store'
-import type { WslMoveDriverDeps } from '../../persistence/moving-wsl-projects/wsl-move-driver-ports'
+import { createWslMoveOrchestratorStore } from '../../persistence/moving-wsl-projects/orchestration/wsl-move-orchestrator-store'
+import type { WslMoveDriverDeps } from '../../persistence/moving-wsl-projects/execution/wsl-move-driver-ports'
 import {
   trackWslMoveOrchestrator,
   wslMoveOrchestratorEventProps
@@ -49,10 +48,15 @@ import { onWslHostUserAction } from '../../wsl/host-lifecycle/wsl-host-user-acti
 import { getTrustedUIRendererWebContents, getTrustedUIRendererWindow } from '../ui'
 import { onWslMoveReleasedByUser, releaseWslMoveChainHere } from './wsl-move-release-here'
 import { createWslMoveUndoPorts } from './wsl-move-undo-wiring'
-import { isDistroInUse } from '../../persistence/moving-wsl-projects/wsl-move-distro-in-use'
+import { isDistroInUse } from '../../persistence/moving-wsl-projects/quiescence/wsl-move-distro-in-use'
 import { answerWslMoveSleptPanes, requestSleptPanes } from './wsl-move-orchestrator-slept-panes'
 import { wslHostRemovalPending } from './wsl-move-host-connect'
 import { wslMoveAutoMovesBridgeProjects } from '../../../shared/wsl-move/wsl-move-rollout-stage'
+import {
+  currentWslMoveOrchestrator,
+  noteWslMoveProjectOpened,
+  startWslMoveOrchestratorWithHostService
+} from './wsl-move-orchestrator-start'
 
 export const WSL_MOVE_ORCHESTRATOR_AUTO_ENV = 'ORCA_WSL_MOVE_AUTO'
 
@@ -103,8 +107,8 @@ function prepareHost(
     {
       readRunningDistros: readConfirmedRunningWslDistros,
       isHostReady,
-      removalPending: () => wslHostRemovalPending(userDataPath, distro),
-      hasHost: () => service.recordForEnvironment(environmentId) !== null,
+      removalPending: async () => await wslHostRemovalPending(userDataPath, distro),
+      hasHost: async () => (await service.recordForEnvironment(environmentId)) !== null,
       connect: () => service.connect(environmentId),
       // Re-checked here: a block learned after the step began must still stop the add.
       add: () =>
@@ -129,6 +133,7 @@ function createOrchestrator(
   driverDeps: () => WslMoveDriverDeps
 ): WslMoveOrchestrator {
   const userDataPath = app.getPath('userData')
+  const sidecar = createWslMoveOrchestratorStore(userDataPath)
   return new WslMoveOrchestrator({
     now: () => Date.now(),
     appVersion: app.getVersion(),
@@ -137,10 +142,14 @@ function createOrchestrator(
       process.env[WSL_MOVE_ORCHESTRATOR_AUTO_ENV] !== '0' && wslHostsOptedIn(store.getSettings()),
     autoMovesBridgeProjects: wslMoveAutoMovesBridgeProjects,
     prepareHost: (distro, stillWanted) => prepareHost(userDataPath, distro, stillWanted),
-    isDistroInUse: (distro) => isDistroInUse(store, userDataPath, distro),
-    hostRemovalPending: (distro) => wslHostRemovalPending(userDataPath, distro),
-    hasHost: (distro) =>
-      getWslHostService()?.recordForEnvironment(defaultWslOrcadEnvironmentId(distro)) != null,
+    isDistroInUse: async (distro, check) =>
+      await isDistroInUse(store, userDataPath, distro, () =>
+        wslMoveDistroMappedDrivesLastKnown(store, distro, check)
+      ),
+    hostRemovalPending: async (distro) => await wslHostRemovalPending(userDataPath, distro),
+    hasHost: async (distro) =>
+      (await getWslHostService()?.recordForEnvironment(defaultWslOrcadEnvironmentId(distro))) !=
+      null,
     isHostReady,
     preview: async (distro, userAsked) =>
       previewWslMove(
@@ -148,14 +157,14 @@ function createOrchestrator(
         { distro, sleptPanes: await requestSleptPanes() },
         { settleInterrupted: userAsked ? 'finish-now' : 'finish-at-restart' }
       ),
-    start: async (distro, stillWanted) => {
+    start: async (distro, stillWanted, fromPreview) => {
       const sleptPanes = await requestSleptPanes()
       // The user may have released or snoozed the distro while the window answered.
       if (!stillWanted()) {
         return { outcome: 'refused', code: 'wsl_move_cancelled' }
       }
       return runTrackedWslMove(driverDeps(), (deps) =>
-        moveProjectsToWslHost(deps, { distro, sleptPanes })
+        moveProjectsToWslHost(deps, { distro, sleptPanes, ...fromPreview })
       )
     },
     finishedMove: (distro) => finishedWslMove(userDataPath, distro),
@@ -165,8 +174,10 @@ function createOrchestrator(
       releaseWslMoveChainHere(userDataPath, distro, unsavedWorkspaceIds, () =>
         createWslMoveUndoPorts(store, userDataPath)
       ),
-    load: () => readWslMoveOrchestratorRecords(userDataPath),
-    save: (records) => writeWslMoveOrchestratorRecords(userDataPath, records),
+    load: sidecar.load,
+    listKnownDistros: async () =>
+      (await readWslDistroRegistrations())?.map((registration) => registration.distro) ?? null,
+    save: sidecar.save,
     schedule: (delayMs, run) => {
       const timer = setTimeout(run, delayMs)
       timer.unref?.()
@@ -179,36 +190,6 @@ function createOrchestrator(
   })
 }
 
-/** T1 and T3: a host reaching ready, or already ready at start; T2 arrives from the window. */
-function followHostReadiness(orchestrator: WslMoveOrchestrator): void {
-  const service = getWslHostService()
-  if (!service) {
-    return
-  }
-  const ready = new Set<string>()
-  const observe = (trigger: 'connect' | 'startup'): void => {
-    const now = new Set<string>()
-    for (const status of service.getStatuses()) {
-      if (status.state !== 'ready') {
-        continue
-      }
-      const key = wslMoveJournalKey(status.distro)
-      now.add(key)
-      if (!ready.has(key)) {
-        void orchestrator.trigger(status.distro, trigger)
-      }
-    }
-    ready.clear()
-    for (const key of now) {
-      ready.add(key)
-    }
-  }
-  service.onStatusesChanged(() => observe('connect'))
-  observe('startup')
-}
-
-let orchestrator: WslMoveOrchestrator | null = null
-
 /** `driverDeps` is the dialog's driver, but its host connect never boots a stopped distro. */
 export function registerWslMoveOrchestrator(
   store: Store,
@@ -220,26 +201,28 @@ export function registerWslMoveOrchestrator(
   const isMainWindow = (sender: WebContents | undefined): boolean =>
     !!sender && getTrustedUIRendererWebContents()?.id === sender.id
   // Not setting-gated: a move already in flight when the setting turns off stays visible.
-  ipcMain.handle('wslMoveOrchestrator:list', (): WslMoveOrchestratorRecord[] =>
-    orchestrator && wslHostsGateOpen() ? orchestrator.list() : []
+  // Null before construction: the first publish is then the window's snapshot, not a change.
+  ipcMain.handle('wslMoveOrchestrator:list', (): WslMoveOrchestratorRecord[] | null =>
+    wslHostsGateOpen() ? (currentWslMoveOrchestrator()?.list() ?? null) : []
   )
   // T2: the window opened a bridge project of this distro; the orchestrator checks it is running.
   ipcMain.handle(
     'wslMoveOrchestrator:projectOpened',
     (event: { sender?: WebContents }, distro: unknown): void => {
+      // Before construction it is held and replayed: the window sends it once per distro change.
       if (
-        orchestrator &&
         wslHostsOptedIn(store.getSettings()) &&
         isMainWindow(event.sender) &&
         typeof distro === 'string'
       ) {
-        void orchestrator.trigger(distro, 'project-opened')
+        noteWslMoveProjectOpened(distro)
       }
     }
   )
   ipcMain.handle(
     'wslMoveOrchestrator:userAction',
     async (event: { sender?: WebContents }, request: unknown) => {
+      const orchestrator = currentWslMoveOrchestrator()
       if (
         !orchestrator ||
         !wslHostsGateOpen() ||
@@ -281,22 +264,31 @@ export function registerWslMoveOrchestrator(
     }
   )
   // Dark: nothing is constructed or read while the gate is closed.
-  if (!wslHostsGateOpen() || !getWslHostService() || orchestrator) {
+  if (!wslHostsGateOpen()) {
     return
   }
-  // Registered from registerCoreHandlers: a throw here would skip every handler after it.
-  try {
-    const created = createOrchestrator(store, driverDeps)
-    orchestrator = created
-    followHostReadiness(created)
-    onWslMoveReleasedByUser((distro) => created.releasedByUser(distro, 'released-here'))
-    // A Remove is the user declining the host; only their own Add (or Retry) takes it back.
-    onWslHostUserAction(({ kind, distro }) =>
-      kind === 'removed'
-        ? created.releasedByUser(distro, 'removed')
-        : created.hostAddedByUser(distro)
-    )
-  } catch (error) {
-    console.warn('[wsl-move] Move orchestrator did not start:', error)
-  }
+  startWslMoveOrchestratorWithHostService(
+    () => createOrchestrator(store, driverDeps),
+    (created) => {
+      // The constructor adopts the sidecar without publishing; parked or failed records show now.
+      publish(created.list())
+      onWslMoveReleasedByUser(
+        async (distro) => await created.releasedByUser(distro, 'released-here')
+      )
+      // A Remove is the user declining the host; only their own Add (or Retry) takes it back.
+      onWslHostUserAction(async ({ kind, distro }) =>
+        kind === 'removed'
+          ? await created.releasedByUser(distro, 'removed')
+          : created.hostAddedByUser(distro)
+      )
+      // Once per launch: the first drive answer settled may show a held distro to be unused.
+      onNextWslMappedDriveAnswer(() => {
+        void created
+          .prune()
+          .catch((error: unknown) =>
+            console.warn('[wsl-move] Could not prune inactive moves', error)
+          )
+      })
+    }
+  )
 }

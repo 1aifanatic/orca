@@ -1,38 +1,43 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
-import { translate } from '@/i18n/i18n'
-import { AgentIcon } from '@/lib/agent-catalog'
-import { callAntigravityAccounts } from '@/runtime/runtime-antigravity-accounts-client'
-import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
-import { useManagedRuntimeInstall } from '@/runtime/use-managed-runtime-install'
-import type { RuntimeClientTarget } from '../../../../../../shared/runtime-client-target'
+import { Loader2, RefreshCw } from 'lucide-react'
+import { useTranslate } from '@/i18n/use-translate'
+import { AgentIcon } from '@/components/agent/icons/AgentIcon'
+import {
+  callAntigravityAccounts,
+  selectAntigravityAccount
+} from '@/runtime/provider-accounts/sign-in/runtime-antigravity-accounts-client'
+import { useDetectedAgents } from '@/lib/agent-session/launch/inventory/useDetectedAgents'
+import { useAppStore } from '@/store/index'
+import {
+  handleRunningAntigravityTerminalsAfterSelect,
+  readAntigravityRunningSessionsPolicy
+} from '@/lib/provider-accounts/antigravity-account-switch-sessions'
+import { antigravityAccountSwitchCopy } from '@/lib/provider-accounts/account-switch-copy'
+import { RunningSessionSwitchSetting } from '../running-session-switch-setting'
+import type { RuntimeClientTarget } from '../../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 import type {
   AntigravityAccountState,
   AntigravityAccountTarget
-} from '../../../../../../shared/antigravity-account-types'
-import type { ProviderRateLimits, RateLimitState } from '../../../../../../shared/rate-limit-types'
+} from '../../../../../../shared/agent-accounts/antigravity/antigravity-account-types'
 import { Button } from '../../../ui/button'
-import { Badge } from '../../../ui/badge'
-import { ManagedRuntimeInstallRow } from '../../../managed-runtime/ManagedRuntimeInstallRow'
-import { antigravityChatSignInRunning } from '@/runtime/antigravity-chat-sign-in-status'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../ui/tooltip'
+import { AntigravityChatAuthRows } from '../../../provider-accounts/AntigravityChatAuthRows'
+import { useAntigravityChatSignInControls } from '../../../provider-accounts/use-antigravity-chat-sign-in'
+import { ChatUnavailableOnWindowsNote } from '../../../agent/launch-settings/AgentChatChoiceControls'
+import { structuredChatUnavailableOnPlatform } from '../../../../../../shared/agent-session/capabilities/structured-chat-platform-support'
+import { SettingsGroup } from '../../section-layout/SettingsGroup'
+import { useOnLaterChange } from './use-on-later-change'
+import { useAntigravityAccountRun } from './use-antigravity-account-run'
 import {
-  AntigravityChatSignInRow,
-  antigravityChatSignInBlocked,
-  useAntigravityChatSignIn
-} from '../../../provider-accounts/AntigravityChatSignInRow'
-import { openAppHttpLinkFromAnchor } from '@/lib/app-http-link-open'
-import { formatTimeAgo } from '../../../status-bar/tooltip'
-
-function formatUsageReading(usage: ProviderRateLimits): string {
-  return translate(
-    'accounts.antigravity.usageReading',
-    'Session: {{session}} · Weekly: {{weekly}}',
-    {
-      session: usage.session ? `${Math.round(usage.session.usedPercent)}%` : '—',
-      weekly: usage.weekly ? `${Math.round(usage.weekly.usedPercent)}%` : '—'
-    }
-  )
-}
+  announceAntigravityAccountSwitch,
+  announceAntigravityAccountSwitchFailure
+} from '@/lib/provider-accounts/antigravity-account-switch-toasts'
+import { ACCOUNTS_SECTION_IDS } from '../accounts-search'
+import {
+  AntigravityAgyAccountRows,
+  type AntigravityAccountAction
+} from './AntigravityAgyAccountRows'
+import { AntigravityAgyCliRow } from './AntigravityAgyCliRow'
 
 export function AntigravityAccountsSection({
   owner,
@@ -45,12 +50,15 @@ export function AntigravityAccountsSection({
   label: string
   ownerPlatform?: string | null
 }): React.JSX.Element {
+  const t = useTranslate()
+  const runningSessionsPolicy = useAppStore(
+    (s) => s.settings?.antigravityAccountSwitchRunningSessions
+  )
+  const updateSettings = useAppStore((s) => s.updateSettings)
   const [state, setState] = useState<AntigravityAccountState | null>(null)
-  const [usage, setUsage] = useState<ProviderRateLimits | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const pending = useRef(false)
   const mounted = useRef(true)
+  const { busy, run } = useAntigravityAccountRun(perform, mounted)
   const ownerKind = owner.kind
   const environmentId = owner.kind === 'environment' ? owner.environmentId : null
   const windowsHost = ownerPlatform === 'win32' && target.runtime === 'host'
@@ -58,10 +66,29 @@ export function AntigravityAccountsSection({
   const wslDistro = target.wslDistro ?? null
   // Chats run on the host itself, never in a WSL distro.
   const chats = runtime !== 'wsl'
-  const chatRuntime = useManagedRuntimeInstall(owner, 'antigravity', chats)
-  // A remote host's sign-in finishes from the address pasted back into its row.
-  const chatSignIn = chats && chatRuntime.kind === 'active'
-  const signIn = useAntigravityChatSignIn(chatSignIn ? owner : null)
+  const chatsHere = chats && !structuredChatUnavailableOnPlatform('antigravity', ownerPlatform)
+  // The host finds agy as its chats do; an older host doesn't say, so its agent list answers.
+  const hostSays = state === null || state.agyInstalled !== undefined
+  const agents = useDetectedAgents(
+    !chats || hostSays
+      ? undefined
+      : environmentId
+        ? { kind: 'runtime', environmentId }
+        : { kind: 'local' },
+    'all'
+  )
+  // The user installs agy; signing it in runs it, so that waits until the host finds it.
+  const agyInstalled = !chats
+    ? null
+    : hostSays
+      ? (state?.agyInstalled ?? null)
+      : (agents.detectedIds?.includes('antigravity') ?? null)
+  const signIn = useAntigravityChatSignInControls({
+    owner,
+    label,
+    disabled: !chatsHere || agyInstalled !== true
+  })
+  const signInControls = chatsHere && agyInstalled === true ? signIn : undefined
 
   useEffect(() => {
     mounted.current = true
@@ -90,49 +117,48 @@ export function AntigravityAccountsSection({
     }
   }, [ownerKind, environmentId, runtime, wslDistro])
 
-  async function run(
-    action: 'List' | 'AddCurrent' | 'Select' | 'Remove' | 'Usage',
-    accountId?: string
+  /** `keepShown`: a background re-read, which leaves an error on screen. */
+  async function perform(
+    action: AntigravityAccountAction,
+    accountId: string | undefined,
+    keepShown: boolean
   ) {
-    if (pending.current) {
-      return
+    if (!keepShown) {
+      setError(null)
     }
-    pending.current = true
-    setBusy(true)
-    setError(null)
-    setUsage(null)
     try {
-      if (action === 'Usage') {
-        const before = await callAntigravityAccounts(owner, target, 'List')
-        const snapshot = await callRuntimeRpc<{ rateLimits: RateLimitState }>(
+      if (action === 'Select' && accountId) {
+        const previous = state
+        const next = await selectAntigravityAccount(
           owner,
-          'accounts.list',
-          { refreshUsage: true }
+          target,
+          accountId,
+          readAntigravityRunningSessionsPolicy()
         )
-        const after = await callAntigravityAccounts(owner, target, 'List')
-        if (mounted.current) {
-          setState(after)
-        }
-        const account = before.currentAccount
-        // Native credentials may expose no subject, making two unidentified logins indistinguishable.
-        if (
-          !account ||
-          !after.currentAccount ||
-          account.subject !== after.currentAccount.subject ||
-          account.authMethod !== after.currentAccount.authMethod
-        ) {
-          throw new Error('The native account changed while reading usage. Refresh usage again.')
-        }
-        if (mounted.current) {
-          setUsage(snapshot.rateLimits.antigravity)
-        }
-      } else {
-        const next = await callAntigravityAccounts(owner, target, action, accountId)
         if (mounted.current) {
           setState(next)
         }
+        if (
+          handleRunningAntigravityTerminalsAfterSelect({
+            owner,
+            target,
+            previous,
+            next,
+            accountId
+          }) !== 'handled'
+        ) {
+          announceAntigravityAccountSwitch(next, accountId, target.runtime === 'host')
+        }
+        return
+      }
+      const next = await callAntigravityAccounts(owner, target, action, accountId)
+      if (mounted.current) {
+        setState(next)
       }
     } catch (cause) {
+      if (action === 'Select') {
+        announceAntigravityAccountSwitchFailure(cause)
+      }
       if (action === 'Select' || action === 'Remove' || action === 'AddCurrent') {
         try {
           const observed = await callAntigravityAccounts(owner, target, 'List')
@@ -145,208 +171,107 @@ export function AntigravityAccountsSection({
           }
         }
       }
-      if (mounted.current) {
+      // A background re-read fails quietly, and a failed switch says why in its toast.
+      if (mounted.current && !keepShown && action !== 'Select') {
         setError(cause instanceof Error ? cause.message : 'Antigravity account action failed.')
-      }
-    } finally {
-      pending.current = false
-      if (mounted.current) {
-        setBusy(false)
       }
     }
   }
 
+  const logoTitle = (title: string) => (
+    <span className="flex items-center gap-2">
+      <AgentIcon agent="antigravity" size={16} />
+      {title}
+    </span>
+  )
+  // A pick moves new chats between agy's own home and Orca's, which the description follows.
+  const reread = () => void run('List', undefined, true)
+  // Signing in or adding an account changes agy's login, which the account rows read again.
+  // 'idle' once the status is read is a first value, so the first sign-in after mount re-reads too.
+  const signedInFlow = !signIn.known
+    ? null
+    : signIn.flow?.phase === 'signedIn'
+      ? (signIn.flow.flowId ?? 'another client')
+      : 'idle'
+  useOnLaterChange(signedInFlow, reread)
+  const description = windowsHost
+    ? t(
+        'accounts.antigravity.descriptionWindows',
+        "Chats and agy in the terminal share agy's Google accounts. Switching applies to the host default agy credential. Chats can sign in with a Gemini API key or gcloud instead."
+      )
+    : chats
+      ? t(
+          'accounts.antigravity.description',
+          "Chats and agy in the terminal share agy's Google accounts. Chats can sign in with a Gemini API key or gcloud instead."
+        )
+      : t(
+          'accounts.antigravity.terminalDescription',
+          "Uses agy's own saved accounts. Switching applies to new agy sessions."
+        )
+
   return (
-    <section id="accounts-antigravity" className="space-y-4 scroll-mt-6">
-      <div className="space-y-1">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <AgentIcon agent="antigravity" size={16} />
-          {translate('accounts.antigravity.title', 'Antigravity')}
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {translate('accounts.antigravity.scope', 'Manage the native agy account on {{host}}.', {
-            host: label
-          })}
-        </p>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {translate(
-          'accounts.antigravity.signIn',
-          'Start agy on this host and complete its browser sign-in, then save the current account. To add a different account, use /logout in agy and sign in again.'
-        )}{' '}
-        <a
-          className="underline"
-          href="https://antigravity.google/docs/cli/install/"
-          target="_blank"
-          onClick={openAppHttpLinkFromAnchor}
-          rel="noopener noreferrer"
-        >
-          {translate('accounts.antigravity.docs', 'Sign-in instructions')}
-        </a>
-      </p>
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      )}
-      {!state && error && (
-        <Button variant="outline" size="sm" disabled={busy} onClick={() => void run('List')}>
-          {translate('accounts.antigravity.retry', 'Retry')}
-        </Button>
-      )}
-      {state && (
-        <div className="space-y-3">
-          <p className="text-xs">
-            {state.currentAccount
-              ? (state.currentAccount.email ??
-                translate('accounts.antigravity.identityUnknown', 'Signed-in identity unavailable'))
-              : translate('accounts.antigravity.signedOut', 'No native agy account is signed in.')}
-          </p>
-          {state.selectedAccountId && state.activeAccountId !== state.selectedAccountId && (
-            <p className="text-xs text-destructive">
-              {windowsHost
-                ? translate(
-                    'accounts.antigravity.windowsChanged',
-                    'The host default account changed. Select a saved account to apply it again.'
-                  )
-                : translate(
-                    'accounts.antigravity.changed',
-                    'The native account changed. Select a saved account again before launching agy.'
-                  )}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              disabled={busy || !state.currentAccount}
-              onClick={() => void run('AddCurrent')}
-            >
-              {translate('accounts.antigravity.save', 'Save current account')}
-            </Button>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => void run('List')}>
-              {translate('accounts.antigravity.refresh', 'Refresh accounts')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy || !state.currentAccount || target.runtime === 'wsl'}
-              onClick={() => void run('Usage')}
-            >
-              {translate('accounts.antigravity.usage', 'Refresh usage')}
-            </Button>
-            {busy && (
-              <Loader2
-                className="size-4 animate-spin"
-                aria-label={translate('accounts.antigravity.working', 'Updating account')}
-              />
-            )}
-          </div>
-          {usage && (
-            <p className="text-xs text-muted-foreground">
-              {usage.error ?? formatUsageReading(usage)}
-            </p>
-          )}
-          {state.accounts.map((account) => (
-            <div
-              key={account.id}
-              className="flex items-center justify-between gap-3 rounded-md border p-3"
-            >
-              <div className="space-y-1">
-                <p className="text-xs font-medium">
-                  {account.email ?? translate('accounts.antigravity.saved', 'Saved Google account')}
-                </p>
-                {account.usage !== undefined && (
-                  <p className="text-xs text-muted-foreground">
-                    {account.usage
-                      ? translate(
-                          'accounts.antigravity.lastReading',
-                          '{{reading}} · Read {{time}}',
-                          {
-                            reading: formatUsageReading(account.usage),
-                            time: formatTimeAgo(account.usage.updatedAt)
-                          }
-                        )
-                      : translate('accounts.antigravity.noReading', 'Usage unknown: not read yet')}
-                  </p>
+    <div id={ACCOUNTS_SECTION_IDS.antigravity} className="scroll-mt-6 space-y-6">
+      <SettingsGroup
+        title={logoTitle(t('accounts.antigravity.title', 'Antigravity'))}
+        description={description}
+        action={
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t('accounts.antigravity.refresh', 'Refresh accounts')}
+                disabled={busy}
+                onClick={() => void run('List')}
+              >
+                {busy ? (
+                  <Loader2 className="animate-spin text-muted-foreground" />
+                ) : (
+                  <RefreshCw className="text-muted-foreground" />
                 )}
-                {state.activeAccountId === account.id && (
-                  <Badge variant="secondary">
-                    {translate('accounts.antigravity.nativeActive', 'Native account')}
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void run('Select', account.id)}
-                >
-                  {state.selectedAccountId === account.id && state.activeAccountId === account.id
-                    ? translate('accounts.antigravity.selected', 'Selected')
-                    : translate('accounts.antigravity.select', 'Select')}
-                </Button>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  disabled={
-                    busy ||
-                    state.activeAccountId === account.id ||
-                    state.selectedAccountId === account.id
-                  }
-                  onClick={() => void run('Remove', account.id)}
-                >
-                  {translate('accounts.antigravity.remove', 'Remove')}
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      <p className="text-xs text-muted-foreground">
-        {windowsHost
-          ? translate(
-              'accounts.antigravity.windowsSessions',
-              'Select applies and verifies the host default agy credential. Command choices and later account changes are handled by agy. Existing sessions may keep their previous account.'
-            )
-          : translate(
-              'accounts.antigravity.sessions',
-              'Selection applies to new agy sessions on this host. Existing sessions may keep their previous account.'
-            )}
-      </p>
-      {chats && chatRuntime.kind === 'active' ? (
-        <div className="space-y-4">
-          <ManagedRuntimeInstallRow
-            observation={chatRuntime}
-            agentLabel={translate('accounts.antigravity.title', 'Antigravity')}
-            signInRunning={antigravityChatSignInRunning(signIn.flow)}
-          >
-            {(line, actions) => (
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    {translate(
-                      'settings.chat.providers.antigravityDescription',
-                      'Antigravity chats run a server Orca downloads to this host, separate from the agy CLI.'
-                    )}
-                  </p>
-                  {line}
-                </div>
-                {actions}
-              </div>
-            )}
-          </ManagedRuntimeInstallRow>
-          <AntigravityChatSignInRow
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}>
+              {t('accounts.antigravity.refresh', 'Refresh accounts')}
+            </TooltipContent>
+          </Tooltip>
+        }
+      >
+        {chatsHere ? <AntigravityChatAuthRows owner={owner} onSaved={reread} /> : null}
+        <AntigravityAgyAccountRows
+          state={state}
+          error={error}
+          busy={busy}
+          windowsHost={windowsHost}
+          run={(action, accountId) => void run(action, accountId)}
+          {...(signInControls ? { signIn: signInControls } : {})}
+        />
+        {chats ? (
+          <AntigravityAgyCliRow
             owner={owner}
-            label={label}
-            description={translate(
-              'accounts.antigravity.chatDescription',
-              'Chats use their own Antigravity sign-in, separate from your agy account above. Sign in once on this device.'
-            )}
-            disabled={antigravityChatSignInBlocked(chatRuntime)}
+            installed={agyInstalled}
+            checking={busy || agents.isRefreshing}
+            onCheckAgain={() => {
+              // An older host answers from its agent list, which a re-list alone doesn't refresh.
+              if (!hostSays) {
+                void agents.refresh()
+              }
+              void run('List')
+            }}
           />
-        </div>
+        ) : null}
+        {/* A server's own setting applies there; this window passes its choice along. */}
+        {owner.kind === 'local' && runtime === 'host' ? (
+          <RunningSessionSwitchSetting
+            copy={antigravityAccountSwitchCopy(t)}
+            value={runningSessionsPolicy}
+            onChange={(value) => updateSettings({ antigravityAccountSwitchRunningSessions: value })}
+          />
+        ) : null}
+      </SettingsGroup>
+      {chats && !chatsHere ? (
+        <ChatUnavailableOnWindowsNote label={t('accounts.antigravity.title', 'Antigravity')} />
       ) : null}
-    </section>
+    </div>
   )
 }

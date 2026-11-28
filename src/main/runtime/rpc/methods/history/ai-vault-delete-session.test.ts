@@ -1,4 +1,3 @@
-import '../../unused-default-rpc-methods.test-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -15,7 +14,8 @@ home.dir = realpathSync(mkdtempSync(join(tmpdir(), 'orca-ai-vault-host-delete-')
 
 const { RpcDispatcher } = await import('../../dispatcher')
 const { AI_VAULT_METHODS } = await import('./ai-vault')
-const { RuntimeAiVaultCommands } = await import('../../../runtime-ai-vault-commands')
+const { RuntimeAiVaultCommands } =
+  await import('../../../integrations/ai-vault/runtime-ai-vault-commands')
 
 function dispatcher(): InstanceType<typeof RpcDispatcher> {
   const vault = new RuntimeAiVaultCommands(() => null)
@@ -28,7 +28,7 @@ function dispatcher(): InstanceType<typeof RpcDispatcher> {
 }
 
 function writeSession(name: string): string {
-  const dir = join(home.dir, '.gemini', 'tmp', 'project-a')
+  const dir = join(home.dir, '.claude', 'projects', '-project-a')
   mkdirSync(dir, { recursive: true })
   const filePath = join(dir, name)
   writeFileSync(filePath, '{}')
@@ -41,14 +41,14 @@ afterAll(() => {
 
 describe('aiVault.deleteSession', () => {
   it("permanently deletes a transcript under this host's own roots", async () => {
-    const filePath = writeSession('session-1.json')
+    const filePath = writeSession('session-1.jsonl')
 
     const response = await dispatcher().dispatch({
       id: 'req-1',
       authToken: 'tok',
       method: 'aiVault.deleteSession',
       // A client host stamp is not trusted; the host deletes only its own files.
-      params: { agent: 'gemini', sessionId: 'session-1', filePath, executionHostId: 'ssh:other' }
+      params: { agent: 'claude', sessionId: 'session-1', filePath, executionHostId: 'ssh:other' }
     })
 
     expect(response).toMatchObject({ ok: true, result: { outcome: 'deleted' } })
@@ -56,14 +56,14 @@ describe('aiVault.deleteSession', () => {
   })
 
   it('refuses a path outside the host roots and leaves it on disk', async () => {
-    const outside = join(home.dir, 'notes.json')
+    const outside = join(home.dir, 'notes.jsonl')
     writeFileSync(outside, '{}')
 
     const response = await dispatcher().dispatch({
       id: 'req-2',
       authToken: 'tok',
       method: 'aiVault.deleteSession',
-      params: { agent: 'gemini', filePath: outside }
+      params: { agent: 'claude', filePath: outside }
     })
 
     expect(response).toMatchObject({

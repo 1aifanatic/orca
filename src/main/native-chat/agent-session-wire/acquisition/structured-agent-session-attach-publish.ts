@@ -3,8 +3,8 @@ import type { AgentModelCatalogSource } from '../../agent-model-catalog/agent-mo
 // the session's events go through, and its open begins.
 
 import type { AttachedJournal } from './structured-agent-session-attach'
-import type { AgentSessionAccountHome } from '../../../../shared/agent-session/lifecycle/agent-session-account-home'
-import type { AgentSessionJournal } from '../../agent-session-journal/journal-store'
+import type { AgentSessionAccountHome } from '../../../../shared/agent-session/lifecycle/accounts/agent-session-account-home'
+import type { SqlAgentSessionJournal as AgentSessionJournal } from '../../agent-session-journal/journal-sql-store'
 import type { AttachedOwner } from './structured-agent-session-attach-flow'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import type { StructuredAgentSessionProviderChild } from '../host/structured-agent-session-host-types'
@@ -12,7 +12,8 @@ import type { DeferredStructuredAgentSessionEventSink } from '../journal-ingress
 import { indexProviderChild } from '../host/structured-agent-session-provider-child'
 import { noteStructuredAgentSessionProviderStarted } from '../startup/structured-agent-session-provider-started'
 import type { StructuredAgentSessionStartupAttempt } from '../startup/structured-agent-session-startup-attempt-contract'
-import { structuredAgentSessionEndedEventExit } from '../termination/structured-agent-session-child-exit'
+import '../termination/structured-agent-session-child-exit'
+import { structuredAgentSessionEndedEventExit } from '../termination/structured-agent-session-child-exit-record'
 import {
   applyStructuredRewindRecovery,
   readStructuredRewindRecovery,
@@ -28,6 +29,8 @@ export type BoundAttach = {
   acquisitionGeneration: string | null
   /** The account home the spawned child launched under, when its adapter reports one. */
   accountHome?: AgentSessionAccountHome
+  /** The saved account it launched on, when its adapter reports one. */
+  accountKey?: string
   owner: AttachedOwner
   fence: number
   journal: AgentSessionJournal
@@ -83,6 +86,7 @@ export async function publishAttachedChild(
   const permissionMode =
     owner === 'acquired' ? attempt.startup?.permissionMode : current?.permissionMode
   const accountHome = owner === 'acquired' ? bound.accountHome : current?.accountHome
+  const accountKey = owner === 'acquired' ? bound.accountKey : current?.accountKey
   const startedFor = owner === 'acquired' ? input.startedFor : current?.startedFor
   const child =
     owner === 'acquired'
@@ -95,7 +99,8 @@ export async function publishAttachedChild(
           exitObservation: eventSink.exitObservation,
           ...(startedFor === undefined ? {} : { startedFor }),
           ...(permissionMode === undefined ? {} : { permissionMode }),
-          ...(accountHome === undefined ? {} : { accountHome })
+          ...(accountHome === undefined ? {} : { accountHome }),
+          ...(accountKey === undefined ? {} : { accountKey })
         }
       : owner === 'kept' && current
         ? current

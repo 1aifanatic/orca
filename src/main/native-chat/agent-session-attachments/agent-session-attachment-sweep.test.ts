@@ -39,7 +39,10 @@ import {
 import {
   claimAgentSessionAttachmentsInTransaction,
   isAgentSessionAttachmentExpiredError,
-  markUnclaimedUploadForSweep
+  markUnclaimedUploadForSweep,
+  listUploadsBeingSwept,
+  finishUploadSweep,
+  pruneAgentSessionAttachmentClaims
 } from './agent-session-attachment-claims'
 import { agentSessionAttachmentStoreRoot } from './agent-session-attachment-references'
 import { AgentSessionAttachmentStore } from './agent-session-attachment-store'
@@ -79,12 +82,25 @@ afterEach(async () => {
   await rm(stateDirectory, { recursive: true, force: true })
 })
 
-function facts(overrides: Partial<AgentSessionAttachmentSweepFacts> = {}) {
+function facts(
+  overrides: Partial<AgentSessionAttachmentSweepFacts> = {}
+): AgentSessionAttachmentSweepFacts {
   return {
-    database: () => db,
-    write: <T>(run: (db: Database.Database) => T) =>
-      overrides.database?.() === null ? undefined : journal.writeAutocommit(run),
-    recordedSessionIds: () => recorded,
+    listBeingSwept: () => listUploadsBeingSwept(db),
+    markForSweep: (uploadId, now) =>
+      journal.writeAutocommit((connection) =>
+        markUnclaimedUploadForSweep(connection, uploadId, now)
+      ),
+    finishSweep: (uploadId) =>
+      journal.writeAutocommit((connection) => finishUploadSweep(connection, uploadId)),
+    pruneClaims: () => {
+      journal.writeAutocommit((connection) =>
+        pruneAgentSessionAttachmentClaims(connection, {
+          root: store.rootDir,
+          recordedSessionIds: recorded
+        })
+      )
+    },
     ...overrides
   }
 }
@@ -164,6 +180,39 @@ describe('sweepAgentSessionAttachments', () => {
     }
     expect(isAgentSessionAttachmentExpiredError(refused)).toBe(true)
     expect(claimedSessions()).toEqual([])
+  })
+
+  it('keeps every old upload when item-mail retention cannot read its store', async () => {
+    await seedUpload(UNSENT, OLD)
+    const markForSweep = vi.fn(facts().markForSweep)
+    await sweepAgentSessionAttachments(
+      store,
+      facts({
+        markForSweep,
+        retention: {
+          isUnclaimed: () => true,
+          uploads: async () => null
+        }
+      }),
+      NOW
+    )
+    expect(await remaining()).toEqual([UNSENT])
+    expect(markForSweep).not.toHaveBeenCalled()
+  })
+
+  it('sweeps an old upload when an opened item-mail store has no retained uploads', async () => {
+    await seedUpload(UNSENT, OLD)
+    await sweepAgentSessionAttachments(
+      store,
+      facts({
+        retention: {
+          isUnclaimed: () => true,
+          uploads: async () => new Set()
+        }
+      }),
+      NOW
+    )
+    expect(await remaining()).toEqual([])
   })
 
   it('judges no claim orphaned while the record list is incomplete', async () => {

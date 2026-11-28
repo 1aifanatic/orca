@@ -1,3 +1,4 @@
+import { keptProviderRelayUnreachableWithin } from '../../../provider-relay/provider-relay-kept-rebind'
 import {
   isAgentSessionWireRefusalCode,
   refuse,
@@ -13,10 +14,10 @@ import type { AgentSessionRefusalDetailsByCode } from '../../../../shared/agent-
 import type {
   AgentSessionOperationOutcome,
   AgentSessionOperationRow
-} from '../../../../shared/agent-session/lifecycle/agent-session-operation-ledger'
-import { agentSessionLeaseOwnerVerdict } from '../../../../shared/agent-session/lifecycle/agent-session-lease-adjudication'
+} from '../../../../shared/agent-session/lifecycle/operations/agent-session-operation-ledger'
+import { agentSessionLeaseOwnerVerdict } from '../../../../shared/agent-session/lifecycle/leases/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
-import type { AgentSessionAcquisitionExitProof } from '../../../runtime/agent-session/agent-session-acquisition-failure-settlement'
+import type { AgentSessionAcquisitionExitProof } from '../../../runtime/agent-session/ownership/agent-session-acquisition-failure-settlement'
 import '../providers/structured-agent-session-adapter'
 import {
   AgentSessionAcquisitionExitProvenError,
@@ -39,8 +40,8 @@ import {
   providerExecutableMissing,
   providerLaunchFolderMissing
 } from '../../../provider-process/provider-executable-missing'
-import { argumentProblemOf } from '../../structured-agent-arguments-error'
-import { agentCliInstallationProblemOf } from '../../agent-cli-installation-error'
+import { argumentProblemOf } from '../../agent-launch/structured-agent-arguments-error'
+import { agentCliInstallationProblemOf } from '../../agent-launch/agent-cli-installation-error'
 import { agentCliInstallationFacts } from '../../../../shared/agent-launch/catalog/agent-cli-installation-problem'
 
 export type FailedAcquisitionWording = {
@@ -83,13 +84,16 @@ export function failedAcquisitionSettlement(
     }
     return { exitProof: 'unproven', outcome: { status: 'failed', ...outcome } }
   }
-  const exitProof = isAgentSessionPreSpawnError(error)
-    ? 'processless'
-    : error instanceof AgentSessionAcquisitionRootExitObservedError
-      ? error.deathEvidenceKind === 'kill-delivered'
-        ? 'kill-delivered'
-        : 'root-exit-observed'
-      : 'exit-proven'
+  // An unreachable kept agent is unknown, not exited: no death evidence may resettle its last run.
+  const exitProof = keptProviderRelayUnreachableWithin(error)
+    ? 'unproven'
+    : isAgentSessionPreSpawnError(error)
+      ? 'processless'
+      : error instanceof AgentSessionAcquisitionRootExitObservedError
+        ? error.deathEvidenceKind === 'kill-delivered'
+          ? 'kill-delivered'
+          : 'root-exit-observed'
+        : 'exit-proven'
   const raw = error instanceof Error ? error.message : String(error)
   const details = failedAcquisitionDetails(error)
   const message =

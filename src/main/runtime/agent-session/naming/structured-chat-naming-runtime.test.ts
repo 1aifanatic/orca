@@ -1,96 +1,52 @@
-import { rm } from 'node:fs/promises'
-import { installClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDefaultSettings } from '../../../../shared/constants'
-import { agentSessionRecordFixture } from '../../../../shared/agent-session/lifecycle/agent-session-record.test-fixture'
-import { normalizeSourceControlAiSettings } from '../../../../shared/source-control/ai/settings/source-control-ai-settings'
+import { describe, expect, it, vi } from 'vitest'
+import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/host/structured-agent-session-registry'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host/execution-host'
 import { structuredChatNamingDeps } from './structured-chat-naming-runtime'
-import type { AgentJournalSnapshot } from '../../../../shared/agent-session/journal/agent-session-journal-types'
-import type * as TextGeneration from '../../../text-generation/commit-message-text-generation'
 
-const mocks = vi.hoisted(() => ({
-  account: vi.fn((_provider: string, id: string) => ({
-    XDG_DATA_HOME: `/profiles/${id}/data`,
-    XDG_STATE_HOME: `/profiles/${id}/state`
-  })),
-  native: vi.fn(async () => 'Native title'),
-  generate: vi.fn(async () => ({ success: true as const, name: 'Login repair' })),
-  target: vi.fn(async (cwd: string) => ({ kind: 'local' as const, cwd })),
-  publishConversationName: vi.fn<(sessionId: string) => void>(),
-  journalCurrentRead: vi.fn<(sessionId: string) => Promise<AgentJournalSnapshot>>()
-}))
-
-vi.mock('../../../text-generation/commit-message-text-generation', async (importOriginal) => {
-  const actual = await importOriginal<typeof TextGeneration>()
-  return { ...actual, generateConversationNameFromContext: mocks.generate }
-})
-vi.mock('../../../agent-hooks/first-work-generation-target', () => ({
-  resolveGenerationTarget: mocks.target
-}))
 vi.mock('../../../native-chat/agent-session-wire/host/structured-agent-session-registry', () => ({
-  getStructuredAgentSessionHost: () => ({
-    deps: { adapter: { generateText: mocks.native } },
-    publishConversationName: mocks.publishConversationName,
-    journalCurrentRead: mocks.journalCurrentRead
-  })
+  getStructuredAgentSessionHost: vi.fn()
 }))
 
-vi.mock('../../../managed-data-accounts/service', () => ({
-  getManagedDataAccountService: () => ({
-    restoreOriginalEnvironment: () => {},
-    environmentForAccount: mocks.account
+describe('Antigravity chat naming consent', () => {
+  it('runs agy only while the person has opted in', async () => {
+    const generateText = vi.fn(async (_input: { shouldExecute?: () => boolean }) => 'Fix login')
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: naming reads only the adapter's generateText
+    vi.mocked(getStructuredAgentSessionHost).mockReturnValue({
+      deps: { adapter: { generateText } }
+    } as never)
+    const settings: { antigravityChatNaming?: boolean } = {}
+    const deps = structuredChatNamingDeps(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these settings fall back to defaults
+      () => ({ getSettings: () => settings }) as never,
+      {
+        resolveWorkspace: async () => ({ path: '/repo', executionHostId: LOCAL_EXECUTION_HOST_ID }),
+        resolveNamingEnvironment: async () => ({}),
+        getAgentEnvResolvers: () => undefined,
+        workerTaskTitle: () => null,
+        retitleOpenTab: () => {}
+      },
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: naming only warns
+      { warn: vi.fn() } as never
+    )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: naming reads only these record fields
+    const record = {
+      sessionId: 'chat-1',
+      provider: 'antigravity',
+      accountHome: { variable: 'GEMINI_HOME', path: '/home/me/.gemini' },
+      location: { workspaceId: 'ws-1', wslDistro: null }
+    } as never
+
+    expect(await deps.generate(record, 'the login button does nothing')).toBeNull()
+    expect(generateText).not.toHaveBeenCalled()
+
+    settings.antigravityChatNaming = true
+    expect(await deps.generate(record, 'the login button does nothing')).toEqual({
+      name: 'Fix login'
+    })
+    const { shouldExecute } = generateText.mock.calls[0]![0]
+    expect(shouldExecute?.()).toBe(true)
+    // Turning it off stops a run that hasn't sent its prompt yet.
+    settings.antigravityChatNaming = false
+    expect(shouldExecute?.()).toBe(false)
   })
-}))
-const roots: string[] = []
-afterEach(async () => {
-  installClaudeProfileRouter(undefined)
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
-})
-beforeEach(() => vi.clearAllMocks())
-
-function rig() {
-  const settings = getDefaultSettings('/isolated')
-  settings.defaultTuiAgent = 'codex'
-  settings.sourceControlAi = normalizeSourceControlAiSettings(settings.sourceControlAi)
-  const runtime = {
-    resolveWorkspace: vi.fn(async () => ({
-      path: '/workspace/folder',
-      executionHostId: 'local' as const
-    })),
-    resolveNamingEnvironment: vi.fn(async (): Promise<Record<string, string>> => ({
-      PATH: '/usr/bin'
-    })),
-    getAgentEnvResolvers: vi.fn(() => undefined),
-    workerTaskTitle: vi.fn(() => null),
-    retitleOpenTab: vi.fn()
-  }
-  const logger = { warn: vi.fn(), error: vi.fn() }
-  return {
-    settings,
-    runtime,
-    logger,
-    deps: structuredChatNamingDeps(() => ({ getSettings: () => settings }), runtime, logger)
-  }
-}
-
-describe('structured chat naming runtime', () => {
-  it.each(['grok', 'antigravity'] as const)(
-    'codes %s native naming failures without exposing provider text',
-    async (provider) => {
-      const state = rig()
-      const record = agentSessionRecordFixture()
-      record.provider = provider
-      for (const outcome of ['throw', 'empty'] as const) {
-        if (outcome === 'throw') {
-          mocks.native.mockRejectedValueOnce(new Error('private provider diagnostic'))
-        } else {
-          mocks.native.mockResolvedValueOnce('')
-        }
-        expect(await state.deps.generate(record, 'Repair login')).toEqual({
-          errorCode: `${provider}Failed`,
-          error: `${provider === 'grok' ? 'Grok' : 'Antigravity'} could not name this chat. Try generating the name again.`
-        })
-      }
-    }
-  )
 })

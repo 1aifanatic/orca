@@ -1,7 +1,11 @@
+import { GIT_STATUS_METHODS } from './git-status-methods'
+import { GIT_COMMIT_ACTION_METHODS } from './git-commit-action-methods'
 import { defineMethod } from '../../../core'
 import { GIT_COMMIT_MESSAGE_GENERATION_METHODS } from './git-commit-message-generation-methods'
+import { GIT_BRANCH_METHODS } from './git-branch-methods'
 import { GIT_DIFF_METHODS } from './git-diff-methods'
 import {
+  GitAbortOperation,
   GitBranchCompare,
   GitBulkPaths,
   GitBulkStage,
@@ -9,57 +13,22 @@ import {
   GitCheckout,
   GitCommit,
   GitCommitCompare,
+  GitContinueRebase,
   GitFilePath,
   GitResolveConflict,
   GitForkSync,
   GitHistory,
+  GitRefs,
   GitPush,
   GitRebaseFromBase,
   GitRemoteCommitUrl,
   GitRemoteFileUrl,
-  GitStatusParams,
-  GitSubmoduleStatus,
   GitTargetedRemote,
   WorktreeSelector
-} from '../../../../../../shared/rpc-contract/git-params'
+} from '../../../../../../shared/rpc-contract/source-control/git-params'
 
 export const GIT_METHODS = [
-  defineMethod({
-    name: 'git.status',
-    permission: 'workspace',
-    params: GitStatusParams,
-    handler: async (params, { runtime, signal }) => {
-      const options =
-        params.includeIgnored === undefined &&
-        params.includeLineStats === undefined &&
-        params.bypassEffectiveUpstreamNegativeCache === undefined &&
-        params.reuseLineStats === undefined &&
-        params.branchLineTotalMergeBase === undefined &&
-        params.admissionTier === undefined &&
-        signal === undefined
-          ? undefined
-          : {
-              ...(params.includeIgnored === undefined
-                ? {}
-                : { includeIgnored: params.includeIgnored }),
-              ...(params.includeLineStats === undefined
-                ? {}
-                : { includeLineStats: params.includeLineStats }),
-              ...(params.bypassEffectiveUpstreamNegativeCache === true
-                ? { bypassEffectiveUpstreamNegativeCache: true }
-                : {}),
-              ...(params.reuseLineStats === true ? { reuseLineStats: true } : {}),
-              ...(params.branchLineTotalMergeBase === undefined
-                ? {}
-                : { branchLineTotalMergeBase: params.branchLineTotalMergeBase }),
-              admissionTier: params.admissionTier ?? 'status',
-              ...(signal ? { signal } : {})
-            }
-      return options === undefined
-        ? runtime.getRuntimeGitStatus(params.worktree, { admissionTier: 'status' })
-        : runtime.getRuntimeGitStatus(params.worktree, options)
-    }
-  }),
+  ...GIT_STATUS_METHODS,
   defineMethod({
     name: 'git.checkIgnored',
     permission: 'workspace',
@@ -68,11 +37,10 @@ export const GIT_METHODS = [
       runtime.checkRuntimeGitIgnoredPaths(params.worktree, params.paths)
   }),
   defineMethod({
-    name: 'git.submoduleStatus',
+    name: 'git.refs',
     permission: 'workspace',
-    params: GitSubmoduleStatus,
-    handler: async (params, { runtime }) =>
-      runtime.getRuntimeGitSubmoduleStatus(params.worktree, params.submodulePath, params.area)
+    params: GitRefs,
+    handler: async (params, { runtime }) => runtime.getRuntimeGitRefs(params.worktree, params.query)
   }),
   defineMethod({
     name: 'git.history',
@@ -83,14 +51,11 @@ export const GIT_METHODS = [
         limit: params.limit,
         baseRef: params.baseRef,
         branchOnly: params.branchOnly,
+        branchListOnly: params.branchListOnly,
+        refs: params.refs,
+        historyToken: params.historyToken,
         skip: params.skip
       })
-  }),
-  defineMethod({
-    name: 'git.conflictOperation',
-    permission: 'workspace',
-    params: WorktreeSelector,
-    handler: async (params, { runtime }) => runtime.getRuntimeGitConflictOperation(params.worktree)
   }),
   defineMethod({
     name: 'git.mutationInFlight',
@@ -101,8 +66,11 @@ export const GIT_METHODS = [
   defineMethod({
     name: 'git.abortMerge',
     permission: 'workspace',
-    params: WorktreeSelector,
-    handler: async (params, { runtime }) => runtime.abortRuntimeGitMerge(params.worktree)
+    params: GitAbortOperation,
+    handler: async (params, { runtime }) =>
+      runtime.abortRuntimeGitMerge(params.worktree, {
+        expectedRunIdentity: params.expectedRunIdentity
+      })
   }),
   defineMethod({
     name: 'git.completeMerge',
@@ -113,15 +81,34 @@ export const GIT_METHODS = [
   defineMethod({
     name: 'git.abortRebase',
     permission: 'workspace',
-    params: WorktreeSelector,
-    handler: async (params, { runtime }) => runtime.abortRuntimeGitRebase(params.worktree)
+    params: GitAbortOperation,
+    handler: async (params, { runtime }) =>
+      runtime.abortRuntimeGitRebase(params.worktree, {
+        expectedRunIdentity: params.expectedRunIdentity
+      })
   }),
+  defineMethod({
+    name: 'git.continueRebase',
+    permission: 'workspace',
+    params: GitContinueRebase,
+    handler: async (params, { runtime }) =>
+      runtime.continueRuntimeGitRebase(params.worktree, params.action, {
+        expected: params.expected
+      })
+  }),
+  defineMethod({
+    name: 'git.rebaseAutoStash',
+    permission: 'workspace',
+    params: WorktreeSelector,
+    handler: async (params, { runtime }) => runtime.readRuntimeGitRebaseAutoStash(params.worktree)
+  }),
+  ...GIT_COMMIT_ACTION_METHODS,
   defineMethod({
     name: 'git.checkout',
     permission: 'workspace',
     params: GitCheckout,
     handler: async (params, { runtime }) =>
-      runtime.checkoutRuntimeGitBranch(params.worktree, params.branch)
+      runtime.checkoutRuntimeGitBranch(params.worktree, params.branch, params.detached)
   }),
   defineMethod({
     name: 'git.localBranches',
@@ -129,6 +116,7 @@ export const GIT_METHODS = [
     params: WorktreeSelector,
     handler: async (params, { runtime }) => runtime.listRuntimeGitLocalBranches(params.worktree)
   }),
+  ...GIT_BRANCH_METHODS,
   ...GIT_DIFF_METHODS,
   defineMethod({
     name: 'git.branchCompare',

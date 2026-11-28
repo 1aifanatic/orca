@@ -1,13 +1,14 @@
+import { selectWorktreesByRepo } from '@/store/workspaces/catalog/workspace-record-fields'
 import { useRef } from 'react'
 import { toast } from 'sonner'
-import type { SshTarget } from '../../../../../../shared/ssh-types'
+import type { SshTarget } from '../../../../../../shared/remote-runtime/ssh/ssh-types'
 import { useAppStore } from '@/store/index'
-import { getAllWorktreesFromState } from '@/store/selectors'
+import { getIndexedAllWorktrees } from '@/store/slices/worktrees/listing/worktree-catalog-index'
 import { useMountedRef } from '@/hooks/useMountedRef'
-import { extractIpcErrorMessage } from '@/lib/ipc-error'
-import { translate } from '@/i18n/i18n'
-import { resolveSshHostRemoval } from '../../../sidebar/ssh-host-remove-resolution'
-import { isManagedServerSshHost } from './SshManagedHostRemoveDialog'
+import { extractIpcErrorMessage } from '@/runtime/errors/ipc-error'
+import { useTranslate } from '@/i18n/use-translate'
+import { resolveSshHostRemoval } from '../../../sidebar/host-lifecycle/ssh-host-remove-resolution'
+import { refusesManagedSshHostRemoval } from './SshManagedHostRemoveDialog'
 import type { SshBulkRemoveRequest, SshBulkRemoveResult } from './SshTargetDestructiveActions'
 import { planSshBulkRemove, type SshBulkRemovePlan } from './ssh-target-list-model'
 import { summarizeSshBulkRemove } from './ssh-bulk-remove-summary'
@@ -30,6 +31,7 @@ export function useSshBulkRemove(args: {
   ) => void
   finishBulkRemove: (result: SshBulkRemoveResult) => Promise<void>
 } {
+  const t = useTranslate()
   const mountedRef = useMountedRef()
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
   // Retain click-time skip decisions until the confirmed removal finishes.
@@ -43,7 +45,7 @@ export function useSshBulkRemove(args: {
         label: target.label,
         message: extractIpcErrorMessage(
           error,
-          translate('auto.components.settings.SshPane.c2a69510e3', 'Failed to remove target')
+          t('auto.components.settings.SshPane.c2a69510e3', 'Failed to remove target')
         )
       }))
     })
@@ -72,17 +74,15 @@ export function useSshBulkRemove(args: {
       return
     }
     const state = useAppStore.getState()
-    const worktrees = getAllWorktreesFromState(state)
+    const worktrees = getIndexedAllWorktrees(selectWorktreesByRepo(state))
     const plan = planSshBulkRemove(chosen, (target) => {
-      if (isManagedServerSshHost(target)) {
+      const hasWorkspaces =
+        resolveSshHostRemoval({ targetId: target.id, repos: state.repos, worktrees })
+          .workspaceCount > 0
+      if (refusesManagedSshHostRemoval(target, hasWorkspaces)) {
         return 'managed-server'
       }
-      const resolution = resolveSshHostRemoval({
-        targetId: target.id,
-        repos: state.repos,
-        worktrees
-      })
-      return resolution.workspaceCount > 0 ? 'workspaces' : null
+      return hasWorkspaces ? 'workspaces' : null
     })
     skippedRef.current = plan.skipped
     if (plan.removable.length === 0) {

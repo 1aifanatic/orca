@@ -1,3 +1,4 @@
+import type { StructuredAgentSessionChildExitContext } from './structured-agent-session-child-exit'
 import { agentSessionFailureFact } from '../../../../shared/agent-session/failures/agent-session-failure'
 import type { StructuredAgentSessionStartFailureCause } from '../startup/structured-agent-session-failure-text'
 import type { StructuredAgentSessionChildEndCause } from './structured-agent-session-stop-cause'
@@ -32,5 +33,14 @@ const ENDED_CHILD_FAILURE = {
 export function structuredAgentSessionEndedChildFailure(
   ended: StructuredAgentSessionEndedChild
 ): StructuredAgentSessionStartFailureCause | null {
-  return ENDED_CHILD_FAILURE[ended.cause](ended)
+  return ended.endedBeforeAcquire ? null : ENDED_CHILD_FAILURE[ended.cause](ended)
+}
+
+export function logExitFailure(
+  context: Pick<StructuredAgentSessionChildExitContext, 'logger'>,
+  sessionId: string,
+  scope: string,
+  error: unknown
+): void {
+  context.logger.warn('settling a provider exit did not finish', { scope, sessionId, error })
 }

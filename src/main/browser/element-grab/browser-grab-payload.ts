@@ -1,10 +1,14 @@
-import type { BrowserGrabPayload, BrowserGrabRect } from '../../../shared/browser-grab-types'
+import type {
+  BrowserGrabPayload,
+  BrowserGrabRect
+} from '../../../shared/browser/element-grab/browser-grab-types'
 import {
   GRAB_BUDGET,
   GRAB_SAFE_ATTRIBUTE_NAMES,
   GRAB_SECRET_PATTERNS
-} from '../../../shared/browser-grab-types'
-import { isSafeDisplayCharacter } from '../../../shared/display-text-safety'
+} from '../../../shared/browser/element-grab/browser-grab-types'
+import { isSafeDisplayText } from '../../../shared/text/display-text-safety'
+import { redactKagiSessionToken } from '../../../shared/browser/navigation/browser-url'
 import { resolveDocPreviewUrlFilePath } from '../document-preview/doc-preview-grant-registry'
 
 const SAFE_GRAB_URL_PROTOCOLS = new Set(['http:', 'https:', 'file:'])
@@ -133,7 +137,7 @@ export function clampGrabPayload(raw: unknown, documentUrl = ''): BrowserGrabPay
   // Preview URLs carry a grant and are blanked; name the previewed file if it is display-safe.
   const previewFilePath = resolveDocPreviewUrlFilePath(documentUrl)
   const pageUrl =
-    previewFilePath && [...previewFilePath].every(isSafeDisplayCharacter)
+    previewFilePath && isSafeDisplayText(previewFilePath)
       ? previewFilePath
       : sanitizeUrl(page.sanitizedUrl)
 
@@ -143,13 +147,16 @@ export function clampGrabPayload(raw: unknown, documentUrl = ''): BrowserGrabPay
   return {
     page: {
       sanitizedUrl: pageUrl,
-      title: safeStr(page.title, 500),
+      title: safeStr(typeof page.title === 'string' ? redactKagiSessionToken(page.title) : '', 500),
       viewportWidth: safeNum(page.viewportWidth),
       viewportHeight: safeNum(page.viewportHeight),
       scrollX: safeNum(page.scrollX),
       scrollY: safeNum(page.scrollY),
       devicePixelRatio: safeNum(page.devicePixelRatio, 1),
-      capturedAt: safeStr(page.capturedAt, 100)
+      capturedAt: safeStr(page.capturedAt, 100),
+      ...(typeof page.selectionId === 'string'
+        ? { selectionId: safeStr(page.selectionId, 200) }
+        : {})
     },
     target: {
       tagName: safeStr(target.tagName, 50),
