@@ -4,10 +4,6 @@ import { attachMainWindowServices } from '../../window/attach-main-window-servic
 import { initTccPromptNotice } from '../../macos-permissions/macos-tcc-prompt-notice'
 import { fenceMainProcessCloudOnQuit } from '../cloud-startup/main-process-connector-startup'
 import { mainProcessState as state } from '../main-process-state'
-import { prepareCodexAiVaultSessionResume } from '../../codex/history/resume/codex-ai-vault-session-resume'
-import { resolveHostCodexSessionSourceHome } from '../../codex/history/rollouts/codex-session-source-home'
-import { preserveAgentAuthBeforeRestart } from '../../providers/accounts/agent-auth-restart-preservation'
-import { preserveStateBeforeUpdateRestart } from '../../core-desktop/update-restart-preservation'
 import {
   emitPluginWorktreeLifecycle,
   handleCodexHomePtySpawned,
@@ -15,10 +11,6 @@ import {
 } from '../pty-startup/main-process-pty-startup'
 import { prepareCodexRuntimeHomeForLaunch } from '../agent-accounts/codex-launch-preparation'
 import { resolveHostAgentBaseEnvironment } from '../../runtime/agent-session/environment/structured-agent-shell-environment'
-import {
-  prepareCodexPinnedLaunchHome,
-  prepareCodexSessionResumeForLaunch
-} from '../agent-accounts/codex-session-resume-launch'
 import { isRecoveryReloadInFlight } from './main-window-lifecycle-flags'
 import { quitFromUserCommand } from './main-window-actions'
 
@@ -98,15 +90,27 @@ async function installMainWindowCoreServices(
       hostInitialization: deps.hostInitialization,
       getAdditionalAiVaultCodexHomePaths: () =>
         codexRuntimeHome.getHostCodexHomePathsForSessionDiscovery(),
-      prepareAiVaultSessionResume: (args) =>
-        prepareCodexAiVaultSessionResume(args, {
+      prepareAiVaultSessionResume: async (args) => {
+        const [
+          { prepareCodexAiVaultSessionResume },
+          { resolveHostCodexSessionSourceHome },
+          { prepareCodexPinnedLaunchHome }
+        ] = await Promise.all([
+          import('../../codex/history/resume/codex-ai-vault-session-resume'),
+          import('../../codex/history/rollouts/codex-session-source-home'),
+          import('../agent-accounts/codex-session-resume-launch')
+        ])
+        return prepareCodexAiVaultSessionResume(args, {
           runtimeHome: codexRuntimeHome,
           systemCodexHomePath: resolveHostCodexSessionSourceHome(store.getSettings()),
           preparePinnedLaunchHome: (home) => prepareCodexPinnedLaunchHome(home)
-        }),
+        })
+      },
       onBeforeRelaunch: async () => {
         state.isQuitting = true
         fenceMainProcessCloudOnQuit()
+        const { preserveAgentAuthBeforeRestart } =
+          await import('../../providers/accounts/agent-auth-restart-preservation')
         await Promise.all([
           preserveAgentAuthBeforeRestart({ codexRuntimeHome, store }),
           state.core.runtime?.bots.slackIcons.shownRecords.finalSave()
@@ -143,7 +147,11 @@ async function installMainWindowCoreServices(
     prepareCodexRuntimeHomeForLaunch,
     (target) => claudeRuntimeAuth.prepareForClaudeLaunch(target),
     {
-      prepareCodexSessionResume: prepareCodexSessionResumeForLaunch,
+      prepareCodexSessionResume: async (...args) => {
+        const { prepareCodexSessionResumeForLaunch } =
+          await import('../agent-accounts/codex-session-resume-launch')
+        return prepareCodexSessionResumeForLaunch(...args)
+      },
       deferSshInitialization: true,
       hostInitialization: deps.hostInitialization,
       awaitLocalPtyStartup: () => state.localPtyStartupReady,
@@ -158,7 +166,11 @@ async function installMainWindowCoreServices(
       isRecoveryReloadInFlight,
       onCodexHomePtySpawned: handleCodexHomePtySpawned,
       onPtyExit: handlePtyExit,
-      onBeforeUpdateQuit: () => preserveStateBeforeUpdateRestart({ codexRuntimeHome, store }),
+      onBeforeUpdateQuit: async () => {
+        const { preserveStateBeforeUpdateRestart } =
+          await import('../../core-desktop/update-restart-preservation')
+        return preserveStateBeforeUpdateRestart({ codexRuntimeHome, store })
+      },
       onBeforeUpdateQuitFailure: 'abort',
       isServeMode: state.isServeMode,
       onWorktreeLifecycle: emitPluginWorktreeLifecycle

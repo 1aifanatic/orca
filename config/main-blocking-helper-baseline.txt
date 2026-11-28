@@ -1357,7 +1357,7 @@
 4 src/main/startup/main-process-ready.ts
 1 src/main/startup/main-window/main-process-i18n-menu.ts
 15 src/main/startup/main-window/main-window-controller.ts
-4 src/main/startup/main-window/main-window-core-services.ts
+3 src/main/startup/main-window/main-window-core-services.ts
 1 src/main/startup/native-setting-subscriptions.ts # HTTP/1 marker write moved here from main-process-ready-foundation.ts (settings change only)
 3 src/main/startup/network-compatibility/http1-compatibility-marker.ts
 9 src/main/startup/network-compatibility/http1-compatibility-profile-state.ts
